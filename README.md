@@ -32,8 +32,8 @@ engine.settle(clamp={0: 1.0}, steps=60).activation.round(2)
 ## Install
 
 ```bash
-pip install cadence            # NumPy only
-pip install "cadence[accel]"   # adds torch for CUDA and Apple silicon
+pip install cadence-net            # NumPy only; the import is `cadence`
+pip install "cadence-net[accel]"   # adds torch for CUDA and Apple silicon
 ```
 
 Python 3.11 or newer. On an M-series Mac the torch backend runs on MPS in float32; on CUDA
