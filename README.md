@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/assets/patchnet.svg" alt="A patch net: owners hold state, seams carry it both ways, every owner repairs its own patch until the net is at rest" width="100%">
+  <img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/patchnet.svg" alt="A patch net: owners hold state, seams carry it both ways, every owner repairs its own patch until the net is at rest" width="100%">
 </p>
 
 <h1 align="center">Cadence</h1>
@@ -63,7 +63,7 @@ learner.accuracy(drive_test, labels_test)                    # 0.96 on the 8x8 d
 ## How it learns
 
 <p align="center">
-  <img src="docs/assets/learning-cycle.svg" alt="Settle free to an equilibrium; tilt the energy with a nudge on the outputs and settle again both ways; every seam moves on the difference of its own two endpoints" width="100%">
+  <img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/learning-cycle.svg" alt="Settle free to an equilibrium; tilt the energy with a nudge on the outputs and settle again both ways; every seam moves on the difference of its own two endpoints" width="100%">
 </p>
 
 1. **Settle free.** Clamp the inputs and let every owner repair its own patch until nothing
@@ -87,8 +87,7 @@ pip install cadence-net            # NumPy only; the import is `cadence`
 pip install "cadence-net[accel]"   # adds torch for CUDA and Apple silicon
 ```
 
-Python 3.11 or newer. The 0.2 API described here is on `main`; until it is on PyPI,
-`pip install git+https://github.com/muellerberndt/cadence` installs it.
+Python 3.11 or newer.
 
 ## Sixty seconds
 
@@ -202,9 +201,11 @@ with a leak, tied seams, and a centered nudge.
 
 ## Status
 
-0.2 on `main`: the core (wiring, rule, engine, reference, protocol, receipts, custody) and
-the free/nudged learning rule with labels, teachers, and rewards, on NumPy and torch. On
-the roadmap: closure sub-nets for in-browser settlement of large wirings, environment
-adapters for embodiment, and connectome loaders. Issues and pull requests are welcome.
+0.3.0: the core (wiring, rule, engine, reference, protocol, receipts, custody) and the
+free/nudged learning rule with labels, teachers, and rewards, on NumPy and torch, with a
+dense transport for small nets on both. Nine worked rungs with receipts live in
+cadence-examples. On the roadmap: closure sub-nets for in-browser settlement of large
+wirings, environment adapters for embodiment, and connectome loaders. Issues and pull
+requests are welcome.
 
 MIT licensed.
