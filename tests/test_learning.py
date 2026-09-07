@@ -161,3 +161,17 @@ def test_weighted_nudge_pushes_each_row_its_own_way() -> None:
     assert pulled.activation[1, out[0]] < free.activation[1, out[0]]  # penalty: away
     silent = learner.nudged(drive, free, target, weight=np.array([0.0, 0.0]))
     assert np.allclose(silent.activation, free.activation, atol=1e-6)
+
+
+def test_normalized_steps_stay_local_and_bounded() -> None:
+    wiring = cd.layered(4, 6, 2, seed=8)
+    config = cd.LearnerConfig(eta=0.05, normalize=0.9)
+    learner = cd.Learner(cd.Settlement(wiring, cd.learning_rule()), wiring.sets["output"], config)
+    drive = learner.engine.clamp_levels(np.pad(np.eye(4)[:2], ((0, 0), (0, wiring.n - 4))))
+    before = learner.engine.edge_scale.copy()
+    learner.step(drive, np.array([0, 1]))
+    moved = np.abs(learner.engine.edge_scale - before)
+    assert moved.max() > 0
+    # with the RMS floor of 1e-3 and one update, no overlap moves more than eta / (1 - rho) ** 0.5
+    assert moved.max() <= config.eta / np.sqrt(1 - config.normalize) + 1e-9
+    assert learner.second_moment.shape == (wiring.edges,)
