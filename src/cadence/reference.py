@@ -52,12 +52,14 @@ def settle_owner_by_owner(
     steps: int,
     log_gain: np.ndarray | None = None,
     bias: np.ndarray | None = None,
+    edge_scale: np.ndarray | None = None,
 ) -> tuple[np.ndarray, Ledger]:
     """Activation trajectory ``(steps, n)`` and the ledger; no owner reads a global state vector."""
     n = wiring.n
     lg = np.zeros(n) if log_gain is None else np.asarray(log_gain, float)
     b = np.zeros(n) if bias is None else np.asarray(bias, float)
-    weight = rule.gain * wiring.count * wiring.sign * np.exp(lg[wiring.pre])
+    scale = wiring.sign if edge_scale is None else np.asarray(edge_scale, float)
+    weight = rule.gain * wiring.count * scale * np.exp(lg[wiring.pre])
     starts = np.searchsorted(wiring.post, np.arange(n), side="left")
     stops = np.searchsorted(wiring.post, np.arange(n), side="right")
     ledger = Ledger(wiring.edges)
@@ -91,7 +93,13 @@ def conformance(engine: Settlement, clamp: Any, *, steps: int = 60) -> dict[str,
     state = engine.settle(drive, steps=steps, trajectory=True)
     assert state.trajectory is not None
     reference, ledger = settle_owner_by_owner(
-        engine.wiring, engine.rule, drive, steps=steps, log_gain=engine.log_gain, bias=engine.bias
+        engine.wiring,
+        engine.rule,
+        drive,
+        steps=steps,
+        log_gain=engine.log_gain,
+        bias=engine.bias,
+        edge_scale=engine.edge_scale,
     )
     deviation = float(np.abs(reference - state.trajectory).max())
     return {

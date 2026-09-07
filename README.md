@@ -23,7 +23,8 @@ engine.settle(clamp={0: 1.0}, steps=60).activation.round(2)
 |---|---|
 | `Wiring` | owners and overlaps as sorted arrays, named sets, digests; built from edge lists |
 | `GradedRule`, `Adaptation` | the owner rule: a graded potential with a rectified sigmoid that emits nothing at rest, and an optional adaptation variable that turns fixed points into rhythm |
-| `Settlement` | the engine, on NumPy float64 (`"cpu"`) or torch (`"torch"`: CUDA, Apple silicon, or CPU) |
+| `Settlement`, `Nudge` | the engine, on NumPy float64 (`"cpu"`) or torch (`"torch"`: CUDA, Apple silicon, or CPU); batched, with a convergence tolerance and an optional nudge toward a target |
+| `Learner`, `layered`, `learning_rule` | the owner-local free/nudged learning rule, a layered wiring with tied feedback seams, and the rule settings that make a net learnable |
 | `conformance`, `settle_owner_by_owner`, `Ledger` | an owner-by-owner reference engine with a message ledger, to certify that a fast backend computes nothing the owners could not |
 | `Protocol`, `Row`, `shuffled`, `select_gain` | declared stimuli, readouts, and held-out facts with preconditions; the shuffled-wiring control; gain selection under a sparsity cap |
 | `Receipt`, `source_manifest` | canonical JSON bound to code and data by digest, verified by recomputing every pass flag |
@@ -88,9 +89,23 @@ receipt.write(Path("receipt.json"))
 cd.Receipt.verify(Path("receipt.json"), sources=[("lane.py", Path("lane.py"))])
 ```
 
+**Learn** with two settlements and one local comparison per batch. The free phase is the
+net's answer; the nudged phase pulls the output owners toward the target; every overlap
+moves on the difference between its own two endpoints in the two phases.
+
+```python
+w = cd.layered(64, 32, 10, density=1.0, seed=0)           # input, hidden, output owners
+learner = cd.Learner(cd.Settlement(w, cd.learning_rule()), w.sets["output"], cd.LearnerConfig(eta=3.0))
+for idx in batches:
+    learner.step(drive[idx], labels[idx])                  # free, nudged, update
+learner.accuracy(drive_test, labels_test)
+```
+
 The [quickstart](docs/quickstart.md) walks through a connectome; [concepts](docs/concepts.md)
-explains why the library is shaped this way; [backends](docs/backends.md) covers devices
-and precision; [receipts](docs/receipts.md) covers what a verified result means.
+explains why the library is shaped this way; [learning](docs/learning.md) covers the rule;
+[backends](docs/backends.md) covers devices and precision; [receipts](docs/receipts.md)
+covers what a verified result means. Worked examples, each with a receipt, live in
+[cadence-examples](https://github.com/muellerberndt/cadence-examples).
 
 ## Discipline
 
@@ -116,8 +131,11 @@ control, and a receipt; the library is what they had in common.
 
 ## Status
 
-Version 0.1.0 is the core: wiring, rule, engine, reference, protocol, receipts, custody.
-On the roadmap: the owner-local free/nudged learning rule, closure sub-nets for
-in-browser settlement, environment adapters for embodiment, and connectome loaders.
+Version 0.2.0: the core (wiring, rule, engine, reference, protocol, receipts, custody) and
+the owner-local free/nudged learning rule with a leaky graded rule, batched settlement
+with a convergence tolerance, and a dense transport for small wirings. On the digits
+example the rule reaches the accuracy of a same-sized MLP in a quarter of the epochs; see
+the example's receipt for the numbers and the wall-clock. On the roadmap: closure sub-nets
+for in-browser settlement, environment adapters for embodiment, and connectome loaders.
 
 MIT licensed.

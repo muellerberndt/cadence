@@ -217,6 +217,16 @@ def shuffled(wiring: Wiring, seed: int, *, keep: np.ndarray | None = None) -> Wi
     movable = np.ones(wiring.edges, dtype=bool) if keep is None else ~np.asarray(keep, bool)
     rows = np.flatnonzero(movable)
     post[rows] = post[rows][rng.permutation(len(rows))]
+    # A permutation can land an overlap on its own owner; swap those endpoints with random
+    # movable rows until none is left, which keeps the multiset of endpoints intact.
+    for _ in range(100):
+        clash = rows[post[rows] == wiring.pre[rows]]
+        if len(clash) == 0:
+            break
+        partner = rng.choice(rows, size=len(clash))
+        post[clash], post[partner] = post[partner].copy(), post[clash].copy()
+    else:
+        raise ValueError("could not shuffle without autapses")
     return Wiring(
         wiring.n,
         wiring.pre,

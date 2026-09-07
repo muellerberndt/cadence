@@ -42,6 +42,17 @@ with the wiring, and a shuffled control passes just as well. So a gain is admiss
 while the net stays sparse under the training stimuli. The cap is declared, the table of
 gains tried is recorded, and the same rule is applied to the control.
 
+## Why learning is two settlements
+
+A patch net learns without a backward pass. It settles free, with only its input clamped;
+then it settles again from that state with its output owners nudged toward the target; then
+every overlap moves its own scale on the difference between what its two endpoints did in
+the two phases, and every owner moves its bias on its own difference. For a symmetric
+wiring and a small nudge that local contrast is the gradient of the nudge's loss, because
+the settlement descends an energy and the nudge tilts it. The goal enters through one door,
+the nudge, and the free phase, which is what a readout sees, never meets it. See
+[learning](learning.md).
+
 ## Why float64
 
 Owners sit on knife edges. In the fly brain, one motor neuron under one taste settled to

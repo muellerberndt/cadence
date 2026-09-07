@@ -14,9 +14,15 @@ cd.available_backends()
 | `"torch"` on CPU | torch CPU | float64 | when torch is installed and you want one code path |
 
 Both backends do the same arithmetic: one scatter of every overlap's message into its
-owner's inbox per step, then one owner-local update. NumPy uses `bincount`; torch uses
-`index_add_`. Neither builds a dense matrix, so a wiring of a few million overlaps settles
+owner's inbox per step, then one owner-local update. NumPy uses a segmented sum; torch uses
+`index_add_`. Neither needs a dense matrix, so a wiring of a few million overlaps settles
 in tens of milliseconds per step on a GPU and under a second on a CPU.
+
+Small wirings are the other regime: below `dense_limit` owners (2048 by default) the NumPy
+backend does the same sum as one product against the dense overlap matrix, because at that
+size the interpreter overhead of the scatter would dominate. A learned net of a few hundred
+owners settles in tens of microseconds per step that way. The result is identical to
+rounding; `Settlement(..., dense_limit=0)` forces the segmented path.
 
 ## Choosing a device
 

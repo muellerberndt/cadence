@@ -20,17 +20,21 @@ produced it.
 from __future__ import annotations
 
 from .custody import Source, fetch, manifest
+from .learning import Learner, LearnerConfig, layered, learning_rule
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
 from .receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 from .reference import Ledger, conformance, settle_owner_by_owner
 from .rules import Adaptation, GradedRule
-from .settle import SettledState, Settlement, available_backends
+from .settle import Nudge, SettledState, Settlement, available_backends
 from .wiring import Wiring
 
 __all__ = [
     "Adaptation",
     "GradedRule",
+    "Learner",
+    "LearnerConfig",
     "Ledger",
+    "Nudge",
     "Protocol",
     "Receipt",
     "Row",
@@ -44,6 +48,8 @@ __all__ = [
     "conformance",
     "evaluate_predicate",
     "fetch",
+    "layered",
+    "learning_rule",
     "manifest",
     "select_gain",
     "settle_owner_by_owner",
@@ -51,4 +57,4 @@ __all__ = [
     "source_manifest",
 ]
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
