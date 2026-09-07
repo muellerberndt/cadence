@@ -160,6 +160,21 @@ Three things break the argument, and `learning_rule` exists to avoid them:
    where `act'` is nearly zero and the true gradient is nearly zero; a finite nudge then
    makes moves that match no gradient. Unit slope keeps a fan-scaled layer responsive.
 
+## 5b. Where the rule stops: wirings the nudge cannot travel back through
+
+The contrast teaches a seam only if the nudge changes the rest state of at least one of
+its two endpoints. In a layered net with tied feedback seams the nudge on the outputs
+moves the hidden owners, and every seam is reachable. In a measured, *directed* wiring
+the credit travels only over seams that point back toward the owners the nudge moved; a
+connectome of chemical synapses mostly does not, so only the last hop before the readout
+learns. The C. elegans rung in cadence-examples shows the consequence: the rule cannot
+fit four textbook facts that need two sensory pathways to act differently, whatever the
+gain, while a global gradient through the same settlement can. Symmetrising the wiring
+as a modelling assumption (every synapse also carries its reverse, tied) was tried and
+did not rescue it either, because the regime where a connectome's owners are both
+responsive and sparse is narrow to nonexistent under raw synapse counts. Measured
+wirings are for the protocol layer; learnable nets are built with feedback.
+
 ## 6. Using it
 
 ```python

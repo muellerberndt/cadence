@@ -67,6 +67,7 @@ class LearnerConfig:
     temperature: float = 0.2  # softmax temperature of the cross-entropy nudge
     normalize: float = 0.0  # >0: forgetting factor of the per-overlap RMS that divides its step
     normalize_floor: float = 1e-3  # added to the RMS so a quiet overlap does not blow up
+    momentum: float = 0.0  # >0: each overlap steps on a running average of its own contrast
 
     def __post_init__(self) -> None:
         if self.nudge not in ("quadratic", "cross_entropy"):
@@ -75,6 +76,8 @@ class LearnerConfig:
             raise ValueError("beta must be positive and the learning rates nonnegative")
         if not 0 <= self.normalize < 1:
             raise ValueError("normalize is a forgetting factor in [0, 1)")
+        if not 0 <= self.momentum < 1:
+            raise ValueError("momentum lies in [0, 1)")
 
     def to_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__slots__}
@@ -107,6 +110,8 @@ class Learner:
         w = self.engine.wiring
         self.second_moment = np.zeros(w.edges)  # per overlap, for normalized steps
         self.second_moment_bias = np.zeros(w.n)
+        self.velocity = np.zeros(w.edges)  # per overlap, for momentum
+        self.velocity_bias = np.zeros(w.n)
         self.reverse = np.full(w.edges, -1, dtype=np.int64)
         if self.symmetric and w.edges:
             key = w.post * w.n + w.pre
@@ -199,6 +204,10 @@ class Learner:
             self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * owner_term**2
             overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
             owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
+        if cfg.momentum > 0:  # still local: an overlap accumulates only its own contrast
+            self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * overlap_term
+            self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * owner_term
+            overlap_term, owner_term = self.velocity, self.velocity_bias
         delta_scale = cfg.eta * overlap_term
         assert self.trainable_overlaps is not None
         delta_scale = np.where(self.trainable_overlaps, delta_scale, 0.0)

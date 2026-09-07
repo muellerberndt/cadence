@@ -18,4 +18,13 @@ declared overlaps, settling to rest by owner-local repair. Read in this order th
 
 The worked, runnable versions of everything in [learning](learning.md) and [games](games.md)
 live in [cadence-examples](https://github.com/muellerberndt/cadence-examples): digits, MNIST,
-Connect Four, Pong, each with a tutorial, a script, a receipt, and for the games a page.
+Connect Four, Pong, text, a sign-writing arm, chorales, cart-pole, and the *C. elegans*
+connectome, each with a tutorial, a script, a receipt, and for the interactive ones a page.
+
+## What the ladder says the rule is good at
+
+| kind of learning | rungs | result |
+|---|---|---|
+| supervised, from labels or a teacher | digits, MNIST, Connect Four, sign writer, text, chorales | parity with a same-sized backprop network in fewer epochs; ten to a hundred times the wall-clock |
+| from reward, advantage-weighted nudges | Pong, cart-pole | learns, and learns less than REINFORCE with Adam from the same rollouts |
+| a measured, directed wiring under a protocol | *C. elegans* | the local rule cannot teach seams the nudge does not reach; settle-and-score is the tool there |
