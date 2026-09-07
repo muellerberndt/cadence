@@ -25,6 +25,8 @@ connectome, each with a tutorial, a script, a receipt, and for the interactive o
 
 | kind of learning | rungs | result |
 |---|---|---|
-| supervised, from labels or a teacher | digits, MNIST, Connect Four, sign writer, text, chorales | parity with a same-sized backprop network in fewer epochs; ten to a hundred times the wall-clock |
-| from reward, advantage-weighted nudges | Pong, cart-pole | learns, and learns less than REINFORCE with Adam from the same rollouts |
-| a measured, directed wiring under a protocol | *C. elegans* | the local rule cannot teach seams the nudge does not reach; settle-and-score is the tool there |
+| supervised, dense low-dimensional input | digits, MNIST, Connect Four, sign writer | parity with a same-sized backprop network in fewer epochs; ten to a hundred times the wall-clock |
+| supervised, multi-label (a chord) | chorales | ahead of the same-shape MLP: F1 0.483 vs 0.470, 16.6 vs 24.7 bits per chord |
+| supervised, wide sparse one-hot input | text | behind: 3.33 bits per character vs 3.11 for the same-window MLP and 3.08 for a one-layer transformer |
+| from reward, advantage-weighted nudges | Pong, cart-pole | learns, and learns less than REINFORCE with Adam from the same rollouts (78% vs 93% of balls; 154 vs 392 steps) |
+| a measured, directed wiring under a protocol | *C. elegans* | the local rule cannot teach seams the nudge does not reach; a structural signal survives (5.3 vs 1.5 of 17 ablations), not a behavioural model |
