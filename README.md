@@ -101,11 +101,13 @@ for idx in batches:
 learner.accuracy(drive_test, labels_test)
 ```
 
-The [quickstart](docs/quickstart.md) walks through a connectome; [concepts](docs/concepts.md)
-explains why the library is shaped this way; [learning](docs/learning.md) covers the rule;
-[backends](docs/backends.md) covers devices and precision; [receipts](docs/receipts.md)
-covers what a verified result means. Worked examples, each with a receipt, live in
-[cadence-examples](https://github.com/muellerberndt/cadence-examples).
+The [documentation map](docs/index.md) lists every page. Start with
+[concepts](docs/concepts.md) and the [quickstart](docs/quickstart.md); then
+[learning](docs/learning.md) has the rule in full with a worked example,
+[differences](docs/differences.md) sets it against backprop, [games](docs/games.md) covers
+imitating a search and learning from reward, and [pages](docs/pages.md) puts a trained net
+in a browser. Worked examples, each with a tutorial, a receipt, and for the games a page,
+live in [cadence-examples](https://github.com/muellerberndt/cadence-examples).
 
 ## Discipline
 
