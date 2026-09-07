@@ -178,7 +178,9 @@ class Settlement:
             self._dense = dense
         self._torch: Any = None
         if backend == "torch":
-            self._torch = _TorchKernel(wiring, self._weights, self.bias, rule, device)
+            self._torch = _TorchKernel(
+                wiring, self._weights, self.bias, rule, device, dense=wiring.n <= dense_limit
+            )
         elif backend != "cpu":
             raise ValueError(f"unknown backend {backend!r}")
 
@@ -390,12 +392,17 @@ class Settlement:
             for name in names
         }
 
+    def _is_dense(self) -> bool:
+        if self._torch is not None:
+            return bool(self._torch.dense is not None)
+        return self._dense is not None
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "wiring": self.wiring.summary(),
             "rule": self.rule.to_dict(),
             "backend": self.backend,
-            "transport": "dense" if self._dense is not None else "segmented",
+            "transport": "dense" if self._is_dense() else "segmented",
             "edge_scale_changed": int((self.edge_scale != self.wiring.sign).sum()),
             "log_gain_nonzero": int((self.log_gain != 0).sum()),
             "bias_nonzero": int((self.bias != 0).sum()),
@@ -412,6 +419,7 @@ class _TorchKernel:
         bias: np.ndarray,
         rule: GradedRule,
         device: str | None,
+        dense: bool = False,
     ) -> None:
         import torch
 
@@ -434,6 +442,11 @@ class _TorchKernel:
         self.bias = torch.from_numpy(bias).to(self.device, self.dtype)
         self.rule = rule
         self.n = wiring.n
+        self.dense: Any = None
+        if dense:  # one matrix product per step instead of a gather and a scatter
+            matrix = np.zeros((wiring.n, wiring.n))
+            np.add.at(matrix, (wiring.pre, wiring.post), weights)
+            self.dense = torch.from_numpy(matrix).to(self.device, self.dtype)
 
     def _activation(self, v: Any) -> Any:
         torch, rule = self.torch, self.rule
@@ -476,8 +489,11 @@ class _TorchKernel:
         with torch.no_grad():
             s = self._activation(v) * k
             for t in range(steps):
-                inbox = torch.zeros(batch, self.n, dtype=self.dtype, device=self.device)
-                inbox = inbox.index_add_(1, self.post, s[:, self.pre] * self.w)
+                if self.dense is not None:
+                    inbox = s @ self.dense
+                else:
+                    inbox = torch.zeros(batch, self.n, dtype=self.dtype, device=self.device)
+                    inbox = inbox.index_add_(1, self.post, s[:, self.pre] * self.w)
                 total = inbox + d + self.bias
                 if adapt is not None:
                     total = total - adapt.strength * a
