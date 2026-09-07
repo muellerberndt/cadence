@@ -290,7 +290,7 @@ class Learner:
     def predict(self, drive: np.ndarray) -> np.ndarray:
         """Class index of the most active output owner after a free settlement."""
         free = self.free(drive)
-        return np.argmax(free.activation[:, self.output_index], axis=1)
+        return np.asarray(np.argmax(free.activation[:, self.output_index], axis=1), dtype=np.int64)
 
     def accuracy(self, drive: np.ndarray, labels: np.ndarray, batch: int = 256) -> float:
         hits = 0
