@@ -21,8 +21,9 @@ in tens of milliseconds per step on a GPU and under a second on a CPU.
 Small wirings are the other regime: below `dense_limit` owners (2048 by default) the NumPy
 backend does the same sum as one product against the dense overlap matrix, because at that
 size the interpreter overhead of the scatter would dominate. A learned net of a few hundred
-owners settles in tens of microseconds per step that way. The result is identical to
-rounding; `Settlement(..., dense_limit=0)` forces the segmented path.
+owners settles in tens of microseconds per step that way, and the torch backend does the
+same with one matrix product on the device. The result is identical to rounding;
+`Settlement(..., dense_limit=0)` forces the segmented path on either backend.
 
 ## Choosing a device
 

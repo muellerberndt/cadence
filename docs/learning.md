@@ -67,6 +67,15 @@ learner.parameters()        # one number per seam plus one bias per owner
 it, put its `to_dict()` in a receipt. The learner never touches the wiring; it moves
 `edge_scale` and `bias`, the two parameter arrays every settlement carries.
 
+## Learning from reward
+
+Nothing in the rule says the target has to be a label. `Nudge` takes a `weight` per batch
+row that scales its pull, and `Learner.step(drive, actions, weight=advantages)` passes it
+through. Make the target the action the net took and the weight that action's advantage:
+actions that paid are pulled toward, actions that cost are pushed away, and the local
+update is the policy gradient. The Pong example in `cadence-examples` is this, with
+rollouts from a settled softmax policy and normalised discounted returns as the weights.
+
 ## Reading the numbers
 
 | knob | what it does | where to start |
