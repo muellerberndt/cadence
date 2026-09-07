@@ -165,6 +165,7 @@ is the tutorial they build on.
 | [learning](docs/learning.md) | the rule in full: every equation, a worked example, every knob |
 | [differences](docs/differences.md) | patch net versus feed-forward network with backprop |
 | [games](docs/games.md) | imitating a search; learning from reward; setting up credit |
+| [tasks](docs/tasks.md) | recipes for every kind of task the ladder and the Kaggle set have met |
 | [pages](docs/pages.md) | a trained net settling live in a browser |
 | [protocols](docs/protocols.md) | predicates, the shuffled control, gain selection |
 | [backends](docs/backends.md) | CPU and torch, precision, the dense transport |
