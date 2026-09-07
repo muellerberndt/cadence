@@ -125,25 +125,31 @@ class Learner:
             drive, steps=cfg.free_steps, state=warm, tolerance=cfg.tolerance
         )
 
-    def nudge_for(self, target: np.ndarray, beta: float) -> Nudge:
+    def nudge_for(self, target: np.ndarray, beta: float, weight: np.ndarray | None = None) -> Nudge:
         cfg = self.config
-        if cfg.nudge == "cross_entropy":
-            return Nudge(target, self.output_mask, beta, softmax_temperature=cfg.temperature)
-        return Nudge(target, self.output_mask, beta)
+        temperature = cfg.temperature if cfg.nudge == "cross_entropy" else None
+        return Nudge(target, self.output_mask, beta, softmax_temperature=temperature, weight=weight)
 
     def nudged(
-        self, drive: np.ndarray, free: SettledState, target: np.ndarray, sign: float = 1.0
+        self,
+        drive: np.ndarray,
+        free: SettledState,
+        target: np.ndarray,
+        sign: float = 1.0,
+        weight: np.ndarray | None = None,
     ) -> SettledState:
         """From the free state, settle with the output owners pulled toward ``target``.
 
-        ``sign`` of -1 pushes them away instead: the opposite phase of a centered contrast.
+        ``sign`` of -1 pushes them away instead: the opposite phase of a centered
+        contrast. ``weight`` scales the pull row by row (an advantage, when the
+        target is an action that was taken).
         """
         cfg = self.config
         return self.engine.settle_batch(
             drive,
             steps=cfg.nudged_steps,
             state=free,
-            nudge=self.nudge_for(target, sign * cfg.beta),
+            nudge=self.nudge_for(target, sign * cfg.beta, weight),
             tolerance=cfg.tolerance,
         )
 
@@ -202,13 +208,27 @@ class Learner:
         }
 
     def step(
-        self, drive: np.ndarray, labels: np.ndarray, warm: SettledState | None = None
+        self,
+        drive: np.ndarray,
+        labels: np.ndarray,
+        warm: SettledState | None = None,
+        weight: np.ndarray | None = None,
     ) -> tuple[LearnedState, dict[str, float]]:
-        """One free phase, the nudged phase(s), one update; returns the states and step sizes."""
+        """One free phase, the nudged phase(s), one update; returns the states and step sizes.
+
+        ``weight`` is one number per row: how hard, and in which direction, that
+        row's label is pulled. With actions as labels and advantages as weights
+        this is the policy-gradient step, and the goal still enters only through
+        the nudge.
+        """
         target = self.targets(labels)
         free = self.free(drive, warm)
-        nudged = self.nudged(drive, free, target)
-        opposite = self.nudged(drive, free, target, sign=-1.0) if self.config.centered else None
+        nudged = self.nudged(drive, free, target, weight=weight)
+        opposite = (
+            self.nudged(drive, free, target, sign=-1.0, weight=weight)
+            if self.config.centered
+            else None
+        )
         report = self.update(free, nudged, opposite)
         report["free_steps"] = float(free.steps)
         report["nudged_steps"] = float(nudged.steps)

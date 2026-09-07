@@ -70,24 +70,31 @@ class Nudge:
     With ``softmax_temperature`` set, the owners under the mask compete: the
     drive is ``beta * (target - softmax(s / T))`` over that group, a
     cross-entropy nudge, so pushing one owner up pushes the others down only
-    as much as their share.
+    as much as their share. ``weight``, one number per batch row, scales the
+    nudge row by row; a negative weight pushes away from the target. That is
+    how a reward enters: the target is the action taken and the weight its
+    advantage.
     """
 
     target: np.ndarray  # (batch, n) or (n,)
     mask: np.ndarray  # (n,)
     beta: float
     softmax_temperature: float | None = None
+    weight: np.ndarray | None = None  # (batch,)
 
     def drive(self, s: np.ndarray) -> np.ndarray:
         if self.softmax_temperature is None:
-            return np.asarray(self.beta * (self.target - s) * self.mask, dtype=float)
-        group = self.mask > 0
-        z = s[:, group] / self.softmax_temperature
-        z = z - z.max(axis=1, keepdims=True)
-        p = np.exp(z)
-        p = p / p.sum(axis=1, keepdims=True)
-        out = np.zeros_like(s)
-        out[:, group] = self.beta * (np.broadcast_to(self.target, s.shape)[:, group] - p)
+            out = np.asarray(self.beta * (self.target - s) * self.mask, dtype=float)
+        else:
+            group = self.mask > 0
+            z = s[:, group] / self.softmax_temperature
+            z = z - z.max(axis=1, keepdims=True)
+            p = np.exp(z)
+            p = p / p.sum(axis=1, keepdims=True)
+            out = np.zeros_like(s)
+            out[:, group] = self.beta * (np.broadcast_to(self.target, s.shape)[:, group] - p)
+        if self.weight is not None:
+            out = out * np.asarray(self.weight, dtype=float)[:, None]
         return out
 
 
@@ -199,6 +206,18 @@ class Settlement:
     def weights(self) -> np.ndarray:
         """Effective drive per unit presynaptic activation, one per overlap."""
         return self._weights
+
+    def dense(self) -> np.ndarray:
+        """The overlap matrix ``W[pre, post]``: the inbox of a batch ``s`` is ``s @ W``.
+
+        Built on demand for wirings above ``dense_limit``; this is what a page
+        that settles the net in a browser embeds.
+        """
+        if self._dense is not None:
+            return self._dense
+        dense = np.zeros((self.wiring.n, self.wiring.n))
+        np.add.at(dense, (self.wiring.pre, self.wiring.post), self._weights)
+        return dense
 
     # -- clamps
 
@@ -444,12 +463,14 @@ class _TorchKernel:
         v, a, d, k = to(v0), to(a0), to(drive), to(keep)
         batch = v.shape[0]
         adapt = rule.adaptation
-        target = mask = None
+        target = mask = weight = None
         group: Any = None
         if nudge is not None:
             target = to(np.broadcast_to(nudge.target, (batch, self.n)))
             mask = to(nudge.mask)
             group = torch.from_numpy(np.flatnonzero(nudge.mask > 0)).to(self.device)
+            if nudge.weight is not None:
+                weight = to(np.asarray(nudge.weight, dtype=float))[:, None]
         traj = []
         taken = 0
         with torch.no_grad():
@@ -462,13 +483,15 @@ class _TorchKernel:
                     total = total - adapt.strength * a
                 if nudge is not None:
                     if nudge.softmax_temperature is None:
-                        total = total + nudge.beta * (target - s) * mask
+                        push = nudge.beta * (target - s) * mask
                     else:
                         assert group is not None and target is not None
                         p = torch.softmax(s[:, group] / nudge.softmax_temperature, dim=1)
                         push = torch.zeros_like(s)
                         push[:, group] = nudge.beta * (target[:, group] - p)
-                        total = total + push
+                    if weight is not None:
+                        push = push * weight
+                    total = total + push
                 v = (v + rule.dt * (-v + total)) * k
                 previous = s
                 s = self._activation(v) * k

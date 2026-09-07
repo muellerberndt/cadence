@@ -146,3 +146,18 @@ def test_dense_and_segmented_transport_agree() -> None:
     assert np.abs(dense.activation - segmented.activation).max() < 1e-12
     assert cd.Settlement(wiring, rule).to_dict()["transport"] == "dense"
     assert cd.Settlement(wiring, rule, dense_limit=0).to_dict()["transport"] == "segmented"
+
+
+def test_weighted_nudge_pushes_each_row_its_own_way() -> None:
+    wiring = cd.layered(4, 6, 2, seed=6)
+    config = cd.LearnerConfig(tolerance=1e-12, free_steps=1000, nudged_steps=200)
+    learner = cd.Learner(cd.Settlement(wiring, cd.learning_rule()), wiring.sets["output"], config)
+    drive = learner.engine.clamp_levels(np.pad(np.eye(4)[:2], ((0, 0), (0, wiring.n - 4))))
+    free = learner.free(drive)
+    target = learner.targets(np.array([0, 0]))
+    out = wiring.sets["output"]
+    pulled = learner.nudged(drive, free, target, weight=np.array([1.0, -1.0]))
+    assert pulled.activation[0, out[0]] > free.activation[0, out[0]]  # advantage: toward
+    assert pulled.activation[1, out[0]] < free.activation[1, out[0]]  # penalty: away
+    silent = learner.nudged(drive, free, target, weight=np.array([0.0, 0.0]))
+    assert np.allclose(silent.activation, free.activation, atol=1e-6)
