@@ -64,8 +64,9 @@ engine = cd.Settlement(w, rule.replace(gain=gain))
 ```
 
 A gain is admissible only while at most 5% of owners are active under the training
-stimuli (pass `sparsity_cap=None` for toy nets that are meant to light entirely). Above that the net runs away and every readout lights, which says nothing about
-the wiring. The table records every gain tried.
+stimuli; pass `sparsity_cap=None` for toy nets that are meant to light entirely. Above the
+cap the net runs away and every readout lights, which says nothing about the wiring. The
+table records every gain tried.
 
 ## 5. Score, and score the control
 
