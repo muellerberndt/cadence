@@ -39,12 +39,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any
 
 import numpy as np
 
 from .rules import GradedRule
-from .settle import Nudge, SettledState, Settlement
+from .settle import Backend, Nudge, SettledState, Settlement
 from .wiring import Wiring
 
 __all__ = ["Learner", "LearnerConfig", "layered", "embedded", "learning_rule", "LearnedState"]
@@ -349,6 +350,28 @@ class Learner:
             "parameters": self.parameters(),
             "engine": self.engine.to_dict(),
         }
+
+    # -- checkpoints
+
+    def save(self, path: str | Path) -> Path:
+        """Write this learner, wiring and parameters included, to one ``.npz`` file."""
+        from .checkpoint import save
+
+        return save(self, path)
+
+    @classmethod
+    def load(
+        cls,
+        path: str | Path,
+        *,
+        backend: Backend | None = None,
+        device: str | None = None,
+        config: LearnerConfig | None = None,
+    ) -> Learner:
+        """Rebuild a learner from ``save``; see ``cadence.checkpoint.load``."""
+        from .checkpoint import load
+
+        return load(path, backend=backend, device=device, config=config)
 
 
 def layered(

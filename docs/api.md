@@ -64,6 +64,15 @@ docstrings in the source carry the details.
 - `shuffled(wiring, seed, *, keep=None) -> Wiring`: the control.
 - `select_gain(make_engine, protocol, grid, *, sparsity_cap=0.05) -> (gain, table)`.
 
+## Checkpoints (`cadence.checkpoint`)
+
+- `save(learner, path) -> Path` and `load(path, *, backend=None, device=None, config=None) -> Learner`,
+  also as `Learner.save(path)` and `Learner.load(path, ...)`: one `.npz` file holding the wiring,
+  every seam's scale, every owner's gain and bias, the rule, the configuration, the masks, tie
+  groups, momentum and normalisation state, and the update count. `backend` and `device` may
+  differ from the saved ones; `config` replaces the saved configuration (a frozen deployment
+  passes `LearnerConfig(eta=0.0, eta_bias=0.0)`).
+
 ## Learning (`cadence.learning`)
 
 - `LearnerConfig(beta=0.1, eta=0.2, eta_bias=0.02, centered=True, free_steps=100, nudged_steps=50, tolerance=1e-4, scale_floor=0.0, scale_cap=8.0, target_level=1.0, off_level=0.0, nudge="cross_entropy", temperature=0.2, normalize=0.0, normalize_floor=1e-3, momentum=0.0, decay=0.0)`:

@@ -15,6 +15,7 @@ declared overlaps, settling to rest by owner-local repair. Read in this order th
 | [protocols](protocols.md) | held-out tests, predicates with preconditions, the shuffled control, gain selection |
 | [backends](backends.md) | CPU and torch, precision, the dense transport |
 | [receipts](receipts.md) | what a verified result is, and what goes in one |
+| [embodied](embodied.md) | the sense, settle, act, learn loop in a body; several learners in one net; checkpoints |
 | [api](api.md) | every public class and function, module by module |
 
 The worked, runnable versions of everything in [learning](learning.md) and [games](games.md)

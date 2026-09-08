@@ -173,6 +173,7 @@ is the tutorial they build on.
 | [games](docs/games.md) | imitating a search; learning from reward; setting up credit |
 | [tasks](docs/tasks.md) | recipes for every kind of task the ladder and the Kaggle set have met |
 | [pages](docs/pages.md) | a trained net settling live in a browser |
+| [embodied](docs/embodied.md) | deploying in a body: the loop, several learners in one net, checkpoints |
 | [protocols](docs/protocols.md) | predicates, the shuffled control, gain selection |
 | [backends](docs/backends.md) | CPU and torch, precision, the dense transport |
 | [receipts](docs/receipts.md) | what a verified result is |

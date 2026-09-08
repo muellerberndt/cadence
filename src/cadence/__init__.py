@@ -19,6 +19,7 @@ produced it.
 
 from __future__ import annotations
 
+from .checkpoint import load, save
 from .custody import Source, fetch, manifest
 from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
@@ -51,11 +52,13 @@ __all__ = [
     "fetch",
     "layered",
     "learning_rule",
+    "load",
     "manifest",
+    "save",
     "select_gain",
     "settle_owner_by_owner",
     "shuffled",
     "source_manifest",
 ]
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
