@@ -23,7 +23,25 @@ quantile-bin centres `c_k` fitted on training rows, plus one owner that is 1 whe
 value is missing. A category becomes one owner per level seen often enough plus one for
 the rest. The result is a clamp in [0, 1] with a few active owners per row, which is the
 regime the rule wants: no owner sees a raw magnitude, every value is a pattern. `Encoder`
-in the Kaggle harness is the reference implementation.
+in the Kaggle harness is the reference implementation. Three details it learned the hard
+way:
+
+- **A value nearly every row shares is silence.** A sparse count column (a word count, an
+  amount that is usually zero) has one value in nine rows out of ten. Quantile bins put
+  most of their centres on that value, and every such row lights most of the column's
+  owners; on the cnae-9 task (856 such columns) that meant about six thousand owners at
+  full level per row, and both the patch net and an MLP sat at chance while a linear
+  reader did not. Coding the shared value as no owner on (the rule the harness applies at
+  a nine-in-ten share) brings the row down to a handful of active owners. Applied at a
+  lower share it costs dense tables a point, because a three-level column then loses the
+  owner for its most common level.
+- **A column with few distinct values gets one owner per value**, with duplicate centres
+  from ties collapsed, so a 0/1 flag is one owner and a 1–5 grade is five.
+- **Bump width is a choice the table makes.** The width `w` is either the value range over
+  `bins` (wide, smooth) or the gap to the nearest neighbouring centre (sharp). Sharp codes
+  gained 1.7 points on one task and lost 1.5 on another for the patch net, and in every
+  measured case a logistic regression on the same code preferred the same width, so the
+  harness picks the width by a linear reader's cross-validation on the training rows.
 
 ## Regression by the quadratic nudge
 
@@ -58,4 +76,6 @@ That is the price of a joint model at this size; the capability itself needs no 
 model and no retraining. Learning is likewise not a phase:
 every prediction is a free settlement, every arriving label a nudged one, so a net can
 learn from a stream one example at a time with the rule unchanged. The Digit Recognizer
-stream rung measures that: one pass, predict then learn, accuracy along the way.
+stream rung measures that: one pass over 42,000 images, predict then learn, accuracy along
+the way: 0.885 over the pass and 0.932 in the last window, against 0.844 and 0.895 for the
+same-shape MLP taking one SGD step per chunk.
