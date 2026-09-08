@@ -66,7 +66,9 @@ docstrings in the source carry the details.
 
 ## Learning (`cadence.learning`)
 
-- `LearnerConfig(beta=0.1, eta=0.2, eta_bias=0.02, centered=True, free_steps=100, nudged_steps=50, tolerance=1e-4, scale_floor=0.0, scale_cap=8.0, target_level=1.0, off_level=0.0, nudge="cross_entropy", temperature=0.2, normalize=0.0, normalize_floor=1e-3)`.
+- `LearnerConfig(beta=0.1, eta=0.2, eta_bias=0.02, centered=True, free_steps=100, nudged_steps=50, tolerance=1e-4, scale_floor=0.0, scale_cap=8.0, target_level=1.0, off_level=0.0, nudge="cross_entropy", temperature=0.2, normalize=0.0, normalize_floor=1e-3, momentum=0.0, decay=0.0)`:
+  `momentum` steps each seam on a running average of its own contrast; `decay` shrinks every
+  trainable seam and bias by that fraction on each update (a leak on the seams, for streams).
 - `Learner(engine, outputs, config=LearnerConfig(), trainable_overlaps=None, symmetric=True, tie_groups=None)`:
   `tie_groups` is an int per overlap (−1 for none); overlaps in a group share one scale and
   move by the mean of their contrasts, which is how an embedding is shared across positions;

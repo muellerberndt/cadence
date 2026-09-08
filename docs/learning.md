@@ -210,6 +210,7 @@ it, export `engine.dense()` for a page, put `to_dict()` in a receipt.
 | `scale_floor`, `scale_cap` | `LearnerConfig` | bounds on a seam's magnitude | 0, 8 |
 | `nudge` | `LearnerConfig` | `"cross_entropy"` or `"quadratic"` (`beta · (target − s)`) | cross-entropy for classes |
 | `momentum` | `LearnerConfig` | each seam steps on a running average of its own contrast (still local) | 0.9 on supervised tabular tasks, where it adds about a point; 0 elsewhere |
+| `decay` | `LearnerConfig` | every update shrinks each trainable seam and bias by this fraction: a leak on the seams | 0 for a fixed training set; 0.003 on a stream that drifts, where it keeps the net plastic (see `tasks.md`, streams) |
 | `normalize`, `normalize_floor` | `LearnerConfig` | each seam divides its step by the running RMS of its own contrast (still local) | 0 (off); it did not help anywhere it was tried |
 | `symmetric` | `Learner` | tie an overlap and its reverse into one seam | `True` |
 | `trainable_overlaps` | `Learner` | bool per overlap; freeze the rest | all |

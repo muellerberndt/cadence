@@ -68,6 +68,7 @@ class LearnerConfig:
     normalize: float = 0.0  # >0: forgetting factor of the per-overlap RMS that divides its step
     normalize_floor: float = 1e-3  # added to the RMS so a quiet overlap does not blow up
     momentum: float = 0.0  # >0: each overlap steps on a running average of its own contrast
+    decay: float = 0.0  # >0: every update shrinks each trainable overlap and bias by this fraction
 
     def __post_init__(self) -> None:
         if self.nudge not in ("quadratic", "cross_entropy"):
@@ -78,6 +79,8 @@ class LearnerConfig:
             raise ValueError("normalize is a forgetting factor in [0, 1)")
         if not 0 <= self.momentum < 1:
             raise ValueError("momentum lies in [0, 1)")
+        if not 0 <= self.decay < 1:
+            raise ValueError("decay is a fraction in [0, 1)")
 
     def to_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__slots__}
@@ -227,10 +230,13 @@ class Learner:
                 shared = total[index] / np.maximum(count[index], 1)
                 delta_scale = np.where(member, shared, delta_scale)
         scale = self.engine.edge_scale + delta_scale
-        magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
-        scale = np.sign(scale) * magnitude
         delta_bias = cfg.eta_bias * owner_term
         bias = self.engine.bias + delta_bias
+        if cfg.decay > 0:  # a leak on the seams: what is not relearned fades away
+            scale = np.where(self.trainable_overlaps, scale * (1.0 - cfg.decay), scale)
+            bias = bias * (1.0 - cfg.decay)
+        magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
+        scale = np.sign(scale) * magnitude
         self.engine = self.engine.with_parameters(edge_scale=scale, bias=bias)
         self.updates += 1
         return {

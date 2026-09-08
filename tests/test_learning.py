@@ -197,3 +197,24 @@ def test_tie_groups_share_one_scale_across_positions() -> None:
         assert members.size == 3 and np.allclose(members, members[0])
     # one embedding table, the tied dense seams, and the biases
     assert learner.parameters() == 5 * 2 + (3 * 2) * 4 + 4 * 2 + wiring.n
+
+
+def test_decay_fades_seams_that_are_not_relearned() -> None:
+    wiring = cd.layered(4, 3, 2, density=1.0, seed=0)
+    engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0))
+    config = cd.LearnerConfig(eta=0.0, eta_bias=0.0, decay=0.1)
+    learner = cd.Learner(engine, wiring.sets["output"], config)
+    before = learner.engine.edge_scale.copy()
+    drive = engine.clamp_levels(np.zeros((2, wiring.n)))
+    free = learner.free(drive)
+    target = learner.targets(np.array([0, 1]))
+    nudged = learner.nudged(drive, free, target)
+    learner.update(free, nudged, learner.nudged(drive, free, target, sign=-1.0))
+    # no contrast step at eta 0, only the leak
+    assert np.allclose(learner.engine.edge_scale, before * 0.9)
+    try:
+        cd.LearnerConfig(decay=1.0)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("decay of 1 would erase the net every update and must be refused")
