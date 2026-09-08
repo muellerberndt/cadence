@@ -175,3 +175,25 @@ def test_normalized_steps_stay_local_and_bounded() -> None:
     # with the RMS floor of 1e-3 and one update, no overlap moves more than eta / (1 - rho) ** 0.5
     assert moved.max() <= config.eta / np.sqrt(1 - config.normalize) + 1e-9
     assert learner.second_moment.shape == (wiring.edges,)
+
+
+def test_tie_groups_share_one_scale_across_positions() -> None:
+    wiring, groups = cd.embedded(vocabulary=5, positions=3, dim=2, hidden=4, outputs=2, seed=1)
+    learner = cd.Learner(
+        cd.Settlement(wiring, cd.learning_rule()), wiring.sets["output"], tie_groups=groups
+    )
+    # every (token, unit) seam starts equal across the positions and stays equal after an update
+    tied = groups >= 0
+    rng = np.random.default_rng(0)
+    windows = rng.integers(0, 5, size=(6, 3))
+    drive = np.zeros((6, wiring.n))
+    for r in range(6):
+        for p in range(3):
+            drive[r, p * 5 + windows[r, p]] = 1.0
+    learner.step(drive, rng.integers(0, 2, 6))
+    scale = learner.engine.edge_scale
+    for g in np.unique(groups[tied]):
+        members = scale[groups == g]
+        assert members.size == 3 and np.allclose(members, members[0])
+    # one embedding table, the tied dense seams, and the biases
+    assert learner.parameters() == 5 * 2 + (3 * 2) * 4 + 4 * 2 + wiring.n

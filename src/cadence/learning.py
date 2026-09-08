@@ -47,7 +47,7 @@ from .rules import GradedRule
 from .settle import Nudge, SettledState, Settlement
 from .wiring import Wiring
 
-__all__ = ["Learner", "LearnerConfig", "layered", "learning_rule", "LearnedState"]
+__all__ = ["Learner", "LearnerConfig", "layered", "embedded", "learning_rule", "LearnedState"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,6 +99,7 @@ class Learner:
     config: LearnerConfig = field(default_factory=LearnerConfig)
     trainable_overlaps: np.ndarray | None = None  # bool per overlap; default all
     symmetric: bool = True  # an overlap and its reverse share one scale: one seam, one weight
+    tie_groups: np.ndarray | None = None  # int per overlap (-1: none); a group shares one scale
     updates: int = 0
 
     def __post_init__(self) -> None:
@@ -216,6 +217,15 @@ class Learner:
             delta_scale = np.where(
                 paired, 0.5 * (delta_scale + delta_scale[np.maximum(self.reverse, 0)]), delta_scale
             )
+        if self.tie_groups is not None:  # a group moves by the mean of its members' contrasts
+            groups = self.tie_groups
+            member = groups >= 0
+            if member.any():
+                count = np.bincount(groups[member])
+                total = np.bincount(groups[member], weights=delta_scale[member])
+                index = np.maximum(groups, 0)
+                shared = total[index] / np.maximum(count[index], 1)
+                delta_scale = np.where(member, shared, delta_scale)
         scale = self.engine.edge_scale + delta_scale
         magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
         scale = np.sign(scale) * magnitude
@@ -310,10 +320,14 @@ class Learner:
         return hits / len(labels)
 
     def parameters(self) -> int:
-        """Trainable numbers: one per seam (a tied pair counts once) plus one bias per owner."""
+        """Trainable numbers: one per seam (a tied pair or group counts once) plus the biases."""
         assert self.trainable_overlaps is not None
         tied_twice = (self.reverse >= 0) & self.trainable_overlaps
-        return int(self.trainable_overlaps.sum() - tied_twice.sum() // 2 + self.engine.wiring.n)
+        seams = int(self.trainable_overlaps.sum() - tied_twice.sum() // 2)
+        if self.tie_groups is not None:
+            member = (self.tie_groups >= 0) & self.trainable_overlaps
+            seams -= int(member.sum()) - len(np.unique(self.tie_groups[member]))
+        return seams + self.engine.wiring.n
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -405,6 +419,86 @@ def layered(
         },
         label=f"layered:{inputs}x{hidden}x{outputs}",
     )
+
+
+def embedded(
+    vocabulary: int,
+    positions: int,
+    dim: int,
+    hidden: int,
+    outputs: int,
+    *,
+    seed: int = 0,
+    init: float = 1.0,
+) -> tuple[Wiring, np.ndarray]:
+    """A window of one-hot tokens through a shared embedding: the wiring and its tie groups.
+
+    Input owners: ``positions`` blocks of ``vocabulary`` one-hot owners. Embedding owners:
+    ``positions`` blocks of ``dim`` owners; the seam from token ``t`` at any position to
+    embedding unit ``d`` of that position is one tie group, so every position reads the
+    same embedding. Then a dense layer from all embedding owners to ``hidden`` owners, and
+    from those to ``outputs``, with feedback seams tied in pairs as in ``layered``. Pass
+    the tie groups to ``Learner(tie_groups=...)``. Sets: ``input``, ``embedding``,
+    ``hidden``, ``output``.
+    """
+    rng = np.random.default_rng(seed)
+    n_in, n_emb = positions * vocabulary, positions * dim
+    i0, e0, h0, o0 = 0, n_in, n_in + n_emb, n_in + n_emb + hidden
+    n = o0 + outputs
+    pre: list[np.ndarray] = []
+    post: list[np.ndarray] = []
+    sign: list[np.ndarray] = []
+    tie: list[np.ndarray] = []
+    # the shared embedding: the same random start for every position, one group per (token, unit)
+    shape = (vocabulary, dim)
+    table = rng.choice([-1.0, 1.0], size=shape) * rng.uniform(0.0, 1.0, size=shape)
+    table = table * np.sqrt(6.0 / (1 + dim)) * init
+    tok, unit = np.meshgrid(np.arange(vocabulary), np.arange(dim), indexing="ij")
+    for p in range(positions):
+        pre.append(i0 + p * vocabulary + tok.ravel())
+        post.append(e0 + p * dim + unit.ravel())
+        sign.append(table.ravel())
+        tie.append((tok * dim + unit).ravel())
+
+    def magnitude(size: int, fan_in: float, fan_out: float) -> np.ndarray:
+        signs = rng.choice([-1.0, 1.0], size=size) * rng.uniform(0.0, 1.0, size=size)
+        return np.asarray(signs * np.sqrt(6.0 / (fan_in + fan_out)) * init, dtype=float)
+
+    emb, hid = np.meshgrid(np.arange(n_emb), np.arange(hidden), indexing="ij")
+    forward = magnitude(n_emb * hidden, n_emb, hidden)
+    pre += [e0 + emb.ravel(), h0 + hid.ravel()]
+    post += [h0 + hid.ravel(), e0 + emb.ravel()]
+    sign += [forward, forward]
+    tie += [np.full(n_emb * hidden, -1), np.full(n_emb * hidden, -1)]
+    hid2, out = np.meshgrid(np.arange(hidden), np.arange(outputs), indexing="ij")
+    forward = magnitude(hidden * outputs, hidden, outputs)
+    pre += [h0 + hid2.ravel(), o0 + out.ravel()]
+    post += [o0 + out.ravel(), h0 + hid2.ravel()]
+    sign += [forward, forward]
+    tie += [np.full(hidden * outputs, -1), np.full(hidden * outputs, -1)]
+    wiring = Wiring.from_edges(
+        n,
+        pre=np.concatenate(pre),
+        post=np.concatenate(post),
+        sign=np.concatenate(sign),
+        sets={
+            "input": range(i0, e0),
+            "embedding": range(e0, h0),
+            "hidden": range(h0, o0),
+            "output": range(o0, n),
+        },
+        label=f"embedded:{positions}x{vocabulary}->{dim}->{hidden}->{outputs}",
+    )
+    # Wiring.from_edges sorts overlaps; recover each overlap's tie group by (pre, post)
+    all_pre, all_post, all_tie = np.concatenate(pre), np.concatenate(post), np.concatenate(tie)
+    key: dict[tuple[int, int], int] = {
+        (int(a), int(b)): int(g) for a, b, g in zip(all_pre, all_post, all_tie, strict=True)
+    }
+    groups = np.array(
+        [key[(int(a), int(b))] for a, b in zip(wiring.pre, wiring.post, strict=True)],
+        dtype=np.int64,
+    )
+    return wiring, groups
 
 
 def learning_rule(

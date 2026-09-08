@@ -20,7 +20,7 @@ produced it.
 from __future__ import annotations
 
 from .custody import Source, fetch, manifest
-from .learning import Learner, LearnerConfig, layered, learning_rule
+from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
 from .receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 from .reference import Ledger, conformance, settle_owner_by_owner
@@ -46,6 +46,7 @@ __all__ = [
     "canonical_json",
     "canonical_sha256",
     "conformance",
+    "embedded",
     "evaluate_predicate",
     "fetch",
     "layered",

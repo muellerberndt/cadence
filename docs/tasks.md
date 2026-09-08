@@ -38,8 +38,10 @@ Thousands of mostly-silent one-hot owners (a bag of words, a wide window of char
 are the input the rule likes least: with fan-scaled seams the drive from a few active
 owners is small, and learning is slow relative to the same-shape MLP. Normalising the
 clamp so that each row's total input is constant helps a little; a first layer of seams
-shared across positions (an embedding) is the change the text rungs point at, and it is
-on the roadmap.
+shared across positions (an embedding) is the change the text rungs point at. `embedded`
+builds that wiring and `Learner(tie_groups=...)` keeps the shared seams equal: every
+position reads one embedding table, learned by the same local rule (the mean of the tied
+seams' contrasts is still a function of those seams' own endpoints).
 
 ## What the rule does that a forward pass does not
 

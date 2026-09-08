@@ -67,7 +67,9 @@ docstrings in the source carry the details.
 ## Learning (`cadence.learning`)
 
 - `LearnerConfig(beta=0.1, eta=0.2, eta_bias=0.02, centered=True, free_steps=100, nudged_steps=50, tolerance=1e-4, scale_floor=0.0, scale_cap=8.0, target_level=1.0, off_level=0.0, nudge="cross_entropy", temperature=0.2, normalize=0.0, normalize_floor=1e-3)`.
-- `Learner(engine, outputs, config=LearnerConfig(), trainable_overlaps=None, symmetric=True)`:
+- `Learner(engine, outputs, config=LearnerConfig(), trainable_overlaps=None, symmetric=True, tie_groups=None)`:
+  `tie_groups` is an int per overlap (−1 for none); overlaps in a group share one scale and
+  move by the mean of their contrasts, which is how an embedding is shared across positions;
   - `free(drive, warm=None)`, `nudged(drive, free, target, sign=1.0, weight=None)`,
     `targets(labels)`, `nudge_for(target, beta, weight=None)`;
   - `contrast(free, nudged, opposite=None) -> (per_overlap, per_owner)`,
@@ -78,6 +80,10 @@ docstrings in the source carry the details.
     reverse, or −1), `second_moment` (when normalising).
 - `layered(inputs, hidden, outputs, *, density=0.3, feedback=1.0, lateral=0.0, seed=0, count=1.0, init=1.0, skip=False, excitatory_forward=False) -> Wiring`
   with sets `input`, `hidden`, `output`.
+- `embedded(vocabulary, positions, dim, hidden, outputs, *, seed=0, init=1.0) -> (Wiring, tie_groups)`:
+  a window of one-hot tokens through one embedding table shared across positions, then a
+  dense hidden layer and the outputs, feedback seams tied in pairs; sets `input`,
+  `embedding`, `hidden`, `output`.
 - `LearnedState(free, nudged, opposite)`.
 
 ## Receipts and custody (`cadence.receipts`, `cadence.custody`)
