@@ -17,7 +17,7 @@ say how each fares against the usual models on the same data.
 | a measured wiring | sensory owners at a declared amplitude | quadratic on the motor pattern of a fact, or none: settle and score | a declared readout set | *C. elegans* |
 | a stream that drifts | place codes, the previous label as an input, one update per chunk of 32 rows | cross-entropy toward each chunk's labels at a constant rate, with a seam decay | most active output owner, scored before its label arrives | electricity, a synthetic drift stream |
 | a few labels among many rows | place codes; the field on every row, or the plain classifier on the labelled tenth | quadratic masked reconstruction, then cross-entropy on the labelled rows; or cross-entropy alone with a long, slow-decay schedule | most active output owner | OpenML, a tenth of the labels |
-| vocal learning (a memory and a mirror in one net) | a cochlear context: recent frames plus averaged bins behind them | quadratic on the memory group toward the next frame while listening; quadratic on the motor group toward the command just issued while singing; seams decay every update | the expected frame, then the command the mirror gives for it, into the syrinx | grey parrot |
+| vocal learning (a memory and a mirror in one net) | sequence owners: fixed random conjunctions of a sound's cue and a clock, the strongest few awake; for the mirror, the peaks, pitch and loudness of the last frames | quadratic on the expected-frame group toward the frame heard at each tick while listening (one-way seams, no bias, seams decay); quadratic on the motor group toward the command just issued while babbling | the expected frame at each tick, then the command the mirror gives for it, into the syrinx | grey parrot |
 
 ## Tabular features as a place code
 
@@ -100,17 +100,32 @@ table is not, at this size, a head start for a label.
 
 ## Two nudge groups in one net: a memory and a mirror
 
-The grey parrot rung puts two learners into one settled net. Its context owners hold what
-the cochlea heard; one output group is nudged, while a sound is on, toward the next frame
-(a memory of what comes next), the other, while the parrot sings, toward the muscle command
-it issued a frame earlier (a mirror: the command that makes the sound it hears). Nothing
-else changes: the same free settlement, the same centered contrast, each update masked to
-its group, and a seam decay so that what is not heard again fades. To sing, the memory's
-expectation is shown to the mirror as the latest frame and the mirror's answer drives the
-syrinx; the loop then runs through the body, the parrot hearing itself. What that rung
-found: a stream needs a gentle constant rate (the memory saturated at eta 1 with momentum);
-a replay fed its own damped expectations dies in 100 ms, one fed what the body produces
-does not; and an averaged-bin context is the cheapest clock a windowed net can have.
+The grey parrot rung puts two learners into one settled net. The memory side is a lookup
+from (sound, moment) to a cochlear frame: a sound's cue (its first 160 ms after lateral
+inhibition) and a clock started at its onset wake, through fixed random conjunctions with a
+winner-take-all, a few of 768 *sequence owners*, and one-way seams from those to 24
+*expected-frame* owners are nudged toward the frame heard at that tick. The mirror side
+reads the peaks, the dominant channel and the loudness of the last four frames through 96
+hidden owners onto 16 motor owners, nudged, while the parrot babbles, toward the command it
+issued a frame earlier. Nothing else changes: the same free settlement, the same centered
+contrast, each update masked to its population's seams and owners (`trainable_overlaps`,
+`trainable_owners`), each population with its own momentum, and a seam decay so that what
+is not heard again fades. To sing, the clock runs from zero with the cue held, the memory
+answers tick by tick, each answer is shown to the mirror as the latest frame, and the
+mirror's command drives the syrinx.
+
+What that rung found, in order. A memory that replays on its own expectations blurs within
+a few frames; a clock and a held cue make the replay as crisp as the learning. Adding the
+cue's and the clock's projections gives owners that answer to either alone; multiplying
+them before the winner-take-all makes the code conjunctive, and rare sounds stop being
+overwritten by frequent ones. A tied seam from the readout back into a clamped input layer
+wakes the "silent" input owners a little, so every update moves every memory; one-way
+seams keep them exactly silent. For a sparse code momentum only scales the step down (a
+seam is touched once per hearing), and a plain step of 5 beats 0.3 with momentum; the
+mirror, with dense inputs, keeps momentum 0.9 at 0.3. The readout must learn no bias, or
+an unknown moment replays as the average sound. And the mirror has to read at test what it
+saw in training: bump codes for pitch and loudness read the same for a replayed
+expectation and for the cochlea's frame, and give silence a pattern of its own.
 
 ## What the rule does that a forward pass does not
 
