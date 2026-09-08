@@ -32,4 +32,6 @@ for the interactive ones a page.
 | supervised, wide sparse one-hot input | text | behind: 3.33 bits per character vs 3.11 for the same-window MLP and 3.08 for a one-layer transformer |
 | from reward, advantage-weighted nudges | Pong, cart-pole | learns, and learns less than REINFORCE with Adam from the same rollouts (78% vs 93% of balls; 154 vs 392 steps) |
 | a measured, directed wiring under a protocol | *C. elegans* | the local rule cannot teach seams the nudge does not reach; a structural signal survives (5.3 vs 1.5 of 17 ablations), not a behavioural model |
+| a stream that drifts, one update per chunk | electricity, synthetic drift | learns and relearns; 0.851 against 0.873 for one-step logistic regression on electricity, 0.796 against 0.878 on the synthetic drift; ahead on one-pass MNIST (0.885 against 0.844) |
+| sixteen tabular tasks with the sparse-aware place code | OpenML-CC18 subset | mean 0.913 against logistic 0.906, MLP 0.921, boosting 0.901; ahead of boosting on nine, logistic on six |
 | vocal learning: a self-supervised memory and a mirror in one net, a physical syrinx | grey parrot | a sound heard often recalls at 0.66 against 0.33 after a day that did not repeat it (untrained 0.00); imitations correlate 0.53 with the originals (untrained 0.31) |

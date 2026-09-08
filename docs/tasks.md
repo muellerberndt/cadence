@@ -15,6 +15,8 @@ say how each fares against the usual models on the same data.
 | imitation of a teacher | the state, as pixels | cross-entropy toward the teacher's move | most active legal move | Connect Four, sign writer |
 | from reward | the state, as pixels or a place code | cross-entropy toward the action taken, weighted by its advantage | draw from the softmax; greedy to evaluate | Pong, cart-pole |
 | a measured wiring | sensory owners at a declared amplitude | quadratic on the motor pattern of a fact, or none: settle and score | a declared readout set | *C. elegans* |
+| a stream that drifts | place codes, the previous label as an input, one update per chunk of 32 rows | cross-entropy toward each chunk's labels at a constant rate, with a seam decay | most active output owner, scored before its label arrives | electricity, a synthetic drift stream |
+| a few labels among many rows | place codes; the field on every row, or the plain classifier on the labelled tenth | quadratic masked reconstruction, then cross-entropy on the labelled rows; or cross-entropy alone with a long, slow-decay schedule | most active output owner | OpenML, a tenth of the labels |
 | vocal learning (a memory and a mirror in one net) | a cochlear context: recent frames plus averaged bins behind them | quadratic on the memory group toward the next frame while listening; quadratic on the motor group toward the command just issued while singing; seams decay every update | the expected frame, then the command the mirror gives for it, into the syrinx | grey parrot |
 
 ## Tabular features as a place code
@@ -67,6 +69,34 @@ shared across positions (an embedding) is the change the text rungs point at. `e
 builds that wiring and `Learner(tie_groups=...)` keeps the shared seams equal: every
 position reads one embedding table, learned by the same local rule (the mean of the tied
 seams' contrasts is still a function of those seams' own endpoints).
+
+## Streams that drift
+
+A stream has no epochs: every row is predicted before its label is used, then learned from
+once. What the Kaggle stream rung found, over three seeds on OpenML's electricity data and
+a synthetic stream whose concept is replaced twice: a constant learning rate of 8 with
+momentum 0.9, a larger leak in the owner rule (0.3, so a silenced owner still answers), a
+seam decay of 0.003 an update (`LearnerConfig.decay`, which keeps the net plastic after a
+drift), and one free/nudged update per chunk of 32 rows. Three updates per chunk gained
+seven points on a short probe and lost eight on electricity; the receipt uses one. Results:
+electricity 0.851 for the patch net against 0.873 for logistic regression with one SGD step
+per chunk, 0.854 for a same-shape MLP, 0.834 for boosting refitted on a sliding window, and
+0.853 for repeating the previous label; the synthetic drift 0.796 (seeds 0.827, 0.735,
+0.827) against 0.878, 0.854 and 0.859. The rule learns and relearns, slower per sample
+than SGD and with a spread across seeds after a drift; the one-pass MNIST rung, where it is
+ahead (0.885 against 0.844), is the same mechanism on a richer input. What not to do: scale
+the initial seams up (the output owners saturate and learning stops), or use a rate of 1
+with momentum (the memory saturates within a minute of a stream).
+
+## A few labels among many rows
+
+With a tenth of the labels on four OpenML tables the plain patch net, trained for 200
+epochs at a decay of 0.99 an epoch (forty epochs on 320 rows is only a few hundred updates),
+scores 0.686, 0.828, 0.913 and 0.941 against logistic regression's 0.692, 0.829, 0.911 and
+0.933 on the same rows. A field net that first learns every row by masked reconstruction
+and is then taught the labelled tenth helped on one table (car, 0.858 against 0.828) and
+hurt on two (segment 0.867 against 0.913, kr-vs-kp 0.907 against 0.941): a model of the
+table is not, at this size, a head start for a label.
 
 ## Two nudge groups in one net: a memory and a mirror
 
