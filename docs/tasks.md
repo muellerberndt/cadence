@@ -15,6 +15,7 @@ say how each fares against the usual models on the same data.
 | imitation of a teacher | the state, as pixels | cross-entropy toward the teacher's move | most active legal move | Connect Four, sign writer |
 | from reward | the state, as pixels or a place code | cross-entropy toward the action taken, weighted by its advantage | draw from the softmax; greedy to evaluate | Pong, cart-pole |
 | a measured wiring | sensory owners at a declared amplitude | quadratic on the motor pattern of a fact, or none: settle and score | a declared readout set | *C. elegans* |
+| vocal learning (a memory and a mirror in one net) | a cochlear context: recent frames plus averaged bins behind them | quadratic on the memory group toward the next frame while listening; quadratic on the motor group toward the command just issued while singing; seams decay every update | the expected frame, then the command the mirror gives for it, into the syrinx | grey parrot |
 
 ## Tabular features as a place code
 
@@ -66,6 +67,20 @@ shared across positions (an embedding) is the change the text rungs point at. `e
 builds that wiring and `Learner(tie_groups=...)` keeps the shared seams equal: every
 position reads one embedding table, learned by the same local rule (the mean of the tied
 seams' contrasts is still a function of those seams' own endpoints).
+
+## Two nudge groups in one net: a memory and a mirror
+
+The grey parrot rung puts two learners into one settled net. Its context owners hold what
+the cochlea heard; one output group is nudged, while a sound is on, toward the next frame
+(a memory of what comes next), the other, while the parrot sings, toward the muscle command
+it issued a frame earlier (a mirror: the command that makes the sound it hears). Nothing
+else changes: the same free settlement, the same centered contrast, each update masked to
+its group, and a seam decay so that what is not heard again fades. To sing, the memory's
+expectation is shown to the mirror as the latest frame and the mirror's answer drives the
+syrinx; the loop then runs through the body, the parrot hearing itself. What that rung
+found: a stream needs a gentle constant rate (the memory saturated at eta 1 with momentum);
+a replay fed its own damped expectations dies in 100 ms, one fed what the body produces
+does not; and an averaged-bin context is the cheapest clock a windowed net can have.
 
 ## What the rule does that a forward pass does not
 
