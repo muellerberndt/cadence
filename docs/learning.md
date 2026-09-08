@@ -202,14 +202,15 @@ it, export `engine.dense()` for a page, put `to_dict()` in a receipt.
 | knob | where | what it does | where to start |
 |---|---|---|---|
 | `beta` | `LearnerConfig` | nudge strength; smaller is closer to the gradient, larger a stronger signal | 0.1 |
-| `eta` | `LearnerConfig` | seam step; the contrast is already divided by `2 beta` | 1 to 3, decayed per epoch |
+| `eta` | `LearnerConfig` | seam step; the contrast is already divided by `2 beta` | 2 to 3, decayed by 0.9 to 0.95 per epoch over 40 epochs; a decay of 0.8 over 15 epochs under-trains tabular tasks by two to five points |
 | `eta_bias` | `LearnerConfig` | bias step | `eta / 100` |
 | `temperature` | `LearnerConfig` | softmax temperature of the cross-entropy nudge; also the policy temperature when sampling actions | 0.1 (labels), 0.2 (actions) |
 | `centered` | `LearnerConfig` | contrast `+beta` against `−beta` (two nudged phases) rather than against the free state | `True` |
 | `tolerance`, `free_steps`, `nudged_steps` | `LearnerConfig` | when a phase is at rest, and the step caps | 3e-3 while learning, 1e-4 to read out; 100 / 12 |
 | `scale_floor`, `scale_cap` | `LearnerConfig` | bounds on a seam's magnitude | 0, 8 |
 | `nudge` | `LearnerConfig` | `"cross_entropy"` or `"quadratic"` (`beta · (target − s)`) | cross-entropy for classes |
-| `normalize`, `normalize_floor` | `LearnerConfig` | each seam divides its step by the running RMS of its own contrast (still local) | 0 (off) |
+| `momentum` | `LearnerConfig` | each seam steps on a running average of its own contrast (still local) | 0.9 on supervised tabular tasks, where it adds about a point; 0 elsewhere |
+| `normalize`, `normalize_floor` | `LearnerConfig` | each seam divides its step by the running RMS of its own contrast (still local) | 0 (off); it did not help anywhere it was tried |
 | `symmetric` | `Learner` | tie an overlap and its reverse into one seam | `True` |
 | `trainable_overlaps` | `Learner` | bool per overlap; freeze the rest | all |
 | `leak`, `slope`, `dt` | `learning_rule` | sub-rest response, activation slope, step of the owner update | 0.1, 1.0, 0.5 to 1.0 |
