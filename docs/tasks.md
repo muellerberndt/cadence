@@ -8,7 +8,7 @@ say how each fares against the usual models on the same data.
 |---|---|---|---|---|
 | classification, dense input | levels in [0, 1], one owner per feature (pixels) | cross-entropy toward the label's owner | most active output owner | digits, MNIST, Digit Recognizer |
 | classification, tabular | place codes for numbers, one-hot for categories, a missing owner per column | cross-entropy | most active output owner | Titanic, Spaceship Titanic |
-| regression | as above | quadratic, on one output owner, target scaled to [0, 1]; a linear calibration on out-of-fold outputs | that owner's activation, mapped back | House Prices |
+| regression | as above | quadratic, on a place code of the target scaled to [0, 1]; a linear calibration on out-of-fold readouts | the bump-weighted mean, mapped back | House Prices |
 | multi-label (a chord) | one owner per pitch per beat | quadratic on a multi-hot target | every owner above a validation-chosen threshold | chorales |
 | text, bag of words | binary presence of the top tokens | cross-entropy | most active output owner | Disaster Tweets |
 | text, windowed | one-hot blocks per position | cross-entropy | most active; sample to write | text |
@@ -45,10 +45,16 @@ way:
 
 ## Regression by the quadratic nudge
 
-One output owner, its target the value scaled to [0, 1] on training rows, the nudge
-`beta · (target − s)`. The free activation is not the prediction directly: fit `a · s + b`
-on out-of-fold predictions and map back through the scaling. That keeps every choice on
-training rows and makes the readout as calibrated as the data allow.
+The target is the value scaled to [0, 1] on training rows, the nudge `beta · (target − s)`
+on the output owners. How many owners hold it matters: on the Ames housing data (the
+Kaggle House Prices training file) one owner holding the value gave 0.151 log-price RMSE,
+two owners holding the value and its complement 0.135, and a place code of eight bumps
+over evenly spaced centres 0.134, read out as the bump-weighted mean; an ensemble of five
+nets on the place code reached 0.131, against 0.130 for ridge regression and 0.135 for
+gradient boosting on the same features. A value as a pattern is what the rule learns
+well; a value as one owner's level is not. The raw readout is not the prediction
+directly: fit `a · s + b` on out-of-fold readouts and map back through the scaling. That
+keeps every choice on training rows and makes the readout as calibrated as the data allow.
 
 ## Wide sparse inputs
 
