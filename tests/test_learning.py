@@ -218,3 +218,22 @@ def test_decay_fades_seams_that_are_not_relearned() -> None:
         pass
     else:
         raise AssertionError("decay of 1 would erase the net every update and must be refused")
+
+
+def test_trainable_masks_leave_the_rest_of_the_net_alone() -> None:
+    wiring = cd.layered(4, 3, 2, density=1.0, seed=0)
+    engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0))
+    overlaps = np.zeros(wiring.edges, dtype=bool)
+    overlaps[: wiring.edges // 2] = True
+    owners = np.zeros(wiring.n, dtype=bool)
+    owners[list(wiring.sets["output"])] = True
+    config = cd.LearnerConfig(eta=0.5, eta_bias=0.5, decay=0.1)
+    learner = cd.Learner(
+        engine, wiring.sets["output"], config, trainable_overlaps=overlaps, trainable_owners=owners
+    )
+    scale0, bias0 = learner.engine.edge_scale.copy(), learner.engine.bias.copy()
+    drive = engine.clamp_levels(np.ones((2, wiring.n)) * 0.5)
+    learner.step(drive, np.array([0, 1]))
+    assert np.array_equal(learner.engine.edge_scale[~overlaps], scale0[~overlaps])
+    assert np.array_equal(learner.engine.bias[~owners], bias0[~owners])
+    assert not np.array_equal(learner.engine.bias[owners], bias0[owners])

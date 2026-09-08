@@ -101,6 +101,7 @@ class Learner:
     outputs: Sequence[int]
     config: LearnerConfig = field(default_factory=LearnerConfig)
     trainable_overlaps: np.ndarray | None = None  # bool per overlap; default all
+    trainable_owners: np.ndarray | None = None  # bool per owner: whose bias moves and decays
     symmetric: bool = True  # an overlap and its reverse share one scale: one seam, one weight
     tie_groups: np.ndarray | None = None  # int per overlap (-1: none); a group shares one scale
     updates: int = 0
@@ -111,6 +112,8 @@ class Learner:
         self.output_mask[self.output_index] = 1.0
         if self.trainable_overlaps is None:
             self.trainable_overlaps = np.ones(self.engine.wiring.edges, dtype=bool)
+        if self.trainable_owners is None:
+            self.trainable_owners = np.ones(self.engine.wiring.n, dtype=bool)
         w = self.engine.wiring
         self.second_moment = np.zeros(w.edges)  # per overlap, for normalized steps
         self.second_moment_bias = np.zeros(w.n)
@@ -229,12 +232,15 @@ class Learner:
                 index = np.maximum(groups, 0)
                 shared = total[index] / np.maximum(count[index], 1)
                 delta_scale = np.where(member, shared, delta_scale)
+        # tying never moves a frozen overlap
+        delta_scale = np.where(self.trainable_overlaps, delta_scale, 0.0)
         scale = self.engine.edge_scale + delta_scale
-        delta_bias = cfg.eta_bias * owner_term
+        assert self.trainable_owners is not None
+        delta_bias = np.where(self.trainable_owners, cfg.eta_bias * owner_term, 0.0)
         bias = self.engine.bias + delta_bias
         if cfg.decay > 0:  # a leak on the seams: what is not relearned fades away
             scale = np.where(self.trainable_overlaps, scale * (1.0 - cfg.decay), scale)
-            bias = bias * (1.0 - cfg.decay)
+            bias = np.where(self.trainable_owners, bias * (1.0 - cfg.decay), bias)
         magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
         scale = np.sign(scale) * magnitude
         self.engine = self.engine.with_parameters(edge_scale=scale, bias=bias)
