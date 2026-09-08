@@ -142,7 +142,13 @@ is the tutorial they build on.
 | [02 images](https://github.com/muellerberndt/cadence-examples/tree/main/02_images) | MNIST on the accelerator, read out in float64 | 0.9744 in 10 epochs; MLP 0.9779; the two backends agree on every prediction |
 | [03 Connect Four](https://github.com/muellerberndt/cadence-examples/tree/main/03_connect_four) | imitate a depth-4 search, then play in the browser | agrees with the search on 0.527 of positions, the MLP on 0.533; both beat random, both lose to depth 2 |
 | [04 Pong](https://github.com/muellerberndt/cadence-examples/tree/main/04_pong) | a paddle learns from pixels and reward | see its tutorial: how a reward becomes a nudge, and what credit assignment does to a paddle |
-| 05 embodiment | a nervous system in a physical body | next |
+| [05 text](https://github.com/muellerberndt/cadence-examples/tree/main/05_text) | next character of Shakespeare from a sixteen-character window | 3.33 bits per character; bigram 3.71, same-window MLP 3.11, one-layer transformer 3.08 |
+| [06 sign writer](https://github.com/muellerberndt/cadence-examples/tree/main/06_sign) | sees a sign, writes it with a two-joint arm | 0.988 overlap with the sign on held-out signs, the teacher's own score |
+| [07 chorales](https://github.com/muellerberndt/cadence-examples/tree/main/07_music) | continues Bach chorales chord by chord, with sound in the page | pitch-set F1 0.483, 16.6 bits per chord; same-size MLP 0.470 and 24.7 |
+| [08 cart-pole](https://github.com/muellerberndt/cadence-examples/tree/main/08_cartpole) | the classic control task from reward | 154 steps of 500; backprop REINFORCE 392 |
+| [09 C. elegans](https://github.com/muellerberndt/cadence-examples/tree/main/09_celegans) | the published connectome under a protocol | fan-in convention 5.2 of 17 held-out ablations vs 1.5 shuffled: a structural signal, not a behavioural model |
+| [10 grey parrot](https://github.com/muellerberndt/cadence-examples/tree/main/10_parrot) | a physical syrinx and a cochlea; one net as memory, mirror and critic | see its tutorial: what it recalls after a day that repeated a sound, and what it sings |
+| 11 embodiment | a nervous system in a physical body | next |
 
 ## What is in the box
 
