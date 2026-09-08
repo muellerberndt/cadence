@@ -9,3 +9,5 @@ build/
 .mypy_cache/
 data/
 *_receipt.json
+.coverage
+htmlcov/
