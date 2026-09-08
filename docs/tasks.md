@@ -45,9 +45,15 @@ on the roadmap.
 
 A settled net has no fixed input side. Clamp any subset of owners and read any other: the
 same trained net that predicts a label from features can be asked, with a partial clamp,
-what the rest of the features would have to be. That is imputation and conditional
-generation with no second model, and it is the one capability the Kaggle set has not yet
-measured; the chorale writer is its nearest relative. Learning is likewise not a phase:
+what the rest of the features would have to be. The Titanic field rung in the Kaggle set
+measures it: one net whose feature owners all hang on the hidden owners by tied seams,
+trained by masked reconstruction (clamp a random 70% of the columns, nudge the rest to
+their true levels). Asked three questions, it answers all three from the same seams, and
+each answer is a few points behind a model built for that question alone: survival 0.796
+against 0.825 for the dedicated classifier, survival with 30% of the columns missing 0.770
+against 0.813, age imputation 10.5 years mean error against 8.6 for a ridge regression.
+That is the price of a joint model at this size; the capability itself needs no second
+model and no retraining. Learning is likewise not a phase:
 every prediction is a free settlement, every arriving label a nudged one, so a net can
 learn from a stream one example at a time with the rule unchanged. The Digit Recognizer
 stream rung measures that: one pass, predict then learn, accuracy along the way.
