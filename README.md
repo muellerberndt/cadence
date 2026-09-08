@@ -147,7 +147,7 @@ is the tutorial they build on.
 | [07 chorales](https://github.com/muellerberndt/cadence-examples/tree/main/07_music) | continues Bach chorales chord by chord, with sound in the page | pitch-set F1 0.483, 16.6 bits per chord; same-size MLP 0.470 and 24.7 |
 | [08 cart-pole](https://github.com/muellerberndt/cadence-examples/tree/main/08_cartpole) | the classic control task from reward | 154 steps of 500; backprop REINFORCE 392 |
 | [09 C. elegans](https://github.com/muellerberndt/cadence-examples/tree/main/09_celegans) | the published connectome under a protocol | fan-in convention 5.2 of 17 held-out ablations vs 1.5 shuffled: a structural signal, not a behavioural model |
-| [10 grey parrot](https://github.com/muellerberndt/cadence-examples/tree/main/10_parrot) | a physical syrinx and a cochlea; one net as memory, mirror and critic | see its tutorial: what it recalls after a day that repeated a sound, and what it sings |
+| [10 grey parrot](https://github.com/muellerberndt/cadence-examples/tree/main/10_parrot) | a physical syrinx and a cochlea; one net as memory, mirror and critic | recalls a sound at 0.66 after a day that repeated it, 0.33 after one that did not; imitations correlate 0.53 with the originals, an untrained brain 0.31 |
 | 11 embodiment | a nervous system in a physical body | next |
 
 ## What is in the box

@@ -19,8 +19,9 @@ declared overlaps, settling to rest by owner-local repair. Read in this order th
 
 The worked, runnable versions of everything in [learning](learning.md) and [games](games.md)
 live in [cadence-examples](https://github.com/muellerberndt/cadence-examples): digits, MNIST,
-Connect Four, Pong, text, a sign-writing arm, chorales, cart-pole, and the *C. elegans*
-connectome, each with a tutorial, a script, a receipt, and for the interactive ones a page.
+Connect Four, Pong, text, a sign-writing arm, chorales, cart-pole, the *C. elegans*
+connectome, and a grey parrot with a syrinx, each with a tutorial, a script, a receipt, and
+for the interactive ones a page.
 
 ## What the ladder says the rule is good at
 
@@ -31,3 +32,4 @@ connectome, each with a tutorial, a script, a receipt, and for the interactive o
 | supervised, wide sparse one-hot input | text | behind: 3.33 bits per character vs 3.11 for the same-window MLP and 3.08 for a one-layer transformer |
 | from reward, advantage-weighted nudges | Pong, cart-pole | learns, and learns less than REINFORCE with Adam from the same rollouts (78% vs 93% of balls; 154 vs 392 steps) |
 | a measured, directed wiring under a protocol | *C. elegans* | the local rule cannot teach seams the nudge does not reach; a structural signal survives (5.3 vs 1.5 of 17 ablations), not a behavioural model |
+| vocal learning: a self-supervised memory and a mirror in one net, a physical syrinx | grey parrot | a sound heard often recalls at 0.66 against 0.33 after a day that did not repeat it (untrained 0.00); imitations correlate 0.53 with the originals (untrained 0.31) |
