@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.4.1 (2026-09-09)
+
+- Docs only. The grey parrot rung was withdrawn from cadence-examples (its imitations did not
+  reach the bar); `embodied.md` now works through cart-pole and the sign writer, `tasks.md`
+  keeps the several-learners-in-one-net recipe without the parrot, and the examples table
+  lists the nine rungs.
+
 ## 0.4.0 (2026-09-09)
 
 - `Learner.save` / `Learner.load` (`cadence.save`, `cadence.load`): one-file checkpoints of a
@@ -13,8 +20,8 @@
 - `py.typed`: the package is typed; `mypy --strict` clean.
 - Tests: 42 across every module, 96% line coverage; the torch kernel is checked against the
   CPU engine with nudges, weights, adaptation and trajectories.
-- Docs: task recipes (tabular place codes, regression as a pattern, streams, few labels, vocal
-  learning), `embodied.md` for deployment.
+- Docs: task recipes (tabular place codes, regression as a pattern, streams, few labels, several
+  learners in one net), `embodied.md` for deployment.
 
 ## 0.3.0
 
