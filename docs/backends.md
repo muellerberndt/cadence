@@ -49,3 +49,14 @@ The torch kernel is one small class, `settle._TorchKernel`, with three operation
 `s[pre]`, scatter-add into `inbox`, and the elementwise update. Any array library that
 offers those three can host a backend; the reference engine and `conformance` are what you
 check it against.
+
+
+## The fused kernel
+
+With numba installed (`pip install "cadence-net[fast]"`) the CPU backend settles dense wirings
+in one compiled loop: the transport as one matrix product, then every owner's repair,
+activation, adaptation and nudge in place, the same float64 arithmetic in the same order as
+the NumPy loop (checked to 2e-16). It is used automatically when the wiring is dense and no
+trajectory is requested; `CADENCE_FUSED=0` in the environment forces the NumPy loop. The
+owner-by-owner reference and `conformance` are unchanged and remain what any kernel is
+measured against.

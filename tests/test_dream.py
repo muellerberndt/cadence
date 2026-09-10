@@ -7,7 +7,7 @@ import cadence as cd
 
 def test_imagine_and_feel_learns_a_continuous_contextual_bandit() -> None:
     pop = cd.Population(dims=1, size=9, sigma=0.5)
-    w, actor_mask, critic_mask = cd.actor_critic_wiring(4, 16, 9, 16, seed=0, per_dim=9)
+    w, actor_mask, critic_mask = cd.actor_critic_wiring(4, 16, 9, 16, seed=0)
     assert not (actor_mask & critic_mask).any()
     ac = cd.DreamActorCritic(
         w, actor_mask, critic_mask, pop, cd.learning_rule(dt=1.0),
@@ -41,7 +41,7 @@ def test_imagine_and_feel_learns_a_continuous_contextual_bandit() -> None:
 
 def test_the_critic_dream_moves_only_critic_seams_and_the_actor_only_actor_seams() -> None:
     pop = cd.Population(dims=1, size=5)
-    w, actor_mask, critic_mask = cd.actor_critic_wiring(3, 4, 5, 4, seed=1, per_dim=5)
+    w, actor_mask, critic_mask = cd.actor_critic_wiring(3, 4, 5, 4, seed=1)
     ac = cd.DreamActorCritic(w, actor_mask, critic_mask, pop, cd.learning_rule(dt=1.0), cd.DreamConfig(q_scale=1.0, batch=8, warmup=8, eta_critic=1.0, eta_actor=1.0), seed=1)
     drive = ac.engine.clamp_levels(np.pad(np.random.default_rng(1).random((8, 3)), ((0, 0), (0, w.n - 3))))
     before = ac.engine.edge_scale.copy()

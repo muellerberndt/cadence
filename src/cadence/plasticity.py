@@ -81,11 +81,9 @@ class ActorCriticConfig:
     normalize: float = 0.0  # >0: forgetting factor of the per-seam RMS that divides its step
     normalize_floor: float = 1e-3
     momentum: float = 0.0  # >0: each seam steps on a running average of its own steps, so sign noise cancels before the RMS divides it
-    entropy: float = 0.0  # >0: a standing nudge toward the uniform policy, a taste for variety
     critic_init: float = 0.0
     dopamine_cap: float = 1.0  # the broadcast saturates: |delta| is clipped here (0: no cap)
     dopamine_center: float = 0.0  # >0: forgetting factor of a running mean and scale of delta; the phasic signal is the deviation from the tonic level
-    step_cap: float = 0.0  # >0: no seam moves by more than this in one update, a bound on synaptic change per event
     critic_normalize: bool = True  # the critic's step is divided by its trace's energy, so its step size is scale-free
 
     def to_dict(self) -> dict[str, Any]:
@@ -180,16 +178,7 @@ class ActorCritic:
             target = self.learner.targets(action)
             plus = self.learner.nudged(drive, free, target)
             minus = self.learner.nudged(drive, free, target, sign=-1.0)
-            if self.config.entropy > 0:  # a standing pull toward the uniform policy
-                uniform = np.zeros_like(target)
-                uniform[:, self.learner.output_index] = 1.0 / len(self.learner.output_index)
-                up = self.learner.nudged(drive, free, uniform)
-                down = self.learner.nudged(drive, free, uniform, sign=-1.0)
-                contrast, contrast_bias = self.learner.contrast_rows(free, plus, minus)
-                c2, cb2 = self.learner.contrast_rows(free, up, down)
-                self._pending = ("contrast", contrast + self.config.entropy * c2, contrast_bias + self.config.entropy * cb2, self.value(free))
-            else:
-                self._pending = ("phases", plus.activation, minus.activation, self.value(free))
+            self._pending = ("phases", plus.activation, minus.activation, self.value(free))
         return np.asarray(action, dtype=np.int64)
 
     def _act_continuous(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
@@ -290,9 +279,6 @@ class ActorCritic:
             step_bias = step_bias / (np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor)
         step_scale = cfg.eta * step_scale
         step_bias = cfg.eta_bias * step_bias
-        if cfg.step_cap > 0:
-            step_scale = np.clip(step_scale, -cfg.step_cap, cfg.step_cap)
-            step_bias = np.clip(step_bias, -cfg.step_cap, cfg.step_cap)
         report = self.learner.apply(step_scale, step_bias)
         critic_trace = self.trace_critic
         if cfg.critic_normalize:

@@ -12,25 +12,24 @@ to move. Here that is one wiring with five sets of owners:
     q              one owner whose activation, times ``q_scale``, is the value of (state, action)
 
 Acting is a free settlement with the state clamped: the action owners come
-to rest at the policy's action. Learning is two dreams per replayed batch:
+to rest at the actor's proposal. Around that proposal the net imagines a few
+candidate actions, feels each in the critic (state and candidate clamped),
+and takes the best, or draws among them by value while exploring. Learning
+replays recent experience:
 
 * **the critic's dream**: clamp the state and the action that was taken,
   settle, then nudge the ``q`` owner toward the target ``r + gamma * Q'``,
-  where ``Q'`` is read with the state that followed and the action the net
-  itself would take there, both from the *slow* strengths (the consolidated
-  copy, which is what a target network is); every critic seam moves on its
-  own two endpoints' contrast.
-* **the actor's dream**: clamp the state only, settle, then nudge the ``q``
-  owner *up*. The nudge travels back through the critic's seams into the
-  action owners, which move toward an action of higher value, and on into
-  the actor's seams, which move by the same local contrast. That is the
-  deterministic policy gradient (Silver et al. 2014) carried by settlement
-  instead of by a backward pass.
+  where ``Q'`` is the best imagined candidate of the state that followed,
+  felt with the *slow* strengths (the consolidated copy, which is what a
+  target network is); every critic seam moves on its own two endpoints.
+* **the actor imitates**: clamp the state, settle, then nudge the action
+  owners toward the bump of the action that was taken; the actor's seams move
+  by the same contrast. The critic chose the action; the actor learns to
+  propose it next time.
 
 Slow strengths follow the fast ones by a small fraction per update
-(consolidation), and are what the target is read with. No gradient is
-transported anywhere; every seam reads its own two ends and one broadcast
-target.
+(consolidation). No gradient is transported anywhere; every seam reads its
+own two ends and one broadcast target.
 """
 
 from __future__ import annotations
@@ -85,10 +84,6 @@ def actor_critic_wiring(
     seed: int = 0,
     density: float = 1.0,
     init: float = 1.0,
-    lateral: float = 0.0,
-    excite: float = 0.0,
-    per_dim: int = 0,
-    pool: float = 0.0,
 ) -> tuple[Wiring, np.ndarray, np.ndarray]:
     """One wiring for actor and critic; returns it with the actor's and the critic's overlap masks.
 
@@ -102,9 +97,7 @@ def actor_critic_wiring(
     a0 = ha0 + hidden_actor
     hc0 = a0 + action_owners
     q0 = hc0 + hidden_critic
-    p0 = q0 + 1
-    pools = action_owners // per_dim if (per_dim > 0 and pool != 0.0) else 0
-    n = p0 + pools
+    n = q0 + 1
     pre: list[np.ndarray] = []
     post: list[np.ndarray] = []
     sign: list[np.ndarray] = []
@@ -126,27 +119,6 @@ def actor_critic_wiring(
     block(i0, inputs, hc0, hidden_critic, density)
     block(a0, action_owners, hc0, hidden_critic, 1.0)
     block(hc0, hidden_critic, q0, 1, 1.0)
-    if per_dim > 0 and (lateral != 0.0 or excite != 0.0):
-        # a bump attractor inside each action dimension's population: neighbours excite, the rest inhibit,
-        # so the settled pattern is one bump wherever the drive puts it (a continuous attractor)
-        for d in range(action_owners // per_dim):
-            base = a0 + d * per_dim
-            a_idx, b_idx = np.meshgrid(np.arange(per_dim), np.arange(per_dim), indexing="ij")
-            distance = np.abs(a_idx.ravel() - b_idx.ravel())
-            keep = distance > 0
-            weight = np.where(distance == 1, excite, lateral)
-            pre.append(base + a_idx.ravel()[keep])
-            post.append(base + b_idx.ravel()[keep])
-            sign.append(weight[keep])
-    for d in range(pools):  # one inhibitory pool owner per action dimension: the bump keeps its mass
-        base = a0 + d * per_dim
-        members = base + np.arange(per_dim)
-        pre.append(members)
-        post.append(np.full(per_dim, p0 + d))
-        sign.append(np.full(per_dim, 1.0))
-        pre.append(np.full(per_dim, p0 + d))
-        post.append(members)
-        sign.append(np.full(per_dim, pool))
     wiring = Wiring.from_edges(
         n,
         pre=np.concatenate(pre),
@@ -158,20 +130,14 @@ def actor_critic_wiring(
             "action": range(a0, hc0),
             "hidden_critic": range(hc0, q0),
             "q": [q0],
-            "pool": range(p0, n),
         },
         label=f"actor-critic:{inputs}x{hidden_actor}x{action_owners}|{hidden_critic}",
     )
     actor_set = set(range(i0, hc0))  # input, hidden_actor, action
-    critic_set = set(range(i0, ha0)) | set(range(a0, p0))  # input, action, hidden_critic, q
+    critic_set = set(range(i0, ha0)) | set(range(a0, n))  # input, action, hidden_critic, q
     actor_mask = np.array([int(p) in actor_set and int(q) in actor_set for p, q in zip(wiring.pre, wiring.post, strict=True)])
-    critic_mask = np.array([int(p) in critic_set and int(q) in critic_set and not (int(p) < ha0 and int(q) < ha0) for p, q in zip(wiring.pre, wiring.post, strict=True)])
-    # an input-input overlap does not exist; input-hidden_actor belongs to the actor, input-hidden_critic to the critic
-    critic_mask &= ~actor_mask
-    fixed = np.isin(wiring.pre, np.arange(a0, hc0)) & np.isin(wiring.post, np.arange(a0, hc0))
-    fixed |= np.isin(wiring.pre, np.arange(p0, n)) | np.isin(wiring.post, np.arange(p0, n))
-    actor_mask &= ~fixed
-    critic_mask &= ~fixed
+    critic_mask = np.array([int(p) in critic_set and int(q) in critic_set for p, q in zip(wiring.pre, wiring.post, strict=True)])
+    critic_mask &= ~actor_mask  # input-hidden_actor belongs to the actor, input-hidden_critic to the critic
     return wiring, actor_mask, critic_mask
 
 
@@ -180,8 +146,6 @@ class DreamConfig:
     gamma: float = 0.99
     q_scale: float = 100.0  # the value is q_scale times (activation of the q owner minus q_offset)
     q_offset: float = 0.5  # the activation that stands for a value of zero, so negative values have room
-    normalize: float = 0.0  # >0: forgetting factor of a per-seam RMS that divides its step, the local adaptive step
-    normalize_floor: float = 1e-4
     beta: float = 0.1  # nudge strength of both dreams
     eta_critic: float = 0.5
     eta_actor: float = 0.2
@@ -193,8 +157,6 @@ class DreamConfig:
     sigma: float = 0.2  # exploration noise on the action
     candidates: int = 0  # >0: imagine this many actions around the actor's proposal, feel each in the critic, take the best
     candidate_temperature: float = 0.0  # >0: draw among candidates by softmax of their values instead of the best
-    actor: str = "imitate"  # "imitate": the actor learns the action taken; "dream": the value-up nudge (deterministic policy gradient)
-    target: str = "max"  # "max": the next state's value is the best of its imagined candidates; "proposal": the actor's own next action
     action_clamp: float = 3.0  # drive per unit bump level when an action is clamped for the critic
     free_steps: int = 60
     nudged_steps: int = 20
@@ -239,8 +201,6 @@ class DreamActorCritic:
         self.cursor = 0
         self.updates = 0
         self.settle_steps: list[int] = []
-        self.second_moment = np.zeros(wiring.edges)
-        self.second_moment_bias = np.zeros(n)
 
     # -- engines
 
@@ -333,12 +293,6 @@ class DreamActorCritic:
         owners[self.input_index] = False
         owners[self.action_index] = False  # the action owners' rest level is shared by actor and critic: fixed
         self.learner.trainable_owners = owners
-        if cfg.normalize > 0:
-            rho = cfg.normalize
-            self.second_moment[mask] = rho * self.second_moment[mask] + (1 - rho) * overlap_term[mask] ** 2
-            self.second_moment_bias[owners] = rho * self.second_moment_bias[owners] + (1 - rho) * owner_term[owners] ** 2
-            overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
-            owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
         report = self.learner.apply(eta * overlap_term, cfg.eta_bias * owner_term)
         report["q"] = float(self.value(free).mean())
         return report
@@ -375,7 +329,7 @@ class DreamActorCritic:
         target_engine = self.target_engine()
         nxt_free = target_engine.settle_batch(nxt, steps=cfg.free_steps, tolerance=cfg.tolerance)
         next_action = self.population.read(nxt_free.activation[:, self.action_index])
-        if cfg.target == "max" and cfg.candidates > 0:
+        if cfg.candidates > 0:  # the next state's value is the best of its imagined candidates
             if hasattr(self.population, "candidates"):
                 cands = self.population.candidates(next_action, self.rng, cfg.candidates, cfg.sigma)
             else:
@@ -393,12 +347,8 @@ class DreamActorCritic:
         y_activation = np.clip(y / cfg.q_scale + cfg.q_offset, 0.02, 0.98)
         # the critic's dream: state and action clamped, q pulled toward the target
         critic = self._dream(self._clamp_action(state, action), y_activation, self.critic_mask, cfg.eta_critic, owners=self.no_actor)
-        if cfg.actor == "dream":
-            # the actor's dream: state clamped, q pushed up; only the actor's seams move
-            actor = self._dream(state, np.full(cfg.batch, 1.0), self.actor_mask, cfg.eta_actor)  # the q owner pulled toward full activation: value up
-        else:
-            # the actor learns what was taken: a quadratic nudge of the action owners toward the taken action's bump
-            actor = self._imitate(state, action)
+        # the actor learns what was taken: the taken action's bump nudged onto the action owners
+        actor = self._imitate(state, action)
         # consolidation: the slow strengths follow
         self.slow_scale += cfg.consolidate * (self.engine.edge_scale - self.slow_scale)
         self.slow_bias += cfg.consolidate * (self.engine.bias - self.slow_bias)

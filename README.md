@@ -147,7 +147,8 @@ is the tutorial they build on.
 | [07 chorales](https://github.com/muellerberndt/cadence-examples/tree/main/07_music) | continues Bach chorales chord by chord, with sound in the page | pitch-set F1 0.483, 16.6 bits per chord; same-size MLP 0.470 and 24.7 |
 | [08 cart-pole](https://github.com/muellerberndt/cadence-examples/tree/main/08_cartpole) | the classic control task from reward | 154 steps of 500; backprop REINFORCE 392 |
 | [09 C. elegans](https://github.com/muellerberndt/cadence-examples/tree/main/09_celegans) | the published connectome under a protocol | fan-in convention 5.2 of 17 held-out ablations vs 1.5 shuffled: a structural signal, not a behavioural model |
-| 10 embodiment | a nervous system in a physical body | next |
+| [10 composer](https://github.com/muellerberndt/cadence-examples/tree/main/10_composer) | a living net with feelings: ten days of listening to a piano library, ten of composing from silence by imagining and feeling each phrase; a life, not a training run | 3.4 ideas per context, kernels exactly transposition-equivariant, moods audible in what it plays; silent on 27% of beats and no valence trend yet: three of nine flags fail, and the receipt says why |
+| 11 embodiment | a nervous system in a physical body | next |
 
 ## What is in the box
 
@@ -173,6 +174,8 @@ is the tutorial they build on.
 | [tasks](docs/tasks.md) | recipes for every kind of task the ladder and the Kaggle set have met |
 | [pages](docs/pages.md) | a trained net settling live in a browser |
 | [embodied](docs/embodied.md) | deploying in a body: the loop, several learners in one net, checkpoints |
+| [reward](docs/reward.md) | learning from reward: three factors, dreams, what the gates measured |
+| [life](docs/life.md) | fast and slow strengths, sleep, pruning and sprouting |
 | [protocols](docs/protocols.md) | predicates, the shuffled control, gain selection |
 | [backends](docs/backends.md) | CPU and torch, precision, the dense transport |
 | [receipts](docs/receipts.md) | what a verified result is |
