@@ -170,3 +170,23 @@ def test_grouped_softmax_nudge_agrees_between_kernels_and_bins_learn_a_continuou
         ac.learn(reward, np.ones(32, dtype=bool), d)
     after = error()
     assert after < 0.2 and after < before
+
+
+def test_value_net_fits_a_value_and_serves_the_actor_critic() -> None:
+    rng = np.random.default_rng(4)
+    critic = cd.ValueNet(4, 8, cd.learning_rule(dt=1.0), cd.ValueConfig(scale=2.0, offset=0.2, eta=1.0), seed=4)
+    x = rng.random((32, 4))
+    drive = critic.learner.engine.clamp_levels(np.pad(x, ((0, 0), (0, 0))))
+    target = x[:, 0] - x[:, 1]  # a value in [-1, 1]
+    before = float(np.abs(critic.value(drive) - target).mean())
+    for _ in range(150):
+        critic.learn(drive, target)
+    after = float(np.abs(critic.value(drive) - target).mean())
+    assert after < 0.25 and after < before
+    wiring = cd.layered(4, 8, 2, density=1.0, seed=4)
+    learner = cd.Learner(cd.Settlement(wiring, cd.learning_rule(dt=1.0)), wiring.sets["output"], cd.LearnerConfig(eta=1.0))
+    ac = cd.ActorCritic(learner, cd.ValueNet(4, 8, cd.learning_rule(dt=1.0), seed=5), cd.ActorCriticConfig(gamma=0.9), seed=4)
+    d = learner.engine.clamp_levels(np.pad(x[:4], ((0, 0), (0, wiring.n - 4))))
+    ac.act(d)
+    report = ac.learn(np.ones(4), np.zeros(4, dtype=bool), d)
+    assert np.isfinite(report["delta"])

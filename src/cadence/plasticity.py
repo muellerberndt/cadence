@@ -30,9 +30,82 @@ from typing import Any
 import numpy as np
 
 from .learning import Learner
-from .settle import Nudge, SettledState, _FUSED as _FUSED_TRACE
+from .settle import Nudge, SettledState, Settlement, _FUSED as _FUSED_TRACE
 
-__all__ = ["ActorCritic", "ActorCriticConfig", "Population", "Bins"]
+__all__ = ["ActorCritic", "ActorCriticConfig", "Population", "Bins", "ValueNet", "ValueConfig"]
+
+
+@dataclass(frozen=True, slots=True)
+class ValueConfig:
+    scale: float = 100.0  # the value is scale times (the value owner's activation minus offset)
+    offset: float = 0.2
+    beta: float = 0.1
+    eta: float = 1.0
+    eta_bias: float = 0.02
+    consolidate: float = 0.005  # the slow copy, which reads the target, follows by this fraction per update
+    free_steps: int = 100
+    nudged_steps: int = 12
+    tolerance: float = 3e-3
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: getattr(self, k) for k in self.__slots__}
+
+
+class ValueNet:
+    """A critic with its own hidden owners: a settlement net whose value owner is nudged toward the target.
+
+    Built on a ``layered(inputs, hidden, 1)`` wiring. ``value(drive)`` settles the net under
+    the actor's input levels (the first ``inputs`` columns of the actor's drive) and reads the
+    value owner; ``learn(drive, target)`` nudges that owner toward the target's activation
+    and moves every seam on its own contrast. A slow copy of the strengths, following by
+    ``consolidate`` per update, reads the bootstrap target.
+    """
+
+    def __init__(self, inputs: int, hidden: int, rule, config: ValueConfig | None = None, seed: int = 0) -> None:
+        from .learning import LearnerConfig, layered
+
+        self.config = config or ValueConfig()
+        self.inputs = inputs
+        self.wiring = layered(inputs, hidden, 1, density=1.0, seed=seed)
+        engine = Settlement(self.wiring, rule)
+        cfg = self.config
+        self.learner = Learner(engine, self.wiring.sets["output"], LearnerConfig(beta=cfg.beta, eta=cfg.eta, eta_bias=cfg.eta_bias, nudge="quadratic", tolerance=cfg.tolerance, free_steps=cfg.free_steps, nudged_steps=cfg.nudged_steps))
+        self.value_index = int(self.wiring.sets["output"][0])
+        self.mask = np.zeros(self.wiring.n)
+        self.mask[self.value_index] = 1.0
+        self.slow_scale = engine.edge_scale.copy()
+        self.slow_bias = engine.bias.copy()
+
+    def drive_from(self, actor_drive: np.ndarray) -> np.ndarray:
+        out = np.zeros((len(actor_drive), self.wiring.n))
+        out[:, : self.inputs] = actor_drive[:, : self.inputs]
+        return out
+
+    def _read(self, state: SettledState) -> np.ndarray:
+        return (state.activation[:, self.value_index] - self.config.offset) * self.config.scale
+
+    def value(self, actor_drive: np.ndarray, slow: bool = False) -> np.ndarray:
+        cfg = self.config
+        engine = self.learner.engine.with_parameters(edge_scale=self.slow_scale, bias=self.slow_bias) if slow else self.learner.engine
+        return self._read(engine.settle_batch(self.drive_from(actor_drive), steps=cfg.free_steps, tolerance=cfg.tolerance))
+
+    def learn(self, actor_drive: np.ndarray, target: np.ndarray) -> dict[str, float]:
+        cfg = self.config
+        drive = self.drive_from(actor_drive)
+        free = self.learner.free(drive)
+        full = np.zeros((len(drive), self.wiring.n))
+        full[:, self.value_index] = np.clip(np.asarray(target) / cfg.scale + cfg.offset, 0.02, 0.98)
+        plus = self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(full, self.mask, cfg.beta), tolerance=cfg.tolerance)
+        minus = self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(full, self.mask, -cfg.beta), tolerance=cfg.tolerance)
+        report = self.learner.update(free, plus, minus)
+        self.slow_scale += cfg.consolidate * (self.learner.engine.edge_scale - self.slow_scale)
+        self.slow_bias += cfg.consolidate * (self.learner.engine.bias - self.slow_bias)
+        report["value"] = float(self._read(free).mean())
+        return report
+
+    def parameters(self) -> int:
+        return self.learner.parameters()
+
 
 
 @dataclass(frozen=True)
@@ -146,6 +219,9 @@ class ActorCritic:
         self.learner = learner
         self.config = config or ActorCriticConfig()
         self.population = population
+        self.critic_net: ValueNet | None = critic if isinstance(critic, ValueNet) else None
+        if self.critic_net is not None:
+            critic = ()
         if population is not None and len(learner.output_index) != population.dims * population.size:
             raise ValueError("the output set must hold dims * size owners for a population code")
         self.bins = population if isinstance(population, Bins) else None
@@ -166,6 +242,7 @@ class ActorCritic:
         self.velocity_bias = np.zeros(self.n)
         self.delta_mean = 0.0
         self.delta_var = 1.0
+        self._drive: np.ndarray | None = None
         self._free: SettledState | None = None
         self._pending: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         self.updates = 0
@@ -173,6 +250,9 @@ class ActorCritic:
     # -- readings
 
     def value(self, state: SettledState) -> np.ndarray:
+        if self.critic_net is not None:
+            assert self._drive is not None
+            return self.critic_net.value(self._drive)
         return state.activation[:, self.critic_index] @ self.w_critic + self.b_critic
 
     def probabilities(self, state: SettledState) -> np.ndarray:
@@ -187,6 +267,7 @@ class ActorCritic:
         if self._free is not None and self._free.v.shape[0] != len(drive):
             self._free = None
         self._free = self.learner.free(drive, warm=self._free)
+        self._drive = drive
         return self._free
 
     # -- acting
@@ -199,6 +280,7 @@ class ActorCritic:
         around the read-out, the taken value's bump as the nudge's target.
         """
         free = self._free if self._free is not None and self._free.v.shape[0] == len(drive) else self.settle(drive)
+        self._drive = drive
         if self.bins is not None:
             return self._act_bins(drive, free, greedy)
         if self.population is not None:
@@ -313,8 +395,13 @@ class ActorCritic:
             v[done] = 0.0
             a[done] = 0.0
             next_state = self.learner.free(next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps))
-        next_value = np.where(done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), self.value(next_state))
-        delta = reward + cfg.gamma * next_value - value
+        if self.critic_net is not None:
+            next_value_raw = self.critic_net.value(next_drive, slow=True)
+        else:
+            next_value_raw = self.value(next_state)
+        next_value = np.where(done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw)
+        raw_target = reward + cfg.gamma * next_value
+        delta = raw_target - value
         if cfg.dopamine_center > 0:
             rho = cfg.dopamine_center
             self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
@@ -348,18 +435,23 @@ class ActorCritic:
         step_scale = cfg.eta * step_scale
         step_bias = cfg.eta_bias * step_bias
         report = self.learner.apply(step_scale, step_bias)
-        critic_trace = self.trace_critic
-        if cfg.critic_normalize:
-            critic_trace = critic_trace / (1.0 + (critic_trace**2).sum(axis=1, keepdims=True))
-        critic_step = cfg.eta_critic * (delta[:, None] * critic_trace).mean(axis=0)
-        self.w_critic += critic_step[:-1]
-        self.b_critic += float(critic_step[-1])
+        if self.critic_net is not None:
+            assert self._drive is not None
+            self.critic_net.learn(self._drive, raw_target)
+        else:
+            critic_trace = self.trace_critic
+            if cfg.critic_normalize:
+                critic_trace = critic_trace / (1.0 + (critic_trace**2).sum(axis=1, keepdims=True))
+            critic_step = cfg.eta_critic * (delta[:, None] * critic_trace).mean(axis=0)
+            self.w_critic += critic_step[:-1]
+            self.b_critic += float(critic_step[-1])
         # a finished row forgets its traces
         if done.any():
             self.trace[done] = 0.0
             self.trace_bias[done] = 0.0
             self.trace_critic[done] = 0.0
         self._free = next_state
+        self._drive = next_drive
         self._pending = None
         report["delta"] = float(np.abs(delta).mean())
         report["value"] = float(value.mean())
@@ -368,6 +460,8 @@ class ActorCritic:
 
     def value_of(self, drive: np.ndarray) -> np.ndarray:
         """The critic's value of a drive, settled cold, without touching the cached state."""
+        if self.critic_net is not None:
+            return self.critic_net.value(drive)
         return self.value(self.learner.free(drive))
 
     def reset(self) -> None:
@@ -376,6 +470,8 @@ class ActorCritic:
         self.trace = self.trace_bias = self.trace_critic = None
 
     def parameters(self) -> int:
+        if self.critic_net is not None:
+            return self.learner.parameters() + self.critic_net.parameters()
         return self.learner.parameters() + len(self.w_critic) + 1
 
     def to_dict(self) -> dict[str, Any]:
