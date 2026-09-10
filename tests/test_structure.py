@@ -27,8 +27,9 @@ def test_sleep_consolidates_tagged_fast_strength_and_the_learner_only_moves_live
     report = seams.sleep()
     assert report["day"] == 1
     assert seams.slow_fraction() > 0.0
-    # a fully tagged seam is consolidated: its slow part is half of what its fast part was
+    # a fully tagged seam is consolidated: half of its fast part moved into slow, the total unchanged before downscaling
     assert np.allclose(seams.slow[tagged], 0.5 * fast_before[tagged])
+    assert np.allclose(seams.slow[tagged] + seams.fast[tagged] / 0.5, fast_before[tagged])
     # the learner's trainable mask equals alive, so a pruned overlap never moves again
     seams.alive[0] = False
     seams._enforce()

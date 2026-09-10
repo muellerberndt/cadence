@@ -32,7 +32,7 @@ import numpy as np
 from .learning import Learner
 from .settle import Nudge, SettledState, Settlement, _FUSED as _FUSED_TRACE
 
-__all__ = ["ActorCritic", "ActorCriticConfig", "Population", "Bins", "ValueNet", "ValueConfig"]
+__all__ = ["ActorCritic", "ActorCriticConfig", "Population", "Bins", "ValueNet", "ValueConfig", "Rehearsal", "RehearsalConfig"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -476,3 +476,216 @@ class ActorCritic:
 
     def to_dict(self) -> dict[str, Any]:
         return {"config": self.config.to_dict(), "critic": [int(i) for i in self.critic_index], "updates": self.updates, "learner": self.learner.to_dict()}
+
+
+@dataclass(frozen=True, slots=True)
+class RehearsalConfig:
+    """A window of recent experience, rehearsed a few times."""
+
+    gamma: float = 0.99
+    lam: float = 0.95
+    window: int = 64  # batched steps kept before a rehearsal
+    epochs: int = 4  # passes over the window
+    minibatch: int = 256  # rows per update
+    clip: float = 0.2  # the ratio of new to old probability beyond which a row stops pushing
+    eta: float = 1.0
+    eta_bias: float = 0.02
+    eta_critic: float = 1.0
+    advantage_scale: bool = True  # advantages centred and scaled over the window
+    normalize: float = 0.0  # >0: the adaptive local step (per-seam RMS)
+    normalize_floor: float = 1e-8
+    momentum: float = 0.0
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: getattr(self, k) for k in self.__slots__}
+
+
+class Rehearsal:
+    """Learn from a window of recent experience, rehearsed: the local contrast as the score of
+    each action taken, weighted by its advantage and stopped by the ratio clip.
+
+    This is the data flow of proximal policy optimisation with the settlement's contrast in
+    place of the backward pass: collect ``window`` steps from every environment, compute
+    generalised advantages with the critic, then rehearse the window ``epochs`` times in
+    minibatches. Every seam still moves on its own two endpoints and one broadcast number
+    per row (the clipped, scaled advantage). The critic is a ``ValueNet`` trained on the
+    same window toward the lambda-returns. Discrete actions (a softmax over the outputs) or
+    ``Bins`` (one softmax per action dimension).
+    """
+
+    def __init__(self, learner: Learner, critic: "ValueNet", config: RehearsalConfig | None = None, seed: int = 0, bins: Bins | None = None) -> None:
+        self.learner = learner
+        self.critic = critic
+        self.config = config or RehearsalConfig()
+        self.bins = bins
+        self.rng = np.random.default_rng(seed)
+        self.n = learner.engine.wiring.n
+        self.group_id = bins.groups(learner.output_index, self.n) if bins is not None else None
+        self.rows: list[dict[str, np.ndarray]] = []
+        self._free: SettledState | None = None
+        self._drive: np.ndarray | None = None
+        self._pending: dict[str, np.ndarray] | None = None
+        self.updates = 0
+        self.rehearsals = 0
+        self.second_moment = np.zeros(learner.engine.wiring.edges)
+        self.second_moment_bias = np.zeros(self.n)
+        self.velocity = np.zeros(learner.engine.wiring.edges)
+        self.velocity_bias = np.zeros(self.n)
+
+    # -- the policy
+
+    def _probabilities(self, activation: np.ndarray) -> np.ndarray:
+        s = activation[:, self.learner.output_index]
+        if self.bins is not None:
+            s = s.reshape(len(s), self.bins.dims, self.bins.size)
+        z = s / self.learner.config.temperature
+        z = z - z.max(axis=-1, keepdims=True)
+        p = np.exp(z)
+        return p / p.sum(axis=-1, keepdims=True)
+
+    def settle(self, drive: np.ndarray, warm: bool = True) -> SettledState:
+        if self._free is not None and self._free.v.shape[0] != len(drive):
+            self._free = None
+        self._free = self.learner.free(drive, warm=self._free if warm else None)
+        self._drive = drive
+        return self._free
+
+    def act(self, drive: np.ndarray, greedy: bool = False) -> np.ndarray:
+        free = self._free if self._free is not None and self._free.v.shape[0] == len(drive) else self.settle(drive)
+        self._drive = drive
+        p = self._probabilities(free.activation)
+        if greedy:
+            choice = np.argmax(p, axis=-1)
+        else:
+            u = self.rng.random(p.shape[:-1])
+            choice = np.minimum((p.cumsum(axis=-1) < u[..., None]).sum(axis=-1), p.shape[-1] - 1)
+        taken = np.take_along_axis(p, choice[..., None], axis=-1)[..., 0]
+        logp = np.log(np.maximum(taken, 1e-12))
+        if logp.ndim == 2:
+            logp = logp.sum(axis=1)
+        if not greedy:
+            self._pending = {"drive": drive, "choice": choice, "logp": logp, "value": self.critic.value(drive)}
+        if self.bins is not None:
+            return self.bins.centres[choice]
+        return np.asarray(choice, dtype=np.int64)
+
+    # -- the window
+
+    def learn(self, reward: np.ndarray, done: np.ndarray, next_drive: np.ndarray, bootstrap: np.ndarray | None = None) -> dict[str, float] | None:
+        """Keep the step; when the window is full, rehearse it and return the report."""
+        cfg = self.config
+        assert self._pending is not None
+        row = dict(self._pending)
+        row["reward"] = np.asarray(reward, dtype=float)
+        row["done"] = np.asarray(done, dtype=bool)
+        row["bootstrap"] = np.zeros(len(reward)) if bootstrap is None else np.asarray(bootstrap, dtype=float)
+        self.rows.append(row)
+        self._pending = None
+        # the next state, warm; finished rows start their next life from rest
+        next_state = self.learner.free(next_drive, warm=self._free)
+        if row["done"].any():
+            v = next_state.v.copy()
+            a = next_state.adaptation.copy()
+            v[row["done"]] = 0.0
+            a[row["done"]] = 0.0
+            next_state = self.learner.free(next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps))
+        self._free = next_state
+        self._drive = next_drive
+        if len(self.rows) < cfg.window:
+            return None
+        return self._rehearse(next_drive)
+
+    def _rehearse(self, last_drive: np.ndarray) -> dict[str, float]:
+        cfg = self.config
+        rows = self.rows
+        self.rows = []
+        T, B = len(rows), len(rows[0]["reward"])
+        values = np.stack([r["value"] for r in rows])
+        rewards = np.stack([r["reward"] for r in rows])
+        dones = np.stack([r["done"] for r in rows])
+        boots = np.stack([r["bootstrap"] for r in rows])
+        next_value = self.critic.value(last_drive)
+        adv = np.zeros((T, B))
+        last = np.zeros(B)
+        for t in reversed(range(T)):
+            v_next = next_value if t == T - 1 else values[t + 1]
+            v_next = np.where(dones[t], boots[t], v_next)
+            delta = rewards[t] + cfg.gamma * v_next - values[t]
+            last = delta + cfg.gamma * cfg.lam * np.where(dones[t], 0.0, last)
+            adv[t] = last
+        returns = adv + values
+        if cfg.advantage_scale:
+            adv = (adv - adv.mean()) / (adv.std() + 1e-8)
+        drive = np.concatenate([r["drive"] for r in rows])
+        choice = np.concatenate([r["choice"] for r in rows])
+        logp_old = np.concatenate([r["logp"] for r in rows])
+        adv = adv.reshape(-1)
+        returns = returns.reshape(-1)
+        n_rows = len(drive)
+        index = np.arange(n_rows)
+        clipped = 0
+        for _ in range(cfg.epochs):
+            self.rng.shuffle(index)
+            for start in range(0, n_rows, cfg.minibatch):
+                idx = index[start : start + cfg.minibatch]
+                free = self.learner.free(drive[idx])
+                p = self._probabilities(free.activation)
+                taken = np.take_along_axis(p, choice[idx][..., None], axis=-1)[..., 0]
+                logp = np.log(np.maximum(taken, 1e-12))
+                if logp.ndim == 2:
+                    logp = logp.sum(axis=1)
+                ratio = np.exp(logp - logp_old[idx])
+                a = adv[idx]
+                # the clipped objective's gradient: a row pushes only while its ratio is inside the clip, or pushes back
+                push = np.where(((ratio > 1 + cfg.clip) & (a > 0)) | ((ratio < 1 - cfg.clip) & (a < 0)), 0.0, 1.0)
+                clipped += int((push == 0).sum())
+                weight = a * ratio * push
+                target = self._targets(choice[idx])
+                plus = self._nudged(drive[idx], free, target, self.learner.config.beta, weight)
+                minus = self._nudged(drive[idx], free, target, -self.learner.config.beta, weight)
+                overlap_term, owner_term = self.learner.contrast(free, plus, minus)
+                self._apply(overlap_term, owner_term)
+                self.critic.learn(drive[idx], returns[idx])
+        self.rehearsals += 1
+        return {"rows": float(n_rows), "clipped": float(clipped / max(n_rows * cfg.epochs, 1)), "advantage": float(np.abs(adv).mean()), "value": float(values.mean())}
+
+    def _targets(self, choice: np.ndarray) -> np.ndarray:
+        target = np.zeros((len(choice), self.n))
+        out = self.learner.output_index
+        if self.bins is not None:
+            onehot = np.zeros((len(choice), self.bins.dims, self.bins.size))
+            np.put_along_axis(onehot, choice[:, :, None], 1.0, axis=2)
+            target[:, out] = onehot.reshape(len(choice), -1)
+        else:
+            target[np.arange(len(choice)), out[choice]] = 1.0
+        return target
+
+    def _nudged(self, drive: np.ndarray, free: SettledState, target: np.ndarray, beta: float, weight: np.ndarray) -> SettledState:
+        cfg = self.learner.config
+        nudge = Nudge(target, self.learner.output_mask, beta, softmax_temperature=cfg.temperature, weight=weight, groups=self.group_id)
+        return self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=nudge, tolerance=cfg.tolerance)
+
+    def _apply(self, overlap_term: np.ndarray, owner_term: np.ndarray) -> None:
+        cfg = self.config
+        self.updates += 1
+        step_scale, step_bias = overlap_term, owner_term
+        if cfg.momentum > 0:
+            self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * step_scale
+            self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * step_bias
+            c = 1.0 - cfg.momentum**self.updates
+            step_scale, step_bias = self.velocity / c, self.velocity_bias / c
+        if cfg.normalize > 0:
+            rho = cfg.normalize
+            self.second_moment = rho * self.second_moment + (1 - rho) * overlap_term**2
+            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * owner_term**2
+            c = 1.0 - rho**self.updates
+            step_scale = step_scale / (np.sqrt(self.second_moment / c) + cfg.normalize_floor)
+            step_bias = step_bias / (np.sqrt(self.second_moment_bias / c) + cfg.normalize_floor)
+        self.learner.apply(cfg.eta * step_scale, cfg.eta_bias * step_bias)
+
+    def reset(self) -> None:
+        self._free = None
+        self._pending = None
+
+    def parameters(self) -> int:
+        return self.learner.parameters() + self.critic.parameters()

@@ -109,8 +109,10 @@ class Seams:
         w = self.learner.engine.wiring
         self.day += 1
         capture = np.clip(self.tag / cfg.tag_saturation, 0.0, 1.0)
-        self.slow += np.where(self.alive, cfg.consolidate * capture * self.fast, 0.0)
-        self.fast *= cfg.downscale
+        moved = np.where(self.alive, cfg.consolidate * capture * self.fast, 0.0)  # transferred, not added
+        self.slow += moved
+        self.fast -= moved
+        self.fast *= cfg.downscale  # what was not consolidated fades
         self.tag[:] = 0.0
         total = self.slow + self.fast
         weak = self.alive & (np.abs(total) < cfg.prune_below)
