@@ -30,9 +30,40 @@ from typing import Any
 import numpy as np
 
 from .learning import Learner
-from .settle import SettledState, _FUSED as _FUSED_TRACE
+from .settle import Nudge, SettledState, _FUSED as _FUSED_TRACE
 
-__all__ = ["ActorCritic", "ActorCriticConfig", "Population"]
+__all__ = ["ActorCritic", "ActorCriticConfig", "Population", "Bins"]
+
+
+@dataclass(frozen=True)
+class Bins:
+    """A continuous action as one softmax choice per dimension over ``size`` levels.
+
+    Each dimension owns ``size`` output owners standing for levels in ``[-1, 1]``; an
+    action is a draw from the softmax over each dimension's owners (a discrete choice
+    per dimension), and learning is the cross-entropy nudge of that group toward the
+    level taken, the same rule that learns a discrete action. Discretised actions match
+    Gaussian ones on continuous control (Tang and Agrawal 2020); here they let one rule
+    serve every kind of action.
+    """
+
+    dims: int
+    size: int = 9
+
+    @property
+    def centres(self) -> np.ndarray:
+        return np.linspace(-1.0, 1.0, self.size)
+
+    def groups(self, output_index: np.ndarray, n: int) -> np.ndarray:
+        gid = np.full(n, -1, dtype=np.int64)
+        gid[output_index] = np.repeat(np.arange(self.dims), self.size)
+        return gid
+
+    def read(self, activation: np.ndarray, temperature: float) -> np.ndarray:
+        """The most likely level per dimension: ``(batch, dims)`` values in ``[-1, 1]``."""
+        s = activation.reshape(len(activation), self.dims, self.size)
+        return self.centres[np.argmax(s, axis=2)]
+
 
 
 @dataclass(frozen=True)
@@ -117,6 +148,9 @@ class ActorCritic:
         self.population = population
         if population is not None and len(learner.output_index) != population.dims * population.size:
             raise ValueError("the output set must hold dims * size owners for a population code")
+        self.bins = population if isinstance(population, Bins) else None
+        if self.bins is not None:
+            self.group_id = self.bins.groups(learner.output_index, learner.engine.wiring.n)
         self.critic_index = np.asarray(list(critic), dtype=np.int64)
         self.w_critic = np.full(len(self.critic_index), self.config.critic_init)
         self.b_critic = 0.0
@@ -165,6 +199,8 @@ class ActorCritic:
         around the read-out, the taken value's bump as the nudge's target.
         """
         free = self._free if self._free is not None and self._free.v.shape[0] == len(drive) else self.settle(drive)
+        if self.bins is not None:
+            return self._act_bins(drive, free, greedy)
         if self.population is not None:
             return self._act_continuous(drive, free, greedy)
         p = self.probabilities(free)
@@ -180,6 +216,38 @@ class ActorCritic:
             minus = self.learner.nudged(drive, free, target, sign=-1.0)
             self._pending = ("phases", plus.activation, minus.activation, self.value(free))
         return np.asarray(action, dtype=np.int64)
+
+    def _act_bins(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
+        """One softmax draw per dimension; the taken levels' one-hots are the nudge's target, per group."""
+        bins = self.bins
+        assert bins is not None
+        cfg = self.learner.config
+        batch = len(drive)
+        s = free.activation[:, self.learner.output_index].reshape(batch, bins.dims, bins.size)
+        z = s / cfg.temperature
+        z = z - z.max(axis=2, keepdims=True)
+        p = np.exp(z)
+        p /= p.sum(axis=2, keepdims=True)
+        if greedy:
+            choice = np.argmax(p, axis=2)
+        else:
+            u = self.rng.random((batch, bins.dims))
+            choice = np.minimum((p.cumsum(axis=2) < u[:, :, None]).sum(axis=2), bins.size - 1)
+        action = bins.centres[choice]
+        if not greedy:
+            onehot = np.zeros((batch, bins.dims, bins.size))
+            np.put_along_axis(onehot, choice[:, :, None], 1.0, axis=2)
+            target = np.zeros((batch, self.n))
+            target[:, self.learner.output_index] = onehot.reshape(batch, -1)
+            plus = self._nudged_groups(drive, free, target, cfg.beta)
+            minus = self._nudged_groups(drive, free, target, -cfg.beta)
+            self._pending = ("phases", plus.activation, minus.activation, self.value(free))
+        return action
+
+    def _nudged_groups(self, drive: np.ndarray, free: SettledState, target: np.ndarray, beta: float) -> SettledState:
+        cfg = self.learner.config
+        nudge = Nudge(target, self.learner.output_mask, beta, softmax_temperature=cfg.temperature, groups=self.group_id)
+        return self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=nudge, tolerance=cfg.tolerance)
 
     def _act_continuous(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
         pop = self.population

@@ -96,18 +96,25 @@ class Nudge:
     beta: float
     softmax_temperature: float | None = None
     weight: np.ndarray | None = None  # (batch,)
+    groups: np.ndarray | None = None  # (n,) group id per owner, -1 for none: one softmax per group
 
     def drive(self, s: np.ndarray) -> np.ndarray:
         if self.softmax_temperature is None:
             out = np.asarray(self.beta * (self.target - s) * self.mask, dtype=float)
         else:
-            group = self.mask > 0
-            z = s[:, group] / self.softmax_temperature
-            z = z - z.max(axis=1, keepdims=True)
-            p = np.exp(z)
-            p = p / p.sum(axis=1, keepdims=True)
             out = np.zeros_like(s)
-            out[:, group] = self.beta * (np.broadcast_to(self.target, s.shape)[:, group] - p)
+            full_target = np.broadcast_to(self.target, s.shape)
+            if self.groups is None:
+                members = [np.flatnonzero(self.mask > 0)]
+            else:
+                ids = np.asarray(self.groups)
+                members = [np.flatnonzero((ids == g) & (self.mask > 0)) for g in np.unique(ids[ids >= 0])]
+            for group in members:
+                z = s[:, group] / self.softmax_temperature
+                z = z - z.max(axis=1, keepdims=True)
+                p = np.exp(z)
+                p = p / p.sum(axis=1, keepdims=True)
+                out[:, group] = self.beta * (full_target[:, group] - p)
         if self.weight is not None:
             out = out * np.asarray(self.weight, dtype=float)[:, None]
         return out

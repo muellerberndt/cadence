@@ -116,3 +116,57 @@ def test_population_actor_critic_learns_a_continuous_bandit() -> None:
         ac.learn(reward, np.ones(32, dtype=bool), drive)
     after = error()
     assert after < 0.25 and after < before
+
+
+def test_grouped_softmax_nudge_agrees_between_kernels_and_bins_learn_a_continuous_bandit() -> None:
+    import os
+
+    from cadence import settle as S
+
+    bins = cd.Bins(dims=2, size=5)
+    wiring = cd.layered(4, 8, bins.dims * bins.size, density=1.0, seed=3)
+    engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0))
+    rng = np.random.default_rng(3)
+    drive = engine.clamp_levels(np.pad(rng.random((6, 4)), ((0, 0), (0, wiring.n - 4))))
+    out = np.asarray(wiring.sets["output"])
+    target = np.zeros((6, wiring.n))
+    target[:, out[[0, 7]]] = 1.0
+    mask = np.zeros(wiring.n)
+    mask[out] = 1.0
+    nudge = cd.Nudge(target, mask, 0.1, softmax_temperature=0.2, groups=bins.groups(out, wiring.n))
+    free = engine.settle_batch(drive, steps=60, tolerance=3e-3)
+    fused = engine.settle_batch(drive, steps=12, state=free, nudge=nudge, tolerance=3e-3)
+    was = S._FUSED
+    S._FUSED = False
+    try:
+        plain = engine.settle_batch(drive, steps=12, state=free, nudge=nudge, tolerance=3e-3)
+    finally:
+        S._FUSED = was
+    assert np.abs(fused.activation - plain.activation).max() < 1e-12
+
+    learner = cd.Learner(engine, wiring.sets["output"], cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.2, tolerance=3e-3, nudged_steps=12))
+    ac = cd.ActorCritic(learner, wiring.sets["hidden"], cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3), seed=3, population=bins)
+    wanted = np.array([[0.5, -1.0], [-0.5, 1.0]])
+
+    def batch(k: int) -> tuple[np.ndarray, np.ndarray]:
+        c = rng.integers(0, 2, k)
+        x = np.zeros((k, 4))
+        x[np.arange(k), 2 * c] = 1.0
+        x[np.arange(k), 2 * c + 1] = 1.0
+        return engine.clamp_levels(np.pad(x, ((0, 0), (0, wiring.n - 4)))), c
+
+    def error() -> float:
+        d, c = batch(200)
+        ac.reset()
+        return float(np.abs(ac.act(d, greedy=True) - wanted[c]).mean())
+
+    before = error()
+    ac.reset()
+    d, c = batch(32)
+    for _ in range(200):
+        a = ac.act(d)
+        reward = -((a - wanted[c]) ** 2).sum(axis=1)
+        d, c = batch(32)
+        ac.learn(reward, np.ones(32, dtype=bool), d)
+    after = error()
+    assert after < 0.2 and after < before

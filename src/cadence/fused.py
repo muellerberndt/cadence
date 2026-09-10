@@ -44,31 +44,36 @@ if njit is not None:
                 out[i] = r * scale_down
 
     @njit(cache=True)
-    def _kernel(v, a, s, standing, dense, keep, masked, dt, slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau, has_nudge, target, nmask, beta, softmax_t, weight, steps, tolerance, use_tolerance):
+    def _kernel(v, a, s, standing, dense, keep, masked, dt, slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau, has_nudge, target, nmask, gid, ngroups, beta, softmax_t, weight, steps, tolerance, use_tolerance):
         batch, n = v.shape
         group = np.flatnonzero(nmask > 0.0)
         taken = 0
         previous = np.empty(n)
         p = np.empty(group.shape[0])
+        zmax = np.empty(max(ngroups, 1))
+        total = np.empty(max(ngroups, 1))
         for t in range(steps):
             inbox = np.dot(s, dense)
             moved = 0.0
             for b in range(batch):
-                # the nudge on this row, from the activations before the step
+                # the nudge on this row, from the activations before the step: one softmax per group
                 if has_nudge:
                     if softmax_t > 0.0:
-                        zmax = -1e300
+                        for g in range(ngroups):
+                            zmax[g] = -1e300
+                            total[g] = 0.0
                         for k in range(group.shape[0]):
+                            g = gid[group[k]]
                             z = s[b, group[k]] / softmax_t
                             p[k] = z
-                            if z > zmax:
-                                zmax = z
-                        total = 0.0
+                            if z > zmax[g]:
+                                zmax[g] = z
                         for k in range(group.shape[0]):
-                            p[k] = np.exp(p[k] - zmax)
-                            total += p[k]
+                            g = gid[group[k]]
+                            p[k] = np.exp(p[k] - zmax[g])
+                            total[g] += p[k]
                         for k in range(group.shape[0]):
-                            p[k] /= total
+                            p[k] /= total[gid[group[k]]]
                 for i in range(n):
                     tot = inbox[b, i] + standing[b, i]
                     if has_adapt:
@@ -125,14 +130,26 @@ def fused_settle(v, a, drive, bias, dense, keep, rule, nudge, steps, tolerance):
         softmax_t = float(nudge.softmax_temperature) if nudge.softmax_temperature is not None else 0.0
         weight = np.ones(batch) if nudge.weight is None else np.asarray(nudge.weight, float)
         beta = float(nudge.beta)
+        if nudge.groups is None:
+            gid = np.where(nmask > 0, 0, -1).astype(np.int64)
+            ngroups = 1
+        else:
+            raw = np.asarray(nudge.groups, dtype=np.int64)
+            ids = np.unique(raw[raw >= 0])
+            gid = np.full(n, -1, dtype=np.int64)
+            for k, g in enumerate(ids):
+                gid[raw == g] = k
+            ngroups = len(ids)
     else:
         target = np.zeros((1, 1))
         nmask = np.zeros(n)
+        gid = np.full(n, -1, dtype=np.int64)
+        ngroups = 0
         softmax_t, weight, beta = 0.0, np.ones(batch), 0.0
     taken = _kernel(
         v, a, s, standing, dense, np.asarray(keep, float), masked, rule.dt, rule.slope, rule.threshold, rule.rest_emission, rule.leak,
         has_adapt, adapt.strength if has_adapt else 0.0, adapt.tau_steps if has_adapt else 1.0,
-        nudge is not None, target, nmask, beta, softmax_t, weight, int(steps), float(tolerance) if tolerance is not None else 0.0, tolerance is not None,
+        nudge is not None, target, nmask, gid, ngroups, beta, softmax_t, weight, int(steps), float(tolerance) if tolerance is not None else 0.0, tolerance is not None,
     )
     return s, taken
 

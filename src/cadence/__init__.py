@@ -22,7 +22,7 @@ from __future__ import annotations
 from .checkpoint import load, save
 from .custody import Source, fetch, manifest
 from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
-from .plasticity import ActorCritic, ActorCriticConfig, Population
+from .plasticity import ActorCritic, ActorCriticConfig, Bins, Population
 from .structure import Seams, SleepConfig
 from .dream import DiscreteCode, DreamActorCritic, DreamConfig, actor_critic_wiring
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
@@ -39,6 +39,7 @@ __all__ = [
     "DreamConfig",
     "actor_critic_wiring",
     "ActorCriticConfig",
+    "Bins",
     "Population",
     "Seams",
     "SleepConfig",
