@@ -46,6 +46,21 @@ __all__ = ["Settlement", "SettledState", "Nudge", "available_backends", "Backend
 Backend = Literal["cpu", "torch"]
 
 
+def _fused_available() -> bool:
+    import os
+
+    if os.environ.get("CADENCE_FUSED", "1") == "0":
+        return False
+    try:
+        from .fused import available
+    except ImportError:
+        return False
+    return available()
+
+
+_FUSED = _fused_available()  # the compiled dense kernel, identical arithmetic; CADENCE_FUSED=0 forces the NumPy loop
+
+
 def available_backends() -> dict[str, str]:
     """Backends importable here, with the device each would use."""
     out = {"cpu": "numpy float64"}
@@ -317,6 +332,11 @@ class Settlement:
             v, a, s, traj, taken = self._torch.run(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance
             )
+        elif self._dense is not None and not trajectory and _FUSED:
+            from .fused import fused_settle
+
+            s, taken = fused_settle(v, a, drive, self.bias, self._dense, keep, self.rule, nudge, steps, tolerance)
+            traj = None
         else:
             v, a, s, traj, taken = self._run_numpy(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance
