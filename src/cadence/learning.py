@@ -196,27 +196,36 @@ class Learner:
             s_minus, span = free.activation, beta
         else:
             s_minus, span = opposite.activation, 2.0 * beta
+        if w.edges > 4 * w.n:  # the pairwise products as one matrix product, read at the overlaps
+            gram = s_plus.T @ s_plus - s_minus.T @ s_minus
+            return gram[w.pre, w.post] / (len(s_plus) * span), (s_plus - s_minus).mean(axis=0) / span
         hebb_plus = (s_plus[:, w.pre] * s_plus[:, w.post]).mean(axis=0)
         hebb_minus = (s_minus[:, w.pre] * s_minus[:, w.post]).mean(axis=0)
         return (hebb_plus - hebb_minus) / span, (s_plus - s_minus).mean(axis=0) / span
 
-    def update(
+    def contrast_rows(
         self, free: SettledState, nudged: SettledState, opposite: SettledState | None = None
-    ) -> dict[str, float]:
-        """Move every trainable overlap and every owner on its own two-phase difference."""
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """The same differences as ``contrast``, one row per batch element: ``(batch, edges)``
+        and ``(batch, n)``. What a per-row eligibility trace reads."""
+        w = self.engine.wiring
+        beta = self.config.beta
+        s_plus = nudged.activation
+        if opposite is None:
+            s_minus, span = free.activation, beta
+        else:
+            s_minus, span = opposite.activation, 2.0 * beta
+        hebb = s_plus[:, w.pre] * s_plus[:, w.post] - s_minus[:, w.pre] * s_minus[:, w.post]
+        return hebb / span, (s_plus - s_minus) / span
+
+    def apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
+        """Apply a per-overlap and per-owner step: masks, tying, decay, and bounds, then set the engine.
+
+        This is the last half of ``update``; a rule that computes its own step (a
+        three-factor trace, say) hands it here so every learner shares one notion of
+        which overlaps move, how a tied pair moves, and what bounds hold.
+        """
         cfg = self.config
-        overlap_term, owner_term = self.contrast(free, nudged, opposite)
-        if cfg.normalize > 0:  # still local: an overlap reads only its own history
-            rho = cfg.normalize
-            self.second_moment = rho * self.second_moment + (1 - rho) * overlap_term**2
-            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * owner_term**2
-            overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
-            owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
-        if cfg.momentum > 0:  # still local: an overlap accumulates only its own contrast
-            self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * overlap_term
-            self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * owner_term
-            overlap_term, owner_term = self.velocity, self.velocity_bias
-        delta_scale = cfg.eta * overlap_term
         assert self.trainable_overlaps is not None
         delta_scale = np.where(self.trainable_overlaps, delta_scale, 0.0)
         paired = self.reverse >= 0
@@ -237,7 +246,7 @@ class Learner:
         delta_scale = np.where(self.trainable_overlaps, delta_scale, 0.0)
         scale = self.engine.edge_scale + delta_scale
         assert self.trainable_owners is not None
-        delta_bias = np.where(self.trainable_owners, cfg.eta_bias * owner_term, 0.0)
+        delta_bias = np.where(self.trainable_owners, delta_bias, 0.0)
         bias = self.engine.bias + delta_bias
         if cfg.decay > 0:  # a leak on the seams: what is not relearned fades away
             scale = np.where(self.trainable_overlaps, scale * (1.0 - cfg.decay), scale)
@@ -250,6 +259,26 @@ class Learner:
             "scale_step": float(np.abs(delta_scale).mean()),
             "bias_step": float(np.abs(delta_bias).mean()),
         }
+
+    def update(
+        self, free: SettledState, nudged: SettledState, opposite: SettledState | None = None
+    ) -> dict[str, float]:
+        """Move every trainable overlap and every owner on its own two-phase difference."""
+        cfg = self.config
+        overlap_term, owner_term = self.contrast(free, nudged, opposite)
+        if cfg.normalize > 0:  # still local: an overlap reads only its own history
+            rho = cfg.normalize
+            self.second_moment = rho * self.second_moment + (1 - rho) * overlap_term**2
+            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * owner_term**2
+            overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
+            owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
+        if cfg.momentum > 0:  # still local: an overlap accumulates only its own contrast
+            self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * overlap_term
+            self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * owner_term
+            overlap_term, owner_term = self.velocity, self.velocity_bias
+        delta_scale = cfg.eta * overlap_term
+        delta_bias = cfg.eta_bias * owner_term
+        return self.apply(delta_scale, delta_bias)
 
     def step(
         self,

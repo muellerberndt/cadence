@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.5.0 (2026-09-10)
+
+Learning from reward and a life for the seams, built for the paper "You don't need attention
+after all" and measured on its gates.
+
+- `ActorCritic` (`cadence.plasticity`): the three-factor rule. An eligibility trace at every
+  seam of the free/nudged contrast for the action taken, a linear critic on named owners
+  with its own trace, a dopamine owner broadcasting the temporal-difference error; the
+  adaptive local step (`momentum`, `normalize`, bias-corrected); `dopamine_cap`,
+  `dopamine_center`, `critic_normalize`; `bootstrap=` for time limits. `Population` for
+  continuous actions as a bump code. Cart-pole: 500 on every seed with the threshold at 40k
+  to 60k steps, 1,716 parameters, two warm settlement steps per decision at deployment.
+- `DreamActorCritic` and `actor_critic_wiring` (`cadence.dream`): an actor and a critic in
+  one net with a memory; imagine-and-feel action selection (candidates felt in the critic),
+  the critic's dream toward a target read with the slow strengths, the actor imitating the
+  action taken. `DiscreteCode` for discrete actions.
+- `Seams` and `SleepConfig` (`cadence.structure`): fast and slow strengths, tags, sleep
+  (consolidate, downscale, prune, sprout within a budget), conserved incoming strength.
+- `cadence.fused`: a compiled dense settlement kernel and a fused three-factor step on the
+  CPU backend when numba is installed (`pip install "cadence-net[fast]"`); identical
+  arithmetic, checked against the NumPy loop to 2e-16; `CADENCE_FUSED=0` forces the loop.
+- `Learner.apply` and `Learner.contrast_rows`; the contrast as a Gram matrix product read
+  at the overlaps (forty times faster than the gather on dense wirings).
+- Docs: `reward.md`, `life.md`; the capability table carries the gates.
+- Tests: 50.
+
 ## 0.4.1 (2026-09-09)
 
 - Docs only. The grey parrot rung was withdrawn from cadence-examples (its imitations did not

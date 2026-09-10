@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadence-net"
-version = "0.4.1"
+version = "0.5.0"
 description = "Machine learning by patch-net settlement: owner-local repair, held-out tests, receipts."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,7 +25,8 @@ dependencies = ["numpy>=1.26"]
 
 [project.optional-dependencies]
 accel = ["torch>=2.2"]
-dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "torch>=2.2"]
+fast = ["numba>=0.60"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "torch>=2.2", "numba>=0.60"]
 
 [project.urls]
 Homepage = "https://github.com/muellerberndt/cadence"
