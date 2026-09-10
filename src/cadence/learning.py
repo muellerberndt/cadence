@@ -196,6 +196,9 @@ class Learner:
             s_minus, span = free.activation, beta
         else:
             s_minus, span = opposite.activation, 2.0 * beta
+        if w.edges > 4 * w.n:  # the pairwise products as one matrix product, read at the overlaps
+            gram = s_plus.T @ s_plus - s_minus.T @ s_minus
+            return gram[w.pre, w.post] / (len(s_plus) * span), (s_plus - s_minus).mean(axis=0) / span
         hebb_plus = (s_plus[:, w.pre] * s_plus[:, w.post]).mean(axis=0)
         hebb_minus = (s_minus[:, w.pre] * s_minus[:, w.post]).mean(axis=0)
         return (hebb_plus - hebb_minus) / span, (s_plus - s_minus).mean(axis=0) / span

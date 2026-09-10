@@ -42,7 +42,7 @@ import numpy as np
 
 from .learning import Learner, LearnerConfig
 from .plasticity import Population
-from .settle import _FUSED, Nudge, SettledState, Settlement
+from .settle import Nudge, SettledState, Settlement
 from .wiring import Wiring
 
 __all__ = ["DreamConfig", "DreamActorCritic", "actor_critic_wiring", "DiscreteCode"]
@@ -309,13 +309,11 @@ class DreamActorCritic:
         return (state.activation[:, self.q_index] - self.config.q_offset) * self.config.q_scale
 
     def _contrast(self, plus: SettledState, minus: SettledState, span: float) -> tuple[np.ndarray, np.ndarray]:
+        """Batch-mean contrast per overlap and per owner: the pairwise products as one matrix product, then read at the overlaps."""
         w = self.wiring
-        if _FUSED:
-            from .fused import contrast_mean
-
-            return contrast_mean(plus.activation, minus.activation, w.pre, w.post, span)
-        hebb = (plus.activation[:, w.pre] * plus.activation[:, w.post]).mean(axis=0) - (minus.activation[:, w.pre] * minus.activation[:, w.post]).mean(axis=0)
-        return hebb / span, (plus.activation - minus.activation).mean(axis=0) / span
+        sp, sm = plus.activation, minus.activation
+        gram = (sp.T @ sp - sm.T @ sm) / (len(sp) * span)
+        return gram[w.pre, w.post], (sp - sm).mean(axis=0) / span
 
     def _dream(self, drive: np.ndarray, target: np.ndarray, mask: np.ndarray, eta: float, owners: np.ndarray | None = None) -> dict[str, float]:
         """Settle free under ``drive`` (``owners`` zeroes silenced ones), nudge the q owner toward ``target`` (in activation units), move the masked seams."""
