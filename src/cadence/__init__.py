@@ -24,7 +24,7 @@ from .custody import Source, fetch, manifest
 from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
 from .plasticity import ActorCritic, ActorCriticConfig, Population
 from .structure import Seams, SleepConfig
-from .dream import DreamActorCritic, DreamConfig, actor_critic_wiring
+from .dream import DiscreteCode, DreamActorCritic, DreamConfig, actor_critic_wiring
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
 from .receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 from .reference import Ledger, conformance, settle_owner_by_owner
@@ -34,6 +34,7 @@ from .wiring import Wiring
 
 __all__ = [
     "ActorCritic",
+    "DiscreteCode",
     "DreamActorCritic",
     "DreamConfig",
     "actor_critic_wiring",

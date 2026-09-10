@@ -258,16 +258,20 @@ class ActorCritic:
         # three factors
         step_scale = (delta[:, None] * self.trace).mean(axis=0)
         step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
-        if cfg.momentum > 0:
+        self.updates += 1
+        raw_scale, raw_bias = step_scale, step_bias
+        if cfg.momentum > 0:  # a running average of each seam's own steps, corrected for its short history
             self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * step_scale
             self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * step_bias
-            step_scale, step_bias = self.velocity, self.velocity_bias
-        if cfg.normalize > 0:
+            correction = 1.0 - cfg.momentum**self.updates
+            step_scale, step_bias = self.velocity / correction, self.velocity_bias / correction
+        if cfg.normalize > 0:  # divided by the running RMS of each seam's own raw steps, corrected likewise
             rho = cfg.normalize
-            self.second_moment = rho * self.second_moment + (1 - rho) * step_scale**2
-            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * step_bias**2
-            step_scale = step_scale / (np.sqrt(self.second_moment) + cfg.normalize_floor)
-            step_bias = step_bias / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
+            self.second_moment = rho * self.second_moment + (1 - rho) * raw_scale**2
+            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * raw_bias**2
+            correction = 1.0 - rho**self.updates
+            step_scale = step_scale / (np.sqrt(self.second_moment / correction) + cfg.normalize_floor)
+            step_bias = step_bias / (np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor)
         step_scale = cfg.eta * step_scale
         step_bias = cfg.eta_bias * step_bias
         if cfg.step_cap > 0:
@@ -287,7 +291,6 @@ class ActorCritic:
             self.trace_critic[done] = 0.0
         self._free = next_state
         self._pending = None
-        self.updates += 1
         report["delta"] = float(np.abs(delta).mean())
         report["value"] = float(value.mean())
         report["free_steps"] = float(next_state.steps)

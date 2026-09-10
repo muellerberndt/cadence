@@ -45,7 +45,35 @@ from .plasticity import Population
 from .settle import Nudge, SettledState, Settlement
 from .wiring import Wiring
 
-__all__ = ["DreamConfig", "DreamActorCritic", "actor_critic_wiring"]
+__all__ = ["DreamConfig", "DreamActorCritic", "actor_critic_wiring", "DiscreteCode"]
+
+
+@dataclass(frozen=True)
+class DiscreteCode:
+    """A discrete action as one owner per choice: written as a one-hot, read as the most active owner.
+
+    Every choice is a candidate, so imagine-and-feel evaluates all of them.
+    """
+
+    actions: int
+    dims: int = 1
+    sigma: float = 0.0
+
+    @property
+    def size(self) -> int:
+        return self.actions
+
+    def read(self, activation: np.ndarray) -> np.ndarray:
+        return np.argmax(activation.reshape(len(activation), self.actions), axis=1)[:, None].astype(float)
+
+    def write(self, value: np.ndarray) -> np.ndarray:
+        out = np.zeros((len(value), self.actions))
+        out[np.arange(len(value)), np.asarray(value).reshape(-1).astype(int)] = 1.0
+        return out
+
+    def candidates(self, proposal: np.ndarray, rng: np.random.Generator, k: int, sigma: float) -> np.ndarray:
+        return np.broadcast_to(np.arange(self.actions, dtype=float)[None, :, None], (len(proposal), self.actions, 1)).copy()
+
 
 
 def actor_critic_wiring(
@@ -166,6 +194,7 @@ class DreamConfig:
     candidates: int = 0  # >0: imagine this many actions around the actor's proposal, feel each in the critic, take the best
     candidate_temperature: float = 0.0  # >0: draw among candidates by softmax of their values instead of the best
     actor: str = "imitate"  # "imitate": the actor learns the action taken; "dream": the value-up nudge (deterministic policy gradient)
+    target: str = "max"  # "max": the next state's value is the best of its imagined candidates; "proposal": the actor's own next action
     action_clamp: float = 3.0  # drive per unit bump level when an action is clamped for the critic
     free_steps: int = 60
     nudged_steps: int = 20
@@ -232,13 +261,19 @@ class DreamActorCritic:
         self.settle_steps.append(state.steps)
         proposal = self.population.read(state.activation[:, self.action_index])
         if cfg.candidates <= 0 or self.size < cfg.warmup:
-            action = proposal if greedy else np.clip(proposal + cfg.sigma * self.rng.standard_normal(proposal.shape), -1.0, 1.0)
+            if hasattr(self.population, "candidates"):  # discrete: the proposal, or a uniform draw while warming up
+                action = proposal if greedy else self.rng.integers(0, self.population.size, size=(len(proposal), 1)).astype(float)
+            else:
+                action = proposal if greedy else np.clip(proposal + cfg.sigma * self.rng.standard_normal(proposal.shape), -1.0, 1.0)
             return action, state
         batch, dims = proposal.shape
-        k = cfg.candidates
-        noise = cfg.sigma * self.rng.standard_normal((batch, k, dims))
-        noise[:, 0] = 0.0  # the proposal itself is a candidate
-        cands = np.clip(proposal[:, None, :] + noise, -1.0, 1.0)
+        if hasattr(self.population, "candidates"):
+            cands = self.population.candidates(proposal, self.rng, cfg.candidates, cfg.sigma)
+        else:
+            noise = cfg.sigma * self.rng.standard_normal((batch, cfg.candidates, dims))
+            noise[:, 0] = 0.0  # the proposal itself is a candidate
+            cands = np.clip(proposal[:, None, :] + noise, -1.0, 1.0)
+        k = cands.shape[1]
         drives = self._clamp_action(np.repeat(drive, k, axis=0), cands.reshape(batch * k, dims))
         felt = self.engine.settle_batch(drives, steps=cfg.free_steps, tolerance=cfg.tolerance, mask=self.no_actor)
         values = self.value(felt).reshape(batch, k)
@@ -338,8 +373,20 @@ class DreamActorCritic:
         target_engine = self.target_engine()
         nxt_free = target_engine.settle_batch(nxt, steps=cfg.free_steps, tolerance=cfg.tolerance)
         next_action = self.population.read(nxt_free.activation[:, self.action_index])
-        nxt_q_state = target_engine.settle_batch(self._clamp_action(nxt, next_action), steps=cfg.free_steps, tolerance=cfg.tolerance, mask=self.no_actor)
-        q_next = self.value(nxt_q_state)
+        if cfg.target == "max" and cfg.candidates > 0:
+            if hasattr(self.population, "candidates"):
+                cands = self.population.candidates(next_action, self.rng, cfg.candidates, cfg.sigma)
+            else:
+                noise = cfg.sigma * self.rng.standard_normal((cfg.batch, cfg.candidates, next_action.shape[1]))
+                noise[:, 0] = 0.0
+                cands = np.clip(next_action[:, None, :] + noise, -1.0, 1.0)
+            k = cands.shape[1]
+            drives = self._clamp_action(np.repeat(nxt, k, axis=0), cands.reshape(cfg.batch * k, -1))
+            felt = target_engine.settle_batch(drives, steps=cfg.free_steps, tolerance=cfg.tolerance, mask=self.no_actor)
+            q_next = self.value(felt).reshape(cfg.batch, k).max(axis=1)
+        else:
+            nxt_q_state = target_engine.settle_batch(self._clamp_action(nxt, next_action), steps=cfg.free_steps, tolerance=cfg.tolerance, mask=self.no_actor)
+            q_next = self.value(nxt_q_state)
         y = reward + cfg.gamma * np.where(done, 0.0, q_next)
         y_activation = np.clip(y / cfg.q_scale + cfg.q_offset, 0.02, 0.98)
         # the critic's dream: state and action clamped, q pulled toward the target
