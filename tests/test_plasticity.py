@@ -66,7 +66,9 @@ def test_traces_reset_on_done_and_updates_are_local() -> None:
     learner.symmetric = False
     learner.reverse[:] = -1
     ac.act(drive)
-    contrast, _, value = ac._pending
+    kind, plus, minus, value = ac._pending
+    w = wiring
+    contrast = (plus[:, w.pre] * plus[:, w.post] - minus[:, w.pre] * minus[:, w.post]) / (2.0 * learner.config.beta)
     before = learner.engine.edge_scale.copy()
     trace_before = ac.trace.copy()
     w_critic, b_critic = ac.w_critic.copy(), ac.b_critic

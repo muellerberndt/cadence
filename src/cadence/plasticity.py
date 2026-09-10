@@ -30,7 +30,7 @@ from typing import Any
 import numpy as np
 
 from .learning import Learner
-from .settle import SettledState
+from .settle import SettledState, _FUSED as _FUSED_TRACE
 
 __all__ = ["ActorCritic", "ActorCriticConfig", "Population"]
 
@@ -180,16 +180,16 @@ class ActorCritic:
             target = self.learner.targets(action)
             plus = self.learner.nudged(drive, free, target)
             minus = self.learner.nudged(drive, free, target, sign=-1.0)
-            contrast, contrast_bias = self.learner.contrast_rows(free, plus, minus)
             if self.config.entropy > 0:  # a standing pull toward the uniform policy
                 uniform = np.zeros_like(target)
                 uniform[:, self.learner.output_index] = 1.0 / len(self.learner.output_index)
                 up = self.learner.nudged(drive, free, uniform)
                 down = self.learner.nudged(drive, free, uniform, sign=-1.0)
+                contrast, contrast_bias = self.learner.contrast_rows(free, plus, minus)
                 c2, cb2 = self.learner.contrast_rows(free, up, down)
-                contrast = contrast + self.config.entropy * c2
-                contrast_bias = contrast_bias + self.config.entropy * cb2
-            self._pending = (contrast, contrast_bias, self.value(free))
+                self._pending = ("contrast", contrast + self.config.entropy * c2, contrast_bias + self.config.entropy * cb2, self.value(free))
+            else:
+                self._pending = ("phases", plus.activation, minus.activation, self.value(free))
         return np.asarray(action, dtype=np.int64)
 
     def _act_continuous(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
@@ -203,8 +203,7 @@ class ActorCritic:
         target[:, self.learner.output_index] = pop.write(action)
         plus = self.learner.nudged(drive, free, target)
         minus = self.learner.nudged(drive, free, target, sign=-1.0)
-        contrast, contrast_bias = self.learner.contrast_rows(free, plus, minus)
-        self._pending = (contrast, contrast_bias, self.value(free))
+        self._pending = ("phases", plus.activation, minus.activation, self.value(free))
         return action
 
     # -- learning
@@ -219,7 +218,7 @@ class ActorCritic:
         cfg = self.config
         if self._pending is None:
             raise RuntimeError("learn needs an act first")
-        contrast, contrast_bias, value = self._pending
+        kind, first, second, value = self._pending
         free = self._free
         assert free is not None
         reward = np.asarray(reward, dtype=float)
@@ -231,10 +230,21 @@ class ActorCritic:
             self.trace_bias = np.zeros((batch, self.n))
             self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
         assert self.trace_bias is not None and self.trace_critic is not None
-        self.trace *= decay
-        self.trace += contrast
-        self.trace_bias *= decay
-        self.trace_bias += contrast_bias
+        fused = None
+        if kind == "phases" and _FUSED_TRACE:
+            fused = (first, second)  # the contrast, trace, and dopamine-weighted sum are one fused pass in learn
+        else:
+            if kind == "phases":
+                w = self.learner.engine.wiring
+                span = 2.0 * self.learner.config.beta
+                contrast = (first[:, w.pre] * first[:, w.post] - second[:, w.pre] * second[:, w.post]) / span
+                contrast_bias = (first - second) / span
+            else:
+                contrast, contrast_bias = first, second
+            self.trace *= decay
+            self.trace += contrast
+            self.trace_bias *= decay
+            self.trace_bias += contrast_bias
         self.trace_critic *= cfg.gamma * cfg.lam_critic
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
@@ -256,8 +266,14 @@ class ActorCritic:
         if cfg.dopamine_cap > 0:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         # three factors
-        step_scale = (delta[:, None] * self.trace).mean(axis=0)
-        step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
+        if fused is not None:
+            from .fused import trace_step
+
+            w = self.learner.engine.wiring
+            step_scale, step_bias = trace_step(self.trace, self.trace_bias, decay, fused[0], fused[1], w.pre, w.post, 2.0 * self.learner.config.beta, delta)
+        else:
+            step_scale = (delta[:, None] * self.trace).mean(axis=0)
+            step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
         self.updates += 1
         raw_scale, raw_bias = step_scale, step_bias
         if cfg.momentum > 0:  # a running average of each seam's own steps, corrected for its short history

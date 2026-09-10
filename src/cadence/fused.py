@@ -135,3 +135,38 @@ def fused_settle(v, a, drive, bias, dense, keep, rule, nudge, steps, tolerance):
         nudge is not None, target, nmask, beta, softmax_t, weight, int(steps), float(tolerance) if tolerance is not None else 0.0, tolerance is not None,
     )
     return s, taken
+
+
+if njit is not None:
+
+    @njit(cache=True)
+    def _trace_step(trace, trace_bias, decay, s_plus, s_minus, pre, post, span, delta, step_scale, step_bias):
+        """One pass per row: contrast from the two phases, trace decay and accumulation, the
+        dopamine-weighted sum into the step. ``trace`` is (batch, edges), ``trace_bias`` (batch, n)."""
+        batch, edges = trace.shape
+        n = trace_bias.shape[1]
+        for e in range(edges):
+            step_scale[e] = 0.0
+        for i in range(n):
+            step_bias[i] = 0.0
+        for b in range(batch):
+            d = delta[b] / batch
+            for e in range(edges):
+                c = (s_plus[b, pre[e]] * s_plus[b, post[e]] - s_minus[b, pre[e]] * s_minus[b, post[e]]) / span
+                t = decay * trace[b, e] + c
+                trace[b, e] = t
+                step_scale[e] += d * t
+            for i in range(n):
+                c = (s_plus[b, i] - s_minus[b, i]) / span
+                t = decay * trace_bias[b, i] + c
+                trace_bias[b, i] = t
+                step_bias[i] += d * t
+
+
+def trace_step(trace, trace_bias, decay, s_plus, s_minus, pre, post, span, delta):
+    """Fused three-factor step: returns ``(step_scale, step_bias)``; traces are updated in place."""
+    assert njit is not None
+    step_scale = np.empty(trace.shape[1])
+    step_bias = np.empty(trace_bias.shape[1])
+    _trace_step(trace, trace_bias, float(decay), s_plus, s_minus, pre, post, float(span), np.ascontiguousarray(delta, dtype=np.float64), step_scale, step_bias)
+    return step_scale, step_bias
