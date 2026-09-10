@@ -1,0 +1,363 @@
+"""Learning by dreaming: an off-policy actor and critic in one settlement net.
+
+The three-factor rule of ``plasticity`` learns from the stream as it comes. A
+brain also learns from what it keeps: recent experience is replayed, and a
+critic that reads the state and the action taken tells the actor which way
+to move. Here that is one wiring with five sets of owners:
+
+    input          the state, clamped
+    hidden_actor   the actor's hidden owners
+    action         a population code of the action (``Population``)
+    hidden_critic  the critic's hidden owners, reading the state and the action
+    q              one owner whose activation, times ``q_scale``, is the value of (state, action)
+
+Acting is a free settlement with the state clamped: the action owners come
+to rest at the policy's action. Learning is two dreams per replayed batch:
+
+* **the critic's dream**: clamp the state and the action that was taken,
+  settle, then nudge the ``q`` owner toward the target ``r + gamma * Q'``,
+  where ``Q'`` is read with the state that followed and the action the net
+  itself would take there, both from the *slow* strengths (the consolidated
+  copy, which is what a target network is); every critic seam moves on its
+  own two endpoints' contrast.
+* **the actor's dream**: clamp the state only, settle, then nudge the ``q``
+  owner *up*. The nudge travels back through the critic's seams into the
+  action owners, which move toward an action of higher value, and on into
+  the actor's seams, which move by the same local contrast. That is the
+  deterministic policy gradient (Silver et al. 2014) carried by settlement
+  instead of by a backward pass.
+
+Slow strengths follow the fast ones by a small fraction per update
+(consolidation), and are what the target is read with. No gradient is
+transported anywhere; every seam reads its own two ends and one broadcast
+target.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Any
+
+import numpy as np
+
+from .learning import Learner, LearnerConfig
+from .plasticity import Population
+from .settle import Nudge, SettledState, Settlement
+from .wiring import Wiring
+
+__all__ = ["DreamConfig", "DreamActorCritic", "actor_critic_wiring"]
+
+
+def actor_critic_wiring(
+    inputs: int,
+    hidden_actor: int,
+    action_owners: int,
+    hidden_critic: int,
+    *,
+    seed: int = 0,
+    density: float = 1.0,
+    init: float = 1.0,
+    lateral: float = 0.0,
+    excite: float = 0.0,
+    per_dim: int = 0,
+    pool: float = 0.0,
+) -> tuple[Wiring, np.ndarray, np.ndarray]:
+    """One wiring for actor and critic; returns it with the actor's and the critic's overlap masks.
+
+    Seams (each a tied symmetric pair): input-hidden_actor, hidden_actor-action,
+    input-hidden_critic, action-hidden_critic, hidden_critic-q. Sets: ``input``,
+    ``hidden_actor``, ``action``, ``hidden_critic``, ``q``.
+    """
+    rng = np.random.default_rng(seed)
+    i0 = 0
+    ha0 = inputs
+    a0 = ha0 + hidden_actor
+    hc0 = a0 + action_owners
+    q0 = hc0 + hidden_critic
+    p0 = q0 + 1
+    pools = action_owners // per_dim if (per_dim > 0 and pool != 0.0) else 0
+    n = p0 + pools
+    pre: list[np.ndarray] = []
+    post: list[np.ndarray] = []
+    sign: list[np.ndarray] = []
+
+    def block(a_start: int, a_size: int, b_start: int, b_size: int, dens: float) -> None:
+        mask = rng.random((a_size, b_size)) < dens
+        rows, cols = np.nonzero(mask)
+        magnitude = rng.uniform(0.0, 1.0, size=len(rows)) * np.sqrt(6.0 / (a_size * dens + b_size * dens)) * init
+        s = rng.choice([-1.0, 1.0], size=len(rows)) * magnitude
+        pre.append(a_start + rows)
+        post.append(b_start + cols)
+        sign.append(s)
+        pre.append(b_start + cols)  # the feedback direction, tied to the forward one
+        post.append(a_start + rows)
+        sign.append(s.copy())
+
+    block(i0, inputs, ha0, hidden_actor, density)
+    block(ha0, hidden_actor, a0, action_owners, 1.0)
+    block(i0, inputs, hc0, hidden_critic, density)
+    block(a0, action_owners, hc0, hidden_critic, 1.0)
+    block(hc0, hidden_critic, q0, 1, 1.0)
+    if per_dim > 0 and (lateral != 0.0 or excite != 0.0):
+        # a bump attractor inside each action dimension's population: neighbours excite, the rest inhibit,
+        # so the settled pattern is one bump wherever the drive puts it (a continuous attractor)
+        for d in range(action_owners // per_dim):
+            base = a0 + d * per_dim
+            a_idx, b_idx = np.meshgrid(np.arange(per_dim), np.arange(per_dim), indexing="ij")
+            distance = np.abs(a_idx.ravel() - b_idx.ravel())
+            keep = distance > 0
+            weight = np.where(distance == 1, excite, lateral)
+            pre.append(base + a_idx.ravel()[keep])
+            post.append(base + b_idx.ravel()[keep])
+            sign.append(weight[keep])
+    for d in range(pools):  # one inhibitory pool owner per action dimension: the bump keeps its mass
+        base = a0 + d * per_dim
+        members = base + np.arange(per_dim)
+        pre.append(members)
+        post.append(np.full(per_dim, p0 + d))
+        sign.append(np.full(per_dim, 1.0))
+        pre.append(np.full(per_dim, p0 + d))
+        post.append(members)
+        sign.append(np.full(per_dim, pool))
+    wiring = Wiring.from_edges(
+        n,
+        pre=np.concatenate(pre),
+        post=np.concatenate(post),
+        sign=np.concatenate(sign),
+        sets={
+            "input": range(i0, ha0),
+            "hidden_actor": range(ha0, a0),
+            "action": range(a0, hc0),
+            "hidden_critic": range(hc0, q0),
+            "q": [q0],
+            "pool": range(p0, n),
+        },
+        label=f"actor-critic:{inputs}x{hidden_actor}x{action_owners}|{hidden_critic}",
+    )
+    actor_set = set(range(i0, hc0))  # input, hidden_actor, action
+    critic_set = set(range(i0, ha0)) | set(range(a0, p0))  # input, action, hidden_critic, q
+    actor_mask = np.array([int(p) in actor_set and int(q) in actor_set for p, q in zip(wiring.pre, wiring.post, strict=True)])
+    critic_mask = np.array([int(p) in critic_set and int(q) in critic_set and not (int(p) < ha0 and int(q) < ha0) for p, q in zip(wiring.pre, wiring.post, strict=True)])
+    # an input-input overlap does not exist; input-hidden_actor belongs to the actor, input-hidden_critic to the critic
+    critic_mask &= ~actor_mask
+    fixed = np.isin(wiring.pre, np.arange(a0, hc0)) & np.isin(wiring.post, np.arange(a0, hc0))
+    fixed |= np.isin(wiring.pre, np.arange(p0, n)) | np.isin(wiring.post, np.arange(p0, n))
+    actor_mask &= ~fixed
+    critic_mask &= ~fixed
+    return wiring, actor_mask, critic_mask
+
+
+@dataclass(frozen=True, slots=True)
+class DreamConfig:
+    gamma: float = 0.99
+    q_scale: float = 100.0  # the value is q_scale times (activation of the q owner minus q_offset)
+    q_offset: float = 0.5  # the activation that stands for a value of zero, so negative values have room
+    normalize: float = 0.0  # >0: forgetting factor of a per-seam RMS that divides its step, the local adaptive step
+    normalize_floor: float = 1e-4
+    beta: float = 0.1  # nudge strength of both dreams
+    eta_critic: float = 0.5
+    eta_actor: float = 0.2
+    eta_bias: float = 0.02
+    consolidate: float = 0.005  # fraction of the fast strengths the slow ones take on per update
+    memory: int = 100_000  # transitions kept
+    batch: int = 128
+    warmup: int = 2_000  # transitions before the first dream
+    sigma: float = 0.2  # exploration noise on the action
+    candidates: int = 0  # >0: imagine this many actions around the actor's proposal, feel each in the critic, take the best
+    candidate_temperature: float = 0.0  # >0: draw among candidates by softmax of their values instead of the best
+    actor: str = "imitate"  # "imitate": the actor learns the action taken; "dream": the value-up nudge (deterministic policy gradient)
+    action_clamp: float = 3.0  # drive per unit bump level when an action is clamped for the critic
+    free_steps: int = 60
+    nudged_steps: int = 20
+    tolerance: float = 3e-3
+    centered: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return {k: getattr(self, k) for k in self.__slots__}
+
+
+class DreamActorCritic:
+    def __init__(self, wiring: Wiring, actor_mask: np.ndarray, critic_mask: np.ndarray, population: Population, rule, config: DreamConfig | None = None, seed: int = 0, backend: str = "cpu", encode=None, state_dim: int | None = None) -> None:
+        """``encode(states) -> drives`` lets the memory hold raw states of ``state_dim`` numbers instead of drives."""
+        self.config = config or DreamConfig()
+        self.encode = encode
+        self.population = population
+        self.wiring = wiring
+        self.actor_mask = np.asarray(actor_mask, dtype=bool)
+        self.critic_mask = np.asarray(critic_mask, dtype=bool)
+        self.rng = np.random.default_rng(seed)
+        engine = Settlement(wiring, rule, backend=backend)
+        self.learner = Learner(engine, wiring.sets["action"], LearnerConfig(beta=self.config.beta, eta=1.0, eta_bias=self.config.eta_bias, nudge="quadratic", tolerance=self.config.tolerance, free_steps=self.config.free_steps, nudged_steps=self.config.nudged_steps))
+        self.input_index = np.asarray(wiring.sets["input"])
+        self.action_index = np.asarray(wiring.sets["action"])
+        self.q_index = int(wiring.sets["q"][0])
+        self.q_mask = np.zeros(wiring.n)
+        self.q_mask[self.q_index] = 1.0
+        self.no_actor = np.ones(wiring.n)
+        self.no_actor[np.asarray(wiring.sets["hidden_actor"])] = 0.0  # the critic's dream silences the actor: the action owners hold the clamped action
+        self.action_clamp = self.config.action_clamp
+        self.slow_scale = engine.edge_scale.copy()
+        self.slow_bias = engine.bias.copy()
+        n = wiring.n
+        m = self.config.memory
+        width = n if encode is None else int(state_dim)
+        self.mem_state = np.zeros((m, width))
+        self.mem_next = np.zeros((m, width))
+        self.mem_action = np.zeros((m, population.dims))
+        self.mem_reward = np.zeros(m)
+        self.mem_done = np.zeros(m, dtype=bool)
+        self.size = 0
+        self.cursor = 0
+        self.updates = 0
+        self.settle_steps: list[int] = []
+        self.second_moment = np.zeros(wiring.edges)
+        self.second_moment_bias = np.zeros(n)
+
+    # -- engines
+
+    @property
+    def engine(self) -> Settlement:
+        return self.learner.engine
+
+    def target_engine(self) -> Settlement:
+        return self.engine.with_parameters(edge_scale=self.slow_scale, bias=self.slow_bias)
+
+    # -- acting
+
+    def act(self, drive: np.ndarray, greedy: bool = False, warm: SettledState | None = None) -> tuple[np.ndarray, SettledState]:
+        """The actor's proposal; with ``candidates`` the net imagines that many actions around it,
+        feels each in the critic, and takes the best (greedy) or draws by value (exploring)."""
+        cfg = self.config
+        state = self.engine.settle_batch(drive, steps=cfg.free_steps, state=warm, tolerance=cfg.tolerance)
+        self.settle_steps.append(state.steps)
+        proposal = self.population.read(state.activation[:, self.action_index])
+        if cfg.candidates <= 0 or self.size < cfg.warmup:
+            action = proposal if greedy else np.clip(proposal + cfg.sigma * self.rng.standard_normal(proposal.shape), -1.0, 1.0)
+            return action, state
+        batch, dims = proposal.shape
+        k = cfg.candidates
+        noise = cfg.sigma * self.rng.standard_normal((batch, k, dims))
+        noise[:, 0] = 0.0  # the proposal itself is a candidate
+        cands = np.clip(proposal[:, None, :] + noise, -1.0, 1.0)
+        drives = self._clamp_action(np.repeat(drive, k, axis=0), cands.reshape(batch * k, dims))
+        felt = self.engine.settle_batch(drives, steps=cfg.free_steps, tolerance=cfg.tolerance, mask=self.no_actor)
+        values = self.value(felt).reshape(batch, k)
+        if greedy or cfg.candidate_temperature <= 0:
+            pick = np.argmax(values, axis=1)
+        else:
+            z = values / cfg.candidate_temperature
+            z = z - z.max(axis=1, keepdims=True)
+            p = np.exp(z)
+            p /= p.sum(axis=1, keepdims=True)
+            u = self.rng.random(batch)
+            pick = np.minimum((p.cumsum(axis=1) < u[:, None]).sum(axis=1), k - 1)
+        return cands[np.arange(batch), pick], state
+
+    def remember(self, drive: np.ndarray, action: np.ndarray, reward: np.ndarray, next_drive: np.ndarray, done: np.ndarray) -> None:
+        for i in range(len(reward)):
+            self.mem_state[self.cursor] = drive[i]
+            self.mem_next[self.cursor] = next_drive[i]
+            self.mem_action[self.cursor] = action[i]
+            self.mem_reward[self.cursor] = reward[i]
+            self.mem_done[self.cursor] = done[i]
+            self.cursor = (self.cursor + 1) % self.config.memory
+            self.size = min(self.size + 1, self.config.memory)
+
+    # -- dreaming
+
+    def _clamp_action(self, drive: np.ndarray, action: np.ndarray) -> np.ndarray:
+        out = drive.copy()
+        out[:, self.action_index] = self.action_clamp * self.population.write(action)
+        return out
+
+    def value(self, state: SettledState) -> np.ndarray:
+        return (state.activation[:, self.q_index] - self.config.q_offset) * self.config.q_scale
+
+    def _contrast(self, plus: SettledState, minus: SettledState, span: float) -> tuple[np.ndarray, np.ndarray]:
+        w = self.wiring
+        hebb = (plus.activation[:, w.pre] * plus.activation[:, w.post]).mean(axis=0) - (minus.activation[:, w.pre] * minus.activation[:, w.post]).mean(axis=0)
+        return hebb / span, (plus.activation - minus.activation).mean(axis=0) / span
+
+    def _dream(self, drive: np.ndarray, target: np.ndarray, mask: np.ndarray, eta: float, owners: np.ndarray | None = None) -> dict[str, float]:
+        """Settle free under ``drive`` (``owners`` zeroes silenced ones), nudge the q owner toward ``target`` (in activation units), move the masked seams."""
+        cfg = self.config
+        free = self.engine.settle_batch(drive, steps=cfg.free_steps, tolerance=cfg.tolerance, mask=owners)
+        full = np.zeros((len(drive), self.wiring.n))
+        full[:, self.q_index] = target
+        plus = self.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(full, self.q_mask, cfg.beta), tolerance=cfg.tolerance, mask=owners)
+        if cfg.centered:
+            minus = self.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(full, self.q_mask, -cfg.beta), tolerance=cfg.tolerance, mask=owners)
+            overlap_term, owner_term = self._contrast(plus, minus, 2.0 * cfg.beta)
+        else:
+            overlap_term, owner_term = self._contrast(plus, free, cfg.beta)
+        self.learner.trainable_overlaps = mask.copy()
+        owners = np.zeros(self.wiring.n, dtype=bool)
+        owners[np.unique(self.wiring.post[mask])] = True
+        owners[self.input_index] = False
+        owners[self.action_index] = False  # the action owners' rest level is shared by actor and critic: fixed
+        self.learner.trainable_owners = owners
+        if cfg.normalize > 0:
+            rho = cfg.normalize
+            self.second_moment[mask] = rho * self.second_moment[mask] + (1 - rho) * overlap_term[mask] ** 2
+            self.second_moment_bias[owners] = rho * self.second_moment_bias[owners] + (1 - rho) * owner_term[owners] ** 2
+            overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
+            owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
+        report = self.learner.apply(eta * overlap_term, cfg.eta_bias * owner_term)
+        report["q"] = float(self.value(free).mean())
+        return report
+
+    def _imitate(self, drive: np.ndarray, action: np.ndarray) -> dict[str, float]:
+        cfg = self.config
+        free = self.engine.settle_batch(drive, steps=cfg.free_steps, tolerance=cfg.tolerance)
+        target = np.zeros((len(drive), self.wiring.n))
+        target[:, self.action_index] = self.population.write(action)
+        mask = np.zeros(self.wiring.n)
+        mask[self.action_index] = 1.0
+        plus = self.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(target, mask, cfg.beta), tolerance=cfg.tolerance)
+        minus = self.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(target, mask, -cfg.beta), tolerance=cfg.tolerance)
+        overlap_term, owner_term = self._contrast(plus, minus, 2.0 * cfg.beta)
+        self.learner.trainable_overlaps = self.actor_mask.copy()
+        owners = np.zeros(self.wiring.n, dtype=bool)
+        owners[np.unique(self.wiring.post[self.actor_mask])] = True
+        owners[self.input_index] = False
+        owners[self.action_index] = False
+        self.learner.trainable_owners = owners
+        report = self.learner.apply(cfg.eta_actor * overlap_term, cfg.eta_bias * owner_term)
+        report["q"] = float(np.abs(self.population.read(free.activation[:, self.action_index]) - action).mean())
+        return report
+
+    def update(self) -> dict[str, float] | None:
+        cfg = self.config
+        if self.size < max(cfg.warmup, cfg.batch):
+            return None
+        idx = self.rng.integers(0, self.size, size=cfg.batch)
+        state, nxt, action, reward, done = self.mem_state[idx], self.mem_next[idx], self.mem_action[idx], self.mem_reward[idx], self.mem_done[idx]
+        if self.encode is not None:
+            state, nxt = self.encode(state), self.encode(nxt)
+        # the target, read with the slow strengths: the next state's own action and its value
+        target_engine = self.target_engine()
+        nxt_free = target_engine.settle_batch(nxt, steps=cfg.free_steps, tolerance=cfg.tolerance)
+        next_action = self.population.read(nxt_free.activation[:, self.action_index])
+        nxt_q_state = target_engine.settle_batch(self._clamp_action(nxt, next_action), steps=cfg.free_steps, tolerance=cfg.tolerance, mask=self.no_actor)
+        q_next = self.value(nxt_q_state)
+        y = reward + cfg.gamma * np.where(done, 0.0, q_next)
+        y_activation = np.clip(y / cfg.q_scale + cfg.q_offset, 0.02, 0.98)
+        # the critic's dream: state and action clamped, q pulled toward the target
+        critic = self._dream(self._clamp_action(state, action), y_activation, self.critic_mask, cfg.eta_critic, owners=self.no_actor)
+        if cfg.actor == "dream":
+            # the actor's dream: state clamped, q pushed up; only the actor's seams move
+            actor = self._dream(state, np.full(cfg.batch, 1.0), self.actor_mask, cfg.eta_actor)  # the q owner pulled toward full activation: value up
+        else:
+            # the actor learns what was taken: a quadratic nudge of the action owners toward the taken action's bump
+            actor = self._imitate(state, action)
+        # consolidation: the slow strengths follow
+        self.slow_scale += cfg.consolidate * (self.engine.edge_scale - self.slow_scale)
+        self.slow_bias += cfg.consolidate * (self.engine.bias - self.slow_bias)
+        self.updates += 1
+        return {"critic_step": critic["scale_step"], "actor_step": actor["scale_step"], "q": critic["q"], "target": float(y.mean()), "td": float(np.abs(y - critic["q"]).mean())}
+
+    def parameters(self) -> int:
+        return self.learner.parameters()
+
+    def to_dict(self) -> dict[str, Any]:
+        return {"config": self.config.to_dict(), "updates": self.updates, "learner": self.learner.to_dict()}

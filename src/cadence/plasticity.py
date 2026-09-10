@@ -80,10 +80,12 @@ class ActorCriticConfig:
     eta_critic: float = 0.05
     normalize: float = 0.0  # >0: forgetting factor of the per-seam RMS that divides its step
     normalize_floor: float = 1e-3
+    momentum: float = 0.0  # >0: each seam steps on a running average of its own steps, so sign noise cancels before the RMS divides it
     entropy: float = 0.0  # >0: a standing nudge toward the uniform policy, a taste for variety
     critic_init: float = 0.0
     dopamine_cap: float = 1.0  # the broadcast saturates: |delta| is clipped here (0: no cap)
     dopamine_center: float = 0.0  # >0: forgetting factor of a running mean and scale of delta; the phasic signal is the deviation from the tonic level
+    step_cap: float = 0.0  # >0: no seam moves by more than this in one update, a bound on synaptic change per event
     critic_normalize: bool = True  # the critic's step is divided by its trace's energy, so its step size is scale-free
 
     def to_dict(self) -> dict[str, Any]:
@@ -128,6 +130,8 @@ class ActorCritic:
         self.trace_critic: np.ndarray | None = None
         self.second_moment = np.zeros(self.edges)
         self.second_moment_bias = np.zeros(self.n)
+        self.velocity = np.zeros(self.edges)
+        self.velocity_bias = np.zeros(self.n)
         self.delta_mean = 0.0
         self.delta_var = 1.0
         self._free: SettledState | None = None
@@ -254,13 +258,22 @@ class ActorCritic:
         # three factors
         step_scale = (delta[:, None] * self.trace).mean(axis=0)
         step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
+        if cfg.momentum > 0:
+            self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * step_scale
+            self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * step_bias
+            step_scale, step_bias = self.velocity, self.velocity_bias
         if cfg.normalize > 0:
             rho = cfg.normalize
             self.second_moment = rho * self.second_moment + (1 - rho) * step_scale**2
             self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * step_bias**2
             step_scale = step_scale / (np.sqrt(self.second_moment) + cfg.normalize_floor)
             step_bias = step_bias / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
-        report = self.learner.apply(cfg.eta * step_scale, cfg.eta_bias * step_bias)
+        step_scale = cfg.eta * step_scale
+        step_bias = cfg.eta_bias * step_bias
+        if cfg.step_cap > 0:
+            step_scale = np.clip(step_scale, -cfg.step_cap, cfg.step_cap)
+            step_bias = np.clip(step_bias, -cfg.step_cap, cfg.step_cap)
+        report = self.learner.apply(step_scale, step_bias)
         critic_trace = self.trace_critic
         if cfg.critic_normalize:
             critic_trace = critic_trace / (1.0 + (critic_trace**2).sum(axis=1, keepdims=True))
