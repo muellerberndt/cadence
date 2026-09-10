@@ -42,7 +42,7 @@ import numpy as np
 
 from .learning import Learner, LearnerConfig
 from .plasticity import Population
-from .settle import Nudge, SettledState, Settlement
+from .settle import _FUSED, Nudge, SettledState, Settlement
 from .wiring import Wiring
 
 __all__ = ["DreamConfig", "DreamActorCritic", "actor_critic_wiring", "DiscreteCode"]
@@ -310,6 +310,10 @@ class DreamActorCritic:
 
     def _contrast(self, plus: SettledState, minus: SettledState, span: float) -> tuple[np.ndarray, np.ndarray]:
         w = self.wiring
+        if _FUSED:
+            from .fused import contrast_mean
+
+            return contrast_mean(plus.activation, minus.activation, w.pre, w.post, span)
         hebb = (plus.activation[:, w.pre] * plus.activation[:, w.post]).mean(axis=0) - (minus.activation[:, w.pre] * minus.activation[:, w.post]).mean(axis=0)
         return hebb / span, (plus.activation - minus.activation).mean(axis=0) / span
 

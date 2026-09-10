@@ -170,3 +170,35 @@ def trace_step(trace, trace_bias, decay, s_plus, s_minus, pre, post, span, delta
     step_bias = np.empty(trace_bias.shape[1])
     _trace_step(trace, trace_bias, float(decay), s_plus, s_minus, pre, post, float(span), np.ascontiguousarray(delta, dtype=np.float64), step_scale, step_bias)
     return step_scale, step_bias
+
+
+if njit is not None:
+
+    @njit(cache=True)
+    def _contrast_mean(s_plus, s_minus, pre, post, span, out_edges, out_owners):
+        """Batch-mean contrast per overlap and per owner, one pass, no (batch, edges) temporary."""
+        batch, n = s_plus.shape
+        edges = pre.shape[0]
+        for e in range(edges):
+            out_edges[e] = 0.0
+        for i in range(n):
+            out_owners[i] = 0.0
+        for b in range(batch):
+            for e in range(edges):
+                out_edges[e] += s_plus[b, pre[e]] * s_plus[b, post[e]] - s_minus[b, pre[e]] * s_minus[b, post[e]]
+            for i in range(n):
+                out_owners[i] += s_plus[b, i] - s_minus[b, i]
+        scale = 1.0 / (batch * span)
+        for e in range(edges):
+            out_edges[e] *= scale
+        for i in range(n):
+            out_owners[i] *= scale
+
+
+def contrast_mean(s_plus, s_minus, pre, post, span):
+    """Fused ``Learner.contrast``: returns ``(per_overlap, per_owner)`` batch means divided by ``span``."""
+    assert njit is not None
+    out_edges = np.empty(pre.shape[0])
+    out_owners = np.empty(s_plus.shape[1])
+    _contrast_mean(np.ascontiguousarray(s_plus), np.ascontiguousarray(s_minus), pre, post, float(span), out_edges, out_owners)
+    return out_edges, out_owners
