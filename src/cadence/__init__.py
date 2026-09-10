@@ -23,6 +23,7 @@ from .checkpoint import load, save
 from .custody import Source, fetch, manifest
 from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
 from .plasticity import ActorCritic, ActorCriticConfig, Population
+from .structure import Seams, SleepConfig
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
 from .receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 from .reference import Ledger, conformance, settle_owner_by_owner
@@ -34,6 +35,8 @@ __all__ = [
     "ActorCritic",
     "ActorCriticConfig",
     "Population",
+    "Seams",
+    "SleepConfig",
     "Adaptation",
     "GradedRule",
     "Learner",

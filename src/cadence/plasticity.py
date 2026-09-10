@@ -49,6 +49,7 @@ class Population:
     size: int = 9
     width: float = 0.25
     sigma: float = 0.3
+    temperature: float = 0.1  # the readout is the softmax-weighted mean of the centres: a soft winner
 
     @property
     def centres(self) -> np.ndarray:
@@ -56,10 +57,11 @@ class Population:
 
     def read(self, activation: np.ndarray) -> np.ndarray:
         """``(batch, dims * size)`` activations to ``(batch, dims)`` values in ``[-1, 1]``."""
-        s = np.maximum(activation.reshape(len(activation), self.dims, self.size), 0.0)
-        weight = s.sum(axis=2)
-        value = (s * self.centres[None, None, :]).sum(axis=2) / np.maximum(weight, 1e-9)
-        return np.where(weight > 1e-9, value, 0.0)
+        s = activation.reshape(len(activation), self.dims, self.size) / self.temperature
+        s = s - s.max(axis=2, keepdims=True)
+        w = np.exp(s)
+        w /= w.sum(axis=2, keepdims=True)
+        return (w * self.centres[None, None, :]).sum(axis=2)
 
     def write(self, value: np.ndarray) -> np.ndarray:
         """``(batch, dims)`` values to ``(batch, dims * size)`` bumps."""
@@ -80,6 +82,9 @@ class ActorCriticConfig:
     normalize_floor: float = 1e-3
     entropy: float = 0.0  # >0: a standing nudge toward the uniform policy, a taste for variety
     critic_init: float = 0.0
+    dopamine_cap: float = 1.0  # the broadcast saturates: |delta| is clipped here (0: no cap)
+    dopamine_center: float = 0.0  # >0: forgetting factor of a running mean and scale of delta; the phasic signal is the deviation from the tonic level
+    critic_normalize: bool = True  # the critic's step is divided by its trace's energy, so its step size is scale-free
 
     def to_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__slots__}
@@ -123,6 +128,8 @@ class ActorCritic:
         self.trace_critic: np.ndarray | None = None
         self.second_moment = np.zeros(self.edges)
         self.second_moment_bias = np.zeros(self.n)
+        self.delta_mean = 0.0
+        self.delta_var = 1.0
         self._free: SettledState | None = None
         self._pending: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
         self.updates = 0
@@ -198,8 +205,13 @@ class ActorCritic:
 
     # -- learning
 
-    def learn(self, reward: np.ndarray, done: np.ndarray, next_drive: np.ndarray) -> dict[str, float]:
-        """Dopamine from the reward and the next state's value; every seam moves on its trace."""
+    def learn(self, reward: np.ndarray, done: np.ndarray, next_drive: np.ndarray, bootstrap: np.ndarray | None = None) -> dict[str, float]:
+        """Dopamine from the reward and the next state's value; every seam moves on its trace.
+
+        ``done`` rows start their next life from rest and, unless ``bootstrap`` gives them
+        a value, bootstrap from zero. A time limit is not a terminal state: pass the
+        value of the last observation (``value_of``) as ``bootstrap`` for a truncated row.
+        """
         cfg = self.config
         if self._pending is None:
             raise RuntimeError("learn needs an act first")
@@ -230,8 +242,15 @@ class ActorCritic:
             v[done] = 0.0
             a[done] = 0.0
             next_state = self.learner.free(next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps))
-        next_value = np.where(done, 0.0, self.value(next_state))
+        next_value = np.where(done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), self.value(next_state))
         delta = reward + cfg.gamma * next_value - value
+        if cfg.dopamine_center > 0:
+            rho = cfg.dopamine_center
+            self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
+            self.delta_var = rho * self.delta_var + (1 - rho) * float(((delta - self.delta_mean) ** 2).mean())
+            delta = (delta - self.delta_mean) / (np.sqrt(self.delta_var) + 1e-6)
+        if cfg.dopamine_cap > 0:
+            delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         # three factors
         step_scale = (delta[:, None] * self.trace).mean(axis=0)
         step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
@@ -242,7 +261,10 @@ class ActorCritic:
             step_scale = step_scale / (np.sqrt(self.second_moment) + cfg.normalize_floor)
             step_bias = step_bias / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
         report = self.learner.apply(cfg.eta * step_scale, cfg.eta_bias * step_bias)
-        critic_step = cfg.eta_critic * (delta[:, None] * self.trace_critic).mean(axis=0)
+        critic_trace = self.trace_critic
+        if cfg.critic_normalize:
+            critic_trace = critic_trace / (1.0 + (critic_trace**2).sum(axis=1, keepdims=True))
+        critic_step = cfg.eta_critic * (delta[:, None] * critic_trace).mean(axis=0)
         self.w_critic += critic_step[:-1]
         self.b_critic += float(critic_step[-1])
         # a finished row forgets its traces
@@ -257,6 +279,10 @@ class ActorCritic:
         report["value"] = float(value.mean())
         report["free_steps"] = float(next_state.steps)
         return report
+
+    def value_of(self, drive: np.ndarray) -> np.ndarray:
+        """The critic's value of a drive, settled cold, without touching the cached state."""
+        return self.value(self.learner.free(drive))
 
     def reset(self) -> None:
         self._free = None
