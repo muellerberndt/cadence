@@ -142,6 +142,7 @@ class SettledState:
     adaptation: np.ndarray
     steps: int
     trajectory: np.ndarray | None = None
+    repair: np.ndarray | None = None  # per row: the total movement of the published activations
 
     @property
     def batched(self) -> bool:
@@ -326,6 +327,7 @@ class Settlement:
             adaptation=out.adaptation[0],
             steps=out.steps,
             trajectory=None if out.trajectory is None else out.trajectory[:, 0, :],
+            repair=None if out.repair is None else out.repair[0],
         )
 
     def settle_batch(
@@ -352,13 +354,13 @@ class Settlement:
         if v.shape != (batch, n):
             raise ValueError("state batch does not match the drive batch")
         if self.backend == "torch":
-            v, a, s, traj, taken = self._torch.run(
+            v, a, s, traj, taken, repair = self._torch.run(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance
             )
         elif self._blocks is not None and not trajectory and _FUSED:
             from .fused import fused_settle
 
-            s, taken = fused_settle(
+            s, taken, repair = fused_settle(
                 v,
                 a,
                 drive,
@@ -374,10 +376,12 @@ class Settlement:
             )
             traj = None
         else:
-            v, a, s, traj, taken = self._run_numpy(
+            v, a, s, traj, taken, repair = self._run_numpy(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance
             )
-        return SettledState(v=v, activation=s, adaptation=a, steps=taken, trajectory=traj)
+        return SettledState(
+            v=v, activation=s, adaptation=a, steps=taken, trajectory=traj, repair=repair
+        )
 
     def _inbox(self, s: np.ndarray, blocks: BlockTransport | None = None) -> np.ndarray:
         """Transport: one segmented sum of every overlap's message into its owner's inbox."""
@@ -399,7 +403,7 @@ class Settlement:
         want: bool,
         nudge: Nudge | None,
         tolerance: float | None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray]:
         rule = self.rule
         adapt = rule.adaptation
         traj = np.zeros((steps, *v.shape)) if want else None
@@ -410,6 +414,7 @@ class Settlement:
         if masked:
             s *= keep
         taken = 0
+        repair = np.zeros(len(v))
         for t in range(steps):
             total = self._inbox(s, blocks)
             total += standing
@@ -431,11 +436,13 @@ class Settlement:
             if traj is not None:
                 traj[t] = s
             taken = t + 1
-            if tolerance is not None and float(np.abs(s - previous).max()) < tolerance:
+            movement = np.abs(s - previous)
+            repair += movement.sum(axis=1)
+            if tolerance is not None and float(movement.max()) < tolerance:
                 break
         if traj is not None:
             traj = traj[:taken]
-        return v, a, s, traj, taken
+        return v, a, s, traj, taken, repair
 
     def readings(
         self, state: SettledState, names: Sequence[str], i: int = 0
@@ -549,7 +556,7 @@ class _TorchKernel:
         want: bool,
         nudge: Nudge | None,
         tolerance: float | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int]:
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray]:
         torch, rule = self.torch, self.rule
 
         def to(x: np.ndarray) -> Any:
@@ -568,6 +575,7 @@ class _TorchKernel:
                 weight = to(np.asarray(nudge.weight, dtype=float))[:, None]
         traj = []
         taken = 0
+        repair = torch.zeros(batch, dtype=self.dtype, device=self.device)
         cache: list[Any] = [None] * (0 if self.layout is None else self.layout.pairs)
         previous = None
         with torch.no_grad():
@@ -600,7 +608,9 @@ class _TorchKernel:
                 if want:
                     traj.append(s.detach().cpu().double().numpy())
                 taken = t + 1
-                if tolerance is not None and float((s - previous).abs().max()) < tolerance:
+                movement = (s - previous).abs()
+                repair = repair + movement.sum(dim=1)
+                if tolerance is not None and float(movement.max()) < tolerance:
                     break
         return (
             v.cpu().double().numpy(),
@@ -608,4 +618,5 @@ class _TorchKernel:
             s.cpu().double().numpy(),
             np.stack(traj) if want else None,
             taken,
+            repair.cpu().double().numpy(),
         )

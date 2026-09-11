@@ -30,6 +30,12 @@ The cost of a settlement step is now the cost of the owners that move.
   a leaky trace of the hidden owners' equilibria across a batch of streams and writes it into
   the context clamp, so each state reverberates and fades. A test learns to name the symbol
   seen one input ago from a window of one, which no window can.
+- `SettledState.repair`: the total movement of the published activations during a settlement,
+  one number per row, on every backend. It is the work the net did to get from where it was
+  to rest: the surprise of an input, measured rather than inferred from the step count.
+- `Learner(slots=)`: the output owners as equal groups, each its own softmax choice, all nudged
+  together; `targets` takes one label per slot and `predict` returns one choice per slot. A
+  whole utterance settles at once.
 - CI is green again: the 0.5.0 modules are formatted and typed.
 - Tests: 58.
 

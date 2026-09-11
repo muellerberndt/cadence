@@ -106,12 +106,20 @@ class Learner:
     trainable_owners: np.ndarray | None = None  # bool per owner: whose bias moves and decays
     symmetric: bool = True  # an overlap and its reverse share one scale: one seam, one weight
     tie_groups: np.ndarray | None = None  # int per overlap (-1: none); a group shares one scale
+    slots: int = 1  # the outputs as this many equal groups, each its own choice, nudged together
     updates: int = 0
 
     def __post_init__(self) -> None:
         self.output_index = np.asarray(list(self.outputs), dtype=np.int64)
         self.output_mask = np.zeros(self.engine.wiring.n)
         self.output_mask[self.output_index] = 1.0
+        if self.slots < 1 or len(self.output_index) % self.slots:
+            raise ValueError("slots must divide the number of output owners")
+        self.slot_size = len(self.output_index) // self.slots
+        self.output_groups: np.ndarray | None = None
+        if self.slots > 1:  # one softmax per slot: a whole utterance settles at once
+            self.output_groups = np.full(self.engine.wiring.n, -1, dtype=np.int64)
+            self.output_groups[self.output_index] = np.repeat(np.arange(self.slots), self.slot_size)
         if self.trainable_overlaps is None:
             self.trainable_overlaps = np.ones(self.engine.wiring.edges, dtype=bool)
         if self.trainable_owners is None:
@@ -148,7 +156,14 @@ class Learner:
     def nudge_for(self, target: np.ndarray, beta: float, weight: np.ndarray | None = None) -> Nudge:
         cfg = self.config
         temperature = cfg.temperature if cfg.nudge == "cross_entropy" else None
-        return Nudge(target, self.output_mask, beta, softmax_temperature=temperature, weight=weight)
+        return Nudge(
+            target,
+            self.output_mask,
+            beta,
+            softmax_temperature=temperature,
+            weight=weight,
+            groups=self.output_groups,
+        )
 
     def nudged(
         self,
@@ -174,11 +189,18 @@ class Learner:
         )
 
     def targets(self, labels: np.ndarray) -> np.ndarray:
-        """Per-owner target activation for a batch of class labels."""
+        """Per-owner target activation for class labels: ``(batch,)``, or ``(batch, slots)``."""
+        labels = np.asarray(labels)
         batch = len(labels)
         target = np.zeros((batch, self.engine.wiring.n))
         target[:, self.output_index] = self.config.off_level
-        target[np.arange(batch), self.output_index[np.asarray(labels)]] = self.config.target_level
+        if self.slots > 1:
+            if labels.ndim != 2 or labels.shape[1] != self.slots:
+                raise ValueError("a slotted learner takes one label per slot")
+            owners = self.output_index[labels + np.arange(self.slots)[None, :] * self.slot_size]
+            target[np.arange(batch)[:, None], owners] = self.config.target_level
+        else:
+            target[np.arange(batch), self.output_index[labels]] = self.config.target_level
         return target
 
     # -- the rule
@@ -352,9 +374,12 @@ class Learner:
     # -- readout
 
     def predict(self, drive: np.ndarray) -> np.ndarray:
-        """Class index of the most active output owner after a free settlement."""
+        """Most active output owner after a free settlement; ``(batch, slots)`` when slotted."""
         free = self.free(drive)
-        return np.asarray(np.argmax(free.activation[:, self.output_index], axis=1), dtype=np.int64)
+        out = free.activation[:, self.output_index]
+        if self.slots > 1:
+            out = out.reshape(len(out), self.slots, self.slot_size)
+        return np.asarray(np.argmax(out, axis=-1), dtype=np.int64)
 
     def accuracy(self, drive: np.ndarray, labels: np.ndarray, batch: int = 256) -> float:
         hits = 0

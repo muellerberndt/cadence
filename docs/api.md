@@ -41,7 +41,8 @@ docstrings in the source carry the details.
 - `clamp_vector(clamp)`, `clamp_levels(levels)` (levels in [0, 1] times the clamp amplitude),
   `readings(state, names)`, `with_parameters(*, edge_scale, log_gain, bias)`, `weights`
   (effective drive per overlap), `dense()` (the `W[pre, post]` matrix), `to_dict()`.
-- `SettledState`: `v`, `activation`, `adaptation`, `steps`, `trajectory`; `row(i)`,
+- `SettledState`: `v`, `activation`, `adaptation`, `steps`, `trajectory`, `repair` (the total
+  movement of the activations, per row); `row(i)`,
   `mean(members, i)`, `fraction_active(members, level, i)`, `active(level, i)`, `batched`.
 - `Nudge(target, mask, beta, softmax_temperature=None, weight=None)`: extra drive
   `beta · (target − s)` on the masked owners, or `beta · (target − softmax(s/T))` over the

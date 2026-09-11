@@ -104,6 +104,7 @@ if njit is not None:
         for k in range(group.shape[0]):
             position[group[k]] = k
         taken = 0
+        repair = np.zeros(batch)
         p = np.empty(group.shape[0])
         zmax = np.empty(max(ngroups, 1))
         total = np.empty(max(ngroups, 1))
@@ -182,6 +183,7 @@ if njit is not None:
                             if masked:
                                 sn *= keep[i]
                             d = abs(sn - s[b, i])
+                            repair[b] += d
                             if d > 0.0:
                                 moved_range[r] = True
                                 if d > moved:
@@ -197,7 +199,7 @@ if njit is not None:
             taken = t + 1
             if use_tolerance and moved < tolerance:
                 break
-        return taken
+        return taken, repair
 
 
 def fused_settle(
@@ -213,8 +215,8 @@ def fused_settle(
     steps: int,
     tolerance: float | None,
     activation: np.ndarray | None = None,
-) -> tuple[np.ndarray, int]:
-    """Run the fused kernel in place on ``v`` and ``a``; returns ``(s, taken)``.
+) -> tuple[np.ndarray, int, np.ndarray]:
+    """Run the fused kernel in place on ``v`` and ``a``; returns ``(s, taken, repair)``.
 
     ``activation`` is the published activation that goes with ``v`` when the
     settlement continues from a state; it saves recomputing it."""
@@ -272,7 +274,7 @@ def fused_settle(
     elif nudge is not None:
         nudged = np.searchsorted(lay.starts, np.flatnonzero(nmask > 0), side="right") - 1
         freezable[nudged] = False
-    taken = _kernel(
+    taken, repair = _kernel(
         v,
         a,
         s,
@@ -306,7 +308,7 @@ def fused_settle(
         float(tolerance) if tolerance is not None else 0.0,
         tolerance is not None,
     )
-    return s, taken
+    return s, taken, repair
 
 
 if njit is not None:
