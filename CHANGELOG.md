@@ -40,8 +40,6 @@ The cost of a settlement step is now the cost of the owners that move.
   a few numbers each), `grow` (development into a wiring with named sets, deterministic in
   the seed), `mutate`, `evolve` (selection over constitutions under a fitness the caller
   supplies). The phase before learning; not a new primitive.
-- `docs/brain.md`: every feature of a brain and its simplest constituent here, with status,
-  and the thesis on how a patch net becomes a language model.
 - CI is green again: the 0.5.0 modules are formatted and typed.
 - Tests: 58.
 
