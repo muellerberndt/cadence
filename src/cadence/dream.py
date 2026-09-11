@@ -66,8 +66,10 @@ class DiscreteCode:
         return self.actions
 
     def read(self, activation: np.ndarray) -> np.ndarray:
-        return np.argmax(activation.reshape(len(activation), self.actions), axis=1)[:, None].astype(
-            float
+        return np.asarray(
+            np.argmax(activation.reshape(len(activation), self.actions), axis=1)[:, None].astype(
+                float
+            )
         )
 
     def write(self, value: np.ndarray) -> np.ndarray:

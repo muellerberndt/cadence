@@ -187,7 +187,7 @@ class Bins:
     def read(self, activation: np.ndarray, temperature: float) -> np.ndarray:
         """The most likely level per dimension: ``(batch, dims)`` values in ``[-1, 1]``."""
         s = activation.reshape(len(activation), self.dims, self.size)
-        return self.centres[np.argmax(s, axis=2)]
+        return np.asarray(self.centres[np.argmax(s, axis=2)])
 
 
 @dataclass(frozen=True)
@@ -324,7 +324,7 @@ class ActorCritic:
         z = s / self.learner.config.temperature
         z = z - z.max(axis=1, keepdims=True)
         p = np.exp(z)
-        return p / p.sum(axis=1, keepdims=True)
+        return np.asarray(p / p.sum(axis=1, keepdims=True))
 
     def settle(self, drive: np.ndarray) -> SettledState:
         """The free settlement for ``drive``, warm from the last one; cached for ``act``."""
@@ -667,7 +667,7 @@ class Rehearsal:
         z = s / self.learner.config.temperature
         z = z - z.max(axis=-1, keepdims=True)
         p = np.exp(z)
-        return p / p.sum(axis=-1, keepdims=True)
+        return np.asarray(p / p.sum(axis=-1, keepdims=True))
 
     def settle(self, drive: np.ndarray, warm: bool = True) -> SettledState:
         if self._free is not None and self._free.v.shape[0] != len(drive):
@@ -701,7 +701,7 @@ class Rehearsal:
                 "value": self.critic.value(drive),
             }
         if self.bins is not None:
-            return self.bins.centres[choice]
+            return np.asarray(self.bins.centres[choice])
         return np.asarray(choice, dtype=np.int64)
 
     # -- the window
