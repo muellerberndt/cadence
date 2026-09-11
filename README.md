@@ -19,7 +19,7 @@ Owner-local repair, no backward pass, held-out tests, receipts.</p>
   <a href="docs/quickstart.md">Quickstart</a> ·
   <a href="docs/learning.md">How it learns</a> ·
   <a href="https://github.com/muellerberndt/cadence-examples">Examples</a> ·
-  <a href="https://claude.ai/code/artifact/14644daf-1a2f-47b3-8c2c-f896c5ca3c60">Play the demos</a>
+  <a href="https://claude.ai/code/artifact/ee7a8b53-be8c-4c34-9f91-43d6eaf77be8">Play the demos</a>
 </p>
 
 ---
@@ -134,21 +134,22 @@ The [quickstart](docs/quickstart.md) does all of this on a connectome, end to en
 ## Examples
 
 Everything in [cadence-examples](https://github.com/muellerberndt/cadence-examples) is a
-tutorial, a script, a receipt, and for the games a page in which the net settles live. The
-[hub](https://claude.ai/code/artifact/14644daf-1a2f-47b3-8c2c-f896c5ca3c60) links them all;
+tutorial, a script that trains something and measures the backprop baseline in the same
+run, a receipt, the trained net, and a page in which the net settles live. The
+[hub](https://claude.ai/code/artifact/ee7a8b53-be8c-4c34-9f91-43d6eaf77be8) links them all;
 [How a patch net learns](https://github.com/muellerberndt/cadence-examples/blob/main/HOW_IT_LEARNS.md)
 is the tutorial they build on.
 
 | rung | what | receipt says |
 |---|---|---|
 | [01 digits](https://github.com/muellerberndt/cadence-examples/tree/main/01_digits) | classification, 8×8 digits | 0.962 ± 0.003 held-out in 20 epochs; a same-size MLP: 0.967 in 50 |
-| [03 recall](https://github.com/muellerberndt/cadence-examples/tree/main/03_recall) | associative recall with no trained parameters: each pair one Hebbian outer product, each query a settlement | the value of any key in a context of up to 128 pairs, 1.00 settled and 1.00 in one read; a two-layer transformer trained on the task 0.30 at 4 pairs, 0.01 at 128 |
-| [04 Pong](https://github.com/muellerberndt/cadence-examples/tree/main/04_pong) | a paddle learns from pixels and reward | see its tutorial: how a reward becomes a nudge, and what credit assignment does to a paddle |
-| [07 chorales](https://github.com/muellerberndt/cadence-examples/tree/main/07_music) | continues Bach chorales chord by chord, with sound in the page | pitch-set F1 0.483, 16.6 bits per chord; same-size MLP 0.470 and 24.7 |
+| [02 recall](https://github.com/muellerberndt/cadence-examples/tree/main/02_recall) | associative recall with no trained parameters: each pair one Hebbian outer product, each query a settlement | the value of any key in a context of up to 128 pairs, 1.00 settled and 1.00 in one read; a two-layer transformer given 5,000 Adam steps on the task did not learn it (0.30 at 4 pairs, 0.01 at 128) |
+| [03 Connect Four](https://github.com/muellerberndt/cadence-examples/tree/main/03_connect_four) | imitates a depth-4 search from self-play positions; play it | agrees with the search on 0.527 of positions, the same-size MLP 0.533; 91-0-9 against a random mover |
+| [04 Pong](https://github.com/muellerberndt/cadence-examples/tree/main/04_pong) | a paddle learns from pixels and reward, with an adaptive local step; play it | 88% of balls returned against 93% for REINFORCE with Adam on the same rollouts; the same net taught a tracker's moves 96% |
 
-The ladder keeps the rungs whose receipts show the patch net ahead of the strongest
-baseline in the same script, plus the digits tutorial. The earlier rungs (MNIST, Connect
-Four, Shakespeare, the sign writer, cart-pole, the *C. elegans* connectome) are at
+Every rung has a page: draw a digit, write a memory and ask it, play Connect Four or Pong
+against the net. The earlier rungs (MNIST, Shakespeare, the sign writer, cart-pole, the
+chorale writer, the *C. elegans* connectome) are at
 [tag v0.5.0](https://github.com/muellerberndt/cadence-examples/tree/v0.5.0) with their
 receipts, which the docs still cite where they measured something.
 
@@ -187,10 +188,11 @@ receipts, which the docs still cite where they measured something.
 
 ## Against backprop, plainly
 
-Same shape, same count of numbers, same data: on every rung of the examples the rule
-reaches the accuracy of the backprop baseline in fewer passes over the data, and on Pong it
-learns more from the same rollouts. It costs ten to a hundred times the wall-clock on a
-laptop core, because a settlement is tens of steps where a pass is one. It gives no
+Same shape, same count of numbers, same data: on the supervised rungs of the examples the
+rule reaches the accuracy of the backprop baseline in fewer passes over the data; from
+reward it learns less than REINFORCE with Adam from the same rollouts (Pong: 88% of balls
+against 93%). It costs ten to a hundred times the wall-clock on a laptop core, because a
+settlement is tens of steps where a pass is one. It gives no
 parameter advantage: a seam is a weight. Every receipt records all three numbers.
 
 ## Discipline

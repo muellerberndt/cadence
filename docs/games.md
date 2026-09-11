@@ -96,21 +96,25 @@ evaluation, and report both, with wall-clock.
 
 Across Pong and cart-pole the pattern is the same: the nudged rule learns from reward,
 and learns less than REINFORCE with Adam from the same rollouts. Pong from two frames
-plateaus near 79% of balls returned for every variant tried (nudge strength, settle
-tolerance, batch size, a local momentum, a local per-seam normalisation, potential-based
-and immediate credit), against 86 to 93% for the baseline, and the same net taught the
-tracker's own moves instead returns 95%. Cart-pole balances for 154 steps against 392.
+plateaued near 79% of balls returned with the plain step for every variant tried (nudge
+strength, settle tolerance, batch size, a local momentum, a local per-seam normalisation,
+potential-based and immediate credit); an adaptive local step, each seam's running-average
+contrast over its running RMS with both corrected for their short history, lifts it to
+88% (three seeds 88, 88, 90) against 93% for the baseline, and the same net taught the
+tracker's own moves instead returns 96%. Cart-pole balances for 154 steps against 392.
 The gap is not representational and not in the rule as a gradient estimator on
 supervised targets, where the ladder shows parity; it is in the interaction between a
 noisy, advantage-weighted target and a small-nudge estimate: a large advantage times the
 nudge strength leaves the regime where the contrast is a gradient, a small one leaves
-the contrast in the settle tolerance's noise, and Adam's per-parameter step sizes are
-what the baseline has that the rule does not. Two consequences for practice: keep
-`beta · |advantage|` below about 0.3 (clip advantages or lower `beta`), and prefer a
-dense, potential-based reward with a short credit horizon, which is the only change that
-moved the Pong policy from an absolute rule to a relative one.
+the contrast in the settle tolerance's noise. Adam's per-parameter step sizes were the
+larger half of the gap, and a seam can have them from its own history alone (the step in
+rung 04's script; `LearnerConfig.normalize` and `momentum` are the same idea without the
+short-history correction, which is why they hurt early). Two consequences for practice:
+use the adaptive step from the first update, and prefer a dense, potential-based reward
+with a short credit horizon, which is the change that moved the Pong policy from an
+absolute rule to a relative one.
 
 ## Putting a trained net in a page
 
-Both game pages settle the net in JavaScript, owner by owner, with the same rule; see
+Every page settles the net in JavaScript, owner by owner, with the same rule; see
 [pages](pages.md).

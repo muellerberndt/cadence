@@ -20,9 +20,9 @@ declared overlaps, settling to rest by owner-local repair. Read in this order th
 
 The worked, runnable versions of everything in [learning](learning.md) and [games](games.md)
 live in [cadence-examples](https://github.com/muellerberndt/cadence-examples): digits,
-associative recall, Pong and chorales, each with a tutorial, a script, a receipt, and for the
-interactive ones a page; the earlier rungs (MNIST, Connect Four, text, a sign-writing arm,
-cart-pole, the *C. elegans* connectome) are at its tag v0.5.0.
+associative recall, Connect Four and Pong, each with a tutorial, a script, a receipt, the
+trained net, and a page; the earlier rungs (MNIST, text, a sign-writing arm, cart-pole, the
+chorale writer, the *C. elegans* connectome) are at its tag v0.5.0.
 
 ## What the ladder says the rule is good at
 
@@ -33,6 +33,7 @@ cart-pole, the *C. elegans* connectome) are at its tag v0.5.0.
 | supervised, wide sparse one-hot input | text | behind: 3.33 bits per character vs 3.11 for the same-window MLP and 3.08 for a one-layer transformer |
 | from reward, three factors with the adaptive step ([reward](reward.md)) | cart-pole | 500 on every seed, the threshold at 40k to 60k steps against 20k to 100k for PPO with an MLP and 82k to 162k with a transformer; 1,716 parameters against 9,155 and 17,443 |
 | from reward, three factors | Pong, Hopper | learns, and does not reach PPO: 0.73 of balls against 0.93; 177 at best on Hopper-v4 against about 1,000 |
+| from reward, advantage-weighted nudges with the adaptive local step | Pong (rung 04) | 0.88 of balls against 0.93 for REINFORCE with Adam on the same rollouts |
 | a measured, directed wiring under a protocol | *C. elegans* | the local rule cannot teach seams the nudge does not reach; a structural signal survives (5.3 vs 1.5 of 17 ablations), not a behavioural model |
 | a stream that drifts, one update per chunk | electricity, synthetic drift | learns and relearns; 0.851 against 0.873 for one-step logistic regression on electricity, 0.796 against 0.878 on the synthetic drift; ahead on one-pass MNIST (0.885 against 0.844) |
 | sixteen tabular tasks with the sparse-aware place code | OpenML-CC18 subset | mean 0.913 against logistic 0.906, MLP 0.921, boosting 0.901; ahead of boosting on nine, logistic on six |
