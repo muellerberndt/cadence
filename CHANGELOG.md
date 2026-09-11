@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.7.0 (2026-09-11)
+
+The accelerators, in the core.
+
+- `backend="mlx"`: the settlement on Apple silicon through MLX (`pip install
+  "cadence-net[apple]"`): the block transport as device matrix products in float32 on the
+  unified memory, nudges, adaptation, masks, tolerance, trajectories and `repair` as on the
+  other backends; checked against the CPU engine to 1e-4 with every feature.
+- A device handle on `SettledState` (`state.device`): a settlement that continues from a
+  state the same engine produced starts from the device copy instead of uploading the host
+  arrays, and `Settlement.contrast_on_device` gives the learning rule its per-overlap
+  contrast as block Gram products on the device, so only one number per overlap comes back.
+  `Learner.contrast` uses it when both phases carry the handle; on torch/CUDA float64 the
+  learned scales agree with the CPU engine to 2e-16, on MPS and MLX float32 to 2e-7.
+- `available_backends()` lists `mlx`; the backends doc has a hardware guide (Apple silicon,
+  Intel and AMD CPUs, NVIDIA) with measured updates at language-model shapes.
+
 ## 0.6.0 (2026-09-11)
 
 The cost of a settlement step is now the cost of the owners that move.

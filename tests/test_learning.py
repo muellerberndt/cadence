@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 import cadence as cd
 
@@ -237,3 +238,29 @@ def test_trainable_masks_leave_the_rest_of_the_net_alone() -> None:
     assert np.array_equal(learner.engine.edge_scale[~overlaps], scale0[~overlaps])
     assert np.array_equal(learner.engine.bias[~owners], bias0[~owners])
     assert not np.array_equal(learner.engine.bias[owners], bias0[owners])
+
+
+@pytest.mark.parametrize("backend", ["torch", "mlx"])
+def test_contrast_on_the_device_matches_the_host(backend: str) -> None:
+    if backend not in cd.available_backends():
+        pytest.skip(f"{backend} not installed")
+    w = cd.layered(12, 8, 4, density=1.0, seed=3)
+    rule = cd.learning_rule(dt=1.0)
+    kw = {"device": "cpu"} if backend == "torch" else {}
+    device = cd.Settlement(w, rule, backend=backend, **kw)  # type: ignore[arg-type]
+    host = cd.Settlement(w, rule)
+    config = cd.LearnerConfig(eta=1.0, beta=0.1, temperature=0.1, tolerance=1e-4)
+    drive = host.clamp_levels(np.random.default_rng(4).random((6, w.n)) * 0.5)
+    labels = np.array([0, 1, 2, 3, 0, 1])
+    for engine in (device, host):
+        learner = cd.Learner(engine, w.sets["output"], config)
+        state, _ = learner.step(drive, labels)
+        if engine is device:
+            assert state.nudged.device is not None
+            assert engine.contrast_on_device(state.nudged, state.opposite) is not None  # type: ignore[arg-type]
+            on_device = learner.engine.edge_scale.copy()
+        else:
+            on_host = learner.engine.edge_scale.copy()
+    tolerance = 1e-12 if backend == "torch" else 1e-5
+    assert np.abs(on_device - on_host).max() < tolerance
+    assert host.contrast_on_device(state.nudged, state.opposite) is None  # type: ignore[arg-type]

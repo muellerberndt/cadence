@@ -27,7 +27,7 @@ docstrings in the source carry the details.
 
 ## Settlement (`cadence.settle`)
 
-- `Settlement(wiring, rule, *, backend="cpu", edge_scale=None, log_gain=None, bias=None, device=None, dense_limit=2048, layout=None, precision=None)`:
+- `Settlement(wiring, rule, *, backend="cpu" | "torch" | "mlx", edge_scale=None, log_gain=None, bias=None, device=None, dense_limit=2048, layout=None, precision=None)`:
   the engine. `edge_scale` defaults to the wiring's signs; `log_gain` and `bias` to zero.
   When the wiring's dense blocks fit in `dense_limit` squared entries the transport is the
   block transport (see `cadence.blocks`); `layout` passes a precomputed cut, as
@@ -41,13 +41,16 @@ docstrings in the source carry the details.
 - `clamp_vector(clamp)`, `clamp_levels(levels)` (levels in [0, 1] times the clamp amplitude),
   `readings(state, names)`, `with_parameters(*, edge_scale, log_gain, bias)`, `weights`
   (effective drive per overlap), `dense()` (the `W[pre, post]` matrix), `to_dict()`.
-- `SettledState`: `v`, `activation`, `adaptation`, `steps`, `trajectory`, `repair` (the total
+- `Settlement.contrast_on_device(plus, minus)`: the learning rule's per-overlap and per-owner
+  contrast computed on the device when both states carry its handle; `None` otherwise.
+- `SettledState`: `v`, `activation`, `adaptation`, `steps`, `trajectory`, `repair`, `device` (the
+  same state on the accelerator that produced it, or `None`), `repair` (the total
   movement of the activations, per row); `row(i)`,
   `mean(members, i)`, `fraction_active(members, level, i)`, `active(level, i)`, `batched`.
 - `Nudge(target, mask, beta, softmax_temperature=None, weight=None)`: extra drive
   `beta · (target − s)` on the masked owners, or `beta · (target − softmax(s/T))` over the
   masked group with a temperature; `weight` scales rows. `drive(s)`.
-- `available_backends()`: `{"cpu": "numpy float64", "torch": "mps float32" | "cuda float64" | "cpu float64"}`.
+- `available_backends()`: `{"cpu": "numpy float64", "torch": "mps float32" | "cuda float64" | "cpu float64", "mlx": "gpu float32"}`, for what is installed.
 
 ## Blocks (`cadence.blocks`)
 

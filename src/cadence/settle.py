@@ -48,7 +48,7 @@ from .wiring import Wiring
 
 __all__ = ["Settlement", "SettledState", "Nudge", "available_backends", "Backend"]
 
-Backend = Literal["cpu", "torch"]
+Backend = Literal["cpu", "torch", "mlx"]
 
 
 def _fused_available() -> bool:
@@ -80,6 +80,12 @@ def available_backends() -> dict[str, str]:
             out["torch"] = "mps float32"
         else:
             out["torch"] = "cpu float64"
+    except ImportError:
+        pass
+    try:
+        import mlx.core as mx
+
+        out["mlx"] = f"{mx.default_device().type.name} float32"
     except ImportError:
         pass
     return out
@@ -143,6 +149,9 @@ class SettledState:
     steps: int
     trajectory: np.ndarray | None = None
     repair: np.ndarray | None = None  # per row: the total movement of the published activations
+    device: Any = (
+        None  # the same state on an accelerator, so a continuation or a contrast stays there
+    )
 
     @property
     def batched(self) -> bool:
@@ -211,6 +220,7 @@ class Settlement:
         blocked = self.layout.size <= dense_limit * dense_limit
         self._blocks: np.ndarray | None = self.layout.flat(self._weights) if blocked else None
         self._torch: Any = None
+        self._mlx: Any = None
         if backend == "torch":
             self._torch = _TorchKernel(
                 wiring,
@@ -221,6 +231,10 @@ class Settlement:
                 self.layout if blocked else None,
                 precision,
             )
+        elif backend == "mlx":
+            if not blocked:
+                raise ValueError("the mlx backend needs a wiring whose blocks fit dense_limit")
+            self._mlx = _MlxKernel(wiring, self._weights, self.bias, rule, self.layout)
         elif backend != "cpu":
             raise ValueError(f"unknown backend {backend!r}")
 
@@ -353,9 +367,11 @@ class Settlement:
         a = np.zeros((batch, n)) if state is None else np.atleast_2d(state.adaptation).copy()
         if v.shape != (batch, n):
             raise ValueError("state batch does not match the drive batch")
-        if self.backend == "torch":
-            v, a, s, traj, taken, repair = self._torch.run(
-                v, a, drive, keep, steps, trajectory, nudge, tolerance
+        handle = None
+        if self.backend in ("torch", "mlx"):
+            kernel = self._torch if self.backend == "torch" else self._mlx
+            v, a, s, traj, taken, repair, handle = kernel.run(
+                v, a, drive, keep, steps, trajectory, nudge, tolerance, state
             )
         elif self._blocks is not None and not trajectory and _FUSED:
             from .fused import fused_settle
@@ -380,8 +396,30 @@ class Settlement:
                 v, a, drive, keep, steps, trajectory, nudge, tolerance
             )
         return SettledState(
-            v=v, activation=s, adaptation=a, steps=taken, trajectory=traj, repair=repair
+            v=v,
+            activation=s,
+            adaptation=a,
+            steps=taken,
+            trajectory=traj,
+            repair=repair,
+            device=handle,
         )
+
+    def contrast_on_device(
+        self, plus: SettledState, minus: SettledState
+    ) -> tuple[np.ndarray, np.ndarray] | None:
+        """``sum_b s+ s+ - s- s-`` per overlap and ``sum_b (s+ - s-)`` per owner, on the device.
+
+        Returns ``None`` when either state does not carry this engine's device
+        handle; the learner then reads the activations on the host.
+        """
+        kernel = self._torch if self.backend == "torch" else self._mlx
+        if kernel is None or plus.device is None or minus.device is None:
+            return None
+        if plus.device.get("kernel") != self.backend or minus.device.get("kernel") != self.backend:
+            return None
+        out: tuple[np.ndarray, np.ndarray] = kernel.contrast(plus.device["s"], minus.device["s"])
+        return out
 
     def _inbox(self, s: np.ndarray, blocks: BlockTransport | None = None) -> np.ndarray:
         """Transport: one segmented sum of every overlap's message into its owner's inbox."""
@@ -488,6 +526,8 @@ class _TorchKernel:
         import torch
 
         self.torch = torch
+        self.backend_name = "torch"
+        self._rest: Any = None
         if device is None:
             if torch.cuda.is_available():
                 device = "cuda"
@@ -539,12 +579,32 @@ class _TorchKernel:
 
     def _activation(self, v: Any) -> Any:
         torch, rule = self.torch, self.rule
-        rest = torch.tensor(rule.rest_emission, dtype=self.dtype, device=self.device)
+        if self._rest is None:  # one scalar on the device, made once
+            self._rest = torch.tensor(rule.rest_emission, dtype=self.dtype, device=self.device)
+        rest = self._rest
         r = torch.sigmoid(rule.slope * (v - rule.threshold)) - rest
         s = torch.relu(r) / (1.0 - rest)
         if rule.leak:
             s = s + rule.leak * torch.clamp(r, max=0.0) / rest
         return s
+
+    def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
+        """The block Gram contrast on the device; only the per-overlap result comes back."""
+        torch, lay = self.torch, self.layout
+        assert lay is not None
+        flat = torch.zeros(lay.size, dtype=self.dtype, device=self.device)
+        for k in range(lay.pairs):
+            a0, a1, b0, b1 = lay.bounds(k)
+            a_plus, a_minus = s_plus[:, a0:a1], s_minus[:, a0:a1]
+            if torch.equal(a_plus, a_minus):
+                block = a_plus.T @ (s_plus[:, b0:b1] - s_minus[:, b0:b1])
+            else:
+                block = a_plus.T @ s_plus[:, b0:b1] - a_minus.T @ s_minus[:, b0:b1]
+            flat[lay.offset[k] : lay.offset[k + 1]] = block.reshape(-1)
+        index = torch.from_numpy(lay.edge_index).to(self.device)
+        edges = flat[index].cpu().double().numpy()
+        owners = (s_plus - s_minus).sum(dim=0).cpu().double().numpy()
+        return edges, owners
 
     def run(
         self,
@@ -556,13 +616,19 @@ class _TorchKernel:
         want: bool,
         nudge: Nudge | None,
         tolerance: float | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray]:
+        state: SettledState | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
         torch, rule = self.torch, self.rule
 
         def to(x: np.ndarray) -> Any:
             return torch.from_numpy(np.array(x, dtype=float)).to(self.device, self.dtype)
 
-        v, a, d, k = to(v0), to(a0), to(drive), to(keep)
+        handle = state.device if state is not None and state.device is not None else None
+        if handle is not None and handle.get("owner") is self:
+            v, a = handle["v"].clone(), handle["a"].clone()  # the state never left the device
+        else:
+            v, a = to(v0), to(a0)
+        d, k = to(drive), to(keep)
         batch = v.shape[0]
         adapt = rule.adaptation
         target = mask = weight = None
@@ -579,7 +645,10 @@ class _TorchKernel:
         cache: list[Any] = [None] * (0 if self.layout is None else self.layout.pairs)
         previous = None
         with torch.no_grad():
-            s = self._activation(v) * k
+            if handle is not None and handle.get("owner") is self:
+                s = handle["s"] * k
+            else:
+                s = self._activation(v) * k
             for t in range(steps):
                 if self.layout is not None:
                     inbox = self._inbox(s, previous, cache)
@@ -619,4 +688,169 @@ class _TorchKernel:
             np.stack(traj) if want else None,
             taken,
             repair.cpu().double().numpy(),
+            {"kernel": self.backend_name, "owner": self, "v": v, "a": a, "s": s},
+        )
+
+
+class _MlxKernel:
+    """The block settlement on Apple silicon through MLX: float32, unified memory, lazy graphs."""
+
+    def __init__(
+        self,
+        wiring: Wiring,
+        weights: np.ndarray,
+        bias: np.ndarray,
+        rule: GradedRule,
+        layout: Layout,
+    ) -> None:
+        import mlx.core as mx
+
+        self.mx = mx
+        self.backend_name = "mlx"
+        self.rule = rule
+        self.n = wiring.n
+        self.layout = layout
+        self.bias = mx.array(bias.astype(np.float32))
+        flat = layout.flat(weights)
+        self.blocks = [
+            mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in layout.blocks(flat)
+        ]
+        self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
+        for k in range(layout.pairs):
+            self.by_post[int(layout.pair_post[k])].append(k)
+        self.sources = layout.sources()
+        self.edge_index = mx.array(layout.edge_index)
+
+    def _activation(self, v: Any) -> Any:
+        mx, rule = self.mx, self.rule
+        rest = rule.rest_emission
+        r = mx.sigmoid(rule.slope * (v - rule.threshold)) - rest
+        s = mx.maximum(r, 0.0) / (1.0 - rest)
+        if rule.leak:
+            s = s + rule.leak * mx.minimum(r, 0.0) / rest
+        return s
+
+    def _inbox(self, s: Any, previous: Any, cache: list[Any]) -> Any:
+        mx, lay = self.mx, self.layout
+        moved = [True] * lay.ranges
+        if previous is not None:
+            for r in self.sources:
+                a0, a1 = int(lay.starts[r]), int(lay.starts[r + 1])
+                moved[r] = not bool(mx.array_equal(s[:, a0:a1], previous[:, a0:a1]).item())
+        parts = []
+        batch = s.shape[0]
+        for r in range(lay.ranges):
+            b0, b1 = int(lay.starts[r]), int(lay.starts[r + 1])
+            total = None
+            for k in self.by_post[r]:
+                a0, a1, _, _ = lay.bounds(k)
+                if cache[k] is None or moved[int(lay.pair_pre[k])]:
+                    cache[k] = s[:, a0:a1] @ self.blocks[k]
+                total = cache[k] if total is None else total + cache[k]
+            parts.append(mx.zeros((batch, b1 - b0), dtype=mx.float32) if total is None else total)
+        return mx.concatenate(parts, axis=1)
+
+    def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
+        """The block Gram contrast on the device; only the per-overlap result comes back."""
+        mx, lay = self.mx, self.layout
+        pieces = []
+        for k in range(lay.pairs):
+            a0, a1, b0, b1 = lay.bounds(k)
+            a_plus, a_minus = s_plus[:, a0:a1], s_minus[:, a0:a1]
+            if bool(mx.array_equal(a_plus, a_minus).item()):
+                block = a_plus.T @ (s_plus[:, b0:b1] - s_minus[:, b0:b1])
+            else:
+                block = a_plus.T @ s_plus[:, b0:b1] - a_minus.T @ s_minus[:, b0:b1]
+            pieces.append(block.reshape(-1))
+        flat = mx.concatenate(pieces) if pieces else mx.zeros((0,), dtype=mx.float32)
+        edges = np.array(flat[self.edge_index], dtype=np.float64)
+        owners = np.array((s_plus - s_minus).sum(axis=0), dtype=np.float64)
+        return edges, owners
+
+    def run(
+        self,
+        v0: np.ndarray,
+        a0: np.ndarray,
+        drive: np.ndarray,
+        keep: np.ndarray,
+        steps: int,
+        want: bool,
+        nudge: Nudge | None,
+        tolerance: float | None = None,
+        state: SettledState | None = None,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
+        mx, rule = self.mx, self.rule
+
+        def to(x: np.ndarray) -> Any:
+            return mx.array(np.asarray(x, dtype=np.float32))
+
+        handle = state.device if state is not None and state.device is not None else None
+        if handle is not None and handle.get("owner") is self:
+            v, a, s = handle["v"], handle["a"], handle["s"]
+        else:
+            v, a = to(v0), to(a0)
+            s = None
+        d, k = to(drive), to(keep)
+        batch = v.shape[0]
+        masked = bool((keep != 1.0).any())
+        adapt = rule.adaptation
+        target = mask = weight = None
+        group: Any = None
+        if nudge is not None:
+            target = to(np.broadcast_to(nudge.target, (batch, self.n)))
+            mask = to(nudge.mask)
+            group = mx.array(np.flatnonzero(nudge.mask > 0))
+            if nudge.weight is not None:
+                weight = to(np.asarray(nudge.weight, dtype=float))[:, None]
+        traj = []
+        taken = 0
+        repair = mx.zeros((batch,), dtype=mx.float32)
+        cache: list[Any] = [None] * self.layout.pairs
+        previous = None
+        if s is None:
+            s = self._activation(v)
+        if masked:
+            s = s * k
+        standing = d + self.bias
+        for t in range(steps):
+            inbox = self._inbox(s, previous, cache)
+            total = inbox + standing
+            if adapt is not None:
+                total = total - adapt.strength * a
+            if nudge is not None:
+                assert target is not None and mask is not None
+                if nudge.softmax_temperature is None:
+                    push = nudge.beta * (target - s) * mask
+                else:
+                    p = mx.softmax(s[:, group] / nudge.softmax_temperature, axis=1)
+                    push = mx.zeros_like(s)
+                    push[:, group] = nudge.beta * (target[:, group] - p)
+                if weight is not None:
+                    push = push * weight
+                total = total + push
+            v = v + rule.dt * (-v + total)
+            if masked:
+                v = v * k
+            previous = s
+            s = self._activation(v)
+            if masked:
+                s = s * k
+            if adapt is not None:
+                a = a + (s - a) / adapt.tau_steps
+            movement = mx.abs(s - previous)
+            repair = repair + movement.sum(axis=1)
+            mx.eval(v, s, a, repair)  # one graph per step; the tolerance needs the number
+            if want:
+                traj.append(np.array(s, dtype=np.float64))
+            taken = t + 1
+            if tolerance is not None and float(movement.max().item()) < tolerance:
+                break
+        return (
+            np.array(v, dtype=np.float64),
+            np.array(a, dtype=np.float64),
+            np.array(s, dtype=np.float64),
+            np.stack(traj) if want else None,
+            taken,
+            np.array(repair, dtype=np.float64),
+            {"kernel": "mlx", "owner": self, "v": v, "a": a, "s": s},
         )

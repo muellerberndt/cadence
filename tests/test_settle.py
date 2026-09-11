@@ -148,3 +148,46 @@ def test_torch_kernel_matches_cpu_with_every_feature() -> None:
     assert traced.trajectory is not None and traced.trajectory.shape == (traced.steps, 4, wiring.n)
     warm = torch_dense.settle_batch(drive, steps=3, state=traced)
     assert warm.activation.shape == (4, wiring.n)
+
+
+@pytest.mark.skipif("mlx" not in cd.available_backends(), reason="mlx not installed")
+def test_mlx_kernel_matches_cpu_with_every_feature() -> None:
+    wiring = cd.layered(8, 6, 4, density=1.0, seed=5)
+    rule = cd.learning_rule(dt=0.5, leak=0.2).replace(
+        adaptation=cd.Adaptation(tau_steps=15, strength=0.1)
+    )
+    cpu = cd.Settlement(wiring, rule)
+    mlx = cd.Settlement(wiring, rule, backend="mlx")
+    assert mlx.to_dict()["transport"] == "dense"
+    drive = cpu.clamp_levels(np.random.default_rng(1).random((4, wiring.n)) * 0.5)
+    out = list(wiring.sets["output"])
+    mask = np.zeros(wiring.n)
+    mask[out] = 1.0
+    target = np.zeros((4, wiring.n))
+    target[np.arange(4), [out[i % 4] for i in range(4)]] = 1.0
+    keep = np.ones(wiring.n)
+    keep[9] = 0.0
+    for nudge in (
+        None,
+        Nudge(target, mask, 0.1),
+        Nudge(target, mask, 0.1, softmax_temperature=0.2, weight=np.array([1.0, 0.5, -0.5, 0.0])),
+    ):
+        a = cpu.settle_batch(drive, steps=25, nudge=nudge, mask=keep, tolerance=1e-5)
+        b = mlx.settle_batch(drive, steps=25, nudge=nudge, mask=keep, tolerance=1e-5)
+        assert np.abs(a.activation - b.activation).max() < 1e-4
+        assert np.abs(a.adaptation - b.adaptation).max() < 1e-4
+        assert a.repair is not None and b.repair is not None
+        assert np.abs(a.repair - b.repair).max() < 1e-3
+        assert b.device is not None and b.device["kernel"] == "mlx"
+    # a continuation from a state that stayed on the device is the same continuation
+    free = mlx.settle_batch(drive, steps=30)
+    again = mlx.settle_batch(drive, steps=10, state=free, nudge=Nudge(target, mask, 0.1))
+    from_host = mlx.settle_batch(
+        drive,
+        steps=10,
+        state=cd.SettledState(free.v, free.activation, free.adaptation, free.steps),
+        nudge=Nudge(target, mask, 0.1),
+    )
+    assert np.abs(again.activation - from_host.activation).max() < 1e-5
+    traj = mlx.settle_batch(drive, steps=5, trajectory=True)
+    assert traj.trajectory is not None and traj.trajectory.shape == (5, 4, wiring.n)

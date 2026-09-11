@@ -57,8 +57,9 @@ learner.accuracy(drive_test, labels_test)                    # 0.96 on the 8x8 d
 - **Measured, not claimed.** Every example selects on a validation split, reads its test set
   once, trains the obvious backprop baseline on the same split, and writes a receipt that
   binds every number to the code and data that produced it.
-- **Runs where you are.** NumPy float64 for receipts; torch on CUDA or Apple silicon for
-  scale, with a dense transport for small nets and a scatter for connectome-sized ones.
+- **Runs where you are.** NumPy float64 with a fused kernel for receipts; torch on CUDA, MLX
+  or torch on Apple silicon for scale, the settled state and the learning contrast staying on
+  the device; a block transport for layered nets and a scatter for connectome-sized ones.
 
 ## How it learns
 
@@ -85,6 +86,8 @@ against a feed-forward network with backprop.
 ```bash
 pip install cadence-net            # NumPy only; the import is `cadence`
 pip install "cadence-net[accel]"   # adds torch for CUDA and Apple silicon
+pip install "cadence-net[apple]"   # adds MLX, the faster Apple silicon path
+pip install "cadence-net[fast]"    # adds the fused CPU kernel (numba)
 ```
 
 Python 3.11 or newer.

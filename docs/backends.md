@@ -3,55 +3,67 @@
 ```python
 import cadence as cd
 cd.available_backends()
-# {'cpu': 'numpy float64', 'torch': 'mps float32'}   # on an M-series Mac with torch installed
+# {'cpu': 'numpy float64', 'torch': 'mps float32', 'mlx': 'gpu float32'}   # an M-series Mac with both installed
 ```
 
-| backend | where it runs | precision | use it for |
-|---|---|---|---|
-| `"cpu"` | NumPy | float64 | receipts, conformance, anything you will cite |
-| `"torch"` on CUDA | GPU | float64 | large wirings at receipt precision |
-| `"torch"` on MPS | Apple silicon GPU | float32 | interactive work; MPS has no float64 |
-| `"torch"` on CPU | torch CPU | float64 | when torch is installed and you want one code path |
+| backend | where it runs | precision | install | use it for |
+|---|---|---|---|---|
+| `"cpu"` | NumPy, and the fused numba kernel | float64 | `cadence-net[fast]` | receipts, conformance, anything you will cite; every readout |
+| `"torch"` on CUDA | NVIDIA GPU | float64, or float32 with `precision="float32"` | `cadence-net[accel]` | training at scale; receipts too, in float64 |
+| `"torch"` on MPS | Apple silicon GPU through Metal | float32 | `cadence-net[accel]` | training on a Mac when torch is what you have |
+| `"mlx"` | Apple silicon GPU through MLX, unified memory | float32 | `cadence-net[apple]` | training on a Mac: the faster of the two Apple paths |
+| `"torch"` on CPU | torch CPU | float64 | `cadence-net[accel]` | one code path on a box without a GPU |
 
-Both backends do the same arithmetic: one scatter of every overlap's message into its
-owner's inbox per step, then one owner-local update. NumPy uses a segmented sum; torch uses
-`index_add_`. Neither needs a dense matrix, so a wiring of a few million overlaps settles
-in tens of milliseconds per step on a GPU and under a second on a CPU.
+Every backend does the same arithmetic: the block transport of the wiring (dense blocks
+between the owner ranges the named sets cut; a range that did not move keeps its product),
+then one owner-local update, a nudge, adaptation, a mask, a tolerance, and `repair`. The
+device backends keep the settled state on the device (`state.device`) so that a phase that
+continues from it starts there, and the learning rule's contrast is read on the device
+(`Settlement.contrast_on_device`): only one number per overlap comes back to the host.
+Large wirings whose blocks do not fit `dense_limit` settle by the segmented scatter on
+`"cpu"` and `"torch"`; `"mlx"` needs the blocks.
 
-Small and layered wirings are the other regime. When the dense blocks of the wiring fit
-(at most `dense_limit` squared entries, 2048 squared by default) the NumPy backend does the
-same sum as block matrix products, and the torch backend does the same on the device. The
-result is identical to rounding; `Settlement(..., dense_limit=0)` forces the segmented path
-on either backend.
+## Which hardware
 
-## The block transport
+**Apple silicon.** Two paths. `"mlx"` runs the block products and the owner updates as MLX
+graphs on the unified memory and is the faster one: on an M4, one settlement step of a
+language-model net (2,771 owners, 512 rows) takes 15 ms on MLX against 22 ms on torch/MPS,
+and a whole learning update (three settlements and the contrast) 0.7 s against 1.1 s.
+Both are float32; MPS has no float64 and MLX's GPU has none either, so a receipt readout
+runs on `"cpu"`. The fused CPU kernel on the same net does one step in about 20 ms on one
+performance core when the machine is quiet (the numbers above were taken on a machine at
+load 20, which slows the CPU path more than the GPU paths). Rule of thumb: below about a
+thousand moving owners the CPU kernel wins on latency; above it, MLX.
 
-A layered net is mostly empty space. Its input owners hear nothing, its hidden owners hear
-the inputs and the outputs, and the inputs, once clamped, stop moving after the first step.
-One dense `n x n` product per step paid for all of that space and re-multiplied the still
-inputs every step: on MNIST the cost of a step barely depended on the hidden width, because
-the 784 input owners dominated it.
+**Intel and AMD CPUs.** The `"cpu"` backend: NumPy float64 with the fused numba kernel
+(`cadence-net[fast]`, which brings numba and scipy's BLAS). The kernel's cost per step is
+one exponential per moving owner plus the block products; on x86 numba can vectorise the
+exponential through SVML when Intel's `icc_rt` is installed (`pip install icc_rt`), which
+roughly doubles the elementwise part. Set `OMP_NUM_THREADS`/`OPENBLAS_NUM_THREADS` to the
+cores you mean to use; the receipts record them (`cadence.timing.environment`).
 
-`cadence.blocks` cuts the owners into contiguous ranges at the boundaries of the wiring's
-named sets (a set that is not one contiguous run is ignored) and keeps one dense block per
-ordered pair of ranges that carries at least one overlap; `layered` and `embedded` give the
-ranges directly. Each step, the inbox is the sum of the block products, and the product of a
-range whose activation is bit-for-bit what it was at the previous step is reused. Nothing an
-owner reads changes: the inbox is the same sum of the same messages in a different
-association order, and `conformance` against the owner-by-owner reference still holds to
-rounding. `engine.layout` describes the cut (`to_dict()` reports ranges, blocks and
-entries); a wiring with no contiguous sets gets one block, the full matrix, as before.
+**NVIDIA.** `"torch"` with CUDA. Float64 is the default and is what a receipt wants; on a
+data-centre part (A100, H100) float64 runs at full rate. On a consumer or inference part
+(L4, L40S, A10G, RTX) float64 is a thirty-second of the float32 rate, so train with
+`Settlement(..., precision="float32")` and read out on `"cpu"`; the trainer in the author
+repository does exactly that and records the conformance between the two. One host sync
+per step (the tolerance) costs about 20 µs on CUDA and is negligible above a few hundred
+owners.
 
-On the MNIST shape (784 inputs, 256 hidden, 10 outputs, batch 256) one learning update went
-from 63 ms to 18 ms on one M4 core, and at 32 hidden owners from 39 ms to 7 ms; the cost of
-a settlement step now scales with the owners that move.
+**Several GPUs.** Not yet: one net settles on one device. The addition is a summed contrast
+across devices, which is small; it is on the roadmap for the level-3 author.
 
 ## Choosing a device
 
 ```python
-cd.Settlement(w, rule, backend="torch")               # cuda, else mps, else cpu
-cd.Settlement(w, rule, backend="torch", device="cpu")  # force
+cd.Settlement(w, rule, backend="torch")                          # cuda, else mps, else cpu
+cd.Settlement(w, rule, backend="torch", device="cpu")             # force
+cd.Settlement(w, rule, backend="torch", precision="float32")      # speed on a consumer GPU
+cd.Settlement(w, rule, backend="mlx")                             # Apple silicon through MLX
 ```
+
+A learner built on a device engine trains there; `Learner.load(path, backend="cpu")`
+brings a checkpoint back to the receipt backend, whatever trained it.
 
 ## Precision matters
 
@@ -66,10 +78,12 @@ habits keep this honest:
 
 ## Extending to another device
 
-The torch kernel is one small class, `settle._TorchKernel`, with three operations: gather
-`s[pre]`, scatter-add into `inbox`, and the elementwise update. Any array library that
-offers those three can host a backend; the reference engine and `conformance` are what you
-check it against.
+The two device kernels, `settle._TorchKernel` and `settle._MlxKernel`, are each one class
+with the same five operations: block products between owner ranges (a matrix product per
+pair), the elementwise owner update, a softmax over the nudged group, an equality check on
+the still ranges, and a max over the movement for the tolerance. Any array library with
+those five can host a backend; the owner-by-owner reference and `conformance` are what
+you check it against, and `tests/test_settle.py` has the test each kernel passes.
 
 
 ## The fused kernel
