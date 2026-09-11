@@ -346,6 +346,7 @@ class Learner:
             bias=self.engine.bias,
             dense_limit=self.engine.dense_limit,
             layout=self.engine.layout,
+            precision=self.engine.precision,
         )
 
     # -- readout
@@ -398,11 +399,12 @@ class Learner:
         backend: Backend | None = None,
         device: str | None = None,
         config: LearnerConfig | None = None,
+        precision: str | None = None,
     ) -> Learner:
         """Rebuild a learner from ``save``; see ``cadence.checkpoint.load``."""
         from .checkpoint import load
 
-        return load(path, backend=backend, device=device, config=config)
+        return load(path, backend=backend, device=device, config=config, precision=precision)
 
 
 def layered(

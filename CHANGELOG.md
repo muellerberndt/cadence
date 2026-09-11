@@ -23,6 +23,8 @@ The cost of a settlement step is now the cost of the owners that move.
 - `cadence.timing`: `latency(decide)` times one decision many times and reports the median,
   the tails, and the scheduler's context switches from `getrusage`; `environment()` records
   threads, pinning (Linux), load and library versions for a receipt.
+- `Settlement(precision=)` on the torch backend: float32 on CUDA when speed matters more than
+  the receipt (read out on the cpu backend), float64 where the device has it.
 - CI is green again: the 0.5.0 modules are formatted and typed.
 - Tests: 58.
 

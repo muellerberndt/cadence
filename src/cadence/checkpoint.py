@@ -77,6 +77,7 @@ def load(
     backend: Backend | None = None,
     device: str | None = None,
     config: LearnerConfig | None = None,
+    precision: str | None = None,
 ) -> Learner:
     """Rebuild a learner from a checkpoint; ``backend`` and ``device`` may differ from the saved.
 
@@ -108,6 +109,7 @@ def load(
             bias=data["bias"],
             device=device,
             dense_limit=int(meta["dense_limit"]),
+            precision=precision,
         )
         tie = data["tie_groups"]
         learner = Learner(

@@ -89,3 +89,18 @@ def test_layout_survives_with_parameters_and_learning() -> None:
     drive = engine.clamp_levels(np.random.default_rng(7).random((5, w.n)) * 0.5)
     learner.step(drive, np.array([0, 1, 2, 0, 1]))
     assert learner.engine.layout is engine.layout
+
+
+@pytest.mark.skipif("torch" not in cd.available_backends(), reason="torch not installed")
+def test_torch_precision_option_and_block_transport_agree_with_cpu() -> None:
+    w = cd.layered(9, 7, 3, density=1.0, seed=8)
+    rule = cd.learning_rule(dt=1.0)
+    drive = cd.Settlement(w, rule).clamp_levels(np.random.default_rng(9).random((3, w.n)) * 0.5)
+    cpu = cd.Settlement(w, rule).settle_batch(drive, steps=30)
+    single = cd.Settlement(w, rule, backend="torch", device="cpu", precision="float32")
+    double = cd.Settlement(w, rule, backend="torch", device="cpu", precision="float64")
+    assert np.abs(single.settle_batch(drive, steps=30).activation - cpu.activation).max() < 1e-5
+    assert np.abs(double.settle_batch(drive, steps=30).activation - cpu.activation).max() < 1e-12
+    assert single.with_parameters(bias=np.zeros(w.n)).precision == "float32"
+    with pytest.raises(ValueError):
+        cd.Settlement(w, rule, backend="torch", device="cpu", precision="half")

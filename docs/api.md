@@ -27,11 +27,13 @@ docstrings in the source carry the details.
 
 ## Settlement (`cadence.settle`)
 
-- `Settlement(wiring, rule, *, backend="cpu", edge_scale=None, log_gain=None, bias=None, device=None, dense_limit=2048, layout=None)`:
+- `Settlement(wiring, rule, *, backend="cpu", edge_scale=None, log_gain=None, bias=None, device=None, dense_limit=2048, layout=None, precision=None)`:
   the engine. `edge_scale` defaults to the wiring's signs; `log_gain` and `bias` to zero.
   When the wiring's dense blocks fit in `dense_limit` squared entries the transport is the
   block transport (see `cadence.blocks`); `layout` passes a precomputed cut, as
-  `with_parameters` does. `engine.layout` is the cut in use.
+  `with_parameters` does. `engine.layout` is the cut in use. `precision` (torch only) is
+  `"float32"` or `"float64"`; the default is float64 except on MPS. Float32 is the speed of a
+  consumer GPU; read out on the cpu backend for a receipt.
 - `settle(clamp=None, *, steps=60, state=None, mask=None, trajectory=False, nudge=None, tolerance=None) -> SettledState`:
   one clamp; `clamp` is a list of owners at full amplitude, a `{owner: level}` map, or a
   dense vector. `settle_batch(drive, ...)` takes `(batch, n)` drives. Both stop early at

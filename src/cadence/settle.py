@@ -177,11 +177,13 @@ class Settlement:
         device: str | None = None,
         dense_limit: int = 2048,
         layout: Layout | None = None,
+        precision: str | None = None,
     ) -> None:
         self.wiring = wiring
         self.rule = rule
         self.backend: Backend = backend
         self.dense_limit = dense_limit
+        self.precision = precision  # torch only: "float64" or "float32"; default by device
         self.layout: Layout = make_layout(wiring) if layout is None else layout
         self.edge_scale = (
             wiring.sign.copy() if edge_scale is None else np.asarray(edge_scale, float).copy()
@@ -210,7 +212,13 @@ class Settlement:
         self._torch: Any = None
         if backend == "torch":
             self._torch = _TorchKernel(
-                wiring, self._weights, self.bias, rule, device, self.layout if blocked else None
+                wiring,
+                self._weights,
+                self.bias,
+                rule,
+                device,
+                self.layout if blocked else None,
+                precision,
             )
         elif backend != "cpu":
             raise ValueError(f"unknown backend {backend!r}")
@@ -234,6 +242,7 @@ class Settlement:
             bias=self.bias if bias is None else bias,
             dense_limit=self.dense_limit,
             layout=self.layout,
+            precision=self.precision,
         )
 
     @property
@@ -467,6 +476,7 @@ class _TorchKernel:
         rule: GradedRule,
         device: str | None,
         layout: Layout | None = None,
+        precision: str | None = None,
     ) -> None:
         import torch
 
@@ -482,7 +492,12 @@ class _TorchKernel:
             else:
                 device = "cpu"
         self.device = torch.device(device)
-        self.dtype = torch.float32 if self.device.type == "mps" else torch.float64
+        if precision is None:
+            self.dtype = torch.float32 if self.device.type == "mps" else torch.float64
+        elif precision in ("float32", "float64"):
+            self.dtype = torch.float32 if precision == "float32" else torch.float64
+        else:
+            raise ValueError("precision must be 'float32' or 'float64'")
         self.pre = torch.from_numpy(wiring.pre).to(self.device)
         self.post = torch.from_numpy(wiring.post).to(self.device)
         self.w = torch.from_numpy(weights).to(self.device, self.dtype)
