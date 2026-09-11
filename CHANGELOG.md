@@ -52,7 +52,9 @@ The cost of a settlement step is now the cost of the owners that move.
   to rest: the surprise of an input, measured rather than inferred from the step count.
 - `Learner(slots=)`: the output owners as equal groups, each its own softmax choice, all nudged
   together; `targets` takes one label per slot and `predict` returns one choice per slot. A
-  whole utterance settles at once.
+  whole utterance settles at once. Each slot's nudge carries `beta / slots`, so the contrast
+  is the gradient of the mean loss over the slots and `eta` means the same at any count
+  (a span of four at full beta drove the hidden owners into saturation).
 - `cadence.constitution`: where a wiring comes from. `Constitution` (regions and projections as
   a few numbers each), `grow` (development into a wiring with named sets, deterministic in
   the seed), `mutate`, `evolve` (selection over constitutions under a fitness the caller

@@ -156,10 +156,12 @@ class Learner:
     def nudge_for(self, target: np.ndarray, beta: float, weight: np.ndarray | None = None) -> Nudge:
         cfg = self.config
         temperature = cfg.temperature if cfg.nudge == "cross_entropy" else None
+        # With several slots each slot's nudge carries beta / slots, so the contrast over 2 beta is
+        # the gradient of the mean loss over the slots and eta means the same at any slot count.
         return Nudge(
             target,
             self.output_mask,
-            beta,
+            beta / self.slots,
             softmax_temperature=temperature,
             weight=weight,
             groups=self.output_groups,
