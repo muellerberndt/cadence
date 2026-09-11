@@ -8,7 +8,9 @@ from cadence.structure import Seams, SleepConfig
 
 def _learner(seed: int = 0) -> cd.Learner:
     wiring = cd.layered(6, 8, 2, density=1.0, seed=seed)
-    return cd.Learner(cd.Settlement(wiring, cd.learning_rule()), wiring.sets["output"], cd.LearnerConfig(eta=1.0))
+    return cd.Learner(
+        cd.Settlement(wiring, cd.learning_rule()), wiring.sets["output"], cd.LearnerConfig(eta=1.0)
+    )
 
 
 def test_sleep_consolidates_tagged_fast_strength_and_the_learner_only_moves_live_seams() -> None:
@@ -47,7 +49,9 @@ def test_prune_and_sprout_change_the_wiring_digest_and_respect_the_budget() -> N
     weak = np.arange(w.edges) % 2 == 0
     seams.fast[weak] = 0.001
     seams._enforce()
-    expected = int((np.abs(seams.slow + 0.5 * seams.fast) < 0.05).sum())  # untagged fast strength is halved before the prune; lateral overlaps start at zero
+    expected = int(
+        (np.abs(seams.slow + 0.5 * seams.fast) < 0.05).sum()
+    )  # untagged fast strength is halved before the prune; lateral overlaps start at zero
     report = seams.sleep()
     assert report["pruned"] == expected
     assert seams.digest() != digest0
@@ -62,7 +66,7 @@ def test_prune_and_sprout_change_the_wiring_digest_and_respect_the_budget() -> N
 
 def test_conserved_strength_scales_an_owner_s_incoming_seams() -> None:
     learner = _learner(2)
-    seams = Seams(learner, SleepConfig(strength=1.0))
+    Seams(learner, SleepConfig(strength=1.0))
     w = learner.engine.wiring
     magnitude = np.abs(learner.engine.edge_scale)
     total = np.bincount(w.post, weights=magnitude, minlength=w.n)

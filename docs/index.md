@@ -13,7 +13,7 @@ declared overlaps, settling to rest by owner-local repair. Read in this order th
 | [tasks](tasks.md) | recipes: how each kind of task becomes a clamp, a target, and a readout, tabular and regression included |
 | [pages](pages.md) | putting a trained net into a browser page that settles it live |
 | [protocols](protocols.md) | held-out tests, predicates with preconditions, the shuffled control, gain selection |
-| [backends](backends.md) | CPU and torch, precision, the dense transport |
+| [backends](backends.md) | CPU and torch, precision, the block transport, the fused kernel, timing a decision |
 | [receipts](receipts.md) | what a verified result is, and what goes in one |
 | [embodied](embodied.md) | the sense, settle, act, learn loop in a body; several learners in one net; checkpoints |
 | [api](api.md) | every public class and function, module by module |

@@ -159,6 +159,8 @@ is the tutorial they build on.
 | `Settlement`, `Nudge` | the batched engine on NumPy or torch, with a convergence tolerance and a nudge toward a target; `dense()` for pages |
 | `Learner`, `LearnerConfig` | the free/nudged rule: two phases, one local contrast, tied seams, labels or advantage-weighted actions |
 | `conformance`, `settle_owner_by_owner`, `Ledger` | the owner-by-owner reference with a message ledger, to certify any backend |
+| `blocks` | the block transport: the overlap matrix as dense blocks between the wiring's owner ranges, a still range's product reused, so a step costs what the moving owners cost |
+| `timing` | the latency of a decision at the median and the tails, the scheduler's context switches, and the machine's state for a receipt |
 | `Protocol`, `Row`, `shuffled`, `select_gain` | declared held-out facts with preconditions, the shuffled control, gain selection under a sparsity cap |
 | `Receipt`, `Source`, `fetch` | canonical JSON bound to code and data by digest; pinned public data, downloaded once, verified always |
 
@@ -211,9 +213,9 @@ with a leak, tied seams, and a centered nudge.
 
 ## Status
 
-0.3.0: the core (wiring, rule, engine, reference, protocol, receipts, custody) and the
-free/nudged learning rule with labels, teachers, and rewards, on NumPy and torch, with a
-dense transport for small nets on both. Nine worked rungs with receipts live in
+0.6.0: the core (wiring, rule, engine, reference, protocol, receipts, custody), the
+free/nudged learning rule with labels, teachers, and rewards, the three-factor and dream
+learners, seams with a life, the block transport and the fused kernel, on NumPy and torch. Nine worked rungs with receipts live in
 cadence-examples. On the roadmap: closure sub-nets for in-browser settlement of large
 wirings, environment adapters for embodiment, and connectome loaders. Issues and pull
 requests are welcome.

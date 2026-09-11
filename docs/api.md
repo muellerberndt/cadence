@@ -27,9 +27,11 @@ docstrings in the source carry the details.
 
 ## Settlement (`cadence.settle`)
 
-- `Settlement(wiring, rule, *, backend="cpu", edge_scale=None, log_gain=None, bias=None, device=None, dense_limit=2048)`:
+- `Settlement(wiring, rule, *, backend="cpu", edge_scale=None, log_gain=None, bias=None, device=None, dense_limit=2048, layout=None)`:
   the engine. `edge_scale` defaults to the wiring's signs; `log_gain` and `bias` to zero.
-  Below `dense_limit` owners the transport is one matrix product per step.
+  When the wiring's dense blocks fit in `dense_limit` squared entries the transport is the
+  block transport (see `cadence.blocks`); `layout` passes a precomputed cut, as
+  `with_parameters` does. `engine.layout` is the cut in use.
 - `settle(clamp=None, *, steps=60, state=None, mask=None, trajectory=False, nudge=None, tolerance=None) -> SettledState`:
   one clamp; `clamp` is a list of owners at full amplitude, a `{owner: level}` map, or a
   dense vector. `settle_batch(drive, ...)` takes `(batch, n)` drives. Both stop early at
@@ -43,6 +45,28 @@ docstrings in the source carry the details.
   `beta · (target − s)` on the masked owners, or `beta · (target − softmax(s/T))` over the
   masked group with a temperature; `weight` scales rows. `drive(s)`.
 - `available_backends()`: `{"cpu": "numpy float64", "torch": "mps float32" | "cuda float64" | "cpu float64"}`.
+
+## Blocks (`cadence.blocks`)
+
+- `layout(wiring, *, max_pairs=256) -> Layout`: cut the owners into contiguous ranges at the
+  boundaries of the wiring's contiguous named sets and pair the ranges that carry overlaps.
+  A wiring with no contiguous sets, or one that fragments into more than `max_pairs` blocks,
+  gets one block: the full matrix.
+- `Layout`: `starts`, `pair_pre`, `pair_post`, `offset`, `edge_index`; `ranges`, `pairs`,
+  `size`, `bounds(k)`, `sources()` (ranges that hear nothing), `flat(weights)`,
+  `blocks(flat)`, `to_dict()`.
+- `BlockTransport(layout, flat)`: `inbox(s)` for one settlement, reusing the product of every
+  source range that did not move since the previous call.
+- `block_contrast(layout, s_plus, s_minus)`: the learning rule's per-overlap contrast as one
+  Gram product per block.
+
+## Timing (`cadence.timing`)
+
+- `latency(decide, *, repeats=1000, warmup=20)`: time `decide()` `repeats` times; the median,
+  90th and 99th percentiles and maximum in microseconds, the mean, `jitter` (p99 over p50
+  minus one), and the voluntary and involuntary context switches during the measurement.
+- `environment()`: machine, cores, Python, thread limits, pinned cores (Linux), load average,
+  library versions.
 
 ## Reference engine (`cadence.reference`)
 

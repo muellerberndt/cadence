@@ -22,7 +22,10 @@ def test_actor_critic_learns_a_contextual_bandit_from_dopamine() -> None:
         cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.2, tolerance=3e-3, nudged_steps=12),
     )
     ac = cd.ActorCritic(
-        learner, wiring.sets["hidden"], cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3), seed=0
+        learner,
+        wiring.sets["hidden"],
+        cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3),
+        seed=0,
     )
     rng = np.random.default_rng(0)
     batch = 32
@@ -52,8 +55,14 @@ def test_actor_critic_learns_a_contextual_bandit_from_dopamine() -> None:
 
 def test_traces_reset_on_done_and_updates_are_local() -> None:
     wiring = cd.layered(4, 6, 2, density=1.0, seed=1)
-    learner = cd.Learner(cd.Settlement(wiring, cd.learning_rule(dt=1.0)), wiring.sets["output"], cd.LearnerConfig(eta=1.0))
-    ac = cd.ActorCritic(learner, wiring.sets["hidden"], cd.ActorCriticConfig(gamma=0.9, lam=0.5, eta=0.1), seed=1)
+    learner = cd.Learner(
+        cd.Settlement(wiring, cd.learning_rule(dt=1.0)),
+        wiring.sets["output"],
+        cd.LearnerConfig(eta=1.0),
+    )
+    ac = cd.ActorCritic(
+        learner, wiring.sets["hidden"], cd.ActorCriticConfig(gamma=0.9, lam=0.5, eta=0.1), seed=1
+    )
     rng = np.random.default_rng(1)
     x, _ = _contextual_bandit(rng, 4)
     drive = learner.engine.clamp_levels(np.pad(x, ((0, 0), (0, wiring.n - 4))))
@@ -68,13 +77,17 @@ def test_traces_reset_on_done_and_updates_are_local() -> None:
     ac.act(drive)
     kind, plus, minus, value = ac._pending
     w = wiring
-    contrast = (plus[:, w.pre] * plus[:, w.post] - minus[:, w.pre] * minus[:, w.post]) / (2.0 * learner.config.beta)
+    contrast = (plus[:, w.pre] * plus[:, w.post] - minus[:, w.pre] * minus[:, w.post]) / (
+        2.0 * learner.config.beta
+    )
     before = learner.engine.edge_scale.copy()
     trace_before = ac.trace.copy()
     w_critic, b_critic = ac.w_critic.copy(), ac.b_critic
     reward = np.array([1.0, 0.0, 0.5, 0.0])
     ac.learn(reward, np.zeros(4, dtype=bool), drive)
-    next_value = ac._free.activation[:, ac.critic_index] @ w_critic + b_critic  # the critic as it was
+    next_value = (
+        ac._free.activation[:, ac.critic_index] @ w_critic + b_critic
+    )  # the critic as it was
     delta = reward + 0.9 * next_value - value
     expected_trace = 0.9 * 0.5 * trace_before + contrast
     expected = 0.1 * (delta[:, None] * expected_trace).mean(axis=0)
@@ -91,7 +104,13 @@ def test_population_actor_critic_learns_a_continuous_bandit() -> None:
         wiring.sets["output"],
         cd.LearnerConfig(beta=0.1, eta=1.0, nudge="quadratic", tolerance=3e-3, nudged_steps=12),
     )
-    ac = cd.ActorCritic(learner, wiring.sets["hidden"], cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3), seed=2, population=pop)
+    ac = cd.ActorCritic(
+        learner,
+        wiring.sets["hidden"],
+        cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3),
+        seed=2,
+        population=pop,
+    )
     rng = np.random.default_rng(2)
     wanted = np.array([0.6, -0.6])  # context 0 wants +0.6, context 1 wants -0.6
 
@@ -119,7 +138,6 @@ def test_population_actor_critic_learns_a_continuous_bandit() -> None:
 
 
 def test_grouped_softmax_nudge_agrees_between_kernels_and_bins_learn_a_continuous_bandit() -> None:
-    import os
 
     from cadence import settle as S
 
@@ -144,8 +162,18 @@ def test_grouped_softmax_nudge_agrees_between_kernels_and_bins_learn_a_continuou
         S._FUSED = was
     assert np.abs(fused.activation - plain.activation).max() < 1e-12
 
-    learner = cd.Learner(engine, wiring.sets["output"], cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.2, tolerance=3e-3, nudged_steps=12))
-    ac = cd.ActorCritic(learner, wiring.sets["hidden"], cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3), seed=3, population=bins)
+    learner = cd.Learner(
+        engine,
+        wiring.sets["output"],
+        cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.2, tolerance=3e-3, nudged_steps=12),
+    )
+    ac = cd.ActorCritic(
+        learner,
+        wiring.sets["hidden"],
+        cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3),
+        seed=3,
+        population=bins,
+    )
     wanted = np.array([[0.5, -1.0], [-0.5, 1.0]])
 
     def batch(k: int) -> tuple[np.ndarray, np.ndarray]:
@@ -174,7 +202,9 @@ def test_grouped_softmax_nudge_agrees_between_kernels_and_bins_learn_a_continuou
 
 def test_value_net_fits_a_value_and_serves_the_actor_critic() -> None:
     rng = np.random.default_rng(4)
-    critic = cd.ValueNet(4, 8, cd.learning_rule(dt=1.0), cd.ValueConfig(scale=2.0, offset=0.2, eta=1.0), seed=4)
+    critic = cd.ValueNet(
+        4, 8, cd.learning_rule(dt=1.0), cd.ValueConfig(scale=2.0, offset=0.2, eta=1.0), seed=4
+    )
     x = rng.random((32, 4))
     drive = critic.learner.engine.clamp_levels(np.pad(x, ((0, 0), (0, 0))))
     target = x[:, 0] - x[:, 1]  # a value in [-1, 1]
@@ -184,8 +214,17 @@ def test_value_net_fits_a_value_and_serves_the_actor_critic() -> None:
     after = float(np.abs(critic.value(drive) - target).mean())
     assert after < 0.25 and after < before
     wiring = cd.layered(4, 8, 2, density=1.0, seed=4)
-    learner = cd.Learner(cd.Settlement(wiring, cd.learning_rule(dt=1.0)), wiring.sets["output"], cd.LearnerConfig(eta=1.0))
-    ac = cd.ActorCritic(learner, cd.ValueNet(4, 8, cd.learning_rule(dt=1.0), seed=5), cd.ActorCriticConfig(gamma=0.9), seed=4)
+    learner = cd.Learner(
+        cd.Settlement(wiring, cd.learning_rule(dt=1.0)),
+        wiring.sets["output"],
+        cd.LearnerConfig(eta=1.0),
+    )
+    ac = cd.ActorCritic(
+        learner,
+        cd.ValueNet(4, 8, cd.learning_rule(dt=1.0), seed=5),
+        cd.ActorCriticConfig(gamma=0.9),
+        seed=4,
+    )
     d = learner.engine.clamp_levels(np.pad(x[:4], ((0, 0), (0, wiring.n - 4))))
     ac.act(d)
     report = ac.learn(np.ones(4), np.zeros(4, dtype=bool), d)

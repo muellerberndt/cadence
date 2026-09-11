@@ -37,7 +37,9 @@ __all__ = ["Seams", "SleepConfig"]
 
 @dataclass(frozen=True, slots=True)
 class SleepConfig:
-    consolidate: float = 0.5  # fraction of a fully tagged fast strength that becomes slow in one sleep
+    consolidate: float = (
+        0.5  # fraction of a fully tagged fast strength that becomes slow in one sleep
+    )
     downscale: float = 0.5  # what remains of the fast strength after sleep
     tag_saturation: float = 1.0  # accumulated |step| at which a seam counts as fully tagged
     tag_decay: float = 0.0  # >0: forgetting factor of the tag between sleeps (per observe)
@@ -109,7 +111,9 @@ class Seams:
         w = self.learner.engine.wiring
         self.day += 1
         capture = np.clip(self.tag / cfg.tag_saturation, 0.0, 1.0)
-        moved = np.where(self.alive, cfg.consolidate * capture * self.fast, 0.0)  # transferred, not added
+        moved = np.where(
+            self.alive, cfg.consolidate * capture * self.fast, 0.0
+        )  # transferred, not added
         self.slow += moved
         self.fast -= moved
         self.fast *= cfg.downscale  # what was not consolidated fades
@@ -138,22 +142,34 @@ class Seams:
             sprouted += 1
         self.coact[:] = 0.0
         self._enforce()
-        return {"day": self.day, "pruned": int(weak.sum()), "sprouted": sprouted, "alive": int(self.alive.sum()), "slow_fraction": self.slow_fraction(), "digest": self.digest()}
+        return {
+            "day": self.day,
+            "pruned": int(weak.sum()),
+            "sprouted": sprouted,
+            "alive": int(self.alive.sum()),
+            "slow_fraction": self.slow_fraction(),
+            "digest": self.digest(),
+        }
 
     # -- invariants
 
     def _enforce(self) -> None:
-        """Conserve each owner's incoming total, write the strengths back, keep the learner's mask equal to ``alive``."""
+        """Conserve each owner's incoming total, write the strengths back, keep the learner's
+        mask equal to ``alive``."""
         cfg = self.config
         w = self.learner.engine.wiring
         if cfg.strength > 0:
             magnitude = np.where(self.alive, np.abs(self.slow + self.fast), 0.0)
             total = np.bincount(w.post, weights=magnitude, minlength=w.n)
-            factor = np.where(total > cfg.strength, cfg.strength / np.maximum(total, 1e-12), 1.0)[w.post]
+            factor = np.where(total > cfg.strength, cfg.strength / np.maximum(total, 1e-12), 1.0)[
+                w.post
+            ]
             self.slow *= factor
             self.fast *= factor
         scale = np.where(self.alive, self.slow + self.fast, 0.0)
-        self.learner.engine = self.learner.engine.with_parameters(edge_scale=scale, bias=self.learner.engine.bias)
+        self.learner.engine = self.learner.engine.with_parameters(
+            edge_scale=scale, bias=self.learner.engine.bias
+        )
         self.learner.trainable_overlaps = self.alive.copy()
         self._last = scale.copy()
 
@@ -168,4 +184,10 @@ class Seams:
         return hashlib.sha256(np.packbits(self.alive).tobytes()).hexdigest()
 
     def summary(self) -> dict[str, Any]:
-        return {"alive": int(self.alive.sum()), "overlaps": int(len(self.alive)), "slow_fraction": self.slow_fraction(), "day": self.day, "digest": self.digest()}
+        return {
+            "alive": int(self.alive.sum()),
+            "overlaps": int(len(self.alive)),
+            "slow_fraction": self.slow_fraction(),
+            "day": self.day,
+            "digest": self.digest(),
+        }

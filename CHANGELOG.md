@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.0 (2026-09-11)
+
+The cost of a settlement step is now the cost of the owners that move.
+
+- `cadence.blocks`: the block transport. The overlap matrix is stored as dense blocks
+  between the contiguous ranges the wiring's named sets cut, and the product of a range
+  whose activation did not change since the previous step is reused. The clamped inputs of
+  a layered net are multiplied once per settlement instead of once per step; the inbox is
+  the same sum in a different association order, and the conformance check against the
+  owner-by-owner reference still holds to rounding (2e-16). `Settlement(..., layout=)` and
+  `Settlement.layout`; `to_dict()` reports the layout. The `dense_limit` now bounds the
+  block entries, so a layered net of several thousand owners settles on blocks.
+- The fused kernel skips owners whose potential did not move and freezes ranges that hear
+  nothing once they are still (exact: the update of such an owner is a fixed function of
+  its own state), and no longer recomputes the activation of a state it continues from.
+- The learning rule's contrast is one small Gram product per block, and one product
+  instead of two for a range that is the same in both phases.
+- On the MNIST shape (784 inputs, 256 hidden, batch 256) one learning update went from
+  63 ms to 18 ms on one M4 core, and from 39 ms to 7 ms at 32 hidden owners; before, the
+  cost of an update barely depended on the hidden width because the input block dominated.
+- `cadence.timing`: `latency(decide)` times one decision many times and reports the median,
+  the tails, and the scheduler's context switches from `getrusage`; `environment()` records
+  threads, pinning (Linux), load and library versions for a receipt.
+- CI is green again: the 0.5.0 modules are formatted and typed.
+- Tests: 58.
+
 ## 0.5.0 (2026-09-10)
 
 Learning from reward and a life for the seams, built for the paper "You don't need attention

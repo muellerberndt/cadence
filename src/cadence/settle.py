@@ -6,9 +6,12 @@ backends do the same arithmetic:
 
 * ``"cpu"``: NumPy in float64. The transport is one segmented sum per
   step, a scatter of every overlap's message into its owner's inbox; for
-  small wirings (``n`` at most ``dense_limit``) the same sum is done as one
-  matrix product against the dense overlap matrix, which is far faster
-  when the interpreter overhead of the scatter would dominate. This is the
+  wirings whose dense blocks fit (at most ``dense_limit`` squared entries,
+  see ``cadence.blocks``) the same sum is done as block matrix products,
+  reusing the product of every range of owners that did not move since
+  the previous step, which is far faster when the interpreter overhead of
+  the scatter would dominate and lets a settlement step cost what its
+  moving owners cost rather than what the whole net does. This is the
   receipt-grade backend: deterministic, exact to rounding, and the one the
   owner-by-owner reference engine is compared against.
 * ``"torch"``: the same scatter with ``index_add_`` on whatever device
@@ -38,6 +41,8 @@ from typing import Any, Literal
 
 import numpy as np
 
+from .blocks import BlockTransport, Layout
+from .blocks import layout as make_layout
 from .rules import GradedRule
 from .wiring import Wiring
 
@@ -58,7 +63,9 @@ def _fused_available() -> bool:
     return available()
 
 
-_FUSED = _fused_available()  # the compiled dense kernel, identical arithmetic; CADENCE_FUSED=0 forces the NumPy loop
+_FUSED = (
+    _fused_available()
+)  # the compiled dense kernel, identical arithmetic; CADENCE_FUSED=0 forces the NumPy loop
 
 
 def available_backends() -> dict[str, str]:
@@ -108,7 +115,9 @@ class Nudge:
                 members = [np.flatnonzero(self.mask > 0)]
             else:
                 ids = np.asarray(self.groups)
-                members = [np.flatnonzero((ids == g) & (self.mask > 0)) for g in np.unique(ids[ids >= 0])]
+                members = [
+                    np.flatnonzero((ids == g) & (self.mask > 0)) for g in np.unique(ids[ids >= 0])
+                ]
             for group in members:
                 z = s[:, group] / self.softmax_temperature
                 z = z - z.max(axis=1, keepdims=True)
@@ -167,11 +176,13 @@ class Settlement:
         bias: np.ndarray | None = None,
         device: str | None = None,
         dense_limit: int = 2048,
+        layout: Layout | None = None,
     ) -> None:
         self.wiring = wiring
         self.rule = rule
         self.backend: Backend = backend
         self.dense_limit = dense_limit
+        self.layout: Layout = make_layout(wiring) if layout is None else layout
         self.edge_scale = (
             wiring.sign.copy() if edge_scale is None else np.asarray(edge_scale, float).copy()
         )
@@ -182,7 +193,7 @@ class Settlement:
         if self.log_gain.shape != (wiring.n,) or self.bias.shape != (wiring.n,):
             raise ValueError("log_gain and bias must have one entry per owner")
         self._weights: np.ndarray = (
-            rule.gain * wiring.count * self.edge_scale * np.exp(self.log_gain[wiring.pre])
+            rule.gain * wiring.count * self.edge_scale * np.exp(self.log_gain)[wiring.pre]
         )
         # Segment boundaries of the (post-sorted) overlap arrays, for the segmented sum.
         post = wiring.post
@@ -193,15 +204,13 @@ class Settlement:
         else:
             self._starts = np.zeros(0, np.int64)
             self._owners_with_inbox = np.zeros(0, np.int64)
-        self._dense: np.ndarray | None = None
-        if wiring.n <= dense_limit and backend == "cpu":
-            dense = np.zeros((wiring.n, wiring.n))
-            np.add.at(dense, (wiring.pre, wiring.post), self._weights)
-            self._dense = dense
+        # The block transport: dense blocks between owner ranges, when they fit.
+        blocked = self.layout.size <= dense_limit * dense_limit
+        self._blocks: np.ndarray | None = self.layout.flat(self._weights) if blocked else None
         self._torch: Any = None
         if backend == "torch":
             self._torch = _TorchKernel(
-                wiring, self._weights, self.bias, rule, device, dense=wiring.n <= dense_limit
+                wiring, self._weights, self.bias, rule, device, self.layout if blocked else None
             )
         elif backend != "cpu":
             raise ValueError(f"unknown backend {backend!r}")
@@ -224,6 +233,7 @@ class Settlement:
             log_gain=self.log_gain if log_gain is None else log_gain,
             bias=self.bias if bias is None else bias,
             dense_limit=self.dense_limit,
+            layout=self.layout,
         )
 
     @property
@@ -234,11 +244,8 @@ class Settlement:
     def dense(self) -> np.ndarray:
         """The overlap matrix ``W[pre, post]``: the inbox of a batch ``s`` is ``s @ W``.
 
-        Built on demand for wirings above ``dense_limit``; this is what a page
-        that settles the net in a browser embeds.
+        Built on demand; this is what a page that settles the net in a browser embeds.
         """
-        if self._dense is not None:
-            return self._dense
         dense = np.zeros((self.wiring.n, self.wiring.n))
         np.add.at(dense, (self.wiring.pre, self.wiring.post), self._weights)
         return dense
@@ -339,10 +346,23 @@ class Settlement:
             v, a, s, traj, taken = self._torch.run(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance
             )
-        elif self._dense is not None and not trajectory and _FUSED:
+        elif self._blocks is not None and not trajectory and _FUSED:
             from .fused import fused_settle
 
-            s, taken = fused_settle(v, a, drive, self.bias, self._dense, keep, self.rule, nudge, steps, tolerance)
+            s, taken = fused_settle(
+                v,
+                a,
+                drive,
+                self.bias,
+                self.layout,
+                self._blocks,
+                keep,
+                self.rule,
+                nudge,
+                steps,
+                tolerance,
+                activation=None if state is None else np.atleast_2d(state.activation),
+            )
             traj = None
         else:
             v, a, s, traj, taken = self._run_numpy(
@@ -350,10 +370,10 @@ class Settlement:
             )
         return SettledState(v=v, activation=s, adaptation=a, steps=taken, trajectory=traj)
 
-    def _inbox(self, s: np.ndarray) -> np.ndarray:
+    def _inbox(self, s: np.ndarray, blocks: BlockTransport | None = None) -> np.ndarray:
         """Transport: one segmented sum of every overlap's message into its owner's inbox."""
-        if self._dense is not None:
-            return np.asarray(s @ self._dense)
+        if blocks is not None:
+            return blocks.inbox(s)
         inbox = np.zeros_like(s)
         if self.wiring.edges:
             messages = s[:, self.wiring.pre] * self._weights
@@ -376,12 +396,13 @@ class Settlement:
         traj = np.zeros((steps, *v.shape)) if want else None
         masked = bool((keep != 1.0).any())
         standing = drive + self.bias  # the part of every owner's drive that does not move
+        blocks = None if self._blocks is None else BlockTransport(self.layout, self._blocks)
         s = rule.activation(v)
         if masked:
             s *= keep
         taken = 0
         for t in range(steps):
-            total = self._inbox(s)
+            total = self._inbox(s, blocks)
             total += standing
             if adapt is not None:
                 total -= adapt.strength * a
@@ -420,9 +441,7 @@ class Settlement:
         }
 
     def _is_dense(self) -> bool:
-        if self._torch is not None:
-            return bool(self._torch.dense is not None)
-        return self._dense is not None
+        return self._blocks is not None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -430,6 +449,7 @@ class Settlement:
             "rule": self.rule.to_dict(),
             "backend": self.backend,
             "transport": "dense" if self._is_dense() else "segmented",
+            "layout": self.layout.to_dict(),
             "edge_scale_changed": int((self.edge_scale != self.wiring.sign).sum()),
             "log_gain_nonzero": int((self.log_gain != 0).sum()),
             "bias_nonzero": int((self.bias != 0).sum()),
@@ -446,7 +466,7 @@ class _TorchKernel:
         bias: np.ndarray,
         rule: GradedRule,
         device: str | None,
-        dense: bool = False,
+        layout: Layout | None = None,
     ) -> None:
         import torch
 
@@ -469,11 +489,31 @@ class _TorchKernel:
         self.bias = torch.from_numpy(bias).to(self.device, self.dtype)
         self.rule = rule
         self.n = wiring.n
-        self.dense: Any = None
-        if dense:  # one matrix product per step instead of a gather and a scatter
-            matrix = np.zeros((wiring.n, wiring.n))
-            np.add.at(matrix, (wiring.pre, wiring.post), weights)
-            self.dense = torch.from_numpy(matrix).to(self.device, self.dtype)
+        self.layout = layout
+        self.blocks: list[Any] = []
+        if layout is not None:  # block products per step instead of a gather and a scatter
+            flat = layout.flat(weights)
+            self.blocks = [
+                torch.from_numpy(np.ascontiguousarray(block)).to(self.device, self.dtype)
+                for block in layout.blocks(flat)
+            ]
+
+    def _inbox(self, s: Any, previous: Any, cache: list[Any]) -> Any:
+        """The block transport on the device, reusing the products of still ranges."""
+        torch, lay = self.torch, self.layout
+        assert lay is not None
+        out = torch.zeros_like(s)
+        moved = [True] * lay.ranges
+        if previous is not None:
+            for r in lay.sources():
+                a0, a1 = int(lay.starts[r]), int(lay.starts[r + 1])
+                moved[r] = not torch.equal(s[:, a0:a1], previous[:, a0:a1])
+        for k in range(lay.pairs):
+            a0, a1, b0, b1 = lay.bounds(k)
+            if cache[k] is None or moved[int(lay.pair_pre[k])]:
+                cache[k] = s[:, a0:a1] @ self.blocks[k]
+            out[:, b0:b1] += cache[k]
+        return out
 
     def _activation(self, v: Any) -> Any:
         torch, rule = self.torch, self.rule
@@ -513,11 +553,13 @@ class _TorchKernel:
                 weight = to(np.asarray(nudge.weight, dtype=float))[:, None]
         traj = []
         taken = 0
+        cache: list[Any] = [None] * (0 if self.layout is None else self.layout.pairs)
+        previous = None
         with torch.no_grad():
             s = self._activation(v) * k
             for t in range(steps):
-                if self.dense is not None:
-                    inbox = s @ self.dense
+                if self.layout is not None:
+                    inbox = self._inbox(s, previous, cache)
                 else:
                     inbox = torch.zeros(batch, self.n, dtype=self.dtype, device=self.device)
                     inbox = inbox.index_add_(1, self.post, s[:, self.pre] * self.w)

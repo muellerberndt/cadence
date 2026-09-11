@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadence-net"
-version = "0.5.0"
+version = "0.6.0"
 description = "Machine learning by patch-net settlement: owner-local repair, held-out tests, receipts."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -55,5 +55,10 @@ packages = ["cadence"]
 mypy_path = "src"
 
 [[tool.mypy.overrides]]
-module = ["torch", "torch.*"]
+module = ["torch", "torch.*", "numba", "numba.*"]
 ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["cadence.fused"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false

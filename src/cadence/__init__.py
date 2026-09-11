@@ -21,15 +21,24 @@ from __future__ import annotations
 
 from .checkpoint import load, save
 from .custody import Source, fetch, manifest
-from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
-from .plasticity import ActorCritic, ActorCriticConfig, Bins, Population, Rehearsal, RehearsalConfig, ValueConfig, ValueNet
-from .structure import Seams, SleepConfig
 from .dream import DiscreteCode, DreamActorCritic, DreamConfig, actor_critic_wiring
+from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
+from .plasticity import (
+    ActorCritic,
+    ActorCriticConfig,
+    Bins,
+    Population,
+    Rehearsal,
+    RehearsalConfig,
+    ValueConfig,
+    ValueNet,
+)
 from .protocol import Protocol, Row, evaluate_predicate, select_gain, shuffled
 from .receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 from .reference import Ledger, conformance, settle_owner_by_owner
 from .rules import Adaptation, GradedRule
 from .settle import Nudge, SettledState, Settlement, available_backends
+from .structure import Seams, SleepConfig
 from .wiring import Wiring
 
 __all__ = [
@@ -78,4 +87,4 @@ __all__ = [
     "source_manifest",
 ]
 
-__version__ = "0.4.1"
+__version__ = "0.6.0"

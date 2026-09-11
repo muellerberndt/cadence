@@ -30,9 +30,20 @@ from typing import Any
 import numpy as np
 
 from .learning import Learner
-from .settle import Nudge, SettledState, Settlement, _FUSED as _FUSED_TRACE
+from .rules import GradedRule
+from .settle import _FUSED as _FUSED_TRACE
+from .settle import Nudge, SettledState, Settlement
 
-__all__ = ["ActorCritic", "ActorCriticConfig", "Population", "Bins", "ValueNet", "ValueConfig", "Rehearsal", "RehearsalConfig"]
+__all__ = [
+    "ActorCritic",
+    "ActorCriticConfig",
+    "Population",
+    "Bins",
+    "ValueNet",
+    "ValueConfig",
+    "Rehearsal",
+    "RehearsalConfig",
+]
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,7 +53,9 @@ class ValueConfig:
     beta: float = 0.1
     eta: float = 1.0
     eta_bias: float = 0.02
-    consolidate: float = 0.005  # the slow copy, which reads the target, follows by this fraction per update
+    consolidate: float = (
+        0.005  # the slow copy, which reads the target, follows by this fraction per update
+    )
     free_steps: int = 100
     nudged_steps: int = 12
     tolerance: float = 3e-3
@@ -52,7 +65,8 @@ class ValueConfig:
 
 
 class ValueNet:
-    """A critic with its own hidden owners: a settlement net whose value owner is nudged toward the target.
+    """A critic with its own hidden owners: a settlement net whose value owner is nudged
+    toward the target.
 
     Built on a ``layered(inputs, hidden, 1)`` wiring. ``value(drive)`` settles the net under
     the actor's input levels (the first ``inputs`` columns of the actor's drive) and reads the
@@ -61,7 +75,14 @@ class ValueNet:
     ``consolidate`` per update, reads the bootstrap target.
     """
 
-    def __init__(self, inputs: int, hidden: int, rule, config: ValueConfig | None = None, seed: int = 0) -> None:
+    def __init__(
+        self,
+        inputs: int,
+        hidden: int,
+        rule: GradedRule,
+        config: ValueConfig | None = None,
+        seed: int = 0,
+    ) -> None:
         from .learning import LearnerConfig, layered
 
         self.config = config or ValueConfig()
@@ -69,7 +90,19 @@ class ValueNet:
         self.wiring = layered(inputs, hidden, 1, density=1.0, seed=seed)
         engine = Settlement(self.wiring, rule)
         cfg = self.config
-        self.learner = Learner(engine, self.wiring.sets["output"], LearnerConfig(beta=cfg.beta, eta=cfg.eta, eta_bias=cfg.eta_bias, nudge="quadratic", tolerance=cfg.tolerance, free_steps=cfg.free_steps, nudged_steps=cfg.nudged_steps))
+        self.learner = Learner(
+            engine,
+            self.wiring.sets["output"],
+            LearnerConfig(
+                beta=cfg.beta,
+                eta=cfg.eta,
+                eta_bias=cfg.eta_bias,
+                nudge="quadratic",
+                tolerance=cfg.tolerance,
+                free_steps=cfg.free_steps,
+                nudged_steps=cfg.nudged_steps,
+            ),
+        )
         self.value_index = int(self.wiring.sets["output"][0])
         self.mask = np.zeros(self.wiring.n)
         self.mask[self.value_index] = 1.0
@@ -86,8 +119,16 @@ class ValueNet:
 
     def value(self, actor_drive: np.ndarray, slow: bool = False) -> np.ndarray:
         cfg = self.config
-        engine = self.learner.engine.with_parameters(edge_scale=self.slow_scale, bias=self.slow_bias) if slow else self.learner.engine
-        return self._read(engine.settle_batch(self.drive_from(actor_drive), steps=cfg.free_steps, tolerance=cfg.tolerance))
+        engine = (
+            self.learner.engine.with_parameters(edge_scale=self.slow_scale, bias=self.slow_bias)
+            if slow
+            else self.learner.engine
+        )
+        return self._read(
+            engine.settle_batch(
+                self.drive_from(actor_drive), steps=cfg.free_steps, tolerance=cfg.tolerance
+            )
+        )
 
     def learn(self, actor_drive: np.ndarray, target: np.ndarray) -> dict[str, float]:
         cfg = self.config
@@ -95,8 +136,20 @@ class ValueNet:
         free = self.learner.free(drive)
         full = np.zeros((len(drive), self.wiring.n))
         full[:, self.value_index] = np.clip(np.asarray(target) / cfg.scale + cfg.offset, 0.02, 0.98)
-        plus = self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(full, self.mask, cfg.beta), tolerance=cfg.tolerance)
-        minus = self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=Nudge(full, self.mask, -cfg.beta), tolerance=cfg.tolerance)
+        plus = self.learner.engine.settle_batch(
+            drive,
+            steps=cfg.nudged_steps,
+            state=free,
+            nudge=Nudge(full, self.mask, cfg.beta),
+            tolerance=cfg.tolerance,
+        )
+        minus = self.learner.engine.settle_batch(
+            drive,
+            steps=cfg.nudged_steps,
+            state=free,
+            nudge=Nudge(full, self.mask, -cfg.beta),
+            tolerance=cfg.tolerance,
+        )
         report = self.learner.update(free, plus, minus)
         self.slow_scale += cfg.consolidate * (self.learner.engine.edge_scale - self.slow_scale)
         self.slow_bias += cfg.consolidate * (self.learner.engine.bias - self.slow_bias)
@@ -105,7 +158,6 @@ class ValueNet:
 
     def parameters(self) -> int:
         return self.learner.parameters()
-
 
 
 @dataclass(frozen=True)
@@ -138,7 +190,6 @@ class Bins:
         return self.centres[np.argmax(s, axis=2)]
 
 
-
 @dataclass(frozen=True)
 class Population:
     """A continuous action as a bump over ``size`` owners per dimension.
@@ -153,7 +204,9 @@ class Population:
     size: int = 9
     width: float = 0.25
     sigma: float = 0.3
-    temperature: float = 0.1  # the readout is the softmax-weighted mean of the centres: a soft winner
+    temperature: float = (
+        0.1  # the readout is the softmax-weighted mean of the centres: a soft winner
+    )
 
     @property
     def centres(self) -> np.ndarray:
@@ -165,13 +218,13 @@ class Population:
         s = s - s.max(axis=2, keepdims=True)
         w = np.exp(s)
         w /= w.sum(axis=2, keepdims=True)
-        return (w * self.centres[None, None, :]).sum(axis=2)
+        return np.asarray((w * self.centres[None, None, :]).sum(axis=2))
 
     def write(self, value: np.ndarray) -> np.ndarray:
         """``(batch, dims)`` values to ``(batch, dims * size)`` bumps."""
         gap = value[:, :, None] - self.centres[None, None, :]
-        return np.exp(-(gap**2) / (2.0 * self.width**2)).reshape(len(value), self.dims * self.size)
-
+        bumps = np.exp(-(gap**2) / (2.0 * self.width**2))
+        return np.asarray(bumps.reshape(len(value), self.dims * self.size))
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,11 +237,17 @@ class ActorCriticConfig:
     eta_critic: float = 0.05
     normalize: float = 0.0  # >0: forgetting factor of the per-seam RMS that divides its step
     normalize_floor: float = 1e-3
-    momentum: float = 0.0  # >0: each seam steps on a running average of its own steps, so sign noise cancels before the RMS divides it
+    # >0: each seam steps on a running average of its own steps, so sign noise cancels before
+    # the RMS divides it
+    momentum: float = 0.0
     critic_init: float = 0.0
     dopamine_cap: float = 1.0  # the broadcast saturates: |delta| is clipped here (0: no cap)
-    dopamine_center: float = 0.0  # >0: forgetting factor of a running mean and scale of delta; the phasic signal is the deviation from the tonic level
-    critic_normalize: bool = True  # the critic's step is divided by its trace's energy, so its step size is scale-free
+    # >0: forgetting factor of a running mean and scale of delta; the phasic signal is the
+    # deviation from the tonic level
+    dopamine_center: float = 0.0
+    critic_normalize: bool = (
+        True  # the critic's step is divided by its trace's energy, so its step size is scale-free
+    )
 
     def to_dict(self) -> dict[str, Any]:
         return {k: getattr(self, k) for k in self.__slots__}
@@ -222,11 +281,16 @@ class ActorCritic:
         self.critic_net: ValueNet | None = critic if isinstance(critic, ValueNet) else None
         if self.critic_net is not None:
             critic = ()
-        if population is not None and len(learner.output_index) != population.dims * population.size:
+        if (
+            population is not None
+            and len(learner.output_index) != population.dims * population.size
+        ):
             raise ValueError("the output set must hold dims * size owners for a population code")
         self.bins = population if isinstance(population, Bins) else None
         if self.bins is not None:
-            self.group_id = self.bins.groups(learner.output_index, learner.engine.wiring.n)
+            self.group_id: np.ndarray | None = self.bins.groups(
+                learner.output_index, learner.engine.wiring.n
+            )
         self.critic_index = np.asarray(list(critic), dtype=np.int64)
         self.w_critic = np.full(len(self.critic_index), self.config.critic_init)
         self.b_critic = 0.0
@@ -244,7 +308,7 @@ class ActorCritic:
         self.delta_var = 1.0
         self._drive: np.ndarray | None = None
         self._free: SettledState | None = None
-        self._pending: tuple[np.ndarray, np.ndarray, np.ndarray] | None = None
+        self._pending: tuple[str, np.ndarray, np.ndarray, np.ndarray] | None = None
         self.updates = 0
 
     # -- readings
@@ -253,7 +317,7 @@ class ActorCritic:
         if self.critic_net is not None:
             assert self._drive is not None
             return self.critic_net.value(self._drive)
-        return state.activation[:, self.critic_index] @ self.w_critic + self.b_critic
+        return np.asarray(state.activation[:, self.critic_index] @ self.w_critic + self.b_critic)
 
     def probabilities(self, state: SettledState) -> np.ndarray:
         s = state.activation[:, self.learner.output_index]
@@ -279,7 +343,11 @@ class ActorCritic:
         With a ``Population``: a value per dimension in ``[-1, 1]``, Gaussian exploration
         around the read-out, the taken value's bump as the nudge's target.
         """
-        free = self._free if self._free is not None and self._free.v.shape[0] == len(drive) else self.settle(drive)
+        free = (
+            self._free
+            if self._free is not None and self._free.v.shape[0] == len(drive)
+            else self.settle(drive)
+        )
         self._drive = drive
         if self.bins is not None:
             return self._act_bins(drive, free, greedy)
@@ -300,7 +368,8 @@ class ActorCritic:
         return np.asarray(action, dtype=np.int64)
 
     def _act_bins(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
-        """One softmax draw per dimension; the taken levels' one-hots are the nudge's target, per group."""
+        """One softmax draw per dimension; the taken levels' one-hots are the nudge's target,
+        per group."""
         bins = self.bins
         assert bins is not None
         cfg = self.learner.config
@@ -326,10 +395,20 @@ class ActorCritic:
             self._pending = ("phases", plus.activation, minus.activation, self.value(free))
         return action
 
-    def _nudged_groups(self, drive: np.ndarray, free: SettledState, target: np.ndarray, beta: float) -> SettledState:
+    def _nudged_groups(
+        self, drive: np.ndarray, free: SettledState, target: np.ndarray, beta: float
+    ) -> SettledState:
         cfg = self.learner.config
-        nudge = Nudge(target, self.learner.output_mask, beta, softmax_temperature=cfg.temperature, groups=self.group_id)
-        return self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=nudge, tolerance=cfg.tolerance)
+        nudge = Nudge(
+            target,
+            self.learner.output_mask,
+            beta,
+            softmax_temperature=cfg.temperature,
+            groups=self.group_id,
+        )
+        return self.learner.engine.settle_batch(
+            drive, steps=cfg.nudged_steps, state=free, nudge=nudge, tolerance=cfg.tolerance
+        )
 
     def _act_continuous(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
         pop = self.population
@@ -347,7 +426,13 @@ class ActorCritic:
 
     # -- learning
 
-    def learn(self, reward: np.ndarray, done: np.ndarray, next_drive: np.ndarray, bootstrap: np.ndarray | None = None) -> dict[str, float]:
+    def learn(
+        self,
+        reward: np.ndarray,
+        done: np.ndarray,
+        next_drive: np.ndarray,
+        bootstrap: np.ndarray | None = None,
+    ) -> dict[str, float]:
         """Dopamine from the reward and the next state's value; every seam moves on its trace.
 
         ``done`` rows start their next life from rest and, unless ``bootstrap`` gives them
@@ -371,12 +456,17 @@ class ActorCritic:
         assert self.trace_bias is not None and self.trace_critic is not None
         fused = None
         if kind == "phases" and _FUSED_TRACE:
-            fused = (first, second)  # the contrast, trace, and dopamine-weighted sum are one fused pass in learn
+            fused = (
+                first,
+                second,
+            )  # the contrast, trace, and dopamine-weighted sum are one fused pass in learn
         else:
             if kind == "phases":
                 w = self.learner.engine.wiring
                 span = 2.0 * self.learner.config.beta
-                contrast = (first[:, w.pre] * first[:, w.post] - second[:, w.pre] * second[:, w.post]) / span
+                contrast = (
+                    first[:, w.pre] * first[:, w.post] - second[:, w.pre] * second[:, w.post]
+                ) / span
                 contrast_bias = (first - second) / span
             else:
                 contrast, contrast_bias = first, second
@@ -394,18 +484,24 @@ class ActorCritic:
             a = next_state.adaptation.copy()
             v[done] = 0.0
             a[done] = 0.0
-            next_state = self.learner.free(next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps))
+            next_state = self.learner.free(
+                next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps)
+            )
         if self.critic_net is not None:
             next_value_raw = self.critic_net.value(next_drive, slow=True)
         else:
             next_value_raw = self.value(next_state)
-        next_value = np.where(done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw)
+        next_value = np.where(
+            done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw
+        )
         raw_target = reward + cfg.gamma * next_value
         delta = raw_target - value
         if cfg.dopamine_center > 0:
             rho = cfg.dopamine_center
             self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
-            self.delta_var = rho * self.delta_var + (1 - rho) * float(((delta - self.delta_mean) ** 2).mean())
+            self.delta_var = rho * self.delta_var + (1 - rho) * float(
+                ((delta - self.delta_mean) ** 2).mean()
+            )
             delta = (delta - self.delta_mean) / (np.sqrt(self.delta_var) + 1e-6)
         if cfg.dopamine_cap > 0:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
@@ -414,24 +510,42 @@ class ActorCritic:
             from .fused import trace_step
 
             w = self.learner.engine.wiring
-            step_scale, step_bias = trace_step(self.trace, self.trace_bias, decay, fused[0], fused[1], w.pre, w.post, 2.0 * self.learner.config.beta, delta)
+            step_scale, step_bias = trace_step(
+                self.trace,
+                self.trace_bias,
+                decay,
+                fused[0],
+                fused[1],
+                w.pre,
+                w.post,
+                2.0 * self.learner.config.beta,
+                delta,
+            )
         else:
             step_scale = (delta[:, None] * self.trace).mean(axis=0)
             step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
         self.updates += 1
         raw_scale, raw_bias = step_scale, step_bias
-        if cfg.momentum > 0:  # a running average of each seam's own steps, corrected for its short history
+        if (
+            cfg.momentum > 0
+        ):  # a running average of each seam's own steps, corrected for its short history
             self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * step_scale
             self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * step_bias
             correction = 1.0 - cfg.momentum**self.updates
             step_scale, step_bias = self.velocity / correction, self.velocity_bias / correction
-        if cfg.normalize > 0:  # divided by the running RMS of each seam's own raw steps, corrected likewise
+        if (
+            cfg.normalize > 0
+        ):  # divided by the running RMS of each seam's own raw steps, corrected likewise
             rho = cfg.normalize
             self.second_moment = rho * self.second_moment + (1 - rho) * raw_scale**2
             self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * raw_bias**2
             correction = 1.0 - rho**self.updates
-            step_scale = step_scale / (np.sqrt(self.second_moment / correction) + cfg.normalize_floor)
-            step_bias = step_bias / (np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor)
+            step_scale = step_scale / (
+                np.sqrt(self.second_moment / correction) + cfg.normalize_floor
+            )
+            step_bias = step_bias / (
+                np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor
+            )
         step_scale = cfg.eta * step_scale
         step_bias = cfg.eta_bias * step_bias
         report = self.learner.apply(step_scale, step_bias)
@@ -475,7 +589,12 @@ class ActorCritic:
         return self.learner.parameters() + len(self.w_critic) + 1
 
     def to_dict(self) -> dict[str, Any]:
-        return {"config": self.config.to_dict(), "critic": [int(i) for i in self.critic_index], "updates": self.updates, "learner": self.learner.to_dict()}
+        return {
+            "config": self.config.to_dict(),
+            "critic": [int(i) for i in self.critic_index],
+            "updates": self.updates,
+            "learner": self.learner.to_dict(),
+        }
 
 
 @dataclass(frozen=True, slots=True)
@@ -513,7 +632,14 @@ class Rehearsal:
     ``Bins`` (one softmax per action dimension).
     """
 
-    def __init__(self, learner: Learner, critic: "ValueNet", config: RehearsalConfig | None = None, seed: int = 0, bins: Bins | None = None) -> None:
+    def __init__(
+        self,
+        learner: Learner,
+        critic: ValueNet,
+        config: RehearsalConfig | None = None,
+        seed: int = 0,
+        bins: Bins | None = None,
+    ) -> None:
         self.learner = learner
         self.critic = critic
         self.config = config or RehearsalConfig()
@@ -551,7 +677,11 @@ class Rehearsal:
         return self._free
 
     def act(self, drive: np.ndarray, greedy: bool = False) -> np.ndarray:
-        free = self._free if self._free is not None and self._free.v.shape[0] == len(drive) else self.settle(drive)
+        free = (
+            self._free
+            if self._free is not None and self._free.v.shape[0] == len(drive)
+            else self.settle(drive)
+        )
         self._drive = drive
         p = self._probabilities(free.activation)
         if greedy:
@@ -564,21 +694,34 @@ class Rehearsal:
         if logp.ndim == 2:
             logp = logp.sum(axis=1)
         if not greedy:
-            self._pending = {"drive": drive, "choice": choice, "logp": logp, "value": self.critic.value(drive)}
+            self._pending = {
+                "drive": drive,
+                "choice": choice,
+                "logp": logp,
+                "value": self.critic.value(drive),
+            }
         if self.bins is not None:
             return self.bins.centres[choice]
         return np.asarray(choice, dtype=np.int64)
 
     # -- the window
 
-    def learn(self, reward: np.ndarray, done: np.ndarray, next_drive: np.ndarray, bootstrap: np.ndarray | None = None) -> dict[str, float] | None:
+    def learn(
+        self,
+        reward: np.ndarray,
+        done: np.ndarray,
+        next_drive: np.ndarray,
+        bootstrap: np.ndarray | None = None,
+    ) -> dict[str, float] | None:
         """Keep the step; when the window is full, rehearse it and return the report."""
         cfg = self.config
         assert self._pending is not None
         row = dict(self._pending)
         row["reward"] = np.asarray(reward, dtype=float)
         row["done"] = np.asarray(done, dtype=bool)
-        row["bootstrap"] = np.zeros(len(reward)) if bootstrap is None else np.asarray(bootstrap, dtype=float)
+        row["bootstrap"] = (
+            np.zeros(len(reward)) if bootstrap is None else np.asarray(bootstrap, dtype=float)
+        )
         self.rows.append(row)
         self._pending = None
         # the next state, warm; finished rows start their next life from rest
@@ -588,7 +731,9 @@ class Rehearsal:
             a = next_state.adaptation.copy()
             v[row["done"]] = 0.0
             a[row["done"]] = 0.0
-            next_state = self.learner.free(next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps))
+            next_state = self.learner.free(
+                next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps)
+            )
         self._free = next_state
         self._drive = next_drive
         if len(self.rows) < cfg.window:
@@ -619,7 +764,7 @@ class Rehearsal:
         drive = np.concatenate([r["drive"] for r in rows])
         choice = np.concatenate([r["choice"] for r in rows])
         logp_old = np.concatenate([r["logp"] for r in rows])
-        adv = adv.reshape(-1)
+        adv = adv.reshape(-1)  # type: ignore[assignment]
         returns = returns.reshape(-1)
         n_rows = len(drive)
         index = np.arange(n_rows)
@@ -636,8 +781,13 @@ class Rehearsal:
                     logp = logp.sum(axis=1)
                 ratio = np.exp(logp - logp_old[idx])
                 a = adv[idx]
-                # the clipped objective's gradient: a row pushes only while its ratio is inside the clip, or pushes back
-                push = np.where(((ratio > 1 + cfg.clip) & (a > 0)) | ((ratio < 1 - cfg.clip) & (a < 0)), 0.0, 1.0)
+                # the clipped objective's gradient: a row pushes only while its ratio is inside
+                # the clip, or pushes back
+                push = np.where(
+                    ((ratio > 1 + cfg.clip) & (a > 0)) | ((ratio < 1 - cfg.clip) & (a < 0)),
+                    0.0,
+                    1.0,
+                )
                 clipped += int((push == 0).sum())
                 weight = a * ratio * push
                 target = self._targets(choice[idx])
@@ -647,7 +797,12 @@ class Rehearsal:
                 self._apply(overlap_term, owner_term)
                 self.critic.learn(drive[idx], returns[idx])
         self.rehearsals += 1
-        return {"rows": float(n_rows), "clipped": float(clipped / max(n_rows * cfg.epochs, 1)), "advantage": float(np.abs(adv).mean()), "value": float(values.mean())}
+        return {
+            "rows": float(n_rows),
+            "clipped": float(clipped / max(n_rows * cfg.epochs, 1)),
+            "advantage": float(np.abs(adv).mean()),
+            "value": float(values.mean()),
+        }
 
     def _targets(self, choice: np.ndarray) -> np.ndarray:
         target = np.zeros((len(choice), self.n))
@@ -660,10 +815,26 @@ class Rehearsal:
             target[np.arange(len(choice)), out[choice]] = 1.0
         return target
 
-    def _nudged(self, drive: np.ndarray, free: SettledState, target: np.ndarray, beta: float, weight: np.ndarray) -> SettledState:
+    def _nudged(
+        self,
+        drive: np.ndarray,
+        free: SettledState,
+        target: np.ndarray,
+        beta: float,
+        weight: np.ndarray,
+    ) -> SettledState:
         cfg = self.learner.config
-        nudge = Nudge(target, self.learner.output_mask, beta, softmax_temperature=cfg.temperature, weight=weight, groups=self.group_id)
-        return self.learner.engine.settle_batch(drive, steps=cfg.nudged_steps, state=free, nudge=nudge, tolerance=cfg.tolerance)
+        nudge = Nudge(
+            target,
+            self.learner.output_mask,
+            beta,
+            softmax_temperature=cfg.temperature,
+            weight=weight,
+            groups=self.group_id,
+        )
+        return self.learner.engine.settle_batch(
+            drive, steps=cfg.nudged_steps, state=free, nudge=nudge, tolerance=cfg.tolerance
+        )
 
     def _apply(self, overlap_term: np.ndarray, owner_term: np.ndarray) -> None:
         cfg = self.config

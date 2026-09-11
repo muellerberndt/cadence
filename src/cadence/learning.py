@@ -44,6 +44,7 @@ from typing import Any
 
 import numpy as np
 
+from .blocks import block_contrast
 from .rules import GradedRule
 from .settle import Backend, Nudge, SettledState, Settlement
 from .wiring import Wiring
@@ -196,9 +197,9 @@ class Learner:
             s_minus, span = free.activation, beta
         else:
             s_minus, span = opposite.activation, 2.0 * beta
-        if w.edges > 4 * w.n:  # the pairwise products as one matrix product, read at the overlaps
-            gram = s_plus.T @ s_plus - s_minus.T @ s_minus
-            return gram[w.pre, w.post] / (len(s_plus) * span), (s_plus - s_minus).mean(axis=0) / span
+        if w.edges > 4 * w.n:  # the pairwise products as block products, read at the overlaps
+            gram = block_contrast(self.engine.layout, s_plus, s_minus)
+            return gram / (len(s_plus) * span), (s_plus - s_minus).mean(axis=0) / span
         hebb_plus = (s_plus[:, w.pre] * s_plus[:, w.post]).mean(axis=0)
         hebb_minus = (s_minus[:, w.pre] * s_minus[:, w.post]).mean(axis=0)
         return (hebb_plus - hebb_minus) / span, (s_plus - s_minus).mean(axis=0) / span
@@ -219,7 +220,7 @@ class Learner:
         return hebb / span, (s_plus - s_minus) / span
 
     def apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
-        """Apply a per-overlap and per-owner step: masks, tying, decay, and bounds, then set the engine.
+        """Apply a per-overlap and per-owner step: masks, tying, decay, bounds; then set the engine.
 
         This is the last half of ``update``; a rule that computes its own step (a
         three-factor trace, say) hands it here so every learner shares one notion of
@@ -344,6 +345,7 @@ class Learner:
             log_gain=self.engine.log_gain,
             bias=self.engine.bias,
             dense_limit=self.engine.dense_limit,
+            layout=self.engine.layout,
         )
 
     # -- readout
