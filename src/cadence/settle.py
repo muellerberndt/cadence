@@ -641,12 +641,10 @@ class _TorchKernel:
         batch = v.shape[0]
         adapt = rule.adaptation
         target = mask = weight = None
-        group: Any = None
         groups: list[Any] = []
         if nudge is not None:
             target = to(np.broadcast_to(nudge.target, (batch, self.n)))
             mask = to(nudge.mask)
-            group = torch.from_numpy(np.flatnonzero(nudge.mask > 0)).to(self.device)
             groups = [
                 torch.from_numpy(members).to(self.device) for members in _softmax_groups(nudge)
             ]
@@ -809,7 +807,6 @@ class _MlxKernel:
         masked = bool((keep != 1.0).any())
         adapt = rule.adaptation
         target = mask = weight = None
-        group: Any = None
         groups: list[Any] = []
         if nudge is not None:
             target = to(np.broadcast_to(nudge.target, (batch, self.n)))
