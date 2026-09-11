@@ -25,6 +25,11 @@ The cost of a settlement step is now the cost of the owners that move.
   threads, pinning (Linux), load and library versions for a receipt.
 - `Settlement(precision=)` on the torch backend: float32 on CUDA when speed matters more than
   the receipt (read out on the cpu backend), float64 where the device has it.
+- `cadence.stream`: owned state as a clamp. `stateful(...)` builds a windowed net with a range
+  of context owners, one per hidden owner, wired densely into the hidden owners; `Echo` keeps
+  a leaky trace of the hidden owners' equilibria across a batch of streams and writes it into
+  the context clamp, so each state reverberates and fades. A test learns to name the symbol
+  seen one input ago from a window of one, which no window can.
 - CI is green again: the 0.5.0 modules are formatted and typed.
 - Tests: 58.
 

@@ -38,6 +38,7 @@ from .receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 from .reference import Ledger, conformance, settle_owner_by_owner
 from .rules import Adaptation, GradedRule
 from .settle import Nudge, SettledState, Settlement, available_backends
+from .stream import Echo, stateful
 from .structure import Seams, SleepConfig
 from .wiring import Wiring
 
@@ -57,6 +58,7 @@ __all__ = [
     "Seams",
     "SleepConfig",
     "Adaptation",
+    "Echo",
     "GradedRule",
     "Learner",
     "LearnerConfig",
@@ -85,6 +87,7 @@ __all__ = [
     "settle_owner_by_owner",
     "shuffled",
     "source_manifest",
+    "stateful",
 ]
 
 __version__ = "0.6.0"

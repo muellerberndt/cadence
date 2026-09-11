@@ -62,6 +62,16 @@ docstrings in the source carry the details.
 - `block_contrast(layout, s_plus, s_minus)`: the learning rule's per-overlap contrast as one
   Gram product per block.
 
+## Streams (`cadence.stream`)
+
+- `stateful(vocabulary, positions, dim, hidden, outputs, *, seed=0, init=1.0, context_init=1.0) -> (Wiring, tie_groups)`:
+  `embedded` plus a `context` range of `hidden` owners that hear nothing and reach every
+  hidden owner. Sets `input`, `context`, `embedding`, `hidden`, `output`.
+- `Echo(wiring, decay=0.5, amplitude=1.0)`: the carried state of a batch of streams.
+  `reset(batch)`, `clamp(drive)` (writes `amplitude * trace` into the context columns),
+  `update(state)` (`trace <- decay * trace + (1 - decay) * hidden activation`), `keep(rows)`,
+  `to_dict()`.
+
 ## Timing (`cadence.timing`)
 
 - `latency(decide, *, repeats=1000, warmup=20)`: time `decide()` `repeats` times; the median,
