@@ -179,7 +179,8 @@ is the tutorial they build on.
 | [reward](docs/reward.md) | learning from reward: three factors, dreams, what the gates measured |
 | [life](docs/life.md) | fast and slow strengths, sleep, pruning and sprouting |
 | [protocols](docs/protocols.md) | predicates, the shuffled control, gain selection |
-| [backends](docs/backends.md) | CPU and torch, precision, the dense transport |
+| [brain](docs/brain.md) | every feature of a brain and its simplest constituent here; the language thesis |
+| [backends](docs/backends.md) | CPU and torch, precision, the block transport, timing a decision |
 | [receipts](docs/receipts.md) | what a verified result is |
 | [api](docs/api.md) | every public class and function |
 
