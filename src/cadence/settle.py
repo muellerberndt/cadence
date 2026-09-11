@@ -135,6 +135,15 @@ class Nudge:
         return out
 
 
+def _softmax_groups(nudge: Nudge) -> list[np.ndarray]:
+    """The masked owners as one index array per softmax group (one group without ``groups``)."""
+    masked = np.flatnonzero(np.asarray(nudge.mask) > 0)
+    if nudge.groups is None:
+        return [masked.astype(np.int64)]
+    ids = np.asarray(nudge.groups)[masked]
+    return [masked[ids == g].astype(np.int64) for g in np.unique(ids[ids >= 0])]
+
+
 @dataclass(frozen=True)
 class SettledState:
     """What the net came to rest in: potentials, activations, adaptation, optional trajectory.
@@ -633,10 +642,14 @@ class _TorchKernel:
         adapt = rule.adaptation
         target = mask = weight = None
         group: Any = None
+        groups: list[Any] = []
         if nudge is not None:
             target = to(np.broadcast_to(nudge.target, (batch, self.n)))
             mask = to(nudge.mask)
             group = torch.from_numpy(np.flatnonzero(nudge.mask > 0)).to(self.device)
+            groups = [
+                torch.from_numpy(members).to(self.device) for members in _softmax_groups(nudge)
+            ]
             if nudge.weight is not None:
                 weight = to(np.asarray(nudge.weight, dtype=float))[:, None]
         traj = []
@@ -661,11 +674,12 @@ class _TorchKernel:
                 if nudge is not None:
                     if nudge.softmax_temperature is None:
                         push = nudge.beta * (target - s) * mask
-                    else:
-                        assert group is not None and target is not None
-                        p = torch.softmax(s[:, group] / nudge.softmax_temperature, dim=1)
+                    else:  # one softmax per group of competing owners
+                        assert target is not None
                         push = torch.zeros_like(s)
-                        push[:, group] = nudge.beta * (target[:, group] - p)
+                        for members in groups:
+                            p = torch.softmax(s[:, members] / nudge.softmax_temperature, dim=1)
+                            push[:, members] = nudge.beta * (target[:, members] - p)
                     if weight is not None:
                         push = push * weight
                     total = total + push
@@ -796,10 +810,11 @@ class _MlxKernel:
         adapt = rule.adaptation
         target = mask = weight = None
         group: Any = None
+        groups: list[Any] = []
         if nudge is not None:
             target = to(np.broadcast_to(nudge.target, (batch, self.n)))
             mask = to(nudge.mask)
-            group = mx.array(np.flatnonzero(nudge.mask > 0))
+            groups = [mx.array(members) for members in _softmax_groups(nudge)]
             if nudge.weight is not None:
                 weight = to(np.asarray(nudge.weight, dtype=float))[:, None]
         traj = []
@@ -821,10 +836,11 @@ class _MlxKernel:
                 assert target is not None and mask is not None
                 if nudge.softmax_temperature is None:
                     push = nudge.beta * (target - s) * mask
-                else:
-                    p = mx.softmax(s[:, group] / nudge.softmax_temperature, axis=1)
+                else:  # one softmax per group of competing owners
                     push = mx.zeros_like(s)
-                    push[:, group] = nudge.beta * (target[:, group] - p)
+                    for members in groups:
+                        p = mx.softmax(s[:, members] / nudge.softmax_temperature, axis=1)
+                        push[:, members] = nudge.beta * (target[:, members] - p)
                 if weight is not None:
                     push = push * weight
                 total = total + push

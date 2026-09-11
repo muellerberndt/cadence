@@ -191,3 +191,34 @@ def test_mlx_kernel_matches_cpu_with_every_feature() -> None:
     assert np.abs(again.activation - from_host.activation).max() < 1e-5
     traj = mlx.settle_batch(drive, steps=5, trajectory=True)
     assert traj.trajectory is not None and traj.trajectory.shape == (5, 4, wiring.n)
+
+
+@pytest.mark.parametrize("backend", ["torch", "mlx"])
+def test_device_kernels_honour_softmax_groups(backend: str) -> None:
+    if backend not in cd.available_backends():
+        pytest.skip(f"{backend} not installed")
+    wiring = cd.layered(6, 5, 6, density=1.0, seed=8)  # two slots of three output owners
+    rule = cd.learning_rule(dt=1.0)
+    cpu = cd.Settlement(wiring, rule)
+    kw = {"device": "cpu"} if backend == "torch" else {}
+    device = cd.Settlement(wiring, rule, backend=backend, **kw)  # type: ignore[arg-type]
+    out = np.asarray(wiring.sets["output"])
+    mask = np.zeros(wiring.n)
+    mask[out] = 1.0
+    groups = np.full(wiring.n, -1)
+    groups[out[:3]] = 0
+    groups[out[3:]] = 1
+    target = np.zeros((3, wiring.n))
+    target[np.arange(3), out[[0, 1, 2]]] = 1.0
+    target[np.arange(3), out[[3, 4, 5]]] = 1.0
+    drive = cpu.clamp_levels(np.random.default_rng(9).random((3, wiring.n)) * 0.5)
+    nudge = Nudge(target, mask, 0.2, softmax_temperature=0.2, groups=groups)
+    a = cpu.settle_batch(drive, steps=25, nudge=nudge)
+    b = device.settle_batch(drive, steps=25, nudge=nudge)
+    tolerance = 1e-12 if backend == "torch" else 1e-4
+    assert np.abs(a.activation - b.activation).max() < tolerance
+    # and the grouped result differs from a single softmax over all six, so the groups matter
+    single = cpu.settle_batch(
+        drive, steps=25, nudge=Nudge(target, mask, 0.2, softmax_temperature=0.2)
+    )
+    assert np.abs(a.activation - single.activation).max() > 1e-3
