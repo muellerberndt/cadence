@@ -167,7 +167,7 @@ its two endpoints. In a layered net with tied feedback seams the nudge on the ou
 moves the hidden owners, and every seam is reachable. In a measured, *directed* wiring
 the credit travels only over seams that point back toward the owners the nudge moved; a
 connectome of chemical synapses mostly does not, so only the last hop before the readout
-learns. The C. elegans rung in cadence-examples shows the consequence: the rule cannot
+learns. The C. elegans rung of cadence-examples (at its tag v0.5.0) shows the consequence: the rule cannot
 fit four textbook facts that need two sensory pathways to act differently, whatever the
 gain, while a global gradient through the same settlement can. Symmetrising the wiring
 as a modelling assumption (every synapse also carries its reverse, tied) was tried and

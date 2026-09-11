@@ -19,9 +19,10 @@ declared overlaps, settling to rest by owner-local repair. Read in this order th
 | [api](api.md) | every public class and function, module by module |
 
 The worked, runnable versions of everything in [learning](learning.md) and [games](games.md)
-live in [cadence-examples](https://github.com/muellerberndt/cadence-examples): digits, MNIST,
-Connect Four, Pong, text, a sign-writing arm, chorales, cart-pole and the *C. elegans*
-connectome, each with a tutorial, a script, a receipt, and for the interactive ones a page.
+live in [cadence-examples](https://github.com/muellerberndt/cadence-examples): digits,
+associative recall, Pong and chorales, each with a tutorial, a script, a receipt, and for the
+interactive ones a page; the earlier rungs (MNIST, Connect Four, text, a sign-writing arm,
+cart-pole, the *C. elegans* connectome) are at its tag v0.5.0.
 
 ## What the ladder says the rule is good at
 

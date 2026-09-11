@@ -2,9 +2,9 @@
 
 Two ways a patch net learns to act, both with the same free/nudged rule as
 classification. The full, runnable versions with receipts and playable pages are
-[03 Connect Four](https://github.com/muellerberndt/cadence-examples/tree/main/03_connect_four)
-and [04 Pong](https://github.com/muellerberndt/cadence-examples/tree/main/04_pong) in
-cadence-examples; this page is the mechanism.
+[04 Pong](https://github.com/muellerberndt/cadence-examples/tree/main/04_pong) in
+cadence-examples and [03 Connect Four](https://github.com/muellerberndt/cadence-examples/tree/v0.5.0/03_connect_four)
+at its tag v0.5.0; this page is the mechanism.
 
 ## Acting is a settlement
 

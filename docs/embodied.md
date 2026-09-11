@@ -2,8 +2,8 @@
 
 A patch net in a body is a loop: sense, clamp, settle, read, act; then, when a target or a
 reward arrives, nudge and update. Nothing about that loop is a training phase. This page is
-the recipe; the cart-pole and sign-writer rungs of cadence-examples are the worked examples
-(a body from reward, and a body with an arm and a moving sensor).
+the recipe; the cart-pole and sign-writer rungs of cadence-examples (at its tag v0.5.0) are
+the worked examples (a body from reward, and a body with an arm and a moving sensor).
 
 ## The loop
 

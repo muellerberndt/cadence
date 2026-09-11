@@ -142,16 +142,15 @@ is the tutorial they build on.
 | rung | what | receipt says |
 |---|---|---|
 | [01 digits](https://github.com/muellerberndt/cadence-examples/tree/main/01_digits) | classification, 8×8 digits | 0.962 ± 0.003 held-out in 20 epochs; a same-size MLP: 0.967 in 50 |
-| [02 images](https://github.com/muellerberndt/cadence-examples/tree/main/02_images) | MNIST on the accelerator, read out in float64 | 0.9744 in 10 epochs; MLP 0.9779; the two backends agree on every prediction |
-| [03 Connect Four](https://github.com/muellerberndt/cadence-examples/tree/main/03_connect_four) | imitate a depth-4 search, then play in the browser | agrees with the search on 0.527 of positions, the MLP on 0.533; both beat random, both lose to depth 2 |
+| [03 recall](https://github.com/muellerberndt/cadence-examples/tree/main/03_recall) | associative recall with no trained parameters: each pair one Hebbian outer product, each query a settlement | the value of any key in a context of up to 128 pairs, 1.00 settled and 1.00 in one read; a two-layer transformer trained on the task 0.30 at 4 pairs, 0.01 at 128 |
 | [04 Pong](https://github.com/muellerberndt/cadence-examples/tree/main/04_pong) | a paddle learns from pixels and reward | see its tutorial: how a reward becomes a nudge, and what credit assignment does to a paddle |
-| [05 text](https://github.com/muellerberndt/cadence-examples/tree/main/05_text) | next character of Shakespeare from a sixteen-character window | 3.33 bits per character; bigram 3.71, same-window MLP 3.11, one-layer transformer 3.08 |
-| [06 sign writer](https://github.com/muellerberndt/cadence-examples/tree/main/06_sign) | sees a sign, writes it with a two-joint arm | 0.988 overlap with the sign on held-out signs, the teacher's own score |
 | [07 chorales](https://github.com/muellerberndt/cadence-examples/tree/main/07_music) | continues Bach chorales chord by chord, with sound in the page | pitch-set F1 0.483, 16.6 bits per chord; same-size MLP 0.470 and 24.7 |
-| [08 cart-pole](https://github.com/muellerberndt/cadence-examples/tree/main/08_cartpole) | the classic control task from reward | 154 steps of 500; backprop REINFORCE 392 |
-| [09 C. elegans](https://github.com/muellerberndt/cadence-examples/tree/main/09_celegans) | the published connectome under a protocol | fan-in convention 5.2 of 17 held-out ablations vs 1.5 shuffled: a structural signal, not a behavioural model |
-| [10 composer](https://github.com/muellerberndt/cadence-examples/tree/main/10_composer) | a living net with feelings: ten days of listening to a piano library, ten of composing from silence by imagining and feeling each phrase; a life, not a training run | 3.4 ideas per context, kernels exactly transposition-equivariant, moods audible in what it plays; silent on 27% of beats and no valence trend yet: three of nine flags fail, and the receipt says why |
-| 11 embodiment | a nervous system in a physical body | next |
+
+The ladder keeps the rungs whose receipts show the patch net ahead of the strongest
+baseline in the same script, plus the digits tutorial. The earlier rungs (MNIST, Connect
+Four, Shakespeare, the sign writer, cart-pole, the *C. elegans* connectome) are at
+[tag v0.5.0](https://github.com/muellerberndt/cadence-examples/tree/v0.5.0) with their
+receipts, which the docs still cite where they measured something.
 
 ## What is in the box
 
@@ -216,10 +215,10 @@ with a leak, tied seams, and a centered nudge.
 
 ## Status
 
-0.6.0: the core (wiring, rule, engine, reference, protocol, receipts, custody), the
+0.7.0: the core (wiring, rule, engine, reference, protocol, receipts, custody), the
 free/nudged learning rule with labels, teachers, and rewards, the three-factor and dream
-learners, seams with a life, the block transport and the fused kernel, on NumPy and torch. Nine worked rungs with receipts live in
-cadence-examples. On the roadmap: closure sub-nets for in-browser settlement of large
+learners, seams with a life, the block transport and the fused kernel, on NumPy, torch and
+MLX. Four worked rungs with receipts live in cadence-examples. On the roadmap: closure sub-nets for in-browser settlement of large
 wirings, environment adapters for embodiment, and connectome loaders. Issues and pull
 requests are welcome.
 
