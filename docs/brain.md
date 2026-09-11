@@ -46,10 +46,29 @@ nudge. Every row in the next table is a reading of that mechanism.
 | growth and pruning | seams sprout between owners that kept firing together and are pruned when they fall below a floor, within a budget per owner | built in, in sleep | `Seams.sleep(prune_below=, sprout_above=)` | measured: did not help on permuted MNIST (C1) |
 | a body | the net inside a control loop, learning from the reward it gets | the rule unchanged; a trace per seam and a critic | `ActorCritic`, `embodied.md` | measured: cart-pole ahead of PPO on every row but wall-clock; Pong, Hopper, the Ant far behind: credit through time is the open gap (gates) |
 | language | see the thesis below | | `stateful`, `Learner(slots=)` | the rows are running |
+| specialised parts, one percept | regions of owners with their own projections settle in one net; the percept is the joint equilibrium of all of them, which is what a settlement is | the percept falls out; the parts are a mix of a constitution laid down before learning and specialisation during it | `Constitution`, `grow`, `evolve` (0.6.0); `Seams.sleep` for the specialisation | the wirings used so far were designed or read from a connectome; selection over constitutions is built and tested on a toy fitness, not yet run on a task |
 
 Rows that fall out are the ones to keep: the fewer lines they take, the more the claim that
 the mechanism is the brain's is worth. The rows that had to be built in each cost one owner,
 one variable, or one line, and none of them adds a second mechanism.
+
+## Where the wiring comes from
+
+An animal's parts are a mix of two things: a constitution the genome lays down before any
+learning (which regions exist, how large, which project to which, with what sign and
+density) and specialisation during a life (seams that differentiate, sprout and prune). If
+that is right, then evolution of the wiring has to be part of Cadence as a phase before
+learning, or every wiring has to be designed. So far every wiring here was designed
+(`layered`, `embedded`, `stateful`) or read from a connectome, which is a wiring evolution
+designed. `cadence.constitution` is the simplest version of the missing phase: a
+`Constitution` is a few numbers per region and per projection; `grow` develops it into a
+wiring with named sets, deterministically for a seed; `mutate` perturbs sizes, densities,
+signs and scales; `evolve` keeps, over generations, the constitutions whose grown nets score
+best under a fitness the caller supplies (a protocol score, a learning curve, a held-out
+accuracy). It adds no sixth primitive: the result is a wiring, and everything after it is
+settlement under the same rule. Development during a life is `Seams.sleep`. The percept
+that integrates the parts needs nothing: a settlement is one rest state of every region at
+once.
 
 ## How a patch net becomes a language model
 
@@ -94,9 +113,10 @@ wrong as stated and the table will say so.
 ## Status
 
 Built in 0.6.0 for this page: `Echo` and `stateful` (short-term memory as reverberation),
-`Learner(slots=)` (joint settlement of a span), `SettledState.repair` (surprise measured).
-Each is one range of owners, one line, or one number reported; the mechanism is unchanged
-and the owner-by-owner certificate still holds to rounding.
+`Learner(slots=)` (joint settlement of a span), `SettledState.repair` (surprise measured),
+`Constitution`/`grow`/`evolve` (the wiring's origin as a phase before learning). Each is one
+range of owners, one line, one number reported, or a few numbers per region; the mechanism
+is unchanged and the owner-by-owner certificate still holds to rounding.
 
 Running: the windowed language model (window 32, 2 million characters of twenty science
 fiction novels), the stateful one (window 4, a carried state of 512 owners, decay 0.5) on

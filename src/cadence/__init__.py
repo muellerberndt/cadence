@@ -20,6 +20,7 @@ produced it.
 from __future__ import annotations
 
 from .checkpoint import load, save
+from .constitution import Constitution, Projection, Region, evolve, grow, mutate
 from .custody import Source, fetch, manifest
 from .dream import DiscreteCode, DreamActorCritic, DreamConfig, actor_critic_wiring
 from .learning import Learner, LearnerConfig, embedded, layered, learning_rule
@@ -58,6 +59,9 @@ __all__ = [
     "Seams",
     "SleepConfig",
     "Adaptation",
+    "Region",
+    "Projection",
+    "Constitution",
     "Echo",
     "GradedRule",
     "Learner",
@@ -76,6 +80,9 @@ __all__ = [
     "canonical_sha256",
     "conformance",
     "embedded",
+    "mutate",
+    "grow",
+    "evolve",
     "evaluate_predicate",
     "fetch",
     "layered",

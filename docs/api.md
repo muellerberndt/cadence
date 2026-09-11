@@ -73,6 +73,16 @@ docstrings in the source carry the details.
   `update(state)` (`trace <- decay * trace + (1 - decay) * hidden activation`), `keep(rows)`,
   `to_dict()`.
 
+## Constitution (`cadence.constitution`)
+
+- `Region(name, size)`, `Projection(pre, post, density=1.0, sign=0.0, scale=1.0, count=1.0, symmetric=True)`,
+  `Constitution(regions, projections, label)`: a wiring before it is grown.
+- `grow(constitution, seed=0) -> Wiring`: development, deterministic in the seed; sets named
+  after the regions, contiguous.
+- `mutate(constitution, rng, *, size_step=0.25, fixed=())`: one offspring.
+- `evolve(fitness, constitution, *, generations=10, population=8, keep=2, seed=0, **mutation) -> Lineage`:
+  selection under `fitness(wiring, seed) -> float`; `Lineage.best`, `.best_fitness`, `.generations`.
+
 ## Timing (`cadence.timing`)
 
 - `latency(decide, *, repeats=1000, warmup=20)`: time `decide()` `repeats` times; the median,
