@@ -19,7 +19,7 @@ Owner-local repair, no backward pass, held-out tests, receipts.</p>
   <a href="docs/quickstart.md">Quickstart</a> ·
   <a href="docs/learning.md">How it learns</a> ·
   <a href="https://github.com/muellerberndt/cadence-examples">Examples</a> ·
-  <a href="https://claude.ai/code/artifact/ee7a8b53-be8c-4c34-9f91-43d6eaf77be8">Play the demos</a>
+  <a href="https://claude.ai/code/artifact/14644daf-1a2f-47b3-8c2c-f896c5ca3c60">Play the demos</a>
 </p>
 
 ---
@@ -132,7 +132,7 @@ The [quickstart](docs/quickstart.md) does all of this on a connectome, end to en
 
 Everything in [cadence-examples](https://github.com/muellerberndt/cadence-examples) is a
 tutorial, a script, a receipt, and for the games a page in which the net settles live. The
-[hub](https://claude.ai/code/artifact/ee7a8b53-be8c-4c34-9f91-43d6eaf77be8) links them all;
+[hub](https://claude.ai/code/artifact/14644daf-1a2f-47b3-8c2c-f896c5ca3c60) links them all;
 [How a patch net learns](https://github.com/muellerberndt/cadence-examples/blob/main/HOW_IT_LEARNS.md)
 is the tutorial they build on.
 
