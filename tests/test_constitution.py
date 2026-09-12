@@ -89,3 +89,10 @@ def test_evolve_reports_after_every_generation() -> None:
     seen: list[int] = []
     lineage = evolve(_hidden_size, two_region(), generations=3, population=4, keep=2, seed=3, fixed=("input", "output"), report=lambda lin: seen.append(len(lin.generations)))
     assert seen == [1, 2, 3] and len(lineage.generations) == 3
+
+
+def test_constitution_round_trips_through_its_dict() -> None:
+    c = two_region()
+    again = Constitution.from_dict(c.to_dict())
+    assert again == c
+    assert grow(again, seed=4).edges == grow(c, seed=4).edges

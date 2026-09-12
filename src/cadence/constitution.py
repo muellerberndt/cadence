@@ -64,6 +64,15 @@ class Constitution:
             "label": self.label,
         }
 
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Constitution:
+        """The inverse of ``to_dict``: a constitution read back from a lineage's record."""
+        return cls(
+            regions=tuple(Region(str(r["name"]), int(r["size"])) for r in d["regions"]),
+            projections=tuple(Projection(**p) for p in d["projections"]),
+            label=str(d.get("label", "constitution")),
+        )
+
 
 def grow(constitution: Constitution, seed: int = 0) -> Wiring:
     """Development: the constitution as a wiring, region by region, deterministic in the seed."""
