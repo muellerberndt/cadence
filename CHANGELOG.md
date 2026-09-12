@@ -2,6 +2,11 @@
 
 ## 0.7.1 (unreleased)
 
+- `LearnerConfig.momentum` and `normalize` are the adaptive local step proper: Adam's order
+  (the running average of each seam's own contrast, divided by the RMS of its raw contrast)
+  with both corrected for their short history, as `ActorCritic` already did. Before, the
+  first steps were inflated and the two were composed the other way round, which is why they
+  hurt on Pong; the corrected step lived in that rung's script only.
 - `Learner(slots=(9, 2, 2))`: slot sizes instead of a count, for a controller whose
   choices differ in size (a move of nine, a grip of two); `slot_sizes`, `slot_offsets`;
   the checkpoint keeps the slots.

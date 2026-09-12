@@ -67,7 +67,9 @@ class LearnerConfig:
     off_level: float = 0.0  # activation the other output owners are nudged toward
     nudge: str = "cross_entropy"  # "quadratic" or "cross_entropy"
     temperature: float = 0.2  # softmax temperature of the cross-entropy nudge
-    normalize: float = 0.0  # >0: forgetting factor of the per-overlap RMS that divides its step
+    # >0: forgetting factor of the per-overlap RMS of its raw contrast that divides its step;
+    # with momentum this is the adaptive local step (Adam written per seam), bias-corrected
+    normalize: float = 0.0
     normalize_floor: float = 1e-3  # added to the RMS so a quiet overlap does not blow up
     momentum: float = 0.0  # >0: each overlap steps on a running average of its own contrast
     decay: float = 0.0  # >0: every update shrinks each trainable overlap and bias by this fraction
@@ -404,16 +406,22 @@ class Learner:
             norm = float(nudged.device["s"].shape[0]) * span
             return self._apply_device(kernel, cfg.eta * edges / norm, cfg.eta_bias * owners / norm)
         overlap_term, owner_term = self.contrast(free, nudged, opposite)
+        raw_overlap, raw_owner = overlap_term, owner_term
+        count = self.updates + 1  # this update's place in the history, for the corrections
+        if cfg.momentum > 0:  # still local: an overlap accumulates only its own contrast
+            m = cfg.momentum
+            self.velocity = m * self.velocity + (1 - m) * overlap_term
+            self.velocity_bias = m * self.velocity_bias + (1 - m) * owner_term
+            correction = 1.0 - m**count  # a short history is an average over fewer updates
+            overlap_term, owner_term = self.velocity / correction, self.velocity_bias / correction
         if cfg.normalize > 0:  # still local: an overlap reads only its own history
             rho = cfg.normalize
-            self.second_moment = rho * self.second_moment + (1 - rho) * overlap_term**2
-            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * owner_term**2
-            overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
-            owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
-        if cfg.momentum > 0:  # still local: an overlap accumulates only its own contrast
-            self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * overlap_term
-            self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * owner_term
-            overlap_term, owner_term = self.velocity, self.velocity_bias
+            self.second_moment = rho * self.second_moment + (1 - rho) * raw_overlap**2
+            self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * raw_owner**2
+            correction = 1.0 - rho**count
+            rms = np.sqrt(self.second_moment / correction) + cfg.normalize_floor
+            rms_bias = np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor
+            overlap_term, owner_term = overlap_term / rms, owner_term / rms_bias
         delta_scale = cfg.eta * overlap_term
         delta_bias = cfg.eta_bias * owner_term
         return self.apply(delta_scale, delta_bias)

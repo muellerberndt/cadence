@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import dataclasses
+
 import numpy as np
 import pytest
 
@@ -176,6 +178,33 @@ def test_normalized_steps_stay_local_and_bounded() -> None:
     # with the RMS floor of 1e-3 and one update, no overlap moves more than eta / (1 - rho) ** 0.5
     assert moved.max() <= config.eta / np.sqrt(1 - config.normalize) + 1e-9
     assert learner.second_moment.shape == (wiring.edges,)
+
+
+def test_adaptive_local_step_is_bias_corrected() -> None:
+    """With momentum and normalization the first step of every moving overlap is eta in size
+    (the running average and the RMS are corrected for their short history, as Adam's are),
+    and a step is the same whether the contrast is large or small."""
+    wiring = cd.layered(4, 6, 2, seed=8)
+    config = cd.LearnerConfig(
+        eta=0.01, eta_bias=0.0, momentum=0.9, normalize=0.999, normalize_floor=1e-12
+    )
+    learner = cd.Learner(cd.Settlement(wiring, cd.learning_rule()), wiring.sets["output"], config)
+    drive = learner.engine.clamp_levels(np.pad(np.eye(4)[:2], ((0, 0), (0, wiring.n - 4))))
+    before = learner.engine.edge_scale.copy()
+    learner.step(drive, np.array([0, 1]))
+    moved = np.abs(learner.engine.edge_scale - before)
+    moving = moved > 0
+    assert moving.any()
+    assert np.allclose(moved[moving], config.eta, rtol=1e-6)
+    # the same net, contrasts scaled down a hundredfold by a smaller nudge: the same first step
+    small = cd.Learner(
+        cd.Settlement(wiring, cd.learning_rule()),
+        wiring.sets["output"],
+        dataclasses.replace(config, beta=0.001),
+    )
+    small.step(drive, np.array([0, 1]))
+    moved_small = np.abs(small.engine.edge_scale - before)
+    assert np.allclose(moved_small[moving], config.eta, rtol=1e-6)
 
 
 def test_tie_groups_share_one_scale_across_positions() -> None:
