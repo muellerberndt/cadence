@@ -191,8 +191,17 @@ class FastSeams:
         out[:, self._post_columns] += self.read(out)
         return out
 
-    def update(self, state: SettledState, write: np.ndarray | None = None) -> None:
-        """After a settlement: strengths fade; the rows in ``write`` add their outer product."""
+    def update(
+        self,
+        state: SettledState,
+        write: np.ndarray | None = None,
+        post: np.ndarray | None = None,
+    ) -> None:
+        """After a settlement: strengths fade; the rows in ``write`` add their outer product.
+
+        ``post`` replaces the post owners' activations for the write, ``(batch, post)``: what
+        actually followed (the next symbols read) rather than what the net settled on.
+        """
         s = np.atleast_2d(state.activation)
         if len(self.strength) != len(s):
             self.reset(len(s))
@@ -201,7 +210,7 @@ class FastSeams:
         if write is not None and np.any(write):
             rows = np.flatnonzero(write)
             a = np.ascontiguousarray(s[rows][:, self._pre_columns])
-            b = np.ascontiguousarray(s[rows][:, self._post_columns])
+            b = np.ascontiguousarray(s[rows][:, self._post_columns] if post is None else post[rows])
             self.strength[rows] += self.rate * a[:, :, None] * b[:, None, :]
             self.writes += len(rows)
 
