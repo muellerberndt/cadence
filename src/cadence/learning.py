@@ -300,11 +300,95 @@ class Learner:
             "bias_step": float(np.abs(delta_bias).mean()),
         }
 
+    def _device_kernel(self, plus: SettledState, minus: SettledState) -> Any:
+        """The torch kernel both states rest on, when the update can stay on the device."""
+        cfg = self.config
+        kernel = self.engine._torch
+        if kernel is None or kernel.layout is None or cfg.normalize > 0 or cfg.momentum > 0:
+            return None
+        for state in (plus, minus):
+            if state.device is None or state.device.get("owner") is not kernel:
+                return None
+        return kernel
+
+    def _device_indices(self, kernel: Any) -> dict[str, Any]:
+        """Index tensors of the update on the kernel's device, made once per kernel and masks."""
+        torch = kernel.torch
+        assert self.trainable_overlaps is not None and self.trainable_owners is not None
+        key = (id(kernel), id(self.trainable_overlaps), id(self.trainable_owners))
+        cache = self.__dict__.setdefault("_device_cache", {})
+        if cache.get("key") != key:
+            dev = kernel.device
+
+            def to(x: np.ndarray, dtype: Any = None) -> Any:
+                return torch.from_numpy(np.ascontiguousarray(x)).to(dev, dtype)
+
+            all_overlaps = bool(self.trainable_overlaps.all())
+            all_owners = bool(self.trainable_owners.all())
+            cache.clear()
+            cache.update(
+                key=key,
+                paired=to(self._paired) if len(self._paired) else None,
+                paired_reverse=to(self._paired_reverse) if len(self._paired) else None,
+                members=to(self._members) if len(self._members) else None,
+                member_groups=to(self._member_groups) if len(self._members) else None,
+                member_count=to(self._member_count, kernel.param_dtype)
+                if len(self._members)
+                else None,
+                overlaps=None if all_overlaps else to(self.trainable_overlaps, kernel.param_dtype),
+                owners=None if all_owners else to(self.trainable_owners, kernel.param_dtype),
+            )
+        return cache
+
+    def _apply_device(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, float]:
+        """``apply`` on the device: the same masks, tying, decay and bounds, no host array."""
+        torch, cfg = kernel.torch, self.config
+        ix = self._device_indices(kernel)
+        d = delta_scale.clone()
+        if ix["overlaps"] is not None:
+            d = d * ix["overlaps"]
+        if (
+            ix["paired"] is not None
+        ):  # one seam, one weight: both directions move by the same amount
+            d[ix["paired"]] = 0.5 * (d[ix["paired"]] + d[ix["paired_reverse"]])
+        if ix["members"] is not None:  # a group moves by the mean of its members' contrasts
+            total = torch.zeros(len(ix["member_count"]), dtype=d.dtype, device=d.device)
+            total.index_add_(0, ix["member_groups"], d[ix["members"]])
+            d[ix["members"]] = (total / torch.clamp(ix["member_count"], min=1.0))[
+                ix["member_groups"]
+            ]
+        if ix["overlaps"] is not None:  # tying never moves a frozen overlap
+            d = d * ix["overlaps"]
+        scale = kernel.scale + d
+        db = delta_bias if ix["owners"] is None else delta_bias * ix["owners"]
+        bias = kernel.bias_param + db
+        if cfg.decay > 0:  # a leak on the seams: what is not relearned fades away
+            keep_scale = (
+                1.0 - cfg.decay if ix["overlaps"] is None else 1.0 - cfg.decay * ix["overlaps"]
+            )
+            keep_bias = 1.0 - cfg.decay if ix["owners"] is None else 1.0 - cfg.decay * ix["owners"]
+            scale = scale * keep_scale
+            bias = bias * keep_bias
+        if cfg.scale_floor > 0:
+            magnitude = torch.clamp(scale.abs(), cfg.scale_floor, cfg.scale_cap)
+            scale = torch.sign(scale) * magnitude
+        else:
+            scale = torch.clamp(scale, -cfg.scale_cap, cfg.scale_cap)
+        self.engine = self.engine._with_device_parameters(scale, bias)
+        self.updates += 1
+        return {"scale_step": float(d.abs().mean()), "bias_step": float(db.abs().mean())}
+
     def update(
         self, free: SettledState, nudged: SettledState, opposite: SettledState | None = None
     ) -> dict[str, float]:
         """Move every trainable overlap and every owner on its own two-phase difference."""
         cfg = self.config
+        minus_state, span = (free, cfg.beta) if opposite is None else (opposite, 2.0 * cfg.beta)
+        kernel = self._device_kernel(nudged, minus_state)
+        if kernel is not None:  # both phases rest on the torch device: the whole update stays there
+            edges, owners = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
+            norm = float(nudged.device["s"].shape[0]) * span
+            return self._apply_device(kernel, cfg.eta * edges / norm, cfg.eta_bias * owners / norm)
         overlap_term, owner_term = self.contrast(free, nudged, opposite)
         if cfg.normalize > 0:  # still local: an overlap reads only its own history
             rho = cfg.normalize

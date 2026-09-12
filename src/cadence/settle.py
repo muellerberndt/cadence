@@ -35,6 +35,7 @@ target activation, which is how the learning rule's second phase enters.
 
 from __future__ import annotations
 
+import copy
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any, Literal
@@ -232,18 +233,22 @@ class Settlement:
         self.dense_limit = dense_limit
         self.precision = precision  # torch only: "float64" or "float32"; default by device
         self.layout: Layout = make_layout(wiring) if layout is None else layout
-        self.edge_scale = (
+        # The parameters live on the host, or on the torch device once a learner has moved
+        # them there; the host arrays are then fetched when something reads them.
+        self._edge_scale: np.ndarray | None = (
             wiring.sign.copy() if edge_scale is None else np.asarray(edge_scale, float).copy()
         )
         self.log_gain = np.zeros(wiring.n) if log_gain is None else np.asarray(log_gain, float)
-        self.bias = np.zeros(wiring.n) if bias is None else np.asarray(bias, float)
-        if self.edge_scale.shape != (wiring.edges,):
-            raise ValueError("edge_scale must have one entry per overlap")
-        if self.log_gain.shape != (wiring.n,) or self.bias.shape != (wiring.n,):
-            raise ValueError("log_gain and bias must have one entry per owner")
-        self._weights: np.ndarray = (
-            rule.gain * wiring.count * self.edge_scale * np.exp(self.log_gain)[wiring.pre]
+        self._bias: np.ndarray | None = (
+            np.zeros(wiring.n) if bias is None else np.asarray(bias, float)
         )
+        assert self._edge_scale is not None and self._bias is not None
+        if self._edge_scale.shape != (wiring.edges,):
+            raise ValueError("edge_scale must have one entry per overlap")
+        if self.log_gain.shape != (wiring.n,) or self._bias.shape != (wiring.n,):
+            raise ValueError("log_gain and bias must have one entry per owner")
+        self._gain_pre: np.ndarray = rule.gain * wiring.count * np.exp(self.log_gain)[wiring.pre]
+        self._weights_host: np.ndarray | None = self._gain_pre * self._edge_scale
         # Segment boundaries of the (post-sorted) overlap arrays, for the segmented sum.
         segments = wiring.__dict__.get("_segments")  # kept on the wiring: one pass per wiring
         if segments is None:
@@ -266,8 +271,9 @@ class Settlement:
         if backend == "torch":  # the kernel scatters the weights into its blocks on the device
             self._torch = _TorchKernel(
                 wiring,
-                self._weights,
-                self.bias,
+                self._edge_scale,
+                self._gain_pre,
+                self._bias,
                 rule,
                 device,
                 self.layout if blocked else None,
@@ -290,6 +296,53 @@ class Settlement:
         return self._flat
 
     # -- parameters
+
+    @property
+    def edge_scale(self) -> np.ndarray:
+        """One signed number per overlap; fetched from the device when a learner keeps it there."""
+        if self._edge_scale is None:
+            assert self._torch is not None
+            self._edge_scale = self._torch.host_scale()
+        return self._edge_scale
+
+    @edge_scale.setter
+    def edge_scale(self, value: np.ndarray) -> None:
+        self._edge_scale = np.asarray(value, float)
+        self._weights_host = None
+        self._flat = None
+
+    @property
+    def bias(self) -> np.ndarray:
+        """One number per owner; fetched from the device when a learner keeps it there."""
+        if self._bias is None:
+            assert self._torch is not None
+            self._bias = self._torch.host_bias()
+        return self._bias
+
+    @bias.setter
+    def bias(self, value: np.ndarray) -> None:
+        self._bias = np.asarray(value, float)
+
+    @property
+    def _weights(self) -> np.ndarray:
+        if self._weights_host is None:
+            self._weights_host = self._gain_pre * self.edge_scale
+        return self._weights_host
+
+    def _with_device_parameters(self, scale: Any, bias: Any) -> Settlement:
+        """The settlement with new parameters that stay on the torch device.
+
+        The kernel is shared and updated in place, so a state settled on it continues on it;
+        the settlement this was called on is superseded (its host copies, if any, are stale).
+        """
+        assert self._torch is not None
+        self._torch.set_parameters(scale, bias)
+        new = copy.copy(self)
+        new._edge_scale = None
+        new._bias = None
+        new._weights_host = None
+        new._flat = None
+        return new
 
     def with_parameters(
         self,
@@ -584,7 +637,8 @@ class _TorchKernel:
     def __init__(
         self,
         wiring: Wiring,
-        weights: np.ndarray,
+        edge_scale: np.ndarray,
+        gain_pre: np.ndarray,
         bias: np.ndarray,
         rule: GradedRule,
         device: str | None,
@@ -613,7 +667,12 @@ class _TorchKernel:
             self.dtype = torch.float32 if precision == "float32" else torch.float64
         else:
             raise ValueError("precision must be 'float32' or 'float64'")
-        self.bias = torch.from_numpy(bias).to(self.device, self.dtype)
+        # The parameters, kept on the device in float64 (float32 on MPS, which has no float64)
+        # so a learner can move them there without a host round trip per update.
+        self.param_dtype = torch.float32 if self.device.type == "mps" else torch.float64
+        self.gain_pre = torch.from_numpy(np.ascontiguousarray(gain_pre)).to(
+            self.device, self.param_dtype
+        )
         self.rule = rule
         self.n = wiring.n
         self.layout = layout
@@ -622,7 +681,6 @@ class _TorchKernel:
         if layout is not None:  # block products per step instead of a gather and a scatter
             self.index = self._device_index(layout)
             self.flat = torch.zeros(layout.size, dtype=self.dtype, device=self.device)
-            self.flat[self.index] = torch.from_numpy(weights).to(self.device, self.dtype)
             self.blocks = []
             for k in range(layout.pairs):
                 a0, a1, b0, b1 = layout.bounds(k)
@@ -631,7 +689,27 @@ class _TorchKernel:
         else:  # per-overlap arrays serve only the gather-scatter path
             self.pre = torch.from_numpy(wiring.pre).to(self.device)
             self.post = torch.from_numpy(wiring.post).to(self.device)
-            self.w = torch.from_numpy(weights).to(self.device, self.dtype)
+        self.set_parameters(
+            torch.from_numpy(np.ascontiguousarray(edge_scale)).to(self.device, self.param_dtype),
+            torch.from_numpy(np.ascontiguousarray(bias)).to(self.device, self.param_dtype),
+        )
+
+    def set_parameters(self, scale: Any, bias: Any) -> None:
+        """New parameters, as device tensors: the block weights follow, in place."""
+        self.scale = scale
+        self.bias_param = bias
+        weights = (self.gain_pre * scale).to(self.dtype)
+        if self.layout is not None:  # every entry with an overlap is overwritten; the rest stay 0
+            self.flat[self.index] = weights
+        else:
+            self.w = weights
+        self.bias = bias.to(self.dtype)
+
+    def host_scale(self) -> np.ndarray:
+        return np.asarray(self.scale.cpu().double().numpy())
+
+    def host_bias(self) -> np.ndarray:
+        return np.asarray(self.bias_param.cpu().double().numpy())
 
     def _device_index(self, layout: Layout) -> Any:
         """The layout's edge index on this device, kept on the layout (one upload per device)."""
@@ -669,8 +747,8 @@ class _TorchKernel:
             s = s + rule.leak * torch.clamp(r, max=0.0) / rest
         return s
 
-    def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
-        """The block Gram contrast on the device; only the per-overlap result comes back."""
+    def contrast_tensors(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
+        """The block Gram contrast on the device, per overlap and per owner, as tensors."""
         torch, lay = self.torch, self.layout
         assert lay is not None
         flat = torch.zeros(lay.size, dtype=self.dtype, device=self.device)
@@ -682,9 +760,14 @@ class _TorchKernel:
             else:
                 block = a_plus.T @ s_plus[:, b0:b1] - a_minus.T @ s_minus[:, b0:b1]
             flat[lay.offset[k] : lay.offset[k + 1]] = block.reshape(-1)
-        edges = flat[self.index].cpu().double().numpy()
-        owners = (s_plus - s_minus).sum(dim=0).cpu().double().numpy()
+        edges = flat[self.index].to(self.param_dtype)
+        owners = (s_plus - s_minus).sum(dim=0).to(self.param_dtype)
         return edges, owners
+
+    def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
+        """The block Gram contrast on the device; only the per-overlap result comes back."""
+        edges, owners = self.contrast_tensors(s_plus, s_minus)
+        return edges.cpu().double().numpy(), owners.cpu().double().numpy()
 
     def run(
         self,
