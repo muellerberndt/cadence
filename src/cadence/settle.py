@@ -702,6 +702,8 @@ class _TorchKernel:
 
         def to(x: np.ndarray) -> Any:  # no host copy when already contiguous float64
             y = np.ascontiguousarray(x, dtype=float)
+            if not y.flags.writeable:  # a broadcast view: torch wants a writable buffer
+                y = y.copy()
             return torch.from_numpy(y).to(self.device, self.dtype)
 
         handle = state.device if state is not None and state.device is not None else None
