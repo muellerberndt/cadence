@@ -351,7 +351,26 @@ class Settlement:
         log_gain: np.ndarray | None = None,
         bias: np.ndarray | None = None,
     ) -> Settlement:
-        """A new settlement on the same wiring with some parameters replaced."""
+        """A new settlement on the same wiring with some parameters replaced.
+
+        On the host engine, new seams and biases alone make a copy whose derived arrays
+        (the weights, the blocks) are remade on first use, not a rebuilt engine.
+        """
+        if self.backend == "cpu" and log_gain is None:
+            new = copy.copy(self)
+            if edge_scale is not None:
+                scale = np.asarray(edge_scale, float)
+                if scale.shape != (self.wiring.edges,):
+                    raise ValueError("edge_scale must have one entry per overlap")
+                new._edge_scale = scale.copy()
+                new._weights_host = None
+                new._flat = None
+            if bias is not None:
+                b = np.asarray(bias, float)
+                if b.shape != (self.wiring.n,):
+                    raise ValueError("bias must have one entry per owner")
+                new._bias = b.copy()
+            return new
         return Settlement(
             self.wiring,
             self.rule,

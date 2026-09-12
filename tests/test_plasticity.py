@@ -76,6 +76,7 @@ def test_traces_reset_on_done_and_updates_are_local() -> None:
     learner.reverse[:] = -1
     ac.act(drive)
     kind, plus, minus, value = ac._pending
+    plus, minus = plus.activation, minus.activation  # the pending phases are states
     w = wiring
     contrast = (plus[:, w.pre] * plus[:, w.post] - minus[:, w.pre] * minus[:, w.post]) / (
         2.0 * learner.config.beta
@@ -229,3 +230,33 @@ def test_value_net_fits_a_value_and_serves_the_actor_critic() -> None:
     ac.act(d)
     report = ac.learn(np.ones(4), np.zeros(4, dtype=bool), d)
     assert np.isfinite(report["delta"])
+
+
+def test_one_stream_learns_the_same_on_the_device_as_on_the_host() -> None:
+    """With one stream settled on the torch kernel, the trace and the step stay on the device
+    and the seams end where the host path puts them."""
+    import pytest
+
+    if "torch" not in cd.available_backends():
+        pytest.skip("no torch")
+    wiring = cd.layered(6, 10, 4, density=1.0, seed=1)
+    config = cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.3, tolerance=1e-6, nudged_steps=30, free_steps=200)
+    ac_config = cd.ActorCriticConfig(gamma=0.9, lam=0.8, lam_critic=0.8, eta=0.3, eta_bias=0.03, eta_critic=0.1, dopamine_cap=1.0)
+    rng = np.random.default_rng(3)
+    drives = [np.concatenate([rng.random(6), np.zeros(14)])[None] for _ in range(6)]
+    rewards = [0.5, -0.2, 1.0, 0.0, 0.3, -1.0]
+    results = []
+    for backend in ("cpu", "torch"):
+        engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0), backend=backend, device="cpu" if backend == "torch" else None, precision="float64" if backend == "torch" else None)  # type: ignore[arg-type]
+        learner = cd.Learner(engine, wiring.sets["output"], config, slots=2)
+        ac = cd.ActorCritic(learner, wiring.sets["hidden"], ac_config, seed=0, population=cd.Bins(dims=2, size=2))
+        actions = []
+        for k in range(5):
+            actions.append(ac.act(drives[k]).copy())
+            ac.learn(np.array([rewards[k]]), np.array([k == 3]), drives[k + 1])
+        results.append((np.stack(actions), np.asarray(ac.learner.engine.edge_scale), np.asarray(ac.learner.engine.bias), ac.w_critic.copy()))
+    (a_host, s_host, b_host, c_host), (a_dev, s_dev, b_dev, c_dev) = results
+    assert np.array_equal(a_host, a_dev)
+    assert np.allclose(s_host, s_dev, atol=1e-6) and np.abs(s_host - wiring.sign).max() > 1e-4
+    assert np.allclose(b_host, b_dev, atol=1e-6)
+    assert np.allclose(c_host, c_dev, atol=1e-6)

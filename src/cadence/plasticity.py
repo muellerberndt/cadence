@@ -300,6 +300,7 @@ class ActorCritic:
         self.trace: np.ndarray | None = None
         self.trace_bias: np.ndarray | None = None
         self.trace_critic: np.ndarray | None = None
+        self._trace_device: Any = None  # one stream's traces on the torch device, when it settles there
         self.second_moment = np.zeros(self.edges)
         self.second_moment_bias = np.zeros(self.n)
         self.velocity = np.zeros(self.edges)
@@ -364,7 +365,7 @@ class ActorCritic:
             target = self.learner.targets(action)
             plus = self.learner.nudged(drive, free, target)
             minus = self.learner.nudged(drive, free, target, sign=-1.0)
-            self._pending = ("phases", plus.activation, minus.activation, self.value(free))
+            self._pending = ("states", plus, minus, self.value(free))
         return np.asarray(action, dtype=np.int64)
 
     def _act_bins(self, drive: np.ndarray, free: SettledState, greedy: bool) -> np.ndarray:
@@ -392,7 +393,7 @@ class ActorCritic:
             target[:, self.learner.output_index] = onehot.reshape(batch, -1)
             plus = self._nudged_groups(drive, free, target, cfg.beta)
             minus = self._nudged_groups(drive, free, target, -cfg.beta)
-            self._pending = ("phases", plus.activation, minus.activation, self.value(free))
+            self._pending = ("states", plus, minus, self.value(free))
         return action
 
     def _nudged_groups(
@@ -421,7 +422,7 @@ class ActorCritic:
         target[:, self.learner.output_index] = pop.write(action)
         plus = self.learner.nudged(drive, free, target)
         minus = self.learner.nudged(drive, free, target, sign=-1.0)
-        self._pending = ("phases", plus.activation, minus.activation, self.value(free))
+        self._pending = ("states", plus, minus, self.value(free))
         return action
 
     # -- learning
@@ -449,6 +450,15 @@ class ActorCritic:
         done = np.asarray(done, dtype=bool)
         batch = len(reward)
         decay = cfg.gamma * cfg.lam
+        device_kernel = None
+        if kind == "states":  # the two phases as states: on the device when one stream settled there
+            if batch == 1 and cfg.momentum == 0 and cfg.normalize == 0:
+                device_kernel = self.learner._device_kernel(first, second)
+            if device_kernel is None:
+                first, second = first.activation, second.activation
+                kind = "phases"
+        if device_kernel is not None:
+            return self._learn_device(device_kernel, first, second, value, reward, done, next_drive, bootstrap)
         if self.trace is None or self.trace.shape[0] != batch:
             self.trace = np.zeros((batch, self.edges))
             self.trace_bias = np.zeros((batch, self.n))
@@ -572,6 +582,90 @@ class ActorCritic:
         report["free_steps"] = float(next_state.steps)
         return report
 
+    def _learn_device(
+        self,
+        kernel: Any,
+        plus: SettledState,
+        minus: SettledState,
+        value: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+        next_drive: np.ndarray,
+        bootstrap: np.ndarray | None,
+    ) -> dict[str, float]:
+        """``learn`` for one stream whose phases rest on the torch device: the contrast, the
+        eligibility trace and the step never come to the host; the critic and the
+        dopamine do (a scalar and a row of the critic's owners)."""
+        cfg = self.config
+        torch = kernel.torch
+        span = 2.0 * self.learner.config.beta
+        decay = cfg.gamma * cfg.lam
+        edges, owners = kernel.contrast_tensors(plus.device["s"], minus.device["s"])
+        if self._trace_device is None or self._trace_device[0].shape != edges.shape:
+            self._trace_device = (torch.zeros_like(edges), torch.zeros_like(owners))
+        trace, trace_bias = self._trace_device
+        trace = decay * trace + edges / span
+        trace_bias = decay * trace_bias + owners / span
+        if self.trace_critic is None or self.trace_critic.shape[0] != 1:
+            self.trace_critic = np.zeros((1, len(self.critic_index) + 1))
+        free = self._free
+        assert free is not None
+        self.trace_critic *= cfg.gamma * cfg.lam_critic
+        self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
+        self.trace_critic[:, -1] += 1.0
+        next_state = self.learner.free(next_drive, warm=free)
+        if done.any():
+            v = next_state.v.copy()
+            a = next_state.adaptation.copy()
+            v[done] = 0.0
+            a[done] = 0.0
+            next_state = self.learner.free(
+                next_drive, warm=SettledState(v, next_state.activation, a, next_state.steps)
+            )
+        if self.critic_net is not None:
+            next_value_raw = self.critic_net.value(next_drive, slow=True)
+        else:
+            next_value_raw = self.value(next_state)
+        next_value = np.where(
+            done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw
+        )
+        raw_target = reward + cfg.gamma * next_value
+        delta = raw_target - value
+        if cfg.dopamine_center > 0:
+            rho = cfg.dopamine_center
+            self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
+            self.delta_var = rho * self.delta_var + (1 - rho) * float(
+                ((delta - self.delta_mean) ** 2).mean()
+            )
+            delta = (delta - self.delta_mean) / (np.sqrt(self.delta_var) + 1e-6)
+        if cfg.dopamine_cap > 0:
+            delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
+        self.updates += 1
+        d = float(delta[0])
+        report = self.learner._apply_device(kernel, (cfg.eta * d) * trace, (cfg.eta_bias * d) * trace_bias)
+        if self.critic_net is not None:
+            assert self._drive is not None
+            self.critic_net.learn(self._drive, raw_target)
+        else:
+            critic_trace = self.trace_critic
+            if cfg.critic_normalize:
+                critic_trace = critic_trace / (1.0 + (critic_trace**2).sum(axis=1, keepdims=True))
+            critic_step = cfg.eta_critic * (delta[:, None] * critic_trace).mean(axis=0)
+            self.w_critic += critic_step[:-1]
+            self.b_critic += float(critic_step[-1])
+        if done.any():  # a finished stream forgets its traces
+            trace = torch.zeros_like(trace)
+            trace_bias = torch.zeros_like(trace_bias)
+            self.trace_critic[:] = 0.0
+        self._trace_device = (trace, trace_bias)
+        self._free = next_state
+        self._drive = next_drive
+        self._pending = None
+        report["delta"] = float(np.abs(delta).mean())
+        report["value"] = float(value.mean())
+        report["free_steps"] = float(next_state.steps)
+        return report
+
     def value_of(self, drive: np.ndarray) -> np.ndarray:
         """The critic's value of a drive, settled cold, without touching the cached state."""
         if self.critic_net is not None:
@@ -582,6 +676,7 @@ class ActorCritic:
         self._free = None
         self._pending = None
         self.trace = self.trace_bias = self.trace_critic = None
+        self._trace_device = None
 
     def parameters(self) -> int:
         if self.critic_net is not None:
