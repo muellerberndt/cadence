@@ -15,7 +15,7 @@ settlement under the same rule.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -131,6 +131,17 @@ def mutate(
     return replace(constitution, regions=regions, projections=projections)
 
 
+class _Life:
+    """One life as a picklable callable: grow the constitution at its seed, score the wiring."""
+
+    def __init__(self, fitness: Callable[[Wiring, int], float]) -> None:
+        self.fitness = fitness
+
+    def __call__(self, job: tuple[Constitution, int]) -> float:
+        constitution, seed = job
+        return float(self.fitness(grow(constitution, seed=seed), seed))
+
+
 @dataclass
 class Lineage:
     """What selection did: the best constitution of every generation and its fitness."""
@@ -148,11 +159,14 @@ def evolve(
     population: int = 8,
     keep: int = 2,
     seed: int = 0,
+    mapper: Callable[..., Iterable[float]] = map,
     **mutation: Any,
 ) -> Lineage:
     """Selection over constitutions: each generation grows ``population`` offspring of the
     ``keep`` best so far, scores each grown wiring with ``fitness(wiring, seed)``, and keeps
-    the best. The fitness is the caller's: a protocol score, a learning curve, an accuracy."""
+    the best. The fitness is the caller's: a protocol score, a learning curve, an accuracy.
+    ``mapper`` runs a generation's lives: ``map`` one after another, a pool's ``map`` side
+    by side (``fitness`` must then be picklable, so a module-level function)."""
     rng = np.random.default_rng(seed)
     lineage = Lineage()
     parents = [constitution]
@@ -160,10 +174,9 @@ def evolve(
         offspring = list(parents) if g == 0 else []
         while len(offspring) < population:
             offspring.append(mutate(parents[rng.integers(len(parents))], rng, **mutation))
-        scored = []
-        for k, child in enumerate(offspring):
-            wiring = grow(child, seed=seed + 1000 * g + k)
-            scored.append((float(fitness(wiring, seed + 1000 * g + k)), k, child))
+        seeds = [seed + 1000 * g + k for k in range(len(offspring))]
+        scores = mapper(_Life(fitness), zip(offspring, seeds, strict=True))
+        scored = [(float(f), k, child) for k, (f, child) in enumerate(zip(scores, offspring, strict=True))]
         scored.sort(key=lambda s: -s[0])
         parents = [c for _, _, c in scored[:keep]]
         top = scored[0]

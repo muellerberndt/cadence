@@ -2,6 +2,7 @@
 
 ## 0.7.1 (unreleased)
 
+- `evolve(..., mapper=map)`: a generation's lives run through `mapper`; pass a pool's `map` to run them side by side (the fitness must then be a module-level function).
 - `FastSeams`: fast Hebbian seams between two ranges of a batch of streams, as owned state
   (an outer-product write per step, a read as a drive, a decay); `columns` (slices for
   contiguous ranges) exported from `cadence.stream`.

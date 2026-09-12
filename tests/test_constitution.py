@@ -56,3 +56,17 @@ def test_evolve_moves_toward_the_fitness() -> None:
     assert lineage.best is not None and len(lineage.generations) == 6
     first, last = lineage.generations[0]["best_fitness"], lineage.generations[-1]["best_fitness"]
     assert last >= first and abs(lineage.best.region("hidden").size - 12) <= 3
+
+
+def _hidden_size(w: cd.Wiring, seed: int) -> float:
+    return -abs(len(w.sets["hidden"]) - 12)
+
+
+def test_evolve_runs_the_lives_through_the_mapper() -> None:
+    from multiprocessing.pool import ThreadPool
+
+    sequential = evolve(_hidden_size, two_region(), generations=3, population=4, keep=2, seed=3, fixed=("input", "output"))
+    with ThreadPool(2) as pool:
+        parallel = evolve(_hidden_size, two_region(), generations=3, population=4, keep=2, seed=3, fixed=("input", "output"), mapper=pool.map)
+    assert [g["best_fitness"] for g in parallel.generations] == [g["best_fitness"] for g in sequential.generations]
+    assert parallel.best == sequential.best
