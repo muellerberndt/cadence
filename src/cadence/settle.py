@@ -183,6 +183,34 @@ class SettledState:
         return int((self.row(i) >= level).sum())
 
 
+def _lazy(name: str, key: str) -> property:
+    """A host array of a settled state that is fetched from the device on first use.
+
+    The accelerator kernels leave the state on the device and hand back a fetch; a
+    continuation, a contrast on the device and the step count never need the host copy,
+    so it is made only when something reads it.
+    """
+
+    def get(self: SettledState) -> np.ndarray:
+        value = self.__dict__.get(name)
+        if value is None:
+            handle = self.__dict__.get("device")
+            if handle is None or "fetch" not in handle:
+                raise AttributeError(name)
+            value = handle["fetch"](key)
+            self.__dict__[name] = value
+        return np.asarray(value)
+
+    def put(self: SettledState, value: np.ndarray | None) -> None:
+        self.__dict__[name] = value
+
+    return property(get, put)
+
+
+for _name, _key in (("v", "v"), ("activation", "s"), ("adaptation", "a")):
+    setattr(SettledState, _name, _lazy(_name, _key))
+
+
 class Settlement:
     def __init__(
         self,
@@ -382,13 +410,26 @@ class Settlement:
         if n != self.wiring.n:
             raise ValueError("drive must have one column per owner")
         keep = np.ones(n) if mask is None else np.asarray(mask, float)
+        on_kernel = (
+            state is not None
+            and state.device is not None
+            and self.backend == "torch"
+            and state.device.get("owner") is self._torch
+        )
+        v: Any
+        a: Any
         if state is None:
             v, a = np.zeros((batch, n)), np.zeros((batch, n))
+        elif on_kernel:  # the state never left the device: no host array is read
+            assert state is not None and state.device is not None
+            v = a = None
+            if tuple(state.device["s"].shape) != (batch, n):
+                raise ValueError("state batch does not match the drive batch")
         elif self.backend in ("torch", "mlx"):  # the kernels never write the host arrays
             v, a = np.atleast_2d(state.v), np.atleast_2d(state.adaptation)
         else:
             v, a = np.atleast_2d(state.v).copy(), np.atleast_2d(state.adaptation).copy()
-        if v.shape != (batch, n):
+        if v is not None and v.shape != (batch, n):
             raise ValueError("state batch does not match the drive batch")
         handle = None
         if self.backend in ("torch", "mlx"):
@@ -652,7 +693,7 @@ class _TorchKernel:
         nudge: Nudge | None,
         tolerance: float | None = None,
         state: SettledState | None = None,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
+    ) -> tuple[Any, Any, Any, np.ndarray | None, int, np.ndarray, Any]:
         torch, rule = self.torch, self.rule
 
         def to(x: np.ndarray) -> Any:  # no host copy when already contiguous float64
@@ -720,14 +761,20 @@ class _TorchKernel:
                 repair = repair + movement.sum(dim=1)
                 if tolerance is not None and float(movement.max()) < tolerance:
                     break
+        held = {"kernel": self.backend_name, "owner": self, "v": v, "a": a, "s": s}
+
+        def fetch(key: str) -> np.ndarray:  # the host copy, made when something reads it
+            return np.asarray(held[key].cpu().double().numpy())
+
+        held["fetch"] = fetch
         return (
-            v.cpu().double().numpy(),
-            a.cpu().double().numpy(),
-            s.cpu().double().numpy(),
+            None,
+            None,
+            None,
             np.stack(traj) if want else None,
             taken,
             repair.cpu().double().numpy(),
-            {"kernel": self.backend_name, "owner": self, "v": v, "a": a, "s": s},
+            held,
         )
 
 

@@ -216,17 +216,14 @@ class Learner:
         """
         w = self.engine.wiring
         beta = self.config.beta
-        s_plus = nudged.activation
-        if opposite is None:
-            s_minus, span = free.activation, beta
-            minus_state = free
-        else:
-            s_minus, span = opposite.activation, 2.0 * beta
-            minus_state = opposite
+        minus_state, span = (free, beta) if opposite is None else (opposite, 2.0 * beta)
         on_device = self.engine.contrast_on_device(nudged, minus_state)
         if on_device is not None:  # both phases still on the accelerator: read the contrast there
             edges, owners = on_device
-            return edges / (len(s_plus) * span), owners / (len(s_plus) * span)
+            assert nudged.device is not None
+            batch = int(nudged.device["s"].shape[0])
+            return edges / (batch * span), owners / (batch * span)
+        s_plus, s_minus = nudged.activation, minus_state.activation
         if w.edges > 4 * w.n:  # the pairwise products as block products, read at the overlaps
             gram = block_contrast(self.engine.layout, s_plus, s_minus)
             return gram / (len(s_plus) * span), (s_plus - s_minus).mean(axis=0) / span
