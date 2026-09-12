@@ -239,6 +239,7 @@ class Settlement:
                 device,
                 self.layout if blocked else None,
                 precision,
+                flat=self._blocks,
             )
         elif backend == "mlx":
             if not blocked:
@@ -535,6 +536,7 @@ class _TorchKernel:
         device: str | None,
         layout: Layout | None = None,
         precision: str | None = None,
+        flat: np.ndarray | None = None,
     ) -> None:
         import torch
 
@@ -564,7 +566,8 @@ class _TorchKernel:
         self.layout = layout
         self.blocks: list[Any] = []
         if layout is not None:  # block products per step instead of a gather and a scatter
-            flat = layout.flat(weights)
+            if flat is None:  # the settlement hands its own flat blocks in; this is the fallback
+                flat = layout.flat(weights)
             self.blocks = [
                 torch.from_numpy(np.ascontiguousarray(block)).to(self.device, self.dtype)
                 for block in layout.blocks(flat)
