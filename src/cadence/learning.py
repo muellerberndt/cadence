@@ -210,8 +210,8 @@ class Learner:
             rho = cfg.normalize
             self.second_moment = rho * self.second_moment + (1 - rho) * overlap_term**2
             self.second_moment_bias = rho * self.second_moment_bias + (1 - rho) * owner_term**2
-            overlap_term = overlap_term / (np.sqrt(self.second_moment) + cfg.normalize_floor)
-            owner_term = owner_term / (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
+            overlap_term /= (np.sqrt(self.second_moment) + cfg.normalize_floor)
+            owner_term /= (np.sqrt(self.second_moment_bias) + cfg.normalize_floor)
         if cfg.momentum > 0:  # still local: an overlap accumulates only its own contrast
             self.velocity = cfg.momentum * self.velocity + (1 - cfg.momentum) * overlap_term
             self.velocity_bias = cfg.momentum * self.velocity_bias + (1 - cfg.momentum) * owner_term

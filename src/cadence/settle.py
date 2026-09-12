@@ -88,13 +88,13 @@ class Nudge:
         else:
             group = self.mask > 0
             z = s[:, group] / self.softmax_temperature
-            z = z - z.max(axis=1, keepdims=True)
+            z -= z.max(axis=1, keepdims=True)
             p = np.exp(z)
-            p = p / p.sum(axis=1, keepdims=True)
+            p /= p.sum(axis=1, keepdims=True)
             out = np.zeros_like(s)
             out[:, group] = self.beta * (np.broadcast_to(self.target, s.shape)[:, group] - p)
         if self.weight is not None:
-            out = out * np.asarray(self.weight, dtype=float)[:, None]
+            out *= np.asarray(self.weight, dtype=float)[:, None]
         return out
 
 
@@ -362,7 +362,7 @@ class Settlement:
                 total += nudge.drive(s)
             total -= v
             total *= rule.dt
-            v = v + total  # owner-local repair: v <- v + dt (-v + total)
+            v += total  # owner-local repair: v <- v + dt (-v + total)
             if masked:
                 v *= keep
             previous = s
@@ -370,7 +370,7 @@ class Settlement:
             if masked:
                 s *= keep
             if adapt is not None:
-                a = a + (s - a) / adapt.tau_steps
+                a += (s - a) / adapt.tau_steps
             if traj is not None:
                 traj[t] = s
             taken = t + 1
@@ -454,7 +454,7 @@ class _TorchKernel:
         r = torch.sigmoid(rule.slope * (v - rule.threshold)) - rest
         s = torch.relu(r) / (1.0 - rest)
         if rule.leak:
-            s = s + rule.leak * torch.clamp(r, max=0.0) / rest
+            s += rule.leak * torch.clamp(r, max=0.0) / rest
         return s
 
     def run(
@@ -496,7 +496,7 @@ class _TorchKernel:
                     inbox = inbox.index_add_(1, self.post, s[:, self.pre] * self.w)
                 total = inbox + d + self.bias
                 if adapt is not None:
-                    total = total - adapt.strength * a
+                    total -= adapt.strength * a
                 if nudge is not None:
                     if nudge.softmax_temperature is None:
                         push = nudge.beta * (target - s) * mask
@@ -506,13 +506,13 @@ class _TorchKernel:
                         push = torch.zeros_like(s)
                         push[:, group] = nudge.beta * (target[:, group] - p)
                     if weight is not None:
-                        push = push * weight
-                    total = total + push
+                        push *= weight
+                    total += push
                 v = (v + rule.dt * (-v + total)) * k
                 previous = s
                 s = self._activation(v) * k
                 if adapt is not None:
-                    a = a + (s - a) / adapt.tau_steps
+                    a += (s - a) / adapt.tau_steps
                 if want:
                     traj.append(s.detach().cpu().double().numpy())
                 taken = t + 1

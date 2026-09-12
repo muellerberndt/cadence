@@ -82,7 +82,7 @@ def settle_owner_by_owner(
         cell = new_cell
         published = rule.activation(cell)
         if adapt is not None:
-            adaptation = adaptation + (published - adaptation) / adapt.tau_steps
+            adaptation += (published - adaptation) / adapt.tau_steps
         trajectory[t] = published
     return trajectory, ledger
 
