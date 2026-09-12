@@ -12,6 +12,12 @@
   tied overlaps through index arrays made once. A wiring keeps its segment boundaries.
   At 7,300 owners and 10.8 million overlaps, batch 2,048 on an A10G: one learning update
   4.4 s to 0.73 s.
+- The learner's update stays on the torch device when both phases rest there: the contrast,
+  the masks, the pairing, the tying, the decay and the bounds as device tensors, the
+  kernel's blocks updated in place, and `Settlement.edge_scale` and `bias` fetched only
+  when something reads them (a checkpoint, a receipt, a life of the seams). A test checks
+  it against the host update to 1e-9. The seam update at the shape above: 265 ms to 40 ms.
+  `normalize` and `momentum` take the host path.
 - `Echo` reads and writes its ranges through slices.
 
 ## 0.7.0 (2026-09-11)
