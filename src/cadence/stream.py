@@ -160,7 +160,9 @@ class FastSeams:
     decay: float = 1.0
     rate: float = 1.0
     amplitude: float = 1.0
+    normalize: bool = False  # unit keys and cue, the read divided by the decayed count of writes
     strength: np.ndarray = field(init=False)
+    mass: np.ndarray = field(init=False)  # (batch,) the decayed count of writes, for ``normalize``
     writes: int = 0
 
     def __post_init__(self) -> None:
@@ -171,19 +173,37 @@ class FastSeams:
         self._pre_columns = columns(self.pre)
         self._post_columns = columns(self.post)
         self.strength = np.zeros((0, len(self.pre), len(self.post)))
+        self.mass = np.zeros(0)
 
     def reset(self, batch: int) -> None:
         self.strength = np.zeros((batch, len(self.pre), len(self.post)))
+        self.mass = np.zeros(batch)
 
     def keep(self, rows: np.ndarray) -> None:
         self.strength = self.strength[rows]
+        self.mass = self.mass[rows]
+
+    @staticmethod
+    def _unit(x: np.ndarray) -> np.ndarray:
+        return np.asarray(x / np.maximum(np.linalg.norm(x, axis=-1, keepdims=True), 1e-12))
 
     def read(self, drive: np.ndarray) -> np.ndarray:
-        """The post owners' drive from the pre range's clamp in ``drive``: ``(batch, post)``."""
+        """The post owners' drive from the pre range's clamp in ``drive``: ``(batch, post)``.
+
+        With ``normalize`` the cue is a unit vector, the keys were written as unit vectors,
+        and the sum is divided by the decayed count of writes: the read is then an average
+        over the stored posts weighted by the cosine of the cue with their keys and by
+        their age, and stays within the range of what was written.
+        """
         if len(self.strength) != len(drive):
             self.reset(len(drive))
         cue = np.ascontiguousarray(drive[:, self._pre_columns])
-        return np.asarray(self.amplitude * (cue[:, None, :] @ self.strength)[:, 0, :])
+        if self.normalize:
+            cue = self._unit(cue)
+        out = (cue[:, None, :] @ self.strength)[:, 0, :]
+        if self.normalize:
+            out = out / np.maximum(self.mass, 1e-12)[:, None]
+        return np.asarray(self.amplitude * out)
 
     def clamp(self, drive: np.ndarray, inplace: bool = False) -> np.ndarray:
         """Add the read to the post columns of ``drive`` (a copy, unless ``inplace``)."""
@@ -207,11 +227,15 @@ class FastSeams:
             self.reset(len(s))
         if self.decay < 1.0:
             self.strength *= self.decay
+            self.mass *= self.decay
         if write is not None and np.any(write):
             rows = np.flatnonzero(write)
             a = np.ascontiguousarray(s[rows][:, self._pre_columns])
+            if self.normalize:
+                a = self._unit(a)
             b = np.ascontiguousarray(s[rows][:, self._post_columns] if post is None else post[rows])
             self.strength[rows] += self.rate * a[:, :, None] * b[:, None, :]
+            self.mass[rows] += self.rate
             self.writes += len(rows)
 
     def to_dict(self) -> dict[str, float | int]:
@@ -221,5 +245,6 @@ class FastSeams:
             "decay": self.decay,
             "rate": self.rate,
             "amplitude": self.amplitude,
+            "normalize": self.normalize,
             "writes": self.writes,
         }

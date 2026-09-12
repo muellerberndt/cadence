@@ -106,3 +106,27 @@ def test_fast_seams_bind_a_cue_to_what_was_active_and_fade() -> None:
     drive[0, 1] = 0.0
     drive[0, 2] = 1.0  # an unseen cue reads nothing
     assert np.allclose(fast.read(drive)[0], 0.0)
+
+
+def test_normalized_fast_seams_read_an_average_of_what_followed() -> None:
+    wiring = cd.layered(4, 2, 3, density=1.0, seed=0)
+    out = np.asarray(wiring.sets["output"])
+    fast = cd.FastSeams(np.arange(4), out, decay=1.0, normalize=True)
+    fast.reset(1)
+    s = np.zeros((1, wiring.n))
+    s[0, :4] = [3.0, 0.0, 0.0, 0.0]  # a key of any length is written as a unit vector
+    state = cd.SettledState(v=s, activation=s, adaptation=np.zeros_like(s), steps=1)
+    post = np.zeros((1, 3))
+    post[0, 2] = 1.0
+    fast.update(state, np.array([True]), post=post)
+    fast.update(state, np.array([True]), post=post)  # written twice: still an average of one
+    drive = np.zeros((1, wiring.n))
+    drive[0, 0] = 0.1  # a cue of any length
+    read = fast.read(drive)
+    assert np.allclose(read[0], [0.0, 0.0, 1.0])
+    other = np.zeros((1, 3))
+    other[0, 0] = 1.0
+    fast.update(
+        state, np.array([True]), post=other
+    )  # a third write with the same key, another follower
+    assert np.allclose(fast.read(drive)[0], [1 / 3, 0.0, 2 / 3])
