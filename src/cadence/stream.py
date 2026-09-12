@@ -120,7 +120,8 @@ class Echo:
 
     def update(self, state: SettledState) -> None:
         """After a free settlement: the trace decays toward the hidden owners' activation."""
-        h = np.atleast_2d(state.activation)[:, self.hidden]
+        # a column gather comes back Fortran-ordered; mixed-order arithmetic is far slower
+        h = np.ascontiguousarray(np.atleast_2d(state.activation)[:, self.hidden])
         if len(self.trace) != len(h):
             self.reset(len(h))
         self.trace = self.decay * self.trace + (1.0 - self.decay) * h
