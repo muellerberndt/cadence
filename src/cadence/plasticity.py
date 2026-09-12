@@ -245,6 +245,9 @@ class ActorCriticConfig:
     # >0: forgetting factor of a running mean and scale of delta; the phasic signal is the
     # deviation from the tonic level
     dopamine_center: float = 0.0
+    # the tonic level per stream instead of one over the batch: streams on different tasks
+    # (one brain playing several games) each keep their own mean and scale
+    center_per_stream: bool = False
     critic_normalize: bool = (
         True  # the critic's step is divided by its trace's energy, so its step size is scale-free
     )
@@ -427,6 +430,24 @@ class ActorCritic:
 
     # -- learning
 
+    def _centre(self, delta: np.ndarray) -> np.ndarray:
+        """The phasic signal: delta less its running mean, over its running scale; one level
+        for the batch, or one per stream (``center_per_stream``)."""
+        cfg = self.config
+        rho = cfg.dopamine_center
+        if cfg.center_per_stream:
+            if not isinstance(self.delta_mean, np.ndarray) or len(self.delta_mean) != len(delta):
+                self.delta_mean = np.zeros(len(delta))
+                self.delta_var = np.zeros(len(delta))
+            self.delta_mean = rho * self.delta_mean + (1 - rho) * delta
+            self.delta_var = rho * self.delta_var + (1 - rho) * (delta - self.delta_mean) ** 2
+        else:
+            self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
+            self.delta_var = rho * self.delta_var + (1 - rho) * float(
+                ((delta - self.delta_mean) ** 2).mean()
+            )
+        return (delta - self.delta_mean) / (np.sqrt(self.delta_var) + 1e-6)
+
     def learn(
         self,
         reward: np.ndarray,
@@ -507,12 +528,7 @@ class ActorCritic:
         raw_target = reward + cfg.gamma * next_value
         delta = raw_target - value
         if cfg.dopamine_center > 0:
-            rho = cfg.dopamine_center
-            self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
-            self.delta_var = rho * self.delta_var + (1 - rho) * float(
-                ((delta - self.delta_mean) ** 2).mean()
-            )
-            delta = (delta - self.delta_mean) / (np.sqrt(self.delta_var) + 1e-6)
+            delta = self._centre(delta)
         if cfg.dopamine_cap > 0:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         # three factors
@@ -633,12 +649,7 @@ class ActorCritic:
         raw_target = reward + cfg.gamma * next_value
         delta = raw_target - value
         if cfg.dopamine_center > 0:
-            rho = cfg.dopamine_center
-            self.delta_mean = rho * self.delta_mean + (1 - rho) * float(delta.mean())
-            self.delta_var = rho * self.delta_var + (1 - rho) * float(
-                ((delta - self.delta_mean) ** 2).mean()
-            )
-            delta = (delta - self.delta_mean) / (np.sqrt(self.delta_var) + 1e-6)
+            delta = self._centre(delta)
         if cfg.dopamine_cap > 0:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         self.updates += 1

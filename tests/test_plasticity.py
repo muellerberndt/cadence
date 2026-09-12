@@ -291,3 +291,37 @@ def test_a_batch_of_streams_learns_the_same_on_the_device_as_on_the_host() -> No
     assert np.allclose(s_host, s_dev, atol=1e-6) and np.abs(s_host - wiring.sign).max() > 1e-4
     assert np.allclose(b_host, b_dev, atol=1e-6)
     assert np.allclose(c_host, c_dev, atol=1e-6)
+
+
+def test_actor_critic_centres_the_dopamine_per_stream() -> None:
+    """Two streams with rewards of different sizes: one centre over the batch leaves the
+    small-reward stream always below the mean; a centre per stream gives each its own level."""
+    wiring = cd.layered(4, 8, 2, density=1.0, seed=0)
+
+    def make(per_stream: bool) -> cd.ActorCritic:
+        learner = cd.Learner(
+            cd.Settlement(wiring, cd.learning_rule(dt=1.0)),
+            wiring.sets["output"],
+            cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.2, tolerance=3e-3, nudged_steps=12),
+        )
+        return cd.ActorCritic(
+            learner,
+            wiring.sets["hidden"],
+            cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=0.1, eta_critic=0.0, dopamine_center=0.5, center_per_stream=per_stream),
+            seed=0,
+        )
+
+    rng = np.random.default_rng(1)
+    x = rng.random((2, 4))
+    drive = np.pad(x, ((0, 0), (0, wiring.n - 4)))
+    rewards = np.array([10.0, 0.1])  # stream 0 is paid a hundred times stream 1
+    shared, own = make(False), make(True)
+    for ac in (shared, own):
+        ac.act(drive)
+        for _ in range(20):
+            ac.learn(rewards + rng.normal(0.0, 0.01, size=2), np.zeros(2, dtype=bool), drive)
+            ac.act(drive)
+    assert isinstance(shared.delta_mean, float)
+    assert isinstance(own.delta_mean, np.ndarray) and own.delta_mean.shape == (2,)
+    assert own.delta_mean[0] > own.delta_mean[1] + 5.0  # each stream's level is its own reward's
+    assert abs(shared.delta_mean - own.delta_mean.mean()) < 2.0  # the shared level is their mean

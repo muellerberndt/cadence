@@ -2,6 +2,10 @@
 
 ## 0.7.1 (unreleased)
 
+- `ActorCriticConfig.center_per_stream`: the centred dopamine keeps one running mean and
+  scale per stream instead of one over the batch, for streams on different tasks (one brain
+  playing several games, whose rewards differ in size); the batch-wide centre is unchanged
+  and stays the default.
 - `LearnerConfig.momentum` and `normalize` are the adaptive local step proper: Adam's order
   (the running average of each seam's own contrast, divided by the RMS of its raw contrast)
   with both corrected for their short history, as `ActorCritic` already did. Before, the
