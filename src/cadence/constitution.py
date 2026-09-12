@@ -109,16 +109,21 @@ def mutate(
     *,
     size_step: float = 0.25,
     fixed: tuple[str, ...] = (),
+    tied: tuple[tuple[str, str], ...] = (),
 ) -> Constitution:
     """One offspring: every region not in ``fixed`` may change size by about ``size_step`` of
     itself, every projection may change density, sign and scale a little; nothing is added or
-    removed."""
+    removed. A pair in ``tied`` keeps the second region the size of the first (a context
+    range with one owner per hidden owner)."""
     regions = tuple(
         r
         if r.name in fixed
         else replace(r, size=max(1, int(round(r.size * float(np.exp(rng.normal(0.0, size_step)))))))
         for r in constitution.regions
     )
+    for leader, follower in tied:
+        size = next(r.size for r in regions if r.name == leader)
+        regions = tuple(replace(r, size=size) if r.name == follower else r for r in regions)
     projections = tuple(
         replace(
             p,

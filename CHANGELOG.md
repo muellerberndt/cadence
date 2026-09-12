@@ -2,6 +2,7 @@
 
 ## 0.7.1 (unreleased)
 
+- `mutate(..., tied=((leader, follower), ...))`: region pairs whose sizes move together (a context range with one owner per hidden owner); `evolve` passes it through.
 - `evolve(..., mapper=map)`: a generation's lives run through `mapper`; pass a pool's `map` to run them side by side (the fitness must then be a module-level function).
 - `FastSeams`: fast Hebbian seams between two ranges of a batch of streams, as owned state
   (an outer-product write per step, a read as a drive, a decay); `columns` (slices for

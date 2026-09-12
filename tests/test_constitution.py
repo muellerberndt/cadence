@@ -70,3 +70,16 @@ def test_evolve_runs_the_lives_through_the_mapper() -> None:
         parallel = evolve(_hidden_size, two_region(), generations=3, population=4, keep=2, seed=3, fixed=("input", "output"), mapper=pool.map)
     assert [g["best_fitness"] for g in parallel.generations] == [g["best_fitness"] for g in sequential.generations]
     assert parallel.best == sequential.best
+
+
+def test_mutate_keeps_tied_regions_the_same_size() -> None:
+    c = Constitution(
+        regions=(Region("input", 6), Region("context", 8), Region("hidden", 8), Region("output", 3)),
+        projections=(Projection("input", "hidden"), Projection("context", "hidden", symmetric=False), Projection("hidden", "output")),
+    )
+    rng = np.random.default_rng(5)
+    for _ in range(20):
+        child = mutate(c, rng, fixed=("input", "output"), tied=(("hidden", "context"),))
+        assert child.region("context").size == child.region("hidden").size
+        c = child
+    assert c.region("hidden").size != 8
