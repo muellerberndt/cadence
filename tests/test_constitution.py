@@ -83,3 +83,9 @@ def test_mutate_keeps_tied_regions_the_same_size() -> None:
         assert child.region("context").size == child.region("hidden").size
         c = child
     assert c.region("hidden").size != 8
+
+
+def test_evolve_reports_after_every_generation() -> None:
+    seen: list[int] = []
+    lineage = evolve(_hidden_size, two_region(), generations=3, population=4, keep=2, seed=3, fixed=("input", "output"), report=lambda lin: seen.append(len(lin.generations)))
+    assert seen == [1, 2, 3] and len(lineage.generations) == 3

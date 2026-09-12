@@ -165,13 +165,16 @@ def evolve(
     keep: int = 2,
     seed: int = 0,
     mapper: Callable[..., Iterable[float]] = map,
+    report: Callable[[Lineage], None] | None = None,
     **mutation: Any,
 ) -> Lineage:
     """Selection over constitutions: each generation grows ``population`` offspring of the
     ``keep`` best so far, scores each grown wiring with ``fitness(wiring, seed)``, and keeps
     the best. The fitness is the caller's: a protocol score, a learning curve, an accuracy.
     ``mapper`` runs a generation's lives: ``map`` one after another, a pool's ``map`` side
-    by side (``fitness`` must then be picklable, so a module-level function)."""
+    by side (``fitness`` must then be picklable, so a module-level function). ``report``
+    is called with the lineage so far after every generation, so a long run can be
+    written out as it goes."""
     rng = np.random.default_rng(seed)
     lineage = Lineage()
     parents = [constitution]
@@ -195,4 +198,6 @@ def evolve(
         )
         if top[0] > lineage.best_fitness:
             lineage.best, lineage.best_fitness = top[2], top[0]
+        if report is not None:
+            report(lineage)
     return lineage
