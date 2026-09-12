@@ -255,7 +255,8 @@ class Settlement:
             else:
                 segments = (np.zeros(0, np.int64), np.zeros(0, np.int64))
             wiring.__dict__["_segments"] = segments
-        self._starts, self._owners_with_inbox = segments
+        self._starts: np.ndarray = segments[0]
+        self._owners_with_inbox: np.ndarray = segments[1]
         # The block transport: dense blocks between owner ranges, when they fit.
         blocked = self.layout.size <= dense_limit * dense_limit
         self._blocked = blocked
@@ -764,12 +765,14 @@ class _TorchKernel:
                 repair = repair + movement.sum(dim=1)
                 if tolerance is not None and float(movement.max()) < tolerance:
                     break
-        held = {"kernel": self.backend_name, "owner": self, "v": v, "a": a, "s": s}
+        tensors = {"v": v, "a": a, "s": s}
 
         def fetch(key: str) -> np.ndarray:  # the host copy, made when something reads it
-            return np.asarray(held[key].cpu().double().numpy())
+            return np.asarray(tensors[key].cpu().double().numpy())
 
-        held["fetch"] = fetch
+        # fetch closes over the tensors, never over the handle: a cycle there would hold the
+        # device memory of every settled state until a garbage-collection pass
+        held = {"kernel": self.backend_name, "owner": self, "fetch": fetch, **tensors}
         return (
             None,
             None,
