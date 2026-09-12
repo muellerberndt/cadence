@@ -695,6 +695,8 @@ class _TorchKernel:
         self.rule = rule
         self.n = wiring.n
         self.layout = layout
+        self._wiring = wiring  # for the per-row contrast's edge index, made on first use
+        self._row_index: Any = None
         self.blocks: list[Any] = []
         self.index: Any = None  # the layout's edge index on the device, shared across rebuilds
         if layout is not None:  # block products per step instead of a gather and a scatter
@@ -781,6 +783,20 @@ class _TorchKernel:
             flat[lay.offset[k] : lay.offset[k + 1]] = block.reshape(-1)
         edges = flat[self.index].to(self.param_dtype)
         owners = (s_plus - s_minus).sum(dim=0).to(self.param_dtype)
+        return edges, owners
+
+    def contrast_rows(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
+        """The contrast per row, ``(batch, edges)`` and ``(batch, owners)``, as tensors: each
+        stream's own product of the two phases, for an eligibility trace kept per stream."""
+        torch = self.torch
+        if self._row_index is None:
+            self._row_index = (
+                torch.from_numpy(self._wiring.pre).to(self.device),
+                torch.from_numpy(self._wiring.post).to(self.device),
+            )
+        pre, post = self._row_index
+        edges = (s_plus[:, pre] * s_plus[:, post] - s_minus[:, pre] * s_minus[:, post]).to(self.param_dtype)
+        owners = (s_plus - s_minus).to(self.param_dtype)
         return edges, owners
 
     def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:

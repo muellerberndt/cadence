@@ -451,8 +451,8 @@ class ActorCritic:
         batch = len(reward)
         decay = cfg.gamma * cfg.lam
         device_kernel = None
-        if kind == "states":  # the two phases as states: on the device when one stream settled there
-            if batch == 1 and cfg.momentum == 0 and cfg.normalize == 0:
+        if kind == "states":  # the two phases as states: on the device when the streams settled there
+            if cfg.momentum == 0 and cfg.normalize == 0:
                 device_kernel = self.learner._device_kernel(first, second)
             if device_kernel is None:
                 first, second = first.activation, second.activation
@@ -593,21 +593,22 @@ class ActorCritic:
         next_drive: np.ndarray,
         bootstrap: np.ndarray | None,
     ) -> dict[str, float]:
-        """``learn`` for one stream whose phases rest on the torch device: the contrast, the
-        eligibility trace and the step never come to the host; the critic and the
-        dopamine do (a scalar and a row of the critic's owners)."""
+        """``learn`` for streams whose phases rest on the torch device: each stream's contrast,
+        eligibility trace and the mean step never come to the host; the critic and the
+        dopamine do (a value per stream and a row of the critic's owners)."""
         cfg = self.config
         torch = kernel.torch
         span = 2.0 * self.learner.config.beta
         decay = cfg.gamma * cfg.lam
-        edges, owners = kernel.contrast_tensors(plus.device["s"], minus.device["s"])
+        batch = len(reward)
+        edges, owners = kernel.contrast_rows(plus.device["s"], minus.device["s"])
         if self._trace_device is None or self._trace_device[0].shape != edges.shape:
             self._trace_device = (torch.zeros_like(edges), torch.zeros_like(owners))
         trace, trace_bias = self._trace_device
         trace = decay * trace + edges / span
         trace_bias = decay * trace_bias + owners / span
-        if self.trace_critic is None or self.trace_critic.shape[0] != 1:
-            self.trace_critic = np.zeros((1, len(self.critic_index) + 1))
+        if self.trace_critic is None or self.trace_critic.shape[0] != batch:
+            self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
         free = self._free
         assert free is not None
         self.trace_critic *= cfg.gamma * cfg.lam_critic
@@ -641,8 +642,8 @@ class ActorCritic:
         if cfg.dopamine_cap > 0:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         self.updates += 1
-        d = float(delta[0])
-        report = self.learner._apply_device(kernel, (cfg.eta * d) * trace, (cfg.eta_bias * d) * trace_bias)
+        d = torch.as_tensor(np.asarray(delta, dtype=float), dtype=trace.dtype, device=trace.device)[:, None]
+        report = self.learner._apply_device(kernel, cfg.eta * (d * trace).mean(dim=0), cfg.eta_bias * (d * trace_bias).mean(dim=0))
         if self.critic_net is not None:
             assert self._drive is not None
             self.critic_net.learn(self._drive, raw_target)
@@ -654,9 +655,10 @@ class ActorCritic:
             self.w_critic += critic_step[:-1]
             self.b_critic += float(critic_step[-1])
         if done.any():  # a finished stream forgets its traces
-            trace = torch.zeros_like(trace)
-            trace_bias = torch.zeros_like(trace_bias)
-            self.trace_critic[:] = 0.0
+            keep = torch.as_tensor(~done, dtype=trace.dtype, device=trace.device)[:, None]
+            trace = trace * keep
+            trace_bias = trace_bias * keep
+            self.trace_critic[done] = 0.0
         self._trace_device = (trace, trace_bias)
         self._free = next_state
         self._drive = next_drive

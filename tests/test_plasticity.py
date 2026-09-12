@@ -260,3 +260,34 @@ def test_one_stream_learns_the_same_on_the_device_as_on_the_host() -> None:
     assert np.allclose(s_host, s_dev, atol=1e-6) and np.abs(s_host - wiring.sign).max() > 1e-4
     assert np.allclose(b_host, b_dev, atol=1e-6)
     assert np.allclose(c_host, c_dev, atol=1e-6)
+
+
+def test_a_batch_of_streams_learns_the_same_on_the_device_as_on_the_host() -> None:
+    import pytest
+
+    if "torch" not in cd.available_backends():
+        pytest.skip("no torch")
+    wiring = cd.layered(6, 10, 4, density=1.0, seed=2)
+    config = cd.LearnerConfig(beta=0.1, eta=1.0, temperature=0.3, tolerance=1e-6, nudged_steps=30, free_steps=200)
+    ac_config = cd.ActorCriticConfig(gamma=0.9, lam=0.8, lam_critic=0.8, eta=0.3, eta_bias=0.03, eta_critic=0.1, dopamine_cap=1.0)
+    rng = np.random.default_rng(5)
+    batch = 3
+    drives = [np.concatenate([rng.random((batch, 6)), np.zeros((batch, 14))], axis=1) for _ in range(6)]
+    rewards = [rng.normal(size=batch) for _ in range(6)]
+    dones = [np.zeros(batch, dtype=bool) for _ in range(6)]
+    dones[2][1] = True
+    results = []
+    for backend in ("cpu", "torch"):
+        engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0), backend=backend, device="cpu" if backend == "torch" else None, precision="float64" if backend == "torch" else None)  # type: ignore[arg-type]
+        learner = cd.Learner(engine, wiring.sets["output"], config, slots=2)
+        ac = cd.ActorCritic(learner, wiring.sets["hidden"], ac_config, seed=0, population=cd.Bins(dims=2, size=2))
+        actions = []
+        for k in range(5):
+            actions.append(ac.act(drives[k]).copy())
+            ac.learn(rewards[k], dones[k], drives[k + 1])
+        results.append((np.stack(actions), np.asarray(ac.learner.engine.edge_scale), np.asarray(ac.learner.engine.bias), ac.w_critic.copy()))
+    (a_host, s_host, b_host, c_host), (a_dev, s_dev, b_dev, c_dev) = results
+    assert np.array_equal(a_host, a_dev)
+    assert np.allclose(s_host, s_dev, atol=1e-6) and np.abs(s_host - wiring.sign).max() > 1e-4
+    assert np.allclose(b_host, b_dev, atol=1e-6)
+    assert np.allclose(c_host, c_dev, atol=1e-6)
