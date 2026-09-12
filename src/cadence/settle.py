@@ -372,8 +372,12 @@ class Settlement:
         if n != self.wiring.n:
             raise ValueError("drive must have one column per owner")
         keep = np.ones(n) if mask is None else np.asarray(mask, float)
-        v = np.zeros((batch, n)) if state is None else np.atleast_2d(state.v).copy()
-        a = np.zeros((batch, n)) if state is None else np.atleast_2d(state.adaptation).copy()
+        if state is None:
+            v, a = np.zeros((batch, n)), np.zeros((batch, n))
+        elif self.backend in ("torch", "mlx"):  # the kernels never write the host arrays
+            v, a = np.atleast_2d(state.v), np.atleast_2d(state.adaptation)
+        else:
+            v, a = np.atleast_2d(state.v).copy(), np.atleast_2d(state.adaptation).copy()
         if v.shape != (batch, n):
             raise ValueError("state batch does not match the drive batch")
         handle = None
