@@ -80,3 +80,29 @@ def test_carried_state_learns_what_no_window_can_see() -> None:
         run(learn=True)
     learner.config = dataclasses.replace(cfg, tolerance=1e-4)
     assert run(learn=False) > 0.6  # chance is 0.25 and a window of one gives exactly chance
+
+
+def test_fast_seams_bind_a_cue_to_what_was_active_and_fade() -> None:
+    # owners 0..3 are cues, 4..6 are contents; a stream that saw cue 1 with content 6 recalls 6
+    wiring = cd.layered(4, 2, 3, density=1.0, seed=0)
+    fast = cd.FastSeams(np.arange(4), np.asarray(wiring.sets["output"]), decay=0.5)
+    fast.reset(2)
+    s = np.zeros((2, wiring.n))
+    out = np.asarray(wiring.sets["output"])
+    s[0, 1] = 1.0
+    s[0, out[2]] = 1.0  # stream 0: cue 1 with content 2
+    s[1, 3] = 1.0
+    s[1, out[0]] = 1.0  # stream 1: cue 3 with content 0
+    state = cd.SettledState(v=s, activation=s, adaptation=np.zeros_like(s), steps=1)
+    fast.update(state, np.array([True, True]))
+    drive = np.zeros((2, wiring.n))
+    drive[0, 1] = 1.0
+    drive[1, 3] = 1.0
+    read = fast.read(drive)
+    assert read[0].argmax() == 2 and read[1].argmax() == 0
+    assert np.isclose(read[0, 2], 1.0)
+    fast.update(state, None)  # fades
+    assert np.isclose(fast.read(drive)[0, 2], 0.5)
+    drive[0, 1] = 0.0
+    drive[0, 2] = 1.0  # an unseen cue reads nothing
+    assert np.allclose(fast.read(drive)[0], 0.0)

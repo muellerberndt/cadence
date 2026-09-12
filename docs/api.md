@@ -75,6 +75,16 @@ docstrings in the source carry the details.
   `reset(batch)`, `clamp(drive)` (writes `amplitude * trace` into the context columns),
   `update(state)` (`trace <- decay * trace + (1 - decay) * hidden activation`), `keep(rows)`,
   `to_dict()`.
+- `FastSeams(pre, post, decay=1.0, rate=1.0, amplitude=1.0)`: fast Hebbian seams between two
+  ranges, per stream, as owned state. `update(state, write)` adds the outer product of the
+  pre and post activations for the rows in `write` (after fading every strength by `decay`);
+  `read(drive)` is the post owners' drive from the pre range's clamp through the strengths;
+  `clamp(drive, inplace=False)` adds it to the post columns; `reset(batch)`, `keep(rows)`,
+  `to_dict()`. The recall rung's memory, kept per stream: a digit span of twelve with no
+  trained seam (cadence-paper H1).
+- `columns(index)`: a slice when the owners are one contiguous range, else the index array;
+  a column read or write through a slice is a strided pass, through an index array a gather
+  that comes back Fortran-ordered or a scatter, tens of times slower on a wide batch.
 
 ## Constitution (`cadence.constitution`)
 

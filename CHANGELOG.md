@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.1 (unreleased)
+
+- `FastSeams`: fast Hebbian seams between two ranges of a batch of streams, as owned state
+  (an outer-product write per step, a read as a drive, a decay); `columns` (slices for
+  contiguous ranges) exported from `cadence.stream`.
+- The torch kernel: the block weights scattered on the device through an edge index kept
+  there; a settled state fetches its host arrays only when something reads them; no host
+  copy of a warm state; the per-overlap arrays uploaded only on the gather-scatter path;
+  no reference cycle in the device handle. The seam update addresses the paired and the
+  tied overlaps through index arrays made once. A wiring keeps its segment boundaries.
+  At 7,300 owners and 10.8 million overlaps, batch 2,048 on an A10G: one learning update
+  4.4 s to 0.73 s.
+- `Echo` reads and writes its ranges through slices.
+
 ## 0.7.0 (2026-09-11)
 
 The accelerators, in the core.
