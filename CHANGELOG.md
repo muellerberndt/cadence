@@ -11,6 +11,7 @@
   choices differ in size (a move of nine, a grip of two); `slot_sizes`, `slot_offsets`;
   the checkpoint keeps the slots.
 - `mutate(..., tied=((leader, follower), ...))`: region pairs whose sizes move together (a context range with one owner per hidden owner); `evolve` passes it through.
+- `LearnerConfig(consolidate=, restore=)`: a slow copy of the seams and biases that follows them by `consolidate` per update and toward which every update pulls them back by `restore`, on the host and on the device: what is learned and kept settles into the slow copy, what is learned and then unlearned drifts back to it.
 - `ActorCritic`: streams settled on the torch kernel keep their eligibility traces and the step on the device (`contrast_rows`: each stream's own contrast (the contrast through `contrast_tensors`, the step through the learner's device-side apply); the host arrays are never made. A reward-learning decision on a 7.2-million-seam brain: 121 ms on the Mac's GPU against 320 ms on the host.
 - `Settlement.with_parameters` on the host engine: a copy whose derived arrays are remade on first use, not a rebuilt engine (60 ms a decision at 7.2 million seams).
 - `Constitution.from_dict`: a constitution read back from a lineage's record, the inverse of `to_dict`.

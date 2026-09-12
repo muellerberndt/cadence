@@ -293,3 +293,49 @@ def test_contrast_on_the_device_matches_the_host(backend: str) -> None:
     tolerance = 1e-12 if backend == "torch" else 1e-5
     assert np.abs(on_device - on_host).max() < tolerance
     assert host.contrast_on_device(state.nudged, state.opposite) is None  # type: ignore[arg-type]
+
+
+def test_consolidation_pulls_the_seams_toward_a_slow_copy_that_follows() -> None:
+    """With ``restore`` on and no learning signal, the seams return toward the slow copy;
+    with ``consolidate`` on, the slow copy follows what is learned and kept."""
+    import cadence as cd
+
+    wiring = cd.layered(4, 6, 2, density=1.0, seed=0)
+    engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0))
+    learner = cd.Learner(engine, wiring.sets["output"], cd.LearnerConfig(eta=1.0, restore=0.5, consolidate=0.0))
+    start = engine.edge_scale.copy()
+    step = np.full(wiring.edges, 0.2)
+    learner.apply(step, np.zeros(wiring.n))  # moved by 0.2, then pulled halfway back
+    assert np.allclose(learner.engine.edge_scale - start, 0.1)
+    learner.apply(np.zeros(wiring.edges), np.zeros(wiring.n))  # no step: halfway back again
+    assert np.allclose(learner.engine.edge_scale - start, 0.05)
+    following = cd.Learner(cd.Settlement(wiring, cd.learning_rule(dt=1.0)), wiring.sets["output"], cd.LearnerConfig(eta=1.0, restore=0.0, consolidate=0.5))
+    following.apply(step, np.zeros(wiring.n))
+    assert following._slow is not None and np.allclose(following._slow[0] - start, 0.1)  # the slow copy went halfway to the seams
+    following.apply(np.zeros(wiring.edges), np.zeros(wiring.n))
+    assert np.allclose(following._slow[0] - start, 0.15)
+
+
+def test_consolidation_is_the_same_on_the_device() -> None:
+    import pytest
+
+    import cadence as cd
+
+    if "torch" not in cd.available_backends():
+        pytest.skip("no torch")
+    wiring = cd.layered(4, 6, 2, density=1.0, seed=0)
+    config = cd.LearnerConfig(eta=1.0, restore=0.3, consolidate=0.2)
+    results = []
+    for backend in ("cpu", "torch"):
+        engine = cd.Settlement(wiring, cd.learning_rule(dt=1.0), backend=backend, device="cpu" if backend == "torch" else None, precision="float64" if backend == "torch" else None)  # type: ignore[arg-type]
+        learner = cd.Learner(engine, wiring.sets["output"], config)
+        if backend == "torch":
+            kernel = learner.engine._torch
+            torch = kernel.torch
+            for k in range(3):
+                learner._apply_device(kernel, torch.full((wiring.edges,), 0.1 * (k + 1), dtype=kernel.param_dtype), torch.zeros(wiring.n, dtype=kernel.param_dtype))
+        else:
+            for k in range(3):
+                learner.apply(np.full(wiring.edges, 0.1 * (k + 1)), np.zeros(wiring.n))
+        results.append(np.asarray(learner.engine.edge_scale))
+    assert np.allclose(results[0], results[1], atol=1e-9)

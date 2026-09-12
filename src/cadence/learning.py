@@ -73,8 +73,15 @@ class LearnerConfig:
     normalize_floor: float = 1e-3  # added to the RMS so a quiet overlap does not blow up
     momentum: float = 0.0  # >0: each overlap steps on a running average of its own contrast
     decay: float = 0.0  # >0: every update shrinks each trainable overlap and bias by this fraction
+    # Consolidation: a slow copy of the seams that follows them by ``consolidate`` per update,
+    # and toward which every update pulls them back by ``restore``. What is learned and kept
+    # settles into the slow copy; what is learned and then unlearned drifts back to it.
+    consolidate: float = 0.0
+    restore: float = 0.0
 
     def __post_init__(self) -> None:
+        if not 0 <= self.consolidate < 1 or not 0 <= self.restore < 1:
+            raise ValueError("consolidate and restore are fractions in [0, 1)")
         if self.nudge not in ("quadratic", "cross_entropy"):
             raise ValueError("nudge must be 'quadratic' or 'cross_entropy'")
         if self.beta <= 0 or self.eta < 0 or self.eta_bias < 0:
@@ -114,6 +121,8 @@ class Learner:
     updates: int = 0
 
     def __post_init__(self) -> None:
+        self._slow: Any = None  # the slow copy of the seams and biases on the host, when consolidation is on
+        self._slow_device: Any = None  # the same on the torch device
         self.output_index = np.asarray(list(self.outputs), dtype=np.int64)
         self.output_mask = np.zeros(self.engine.wiring.n)
         self.output_mask[self.output_index] = 1.0
@@ -304,6 +313,17 @@ class Learner:
         if cfg.decay > 0:  # a leak on the seams: what is not relearned fades away
             scale = np.where(self.trainable_overlaps, scale * (1.0 - cfg.decay), scale)
             bias = np.where(self.trainable_owners, bias * (1.0 - cfg.decay), bias)
+        if cfg.restore > 0 or cfg.consolidate > 0:  # the slow copy: pulled toward, following
+            if self._slow is None:
+                self._slow = (np.array(self.engine.edge_scale, dtype=float), np.array(self.engine.bias, dtype=float))
+            slow_scale, slow_bias = self._slow
+            if cfg.restore > 0:
+                scale = scale + cfg.restore * (slow_scale - scale)
+                bias = bias + cfg.restore * (slow_bias - bias)
+            if cfg.consolidate > 0:
+                slow_scale = slow_scale + cfg.consolidate * (scale - slow_scale)
+                slow_bias = slow_bias + cfg.consolidate * (bias - slow_bias)
+            self._slow = (slow_scale, slow_bias)
         if cfg.scale_floor > 0:
             magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
             scale = np.sign(scale) * magnitude
@@ -385,6 +405,17 @@ class Learner:
             keep_bias = 1.0 - cfg.decay if ix["owners"] is None else 1.0 - cfg.decay * ix["owners"]
             scale = scale * keep_scale
             bias = bias * keep_bias
+        if cfg.restore > 0 or cfg.consolidate > 0:  # the slow copy, on the device
+            if self._slow_device is None:
+                self._slow_device = (kernel.scale.clone(), kernel.bias_param.clone())
+            slow_scale, slow_bias = self._slow_device
+            if cfg.restore > 0:
+                scale = scale + cfg.restore * (slow_scale - scale)
+                bias = bias + cfg.restore * (slow_bias - bias)
+            if cfg.consolidate > 0:
+                slow_scale = slow_scale + cfg.consolidate * (scale - slow_scale)
+                slow_bias = slow_bias + cfg.consolidate * (bias - slow_bias)
+            self._slow_device = (slow_scale, slow_bias)
         if cfg.scale_floor > 0:
             magnitude = torch.clamp(scale.abs(), cfg.scale_floor, cfg.scale_cap)
             scale = torch.sign(scale) * magnitude
