@@ -47,3 +47,28 @@ def test_a_slotted_net_learns_a_whole_pattern_at_once() -> None:
             learner.step(drive[s : s + 16], y[s : s + 16])
     learner.config = dataclasses.replace(cfg, tolerance=1e-4)
     assert (learner.predict(drive) == y).mean() > 0.6  # chance is a third per slot
+
+
+def test_slots_of_unequal_size_choose_and_learn_per_group(tmp_path) -> None:
+    """A controller of a move (three choices) and a grip (two): sizes instead of a count."""
+    w = cd.layered(6, 8, 5, density=1.0, seed=3)
+    learner = cd.Learner(cd.Settlement(w, cd.learning_rule(dt=1.0)), w.sets["output"], slots=(3, 2))
+    assert learner.slot_count == 2 and learner.slot_size == 0
+    target = learner.targets(np.array([[2, 0], [1, 1]]))
+    out = target[:, learner.output_index]
+    assert out.tolist() == [[0, 0, 1, 1, 0], [0, 1, 0, 0, 1]]
+    groups = learner.output_groups[learner.output_index]
+    assert groups.tolist() == [0, 0, 0, 1, 1]
+    drive = np.zeros((2, w.n))
+    assert learner.predict(drive).shape == (2, 2)
+    with pytest.raises(ValueError):
+        learner.targets(np.array([[3, 0]]))
+    with pytest.raises(ValueError):
+        cd.Learner(cd.Settlement(w, cd.learning_rule()), w.sets["output"], slots=(3, 3))
+    path = learner.save(tmp_path / "controller.npz")
+    back = cd.Learner.load(path)
+    assert back.slot_sizes.tolist() == [3, 2] and back.slot_count == 2
+    assert back.to_dict()["slots"] == [3, 2]
+    back.slots = 5  # the gamer's reload sets the field and rebuilds; one owner per choice
+    back.__post_init__()
+    assert back.slot_count == 5 and back.slot_size == 1

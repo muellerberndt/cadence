@@ -106,20 +106,32 @@ class Learner:
     trainable_owners: np.ndarray | None = None  # bool per owner: whose bias moves and decays
     symmetric: bool = True  # an overlap and its reverse share one scale: one seam, one weight
     tie_groups: np.ndarray | None = None  # int per overlap (-1: none); a group shares one scale
-    slots: int = 1  # the outputs as this many equal groups, each its own choice, nudged together
+    # the outputs as groups, each its own softmax choice, all nudged together: a count of
+    # equal groups, or one size per group (a body's controller: a move of nine, a grip of two)
+    slots: int | Sequence[int] = 1
     updates: int = 0
 
     def __post_init__(self) -> None:
         self.output_index = np.asarray(list(self.outputs), dtype=np.int64)
         self.output_mask = np.zeros(self.engine.wiring.n)
         self.output_mask[self.output_index] = 1.0
-        if self.slots < 1 or len(self.output_index) % self.slots:
-            raise ValueError("slots must divide the number of output owners")
-        self.slot_size = len(self.output_index) // self.slots
+        if isinstance(self.slots, int):
+            if self.slots < 1 or len(self.output_index) % self.slots:
+                raise ValueError("slots must divide the number of output owners")
+            sizes = [len(self.output_index) // self.slots] * self.slots
+        else:
+            sizes = [int(k) for k in self.slots]
+            if not sizes or min(sizes) < 1 or sum(sizes) != len(self.output_index):
+                raise ValueError("slot sizes must be positive and add up to the output owners")
+        self.slot_sizes = np.asarray(sizes, dtype=np.int64)
+        self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.int64)
+        self.slot_count = len(sizes)  # ``slots`` keeps what was asked for
+        self.slot_size = int(self.slot_sizes[0]) if len(set(sizes)) == 1 else 0  # equal, or not
         self.output_groups: np.ndarray | None = None
-        if self.slots > 1:  # one softmax per slot: a whole utterance settles at once
+        if self.slot_count > 1:  # one softmax per slot: a whole utterance settles at once
             self.output_groups = np.full(self.engine.wiring.n, -1, dtype=np.int64)
-            self.output_groups[self.output_index] = np.repeat(np.arange(self.slots), self.slot_size)
+            groups = np.repeat(np.arange(self.slot_count), self.slot_sizes)
+            self.output_groups[self.output_index] = groups
         if self.trainable_overlaps is None:
             self.trainable_overlaps = np.ones(self.engine.wiring.edges, dtype=bool)
         if self.trainable_owners is None:
@@ -173,7 +185,7 @@ class Learner:
         return Nudge(
             target,
             self.output_mask,
-            beta / self.slots,
+            beta / self.slot_count,
             softmax_temperature=temperature,
             weight=weight,
             groups=self.output_groups,
@@ -208,10 +220,12 @@ class Learner:
         batch = len(labels)
         target = np.zeros((batch, self.engine.wiring.n))
         target[:, self.output_index] = self.config.off_level
-        if self.slots > 1:
-            if labels.ndim != 2 or labels.shape[1] != self.slots:
+        if self.slot_count > 1:
+            if labels.ndim != 2 or labels.shape[1] != self.slot_count:
                 raise ValueError("a slotted learner takes one label per slot")
-            owners = self.output_index[labels + np.arange(self.slots)[None, :] * self.slot_size]
+            if labels.min() < 0 or (labels >= self.slot_sizes[None, :]).any():
+                raise ValueError("a slot's label lies outside its choices")
+            owners = self.output_index[labels + self.slot_offsets[None, :]]
             target[np.arange(batch)[:, None], owners] = self.config.target_level
         else:
             target[np.arange(batch), self.output_index[labels]] = self.config.target_level
@@ -478,8 +492,14 @@ class Learner:
         """Most active output owner after a free settlement; ``(batch, slots)`` when slotted."""
         free = self.free(drive)
         out = free.activation[:, self.output_index]
-        if self.slots > 1:
-            out = out.reshape(len(out), self.slots, self.slot_size)
+        if self.slot_count > 1 and self.slot_size == 0:  # unequal slots: one argmax each
+            choice = [
+                np.argmax(out[:, o : o + k], axis=1)
+                for o, k in zip(self.slot_offsets, self.slot_sizes, strict=True)
+            ]
+            return np.asarray(np.stack(choice, axis=1), dtype=np.int64)
+        if self.slot_count > 1:
+            out = out.reshape(len(out), self.slot_count, self.slot_size)
         return np.asarray(np.argmax(out, axis=-1), dtype=np.int64)
 
     def accuracy(self, drive: np.ndarray, labels: np.ndarray, batch: int = 256) -> float:
@@ -504,6 +524,7 @@ class Learner:
         return {
             "config": self.config.to_dict(),
             "outputs": [int(i) for i in self.output_index],
+            "slots": [int(k) for k in self.slot_sizes],
             "updates": self.updates,
             "parameters": self.parameters(),
             "engine": self.engine.to_dict(),

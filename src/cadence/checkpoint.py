@@ -40,6 +40,7 @@ def save(learner: Learner, path: str | Path) -> Path:
         "rule": engine.rule.to_dict(),
         "config": learner.config.to_dict(),
         "symmetric": bool(learner.symmetric),
+        "slots": [int(k) for k in learner.slot_sizes],
         "updates": int(learner.updates),
         "backend": engine.backend,
         "dense_limit": int(engine.dense_limit),
@@ -120,6 +121,7 @@ def load(
             trainable_owners=data["trainable_owners"].astype(bool),
             symmetric=bool(meta["symmetric"]),
             tie_groups=tie if len(tie) else None,
+            slots=meta.get("slots", 1),
             updates=int(meta["updates"]),
         )
         learner.velocity = data["velocity"].astype(float)
