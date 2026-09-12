@@ -554,9 +554,6 @@ class _TorchKernel:
             self.dtype = torch.float32 if precision == "float32" else torch.float64
         else:
             raise ValueError("precision must be 'float32' or 'float64'")
-        self.pre = torch.from_numpy(wiring.pre).to(self.device)
-        self.post = torch.from_numpy(wiring.post).to(self.device)
-        self.w = torch.from_numpy(weights).to(self.device, self.dtype)
         self.bias = torch.from_numpy(bias).to(self.device, self.dtype)
         self.rule = rule
         self.n = wiring.n
@@ -568,6 +565,10 @@ class _TorchKernel:
                 torch.from_numpy(np.ascontiguousarray(block)).to(self.device, self.dtype)
                 for block in layout.blocks(flat)
             ]
+        else:  # per-overlap arrays serve only the gather-scatter path
+            self.pre = torch.from_numpy(wiring.pre).to(self.device)
+            self.post = torch.from_numpy(wiring.post).to(self.device)
+            self.w = torch.from_numpy(weights).to(self.device, self.dtype)
 
     def _inbox(self, s: Any, previous: Any, cache: list[Any]) -> Any:
         """The block transport on the device, reusing the products of still ranges."""
@@ -629,8 +630,9 @@ class _TorchKernel:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
         torch, rule = self.torch, self.rule
 
-        def to(x: np.ndarray) -> Any:
-            return torch.from_numpy(np.array(x, dtype=float)).to(self.device, self.dtype)
+        def to(x: np.ndarray) -> Any:  # no host copy when already contiguous float64
+            y = np.ascontiguousarray(x, dtype=float)
+            return torch.from_numpy(y).to(self.device, self.dtype)
 
         handle = state.device if state is not None and state.device is not None else None
         if handle is not None and handle.get("owner") is self:
