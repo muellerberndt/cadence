@@ -138,6 +138,18 @@ class Learner:
             hit = np.minimum(hit, len(order) - 1)
             found = key[order][hit] == reverse_key
             self.reverse[found] = order[hit[found]]
+        # Index arrays for the update, made once: the paired overlaps and the tied members,
+        # so an update touches those and not every overlap of a wide net.
+        self._paired = np.flatnonzero(self.reverse >= 0)
+        self._paired_reverse = self.reverse[self._paired]
+        self._members = np.zeros(0, dtype=np.int64)
+        self._member_groups = np.zeros(0, dtype=np.int64)
+        self._member_count = np.zeros(0)
+        if self.tie_groups is not None:
+            self._members = np.flatnonzero(np.asarray(self.tie_groups) >= 0)
+            self._member_groups = np.asarray(self.tie_groups)[self._members]
+            if len(self._members):
+                self._member_count = np.bincount(self._member_groups).astype(float)
 
     # -- phases
 
@@ -255,23 +267,20 @@ class Learner:
         """
         cfg = self.config
         assert self.trainable_overlaps is not None
-        delta_scale = np.where(self.trainable_overlaps, delta_scale, 0.0)
-        paired = self.reverse >= 0
-        if paired.any():  # one seam, one weight: both directions move by the same amount
-            delta_scale = np.where(
-                paired, 0.5 * (delta_scale + delta_scale[np.maximum(self.reverse, 0)]), delta_scale
-            )
-        if self.tie_groups is not None:  # a group moves by the mean of its members' contrasts
-            groups = self.tie_groups
-            member = groups >= 0
-            if member.any():
-                count = np.bincount(groups[member])
-                total = np.bincount(groups[member], weights=delta_scale[member])
-                index = np.maximum(groups, 0)
-                shared = total[index] / np.maximum(count[index], 1)
-                delta_scale = np.where(member, shared, delta_scale)
-        # tying never moves a frozen overlap
-        delta_scale = np.where(self.trainable_overlaps, delta_scale, 0.0)
+        all_trainable = bool(self.trainable_overlaps.all())
+        delta_scale = np.array(delta_scale, dtype=float)  # this update's own copy
+        if not all_trainable:
+            delta_scale[~self.trainable_overlaps] = 0.0
+        if len(self._paired):  # one seam, one weight: both directions move by the same amount
+            mean = 0.5 * (delta_scale[self._paired] + delta_scale[self._paired_reverse])
+            delta_scale[self._paired] = mean
+        if len(self._members):  # a group moves by the mean of its members' contrasts
+            total = np.bincount(self._member_groups, weights=delta_scale[self._members])
+            delta_scale[self._members] = (total / np.maximum(self._member_count, 1.0))[
+                self._member_groups
+            ]
+        if not all_trainable:  # tying never moves a frozen overlap
+            delta_scale[~self.trainable_overlaps] = 0.0
         scale = self.engine.edge_scale + delta_scale
         assert self.trainable_owners is not None
         delta_bias = np.where(self.trainable_owners, delta_bias, 0.0)
@@ -279,8 +288,11 @@ class Learner:
         if cfg.decay > 0:  # a leak on the seams: what is not relearned fades away
             scale = np.where(self.trainable_overlaps, scale * (1.0 - cfg.decay), scale)
             bias = np.where(self.trainable_owners, bias * (1.0 - cfg.decay), bias)
-        magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
-        scale = np.sign(scale) * magnitude
+        if cfg.scale_floor > 0:
+            magnitude = np.clip(np.abs(scale), cfg.scale_floor, cfg.scale_cap)
+            scale = np.sign(scale) * magnitude
+        else:  # the same bounds in one pass
+            scale = np.clip(scale, -cfg.scale_cap, cfg.scale_cap)
         self.engine = self.engine.with_parameters(edge_scale=scale, bias=bias)
         self.updates += 1
         return {

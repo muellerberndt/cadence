@@ -245,14 +245,17 @@ class Settlement:
             rule.gain * wiring.count * self.edge_scale * np.exp(self.log_gain)[wiring.pre]
         )
         # Segment boundaries of the (post-sorted) overlap arrays, for the segmented sum.
-        post = wiring.post
-        if wiring.edges:
-            change = np.flatnonzero(np.diff(post)) + 1
-            self._starts = np.concatenate([[0], change]).astype(np.int64)
-            self._owners_with_inbox = post[self._starts]
-        else:
-            self._starts = np.zeros(0, np.int64)
-            self._owners_with_inbox = np.zeros(0, np.int64)
+        segments = wiring.__dict__.get("_segments")  # kept on the wiring: one pass per wiring
+        if segments is None:
+            post = wiring.post
+            if wiring.edges:
+                change = np.flatnonzero(np.diff(post)) + 1
+                starts = np.concatenate([[0], change]).astype(np.int64)
+                segments = (starts, post[starts])
+            else:
+                segments = (np.zeros(0, np.int64), np.zeros(0, np.int64))
+            wiring.__dict__["_segments"] = segments
+        self._starts, self._owners_with_inbox = segments
         # The block transport: dense blocks between owner ranges, when they fit.
         blocked = self.layout.size <= dense_limit * dense_limit
         self._blocked = blocked
