@@ -40,7 +40,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import numpy as np
 
@@ -338,7 +338,7 @@ class Learner:
                 overlaps=None if all_overlaps else to(self.trainable_overlaps, kernel.param_dtype),
                 owners=None if all_owners else to(self.trainable_owners, kernel.param_dtype),
             )
-        return cache
+        return cast(dict[str, Any], cache)
 
     def _apply_device(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, float]:
         """``apply`` on the device: the same masks, tying, decay and bounds, no host array."""
