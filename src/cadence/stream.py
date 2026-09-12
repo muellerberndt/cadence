@@ -161,6 +161,7 @@ class FastSeams:
     rate: float = 1.0
     amplitude: float = 1.0
     normalize: bool = False  # unit keys and cue, the read divided by the decayed count of writes
+    replace: bool = False  # a write clears what its active pre owners held (a slot; one-hot keys)
     strength: np.ndarray = field(init=False)
     mass: np.ndarray = field(init=False)  # (batch,) the decayed count of writes, for ``normalize``
     writes: int = 0
@@ -234,6 +235,8 @@ class FastSeams:
             if self.normalize:
                 a = self._unit(a)
             b = np.ascontiguousarray(s[rows][:, self._post_columns] if post is None else post[rows])
+            if self.replace:  # the active pre owners' rows are cleared before the write
+                self.strength[rows] *= (a <= 0.0)[:, :, None]
             self.strength[rows] += self.rate * a[:, :, None] * b[:, None, :]
             self.mass[rows] += self.rate
             self.writes += len(rows)
@@ -246,5 +249,6 @@ class FastSeams:
             "rate": self.rate,
             "amplitude": self.amplitude,
             "normalize": self.normalize,
+            "replace": self.replace,
             "writes": self.writes,
         }

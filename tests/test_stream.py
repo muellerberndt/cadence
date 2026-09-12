@@ -130,3 +130,20 @@ def test_normalized_fast_seams_read_an_average_of_what_followed() -> None:
         state, np.array([True]), post=other
     )  # a third write with the same key, another follower
     assert np.allclose(fast.read(drive)[0], [1 / 3, 0.0, 2 / 3])
+
+
+def test_replacing_fast_seams_keep_one_note_per_key() -> None:
+    wiring = cd.layered(3, 2, 2, density=1.0, seed=0)
+    out = np.asarray(wiring.sets["output"])
+    fast = cd.FastSeams(np.arange(3), out, replace=True)
+    fast.reset(1)
+    s = np.zeros((1, wiring.n))
+    s[0, 1] = 1.0
+    state = cd.SettledState(v=s, activation=s, adaptation=np.zeros_like(s), steps=1)
+    first = np.array([[1.0, 0.0]])
+    second = np.array([[0.0, 1.0]])
+    fast.update(state, np.array([True]), post=first)
+    fast.update(state, np.array([True]), post=second)  # the same key again: the first note is gone
+    drive = np.zeros((1, wiring.n))
+    drive[0, 1] = 1.0
+    assert np.allclose(fast.read(drive)[0], [0.0, 1.0])
