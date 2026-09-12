@@ -227,10 +227,11 @@ class Settlement:
             self._owners_with_inbox = np.zeros(0, np.int64)
         # The block transport: dense blocks between owner ranges, when they fit.
         blocked = self.layout.size <= dense_limit * dense_limit
-        self._blocks: np.ndarray | None = self.layout.flat(self._weights) if blocked else None
+        self._blocked = blocked
+        self._flat: np.ndarray | None = None  # the host blocks, made on first use (cpu paths)
         self._torch: Any = None
         self._mlx: Any = None
-        if backend == "torch":
+        if backend == "torch":  # the kernel scatters the weights into its blocks on the device
             self._torch = _TorchKernel(
                 wiring,
                 self._weights,
@@ -239,7 +240,6 @@ class Settlement:
                 device,
                 self.layout if blocked else None,
                 precision,
-                flat=self._blocks,
             )
         elif backend == "mlx":
             if not blocked:
@@ -247,6 +247,15 @@ class Settlement:
             self._mlx = _MlxKernel(wiring, self._weights, self.bias, rule, self.layout)
         elif backend != "cpu":
             raise ValueError(f"unknown backend {backend!r}")
+
+    @property
+    def _blocks(self) -> np.ndarray | None:
+        """The flat host blocks when the wiring is blocked; scattered once, on first use."""
+        if not self._blocked:
+            return None
+        if self._flat is None:
+            self._flat = self.layout.flat(self._weights)
+        return self._flat
 
     # -- parameters
 
@@ -509,7 +518,7 @@ class Settlement:
         }
 
     def _is_dense(self) -> bool:
-        return self._blocks is not None
+        return self._blocked
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -536,7 +545,6 @@ class _TorchKernel:
         device: str | None,
         layout: Layout | None = None,
         precision: str | None = None,
-        flat: np.ndarray | None = None,
     ) -> None:
         import torch
 
@@ -565,17 +573,28 @@ class _TorchKernel:
         self.n = wiring.n
         self.layout = layout
         self.blocks: list[Any] = []
+        self.index: Any = None  # the layout's edge index on the device, shared across rebuilds
         if layout is not None:  # block products per step instead of a gather and a scatter
-            if flat is None:  # the settlement hands its own flat blocks in; this is the fallback
-                flat = layout.flat(weights)
-            self.blocks = [
-                torch.from_numpy(np.ascontiguousarray(block)).to(self.device, self.dtype)
-                for block in layout.blocks(flat)
-            ]
+            self.index = self._device_index(layout)
+            self.flat = torch.zeros(layout.size, dtype=self.dtype, device=self.device)
+            self.flat[self.index] = torch.from_numpy(weights).to(self.device, self.dtype)
+            self.blocks = []
+            for k in range(layout.pairs):
+                a0, a1, b0, b1 = layout.bounds(k)
+                block = self.flat[int(layout.offset[k]) : int(layout.offset[k + 1])]
+                self.blocks.append(block.view(a1 - a0, b1 - b0))
         else:  # per-overlap arrays serve only the gather-scatter path
             self.pre = torch.from_numpy(wiring.pre).to(self.device)
             self.post = torch.from_numpy(wiring.post).to(self.device)
             self.w = torch.from_numpy(weights).to(self.device, self.dtype)
+
+    def _device_index(self, layout: Layout) -> Any:
+        """The layout's edge index on this device, kept on the layout (one upload per device)."""
+        held = layout.__dict__.setdefault("_device_index", {})
+        key = str(self.device)
+        if key not in held:
+            held[key] = self.torch.from_numpy(layout.edge_index).to(self.device)
+        return held[key]
 
     def _inbox(self, s: Any, previous: Any, cache: list[Any]) -> Any:
         """The block transport on the device, reusing the products of still ranges."""
@@ -618,8 +637,7 @@ class _TorchKernel:
             else:
                 block = a_plus.T @ s_plus[:, b0:b1] - a_minus.T @ s_minus[:, b0:b1]
             flat[lay.offset[k] : lay.offset[k + 1]] = block.reshape(-1)
-        index = torch.from_numpy(lay.edge_index).to(self.device)
-        edges = flat[index].cpu().double().numpy()
+        edges = flat[self.index].cpu().double().numpy()
         owners = (s_plus - s_minus).sum(dim=0).cpu().double().numpy()
         return edges, owners
 
