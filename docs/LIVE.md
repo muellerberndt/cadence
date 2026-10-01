@@ -1,6 +1,6 @@
 # Use a learned brain with an actual body
 
-Install **0.60.0.dev0** as shown in the [quickstart](QUICKSTART.md). This guide
+Install **0.60.0** as shown in the [quickstart](QUICKSTART.md). This guide
 covers live observations, actions, outcomes and continued learning using the
 existing public API. Begin with a skill that passes free assessment;
 [bootstrapping](BOOTSTRAP.md) explains how to acquire and check one.
@@ -96,6 +96,41 @@ apply only to that call. A desired future clamp expresses an intention, not a
 prediction or witness. Use a separate future-free query before execution and
 keep its result distinct from the intended state. Every call still qualifies
 the entire connected graph under its current boundaries.
+
+This two-patch example holds a measured past value while the future state stays
+free. Output `targets` select exposed coordinates; `interventions` select a
+population's coordinates. Both use the same conditional solve:
+
+```python
+import json
+
+boundary = Cortex(seed=17)
+sensor = boundary.input("sensor", shape=1)
+past = boundary.column("past", patches=1, inputs=sensor)
+future = boundary.column("future", patches=1, inputs=past)
+boundary.output("actual", shape=1, reads=past)
+boundary.output("forecast", shape=1, reads=future)
+conditioned = boundary.build()
+sample = {"sensor": [0.25]}
+
+before = conditioned.snapshot()
+query = conditioned.settle(sample, targets={"actual": [0.4]})
+assert query["qualified"] and conditioned.snapshot() == before
+continued = conditioned.step(sample, targets={"actual": [0.4]})
+assert continued == {**query, "accepted": True}
+expected = json.loads(before)
+expected["state"] = list(continued["state"])
+assert json.loads(conditioned.snapshot()) == expected  # only activity changed
+
+held = conditioned.step(sample, interventions={"past": [0.4]})
+assert held["accepted"] and held["outputs"]["actual"] == (0.4,)
+released = conditioned.step(sample)  # previous clamps are not carried forward
+assert released["accepted"] and conditioned.inspect()["admissions"] == 0
+```
+
+This demonstrates state handling, not an acquired forecaster: the example has
+not learned any body relation. Numerical qualification applies to the free
+coordinates under the supplied clamps. A clamped value itself is no prediction.
 
 ## Supply recent context explicitly
 
@@ -500,7 +535,7 @@ not one integrated autonomous life or evidence of an observer advantage.
 The [stored receipt](../examples/receipts/temporal_credit.json) is **historical
 0.50.0 qualification evidence**, produced at commit `d9b592c` before that version
 bump. Within that release transition, only the package version string changed
-among its hashed implementation files. It is not a 0.60.0.dev0 rerun. Its 66
+among its hashed implementation files. It is not a 0.60.0 rerun. Its 66
 cases include 18 passing memory cases and 16 passing TD cases; the other cases
 are controls. Current reruns must retain their own source hashes, results and
 timings rather than inheriting those numerical conclusions.

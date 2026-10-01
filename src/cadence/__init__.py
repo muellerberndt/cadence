@@ -9,7 +9,7 @@ from .ports import Input, Output
 from .reinforcement import Reinforcement
 from .runtime import LiveController, slew
 
-__version__ = "0.60.0.dev0"
+__version__ = "0.60.0"
 
 __all__ = [
     "Brain",

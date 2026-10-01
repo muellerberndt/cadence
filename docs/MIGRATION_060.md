@@ -1,14 +1,15 @@
-# Move an application to 0.60.0.dev0
+# Move an application to 0.60.0
 
-This page describes the **development line on main**, identified as
-`0.60.0.dev0` in package metadata and `cadence.__version__`. An installed
-0.50.0 package does not contain these changes. Use the reviewed development
-source for this page's examples, and record its revision with your application.
+Install the matching library with `python -m pip install "cadence-net==0.60.0"`.
+This release includes the tested flat, ordinary deep, recursive and mixed-layout
+API, continued learning, outcome ownership and saved continuation described in
+these guides. An installed 0.50.0 package does not contain every change below.
 
-Merging this development version and its documentation into `main` does not
-publish stable 0.60.0. The stable release still requires learned routine →
-actual disturbance → useful correction → inexpensive routine, retained skill,
-and a measured behavioral contribution from recursive observation.
+The broader System 1/System 2 goal remains routine → disturbance → useful
+correction → retained inexpensive routine. Automatic internal attention,
+independently progressing fast and slow populations, and a demonstrated
+behavioral advantage from recursive observation remain future work. Releasing
+this API does not establish those capabilities or reproduce the older demos.
 
 | Change | Application impact |
 | --- | --- |
@@ -46,8 +47,8 @@ or a low current residual alone do not implement that contract. See
 
 ## Change reward acknowledgments explicitly
 
-The released 0.50 helper associates `feedback` with its pending proposal. The
-candidate requires two additional keyword arguments:
+The released 0.50 helper associates `feedback` with its pending proposal. Version 0.60
+requires two additional keyword arguments:
 
 | Field | Supply |
 | --- | --- |
@@ -110,7 +111,7 @@ the full contract.
 
 ## Continue from declared constraints without teaching
 
-The development `step` accepts optional `targets` and `interventions`,
+The 0.60 `step` accepts optional `targets` and `interventions`,
 using the same conditional solve as `settle` while retaining qualified activity
 only. Existing unclamped calls are unchanged. This enables continuation from
 explicitly constrained activity without learning parameters or recording an
@@ -129,25 +130,27 @@ evidence. `step` never turns a hypothetical future into a witnessed event.
 Keep the original environment and source artifact with each saved model.
 Brain snapshots bind exact implementation hashes, including `brain.py` and the
 repair engine; complete reinforcement snapshots also bind their helper source.
-The clamped-step and reward-replay changes alter those identities. Older
-snapshots are not a supported direct migration, even if their package version
-labels match. Editing their stored hashes does not convert them.
+Compared with 0.50, the clamped-step and reward-replay changes alter those
+identities. Restore validates the bound implementation, not just the version
+number: a development snapshot can load if all its bound sources still match.
+For a mismatch, retain the original installation or train a new brain; editing
+the stored hashes does not migrate learned state.
 
 For each comparison, retain:
 
 1. The original source, model, observation encoder/normalizer, action decoder,
    history, timing, environment identity and evaluation seeds.
-2. A fresh candidate brain constructed through its public API. Retrain using
+2. A fresh 0.60 brain constructed through its public API. Retrain using
    the declared experience when no validated migration exists. Count retraining
    and any changed information or capacity in the comparison.
 3. Subsequent unclamped predictions, actual task outcomes, old-skill retention,
    refusals and complete work/latency under both implementations.
-4. A candidate snapshot/resume check using that candidate's exact source.
+4. A 0.60 snapshot/resume check using that implementation's exact source.
 
 `credit_horizon=1` retains the one-step control. Increasing the experimental
 horizon changes target construction and replay cost; it does not add missing
 observations, learn temporal memory or demonstrate planning. Keep this
-candidate parameter out of an application recommendation until the relevant
+experimental parameter out of an application recommendation until the relevant
 held-out behavior and retention comparisons support it.
 
 ## Measure the reuse change correctly

@@ -33,7 +33,7 @@ relation. It is not a stored historical forecast miss.
 
 These names describe the intended roles of one brain. They are not constructor
 names, biological claims, or bootstrapping/live phase switches. Current
-`0.60.0.dev0` supports the layouts below; it does not yet implement automatic
+`0.60.0` supports the layouts below; it does not yet implement automatic
 attention, independently progressing populations or the complete integrated
 routine/correction cycle. Keep that boundary visible when writing examples.
 
@@ -46,7 +46,8 @@ routine/correction cycle. Keep that boundary visible when writing examples.
 | Current internal mismatch as a learned feature | `observer(..., observes=earlier_population)` | Reads both states and exact prediction errors under the same patch rule. Measure whether this helps. |
 | Specialized branches that share context | Columns and observers combined in one `Cortex`, then `build()` | One graph and body boundary. Branch structure does not give branches separate clocks. |
 
-The [layout examples](VARIANTS.md) teach, query and resume all three patterns:
+The [layout examples](VARIANTS.md) teach, query and resume all three patterns.
+Run this command from the [tagged source checkout](../examples/README.md#get-the-example-sources):
 
 ```sh
 PYTHONPATH=src python examples/layout_learning.py --layout all
@@ -140,7 +141,8 @@ per-population evaluator.
 Keep implemented behavior separate from that target and from experimental
 results. Query caching is arithmetic reuse, not learned attention; low
 stationarity is not worldly success; a valid snapshot is not task competence.
-Do not label the development version a completed stable 0.60 release.
+The 0.60.0 release documents the implemented API; it does not establish the
+future automatic routine/correction architecture described above.
 
 After documentation changes, run the focused checks from the repository root:
 

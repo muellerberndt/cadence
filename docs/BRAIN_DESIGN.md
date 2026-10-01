@@ -1,6 +1,6 @@
 # Choose, train and run a brain
 
-Cadence `0.60.0.dev0` lets you build a flat routine, a deeper ordinary model,
+Cadence `0.60.0` lets you build a flat routine, a deeper ordinary model,
 or a model with recursive observation. All three use the same bounded patch
 primitive and settle as one coupled brain. Choose a layout from the task's
 information and learning needs, then measure its free behavior and cost.

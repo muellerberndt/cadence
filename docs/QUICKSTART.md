@@ -1,21 +1,17 @@
 # Learn a routine, then choose its layout
 
-This guide targets **0.60.0.dev0**, the development version on `main`.
-It needs Python 3.11 or later and has no mandatory runtime dependencies.
-Install from the repository root:
+This guide targets **Cadence 0.60.0**. It needs Python 3.11 or later and has
+no mandatory runtime dependencies. Install the release from PyPI:
 
 ```sh
-python -m pip install -e .
+python -m pip install "cadence-net==0.60.0"
 ```
 
-Or install directly without a checkout:
-
-```sh
-python -m pip install "cadence-net @ git+https://github.com/muellerberndt/cadence.git@main"
-```
-
-Pin a reviewed commit when saving a reproducible experiment. Released `0.50.0`
-does not have every API shown in these development docs; see
+The Python snippets below work with that installation. To run the repository's
+`examples/*.py` scripts, use the
+[tagged source checkout](../examples/README.md#get-the-example-sources);
+the installed wheel contains the library, not those scripts. For changes from
+older releases and source-bound checkpoint compatibility, see
 [migration](MIGRATION_060.md).
 
 ## 1. Build and teach a small routine

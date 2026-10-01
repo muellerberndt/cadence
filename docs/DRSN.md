@@ -20,7 +20,9 @@ all three layouts. Start with the [quickstart](QUICKSTART.md), then use
 All use the same patch law and qualification check; recursion is optional
 wiring. The [layout guide](VARIANTS.md) provides a runnable construction of
 each, and [layout_learning.py](../examples/layout_learning.py) teaches and
-tests them through the same interface:
+tests them through the same interface.
+
+From the [tagged source checkout](../examples/README.md#get-the-example-sources):
 
 ```sh
 PYTHONPATH=src python examples/layout_learning.py --layout all
@@ -37,7 +39,7 @@ closed-form flat case, the older fast browser demos and controlled comparisons.
 **System 1** describes an acquired routine that works with little repair; it
 can require ordinary deep representations. **System 2** describes additional
 recursive correction that usefully repairs a failing routine or unmet goal.
-These are behavioral roles, not layout names. Current `0.60.0.dev0` supports
+These are behavioral roles, not layout names. Current `0.60.0` supports
 the wiring and whole-brain repair described here, but automatic internal
 attention, independently progressing populations and the integrated
 routine/correction cycle remain unimplemented. Historical demo results belong

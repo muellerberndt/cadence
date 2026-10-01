@@ -7,7 +7,7 @@ states and prediction errors; its extra work earns a place only when it improves
 behavior under the application's resource budget.
 
 **Flat, ordinary deep and recursively observing layouts all perform
-settlement in 0.60.0.dev0.** Recursive observation is optional wiring,
+settlement in 0.60.0.** Recursive observation is optional wiring,
 not a requirement for the patch/repair mechanism. Each layout uses the same
 public `settle`/`step` operations and final stationarity check.
 The [design-pattern guide](VARIANTS.md) introduces the three choices with
@@ -134,8 +134,9 @@ latency: wiring and convergence matter too. The receipt preserves each call,
 refusal/error outcomes, work, timing, runtime and source hashes. It demonstrates cost mechanisms,
 not a capability advantage or a real-time guarantee.
 
-Run the example from the repository root. Choose a fresh output path; the
-runner refuses to overwrite a receipt and records its protocol before measuring:
+Run the example from the [tagged source checkout](../examples/README.md#get-the-example-sources).
+Choose a fresh output path; the runner refuses to overwrite a receipt and
+records its protocol before measuring:
 
 ```sh
 PYTHONPATH=src python examples/layout_cost.py --out /tmp/cadence-layout-cost.json
@@ -256,7 +257,7 @@ attention or evidence of improved behavior.
 
 The intended fast/slow design keeps one brain and one body interface: familiar
 behavior stays inexpensive, and internal correction receives more work when
-needed. The current candidate does not implement that automatic allocation.
+needed. The 0.60.0 runtime does not implement that automatic allocation.
 Every query must still qualify the complete connected brain; an application
 scheduler cannot certify a partially solved branch. `LiveController` keeps
 rendering responsive while a serial worker owns the brain; it does not make an

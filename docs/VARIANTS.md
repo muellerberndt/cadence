@@ -6,7 +6,7 @@ All three use the same patch law, repair engine, learning operations and qualifi
 check. Recursive observation is a wiring choice, not a prerequisite for
 settlement.
 
-These examples target **0.60.0.dev0**; follow the [quickstart installation
+These examples target **0.60.0**; follow the [quickstart installation
 instructions](QUICKSTART.md) before running them. “Fast” describes the
 intended cost of a learned routine, and “slow” the extra work a correction may
 need. They are not selectable execution modes. All populations currently take
@@ -27,7 +27,8 @@ Choose a construction below, then use the shared learning/query/save loop.
 All three expose `signal` and `answer`; the body interface does not change.
 These are teaching examples with different capacities and contact counts, not
 a controlled comparison of architecture quality. The complete runnable version
-is [layout_learning.py](../examples/layout_learning.py):
+is [layout_learning.py](../examples/layout_learning.py). Run these commands from
+the [tagged source checkout](../examples/README.md#get-the-example-sources):
 
 ```sh
 python examples/layout_learning.py --layout flat

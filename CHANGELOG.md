@@ -1,10 +1,12 @@
 # Changelog
 
-## 0.60.0.dev0 — development line
+## 0.60.0 — 2026-10-02
 
-- Identify development installations separately from the published 0.50.0 API.
-  This is not a stable release; integrated attention and useful recursive
-  correction still require the declared behavioral and release checks.
+- Package the tested flat, ordinary deep, recursive and mixed-layout API,
+  with updated guides and executable examples. Automatic internal attention,
+  independently progressing populations and a demonstrated recursive advantage
+  remain future work; this release does not establish the complete System 1 /
+  System 2 routine-and-correction cycle.
 - Reuse invariant sensory predictions within reference queries while retaining
   fresh full-graph qualification; no new public cache control.
 - Bind reward feedback to an issued decision and the action actually executed,
@@ -19,9 +21,9 @@
   query/teaching/continuation contracts, a mixed-layout example and explicit
   capability boundaries. Reorganize the README around a learned body model
   and runnable current examples; retain historical demos as versioned evidence.
-- Document installation from `main` and the intended specialized routine /
-  recursive steering architecture. Independent internal clocks remain future
-  work; the development merge does not change whole-graph qualification.
+- Document pinned package/source installation and the intended specialized
+  routine / recursive steering architecture. Whole-graph qualification remains
+  unchanged; older source-bound snapshots require their matching implementation.
 
 ## 0.50.0 — 2026-09-29
 

@@ -1,7 +1,7 @@
 # Teach a skill before relying on it
 
-Start with the [quickstart](QUICKSTART.md) for installation and a complete first
-learning loop. This guide explains how to prepare a useful teaching stream,
+Start with the [quickstart](QUICKSTART.md) for 0.60.0 installation and a complete
+first learning loop. This guide explains how to prepare a useful teaching stream,
 check acquisition and continue learning without confusing a qualified solve
 with a competent brain.
 

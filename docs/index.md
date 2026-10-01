@@ -1,6 +1,6 @@
 # Cadence 0.60 documentation
 
-This guide covers **`0.60.0.dev0` on `main`**. Build a learned routine with a
+This guide covers **Cadence 0.60.0**. Build a learned routine with a
 flat population, add ordinary deep layers for intermediate representations,
 and test recursive observers when state-and-error feedback could help. Every
 layout uses the same bounded patch rule, settlement and learning API.
@@ -16,8 +16,8 @@ These are layout choices, not latency guarantees. **System 1** means acquired
 routine competence, which can be deep. **System 2** means additional recursive
 correction when routine behavior fails. The intended cycle is routine →
 disturbance → useful correction → cheaper learned routine. Automatic internal
-attention and independently progressing fast/slow populations remain development
-requirements; adding an observer does not enable them. See the
+attention and independently progressing fast/slow populations remain future
+work; adding an observer does not enable them. See the
 [0.60 migration and capability boundary](MIGRATION_060.md).
 
 ## A short learning path

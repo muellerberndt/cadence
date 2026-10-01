@@ -1,4 +1,4 @@
-"""Matched-experience delayed-credit screen for the unreleased 0.60 candidate.
+"""Matched-experience screen of the experimental credit horizon in Cadence 0.60.
 
 The body exposes stage and the remembered first executed action as a one-hot
 observation. It rewards that first decision only after the declared delay;

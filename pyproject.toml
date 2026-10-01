@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadence-net"
-version = "0.60.0.dev0"
+version = "0.60.0"
 description = "Learning through flat, state-coupled and recursive patch-net settlement."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,7 +25,7 @@ dependencies = []
 
 [project.urls]
 Homepage = "https://floatingpragma.io/cadence/"
-Documentation = "https://github.com/muellerberndt/cadence/blob/main/docs/index.md"
+Documentation = "https://github.com/muellerberndt/cadence/blob/v0.60.0/docs/index.md"
 Demos = "https://github.com/muellerberndt/cadence-demos"
 Preprint = "https://philpapers.org/rec/MUECAP-2"
 Repository = "https://github.com/muellerberndt/cadence"

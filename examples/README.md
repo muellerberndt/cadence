@@ -1,10 +1,25 @@
 # Cadence examples
 
-These examples run on the current `0.60.0.dev0` checkout with Python 3.11 or
-later. Start with the two commands below: first acquire a small relation in
-three layouts, then use a learned body model to choose actions. Neither needs
+These examples run on the `v0.60.0` source checkout with Python 3.11 or
+later. After setup, acquire a small relation in three layouts, then use a
+learned body model to choose actions. Neither example needs
 an optional dependency. The [quickstart](../docs/QUICKSTART.md) covers installation;
 [brain design](../docs/BRAIN_DESIGN.md) explains how to choose a larger layout.
+
+## Get the example sources
+
+Installing `cadence-net==0.60.0` installs the library. To get these scripts and
+the documentation, clone the matching release tag:
+
+```sh
+git clone --branch v0.60.0 --depth 1 https://github.com/muellerberndt/cadence.git
+cd cadence
+python -m pip install -e .
+```
+
+Run every `examples/...` command on this page from that checkout root. The
+`PYTHONPATH=src` prefix explicitly selects its library sources. Python snippets
+in the documentation also work with the matching PyPI installation.
 
 ## Three patterns, one settlement rule
 
@@ -117,6 +132,21 @@ receipt and records its protocol before measurement. Learning examples can
 take substantially longer than the query-cost probe. Optional tensor devices
 in `batch_bootstrap.py` require the `gpu` extra and the corresponding runtime;
 an unavailable requested device fails explicitly.
+
+## Delayed-credit diagnostics
+
+These longer research fixtures use explicit stage/action history. They probe
+target construction and replay exposure, not learned memory or planning:
+
+- [credit_horizon.py](credit_horizon.py) compares bounded credit horizons on the
+  same collected transitions.
+- [credit_diagnostic.py](credit_diagnostic.py) compares one-step, greedy-cut and
+  supplied observed-return targets, with declared sampling controls.
+- [credit_exposure.py](credit_exposure.py) reuses a diagnostic collection to
+  compare replay order at matched row multiplicities.
+
+Use each script's `--help` for its required output or input paths and bounded
+run settings. Keep their results separate from the short API examples above.
 
 ## Interpret saved receipts and public demos
 

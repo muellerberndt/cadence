@@ -22,14 +22,14 @@ a bounded query comparison and the distinction between answering and learning.
 ## Select execution explicitly
 
 The default `Cortex()` uses Python float64 and has no runtime dependencies.
-Install the optional tensor backend from the same reviewed checkout when needed:
+Install the optional tensor backend for the same release when needed:
 
 ```sh
-python -m pip install -e ".[gpu]"
+python -m pip install "cadence-net[gpu]==0.60.0"
 ```
 
-For the published baseline instead, install `cadence-net[gpu]==0.50.0`.
-That package does not include the [development candidate's contracts](MIGRATION_060.md).
+For repository scripts, first obtain the
+[tagged source checkout](../examples/README.md#get-the-example-sources).
 
 | `device` | Proposal arithmetic | Default `dtype` |
 | --- | --- | --- |
@@ -100,13 +100,14 @@ This is one-device batching, not distributed multi-GPU learning, averaging
 checkpoints or concurrent calls to one brain. Continue to serialize admissions.
 Independent lives can still use separate processes. Neither batching nor
 parallel simulation supplies a missing memory or temporal-credit mechanism.
-`Reinforcement` explicitly supplies one-step Q targets and uses the same batch
-execution with `source="estimate"`; its next-action queries also count as work.
+`Reinforcement` supplies Q targets, with one-step credit by default, and uses
+the same batch execution with `source="estimate"`; its next-action queries
+also count as work.
 
 The [batch bootstrap example](../examples/batch_bootstrap.py) measures a small
 supervised relation with 32 teaching rows, eight readiness checks and 16 fresh
 test rows. Its 12 processing patches and four observing patches receive eight
-numeric sensors and expose two outputs. From the repository root:
+numeric sensors and expose two outputs. From the tagged source checkout root:
 
 ```sh
 python -m pip install -e ".[gpu]"
@@ -307,7 +308,7 @@ feedback, original frozen parameters and witness clamps, strict reference
 qualification, overflow/refusal, checkpoint transfer, batch admission/retry
 custody, and subsequent unclamped recall and live learning. The CPU/MPS
 checks also select CUDA when available. Run the current CUDA subset from
-a clean, committed development checkout installed with
+a clean, committed source checkout installed with
 `python -m pip install -e ".[dev]"` and a CUDA-enabled PyTorch build:
 
 ```sh
