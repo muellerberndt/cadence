@@ -259,9 +259,18 @@ class Brain:
             )
         return result["outputs"]
 
-    def step(self, inputs, *, budget=None):
-        """Continue live activity with frozen relations; refuse partial state."""
-        result = self.settle(inputs, budget=budget)
+    def step(self, inputs, *, targets=None, interventions=None, budget=None):
+        """Retain qualified activity with frozen relations and optional clamps.
+
+        Targets and interventions condition this solve as in ``settle``. They
+        are not teaching evidence and do not advance admission/event history.
+        Qualification covers every eligible free state under these clamps;
+        a goal-clamped output is not a prediction of that outcome. Clamps apply
+        only to this call. Refusal or invalid arguments retain no proposed state.
+        """
+        result = self.settle(
+            inputs, targets=targets, interventions=interventions, budget=budget
+        )
         if result["qualified"]:
             self._state = tuple(result["state"])
         return {**result, "accepted": result["qualified"]}

@@ -38,6 +38,33 @@ behavioral checks that distinguish successful recovery from mere settlement.
 
 ## Remember a recent observation
 
+If a measured body value corresponds to an output or population, `step` can
+hold that value during repair and retain the resulting activity without
+learning. The same `targets` and `interventions` arguments are available on
+pure `settle` queries. For example, this small layout demonstrates continuation
+from a supplied past observation; it has not acquired a forecasting skill:
+
+```python
+from cadence import Cortex
+
+layout = Cortex(seed=4)
+sensor = layout.input("sensor", shape=1)
+past = layout.column("past", patches=1, inputs=sensor)
+future = layout.column("future", patches=1, inputs=past)
+layout.output("actual", shape=1, reads=past)
+layout.output("forecast", shape=1, reads=future)
+continuation = layout.build()
+result = continuation.step({"sensor": [0.1]}, targets={"actual": [0.3]})
+assert result["accepted"] and continuation.state[0] == 0.3
+assert continuation.inspect()["admissions"] == 0
+```
+
+Each later call starts from that activity and requalifies its eligible states.
+Resupply any clamps that still apply: `step` does not persist them as rules.
+Clamping a future output to a desired goal conditions a solve on an intention;
+it does not predict that goal or record a learning witness. Use a separate
+future-free solve to evaluate the forecast before execution.
+
 ```python
 from cadence import Cortex, History
 

@@ -177,10 +177,20 @@ freeze. The same repair law and the following per-call contracts apply in both.
 | --- | --- | --- | --- |
 | `settle` / `predict` | Unchanged | Unchanged | Unchanged |
 | `settle` with hypothetical clamps | Unchanged | Unchanged | Unchanged |
-| Qualified `step` | Commit solved state | Unchanged | Unchanged |
+| Qualified `step`, with or without clamps | Commit complete solved state | Unchanged | Unchanged |
 | Qualified `observe` | Commit solved state | Commit solved relations | Advance once |
 | Qualified `observe_batch` | Unchanged | Commit shared solved relations | Advance once for the batch |
 | Refused operation | Unchanged | Unchanged | Unchanged |
+
+`step` accepts the same output targets and population interventions as `settle`.
+It runs that frozen-parameter solve and retains its complete activity only when
+all eligible free states qualify. Retained clamped values supply a starting
+state for later calls; clamps are not retained as constraints. Every subsequent
+call qualifies under its own inputs and explicitly supplied clamps. This does
+not admit teaching evidence, change parameters or consume an event identifier.
+An all-clamped state may qualify without repair because no state coordinate is
+eligible; this establishes neither inference nor learning. A goal-clamped
+output is not a free forecast. `settle` remains pure, including with clamps.
 
 `observe` requires at least one output target. It fixes these values throughout
 joint state/parameter repair and anchors parameters to their pre-experience

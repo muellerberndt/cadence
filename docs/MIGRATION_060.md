@@ -121,6 +121,14 @@ the full contract.
 
 ## Preserve the complete experiment when upgrading
 
+The development `step` also accepts optional `targets` and `interventions`,
+using the same conditional solve as `settle` while retaining qualified activity
+only. Existing unclamped calls are unchanged. This enables continuation from
+explicitly constrained activity without learning parameters or recording an
+experience. Clamps apply only to the current call, and a desired future clamp
+must not be reported as a forecast. This addition changes `brain.py`'s source
+identity; preserve older source artifacts with their snapshots as described below.
+
 Keep the original environment and source artifact with each saved model.
 Snapshots bind exact implementation hashes, including repair and reinforcement
 sources. This candidate changes those sources; old snapshots are not a

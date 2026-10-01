@@ -156,7 +156,7 @@ are all-or-nothing under serial access, not concurrent database transactions.
 | --- | --- |
 | `settle(inputs, *, targets=None, interventions=None, budget=None)` | Pure query returning a complete solve result. Optional output targets and population interventions are hypothetical clamps. Changes neither retained live state nor parameters. |
 | `predict(inputs, *, budget=None)` | Pure query returning an output-name-to-flat-tuple mapping. Raises `SettlementError` if the solve does not qualify. |
-| `step(inputs, *, budget=None)` | Repair activity with parameters frozen. Retain proposed state only if qualified. Returns the full result plus `accepted`. |
+| `step(inputs, *, targets=None, interventions=None, budget=None)` | Repair activity with parameters frozen, optionally conditioning on the same clamps as `settle`. Retain the complete proposed state only if qualified; parameters and event history stay unchanged. Returns the full result plus `accepted`. |
 | `observe(inputs, targets, *, event_id=None, budget=None, source="witness")` | Jointly repair state, weights and biases under at least one labeled output target. A qualified solve atomically retains state, parameters and event ownership; a refusal retains none of the proposal. |
 | `observe_batch(examples, *, event_id=None, budget=None, source="witness")` | Jointly repair private experience states and shared parameters under a batch of labeled targets. A qualified solve atomically retains parameters and one event identity, preserving the pre-call live state. A refusal commits nothing. |
 | `inspect()` | Owned layout description, resolved graph counts, topology, observation roles and continuation metadata. |
@@ -186,8 +186,16 @@ inside `state_bound`. Aliased output/intervention clamps must agree exactly on
 shared patches or the call raises `ValueError`. Returned output values are
 always flat tuples, including multidimensional outputs.
 
-In `settle`, clamps express hypothetical queries and never become learning
-admissions. `observe` requires a nonempty target mapping and has no intervention
+In `settle` and `step`, clamps condition the solve and never become learning
+admissions. `step` retains the qualified state, including clamped coordinates,
+so a following query starts from that activity. The clamps themselves apply
+only to that call; the next call must supply any continuing constraints again.
+Qualification covers every eligible free coordinate under the declared clamps.
+A goal-clamped future output equals an intention, not a prediction that the
+goal will occur; leave that output free when evaluating a forecast. Invalid
+arguments or a refused solve preserve the entire continuation.
+
+`observe` requires a nonempty target mapping and has no intervention
 argument. `source="witness"` labels actual observed targets;
 `source="estimate"` labels derived teaching targets, including Q estimates.
 These are the only accepted labels. Both use identical repair; the label is

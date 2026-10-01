@@ -267,7 +267,11 @@ read-only. `Cortex(device="mps")`, `Cortex(device="cuda")` or
 [layout variants](VARIANTS.md) and [bootstrapping and size](BOOTSTRAP.md).
 
 `brain.settle(inputs)` is a pure query; `brain.step(inputs)` retains qualified
-live state with parameters frozen. `brain.observe(inputs, targets)` also permits
+live state with parameters frozen. Both accept optional `targets` and
+`interventions` to condition the solve. For `step`, the resulting activity is
+retained but the clamps are not carried into later calls. This adds no teaching
+evidence: a goal-clamped future value is not a prediction of the outcome.
+`brain.observe(inputs, targets)` also permits
 relation changes from labeled targets. Check `qualified` or `accepted` before
 using a result. `brain.predict(inputs)` raises `SettlementError` on refusal.
 Serialize calls to each brain; there is no concurrent mutation contract.
