@@ -171,7 +171,10 @@ target is:
 y = (1-g) * S * r/R + g * clip(max_a Q(next_context, a), -S, S)
 ```
 
-The second term is zero at a terminal state. This normalization keeps targets
+The second term is zero at a terminal state. With `discount=0`, replay also
+skips future-value queries and uses only the immediate reward; a larger
+`credit_horizon` does not add future credit. Nonterminal feedback still needs
+the actual next observation. This normalization keeps targets
 inside the declared output scale for bounded rewards, rather than silently
 truncating accumulated returns. It represents `(1-g)*S/R` times discounted
 return. Higher discount reduces immediate target magnitude: it is not a free

@@ -579,8 +579,11 @@ y = (1-discount) * value_scale * r/reward_scale
     + discount * clip(max_a Q(next_inputs, a), -value_scale, value_scale)
 ```
 
-Terminal records omit the second term. All targets use unchanged pre-update
-parameters. `observe_batch(source="estimate")` fits them with ordinary joint
+Terminal records omit the second term. With `discount=0`, every target uses
+only its immediate reward: replay makes no next-action queries or later-record
+traversal, even when `credit_horizon` is larger than one. Nonterminal feedback
+still records and validates the actual next observation. All targets use
+unchanged pre-update parameters. `observe_batch(source="estimate")` fits them with ordinary joint
 repair, preserving current live activity. Actual rewards and observations are
 records; fitted future-return targets are estimates. Replay is not a guarantee
 of protected retention or convergence of nonlinear Q-learning.
@@ -624,8 +627,10 @@ disables epsilon moves but still breaks exact ties randomly.
 
 A completed replay attempt returns the batch result plus sampled `indices`,
 derived `targets`, `credit_horizons`, `credit_stops` and cumulative `updates`.
-Stop reasons are `terminal`, `horizon`, `pending_future`, `discontinuity` and
-`off_policy`. Earlier refusals return
+Stop reasons are `terminal`, `zero_discount`, `horizon`, `pending_future`,
+`discontinuity` and `off_policy`. `zero_discount` reports an immediate-reward
+nonterminal target with credit horizon one; terminal records retain `terminal`.
+Earlier refusals return
 `accepted=False` with `"empty_replay"` or `"bootstrap_refused"`. `feedback`
 on a first acknowledgment adds `stored=True`, `duplicate=False`, the `decision_id` and
 cumulative `transitions`; with learning disabled its

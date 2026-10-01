@@ -372,6 +372,11 @@ class Reinforcement:
             if following is None:
                 value, reason = 0.0, "terminal"
                 break
+            if discount == 0:
+                # Future values cannot affect an immediate-reward target. An
+                # irrelevant bootstrap query must not block its admission.
+                value, reason = 0.0, "zero_discount"
+                break
             results, values = self._values(following, budget)
             for result in results:
                 work.update(result["work"])

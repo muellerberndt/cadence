@@ -235,8 +235,11 @@ target = (1-gamma) * v * reward/r
          + gamma * clip(max_a Q(next_context, a), -v, v)
 ```
 
-Terminal transitions omit the second term. Rewards must lie in `[-r,r]`;
-`gamma` lies in `[0,1)`. This is a scaled discounted-return target, not a
+Terminal transitions omit the second term. At `gamma=0`, nonterminal targets
+also omit all future-value work and use exactly one immediate reward, regardless
+of `credit_horizon`. Next observations remain validated and retained evidence;
+an irrelevant future query cannot refuse this update. Rewards must lie in
+`[-r,r]`; `gamma` lies in `[0,1)`. This is a scaled discounted-return target, not a
 measured future outcome. Candidate and next-action values require qualified
 queries. Replay uniformly samples a bounded store while always including the
 latest record; all targets use the same pre-update brain. One
