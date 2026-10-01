@@ -1,10 +1,16 @@
-# Three settlement design patterns
+# Flat, deep and recursive layout quickstarts
 
 Cadence supports three design patterns: **flat settlement**,
 **deep ordinary (state-coupled) settlement**, and **recursive observer settlement**.
 All three use the same patch law, repair engine, learning operations and qualification
 check. Recursive observation is a wiring choice, not a prerequisite for
 settlement.
+
+These examples target **0.60.0.dev0**; follow the [quickstart installation
+instructions](QUICKSTART.md) before running them. “Fast” describes the
+intended cost of a learned routine, and “slow” the extra work a correction may
+need. They are not selectable execution modes. All populations currently take
+part in one qualified solve, including observers in a mixed layout.
 
 | Design pattern | What patches read | When to try it |
 | --- | --- | --- |
@@ -169,7 +175,7 @@ critic, a recorded past failure or a built-in long-term objective.
 The public builder reads previously declared sources only. Its read graph is
 acyclic even though solving the common energy returns influence upstream.
 `step` preserves activity; that alone does not demonstrate learned recurrent
-memory. See [brain design](BRAIN_DESIGN.md#spend-compute-according-to-measured-need)
+memory. See [brain design](BRAIN_DESIGN.md#measure-speed-and-retained-correction)
 for the current attention boundary and temporal controls.
 
 ## Width, branches and readouts
@@ -196,7 +202,44 @@ flat patches are not a substitute for that connection. See
 requirements. The bootstrapping and live phases can use the same persistent
 layout; live experience can continue to repair its relations through `observe`.
 
-## A parallel system with recursive observation
+## Combine routine layers and recursive observation
+
+An action need not come from the highest observer. Here ordinary layers produce
+the answer while an observer reads their states and errors. Its relations can
+return influence to those same states through joint settlement. No second body
+interface, separate evaluator or call to the observer is needed.
+
+```python
+mixed = Cortex(seed=7)
+signal = mixed.input("signal", shape=1)
+representation = mixed.column("representation", patches=4, inputs=signal)
+integration = mixed.column("integration", patches=2, inputs=representation)
+response = mixed.column("response", patches=1, inputs=integration)
+reflection = mixed.observer(
+    "reflection", patches=2, observes=(integration, response),
+)
+mixed.output("answer", shape=1, reads=response)
+mixed_brain = mixed.build()
+
+# Reuse the same examples and checks from the shared teaching loop above.
+report = bootstrap(
+    mixed_brain, examples, checks=checks, epochs=20,
+    max_error=0.1, batch_size=4, seed=2,
+)
+assert report["passed"], report
+result = mixed_brain.settle({"signal": [0.5]})
+assert result["qualified"]
+assert abs(result["outputs"]["answer"][0] - 0.3) < 0.1
+```
+
+This checks that a mixed graph learns the small relation. It does not show that
+the observer helps, sleeps during routine work or runs at its own speed. To test
+whether it helps, train a capable ordinary control with the same information
+and account for parameters, acquisition work and complete query cost. See
+[System 1 and System 2](BRAIN_DESIGN.md) for the behavioral goal and current
+runtime boundary.
+
+## Combine sensory branches
 
 ```python
 from cadence import Cortex

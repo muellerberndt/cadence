@@ -1,9 +1,10 @@
 # Cadence examples
 
-These examples use the current `Cortex`/`Brain` API. Start with the
-[design patterns](../docs/VARIANTS.md) for runnable constructions of the three
-layouts, and the [performance guide](../docs/PERFORMANCE.md) for their measured
-costs and evidence limits.
+These examples run on the current `0.60.0.dev0` checkout with Python 3.11 or
+later. Start with the two commands below: first acquire a small relation in
+three layouts, then use a learned body model to choose actions. Neither needs
+an optional dependency. The [quickstart](../docs/QUICKSTART.md) covers installation;
+[brain design](../docs/BRAIN_DESIGN.md) explains how to choose a larger layout.
 
 ## Three patterns, one settlement rule
 
@@ -25,6 +26,11 @@ qualified activity, and `observe` learns from supplied output witnesses.
 Check `qualified` or `accepted`; `predict` raises on refusal. Numerical
 qualification and useful learned behavior are separate checks.
 
+A capable routine (System 1) can need ordinary deep populations. An observer
+adds current internal error readback; useful corrective behavior (System 2)
+needs a task comparison. These examples do not implement automatic attention
+or independently progressing fast and slow populations.
+
 ## Start with the same learning loop in three layouts
 
 [layout_learning.py](layout_learning.py) is the smallest complete example:
@@ -42,6 +48,30 @@ different capacities and costs, not evidence of a depth advantage. “Deep” me
 ordinary populations settled together, not sequential finished layer answers.
 For a larger task, follow [brain design](../docs/BRAIN_DESIGN.md) before scaling
 this small relation.
+
+## Use an acquired model to control a body
+
+[live_control.py](live_control.py) teaches the consequence of position and
+commanded velocity in a small simulated body. It checks new inputs without
+target clamps, compares candidate actions using the learned next-position
+model, executes a command, and learns from the measured transition:
+
+```sh
+PYTHONPATH=src python examples/live_control.py --decisions 20 --seed 0
+```
+
+Read `bootstrap.passed`, `final_position`, `initial_need` and `final_need` in
+the JSON report. Here `need` is squared distance to zero; the overall `passed`
+field requires every controller response to qualify and the final distance
+to improve. The report also retains actual transitions, their learning
+admissions and observed command latency. A nonzero exit means the example's
+check failed.
+
+The application supplies the action candidates, distance/effort score and
+actuator limits. This is a small learned-model control example, not automatic
+recursive planning or an observer advantage. `LiveController` serializes one
+brain's work while the caller polls; this simulation waits for each command.
+Use `layout_learning.py` for the separate save/resume example.
 
 ## Choose an example
 
@@ -72,13 +102,12 @@ one brain accept concurrent experiences. See
 
 ## Run from the repository root
 
-Use Python 3.11 or later. These commands select the checkout's implementation:
+For the remaining examples, these commands select the checkout's implementation:
 
 ```sh
 PYTHONPATH=src python examples/layout_cost.py --out /tmp/cadence-layout-cost.json
 PYTHONPATH=src python examples/batch_bootstrap.py --devices python --batch-size 8 --repeats 1
 PYTHONPATH=src python examples/parallel_bootstrap.py --lives 4 --workers 2
-PYTHONPATH=src python examples/live_control.py --decisions 20 --seed 0
 PYTHONPATH=src python examples/live_learning.py --seeds 0 2 7
 PYTHONPATH=src python examples/temporal_credit.py --out /tmp/cadence-temporal-credit.json
 ```
@@ -89,9 +118,17 @@ take substantially longer than the query-cost probe. Optional tensor devices
 in `batch_bootstrap.py` require the `gpu` extra and the corresponding runtime;
 an unavailable requested device fails explicitly.
 
-## Inspect the receipts
+## Interpret saved receipts and public demos
 
-- [Current query-cost receipt](receipts/layout_cost.json): protocol, per-query
+Saved receipts describe their recorded source version; rerunning a command
+on this checkout produces a new result. Historical Amen, Atari, Patchworld
+and other application demonstrations used their own versioned engines,
+models and body adapters. Their published scores or musical quality are not
+current `0.60` reproduction results. See the
+[demo reproduction boundary](../docs/MIGRATION_060.md#reproduce-the-website-demos-before-optimizing-them)
+before comparing or replacing one.
+
+- [Cadence 0.50.0 query-cost receipt](receipts/layout_cost.json): protocol, per-query
   outcomes, work counts, timings and implementation hashes. Equal patch counts
   do not make graph geometry or output-connected capacity equal; the ordinary
   composition arm also has fewer edges than the other three arms.

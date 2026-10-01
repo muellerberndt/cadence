@@ -1,18 +1,31 @@
-# Building a recursively observing brain
+# Flat, deep and recursively observing brains
 
 Cadence builds **processing populations and recursive observers in one jointly
 settling graph**. Population size is explicit. Sensory data, ordinary
 representation connections and observation of internal activity have distinct
 roles. Each patch has live state, incoming ports, exact prediction-error
 readback and retained local relation parameters. Feedback repairs one coupled
-state. Performance evaluations and comparisons remain ongoing.
+state. The same `Cortex` builder and `Brain` learning/query interface serve
+all three layouts. Start with the [quickstart](QUICKSTART.md), then use
+[brain design](BRAIN_DESIGN.md) for input, capacity and learning choices.
 
 ## Choose observation depth deliberately
 
-**Flat settlement, state-coupled settlement and recursive observer settlement**
-are three supported design patterns. All use the same patch law and
-qualification check; recursion is optional wiring. The
-[design-pattern guide](VARIANTS.md) provides a runnable example of each.
+| Layout | Construction | What changes |
+| --- | --- | --- |
+| Flat | `column(..., inputs=sensors)` | Each output patch directly models its sensory inputs; adjacent unused patches add no hidden capacity. |
+| Ordinary deep | `column(..., inputs=earlier_population)` | Learned intermediate representations participate in one coupled solve, with returning influence through the energy. |
+| Recursive observer | `observer(..., observes=earlier_population)` | Adds exact current prediction-error inputs alongside the observed states. Observers can themselves be observed. |
+
+All use the same patch law and qualification check; recursion is optional
+wiring. The [layout guide](VARIANTS.md) provides a runnable construction of
+each, and [layout_learning.py](../examples/layout_learning.py) teaches and
+tests them through the same interface:
+
+```sh
+PYTHONPATH=src python examples/layout_learning.py --layout all
+```
+
 Input-only fixed-parameter queries have a separable state objective; coupling
 adds dependencies to joint repair. Recursive depth adds state-and-error
 constraints, but does not guarantee
@@ -20,6 +33,16 @@ better reasoning or a particular increase in elapsed time. Start with the
 smallest useful layout and measure task quality, settling work and complete
 command latency. The [performance guide](PERFORMANCE.md) explains the
 closed-form flat case, the older fast browser demos and controlled comparisons.
+
+**System 1** describes an acquired routine that works with little repair; it
+can require ordinary deep representations. **System 2** describes additional
+recursive correction that usefully repairs a failing routine or unmet goal.
+These are behavioral roles, not layout names. Current `0.60.0.dev0` supports
+the wiring and whole-brain repair described here, but automatic internal
+attention, independently progressing populations and the integrated
+routine/correction cycle remain unimplemented. Historical demo results belong
+to their recorded models and runtimes; see
+[versioned reproduction](MIGRATION_060.md#reproduce-the-website-demos-before-optimizing-them).
 
 ## Build the layout
 
@@ -84,6 +107,12 @@ errors**. Its constraints send feedback into the states it observes through
 the same energy. A higher observer can include `monitor` in its scope.
 `column` and `observer` use the same processing-patch law; their distinction
 is their connections. An observer can also receive ordinary `inputs`.
+Ordinary state contacts already return influence through joint repair;
+observation adds an error channel rather than introducing feedback for the
+first time. That channel is the current mismatch, recomputed as states change.
+It is not a stored comparison between a previously issued forecast and its
+later outcome. Preserve those original forecasts and actual outcomes at the
+body boundary when assessing surprise or useful correction.
 
 ```mermaid
 flowchart LR
@@ -106,9 +135,10 @@ independently learned reverse edge. Raw sensory samples stay fixed throughout
 a solve. Feedback changes internal interpretations, not the supplied samples.
 
 Parallel branches need no arbitrary sequencing as completed neural answers.
-Each repair considers the current complete state; all participating populations
-are included in final numerical qualification. The default Python engine uses a synchronized reference schedule. Optional
-tensor execution parallelizes eligible arithmetic on CPU or GPU while retaining
+Each repair considers the current complete state. Every participating
+population remains in the energy, and final qualification checks every eligible
+free coordinate. The default Python engine uses a synchronized reference
+schedule. Optional tensor execution parallelizes eligible arithmetic on CPU or GPU while retaining
 the same coupled objective and final numerical check; see
 [acceleration](ACCELERATION.md). Independent brains can also run in separate
 processes. Neither kind of parallelism chains completed population answers.
@@ -236,6 +266,13 @@ subsequent **unclamped predictions**, new inputs and controls without admission
 or sensory access.
 This tiny example demonstrates acquisition of an input-dependent relation;
 it is not evidence that the observer improves it over a simpler model.
+
+For a body-driven example, run
+`PYTHONPATH=src python examples/live_control.py --decisions 20 --seed 0`.
+It acquires a next-position model, uses it to compare candidate actions and
+admits actual executed transitions. The application supplies that action
+search and task score; see the [example guide](../examples/README.md#use-an-acquired-model-to-control-a-body)
+for interpreting its behavioral and qualification checks.
 
 ## Recursive depth and future time
 

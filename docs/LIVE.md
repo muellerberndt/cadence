@@ -1,218 +1,217 @@
-# Learning through a continuing life
+# Use a learned brain with an actual body
 
-Cadence separates three kinds of memory. **Live activity** is the last admitted
-settled state. **Long-term memory** is the retained weights and biases repaired
-by experience; their ability to change is plasticity. **Temporal context** is
-an explicit record of recent observations. These are different mechanisms.
-Neither saved activity nor a larger observer population automatically provides
-working memory, episodic retrieval, or protection against forgetting.
+Install **0.60.0.dev0** as shown in the [quickstart](QUICKSTART.md). This guide
+covers live observations, actions, outcomes and continued learning using the
+existing public API. Begin with a skill that passes free assessment;
+[bootstrapping](BOOTSTRAP.md) explains how to acquire and check one.
 
-The helpers originated in `cadence-net` 0.50.0. This development copy uses the
-unreleased candidate's explicit `decision_id` and `executed_action` feedback
-arguments; installing released 0.50.0 does not supply that signature. See the
-[candidate migration guide](MIGRATION_060.md) before running these examples.
-The helpers reuse the same patch equation and qualified admission. They add
-no mandatory dependency and do not simulate neurotransmitter chemistry. See
-the [reference](REFERENCE.md) for every parameter and failure contract.
+A flat, ordinary deep or recursive layout has the same body interface: named
+observations go in, qualified outputs come out, and actual consequences supply
+experience. Every population currently uses the same processing-patch rule and
+participates in one coupled solve. System 1 and System 2 describe routine and
+additional corrective roles; adding an observer does not automatically allocate
+attention, create independent population clocks, or establish retained correction.
+See [brain design](BRAIN_DESIGN.md#measure-speed-and-retained-correction)
+for that capability boundary.
 
-## Keep one body interface
+## Predict first, execute, then learn from the outcome
 
-A flat, deep ordinary or recursively observing brain receives named observations
-and returns named outputs through the same calls. One body adapter executes a
-qualified command and reports what happened. Internal observers require no
-separate evaluator or attention signal from the application.
-
-Keep three records distinct: the original forecast before execution, the command
-actually applied, and the later measured outcome. Feed back actual body state;
-a requested motor movement can be blocked and a requested sound can have ended.
-Current patch residuals compare current states with current predictions; they
-do not store the error of an earlier forecast. Preserve that forecast and its
-context before learning from the outcome.
-
-The desired routine → disturbance → correction → inexpensive routine cycle is
-an integrated capability still to be established. The helpers below provide
-explicit history, action/outcome ownership and learning calls; they do not
-implement automatic internal attention or choose the task objective. See
-[brain design](BRAIN_DESIGN.md#spend-compute-according-to-measured-need) for
-behavioral checks that distinguish successful recovery from mere settlement.
-
-## Remember a recent observation
-
-If a measured body value corresponds to an output or population, `step` can
-hold that value during repair and retain the resulting activity without
-learning. The same `targets` and `interventions` arguments are available on
-pure `settle` queries. For example, this small layout demonstrates continuation
-from a supplied past observation; it has not acquired a forecasting skill:
+This small software body moves according to its position and command. We first
+teach a predictor from actual evaluations of that body, then assess it on new
+inputs with the future output free. The body equation supplies training data;
+it is not wired into the brain.
 
 ```python
-from cadence import Cortex
+from math import tanh
+from cadence import Cortex, bootstrap
 
-layout = Cortex(seed=4)
-sensor = layout.input("sensor", shape=1)
-past = layout.column("past", patches=1, inputs=sensor)
-future = layout.column("future", patches=1, inputs=past)
-layout.output("actual", shape=1, reads=past)
-layout.output("forecast", shape=1, reads=future)
-continuation = layout.build()
-result = continuation.step({"sensor": [0.1]}, targets={"actual": [0.3]})
-assert result["accepted"] and continuation.state[0] == 0.3
-assert continuation.inspect()["admissions"] == 0
+def body(position, command):
+    return tanh(0.7 * position + 0.3 * command)
+
+layout = Cortex(seed=2)
+senses = layout.input("senses", shape=2)  # current position, actual command
+prediction = layout.column("prediction", patches=1, inputs=senses)
+layout.output("next_position", shape=1, reads=prediction)
+brain = layout.build()
+
+examples = [
+    ({"senses": [x, u]}, {"next_position": [body(x, u)]})
+    for x in (-0.5, 0.0, 0.5) for u in (-0.5, 0.0, 0.5)
+]
+checks = [
+    ({"senses": [x, u]}, {"next_position": [body(x, u)]})
+    for x, u in ((-0.3, 0.2), (0.3, -0.2))
+]
+report = bootstrap(
+    brain, examples, checks=checks,
+    epochs=30, batch_size=9, max_error=0.08, seed=2,
+)
+assert report["passed"], report
+for x, u in ((0.2, -0.3), (-0.2, 0.3)):
+    assert abs(brain.predict({"senses": [x, u]})["next_position"][0] - body(x, u)) < 0.08
+
+position = 0.25
+records = []
+for command in (0.4, 0.0, -0.4):
+    inputs = {"senses": [position, command]}
+    proposal = brain.step(inputs)
+    assert proposal["accepted"], proposal["reason"]
+    issued_forecast = proposal["outputs"]["next_position"][0]
+    next_position = body(position, command)  # the body actually executes now
+    records.append((command, issued_forecast, next_position))
+    update = brain.observe(inputs, {"next_position": [next_position]})
+    assert update["accepted"], update["reason"]
+    position = next_position
 ```
 
-Each later call starts from that activity and requalifies its eligible states.
-Resupply any clamps that still apply: `step` does not persist them as rules.
-Clamping a future output to a desired goal conditions a solve on an intention;
-it does not predict that goal or record a learning witness. Use a separate
-future-free solve to evaluate the forecast before execution.
+The commands above are supplied; this acquires a body predictor, not an
+autonomous control policy. The recorded forecast precedes execution and learning.
+A later mismatch is `actual - issued_forecast`. Current internal patch errors
+instead compare current state with current prediction, which can change during
+repair. They are not an immutable history of earlier forecast mistakes.
+
+In a real adapter, record what the actuator actually did. A movement can be
+blocked, or a requested note may have ended. Command flags alone are not physical
+feedback. Keep an issued forecast, its context, the executed command and the
+measured consequence together. A qualified equilibrium can still predict badly,
+and an accurate prediction of failure still calls for a better action.
+
+## Know what is retained
+
+| Kind of state | Owner and meaning |
+| --- | --- |
+| Live activity | `step` retains qualified patch states; a later call requalifies them |
+| Learned relation | Accepted `observe` / `observe_batch` repairs weights and biases |
+| Recent observations | An explicit `History` window, supplied as input |
+| Pending action and reward replay | A `Reinforcement` learner and the body's execution records |
+
+These mechanisms do not automatically provide episodic memory or protection
+against forgetting. `observe` retains its solved activity; `observe_batch`,
+including a one-row batch, preserves live activity while retaining parameters.
+Pure `settle` and `predict` leave both unchanged.
+
+For measured boundaries, `step(inputs, targets=...)` or `interventions=...`
+can retain activity conditioned on known values without learning. These clamps
+apply only to that call. A desired future clamp expresses an intention, not a
+prediction or witness. Use a separate future-free query before execution and
+keep its result distinct from the intended state. Every call still qualifies
+the entire connected graph under its current boundaries.
+
+## Supply recent context explicitly
 
 ```python
-from cadence import Cortex, History
+from cadence import History
 
-history = History(2, steps=3)  # two sensory values per moment
-cortex = Cortex(seed=2)
-context = cortex.input("history", shape=history.shape)
-base = cortex.column(patches=4, inputs=context)
-observer = cortex.observer(patches=2, observes=base)
-cortex.output("answer", shape=1, reads=observer)
-brain = cortex.build()
-
-history.push([0.8, 1.0])
-history.push([0.0, 0.0])
-inputs = {"history": history.push([0.0, 0.0])}
-result = brain.step(inputs)
-assert result["accepted"]
+history = History(2, steps=3)  # position and executed command at each moment
+history.push([0.25, 0.4])
+history.push([0.20, 0.0])
+encoded = history.push([0.14, -0.4])
+assert len(encoded) == history.shape[0]
 ```
 
-Each history block contains the supplied values and a presence mask; blocks run
-oldest to newest. Padding has mask zero, so a real zero-valued sample remains
-distinguishable. An occluded object needs an application visibility indicator,
-as in the second coordinate above. The presence mask indicates an actual frame,
-not whether every object was visible in it. `preview` computes the next encoding
-without consuming a frame; `reset` clears the window at an episode boundary.
+A brain using this encoding declares an input with `shape=history.shape` and
+must learn from examples with that same encoding. Each frame contains the
+values and a presence mask, oldest to newest. Padding has mask zero; a real
+zero-valued frame has mask one. Object visibility, when relevant, is a separate
+measured input. `preview` constructs the next encoding without consuming a frame;
+`reset` clears the window at an episode boundary.
 
-This is bounded **external history**, presented to the jointly settling brain.
-The brain must learn how to use it. After a cue leaves the window, this mechanism
-cannot recover it. The snippet above only constructs and queries a history-fed
-brain; it has not taught recall. See the [temporal qualification](#qualify-temporal-context-and-delayed-credit)
-for acquired recall on reserved sequences. Long-lived learned recurrent memory
-remains a distinct task.
-Do not call adding history alone a demonstrated recursive-memory advantage.
+This is external bounded memory. Once a cue leaves the window, the buffer cannot
+recover it. Retained patch activity or extra observer width alone does not prove
+learned temporal memory. See the [temporal example](#qualify-temporal-context-and-delayed-credit)
+for an acquired recall check and its explicit-history control.
 
-## Learn choices from consequences
+## Learn a discrete choice from reward
 
-`Reinforcement` evaluates discrete actions through a scalar action-value output
-of the same brain. The action enters as a one-hot sensor. Every processing and
-observer population remains in each coupled solve. Epsilon exploration and the
-comparison between completed action queries are explicit orchestration outside
-that equilibrium; they are not a new neural readout or an emergent planner.
+Use `Reinforcement` when an executed action receives a reward instead of a
+correct-output witness. The helper records transitions, constructs estimated
+Q targets and admits them through the same patch rule. It does not turn a
+reward directly into a motor target or provide automatic brain-wide emotion.
 
-For a small fixed action set, a more efficient option exposes **one scalar output
-per action from a single jointly settling brain**. Set `action_input=None` and
-pass those output names as `value_output`. A learning update clamps only the
-chosen action's output; the other patches remain free in that same solve. This
-avoids a separate query for every action and lets action ranks vary directly
-with the current sensory context. Cadence Pet uses this form. `act` still
-performs a separate `step` to retain qualified activity: vector mode uses two
-solves per successful decision, while action-conditioned mode uses one query
-per action plus that `step`.
+For a small action set, expose one scalar output per action. Here a supplied
+body moves left or right, and moving toward zero earns positive reward:
 
 ```python
 from cadence import Reinforcement
 
 choices = Cortex(seed=2)
-odor = choices.input("odor", shape=2)
-values = choices.column(patches=3, inputs=odor)
-choices.observer(patches=2, observes=values)
-for i, name in enumerate(("rest", "left", "right")):
+position_sensor = choices.input("position", shape=1)
+values = choices.column("values", patches=2, inputs=position_sensor)
+for i, name in enumerate(("left", "right")):
     choices.output(name, shape=(), reads=values, indices=(i,))
-policy = Reinforcement(choices.build(), actions=3, action_input=None,
-                       value_output=("rest", "left", "right"))
-```
-
-```python
-from cadence import Reinforcement
-
-layout = Cortex(seed=2, initial_scale=1.5)
-senses = layout.input("senses", shape=3)
-action = layout.input("action", shape=2)
-perception = layout.column(patches=6, inputs=(senses, action))
-reflection = layout.observer(patches=3, observes=perception)
-layout.output("value", shape=(), reads=reflection)
-learner = Reinforcement(layout.build(), actions=2, seed=2)
-
-decision = learner.act({"senses": [0.3, 0.1, 0.0]})
-assert decision["accepted"]
-action_index = decision["action"]
-# The environment executes action_index and returns its actual consequence.
-admission = learner.feedback(
-    0.0, {"senses": [0.2, 0.1, 0.0]},
-    decision_id=decision["decision_id"], executed_action=action_index,
+learner = Reinforcement(
+    choices.build(), actions=2, action_input=None,
+    value_output=("left", "right"), seed=2,
 )
-assert admission["stored"]
+
+position = 0.6
+decision = learner.act({"position": [position]})
+assert decision["accepted"]
+executed_action = decision["action"]
+next_position = position + (-0.1, 0.1)[executed_action]
+reward = abs(position) - abs(next_position)
+feedback = learner.feedback(
+    reward, {"position": [next_position]},
+    decision_id=decision["decision_id"], executed_action=executed_action,
+)
+assert feedback["stored"] and feedback["accepted"]
 ```
 
-Call `act` only when there is no pending action. Pass its `decision_id` and the
-action actually executed to `feedback` with that action's consequence. An
-actuator override must report the executed action instead of the proposal.
-An identical retry of the latest outcome is acknowledged without recording or
-learning twice, including while a newer decision is pending. A conflicting or
-older outcome is rejected without changing the brain or pending decision.
-`feedback(..., terminal=True)` has no next inputs
-and no future-value term. An arbitrary collection timeout is not necessarily
-terminal: use the next observation when future rewards continue. If reward arrives
-later, intervening transitions can have zero reward; subsequent replay propagates
-the later reward backward through learned value predictions. This is one-step
-Q-learning with replay, not an eligibility trace or unlimited-delay guarantee.
+This single transition demonstrates ownership, not acquired navigation. Continue
+actual practice and assess later free decisions and complete episodes. The
+repository's `examples/live_learning.py` provides bounded learning and reversal
+checks. [The reference](REFERENCE.md#reinforcement-discrete-reward-driven-choices) also describes the
+alternative scalar value output conditioned on a one-hot action input.
 
-For reward `r`, discount `g`, reward scale `R` and value scale `S`, the estimated
-target is:
+Vector mode uses one value query and a separate `step` to retain activity.
+Action-conditioned mode queries each action before that step. All candidate
+queries count as work. Exploration and comparison of completed action values
+are helper orchestration; all processing and observer states still co-settle.
+The selected action's Q output is clamped during fitting; other outputs remain
+free and can still contribute to the energy.
+
+## Preserve execution and feedback ownership
+
+Call `act` only when no action is pending. Give the body its `decision_id`, then
+pass that ID and the action actually executed to `feedback`. An actuator
+override must report the executed action. If a proposed command is discarded,
+use `reset()` to abandon it without inventing a transition. Reset does not clear
+parameters, activity or replay; construct a new learner for a fresh life.
+
+Invalid feedback leaves the pending decision intact. The first valid feedback
+stores the actual transition and consumes the pending action even when fitting
+refuses or raises afterward. `stored` therefore does not mean learning succeeded.
+Use `replay()` to attempt more learning from the retained experience. An identical
+retry of the latest acknowledgment records and learns nothing twice, even when
+a newer decision is pending; changed or older acknowledgments are rejected.
+
+Use `terminal=True` only when the reward horizon actually ends; terminal feedback
+has no next inputs. A collection pause or command timeout need not be terminal.
+For delayed rewards, retain every intervening executed transition with its actual
+reward, often zero. Replay can propagate later values backward; this is bounded
+Q-learning, not an unlimited-delay guarantee.
+
+The one-step target uses reward `r`, discount `g`, reward scale `R` and value
+scale `S`:
 
 ```text
 y = (1-g) * S * r/R + g * clip(max_a Q(next_context, a), -S, S)
 ```
 
-The second term is zero at a terminal state. With `discount=0`, replay also
-skips future-value queries and uses only the immediate reward; a larger
-`credit_horizon` does not add future credit. Nonterminal feedback still needs
-the actual next observation. This normalization keeps targets
-inside the declared output scale for bounded rewards, rather than silently
-truncating accumulated returns. It represents `(1-g)*S/R` times discounted
-return. Higher discount reduces immediate target magnitude: it is not a free
-increase in horizon. The finite output range and function approximation still
-limit accuracy. No convergence or task-independent default guarantee is made.
+Terminal transitions have no future term. With `discount=0`, the helper also
+skips future-value queries; nonterminal feedback still requires and retains the
+actual next observation. A higher discount reduces the immediate target's
+magnitude under this normalization. Longer `credit_horizon` settings have the
+explicit greedy-cut semantics in the reference; approximation and exploration
+still limit delayed credit.
 
-Replay samples stored transitions, computes every target using the pre-update
-brain, then calls `observe_batch(..., source="estimate")`. The numerical patch
-rule is unchanged. The source label distinguishes a derived teaching target
-from an actual observation, including in retry identity. It does not authenticate
-the caller's evidence. Real reward and next sensing are observed; the fitted
-action value is an estimate. Ordinary witnessed demonstrations still use
-`observe` or `observe_batch` with their default `source="witness"`.
-
-Invalid feedback does not consume the pending action. A first valid
-acknowledgment stores the transition and consumes the action even if its learning
-attempt refuses. Retry with `replay`, not by pretending the outcome happened
-twice. Query/fit refusals do not change learned parameters. Check `accepted`
-before applying actions and after learning; `stored` alone does not mean learning
-succeeded. `feedback(..., learn=False)` records a frozen-learning control.
-The stored record also survives an exception during the subsequent fit; it
-remains an actual experience even though no fitted update was admitted.
-
-`feedback` binds the outcome to the issued decision and deduplicates an identical
-retry of the latest acknowledgment. A body adapter must retain that decision ID
-and report which command it actually executed. Earlier identities are rejected;
-Cadence does not retain an unlimited network-message history.
-`reset()` abandons a pending action without inventing feedback; it does not clear
-replay, parameters or retained activity. Start a new learner for a fresh life.
-
-`explore=False` disables epsilon exploration for a decision; it does not freeze
-learning, and exact value ties are still broken randomly. For a frozen-parameter
-evaluation, pair executed actions with `feedback(..., learn=False)` and omit
-`replay()` calls. Feedback still records transitions and changes the replay
-store; queries via `act` still retain activity and advance the helper's RNG.
-For a completely isolated assessment, evaluate a `Reinforcement.from_snapshot`
-copy. Call `replay()` explicitly if you want extra updates: nothing schedules
-background learning for you.
+All replay targets are computed from the pre-update brain, then fitted with
+`source="estimate"`. Reward and sensing are facts; the fitted action value is
+an estimate. Calling `act(..., explore=False)` disables epsilon exploration,
+not learning; exact value ties remain randomized. To freeze parameters, use
+`feedback(..., learn=False)` and omit replay. This still changes stored experience,
+activity and RNG. Use a `Reinforcement.from_snapshot` copy for isolated assessment.
+Nothing schedules background replay automatically.
 
 ## Decode discrete actions from settled scores
 
@@ -359,22 +358,43 @@ them as measured dopamine or claim they reproduce biological physiology.
 
 ## Keep the body responsive
 
+This controller tries three commands using the learned body predictor above.
+The host chooses the smallest predicted distance from zero. This is explicit
+candidate search, not a learned planner or internal attention mechanism; all
+three whole-brain queries count as decision work.
+
 ```python
+from time import monotonic, sleep
 from cadence import LiveController, slew
 
 def decide(observation):
-    result = brain.settle(observation)
-    return {"qualified": result["qualified"],
-            "command": result["outputs"]["answer"]}
+    candidates = []
+    for command in (-0.4, 0.0, 0.4):
+        result = brain.settle({"senses": [observation["position"], command]})
+        if not result["qualified"]:
+            return {"qualified": False, "command": (0.0,)}
+        distance = abs(result["outputs"]["next_position"][0])
+        candidates.append((distance, command))
+    return {"qualified": True, "command": (min(candidates)[1],)}
 
+# Check the callback before handing its brain to the worker.
+check = decide({"position": 0.25})
+assert check["qualified"] and check["command"] == (-0.4,)
 controller = LiveController(decide, fallback=(0.0,), max_age=0.25)
 try:
-    controller.submit(inputs)
-    # A rendering/physics tick never waits for a completed settlement.
+    controller.submit({"position": 0.25})
+    # A rendering/physics tick reads immediately, using fallback if necessary.
     command = controller.read()
     actuator = slew((0.0,), command, rate=2.0, dt=1/60)
+    # Demo verification only: wait outside the rendering loop for completion.
+    deadline = monotonic() + 2.0
+    while controller.inspect()["completed"] == 0 and monotonic() < deadline:
+        sleep(0.001)
+    metrics = controller.inspect()
+    assert metrics["qualified"] == 1 and metrics["errors"] == 0, metrics
 finally:
     exited = controller.close(timeout=1.0)
+assert exited  # only now may another owner access this brain
 ```
 
 One worker owns the callback and all brain calls it performs, including learning.
@@ -444,85 +464,43 @@ separate demonstrations.
 
 ## Qualify temporal context and delayed credit
 
-`examples/temporal_credit.py` separates two bounded capabilities. In the cue
-fixture, opposite initial cues have identical distractor suffixes and final
-observations. Delays are 2, 4 and 8 observation ticks; the supplied `History`
-window is `delay + 1`. Training uses cue amplitudes ±0.8 and two distractor
-sequences, stopping checks use ±0.4 and a third sequence, and reserved tests
-use ±0.3/±0.6 and two new sequences. Flat, ordinary-connected and observing
-layouts each contain four patches. Their edges and parameters differ; this
-is a capability comparison at matched patch count, not a depth advantage claim.
-Each layout is queried with retained or reset activity, and again with history
-removed. A saved brain and history resume partway through every test episode.
-Retaining activity alone is not assumed to preserve an occluded cue.
+`examples/temporal_credit.py` separates two bounded capabilities:
 
-The credit fixture has two actions and a supplied one-hot observation of the
-current stage and the first executed action. Subsequent actions leave that
-choice unchanged. Only the final transition supplies reward, +1 or −1 according
-to the first choice. Delays 0/2/4/8 therefore mean 1/3/5/9 executed transitions.
-The two possible rewarded choices are tested separately for every seed. Neither
-the preferred choice nor a desired value enters the sensors or a witness target.
-This fixture provides sufficient observed state to isolate reward credit from
-the separate history experiment; it does not establish learned recurrent memory.
+- **Recall from supplied history.** Opposite cues precede identical distractor
+  suffixes and final observations. Delays are 2, 4 and 8 ticks; `History` contains
+  `delay + 1` frames. Reserved tests use new cue amplitudes and distractors.
+  Flat, ordinary-connected and observing layouts each have four patches, with
+  different contacts and parameter counts. Retained activity, reset activity
+  and removed-history controls distinguish explicit context from native memory.
+- **Delayed reward.** Two actions are available; only the final transition
+  rewards the first choice. Sensors disclose the current stage and first
+  executed action, giving sufficient state to isolate credit assignment.
+  Delays 0/2/4/8 mean 1/3/5/9 actual transitions. One-step TD with replay is
+  compared with discount-zero learning and frozen parameters. No preferred
+  choice or desired Q value enters the sensors.
 
-Each life collects 60 episodes, then executes 40 evaluation episodes with
-learning disabled and exploration still 0.4. Success measures those actual
-choices, not just greedy value rankings. The declared behavioral gate is at
-least 0.65 success per TD case; an optimal policy with this exploration has
-expected success 0.8. Frozen parameters and discount-zero learning are controls,
-not additional acquisition claims. Disabling bootstrapping can still change
-unvisited-state values through shared parameters, so its measured behavior is
-reported rather than assumed to be chance. Discount is 0.8 for TD, replay stores
-256 transitions and samples up to eight per update. The ideal first-choice
-value magnitude is `0.18 * 0.8**delay`; attenuation and finite approximation
-error limit the useful horizon. This tests one-step TD with replay, not eligibility
-traces, unrestricted delays or a comparison of every return estimator.
+Each reward life collects 60 episodes, then evaluates 40 with learning disabled
+and exploration still 0.4. The per-case executed-choice gate is 0.65; an optimal
+policy under that exploration has expected success 0.8. Discount 0.8 attenuates
+remote reward, and shared function approximation can change even unvisited
+values. This is not an unrestricted-delay guarantee or a memory-capacity test.
 
-One serial owner pairs each `act` with the transition it executes. Event time
-is an integer simulation tick with one discount factor per transition; there is
-no variable wall-time discount. At most one action awaits feedback. Terminal
-means the reward horizon has actually ended. A collection pause instead saves
-and resumes the learner, including a pending executed action, replay and RNG;
-it does not create a terminal transition. A refused action is never executed.
-A refused learning attempt preserves its actual transition but no parameter
-update. Abandoned commands use `reset`; hypothetical `settle` queries own no
-pending action and cannot receive feedback.
-
-Run the bounded confirmation on seeds 2 and 7 (seed 0 is the development and
-CI fixture):
+Run the fixed seeds 2 and 7 (seed 0 is the development/CI fixture):
 
 ```sh
 python examples/temporal_credit.py --out /tmp/temporal-credit.json
 ```
 
-The JSON preserves every scheduled case, trial outcome, resumed comparison,
-source hash, learning configuration and helper-level solver-work sum, including
-candidate queries, replay, evaluation, refused calls and continuation twins.
-The report also records complete wall and CPU time. The source hashes must
-remain unchanged during the run. These are two controlled demonstrations, not
-one integrated autonomous life, learned episodic retrieval or evidence that
-observers outperform conventional recurrent models.
+The JSON retains every scheduled case, source hash, configuration, outcome,
+saved/resumed comparison, refusal, work count and execution timing. Resuming a
+pending executed action does not execute it twice; a collection pause does not
+invent a terminal transition. These are separate controlled demonstrations,
+not one integrated autonomous life or evidence of an observer advantage.
 
-The [source-bound confirmation receipt](../examples/receipts/temporal_credit.json)
-contains all 66 cases for seeds 2 and 7. It was produced at qualification commit
-`d9b592c`, before the 0.50.0 version bump. Of its hashed implementation files,
-only the package version string subsequently changed; the receipt retains its
-original hashes. Reruns on the release have different version-file hashes and
-timings, so do not expect byte-identical report JSON. All 18 memory cases pass, with maximum
-reserved full-history error 0.107. All 16 TD cases exceed the 0.65 executed-choice
-gate; their individual success rates range from 0.725 to 0.900. The following
-means pool both rewarded choices and both seeds (160 evaluation episodes per
-cell):
-
-| Reward delay | TD with replay | Discount-zero learning | Frozen parameters |
-| --- | ---: | ---: | ---: |
-| 0 | 0.750 | 0.750 | 0.500 |
-| 2 | 0.806 | 0.625 | 0.500 |
-| 4 | 0.794 | 0.363 | 0.500 |
-| 8 | 0.781 | 0.631 | 0.500 |
-
-Every saved/resumed comparison matched and no solve refused. The complete run
-recorded 291 seconds wall time and 275 seconds CPU time while other local checks
-were running; these are execution receipts, not production latency claims.
-Controls sometimes succeed individually, and two seeds do not establish broad
-statistical superiority. The seed-0 development and CI cases can be rerun with `--seeds 0`.
+The [stored receipt](../examples/receipts/temporal_credit.json) is **historical
+0.50.0 qualification evidence**, produced at commit `d9b592c` before that version
+bump. Within that release transition, only the package version string changed
+among its hashed implementation files. It is not a 0.60.0.dev0 rerun. Its 66
+cases include 18 passing memory cases and 16 passing TD cases; the other cases
+are controls. Current reruns must retain their own source hashes, results and
+timings rather than inheriting those numerical conclusions.

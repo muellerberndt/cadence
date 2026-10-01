@@ -1,21 +1,27 @@
-# Designing an efficient, capable brain
+# Choose, train and run a brain
 
-Start with a task, sufficient observations and a measurable acquisition check.
-Choose the smallest connected layout that passes that check at an acceptable
-cost. Add representation, temporal context or recursive observation to solve a
-specific remaining failure, then measure again. There is no universally optimal
-width or depth.
+Cadence `0.60.0.dev0` lets you build a flat routine, a deeper ordinary model,
+or a model with recursive observation. All three use the same bounded patch
+primitive and settle as one coupled brain. Choose a layout from the task's
+information and learning needs, then measure its free behavior and cost.
 
-Cadence uses one processing-patch rule throughout a brain. Each patch has local
-state, incoming ports, retained relations and exact prediction-error readback;
-connected constraints return influence through the same joint repair. A qualified
-answer covers the whole declared graph. It does not certify task success, a
-unique answer or the global energy minimum.
+**System 1** names an acquired routine that works with little repair. It can
+need several ordinary layers and temporal context. **System 2** names useful
+additional observation and correction when that routine misses a prediction or
+cannot meet a goal. These are behavioral roles, not constructors, layer counts
+or switches between bootstrapping and live operation.
 
-This guide uses the public API. The [quickstart](QUICKSTART.md) introduces its
-operations; [migration notes](MIGRATION_060.md) describe the 0.60 candidate and
-checkpoint compatibility. The [reference](REFERENCE.md) gives exact signatures.
-The [agent recipe](AGENTS.md) condenses the construction and verification steps.
+The supported API supplies the layouts and learning operations in this guide.
+It does not yet supply automatic internal attention or independently progressing
+fast and slow populations. The integrated routine → disturbance → useful
+correction → retained cheap routine cycle, with a measured advantage from
+recursive observation, remains a development goal. Private experiment results
+do not turn those mechanisms into public runtime features.
+
+For a first program, use [the quickstart](QUICKSTART.md). For exact signatures,
+use [the reference](REFERENCE.md); for upgrades and checkpoint compatibility,
+use [migration](MIGRATION_060.md). The [agent recipe](AGENTS.md) gives a short
+application workflow.
 
 ## Define the body's information and outcomes
 
@@ -45,22 +51,28 @@ extracting overlapping windows. Reserve development data for choosing settings
 and fresh assessment data for the final measurement. Future observations may
 supply teaching targets; they must not enter the inputs used to forecast them.
 
-## Choose a layout for the missing capability
+## Flat, ordinary deep and recursive layouts
 
 | Pattern | A sensible first use | What to check |
 | --- | --- | --- |
-| Input-only flat population | Independent scalar relations or a small immediate control mapping | One connected patch per required output may suffice. Unused neighboring patches supply no hidden representation. |
-| Ordinary composition | A learned combination of intermediate features | Later populations read earlier live states; returning energy derivatives already provide feedback. |
-| Recursive observation | Testing whether current representation errors help a downstream relation | An observer reads both states and exact errors. Compare with ordinary composition at declared information, parameter count and work. |
+| Input-only flat population | A direct sensor-to-output relation | Each output has its own weighted sensor prediction. Unused neighboring patches supply no hidden representation. |
+| Ordinary deep composition | Learned intermediate features for a more complex relation | Connect `column(..., inputs=earlier_population)`. Earlier and later states settle together. |
+| Recursive observation | A relation that uses another population's current mismatch | Connect `observer(..., observes=earlier_population)`. It reads states and exact errors within that same solve. |
 | Parallel branches with fusion | Sensors with different local structure or update meaning | Every output must have a useful path to its observations. These are branches of one jointly solved graph, not independently clocked workers. |
 
-Fast routine behavior does not imply a single input-only layer. A familiar
-skill may require learned intermediate features and temporal memory even when
-it needs no recursive error observation. The flat pattern above has no hidden
-representation: each output predicts from its own weighted sensor inputs.
-Additional unconnected output patches do not recover the missing computation.
-Compare a capable ordinary layout with its observer extension before attributing
-a failure or improvement to self-observation.
+Every patch predicts `p = tanh(bias + weighted incoming signals)` and has
+current error `state - p`. The difference between these layouts is what their
+contacts read. Ordinary contacts read sensor values or patch states; observation
+adds error contacts. There is no separate output network after settlement:
+an output exposes selected patch states.
+
+Ordinary deep composition already has returning influence. A later relation's
+error contributes to repair of the earlier states it reads. It is therefore
+not a chain of completed feed-forward answers. Observers add another derivative
+path through the current error; they do not introduce feedback into an
+otherwise feedback-free solver. A fast routine can use either a flat or a
+capable ordinary deep layout. Measure its actual work instead of inferring
+speed from the name.
 
 Choose what an observer reads deliberately. During teaching, a clamped motor
 state records the action that actually happened. A later relation reading only
@@ -69,7 +81,11 @@ that connection. Reading the motor's error adds a parameter-learning path,
 because that error depends on the motor's prediction. This can change what is
 learned; it does not guarantee a better action or assign reward credit. Ordinary
 coupling already affects free states, so an output change alone does not
-demonstrate a benefit from error readback.
+demonstrate a benefit from error readback. For an input-only observed patch at
+fixed parameters, its error is just its state minus a fixed sensory prediction.
+An equally informed ordinary control may represent that same feature. A useful
+recursive comparison must establish a behavioral contribution, not merely the
+presence of an error edge.
 
 Width counts processing states. Observation depth means an observer reads
 another observer. Neither a population called `reflection` nor extra settling
@@ -197,22 +213,27 @@ work-budget comparisons when sample efficiency and compute efficiency differ.
 Increasing depth after failed acquisition is a hypothesis to test, not a repair
 for missing inputs, poorly scaled targets or insufficient training.
 
-## Distinguish settlement, prediction error and surprise
+## Keep numerical error, forecast surprise and task value separate
 
 | Measurement | What it tells you | What it cannot establish |
 | --- | --- | --- |
-| `stationarity` and `qualified` | The complete projected repair residual meets the requested numerical tolerance | Correct predictions, good actions or a globally minimal state |
+| `stationarity` and `qualified` | Every eligible coordinate in the whole graph meets the projected repair tolerance under this call's clamps | Correct predictions, good actions, a unique answer or a global energy minimum |
 | `prediction_residual` and patch `errors` | Current disagreement between internal state and the current local prediction | Whether an earlier forecast was contradicted by a later real observation |
-| Actual forecast error or task outcome | How a committed prediction or executed behavior compared with later evidence | Which earlier internal relation deserves credit without a declared learning procedure |
+| Historical forecast surprise | Difference between an immutable issued forecast and its later actual observation | Whether that outcome is good or bad for the task |
+| Reward or goal deficit | Observed value or predicted shortfall in declared task units | Automatic credit assignment to every population |
 
 Keep the original forecast, observation context, action identity and model
 identity before its outcome arrives. Compare that fixed forecast with the later
 measurement. Recomputing a prediction after learning can erase the very error
 you wanted to measure. `LearningProgress` summarizes changes in supplied
 predictor errors; it is not an automatic surprise detector or information-gain
-measure. Even with unchanged parameters, an internal prediction and the final
-settled output can differ because of priors and coupling. Use the original
-issued output when measuring forecast error.
+measure. Even with unchanged parameters, a patch's local prediction and its
+settled output can differ because of priors and coupling. Declare which value
+your application issues as its forecast and preserve that exact value.
+
+A predictable failure can have zero surprise and still require correction.
+An unexpected good result can have large surprise without negative value.
+Neither signal should silently stand in for the other.
 
 Targets also change the settling problem. An observer's error inputs during
 joint teaching can differ from the signals available when the future answer is
@@ -224,11 +245,29 @@ make their input or influence vanish; it is not a safe automatic sleep signal.
 
 ## Keep actions and outcomes attached to the right life
 
-Use `settle` for a pure query, `step` to retain qualified activity, and `observe`
-for actual labeled targets. Check `qualified` before using query outputs and
+Choose operations by what should persist:
+
+| Operation | Retained activity | Retained parameters and event |
+| --- | --- | --- |
+| `settle` / `predict` | Unchanged | Unchanged |
+| Qualified `step` | Complete solved activity | Unchanged |
+| New accepted `observe` | Complete solved activity | Parameters and one admission |
+| New accepted `observe_batch` | Unchanged | Shared parameters and one admission |
+
+These Brain operations retain none of a refused proposal. Check `qualified`
+before using query outputs and
 `accepted` before treating an update as committed. `predict` raises
 `SettlementError` on numerical refusal. Diagnostic outputs from a refused call
 are not actions.
+
+`step` and `settle` accept the same optional `targets` and `interventions`.
+These clamps condition a frozen-parameter solve; they are not teaching
+admissions. `step` retains the resulting activity, but the constraints expire
+at the end of that call. Supply any continuing constraint again on the next
+call. A measured past outcome can condition a current decision. A desired
+future output is an intention; leave it free in a separate query to obtain a
+forecast. Even an all-clamped, immediately qualified call proves no prediction
+or acquired skill.
 
 For discrete reward-driven choices, `Reinforcement.act` proposes an action and
 issues a `decision_id` when accepted. Execute through the body, then call
@@ -258,93 +297,51 @@ an acquired routine. Use measured consequences to teach a body predictor and a
 declared outcome-credit procedure to teach preferences; test routine retention
 throughout live learning.
 
-## Spend compute according to measured need
+<a id="spend-compute-according-to-measured-need"></a>
 
-The intended 0.60 architecture makes **routine cheap and recruits more work
-when needed**. Maintaining equilibrium must serve competent ongoing behavior:
-a coherent groove can keep evolving, and navigation can keep making progress.
-Numerical stationarity alone does not establish that competence. Holding the
-outputs still or eliminating every novel event is not the goal.
-Specialized fast populations should maintain learned skills, including coherent
-musical performance, while deeper general recursive populations provide steering
-when surprise or missing long-term success requires it. Both should progress at
-their own speeds behind one brain/body interface. Repeated successful correction
-should become routine, with retained competence and less subsequent work.
-This is the target design; the current implementation boundary follows below.
+## Measure speed and retained correction
 
-“System 1” and “System 2” can describe cheap familiar responses and more costly
-context-dependent correction. They are not Cadence modes or constructor flags.
-They also do not specify layer count, distinct patch types or bootstrapping/live
-phases. Ordinary deep populations can supply System 1's learned intermediate
-features; recursive readback needs measured corrective benefit before it
-establishes System 2 behavior. The current library uses the same patch rule in
-ordinary and observing populations; this design choice does not establish that
-it can replace every specialized memory or processing mechanism at an acceptable
-cost. Future specialization needs explicit bounded state, ports, readback,
-learning/repair and qualification semantics, supported by measured behavior.
-Flat and observing populations can coexist in one brain, with the same input
-and output boundary. Every participating population remains in the whole-brain
-energy, and qualification checks every eligible free coordinate. Adding a slow
-observer does not automatically let a fast branch issue actions while that
-observer sleeps. Current calls solve synchronously. `LiveController` can move
-that work to a serial callback; it does not introduce asynchronous settlement
-between populations.
+Current calls solve synchronously. Every participating population remains in
+the energy and every eligible coordinate remains in final qualification.
+Naming a branch `fast` or `reflection` does not schedule it independently.
+`LiveController` keeps a caller responsive while a serial callback owns the
+brain; it cannot certify a fresh action while an unresolved part of that
+same state is silently omitted. Parallelize independent lives or collection,
+and serialize access to one brain's continuation.
 
-> **Current capability boundary.** The intended cycle is learned routine →
-> actual disturbance → useful corrective processing → restored, inexpensive
-> routine, while retaining the skill. Automatic internal allocation of attention,
-> independently progressing populations and shared long-term outcome
-> responsibility are not yet implemented and validated as that integrated cycle.
-> No extra application attention flag or per-population evaluator should be
-> needed for the intended design. The body still has to supply observations and
-> actual outcomes.
+The intended application boundary is one brain receiving observations,
+issuing qualified actions and acknowledging actual outcomes. Users should not
+need a second brain, a wake flag or an evaluator per population. A future
+internal scheduler must define dependency invalidation and qualification
+before claiming independent population speeds. Concurrent learning proposals,
+coordinate scheduling and arithmetic reuse are distinct mechanisms.
 
-Internal safeguards may check that routine remains valid without running
-expensive reflection on every fixed tick. Quiet observations cannot erase an
-outstanding need: a predictable failure still needs correction, while an
-unexpected beneficial result is not a bad outcome. A future implementation
-must distinguish those signals and specify when reused work remains valid.
-Until then, use the current complete solve and measure its actual cost.
+The current reference query cache reuses predictions depending only on fixed
+sensory inputs, including bias-only predictions, within one solve. Errors and
+returning derivatives remain current, and final qualification is fresh. The
+cache does not sleep an observer or carry learned attention between calls.
+See [performance](PERFORMANCE.md).
 
-Test the whole cycle before claiming that a correction mechanism works. First
-establish autonomous routine competence with teaching disconnected. Apply a
-specified disturbance to the body; feed back what it actually does, including
-actuator overrides and exhausted resources. Then measure recovery, retained
-skill and the return to inexpensive decisions. Do not substitute low internal
-residuals, training agreement or a nominal output flag for observed behavior.
-A music command to hold a note, for example, does not prove a finite sample
-continues sounding. Legitimate variation also needs to remain possible; a goal
-of minimizing every deviation would suppress a useful musical fill.
+Measure queries, candidate actions, teaching, replay, checks and refusals.
+Sum primitive `work` counters or use a helper's aggregate, without counting
+both. Report task quality, qualification rate, latency and wall time alongside
+`evaluations`, `edge_visits`, `patch_visits`, `proposals`, `backtracks` and
+sweeps. A sweep budget is not an elapsed-time deadline; zero sweeps still
+require evaluation.
 
-Current tools do not establish that a deep observer hierarchy becomes useful
-merely through long training. Measure any scheduling, curriculum and body-level
-task measure as part of the application. Numerical reuse of invariant arithmetic
-is a supported optimization; learned selective attention is a different claim.
-
-Measure the complete workload: queries, selected actions, teaching, replay,
-readiness checks and refused attempts. Sum `work` counters from results or use
-the helper's aggregate counters without counting the same work twice. Record
-wall time, latency percentiles, qualification rate and task quality alongside
-`evaluations`, `edge_visits`, `patch_visits`, `proposals`, `backtracks` and sweeps.
-The sweep `budget` is not an elapsed-time deadline. A stationary answer can be
-cheap while still being wrong about the body.
-
-Pure input-only queries can settle quickly; coupled state and error contacts
-add dependencies and returning derivatives. The current single-row reference query cache
-reuses mathematically invariant input-only and bias-only predictions, with fresh
-final qualification. It does not freeze a slow population, skip error feedback or
-change the learning objective. See [performance](PERFORMANCE.md).
+For a correction test, first establish competent autonomous routine behavior.
+Disturb the actual body, measure recovery, then freeze learning and test
+retained quality and subsequent work. Include a routine-plus-factual-fit
+control: improvement after fitting does not by itself show that planning or
+observation was necessary. Count successful correction fits as well as
+failed attempts; a controller that keeps requesting correction but never
+consolidates it has not demonstrated a return to inexpensive routine.
 
 Start with `device="python"` for small graphs. Optional `device="cpu"` uses
-PyTorch on the CPU; `"cuda"` or `"mps"` select supported GPU execution. Device
-proposals still require float64 reference qualification and may need reference
-refinement. Include that cost, transfer/setup overhead and changed acquisition
-behavior when comparing backends. Small brains may lose time to device overhead.
-The [acceleration guide](ACCELERATION.md) explains precision and batch choices.
-
-Parallelize independent lives or environment collection. Serialize calls that
-read or mutate one brain's continuation; independently learned checkpoints
-cannot be averaged as though they were one sequence of experiences.
+PyTorch on CPU; `"cuda"` and `"mps"` select supported GPU execution. Device
+proposals still need float64 reference qualification and may need refinement.
+Include transfer, setup and reference work in comparisons. Small brains can
+lose time to device overhead; see [acceleration](ACCELERATION.md).
 
 ## Preserve and diagnose continuation
 

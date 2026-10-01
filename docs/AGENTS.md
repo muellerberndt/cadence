@@ -6,7 +6,18 @@ spelling and numerical semantics, use [the reference](REFERENCE.md) and
 [brain design](BRAIN_DESIGN.md); start a small application from
 [the quickstart](QUICKSTART.md).
 
-## Keep the two roles intuitive
+## Explain the supported model first
+
+Use `Cortex` to declare one graph, then `build()` to create its persistent
+`Brain`. Inputs are supplied samples, populations contain processing patches,
+and outputs expose selected patch states. Every population uses the same
+bounded relation and coupled repair. There is no separate feed-forward output
+network or external critic attached to each population.
+
+The application still owns sensor meaning, action decoding and outcome units.
+Choose useful connectivity and adequate information before increasing width.
+
+## Use System 1 and System 2 for roles
 
 **System 1** is a learned skill that keeps working with little repair: a groove,
 a familiar movement or another competent routine. It can need several ordinary
@@ -16,7 +27,9 @@ layers and useful temporal information. It is not restricted to a flat map.
 cannot maintain equilibrium or meet longer-term needs. Useful correction should
 restore competent behavior, preserve the skill and eventually need less work.
 Unexpected success and predictable failure differ: surprise measures a missed
-forecast; outcome valuation measures whether behavior serves the task.
+issued forecast; outcome valuation measures whether behavior serves the task.
+Current patch error is a third quantity, recomputed from the current state and
+relation. It is not a stored historical forecast miss.
 
 These names describe the intended roles of one brain. They are not constructor
 names, biological claims, or bootstrapping/live phase switches. Current
@@ -79,8 +92,25 @@ learned temporal memory are separate questions.
 5. **Test correction as an addition.** Compare a competent ordinary control with
    an observer layout on the same causal information, with disclosed capacity,
    exposure and work. Establish routine, disturb the actual body, measure
-   useful recovery, and recheck retention and cost after recovery. Adding
-   observers or changing a free output does not by itself establish System 2.
+   useful recovery, and recheck retention and cost after recovery. Include
+   routine-plus-factual-fit as a control so consolidation alone is not called
+   a planning benefit. Adding observers or changing a free output does not by
+   itself establish System 2.
+
+Use the operation that matches the intended state change:
+
+| Intent | Operation |
+| --- | --- |
+| Inspect a free or conditional answer without committing it | `settle`; use `predict` for outputs only with refusal raised as an exception |
+| Continue activity with parameters fixed | `step`, optionally with the same `targets`/`interventions` as `settle` |
+| Admit one labeled experience and its activity | `observe` |
+| Admit labeled examples while preserving current activity | `observe_batch` |
+
+Clamps on `step` and `settle` condition only that call. They do not admit
+teaching evidence; a goal-clamped future output is an intention, not a
+forecast. A subsequent free call must qualify again. Label measured targets
+as witnesses and derived targets as estimates; provenance labels do not
+authenticate what the body actually did.
 
 Save the brain with preprocessing, body state, data position, history and RNG.
 For reward learning, save the complete learner so pending ownership survives.
@@ -98,12 +128,14 @@ declared qualification and measured general benefit. Simplicity is a design
 requirement, not proof that the current primitive can replace every memory
 mechanism. Keep experimental mechanisms distinct from supported public behavior.
 
-For future automatic fast/slow execution, document what invalidates reused
-work, how an actual forecast miss or unmet need recruits correction, and what
-each qualification covers. Preserve current exact error readback and actual
-outcome records. Separate locally settled or stale states cannot be presented
-as one simultaneous global equilibrium. No application attention flag or
-per-population evaluator should be required by the intended architecture.
+For future automatic fast/slow execution, state what invalidates reused work,
+how a forecast miss or unmet need recruits correction, and what each
+qualification covers. Separately settled or stale states cannot be presented
+as one simultaneous global equilibrium. Concurrent action/learning proposals
+and separately scheduled state blocks are different runtime claims. Neither
+may silently exclude unresolved coordinates from current qualification.
+The intended architecture should require no application attention flag or
+per-population evaluator.
 
 Keep implemented behavior separate from that target and from experimental
 results. Query caching is arithmetic reuse, not learned attention; low

@@ -6,12 +6,14 @@ for a useful control task. Recursive observation adds a way to use internal
 states and prediction errors; its extra work earns a place only when it improves
 behavior under the application's resource budget.
 
-**In Cadence 0.50.0, flat, ordinary state-coupled and recursively observing
-layouts all perform settlement.** Recursive observation is optional wiring,
+**Flat, ordinary deep and recursively observing layouts all perform
+settlement in 0.60.0.dev0.** Recursive observation is optional wiring,
 not a requirement for the patch/repair mechanism. Each layout uses the same
 public `settle`/`step` operations and final stationarity check.
 The [design-pattern guide](VARIANTS.md) introduces the three choices with
 runnable examples; this page explains their cost and supporting evidence.
+Recorded benchmarks below retain their original source identities and versions,
+including 0.50.0; they are not automatically new-version results.
 
 Depth, speed and competence are separate measurements. A deeper layout does not
 automatically reason better, and a slow solve is not evidence of more thought.
@@ -259,5 +261,5 @@ Every query must still qualify the complete connected brain; an application
 scheduler cannot certify a partially solved branch. `LiveController` keeps
 rendering responsive while a serial worker owns the brain; it does not make an
 unfinished answer ready sooner. See
-[brain design](BRAIN_DESIGN.md#spend-compute-according-to-measured-need) for the
+[brain design](BRAIN_DESIGN.md#measure-speed-and-retained-correction) for the
 capability boundary and [live control](LIVE.md) for execution.

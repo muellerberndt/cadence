@@ -10,8 +10,15 @@
 - Bind reward feedback to an issued decision and the action actually executed,
   preserving retry and outcome ownership. A bounded multi-transition credit
   candidate remains experimental. See [migration](docs/MIGRATION_060.md).
+- Allow `step` to retain qualified activity under explicit targets and
+  interventions without learning or recording an experience. Clamps expire
+  after each call.
+- Skip irrelevant future-value queries for zero-discount reward replay while
+  preserving actual transition records and learning qualification.
 - Add flat, deep ordinary and recursive learning quickstarts with shared
-  query/teaching/continuation contracts and explicit capability boundaries.
+  query/teaching/continuation contracts, a mixed-layout example and explicit
+  capability boundaries. Reorganize the README around a learned body model
+  and runnable current examples; retain historical demos as versioned evidence.
 - Document installation from `main` and the intended specialized routine /
   recursive steering architecture. Independent internal clocks remain future
   work; the development merge does not change whole-graph qualification.

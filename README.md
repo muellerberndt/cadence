@@ -1,189 +1,210 @@
 <p align="center">
-  <img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-logo.png" alt="Cadence: learning through flat, state-coupled and recursive settlement" width="100%">
+  <img src="https://raw.githubusercontent.com/muellerberndt/cadence/main/docs/assets/cadence-logo.png" alt="Cadence: learning through flat, deep and recursive settlement" width="100%">
 </p>
 
 # Cadence
 
-[Interactive overview](https://floatingpragma.io/cadence/) · [Public demos](https://github.com/muellerberndt/cadence-demos) · [Preprint](https://philpapers.org/rec/MUECAP-2) · [Documentation](docs/index.md) · [Pragma Research / investors](https://floatingpragma.io/investors/)
+[Documentation](docs/index.md) · [Quickstart](docs/QUICKSTART.md) · [Examples](examples/README.md) · [Interactive overview](https://floatingpragma.io/cadence/) · [Preprint](https://philpapers.org/rec/MUECAP-2) · [Pragma Research](https://floatingpragma.io/)
 
 [![PyPI](https://img.shields.io/pypi/v/cadence-net)](https://pypi.org/project/cadence-net/)
 [![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![Python](https://img.shields.io/pypi/pyversions/cadence-net)](https://pypi.org/project/cadence-net/)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](LICENSE)
 
-**Brains that learn through joint settlement.**
+**Build a learned routine, add depth where it helps, and experiment with recursive feedback.**
 
-Cadence is an experimental learning architecture from
-[Pragma Research](https://floatingpragma.io/), with embodied AI as a target
-application. Its building blocks are bounded patches with local state, sensory
-and output ports, prediction errors and a shared repair rule. Connected patches
-settle together to produce an answer; experience can change their retained
-parameters. Recursive observers read other patches' states and exact errors,
-feeding back into the same solve. This makes the brain an observer-like,
-self-reading system.
+Cadence is an experimental learning library built from bounded patches with
+local state, input and output ports, retained relations and prediction-error
+readback. Connected patches settle together to answer; learning repairs their
+relations from experience. Recursive observers read other patches' live states
+and exact errors, feeding back into that same settlement. This is the
+observer-like, self-reading structure behind Cadence.
 
-The research goal is an alternative to transformers that learns throughout a
-continuing life. The library supplies supervised learning, reward-learning
-helpers and saved continuation. The evidence below covers small simulated tasks;
-broad capability, physical-robot deployment and comparative energy efficiency
-require separate validation.
+**This README describes `0.60.0.dev0` on `main`.** It supports flat, ordinary deep,
+recursive and mixed layouts through one API. The intended System 1/System 2
+behavior is **routine is cheap; disturbance recruits useful correction; learned
+correction becomes routine**. Automatic internal attention, independently
+progressing fast and slow populations, and a demonstrated recursive advantage
+remain requirements for stable 0.60.0. The development version does not yet
+provide that complete cycle. See [what is available](docs/MIGRATION_060.md).
 
-## Demonstrated behavior
+## Choose how the brain responds
 
-| Result | Evidence and interpretation |
-| --- | --- |
-| **Doom Basic: 63/64 and 64/64 wins** | Two selected descendants improved native return over their respective founder comparisons in separate reserved confirmations. This is single-room combat after finite teaching and simulator practice, without a demonstrated benefit from recursive depth. [Experiment record and receipts](https://github.com/muellerberndt/cadence-demos/blob/main/doom-lab/docs/EXPERIMENTS.md). |
-| **CartPole: 180/180 episodes at the 500-step ceiling** | One-patch flat, six-patch flat and four-plus-two observer layouts, with three seeds each. Each model received 128 numerical-state teaching examples on Cadence 0.43.0. Even one flat patch reached the ceiling. [Source-hashed receipt excerpts](https://floatingpragma.io/evidence/cadence/cartpole-confirmations.json). |
-| **Learning and continuation in the core library** | Small tests check acquired relations on unclamped inputs across flat, composed and recursive layouts, including restored checkpoints. The [runnable examples](examples/README.md) cover live control, explicit history, replay and layout costs. |
-
-These results use their declared versions and task interfaces. The
-[performance guide](docs/PERFORMANCE.md) separates query cost, learning work
-and complete control decisions. It does not establish a general speed or
-capability advantage over other architectures.
-
-For an application to explore, start with
-[Doom Lab](https://github.com/muellerberndt/cadence-demos/tree/main/doom-lab)
-or compare all three layouts on a changed simulated body in
-[Rover Lab](https://github.com/muellerberndt/cadence-demos/tree/main/rover-lab).
-Both have local setup instructions. The
-[browser explorer](https://floatingpragma.io/cadence/#inside-the-brain) illustrates the
-settlement mechanism with a small deterministic model.
-
-## Three settlement design patterns
-
-| Pattern | What patches read | Useful starting point |
+| Layout | What it does | When to start here |
 | --- | --- | --- |
-| **Flat settlement** | Fixed sensory inputs | Small direct sensor-to-answer relations and an inexpensive baseline |
-| **State-coupled settlement** | Other populations' live states, optionally with sensory inputs | Learned intermediate representations and sensory fusion |
-| **Recursive observer settlement** | Live states and exact prediction errors, including other observers' | Testing whether internal state-and-error feedback improves decisions |
+| **Flat: a simple routine response** | Each patch reads sensors directly. With parameters fixed, patch states can settle independently. | Small direct mappings, calibration and the first inexpensive baseline. |
+| **Deep: co-settling representations** | Ordinary populations read earlier populations' live states. All layers settle together, with returning influence through their shared constraints. | Routines that need learned intermediate features or combined sensory information. |
+| **Recursive: state-and-error feedback** | Observers read live states and exact current prediction errors. An observer can itself be observed. | Testing whether internal error readback improves correction beyond capable ordinary layers. |
 
-**All three settle.** They share the patch rule, learning API and numerical
-qualification, and can be combined in one brain. Coupled populations participate
-in one solve; they do not chain completed predictions. Start with the smallest
-layout that learns the behavior and measure the benefit of added coupling.
-Ordinary deep layouts already return influence through the common energy.
-Observers add an explicit residual channel; they are not separate evaluators.
-A capable routine response can need several ordinary layers. The
-[design-pattern quickstarts](docs/VARIANTS.md) teach and resume all three through
-one external interface; [brain design](docs/BRAIN_DESIGN.md) explains when to
-try each and how to measure its cost.
+All three use the **same patch rule**, learning methods and whole-brain
+qualification. These are choices of wiring, not three neuron classes or speed
+settings. A flat layout is a useful fast baseline; actual latency depends on
+size, coupling, learning and the task. Recursive depth alone does not make a
+brain more capable, and it has no separate slow clock in the current runtime.
 
-## Install
+**System 1** means learned routine competence; it can need several ordinary
+layers. **System 2** means extra recursive correction when routine competence
+fails. A coherent changing beat, a familiar game situation or walking a known
+path can all be routine. Equilibrium in this behavioral sense means sustained
+competence, not an unchanging output. Numerical settlement alone can still give
+a wrong answer about the world: compare forecasts with later observations and
+measure actual task outcomes.
 
-Python 3.11 or later. The default engine uses only the standard library.
-The published baseline is Cadence 0.50.0:
+Combine these layouts inside one `Cortex`. The application supplies observations,
+executes actions and reports outcomes through one brain/body interface; it does
+not attach an evaluator to every population. Start with the
+[three layout quickstarts](docs/VARIANTS.md), including a
+[mixed brain](docs/VARIANTS.md#combine-routine-layers-and-recursive-observation).
 
-```sh
-python -m pip install "cadence-net==0.50.0"
-```
+## Install the development version
 
-Packages are also available from
-[GitHub Releases](https://github.com/muellerberndt/cadence/releases).
-For optional PyTorch execution on CPU, Apple Silicon GPU or NVIDIA GPU:
-
-```sh
-python -m pip install "cadence-net[gpu]==0.50.0"
-```
-
-The development line on `main` identifies as `0.60.0.dev0`. Install it directly
-to use the updated outcome API and documentation:
+Python 3.11 or later. The default engine needs only the standard library:
 
 ```sh
 python -m pip install "cadence-net @ git+https://github.com/muellerberndt/cadence.git@main"
+python -c "import cadence; print(cadence.__version__)"
 ```
 
-For reproducible experiments, replace `main` with the reviewed commit hash.
-For an editable checkout, use `python -m pip install -e .`. See
-[migration](docs/MIGRATION_060.md). This development rollout is not the stable
-0.60.0 release; automatic internal attention and the complete
-routine–disturbance–correction cycle are not yet supplied.
+For reproducible work, replace `main` with the reviewed commit hash. The earlier
+published baseline is `cadence-net==0.50.0`; its API differs from this guide.
+See [migration and checkpoint compatibility](docs/MIGRATION_060.md).
 
-Choose `Cortex(device="mps")` or `Cortex(device="cuda")` for the corresponding
-GPU. Execution uses the same learning rule and final float64 admission check.
-Small brains can be faster with the default Python engine; see
-[execution and precision](docs/ACCELERATION.md).
+Optional PyTorch execution uses the same learning rule and final reference
+check. Install the development source with its `gpu` extra, then choose
+`Cortex(device="cpu")`, `Cortex(device="mps")` or `Cortex(device="cuda")`:
 
-## Learn a relation and keep learning
+```sh
+python -m pip install "cadence-net[gpu] @ git+https://github.com/muellerberndt/cadence.git@main"
+```
 
-A `Cortex` declares a layout; `build()` returns its persistent `Brain`.
-This one-patch flat layout learns a signed input/output relation. Deep ordinary
-and recursive layouts use these same calls.
+Small brains can be faster on the default engine. Measure the complete workload;
+see [devices, precision and batching](docs/ACCELERATION.md).
+
+## Teach a small body model
+
+This flat brain learns how a supplied one-dimensional simulator moves. It sees
+position and commanded velocity, then predicts the next position. Teaching,
+readiness checks and final probes use different inputs. Predictions come from
+the settled brain; the simulator supplies only measured teaching and test values.
 
 ```python
 from cadence import Brain, Cortex, bootstrap
 
+# Supplied simulator: one quarter-second of movement.
+def advance(position, velocity):
+    return position + 0.25 * velocity
+
+
+def measurements(positions, velocities):
+    return [
+        ({"body": [x, u]}, {"next_position": [advance(x, u)]})
+        for x in positions for u in velocities
+    ]
+
+
 layout = Cortex(seed=2)
-signal = layout.input("signal", shape=(1,))
-response = layout.column("response", patches=1, inputs=signal)
-layout.output("answer", shape=(1,), reads=response)
+body = layout.input("body", shape=2)
+response = layout.column("response", patches=1, inputs=body)
+layout.output("next_position", shape=1, reads=response)
 brain = layout.build()
 
-# Bootstrapping phase: learn from supplied outcomes, then check without clamps.
-examples = [({"signal": [x]}, {"answer": [x]}) for x in (-0.8, 0.8)]
-checks = [({"signal": [x]}, {"answer": [x]}) for x in (-0.4, 0.4)]
-report = bootstrap(brain, examples, checks=checks, max_error=0.2)
+report = bootstrap(
+    brain,
+    measurements((-0.5, 0.5), (-0.8, 0.8)),
+    checks=measurements((-0.25, 0.25), (-0.4, 0.4)),
+    max_error=0.06, epochs=30,
+)
 assert report["passed"], report
 
-# Fresh inputs, absent from teaching and readiness checks.
-assert brain.predict({"signal": [-0.6]})["answer"][0] < -0.3
-assert brain.predict({"signal": [0.6]})["answer"][0] > 0.3
+# Final free predictions: no answer is clamped or supplied as an input.
+for position, velocity in ((0.35, -0.4), (-0.35, 0.4)):
+    forecast = brain.predict({"body": [position, velocity]})["next_position"][0]
+    assert abs(forecast - advance(position, velocity)) < 0.06
 
-# Live phase: retain qualified activity and learn when an actual outcome arrives.
-assert brain.step({"signal": [0.3]})["accepted"]
-assert brain.observe({"signal": [0.3]}, {"answer": [0.3]})["accepted"]
+# Live operation: retain activity, execute, then learn the actual consequence.
+inputs = {"body": [0.35, -0.4]}
+activity = brain.step(inputs)
+assert activity["accepted"]
+measured = advance(0.35, -0.4)
+assert brain.observe(inputs, {"next_position": [measured]})["accepted"]
 
-# A JSON snapshot preserves state and learned parameters for continuation.
-saved = brain.snapshot()
+saved = brain.snapshot()  # JSON text: state, learned relations and source identity
 restored = Brain.from_snapshot(saved)
-assert restored.predict({"signal": [0.6]}) == brain.predict({"signal": [0.6]})
+assert restored.predict(inputs) == brain.predict(inputs)
 ```
 
-`settle` and `predict` are pure queries. `step` retains qualified live state;
-`observe` also learns from supplied output witnesses. Check `qualified` or
-`accepted`; `predict` raises `SettlementError` on refusal. A clamped teaching
-output is not evidence of learning: evaluate later predictions without targets.
+This learns a small forward model, not a navigation policy. The
+[live-control example](examples/live_control.py) uses a learned model to compare
+candidate actions and move an actual simulated body toward a goal. Its action
+search is supplied application code. It does not demonstrate automatic attention
+or a benefit from recursion.
 
-The **bootstrapping phase** and **live phase** use the same patch rule and
-retained parameters. Applications supply sensors, teaching evidence and actuator
-interpretation. Batch learning, explicit sensory `History`, discrete
-`Reinforcement` and `LiveController` are documented below.
+`settle` and `predict` query without changing the brain. `step` retains qualified
+activity. `observe` also learns from supplied output witnesses; `observe_batch`
+learns from several independent examples while preserving live activity.
+Check `qualified` or `accepted`; `predict` raises `SettlementError` on refusal.
+A teaching clamp matching its target is not evidence of learning—check later
+predictions without targets.
 
-## Scope and reproducibility
+## Run the current examples
 
-The reference engine uses analytic derivatives and bounded descent to repair
-a nonlinear residual energy. Qualification checks constrained stationarity;
-it does not guarantee zero prediction error or a unique global minimum.
-Budget exhaustion can cause refusal. Numerical qualification, useful behavior
-and control-loop deadlines are separate measurements.
+From a checkout of this development version:
 
-Checkpoints bind implementation sources. Use the runtime and reproduction
-instructions associated with each receipt; a package version alone does not
-identify every experimental artifact. Explicit history is external memory,
-and retention tests with replay do not establish indefinite learned memory.
-The [specification](docs/SPECIFICATION.md) states the exact contract.
+```sh
+python -m pip install -e .
+python examples/layout_learning.py --layout all
+python examples/live_control.py --decisions 20 --seed 0
+python examples/live_learning.py --seeds 0 2 7
+```
 
-| Documentation | Start here for |
+| Example | What you can verify |
 | --- | --- |
-| [Quickstart](docs/QUICKSTART.md) | Queries, teaching, diagnostics and saved continuation |
-| [Brain design](docs/BRAIN_DESIGN.md) | Choose sensors, context, reachable capacity and learning budgets; measure useful behavior and cost |
-| [0.60 candidate migration](docs/MIGRATION_060.md) | Unreleased changes, executed-outcome ownership and versioned demo reproduction |
-| [Bootstrapping](docs/BOOTSTRAP.md) | Calibration, individual/batch learning and readiness checks |
-| [Live operation](docs/LIVE.md) | History, reward credit, replay and control callbacks |
-| [Architecture guide](docs/DRSN.md) | Population layouts, recursive observation and equations |
-| [Performance](docs/PERFORMANCE.md) | Layout costs, versioned evidence and capability comparisons |
-| [API reference](docs/REFERENCE.md) | Public methods, configuration and refusal behavior |
+| [Three layouts, one interface](examples/layout_learning.py) | Acquire a small relation using flat, deep and recursive layouts; check fresh predictions, work counts and exact saved continuation. These have different capacities and are not an advantage comparison. |
+| [Learned body control](examples/live_control.py) | Bootstrap a body model, select actions through explicit candidate search, execute them and admit actual outcomes. |
+| [History, retention and rewards](examples/live_learning.py) | Separate small tests of explicit sensory history, old-skill replay, reward learning/reversal and saved continuation. |
+
+[All examples](examples/README.md) include batch learning, independent parallel
+brains, delayed reward and layout costs. `History` supplies explicit external
+memory; `Reinforcement` supplies discrete action-value learning and replay.
+Neither is an automatic planner or a guarantee of long-term success.
+
+The [public demos](https://github.com/muellerberndt/cadence-demos) also include
+Amen, Atari, Patch World and Doom experiments. Their original engines and
+results have different versions and representations. They are **historical
+application evidence**, not completed reproductions on 0.60.0. In particular,
+the original Amen record-cell brain is not equivalent to one current flat
+patch. Use the [demo migration guide](docs/MIGRATION_060.md#reproduce-the-website-demos-before-optimizing-them)
+and [versioned performance evidence](docs/PERFORMANCE.md) before comparing them.
+
+## Learn more
+
+| Guide | What it helps you do |
+| --- | --- |
+| [Quickstart](docs/QUICKSTART.md) | Build, teach, query and save your first brain |
+| [Layout quickstarts](docs/VARIANTS.md) | Construct flat, deep, recursive and mixed brains with the same interface |
+| [Brain design](docs/BRAIN_DESIGN.md) | Choose sufficient observations, connected capacity and useful evaluation checks |
+| [Bootstrapping](docs/BOOTSTRAP.md) | Prepare a skill and measure acquisition, retention and learning cost |
+| [Live operation](docs/LIVE.md) | Connect observations, actual outcomes, history, reward and control callbacks |
+| [Agent recipe](docs/AGENTS.md) | Build integrations with the right contracts and capability claims |
+| [Architecture](docs/DRSN.md) / [API reference](docs/REFERENCE.md) / [Specification](docs/SPECIFICATION.md) | Understand the equations, exact calls and numerical guarantees |
+
+Qualification means constrained numerical stationarity, not a unique global
+minimum or task success. Saved brains bind exact implementation sources; retain
+those sources and application preprocessing with checkpoints. Broader capability
+and comparative efficiency require measured task evidence.
 
 ## Development
 
-Core changes follow three principles: **minimalism**, **user-friendliness** and
-**agent-friendliness**. A small public API, runnable examples and inspectable
-state keep the mechanism usable. See the [contributor instructions](AGENTS.md).
+Changes follow **minimalism**, **user-friendliness** and **agent-friendliness**.
+See the [contributor instructions](AGENTS.md).
 
 ```sh
 python -m pip install -e ".[dev]"
 python -m pytest -q
+python -m ruff check src tests
+python -m ruff format --check src tests
 ```
 
-The test suite executes the README and documentation examples and checks
-learning, mathematical derivatives, refusal and checkpoint continuation.
+Tests execute the README and documentation examples and check learning,
+mathematical derivatives, refusal and checkpoint continuation.
 Licensed under [GPL-3.0-or-later](LICENSE).

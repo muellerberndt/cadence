@@ -27,7 +27,7 @@ scheduling and actuator rate limits. These helpers preserve the patch equation.
 See the [quickstart](QUICKSTART.md) for a first learned relation, the
 [layout quickstarts](VARIANTS.md) for flat/deep/recursive construction, and the
 [architecture guide](DRSN.md) for equations. This development reference includes
-the unreleased candidate's outcome-ownership interface; consult
+the `0.60.0.dev0` outcome-ownership interface; consult
 [migration](MIGRATION_060.md) when using an installed release.
 
 ## Cortex: declare a layout
