@@ -1,0 +1,166 @@
+# Private demand repair: current-state certificates and owned outcomes
+
+These private modules are an implementation candidate, not exported Cadence
+APIs. They preserve the existing patch energy, analytic derivatives, boxes and
+qualification tolerance. They do not establish the three requested behavioral
+requirements together: useful automatically recruited recursive correction,
+retained cheap routine, and an advantage over capable ordinary populations.
+Current public quickstarts and the public `Brain` implementation are unchanged.
+
+**The owner's wake rule is semantic:** expensive slow populations should run
+only for surprise or an unsuccessful longer-term outcome. Familiar input
+changes are not a reason to wake them. The numerical scheduler below does not
+yet meet that rule. A six-founder learned diagnostic woke the observer block on
+all 24 familiar changing-input queries, despite accurate predictions; only exact
+repetitions needed no new jobs. Numerical nonstationarity and actual surprise
+must remain separate measurements.
+
+## Exact cached activity
+
+[`ActivityCache`](../src/cadence/_incremental.py) retains forward predictions,
+current errors, reverse adjoints and state gradients for a fixed graph and fixed
+parameters. Input/state changes invalidate the dependent expressions, including
+transitive error readback and returning derivatives. Changes in a relation's
+slope matter even when its residual value stays unchanged. Zero coefficients
+do not remove structural dependencies.
+
+Clean arithmetic is reused only when its dependencies are unchanged. Every
+current eligible coordinate contributes to the final projected-gradient maximum;
+no observer or inconvenient free state is excluded. Energy still sums all
+current factors. Reuse supplies the same current mathematical values as a fresh
+reference evaluation, while changing the procedure from recomputing every edge.
+That procedural difference is private here and needs an explicit documented
+contract before public integration. It is not permission to weaken stationarity.
+
+[`test_incremental.py`](../tests/test_incremental.py) compares against the
+independent full reference evaluator, including ordinary, nested residual and
+direct recurrent graph contacts, transactional failures, forks and factual
+clamps. Recurrent private graph tests do not add recurrent wiring to `Cortex`.
+
+## Automatic independently progressing activity proposals
+
+[`ActivitySession`](../src/cadence/_attention.py) owns a copied continuation.
+`from_brain` starts no jobs. `begin` atomically installs validated inputs and
+clamps, optionally a new parameter generation, then recruits work. Parameters
+stay fixed within the cycle; this module performs no learning admission.
+`advance` collects workers and recruits current nonstationary blocks, ranked by
+their projected-gradient residual. There is no application attention flag or
+per-population evaluator.
+
+One job per block proposes projected activity updates with the original Armijo
+acceptance rule. Jobs whose writes would invalidate each other's gradient reads
+do not run as a competing pair; unrelated blocks can progress independently.
+This avoids repeatedly invalidating a slower coupled proposal. It is a changed
+block update schedule, not a claim that it follows the public simultaneous
+solver's identical numerical trajectory or reaches a unique stationary point.
+
+Each proposal owns an immutable context identity, dependency-version stamps and
+private arithmetic cache. Before commitment the owner checks its provenance,
+all relevant versions, current slope and current whole-energy decrease. Input,
+clamp and model changes invalidate affected proposals even when values later
+return to their previous values. Workers never publish or mutate the canonical
+public brain themselves.
+
+`result` exposes state only with a complete **current** certificate. `is_current`
+checks that owned result against the current revision; it is not an actuator
+lease. The caller must serialize its final publication/execution boundary.
+`run_until_complete(seconds=...)` continues a begun cycle and returns no
+publishable state on refusal, changed context or soft deadline. `begin`'s job
+budget counts block submissions, not public solver sweeps. A deadline does not
+kill an executing worker. `close(wait=True)` drains owned work; pending or
+exceptional work remains explicit rather than counted as zero.
+
+Worker startup is also an ownership boundary. A submitted wrapper cannot start
+numerical work until the owner holds its returned future. If submission raises
+after enqueueing, the wrapper is denied, queued jobs are canceled and the pool
+is retired. The attempted submission and unknown infrastructure work remain
+counted; that session cannot publish or accept another `begin`. Reconstruct the
+owner after draining it. Tests cover both thread-start failure and a wrapper
+that already started before `submit` raised.
+
+The barrier tests in [`test_attention.py`](../tests/test_attention.py) distinguish
+two cases. A newly relevant unresolved slow coordinate prevents global
+publication. Conversely, an obsolete old slow job can remain paused while the
+current slow coordinate is valid and independent fast work produces a new full
+certificate. That fixture shares a genuinely clamped observation between the
+branches; it does not clamp a slow coordinate just to hide its error. Tests also
+show simultaneous independent worker starts, stale/ABA rejection, corrupted
+proposals, refused line searches, budget refusal and unchanged source brains.
+
+This is genuine independent **work progress with conditional availability of
+valid blocks**. It does not let a fast population issue an action while a
+currently relevant coupled slow population is unresolved. Doing that would
+require a different temporal boundary and qualification contract. It is not
+established by these tests or by a Python worker thread.
+
+## Costs and learned numerical comparison
+
+The cache reports setup/evaluation counts, edge and patch visits, dependency
+visits, coefficient/input/state checks, finite checks, energy terms, certificate
+checks, forks and declared copied scalar slots. These are explicit logical-work
+counters, not measured physical RAM traffic. The activity owner additionally
+counts its dependency traversals, coordinate scans and serialized context bytes,
+plus submissions, returns, proposals, backtracks, commits, stale jobs and errors.
+Final energy/certificate scans, failed trials, context changes and worker copies
+are included. In-flight work makes a returned cost provisional until drained;
+unreturned exceptional work is marked unknown. Python allocation, scheduling and
+OS overhead require wall-time measurements. Session `elapsed_seconds` is its
+whole lifetime, including caller idle time, not isolated solver latency.
+
+The bounded learned regression compares two 12-patch ordinary/observer layouts,
+each at seeds 31, 37 and 43. Each uses four real batches of eight supplied
+physical-transition witnesses before four changing-input, factual-clamp queries.
+Both solvers qualify all 24 queries against the reference objective. The largest
+state difference is about 1.47e-6; this is numerical agreement in this fixture,
+not general confluence. Deliberate zero-budget refusals leave the accepted public
+brain unchanged. It is not a task-acquisition or observer-benefit experiment.
+
+Over four queries per founder, the measured activity-cache edge visits were
+2,752–2,992 for ordinary layouts versus 3,620–3,712 for public repair. Observer
+activity repair used 5,360–5,744 versus 4,992–5,612: it can require **more** edge
+work. Owner bookkeeping and threads add further costs. These results do not
+justify a general speed claim; all positive and negative cases belong in any
+reported comparison.
+
+## Factual foreground/background integration
+
+[`ForecastSession`](../src/cadence/_experience.py), exercised by
+[`test_experience.py`](../tests/test_experience.py), owns one copied brain and
+combines qualified foreground activity with one private background factual batch.
+It issues an immutable free forecast, accepts the matching later measured
+outcome, and retains the original context/forecast if learning refuses or changes
+the model. Forecast coordinates cannot be clamped, including through aliases.
+Present factual measurements may condition the solve. Accepted batch parameters
+can be installed only against the matching generation, preserving newer accepted
+foreground activity; the next foreground query must qualify again.
+
+An actual forecast mismatch recruits bounded factual replay without a caller's
+surprise flag. A configured terminal task deficit can also leave demand despite
+accurate predictions. This is not a goal-directed action policy: scalar reward
+does not become an action target, and this prototype supplies no planner.
+Demand is retained until a later outcome confirms recovery of the same input and
+measurement context. Merely accepting a fit or seeing an unrelated quiet context
+does not clear it. Exact-context deficits are bounded; overflow remains explicit
+and cannot be interpreted as successful recovery. Exact matching is a finite
+fixture control, not learned attention generalization to changing Doom frames.
+
+The integrated tests exercise actual learned scalar-prediction correction,
+quiet post-recovery operation, independent fit/foreground progress, preserved
+activity, factual custody, terminal deficit without surprise and refusal/overflow
+handling. They establish software ownership and small predictive behavior, not
+recursive necessity, motor skill, independent live-population clocks or a
+measured advantage over capable ordinary brains. There is no complete owner
+checkpoint API: a plain `Brain` snapshot omits pending forecasts, deficit state,
+evidence selection and in-flight work.
+
+Run the focused checks from this worktree with the intended interpreter:
+
+```sh
+PYTHONPATH=src python -m pytest -q tests/test_incremental.py tests/test_attention.py tests/test_experience.py
+```
+
+Before public promotion, independently audit the complete owner and certificate
+contracts, exercise failures under actual body execution, and retain all work
+and outcomes. Physical correction and later task skill must be measured against
+ordinary and wider ordinary controls on equal information, including routine
+plus factual fitting. The all-three gate remains unpassed.

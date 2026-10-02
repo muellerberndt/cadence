@@ -335,6 +335,7 @@ def test_work_counts_include_tensor_and_reference_evaluations(
     graph = _repair.Graph(1, 2, (("input", 0, 0), ("residual", 0, 1)))
     engine = TensorEngine(graph, device, dtype)
     counts = {"tensor": 0, "reference": 0}
+    reference_edges = 0
     tensor_evaluate, reference_evaluate = engine.evaluate, _repair._evaluate
 
     def counted_tensor(*args, **kwargs):
@@ -342,7 +343,16 @@ def test_work_counts_include_tensor_and_reference_evaluations(
         return tensor_evaluate(*args, **kwargs)
 
     def counted_reference(*args, **kwargs):
+        nonlocal reference_edges
         counts["reference"] += 1
+        cache = kwargs.get("_query_cache")
+        # Reference polishing can reuse input-only forward predictions. Every
+        # reverse edge still runs; only uncached forward edges are revisited.
+        reference_edges += len(graph.edges) + sum(
+            len(incoming)
+            for target, incoming in enumerate(graph.incoming)
+            if cache is None or cache[0][target] is None
+        )
         return reference_evaluate(*args, **kwargs)
 
     monkeypatch.setattr(engine, "evaluate", counted_tensor)
@@ -359,7 +369,9 @@ def test_work_counts_include_tensor_and_reference_evaluations(
     assert result["qualified"]
     assert result["work"]["evaluations"] == sum(counts.values())
     assert result["work"]["patch_visits"] == 2 * graph.n_patches * sum(counts.values())
-    assert result["work"]["edge_visits"] == 2 * len(graph.edges) * sum(counts.values())
+    assert result["work"]["edge_visits"] == (
+        2 * len(graph.edges) * counts["tensor"] + reference_edges
+    )
     assert result["execution"]["reference_evaluations"] == counts["reference"]
     assert (
         result["work"]["proposals"] == result["sweeps"] + result["work"]["backtracks"]
