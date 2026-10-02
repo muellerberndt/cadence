@@ -153,10 +153,113 @@ measured advantage over capable ordinary brains. There is no complete owner
 checkpoint API: a plain `Brain` snapshot omits pending forecasts, deficit state,
 evidence selection and in-flight work.
 
+## Private temporal records: a different coupling contract
+
+[`RecordSession`](../src/cadence/_records.py) tests a narrower candidate for
+surprise-driven slow work. It has one active graph, state, fixed parameter set,
+evidence ledger and publication owner. The static fast/slow boundary is a
+declared design choice. Cross-boundary state/error contacts become internal
+inputs holding immutable historical values; slow input reads also come from a
+committed historical record. Ordinary state and residual contacts **within**
+each block remain live.
+
+This retains the local patch relation but **changes the joint objective**.
+Returning influence across the boundary is now delayed through records. It is
+not the existing fully live `Cortex` graph running unchanged at two speeds.
+Every active fast and slow coordinate stays free, and every answer qualifies the
+complete lowered graph against its declared committed record. No unresolved slow
+coordinate is hidden by a clamp or omitted from the certificate. A pending slow
+proposal belongs to a possible next revision, not the active state.
+
+Only an acknowledged miss of the owned pre-issued forecast, or an acknowledged
+terminal task deficit, requests a new slow record. The body supplies live inputs,
+actual outcomes and the task requirement; it supplies no attention flag or
+predicted task value. An optional value coordinate is read from qualified brain
+activity. Ordinary fast input changes still need numerical repair, but do not
+create slow requests. This prototype has no pre-terminal goal-directed planner.
+`task_value` and the required goal value are ledger/recruitment metadata, not
+automatically wired solver inputs or a correction objective. The missed-need
+test establishes recruitment despite an accurate forecast; it does not
+establish goal-directed correction.
+
+The bounded ledger retains issued inputs, state, exact historical patch errors,
+forecast and record provenance separately from the actual ACK. Historical patch
+errors are errors of their recorded lowered solve; they are neither current
+original-graph errors nor the later physical outcome-minus-forecast error.
+The latter drives recruitment and remains separately recorded. This candidate
+does not add a dedicated learned performance-error contact.
+
+A worker owns an immutable record proposal. Qualified foreground step/ACK cycles
+can continue while it is paused. Newer ACKs alone do not stale it or disappear:
+remaining demands are queued. Adoption rejects a changed base record or task
+specification, then requalifies **all** coordinates at the latest fast inputs
+before atomically installing the record and state. The receipt exposes both
+graph identities, the model identity, record origin/age and a current-publication
+check. Acknowledgment or record adoption invalidates an old publication token;
+the original issued forecast remains available for its one matching ACK.
+
+Commit success alone does not clear demand. Recovery requires a later quiet
+actual outcome at the same exact live input and task specification, after a
+revision incorporating that demand. A terminal deficit additionally requires a
+satisfactory terminal outcome. Multiple failed contexts remain distinct within
+capacity. This exact-context rule is a bounded fixture control, not learned
+attention generalization. A full ledger refuses a new forecast before losing
+its outcome. There is no complete owner snapshot API.
+
+Foreground transactions use [`ActivitySession.fork`](../src/cadence/_attention.py)
+to copy the existing exact cache rather than reconstruct every relation. Parent
+copy work is charged; the candidate has independent counters and workers. The
+tests forbid cache construction after initialization and observe actual cached
+prediction evaluations during changing familiar inputs: no slow prediction is
+recomputed in that fixture, while complete energy/certificate scans and copy
+costs remain. Startup, proposal and commit work are retained separately and in
+the total. This establishes a software boundary, not a general speed advantage.
+
+This minimal private example uses hand-set parameters and an independently
+specified deterministic body. It is **not acquired skill evidence**:
+
+```python
+import math
+from cadence import _repair as R
+from cadence._records import RecordSession
+
+graph = R.Graph(2, 2, (
+    ("input", 0, 0), ("state", 1, 0),
+    ("input", 0, 1), ("input", 1, 1), ("residual", 0, 1),
+))
+owner = RecordSession(
+    graph, (0,), (0.0, 0.0), (0.0, 0.0),
+    (0.7, 0.2, 0.2, 0.5, 0.3), (0.0, 0.0),
+    forecast_indices=(0,), outcome_inputs=(1,),
+)
+try:
+    for stimulus in (0.2, -0.4, 0.7):
+        issued = owner.step((stimulus,))
+        assert issued["qualified"]
+        actual = (math.tanh(0.7 * stimulus) / 1.01,)
+        ack = owner.acknowledge(issued["ticket"], actual)
+        assert not ack["wake"]
+    receipt = owner.result()
+    assert receipt["qualified"]
+    assert receipt["counts"]["requests"] == 0
+    assert receipt["jobs"]["foreground"][1] == 0
+finally:
+    owner.close()
+```
+
+[`test_records.py`](../tests/test_records.py) also checks actual forecast misses,
+accurately forecast missed needs, paused-worker overlap, queued evidence after
+failure, atomic refusal, goal/requirement changes, historical reconstruction,
+publication invalidation and exception accounting. Parameters stay fixed:
+there is no temporal-feedback learning, action credit, retained learned
+correction, measured recursive advantage or integrated training here. The
+separate `ForecastSession` learning tests do not establish those properties for
+this new record-boundary model.
+
 Run the focused checks from this worktree with the intended interpreter:
 
 ```sh
-PYTHONPATH=src python -m pytest -q tests/test_incremental.py tests/test_attention.py tests/test_experience.py
+PYTHONPATH=src python -m pytest -q tests/test_incremental.py tests/test_attention.py tests/test_experience.py tests/test_records.py
 ```
 
 Before public promotion, independently audit the complete owner and certificate

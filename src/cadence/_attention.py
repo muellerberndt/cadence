@@ -94,6 +94,7 @@ class ActivitySession:
             "tolerance",
             "step",
             "backtracks",
+            "workers",
         )
     )
 
@@ -151,6 +152,7 @@ class ActivitySession:
             if workers is None
             else integer(workers, "workers", 1)
         )
+        self.workers = workers
         self._lock = threading.RLock()
         self._versions, self._pending, self._blocked = {}, {}, {}
         self._work = {
@@ -188,6 +190,45 @@ class ActivitySession:
         self._pool = ThreadPoolExecutor(
             max_workers=workers, thread_name_prefix="cadence-repair"
         )
+
+    def fork(self):
+        """Independent qualified continuation, without re-evaluating the graph.
+
+        Only a drained, qualified owner can fork. The parent pays cache and
+        owner copy work; the child starts new counters and its own worker pool.
+        This is private transactional activity, not a public Brain checkpoint.
+        """
+        with self._lock:
+            if self._closed or self._broken or self._pending:
+                raise ValueError("fork requires an open drained owner")
+            if not self.result()["qualified"]:
+                raise ValueError("fork requires qualified activity")
+            child = object.__new__(type(self))
+            for name in self._FROZEN:
+                setattr(child, name, getattr(self, name))
+            child._lock = threading.RLock()
+            child._cache = self._call(self._cache, "fork")
+            child._versions = dict(self._versions)
+            self._work["owner_copied_slots"] = (
+                self._work.get("owner_copied_slots", 0)
+                + len(self._FROZEN)
+                + 2 * len(self._versions)
+            )
+            child._pending, child._blocked = {}, {}
+            child._work = dict.fromkeys(self._work, 0)
+            child._counts = dict.fromkeys(self._counts, 0)
+            child._model_digest = self._model_digest
+            child._token = child._revision = child._cycle = child._started = 0
+            child._budget = 0
+            child._closed = child._unknown = child._broken = False
+            child._issued_result = None
+            child._born = time.monotonic()
+            child._clamps = dict(self._clamps)
+            self._work["owner_copied_slots"] += 2 * len(self._clamps)
+            child._pool = ThreadPoolExecutor(
+                max_workers=self.workers, thread_name_prefix="cadence-repair"
+            )
+            return child
 
     @classmethod
     def from_brain(

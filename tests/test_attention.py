@@ -368,6 +368,47 @@ def test_configuration_immutable_and_partition_complete():
         ActivitySession(R.Graph(0, 2, ()), ((0,),), (), (0.0, 0.0), (), (0.0, 0.0))
 
 
+def test_qualified_fork_reuses_cache_and_has_independent_state_and_work(monkeypatch):
+    import cadence._attention as module
+
+    s = owner()
+    child = None
+    try:
+        s.begin((0.4,))
+        before = s.run_until_complete(seconds=1)
+
+        def forbidden(*_args, **_kwargs):
+            pytest.fail("fork rebuilt the numerical cache")
+
+        monkeypatch.setattr(module, "ActivityCache", forbidden)
+        child = s.fork()
+        assert child._cache.state == s._cache.state
+        assert child._cache is not s._cache
+        assert child._pool is not s._pool
+        assert child._versions is not s._versions
+        assert child._counts["submissions"] == 0
+        assert all(v == 0 for v in child._work.values())
+        assert s.result()["work"]["forks"] > before["work"]["forks"]
+        child.begin((-0.4,))
+        assert child.run_until_complete(seconds=1)["qualified"]
+        assert child._cache.state != s._cache.state
+        assert s._cache.state == before["state"]
+    finally:
+        if child is not None:
+            child.close()
+        s.close()
+
+
+def test_unqualified_and_closed_owner_cannot_fork():
+    s = owner()
+    s.begin((0.4,), budget=0)
+    with pytest.raises(ValueError, match="qualified"):
+        s.fork()
+    s.close()
+    with pytest.raises(ValueError, match="open"):
+        s.fork()
+
+
 def test_independent_jobs_really_overlap(monkeypatch):
     s = owner(R.Graph(2, 2, (("input", 0, 0), ("input", 1, 1))))
     entered = (threading.Event(), threading.Event())
