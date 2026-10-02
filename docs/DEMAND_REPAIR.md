@@ -256,6 +256,23 @@ correction, measured recursive advantage or integrated training here. The
 separate `ForecastSession` learning tests do not establish those properties for
 this new record-boundary model.
 
+The bounded [`learned_records.py`](../examples/correction_probe/learned_records.py)
+diagnostic also tests ordinary and observing 12-patch brains after four batches
+of eight witnesses, across three fixed seeds. All six retained held-out accuracy
+under the temporal boundary (MAE .00738–.00961, versus newborn .08946–.10717).
+Each completed eight familiar and four held-out input/actual-outcome cycles
+without new cache construction, slow prediction evaluation or slow jobs.
+Separate surprise and terminal-goal branches each recruited slow work in all
+six cases. Startup and independent full-state validation costs are recorded.
+
+This is acquired-routine timing evidence, not learned correction: parameters
+stay fixed after bootstrap, and the appended actual-outcome ports have no
+learned graph contacts in this fixture. The diagnostic does not establish that
+the requested slow work improves behavior, teaches a retained correction, or
+outperforms an ordinary brain. Its compressed receipt retains measured state,
+metrics and work, with hashes for some native payloads; it is not a full
+learning-trajectory replay.
+
 Run the focused checks from this worktree with the intended interpreter:
 
 ```sh
