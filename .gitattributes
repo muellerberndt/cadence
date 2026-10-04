@@ -1,0 +1,2 @@
+# The provenance ledger hashes these frozen fixtures byte for byte.
+tests/fixtures/partitioned_phrase/*.json text eol=lf

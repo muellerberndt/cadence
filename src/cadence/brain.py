@@ -1266,6 +1266,11 @@ class _TorchKernel:
                 moved[r] = not torch.equal(s[:, a0:a1], previous[:, a0:a1])
         for k in range(lay.pairs):
             a0, a1, b0, b1 = lay.bounds(k)
+            if self.device.type == "cuda":
+                # Accumulate directly: avoid a temporary product and a separate
+                # addition kernel per block. Keep the declared block order.
+                out[:, b0:b1].addmm_(s[:, a0:a1], self.blocks[k])
+                continue
             if cache[k] is None or moved[int(lay.pair_pre[k])]:
                 cache[k] = s[:, a0:a1] @ self.blocks[k]
             out[:, b0:b1] += cache[k]

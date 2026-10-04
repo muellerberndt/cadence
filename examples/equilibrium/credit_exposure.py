@@ -121,7 +121,7 @@ def run(args):
         Path(__file__).with_name("temporal_credit.py"),
         *sorted((root / "src/cadence/experimental/equilibrium").glob("*.py")),
     ]
-    sources = {str(path.relative_to(root)): diagnostic.digest(path) for path in paths}
+    sources = {path.relative_to(root).as_posix(): diagnostic.digest(path) for path in paths}
     collection = json.loads(args.collection.read_text())
     config = collection["protocol"]
     protocol = dict(

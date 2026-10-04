@@ -236,7 +236,7 @@ def run(args):
         Path(__file__).with_name("temporal_credit.py"),
         *sorted((root / "src/cadence/experimental/equilibrium").glob("*.py")),
     ]
-    sources = {str(path.relative_to(root)): digest(path) for path in paths}
+    sources = {path.relative_to(root).as_posix(): digest(path) for path in paths}
     protocol = dict(
         schema="credit-diagnostic/1",
         seed=args.seed,

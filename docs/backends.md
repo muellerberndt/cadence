@@ -152,6 +152,15 @@ brings a checkpoint back to the receipt backend, whatever backend it learned on.
 
 ## Precision matters
 
+CUDA block transport accumulates each matrix product directly into its destination,
+preserving block order and the original qualification checks. The
+[System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md) compares
+source-pinned CPU, CUDA float64 and CUDA float32 execution on an RTX 4000 Ada
+laptop, including independent derivatives, refusal, memory and checkpoint custody.
+It reports complete decision costs and timing variation: the small continuing
+nursery remains faster on CPU with Numba. These results do not qualify MPS or the
+separate population solver, and do not establish speech or sequence throughput.
+
 Near multiple attractors, a small rounding difference can change the selected
 state. Compare the deployed backend against CPU float64 with `cd.conformance`
 on representative drives, and report the measured deviation. Check residuals

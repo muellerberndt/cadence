@@ -241,7 +241,16 @@ def test_opposite_refusal_keeps_all_work_before_any_optimizer_write(monkeypatch)
 
 
 @pytest.mark.parametrize("nudge", ["quadratic", "cross_entropy"])
-def test_qualified_contrast_matches_independent_newton_finite_differences(nudge):
+@pytest.mark.parametrize("precision", [None, "float64", "float32"], ids=["cpu", "cuda64", "cuda32"])
+def test_qualified_contrast_matches_independent_newton_finite_differences(nudge, precision):
+    if precision is not None:
+        torch = pytest.importorskip("torch")
+        if not torch.cuda.is_available():
+            pytest.skip("CUDA hardware unavailable")
+    low_precision = precision == "float32"
+    tolerance = 2e-7 if low_precision else 1e-13
+    gradient_rtol = 3e-3 if low_precision else 2e-5
+    gradient_atol = 2e-5 if low_precision else 5e-9
     connectome = cd.Connectome.from_synapses(
         3, pre=[0, 1, 0, 2, 1, 2], post=[1, 0, 2, 0, 2, 1],
         count=[1, 1, 2, 2, 3, 3], sign=[0.08] * 6,
@@ -249,17 +258,22 @@ def test_qualified_contrast_matches_independent_newton_finite_differences(nudge)
     graph = cd.NeuralGraph(
         connectome, cd.learning_neuron_model(gain=1.4, leak=1),
         log_gain=np.full(3, np.log(1.3)), bias=np.array([0.3, 0.2, 0.1]),
+        backend="cpu" if precision is None else "torch",
+        device=None if precision is None else "cuda:0", precision=precision,
     )
     config = cd.LearnerConfig(
-        qualified=True, beta=1e-4, nudge=nudge, temperature=0.3,
-        free_steps=256, nudged_steps=256, tolerance=1e-13, eta=0, eta_bias=0,
+        qualified=True, beta=1e-2 if low_precision else 1e-4, nudge=nudge, temperature=0.3,
+        free_steps=256, nudged_steps=256, tolerance=tolerance, eta=0, eta_bias=0,
     )
     learner = cd.Learner(graph, [1, 2], config)
     drive = np.array([[0.3, 0.2, 0.4], [0.2, 0.1, 0.3]])
     labels = np.array([0, 1])
     learned, report = learner.step(drive, labels)
     contrast, bias_contrast = learner.contrast(learned.free, learned.nudged, learned.opposite)
-    assert all(report[f"{name}_residual"] <= 1e-13 for name in ("free", "nudged", "opposite"))
+    assert all(report[f"{name}_residual"] <= tolerance for name in ("free", "nudged", "opposite"))
+    if precision is not None:
+        assert learned.free.device["v"].device == torch.device("cuda:0")
+        assert learned.free.device["v"].dtype == getattr(torch, precision)
     contact_gain = 1.4 * connectome.count * 1.3
 
     def loss(efficacy, bias):
@@ -294,13 +308,19 @@ def test_qualified_contrast_matches_independent_newton_finite_differences(nudge)
         down[pair] -= 1e-5
         negative_gradient = -(loss(up, graph.bias) - loss(down, graph.bias)) / 2e-5
         edge = np.flatnonzero(pair)[0]
-        np.testing.assert_allclose(contact_gain[edge] * contrast[edge] / scale, negative_gradient, rtol=2e-5, atol=5e-9)
+        np.testing.assert_allclose(
+            contact_gain[edge] * contrast[edge] / scale, negative_gradient,
+            rtol=gradient_rtol, atol=gradient_atol,
+        )
     for neuron in range(3):
         up, down = graph.bias.copy(), graph.bias.copy()
         up[neuron] += 1e-5
         down[neuron] -= 1e-5
         negative_gradient = -(loss(graph.efficacy, up) - loss(graph.efficacy, down)) / 2e-5
-        np.testing.assert_allclose(bias_contrast[neuron] / scale, negative_gradient, rtol=2e-5, atol=5e-9)
+        np.testing.assert_allclose(
+            bias_contrast[neuron] / scale, negative_gradient,
+            rtol=gradient_rtol, atol=gradient_atol,
+        )
 
 
 def same_checkpoint(first, second):

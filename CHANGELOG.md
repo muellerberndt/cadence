@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Accumulate CUDA block transport directly into its destination to avoid a
+  temporary product and a separate addition kernel per block. Add actual-device
+  System 1 equation, gradient, refusal, memory and continuation checks, plus a
+  source-bound CPU/CUDA runtime and memory comparison for issue 98.
+  Preserve POSIX source keys in credit diagnostics and LF bytes in the frozen
+  phrase fixture so the existing provenance checks also pass on Windows.
+
 - Record the measured decline of a normalized composed default
   ([issue 131](https://github.com/muellerberndt/cadence/issues/131)): at the
   proposed `eta=0.003, normalize=0.99, momentum=0.9` for both composed

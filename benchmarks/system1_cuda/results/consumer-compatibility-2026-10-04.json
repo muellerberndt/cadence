@@ -1,0 +1,421 @@
+{
+  "scope": "supplementary keyword compatibility only; no sequence/acquisition/speedup claim",
+  "application_revision": "e6bd446bf6812f1d486c007a398eabc24451f530",
+  "core_baseline": "5cd3b3dbe3c30be8a39854a23a834950f705d366",
+  "core_candidate": "a4d7ba7e9b08159d04186fe69901d61eb5abc0a5",
+  "tests": [
+    {
+      "label": "pinned-0.71.1",
+      "tests": "40",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "29.014",
+      "junit_sha256": "d49339222b8b383ae87dacb4443c46e82dcad32a3d9412cae4a206c27a0d7384"
+    },
+    {
+      "label": "main-5cd3b3d",
+      "tests": "40",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "22.642",
+      "junit_sha256": "952f418b336eb33b78f371a10efdb6c709393730987da97ce9e81dc43f0ff5ea"
+    },
+    {
+      "label": "pr-3d2c81a",
+      "tests": "40",
+      "failures": "0",
+      "errors": "0",
+      "skipped": "0",
+      "time": "19.491",
+      "junit_sha256": "e3fedf26f44284a4a00cee087faa13e7227cb3efaf22d1cd3201e3a2f2021218"
+    }
+  ],
+  "fixtures": [
+    {
+      "job": "baseline-cpu",
+      "process_seconds": 2.8212843999499455,
+      "construction_seconds": 0.014440600061789155,
+      "cold_query_seconds": 0.257944600074552,
+      "eight_timed_queries_seconds": 0.041696700267493725,
+      "query_p50_seconds": 0.004597300023306161,
+      "query_max_seconds": 0.0073111000237986445,
+      "qualified_queries": 12,
+      "total_queries": 16,
+      "untrained_top1": 0,
+      "timed_sweeps": 5312,
+      "synthetic_lesson_seconds": [
+        0.0018797999946400523,
+        0.004433900001458824
+      ],
+      "refusal_seconds": 0.0007169999880716205,
+      "peak_cuda_allocated_bytes": null,
+      "result_sha256": "faf332c3072b04b54b0aa43c88371d608cab8e990fe987f94a1f1ed0801ca447"
+    },
+    {
+      "job": "baseline-cuda32",
+      "process_seconds": 29.340610199957155,
+      "construction_seconds": 0.3743267999961972,
+      "cold_query_seconds": 1.9622756000608206,
+      "eight_timed_queries_seconds": 10.310433500097133,
+      "query_p50_seconds": 1.147494250035379,
+      "query_max_seconds": 2.361720099928789,
+      "qualified_queries": 12,
+      "total_queries": 16,
+      "untrained_top1": 0,
+      "timed_sweeps": 5312,
+      "synthetic_lesson_seconds": [
+        0.06945030007045716,
+        0.020888499915599823
+      ],
+      "refusal_seconds": 0.0035476000048220158,
+      "peak_cuda_allocated_bytes": 13655040,
+      "result_sha256": "04f15035ad9f14b0aaf4d3599c2db174e8869df27b74e5d1560dc883cc030c87"
+    },
+    {
+      "job": "baseline-cuda64",
+      "process_seconds": 37.66442919999827,
+      "construction_seconds": 0.18080639990512282,
+      "cold_query_seconds": 1.386586300097406,
+      "eight_timed_queries_seconds": 17.63638559996616,
+      "query_p50_seconds": 2.174580999999307,
+      "query_max_seconds": 2.9677224999759346,
+      "qualified_queries": 12,
+      "total_queries": 16,
+      "untrained_top1": 0,
+      "timed_sweeps": 5312,
+      "synthetic_lesson_seconds": [
+        0.13718870002776384,
+        0.07815419998951256
+      ],
+      "refusal_seconds": 0.004939800011925399,
+      "peak_cuda_allocated_bytes": 13980672,
+      "result_sha256": "eda3441893712074fd6e3b280642223e8f9a0e782735484d2218877e21a87a44"
+    },
+    {
+      "job": "candidate-cpu",
+      "process_seconds": 2.7808957000961527,
+      "construction_seconds": 0.01733469997998327,
+      "cold_query_seconds": 0.2221887999912724,
+      "eight_timed_queries_seconds": 0.038931700051762164,
+      "query_p50_seconds": 0.004228999954648316,
+      "query_max_seconds": 0.007176500046625733,
+      "qualified_queries": 12,
+      "total_queries": 16,
+      "untrained_top1": 0,
+      "timed_sweeps": 5312,
+      "synthetic_lesson_seconds": [
+        0.0015536999562755227,
+        0.0045698999892920256
+      ],
+      "refusal_seconds": 0.000967899919487536,
+      "peak_cuda_allocated_bytes": null,
+      "result_sha256": "5a6f279d39086dfdda1349ee8fe7306d89f83278bffe7991fdc34579993c7b80"
+    },
+    {
+      "job": "candidate-cuda32",
+      "process_seconds": 21.195569399977103,
+      "construction_seconds": 0.33406740007922053,
+      "cold_query_seconds": 1.4455252999905497,
+      "eight_timed_queries_seconds": 7.744903300073929,
+      "query_p50_seconds": 0.8034322499879636,
+      "query_max_seconds": 1.564652300090529,
+      "qualified_queries": 12,
+      "total_queries": 16,
+      "untrained_top1": 0,
+      "timed_sweeps": 5312,
+      "synthetic_lesson_seconds": [
+        0.1709173999261111,
+        0.044554200023412704
+      ],
+      "refusal_seconds": 0.0066488999873399734,
+      "peak_cuda_allocated_bytes": 14703616,
+      "result_sha256": "3b6498cf143c63be76f3d206dccc473e073ad44bb179709204aafd475697c7e9"
+    },
+    {
+      "job": "candidate-cuda64",
+      "process_seconds": 28.3467947000172,
+      "construction_seconds": 0.361313599976711,
+      "cold_query_seconds": 1.6795907999621704,
+      "eight_timed_queries_seconds": 10.788561100023799,
+      "query_p50_seconds": 1.1510217000031844,
+      "query_max_seconds": 2.189450699952431,
+      "qualified_queries": 12,
+      "total_queries": 16,
+      "untrained_top1": 0,
+      "timed_sweeps": 5312,
+      "synthetic_lesson_seconds": [
+        0.16093949996866286,
+        0.06555669999215752
+      ],
+      "refusal_seconds": 0.005596900009550154,
+      "peak_cuda_allocated_bytes": 15029248,
+      "result_sha256": "e623b758b954369632e90bf9976eea8c3031829aef29876c47b5874268b60d8f"
+    }
+  ],
+  "comparisons": [
+    {
+      "backend": "cpu",
+      "activation_max_error": 0.0,
+      "lesson_report_max_error": 0.0,
+      "work_and_rankings_equal": true
+    },
+    {
+      "backend": "cuda64",
+      "activation_max_error": 4.440892098500626e-16,
+      "lesson_report_max_error": 6.938893903907228e-18,
+      "work_and_rankings_equal": true
+    },
+    {
+      "backend": "cuda32",
+      "activation_max_error": 0.0,
+      "lesson_report_max_error": 0.0,
+      "work_and_rankings_equal": true
+    }
+  ],
+  "limits": [
+    "Private consumer access required; no application source, audio or checkpoints published here.",
+    "Single founder and one before/after pair per backend; timings are diagnostics, not a speedup estimate.",
+    "Fresh untrained keyword brain: 6/8 clips qualify, 2/8 refuse and 0/8 top-one answers are correct per pass.",
+    "Finite teaching uses one synthetic row; fixture audio is never used for teaching.",
+    "No corpus training, sequence, alignment, replay or teacher-free speech-inference result.",
+    "The accepted and reloaded synthetic lessons both execute; their timings are charged separately.",
+    "CUDA allocator peaks include original and reloaded graphs; these are not total VRAM or host peaks.",
+    "MPS is unavailable on this Windows host. Separate hosted CI exercises MPS correctness."
+  ],
+  "protocol": {
+    "scope": "fixed keyword regression, fresh untrained brains; no sequence or acquisition claim",
+    "app_sha": "e6bd446bf6812f1d486c007a398eabc24451f530",
+    "baseline_sha": "5cd3b3dbe3c30be8a39854a23a834950f705d366",
+    "candidate_sha": "a4d7ba7",
+    "seed": 3,
+    "modules": [
+      16,
+      8
+    ],
+    "hop_frames": 2,
+    "lateral": -0.5,
+    "statistics": "fixed zero mean/unit standard deviation, no fitted calibration",
+    "order": "lexically sorted eight repository WAV fixtures",
+    "passes": [
+      "cold and warmup: eight queries",
+      "timed: eight queries"
+    ],
+    "learning": "one synthetic fixed row, replayed once from a saved checkpoint; no fixture teaching",
+    "refusal": "one synthetic fixed row, qualified budgets=1 and tolerance=1e-14",
+    "backend_order": [
+      "cpu",
+      "cuda64",
+      "cuda32"
+    ],
+    "revision_order": [
+      "baseline",
+      "candidate"
+    ],
+    "threads": 1,
+    "tf32": false
+  },
+  "producer_sha256": "ce84a74650ec304af91bc9322e421d7cf1a9e3a28d61839a7bd9c61ad78d02e8",
+  "environment": {
+    "python": "3.13.2",
+    "numpy": "2.5.3",
+    "torch": "2.11.0+cu128",
+    "aiohttp": "3.14.3",
+    "gpu": "NVIDIA RTX 4000 Ada Generation Laptop GPU",
+    "driver": "595.95",
+    "tf32": false
+  },
+  "comparison_tolerances": {
+    "float64": {
+      "atol": 1e-10,
+      "rtol": 1e-10
+    },
+    "float32": {
+      "atol": 2e-05,
+      "rtol": 2e-05
+    }
+  },
+  "failed_collector_attempts": [
+    {
+      "scope": "test wrapper attempt 1",
+      "reason": "Windows path escaping in generated Python command; no tests ran",
+      "jobs": [
+        {
+          "label": "pinned-0.71.1",
+          "exit_code": 1,
+          "seconds": 0.11715020006522536
+        },
+        {
+          "label": "main-5cd3b3d",
+          "exit_code": 1,
+          "seconds": 0.12436569994315505
+        },
+        {
+          "label": "pr-3d2c81a",
+          "exit_code": 1,
+          "seconds": 0.13009529991541058
+        }
+      ]
+    },
+    {
+      "scope": "pinned release attempt 2",
+      "reason": "sandbox could not read pip target directory; explicit import guard rejected fallback",
+      "jobs": [
+        {
+          "label": "pinned-0.71.1",
+          "exit_code": 1,
+          "seconds": 3.268033800064586
+        }
+      ]
+    },
+    {
+      "scope": "fixture wrapper attempt 1",
+      "reason": "extra sample-rate argument to sensory_from_audio; no solves ran",
+      "jobs": [
+        {
+          "label": "baseline-cpu",
+          "exit_code": 1,
+          "process_seconds": 2.6578435000265017
+        },
+        {
+          "label": "candidate-cpu",
+          "exit_code": 1,
+          "process_seconds": 2.3400377000216395
+        },
+        {
+          "label": "baseline-cuda64",
+          "exit_code": 1,
+          "process_seconds": 5.56186329992488
+        },
+        {
+          "label": "candidate-cuda64",
+          "exit_code": 1,
+          "process_seconds": 2.8114458000054583
+        },
+        {
+          "label": "baseline-cuda32",
+          "exit_code": 1,
+          "process_seconds": 2.6329664000077173
+        },
+        {
+          "label": "candidate-cuda32",
+          "exit_code": 1,
+          "process_seconds": 2.538917600060813
+        }
+      ]
+    }
+  ],
+  "baseline_source_sha256_lf": {
+    "__init__.py": "b54a8ff1033c8d581f5182baaa6830ed8982ebb02632d2db565f580f65cdeb13",
+    "_refine.py": "7436526d72bf24e7604068084c753b7e3611567c911bd6b821f658146bf8caec",
+    "belief.py": "5730845dec68b1e58e05be2ee95e0023954c1e7ef636fa66217ccfb2f4447cd1",
+    "belief_torch.py": "fce128409f29e3ebc73dfa79c9349908c4b455b7f03e39ce1312dec06e938ebb",
+    "blocks.py": "5209842f36e7bb191b3a13112f3e35bff3af010b4e47c45b24fbbce00331028c",
+    "brain.py": "d05823a5affbe2c9c4ef7562e68a1f222c411eda914316c62e78d09614cee979",
+    "certificate.py": "d0caac73cc3f4c155cf98e79b744a94e2eb7c5346c1a31c0034121a0364837ea",
+    "checkpoint.py": "b2de46973d83d5750c6a637cdc45785fe053b7c527155ab98dc273ddfe175526",
+    "circuits/__init__.py": "e01af2eb97487c56bd272ce63a115c298345982d1f6342d59a2959de9da61a84",
+    "circuits/assembly.py": "5386b09c833ad005dcfef42eac66e31ec950246f5fe68b512a8c2a87e25ef68e",
+    "circuits/deliberation.py": "c43002b51da841b881188b015141d8b7a68609ce7cd67c9646eb14b869f803a6",
+    "connectome.py": "21e10daeb776e3b9202f877d3911e57a5331fa284a433b24f1e5a6e3149338d4",
+    "experimental/__init__.py": "e5d3c48c6b095306c53b7b2e9ea0e781badd3173506561aacc7969cbb4a8e715",
+    "experimental/equilibrium/__init__.py": "1b32b1ba14a20d927914093985066e1509d285995a38f47ebd3d8b3533974763",
+    "experimental/equilibrium/_repair.py": "ef028854b0d82354df7216ce2bd15d36d49c9acf442b9f845b5f6c31e0af086c",
+    "experimental/equilibrium/_tensor.py": "d5765b286c931863cf540d19133500f734b70270c1bf702d60476c8945d86ce9",
+    "experimental/equilibrium/_validation.py": "05d09fd56ec96ef9315cfe569fa818a718795d1aedefd12d5b02bb619808b0ab",
+    "experimental/equilibrium/bootstrap.py": "e7f5e0096e1ea3b6ac733805ab814acfd368824b86c7b52969d3936eba48868f",
+    "experimental/equilibrium/brain.py": "93287ff9751a79065fadd462d94fc91f77a87650c28ec5c6c8bed30bd8363807",
+    "experimental/equilibrium/column.py": "d3752d27227ca34dfc03134d792cc046fc41d96ac181f19be852a193d1eee203",
+    "experimental/equilibrium/cortex.py": "ed6bcfa51e0458c75f6add458799f547e6a38d26f0e3ee07f7c538c6bcca036e",
+    "experimental/equilibrium/memory.py": "55eb67223932f54f3dd7a4a39f5f540f1af64eb6c9551b3144c7c74cda0b9e2a",
+    "experimental/equilibrium/ports.py": "f0ec46ba314ee20523ff603473256362ae84a1522e89d39751f082f278aa4dca",
+    "experimental/equilibrium/reinforcement.py": "ac06681ce3f0be83632ff8690480de2abd667403c38ceea1788b631453487e6d",
+    "experimental/equilibrium/runtime.py": "85f0464c223578bc4fbd3607a175e7c932f125157b2ca25cd09bd2bb9e0ab428",
+    "experimental/partitioned.py": "75ec1dfdab7943ef45528f31abf51a6651add2064d60d436b90002d62b49e914",
+    "fused.py": "ff0280e25a3db7a50949a7c4b5778dfac8def9a0ff71d8fa130b7ecbd17fb2b2",
+    "generic.py": "c49ecedacd496ce726b724292d8906113e13f01747118b7d99eddd90276bde6a",
+    "genome.py": "8aecf293f9a955aa6fa5678a6d564ac41a1487397282bfdee7253d729ae8fa23",
+    "instruments.py": "30a3798a322134556b2ac2860ad08ab997c84e40bcb9fc10d16dccde0df762f5",
+    "learning.py": "2b7819bf0796aa8f8b0f6cb1e85eb0a43611f79f3dd3ab7135504958d8944176",
+    "life.py": "d2c58a87161bc0c0c1af6b4ce9f13a40b798df422aaeb9c2691155eedc15d89d",
+    "memory.py": "e1665d6d315fd3d4e79c38c8820708d72af1ee603c6ad26a614fcf97b19b11c1",
+    "neuron.py": "e828c63f9a532ecf3408f8adfa8953940b347ce515f473b8c73e8a30f8624ead",
+    "patch.py": "3f167ff1545a125ec3a0dd45484bfc95888022f7610b588b3e9226d1023dd4e3",
+    "planning.py": "6d12eb465d48961f18ac06e5d742af3722c39bf865c1259e13a5bf53da2cbb36",
+    "plasticity.py": "066e0c6b0b7586a35c12a2edca2fddf32b641d42f324a5f1c03795dc27bb10a8",
+    "population.py": "7ddf8efac7c2f5902253c4b96213e50329153cd43376cdf03c138eb99c244ea2",
+    "ports.py": "e26ddcb1dbdb58189cd1baa6979d1b0b269e9f7d38f71a4fb831f41d1dc47227",
+    "protocol.py": "b98b5b2ac4c5a9529efe9af484c092b961ba97c588456da1d5db2dd3d5f95804",
+    "receipts.py": "75b7f4bd0b3d1248aa130cff13dc7f31f88345f63400322e60d01f4c7130b276",
+    "record_patch.py": "aac849bf79bf89efe94372c4af72362bd7158d8f5bc2eaa44283eaa782819781",
+    "record_ports.py": "ef9f0032d2514489ef652eccdef649a3435fbb417a0eaab61357163e14826d63",
+    "record_stack.py": "3851bbe2efbd6407623b0ea4f503bca668ca97dbf3d2fdba9b4ac3a6042e74b4",
+    "recording.py": "3e5feb98096b672cac848e780b33dbcc94e26f90c88290db864c4529e3301cb2",
+    "records.py": "578a122384c52114442d2ce519e87d89258291c22e71ff143882000ae983a7f6",
+    "reference.py": "ae66b866ccdfec649f6b890bbeb1afdef359759f3b06f7703af0ce560e892b4f",
+    "regions.py": "94a9fa776612fa7fe31102734672d3179040a900f234cc3a3f5222172aac6a30",
+    "sparse.py": "1ada55e8fc711460292e31ae3185ea32fc0aa3da42f64e7196719718295fd516",
+    "steering.py": "68d2c7342fa15cd3c3af5a40b679513cd5b787aa4703bab2f1a7c9e8fb495433",
+    "stream.py": "8667a3cac8441591b16d064fa600cd4abe920f2f241f28599d079a71200d3380",
+    "temporal.py": "6922eff7ac4503bad91961f2da72f0ae24b3bf896e264502f3bd13b11b9cbac5",
+    "temporal_memory.py": "3b7e58f3cc5814c06358d18aba00c7abf8e0c4b9f9d6b2a5265f4cc44d7cab11",
+    "timing.py": "f1ce97b0affb2575fd56856ff2c4ebdf69063eff3d43b03c822ba9aa0dd5c629"
+  },
+  "candidate_source_sha256_lf": {
+    "__init__.py": "b54a8ff1033c8d581f5182baaa6830ed8982ebb02632d2db565f580f65cdeb13",
+    "_refine.py": "7436526d72bf24e7604068084c753b7e3611567c911bd6b821f658146bf8caec",
+    "belief.py": "5730845dec68b1e58e05be2ee95e0023954c1e7ef636fa66217ccfb2f4447cd1",
+    "belief_torch.py": "fce128409f29e3ebc73dfa79c9349908c4b455b7f03e39ce1312dec06e938ebb",
+    "blocks.py": "5209842f36e7bb191b3a13112f3e35bff3af010b4e47c45b24fbbce00331028c",
+    "brain.py": "fadc40631cfb792a467a273451d3a2f5609f49d2c7d6af458353249e37556212",
+    "certificate.py": "d0caac73cc3f4c155cf98e79b744a94e2eb7c5346c1a31c0034121a0364837ea",
+    "checkpoint.py": "b2de46973d83d5750c6a637cdc45785fe053b7c527155ab98dc273ddfe175526",
+    "circuits/__init__.py": "e01af2eb97487c56bd272ce63a115c298345982d1f6342d59a2959de9da61a84",
+    "circuits/assembly.py": "5386b09c833ad005dcfef42eac66e31ec950246f5fe68b512a8c2a87e25ef68e",
+    "circuits/deliberation.py": "c43002b51da841b881188b015141d8b7a68609ce7cd67c9646eb14b869f803a6",
+    "connectome.py": "21e10daeb776e3b9202f877d3911e57a5331fa284a433b24f1e5a6e3149338d4",
+    "experimental/__init__.py": "e5d3c48c6b095306c53b7b2e9ea0e781badd3173506561aacc7969cbb4a8e715",
+    "experimental/equilibrium/__init__.py": "1b32b1ba14a20d927914093985066e1509d285995a38f47ebd3d8b3533974763",
+    "experimental/equilibrium/_repair.py": "ef028854b0d82354df7216ce2bd15d36d49c9acf442b9f845b5f6c31e0af086c",
+    "experimental/equilibrium/_tensor.py": "d5765b286c931863cf540d19133500f734b70270c1bf702d60476c8945d86ce9",
+    "experimental/equilibrium/_validation.py": "05d09fd56ec96ef9315cfe569fa818a718795d1aedefd12d5b02bb619808b0ab",
+    "experimental/equilibrium/bootstrap.py": "e7f5e0096e1ea3b6ac733805ab814acfd368824b86c7b52969d3936eba48868f",
+    "experimental/equilibrium/brain.py": "93287ff9751a79065fadd462d94fc91f77a87650c28ec5c6c8bed30bd8363807",
+    "experimental/equilibrium/column.py": "d3752d27227ca34dfc03134d792cc046fc41d96ac181f19be852a193d1eee203",
+    "experimental/equilibrium/cortex.py": "ed6bcfa51e0458c75f6add458799f547e6a38d26f0e3ee07f7c538c6bcca036e",
+    "experimental/equilibrium/memory.py": "55eb67223932f54f3dd7a4a39f5f540f1af64eb6c9551b3144c7c74cda0b9e2a",
+    "experimental/equilibrium/ports.py": "f0ec46ba314ee20523ff603473256362ae84a1522e89d39751f082f278aa4dca",
+    "experimental/equilibrium/reinforcement.py": "ac06681ce3f0be83632ff8690480de2abd667403c38ceea1788b631453487e6d",
+    "experimental/equilibrium/runtime.py": "85f0464c223578bc4fbd3607a175e7c932f125157b2ca25cd09bd2bb9e0ab428",
+    "experimental/partitioned.py": "75ec1dfdab7943ef45528f31abf51a6651add2064d60d436b90002d62b49e914",
+    "fused.py": "ff0280e25a3db7a50949a7c4b5778dfac8def9a0ff71d8fa130b7ecbd17fb2b2",
+    "generic.py": "c49ecedacd496ce726b724292d8906113e13f01747118b7d99eddd90276bde6a",
+    "genome.py": "8aecf293f9a955aa6fa5678a6d564ac41a1487397282bfdee7253d729ae8fa23",
+    "instruments.py": "30a3798a322134556b2ac2860ad08ab997c84e40bcb9fc10d16dccde0df762f5",
+    "learning.py": "2b7819bf0796aa8f8b0f6cb1e85eb0a43611f79f3dd3ab7135504958d8944176",
+    "life.py": "d2c58a87161bc0c0c1af6b4ce9f13a40b798df422aaeb9c2691155eedc15d89d",
+    "memory.py": "e1665d6d315fd3d4e79c38c8820708d72af1ee603c6ad26a614fcf97b19b11c1",
+    "neuron.py": "e828c63f9a532ecf3408f8adfa8953940b347ce515f473b8c73e8a30f8624ead",
+    "patch.py": "3f167ff1545a125ec3a0dd45484bfc95888022f7610b588b3e9226d1023dd4e3",
+    "planning.py": "6d12eb465d48961f18ac06e5d742af3722c39bf865c1259e13a5bf53da2cbb36",
+    "plasticity.py": "066e0c6b0b7586a35c12a2edca2fddf32b641d42f324a5f1c03795dc27bb10a8",
+    "population.py": "7ddf8efac7c2f5902253c4b96213e50329153cd43376cdf03c138eb99c244ea2",
+    "ports.py": "e26ddcb1dbdb58189cd1baa6979d1b0b269e9f7d38f71a4fb831f41d1dc47227",
+    "protocol.py": "b98b5b2ac4c5a9529efe9af484c092b961ba97c588456da1d5db2dd3d5f95804",
+    "receipts.py": "75b7f4bd0b3d1248aa130cff13dc7f31f88345f63400322e60d01f4c7130b276",
+    "record_patch.py": "aac849bf79bf89efe94372c4af72362bd7158d8f5bc2eaa44283eaa782819781",
+    "record_ports.py": "ef9f0032d2514489ef652eccdef649a3435fbb417a0eaab61357163e14826d63",
+    "record_stack.py": "3851bbe2efbd6407623b0ea4f503bca668ca97dbf3d2fdba9b4ac3a6042e74b4",
+    "recording.py": "3e5feb98096b672cac848e780b33dbcc94e26f90c88290db864c4529e3301cb2",
+    "records.py": "578a122384c52114442d2ce519e87d89258291c22e71ff143882000ae983a7f6",
+    "reference.py": "ae66b866ccdfec649f6b890bbeb1afdef359759f3b06f7703af0ce560e892b4f",
+    "regions.py": "94a9fa776612fa7fe31102734672d3179040a900f234cc3a3f5222172aac6a30",
+    "sparse.py": "1ada55e8fc711460292e31ae3185ea32fc0aa3da42f64e7196719718295fd516",
+    "steering.py": "68d2c7342fa15cd3c3af5a40b679513cd5b787aa4703bab2f1a7c9e8fb495433",
+    "stream.py": "8667a3cac8441591b16d064fa600cd4abe920f2f241f28599d079a71200d3380",
+    "temporal.py": "6922eff7ac4503bad91961f2da72f0ae24b3bf896e264502f3bd13b11b9cbac5",
+    "temporal_memory.py": "3b7e58f3cc5814c06358d18aba00c7abf8e0c4b9f9d6b2a5265f4cc44d7cab11",
+    "timing.py": "f1ce97b0affb2575fd56856ff2c4ebdf69063eff3d43b03c822ba9aa0dd5c629"
+  }
+}
