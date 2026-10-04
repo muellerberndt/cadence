@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- Distinguish signed activity below rest from silence (issue 106). Preserve the
+  historical strict activity-fraction expected failure and add functional
+  response, qualified acquisition/retention and full saved next-update guards
+  for the existing zero and optional 0.5 processing-bias settings. Core equations,
+  defaults and saved-state semantics are unchanged.
+
 - Record the measured decline of a normalized composed default
   ([issue 131](https://github.com/muellerberndt/cadence/issues/131)): at the
   proposed `eta=0.003, normalize=0.99, momentum=0.9` for both composed

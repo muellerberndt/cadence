@@ -67,6 +67,15 @@ candidate: it can reduce silence under some random drives, but positive bias
 does not guarantee responsive activity, acquisition, retention or convergence.
 Compare those outcomes against the zero-bias control before selecting it.
 
+With the signed leaky neuron, an emission below rest can still respond to input
+and contribute to local teaching. The fraction of nonpositive emissions is an
+activity diagnostic, rather than a count of dead neurons. The functional
+regression in `tests/test_operating_range_function.py` checks an independent
+signed response derivative, qualified acquisition and old/new retention on one
+declared continuing graph task, and complete saved next-update continuation
+for both zero and 0.5 bias. This bounded evidence supports the existing option;
+it does not select a better default or establish behavior on every task.
+
 All these biases remain plastic. `brain.resting_bias` records the initialization
 choice; `brain.brain.bias` holds the current learned values. Checkpoints preserve
 both, and loading restores the learned vector without reapplying initialization.
