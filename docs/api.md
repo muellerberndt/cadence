@@ -457,7 +457,7 @@ and a complete runnable example.
   that amount in a step. `None` or zero uses the full step cap. Nonfinite drives and warm
   potentials/adaptation are rejected. Use floating arrays for dense drives and maps for
   selected indices: the legacy integer vector of length `n` containing only 0/1 is a drive.
-- `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0) -> Equilibrium`:
+- `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0, first_halving=0) -> Equilibrium`:
   seek a joint state whose equation residual is below tolerance, checking after each chunk.
   `budget` caps additional settling steps exactly, including a short final chunk;
   zero checks the starting state. Each check uses one transport; unread float64 Torch
@@ -467,6 +467,9 @@ and a complete runnable example.
   repeated complete-state checkpoints can end a stalled attempt early when another
   halving remains; unused sweeps stay available to the later attempts. Repetition
   never qualifies an answer, and the final attempt does not stop for stagnation.
+  `first_halving` (at most `damping`) skips the schedule's first attempts: the solve
+  starts at `dt * 2**-first_halving`, keeps the smallest step `dt * 2**-damping` and
+  divides the budget among the remaining attempts; zero is the default schedule.
   `Equilibrium` has `state`, per-row `residual`, total `steps`, `tolerance`,
   `residual_checks`, `damping_halvings`, `stagnation_checks`, and a boolean
   per-row `converged` property. `residual_checks` counts additional transport
@@ -1090,7 +1093,7 @@ founder genes for a small share of moments; the
   numerical integration-step halvings within each phase's existing sweep budget;
   the original model and its fixed-point equations are preserved. Qualified
   learning requires a finite residual tolerance.
-- `Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None, plastic_neurons=None, reciprocal=True, tie_groups=None, synapse_rate=None, slots=1, updates=0, contrast_updates=0)`:
+- `Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None, plastic_neurons=None, reciprocal=True, tie_groups=None, synapse_rate=None, slots=1, updates=0, contrast_updates=0, nudged_settle=None)`:
   `plastic_synapses` and `plastic_neurons` are bool masks over synapses and neurons; only those
   move and decay, so two learners can share one brain without one's decay eroding the other's
   synapses. With `reciprocal`, each reciprocal synapse pair shares one efficacy.
@@ -1108,6 +1111,12 @@ founder genes for a small share of moments; the
   `slots` splits the outputs into softmax groups (a count of equal groups, or one size per
   group); `updates` counts all applied updates, while `contrast_updates` counts only
   this learner's own optimizer history, excluding external reward/direct updates.
+  `nudged_settle` is an optional `NudgedSettle`: `step` then solves each qualified
+  nudged phase with it and adds `nudged_settle_probe_steps`,
+  `nudged_settle_discarded_steps` and `nudged_settle_fallbacks` to the report; that
+  extra work is also included in `total_steps` and `total_row_sweeps`. It requires
+  `qualified=True` (a finite configuration raises `ValueError` before any phase).
+  It is not saved with the learner.
   - `free(drive, warm=None)`, `nudged(drive, free, target, sign=1.0, weight=None)`,
     `targets(labels)`, `nudge_for(target, beta, weight=None)`;
   - `contrast(free, nudged, opposite=None) -> (per_synapse, per_neuron)`,
@@ -1149,6 +1158,16 @@ founder genes for a small share of moments; the
   - `predict(drive)`, `accuracy(drive, labels, batch=256)`,
     `parameters()`, `to_dict()`; attributes `brain`, `reverse` (index of each synapse's
     reverse, or −1), `second_moment` (when normalising).
+- `NudgedSettle(first_halving=2, probe=10.0)`: an opt-in numerical strategy for
+  qualified nudged phases ([learning guide](learning.md#skipping-the-undamped-attempt-of-nudged-phases)).
+  `solve(learner, drive, free, nudge) -> (Equilibrium, work)` runs the learner's
+  damping schedule from `first_halving` (at most `damping`), then, unless `probe` is
+  `None`, solves the phase again from a one-pass copy of the nudge down the seams from
+  the outputs. If either solve fails to qualify, or their activations differ by more
+  than `probe` tolerances, the phase is solved again exactly as the default learner
+  would. `work` holds `probe_sweeps`, `discarded_sweeps`, `fallback` and, when probed,
+  `probe_gap`. The equations, tolerance, smallest step and update law are unchanged.
+  The probe detects disagreement between two starts; it does not prove uniqueness.
 - `calibrate_bias(brain, drives, targets, *, per_neuron=False, rounds=3, span=(-6.0, 6.0), iterations=16, steps=100, tolerance=1e-4, qualified=False, damping=3, report=None) -> np.ndarray`:
   candidate biases found by coordinate bisection under a finite, nonempty drive
   batch. `targets` maps population names or neuron indices to desired mean

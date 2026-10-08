@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+- Add `NeuralGraph.equilibrate(first_halving=...)` and an opt-in
+  `Learner(nudged_settle=NudgedSettle())` that starts qualified nudged phases
+  further down the same damping schedule. An agreement probe solves each phase
+  again from a different start and falls back to the default phase when the two
+  disagree. Equations, tolerance, smallest step, qualification and the contrast
+  rule are unchanged; finite configurations refuse it, and defaults are unchanged.
+  On the composed brain's orbiting `dt=1` dynamics it charged 7 times fewer nudged
+  sweeps. Without lateral inhibition it costs 3 to 7 times more. Its 24-lesson
+  trajectories differed from the default's in 4 to 5 of 24 free answers at
+  tolerance 0.003, so the declared promotion bar is not met
+  ([measurement](benchmarks/nudged_settle/README.md)). An earlier fitted
+  `RecoveryStart` saved almost nothing and was removed; its
+  [failed comparison](benchmarks/recovery_start/README.md) is retained.
 - Apply extra arousal heat to one uniformly chosen motor slot per moment
   ([#159](https://github.com/muellerberndt/cadence/issues/159)); other slots sample
   the learned base policy. Preserve the one-slot sampling law and existing genes.

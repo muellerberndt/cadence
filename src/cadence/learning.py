@@ -51,6 +51,7 @@ from .blocks import block_contrast
 from .brain import Backend, Brain, BrainState, Equilibrium, Nudge
 from .connectome import Connectome
 from .neuron import NeuronModel
+from .nudged_settle import NudgedSettle
 
 __all__ = [
     "Learner",
@@ -263,6 +264,8 @@ class Learner:
     slots: int | Sequence[int] = 1
     updates: int = 0
     contrast_updates: int = 0  # optimizer history excludes externally applied reward updates
+    # opt-in numerical strategy for qualified nudged phases; None keeps the default schedule
+    nudged_settle: NudgedSettle | None = None
     velocity: np.ndarray = field(init=False, repr=False)
     velocity_bias: np.ndarray = field(init=False, repr=False)
     second_moment: np.ndarray = field(init=False, repr=False)
@@ -298,6 +301,8 @@ class Learner:
                 raise ValueError("slot sizes must be positive and add up to the output neurons")
         self.slot_sizes = np.asarray(sizes, dtype=np.int64)
         self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.int64)
+        if self.nudged_settle is not None and not isinstance(self.nudged_settle, NudgedSettle):
+            raise ValueError("nudged_settle must be a NudgedSettle or None")
         self.slot_count = len(sizes)  # ``slots`` keeps what was asked for
         self.slot_size = int(self.slot_sizes[0]) if len(set(sizes)) == 1 else 0  # equal, or not
         self.output_groups: np.ndarray | None = None
@@ -882,19 +887,29 @@ class Learner:
         if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
+        settle = self.nudged_settle
+        if settle is not None and not cfg.qualified:
+            raise ValueError(
+                "nudged_settle requires qualified=True: only qualified phases are "
+                "checked against the original equations whatever their integration path"
+            )
         if cfg.qualified:
             phases: dict[str, Equilibrium] = {}
             phases["free"] = self._qualified_phase(drive, warm, cfg.free_steps)
             if not np.all(phases["free"].qualified):
                 raise LearningPhaseError("free", phases)
             free = replace(phases["free"].state, steps=phases["free"].steps)
+            extra = {"probe_sweeps": 0.0, "discarded_sweeps": 0.0, "fallback": 0.0}
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 if name == "opposite" and not cfg.centered:
                     break
-                phases[name] = self._qualified_phase(
-                    drive, free, cfg.nudged_steps,
-                    self.nudge_for(target, sign * cfg.beta, weight),
-                )
+                nudge = self.nudge_for(target, sign * cfg.beta, weight)
+                if settle is None:
+                    phases[name] = self._qualified_phase(drive, free, cfg.nudged_steps, nudge)
+                else:
+                    phases[name], work = settle.solve(self, drive, free, nudge)
+                    for key in extra:
+                        extra[key] += work[key]
                 if not np.all(phases[name].qualified):
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
@@ -902,6 +917,15 @@ class Learner:
                         if "opposite" in phases else None)
             report = self.update(free, nudged, opposite)
             report.update(_phase_report(phases, accepted=True, qualified=True))
+            if settle is not None:
+                # Charge the probe solves and any discarded attempt as work, not as phases.
+                rows = float(np.size(phases["free"].residual))
+                report["nudged_settle_probe_steps"] = extra["probe_sweeps"]
+                report["nudged_settle_discarded_steps"] = extra["discarded_sweeps"]
+                report["nudged_settle_fallbacks"] = extra["fallback"]
+                added = extra["probe_sweeps"] + extra["discarded_sweeps"]
+                report["total_steps"] += added
+                report["total_row_sweeps"] += rows * added
             return LearnedState(free, nudged, opposite), report
         free = self.free(drive, warm)
         nudged = self.nudged(drive, free, target, weight=weight)
