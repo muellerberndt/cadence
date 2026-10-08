@@ -499,6 +499,61 @@ epochs do not by themselves mean greater sample efficiency or lower compute. Whe
 task is to learn what follows a reading, a [records cortex](memory.md#records) reads with
 one product and writes with one delta-rule step per outcome, without settling phases.
 
+### A recovery start for qualified nudged phases
+
+Both nudged phases normally start from the free state. Under `qualified=True` they
+must still settle to the full equations, so where they start can change their sweep
+count but not what qualifies them. `Learner(recovery=RecoveryStart())` renders that
+start from the free state seam by seam: shell 0 is the output group, and shell `k`
+holds the neurons first reached from shell `k - 1` by a synapse. An output starts
+at its free potential plus a gain times the nudge drive at the free state; a deeper
+neuron adds a gain times the synaptic input it receives from the shell above's
+rendered change. Inputs never move. With `fit=False` every gain is one: a single
+pass copying the nudge down the seams.
+
+After each accepted lesson, each gain is refitted by a ridge regression pulled
+toward one. Its target is the neuron's own settled potential change. Its feature
+is computed from the settled change of the shell above, never from the rendered
+start, so the gains cannot feed on their own estimates. A refused lesson changes
+neither the parameters nor these statistics. The statistics are a numerical
+cache, not learned knowledge, and are not saved: a reloaded learner restarts at
+gain one. Each lesson's extra work is reported as `recovery_row_seam_passes`.
+
+```python
+import numpy as np
+import cadence as cd
+
+connectome = cd.layered(6, 12, 3, seed=3, density=1.0)
+config = cd.LearnerConfig(
+    qualified=True, damping=3, free_steps=4096, nudged_steps=4096, tolerance=1e-9,
+)
+plain = cd.Learner(cd.NeuralGraph(connectome, cd.learning_neuron_model()),
+                   connectome.populations["output"], config)
+started = cd.Learner(cd.NeuralGraph(connectome, cd.learning_neuron_model()),
+                     connectome.populations["output"], config, recovery=cd.RecoveryStart())
+rng = np.random.default_rng(0)
+for _ in range(4):
+    drive = np.zeros((5, connectome.n))
+    drive[:, connectome.populations["input"]] = rng.random((5, 6))
+    labels = rng.integers(0, 3, 5)
+    _, base = plain.step(drive, labels)
+    _, report = started.step(drive, labels)
+assert np.allclose(started.brain.efficacy, plain.brain.efficacy, rtol=0, atol=1e-7)
+print("sweeps", base["nudged_steps"] + base["opposite_steps"],
+      "->", report["nudged_steps"] + report["opposite_steps"])
+print(started.recovery.fidelity())
+```
+
+The start requires `qualified=True`; a finite configuration raises `ValueError`
+before any phase, because a finite phase read before it settles would make the
+start part of the learning rule. On a nonlinear graph a different start could in
+principle reach a different stationary point; compare the contrast or the
+learned parameters with the default start on your own lessons. This is a
+numerical option. It adds no answer path, and it makes no speed guarantee: the
+[paired measurement](../benchmarks/recovery_start/README.md) on the acquisition
+school found the composed default dynamics forget any start, so they pay the
+same sweeps.
+
 ### The admitted step, and a life lived online
 
 The patches of the [belief](belief.md) family learn by a step that is admitted, not taken: the

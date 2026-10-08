@@ -1090,7 +1090,7 @@ founder genes for a small share of moments; the
   numerical integration-step halvings within each phase's existing sweep budget;
   the original model and its fixed-point equations are preserved. Qualified
   learning requires a finite residual tolerance.
-- `Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None, plastic_neurons=None, reciprocal=True, tie_groups=None, synapse_rate=None, slots=1, updates=0, contrast_updates=0)`:
+- `Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None, plastic_neurons=None, reciprocal=True, tie_groups=None, synapse_rate=None, slots=1, updates=0, contrast_updates=0, recovery=None)`:
   `plastic_synapses` and `plastic_neurons` are bool masks over synapses and neurons; only those
   move and decay, so two learners can share one brain without one's decay eroding the other's
   synapses. With `reciprocal`, each reciprocal synapse pair shares one efficacy.
@@ -1108,6 +1108,11 @@ founder genes for a small share of moments; the
   `slots` splits the outputs into softmax groups (a count of equal groups, or one size per
   group); `updates` counts all applied updates, while `contrast_updates` counts only
   this learner's own optimizer history, excluding external reward/direct updates.
+  `recovery` is an optional `RecoveryStart`: `step` then starts each qualified nudged
+  phase from its rendered state instead of the free state, refits it from the accepted
+  phases and adds `recovery_row_seam_passes` to the report. It requires
+  `qualified=True` (a finite configuration raises `ValueError` before any phase).
+  It is not saved with the learner.
   - `free(drive, warm=None)`, `nudged(drive, free, target, sign=1.0, weight=None)`,
     `targets(labels)`, `nudge_for(target, beta, weight=None)`;
   - `contrast(free, nudged, opposite=None) -> (per_synapse, per_neuron)`,
@@ -1149,6 +1154,18 @@ founder genes for a small share of moments; the
   - `predict(drive)`, `accuracy(drive, labels, batch=256)`,
     `parameters()`, `to_dict()`; attributes `brain`, `reverse` (index of each synapse's
     reverse, or −1), `second_moment` (when normalising).
+- `RecoveryStart(decay=0.9, ridge=0.3, fit=True)`: an opt-in starting state for
+  qualified nudged phases ([learning guide](learning.md#a-recovery-start-for-qualified-nudged-phases)).
+  Shells follow hop distance from the learner's outputs; each neuron's start is the
+  free state plus one gain times its feature (the nudge drive for an output, the input
+  received from the shell above for a deeper neuron). `start(learner, free, nudge) -> BrainState`,
+  `observe(learner, free, settled, nudge)` (folds an accepted settled phase into ridge
+  statistics pulled toward gain one, with forgetting factor `decay`),
+  `gains()`, `shells()`, `depth`, `observed` and `fidelity() -> list[dict]` (per shell,
+  the decayed fraction of the settled potential change left unexplained by the gains held
+  before each lesson, and by every gain at one). `fit=False` keeps every gain at one.
+  The start changes where settling begins, not the equations, tolerance or update law;
+  it is not checkpointed and makes no speed guarantee.
 - `calibrate_bias(brain, drives, targets, *, per_neuron=False, rounds=3, span=(-6.0, 6.0), iterations=16, steps=100, tolerance=1e-4, qualified=False, damping=3, report=None) -> np.ndarray`:
   candidate biases found by coordinate bisection under a finite, nonempty drive
   batch. `targets` maps population names or neuron indices to desired mean

@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add an opt-in `RecoveryStart` for qualified nudged phases
+  (`Learner(recovery=...)`). It renders where each nudged phase starts settling
+  from per-neuron seam gains fitted to accepted settled phases; the equations,
+  tolerance, qualification and contrast rule are unchanged, and finite
+  configurations refuse it. Defaults and existing behavior are unchanged. The
+  paired [measurement](benchmarks/recovery_start/README.md) does not meet its
+  declared promotion bar: the composed default dynamics forget any start, and
+  without lateral inhibition the fitted start saves few sweeps over the unfitted
+  copy. All arms and the failed comparison are retained.
 - Apply extra arousal heat to one uniformly chosen motor slot per moment
   ([#159](https://github.com/muellerberndt/cadence/issues/159)); other slots sample
   the learned base policy. Preserve the one-slot sampling law and existing genes.

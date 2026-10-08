@@ -51,6 +51,7 @@ from .blocks import block_contrast
 from .brain import Backend, Brain, BrainState, Equilibrium, Nudge
 from .connectome import Connectome
 from .neuron import NeuronModel
+from .recovery import RecoveryStart
 
 __all__ = [
     "Learner",
@@ -263,6 +264,8 @@ class Learner:
     slots: int | Sequence[int] = 1
     updates: int = 0
     contrast_updates: int = 0  # optimizer history excludes externally applied reward updates
+    # opt-in: where qualified nudged phases start settling; None starts them from the free state
+    recovery: RecoveryStart | None = None
     velocity: np.ndarray = field(init=False, repr=False)
     velocity_bias: np.ndarray = field(init=False, repr=False)
     second_moment: np.ndarray = field(init=False, repr=False)
@@ -298,6 +301,8 @@ class Learner:
                 raise ValueError("slot sizes must be positive and add up to the output neurons")
         self.slot_sizes = np.asarray(sizes, dtype=np.int64)
         self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.int64)
+        if self.recovery is not None and not isinstance(self.recovery, RecoveryStart):
+            raise ValueError("recovery must be a RecoveryStart or None")
         self.slot_count = len(sizes)  # ``slots`` keeps what was asked for
         self.slot_size = int(self.slot_sizes[0]) if len(set(sizes)) == 1 else 0  # equal, or not
         self.output_groups: np.ndarray | None = None
@@ -882,18 +887,26 @@ class Learner:
         if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
+        recovery = self.recovery
+        if recovery is not None and not cfg.qualified:
+            raise ValueError(
+                "a recovery start requires qualified=True: only qualified phases are "
+                "checked against the original equations wherever they start"
+            )
         if cfg.qualified:
             phases: dict[str, Equilibrium] = {}
             phases["free"] = self._qualified_phase(drive, warm, cfg.free_steps)
             if not np.all(phases["free"].qualified):
                 raise LearningPhaseError("free", phases)
             free = replace(phases["free"].state, steps=phases["free"].steps)
+            nudges: dict[str, Nudge] = {}
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 if name == "opposite" and not cfg.centered:
                     break
+                nudges[name] = self.nudge_for(target, sign * cfg.beta, weight)
+                start = free if recovery is None else recovery.start(self, free, nudges[name])
                 phases[name] = self._qualified_phase(
-                    drive, free, cfg.nudged_steps,
-                    self.nudge_for(target, sign * cfg.beta, weight),
+                    drive, start, cfg.nudged_steps, nudges[name],
                 )
                 if not np.all(phases[name].qualified):
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
@@ -902,6 +915,14 @@ class Learner:
                         if "opposite" in phases else None)
             report = self.update(free, nudged, opposite)
             report.update(_phase_report(phases, accepted=True, qualified=True))
+            if recovery is not None:
+                # Fit between lessons, from accepted settled phases only.
+                for name in nudges:
+                    recovery.observe(self, free, phases[name].state, nudges[name])
+                # One rendering and one fitting pass per phase, each crossing every seam once.
+                report["recovery_row_seam_passes"] = float(
+                    2 * len(nudges) * recovery.depth * np.size(phases["free"].residual)
+                )
             return LearnedState(free, nudged, opposite), report
         free = self.free(drive, warm)
         nudged = self.nudged(drive, free, target, weight=weight)
