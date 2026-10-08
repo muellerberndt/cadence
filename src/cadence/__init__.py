@@ -52,6 +52,7 @@ from .life import (
 )
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
+from .nudged_settle import NudgedSettle
 from .patch import PatchNet, PatchObservation
 from .planning import TemporalPlan
 from .plasticity import (
@@ -74,7 +75,6 @@ from .record_ports import JointObservation, JointRecordPatches, Port
 from .record_stack import RecordPatchStack, StackObservation
 from .recording import SettlementRecord, record_settlements
 from .records import Mulberry32, Records
-from .recovery import RecoveryStart
 from .reference import conformance
 from .regions import Region
 from .steering import Boundary, Gaze, Rule, Softmax, Steered, SteeredPath
@@ -154,7 +154,7 @@ __all__ = [
     "Learner",
     "LearnerConfig",
     "LearningPhaseError",
-    "RecoveryStart",
+    "NudgedSettle",
     "Nudge",
     "Protocol",
     "Receipt",

@@ -499,60 +499,68 @@ epochs do not by themselves mean greater sample efficiency or lower compute. Whe
 task is to learn what follows a reading, a [records cortex](memory.md#records) reads with
 one product and writes with one delta-rule step per outcome, without settling phases.
 
-### A recovery start for qualified nudged phases
+### Skipping the undamped attempt of nudged phases
 
-Both nudged phases normally start from the free state. Under `qualified=True` they
-must still settle to the full equations, so where they start can change their sweep
-count but not what qualifies them. `Learner(recovery=RecoveryStart())` renders that
-start from the free state seam by seam: shell 0 is the output group, and shell `k`
-holds the neurons first reached from shell `k - 1` by a synapse. An output starts
-at its free potential plus a gain times the nudge drive at the free state; a deeper
-neuron adds a gain times the synaptic input it receives from the shell above's
-rendered change. Inputs never move. With `fit=False` every gain is one: a single
-pass copying the nudge down the seams.
+Qualified nudged phases settle with the bounded `damping` schedule: an attempt at
+the model's `dt`, then attempts at halved steps, each with an equal share of the
+budget. Where the full step cannot settle the graph, as with the composed brain's
+motor inhibition at `dt=1`, that first share is spent in an orbit before any halved
+attempt starts. `Learner(nudged_settle=NudgedSettle())` starts the nudged phases at
+`first_halving=2` of the same schedule (`dt / 4`), keeping its smallest step, the
+equations, the tolerance and the contrast rule. The free phase is unchanged.
 
-After each accepted lesson, each gain is refitted by a ridge regression pulled
-toward one. Its target is the neuron's own settled potential change. Its feature
-is computed from the settled change of the shell above, never from the rendered
-start, so the gains cannot feed on their own estimates. A refused lesson changes
-neither the parameters nor these statistics. The statistics are a numerical
-cache, not learned knowledge, and are not saved: a reloaded learner restarts at
-gain one. Each lesson's extra work is reported as `recovery_row_seam_passes`.
+A different integration path can end at a different qualified state: within the
+tolerance on a single equilibrium, or at another stationary point when there are
+several. The default `probe` solves each nudged phase again from a one-pass copy of
+the nudge down the seams from the outputs. If the two solves disagree by more than
+ten tolerances, or either fails to qualify, the phase is solved again exactly as the
+default learner would. The probe and any discarded solve are reported
+(`nudged_settle_probe_steps`, `nudged_settle_discarded_steps`,
+`nudged_settle_fallbacks`) and included in `total_steps`. The probe detects two
+starts that disagree; it does not prove the equilibrium is unique.
 
 ```python
+from dataclasses import replace
+
 import numpy as np
 import cadence as cd
 
-connectome = cd.layered(6, 12, 3, seed=3, density=1.0)
-config = cd.LearnerConfig(
-    qualified=True, damping=3, free_steps=4096, nudged_steps=4096, tolerance=1e-9,
-)
-plain = cd.Learner(cd.NeuralGraph(connectome, cd.learning_neuron_model()),
-                   connectome.populations["output"], config)
-started = cd.Learner(cd.NeuralGraph(connectome, cd.learning_neuron_model()),
-                     connectome.populations["output"], config, recovery=cd.RecoveryStart())
-rng = np.random.default_rng(0)
-for _ in range(4):
-    drive = np.zeros((5, connectome.n))
-    drive[:, connectome.populations["input"]] = rng.random((5, 6))
-    labels = rng.integers(0, 3, 5)
-    _, base = plain.step(drive, labels)
-    _, report = started.step(drive, labels)
-assert np.allclose(started.brain.efficacy, plain.brain.efficacy, rtol=0, atol=1e-7)
-print("sweeps", base["nudged_steps"] + base["opposite_steps"],
-      "->", report["nudged_steps"] + report["opposite_steps"])
-print(started.recovery.fidelity())
+
+def composed(settle=None):
+    brain = cd.Brain.compose(inputs=6, actions=36, modules=(10,), seed=5, lateral=-0.5)
+    brain.learner.config = replace(
+        brain.learner.config, qualified=True, damping=3, free_steps=8192,
+        nudged_steps=8192, tolerance=1e-8,
+    )
+    brain.learner.nudged_settle = settle
+    return brain
+
+
+plain, fast = composed(), composed(cd.NudgedSettle())
+rng = np.random.default_rng(11)
+for _ in range(3):
+    drive = plain.stimulus(rng.random((3, 6)), memory=False)
+    labels = rng.integers(0, 36, 3)
+    _, base = plain.learner.step(drive, labels)
+    _, report = fast.learner.step(drive, labels)
+assert np.allclose(fast.learner.brain.efficacy, plain.learner.brain.efficacy, rtol=0, atol=1e-6)
+print("nudged sweeps", base["nudged_steps"] + base["opposite_steps"], "->",
+      report["nudged_steps"] + report["opposite_steps"],
+      "+ probe", report["nudged_settle_probe_steps"])
 ```
 
-The start requires `qualified=True`; a finite configuration raises `ValueError`
-before any phase, because a finite phase read before it settles would make the
-start part of the learning rule. On a nonlinear graph a different start could in
-principle reach a different stationary point; compare the contrast or the
-learned parameters with the default start on your own lessons. This is a
-numerical option. It adds no answer path, and it makes no speed guarantee: the
-[paired measurement](../benchmarks/recovery_start/README.md) on the acquisition
-school found the composed default dynamics forget any start, so they pay the
-same sweeps.
+`nudged_settle` requires `qualified=True`; a finite configuration raises
+`ValueError` before any phase, because there the integration path would become
+part of the learning rule. Nor is it a general speed-up. On graphs whose full step
+already settles, it costs sweeps: the
+[paired measurement](../benchmarks/nudged_settle/README.md) on the acquisition
+school found 7 times fewer nudged sweeps on the composed dynamics, but 3 to 7 times
+more without lateral inhibition. At the composed 0.003 tolerance, the per-lesson
+contrasts of both paths are equally close to a tightly solved one. Over 24 lessons,
+4 or 5 of 24 free answers differed from the default trajectory, and both
+trajectories matched a tightly solved one on 65 of 72 answers. The option is not
+saved with the learner. An earlier [recovery-start attempt](../benchmarks/recovery_start/README.md)
+changed only where the phases start and saved almost nothing on the composed brain.
 
 ### The admitted step, and a life lived online
 
