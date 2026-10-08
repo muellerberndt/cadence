@@ -1,10 +1,16 @@
 # Where qualified nudged phases start settling
 
+**Superseded.** `RecoveryStart` was removed after this measurement: its fitted
+gains did not beat the unfitted copy, and no start helped on the composed
+dynamics. The follow-up is [skipping the undamped attempt](../nudged_settle/README.md),
+which keeps only the unfitted copy, as an agreement probe. This harness needs the
+library source of commit `968e087`, which still has `RecoveryStart`. The receipt
+and protocol are retained unchanged.
+
 This paired CPU measurement asks one numerical question: if the qualified nudged
 phases start from an estimate of their settled state instead of the free state,
 do they qualify in fewer sweeps while reaching the same contrast? The library
-option it tests is `Learner(recovery=RecoveryStart())`
-([learning guide](../../docs/learning.md#a-recovery-start-for-qualified-nudged-phases)).
+option it tested was `Learner(recovery=RecoveryStart())` (commit `968e087`).
 The equations, tolerance, qualification, damping schedule and contrast rule are
 unchanged; only the starting state differs. It is not a learning-rule change and
 makes no acquisition claim.
