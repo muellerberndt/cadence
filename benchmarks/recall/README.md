@@ -474,8 +474,8 @@ declared limit for them.
 steps (`homeostasis_rate` 0.1 toward 0.3, `normalize` 0, `eta` 0.5, `eta_bias` 0.005,
 momentum 0.9) on three unused founders, with recall/2's gates, caps, conditions, controls and
 32-repeat budget. Receipt `results/finite-4-2026-10-10.json.gz`, verified: every founder
-completed all 384 training and 312 evaluation episodes with no refused lesson or act (152 to
-375 seconds each), every seam, imagination, refusal and timing check equal. Horizons: 310
+completed all 384 training and 312 evaluation episodes with no refused lesson or act (129 to
+193 seconds each), every seam, imagination, refusal and timing check equal. Horizons: 310
 none, 311 zero, 312 none; every founder fails the nuisance gates; **closure fails and #84
 stays open.**
 
@@ -558,3 +558,77 @@ acquired in every founder at some evaluation and lost again under further lesson
 superposed signal, the limit this chamber declares. Founder 304's delay-0 answer is constant
 at every rate under the `every` rule while delays 1 and 2 are read, and reads 1.00 under the
 surprise rule.
+
+### recall/5 on fresh founders 313, 314 and 315: closure failed, horizons none, 0 and 0
+
+[`protocol-finite-5.json`](protocol-finite-5.json) declares the surprise rule (recall/3), the
+readout's intrinsic plasticity (`homeostasis_rate` 0.1 toward 0.3) and raw steps at half the
+rate (`eta` 0.2, `eta_bias` 0.002) on a brain composed with the sensory projection at twice
+its scale (`sensory_scale` 2; the chamber's `make_brain` takes `brain.sensory_scale`, founder
+1), with recall/2's gates, caps, conditions and controls and recall/4's 32-repeat budget, on
+three unused founders. Receipt `results/finite-5-2026-10-10.json.gz`, verified: every
+founder completed all 384 training and 312 evaluation episodes with no refused act (313 to
+340 lessons under the rule, 313 to 490 seconds each), every seam, imagination, refusal and
+timing check equal. **Closure fails and #84 stays open.** Founder 314 reads clean-0 at 1.00,
+clean-1 at 0.78 (paired 0.55), clean-2 at 0.79, the distractors at 0.82 and 0.91 and noise-1
+at 0.98: horizon 0 on the paired floor. Founder 315 reads clean-0 at 0.99, clean-2 at 1.00
+and distractor-2 at 0.96, clean-1 at 0.73 (paired 0.47) and distractor-1 at 0.50: horizon 0,
+with its external-history control at 0.76 on partial-1, under the 0.9 floor. Founder 313
+reads chance on every condition but order-latest-1 (0.81) with a competent control. Partial,
+replacement and order fail in all three. Erased and reset forks sit at chance wherever the
+intact brain recalls, and the shuffled forks follow the transplanted trace.
+
+**The operating-point screens behind the recipe (development founders 304, 305, 306 and 1,
+32 training and 8 evaluation repeats; the selected recipe's receipt is
+`results/development-finite-5-scale2-eta0.2-2026-10-10.json.gz`, the other screens' receipts,
+2.7 MB each, are retained in the lane's evidence bundle outside the repository).** The
+association layer of the composed brain is near silent: under the recipe its activations
+have an RMS of 0.05 (0.09, 0.15 and 0.26 at sensory scale 2, 4 and 8), and the paired trace
+distance at QUERY grows with the scale (0.005 to 0.028) while its ratio to the trace's RMS
+does not. The novelty of a moment, the RMS change of the association state over the RMS of
+the state before, does not tell the event types apart: a WRITE moves the state by about its
+own size (mean 1.0 to 1.3), a neutral or a distractor event by 0.6 to 0.9, a QUERY by 0.7 to
+1.2; only a neutral event after a neutral one is quiet (tenth percentile 0.05 to 0.1). A
+write gated by novelty would therefore hold through repeated input only, and the chamber
+has none.
+
+| sensory scale | eta | 304 | 305 | 306 | 1 | control minimum |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1 | 0.5 | 0 | 0 | 0 | none | 0.98 |
+| 2 | 0.5 | none (distractor-2 0.98, noise 1.00) | **2** (clean 1.00, 1.00, 1.00; distractors 1.00, 0.94; partial 0.86; noise 1.00; replacement and order 0.50) | none | none (clean-1 0.84, clean-2 0.86, distractor-1 1.00) | 0.50 (306) |
+| 2 | 0.2 | none (clean-0 0.86) | **1** (clean 1.00, 1.00, 0.95; distractor-1 0.97; partial 0.78; noise 1.00; replacement 0.72; order 0.84) | none (chance) | **1** (clean 1.00, 1.00, 1.00; distractors 0.97, 0.86; noise 1.00; clean-4 0.95) | 1.00 |
+| 4 | 0.5 | none (chance) | none (clean-1 0.75, distractors 1.00) | none | none | 0.50 (306) |
+| 4 | 0.1 | none | 0 | none | 0 (clean 0.95, 0.92, 1.00) | 0.88 |
+| 4 | 0.05 | none | none | none | 1 (clean 1.00, 0.91, 0.75; distractor-1 0.92) | 0.53 (305) |
+| 8 | 0.5 | 1 (clean 1.00, 0.98, 1.00; distractor-1 0.88) | 1 (clean-0 1.00, clean-1 0.91) | none | **2** (clean 1.00, 1.00, 0.89; distractors 0.95, 0.92; noise 1.00; partial 0.72) | 0.50 (305, 306) |
+| 8 | 0.1 | none | none | none | none | 0.50 |
+| 8 | 0.05 | none | none | none | 0 | 0.67 (305) |
+
+The horizon is the contiguous-prefix rule on the paired floor; the control minimum is the
+external-history brain's lowest accuracy over the conditions. The effective step grows with
+the scale, since a raw step is a product of activations: scale 8 with eta 0.5 reaches
+horizon 2 in one founder and loses the control in two, scale 2 with eta 0.2 keeps the
+control in all four and brings two founders to horizon 1. Founder 306 learns nothing at 32
+repeats under every recipe of the table. Two further screens at scale 2 and eta 0.2 are
+negative: a per-synapse leak (`decay` 0.005 and 0.02) leaves every founder's recall at
+chance with the control at 1.00, and an intrinsic step on the association neurons as well
+(a development share of the readout's rate, target 0.3) rewires the hidden layer at every
+lesson, recall at chance in three founders and the control at 0.00 to 0.50 in three of four.
+
+**Reading.** The readout's operating point (the gene) and the lesson rule make the control
+competent and recall learnable in every founder at some evaluation; what the recipe does not
+give is a mapping that stays, and it does not give replacement or order. These two have one
+cause. The trace writes after every admitted event with one fixed weight, and the plastic
+read of the trace learns a loop that re-expresses the held cue: a loop strong enough to hold
+a cue through neutral and distractor events resists the next WRITE, so the brain answers the
+first token where the latest is asked; a loop weak enough to let the replacement in loses
+the cue to the distractor. A distractor carries its payload on the token's own coordinates
+and differs from a WRITE in its marker only, so no write weight computed from the size of a
+moment separates the two; the separation needs a write that is conditional on the marker
+and learned, and the lesson at QUERY teaches the weights that settle the answer, not a write
+two events earlier. That is the measured limit of the fixed-write trace under a teacher at
+the query: horizon 0 on fresh founders with the clean and distractor conditions read at delay
+0 and partly at delays 1 and 2, no revision. The candidate that follows is the write as an
+action of the basal ganglia, chosen per moment and taught by a reward at the query with the
+eligibility the actor keeps over its recent actions, in a recall protocol that pays
+the answer instead of teaching it.

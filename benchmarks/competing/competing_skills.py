@@ -139,6 +139,9 @@ def nursery_moments(seed: int, moments: int) -> tuple[np.ndarray, np.ndarray]:
 
 
 HARD = {"right": 1.0, "wrong": 0.0}  # the right action always pays, a wrong one never
+# A contingency may also name ``right_minus`` and ``wrong_minus``, the probabilities that the
+# action is punished with -1 instead (founders 0): the arena's melee pays approach and punishes
+# it in turn, so a skill's pay there has a sign that varies from moment to moment.
 
 
 def reward_of(
@@ -153,12 +156,15 @@ def reward_of(
     (``right``) or a wrong one (``wrong``), decided by the moment's coin; plus the burn.
     The arena's progress pay is a weak contingency of this kind, not a certain payoff."""
     right = action == int(correct[situation])
-    chance = float(contingency["right" if right else "wrong"])
-    return (1.0 if coin < chance else 0.0) + (BURN if burned else 0.0)
+    plus = float(contingency["right" if right else "wrong"])
+    minus = float(contingency.get("right_minus" if right else "wrong_minus", 0.0))
+    pay = 1.0 if coin < plus else (-1.0 if coin < plus + minus else 0.0)
+    return pay + (BURN if burned else 0.0)
 
 
 def expected_income(right_share: float, contingency: dict[str, float], burn_share: float) -> float:
-    right, wrong = float(contingency["right"]), float(contingency["wrong"])
+    right = float(contingency["right"]) - float(contingency.get("right_minus", 0.0))
+    wrong = float(contingency["wrong"]) - float(contingency.get("wrong_minus", 0.0))
     return right_share * right + (1.0 - right_share) * wrong + BURN * burn_share
 
 
@@ -181,6 +187,8 @@ def make_brain(point: dict[str, Any], seed: int) -> cd.Brain:
         working_memory_amplitude=float(point["trace_amplitude"]),
         working_memory_decay=float(point["trace_decay"]),
         consolidation=float(point["consolidation"]),
+        episodic=bool(point.get("episodic", True)),
+        memory_rate=float(point.get("memory_rate", 1.0)),
         actor_eta=float(point["eta"]),
         actor_eta_bias=float(point["eta_bias"]),
         actor_lam=float(point["lam"]),
@@ -319,8 +327,17 @@ class Ledger:
         self.scale_step = 0.0
         self.bias_step = 0.0
         self.dopamine = 0.0
+        # per skill: the nursery skill A (situations 0 to 3) and the ring skill B (4 to 7)
+        # arrays, so that a window adds into the totals elementwise
+        self.skill_moments = np.zeros(2)
+        self.skill_right = np.zeros(2)
+        self.skill_learned = np.zeros(2)
+        self.skill_dopamine = np.zeros(2)
+        self.skill_positive = np.zeros(2)  # learned moments whose dopamine was positive
 
-    def moment(self, brain: cd.Brain, reward: float, right: bool, burned: bool) -> None:
+    def moment(
+        self, brain: cd.Brain, reward: float, right: bool, burned: bool, situation: int = 0
+    ) -> None:
         reading = brain.last_arousal
         assert reading is not None
         self.moments += 1
@@ -330,14 +347,31 @@ class Ledger:
         self.reward += reward
         self.right += int(right)
         self.burned += int(burned)
+        skill = 0 if situation < SITUATIONS // 2 else 1
+        self.skill_moments[skill] += 1
+        self.skill_right[skill] += int(right)
         if reading["learned"]:
             report = brain.last_learning
             self.learned += 1
+            self.skill_learned[skill] += 1
+            self.skill_dopamine[skill] += float(report["dopamine"])
+            self.skill_positive[skill] += int(float(report["dopamine"]) > 0)
             self.delta += float(report["delta"])
             self.dopamine += float(report["dopamine"])
             self.td_error += float(report["td_error"])
             self.scale_step += float(report["scale_step"])
             self.bias_step += float(report["bias_step"])
+
+    def _skill(self, index: int) -> dict[str, float]:
+        moments = max(float(self.skill_moments[index]), 1.0)
+        learned = max(float(self.skill_learned[index]), 1.0)
+        return {
+            "moments": int(self.skill_moments[index]),
+            "right_share": float(self.skill_right[index]) / moments,
+            "learned": int(self.skill_learned[index]),
+            "mean_dopamine": float(self.skill_dopamine[index]) / learned,
+            "positive_share": float(self.skill_positive[index]) / learned,
+        }
 
     def summary(self) -> dict[str, Any]:
         n = max(self.moments, 1)
@@ -352,6 +386,8 @@ class Ledger:
             "sweeps": self.sweeps,
             "learning_sweeps": self.learning_sweeps,
             "mean_delta": self.delta / k,
+            "skill_a": self._skill(0),
+            "skill_b": self._skill(1),
             "mean_dopamine": self.dopamine / k,
             "mean_td_error": self.td_error / k,
             "mean_scale_step": self.scale_step / k,
@@ -425,7 +461,7 @@ def live_stretch(
             consistency.add(brain.brain.efficacy - before)
         right = action == int(correct[situation])
         reward = reward_of(situation, action, correct, burned, coin, contingency)
-        ledger.moment(brain, reward, right, burned)
+        ledger.moment(brain, reward, right, burned, situation)
     return reward
 
 
@@ -435,7 +471,11 @@ def run_life(
     """One arm of one seed through the ring, from the seed's saved nursery brain."""
     started = time.perf_counter()
     world = make_world(seed)
-    world["contingency"] = dict(protocol.get("contingency", HARD))
+    # the ring's pay: the nursery's unless the protocol names a ``ring_contingency`` (the arena's
+    # melee pays and punishes approach in turn where its nursery paid it reliably)
+    world["contingency"] = dict(
+        protocol.get("ring_contingency") or protocol.get("contingency", HARD)
+    )
     moments = int(protocol["phases"]["ring"])
     probe_every = int(protocol["probe_every"])
     situations, burns, coins = make_moments(
@@ -709,10 +749,20 @@ def markdown(body: dict[str, Any]) -> str:
     rows = body["rows"]
     contingency = body["protocol"].get("contingency", HARD)
     learning = body["protocol"]["brain"].get("learning") or {}
+    ring_pay = body["protocol"].get("ring_contingency")
+    brain_overrides = body.get("overrides", {}).get("brain") or {}
     lines = [
         f"# {SCHEMA}: {len(body['nurseries'])} seeds, {len(rows)} ring lives, "
         f"the right action pays with probability {contingency['right']:g}, "
         f"a wrong one with {contingency['wrong']:g}"
+        + (
+            f" (punished with probability {contingency.get('right_minus', 0):g} and "
+            f"{contingency.get('wrong_minus', 0):g})"
+            if contingency.get("right_minus") or contingency.get("wrong_minus")
+            else ""
+        )
+        + (f"; the ring pays {ring_pay}" if ring_pay else "")
+        + (f"; brain overrides {brain_overrides}" if brain_overrides else "")
         + (f", learning overrides {learning}" if learning else ""),
         "",
     ]
@@ -841,6 +891,29 @@ def main(argv: list[str] | None = None) -> int:
         metavar=("RIGHT", "WRONG"),
         help="probability that the right / a wrong action pays +1 (the protocol's is 1 and 0)",
     )
+    parser.add_argument(
+        "--pay",
+        nargs=4,
+        type=float,
+        default=None,
+        metavar=("RIGHT", "RIGHT_MINUS", "WRONG", "WRONG_MINUS"),
+        help="probabilities that the right / a wrong action pays +1 and is punished with -1",
+    )
+    parser.add_argument(
+        "--brain",
+        nargs="*",
+        default=[],
+        metavar="FIELD=VALUE",
+        help="override fields of the protocol's brain point, e.g. memory_rate=0.2 episodic=0",
+    )
+    parser.add_argument(
+        "--ring-pay",
+        nargs=4,
+        type=float,
+        default=None,
+        metavar=("RIGHT", "RIGHT_MINUS", "WRONG", "WRONG_MINUS"),
+        help="the ring's own pay probabilities; the nursery keeps --contingency / --pay",
+    )
     parser.add_argument("--workers", type=int, default=max(1, (os.cpu_count() or 2) - 1))
     parser.add_argument("--out", type=Path, default=None)
     parser.add_argument("--checkpoints", type=Path, default=None, help="where nurseries are saved")
@@ -884,6 +957,40 @@ def main(argv: list[str] | None = None) -> int:
         if not 0 <= wrong <= right <= 1:
             parser.error("--contingency needs 0 <= WRONG <= RIGHT <= 1")
         protocol["contingency"] = overrides["contingency"] = {"right": right, "wrong": wrong}
+    if args.pay is not None:
+        if args.contingency is not None:
+            parser.error("--pay replaces --contingency; give one of them")
+        right, right_minus, wrong, wrong_minus = args.pay
+        if min(args.pay) < 0 or right + right_minus > 1 or wrong + wrong_minus > 1:
+            parser.error("--pay: each pair of probabilities must sum to at most 1")
+        protocol["contingency"] = overrides["contingency"] = {
+            "right": right,
+            "right_minus": right_minus,
+            "wrong": wrong,
+            "wrong_minus": wrong_minus,
+        }
+    if args.brain:
+        brain_overrides: dict[str, Any] = {}
+        for item in args.brain:
+            field, _, raw = item.partition("=")
+            if not field or not raw:
+                parser.error("--brain takes FIELD=VALUE pairs")
+            if field == "episodic":
+                brain_overrides[field] = raw.lower() in ("1", "true", "yes")
+            else:
+                brain_overrides[field] = float(raw) if "." in raw or "e" in raw else int(raw)
+        protocol["brain"].update(brain_overrides)
+        overrides["brain"] = brain_overrides
+    if args.ring_pay is not None:
+        right, right_minus, wrong, wrong_minus = args.ring_pay
+        if min(args.ring_pay) < 0 or right + right_minus > 1 or wrong + wrong_minus > 1:
+            parser.error("--ring-pay: each pair of probabilities must sum to at most 1")
+        protocol["ring_contingency"] = overrides["ring_contingency"] = {
+            "right": right,
+            "right_minus": right_minus,
+            "wrong": wrong,
+            "wrong_minus": wrong_minus,
+        }
     seeds = args.seeds if args.seeds is not None else list(protocol["seeds"]["development"])
     manifest = Receipt.build(SCHEMA, {}, sources()).source
     out = args.out

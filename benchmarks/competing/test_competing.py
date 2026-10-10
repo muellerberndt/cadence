@@ -91,6 +91,49 @@ def test_a_soft_contingency_pays_at_its_stated_rates():
     assert chamber.expected_income(0.25, chamber.HARD, 0.0) == 0.25
 
 
+def test_a_signed_contingency_punishes_at_its_stated_rates():
+    """``right_minus`` and ``wrong_minus`` are the probabilities of a -1 outcome; one coin decides,
+    the founders are zero, and the expected income subtracts them."""
+    correct = np.array([0, 1, 2, 3, 1, 2, 3, 0])
+    melee = {"right": 0.4, "right_minus": 0.3, "wrong": 0.1, "wrong_minus": 0.1}
+    coins = np.linspace(0.0005, 0.9995, 1000)
+    right = np.array([chamber.reward_of(0, 0, correct, False, c, melee) for c in coins])
+    wrong = np.array([chamber.reward_of(0, 1, correct, False, c, melee) for c in coins])
+    assert np.isclose((right == 1).mean(), 0.4) and np.isclose((right == -1).mean(), 0.3)
+    assert np.isclose((wrong == 1).mean(), 0.1) and np.isclose((wrong == -1).mean(), 0.1)
+    assert np.isclose(right.mean(), 0.1, atol=0.002) and np.isclose(wrong.mean(), 0.0, atol=0.002)
+    assert np.isclose(chamber.expected_income(1.0, melee, 0.0), 0.1)
+    assert np.isclose(chamber.expected_income(0.0, melee, 0.0), 0.0)
+    # the founders: a contingency without the minus keys is the old one
+    assert chamber.reward_of(0, 0, correct, False, 0.5, chamber.HARD) == 1.0
+    assert chamber.expected_income(1.0, chamber.HARD, 0.0) == 1.0
+
+
+def test_the_ring_may_pay_differently_from_the_nursery(protocol):
+    """``ring_contingency`` applies to the ring only; without it the ring pays as the nursery."""
+    melee = {"right": 0.4, "right_minus": 0.3, "wrong": 0.1, "wrong_minus": 0.1}
+    with_ring = {**protocol, "ring_contingency": melee}
+    assert (
+        dict(with_ring.get("ring_contingency") or with_ring.get("contingency", chamber.HARD))
+        == melee
+    )
+    assert (
+        dict(protocol.get("ring_contingency") or protocol.get("contingency", chamber.HARD))
+        == chamber.HARD
+    )
+
+
+def test_brain_overrides_reach_the_memory_and_the_founders_keep_it(protocol):
+    """``memory_rate`` and ``episodic`` of the brain point reach the composed brain; the
+    founders (rate 1.0, episodic on) are the arena founder's."""
+    point = dict(protocol["brain"])
+    brain = chamber.make_brain(point, 0)
+    assert brain.hippocampus is not None and brain.describe()["memory"]["rate"] == 1.0
+    averaged = chamber.make_brain({**point, "memory_rate": 0.2}, 0)
+    assert averaged.describe()["memory"]["rate"] == 0.2
+    assert chamber.make_brain({**point, "episodic": False}, 0).hippocampus is None
+
+
 def test_the_arms_change_only_what_they_declare(protocol):
     stages = protocol["stages"]
     for arm in chamber.ARMS:

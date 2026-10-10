@@ -22,8 +22,14 @@
   on top of the normalized recipe the gene does not hold the readout against the fixed-size
   pushes in three of four development founders. With the chamber's `surprise` rule, a lesson only on the
   rows answered wrong, the control reads 1.00 in every development founder and the
-  vanished-cue recall comes and goes with more lessons (development receipts). No default
-  changes; #84 stays open.
+  vanished-cue recall comes and goes with more lessons (development receipts). The fresh
+  confirmation recall/5 (`protocol-finite-5.json`, founders 313 to 315: the surprise rule,
+  the gene, raw steps at eta 0.2 on a brain composed at sensory scale 2, selected by a scale
+  by rate sweep on the development founders) failed closure as well, horizons none, 0 and
+  0, with replacement and order failing in every founder: the measured limit of a trace
+  written after every event with one fixed weight (`benchmarks/recall/README.md`). The
+  chamber's `make_brain` takes `brain.sensory_scale` (founder 1). No default changes; #84
+  stays open.
 - Add the competing-skill ring, `benchmarks/competing`, a bounded table-world instrument for
   [#169](https://github.com/muellerberndt/cadence/issues/169): a policy acquired by the
   arena's founder brain in a nursery, then a ring that brings a competing skill, unavoidable
@@ -32,8 +38,16 @@
   reset, per-projection drift and per-synapse step consistency. Development readings on six
   seeds: the acquired skill is not lost at the gene step for a certain or a weak payoff; the
   smaller steps retain no more and hold the competing skill less; for a weak payoff a frozen
-  greedy test loses answers through the context its trace carries. No gate, default or
-  mechanism changes.
+  greedy test loses answers through the context its trace carries. The ring may pay as the
+  arena's melee does (`--ring-pay`, a signed contingency of its own; `--brain FIELD=VALUE`
+  overrides the brain point; the ledger tallies the dopamine per skill): under that pay the
+  loss of #169 reproduces at every actor step while the actor's efficacies barely move, the
+  dopamine on the old skill's moments is zero-mean, and what the melee overwrites is the
+  episodic memory's one-shot record of the chosen action's reward (`memory_rate` 1.0);
+  without the memory the nursery acquires little, and with the memory writing an average
+  (`memory_rate` 0.2 or 0.05) the loss halves. A slow set point under every parameter and a
+  sign-consistency stiffness, both screened on unshipped library variants, do not hold the
+  skill and were removed. No gate, default or mechanism changes.
 - Add `benchmarks/recall/credit_landing.py`, development diagnostics for
   [#84](https://github.com/muellerberndt/cadence/issues/84) on the finite recall chamber's
   recipe: what an untrained founder's trace carries, and where each lesson's credit lands.
