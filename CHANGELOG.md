@@ -2,6 +2,48 @@
 
 ## Unreleased
 
+- Add the readout's intrinsic plasticity, two genes of `LearnerConfig`:
+  `homeostasis_rate` (founder 0) and `homeostasis_target` (0.3). At every teaching or
+  reward update, on the host and on the device, each output neuron's bias moves by the rate
+  times the shortfall of its free activation below the target, so a readout neither
+  saturates, where a finite nudge has no slope, nor falls silent, where every contrast is
+  tiny. Reachable as `learning_homeostasis_rate` and `learning_homeostasis_target` in
+  `compose` and `retune`, reported by `describe()`, saved with the learner configuration;
+  `apply` reports `homeostasis_step`. The founder rate leaves every composed brain, its
+  checkpoints and its continuation as they were. Demonstrated limitation: the recall
+  chamber's readout saturates under continued teaching in two of five development founders
+  and a third drifts to chance ([#84](https://github.com/muellerberndt/cadence/issues/84));
+  with the rate at 0.1 and raw local steps, all four development founders tested end 64
+  repeats at clean recall of 0.95 or better (`benchmarks/recall/credit_landing.py`
+  receipts). The fresh confirmation recall/4 (`benchmarks/recall/protocol-finite-4.json`,
+  founders 310 to 312) failed closure: two founders recall the cue at every delay of the
+  prefix and one reads the latest of two cues, while the external-history control ends at
+  chance in two founders under the raw rate and the paired and nuisance floors are missed;
+  on top of the normalized recipe the gene does not hold the readout against the fixed-size
+  pushes in three of four development founders. With the chamber's `surprise` rule, a lesson only on the
+  rows answered wrong, the control reads 1.00 in every development founder and the
+  vanished-cue recall comes and goes with more lessons (development receipts). No default
+  changes; #84 stays open.
+- Add the competing-skill ring, `benchmarks/competing`, a bounded table-world instrument for
+  [#169](https://github.com/muellerberndt/cadence/issues/169): a policy acquired by the
+  arena's founder brain in a nursery, then a ring that brings a competing skill, unavoidable
+  burn, both or neither, with the issue's controls applied through `retune` on one saved
+  nursery brain per seed, readings from saved copies with the working trace carried and
+  reset, per-projection drift and per-synapse step consistency. Development readings on six
+  seeds: the acquired skill is not lost at the gene step for a certain or a weak payoff; the
+  smaller steps retain no more and hold the competing skill less; for a weak payoff a frozen
+  greedy test loses answers through the context its trace carries. No gate, default or
+  mechanism changes.
+- Add `benchmarks/recall/credit_landing.py`, development diagnostics for
+  [#84](https://github.com/muellerberndt/cadence/issues/84) on the finite recall chamber's
+  recipe: what an untrained founder's trace carries, and where each lesson's credit lands.
+  Every founder tried reaches clean recall of 0.95 or better on a saved copy at some
+  evaluation; in two of five the motor readout then saturates at full activation, where the
+  finite nudge moves nothing and the efficacy steps fall a hundredfold, and a third drifts
+  to chance: the founder dependence is consistent with a readout operating point. Chamber-
+  level probes of a fixed and a homeostatic motor bias are diagnostics, not library
+  mechanisms; the library gene above is the mechanism they motivated.
+
 ## 0.80.0 — 2026-10-09
 
 - Simplify the continuing-brain interface for

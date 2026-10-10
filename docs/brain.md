@@ -108,6 +108,7 @@ retain their own defaults, listed in the [API reference](api.md).
 | --- | --- | --- |
 | `sensory_scale` | `1.0` | Initial sensory projection; construction only |
 | `learning_eta`, `learning_eta_bias` | `0.5`, `0.05` | Teaching with `step(teacher=...)`, `fit` or the learner; `live` does not read these rates |
+| `learning_homeostasis_rate`, `learning_homeostasis_target` | `0.0`, `0.3` | The readout's intrinsic plasticity at every teaching or reward update, including aroused `live`; the founder rate leaves the readout as composed |
 | `actor_eta`, `actor_eta_bias` | `1.0`, `0.05` | Reward plasticity in `step`/`learn`, and aroused `live` |
 | `actor_eta_critic` | `0.3` | Value updates from those same learned outcomes |
 | `temperature` | `0.2` | Teaching softmax and sampled action policy; arousal can add exploration heat |

@@ -747,6 +747,9 @@ class Brain:
         ``options`` accepts the constructor's memory settings and every existing
         configuration field as ``learning_<field>``, ``actor_<field>`` or
         ``arousal_<field>``. ``temperature`` aliases ``learning_temperature``.
+        ``learning_homeostasis_rate`` and ``learning_homeostasis_target`` select the
+        readout's intrinsic plasticity, a bias step toward a target activation at every
+        teaching or reward update; the founder rate 0 leaves the readout as composed.
         ``arousal=True`` enables the founder arousal config; a mapping patches
         those founders. Supplied config objects remain full replacements.
         ``resting_bias`` initializes processing-region biases to a selected nonnegative

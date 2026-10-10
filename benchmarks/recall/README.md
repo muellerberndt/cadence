@@ -380,3 +380,181 @@ evaluation answers, scores and final checkpoint arrays.
 These completed audits establish the failure at the declared budget, rather than
 guessing from the earlier half-budget runs. They provide no promotion of a recall
 horizon across all founders, and **#84 remains open under its original gates**.
+
+## Where the lesson's credit lands, and why founders differ (development, 2026-10-10)
+
+`credit_landing.py` is a development diagnostic on the declared recipe (trace amplitude 0.3,
+decay 0.8, the `every` rule, the chamber's `LearnerConfig`). It trains founders for 64
+repeats (768 lessons) and records, per lesson, the RMS efficacy step every projection
+received and the motor activation at QUERY; over the run, the sign consistency of each
+synapse's accepted steps; and every four repeats the clean, distractor, replacement and
+order recall of a saved and reloaded copy on the frozen test episodes (the copy's own
+stream, six of the thirteen conditions, so its carried context differs from the chamber's
+intact fork). Receipts `results/credit-*-2026-10-10.json.gz` are bound to the shipped
+script and the library sources (`--verify --current`); `--report <receipt>` prints the
+tables. These are readings on development and spent founders with no gate; the three
+freezes above and their failed closures stand.
+
+**Clean recall appears in every founder.** Under the recipe, founders 0, 1, 304, 305 and
+306 all reach clean-0 recall of 0.95 to 1.00 on a saved copy at some evaluation, 304 and
+306 within the first hundred lessons. The prefrontal→association steps are among the most
+sign-consistent (0.14 to 0.21 across founders, against 0.04 to 0.15 for the other
+projections in four of the five); by magnitude the association↔motor efficacies move most
+(final drift 2.0 to 4.2 of their RMS against 0.24 to 0.56 for prefrontal→association). The
+paired association separation at QUERY grows while recall is present (0.12 to 0.27 for 306).
+
+**Two of five readouts saturate; a third drifts to chance.** In founders 1 and 304 both
+motor neurons saturate: the motor activation rises from 0.06–0.08 in the first quarter to
+1.00 (304 by lesson 267, 1 by lesson 484), the pair's answers coincide, and every later
+lesson moves the efficacies by 1e-6 to 1e-4, ten to a hundred times less than before. A
+finite nudge cannot move a neuron at its ceiling, so the saturated readout is an absorbing
+state. Founder 305 wanders between 0.5 and 0.06 and ends at chance; 306 stays between 0.05
+and 0.29 and keeps recall (clean-0 0.51 to 0.99 after repeat 32, 0.66 at 64). The untrained
+founders do not predict this: their WRITE-time association separation (0.22 to 0.38) and
+trace separation at QUERY (0.036 to 0.061) interleave the historical learners 303, 306 and
+309 with the others. The founder dependence of the three freezes is consistent with the
+readout's operating point under continued teaching rather than with the memory.
+
+**The controls, on founders 1, 304, 305 and 306.** Raw steps (`normalize=0`, `eta=0.5`,
+`eta_bias` at the recipe's 0.005, one hundredth of eta) leave the motor neurons at
+activation 0.003 to 0.02; 1 and 304 learn nothing in 768 lessons, 306 reads delays one and
+two at 0.71 to 0.77 from lesson 576 with delay zero at chance, and 305 answers the opposite
+token for most of the run (clean-0 0.00 to 0.15 from repeat 8 to 44), an inverted mapping. Without momentum, 1 and 305 read 1.00 at the end with a dip to 0.50 at repeat 44,
+306 reads 0.52 to 1.00, and 304 saturates (0.89). At `eta=0.01` no founder saturates and
+recall comes and goes in all four. A fixed motor bias of 2.0 puts the readout at activation
+0.84 to 0.88, next to the ceiling, and little is learned. A chamber-level homeostatic probe
+(after every act, each motor bias moves by 0.02 times the shortfall of its activation below
+0.3) on top of the normalized steps cannot hold the readout: 306's bias winds to −14.6 and
+its readout ends silent at 0.10. The same probe with raw steps reaches clean recall of 0.95
+or better in all four: 305 holds it from repeat 24, 304 with dips to 0.74, 1 reads 1.00 at
+repeats 48 and 56 and 0.50 at 44, 306 ends between 0.6 and 0.9; motor activation averages
+0.25 to 0.32 per quarter (0.00 to 0.45 per lesson); prefrontal→association drifts below 0.008
+of its RMS while association↔motor drifts 0.83 to 0.98; founder 1 has 130 of 768 lessons
+refused by qualified teaching, the others none.
+
+**The library gene.** The same rule as two `LearnerConfig` genes, `homeostasis_rate` and
+`homeostasis_target` (founder rate 0), applied at every accepted lesson from the lesson's
+free state, with raw steps: at rate 0.1 all four founders end at clean-0 recall of 0.95 to
+1.00 (1 0.95, 304 1.00, 305 0.99, 306 0.99; clean-1 and clean-2 0.53 to 1.00), replacement
+and the latest of two cues are read above chance in three (304 0.82 and 0.50, 305 0.61 and
+0.71, 1 0.56 and 0.50 at the end), the motor activation averages 0.27 to 0.31 and no lesson
+is refused. The accepted steps' sign consistency is 0.46 to 0.68 on every projection under
+the raw steps, against 0.14 to 0.21 under the normalized recipe: normalization adds sign
+noise to a small consistent signal. At rate 0.05 founder 1 reads 0.52 at the last
+evaluation.
+
+| Learning | Readout | 1 | 304 | 305 | 306 |
+| --- | --- | --- | --- | --- | --- |
+| recipe (normalize .99, momentum .9, eta .05) | as composed | recall, then saturates | recall, then saturates | recall, then chance | keeps recall with dips |
+| recipe, momentum 0 | as composed | 1.00 at the end, a dip to 0.50 | saturates | 1.00 at the end, a dip to 0.50 | 0.52 to 1.00 |
+| recipe, eta .01 | as composed | comes and goes | comes and goes | comes and goes | comes and goes |
+| raw (normalize 0, eta .5) | as composed | silent, nothing | silent, nothing | silent, inverted mapping | silent; delays 1 and 2 at 0.71 to 0.77 from lesson 576 |
+| recipe | motor bias 2.0 | near the ceiling, little | near the ceiling, little | near the ceiling, little | near the ceiling, little |
+| recipe | homeostatic probe (0.3, 0.02 per act) | comes and goes | chance | an episode, then chance | winds up, silent |
+| raw (normalize 0, eta .5) | homeostatic probe (0.3, 0.02 per act) | 1.00 at 48 and 56 | holds from 24 with dips | holds from 24 | 0.6 to 0.9 |
+| raw (normalize 0, eta .5) | gene: homeostasis_rate .1, target .3 | 0.95 at the end | 1.00 from 24 | 0.99 from 8 | 0.99 at the end, dips |
+| raw (normalize 0, eta .5), recall/4 fresh founders 310 / 311 / 312 at 32 repeats | gene: .1, target .3 | clean-0 0.52, 1.00, 1.00; the history control ends at chance in two founders of three | | | |
+| recipe (normalize .99, momentum .9, eta .05) | gene: .1, target .3 | comes and goes, 0.98 at the end | saturates (0.99) | recall to 24, then saturates (0.83) | winds up (bias −19), chance |
+| recipe (normalize .99, momentum .9, eta .05) | gene: .3, target .3 | recall at 16 to 24, then saturates (0.93) | recall to 40, then chance (0.57) | recall to 24, winds up (bias +14), silent | recall to 32, then saturates (1.00) |
+
+**Reading.** The chamber's readout has nothing that keeps it in its responsive range. Raw
+local steps on a silent readout are too small to learn; normalized steps amplify them into
+fixed-size pushes whose zero-mean part random-walks the readout into saturation, where
+learning stops for good. A local, counter-free intrinsic rule that keeps each motor neuron's
+activation near a target removes both rails, and with it the raw local contrast learns and
+keeps recall in these development runs. The library carries the rule as genes with the
+founder rate zero, so every composed brain, checkpoint and continuation is unchanged by
+default. Cue replacement and ordered recall are read above chance by some founders with the
+responsive readout and are at chance for others; the decaying-superposition trace is the
+declared limit for them.
+
+### recall/4 on fresh founders 310, 311 and 312: closure failed
+
+[`protocol-finite-4.json`](protocol-finite-4.json) declares the responsive readout with raw
+steps (`homeostasis_rate` 0.1 toward 0.3, `normalize` 0, `eta` 0.5, `eta_bias` 0.005,
+momentum 0.9) on three unused founders, with recall/2's gates, caps, conditions, controls and
+32-repeat budget. Receipt `results/finite-4-2026-10-10.json.gz`, verified: every founder
+completed all 384 training and 312 evaluation episodes with no refused lesson or act (152 to
+375 seconds each), every seam, imagination, refusal and timing check equal. Horizons: 310
+none, 311 zero, 312 none; every founder fails the nuisance gates; **closure fails and #84
+stays open.**
+
+| founder | condition | intact | paired | erased / reset | shuffled→transplanted | history | random |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 310 | clean-0 / clean-1 / clean-2 | 0.52 / 0.76 / 0.73 | 0.04 / 0.51 / 0.47 | 0.50 | 0.52 / 0.76 / 0.73 | **0.50** | 0.47 to 0.51 |
+| 310 | distractor-1 / noise-1 / replacement-1 / order-latest-1 | 0.62 / 0.93 / 0.78 / 0.71 | 0.25 / 0.86 / 0.55 / 0.43 | 0.50 | same as intact | **0.50** | 0.50 to 0.54 |
+| 311 | clean-0 / clean-1 / clean-2 | **1.00 / 0.99 / 0.96** | 1.00 / 0.98 / 0.92 | 0.50 | 1.00 / 0.99 / 0.96 | 1.00 | 0.48 to 0.55 |
+| 311 | distractor-1 / distractor-2 / partial-1 / noise-1 | 0.86 / 0.68 / 0.68 / 0.99 | 0.73 / 0.35 / 0.36 / 0.99 | 0.50 | same as intact | 1.00 | 0.46 to 0.55 |
+| 311 | replacement-1 / order-latest-1 | 0.76 / **0.89** | 0.51 / 0.77 | 0.50 | same as intact | 1.00 | 0.49 |
+| 312 | clean-0 / clean-1 / clean-2 | **1.00 / 0.99 / 0.86** | 1.00 / 0.99 / 0.73 | 0.50 | 1.00 / 0.99 / 0.86 | **0.50** | 0.46 to 0.49 |
+| 312 | distractor-1 / distractor-2 / partial-1 / noise-1 | 0.84 / 0.88 / 0.78 / 0.95 | 0.69 / 0.77 / 0.58 / 0.90 | 0.50 | same as intact | **0.50** | 0.44 to 0.54 |
+| 312 | replacement-1 / order-latest-1 | 0.58 / 0.50 | 0.17 / 0.00 | 0.50 | same as intact | **0.50** | 0.45 to 0.48 |
+
+What the run establishes. Two of the three founders recall the vanished cue through the trace
+at every delay of the prefix (311 and 312 at 0.86 to 1.00 on clean-0 to clean-2, erased and
+reset forks at 0.50, every shuffled fork answering the transplanted history), and 311 reads
+the latest of two cues at 0.89, the first fresh founder to pass that condition's intact floor;
+312's paired share on clean-2 (0.73) and both founders' on distractor-1 (0.73 and 0.69) sit
+under the 0.75 floor, partial-1 fails in all three, and replacement fails in all three.
+Founder 310 learns slowly (training answers right 0.75 in the last 48 queries) and reads
+clean-0 at chance while recalling at delays 1 to 4. The external-history control, which
+reaches 1.00 in about thirty lessons under recall/2's normalized recipe, **ends at chance in
+two of the three founders under the raw steps** (310 and 312 at 0.50 on every condition,
+training answers right 0.72 and 0.50: a confident constant answer, and a mid-run fall), so their horizon gate fails on the control's
+competence bound before the vanished brain's recall is counted. Raw steps at a fixed rate
+learn the trace's small signal and miss the control's large one; the normalized recipe does
+the reverse. The gene on top of the normalized recipe (receipts `credit-gene-0.1-recipe` and
+`credit-gene-0.3-recipe`) does not hold the readout in three of the four founders at rate
+0.1 and in all four at 0.3: they recall for a few repeats and then saturate or wind up (motor
+activation 0.83 to 1.00, or a bias of −19 and +14 with the readout silent), the probe's
+finding again at the library's rate; founder 1 at rate 0.1 keeps a recall that comes and goes
+and reads 0.98 at the end with 41 lessons refused. A bias
+cannot compensate synaptic drive that normalized steps push by a fixed amount at every
+lesson.
+
+A development screen of smaller raw rates on the spent founders 304 and 305 (recall/4's
+protocol with eta 0.2 and 0.1, eta_bias at eta/10, the full 32-repeat training budget and 8
+evaluation repeats per condition; receipts `results/development-finite-4-eta0.2-2026-10-10.json.gz`
+and `...-eta0.1-...`, verified, not confirmations): at eta 0.2 founder 305 reaches
+**horizon 1** with clean-0 to clean-2 at 1.00, 0.94 and 1.00 (paired 1.00, 0.88, 1.00),
+distractor-1 at 1.00, partial-1 at 0.83, replacement-1 at 0.95 and order-latest-1 at 0.89, the
+first founder of any recipe to read both, and fails the nuisance gate on noise-1 (0.59); 304
+reads clean-1 and distractor-1 at 1.00 and clean-0 at 0.56. At eta 0.1 both history controls
+learn (1.00 on every condition), 305 reads the clean delays at 0.97 to 1.00 and distractor-1
+at 0.62, and 304 keeps its delay-0 failure (0.50, a constant answer) while reading clean-1 at
+1.00. The history control is competent at 0.1 and marginal at 0.2 for one founder.
+
+Two further screens on founders 304, 305, 306 and 1 (32 training repeats, 8 evaluation
+repeats) rule out the step size as the lever. A per-event bound on every efficacy and bias
+step, at 0.003 and at 0.01 with the raw rate 0.5, left the vanished brains' readings
+byte-identical (their steps never reached the cap) and did not rescue the control (0.50 on
+every condition in three of the four founders). The raw rate 0.2 with twice the lessons (64
+repeats) did not either: the control read 0.50 in three founders, and 306's recall sank to
+chance. A slot-wise variant of the intrinsic step, every bias of a motor slot shifted together
+toward a winning activation at 0.5, was worse: the control collapsed in nearly every founder,
+because a confident readout is pushed down faster. Neither the cap nor the slot-wise rule
+ships, and their receipts are not shipped either: the library code they ran on was removed. The control's pattern is the same in every run: it learns within the first hundred
+lessons (training answers right at 0.84 to 0.99) and loses the mapping later. A lesson on
+every query keeps pushing a mapping that is right, the efficacies run toward their
+cap while the homeostatic bias is unbounded, and the readout ends silent. The lever is the
+lesson rule, and the screen of the chamber's `surprise` rule (a lesson only on the rows the
+free answer got wrong, recall/3) with the gene and raw steps confirms it: at both rates, 0.5
+and 0.2, the external-history control reads 1.00 on every condition in all four founders, the
+first time the control is competent under raw steps. The vanished brains learn more slowly
+under the rule (317 to 380 lessons of 384 queries, training answers right 0.56 to 0.74 in the
+last 48): at 0.5, founders 304, 305 and 306 reach horizon zero (clean-0 at 0.97 to 1.00,
+distractor-1 at 1.00, clean-1 at 0.72 to 0.80 under the paired floor) and founder 1 reads
+chance; at 0.2, founder 1 reaches horizon one (clean-0 0.97, clean-1 0.88, distractor-1 1.00,
+distractor-2 0.92, partial-1 0.83, noise-1 0.95) and the others fall back. With twice the
+lessons (64 repeats, 541 to 735 lessons) the control stays at 1.00 everywhere and the vanished
+brains' recall comes and goes: at 0.5, founder 305 reaches horizon one (clean 0.97, 0.97 and
+1.00, distractor-1 1.00) and 306 horizon zero, while 304 and 1 end at a constant answer (0.50
+with no pair right); at 0.2, 304 reads all three clean delays at 1.00 and distractor-1 at 0.80,
+305 reads replacement at 0.95 and order at 0.81 with clean-1 at 0.73, and 306 and 1 end at a
+constant answer. Receipts `results/development-finite-4-surprise-*-2026-10-10.json.gz` (32 and 64 repeats
+at both rates) are development runs on spent founders, verified. With the readout held in range by the gene and the control competent under the
+surprise rule, the instability that is left sits in the trace-reading mapping itself: it is
+acquired in every founder at some evaluation and lost again under further lessons on a weak,
+superposed signal, the limit this chamber declares. Founder 304's delay-0 answer is constant
+at every rate under the `every` rule while delays 1 and 2 are read, and reads 1.00 under the
+surprise rule.

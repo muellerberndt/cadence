@@ -93,6 +93,13 @@ class LearnerConfig:
     scale_cap: float = SCALE_CAP
     qualified: bool = False  # opt-in: require free and teaching equation residuals
     damping: int = 3  # candidate numerical strategy: at most this many dt halvings
+    # Intrinsic plasticity of the readout: at every update each output neuron's bias moves by
+    # ``homeostasis_rate`` times the shortfall of its free activation (mean over the rows)
+    # below ``homeostasis_target``, negative when above it, so a readout neither saturates,
+    # where a nudge has no slope, nor falls silent, where every contrast is tiny. The founder
+    # rate 0 leaves the brain as it was; both values are genes (issue 84).
+    homeostasis_rate: float = 0.0
+    homeostasis_target: float = 0.3
 
     def __post_init__(self) -> None:
         # Config fields have host scalar semantics, including before a save/load.
@@ -131,6 +138,10 @@ class LearnerConfig:
             raise ValueError("momentum lies in [0, 1)")
         if not 0 <= self.decay < 1:
             raise ValueError("decay is a fraction in [0, 1)")
+        if not np.isfinite(self.homeostasis_rate) or not 0 <= self.homeostasis_rate <= 1:
+            raise ValueError("homeostasis_rate is a fraction in [0, 1]")
+        if not np.isfinite(self.homeostasis_target) or not 0 <= self.homeostasis_target < 1:
+            raise ValueError("homeostasis_target is an activation in [0, 1)")
         if not np.isfinite(self.temperature) or self.temperature <= 0:
             raise ValueError("temperature must be finite and positive")
         if not np.isfinite(self.normalize_floor) or self.normalize_floor <= 0:
@@ -586,12 +597,29 @@ class Learner:
         hebb = a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
         return hebb / span, (s_plus - s_minus) / span
 
-    def apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
+    def homeostasis(self, activation: Any) -> np.ndarray | None:
+        """The intrinsic bias step of the output neurons for one update: the rate times the
+        shortfall of each output neuron's free activation, averaged over the rows, below the
+        target. None at the founder rate, or without a free state to read."""
+        cfg = self.config
+        if cfg.homeostasis_rate <= 0 or activation is None:
+            return None
+        a = np.atleast_2d(np.asarray(activation, dtype=float))
+        if a.ndim != 2 or a.shape[1] != self.brain.connectome.n or not np.isfinite(a).all():
+            raise ValueError("activation must be a finite (batch, neurons) array")
+        shortfall = cfg.homeostasis_target - a[:, self.output_index].mean(axis=0)
+        return np.asarray(cfg.homeostasis_rate * shortfall, dtype=float)
+
+    def apply(
+        self, delta_scale: np.ndarray, delta_bias: np.ndarray, *, activation: Any = None
+    ) -> dict[str, float]:
         """Apply a per-synapse and per-neuron step: masks, tying, decay, bounds; then set the brain.
 
         This is the last half of ``update``; a rule that computes its own step (a
         three-factor trace, say) hands it here so every learner shares one notion of
-        which synapses move, how a tied pair moves, and what bounds hold.
+        which synapses move, how a tied pair moves, and what bounds hold. ``activation`` is
+        the free state the update was read from; with a positive ``homeostasis_rate`` the
+        output neurons' biases also take their intrinsic step toward the target activation.
         """
         cfg = self.config
         assert self.plastic_synapses is not None
@@ -605,6 +633,10 @@ class Learner:
             or not np.isfinite(delta_bias).all()
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        pull = self.homeostasis(activation)
+        if pull is not None:
+            delta_bias = delta_bias.copy()
+            delta_bias[self.output_index] += pull
         if not all_trainable:
             delta_scale[~self.plastic_synapses] = 0.0
         if self.synapse_rate is not None:  # each synapse's own step, before tying
@@ -646,6 +678,7 @@ class Learner:
         return {
             "scale_step": float(np.abs(delta_scale).mean()) if delta_scale.size else 0.0,
             "bias_step": float(np.abs(delta_bias).mean()),
+            "homeostasis_step": 0.0 if pull is None else float(np.abs(pull).mean()),
         }
 
     def _device_kernel(self, plus: BrainState, minus: BrainState) -> Any:
@@ -761,8 +794,30 @@ class Learner:
             )
         return cast(dict[str, Any], cache)
 
-    def _apply_device(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, float]:
-        """``apply`` on the device: the same masks, tying, decay and bounds, no host array."""
+    def _device_homeostasis(self, kernel: Any, state: BrainState | None) -> Any:
+        """``homeostasis`` as a tensor on the device, read from the free state's resident
+        activation so that no host array is fetched; None at the founder rate."""
+        cfg = self.config
+        if cfg.homeostasis_rate <= 0 or state is None:
+            return None
+        torch = kernel.torch
+        resident = state.__dict__.get("device")
+        if isinstance(resident, dict) and resident.get("s") is not None:
+            activation = resident["s"]
+        else:
+            activation = torch.as_tensor(np.atleast_2d(np.asarray(state.activation)))
+        if activation.dim() == 1:
+            activation = activation[None, :]
+        index = torch.from_numpy(np.ascontiguousarray(self.output_index)).to(activation.device)
+        shortfall = cfg.homeostasis_target - activation[:, index].mean(dim=0)
+        return cfg.homeostasis_rate * shortfall
+
+    def _apply_device(
+        self, kernel: Any, delta_scale: Any, delta_bias: Any, *, state: BrainState | None = None
+    ) -> dict[str, float]:
+        """``apply`` on the device: the same masks, tying, decay and bounds, no host array.
+        ``state`` is the free state the update was read from; the readout's intrinsic step
+        is read from its resident activation."""
         torch, cfg = kernel.torch, self.config
         if (
             tuple(delta_scale.shape) != (self.brain.connectome.synapses,)
@@ -770,6 +825,11 @@ class Learner:
             or not bool(torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all())
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        pull = self._device_homeostasis(kernel, state)
+        if pull is not None:
+            delta_bias = delta_bias.clone()
+            index = torch.from_numpy(np.ascontiguousarray(self.output_index)).to(delta_bias.device)
+            delta_bias[index] += pull.to(delta_bias.device, delta_bias.dtype)
         ix = self._device_indices(kernel)
         d = delta_scale.clone()
         if ix["synapses"] is not None:
@@ -812,6 +872,7 @@ class Learner:
         return {
             "scale_step": float(d.abs().mean()) if d.numel() else 0.0,
             "bias_step": float(db.abs().mean()),
+            "homeostasis_step": 0.0 if pull is None else float(pull.abs().mean()),
         }
 
     def update(
@@ -841,7 +902,7 @@ class Learner:
             edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
             norm = float(nudged.device["s"].shape[0]) * span
             edges, neurons = self._adaptive_device(kernel, edges / norm, neurons / norm)
-            report = self._apply_device(kernel, cfg.eta * edges, cfg.eta_bias * neurons)
+            report = self._apply_device(kernel, cfg.eta * edges, cfg.eta_bias * neurons, state=free)
             self.contrast_updates += 1
             return report
         synapse_term, neuron_term = self.contrast(free, nudged, opposite)
@@ -867,7 +928,7 @@ class Learner:
         delta_bias = cfg.eta_bias * neuron_term
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
-        report = self.apply(delta_scale, delta_bias)
+        report = self.apply(delta_scale, delta_bias, activation=free.activation)
         self.contrast_updates += 1
         return report
 
