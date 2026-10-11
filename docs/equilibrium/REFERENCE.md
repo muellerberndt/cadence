@@ -24,7 +24,7 @@ existing brain methods; it adds no solver or phase state. `memory.py` holds
 explicit history and error-progress bookkeeping; `reinforcement.py` supplies
 discrete-action Q-learning orchestration; `runtime.py` supplies serial live
 scheduling and actuator rate limits. These helpers preserve the patch equation.
-This reference describes `0.80.0`. Start with the
+This reference describes `0.81.0`. Start with the
 [quickstart](QUICKSTART.md), then the [ordinary layout examples](VARIANTS.md).
 Coupled populations are the application path; depth can support a System 1
 routine. `build()` refuses a population that settles with no other population

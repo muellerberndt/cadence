@@ -107,10 +107,10 @@ Python 3.11+ and NumPy are required.
 Install the published release for this basic example:
 
 ```sh
-python -m pip install cadence-net==0.80.0
+python -m pip install cadence-net==0.81.0
 ```
 
-Its [released documentation](https://github.com/muellerberndt/cadence/blob/v0.80.0/docs/README.md)
+Its [released documentation](https://github.com/muellerberndt/cadence/blob/v0.81.0/docs/README.md)
 describes the APIs included in that package.
 
 ```python

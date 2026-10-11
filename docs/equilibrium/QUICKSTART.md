@@ -7,12 +7,12 @@ separate `cadence.experimental.equilibrium` population solver. Its joint
 stationarity rule and explicit `History` are not the default `Brain.compose`
 neural/memory implementation. Free scalar accuracy checks only this relation.
 
-Install **Cadence 0.80.0** with Python 3.11 or later. The containing package
+Install **Cadence 0.81.0** with Python 3.11 or later. The containing package
 requires NumPy; this solver uses the Python standard library unless
 you select an optional tensor backend:
 
 ```sh
-python -m pip install "cadence-net==0.80.0"
+python -m pip install "cadence-net==0.81.0"
 ```
 
 Or install from a checkout of this version:

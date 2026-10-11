@@ -10,10 +10,10 @@ below do not measure that complete lifecycle.
 Every block runs on NumPy; the blocks of one section run together, in order.
 Read [Cadence for machine-learning people](orientation.md) if the terms are new.
 
-These guides use Cadence 0.80.0. Install the published package:
+These guides use Cadence 0.81.0. Install the published package:
 
 ```bash
-python -m pip install cadence-net==0.80.0
+python -m pip install cadence-net==0.81.0
 ```
 
 ## A record patch on a stream

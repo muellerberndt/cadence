@@ -8,8 +8,8 @@ relationships and retained memories support a family of such interpretations
 across situations. Start with [the world-model guide](world-model.md), then run
 the [quickstart](quickstart.md) and [continuing example](../examples/continuing_brain.py).
 
-These guides use Cadence 0.80.0. Install it with
-`python -m pip install cadence-net==0.80.0`; contributors can install the checkout
+These guides use Cadence 0.81.0. Install it with
+`python -m pip install cadence-net==0.81.0`; contributors can install the checkout
 with `python -m pip install -e .` from the repository root.
 The [index](index.md) is the catalogue; this page gives a reading order.
 

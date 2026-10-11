@@ -10,7 +10,7 @@ Begin with the NumPy-only [installation](../README.md#get-started). Optional ext
 add compiled CPU transport or accelerator libraries:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.80.0"
+python -m pip install "cadence-net[fast]==0.81.0"
 ```
 
 Replace `[fast]` with `[accel]` for PyTorch or `[apple]` for MLX. From a checkout,

@@ -2,7 +2,7 @@
 
 This document specifies the population DRSN engine. The equations are in
 [the processing-patch description](ELEMENT.md); all arguments and result fields
-are in [the API reference](REFERENCE.md). Every `0.80.0` brain is one connected
+are in [the API reference](REFERENCE.md). Every `0.81.0` brain is one connected
 settlement: the builder refuses a population that settles with no other
 population and a group of populations that settles apart from the rest.
 Explicit observer wiring is experimental;

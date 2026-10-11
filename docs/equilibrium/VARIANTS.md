@@ -6,7 +6,7 @@ same local relation, and all eligible states repair together under one energy.
 `observes=` additionally reads exact current prediction errors. The builder
 requires at least two populations joined into one connected graph.
 
-These examples target **Cadence 0.80.0**; follow the [quickstart](QUICKSTART.md) first.
+These examples target **Cadence 0.81.0**; follow the [quickstart](QUICKSTART.md) first.
 They keep the same `signal`/`answer` boundary while changing capacity and wiring.
 Start with a small graph, then measure whether added states or paths improve the
 task enough to justify their work. Error readback has the same execution

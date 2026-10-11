@@ -6,7 +6,7 @@ number can be wrong.
 
 ## Install and run
 
-**`pip install cadence-net==0.80.0` and then `import cadence`.** The distribution is `cadence-net`;
+**`pip install cadence-net==0.81.0` and then `import cadence`.** The distribution is `cadence-net`;
 the import is `cadence`. Python 3.11 or newer and NumPy are the only requirements.
 
 **Do I need a GPU?** No. Everything runs on NumPy float64. `[fast]` adds Numba and SciPy
