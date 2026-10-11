@@ -1,6 +1,8 @@
 """The readout's intrinsic plasticity: two genes, founder off, a bias step toward a target
 activation at every teaching or reward update, on the host and on the device."""
 
+import json
+
 import numpy as np
 import pytest
 
@@ -113,6 +115,22 @@ def test_a_saved_life_with_the_gene_on_continues_identically(tmp_path):
         copy.learner.step(copy.stimulus(x), labels)
     assert np.array_equal(brain.brain.bias, copy.brain.bias)
     assert np.array_equal(brain.brain.efficacy, copy.brain.efficacy)
+
+
+def test_a_learner_with_the_gene_on_is_saved_under_a_name_earlier_releases_refuse(tmp_path):
+    """Earlier releases load cadence-checkpoint/1 and /2 only, and drop unknown settings: a
+    brain with the gene on is written as /3, so they refuse it instead of losing the gene."""
+    for rate, expected in ((0.0, "cadence-checkpoint/2"), (0.2, "cadence-checkpoint/3")):
+        brain = compose(learning_homeostasis_rate=rate)
+        for path in (
+            brain.save(tmp_path / f"brain-{rate}.npz"),
+            brain.learner.save(tmp_path / f"learner-{rate}.npz"),
+        ):
+            with np.load(path) as data:
+                assert json.loads(str(data["meta"]))["format"] == expected
+        assert cd.Brain.load(tmp_path / f"brain-{rate}.npz").learner.config.homeostasis_rate == rate
+        learner = cd.Learner.load(tmp_path / f"learner-{rate}.npz")
+        assert learner.config.homeostasis_rate == rate
 
 
 def _with_motor_bias(brain: cd.Brain, value: float) -> None:
