@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- The source distribution excludes `benchmarks/*/results`, the receipts of the chambers, which stay in the repository and in the GitHub release assets; the 0.81.0 sdist carried 54.8 MB, 35 MB of them the competing-skill and recall receipts, against PyPI's 100 MB file limit. The README's CI badge reads the `main` branch only, so a failed run on another branch no longer shows as failing. No runtime change.
+
 ## 0.81.0 — 2026-10-11
 
 - Add `Brain.wait` for an outcome that arrives after the stream has sensed more: an

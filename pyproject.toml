@@ -43,7 +43,11 @@ packages = ["src/cadence"]
 
 [tool.hatch.build.targets.sdist]
 only-include = ["src", "tests", "docs", "examples", "benchmarks", "README.md", "MANIFESTO.md", "AGENTS.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
-exclude = ["**/.lake/**", "*.olean", "*.ilean", "*.olean.private", "*.olean.server"]
+exclude = ["**/.lake/**", "*.olean", "*.ilean", "*.olean.private", "*.olean.server",
+  # Receipts that no test reads stay in the repository and the release assets, not in the sdist.
+  "benchmarks/competing/results/**", "benchmarks/chain/results/**",
+  "benchmarks/rhythm/results/native-history-*", "benchmarks/recall/results/**",
+  "!benchmarks/recall/results/finite-3-2026-10-08.json.gz"]
 
 [tool.pytest.ini_options]
 addopts = "-ra --import-mode=importlib"
