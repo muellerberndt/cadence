@@ -51,8 +51,11 @@
   by rate sweep on the development founders) failed closure as well, horizons none, 0 and
   0, with replacement and order failing in every founder: the measured limit of a trace
   written after every event with one fixed weight (`benchmarks/recall/README.md`). The
-  chamber's `make_brain` takes `brain.sensory_scale` (founder 1). No default changes; #84
-  stays open.
+  chamber's `make_brain` takes `brain.sensory_scale` (founder 1). In the odour nursery
+  (development founders 0 to 5, `benchmarks/reversal` receipts of 2026-10-11) the gene at
+  0.02 keeps acquisition, reversal and return from an exposure of 300 trials and impairs
+  reversal after 100: one life of six does not reverse and three of six keep a wrong greedy
+  choice. No default changes; #84 stays open.
 - Add the competing-skill ring, `benchmarks/competing`, a bounded table-world instrument for
   [#169](https://github.com/muellerberndt/cadence/issues/169): a policy acquired by the
   arena's founder brain in a nursery, then a ring that brings a competing skill, unavoidable

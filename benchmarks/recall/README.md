@@ -444,7 +444,9 @@ and the latest of two cues are read above chance in three (304 0.82 and 0.50, 30
 is refused. The accepted steps' sign consistency is 0.46 to 0.68 on every projection under
 the raw steps, against 0.14 to 0.21 under the normalized recipe: normalization adds sign
 noise to a small consistent signal. At rate 0.05 founder 1 reads 0.52 at the last
-evaluation.
+evaluation. In the odour nursery the gene at 0.02 keeps acquisition, reversal and return from
+an exposure of 300 trials and impairs reversal after the shortest exposure (development
+founders 0 to 5, [reversal README](../reversal/README.md)).
 
 | Learning | Readout | 1 | 304 | 305 | 306 |
 | --- | --- | --- | --- | --- | --- |

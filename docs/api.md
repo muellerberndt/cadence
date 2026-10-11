@@ -1181,7 +1181,9 @@ founder genes for a small share of moments; the
   loading it without the gene. The evidence is development only: with raw steps
   (`normalize=0`) it keeps the recall chamber's readout responsive, while a bias step does
   not hold a readout against normalized steps or a large raw signal, and the fresh
-  confirmation of that recipe failed ([recall chamber](../benchmarks/recall/README.md)).
+  confirmation of that recipe failed ([recall chamber](../benchmarks/recall/README.md)). At
+  0.02 it impairs the odour nursery's reversal after the shortest exposure
+  ([odour nursery](../benchmarks/reversal/README.md)).
 - `Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None, plastic_neurons=None, reciprocal=True, tie_groups=None, synapse_rate=None, slots=1, updates=0, contrast_updates=0)`:
   `plastic_synapses` and `plastic_neurons` are bool masks over synapses and neurons; only those
   move and decay, so two learners can share one brain without one's decay eroding the other's
