@@ -11,17 +11,21 @@ establishes no default and closes no gate. Read the
 [world-model guide](../../docs/world-model.md) and
 [routine and repair](../../docs/continuous.md#routine-and-repair-live) before interpreting it.
 
-**Development readings, 2026-10-10, Cadence 0.80.0 source.** In this world the acquired skill
-is **not lost**: at the gene step, learning from every outcome of ten thousand aroused
-moments under the weak payoff and from thousands under the certain one, skill A keeps its
-greedy accuracy in every ring, and a soft skill is hardened by continued learning wherever the
-ring brings no competing skill. The drops in greedy accuracy belong to readings taken with the
-working trace carried into the probe on a policy that has not hardened: under the weak payoff
-the frozen copy reads 0.50 carried and 0.67 reset, the door's value, with unchanged weights.
-The smaller actor steps retain no more than the gene step and hold the competing skill less.
-The arena's loss is therefore not a generic property of the actor law at these rates; it needs
-the arena's own dynamics, and its driving test needs a trace-reset reading beside the carried
-one. Gates are declared only after development; `protocol.json` carries `"gates": null`.
+**Development readings, 2026-10-10, Cadence 0.80.0 source.** When the ring pays the old
+skill with certainty or weakly, the acquired skill is **not lost**: at the gene step, learning
+from every outcome of ten thousand aroused moments under the weak payoff and from thousands
+under the certain one, skill A keeps its greedy accuracy in every ring, and a soft skill is
+hardened by continued learning wherever the ring brings no competing skill. The drops in
+greedy accuracy there belong to readings taken with the working trace carried into the probe
+on a policy that has not hardened: under the weak payoff the frozen copy reads 0.50 carried
+and 0.67 reset, the door's value, with unchanged weights. When the ring pays as the arena's
+melee does, a signed and noisy pay, the loss of #169 **reproduces** at every actor step, alone
+and beside the competing skill, while the actor's efficacies barely move: what the melee
+overwrites is the episodic memory's one-shot record of the chosen action's reward, which
+carries a short nursery's competence (see "Signed pay" below). The smaller actor steps
+retain no more than the gene step under the certain and weak payoffs, hold the competing skill
+less, and do not prevent the melee's loss. Gates are declared only after development;
+`protocol.json` carries `"gates": null`.
 
 ## What runs
 
@@ -34,7 +38,7 @@ half-overlapping input. The right action pays +1 with the declared contingency's
 burning moment adds −0.5 whatever the action. A competent nursery life earns 1.0 (hard) or
 0.6 (soft) per moment.
 
-**Brain.** The arena's founder (`cadence-robot-arena/arena/brain.py`, 2026-10-09): modules
+**Brain.** The robot arena's founder brain as of 2026-10-09, every setting listed here: modules
 (48, 24), sensory scale 4, learner temperature 0.3, actor eta 0.03 with eta_bias 0.003,
 lam 0.6, gamma 0.95, eta_critic 5, working trace at amplitude 0.3 and decay 0.1, associative
 memory at consolidation 0.05, founder arousal with youth 300. The arena's `need` is in its
@@ -200,76 +204,42 @@ birth, leaves the nursery softer (0.58 / 0.58 at the door) and the ring eroded (
 not shipped. The loss is not in the synapses the actor moves; it is in what the episodic
 memory records under a noisy pay.
 
-### The arena, sixty fights (2026-10-10, the robot arena's `scripts/retention_protocol.py`)
+### The arena, sixty fights (2026-10-10)
 
-The six licensed brains of the shipped roster fought each other for sixty fights per arm on
-the page's ring, one copy of the league per arm, with the driving test read before the first
-fight and after every five from the saved brain (carried) and from a copy whose stream state
-was reset, and with every fight's damage dealt and taken, burn, aroused share, learned
-moments and the dopamine of the learned moments recorded, overall and on the moments that
-closed on a rival. The test's three repeats on the untouched brains are identical (0.54,
-minimum 0.48). Carried and reset readings agree within 0.04 in every arm: the arena founder's
-trace decays by 0.9 per moment and carries no context into the test.
-
-| arm (ring stage, actor step) | test at 0 / 20 / 40 / 60 | minimum at 60 | dealt, first third → last | burn | aroused share | learned moments per fight |
-| --- | --- | --- | --- | --- | --- | --- |
-| the nursery's step 0.03 | 0.54 / 0.21 / 0.21 / 0.23 | −0.33 | 103 → 72 | 9 → 36 | 0.08 → 0.00 | 69 → 7 |
-| 0.03, the memory's writes off | 0.54 / 0.24 / 0.08 / 0.08 | −0.23 | 97 → 21 | 15 → 86 | 0.10 → 0.00 | 89 → 0 |
-| 0.03, the memory writing an average (rate 0.2) | 0.54 / 0.29 / 0.15 / 0.16 | −0.25 | 87 → 61 | 25 → 49 | 0.11 → 0.11 | 117 → 108 |
-| 0.003 | 0.54 / 0.49 / 0.52 / 0.51 | 0.28 | 112 → 107 | 3 → 6 | 0.11 → 0.09 | 85 → 71 |
-| 0.001, the page's stage | 0.54 / 0.48 / 0.40 / 0.49 | 0.29 | 108 → 112 | 6 → 4 | 0.07 → 0.11 | 56 → 86 |
-| 0.03 with a slow set point (pull 0.1, rate 0.01), development library | 0.54 / 0.45 / 0.40 / 0.40 | 0.22 | 109 → 109 | 5 → 9 | 0.10 → 0.08 | 82 → 75 |
-| 0.03 with a slow set point (pull 0.3, rate 0.03), development library | 0.54 / 0.47 / 0.47 / 0.43 | 0.15 | 114 → 109 | 2 → 8 | 0.09 → 0.07 | 67 → 58 |
-| the nursery's step, nursery life only (sixty blocks of 1,500 moments, no fights) | 0.54 / 0.42 / 0.40 / 0.19 | −0.40 | – | – | – | – |
-
-Six brains; a second seed of fights repeats the picture: the nursery's step ends at 0.25
-(minimum −0.17), the stages at 0.003 and 0.001 at 0.53 and 0.54 (minima 0.44, 0.38) with
-47 to 48 learned moments per fight in the last third, the slow set point at 0.43 (minimum
-0.18). Four readings.
-First, the loss at the nursery's step reproduces and is terminal: two bodies that stayed calm
-through every fight keep their scores (0.60, 0.50), two unlearn approach into spinning in
-place while dealing as much damage as before, one stalls, and the ring-trained brains given
-twenty blocks of nursery life afterwards do not recover (0.23 to 0.11, with the two intact
-brains losing their skill there as well). The nursery alone does the same to the licensed
-brains: ninety thousand more moments of the life that built them, at their own genes and
-with no fight, take the test from 0.54 to 0.19 (one body from 0.59 to −0.40, one holds
-0.62): the acquired policy is not stable under its own learning in the context that built
-it, and the licence at the nursery's end was a reading of a moving policy. Second, the cause is in the actor's updates:
-with the memory's writes off the loss is the same, and the learned moments of the first
-twenty fights are negative in 0.78 to 0.82 of the cases (0.70 to 0.90 on the moments that
-closed on a rival), after which the brains habituate to the melee, learn nothing (0 to 7
-moments per fight) and keep the damaged policy. Third, in this protocol the smaller steps hold
-the test and keep learning: at 0.003 the brains learn from 71 to 85 moments per fight to the
-end, deal as much damage, stay in the ring and one of them improves its approach from 0.33 to
-0.79; the sixty-fight fall to 0.34 reported for 0.003 earlier did not occur with these seeds.
-Fourth, a slow set point under every parameter (the issue's two-timescale hypothesis, on a
-development library) keeps more of the test than the nursery's step with the fight statistics
-of the smaller steps, and less of it than the smaller steps themselves; the acceptance of the
-issue, persistence at the nursery's step at least as good as 0.003's, is met by no candidate.
+The arena's own sixty-fight protocol ran in the robot arena's development repository, outside
+this one, so its receipts are not shipped here; its numbers, both seeds of fights and the
+renewal and nursery-only arms are reported on
+[#169](https://github.com/muellerberndt/cadence/issues/169#issuecomment-6097083259). In short:
+at the nursery's actor step 0.03 the loss reproduces and is terminal (the driving test falls
+from 0.54 to 0.23, and to 0.25 with the second seed of fights), carried and reset alike; with
+the memory's writes off the loss is the same, so in the arena it lies in the actor's own
+updates, which in the first twenty fights are mostly negative, after which the brains
+habituate and learn almost nothing; the smaller steps 0.003 and 0.001 hold the test (0.49 to
+0.54) while learning continues; a slow set point under every parameter keeps more than the
+nursery's step and less than the smaller steps; and no candidate meets the issue's
+acceptance, persistence at the nursery's step at least as good as 0.003's.
 
 ## What this does and does not establish
 
-It establishes that on this brain, at the arena's genes, an acquired situation→action policy
-is not lost to continued aroused learning at the gene step over ten thousand moments, with
-or without a competing skill, with or without noisy unavoidable punishment, for a certain or
-a weak payoff; that the smaller steps the arena adopted retain no more here and acquire far
-less; and that a frozen greedy test is sensitive to the context the working trace carries.
+On this brain at the arena's genes, over ten thousand ring moments: when the ring pays the
+old skill with certainty or weakly, an acquired situation→action policy is not lost to
+continued aroused learning at the gene step, with or without a competing skill and with or
+without noisy unavoidable punishment; the smaller steps the arena adopted retain no more and
+acquire far less; and a frozen greedy test reads the context the working trace carries. When the ring pays as the melee does, the loss of
+#169 reproduces at every actor step while the actor's efficacies barely move: the competence
+of a four-thousand-moment nursery lives mostly in the episodic memory's one-shot record of
+the chosen action's reward (`memory_rate` 1.0), which the noisy pay overwrites. An averaged
+record (`memory_rate` 0.2 or 0.05) halves the loss; a slow set point under every parameter
+and a sign-consistency stiffness, screened on unshipped library variants, do not hold the
+skill.
 
-It does not reproduce the arena's loss and does not explain it. The arena differs in ways
-this table-world lacks: several motor slots with one heated at a time, continuous senses and
-a body whose commands change what it next senses, progress pay that stops once the skill has
-succeeded (a competent approach reaches the dummy and is paid nothing more), fights that
-punish the approach the nursery paid for, and a driving test that scores behaviour over time
-from a carried trace. Each of these can lose a greedy test score without a synapse being
-"forgotten": the first by exploration perturbing one slot while the others settle, the third
-and fourth by revising a skill the world stopped paying for, the last by context. The
-manifesto asks to distinguish such revision from interference, and the next bounded delivery
-for #169 is therefore in the arena, with this chamber's controls carried over: a sixty-fight
-protocol whose driving test reads a trace-reset copy beside the carried one, a nursery-only
-refresher arm, the sign of the dopamine on approach-eligible moments per fight, and a test
-of whether approach is paid in the ring. No library mechanism is proposed from this
-evidence; the two-timescale synapse of the issue's second hypothesis would address a drift
-this chamber did not find.
+It does not establish what loses the skill in the arena, where the same founder learns in a
+far longer nursery and the memory's writes are not the cause (see the section above). The
+arena also differs in ways this table world lacks: several motor slots with one heated at a
+time, continuous senses and a body whose commands change what it next senses, progress pay
+that stops once the skill has succeeded, fights that punish the approach the nursery paid
+for, and a driving test that scores behavior over time. No library mechanism is proposed
+from this evidence, no gate is passed, and #169 stays open.
 
 ## Run and verify
 
@@ -288,6 +258,8 @@ python -m pytest -q benchmarks/competing
 
 A receipt is a `cadence.Receipt` bound to `competing_skills.py` and every module of the
 library as they were when the run began; `--verify --current` also requires the present
-sources. Nurseries are saved to `--checkpoints` (a temporary directory by default) so every
+sources. The receipts under `results/` were run on commit `c922553` of this chamber's branch:
+`--verify` checks them anywhere, and `--verify --current` holds in a checkout of that commit,
+since later library changes alter the bound sources. Nurseries are saved to `--checkpoints` (a temporary directory by default) so every
 arm of a seed starts from the same bytes. Overrides of the phases, the probe interval and the
 contingency are recorded in the receipt's `overrides`.

@@ -554,8 +554,8 @@ Reinforcement(
 )
 ```
 
-The helper originated in 0.50.0; `credit_horizon` and explicit executed-outcome
-acknowledgments below are available in `0.73.1`. With the default
+`credit_horizon` and the explicit executed-outcome acknowledgments below are
+part of this helper. With the default
 action-conditioned form, the compiled
 `brain` needs an `action_input` sensor with exactly `actions` coordinates and a `value_output`
 selecting one scalar patch state. With `action_input=None`, `value_output`

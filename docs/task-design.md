@@ -12,6 +12,12 @@ classification and calibration as mechanism controls. Measure retained and new
 behavior after repair, alongside stable-use work and repair work; do not replace
 the brain or bypass its memory between observations to stand in for this test.
 
+Every issue and plan declares whether it tests a bounded component, integrated
+continuing behavior, or infrastructure. State the applicable equilibrium
+boundaries, simpler control and preservation gates. Infrastructure can explain
+applicability without requiring an unrelated whole-brain demonstration. Use the
+[existing capability owners and canonical principle](../CONTRIBUTING.md#scope-and-evidence-for-behavior-over-time).
+
 ## Start at the boundary
 
 A patch has bounded local state, declared ports, readback and a repair rule.
@@ -83,6 +89,33 @@ and output. Two otherwise identical positive behaviors cannot be learned
 from opposite sign inputs alone. A declared shared context or common initial
 activation breaks this fixture symmetry. It is not a clock or proof of a
 learned context model. Do not silently alter a frozen task to repair it.
+
+## Test coherent behavior over time
+
+Sequence competence requires coherent, continuing learned context and temporal
+organization to govern behavior. Sequential output and sensory feedback are
+allowed. Working traces, associative memory and efference are legitimate; the
+question is what behavior their acquired context supports. Next-event accuracy
+and self-feeding alone are bounded component results, not evidence of phrase or
+whole-sequence competence.
+
+For an integrated sequence claim, declare the relevant context and time span,
+then compare the same acquired brain with retained context, absent context and
+perturbed context under matched exposure. Where relevant, test recovery after a
+disturbance and counterfactual contexts requiring different continuations. Keep
+the simpler control, earlier skills, pending continuation, refusals and work in
+the acceptance gates. These comparisons must test the claimed behavior, rather
+than only its aggregate next-event score.
+
+Separate equation residual from musical surprise, structural coherence and task
+success. State which coordinates are live in the solve and which are held:
+default `Brain.act` qualifies a present state with held trace and memory input,
+not a joint future trajectory. This does not require a new phrase module or
+whole-song-at-once generation. Check existing state, information and experience
+first; any added mechanism must use local repair in the same coupled global
+equilibrium. Adapters must not conceal answers, phase or arrangement. Supplied
+context or clocks belong in the declared information budget and appropriate
+controls, not in a claim that the brain learned that organization itself.
 
 ## Close the action and consequence loop
 

@@ -194,8 +194,7 @@ unit variance.
 - Several senses: `JointRecordPatches` settles several patches as one equilibrium through
   declared ports ([several patches joined by ports](record-patch.md#several-patches-joined-by-ports)).
 - A belief carried under action, with imagination: [the belief patch](belief.md).
-- A brain in a page: the examples' [viewer](pages.md) draws any connectome; the quickstart
-  demos there show how a record patch is drawn as one.
+- A brain in a page: [record the settlings](pages.md) for an application to draw.
 
 ## A supervised graph-learning control
 
@@ -313,8 +312,8 @@ assert again.accuracy(drive(x_test), y_test) == learner.accuracy(drive(x_test), 
 
 ```
 
-Open the page: every neuron and synapse, the settling animated, and a live brain that
-settles in the browser under a stimulus you draw ([the brain viewer](pages.md)).
+To draw it, record the settlings of a solve and hand them to a page of your own
+([the brain in a page](pages.md)).
 
 ### 6. Grow it
 

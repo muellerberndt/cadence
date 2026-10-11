@@ -87,12 +87,12 @@ tests.
 - `observe(..., mask=...)` gates the streams that have a moment to learn from: the slow
   loss of an instance is the mean over its masked moments, only those write and move their
   statistics, and an instance with no masked moment does not move. Hindsight learning over
-  hands of unequal length runs on it.
+  episodes of unequal length runs on it.
 - `observe(..., weight=...)` reweights the squared errors of a linear readout per output.
   A patch that predicts a wide reading of which a few ports matter counts them by their
-  weight; a body that normalizes per block, every block a slot reads counting once, gives
-  two reward ports the weight of 283 sense ports. Without it the profit prediction a
-  drive chooses on got a four-hundredth of the repair.
+  weight. Normalizing per block, so every block a slot reads counts once, gives two outcome
+  ports the weight of hundreds of sense ports; without it the prediction a drive chooses on
+  receives a vanishing share of the repair.
 - `record_weight` (instances, outputs) damps the records of an output whose target is a
   sample rather than a fact (a payoff), and `imagine` returns `familiarity`, how much of a
   reading's code falls on cells the stream's store has written before: whether this brain
@@ -100,8 +100,8 @@ tests.
   in an imagination.
 - `optimizer = "adam"` scales the slow step by the adjoint's running moments per instance
   and parameter, the rate then being the learning rate. In the wide regime the context is
-  small and a fixed-rate step does not lift the weights out of their initialization
-  (measured: 0.0004 of movement over 300 watched hands); Adam on the adjoint moves them.
+  small and a fixed-rate step barely lifts the weights out of their initialization over
+  hundreds of moments; Adam on the adjoint moves them.
 
 Timings on an Apple M4, 4,096 streams, an 830-port reading, 64 hidden units, 128 cells,
 8 active: an imagined reading 74 ms before these changes and 15 ms after, an observation
@@ -116,19 +116,18 @@ with a file as the only exchange. This is the structure; it has been run on one 
 not yet across several.
 
 1. **School one founder on one device.** One brain in as many streams as the device holds
-   (512 per instance on the M4): its slow step integrates over every stream, so the
-   streams are the data rate. Ten million watched hands took 109 minutes on the M4 and
-   produced a founder that predicts the watched player's action with 0.97 agreement. Save
-   its parameters and genes as the checkpoint every device starts from.
+   (512 per instance on an M4): its slow step integrates over every stream, so the
+   streams are the data rate, and tens of millions of observed moments fit in a couple of
+   hours. Save its parameters and genes as the checkpoint every device starts from.
 2. **One population per device, from the checkpoint.** Each device holds its own
    `PopulationPatch` objects (one per cortex slot) with its share of the brains, all
    starting as mutated copies of the founder, each brain in its own worlds. The world's
-   tables (a game as arrays, its deals as a bank) are small and copied to every device.
+   tables (the world as arrays, its draws as a bank) are small and copied to every device.
 3. **The hall as the exchange.** After every generation each device writes its best
    brains (parameters and genes) to a shared directory; the elders of the next generation
    on every device are drawn from the union of the halls. Brains never move during a
    generation; a few megabytes move between generations.
-4. **Common deals across devices.** Seed the deal sequences of the shared games by stream
+4. **Common draws across devices.** Seed the random sequences of the shared worlds by stream
    index, the same on every device, so the fitness of brains on different devices is a
    paired comparison.
 5. **Size by the stores.** Memory is `instances * streams * cells * outputs` floats per

@@ -107,4 +107,5 @@ recursive correction and human-like flexibility require behavioral evidence.
 
 [Build a brain](brain.md) · [Continuous interaction](continuous.md) ·
 [Temporal learning](temporal.md) · [Planning](planning.md) ·
-[Response protection](temporal-memory.md) · [Conditional proofs](https://github.com/FloatingPragma/oph-meta/blob/main/cadence-flagship/lean/README.md)
+[Response protection](temporal-memory.md) ·
+[Paper](https://philpapers.org/rec/MUECAP-2)

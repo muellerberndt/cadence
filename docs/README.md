@@ -41,20 +41,20 @@ exact signatures, defaults, mutation and refusal behavior.
 | Study explicit reciprocal patches and optional recursive observation | `PatchNet` | [PatchNet](patchnet.md), [recursive settlement](recursive-settlement.md), [recursive training](recursive-training.md) |
 | Learn environmental transitions and plan actions through them | `TemporalPatchNet`, `TemporalMemory` | [Interaction](interaction.md), [planning](planning.md), [response protection](temporal-memory.md) |
 | Store witnessed events and consolidate them through dreams | `RecordPatchNet.observe`, `dream` and `sleep` | [Record-patch acquisition](record-patch.md#acquisition-in-two-phases-records-by-day-weights-by-night), [API](api.md#recordpatchnet-cadencerecord_patch) |
-| Explore belief assimilation, steering and selective activity | `BeliefPatch`, `Steered`, `Life` | [Belief](belief.md), [steering](steering.md), [habit/imagination/learning](howto-rung.md) |
+| Explore belief assimilation, steering and selective activity | `BeliefPatch`, `Steered`, `Life` | [Belief](belief.md), [steering](steering.md), [habit/imagination/learning](howto-demo.md) |
 | Study exact state-and-error readback under its own equations | `cadence.experimental.equilibrium` | [Advanced population guide](equilibrium/index.md) |
 
-`Brain.compose` constructs the brain; `live` advances its one continuing life.
-`last_settlement` only reports diagnostics. Use `step` when you explicitly need
-batched streams, teacher labels or learning from every outcome. The other rows expose
-specialist mechanisms with distinct state and learning contracts; importing two
-classes does not automatically integrate them into one equilibrium.
+`Brain.compose` constructs the brain; `live` advances its one continuing life;
+`last_settlement` only reports diagnostics. Use `step` for batched streams,
+teacher labels or learning from every outcome. The other rows expose specialist
+mechanisms with their own state and learning contracts; importing two classes
+does not integrate them into one equilibrium.
 
-In particular, record-patch **sleep and dreaming remain supported**. `dream`
-completes supplied cues from the retained model and records. `sleep` fixes those
-targets, teaches the slow weights, then rewrites the store's residuals. This is
-different from the composed brain's private `imagine` calls and online
-`SynapticMemory` consolidation; the sleep cycle is not wired into `Brain.compose`.
+Record-patch `dream` completes supplied cues from the retained model and
+records; `sleep` fixes those completions as targets, teaches the slow weights and
+rewrites the store's residuals. That cycle is separate from the composed brain's
+private `imagine` and online `SynapticMemory` consolidation, and is not wired
+into `Brain.compose`.
 
 ## Keep one continuing life
 
@@ -80,36 +80,31 @@ feedback, retry `live(observations)` without submitting the outcome again. The
 A useful application makes these six things inspectable:
 
 1. **Boundaries and state.** Declare observations, actions, stream identities and
-   the context carried between events. A window can be a declared memory
-   boundary; it does not by itself demonstrate continuing acquired knowledge.
-2. **Reciprocal interpretation.** Let returning constraints participate in the
-   same answer. `Brain.compose` already couples processing and motor regions
-   reciprocally, even with one processing region and no optional observers.
-   Sensory drive enters one way; default processing regions have no internal
-   synapses. The recurrent solve, not the number of layers, distinguishes it
-   from a feed-forward computation.
-3. **Retained knowledge.** Reuse learned parameters, working trace and associative
-   memory across experience. Independent `predict` omits both memory reads
-   without erasing them; `fit` clears pending stream state. Those are component
-   controls, not a substitute for testing the continuing brain.
-4. **Witnessed correction.** Score issued actions or saved predictions against
-   actual outcomes. `Brain` retains pending action and reward-value information;
-   it does not yet generate an integrated environmental transition forecast.
-   Supplied teachers label the current observation, while rewards concern the
-   preceding action. Every actual outcome is consumed once, including success.
-5. **Measured work.** Inspect `last_settlement` alongside task outcomes and
-   learning reports. Free-answer sweeps and residuals are not total work or
-   physical energy. Cheap routine behavior is a target to test.
+   the context carried between events. A window of input is a declared boundary,
+   not evidence of continuing acquired knowledge.
+2. **Reciprocal interpretation.** `Brain.compose` couples processing and motor
+   regions reciprocally, even with one processing region and no observers.
+   Sensory drive enters one way, and default processing regions have no internal
+   synapses. The recurrent solve, not the number of layers, is what separates
+   this from a feed-forward computation.
+3. **Retained knowledge.** Reuse learned parameters, working trace and
+   associative memory across experience. Independent `predict` omits both memory
+   reads without erasing them; `fit` clears pending stream state. Both are
+   component controls.
+4. **Witnessed correction.** Score issued actions against actual outcomes.
+   Supplied teachers label the current observation; rewards concern the preceding
+   action. Every outcome is consumed once, including success.
+5. **Measured work.** Read `last_settlement` beside task outcomes and learning
+   reports. Free-answer sweeps and residuals are not total work or physical
+   energy. Cheap routine behavior is a target to test.
 6. **Continuation and retention.** Disturb the environment, measure recovery and
-   old skills, and resume a saved brain with its pending feedback. A successful
-   numerical solve alone establishes none of those behavioral results.
+   old skills, and resume a saved brain with its pending feedback.
 
-These are bounded, observer-like software systems: the composed brain exposes
-neural state and sensory/motor indices, reads a working `Trace` and
-`SynapticMemory`, and changes local relationships through feedback. Explicit
-record-field ports and exact state-and-error readback belong to other APIs with
-their own contracts. Optional System 2 observers extend System 1's existing
-recurrence; they are not required for this lifecycle.
+The composed brain exposes neural state and sensory/motor indices, reads a
+working `Trace` and `SynapticMemory`, and changes local relationships through
+feedback. Explicit record-field ports and exact state-and-error readback belong
+to other APIs with their own contracts. Optional System 2 observers extend this
+recurrence; they are not required for the lifecycle.
 
 ## Implemented mechanisms and current boundaries
 
@@ -133,16 +128,15 @@ recurrence; they are not required for this lifecycle.
 | Understand and test local updates | [Concepts](concepts.md), [learning](learning.md), [task controls](tasks.md), [arrays and component controls](build.md) |
 | Evaluate a whole life | [Task design](task-design.md), [sequential tasks and prerequisite chains](sequential-tasks.md), [missteps](missteps.md), [scaling](scaling.md), [troubleshooting](troubleshooting.md), [creativity](creativity.md) |
 | Check numerical and evidence contracts | [Contracts](contracts.md), [certificates](certificate.md), [protocols](protocols.md), [receipts](receipts.md), [API](api.md), [backends](backends.md) |
-| Study learned consequences and records | [Interaction](interaction.md), [temporal models](temporal.md), [planning](planning.md), [response protection](temporal-memory.md), [record patches](record-patch.md), [belief](belief.md), [steering](steering.md), [habit/imagination/learning](howto-rung.md) |
+| Study learned consequences and records | [Interaction](interaction.md), [temporal models](temporal.md), [planning](planning.md), [response protection](temporal-memory.md), [record patches](record-patch.md), [belief](belief.md), [steering](steering.md), [habit/imagination/learning](howto-demo.md) |
 | Build custom reciprocal graphs | [PatchNet](patchnet.md), [recursive settlement](recursive-settlement.md), [recursive training](recursive-training.md), [cortices](cortex.md), [genomes](evolution.md), [connectomes](connectomes.md), [partitioned settling](partitioned.md) |
 | Explore execution and visualization | [Population execution](population.md), [viewer pages](pages.md), [advanced state-and-error solver](equilibrium/index.md) |
 
-Use each model family's own mathematics and tests. A guarantee about the
+Use each model family's own mathematics and tests: a guarantee about the
 population solver, temporal model or record store does not certify the composed
 neural graph without a demonstrated correspondence.
 
-For verification commands and package checks, use [CONTRIBUTING.md](../CONTRIBUTING.md).
-For a result, preserve its task, source revision, seeds, outcome measurements and
-full work accounting through [protocols](protocols.md) and [receipts](receipts.md).
-Passing numerical tests is useful evidence; performance claims also need matched
-behavioral and resource comparisons.
+For verification commands and package checks, use
+[CONTRIBUTING.md](../CONTRIBUTING.md). Report a result with its task, source
+revision, seeds, outcome measurements and full work accounting through
+[protocols](protocols.md) and [receipts](receipts.md).

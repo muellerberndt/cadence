@@ -1,6 +1,8 @@
 """The readout's intrinsic plasticity: two genes, founder off, a bias step toward a target
 activation at every teaching or reward update, on the host and on the device."""
 
+import json
+
 import numpy as np
 import pytest
 
@@ -115,6 +117,22 @@ def test_a_saved_life_with_the_gene_on_continues_identically(tmp_path):
     assert np.array_equal(brain.brain.efficacy, copy.brain.efficacy)
 
 
+def test_a_learner_with_the_gene_on_is_saved_under_a_name_earlier_releases_refuse(tmp_path):
+    """Earlier releases load cadence-checkpoint/1 and /2 only, and drop unknown settings: a
+    brain with the gene on is written as /3, so they refuse it instead of losing the gene."""
+    for rate, expected in ((0.0, "cadence-checkpoint/2"), (0.2, "cadence-checkpoint/3")):
+        brain = compose(learning_homeostasis_rate=rate)
+        for path in (
+            brain.save(tmp_path / f"brain-{rate}.npz"),
+            brain.learner.save(tmp_path / f"learner-{rate}.npz"),
+        ):
+            with np.load(path) as data:
+                assert json.loads(str(data["meta"]))["format"] == expected
+        assert cd.Brain.load(tmp_path / f"brain-{rate}.npz").learner.config.homeostasis_rate == rate
+        learner = cd.Learner.load(tmp_path / f"learner-{rate}.npz")
+        assert learner.config.homeostasis_rate == rate
+
+
 def _with_motor_bias(brain: cd.Brain, value: float) -> None:
     bias = brain.brain.bias.copy()
     bias[brain.motor_index] = value
@@ -164,3 +182,54 @@ def test_the_device_path_takes_the_same_intrinsic_step():
         host_report["homeostasis_step"], rel=1e-5
     )
     assert np.allclose(host.brain.bias, device.brain.bias, atol=1e-6)
+
+
+def _outcome(rate: float, observed: np.ndarray, **options):
+    """A two-stream brain after one learned outcome whose real rows ``observed`` names: the
+    brain, the activation of the state its actions were chosen in, and the learning report."""
+    brain = compose(learning_homeostasis_rate=rate, seed=4, **options)
+    x = patterns()[:2]
+    brain.act(x)
+    free = np.atleast_2d(np.asarray(brain.basal_ganglia.state.activation)).copy()
+    report = brain.basal_ganglia.learn(
+        np.array([1.0, -1.0]), np.zeros(2, dtype=bool), brain.stimulus(x), observed=observed
+    )
+    return brain, free, report
+
+
+def test_padding_rows_do_not_set_the_readout_operating_point():
+    rate, target = 0.4, 0.3
+    observed = np.array([True, False])
+    brain, free, _ = _outcome(rate, observed)
+    twin, _, _ = _outcome(0.0, observed)
+    motor = brain.motor_index
+    expected = rate * (target - free[0, motor])  # the real row alone
+    assert not np.allclose(expected, rate * (target - free[:, motor].mean(axis=0)))
+    assert np.allclose(brain.brain.bias[motor] - twin.brain.bias[motor], expected)
+
+
+def test_the_device_reward_path_takes_the_same_intrinsic_step_from_the_same_rows():
+    pytest.importorskip("torch")
+    for observed in (np.array([True, True]), np.array([True, False])):
+        host, _, host_report = _outcome(0.4, observed)
+        device, _, device_report = _outcome(0.4, observed, backend="torch", device="cpu")
+        assert device.basal_ganglia._trace_device is not None, "the device path learned"
+        assert device_report["homeostasis_step"] == pytest.approx(
+            host_report["homeostasis_step"], rel=1e-5
+        )
+        assert np.allclose(host.brain.bias, device.brain.bias, atol=1e-6)
+
+
+@pytest.mark.parametrize("backend", [None, "torch"])
+def test_a_frozen_output_bias_takes_and_reports_no_intrinsic_step(backend):
+    options = {} if backend is None else {"backend": backend, "device": "cpu"}
+    if backend is not None:
+        pytest.importorskip("torch")
+    brain = compose(learning_homeostasis_rate=0.4, **options)
+    plastic = np.ones(brain.connectome.n, dtype=bool)
+    plastic[brain.motor_index] = False
+    brain.learner.plastic_neurons = plastic
+    before = brain.brain.bias.copy()
+    report = brain.learner.step(brain.stimulus(patterns()), np.array([0, 1, 2, 0]))[1]
+    assert report["homeostasis_step"] == 0.0
+    np.testing.assert_array_equal(brain.brain.bias[brain.motor_index], before[brain.motor_index])

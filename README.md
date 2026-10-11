@@ -212,16 +212,8 @@ provide event records and consolidation. The advanced
 [population solver](https://github.com/muellerberndt/cadence/blob/main/docs/equilibrium/index.md)
 provides exact state-and-error readback under its own numerical contract.
 
-[cadence-demos](https://github.com/muellerberndt/cadence-demos) contains the active
-application demos. [cadence-examples](https://github.com/muellerberndt/cadence-examples)
-preserves research examples and viewer tools with their own declared library pins.
-
-The [research results demo](benchmarks/acquisition/demo/README.md) is a small,
-read-only viewer supplied in the source checkout and source distribution. It
-shows qualified successes, failed controls and the remaining #85/#110 boundaries;
-its bundled summaries do not replace verification of the external raw receipts.
-See the [acquisition report](benchmarks/acquisition/README.md) and
-[retention instruments](benchmarks/retention/README.md) for the measured scope.
+[cadence-demos](https://github.com/muellerberndt/cadence-demos) contains the
+application demos.
 
 ## Related physics project
 

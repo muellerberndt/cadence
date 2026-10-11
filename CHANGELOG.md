@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Add `Brain.wait` for an outcome that arrives after the stream has sensed more: an
+  awaited action's custody for one `live` stream
+  ([#111](https://github.com/muellerberndt/cadence/issues/111),
+  [#122](https://github.com/muellerberndt/cadence/issues/122)). A waiting stream settles
+  each observation and advances its working trace without taking an outcome; the
+  awaited action keeps its forecasts, eligibility and situation, so the outcome later
+  given to `live` is credited as an immediate outcome would be, while the next state
+  settles from where the stream is. Wait settles are reported by `last_settlement`,
+  outside arousal's counts. Add `Brain.decision_id`, the arousal age once `live` issued
+  the awaited action, and `live(..., decision_id=...)`, which refuses an outcome
+  reported under another identity before any change. A stream saved while waiting uses
+  checkpoint format `cadence-generic/5`; lives that do not wait keep their formats and
+  contents. `ActorCritic.learn` takes the state to settle the next state from (`warm`).
+  The guide adds that the caller supplies a late outcome's link to its action, so a
+  delay whose credit the brain is to learn goes through `live`; that a wait follows
+  event time ([#116](https://github.com/muellerberndt/cadence/issues/116)); and how to
+  total a waiting stream's work.
+  Defaults, learning laws and existing calls are unchanged; no behavioral gain is claimed.
 - Add the readout's intrinsic plasticity, two genes of `LearnerConfig`:
   `homeostasis_rate` (founder 0) and `homeostasis_target` (0.3). At every teaching or
   reward update, on the host and on the device, each output neuron's bias moves by the rate
@@ -9,8 +27,13 @@
   saturates, where a finite nudge has no slope, nor falls silent, where every contrast is
   tiny. Reachable as `learning_homeostasis_rate` and `learning_homeostasis_target` in
   `compose` and `retune`, reported by `describe()`, saved with the learner configuration;
-  `apply` reports `homeostasis_step`. The founder rate leaves every composed brain, its
-  checkpoints and its continuation as they were. Demonstrated limitation: the recall
+  `apply` reports `homeostasis_step`. The founder rate leaves every composed brain's
+  behavior and continuation as they were; learning reports gain `homeostasis_step` (0 at the
+  founder) and saved configurations the two fields, which earlier releases ignore. A learner
+  with a positive rate is saved as `cadence-checkpoint/3`, which earlier releases refuse
+  instead of loading it without the gene. Padding rows that `ActorCritic.learn(...,
+  observed=...)` excludes do not set the readout's operating point, and a frozen output bias
+  takes and reports no step. Demonstrated limitation: the recall
   chamber's readout saturates under continued teaching in two of five development founders
   and a third drifts to chance ([#84](https://github.com/muellerberndt/cadence/issues/84));
   with the rate at 0.1 and raw local steps, all four development founders tested end 64
@@ -28,8 +51,11 @@
   by rate sweep on the development founders) failed closure as well, horizons none, 0 and
   0, with replacement and order failing in every founder: the measured limit of a trace
   written after every event with one fixed weight (`benchmarks/recall/README.md`). The
-  chamber's `make_brain` takes `brain.sensory_scale` (founder 1). No default changes; #84
-  stays open.
+  chamber's `make_brain` takes `brain.sensory_scale` (founder 1). In the odour nursery
+  (development founders 0 to 5, `benchmarks/reversal` receipts of 2026-10-11) the gene at
+  0.02 keeps acquisition, reversal and return from an exposure of 300 trials and impairs
+  reversal after 100: one life of six does not reverse and three of six keep a wrong greedy
+  choice. No default changes; #84 stays open.
 - Add the competing-skill ring, `benchmarks/competing`, a bounded table-world instrument for
   [#169](https://github.com/muellerberndt/cadence/issues/169): a policy acquired by the
   arena's founder brain in a nursery, then a ring that brings a competing skill, unavoidable

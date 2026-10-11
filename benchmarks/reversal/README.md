@@ -827,6 +827,44 @@ Reproduction at each stated source uses the earlier cost-payoff command with
 `--seeds 0 1 2 3 4` for the combined receipt and `--seeds 0` for the credits-only
 control. Both use one worker and the original protocol and operating point.
 
+## The readout's intrinsic plasticity at rate 0.02 (development, 2026-10-11)
+
+The learner gene `homeostasis_rate` (founder 0) was added for the
+[recall chamber](../recall/README.md). Its effect on this nursery was read on the six
+development founders 0 to 5, the `live` arm, the protocol's sugar payoff and all five
+exposures, once at the founder and once with the gene at 0.02, on the same source:
+[founder receipt](results/development-homeostasis-founder-2026-10-11.json.gz) and
+[gene receipt](results/development-homeostasis-0.02-2026-10-11.json.gz), both verified.
+This is a development reading on reused founders with no gate.
+
+| Reading over six lives, by exposure | 100 | 300 | 1,000 | 3,000 | 10,000 |
+| --- | --- | --- | --- | --- | --- |
+| Rule B, optimal share of the last 100 actions, founder | 1.00 (1.00) | 1.00 (1.00) | 0.99 (0.94) | 1.00 (1.00) | 1.00 (1.00) |
+| Rule B, optimal share of the last 100 actions, gene 0.02 | 0.86 (0.71) | 1.00 (1.00) | 0.99 (0.95) | 1.00 (1.00) | 0.99 (0.95) |
+| Reversal lag, median (lives that reversed), founder | 54 (6/6) | 20 (6/6) | 31 (6/6) | 74 (6/6) | 65 (6/6) |
+| Reversal lag, median (lives that reversed), gene 0.02 | 47 (5/6) | 28 (6/6) | 32 (6/6) | 29 (6/6) | 26 (6/6) |
+| Return lag, median (lives that returned), founder | 34 (6/6) | 22 (6/6) | 21 (6/6) | 27 (6/6) | 32 (6/6) |
+| Return lag, median (lives that returned), gene 0.02 | 80 (5/6) | 22 (6/6) | 21 (6/6) | 14 (6/6) | 21 (6/6) |
+| Lives whose greedy probes all turned right after the reversal, founder | 6/6 | 6/6 | 6/6 | 6/6 | 6/6 |
+| Lives whose greedy probes all turned right after the reversal, gene 0.02 | 3/6 | 6/6 | 6/6 | 6/6 | 6/6 |
+| Approach to the new sugar odour under rule B, median (minimum), founder | 0.95 (0.81) | 0.96 (0.93) | 0.96 (0.95) | 0.95 (0.87) | 0.96 (0.93) |
+| Approach to the new sugar odour under rule B, median (minimum), gene 0.02 | 0.42 (0.00) | 0.95 (0.94) | 0.96 (0.92) | 0.96 (0.92) | 0.94 (0.91) |
+
+The stable pair reads 1.00 at every probe of both arms. From an exposure of 300 trials the
+gene keeps every measured capability, and after the long exposures it reverses faster
+(median 29 and 26 trials at 3,000 and 10,000 against 74 and 65). After the shortest
+exposure it impairs reversal: one life of six neither reverses nor returns, the greedy probes
+turn right in three lives of six, and the median approach to the new sugar odour under rule B
+falls from 0.95 to 0.42. The gene is not neutral in this nursery; it stays off by default.
+Reproduction:
+
+```sh
+PYTHONPATH=src python benchmarks/reversal/odour_nursery.py --arms live --seeds 0 1 2 3 4 5 \
+    --workers 6 --out <founder receipt>
+PYTHONPATH=src python benchmarks/reversal/odour_nursery.py --arms live --seeds 0 1 2 3 4 5 \
+    --workers 6 --point '{"learning": {"homeostasis_rate": 0.02}}' --out <gene receipt>
+```
+
 ## What this does and does not establish
 
 The `live` arm supplies bounded acquisition, reversal, return and stable-pair evidence
