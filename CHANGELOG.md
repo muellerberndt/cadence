@@ -48,6 +48,24 @@
   (`memory_rate` 0.2 or 0.05) the loss halves. A slow set point under every parameter and a
   sign-consistency stiffness, both screened on unshipped library variants, do not hold the
   skill and were removed. No gate, default or mechanism changes.
+- Add `docs/sequential-tasks.md`, what the repository's measurements establish about a chain
+  of actions that collapses onto one action and the pattern they support (the chain's state
+  in the observation, grading over labels, backward one-step lessons, the smallest passing
+  budget, a smaller actor step after acquisition, the sampled policy read beside the greedy
+  one, the critic's rate for delayed pay), and `benchmarks/chain`, the prerequisite-chain
+  nursery ([#111](https://github.com/muellerberndt/cadence/issues/111),
+  [#113](https://github.com/muellerberndt/cadence/issues/113),
+  [#84](https://github.com/muellerberndt/cadence/issues/84)): a chain of four actions with its
+  state observed or hidden, pay at the end, shaped or in backward lessons, the arena founder
+  brain at its gene step, a tenth of it, tapered and with the readout gene, against uniform
+  random, a frozen newborn, the stationary memoryless ceiling and a tabular learner with the
+  same information; readings from saved copies every two thousand moments. Development
+  receipt on six seeds: with the state observed and pay at every step the founder brain
+  completes the chain at 204 per thousand moments against the tabular learner's 250; with
+  pay at the end its greedy policy reads uniform random's rate (42) while its sampled
+  policy reads 77; with the state hidden no arm beats the stationary ceiling; the readout's
+  intrinsic plasticity at its development point lowers every reading under reward, so the
+  gene as declared is a teaching-time mechanism. No gate, default or mechanism changes.
 - Add `benchmarks/recall/credit_landing.py`, development diagnostics for
   [#84](https://github.com/muellerberndt/cadence/issues/84) on the finite recall chamber's
   recipe: what an untrained founder's trace carries, and where each lesson's credit lands.
