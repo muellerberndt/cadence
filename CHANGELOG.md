@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.81.0 — 2026-10-11
 
 - Add `Brain.wait` for an outcome that arrives after the stream has sensed more: an
   awaited action's custody for one `live` stream
