@@ -27,8 +27,13 @@
   saturates, where a finite nudge has no slope, nor falls silent, where every contrast is
   tiny. Reachable as `learning_homeostasis_rate` and `learning_homeostasis_target` in
   `compose` and `retune`, reported by `describe()`, saved with the learner configuration;
-  `apply` reports `homeostasis_step`. The founder rate leaves every composed brain, its
-  checkpoints and its continuation as they were. Demonstrated limitation: the recall
+  `apply` reports `homeostasis_step`. The founder rate leaves every composed brain's
+  behavior and continuation as they were; learning reports gain `homeostasis_step` (0 at the
+  founder) and saved configurations the two fields, which earlier releases ignore. A learner
+  with a positive rate is saved as `cadence-checkpoint/3`, which earlier releases refuse
+  instead of loading it without the gene. Padding rows that `ActorCritic.learn(...,
+  observed=...)` excludes do not set the readout's operating point, and a frozen output bias
+  takes and reports no step. Demonstrated limitation: the recall
   chamber's readout saturates under continued teaching in two of five development founders
   and a third drifts to chance ([#84](https://github.com/muellerberndt/cadence/issues/84));
   with the rate at 0.1 and raw local steps, all four development founders tested end 64

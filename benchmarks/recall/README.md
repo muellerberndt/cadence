@@ -390,10 +390,13 @@ received and the motor activation at QUERY; over the run, the sign consistency o
 synapse's accepted steps; and every four repeats the clean, distractor, replacement and
 order recall of a saved and reloaded copy on the frozen test episodes (the copy's own
 stream, six of the thirteen conditions, so its carried context differs from the chamber's
-intact fork). Receipts `results/credit-*-2026-10-10.json.gz` are bound to the shipped
-script and the library sources (`--verify --current`); `--report <receipt>` prints the
-tables. These are readings on development and spent founders with no gate; the three
-freezes above and their failed closures stand.
+intact fork). Receipts `results/credit-*-2026-10-10.json.gz`, like the finite and
+development receipts of this date below, were produced on commit `c922553` of this chamber's
+branch and are bound to its scripts and library sources: `--verify` checks them anywhere,
+and `--verify --current` holds in a checkout of that commit, since later library changes
+alter the bound sources. `--report <receipt>` prints the tables. These are readings on
+development and spent founders with no gate; the three freezes above and their failed
+closures stand.
 
 **Clean recall appears in every founder.** Under the recipe, founders 0, 1, 304, 305 and
 306 all reach clean-0 recall of 0.95 to 1.00 on a saved copy at some evaluation, 304 and
