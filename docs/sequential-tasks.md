@@ -37,7 +37,7 @@ near 0.17 and a pull toward 0.3 flattens it. It is not a remedy for the collapse
 **Learning continues at the acquisition step.** A policy acquired at the nursery's actor
 step erodes under its own continued learning, in a melee and in the nursery itself
 ([issue 169](https://github.com/muellerberndt/cadence/issues/169), the
-[competing-skill ring](../benchmarks/competing/README.md#the-arena-sixty-fights-2026-10-10-the-robot-arenas-scriptsretention_protocolpy)).
+[competing-skill ring](../benchmarks/competing/README.md#the-arena-sixty-fights-2026-10-10)).
 More drilling past the point of acquisition does not consolidate, it moves the policy. A
 step ten to thirty times smaller after acquisition held the skill while learning went on.
 

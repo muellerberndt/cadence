@@ -72,6 +72,10 @@ are recorded below as they arrive.
 
 ## Development readings, 2026-10-11 (receipt `results/development-2026-10-11.json.gz`)
 
+The receipt binds the chamber file as committed and the library sources of commit
+`c922553b428e`, the branch head it ran on; `--verify` checks it, and `--verify --current`
+passes in a checkout of that commit.
+
 Six seeds, a chain of four actions, 20,000 moments per life, probes every 2,000 from saved
 copies; the table reads the last probe. Completions per thousand moments of the greedy and
 the sampled policy from stage zero under pay at the end; the greedy answer's accuracy over
