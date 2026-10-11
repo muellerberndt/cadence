@@ -500,19 +500,19 @@ one product and writes with one delta-rule step per outcome, without settling ph
 
 ### The admitted step, and a life lived online
 
-The patches of the [belief](belief.md) family learn by a step that is admitted, not taken: the
-chunk is replayed from its boundary under the proposed parameters and the largest halving that
-lowers the loss by the Armijo margin is taken, starting from twice the last admitted step and at
-most `rate`. Every lane that learned by the plain step diverged or learned nothing, so the
-admission is the default and the plain step is the control (`backtrack=False`). Two regimes
-follow from the rung demos. By day, batches of whole streams from a fresh boundary at a high
-cap (the night nursery: eight streams of 64 moments at a cap of 4, 120 epochs, the best
-checkpoint kept by held-out error; short days of 24 to 40 epochs leave a steering patch's
-weighing on the wrong sense). By night, one stream lived online in chunks of eight moments at a
-cap of 0.1, the boundary carried, the cortex asleep while the steering patch learns
-(`Steered.run(learn_cortex=False)`) or gated by a governor (`Life`); the day's cap on the
-night's chunks wrecks tracking, and a steering patch's rate scale above one pins a sense.
-[How to build a rung demo](howto-rung.md) has the numbers.
+The patches of the [belief](belief.md) family learn by a step that is admitted,
+not taken: the chunk is replayed from its boundary under the proposed parameters,
+and the largest halving that lowers the loss by the Armijo margin is taken,
+starting from twice the last admitted step and at most `rate`. The admission is
+the default because the plain step diverged or learned nothing, and the plain
+step is its control (`backtrack=False`). Two regimes follow. By day, batches of
+whole streams from a fresh boundary at a high cap, with the best checkpoint kept
+by held-out error; too few epochs leave a steering patch weighing the wrong
+sense. By night, one stream online in short chunks at a low cap, the boundary
+carried, the cortex asleep while the steering patch learns
+(`Steered.run(learn_cortex=False)`) or gated by a governor (`Life`); the day's
+cap on the night's chunks wrecks tracking, and a steering rate scale above one
+pins a sense. [How to build a demo](howto-demo.md) has the settings.
 
 ## Rates under normalization
 
@@ -540,40 +540,21 @@ The composed teaching default `eta=0.5` and actor default `eta=1.0` use
 relative to a small raw signal and can saturate outputs. Retune both `eta` and
 `eta_bias`; a resolved configuration keeps its bias rate when `eta` changes.
 For a composed brain, set paired `learning_*` or `actor_*` rates with `retune`,
-or pass the respective bias override as `None` to re-derive `eta / 10`. A starting development sweep
-of `eta=0.001` to `0.003` is motivated by the reported pilots below, but is not a
-universal safe range or a replacement for task measurements. Select the bias
-rate independently and check acquisition, retention and actual update sizes.
+or pass the respective bias override as `None` to re-derive `eta / 10`. A
+starting development sweep of `eta=0.001` to `0.003` is an experiment, not a safe
+range. Select the bias rate independently and check acquisition, retention and
+actual update sizes.
 
 Both `LearnerConfig` and `ActorCriticConfig` emit `RuntimeWarning` at construction
 when `normalize > 0` and either `eta` or `eta_bias` exceeds `0.05`. This is a
 conservative diagnostic threshold, not a stability bound: smaller rates can
 also fail. The warning does not change rates, optimizer equations or defaults.
 
-A normalized composed default was proposed from the pilots above and measured
-against the capability suite on 2026-10-04 (issue 131): with
-`eta=0.003, normalize=0.99, momentum=0.9` for both composed learners,
-supervised acquisition contracts still passed, but the reward stream failed to
-re-adapt after a contingency change (0.486 against the 0.9 adaptation
-contract, with the pre-change bootstrap passing) — absolute per-synapse steps
-at that scale cannot overturn an established policy quickly. The composed
-defaults therefore remain unnormalized; normalized rates stay per-application
-settings selected on development data, with the construction warning and this
-section as the guardrails.
-The actor's normalization and critic's separate rate are described in
-[the reward guide](reward.md#rates-under-normalization).
-
-[Issue 131](https://github.com/muellerberndt/cadence/issues/131) reports the
-application observations that motivated the warning:
-
-| Reported pilot | Observation and scope |
-| --- | --- |
-| Atari, Cadence 0.70.0 | Actor `eta=0.003` rose and collapsed to a held action; `0.001` was reported as more stable. The [qualification](https://github.com/muellerberndt/cadence/issues/97#issuecomment-5947900523) established held-action retention and continuation, with no measured improvement from reward. |
-| [Transcribe, Cadence 0.71.0](https://github.com/muellerberndt/cadence-transcribe/blob/26d8667a33eec38df35bddd9e743b32c0d28dd23/STATUS.md) | At 20,000 rows, P03 (`eta=0.03`, `eta_bias=0.003`) scored 0.048 top-1; P01 (`eta=0.003`, `eta_bias=0.02`) scored 0.441. Both rates changed, so this comparison does not isolate the effect of `eta`. Other architectures with `eta=0.003` reached 0.53. |
-| [Patch World v2, Cadence 0.72.0](https://github.com/FloatingPragma/oph-meta/blob/fd36f5b58ca7b3efcbd99db0d0490be4bae5de67/cadence-patchworld-v2/STATUS.md) | Actor `eta=0.2` was reported to produce stereotyped actions; `0.002` reached 0.53 eat-when-hungry within 500 ticks in a lone-creature assay, versus 0.20 for uniform random actions. Random actions still outlived and outbred the learning brains in the reported population assays; the eating result does not establish learned navigation. |
-
-These reports motivate checking normalized rates. They do not constitute a
-matched cross-task rate study or establish an improved learning algorithm in
-0.72.1. Transcribe's [pilot configurations](https://github.com/muellerberndt/cadence-transcribe/tree/26d8667a33eec38df35bddd9e743b32c0d28dd23/protocols/pilot071)
-and [base learning settings](https://github.com/muellerberndt/cadence-transcribe/blob/26d8667a33eec38df35bddd9e743b32c0d28dd23/transcribe/brain.py)
-retain the independent efficacy and bias rates.
+The composed defaults are unnormalized. Absolute per-synapse steps at a small
+scale cannot overturn an established policy quickly, so a normalized composed
+default was measured against the capability suite and rejected: supervised
+acquisition still passed, but the reward stream failed to re-adapt after a
+contingency change. Normalized rates are per-application settings, selected on
+development data with the construction warning and this section as the
+guardrails. The actor's normalization and the critic's separate rate are
+described in [the reward guide](reward.md#rates-under-normalization).

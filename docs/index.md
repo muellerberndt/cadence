@@ -1,21 +1,19 @@
 # Cadence documentation
 
 Cadence is an experimental brain built from local state, ports, plastic
-relationships, memory and repair. **System 1** is the default continuing brain.
-**System 2** optionally adds observing cortical regions whose recursive feedback
-joins the same neural-graph settlement. The base can already be deep and modular.
-The goal is a simulated human-like brain; biological names describe functional
-roles. Bootstrap useful reciprocal relations and memory, act in the world,
-repair witnessed failures, and continue the same acquired brain.
+relationships, memory and repair. **System 1** is the default continuing brain,
+and can already be deep and modular. **System 2** optionally adds observing
+regions whose recursive feedback joins the same neural-graph settlement.
+Biological names describe functional roles. Bootstrap useful reciprocal
+relations and memory, act in the world, repair witnessed failures, and continue
+the same acquired brain.
 
 Start with the [guided reading order](README.md) and
-[one continuing equilibrium brain](world-model.md). The latter explains how
-parameters and memory support a family of equilibria under changing evidence,
-and which parts of the equilibrium world-model hypothesis are implemented,
-including the boundary around learned environmental transitions.
-[Local learning](learning.md), [reward plasticity](reward.md)
-and [memory](memory.md) have distinct tested update rules. Internal consistency
-does not establish correct understanding or inexpensive computation.
+[one continuing equilibrium brain](world-model.md), which says which parts of
+the hypothesis are implemented today. [Local learning](learning.md),
+[reward plasticity](reward.md) and [memory](memory.md) have distinct update
+rules. Internal consistency does not establish correct understanding or cheap
+computation.
 
 Python 3.11+ and NumPy are required.
 These guides use Cadence 0.80.0:
@@ -36,10 +34,9 @@ For a version-pinned reading order, use the
    demonstrations, memory and private imagination.
 5. [Contracts](contracts.md): numerical qualification, learning and refusal.
 
-`Brain.compose(inputs, actions, modules=(64,), observers=())` includes
-working and consolidating memory. Add observer widths when you want recursive
-feedback. Actions require a qualified full state; more regions do not guarantee
-better decisions.
+`Brain.compose(inputs, actions, modules=(64,), observers=())` includes working
+and consolidating memory. Add observer widths for recursive feedback. Actions
+require a qualified full state; more regions do not guarantee better decisions.
 
 ## Choose a deeper guide
 
@@ -48,7 +45,7 @@ better decisions.
 | Bootstrap, use, disruption and saved continuation in one life | [Continuing brain example](../examples/continuing_brain.py), [experience design](experience.md) |
 | Routine and repair in one continuing stream; reversal after long experience | [Routine and repair](continuous.md#routine-and-repair-live), [odour nursery](../benchmarks/reversal/README.md) |
 | Isolated graph learning or calibration controls | [Learning rule](learning.md), [task recipes](tasks.md) |
-| Historical acquisition/retention receipts and an offline viewer | [Acquisition protocol](../benchmarks/acquisition/README.md), [portable evidence viewer](../benchmarks/acquisition/demo/README.md) |
+| Acquisition and retention receipts | [Acquisition protocol](../benchmarks/acquisition/README.md) |
 | Trace and associative-memory rules | [Memory](memory.md), [continued learning](continuous.md) |
 | Event records, dreaming and sleep consolidation | [Record patch](record-patch.md), [day/night acquisition](record-patch.md#acquisition-in-two-phases-records-by-day-weights-by-night) |
 | Learned environmental consequences and private action planning | [Interaction](interaction.md), [temporal model](temporal.md), [planning](planning.md) |
@@ -70,14 +67,9 @@ learning and numerical contracts when combining them.
 [certificates](certificate.md), [protocols](protocols.md) and [receipts](receipts.md)
 help separate numerical qualification from useful acquired behavior. Test free
 recall, competing experience, actual outcomes and saved continuation.
-[Application demos](https://github.com/muellerberndt/cadence-demos) show current
-applications, including `Brain.compose`. The separate
-[research archive](https://github.com/muellerberndt/cadence-examples) retains
-examples and viewer tools with their own library pins.
+[Application demos](https://github.com/muellerberndt/cadence-demos) show
+current applications, including `Brain.compose`.
 
 [API](api.md) · [Architecture](architecture.md) · [Troubleshooting](troubleshooting.md) ·
 [Contributing](../CONTRIBUTING.md) · [Changelog](../CHANGELOG.md) ·
 [Paper](https://philpapers.org/rec/MUECAP-2)
-
-Conditional proofs and their audit live in the canonical
-[Cadence flagship Lean library](https://github.com/FloatingPragma/oph-meta/blob/main/cadence-flagship/lean/README.md).

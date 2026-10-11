@@ -134,19 +134,19 @@ best = cd.Genome.from_dict(record, designed={"motor": genome.region("motor")})
 connectome = cd.develop(best, seed=0)
 ```
 
-### The protocol of a rung
+### The selection protocol
 
-The rung demos select every genome the same way, and the protocol is the demo rule's. The
-hand-set genome is the lineage's first member, so selection starts from the control and must
-beat it on held-out worlds, never on the worlds it was selected on. A random search over the
-same space at the same number of evaluations is the second control: what the lineage found
-must beat what luck finds. The fitness reads only what the genome cannot reweight, and prices
-both compute and surprise, since a price on compute alone switches learning off (the room's
-lineage under that price never imagined and never learned). Every outcome is kept: the cat's
-lineage switched learning off at its prices, the ventriloquist's dropped the probes and the
-residual from its readback, the night nursery's evolved threshold rule won the night's total
-error and lost the cry. A genome that prunes what the designer put in is a result, not a
-failure of the run.
+Select every genome the same way. The hand-set genome is the lineage's first
+member, so selection starts from the control and must beat it on held-out
+worlds, never on the worlds it was selected on. A random search over the same
+space at the same number of evaluations is the second control: what the lineage
+found must beat what luck finds. The fitness reads only what the genome cannot
+reweight, and prices both compute and surprise, since a price on compute alone
+switches learning off — a lineage under that price stops imagining and stops
+learning. Keep every outcome: lineages do switch learning off at their prices,
+drop probes and residuals from their readback, and evolve a threshold rule that
+wins the ordinary error and loses the exception. A genome that prunes what the
+designer put in is a result, not a failure of the run.
 
 ```python
 space = {"span": ("log", 0.3, 0.5, 8.0), "retain": ("linear", 0.1, 0.0, 1.0), "reads_probe": ("choice", 0, 1)}

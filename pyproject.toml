@@ -9,7 +9,7 @@ description = "Research toward general intelligence through local repair, equili
 readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE" }
-license-files = ["LICENSE", "LICENSES/cadence-pre-reset-MIT.txt"]
+license-files = ["LICENSE"]
 authors = [{ name = "Bernhard Mueller" }]
 keywords = ["brain", "neurons", "synapses", "connectome", "equilibrium propagation", "local learning", "dopamine"]
 classifiers = [
@@ -42,7 +42,7 @@ Issues = "https://github.com/muellerberndt/cadence/issues"
 packages = ["src/cadence"]
 
 [tool.hatch.build.targets.sdist]
-only-include = ["src", "tests", "docs", "examples", "benchmarks", "README.md", "MANIFESTO.md", "AGENTS.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "LICENSES", "pyproject.toml"]
+only-include = ["src", "tests", "docs", "examples", "benchmarks", "README.md", "MANIFESTO.md", "AGENTS.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
 exclude = ["**/.lake/**", "*.olean", "*.ilean", "*.olean.private", "*.olean.server"]
 
 [tool.pytest.ini_options]

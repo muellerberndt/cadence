@@ -7,9 +7,8 @@ trace and fast/persistent associative memory. Optional observer regions add
 
 Keep this brain through acquisition, ordinary use and correction. The
 [world-model guide](world-model.md) explains why its learned relations and memory
-support changing equilibria, and distinguishes that design from the mechanisms
-implemented today. The calibration and isolated response examples below are
-controls for those mechanisms.
+support changing equilibria. The calibration and isolated-response examples below
+are controls, not the demonstration of a continuing brain.
 
 ## Brain
 
@@ -31,20 +30,17 @@ region exchanges signals with motor neurons, and its working trace enters throug
 context neurons. `SynapticMemory` records the actually chosen action's reward;
 its fast and persistent associations influence later choices.
 
-`Brain.compose(..., efference_amplitude=1.0)` adds the efference copy, the
-corollary discharge of the issued command. The working trace is written from
-the settled state before the decision, so under identical observations it
-carries which action was executed only through the margin the motor
-competition left, and nothing of a sampled choice. The copy is one
-`efference` neuron per motor neuron, driven by the fading one-hot of the action
-each stream issued (`efference_decay`, default 0.2) and read by the association
-region through a plastic projection of the working trace's scale. The write is
-fixed, like the working trace's; what to do after what it did is learned. The
-founder value `efference_amplitude=0.0` builds the released composition,
-byte-identical; the copy is a gene selected against that control. The
-[steady-rhythm chamber](../benchmarks/rhythm/README.md) measures it on the
-task the working trace alone did not carry: alternate two actions under
-identical drive.
+`Brain.compose(..., efference_amplitude=1.0)` adds the efference copy of the
+issued command: one `efference` neuron per motor neuron, driven by the fading
+one-hot of the action each stream issued (`efference_decay`, default 0.2) and
+read by the association region through a plastic projection. The working trace
+is written from the settled state before the decision, so it carries which
+action was executed only through the margin the motor competition left, and
+nothing of a sampled choice. The write is fixed, like the trace's; what to do
+after what it did is learned. The founder `efference_amplitude=0.0` leaves the
+population out, so the copy is a gene selected against that control. The
+[steady-rhythm chamber](../benchmarks/rhythm/README.md) measures it on the task
+the trace alone did not carry: alternate two actions under identical drive.
 
 The base can already be deep. Add recursive readback separately:
 
@@ -57,18 +53,17 @@ assert recursive.live(observation).shape == (1,)
 ```
 
 Each observer exchanges activity with the base, motor regions and earlier
-observers. All regions participate in the same settlement. This provides the
-connections for recursive correction; it does not automatically learn useful
-reflection. These observers read neural state. The advanced
-[population solver](equilibrium/index.md) separately implements exact state-and-error
-readback under its own equations.
+observers, and all regions settle together. This wires recursive correction; it
+does not by itself learn useful reflection. Observers read neural state; exact
+state-and-error readback belongs to the
+[population solver](equilibrium/index.md) under its own equations.
 
 ## Defaults and expert overrides
 
 The composed founders are controls, not values proven optimal for every body.
-Version 0.80.0 keeps their numerical values. `arousal=True` is shorthand for
-`ArousalConfig()`; omit `arousal` for the existing composition without a `live`
-controller. No setting is silently inferred from a demo, input count or reward.
+`arousal=True` is shorthand for `ArousalConfig()`; omit `arousal` to compose the
+same brain without a `live` controller. No setting is inferred from an example,
+an input count or a reward.
 
 Set only the values you intend to change:
 
@@ -85,8 +80,7 @@ assert settings["initialization"]["composition"]["sensory_scale"] == 2.0
 ```
 
 This is an override example, not a performance recommendation. `sensory_scale`
-sets the initial sensory-to-first-module projection, so custom sensory strength
-no longer requires rebuilding the composed genome. The projection stays plastic.
+sets the initial sensory-to-first-module projection, which stays plastic.
 `describe()` returns JSON-safe `layout`, effective flat `genes`, resolved
 `learning`/`actor`/`arousal` configurations and `initialization` provenance.
 The initialization records choices such as sensory scale, not the current
@@ -184,28 +178,19 @@ memory, efference or arousal component. Create those components when composing.
 ## Choose settings for the application
 
 The same interface serves different observation shapes, action groupings and
-experience protocols. Preserve each application's demonstrated model and recipe
-when simplifying its wrapper.
+experience protocols.
 
 | Application | Interface and decisions |
 | --- | --- |
-| Robot arena | `compose` with vector senses and multiple motor `slots`, then `live` and `retune`; preserve real action/outcome custody through stage changes. |
-| C64 musical control | The composed groove lane uses `step(teacher=...)` for witnessed demonstrations and explicit grouped motor choices where appropriate. Supplied timing and teacher labels remain application information; next-event learning alone does not establish a coherent phrase. |
-| Atari | The [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade) uses pixel observations, teaching and `step`; select teaching rates with `learning_*` and reward rates with `actor_*`. Its historical library pin remains part of its evidence. |
-| Amen | The [Amen demo](https://github.com/muellerberndt/cadence-demos/tree/main/amen) uses the separate `RecordPatchNet` model and its retained-record recipe. Its rates and guarantees are those of [record patches](record-patch.md), not the composed actor. |
+| Vector senses, several motors | The [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) composes one motor `slot` per motor, then uses `live` and `retune`; keep real action/outcome custody across stage changes. |
+| Pixels and a teacher | The [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade) uses pixel observations, teaching and `step`; select teaching rates with `learning_*` and reward rates with `actor_*`. |
+| Retained events | The [Amen demo](https://github.com/muellerberndt/cadence-demos/tree/main/amen) uses the separate `RecordPatchNet` model. Its rates and guarantees are those of [record patches](record-patch.md), not the composed actor. |
 
-The [source-pinned arena report](https://github.com/muellerberndt/cadence-demos/blob/2a32c3e/robot-arena/docs/brain.md)
-describes a 22-input body using sensory scale `4`, efference amplitude `0`,
-nursery actor rates `0.03/0.003`, and later stage experiments with smaller rates.
-Its earlier `0.003` ring experiment and later `0.001` choice are bounded
-measurements, not generic recommendations. The report's historical comparison
-to an efference founder of `3` is not the current library default: both 0.79.0
-and 0.80.0 compose with `efference_amplitude=0` and actor `eta=1.0`.
-The [odour nursery](continuous.md#routine-and-repair-live) uses another measured
-operating point. Keep these recipes distinct and measure fresh acquisition,
-retention, interference and recovery against their controls before changing a
-founder. No arena setting establishes an optimal default for music, games or
-another body.
+A measured operating point belongs to the body and task it was measured on: the
+[odour nursery](continuous.md#routine-and-repair-live) uses one, the
+[steady-rhythm chamber](../benchmarks/rhythm/README.md) another. Before changing
+a founder, measure fresh acquisition, retention, interference and recovery on
+your own task against the founder as the control.
 
 ## Operating point and motor competition
 
@@ -228,22 +213,19 @@ combination. `act` and `step` return one index per slot, lateral inhibition stay
 within a slot, the unset `lateral` follows the largest slot, and `save`/`load` carry
 the grouping (issue 142).
 
-`Brain.compose(..., resting_bias=0.5)` initializes the modules, association region
-and any observers with that bias. Sensory, working-memory, efference and motor biases start
-at zero. The value must be a finite nonnegative real scalar; booleans and arrays
-are rejected. The default remains zero. This is a selectable operating-point
-candidate: it can reduce silence under some random drives, but positive bias
-does not guarantee responsive activity, acquisition, retention or convergence.
-Compare those outcomes against the zero-bias control before selecting it.
+`Brain.compose(..., resting_bias=0.5)` initializes the modules, association
+region and any observers with that bias; sensory, working-memory, efference and
+motor biases start at zero, and the default is zero throughout. The value must
+be a finite nonnegative real scalar. A positive bias can reduce silence under
+some random drives; compare acquisition, retention and convergence against the
+zero-bias control before selecting it.
 
 With the signed leaky neuron, an emission below rest can still respond to input
-and contribute to local teaching. The fraction of nonpositive emissions is an
-activity diagnostic, rather than a count of dead neurons. The functional
-regression in `tests/test_operating_range_function.py` checks an independent
-signed response derivative, qualified acquisition and old/new retention on one
-declared continuing graph task, and complete saved next-update continuation
-for both zero and 0.5 bias. This bounded evidence supports the existing option;
-it does not select a better default or establish behavior on every task.
+and contribute to local teaching, so the fraction of nonpositive emissions is an
+activity diagnostic rather than a count of dead neurons.
+`tests/test_operating_range_function.py` checks the signed response derivative,
+qualified acquisition, old/new retention and saved continuation at both zero and
+0.5 bias.
 
 All these biases remain plastic. `brain.resting_bias` records the initialization
 choice; `brain.brain.bias` holds the current learned values. Checkpoints preserve
@@ -254,13 +236,13 @@ keeps zero initial bias even if another population aliases it. Image builders
 therefore leave the entire visual region at zero, including its processing cells.
 
 Global gain changes synaptic drive throughout the graph; population bias
-changes selected neurons' operating points. Integration steps and numerical
-damping affect how the equations are solved. A faster qualified solve does not
-establish that its motor state responds usefully to teaching. The
-[calibration guide](learning.md#calibrating-the-operating-point) shows how to
-check candidate biases before installing them. Choose gain, bias targets and
-lateral wiring on development inputs, retain their hand-set controls, and
-freeze them before confirmation.
+changes selected neurons' operating points; integration steps and damping change
+only how the equations are solved. A faster qualified solve does not establish
+that the motor state responds usefully to teaching. The
+[calibration guide](learning.md#calibrating-the-operating-point) checks candidate
+biases before installing them. Choose gain, bias targets and lateral wiring on
+development inputs, keep their hand-set controls, and freeze them before
+confirmation.
 
 ## One experience step by hand
 
@@ -298,9 +280,8 @@ is checked against the original model. Default teaching uses finite nudged phase
 where `tolerance` checks activity movement rather than the full equation residual.
 
 The [defaults table](#defaults-and-expert-overrides) names the teaching and
-reward budgets separately. Both optimizers leave RMS normalization disabled
-unless explicitly selected. Numerical settings are task controls, not evidence
-that an answer is useful or that its computation is cheap.
+reward budgets separately, and both optimizers leave RMS normalization disabled
+unless selected.
 
 Other operations have independent defaults: `Brain.imagine` uses residual
 tolerance `1e-6`, `NeuralGraph.equilibrate` uses `1e-5`, and `calibrate_bias`
@@ -419,9 +400,7 @@ needs. A custom `NeuralGraph` alone does not install the complete Brain loop.
 
 ## The brain in a browser page
 
-The archived [viewer](https://github.com/muellerberndt/cadence-examples/tree/main/viewer)
-visualizes a connectome and recorded settlement in its declared environment.
-Current `record_settlements` captures actual graph iterations for an
-application-owned display. [cadence-demos](https://github.com/muellerberndt/cadence-demos)
-contains current application examples; the library does not provide a browser
-environment or body.
+`record_settlements` captures the actual graph iterations behind an answer, for
+an application-owned display. The library ships no browser environment or body;
+[cadence-demos](https://github.com/muellerberndt/cadence-demos) holds the
+application examples, several of which run a brain in the page.

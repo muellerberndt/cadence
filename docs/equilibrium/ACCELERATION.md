@@ -255,127 +255,51 @@ actual intended layout before choosing hardware or increasing worker count.
 Changing `tolerance` changes what gets admitted and must not be hidden inside
 a speed comparison.
 
-## Measured starting points
+## Measure before choosing hardware
 
-### NVIDIA hardware qualification
-
-On 2026-10-01, an NVIDIA RTX 4000 Ada Generation Laptop GPU with 12,282 MiB
-of VRAM passed all 67 selected CUDA cases in `test_tensor_math.py` and
-`test_batch_tensor.py`, with no skips. The Windows run used Python 3.13.2,
-driver 595.95, PyTorch 2.11.0+cu128 (CUDA runtime 12.8), and both float64 and
-float32 proposals. The final [audited receipt](../../examples/equilibrium/receipts/cuda_audit_verified.json)
-records a full run with **937 passed and 34 MPS skips**, including all 67 CUDA
-cases, on commit `8892927`. It identifies the tested Git tree, hardware and
-library versions, individual CUDA outcomes, and unchanged source hashes before
-and after testing. MPS and additional CUDA device indices were unavailable on
-this single-GPU laptop.
-
-Runtime is also part of the evidence. In that final full run, the pytest
-invocation took **297.72 seconds**, including collection but excluding the
-collector's imports and CUDA preflight. Its JUnit test-case durations include
-the complete fixture, setup/teardown and assertions:
-
-| Acquisition fixture | CUDA float64 | CUDA float32 |
-| --- | ---: | ---: |
-| Single-example bootstrap, held-out recall and live learning (6 patches) | 3.479 s | 124.874 s |
-| Batch bootstrap, recall, checkpoint transfer and live learning (3 patches) | 1.961 s | 2.045 s |
-
-These are `test_bootstrap_held_out_recall_and_live_learning_on_device` in
-`test_tensor_math.py` and
-`test_public_batch_bootstrap_recall_checkpoint_transfer_and_live_learning` in
-`test_batch_tensor.py`. Both precisions passed, but float32 took about **36
-times as long** in the single-example fixture. The receipt does not retain
-per-solve work or phase timings, so it does not establish the cause or equal
-work across precision trajectories.
-The batch fixture uses a different graph and task; comparing the two rows
-does not measure a batching speedup.
-
-The four retained runs also show substantial variation: this single-example
-fixture ranged from **3.479 to 16.280 seconds** in float64 and **124.874 to
-347.800 seconds** in float32. Those runs used different suite selections or
-revisions and uncontrolled timing conditions. They are observations, not a
-latency distribution. A performance follow-up needs repeated matched Python,
-CPU tensor and CUDA workloads, separate initialization and complete-call
-timings, and per-solve work/refinement counts alongside qualification and
-unclamped prediction error.
-
-The checks cover independent scalar finite-difference derivatives, recursive
-feedback, original frozen parameters and witness clamps, strict reference
-qualification, overflow/refusal, checkpoint transfer, batch admission/retry
-custody, and subsequent unclamped recall and live learning. The CPU/MPS
-checks also select CUDA when available. Run the current CUDA subset from
-a clean, committed development checkout installed with
+Run the CUDA subset from a clean, committed development checkout installed with
 `python -m pip install -e ".[dev]"` and a CUDA-enabled PyTorch build:
 
 ```sh
 python -X utf8 examples/equilibrium/cuda_qualification.py --out data/cuda-qualification.json
 ```
 
-The [collector](../../examples/equilibrium/cuda_qualification.py) requires actual CUDA and
-both precision cases, records the tested Git commit and source hashes before
-and after testing, and fails on skipped CUDA cases or changed sources. Use
-`--full` for the complete test suite. Choose a new output path for each run;
-existing receipts are never overwritten. Refusal tests require a tensor sweep
-before checking rollback; derivative checks also assert actual tensor dtypes.
+The [collector](../../examples/equilibrium/cuda_qualification.py) requires actual
+CUDA and both precision cases, records the tested Git commit and source hashes
+before and after testing, and fails on skipped CUDA cases or changed sources.
+Use `--full` for the complete test suite. Choose a new output path for each run;
+existing receipts are never overwritten. The checks cover independent scalar
+finite-difference derivatives, recursive feedback, frozen parameters and witness
+clamps, strict reference qualification, overflow and refusal, checkpoint
+transfer, batch admission and retry custody, and subsequent unclamped recall and
+live learning. Written receipts accumulate under
+[examples/equilibrium/receipts](../../examples/equilibrium/receipts), each
+identifying its tree, hardware and library versions.
 
-This is correctness and small-fixture acquisition evidence for
-[issue #64](https://github.com/muellerberndt/cadence/issues/64), not a speedup or
-deployment qualification. Peak host/device memory, temporary and cached-index
-growth, real allocation-failure recovery, full perception-to-action latency
-tails, and matched-workload performance comparisons remain unmeasured here.
-Test durations are not production p50/p95/p99 latency measurements.
+What the recorded runs establish is correctness and small-fixture acquisition,
+not a speedup or a deployment qualification. Peak host and device memory,
+allocation-failure recovery, perception-to-action latency tails and
+matched-workload comparisons are unmeasured, and test durations are not
+production latency percentiles.
 
-The [original receipt](../../examples/equilibrium/receipts/cuda_qualification.json) retains
-one reference-engine failure from the first full run. The deep learning
-fixture in `test_learning_basics.py` qualified after 476 sweeps on this
-Windows machine, while the same sources need 777 sweeps on an Apple M4 with
-Python 3.13, so a 512-sweep cap refused the example on one platform and
-admitted it on the other. Sweep counts near a cap are platform-dependent; the
-rollback test therefore uses a one-sweep cap and keeps its default-budget
-retry. The repair rule and admission tolerance are the same on both platforms.
+Four observations are worth carrying into your own measurement:
 
-An [intermediate collector failure](../../examples/equilibrium/receipts/cuda_audit_encoding_failure.json)
-is also retained: Python's `-X utf8` setting did not reach CLI subprocesses on
-Windows. The collector now propagates that setting, and the final full run
-above passed with the correction.
+- **Precision costs more than it looks.** float32 can take far longer than
+  float64 on the same fixture, because the trajectories differ; the receipts do
+  not retain per-solve work, so they do not establish the cause.
+- **Repeat before believing a timing.** The same fixture varied by a factor of
+  several across retained runs under uncontrolled conditions.
+- **Sweep counts near a cap are platform-dependent.** The same sources can
+  qualify in a few hundred sweeps on one machine and need half again as many on
+  another, so a cap that admits an example on one platform refuses it on the
+  other. The repair rule and admission tolerance are identical; only the count
+  moves.
+- **Small graphs lose to overhead.** At a few patches, a GPU is slower than
+  Python; the CPU tensor backend wins across a wide range of layouts, and the
+  margin grows with width. Try `device="cpu"` first, and benchmark thread,
+  worker and device counts on complete calls, including reference
+  qualification, before scaling. Process workers also pay startup, so a small
+  parallel workload can lose to serial execution.
 
-### Thread, device and worker measurements
-
-One three-batch `observe_batch` comparison took 934.0 seconds with 64 Torch
-threads and 1,118.9 seconds with 128, with identical accepted sweep counts.
-This establishes about 1.20× for those two settings on that workload, not an
-optimal thread count or a physical-core count. Benchmark thread and worker
-counts on complete calls, including reference qualification, before scaling.
-
-The measurements below use individual witness admissions. They are not batch
-benchmarks and do not predict a speedup from changing `batch_size`.
-
-On an Apple M4 with Python 3.13 and PyTorch 2.14, a bounded comparison used
-64 inputs, four output coordinates, three seeds, two repetitions and tolerance
-`1e-6`. Each repeat queried twice, admitted two supplied witnesses, then queried
-twice more. All 432 public calls qualified; final checks and refinement are
-included in the timings below.
-
-| Layout | CPU tensor / Python speedup | MPS / Python speedup |
-| --- | ---: | ---: |
-| 8 patches | 2.47× | 0.25× |
-| 64 patches | 9.16× | 1.12× |
-| 256 patches | 19.55× | 2.31× |
-| 128 patches + 32 observers | 15.34× | 2.74× |
-
-These are medians of paired **witness-update** time ratios, not complete skill
-acquisition or query-only speedups. A ratio below one is a slowdown. Over the
-complete six-call sequence, the 256-patch ratios were 16.25× for CPU tensors and
-2.17× for MPS; the recursive layout ratios were 13.63× and 2.40×. Initialization
-was measured separately. Devices did not produce bit-identical trajectories;
-maximum paired output difference after the witness updates was `8.20e-7`.
-
-For these sizes, try `device="cpu"` first. GPU support is useful without being
-the fastest option for every layout. These measurements establish execution
-improvements on the stated workload, not an architectural advantage from depth.
-
-The independent-life example also ran 16 lives with one, two and four workers,
-three repetitions each. Median complete process times, including startup and
-JSON output, were 0.795, 0.496 and 0.340 seconds: 1.60× and 2.34× speedups.
-All 144 life outcomes matched serial execution apart from timing and process
-IDs. Small workloads can still lose to process overhead on other machines.
+Measure with the layout you intend to run, and keep `tolerance` fixed across a
+speed comparison: changing it changes what gets admitted.

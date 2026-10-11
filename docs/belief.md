@@ -40,11 +40,10 @@ step is the transition alone, with the store read at the expectation and nothing
 - **The store** holds the residual of the slow readout at the code of the final reading,
   coded to `record_width` signs, written once per observed moment with `write=True`. Its
   read enters the repair and patches the readout. No gradient reaches the store; that is
-  the record patch's rule and it stays. In every rung demo so far (the cat, the ventriloquist,
-  the lighthouse keeper, the night nursery) the store paid nothing and was left unwritten, so
-  `observe` leaves it unwritten unless asked; the trade-off is the record patch's, a store
-  that holds what the slow model does not know against reads that habituate to stale
-  residuals.
+  the record patch's rule and it stays. `observe` leaves the store unwritten
+  unless asked, because on the measured lanes writing it paid nothing. The
+  trade-off is the record patch's: a store that holds what the slow model does
+  not know, against reads that habituate to stale residuals.
 - **Imagination** (`imagine(actions)`) leaves parameters, records and live activity
   unchanged and consumes no observation; cost counters include its work.
   A continuation conditioned on recorded future
@@ -87,13 +86,12 @@ optimiser there, and the readback of a moment stays on the library's path.
 
 ### Training the transition: the imagination loss
 
-A belief patch trained on the one-step read alone learns to lean on the next frame. The
-repair takes what it needs from the evidence, the transition carries less each epoch, and
-the imagination decays while the one-step read improves. On Seaquest from pixels the
-one-step explained variance of the frame-to-frame change rose from 0.06 to 0.35 over
-twenty epochs while the open-loop imagination four decisions ahead fell from 0.03 above
-persistence to 0.12 below it. This is teacher forcing, and the unified world-model report's
-rule names the repair: a rollout must predict every input it consumes.
+A belief patch trained on the one-step read alone learns to lean on the next
+frame: the repair takes what it needs from the evidence, the transition carries
+less each epoch, and the open-loop imagination decays while the one-step read
+improves, until it falls below plain persistence. That is teacher forcing, and
+the rule that names the repair is that a rollout must predict every input it
+consumes.
 
 The imagination loss trains that. From random moments `t0` of each chunk, imagine `H`
 steps under the recorded actions from the belief at `t0 - 1` with no observation, and
@@ -107,17 +105,15 @@ where the cumulative sum runs over the retina outputs (the imagined retina again
 true one), the fields are compared step by step, and `W` is the same output weighting as
 the one-step loss. The gradient flows through the imagined transitions into `T`, `G`, `C`
 and back through the repair into the belief the rollout started from, so the belief is
-trained to carry what the transition needs. Two starts per chunk, `H = 8` and `w = 0.3`
-were enough on Atari: on Pong after twenty epochs the imagination with no observation
-explained 0.42, 0.55, 0.62 and 0.61 of the changed cells at one, two, four and eight
-decisions and beat persistence on 99 percent of the moments; the one-step read explained
-0.76 against 0.70 for a convolutional GRU of the same size, and the imagined danger told
-which of the six plans loses the point (area under the curve 0.92 against 0.47 shuffled)
-when the emulator was restored to the same moment to try every plan. Not every run takes:
-a second seed learned a one-step read of 0.70 and no imagination at all, the transition
-having settled on persistence while the repair did the work, so the receipt of every run
-carries the open-loop curve and the imagined term's weight is the first knob to raise. The
-recipe lives in the application, fifteen lines around the ordinary loss; the library supplies the imagination with a `state` and no observation.
+trained to carry what the transition needs. Two starts per chunk, `H = 8` and `w = 0.3` are a working starting point on
+pixels: the imagination then explains a useful share of the changed cells
+several decisions ahead and beats persistence, while the one-step read holds up
+against a convolutional recurrent model of the same size. Not every run takes —
+a seed can learn the one-step read and no imagination at all, the transition
+having settled on persistence while the repair does the work — so carry the
+open-loop curve in every receipt, and raise the imagined term's weight first.
+The recipe lives in the application, around the ordinary loss; the library
+supplies the imagination with a `state` and no observation.
 
 ## A gain per block inside the repair
 
@@ -169,8 +165,9 @@ belief that expects the reading to stay as it was). `readback` also carries `evi
 `(batch, encoded)`, the encoded evidence before any gain, `tanh(port(o) + e_b)`, and
 `encode(observations)` gives it for any `(..., inputs)` reading: a surprise says that a
 sense disagrees, the encoded evidence says what the sense is reading, and a steering patch
-that decides a block's gain reads it before the gain it sets (the night nursery earned rung
-4 only once its steering patch read the ear's evidence beside the surprises). The surprise needs a declaration,
+that decides a block's gain reads it before the gain it sets — learning to
+capture one sense took reading that sense's evidence beside the surprises. The
+surprise needs a declaration,
 `set_implied_reading(implied, units)`: the map from the outputs to the reading each block
 should give, with the channels it does not imply left `NaN`, and the mean squared change of
 the compared channels from one moment to the next on a batch of training data. A row that
@@ -200,10 +197,10 @@ The surprise of a stream's first moment compares the reading against the readout
 boundary belief, a zero belief when no `state` is given; a life that carries its boundary
 compares against what its last belief implied.
 
-The probes cost one evaluation of the repair map per block and moment; the surprise costs
-one call of the declared map. In the ventriloquist demo the steering patch that read the
-two surprises alone reached the same held-out error as the one that also read the probes, so
-carry the surprise first and ask for the probes when the task shows they help.
+The probes cost one evaluation of the repair map per block and moment; the
+surprise costs one call of the declared map. A steering patch reading the
+surprises alone has matched one reading the probes as well, so carry the
+surprise first and ask for the probes when the task shows they help.
 
 ## An admitted step
 
@@ -217,10 +214,10 @@ most; the store is written after the admission. The start is twice the last admi
 at most `rate`, so `rate` is a ceiling and the patch finds its own step within it;
 `step_size` holds the last admitted step, travels with the snapshot, survives `reset()`
 and is dropped by `reset_step()`. `accepted_rate`, `final_loss` and `replay_calls` are on
-the observation. The admission keeps no moments of the gradient; it is the default because
-in every lane that learned by the plain step (the shell game, the ventriloquist, the
-lighthouse keeper, the night nursery) the plain step diverged or learned nothing, and the
-two demos that kept their own step size restarted from twice the last accepted one.
+the observation. The admission keeps no moments of the gradient. It is the default because on
+every measured lane the plain step either diverged or learned nothing, and
+because restarting from twice the last accepted step costs one replay and finds
+the rate the chunk can take.
 `backtrack=False` takes the plain step at `rate`; a step on an external gradient
 (`output_gradient=`) is plain, since the library can replay only the loss it can see.
 
@@ -232,11 +229,11 @@ assert 0 < admitted.accepted_rate < 100.0 and admitted.replay_calls >= 1
 assert cortex.step_size == admitted.accepted_rate          # the next chunk starts from twice this
 ```
 
-A rate of 100 on the patch above diverges within two chunks under the plain step (the
-loss goes from 0.46 to 31 to 1e6) and is admitted at 3.1, 1.6 or 6.2, with five to seven
-replays on the first chunk and fewer on the next, since the start follows the last admitted
-step; the loss never rises on an accepted step. A step accepted at the first replay costs
-one forward pass more than the plain step.
+A rate far above what the chunk can take diverges within two chunks under the
+plain step and is admitted at a small fraction of it, with several replays on
+the first chunk and fewer on the next, since each start follows the last
+admitted step. The loss never rises on an accepted step, and a step accepted at
+the first replay costs one forward pass more than the plain step.
 
 ## A life lived online
 

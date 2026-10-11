@@ -2,6 +2,24 @@
 
 ## Unreleased
 
+- Add `Brain.wait` for an outcome that arrives after the stream has sensed more: an
+  awaited action's custody for one `live` stream
+  ([#111](https://github.com/muellerberndt/cadence/issues/111),
+  [#122](https://github.com/muellerberndt/cadence/issues/122)). A waiting stream settles
+  each observation and advances its working trace without taking an outcome; the
+  awaited action keeps its forecasts, eligibility and situation, so the outcome later
+  given to `live` is credited as an immediate outcome would be, while the next state
+  settles from where the stream is. Wait settles are reported by `last_settlement`,
+  outside arousal's counts. Add `Brain.decision_id`, the arousal age once `live` issued
+  the awaited action, and `live(..., decision_id=...)`, which refuses an outcome
+  reported under another identity before any change. A stream saved while waiting uses
+  checkpoint format `cadence-generic/5`; lives that do not wait keep their formats and
+  contents. `ActorCritic.learn` takes the state to settle the next state from (`warm`).
+  The guide adds that the caller supplies a late outcome's link to its action, so a
+  delay whose credit the brain is to learn goes through `live`; that a wait follows
+  event time ([#116](https://github.com/muellerberndt/cadence/issues/116)); and how to
+  total a waiting stream's work.
+  Defaults, learning laws and existing calls are unchanged; no behavioral gain is claimed.
 - Add the readout's intrinsic plasticity, two genes of `LearnerConfig`:
   `homeostasis_rate` (founder 0) and `homeostasis_target` (0.3). At every teaching or
   reward update, on the host and on the device, each output neuron's bias moves by the rate

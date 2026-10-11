@@ -71,23 +71,19 @@ private, and `reset` clears context while keeping parameters and records.
 The record's key is the input block and the context block side by side. The
 context is read in units of each channel's fluctuation (`r`), which gives its
 units unit variance. The input block is scaled by `sqrt(n) / s`, where `n` is
-the number of input ports and `s` the running rms norm of witnessed inputs,
-so its units have unit variance too and a cell's drive has unit scale, with
-the fixed offset a small preference. Before this scaling the context block
-outweighed the input block about five to one on the composer stream: the
-address hardly moved with the event heard (48-cell code overlap 0.66 when
-only the crop changed), a few hundred hub cells took three quarters of all
-activations, and the store forgot the training corpus behind its last
-writers. With the scaling the same stream uses 5,812 of 8,192 cells instead
-of 2,225, the address follows the crop heard (overlap 0.15), and held-out
-next-crop and bass-note accuracy both rise. Two further options exist and
-are off by default: `record_averaging` makes a cell's write rate one over its
-written mass with `record_rate` as the floor (a fresh cell takes its first
-outcome whole, a familiar one averages), which on the composer stream
-calibrated reads at unfamiliar readings and improved retention but slowed
-adaptation to a new track; `record_homeostasis` moves each cell's offset
-toward an equal activation share, which spread the code further but cost
-adaptation as well.
+the number of input ports and `s` the running rms norm of witnessed inputs, so
+its units have unit variance too and a cell's drive has unit scale, with the
+fixed offset a small preference. Without that scaling the context block
+outweighs the input block, the address barely moves with the event heard, a few
+hundred hub cells take most of the activations, and the store forgets its
+corpus behind its last writers.
+
+Two further options are off by default. `record_averaging` makes a cell's write
+rate one over its written mass with `record_rate` as the floor, so a fresh cell
+takes its first outcome whole and a familiar one averages: it calibrates reads
+at unfamiliar readings and improves retention, and slows adaptation to a new
+stream. `record_homeostasis` moves each cell's offset toward an equal activation
+share, which spreads the code further and costs adaptation as well.
 
 ## Records hold what the slow model does not know
 
@@ -111,72 +107,60 @@ record written at one moment inform the next, observe in shorter paths.
 ## Diagnosing a record store
 
 A record store can fail silently: prediction with records still beats
-prediction without them, because the store always holds something. Four
-numbers show whether it holds the right thing. Replay the readings of a
-training stream through `records.code(..., valued=False)` and count, per
-cell, how often it is active.
+prediction without them, because the store always holds something. Four numbers
+show whether it holds the right thing. Replay the readings of a training stream
+through `records.code(..., valued=False)` and count, per cell, how often it is
+active.
 
 - **Cells in use** and **the share of activations taken by the most active
-  cells.** With `active` of `cells` winners the ideal share of any 200 cells
-  is `200 / cells`. On the composer stream the defective reading used 2,225
-  of 8,192 cells with 0.74 of all activations in the top 200; the repaired
-  one 5,812 cells with 0.27.
-- **Code overlap when only one block of the reading changes.** Hold the
-  context, change the input (and the reverse), and compare the two codes.
-  An address that does not move with a block cannot store anything about
-  it. There the overlap was 0.62 to 0.71 when only the event heard changed
-  and 0.92 when the context moved four bars; after the repair 0.15 and 0.88.
+  cells.** With `active` of `cells` winners the ideal share of any 200 cells is
+  `200 / cells`. A store using a quarter of its cells, with most activations in
+  the top 200, is addressing badly.
+- **Code overlap when only one block of the reading changes.** Hold the context,
+  change the input, then the reverse, and compare the two codes. An address that
+  does not move with a block cannot store anything about it. A well-scaled
+  reading moves substantially with the input and keeps most of its cells when
+  only the distant context moves.
 - **Held-out scores with records frozen, zeroed, writing online, and writing
   online from empty.** Frozen far below online means the store forgets its
-  training stream; online equal to online-from-empty means the trained
-  records contribute nothing to a new stream.
-- **The read at readings no stream has written,** for instance a rollout
-  from silence. A read far from zero there is interference from unrelated
-  writers, not memory.
+  training stream; online equal to online-from-empty means the trained records
+  contribute nothing to a new stream.
+- **The read at readings no stream has written,** for instance a rollout from
+  silence. A read far from zero there is interference from unrelated writers,
+  not memory.
 
 ## What a write rate stores
 
-The delta rule at a rate near one half makes a cell hold its last few
-writers. That is the right memory for a new stream: its first moments
-overwrite the cells they touch, and the read then calibrates the prediction
-to that stream (on the composer, four observed bars of an unheard track
-moved the change port's read from +0.13 to -0.22 and its rate of predicted
-changes from 0.24 to 0.07 per moment). It is the wrong memory for a corpus:
-with records frozen the same store recalled 0.03 to 0.11 of the training
-basslines. `record_averaging` makes each cell average its writers instead,
-with `record_rate` as the floor; retention and calibration at unfamiliar
-readings improve, adaptation to a new stream slows in proportion. One table
-cannot do both at full strength; choose by which the task reads.
+The delta rule at a rate near one half makes a cell hold its last few writers.
+That is the right memory for a new stream: its first moments overwrite the cells
+they touch, and the read then calibrates the prediction to that stream. It is
+the wrong memory for a corpus: with records frozen such a store recalls little
+of its training material. `record_averaging` makes each cell average its writers
+instead, with `record_rate` as the floor; retention and calibration at
+unfamiliar readings improve, adaptation to a new stream slows in proportion. One
+table cannot do both at full strength; choose by which the task reads.
 
 ## Recall is by content, not by position
 
 A record is keyed by the reading: what was heard and the context. Where the
-stream recurs, the key recurs. On a composer playing its loop from silence,
-the code at one place and the code at the same place one loop later share
-0.91 of their cells, against 0.04 for two unrelated moments. When the
-playing drifts in phase, so that the same place in the bar hears another
-event, the overlap at the same place is 0.16 and nothing written there is
-read back. This decided an experiment: a composer that wrote its own first
-four bars into its records, as it does for a heard track, did not bring
-its opening back four bars later (the opening's departures returned at 0.09
-to 0.20 of their places, against 0.18 without the writes), because by then
-its playing had shifted in phase and it heard other events at those places.
-A patch recalls a
-moment when it meets the same event in a similar context. If a task needs
-recall by position (the same bar of a phrase, the same step of an episode),
-position has to be in the reading as an input of its own, with enough ports
-to move the code; a clock of eight ports among eighty inputs does not.
+stream recurs, the key recurs, and the codes at the same place one loop apart
+share most of their cells. When the stream drifts in phase, so that the same
+place in the bar hears another event, the codes barely overlap and nothing
+written there is read back. A patch recalls a moment when it meets the same
+event in a similar context, not when it reaches the same position. If a task
+needs recall by position — the same bar of a phrase, the same step of an
+episode — position has to be in the reading as an input of its own, with enough
+ports to move the code; a clock of eight ports among eighty inputs does not.
 
 ## Boundary readings
 
 A reading met once per stream, such as the wake moment with nothing heard,
-receives a handful of updates per epoch. The slow parameters barely learn
-it and its record cells are shared with common readings, so the first
-prediction of a rollout from silence is poorly determined (on the composer
-it started the loop out of phase with the clock). Make the boundary a
-common reading by convention instead of hoping it is learned: there the
-wake hears a count-in, the last event of the loop, and the rule the patch
-knows best produces the first event.
+receives a handful of updates per epoch. The slow parameters barely learn it and
+its record cells are shared with common readings, so the first prediction of a
+rollout from silence is poorly determined. Make the boundary a common reading by
+convention instead of hoping it is learned: let the wake hear a count-in, the
+last event of the loop, so the rule the patch knows best produces the first
+event.
 
 ## Detuning as the acceptance check
 
@@ -236,11 +220,9 @@ before sines; the projection takes `reading * cells` normals divided by
 update, the reading `[u * sqrt(n) / s, r * h]` minus the mean, the drives,
 the `active` largest of them (a heap of that size is enough), their
 positive parts normalised to unit length, the table rows weighted by that
-code, and the readout. At 208 reading units and 8,192 cells a moment is
-about 1.7 million multiply-adds. A JavaScript port built the projection in
-0.1 s and ran 128 moments in 0.5 s; with the table shipped as float32 it
-reproduced an archived Python rollout in every played event, with outputs
-equal to 2e-8. Keep such an archived rollout as the port's parity test.
+code, and the readout. At 208 reading units and 8,192 cells a moment is about 1.7 million
+multiply-adds, which a port in another language runs in milliseconds. Ship the
+table as float32 and keep an archived Python rollout as the port's parity test.
 
 ## Categorical ports
 
@@ -293,13 +275,10 @@ to the linear readout. Default nets keep checkpoint format 2; a net with
 `Records.write_batch`: every error is taken against the tables as they stood,
 and each cell moves by the mean of the moves its writers would have made alone.
 One writer reproduces `Records.write` to rounding; writers that agree move a
-shared cell as far as one of them would, so a batch does not overshoot. On a
-path of four streams of ten symbols presented twelve times, batch writes left
-34, 12, 7, 4, 1 wrong moments after the first five presentations and sequential
-writes 34, 22, 18, 10, 6; both end at the one moment that is undecidable (two
-streams open with the same symbol and different outcomes). Sequential writes
-within a call let a later moment overwrite an earlier one that shares its
-cells; the batch average does not.
+shared cell as far as one of them would, so a batch does not overshoot. Within a
+call, sequential writes let a later moment overwrite an earlier one that shares
+its cells and so need more presentations to settle a repeated path; the batch
+average does not.
 
 ## Do not record a choice
 
@@ -314,19 +293,11 @@ heard), and leave choice points to the slow weights.
 
 A store recites a sequence exactly only when it has more cells than
 associations to hold, and it needs several presentations, because keys of
-neighbouring moments overlap. Closed-loop recitation of random sentences of 8
-to 22 words from a 1,500-word vocabulary, keyed by a message and the word just
-said, records only (untrained slow weights), 32 active cells, eight passes:
-
-| sentences | associations | cells | words right, teacher-forced | sentences exact, closed loop |
-| --- | --- | --- | --- | --- |
-| 300 | 4,400 | 8,192 | 0.93 | 0.36 |
-| 1,000 | 14,700 | 8,192 | 0.78 | 0.04 |
-| 1,000 | 14,700 | 32,768 | 0.97 | 0.66 |
-
-A closed loop multiplies the per-word rate over the sentence, so exact
-recitation needs the per-word rate near one: more cells, more passes, and slow
-weights that learn most of the material first.
+neighbouring moments overlap. Closed-loop recitation multiplies the per-word
+rate over the sentence, so exact recitation needs the per-word rate near one:
+about seven cells per association, tens of presentations, and slow weights that
+have learned most of the material first. Teacher-forced word accuracy is
+reached much earlier than exact closed-loop recitation; measure both.
 
 ## A store narrower than its port
 
@@ -334,140 +305,94 @@ A port of thousands of categories need not give the store one column per
 category. With `record_width=w` the cells hold a fixed random sign code of the
 residual, `residual @ R` with `R` of shape `(outputs, w)` and entries
 `+-1/sqrt(w)`, and the read is decoded by the transpose, `held @ R.T`. A stored
-residual comes back with crosstalk of standard deviation `|residual| /
-sqrt(w)` per port, which the largest port survives. The delta rule has to
-compare like with like: the coded residual with what the cells hold. Taking
-the error after decoding and projecting it again multiplies the step by
-`outputs / w` (10.7 at 5,481 words and 512 columns), and the store diverges:
-in the language work this recited nothing until it was found. Closed-loop
-recitation of 300 random sentences (4,353 associations, records only, a
-1,500-word port): one column per word 0.44 exact after eight passes, a
-256-column code 0.41, at a sixth of the memory. At write rate one a
-16,384-cell store recited 0.39, 0.74, 0.93, 0.987 of the sentences exactly
-after 4, 8, 16, 32 passes, and a 32,768-cell store 0.77, 0.957, 0.98, 0.997:
-about seven cells per association and thirty passes for exact recitation
-when the slow weights know nothing.
+residual comes back with crosstalk of standard deviation
+`|residual| / sqrt(w)` per port, which the largest port survives. The delta rule
+has to compare like with like: the coded residual with what the cells hold.
+Taking the error after decoding and projecting it again multiplies the step by
+`outputs / w` and the store diverges. A code of a few hundred columns recites
+about as well as one column per category at a fraction of the memory.
 
 ## A grammar from records alone
 
-Records generalise by overlap, and that is enough for a small grammar. A speaker whose input is
-a message (act, kind, number and agreement features, 124 ports) and the word it has just said,
-with the slow weights left at their random initial values, was given one pass of delta-rule
-writes over 10,672 (message, sentence) pairs of a grammar of 1,276 messages and 6,173 sentences,
-then asked to say sentences for messages it had never met: a quarter of the (subgenre, era,
-form) combinations and a tenth of the other pairs were held out. With 65,536 cells, 32 active, a
-320-column output code and write rate one, the store alone produced a sentence inside the
-grammar for 0.815 of the held-out combinations and 0.885 of the other held-out messages, and
-preferred the grammatical member of every minimal pair (a/an, is/are, deal/deals, both/all); a
-second pass gave 0.85 and 0.915. The write pass took 88 seconds after a calibration pass over
-the inputs that set the context's centering and scale, and the scores are greedy decoding:
-sampling the first three words at temperature 0.8 gives 0.03 and 0.05. The store held
-65,536 cells of 320 float32 coefficients, 80 MiB, so the comparison is not capacity-matched.
-A new message shares most of its features with taught ones, so its reading touches their
-records, and the read averages them: the record principle doing agreement and word order
-without a gradient. A two-layer patch whose slow weights learned the same pairs by fifty
-epochs of cross-entropy reached 1.00 on the same held-out sets, and so did a GRU and a
-transformer of the same width; those three slow learners were trained by backpropagation
-through sentence time and layers, with unequal parameter counts (9.68M, 3.90M and 4.70M) and
-one model seed each, so their run says nothing about the local contrast rule. At one eighth of
-the pairs and equal updates the patch had the lowest held-out loss of the three at every width
-(0.32 against 0.34 and 0.36 nats per word at width 64, with 2.4M parameters against 0.83M and
-0.88M). The grammar is finite and every learner reaches its ceiling with enough data; what the
-store shows is what one pass of writes buys, and the held-out messages are new combinations of
-taught features, not new vocabulary.
+Records generalise by overlap, and that is enough for a small grammar. Give a
+speaker a message (act, kind, number and agreement features) and the word it has
+just said, leave the slow weights at their random initial values, and write one
+delta-rule pass over a corpus of (message, sentence) pairs. Asked for messages
+it never met, the store alone produces sentences inside the grammar for most of
+them and prefers the grammatical member of a minimal pair (a/an, is/are,
+deal/deals, both/all). A new message shares most of its features with taught
+ones, so its reading touches their records and the read averages them: the
+record principle doing agreement and word order without a gradient. Scores are
+greedy decoding; sampling the opening words collapses them. A store of that size
+is not capacity-matched against a slow learner, and the grammar is finite, so
+this says what one pass of writes buys, not that the store beats a trained
+model. The held-out messages are new combinations of taught features, not new
+vocabulary.
 
-One knob at a time from that base (65,536 cells, 32 active, a 320-wide output code, write
-rate 1, one pass), on 200 never-taught combinations: 64 active cells lift the valid share
-from 0.815 to 0.900 and 128 keep it there, 16 fall to 0.595; a write rate of 0.5 in a store
-written once falls to 0.675, since a record then holds half of its residual; 16,384 cells
-fall to 0.655 while 32,768 give 0.870 and 131,072 give 0.860; a second pass of writes gives
-0.850, a fourth 0.795; the output code's width (160, 320, 640) changes nothing; doubling the
-message's or the context's share of the address falls to 0.670 and 0.680, and halving the
-context's share gives 0.825. The rule these numbers give: address with enough active cells
-that neighbours overlap (64 of 65,536 here), write at rate 1 when each reading is written
-once, and keep the token, the cue and the context in balance in the address.
+The rule the settings follow: address with enough active cells that neighbours
+overlap, write at rate 1 when each reading is written once, and keep the token,
+the cue and the context in balance in the address. Too few active cells lose the
+generalisation; a write rate below one in a store written once leaves each record
+holding part of its residual; more passes over the same material lower the valid
+share rather than raising it; the output code's width barely matters.
 
 ## Acquisition in two phases: records by day, weights by night
 
-A transformer acquires a world model and a language the same way: a gradient over a
-corpus moves every weight a little at every token, for as many passes as it takes. A
-record patch acquires in two phases, and the phases are the two learning rules the
-patch already has.
+A gradient learner acquires a corpus one way: a small move of every weight at
+every token, for as many passes as it takes. A record patch acquires in two
+phases, and the phases are the two learning rules the patch already has.
 
-**By day, what is observed is written, once.** A reading is the message or cue, the
-event just heard and the context; its record takes the outcome in one write and holds
-it exactly (Theorem: one-shot memory). The slow weights do not move. This is why the
-patch can be told a fact in a conversation and use it in the next sentence, why it can
-take a corpus in one pass, and why nothing it learns by day disturbs what its weights
-hold. It also has a cost: a store generalises by overlap and no further, and it
-disturbs itself when it is shared (writing 24 new sentences into a store that also
-held a library moved the library from 1.000 to 0.973 exact; a conversation needs its
-own store). The store is linear, so two stores read together are one store: what keeps
-a conversation apart from the library is which store a cue reads. Written into an empty
-store of their own and read alone, the same 24 sentences left the library at 1.000, and
-0.79 of them stayed exact after all 24 writes, as in the shared store: what limits them
-is their overlap with one another, and a store of their own does not change that.
+**By day, what is observed is written, once.** A reading is the message or cue,
+the event just heard and the context; its record takes the outcome in one write
+and holds it exactly (Theorem: one-shot memory). The slow weights do not move.
+This is why the patch can be told a fact and use it in the next sentence, why it
+can take a corpus in one pass, and why nothing it learns by day disturbs what
+its weights hold. The cost is that a store generalises by overlap and no
+further, and that it disturbs itself when it is shared: new material written
+into a store that also holds a library degrades the library a little. The store
+is linear, so two stores read together are one store; what keeps a conversation
+apart from the library is which store a cue reads. A store of its own protects
+the library, and does not stop new material from overlapping itself.
 
-**By night, the slow weights take what the store holds, from dreams.** The corpus is
-gone; the store is the only copy. `sleep(cues)` dreams every cue of the day once (the
-free path with the records: what the patch would answer awake), teaches the slow
-weights those fixed dreams by the ordinary contrast with `write=False`, and at dawn
-writes the dreams back so the store holds only what the weights did not take. Nothing
-outside the patch is consulted. Dreaming is necessary and not decorative: the slow
-weights need many presentations of a regularity, and the only place the day's
-observations survive is the store, so the presentations have to be the store's own
-completions. It is also where generalisation is made: the completion of a cue the
-store never met is what the records of its neighbours agree on, and the slow weights
-learn that agreement as a rule. Measured on the grammar of the language work: the
-store alone gave 0.815 of the never-taught (subgenre, era, form) combinations a valid
-sentence at bedtime; after one night of 8,000 dreams from the day's own cues (0.91 of
-them inside the grammar) and 1,200 slow updates, the slow weights alone gave 1.00, with
-the corpus closed. The awake control that re-read the corpus twice more with the
-teacher present reached 0.905. Nothing new entered during the night; what was held was
-redistributed into the weights, and the weights, being smooth, finished the pattern.
+**By night, the slow weights take what the store holds, from dreams.**
+`sleep(cues)` dreams every cue of the day once (the free path with the records:
+what the patch would answer awake), teaches the slow weights those fixed dreams
+by the ordinary contrast with `write=False`, and at dawn writes the dreams back
+so the store holds only what the weights did not take. Nothing outside the patch
+is consulted. Dreaming is necessary rather than decorative: the slow weights
+need many presentations of a regularity, and once the corpus is gone the store is
+the only place those presentations can come from. It is also where
+generalisation is made: the completion of a cue the store never met is what the
+records of its neighbours agree on, and the slow weights learn that agreement as
+a rule, so after a night the weights alone can answer cues the store only
+guessed at.
 
 **What sleep does not do.** Dreams carry the store's errors as faithfully as its
-regularities: on the held-out messages whose completions the store got wrong at
-bedtime, the night changed nothing (0.885 to 0.89), where the teacher with the corpus
-for the same 1,200 updates reached 0.98. Dreams from recombined cues, which land on
-combinations never taught, gave 0.83 and 0.875: the store's guesses at unmet cues are
-taught as facts, whereas dreams from the cues the store met let the smooth weights extend
-the pattern. Sleep restructures what is held and does not correct it; correction needs a
-critic, a re-reading of the disputed cue, or another day.
+regularities: where the store was wrong at bedtime, the night changes nothing,
+while a teacher with the corpus present corrects it. Dreams from recombined cues,
+which land on combinations never taught, teach the store's guesses as facts;
+dreams from the cues the store actually met let the smooth weights extend the
+pattern. Sleep restructures what is held and does not correct it. Correction
+needs a critic, a re-reading of the disputed cue, or another day. A night also
+does not beat a teacher that still has the corpus, and the gap grows with the
+size of the corpus.
 
-**Why the dreams are fixed and the store rewritten.** A record is the residual against
-the slow readout at the time it was written. Dreaming again after every update would
-teach the weights their own drift (in a toy, six of twenty-four right after sixty such
-steps), and reading the old residuals against new weights would count each outcome
-twice. So the night fixes its dreams at bedtime, and dawn re-references the store:
-two passes of writes leave it holding only what the weights did not take, and a new
-fact written the next day lands beside them. This is the two-timescale account of
-memory that the brain suggests, written as two operations on one patch: the store is
-fast, exact and local; the weights are slow, smooth and general; the night moves
-knowledge from the first to the second.
+**Why the dreams are fixed and the store rewritten.** A record is the residual
+against the slow readout at the time it was written. Dreaming again after every
+update would teach the weights their own drift, and reading the old residuals
+against new weights would count each outcome twice. So the night fixes its
+dreams at bedtime, and dawn re-references the store: two passes of writes leave
+it holding only what the weights did not take, and a new fact written the next
+day lands beside them. The store is fast, exact and local; the weights are slow,
+smooth and general; the night moves knowledge from the first to the second.
 
-**When to sleep.** The night pays when the observations are gone and the store is the
-only copy of them. Three of the published examples were run under the day and night
-regime with this class unchanged. The Connect Four value patch, with its school closed
-after one day of 67,399 writes, went from chance to 0.755, 0.768 and 0.772 on the
-held-out sign after one night at 4,096, 16,384 and 65,536 cells; the school reached
-0.785 from the same 263 updates on the outcomes themselves, and stayed one to three
-points ahead at every matched update count. The dawn readout followed what the store
-read at bedtime (0.733 to 0.789), and a second night on the same store added nothing:
-its dreams were what the weights said. On the full school of 4.4 million positions, taken as
-67 days and nights, the sleep-trained readout reached 0.838 against the school's 0.896 at the
-same 52,000 updates: the gap grows with the school. The composer, with its corpus closed after one
-day, reached in one night of 3,833 updates what three epochs with the corpus reached in
-11,499 (held-out next-event accuracy of the slow parameters alone 0.826 to 0.852
-against 0.828 to 0.850). In the soft-body world a sleep gene was selected out in every
-run, from 0.37 of the founders to 0.01 to 0.03 of the living, with a higher model error
-than the beings that learn by day: an awake being has the world at every tick, and a
-sleeper trades its actions for second-hand presentations of what its store holds. So:
-a learner with the world present learns by day at a slow rate above zero; a learner
-whose day is over, or whose store holds what nothing will show it again, sleeps. What
-the store reads at bedtime bounds the night; a store that is drowned by the day
-(`record_averaging` for a store written hundreds of times per cell) teaches a drowned
-rule.
+**When to sleep.** The night pays when the observations are gone and the store
+is the only copy of them. A learner with the world still present learns by day
+at a slow rate above zero: it has fresh observations at every moment, where a
+sleeper trades its actions for second-hand presentations of what its store
+holds. What the store reads at bedtime bounds the night, so a store that is
+drowned by the day (`record_averaging` for a store written hundreds of times per
+cell) teaches a drowned rule.
 
 ## Maps: a structured input port
 
@@ -500,22 +425,19 @@ many channels, what kernel, what stride. `mask=` names which inputs the port hea
 one flag per input: a masked input is zero to every block in the forward map, its
 transpose and the gradient, so which channels a patch reads is a gene too, without
 touching the weights (a steering patch that reads the surprises and not the probes,
-or a brain below a rung that is deaf to the channel the rung reads). A structured
+or a brain deaf to the channel a tested mechanism reads). A structured
 port's checkpoint carries the port's layout and its mask; its `B` and `G` are the
 blocks' kernels, packed.
 
 ## Two patches in depth
 
 The gate of a record patch sees only the present input. That is enough for a
-conjunction of the last two symbols: an arbitrary function of the ordered pair
-is learned by the slow weights alone (0.9999 on a 16-symbol probe), because
-the gate multiplies the carried context. It is not enough to tell a subject
-from a later noun. On subject-verb agreement across prepositional phrases with
-nouns of the opposite number, one patch chose the right verb number in 1.00,
-1.00 and 0.03 of sentences with zero, one and two distracting nouns (0.51 with
-records); a GRU and a two-layer transformer scored 1.00 throughout. A second
-patch that reads the first patch's context has a gate that sees what came
-before, and scored 1.00, 1.00, 1.00:
+conjunction of the last two symbols, which the slow weights learn alone, because
+the gate multiplies the carried context. It is not enough to tell a subject from
+a later noun: on subject-verb agreement across prepositional phrases with nouns
+of the opposite number, one patch holds up with one distractor and fails with
+two. A second patch that reads the first patch's context has a gate that sees
+what came before, and holds up throughout:
 
 ```python
 import numpy as np
@@ -537,7 +459,7 @@ linear in the two widths.
 
 For a single patch the previous-state Jacobian is diagonal when its input is
 fixed. Its gates still multiply carried history, so this is not a theorem that
-the patch represents only one level of conjunctions. In a stack the upper
+the patch represents only one level of conjunctions, and in a stack the upper
 nonlinearity mixes the lower context. The agreement result supports that
 composition on the measured task; it does not establish a general world model.
 
@@ -595,11 +517,9 @@ nothing; `cut = True` makes every port carry zeros, the ablation. Which patch
 hears which, the band and the width are a genome for `evolve` with `genes`;
 the channels are ordered by timescale, so the band decides what crosses: the
 fastest channels carry the source's current input, the slowest its carried
-state. On two coupled symbol streams with one hidden cause, the joint port
-lifted the dependent stream from 0.39 (two independent patches) to 0.54 at
-matched parameters, the same-moment settling round carried the gain, and
-cutting the port after learning dropped that stream to 0.27. There is no joint
-`detune`: the joint energy is not quadratic in the joint path.
+state. Measure a port by cutting it: a joint port that lifted a dependent stream
+should drop it again when `cut=True`. There is no joint `detune`, because the
+joint energy is not quadratic in the joint path.
 
 ## What this class does not do
 

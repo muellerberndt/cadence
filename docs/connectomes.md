@@ -1,14 +1,15 @@
 # Brains from a connectome
 
-A measured wiring diagram becomes one `NeuralGraph`: every neuron a unit of the graded rate model,
-every synapse class an entry with its count and its sign, one global gain. This page is the
-recipe as two examples ran it, the worm (302 neurons) and the fruit fly (150,802 neurons, brain
-and nerve cord), with the numbers that decide each step and the limits that were measured.
-The purpose is to import structural data, supply declared inputs and read model
-outputs. Biological dynamics and behavior require their own validation; see
-the [numerical and learning contracts](contracts.md).
-The fruit fly's code is in
-[cadence-examples/fly-matrix](https://github.com/muellerberndt/cadence-examples/tree/main/fly-matrix).
+A measured wiring diagram becomes one `NeuralGraph`: every neuron a unit of the
+graded rate model, every synapse class an entry with its count and its sign, one
+global gain. This page is the recipe, with the numbers that decide each step and
+the limits that were measured on wiring at both scales, a 302-neuron nervous
+system and a 150,802-neuron brain and nerve cord. The purpose is to import
+structural data, supply declared inputs and read model outputs. Biological
+dynamics and behavior require their own validation; see the
+[numerical and learning contracts](contracts.md). The
+[Connectome demo](https://github.com/muellerberndt/cadence-demos/tree/main/connectome)
+runs compiled wiring with plastic connections in the browser.
 
 ## 1. Custody
 
@@ -128,9 +129,8 @@ A reduced graph is an optional approximation requiring its own evidence.
 Matching selected population means does not establish equivalent
 member-level behavior. Compare individual activities, readouts and task outcomes
 under the same stimuli, rather than inferring closure from size alone. Export
-in the library's order of synapses (receiving neuron, then sender) so the browser
-engine can be held to the library by a parity test
-([the engine and its guide](https://github.com/muellerberndt/cadence-examples/tree/main/engine)).
+in the library's order of synapses (receiving neuron, then sender) so a browser
+engine can be held to the library by a parity test.
 
 ## 7. Learning on it
 

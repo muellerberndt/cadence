@@ -60,9 +60,9 @@ not presumed exact.
 
 Preserving A's responses on previous activity, B's responses on inputs, and C's
 responses on current activity preserves the selected causal path in exact
-arithmetic, by induction. Three [Lean lemmas](https://github.com/FloatingPragma/oph-meta/blob/main/cadence-flagship/lean/CadenceMission/ProtectedTemporalPath.lean)
-prove the conditional induction from exact map agreement. They do not certify
-the numerical SVD or prove that a chosen response is true or useful.
+arithmetic, by induction. That induction is conditional on exact map agreement:
+it does not certify the numerical SVD or make a protected response true or
+useful.
 
 As a basis fills its input space, that parameter block loses all plastic
 directions. Protecting many paths can eventually prevent compatible new

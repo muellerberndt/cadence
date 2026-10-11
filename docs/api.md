@@ -88,11 +88,8 @@ fields are described in the [planning guide](planning.md).
 
 ## The quickstart demos
 
-The [current quickstart](quickstart.md) runs `Brain.compose`; application demos
-live in [cadence-demos](https://github.com/muellerberndt/cadence-demos).
-[cadence-examples/quickstart](https://github.com/muellerberndt/cadence-examples/tree/main/quickstart)
-retains three archived browser quickstarts. Follow their declared library pin
-and environment when reproducing them.
+The [quickstart](quickstart.md) runs `Brain.compose`; application demos live in
+[cadence-demos](https://github.com/muellerberndt/cadence-demos).
 
 ## RecordPatchNet (`cadence.record_patch`)
 
@@ -361,7 +358,7 @@ Restore with the subclass's `restore`/`load` to preserve mask enforcement.
 
 ## PatchNet (`cadence.patch`)
 
-Since 0.18.0, `PatchNet.recursive(inputs, layers, outputs, *, seed=0,
+`PatchNet.recursive(inputs, layers, outputs, *, seed=0,
 coupling=1.0, config=None, backend="cpu", device=None, **runtime_options)` builds
 one reciprocal graph. `layers[0]` is the base hidden population; later widths
 add observers connected in both directions to all previous neurons. The output
@@ -379,7 +376,7 @@ and a complete runnable example.
   graph with declared input, hidden and output ports. Configure learning with
   `config=LearnerConfig(...)`, phase budgets with `steps` and `tolerance`, and
   optional temporal overlap with `context_strength` and `context_mask`.
-- Since 0.19.0, `solver="hybrid"` optionally follows the local budget with up to
+- `solver="hybrid"` optionally follows the local budget with up to
   `refinement_steps=64` accepted Newton steps per unresolved row. The default
   `solver="local"` preserves the existing local-only contract. Hybrid requires
   the CPU smooth `tanh(v/2)` rule, reciprocal effective weights, no adaptation,
@@ -803,6 +800,16 @@ that recursive benefit or automatic reflective behavior has been learned.
   - `pending_feedback`: read-only boolean; the current issued action awaits
     its actual outcome, including a routine `live` choice. Use this when
     handling a refusal to avoid submitting an already consumed outcome twice.
+    `wait` keeps it.
+  - `decision_id`: read-only; the identity of the `live` action that owns the next
+    outcome, which is the `arousal.age` once `live` issued it (its first action is 1),
+    or `None` when no `live` action awaits one (an action `step` or `act` issued has
+    none). `wait` keeps it, `reset` keeps the age so numbers are not reused, and
+    save/load restores it. `live(..., decision_id=...)` refuses an outcome reported
+    under any other value. Unlike the experimental population engine's
+    [`Reinforcement.feedback`](equilibrium/LIVE.md#preserve-execution-and-feedback-ownership),
+    naming the decision is optional, a repeated outcome raises instead of being
+    acknowledged again, and the executed action is not reported.
   - `stimulus(observations, *, memory=True)`: the drive of a batch; with `memory`, the
     working memory, the efference copy and the hippocampal recall are added.
   - `step(observations, *, reward=None, done=None, teacher=None, salience=None, bootstrap=None)`:
@@ -838,7 +845,7 @@ that recursive benefit or automatic reflective behavior has been learned.
     state and pending actual outcomes remain unchanged. This predicts brain responses
     to supplied observations; use the separate `TemporalPatchNet.plan` interface for
     a learned external-world action/consequence model.
-  - `live(observations, *, reward=None, done=None) -> actions`: one moment of a
+  - `live(observations, *, reward=None, done=None, decision_id=None) -> actions`: one moment of a
     continuing life on one stream, for a brain constructed with `arousal`. Reward and
     done concern the preceding action, as in `step`; omitted reward consumes a
     pending action as a zero-reward transition, not a missing outcome. A calm brain answers with the
@@ -867,7 +874,38 @@ that recursive benefit or automatic reflective behavior has been learned.
     An unrepresentable arousal update raises `ValueError`. For a routine action
     its feedback remains pending; after a sampled action's feedback was learned,
     the error says that feedback was accepted and must not be submitted again.
+    `decision_id` names the action the outcome belongs to (`Brain.decision_id`); a
+    malformed value, or any number other than the awaited action's, raises
+    `ValueError` before anything changes, so an outcome reported twice, or late for
+    an action that was replaced, is not credited to the action now awaiting one.
+    When the next observations come before the outcome, sense them with `wait`.
     See [routine and repair](continuous.md#routine-and-repair-live).
+  - `wait(observations) -> None`: one moment of a `live` stream whose issued action
+    still awaits its outcome. It settles the observation from the current activity,
+    reading the working trace, the efference copy and associative recall, and
+    advances the working trace to that state. No action is issued and no outcome is
+    taken: the awaited action keeps its forecasts, eligibility and situation, and the
+    outcome later given to `live` is credited to it as an immediate outcome would be,
+    with the next state settled from the state sensed last; a routine forecast, `act`,
+    `step` and `imagine` also start from that state, and a finished episode from rest.
+    Parameters, the critic, eligibility traces, associative memory, random state, the
+    efference copy, `last_arousal` and the arousal state are unchanged: arousal, its
+    age, youth and `need` advance with live moments, and one outcome is one
+    temporal-difference step however many moments were waited: an event-time rule,
+    with a per-moment decay as a candidate gene against it. `last_settlement` reports
+    the settle with `operation="wait"`; like the work of a refused attempt it is not
+    part of arousal's counts, so add each wait's `steps` to them to total a stream's
+    work. The caller decides which moments are waited and supplies the link between
+    the late outcome and its action; a result that uses `wait` declares that link as
+    supplied, and a delay whose credit the brain is to learn is reported through
+    `live` moment by moment. Give the awaited outcome with an explicit `reward`: an
+    omitted reward is a zero outcome. Without arousal or with more than one stream
+    it raises `ValueError`, without an action awaiting its outcome `RuntimeError`;
+    invalid observations raise `ValueError`, and a settle that cannot qualify raises
+    `RuntimeError` and changes nothing but `last_settlement`. There is no deadline:
+    `act` replaces the awaited action without learning from it, while `step`, like
+    `live`, takes a sampled action's omitted reward as a zero outcome.
+    See [outcomes that arrive later](continuous.md#outcomes-that-arrive-later-wait).
   - `last_arousal: Mapping[str, Any] | None`: an immutable snapshot of the latest `live`
     moment: `mode` (`"routine"` or `"aroused"`), `level`, `error` (the unsigned
     temporal-difference error of the preceding action against its forecast),
@@ -897,7 +935,7 @@ that recursive benefit or automatic reflective behavior has been learned.
     retains its separate finite nudged-phase contract.
   - `last_settlement: Mapping[str, Any] | None`: an immutable snapshot of the latest
     completed free-answer solve, including a refused one. Fields are `operation`
-    (`"act"` or `"predict"`), `scope="free_answer"`, `qualified` (whole-batch boolean),
+    (`"act"`, `"wait"` or `"predict"`), `scope="free_answer"`, `qualified` (whole-batch boolean),
     `row_qualified` and `residual` (per-row tuples), `max_residual`, `steps`, `budget`,
     `tolerance`, `residual_checks`, `damping_halvings` and `stagnation_checks`.
     `steps` includes numerical fallback and stays within the shared budget.
@@ -917,6 +955,8 @@ that recursive benefit or automatic reflective behavior has been learned.
     If the feedback solve refuses, hippocampal writes, terminal trace resets and actor
     changes are rolled back; the action remains pending. Adjust the solve and retry the
     same outcome. This differs from an accepted outcome followed by a refused next action.
+    After `wait`, the next state settles from the state the stream sensed last; the
+    critic's eligibility still uses the state in which the action was chosen.
   - `reset()` clears working state, action cache, eligibility and reward centering; hippocampal
     records and slow parameters are kept. A brain with arousal begins the next stream calm,
     with what it was used to cleared and its age and work counts kept.
@@ -929,7 +969,9 @@ that recursive benefit or automatic reflective behavior has been learned.
     the format name `cadence-generic/3`; brains without arousal keep `cadence-generic/2`.
     A brain with an efference copy saves as `cadence-generic/4`, with or without arousal;
     `load` refuses a `cadence-generic/4` file without the copy's state and a copy under an
-    earlier format name.
+    earlier format name. A stream saved during `wait` stores the state it sensed under
+    `cadence-generic/5`, with or without an efference copy; a stream that is not waiting
+    keeps the earlier format names, and `load` refuses sensed state under another name.
     The archive is replaced atomically. A learner-only checkpoint
     is rejected by `Brain.load`; `Learner.load` can extract a learner from either.
   Observations must be a nonempty finite batch, with image dimensions flattened per row.
@@ -1261,7 +1303,7 @@ founder genes for a small share of moments; the
     `Bins`, `Learner(slots=[2, 3])` returns two categorical action indices per row;
     padding is never sampled. Actor nudges differentiate the softmax policy,
     independently of the learner's imitation loss;
-  - `learn(reward, done, next_drive, bootstrap=None, *, observed=None) -> report`: the prediction error
+  - `learn(reward, done, next_drive, bootstrap=None, *, observed=None, warm=None) -> report`: the prediction error
     `reward + gamma * V(next) - V(now)` made into the dopamine by the valence and written
     through every synapse's eligibility, the trace of the last act's contrast decaying by
     `gamma * lam` a moment. The critic uses its own trace and `critic_signal`: raw
@@ -1282,6 +1324,9 @@ founder genes for a small share of moments; the
     `observed` is a boolean batch vector for real transitions. Padding rows do not
     teach the actor or critic or enter reward statistics; their eligibility resets.
     Updates average over observed rows. At least one row must be observed.
+    `warm` is the state the next state settles from when the streams' activity moved on
+    after the action (`Brain.wait`); by default it is the free phase the action was
+    chosen in, which always carries the critic's eligibility.
   - `fade(done=None)`: one moment passed that added no eligibility, its action having
     been answered greedily. Every eligibility trace decays by `gamma * lam`, the step
     `learn` applies between two sampled actions, and `done` rows forget their traces.
@@ -1364,11 +1409,8 @@ founder genes for a small share of moments; the
 
 ## Atlas
 
-The archived viewer, connectome atlas and replay page live in
-[cadence-examples/viewer](https://github.com/muellerberndt/cadence-examples/tree/main/viewer)
-with their own library pin and environment. The current library supplies
-`record_settlements` for capturing actual graph iterations; the application owns
-their display. Current application demos live in
+The library supplies `record_settlements` for capturing actual graph iterations;
+the application owns their display ([pages](pages.md)). Application demos live in
 [cadence-demos](https://github.com/muellerberndt/cadence-demos).
 
 ## Receipts (`cadence.receipts`)

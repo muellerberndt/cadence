@@ -602,6 +602,7 @@ class ActorCritic:
         bootstrap: np.ndarray | None = None,
         *,
         observed: np.ndarray | None = None,
+        warm: BrainState | None = None,
     ) -> dict[str, float]:
         """Dopamine from the reward and the next state's value; every synapse moves on its trace.
 
@@ -611,6 +612,9 @@ class ActorCritic:
         ``observed`` excludes padding rows from plasticity and reward statistics;
         their traces reset. At least one real transition is required. Updates are
         averaged over the observed rows, independent of padding.
+        ``warm`` is the state the next state settles from when the streams' activity
+        moved on after the action (``Brain.wait``); by default it is the free phase the
+        action was chosen in, which always carries the critic's eligibility.
         """
         arrays = ("trace", "trace_bias", "trace_critic")
         saved = {
@@ -633,7 +637,7 @@ class ActorCritic:
         )
         valence = None if self._valence is None else (self._valence.mean, self._valence.var)
         try:
-            return self._learn(reward, done, next_drive, bootstrap, observed=observed)
+            return self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
         except Exception:
             self.__dict__.update(saved)
             if valence is not None:
@@ -649,6 +653,7 @@ class ActorCritic:
         bootstrap: np.ndarray | None = None,
         *,
         observed: np.ndarray | None = None,
+        warm: BrainState | None = None,
     ) -> dict[str, float]:
         reward, done, next_drive, bootstrap = self._validated_transition(
             reward, done, next_drive, bootstrap
@@ -656,6 +661,8 @@ class ActorCritic:
         observed = np.ones(len(reward), dtype=bool) if observed is None else np.asarray(observed)
         if observed.shape != reward.shape or observed.dtype != np.bool_ or not observed.any():
             raise ValueError("observed must match the batch and include a real transition")
+        if warm is not None and _batch_of(warm) != len(reward):
+            raise ValueError("warm must be a state of the action batch")
         done = done | ~observed
         cfg = self.config
         assert self._pending is not None
@@ -673,7 +680,16 @@ class ActorCritic:
                 kind = "phases"
         if device_kernel is not None:
             return self._learn_device(
-                device_kernel, first, second, value, reward, done, next_drive, bootstrap, observed
+                device_kernel,
+                first,
+                second,
+                value,
+                reward,
+                done,
+                next_drive,
+                bootstrap,
+                observed,
+                warm,
             )
         if self._trace_device is not None:
             self.trace, self.trace_bias = (
@@ -711,7 +727,7 @@ class ActorCritic:
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
         # the next state, warm from this one; a finished row starts its next life from rest
-        next_state = self._next_state(next_drive, done)
+        next_state = self._next_state(next_drive, done, warm)
         next_value_raw = self.value(next_state)
         next_value = np.where(
             done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw
@@ -865,8 +881,11 @@ class ActorCritic:
                 raise ValueError("salience must be a finite (batch, neurons) array")
         return reward, done, next_drive, bootstrap
 
-    def _next_state(self, drive: np.ndarray, done: np.ndarray) -> BrainState:
-        warm = self._free
+    def _next_state(
+        self, drive: np.ndarray, done: np.ndarray, warm: BrainState | None = None
+    ) -> BrainState:
+        if warm is None:
+            warm = self._free
         assert warm is not None
         if done.any():
             kernel = self.learner.brain._torch
@@ -897,6 +916,7 @@ class ActorCritic:
         next_drive: np.ndarray,
         bootstrap: np.ndarray | None,
         observed: np.ndarray,
+        warm: BrainState | None = None,
     ) -> dict[str, float]:
         """``learn`` for streams whose phases rest on the torch device: each stream's contrast,
         eligibility trace and the mean step never come to the host; the critic and the
@@ -933,7 +953,7 @@ class ActorCritic:
         self.trace_critic *= cfg.gamma * cfg.lam
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
-        next_state = self._next_state(next_drive, done)
+        next_state = self._next_state(next_drive, done, warm)
         next_value_raw = self.value(next_state)
         next_value = np.where(
             done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw

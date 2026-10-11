@@ -76,14 +76,12 @@ own optimizer state; this does not guarantee stable learning for every task or s
 ## Centered dopamine and selective activity
 
 With `ActorCriticConfig.dopamine_center > 0`, the actor maintains per-stream
-running error statistics. `dopamine_floor` sets a band around the running
-center in which its modulation is zero; `dopamine_floor` alone has no effect
-when centering is disabled. This can reduce actor updates for familiar outcomes.
-It is not an external correctness test or a universal failure gate. Existing
-momentum can still move parameters; the default centered critic uses raw TD
-error, and eligibility phases and associative writes still run. Zero modulation
-does not mean zero computation. Choose these settings against measured behavior
-and work; they do not change the obligation to supply each actual outcome once.
+running error statistics. `dopamine_floor` sets a band around the running centre
+in which its modulation is zero, and has no effect when centering is disabled.
+This reduces actor updates for familiar outcomes. It is not a correctness test:
+momentum can still move parameters, the centered critic uses raw TD error, and
+eligibility phases and associative writes still run, so zero modulation is not
+zero computation. Each actual outcome is still supplied once.
 
 [Life](api.md#life-cadencelife) provides a different opt-in mechanism: a governor
 selects habit, imagination or learning for a `BeliefPatch`/`Steered` composition
@@ -188,35 +186,26 @@ each outcome.
 
 Whether such a night helps depends on what the day's updates do, which the
 [night-replay chamber](../benchmarks/replay/README.md) measures: one decision per
-interval with a signed outcome in small units and a fixed cost for every non-resting
-action, the contract of the paper-trading loop in
-[issue 139](https://github.com/muellerberndt/cadence/issues/139), with a world in
-which a cue decides the paying move and one in which nothing does, and the same
-number of fresh decisions awake as the control. At the composed defaults the greedy
-choice did not depend on the observation before the night: the mean total variation
-between the per-observation policies and their mean was 0.02 without a signal and
-0.24 with one, and three replays of a 40-decision day lowered the agreement with the
-cue rule from 0.60 to 0.39 while the same number of awake decisions kept it at 0.62.
-Two readings name the causes. `report["capped"]` was 0.5 to 0.9: outcomes of several
-units against `dopamine_cap=1.0` clip to their sign, a gain of one unit and a loss of
-six move every synapse equally, and at the actor rate of 1.0 on a single stream the
-policy walks to a held action (`report["saturation"]` 0.6 to 0.9). The default working
-trace held the association cortex on its own history: on a continuing contextual
-bandit the composed default stayed at chance over 600 decisions while the same brain
-with `working_memory_amplitude=0.0` reached a hit rate of 1.0
-([memory](memory.md#three-kinds-of-memory-in-brain)). With
-`working_memory_amplitude=1.0, working_memory_decay=0.8` and the actor at `eta=0.1`
-(`eta_bias=0.01`), the day ended at 0.90 agreement and the night raised it to 1.00 in
-every seed, as the awake control did; without a signal the same night took the
-policy to the resting action, which is the correct answer there, and the memory
-alone, under a frozen actor, leaned the choice the same way, since a move that lost
-is recalled as a loss; under that frozen actor the memory gained more from the night
-than from fresh days (0.96 against 0.89), since its consolidation rewards repeated
-keys. Over a 144-decision day the same night lowered the agreement from 1.00 to
-0.88 at the actor rate of 0.1 and raised it from 0.93 to 1.00 at 0.03: the smaller
-the rate, the safer a long night. Measure the policy of a frozen copy before adopting a
-slept brain; its dependence on the observation is the gate, and a constant greedy
-choice is only correct where no observation pays.
+interval, a signed outcome in small units, a fixed cost for every non-resting
+action, a world in which a cue decides the paying move and one in which nothing
+does, and the same number of fresh awake decisions as the control. Three
+readings decide whether a night is safe:
+
+- **`report["capped"]`.** Outcomes of several units against `dopamine_cap=1.0`
+  clip to their sign, so a gain of one unit and a loss of six move every synapse
+  equally. At a high share the night repeats that distortion.
+- **`report["saturation"]`.** At the composed actor rate on a single stream the
+  policy walks to a held action, and replay walks it further.
+- **The working trace.** At the composed amplitude the association region can
+  run on its own history instead of the observation
+  ([memory](memory.md#three-kinds-of-memory-in-brain)).
+
+With the trace informing rather than leading and a smaller actor rate, replay
+raised the agreement with the paying rule as the awake control did; at the larger
+rate a long night lowered it. The smaller the rate, the safer a long night.
+Measure a frozen copy's policy before adopting a slept brain: its dependence on
+the observation is the gate, and a constant greedy choice is only correct where
+no observation pays.
 
 ```python
 import numpy as np
@@ -243,91 +232,82 @@ see which of the graph, the trace and the memory holds the choice.
 
 ## Traps, with their measurements
 
-The first warning concerns retention in a continuing composed brain. The remaining
-traps cost a day on a real brain (the fruit fly of
-[cadence-examples](https://github.com/muellerberndt/cadence-examples), 150,802 neurons, an
-actor-critic on the Kenyon-cell-to-MBON synapses; the worm met the second one first). They are
-properties of the rule and the readout, with readings in the `learn` report. The last
-three are read before any lesson by `preflight(brain, outputs, plastic, drives)`, which names
-the remedy for each; run it first.
+These are properties of the rule and the readout, each with a reading in the
+`learn` report. The last three are checked before any lesson by
+`preflight(brain, outputs, plastic, drives)`, which names the remedy for each;
+run it first.
 
-- **Continued learning can interfere with acquired behaviour.** Arousal gates updates but
-  does not protect particular earlier responses while the brain learns. The robot-arena
-  measurements and candidate mechanisms are retained in
-  [#169](https://github.com/muellerberndt/cadence/issues/169): a smaller actor step reduced
-  interference in a six-brain, twenty-fight comparison. That setting is a bounded control,
-  not a general retention remedy or a new default. Compare retained skills and adaptation
-  in the same continuing brains. Raising the arousal threshold can reduce learning
-  opportunities after youth; it does not make updates selective for the skills to preserve.
-  Associative-memory `consolidation` controls record writes, not protection of actor weights.
-- **The temperature is relative to the activation range.** The action is a softmax over the
-  output neurons' activations divided by `temperature`. Activations lie in [0, 1], so at the
-  worm's 0.05 two outputs that differ by 0.3 make a choice with probability 0.998, the nudge's
-  push `beta * (target - p)` is nothing, and no synapse moves: the fly sat at 1.00/1.00 for 600
-  decisions. Outputs that live near rest (the worm's command neurons) take 0.05; outputs that
-  sit at 0.7 to 1.0 under their drive take 0.3. Set it from the naive activations, not from
-  another example.
-- **The saturation latch.** Once one output saturates and the other is silenced, the activation
-  has no slope, the contrast `a_pre * (b_plus - b_minus)` is zero and the rule cannot leave the
-  state whatever the reward says. `report["saturation"]` is the fraction of output activations
-  within 0.02 of 0 or 1 and `report["trace"]` the mean absolute eligibility of the plastic
-  synapses: saturation near 1 with the trace near 0 is the latch, visible at decision 100
-  where the reward curve shows it at 800. The remedies are a gain at which the outputs sit in
-  the sensitive band, `LearnerConfig(scale_cap=...)` below the default 8 so learning cannot
-  drive them out of it, and a readout whose cells are neither silent nor saturated under the
-  task's drive before any lesson.
-- **The value on a code that cannot see progress.** With a terminal reward and a linear critic
-  on a state code that is the same all along the approach, the value stays near the discounted
-  mean everywhere: the fly's was 0.25, so sugar surprised by +0.75 and an empty arm by -0.25,
-  and the synapses every odour shares drifted toward approach until the latch. Make the
-  outcomes symmetric where the assay allows it (the animal's differential conditioning pairs
-  sugar with quinine), or give the code the progress (a level that rises with distance).
-- **The assay decides whether avoidance can be rewarded.** In an open field one avoidance turn
-  leads nowhere, so a fly that avoids a third of the time reaches no source and no reward
-  arrives; the rule then learns "approach everything" whatever the wiring. In a T-maze
-  avoiding one arm's odour means taking the other, every search ends at an arm, the
-  approach-everything policy scores one half and the association scores one. Build the arena
-  so that every action the readout can take has an outcome.
-- **Centring and the critic.** `dopamine_center > 0` makes the actor's dopamine the surprise
-  over its running level; a critic fed the same signal chases a moving target and its value ran
-  to -15 within 300 decisions. `critic_signal="auto"` (the default) gives the critic the raw
-  error whenever the dopamine is centred.
-- **A cap applied by rebuilding the brain.** Clipping efficacies by `brain.with_parameters` after
-  every decision re-uploads every weight on the torch backend and cost a factor of ten per
-  decision. The cap is a config field, `LearnerConfig(scale_cap=...)`, applied inside the update.
-- **A code the lesson cannot attach to.** The actor moves the synapses from the active cells of
-  the state code; if that code is the same for every stimulus, every lesson moves every
-  stimulus. The fly's Kenyon cell codes for two odours had a cosine of 0.98 (the antennal lobe
-  ignited through its cholinergic local neurons at the global gain), and twelve blows at one
-  odour drove both approach probabilities from 0.9 to 0.09 together. Measure the code with the
-  `specific` fact before the lesson and select the offending population's gain on it
+- **Continued learning can interfere with acquired behaviour.** Arousal gates
+  updates but does not protect particular earlier responses while the brain
+  learns. A smaller actor step reduces interference; it is a bounded control, not
+  a retention mechanism, and [#169](https://github.com/muellerberndt/cadence/issues/169)
+  owns the candidates. Raising the arousal threshold only removes learning
+  opportunities, and associative-memory `consolidation` controls record writes,
+  not actor weights. Compare retained skills and adaptation in the same brains.
+- **The temperature is relative to the activation range.** The action is a
+  softmax over the output neurons' activations divided by `temperature`, and
+  activations lie in [0, 1]. At 0.05, two outputs differing by 0.3 make a choice
+  with probability 0.998, the nudge's push `beta * (target - p)` is nothing, and
+  no synapse moves. Outputs that live near rest take 0.05; outputs that sit at
+  0.7 to 1.0 under their drive take 0.3. Set it from the naive activations.
+- **The saturation latch.** Once one output saturates and the other is silenced,
+  the activation has no slope, the contrast `a_pre * (b_plus - b_minus)` is zero,
+  and the rule cannot leave the state whatever the reward says.
+  `report["saturation"]` is the fraction of output activations within 0.02 of 0
+  or 1 and `report["trace"]` the mean absolute eligibility: saturation near 1
+  with the trace near 0 is the latch, and it is visible long before the reward
+  curve shows it. The remedies are a gain that puts the outputs in the sensitive
+  band, `LearnerConfig(scale_cap=...)` below the default 8 so learning cannot
+  drive them out of it, and a readout that is neither silent nor saturated under
+  the task's drive before any lesson.
+- **The value on a code that cannot see progress.** With a terminal reward and a
+  linear critic on a state code that is the same all along the approach, the
+  value stays near the discounted mean everywhere, so every outcome surprises by
+  a fixed amount and the shared synapses drift until the latch. Make the outcomes
+  symmetric where the assay allows it, or give the code the progress, such as a
+  level that rises with distance.
+- **The assay decides whether avoidance can be rewarded.** Where one avoidance
+  turn leads nowhere, no reward ever arrives for it and the rule learns "approach
+  everything" whatever the wiring. Where avoiding one option means taking the
+  other, and every search ends at an outcome, the association can be learned.
+  Build the arena so that every action the readout can take has an outcome.
+- **Centring and the critic.** `dopamine_center > 0` makes the actor's dopamine
+  the surprise over its running level; a critic fed the same signal chases a
+  moving target and its value runs away. `critic_signal="auto"` (the default)
+  gives the critic the raw error whenever the dopamine is centred.
+- **A cap applied by rebuilding the brain.** Clipping efficacies with
+  `brain.with_parameters` after every decision re-uploads every weight on the
+  torch backend, at a factor of ten per decision. The cap is a config field,
+  `LearnerConfig(scale_cap=...)`, applied inside the update.
+- **A code the lesson cannot attach to.** The actor moves the synapses from the
+  active cells of the state code; if that code is nearly the same for every
+  stimulus, every lesson moves every stimulus, and a few outcomes at one cue drag
+  both probabilities together. Measure the code with the `specific` fact before
+  the lesson and select the offending population's gain on it
   ([brains from a connectome](connectomes.md)); no rule downstream repairs it.
-- **A readout on a rail, and a readout with a past.** A connectome carries no operating point:
-  at the global threshold the fly's approach cell sat at 1.00 under every odour and its avoidance
-  cell at 0.01, and the nudge had little response on either. `calibrate_bias`
-  searches each readout cell's bias toward a declared mean over the supplied
-  situations. Check the resulting means and full residual before installing
-  them; finite bisection does not guarantee the target. The
-  [qualified calibration option](learning.md#calibrating-the-operating-point)
-  checks every attempted state. And on the measured counts of the
-  memory seam the naive readout already avoided one odour (0.17) and approached the other
-  (0.83): a specimen's synapse counts at its memory site are its memories, and a smell that is
-  never approached is never rewarded. `naive_efficacy` starts the seam with every plastic class
-  at the same weight.
-- **A seam thinned by custody.** A synapse floor removes a distributed memory along with the
-  noise: the fly's floor of five kept 231 of 1,079 Kenyon cell classes onto one output neuron
-  and 14 of 336 onto the other, and nine blows moved the approach probability by 0.03. Keep the
-  seam a lesson will move at every count and read `seam_report` before designing on it.
-- **The critic that learns faster than the actor.** With `eta_critic` at 0.5 the value reached
-  the outcome in four trials and the dopamine went to zero while the actor, whose contrast is
-  small near a rail, had barely moved; with `eta` at 10 one lesson put an output on its rail.
-  The fly runs `eta` 0.25 and `eta_critic` 0.05; read `report["delta"]` across repeated
-  outcomes and `report["saturation"]` before raising either.
-- **Eligibility mixed along one approach.** A decision every 0.3 s along an approach gave the
-  trace approach and avoid nudges from one flight, and the approach nudge had less room because
-  its cell sat near saturation; sugar then rewarded whichever nudge had been larger, and three
-  rewards taught avoidance. One decision per episode, credited to that decision, as the T-maze
-  has it.
+- **A readout on a rail, and a readout with a past.** A connectome carries no
+  operating point: at one global threshold a readout cell can sit at 1.00 under
+  every input and its opposite at 0.01, where the nudge has little response on
+  either. `calibrate_bias` searches each readout cell's bias toward a declared
+  mean over the supplied situations; check the resulting means and full residual
+  before installing them, since finite bisection does not guarantee the target.
+  The [qualified calibration option](learning.md#calibrating-the-operating-point)
+  checks every attempted state. Measured synapse counts are themselves a past: a
+  naive readout can already prefer one cue, and an option that is never taken is
+  never rewarded. `naive_efficacy` starts a seam with every plastic class at the
+  same weight.
+- **A seam thinned by custody.** A synapse floor removes a distributed memory
+  along with the noise, leaving a seam that a lesson barely moves. Keep the seam
+  a lesson will move at every count and read `seam_report` before designing on it.
+- **The critic that learns faster than the actor.** With a large `eta_critic` the
+  value reaches the outcome in a few trials and the dopamine goes to zero while
+  the actor, whose contrast is small near a rail, has barely moved; with a large
+  `eta` one lesson puts an output on its rail. Read `report["delta"]` across
+  repeated outcomes and `report["saturation"]` before raising either.
+- **Eligibility mixed along one approach.** Several decisions along one approach
+  give the trace both approach and avoid nudges from the same episode, and the
+  reward then credits whichever nudge was larger. Take one decision per episode
+  and credit it to that decision.
 
 ## Rates under normalization
 
@@ -336,9 +316,8 @@ signal by its own bias-corrected running RMS plus `1e-3`. With momentum, the
 numerator is its bias-corrected running mean. This applies independently to
 efficacies (`eta`) and neuron biases (`eta_bias`), using the actor's optimizer
 history; the supervised learner's normalization setting does not enable or
-disable it. The [learning guide](learning.md#rates-under-normalization) gives
-the formula, its limits and the reported Atari, Transcribe and Patch World
-pilots that motivated the warning.
+disable it. The [learning guide](learning.md#rates-under-normalization) gives the formula
+and its limits.
 
 A consistent signal above the floor gives a parameter increment near its
 rate before masks, tying, decay and clipping. The rate is not a fixed increment
@@ -347,14 +326,13 @@ or an upper bound. A fresh `ActorCriticConfig` derives an unset `eta_bias` as
 preserve the current bias rate unless it too is named: use
 `actor_eta_bias=None` to derive it again, or supply an explicit paired rate.
 Construction warns when the bias rate exceeds a positive `eta`. Under RMS
-normalization both rates are absolute per-parameter steps: a bias step 25 times
-the synapse step rewrites the policy into a bias policy whose greedy action does
-not depend on the observation (issue 143, measured on Patch World v2 creatures
-whose motor biases reached plus or minus 5 while their synapses stayed near
-initialization). The composed brain keeps its measured `eta_bias=0.05` at
-`eta=1.0`. A development sweep of `eta=0.001` to `0.003` is a starting experiment.
-Measure free behavior against the task's controls; no range guarantees learning
-or prevents a policy from collapsing to a held action.
+normalization both rates are absolute per-parameter steps: a bias step much
+larger than the synapse step rewrites the policy into a bias policy whose greedy
+action does not depend on the observation, with the biases far from
+initialization while the synapses stay near it. The composed brain keeps
+`eta_bias=0.05` at `eta=1.0`. A development sweep of `eta=0.001` to `0.003` is a
+starting experiment. Measure free behavior against the task's controls; no range
+guarantees learning or prevents a policy from collapsing to a held action.
 
 Construction emits `RuntimeWarning` if `normalize > 0` and either `eta` or
 `eta_bias` exceeds `0.05`. This advisory threshold does not alter settings or

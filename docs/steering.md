@@ -5,10 +5,7 @@ diagnostics and returns sensory gains for the cortex's next finite repair.
 The **steered cortex** has senses weighed by a steering patch. The **governor**
 reads the brain's own signals and decides when to think, and the **life** runs
 both. These compose existing belief models and a settling graph governor with
-an explicit learning interface and admitted parameter steps. The ventriloquist,
-lighthouse keeper and night nursery first implemented the steered cortex
-locally; the room and dozing cat implemented the life loop. The library now
-provides those shared operations.
+an explicit learning interface and admitted parameter steps.
 
 **This composition does not jointly settle observer and observed activity.**
 The observer sees a recorded readback, computes its output, and the cortex
@@ -21,9 +18,10 @@ distinction explicit.
 Under the flagship theorem's linear/additive assumptions, a tower of readbacks
 can be absorbed into one effective map. Nonlinear observation, gain control,
 restricted sensing and a computation budget create distinctions worth testing;
-they do not by themselves establish useful depth. A rung needs a task advantage
-at matched information and resources. Compare the step on, the step off and a
-hand-designed control, then test against strong matched conventional models.
+they do not by themselves establish useful depth. The claim needs a task
+advantage at matched information and resources: compare the step on, the step
+off and a hand-designed control, then test against strong matched conventional
+models.
 
 ## The steered cortex
 
@@ -41,7 +39,7 @@ the cortex assimilates the moment under those gains. The readback's channels, in
 | `evidence:b:i` | the encoded evidence of block `b` before any gain, for the blocks in `evidence` |
 | `extra:i` | channels a callable supplies, with `extra=` and `extra_channels=` |
 
-Which channels the steering patch hears is the mask of its port, a gene: the brain below rung 4
+Which channels the steering patch hears is the mask of its port, a gene: the brain below
 hears the surprises and not the evidence, and the mask says so without touching the weights.
 
 ```python
@@ -95,9 +93,9 @@ assert brain.step_size is not None and brain.cost["replays"] >= 6
 steering patch's outputs, the loss and the price, what the step did (`updated`,
 `steering_updated`, `step`, `halvings`, `replays`, `reason`), and the last moment's two
 `BeliefPath`s for a page. `run(learn_cortex=False)` lets the cortex sleep: its parameters stay
-and only the steering patch steps, its gradient still the cortex's. The night nursery earned
-rung 4 in that regime; with the cortex learning alongside, its own adaptation absorbed the
-exception the steering patch was learning.
+and only the steering patch steps, its gradient still the cortex's. Learning an exception
+needs that regime: with the cortex learning alongside, its own adaptation absorbs the
+exception the steering patch is trying to learn.
 
 ## The weighing
 
@@ -109,7 +107,7 @@ centre the steering patch turns by `span * tanh(y)`: each block's gain is a Gaus
 distance from the centre, cut beyond `cut` widths, at a brightness that falls as the window
 widens, and the turn carries a price in the objective the joint step is admitted on. The centre
 is the weighing's state and travels in the boundary. `Rule(fn)` is a hand-written map from the
-readback to the gains, the control of a rung: no steering patch, no learning of the rule, the
+readback to the gains, the control: no steering patch, no learning of the rule, the
 cortex under it learning by its own admitted step. A weighing declares `gains(y, state)` and
 `pull(ys, gains, dgains, states)`, the Jacobian's action on the gradient into the gains; a new
 one is those two methods.
@@ -132,18 +130,18 @@ def rule(readback):                                                        # the
 control = Steered(cortex, weighing=Rule(rule, macs=6))
 ruled = control.run(o, a, y, rate=4.0, state=control._fresh(4))
 assert ruled.steering_output is None and control.macs_per_moment() == cortex.macs_per_moment() + cortex.readback_macs(probe=False) + 6
-below = Steered(cortex)                                                    # fixed gains of one: the brain below rung 2
+below = Steered(cortex)                                                    # fixed gains of one: the brain below
 assert np.all(below.run(o, a, state=below._fresh(4)).gains == 1.0)
 ```
 
 ## The switch and the accounting
 
-The three arms of a rung are three constructions of the same class: `Steered(cortex, steering,
-weighing)` with the step on, `Steered(cortex)` or a steering patch deaf to the rung's channel
+The three arms are three constructions of the same class: `Steered(cortex, steering,
+weighing)` with the step on, `Steered(cortex)` or a steering patch deaf to the tested channel
 with the step off, and `Steered(cortex, weighing=Rule(...))` as the control. Two ablations act
 on a trained brain at test time: `brain.ablation = "cut"` freezes the gains at one while the
-steering patch still runs and is counted, a callable ablation maps the gains (the
-ventriloquist's shuffle, `lambda g: g[:, ::-1]`); `brain.deaf = mask` zeroes readback channels. Every
+steering patch still runs and is counted, a callable ablation maps the gains (a shuffle,
+`lambda g: g[:, ::-1]`); `brain.deaf = mask` zeroes readback channels. Every
 arm reads one accounting: `macs_per_moment()` (the cortex's moment with the probes when read,
 the steering patch's moment, a rule's declared operations), `moments_per_decision()`, and
 `cost`, the two patches' counters summed with the joint admission's replays and
@@ -182,7 +180,7 @@ assert np.allclose(learned.gains, seen) and brain.boundary().moments == 16
 
 ## A life with a governor
 
-`Life(patch, governor, ...)` is rung 1: one continuing loop in which a governor of the same rule
+`Life(patch, governor, ...)` is one continuing loop in which a governor of the same rule
 reads the brain's own signals and returns its mode. The life computes a readback of seven
 channels from the patch's signals, the last surprise over its baseline (log-compressed), a slow
 average of the same, the repair residual over its routine median, the last mode as three flags
@@ -192,8 +190,8 @@ belief's private continuation and executes the best first action. **Learn** repl
 window from its boundary and takes one admitted step per pass, undoing a window whose loss did
 not fall by the validity margin. The baseline of the surprise follows the quiet moments with a
 floor, and habituates when a learn call was undone. The governors: `PatchGovernor`, a settling
-brain of readback, cortex and motor neurons whose every synapse is a gene, with the dozing cat's
-wiring as the hand-set genome and `PatchGovernor.space()` for `genes`; `ThresholdGovernor`, the
+brain of readback, cortex and motor neurons whose every synapse is a gene, with a hand-set
+wiring as the founder genome and `PatchGovernor.space()` for `genes`; `ThresholdGovernor`, the
 hand-designed control; `AlwaysAwake` and `NeverWakes`, the two ends of the switch.
 
 ```python
@@ -236,12 +234,12 @@ for governor in (PatchGovernor(), ThresholdGovernor({"k_imagine": 3.0, "k_learn"
 steps, imagined moments, surprise, baseline, target), `life.learns` every learn call (window,
 loss before and after, valid, kept, passes), and `compute()` the cost: the patch's moments and
 multiply-accumulates, the governor's steps as moments, per decision. A `Steered` cortex is a
-patch too: under a governor its steering patch learns with the joint step, and rung 4's open
-item, the governor gating the cortex's learning, is this composition.
+patch too: under a governor its steering patch learns with the joint step, and a governor
+gating the cortex's own learning is this composition.
 
 ## The instruments of the orienting response
 
-A rung that reads a gain's response to an event measures it with `orienting(gain, events)`:
+A gain's response to an event is measured with `orienting(gain, events)`:
 per event the capture (the gain's peak during the event over its level in the quiet frames
 before), the latency (the first frame from the onset at which half the capture is reached) and
 the return (frames after the event until the gain is back within a fifth of the capture); per
@@ -271,16 +269,12 @@ The replay the joint step is admitted on takes the recorded readbacks as given: 
 patch is not re-run under the proposed cortex, as in the seam. The gaze's pull is local in time;
 the dependence of later centres on an earlier turn is not propagated. The surprise of a
 stream's first moment compares against the readout of the boundary belief. The adjoint's cost is
-not in the counters (a backward scan costs about two forwards). The store of the cortex is left
-unwritten in every rung demo so far, and `observe(write=False)` is the default. The life's
+not in the counters (a backward scan costs about two forwards). The cortex's store is left unwritten by default (`observe(write=False)`). The life's
 imagination is the application's proposal and cost; the library carries the loop, the governor
 and the accounting, not the task.
 
-## Where it came from
+## Where to go next
 
-The ventriloquist (rung 2) wrote the steered cortex with the softmax weighing and the seam; the
-lighthouse keeper (rung 3) wrote the gaze with its price on the turn; the night nursery (rung 4)
-wrote the readback of the ear's encoded evidence, the joint admission from twice the last step
-and the sleeping cortex; the room and the dozing cat (rung 1) wrote the life, the seven-channel
-readback and the governor of fourteen neurons. [How to build a rung demo](howto-rung.md) says
-how the next one is built on these.
+[How to build a demo](howto-demo.md) says how a demo accepts one of these mechanisms: the
+three-way switch, the day and night regimes, the measurements, the selection and the
+receipts.

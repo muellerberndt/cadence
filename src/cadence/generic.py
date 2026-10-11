@@ -380,6 +380,22 @@ def _validate_life_state(meta: dict[str, Any], data: Mapping[str, Any], learner:
                 or float(forecast) != float(array("pending/value", (1,))[0])
             ):
                 raise ValueError("saved lived action must match its pending feedback")
+    awaiting = meta.get("awaiting")
+    if (meta.get("format") == "cadence-generic/5") != ("awaiting" in meta):
+        raise ValueError("a sensed state awaiting an outcome belongs to format cadence-generic/5")
+    if "awaiting" not in meta:
+        if any(name.startswith("awaiting/") for name in data):
+            raise ValueError("saved awaiting arrays require awaiting metadata")
+    else:
+        if not isinstance(awaiting, dict) or "arousal" not in meta:
+            raise ValueError("a saved sensed state needs a live stream's arousal")
+        if batch != 1 or not (meta.get("pending", False) or "lived" in meta):
+            raise ValueError("a saved sensed state must belong to the awaited action of one stream")
+        steps = awaiting.get("steps")
+        if isinstance(steps, bool) or not isinstance(steps, int) or steps < 0:
+            raise ValueError("invalid saved count: awaiting steps")
+        for name in ("v", "activation", "adaptation"):
+            array("awaiting/" + name, (1, n))
     working = meta["working_memory"]
     if working is not None:
         source, target = working["source"], working["target"]
@@ -396,8 +412,10 @@ def _validate_life_state(meta: dict[str, Any], data: Mapping[str, Any], learner:
     ):
         raise ValueError("saved efference neurons and state require efference metadata")
     if efference is not None:
-        if meta.get("format") != "cadence-generic/4":
-            raise ValueError("an efference copy belongs to checkpoint format cadence-generic/4")
+        if meta.get("format") not in ("cadence-generic/4", "cadence-generic/5"):
+            raise ValueError(
+                "an efference copy belongs to checkpoint formats cadence-generic/4 and /5"
+            )
         source, target = efference["source"], efference["target"]
         if (
             source != "motor"
@@ -540,6 +558,9 @@ class Brain:
             tuple[np.ndarray, np.ndarray, float, bool, BrainState, bool, float | None] | None
         ) = None
         self._last_arousal: Mapping[str, Any] | None = None
+        # ``wait``: the free state of the action whose outcome is awaited, and the state the
+        # stream has sensed since; any operation that replaces that action's state ends it
+        self._awaiting: tuple[BrainState, BrainState] | None = None
 
     @property
     def brain(self) -> NeuralGraph:
@@ -551,9 +572,9 @@ class Brain:
         """Whether an issued action still owns the next real outcome.
 
         Includes greedy routine actions issued by ``live``, which have no
-        sampled eligibility. A later operation that replaces that action also
-        replaces its feedback ownership. Inspect this after a refusal to decide
-        whether to retry feedback or only the following action.
+        sampled eligibility. ``wait`` keeps it. A later operation that replaces
+        that action also replaces its feedback ownership. Inspect this after a
+        refusal to decide whether to retry feedback or only the following action.
         """
         return self.basal_ganglia._pending is not None or (
             self._lived is not None and not self._lived[3]
@@ -561,10 +582,32 @@ class Brain:
         )
 
     @property
+    def decision_id(self) -> int | None:
+        """The identity of the ``live`` action that owns the next outcome, or None.
+
+        It is the stream's ``arousal.age`` once ``live`` issued that action (its first
+        action is 1), so every action ``live`` issues in a life has its own number;
+        ``wait`` does not change it, ``reset`` keeps the age, and a saved brain keeps it.
+        Actions that ``step`` or ``act`` issued have none. Pass it to
+        ``live(..., decision_id=...)`` so that an outcome reported twice, or late for an
+        action the stream has moved past, is refused instead of being credited to the
+        action now awaiting one.
+        """
+        lived, arousal = self._lived, self.arousal
+        if (
+            arousal is None
+            or lived is None
+            or lived[4] is not self.basal_ganglia.state
+            or not self.pending_feedback
+        ):
+            return None
+        return int(arousal.age)
+
+    @property
     def last_settlement(self) -> Mapping[str, Any] | None:
         """Immutable diagnostics for the latest completed free-answer solve, including refusal.
 
-        ``operation`` is ``act`` or ``predict``; ``step`` uses ``act``, and
+        ``operation`` is ``act``, ``wait`` or ``predict``; ``step`` uses ``act``, and
         ``accuracy``/``fit`` scores expose their last ``predict`` batch.
         ``qualified`` covers the whole batch; ``row_qualified`` and ``residual``
         are tuples in observation order. ``steps`` counts all free-solve sweeps,
@@ -1262,7 +1305,9 @@ class Brain:
             self.last_learning["demonstrations"] = float(batch)
         return self.act(x)
 
-    def live(self, observations: Any, *, reward: Any = None, done: Any = None) -> np.ndarray:
+    def live(
+        self, observations: Any, *, reward: Any = None, done: Any = None, decision_id: Any = None
+    ) -> np.ndarray:
         """One moment of a continuing life: routine while outcomes match, repair when not.
 
         ``reward`` and ``done`` describe the preceding action, as in ``step``. The
@@ -1288,6 +1333,14 @@ class Brain:
         be retried. If the answer refuses after the outcome was taken, the
         outcome stays learned and counted: retry with ``live(observations)``
         without that reward. Readings of the moment are in ``last_arousal``.
+
+        An omitted reward is a zero outcome, not a missing one. When the outcome
+        comes later than the next observations, sense them with ``wait`` and report
+        the outcome here once it is observed: it is measured against the forecasts
+        made when the action was chosen, and credited to that action's eligibility and
+        situation as an immediate outcome would be. ``decision_id`` names the action
+        the outcome belongs to (``Brain.decision_id``); any other value is refused
+        with ``ValueError`` before anything changes.
         """
         arousal = self.arousal
         if arousal is None:
@@ -1304,6 +1357,8 @@ class Brain:
             lived = None  # another operation acted since; the brain's own pending action governs
         sampled = agent._pending is not None
         routine = lived is not None and not lived[3] and not sampled
+        if decision_id is not None:
+            self._owned(decision_id)
         if not sampled and not routine and (reward is not None or done is not None):
             raise RuntimeError("feedback needs a preceding action; start with live(observations)")
         r = np.zeros(1) if reward is None else np.asarray(reward, dtype=float)
@@ -1348,6 +1403,7 @@ class Brain:
                     ) from exc
                 raise
             self._lived = None  # this outcome is taken, exactly once
+            self._awaiting = None  # and the stream continues from where it settled
             if routine:
                 if ended[0] and self.working_memory is not None:
                     self.working_memory.reset(1, rows=np.array([0]))
@@ -1426,6 +1482,87 @@ class Brain:
         )
         arousal.lived(sweeps, learning_sweeps)
         return action
+
+    def wait(self, observations: Any) -> None:
+        """One moment of the stream while its issued action's outcome is still to come.
+
+        The brain settles the present observation from its current activity, reading its
+        working trace, the copy of its last command and its associative memory, and its
+        working trace advances to that state. It issues no action and takes no outcome:
+        the awaited action keeps the forecasts made before it, its eligibility and the
+        situation it was chosen in, and ``live`` later credits its actual outcome to it
+        once. Parameters, the critic, eligibility traces, associative memory, random
+        state, the command copy and the arousal state stay as they were: eligibility,
+        arousal, its age and youth advance with outcomes and live moments, and one
+        outcome is one temporal-difference step however many moments were waited. The
+        settle is reported by ``last_settlement`` with ``operation`` ``wait``; like the
+        work of a refused attempt, it is not part of ``arousal``'s counts.
+
+        This follows the stream of ``live``: one observation row and arousal genes
+        (``ValueError`` otherwise), and an action awaiting its outcome (``RuntimeError``
+        otherwise). The caller decides which moments are waited; the brain does not
+        choose to wait. There is no deadline. An outcome that will never come is not a
+        zero reward: ``act`` replaces the action without learning from it (``step``
+        would take a sampled action's omitted reward as a zero outcome), and ``reset``
+        begins a new stream. A refused settle raises ``RuntimeError`` and changes
+        nothing but ``last_settlement``.
+        """
+        if self.arousal is None:
+            raise ValueError(
+                "wait needs arousal genes; construct the brain with arousal=True"
+            )
+        x = self._observations(observations)
+        current = self.basal_ganglia.state
+        if len(x) != 1 or (current is not None and len(np.atleast_2d(current.v)) != 1):
+            raise ValueError("wait follows one continuing stream; reset before changing streams")
+        if current is None or not self.pending_feedback:
+            raise RuntimeError(
+                "wait needs an issued action awaiting its outcome; start with live(observations)"
+            )
+        drive = self.stimulus(x)
+        state = self._qualified(drive, self._activity(), operation="wait")
+        if self.working_memory is not None:
+            self.working_memory.update(state)
+        self._awaiting = (current, state)
+
+    def _owned(self, decision_id: Any) -> None:
+        """Refuse an outcome reported for an action other than the one awaiting it."""
+        if (
+            isinstance(decision_id, (bool, np.bool_))
+            or not isinstance(decision_id, (int, np.integer))
+            or decision_id < 1
+        ):
+            raise ValueError(
+                "decision_id must be a positive integer read from Brain.decision_id"
+            )
+        awaited = self.decision_id
+        if awaited is None:
+            raise ValueError(
+                f"decision_id {int(decision_id)} does not own an outcome: no action that "
+                "live issued awaits one; after an outcome was taken and the answer "
+                "refused, retry with live(observations) alone"
+            )
+        if int(decision_id) != awaited:
+            raise ValueError(
+                f"decision_id {int(decision_id)} does not own the next outcome; "
+                f"the awaited action is decision_id {awaited}"
+            )
+
+    def _awaited(self) -> BrainState | None:
+        """The state sensed by ``wait`` while the current action's outcome is awaited."""
+        awaiting = self._awaiting
+        if (
+            awaiting is None
+            or awaiting[0] is not self.basal_ganglia.state
+            or not self.pending_feedback
+        ):
+            return None
+        return awaiting[1]
+
+    def _activity(self) -> BrainState | None:
+        """The stream's current activity, warm start of its next settle."""
+        awaited = self._awaited()
+        return self.basal_ganglia.state if awaited is None else awaited
 
     def _recorded(self, x: np.ndarray, chosen: list[int]) -> float | None:
         """The outcome the associative memory forecasts for the chosen action in this
@@ -1507,7 +1644,7 @@ class Brain:
         batch = len(sequence[0])
         if any(len(value) != batch for value in sequence):
             raise ValueError("imagined observations must preserve the batch's stream identities")
-        current = _copy_state(self.basal_ganglia.state)
+        current = _copy_state(self._activity())
         if current is not None and len(np.atleast_2d(current.v)) != batch:
             raise ValueError("imagined batch must match the live streams; reset for new streams")
         trace = copy(self.working_memory)
@@ -1570,7 +1707,7 @@ class Brain:
         """The drive of validated observations and its qualified free state, warm from the
         stream's last state. Refusal raises before anything changes."""
         drive = self.stimulus(x)
-        return drive, self._qualified(drive, self.basal_ganglia.state, operation="act")
+        return drive, self._qualified(drive, self._activity(), operation="act")
 
     def _choose(
         self,
@@ -1586,6 +1723,7 @@ class Brain:
         self.basal_ganglia._free_brain = self.brain
         self.basal_ganglia._drive = drive.copy()
         self._prepared = None
+        self._awaiting = None
         action = self.basal_ganglia.act(drive, greedy=greedy, temperature=temperature)
         state = self.basal_ganglia.state
         if self.working_memory is not None and state is not None:
@@ -1620,7 +1758,9 @@ class Brain:
         The hippocampus records the reward of the chosen action for the situation it was
         chosen in, and the next choice in that situation reads the record. A refused
         feedback update preserves that pending action and both memories; retry this
-        outcome after adjusting its numerical configuration.
+        outcome after adjusting its numerical configuration. After ``wait`` the next
+        state settles from the state the stream sensed last; the critic's eligibility
+        still belongs to the state the action was chosen in.
         """
         following = self._observations(next_observations)
         # Preflight without reading or resetting memories: invalid input must not write an episode.
@@ -1663,7 +1803,9 @@ class Brain:
                 trace.reset(len(done), rows=np.flatnonzero(done))
             if echo is not None and done.any():
                 echo.reset(len(done), rows=np.flatnonzero(done))
-            report = self.basal_ganglia.learn(reward, done, self.stimulus(following), bootstrap)
+            report = self.basal_ganglia.learn(
+                reward, done, self.stimulus(following), bootstrap, warm=self._awaited()
+            )
         except Exception:
             if memory is not None:
                 for name, value in memory_values.items():
@@ -1679,6 +1821,7 @@ class Brain:
             raise
         self._moment = None
         self._prepared = following.copy()
+        self._awaiting = None
         return report
 
     def _record(
@@ -1719,6 +1862,7 @@ class Brain:
         self._last_settlement = None
         self._lived = None
         self._last_arousal = None
+        self._awaiting = None
         if self.arousal is not None:
             self.arousal.reset()
 
@@ -1734,7 +1878,8 @@ class Brain:
         """Save the complete composition, including an action awaiting its real outcome.
 
         Includes critic, optimizer, random generators, working and episodic memories,
-        eligibility, the current free phase and any pending action's nudged states.
+        eligibility, the current free phase, any pending action's nudged states and the
+        state ``wait`` sensed since that action was chosen.
         ``Learner.save`` remains available for the slow learned response alone.
         """
         from .checkpoint import _learner_data, _write
@@ -1781,6 +1926,15 @@ class Brain:
             # without one writes the metadata of the earlier formats unchanged.
             metadata["format"] = "cadence-generic/4"
             metadata["efference"] = self.efference.to_dict()
+        awaited = self._awaited()
+        if awaited is not None:
+            # What the stream sensed while its outcome is awaited is part of the
+            # continuation, which earlier formats cannot carry; a stream that is not
+            # waiting writes the metadata of the earlier formats unchanged.
+            metadata["format"] = "cadence-generic/5"
+            metadata["awaiting"] = {"steps": int(awaited.steps)}
+            for name in ("v", "activation", "adaptation"):
+                data["awaiting/" + name] = np.asarray(getattr(awaited, name))
         if agent._pending is not None:
             kind, plus, minus, value = agent._pending
             if kind != "states":
@@ -1848,9 +2002,13 @@ class Brain:
                 "cadence-generic/2",
                 "cadence-generic/3",
                 "cadence-generic/4",
+                "cadence-generic/5",
             ):
                 raise ValueError("unsupported Brain checkpoint format")
-            if meta["format"] == "cadence-generic/4":
+            if meta["format"] == "cadence-generic/5":
+                if "arousal" not in meta:
+                    raise ValueError("format cadence-generic/5 carries a live stream's arousal")
+            elif meta["format"] == "cadence-generic/4":
                 if meta.get("efference") is None:
                     raise ValueError("format cadence-generic/4 carries an efference copy")
             elif ("arousal" in meta) != (meta["format"] == "cadence-generic/3"):
@@ -1951,5 +2109,17 @@ class Brain:
                     state,
                     bool(meta["lived"]["own"]),
                     None if recorded is None else float(recorded),
+                )
+            if "awaiting" in meta:
+                acted = agent._free  # validated above: the awaited action has its free state
+                assert acted is not None
+                result._awaiting = (
+                    acted,
+                    BrainState(
+                        data["awaiting/v"].copy(),
+                        data["awaiting/activation"].copy(),
+                        data["awaiting/adaptation"].copy(),
+                        int(meta["awaiting"]["steps"]),
+                    ),
                 )
         return result

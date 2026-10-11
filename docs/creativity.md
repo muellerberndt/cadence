@@ -86,19 +86,16 @@ optimizes continuous input ports under a learned model.
 
 ## Demonstrations and the next research phase
 
-A public demonstration should substantiate the capability it advertises.
-Development examples and frozen research evidence may illustrate individual
-mechanisms without being presented as accomplished general intelligence.
+A public demonstration should substantiate the capability it advertises. An
+example may illustrate one mechanism without being presented as accomplished
+general intelligence.
 
-The [examples repository](https://github.com/muellerberndt/cadence-examples) publishes four
-applications, each with its receipts, a check that recomputes them and a
-statement of what it does not show. Its composer starts from silence and
-computes sixteen bars in the browser, and its receipt reports next-event
-accuracy on tracks it never heard. That is creation in the plain sense of
-producing material that was not recorded. The standard for original creation
-is the one stated here: train on all available jungle material and create
-new, complete tracks with coherent structure, assessed for corpus coverage,
-meaningful novelty against the training material, intentional development,
-independent listening and retained skills. A few recalled bars or untaught
-mixtures do not meet that standard, and the corpus-wide run follows the smaller
-joint capability tests. Meeting it is work in progress.
+The [Amen demo](https://github.com/muellerberndt/cadence-demos/tree/main/amen)
+starts from silence and computes a track in the browser, with a receipt that
+reports next-event accuracy on tracks it never heard. That is creation in the
+plain sense of producing material that was not recorded. The standard for
+original creation is higher, and stated here: learn from all available material
+and create new, complete tracks with coherent structure, assessed for corpus
+coverage, meaningful novelty against what it learned from, intentional
+development, independent listening and retained skills. A few recalled bars or
+untaught mixtures do not meet it. Meeting it is work in progress.

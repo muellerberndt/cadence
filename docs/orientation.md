@@ -106,8 +106,8 @@ brain.
 
 Networks trained by backprop can also be recurrent, online, model-based and
 memory-using; the comparison is of update mechanisms. Cadence's claim is about what
-one bounded patch rule can be made to do, and every example repository page carries
-a receipt and a check for its numbers.
+one bounded patch rule can be made to do, and every measured page carries a receipt
+and a check for its numbers.
 
 ## Shapes
 
@@ -183,14 +183,13 @@ learning. `observe` learns and, for a record patch, writes.
   broadcast prediction error that gates them; the object that centers and caps it.
 - **Steering patch.** A patch of the same kind whose evidence is the readback of the
   rest of the brain and whose settled state sets their gains, gaze, goals or budgets.
-  Its experiments are tracked in the repository's issues.
 - **Receipt.** A JSON file binding a result to the sources that produced it, with a
   digest and a verifier.
 
 ## Reading the numbers
 
-Every measured claim in this repository and in the examples names its task, its
-held-out split, its controls and the receipt that recomputes it. A settled state can
+Every measured claim in this repository names its task, its held-out split, its
+controls and the receipt that recomputes it. A settled state can
 be wrong; a zero residual says the model agrees with itself, not with the world. A
 score with records is not a score of the slow weights: report both. Compare against
 the simple control the task admits (the majority outcome, persistence, a linear
@@ -209,6 +208,5 @@ model of [Marr](https://doi.org/10.1113/jphysiol.1969.sp008820) and
 [complementary learning systems](https://web.stanford.edu/~jlmcc/papers/McCMcNaughtonOReilly95.pdf),
 [orthogonal weight modification](https://www.nature.com/articles/s42256-019-0080-x),
 [reward prediction errors](https://www.gatsby.ucl.ac.uk/~dayan/papers/sdm97.html).
-The [paper](https://philpapers.org/rec/MUECAP-2) states
-the hypotheses, the theorems and the evidence; the
-[Lean library](https://github.com/FloatingPragma/oph-meta/blob/main/cadence-flagship/lean/README.md) checks the theorems.
+The [paper](https://philpapers.org/rec/MUECAP-2) states the hypotheses, the
+theorems and the evidence.

@@ -25,8 +25,6 @@ Current disagreement, a miss of an earlier forecast and an unmet goal are
 separate quantities. A stationary state can still predict reality poorly.
 Retained activity can reduce repair work; explicit `History` supplies recent
 context. Learned relations persist, but competing learning can overwrite them.
-The conditional [Lean models](https://github.com/FloatingPragma/oph-meta/tree/main/cadence-flagship/lean)
-do not constitute a proof of the Python implementation.
 
 ## Credit and continuation
 
