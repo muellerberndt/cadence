@@ -618,8 +618,10 @@ class Learner:
         This is the last half of ``update``; a rule that computes its own step (a
         three-factor trace, say) hands it here so every learner shares one notion of
         which synapses move, how a tied pair moves, and what bounds hold. ``activation`` is
-        the free state the update was read from; with a positive ``homeostasis_rate`` the
-        output neurons' biases also take their intrinsic step toward the target activation.
+        the free state the update was read from, the rows the update counts; with a positive
+        ``homeostasis_rate`` the output neurons' biases also take their intrinsic step toward
+        the target activation. ``homeostasis_step`` reports the step the plastic output
+        neurons take; a frozen bias takes none.
         """
         cfg = self.config
         assert self.plastic_synapses is not None
@@ -678,7 +680,9 @@ class Learner:
         return {
             "scale_step": float(np.abs(delta_scale).mean()) if delta_scale.size else 0.0,
             "bias_step": float(np.abs(delta_bias).mean()),
-            "homeostasis_step": 0.0 if pull is None else float(np.abs(pull).mean()),
+            "homeostasis_step": 0.0
+            if pull is None
+            else float(np.abs(np.where(self.plastic_neurons[self.output_index], pull, 0.0)).mean()),
         }
 
     def _device_kernel(self, plus: BrainState, minus: BrainState) -> Any:
@@ -794,9 +798,12 @@ class Learner:
             )
         return cast(dict[str, Any], cache)
 
-    def _device_homeostasis(self, kernel: Any, state: BrainState | None) -> Any:
+    def _device_homeostasis(
+        self, kernel: Any, state: BrainState | None, observed: np.ndarray | None = None
+    ) -> Any:
         """``homeostasis`` as a tensor on the device, read from the free state's resident
-        activation so that no host array is fetched; None at the founder rate."""
+        activation so that no host array is fetched; None at the founder rate. ``observed``
+        selects the rows the update counts; padding rows do not set the operating point."""
         cfg = self.config
         if cfg.homeostasis_rate <= 0 or state is None:
             return None
@@ -808,16 +815,25 @@ class Learner:
             activation = torch.as_tensor(np.atleast_2d(np.asarray(state.activation)))
         if activation.dim() == 1:
             activation = activation[None, :]
+        if observed is not None:
+            rows = torch.from_numpy(np.flatnonzero(observed)).to(activation.device)
+            activation = activation[rows]
         index = torch.from_numpy(np.ascontiguousarray(self.output_index)).to(activation.device)
         shortfall = cfg.homeostasis_target - activation[:, index].mean(dim=0)
         return cfg.homeostasis_rate * shortfall
 
     def _apply_device(
-        self, kernel: Any, delta_scale: Any, delta_bias: Any, *, state: BrainState | None = None
+        self,
+        kernel: Any,
+        delta_scale: Any,
+        delta_bias: Any,
+        *,
+        state: BrainState | None = None,
+        observed: np.ndarray | None = None,
     ) -> dict[str, float]:
         """``apply`` on the device: the same masks, tying, decay and bounds, no host array.
-        ``state`` is the free state the update was read from; the readout's intrinsic step
-        is read from its resident activation."""
+        ``state`` is the free state the update was read from and ``observed`` the rows the
+        update counts; the readout's intrinsic step is read from their resident activation."""
         torch, cfg = kernel.torch, self.config
         if (
             tuple(delta_scale.shape) != (self.brain.connectome.synapses,)
@@ -825,12 +841,16 @@ class Learner:
             or not bool(torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all())
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
-        pull = self._device_homeostasis(kernel, state)
+        ix = self._device_indices(kernel)
+        pull = self._device_homeostasis(kernel, state, observed)
+        applied = None
         if pull is not None:
             delta_bias = delta_bias.clone()
             index = torch.from_numpy(np.ascontiguousarray(self.output_index)).to(delta_bias.device)
-            delta_bias[index] += pull.to(delta_bias.device, delta_bias.dtype)
-        ix = self._device_indices(kernel)
+            pull = pull.to(delta_bias.device, delta_bias.dtype)
+            delta_bias[index] += pull
+            # the step the plastic output neurons take; a frozen bias takes none
+            applied = pull if ix["neurons"] is None else pull * ix["neurons"][index]
         d = delta_scale.clone()
         if ix["synapses"] is not None:
             d = d * ix["synapses"]
@@ -872,7 +892,7 @@ class Learner:
         return {
             "scale_step": float(d.abs().mean()) if d.numel() else 0.0,
             "bias_step": float(db.abs().mean()),
-            "homeostasis_step": 0.0 if pull is None else float(pull.abs().mean()),
+            "homeostasis_step": 0.0 if applied is None else float(applied.abs().mean()),
         }
 
     def update(
