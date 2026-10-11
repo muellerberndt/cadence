@@ -1,0 +1,90 @@
+{
+ "schema": "finite-recall/1",
+ "question": "Can one continuing Brain.compose remember one of two observed token values after its cue disappears, at a fixed state size, through its working trace rather than a supplied answer or a warm numerical initial guess? The supported horizon is the largest contiguous passed prefix over 0, 1, 2 intervening accepted observations; closure needs horizon 1 and the nuisance, replacement, order, continuation, purity and resource gates.",
+ "reviewed_protocol": "FINITE_HORIZON_PROTOCOL.md (reviewed 2026-10-04); inputs from finite_horizon_inputs.py",
+ "seeds": {
+  "founders": [
+   313,
+   314,
+   315
+  ],
+  "note": "fresh founders, no development founder and no seed substitution; 0, 1, 304, 305 and 306 are the development founders of the credit diagnostics and the recall/5 screens, 301 to 312 are spent"
+ },
+ "brain": {
+  "inputs": 28,
+  "cues": 2,
+  "modules": [
+   32
+  ],
+  "lateral": 0.0,
+  "episodic": false,
+  "trace_decay": 0.8,
+  "trace_amplitude": 0.3,
+  "default_decay": 0.2,
+  "default_amplitude": 3.0,
+  "note": "the declared recipe is a selected task gene (vanished_cue.make_brain unchanged: decay 0.8, amplitude 1, focus 0); the default arm keeps the composed working-trace defaults as the control of that gene; recall/5 keeps recall/4's readout intrinsic plasticity (learning.homeostasis_rate 0.1 toward homeostasis_target 0.3, Cadence 0.81 genes with founder rate 0) and raw local steps, composes the sensory projection at twice its scale (sensory_scale 2, the composed founder is 1) and halves the raw rate (eta 0.2, eta_bias 0.002), the effective step of recall/4 at the larger drive; the association layer sits at activations near 0.05 at scale 1 and near 0.09 at scale 2 (development measurement)",
+  "sensory_scale": 2.0
+ },
+ "learning": {
+  "beta": 0.1,
+  "temperature": 0.2,
+  "tolerance": 0.003,
+  "free_steps": 1024,
+  "nudged_steps": 128,
+  "eta": 0.2,
+  "eta_bias": 0.002,
+  "momentum": 0.9,
+  "normalize": 0.0,
+  "normalize_floor": 0.0001,
+  "qualified": true,
+  "damping": 3,
+  "homeostasis_rate": 0.1,
+  "homeostasis_target": 0.3
+ },
+ "arms": [
+  "vanished",
+  "default",
+  "history",
+  "random"
+ ],
+ "training": {
+  "repeats": 32,
+  "episodes": 384,
+  "lesson": "on the QUERY of every episode the free greedy act first, then one Learner.step on the rows it answered wrong, on the drive that act read (recall/3's surprise rule: a right answer is routine and teaches nothing); every other event is a free greedy act; a refused lesson is charged and skipped; a refused act ends the life",
+  "rule": "surprise"
+ },
+ "evaluation": {
+  "repeats": 24,
+  "episodes": 312,
+  "forks": [
+   "intact",
+   "erased",
+   "shuffled",
+   "reset"
+  ],
+  "seams": "the first episode of every condition: after the first cue, before a replacement when present, before QUERY; a loaded clone executes the remaining observations with equal answers and equal saved arrays; private imagination and a refused act at an impossible tolerance leave the pre-query checkpoint unchanged; the restored configuration continues equally",
+  "timing": "clean-2 replayed under the regular and the irregular timestamp schedule must give equal arrays; the brain never sees a timestamp"
+ },
+ "caps": {
+  "seconds": 900,
+  "bytes": 167772160
+ },
+ "gates": {
+  "intact": 0.8,
+  "paired": 0.75,
+  "history": 0.9,
+  "random_margin": 0.2,
+  "lesion": 0.6,
+  "lesion_margin": 0.2,
+  "shuffled_transplanted": 0.8,
+  "shuffled_original": 0.2,
+  "trace_audit": 1e-12,
+  "minimum_horizon": 1,
+  "statement": "for every founder, zero refused and unrun rows, intact accuracy >= intact and paired-both-correct >= paired on every clean/distractor condition of the prefix and on partial-1, noise-1, replacement-1 and order-latest-1; external-history accuracy >= history on those conditions; intact at least random_margin above the frozen uniform-random score; for each nonzero delay of the prefix, erased and reset accuracies <= lesion with intact at least lesion_margin above each; shuffled accuracy against the transplanted value >= shuffled_transplanted and against the original <= shuffled_original; the trace audit within trace_audit; every seam, imagination, refusal and timing check equal; no cap reached. The horizon is computed by the contiguous-prefix rule, never by changing floors after results; capacity 2/4 and delays 4/8 are reported without an assumed pass"
+ },
+ "policy": {
+  "denominator": "every planned row of every founder; a refusal is wrong and an unrun planned row is wrong",
+  "selection": "no default change; the trace genes are reported against the composed control"
+ },
+ "selection": "recall/5, 2026-10-10: the surprise rule, the readout's intrinsic plasticity and raw steps at sensory scale 2, eta 0.2, selected on development founders 1, 304, 305 and 306 at 32 training and 8 evaluation repeats (receipts development-finite-5-*): under recall/4's recipe with the surprise rule the external-history control is competent in every founder and recall comes and goes; a sweep of sensory scale {1, 2, 4, 8} by raw rate {0.5, 0.2, 0.1, 0.05} puts founders 305 and 1 at horizon 1 with competent controls at scale 2 and eta 0.2, founder 304 partial and founder 306 at chance; scale 8 reaches horizon 2 in one founder but fails the control in two; a per-synapse leak (decay 0.005, 0.02) and intrinsic plasticity of the hidden neurons (share 1) lose recall in every founder; every gate, cap, condition and control is recall/2's, the 32-repeat budget is recall/4's, declared before founders 313 to 315 ran"
+}

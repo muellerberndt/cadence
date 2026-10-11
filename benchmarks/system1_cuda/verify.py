@@ -3,9 +3,17 @@
 import argparse
 import hashlib
 import json
+from dataclasses import fields
 from pathlib import Path
 
 import numpy as np
+
+from cadence import ActorCriticConfig, LearnerConfig
+
+FOUNDERS = {
+    "learning": {f.name: f.default for f in fields(LearnerConfig)},
+    "reward": {f.name: f.default for f in fields(ActorCriticConfig)},
+}
 
 
 def read(path):
@@ -73,7 +81,19 @@ def verify(folder):
                 meta = json.loads(str(saved["meta"]))
                 generic = json.loads(str(saved["generic"]))
             for name, effective in (("learning", meta["config"]), ("reward", generic["reward"])):
-                check(identity + " saved " + name, result["graph"][name] == effective)
+                # A checkpoint written by a later library may carry settings the campaign did
+                # not declare; they must sit at that setting's founder value.
+                recorded = result["graph"][name]
+                founders = FOUNDERS[name]
+                check(
+                    identity + " saved " + name,
+                    {k: effective.get(k) for k in recorded} == recorded
+                    and all(
+                        k in founders and founders[k] == value
+                        for k, value in effective.items()
+                        if k not in recorded
+                    ),
+                )
                 check(
                     identity + " requested " + name,
                     all(effective.get(k) == value for k, value in protocol[name].items()),

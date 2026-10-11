@@ -128,6 +128,10 @@ def make_brain(point: dict[str, Any], seed: int, genes: dict[str, Any] | None) -
         options["episodic"] = False
     if genes is not None:
         options["arousal"] = cd.ArousalConfig(**genes)
+    # ``learning`` names LearnerConfig fields to set, the readout's intrinsic plasticity among
+    # them; the frozen protocols name none, so their brains keep the learner's founders.
+    for name, value in dict(point.get("learning", {})).items():
+        options[f"learning_{name}"] = value
     brain = cd.Brain.compose(
         ODOURS, 2, modules=tuple(point.get("modules", (32,))), seed=seed, **options
     )

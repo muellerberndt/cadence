@@ -1,0 +1,35 @@
+{
+ "schema": "prerequisite-chain/1",
+ "question": "Can one continuing Brain.compose life learn a chain of actions whose pay comes at the end, and what makes it collapse onto one action? The chain's state is observed or hidden; pay comes at the end, at every correct step, or at the completion of episodes that begin with prerequisites granted (backward lessons, interleaved). Development instrument of issues 111, 113 and 84; no gate is declared before the first readings.",
+ "steps": 4,
+ "moments": 20000,
+ "probe_every": 2000,
+ "probe_moments": 1000,
+ "need_share": 0.9,
+ "need_note": "the need in this world's units: 0.9 of what a life that always takes the right action earns per moment under pay at the end (1 / steps)",
+ "brain": {
+  "source": "cadence-robot-arena arena/brain.py FOUNDER, 2026-10-09 (benchmarks/competing/protocol.json)",
+  "modules": [48, 24],
+  "sensory_scale": 4.0,
+  "temperature": 0.3,
+  "trace_amplitude": 0.3,
+  "trace_decay": 0.1,
+  "consolidation": 0.05,
+  "eta": 0.03,
+  "eta_bias": 0.003,
+  "lam": 0.6,
+  "gamma": 0.95,
+  "eta_critic": 5.0,
+  "arousal": {"youth": 300}
+ },
+ "stages": {
+  "small": {"actor_eta": 0.003, "actor_eta_bias": 0.0003},
+  "taper": {"actor_eta": 0.003, "actor_eta_bias": 0.0003},
+  "homeo": {"learning_homeostasis_rate": 0.1, "learning_homeostasis_target": 0.3}
+ },
+ "stages_note": "gene: the founder as composed; small: a tenth of the actor step from birth; taper: the gene step for the first half of life, then retune to a tenth; homeo: the readout's intrinsic plasticity from birth",
+ "tabular": {"alpha": 0.1, "epsilon": 0.1, "gamma": 0.95},
+ "controls_note": "random: uniform over every action; stationary: uniform over the chain's actions, the memoryless ceiling of the hidden mode; frozen: the newborn founder, greedy; tabular: Q-learning over the stage it observes (one state in the hidden mode)",
+ "seeds": {"development": [0, 1, 2, 3, 4, 5], "confirmation": []},
+ "gates": null
+}

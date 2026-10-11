@@ -471,6 +471,7 @@ times the synapse step (issue 126).
 | `nudge` | `LearnerConfig` | `"cross_entropy"` or `"quadratic"` (`beta · (target − s)`) | cross-entropy for classes |
 | `momentum` | `LearnerConfig` | each efficacy steps on a bias-corrected running average of its contrast | 0 (off); tune with the learning rate |
 | `decay` | `LearnerConfig` | every update shrinks each plastic efficacy and bias by this fraction | 0 by default; decay also forgets useful weights |
+| `homeostasis_rate`, `homeostasis_target` | `LearnerConfig` | at every teaching or reward update each output neuron's bias moves by the rate times the shortfall of its free activation below the target, negative when above: the readout's intrinsic plasticity, which keeps it out of saturation (no slope for a nudge) and out of silence (every contrast tiny) | 0 (off), 0.3; both are genes. Development receipts of the [recall chamber](../benchmarks/recall/README.md) only: at 0.1 with raw steps (`normalize` 0) the readout stays responsive; a bias step does not hold a readout against normalized steps or a large raw signal, and the fresh confirmation of that recipe failed |
 | `normalize`, `normalize_floor` | `LearnerConfig` | divide each efficacy's step by its bias-corrected running RMS plus a floor | 0 (off), `1e-3`; select on development data; combining momentum and RMS gives an Adam-style update |
 | `reciprocal` | `Learner` | tie each synapse and its reverse into a reciprocal pair with one efficacy | `True` |
 | `plastic_synapses` | `Learner` | bool per synapse; the others keep their efficacy | all |

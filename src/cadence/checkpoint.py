@@ -30,6 +30,10 @@ from .receipts import canonical_json
 
 FORMAT = "cadence-checkpoint/2"
 FIRST_FORMAT = "cadence-checkpoint/1"
+# A learner whose readout has intrinsic plasticity (``homeostasis_rate`` above 0) is written
+# under this name, so a release that predates the gene refuses the file instead of loading it
+# without the gene; every other learner keeps FORMAT and its contents.
+HOMEOSTASIS_FORMAT = "cadence-checkpoint/3"
 
 __all__ = ["FORMAT", "load", "save"]
 
@@ -49,7 +53,7 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     brain = learner.brain
     c = brain.connectome
     meta = {
-        "format": FORMAT,
+        "format": HOMEOSTASIS_FORMAT if learner.config.homeostasis_rate > 0 else FORMAT,
         "version": __version__,
         "n": int(c.n),
         "label": c.label,
@@ -137,7 +141,7 @@ def load(
     with np.load(Path(path), allow_pickle=False) as data:
         meta: dict[str, Any] = json.loads(str(data["meta"]))
         first = meta.get("format") == FIRST_FORMAT
-        if not first and meta.get("format") != FORMAT:
+        if not first and meta.get("format") not in (FORMAT, HOMEOSTASIS_FORMAT):
             raise ValueError(f"not a cadence checkpoint: {meta.get('format')!r}")
 
         def entry(name: str) -> Any:

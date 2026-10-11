@@ -1,0 +1,89 @@
+{
+ "schema": "finite-recall/1",
+ "question": "Can one continuing Brain.compose remember one of two observed token values after its cue disappears, at a fixed state size, through its working trace rather than a supplied answer or a warm numerical initial guess? The supported horizon is the largest contiguous passed prefix over 0, 1, 2 intervening accepted observations; closure needs horizon 1 and the nuisance, replacement, order, continuation, purity and resource gates.",
+ "reviewed_protocol": "FINITE_HORIZON_PROTOCOL.md (reviewed 2026-10-04); inputs from finite_horizon_inputs.py",
+ "seeds": {
+  "founders": [
+   310,
+   311,
+   312
+  ],
+  "note": "fresh founders, no development founder and no seed substitution; 0, 1, 304, 305 and 306 are the development founders of the credit diagnostics and 301 to 309 are spent"
+ },
+ "brain": {
+  "inputs": 28,
+  "cues": 2,
+  "modules": [
+   32
+  ],
+  "lateral": 0.0,
+  "episodic": false,
+  "trace_decay": 0.8,
+  "trace_amplitude": 0.3,
+  "default_decay": 0.2,
+  "default_amplitude": 3.0,
+  "note": "the declared recipe is a selected task gene (vanished_cue.make_brain unchanged: decay 0.8, amplitude 1, focus 0); the default arm keeps the composed working-trace defaults as the control of that gene; recall/4 adds the readout's intrinsic plasticity (learning.homeostasis_rate 0.1 toward homeostasis_target 0.3, Cadence 0.81 genes with founder rate 0) and raw local steps (normalize 0, eta 0.5, eta_bias 0.005 as measured in development, momentum 0.9 as in recall/2)"
+ },
+ "learning": {
+  "beta": 0.1,
+  "temperature": 0.2,
+  "tolerance": 0.003,
+  "free_steps": 1024,
+  "nudged_steps": 128,
+  "eta": 0.5,
+  "eta_bias": 0.005,
+  "momentum": 0.9,
+  "normalize": 0.0,
+  "normalize_floor": 0.0001,
+  "qualified": true,
+  "damping": 3,
+  "homeostasis_rate": 0.1,
+  "homeostasis_target": 0.3
+ },
+ "arms": [
+  "vanished",
+  "default",
+  "history",
+  "random"
+ ],
+ "training": {
+  "repeats": 32,
+  "episodes": 384,
+  "lesson": "one Learner.step on the QUERY of every episode with the live trace, then the free greedy act; every other event is a free greedy act; a refused lesson is charged and skipped; a refused act ends the life",
+  "rule": "every"
+ },
+ "evaluation": {
+  "repeats": 24,
+  "episodes": 312,
+  "forks": [
+   "intact",
+   "erased",
+   "shuffled",
+   "reset"
+  ],
+  "seams": "the first episode of every condition: after the first cue, before a replacement when present, before QUERY; a loaded clone executes the remaining observations with equal answers and equal saved arrays; private imagination and a refused act at an impossible tolerance leave the pre-query checkpoint unchanged; the restored configuration continues equally",
+  "timing": "clean-2 replayed under the regular and the irregular timestamp schedule must give equal arrays; the brain never sees a timestamp"
+ },
+ "caps": {
+  "seconds": 900,
+  "bytes": 167772160
+ },
+ "gates": {
+  "intact": 0.8,
+  "paired": 0.75,
+  "history": 0.9,
+  "random_margin": 0.2,
+  "lesion": 0.6,
+  "lesion_margin": 0.2,
+  "shuffled_transplanted": 0.8,
+  "shuffled_original": 0.2,
+  "trace_audit": 1e-12,
+  "minimum_horizon": 1,
+  "statement": "for every founder, zero refused and unrun rows, intact accuracy >= intact and paired-both-correct >= paired on every clean/distractor condition of the prefix and on partial-1, noise-1, replacement-1 and order-latest-1; external-history accuracy >= history on those conditions; intact at least random_margin above the frozen uniform-random score; for each nonzero delay of the prefix, erased and reset accuracies <= lesion with intact at least lesion_margin above each; shuffled accuracy against the transplanted value >= shuffled_transplanted and against the original <= shuffled_original; the trace audit within trace_audit; every seam, imagination, refusal and timing check equal; no cap reached. The horizon is computed by the contiguous-prefix rule, never by changing floors after results; capacity 2/4 and delays 4/8 are reported without an assumed pass"
+ },
+ "policy": {
+  "denominator": "every planned row of every founder; a refusal is wrong and an unrun planned row is wrong",
+  "selection": "no default change; the trace genes are reported against the composed control"
+ },
+ "selection": "recall/4, 2026-10-10: the responsive readout with raw local steps, selected on development founders 1, 304, 305 and 306 (and 0 for the recipe) in benchmarks/recall/credit_landing.py receipts credit-*-2026-10-10: under recall/2's recipe two of four readouts saturate and one drifts to chance; with the library's homeostasis_rate 0.1 and raw steps all four reach clean recall of 0.95 or better at 64 repeats with the motor activation at 0.27 to 0.31 (rate 0.05 loses founder 1 at the last evaluation); every gate, cap, condition, control and the 32-repeat budget are recall/2's, declared before founders 310 to 312 ran"
+}

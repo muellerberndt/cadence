@@ -136,6 +136,7 @@ def make_brain(protocol: dict, seed: int, *, decay: float, amplitude: float) -> 
         episodic=False,
         working_memory_decay=decay,
         working_memory_amplitude=amplitude,
+        sensory_scale=float(genes.get("sensory_scale", 1.0)),
     )
 
 
