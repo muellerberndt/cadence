@@ -688,6 +688,7 @@ class Brain:
         mask: np.ndarray | None = None,
         nudge: Nudge | None = None,
         damping: int = 0,
+        first_halving: int = 0,
     ) -> Equilibrium:
         """Continue a joint state until its equations hold or the exact step budget expires.
 
@@ -702,9 +703,13 @@ class Brain:
         attempt early, leaving its unused sweeps for the remaining attempts.
         Every attempt checks the original equations; this changes the numerical
         method, not the model. Repetition never qualifies an answer.
+        ``first_halving`` skips the first attempts of that same schedule: the solve
+        starts at ``dt * 2**-first_halving`` and keeps the smallest step
+        ``dt * 2**-damping``, splitting the budget over the remaining attempts.
         """
         for name, value, minimum in (
-            ("budget", budget, 0), ("chunk", chunk, 1), ("damping", damping, 0)
+            ("budget", budget, 0), ("chunk", chunk, 1), ("damping", damping, 0),
+            ("first_halving", first_halving, 0),
         ):
             if (
                 isinstance(value, bool)
@@ -714,10 +719,12 @@ class Brain:
                 raise ValueError(f"{name} must be an integer >= {minimum}")
         if not np.isfinite(tolerance) or tolerance < 0:
             raise ValueError("tolerance must be finite and nonnegative")
+        if first_halving > damping:
+            raise ValueError("first_halving cannot exceed damping")
         if damping:
-            attempts = min(damping + 1, max(1, budget))
+            attempts = min(damping + 1 - first_halving, max(1, budget))
             minimum_rule = self.neuron_model.replace(
-                dt=float(np.ldexp(self.neuron_model.dt, -(attempts - 1)))
+                dt=float(np.ldexp(self.neuron_model.dt, -(first_halving + attempts - 1)))
             )
             dtype = "float32" if (self._mlx is not None or (
                 self._torch is not None and self._torch.dtype == self._torch.torch.float32
@@ -725,8 +732,9 @@ class Brain:
             minimum_rule._validate_precision(dtype)
             used = checks = stagnation_checks = 0
             current_state = state
-            for halving in range(attempts):
-                portion = (budget - used + attempts - halving - 1) // (attempts - halving)
+            for attempt in range(attempts):
+                halving = first_halving + attempt
+                portion = (budget - used + attempts - attempt - 1) // (attempts - attempt)
                 candidate = self if halving == 0 else Brain(
                     self.connectome,
                     self.neuron_model.replace(dt=float(np.ldexp(self.neuron_model.dt, -halving))),
@@ -742,7 +750,7 @@ class Brain:
                 phase = candidate._equilibrate_local(
                     drive, state=current_state, budget=portion, chunk=chunk,
                     tolerance=tolerance, mask=mask, nudge=nudge,
-                    stop_if_stalled=halving < attempts - 1,
+                    stop_if_stalled=attempt < attempts - 1,
                 )
                 used += phase.steps
                 checks += phase.residual_checks

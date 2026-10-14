@@ -1,0 +1,20 @@
+[
+ {
+  "seed": 1,
+  "tight_recall": 0.125,
+  "default_answers_matching_tight": 21,
+  "candidate_answers_matching_tight": 21
+ },
+ {
+  "seed": 2,
+  "tight_recall": 0.08333333333333333,
+  "default_answers_matching_tight": 24,
+  "candidate_answers_matching_tight": 20
+ },
+ {
+  "seed": 3,
+  "tight_recall": 0.20833333333333334,
+  "default_answers_matching_tight": 20,
+  "candidate_answers_matching_tight": 24
+ }
+]

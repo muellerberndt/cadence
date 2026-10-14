@@ -52,6 +52,7 @@ from .life import (
 )
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
+from .nudged_settle import NudgedSettle
 from .patch import PatchNet, PatchObservation
 from .planning import TemporalPlan
 from .plasticity import (
@@ -153,6 +154,7 @@ __all__ = [
     "Learner",
     "LearnerConfig",
     "LearningPhaseError",
+    "NudgedSettle",
     "Nudge",
     "Protocol",
     "Receipt",

@@ -1,0 +1,29 @@
+{
+ "schema": "cadence-nudged-settle-protocol-v1",
+ "declared": "2026-10-08, before the confirmation run; development used founder seed 0 only",
+ "limitation": "Qualified teaching settles each nudged phase to the full-equation tolerance; on the Brain.compose dynamics of the acquisition microscope the undamped first attempt of the damping schedule does not settle and spends its whole budget share before the halved attempts start (benchmarks/recovery_start/README.md).",
+ "candidate": "Learner(nudged_settle=NudgedSettle()): first_halving 2 (start the same damping=3 schedule at dt/4, keeping its smallest step dt/8) with the agreement probe at 10 tolerances, falling back to the default phase on disagreement. No other setting was searched.",
+ "arms": {
+  "default": "released schedule from the free state (control)",
+  "halve1": "first_halving 1, no probe (simpler control)",
+  "halve2": "first_halving 2, no probe (simpler control: the schedule change alone)",
+  "candidate": "first_halving 2 with the probe and default fallback; probe and discarded sweeps are charged",
+  "local_step": "per-neuron step eta_i = 1/(1 + g_i), g_i = sum over incoming synapses of |W| times the presynaptic activation slope at the free state; the per-patch step of the brief, harness-only NumPy, residual checked every 32 sweeps against the original equations"
+ },
+ "reference": "per lesson and phase, a tight solve from the free state: tolerance 1e-10, damping 8, first_halving 4, budget 80000",
+ "nulls": [
+  "N1: the candidate's summed nudged sweeps (with probe and discarded work) are not below the default's on composed_default.",
+  "N2: the candidate's largest contrast relative error to the tight reference exceeds the default's on composed_default."
+ ],
+ "promotion": "On composed_default: candidate sweep ratio to default at most 0.8, every phase qualified, N2 rejected, and identical free answers after the 24-lesson trajectories. Other cases are reported, not gated.",
+ "seeds": [1, 2, 3],
+ "acquire": 16,
+ "lessons": 12,
+ "batch": 4,
+ "trajectory": 24,
+ "cases": {
+  "composed_default": {"modules": [32, 16], "lateral": -0.5, "tolerance": 0.003, "budget": 4096, "trajectory": true},
+  "lateral0": {"modules": [32, 16], "lateral": 0.0, "tolerance": 1e-6, "budget": 4096, "trajectory": true},
+  "deep_lateral0": {"modules": [32, 32, 32, 16], "lateral": 0.0, "tolerance": 1e-6, "budget": 4096, "trajectory": false}
+ }
+}

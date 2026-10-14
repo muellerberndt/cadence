@@ -1,0 +1,28 @@
+{
+ "schema": "cadence-recovery-start-protocol-v1",
+ "declared": "2026-10-08, before the confirmation run; seed 0 runs of a prototype were development only",
+ "limitation": "Qualified teaching settles each nudged phase to the full-equation tolerance from the free state; docs/learning.md#qualified-teaching-budgets reports that a nudged phase typically needs about as many sweeps as the free phase it starts from.",
+ "candidate": "RecoveryStart(): per-neuron seam gains, decay 0.9, ridge 0.3 toward one, fitted from the learner's own accepted settled phases. No other setting was searched.",
+ "arms": {
+  "default": "both nudged phases start from the free state (released behavior)",
+  "copy": "RecoveryStart(fit=False): every gain one, the nudge copied down the seams once",
+  "fitted": "RecoveryStart(): the candidate",
+  "mirror": "positive phase from the free state; negative phase from the settled positive change reflected through the free state"
+ },
+ "nulls": [
+  "N1: the fitted start does not lower the summed public nudged-phase sweeps below the default start's (ratio >= 1).",
+  "N2: the fitted start does not lower the summed public nudged-phase sweeps below the copy start's."
+ ],
+ "promotion": "Reject N1 and N2 on composed_default (the Brain.compose dynamics of the acquisition microscope) with a sweep ratio to default of at most 0.8, every phase qualified, and a contrast relative difference to the default arm of at most 1e-2. Anything less is reported as not promoted.",
+ "same_result": "Each arm's phases must qualify at the case tolerance; report the relative difference of the synaptic contrast and the maximum state difference against the default arm on the same lesson, and for trajectory cases the final efficacy difference and free answers after identical lesson sequences.",
+ "seeds": [1, 2, 3],
+ "acquire": 16,
+ "lessons": 12,
+ "batch": 4,
+ "trajectory": 24,
+ "cases": {
+  "composed_default": {"modules": [32, 16], "lateral": -0.5, "tolerance": 0.003, "budget": 4096, "trajectory": true},
+  "lateral0": {"modules": [32, 16], "lateral": 0.0, "tolerance": 1e-6, "budget": 4096, "trajectory": true},
+  "deep_lateral0": {"modules": [32, 32, 32, 16], "lateral": 0.0, "tolerance": 1e-6, "budget": 4096, "trajectory": false}
+ }
+}
