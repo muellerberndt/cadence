@@ -6,8 +6,8 @@ with `arousal=True`. [NeuralGraph](#neuralgraph-cadence) is the lower-level
 graph API. The [quickstart](quickstart.md) runs the main interaction loop;
 sections below describe specialist operations. Pass optional arguments by keyword.
 
-This reference describes Cadence 0.81.0. Install it with
-`python -m pip install cadence-net==0.81.0`. `Brain.last_settlement` is an optional
+This reference describes Cadence 0.83.0. Install it with
+`python -m pip install cadence-net==0.83.0`. `Brain.last_settlement` is an optional
 diagnostic report, independent of the interaction loop you use.
 
 The temporal patch: [TemporalPatchNet](#temporalpatchnet-cadencetemporal),
@@ -688,7 +688,7 @@ to positive region widths to add optional System 2 state feedback within the
 same neural-graph settlement. This is an implemented interface, not a claim
 that recursive benefit or automatic reflective behavior has been learned.
 
-- `Brain.compose(inputs, actions, *, modules=(64,), observers=(), lateral=None, sensory_scale=1.0, seed=0, slots=1, **options) -> Brain`:
+- `Brain.compose(inputs, actions, *, modules=(64,), observers=(), lateral=None, sensory_scale=1.0, working_memory_scale=1.2, seed=0, slots=1, **options) -> Brain`:
   the direct vector-input constructor. `slots` groups the motor neurons into several
   softmax readouts that settle together, a count of equal groups or one size per group
   covering `actions`: `act` and `step` return one index per slot, lateral inhibition
@@ -701,6 +701,11 @@ that recursive benefit or automatic reflective behavior has been learned.
   as separate controllers. Trace and consolidating SynapticMemory are enabled by
   default. `sensory_scale` is a finite nonnegative initial sensory-projection
   scale; it preserves the existing wiring at `1.0` and is construction-only.
+  `working_memory_scale` is the finite nonnegative initial scale of the plastic
+  projection through which the prefrontal region feeds the carried interpretation back
+  to the association cortex: `1.2` since 0.82.0, `12.0` before. It is construction-only
+  and recorded in the composition; a checkpoint saved before 0.82.0 reads as `12.0`
+  ([context](context.md)).
   Constructor `options` accept memory/backend settings and every config field
   through `learning_<field>`, `actor_<field>` or `arousal_<field>`.
   `temperature` aliases `learning_temperature`, shared by teaching and the
@@ -735,7 +740,7 @@ that recursive benefit or automatic reflective behavior has been learned.
   with `working_memory`, `prefrontal`; projections sensory to association (reciprocal for a
   visual cortex), association to motor (reciprocal), and prefrontal to association at
   `memory_scale`.
-- `Brain(connectome, *, episodic=True, consolidation=0.05, memory_decay=0.9, memory_rate=1.0, memory_amplitude=1.0, working_memory_decay=0.2, working_memory_amplitude=3.0, working_memory_focus=0.0, efference_decay=0.2, efference_amplitude=0.0, learning=None, reward=None, resting_bias=0.0, slots=1, arousal=None, seed=0, backend="cpu", device=None, **genes)`:
+- `Brain(connectome, *, episodic=True, consolidation=0.05, memory_decay=0.9, memory_rate=1.0, memory_amplitude=1.0, working_memory_decay=0.0, working_memory_amplitude=3.0, working_memory_focus=0.0, efference_decay=0.2, efference_amplitude=0.0, learning=None, reward=None, resting_bias=0.0, slots=1, arousal=None, seed=0, backend="cpu", device=None, **genes)`:
   `arousal=True` enables the founder `ArousalConfig`; a mapping patches its
   fields, and an `ArousalConfig` supplies an explicit configuration. Omitting
   arousal preserves the brain without that controller, and `live` raises.
@@ -1148,7 +1153,7 @@ founder genes for a small share of moments; the
 
 ## Learning (`cadence.learning`)
 
-- `LearnerConfig(beta=0.1, eta=0.2, eta_bias=None, centered=True, free_steps=100, nudged_steps=50, tolerance=1e-4, nudge="cross_entropy", temperature=0.2, normalize=0.0, normalize_floor=1e-3, momentum=0.0, decay=0.0, scale_cap=8.0, qualified=False, damping=3, homeostasis_rate=0.0, homeostasis_target=0.3)`:
+- `LearnerConfig(beta=0.1, eta=0.2, eta_bias=None, centered=True, free_steps=100, nudged_steps=50, tolerance=1e-4, nudge="cross_entropy", temperature=0.2, normalize=0.0, normalize_floor=1e-3, momentum=0.0, decay=0.0, scale_cap=8.0, qualified=False, damping=3)`:
   `eta_bias` left as `None` derives `eta / 10` at construction; an explicit
   value is kept, and construction warns when a positive `eta` is below
   `eta_bias`, where the bias step dominates (issue 126).
@@ -1172,18 +1177,6 @@ founder genes for a small share of moments; the
   numerical integration-step halvings within each phase's existing sweep budget;
   the original model and its fixed-point equations are preserved. Qualified
   learning requires a finite residual tolerance.
-  `homeostasis_rate` (founder 0, at most 1) and `homeostasis_target` (an activation in
-  `[0, 1)`) are the readout's intrinsic plasticity: at every teaching or reward update each
-  plastic output neuron's bias moves by the rate times the shortfall of its free activation,
-  averaged over the update's rows, below the target, and down when above it. Padding rows
-  that `ActorCritic.learn(..., observed=...)` excludes do not count. A learner with a
-  positive rate is saved as `cadence-checkpoint/3`, which earlier releases refuse instead of
-  loading it without the gene. The evidence is development only: with raw steps
-  (`normalize=0`) it keeps the recall chamber's readout responsive, while a bias step does
-  not hold a readout against normalized steps or a large raw signal, and the fresh
-  confirmation of that recipe failed ([recall chamber](../benchmarks/recall/README.md)). At
-  0.02 it impairs the odour nursery's reversal after the shortest exposure
-  ([odour nursery](../benchmarks/reversal/README.md)).
 - `Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None, plastic_neurons=None, reciprocal=True, tie_groups=None, synapse_rate=None, slots=1, updates=0, contrast_updates=0)`:
   `plastic_synapses` and `plastic_neurons` are bool masks over synapses and neurons; only those
   move and decay, so two learners can share one brain without one's decay eroding the other's
@@ -1206,12 +1199,9 @@ founder genes for a small share of moments; the
     `targets(labels)`, `nudge_for(target, beta, weight=None)`;
   - `contrast(free, nudged, opposite=None) -> (per_synapse, per_neuron)`,
     `contrast_rows(free, nudged, opposite=None)` (the same differences per batch row),
-    `update(free, nudged, opposite=None) -> {"scale_step", "bias_step", "homeostasis_step"}`,
-    `apply(delta_scale, delta_bias, *, activation=None) -> {"scale_step", "bias_step", "homeostasis_step"}`
-    (a computed step through the masks, synapse rates, tying, decay and clipping; `activation`
-    holds the free state of the rows the update counts, for the readout's intrinsic step),
-    `homeostasis(activation)` (that intrinsic step of the output biases, or `None` at the
-    founder rate; `homeostasis_step` reports the step the plastic output neurons take),
+    `update(free, nudged, opposite=None) -> {"scale_step", "bias_step"}`,
+    `apply(delta_scale, delta_bias) -> {"scale_step", "bias_step"}` (a computed step through
+    the masks, synapse rates, tying, decay and clipping),
     `step(drive, labels, warm=None, weight=None) -> (LearnedState, report)`;
     labels are integer indices within each output group: `(batch,)` for one group,
     `(batch, slots)` for several; `accuracy` averages all row/slot choices;

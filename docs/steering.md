@@ -15,8 +15,9 @@ must instead include all observing states and their feedback in the same
 equations and stopping check. The [contract guide](contracts.md) makes this
 distinction explicit.
 
-Under the flagship theorem's linear/additive assumptions, a tower of readbacks
-can be absorbed into one effective map. Nonlinear observation, gain control,
+Successive linear readbacks can be composed into one effective linear map:
+`y = A @ x` followed by `z = B @ y` gives `z = (B @ A) @ x`. This algebraic
+identity does not preserve locality or implementation cost. Nonlinear observation, gain control,
 restricted sensing and a computation budget create distinctions worth testing;
 they do not by themselves establish useful depth. The claim needs a task
 advantage at matched information and resources: compare the step on, the step

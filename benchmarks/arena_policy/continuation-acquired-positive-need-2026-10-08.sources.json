@@ -197,9 +197,9 @@
     "--output",
     "runs/cadence-policy-continuation-20261008/continuation-acquired-positive-need-2026-10-08.json"
   ],
-  "working_directory": "/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena",
+  "working_directory": "/workspace/cadence-robot-arena",
   "pythonpath": [
-    "/Users/muellerberndt/Projects/oph-meta/temp/cadence-issue159-fix-20261008/src",
-    "/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena"
+    "/workspace/temp/cadence-issue159-fix-20261008/src",
+    "/workspace/cadence-robot-arena"
   ]
 }

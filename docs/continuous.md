@@ -256,8 +256,7 @@ import numpy as np
 from cadence import Brain
 
 brain = Brain.compose(
-    4, 2, modules=(16,), seed=0,
-    working_memory_amplitude=0.3,   # the trace informs; the present input leads
+    4, 2, modules=(16,), seed=0,     # the default context informs; the present input leads
     consolidation=0.25,             # lasting memory takes half of a witnessed unit outcome
     arousal=True, arousal_youth=30,
     actor_eta=0.1, actor_eta_bias=0.01,  # this chamber's measured rates

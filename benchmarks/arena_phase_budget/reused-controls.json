@@ -1,6 +1,6 @@
 {
   "tumbler-103": {
-    "receipt": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-memory-repair-20261009/runs/tumbler-103-control/receipt.json",
+    "receipt": "/workspace/temp/cadence-memory-repair-20261009/runs/tumbler-103-control/receipt.json",
     "receipt_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
     "original_artifacts": {
       "tumbler-103/trained.npz": "653f2b1f69ef202608b3553a37d53d9aebdd3e722cbb9b06b09fab03619b2372",
@@ -84,7 +84,7 @@
     }
   },
   "mantis-202": {
-    "receipt": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-memory-repair-20261009/runs/mantis-202-control/receipt.json",
+    "receipt": "/workspace/temp/cadence-memory-repair-20261009/runs/mantis-202-control/receipt.json",
     "receipt_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
     "original_artifacts": {
       "mantis-202/trained.npz": "ac8d9b4efd213b29ecf62794ce498970603c5918a7dab85ef3e0535e5e621a21",
@@ -168,7 +168,7 @@
     }
   },
   "tumbler-102": {
-    "receipt": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-memory-repair-20261009/runs/tumbler-102-control/receipt.json",
+    "receipt": "/workspace/temp/cadence-memory-repair-20261009/runs/tumbler-102-control/receipt.json",
     "receipt_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
     "original_artifacts": {
       "tumbler-102/trained.npz": "c8f2f3754f86eab49d5cf0a3568fcbd74fcadc7972c7a966ce004f2f92b52efb",
@@ -252,7 +252,7 @@
     }
   },
   "mantis-201": {
-    "receipt": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-memory-repair-20261009/runs/mantis-201-control/receipt.json",
+    "receipt": "/workspace/temp/cadence-memory-repair-20261009/runs/mantis-201-control/receipt.json",
     "receipt_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
     "original_artifacts": {
       "mantis-201/trained.npz": "33ab5929ce07f5083eb3ea91cb40cd223e89a3ad131c8d4251a300b6b26db82b",

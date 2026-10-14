@@ -55,7 +55,7 @@ INPUTS = 16
 DISTRACTORS = 2
 MODES = ("observed", "hidden")
 PAYS = ("end", "shaped", "lessons")
-ARMS = ("gene", "small", "taper", "homeo")
+ARMS = ("gene", "small", "taper")
 CONTROLS = ("random", "stationary", "frozen", "tabular")
 
 
@@ -130,6 +130,9 @@ def make_brain(point: dict[str, Any], seed: int, world: dict[str, Any], need: fl
         temperature=float(point["temperature"]),
         working_memory_amplitude=float(point["trace_amplitude"]),
         working_memory_decay=float(point["trace_decay"]),
+        # frozen protocols ran the composition of releases before 0.82.0: the carried
+        # interpretation read back at scale 12
+        working_memory_scale=float(point.get("trace_scale", 12.0)),
         consolidation=float(point["consolidation"]),
         episodic=bool(point.get("episodic", True)),
         memory_rate=float(point.get("memory_rate", 1.0)),
@@ -150,10 +153,6 @@ def arm_point(point: dict[str, Any], arm: str, stages: dict[str, Any]) -> dict[s
     genes = dict(stages.get(arm, {}))
     if arm == "small":
         own["eta"], own["eta_bias"] = float(genes["actor_eta"]), float(genes["actor_eta_bias"])
-    if arm == "homeo":
-        own.setdefault("learning", {}).update(
-            {k[len("learning_") :]: v for k, v in genes.items() if k.startswith("learning_")}
-        )
     return own
 
 

@@ -98,6 +98,7 @@ def make_brain(seed):
                                  dopamine_floor=0, critic_normalize=True, critic_signal="auto"),
         consolidation=0.05, episodic=True, working_memory_decay=0.2,
         working_memory_amplitude=3,
+        working_memory_scale=12.0,  # the composition of releases before 0.82.0
     )
 
 

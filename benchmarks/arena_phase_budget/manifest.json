@@ -2,11 +2,15 @@
   {
     "file": "historical/compare.py.txt",
     "original": "temp/cadence-phase-repair-20261009/compare.py",
-    "raw_sha256": "db3537c6656112b46f33e820152dadcaf832cd6592f38c2413b9394803cc5519",
-    "raw_bytes": 9552,
-    "file_sha256": "db3537c6656112b46f33e820152dadcaf832cd6592f38c2413b9394803cc5519",
-    "file_bytes": 9552,
-    "gzip_wrapper": false
+    "raw_sha256": "c9be5eacec05d60a19b117e688969d1b9157549950f96c5114bc0f4ae069f284",
+    "raw_bytes": 9524,
+    "file_sha256": "c9be5eacec05d60a19b117e688969d1b9157549950f96c5114bc0f4ae069f284",
+    "file_bytes": 9524,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "db3537c6656112b46f33e820152dadcaf832cd6592f38c2413b9394803cc5519",
+    "original_raw_bytes": 9552,
+    "original_file_sha256": "db3537c6656112b46f33e820152dadcaf832cd6592f38c2413b9394803cc5519",
+    "original_file_bytes": 9552
   },
   {
     "file": "historical/summarize.py.txt",
@@ -20,11 +24,15 @@
   {
     "file": "historical/launch.py.txt",
     "original": "temp/cadence-phase-repair-20261009/launch.py",
-    "raw_sha256": "69248422370c7f26d72d7ce6c1dbaef5c4a6d2f5271249d2247ca19b694f515a",
-    "raw_bytes": 2414,
-    "file_sha256": "69248422370c7f26d72d7ce6c1dbaef5c4a6d2f5271249d2247ca19b694f515a",
-    "file_bytes": 2414,
-    "gzip_wrapper": false
+    "raw_sha256": "6e31157c10f64f87e9991ab129267f7e79d52eaf630a96a18967dcec90b0ea9f",
+    "raw_bytes": 2386,
+    "file_sha256": "6e31157c10f64f87e9991ab129267f7e79d52eaf630a96a18967dcec90b0ea9f",
+    "file_bytes": 2386,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "69248422370c7f26d72d7ce6c1dbaef5c4a6d2f5271249d2247ca19b694f515a",
+    "original_raw_bytes": 2414,
+    "original_file_sha256": "69248422370c7f26d72d7ce6c1dbaef5c4a6d2f5271249d2247ca19b694f515a",
+    "original_file_bytes": 2414
   },
   {
     "file": "protocol.json",
@@ -56,11 +64,15 @@
   {
     "file": "reused-controls.json",
     "original": "temp/cadence-phase-repair-20261009/reused-controls.json",
-    "raw_sha256": "c4f696c4c7cbfb1e939fe78c7b3891275969abc352df4ea2a59286bf240b674a",
-    "raw_bytes": 32035,
-    "file_sha256": "c4f696c4c7cbfb1e939fe78c7b3891275969abc352df4ea2a59286bf240b674a",
-    "file_bytes": 32035,
-    "gzip_wrapper": false
+    "raw_sha256": "19f69129bed85bc0516f406fceda76e1cc61dd77803aa7b73ea7c993ba6586be",
+    "raw_bytes": 31923,
+    "file_sha256": "19f69129bed85bc0516f406fceda76e1cc61dd77803aa7b73ea7c993ba6586be",
+    "file_bytes": 31923,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "c4f696c4c7cbfb1e939fe78c7b3891275969abc352df4ea2a59286bf240b674a",
+    "original_raw_bytes": 32035,
+    "original_file_sha256": "c4f696c4c7cbfb1e939fe78c7b3891275969abc352df4ea2a59286bf240b674a",
+    "original_file_bytes": 32035
   },
   {
     "file": "summary.json",
@@ -101,11 +113,15 @@
   {
     "file": "receipts/mantis-201-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/mantis-201-control/receipt.json",
-    "raw_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
-    "raw_bytes": 103884,
-    "file_sha256": "ebeaddbf2dd6d3fd58bb710b912017b99560c21dab570e932e1e4e3d109a8123",
-    "file_bytes": 15875,
-    "gzip_wrapper": true
+    "raw_sha256": "2afd7c2bed43f82548c97518c51ffecbb887937c8289e6da59fea70ef887982c",
+    "raw_bytes": 103828,
+    "file_sha256": "fc85f736ebc21ddb793fc68499c3bad52a8a62336f2ba8fa8122f64a31e3b21d",
+    "file_bytes": 15848,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
+    "original_raw_bytes": 103884,
+    "original_file_sha256": "ebeaddbf2dd6d3fd58bb710b912017b99560c21dab570e932e1e4e3d109a8123",
+    "original_file_bytes": 15875
   },
   {
     "file": "streams/mantis-201-control.jsonl.gz",
@@ -119,11 +135,15 @@
   {
     "file": "receipts/mantis-202-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/mantis-202-control/receipt.json",
-    "raw_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
-    "raw_bytes": 104001,
-    "file_sha256": "5d1e509b10d83d5fda708c98ee7bbe65b88f05134a10731a6c1a57530d592870",
-    "file_bytes": 15765,
-    "gzip_wrapper": true
+    "raw_sha256": "dde366d00b3c9e9e5a83200394174ed3b6d931e5f0f93322e666029f8a2c41e3",
+    "raw_bytes": 103945,
+    "file_sha256": "aff075492bedc5fdaebcee18466b563f3fe53b8e513b28fe0004901337f74e6d",
+    "file_bytes": 15739,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+    "original_raw_bytes": 104001,
+    "original_file_sha256": "5d1e509b10d83d5fda708c98ee7bbe65b88f05134a10731a6c1a57530d592870",
+    "original_file_bytes": 15765
   },
   {
     "file": "streams/mantis-202-control.jsonl.gz",
@@ -137,11 +157,15 @@
   {
     "file": "receipts/tumbler-102-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/tumbler-102-control/receipt.json",
-    "raw_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
-    "raw_bytes": 99698,
-    "file_sha256": "9c63333fb6ce3b7566c20bb0c5b1ef3b15ee589189e813b532cae01bb6364a1a",
-    "file_bytes": 15841,
-    "gzip_wrapper": true
+    "raw_sha256": "c3da7c993cc1c4362cd63345412f4152c708c2d130d2a8e466e3e588191cdaa3",
+    "raw_bytes": 99642,
+    "file_sha256": "5c84d03eee6e980c0533a52ea67fe64572bed22b4da6b30fe1108a91fe730f2c",
+    "file_bytes": 15813,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+    "original_raw_bytes": 99698,
+    "original_file_sha256": "9c63333fb6ce3b7566c20bb0c5b1ef3b15ee589189e813b532cae01bb6364a1a",
+    "original_file_bytes": 15841
   },
   {
     "file": "streams/tumbler-102-control.jsonl.gz",
@@ -155,11 +179,15 @@
   {
     "file": "receipts/tumbler-103-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/tumbler-103-control/receipt.json",
-    "raw_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
-    "raw_bytes": 99363,
-    "file_sha256": "ae70deb93e3cd167af3954becd74a82ed77b8778d29085aa03cfa4adc3e368fb",
-    "file_bytes": 15166,
-    "gzip_wrapper": true
+    "raw_sha256": "a0240d9996fa22b8dbc4525162b514cfc64d9683fbc32f326cd47e81eb5b6fe8",
+    "raw_bytes": 99307,
+    "file_sha256": "95ac8a2a6bea1c6acc0d1ba958809057aaad827e202fd092a9a3c70f295425fb",
+    "file_bytes": 15139,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+    "original_raw_bytes": 99363,
+    "original_file_sha256": "ae70deb93e3cd167af3954becd74a82ed77b8778d29085aa03cfa4adc3e368fb",
+    "original_file_bytes": 15166
   },
   {
     "file": "streams/tumbler-103-control.jsonl.gz",
@@ -173,11 +201,15 @@
   {
     "file": "receipts/hexapod-301-control.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/hexapod-301-control/receipt.json",
-    "raw_sha256": "3e43edcbceb2d923e921900e5c033baf75bc4a16d19a945f2bd481d76a44f1cf",
-    "raw_bytes": 110882,
-    "file_sha256": "72e7057beb024e66d50bd5e0f6cd7259d69affc005700429e03d9ee2e56c66e6",
-    "file_bytes": 16888,
-    "gzip_wrapper": true
+    "raw_sha256": "cbc20cd3abbbbf590231115c8d196912094529f7b44f44c80d9bb3b558c27cb0",
+    "raw_bytes": 110826,
+    "file_sha256": "91f86c0712f05e6c9a5f7a76138c573941a939602c3c97034ce9305ce36d63b3",
+    "file_bytes": 16861,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "3e43edcbceb2d923e921900e5c033baf75bc4a16d19a945f2bd481d76a44f1cf",
+    "original_raw_bytes": 110882,
+    "original_file_sha256": "72e7057beb024e66d50bd5e0f6cd7259d69affc005700429e03d9ee2e56c66e6",
+    "original_file_bytes": 16888
   },
   {
     "file": "streams/hexapod-301-control.jsonl.gz",
@@ -191,11 +223,15 @@
   {
     "file": "receipts/hexapod-301-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/hexapod-301-full-budget/receipt.json",
-    "raw_sha256": "b2dd5ca9b49edaba59f51431f521e52ae6477cdf26e11eb6ee34029b2e2a7b24",
-    "raw_bytes": 110744,
-    "file_sha256": "14b22211be9e12362dfc32f30c39bb2a0a4ab9b351dc3786ad4f957ee46d9782",
-    "file_bytes": 16682,
-    "gzip_wrapper": true
+    "raw_sha256": "904910965edfcaef5a4dac4ee112ab1fc82c96b22b118c27da6ce59b9e8877ad",
+    "raw_bytes": 110688,
+    "file_sha256": "d392f69af13f582c48ce188fa3539213d2991b5095dcb4a8d592de2e9743fd70",
+    "file_bytes": 16656,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "b2dd5ca9b49edaba59f51431f521e52ae6477cdf26e11eb6ee34029b2e2a7b24",
+    "original_raw_bytes": 110744,
+    "original_file_sha256": "14b22211be9e12362dfc32f30c39bb2a0a4ab9b351dc3786ad4f957ee46d9782",
+    "original_file_bytes": 16682
   },
   {
     "file": "streams/hexapod-301-full-budget.jsonl.gz",
@@ -209,11 +245,15 @@
   {
     "file": "receipts/hexapod-302-control.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/hexapod-302-control/receipt.json",
-    "raw_sha256": "6be9b9f8e7f031905d726ae9d39038e280f76499c478b17fb0a1318926cfbe73",
-    "raw_bytes": 111080,
-    "file_sha256": "392b01716a7ffeb56e008330715aba13a623f46f4271a5ac2110e983ae699352",
-    "file_bytes": 16736,
-    "gzip_wrapper": true
+    "raw_sha256": "7ec32b95d2f10d4a0b4aef4f95ad7305350fcb83e414ec9e87f8ee85e8c60bc5",
+    "raw_bytes": 111024,
+    "file_sha256": "c83e7c3e1ee5af203aed1b0086de8a7084ebe7b96f8c89fff49d42e0dac4f585",
+    "file_bytes": 16711,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "6be9b9f8e7f031905d726ae9d39038e280f76499c478b17fb0a1318926cfbe73",
+    "original_raw_bytes": 111080,
+    "original_file_sha256": "392b01716a7ffeb56e008330715aba13a623f46f4271a5ac2110e983ae699352",
+    "original_file_bytes": 16736
   },
   {
     "file": "streams/hexapod-302-control.jsonl.gz",
@@ -227,11 +267,15 @@
   {
     "file": "receipts/hexapod-302-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/hexapod-302-full-budget/receipt.json",
-    "raw_sha256": "4a4f2b7a39a53d1e5b9c65af98b9221e3c930d759c8dad2a3179273235e199f9",
-    "raw_bytes": 110405,
-    "file_sha256": "2027fa155a7580f67d745039ca4480ea950c3fa20499bea6e7539fc50f5dcba5",
-    "file_bytes": 16587,
-    "gzip_wrapper": true
+    "raw_sha256": "b4b954631a2592c4655ce854fb7b6a37c14895186d47161cd62ceda14370e3e3",
+    "raw_bytes": 110349,
+    "file_sha256": "35bf6eacbbcbeb95202cf571a33ea5d1d7fdcc894b1dd76f8b3e3ece170d4121",
+    "file_bytes": 16562,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "4a4f2b7a39a53d1e5b9c65af98b9221e3c930d759c8dad2a3179273235e199f9",
+    "original_raw_bytes": 110405,
+    "original_file_sha256": "2027fa155a7580f67d745039ca4480ea950c3fa20499bea6e7539fc50f5dcba5",
+    "original_file_bytes": 16587
   },
   {
     "file": "streams/hexapod-302-full-budget.jsonl.gz",
@@ -245,11 +289,15 @@
   {
     "file": "receipts/mantis-201-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/mantis-201-full-budget/receipt.json",
-    "raw_sha256": "ecc9b20aa3721473007cd00001ffbb56383f421731dd70dbb3818731e2da851e",
-    "raw_bytes": 104835,
-    "file_sha256": "065a1bd9b78197ea0a1260e512d56356e9277dff9fbd17991a4d0d35acee484c",
-    "file_bytes": 16445,
-    "gzip_wrapper": true
+    "raw_sha256": "3cf676c581ad76ed319d33936d06e89d80c873a44ea3b8a1860cf80cd031f164",
+    "raw_bytes": 104779,
+    "file_sha256": "ef0548a27b456142a25971e71bbf1d04a7c7e50dc20c0ddd3d546133f2930392",
+    "file_bytes": 16419,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "ecc9b20aa3721473007cd00001ffbb56383f421731dd70dbb3818731e2da851e",
+    "original_raw_bytes": 104835,
+    "original_file_sha256": "065a1bd9b78197ea0a1260e512d56356e9277dff9fbd17991a4d0d35acee484c",
+    "original_file_bytes": 16445
   },
   {
     "file": "streams/mantis-201-full-budget.jsonl.gz",
@@ -263,11 +311,15 @@
   {
     "file": "receipts/mantis-202-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/mantis-202-full-budget/receipt.json",
-    "raw_sha256": "6985d9ef3d4c7ebcc1ab94f616f174b5b06d057df4df25ef09fa4904babf9e17",
-    "raw_bytes": 105829,
-    "file_sha256": "dc6930dbdce32b01b7c397229e0eef79ff9885356bfd6addad14acd8aa527c10",
-    "file_bytes": 16328,
-    "gzip_wrapper": true
+    "raw_sha256": "2c928d0c110da7d1fe2cb9d93ae150ced4e75576eaf303559cb1b6b720957b58",
+    "raw_bytes": 105773,
+    "file_sha256": "7b07c980736cda3780383bd040334e94bb0317d7ec6ebd1f0d5ca614def6a775",
+    "file_bytes": 16303,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "6985d9ef3d4c7ebcc1ab94f616f174b5b06d057df4df25ef09fa4904babf9e17",
+    "original_raw_bytes": 105829,
+    "original_file_sha256": "dc6930dbdce32b01b7c397229e0eef79ff9885356bfd6addad14acd8aa527c10",
+    "original_file_bytes": 16328
   },
   {
     "file": "streams/mantis-202-full-budget.jsonl.gz",
@@ -281,11 +333,15 @@
   {
     "file": "receipts/smoke-hexapod-301-control.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/smoke-hexapod-301-control/receipt.json",
-    "raw_sha256": "664edd29a693a54c13c9306674947001d98943bebe5f3963a116772851b76505",
-    "raw_bytes": 55087,
-    "file_sha256": "4ea24d2a047a856e1adac36393bb7e4914e136ec3b1a08dba5ed845c3d092544",
-    "file_bytes": 12928,
-    "gzip_wrapper": true
+    "raw_sha256": "a4c4f05bc5cc7c9121803e464b9719172e725f6dc7f70b8fe89e36811a683ae5",
+    "raw_bytes": 55059,
+    "file_sha256": "4deee9c21aba9ba0a92b0eef171217c29ee7de5db5596f9fd998657264467542",
+    "file_bytes": 12904,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "664edd29a693a54c13c9306674947001d98943bebe5f3963a116772851b76505",
+    "original_raw_bytes": 55087,
+    "original_file_sha256": "4ea24d2a047a856e1adac36393bb7e4914e136ec3b1a08dba5ed845c3d092544",
+    "original_file_bytes": 12928
   },
   {
     "file": "streams/smoke-hexapod-301-control.jsonl.gz",
@@ -299,11 +355,15 @@
   {
     "file": "receipts/smoke-hexapod-302-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/smoke-hexapod-302-full-budget/receipt.json",
-    "raw_sha256": "1756b308f6c0babf4713f12c881dff0171c0cfa58a2b064977896ea6886a7f86",
-    "raw_bytes": 55080,
-    "file_sha256": "750d0fd7e4ab0b688d90d7af545e816066133f45ef291fb89e05ea012e3a24d6",
-    "file_bytes": 12985,
-    "gzip_wrapper": true
+    "raw_sha256": "a0d8ff8b2c6bbad1bdb37fc651f7ab65422ed27d5fc640f4d4926da570e4ee53",
+    "raw_bytes": 55052,
+    "file_sha256": "b019abd871e8334fa718945853622dbb76fa1156d8b35890d31b112b7e53dd53",
+    "file_bytes": 12960,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "1756b308f6c0babf4713f12c881dff0171c0cfa58a2b064977896ea6886a7f86",
+    "original_raw_bytes": 55080,
+    "original_file_sha256": "750d0fd7e4ab0b688d90d7af545e816066133f45ef291fb89e05ea012e3a24d6",
+    "original_file_bytes": 12985
   },
   {
     "file": "streams/smoke-hexapod-302-full-budget.jsonl.gz",
@@ -317,11 +377,15 @@
   {
     "file": "receipts/tumbler-102-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/tumbler-102-full-budget/receipt.json",
-    "raw_sha256": "7dc2a62f18ee058370cddf4306702a1276fe11e6a5947b2e260d98b3b9e4474d",
-    "raw_bytes": 101231,
-    "file_sha256": "eb7599adc86a7fc44ea6d8984e6efb9f6014be8882bfd2dda5c7366a1abd409e",
-    "file_bytes": 16323,
-    "gzip_wrapper": true
+    "raw_sha256": "f3a191d8e35f00c6b0c298b0961279049f0fcbff00a207e2fa6e098d1661425a",
+    "raw_bytes": 101175,
+    "file_sha256": "a93f4c271f837b73f41bbd084d6f3a1c5ed63651f48d1c85a5aff60e4ae5b78f",
+    "file_bytes": 16299,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "7dc2a62f18ee058370cddf4306702a1276fe11e6a5947b2e260d98b3b9e4474d",
+    "original_raw_bytes": 101231,
+    "original_file_sha256": "eb7599adc86a7fc44ea6d8984e6efb9f6014be8882bfd2dda5c7366a1abd409e",
+    "original_file_bytes": 16323
   },
   {
     "file": "streams/tumbler-102-full-budget.jsonl.gz",
@@ -335,11 +399,15 @@
   {
     "file": "receipts/tumbler-103-full-budget.json.gz",
     "original": "temp/cadence-phase-repair-20261009/runs/tumbler-103-full-budget/receipt.json",
-    "raw_sha256": "de72412c681c3774e3113faf3636364d9e3702da5f7c0ccc1ec7fc73977fba70",
-    "raw_bytes": 101404,
-    "file_sha256": "c39805110445dcab31748880acfd06ea7a06a89a463e190a980ea110dc1cd2b5",
-    "file_bytes": 15955,
-    "gzip_wrapper": true
+    "raw_sha256": "e42cbe1bdb3a6033e928a99e2cca57bc85f44c6def21ac4e52c4cbf07938ee29",
+    "raw_bytes": 101348,
+    "file_sha256": "9be4de5a64d2520c69e072e33326706bbee3b87acc68e5c962d5ddf2344ea46e",
+    "file_bytes": 15930,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "de72412c681c3774e3113faf3636364d9e3702da5f7c0ccc1ec7fc73977fba70",
+    "original_raw_bytes": 101404,
+    "original_file_sha256": "c39805110445dcab31748880acfd06ea7a06a89a463e190a980ea110dc1cd2b5",
+    "original_file_bytes": 15955
   },
   {
     "file": "streams/tumbler-103-full-budget.jsonl.gz",
@@ -452,11 +520,15 @@
   {
     "file": "reviews/review_controls.py.txt",
     "original": "temp/cadence-phase-repair-20261009/review_controls.py",
-    "raw_sha256": "b209ec5b7a5d73175dd94e8102d998b5cf4bc9d93d66aeb177f02f73411f21ea",
-    "raw_bytes": 4599,
-    "file_sha256": "b209ec5b7a5d73175dd94e8102d998b5cf4bc9d93d66aeb177f02f73411f21ea",
-    "file_bytes": 4599,
-    "gzip_wrapper": false
+    "raw_sha256": "a8e680cf1b8c9796ed71e5e97b7dd74c6f93d5ac2f34d3b8cb59c99706a5bc35",
+    "raw_bytes": 4571,
+    "file_sha256": "a8e680cf1b8c9796ed71e5e97b7dd74c6f93d5ac2f34d3b8cb59c99706a5bc35",
+    "file_bytes": 4571,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "b209ec5b7a5d73175dd94e8102d998b5cf4bc9d93d66aeb177f02f73411f21ea",
+    "original_raw_bytes": 4599,
+    "original_file_sha256": "b209ec5b7a5d73175dd94e8102d998b5cf4bc9d93d66aeb177f02f73411f21ea",
+    "original_file_bytes": 4599
   },
   {
     "file": "reviews/cadence-reward-budget-candidate-20261009.json",
@@ -470,20 +542,28 @@
   {
     "file": "reviews/cadence-reward-budget-preservation-20261009-receipt.json",
     "original": "runs/cadence-reward-budget-preservation-20261009/receipt.json",
-    "raw_sha256": "9c59e399d5c9674f583d853ea1a50d226982b76ba683e19cff2ce2787bf53586",
-    "raw_bytes": 8239,
-    "file_sha256": "9c59e399d5c9674f583d853ea1a50d226982b76ba683e19cff2ce2787bf53586",
-    "file_bytes": 8239,
-    "gzip_wrapper": false
+    "raw_sha256": "3d1390cf506421d137f24c8b08b69c56dca6c2d9e8504ed3624ae51bf8eb33f8",
+    "raw_bytes": 8211,
+    "file_sha256": "3d1390cf506421d137f24c8b08b69c56dca6c2d9e8504ed3624ae51bf8eb33f8",
+    "file_bytes": 8211,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "9c59e399d5c9674f583d853ea1a50d226982b76ba683e19cff2ce2787bf53586",
+    "original_raw_bytes": 8239,
+    "original_file_sha256": "9c59e399d5c9674f583d853ea1a50d226982b76ba683e19cff2ce2787bf53586",
+    "original_file_bytes": 8239
   },
   {
     "file": "reviews/cadence-phase-final-audit-20261009.py.txt",
     "original": "runs/cadence-phase-final-audit-20261009.py",
-    "raw_sha256": "e023d65cb978c641174d35054cfd9186bf92d82ab11f3f033b748445527da15a",
-    "raw_bytes": 6820,
-    "file_sha256": "e023d65cb978c641174d35054cfd9186bf92d82ab11f3f033b748445527da15a",
-    "file_bytes": 6820,
-    "gzip_wrapper": false
+    "raw_sha256": "e8ca8a3ddedf162d282fee756c7d42c219e918a8cfcccba0606ba5ab533857be",
+    "raw_bytes": 6792,
+    "file_sha256": "e8ca8a3ddedf162d282fee756c7d42c219e918a8cfcccba0606ba5ab533857be",
+    "file_bytes": 6792,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "e023d65cb978c641174d35054cfd9186bf92d82ab11f3f033b748445527da15a",
+    "original_raw_bytes": 6820,
+    "original_file_sha256": "e023d65cb978c641174d35054cfd9186bf92d82ab11f3f033b748445527da15a",
+    "original_file_bytes": 6820
   },
   {
     "file": "reviews/cadence-phase-final-audit-20261009.json",

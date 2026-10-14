@@ -1,27 +1,27 @@
 [
   {
-    "local_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-learning-microscope-20261009/mantis-201-baseline-1024.json.gz",
+    "local_path": "/workspace/temp/cadence-learning-microscope-20261009/mantis-201-baseline-1024.json.gz",
     "sha256": "4794d5b17ae4d529ad947bfe3bc4b4041cc51b06084dd6bc7834768facb0d492",
     "bytes": 1296807,
     "raw_sha256": "7ebf39f733fd488b10c28007f956d8ec527d0e5af185dbf7454f94286df4bdec",
     "raw_bytes": 4523939
   },
   {
-    "local_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-learning-microscope-20261009/mantis-202-baseline-1024.json.gz",
+    "local_path": "/workspace/temp/cadence-learning-microscope-20261009/mantis-202-baseline-1024.json.gz",
     "sha256": "c046571b8f819b3175eb043af045007f00c60c1cfb5f438dc9b8f922d8150af5",
     "bytes": 1309697,
     "raw_sha256": "a09e4c12e622c4aeebff24ffef2092034b159551864ae1a77e0c49a6f138843e",
     "raw_bytes": 4521377
   },
   {
-    "local_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-learning-microscope-20261009/tumbler-102-baseline-1024.json.gz",
+    "local_path": "/workspace/temp/cadence-learning-microscope-20261009/tumbler-102-baseline-1024.json.gz",
     "sha256": "b481d75cdabb94fb7fa30a375cc1d05990ee2522d37726f05f98d7411e3c8535",
     "bytes": 1243853,
     "raw_sha256": "82c1331b3febb156177d60174490d49a3885ceba97e01ecdacc7fb3a9a54ce29",
     "raw_bytes": 4310535
   },
   {
-    "local_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-learning-microscope-20261009/tumbler-103-baseline-1024.json.gz",
+    "local_path": "/workspace/temp/cadence-learning-microscope-20261009/tumbler-103-baseline-1024.json.gz",
     "sha256": "f1c199ca9415d80afef29c8ad8ea87bc1d2a4aa3b689adedc9cd28b1ce64a8e7",
     "bytes": 1200123,
     "raw_sha256": "66f327ef20783040d1a801d0b678880d25bb5ceead62d43eac8f4da86b6decef",

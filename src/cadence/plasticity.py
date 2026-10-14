@@ -343,7 +343,11 @@ class ActorCritic:
         return np.asarray(state.activation[:, self.critic_index] @ self.w_critic + self.b_critic)
 
     def probabilities(
-        self, state: BrainState, temperature: float | Sequence[float] | np.ndarray | None = None
+        self,
+        state: BrainState,
+        temperature: float | Sequence[float] | np.ndarray | None = None,
+        *,
+        bias: np.ndarray | None = None,
     ) -> np.ndarray:
         """Action probabilities, normalized separately for each motor slot.
 
@@ -351,9 +355,19 @@ class ActorCritic:
         zero padding for shorter slots. Bins keeps its uniform population shape.
         ``temperature`` reads the same settled outputs at another softmax
         temperature, or one temperature per motor slot; left unset it is the learner's.
+        ``bias`` adds a ``(batch, motor)`` value per motor neuron to the settled outputs
+        before each slot's softmax: a vote from outside the readout, such as the records
+        of an episodic memory. Bins take none.
         """
         temperature = self._temperature(temperature)
         s = state.activation[:, self.learner.output_index]
+        if bias is not None:
+            bias = np.asarray(bias, dtype=float)
+            if self.bins is not None:
+                raise ValueError("a population code takes no choice bias")
+            if bias.shape != s.shape or not np.isfinite(bias).all():
+                raise ValueError("bias must be a finite (batch, motor) array")
+            s = s + bias
         if self.bins is not None:
             s = s.reshape(len(s), self.bins.dims, self.bins.size)
             if isinstance(temperature, np.ndarray):
@@ -444,6 +458,8 @@ class ActorCritic:
         drive: np.ndarray,
         greedy: bool = False,
         temperature: float | Sequence[float] | np.ndarray | None = None,
+        *,
+        bias: np.ndarray | None = None,
     ) -> np.ndarray:
         """Settle (or reuse the cached free phase), sample an action per row, keep its eligibility.
 
@@ -452,10 +468,21 @@ class ActorCritic:
         ``temperature`` samples the same settled outputs at another softmax
         temperature, or one per motor slot. Eligibility uses those same temperatures
         for the sampled action's policy score. A greedy read ignores them.
+        ``bias`` joins the choice as in ``probabilities``, greedy or sampled; the
+        eligibility of a sampled action still scores the readout's own policy, so
+        reward teaches the readout the actions that the bias helped choose.
         """
         drive = self._validated_drive(drive)
         if temperature is not None:
             temperature = self._temperature(temperature)  # before any state changes
+        if bias is not None:
+            bias = np.asarray(bias, dtype=float)
+            if self.bins is not None:
+                raise ValueError("a population code takes no choice bias")
+            if bias.shape != (len(drive), len(self.learner.output_index)) or not np.isfinite(
+                bias
+            ).all():
+                raise ValueError("bias must be a finite (batch, motor) array")
         free = (
             self._free
             if self._free is not None
@@ -467,7 +494,7 @@ class ActorCritic:
         self._pending = None  # eligibility always belongs to this decision, including greedy reads
         if self.bins is not None:
             return self._act_bins(drive, free, greedy, temperature)
-        p = self.probabilities(free, None if greedy else temperature)
+        p = self.probabilities(free, None if greedy else temperature, bias=bias)
         if greedy:
             action = np.argmax(p, axis=-1)
         else:
@@ -789,9 +816,7 @@ class ActorCritic:
             raise ValueError("optimizer moments must remain finite")
         critic_weights, critic_bias = self._critic_candidate(td_error, delta, observed)
         next_brain = self.learner.brain
-        # padding rows teach nothing, so they do not set the readout's operating point either
-        real = free.activation if observed.all() else free.activation[observed]
-        report = self.learner.apply(step_scale, step_bias, activation=real)
+        report = self.learner.apply(step_scale, step_bias)
         self.w_critic, self.b_critic = critic_weights, critic_bias
         # a finished row forgets its traces
         if done.any():
@@ -977,11 +1002,7 @@ class ActorCritic:
         d = d[:, None]
         next_brain = self.learner.brain
         report = self.learner._apply_device(
-            kernel,
-            cfg.eta * (d * trace).mean(dim=0),
-            cfg.eta_bias * (d * trace_bias).mean(dim=0),
-            state=free,
-            observed=None if observed.all() else observed,
+            kernel, cfg.eta * (d * trace).mean(dim=0), cfg.eta_bias * (d * trace_bias).mean(dim=0)
         )
         self.w_critic, self.b_critic = critic_weights, critic_bias
         if done.any():  # a finished stream forgets its traces

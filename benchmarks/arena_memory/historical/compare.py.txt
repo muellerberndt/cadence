@@ -12,7 +12,7 @@ import sys
 import time
 import traceback
 
-ROOT = Path('/Users/muellerberndt/Projects/oph-meta')
+ROOT = Path('/workspace')
 HERE = Path(__file__).resolve().parent
 CORE = ROOT/'temp/cadence-issue160-learning-20261009'
 ARENA = ROOT/'temp/cadence-arena-diagnosis-20261009'

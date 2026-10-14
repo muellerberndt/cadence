@@ -257,12 +257,13 @@ completed general cognition is not a release gate.
 ## Related physics project
 
 [Observer Patch Holography](https://github.com/FloatingPragma/observer-patch-holography)
-(OPH) uses the same principle of local repair to derive the laws of physics.
-Its observer patches repair disagreements on their overlaps until the network is
-consistent. Cadence applies the principle to neural state. An OPH overlap
-corresponds to a Cadence connection or port, and agreement means a state matches
-what its incoming connections predict; patches are never forced to the same value
-([prediction and disagreement](docs/equilibrium/ELEMENT.md#prediction-and-disagreement)).
+(OPH) investigates local consistency constraints in physics. Connections and
+ports provide a useful analogy to overlapping descriptions, but a mathematical
+correspondence must identify the variables, equations and assumptions of each
+model. In the default neural brain, qualification checks the declared state
+equations. The experimental population model qualifies stationarity of its
+energy and can retain nonzero prediction errors; neither forces all patches to
+the same value ([prediction and disagreement](docs/equilibrium/ELEMENT.md#prediction-and-disagreement)).
 Keep the two projects' claims separate. OPH results do not establish a Cadence
 capability, Cadence measurements do not test OPH physics, and Cadence code and
 documentation do not depend on OPH.

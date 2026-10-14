@@ -158,10 +158,13 @@ and runs 20 pages without optional backends: `README.md` and, under `docs/`,
 examples, run `python -m pytest -q tests/test_documentation.py` and
 `ruff check examples/continuing_brain.py tests/test_documentation.py`.
 
-Formal proofs are maintained in the canonical
-[Cadence flagship Lean library](https://github.com/FloatingPragma/oph-meta/blob/main/cadence-flagship/lean/README.md),
-with its pinned toolchain and checker. They are not duplicated in this runtime
-package; a numerical API must state which theorem assumptions it satisfies.
+Mathematical claims must state their assumptions and connect them to the
+executed numerical model. The [settling certificates](docs/certificate.md) explain
+the supported contraction checks and their limits; the
+[trace recurrence checks](tests/test_trace_bridge.py) state their reference
+equations inline. These numerical checks are not formal verification of Python.
+Any additional formal guarantee needs a self-contained, accessible proof and an
+explicit correspondence to the operation that claims it.
 
 ### Short local feedback
 

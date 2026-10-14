@@ -84,12 +84,7 @@ def test_brain_arms_change_only_what_they_declare(protocol):
     small = chamber.make_brain(
         chamber.arm_point(protocol["brain"], "small", protocol["stages"]), 0, world, need
     )
-    homeo = chamber.make_brain(
-        chamber.arm_point(protocol["brain"], "homeo", protocol["stages"]), 0, world, need
-    )
     assert gene.describe()["actor"]["eta"] == 0.03 and small.describe()["actor"]["eta"] == 0.003
-    assert gene.describe()["learning"]["homeostasis_rate"] == 0.0
-    assert homeo.describe()["learning"]["homeostasis_rate"] == 0.1
     assert np.array_equal(gene.brain.efficacy, small.brain.efficacy)
     assert gene.describe()["arousal"]["need"] == pytest.approx(need)
 

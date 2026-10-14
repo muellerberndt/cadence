@@ -23,9 +23,10 @@ history. It establishes neither learning from sparse reward alone nor a benefit
 from recursive depth, generic training efficiency, or competence on other Doom
 scenarios or Atari. The original regression-fit gates remained unmet; the
 separately frozen gameplay test evaluated fixed endpoints without changing those
-verdicts. Source and verification details are in the workspace report
-`cadence-flagship/cadence-doom-project/README.md` and its linked confirmation
-receipts, retained at research checkpoint `c149e8645`.
+verdicts. These are historical experiment results, not a benchmark reproduced
+by this guide. The original controller checkpoints and confirmation trajectories
+are not bundled with this package; the runnable examples below establish only
+the current API contract. Do not use them to claim a replication of those scores.
 
 ## Choose the graph and numerical policy
 

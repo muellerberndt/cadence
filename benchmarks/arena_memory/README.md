@@ -94,8 +94,9 @@ and are excluded from these production totals.
 historical producers, compressed receipts and all training outcome streams are retained.
 [manifest.json](manifest.json) binds archived bytes to original paths and hashes. Full
 checkpoint/world artifacts remain under the local paths named in receipts, with hashes;
-the compact archive cannot reconstruct those brains on its own. Historical scripts retain
-their actual paths rather than pretending to be a portable clean-clone reproduction.
+the compact archive cannot reconstruct those brains on its own. Historical scripts retain the experimental directory structure with normalized
+storage prefixes; they are not portable clean-clone reproduction commands. The
+[publication manifest](../PUBLICATION.md) maps original fingerprints to the published copies.
 The original frozen helper comes from confirmation commit `9ecbd0f`; its hash is bound
 in admission and receipts. The readiness gate and original failed census are unchanged.
 

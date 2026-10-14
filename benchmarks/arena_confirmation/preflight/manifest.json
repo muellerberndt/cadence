@@ -1,37 +1,52 @@
 {
   "tumbler-101.json.gz": {
-    "raw_sha256": "be97ad326bc29736bf4bae4f977282047eb05a041511ca40ff189d6923699403",
-    "raw_bytes": 79631,
-    "gzip_sha256": "3a50e2f11c5ef381f8985fa7b38abe3ba8a3947c3386f0617af5ccc37684a272",
+    "raw_sha256": "06f2ec1d3eb8238e111acca68ad2e72470631977dbcfea9ff8d50d5a95fd00b8",
+    "raw_bytes": 79519,
+    "gzip_sha256": "d2104a93bc1a6f07ad71d2eb4df92fa7405ff41b953a86f5db432cdbacdd3190",
     "expected_status": "complete",
-    "source_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-release-confirmation-smoke-final-20261008/smoke-tumbler-101/receipt.json"
+    "source_path": "/workspace/temp/cadence-release-confirmation-smoke-final-20261008/smoke-tumbler-101/receipt.json",
+    "original_raw_sha256": "be97ad326bc29736bf4bae4f977282047eb05a041511ca40ff189d6923699403",
+    "original_raw_bytes": 79631,
+    "original_gzip_sha256": "3a50e2f11c5ef381f8985fa7b38abe3ba8a3947c3386f0617af5ccc37684a272"
   },
   "mantis-201.json.gz": {
-    "raw_sha256": "13001acee56a5ee711368cb6853d9d3c4f3c1f1e2367105f37438d29a08a60a6",
-    "raw_bytes": 84132,
-    "gzip_sha256": "600a3868b6ce551c6983b8c12701cd41e39147b4a4d5d1f907e5476c14774684",
+    "raw_sha256": "9dc223d79a353423a5d1f3c1cb6eaac53991cbac8d836a809eb2568ea35b5253",
+    "raw_bytes": 84020,
+    "gzip_sha256": "d7c7d62cad02adc3e2b523142fa2204e2f703f6a165d20e17632ba1cbf4c6dde",
     "expected_status": "complete",
-    "source_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-release-confirmation-smoke-final-20261008/smoke-mantis-201/receipt.json"
+    "source_path": "/workspace/temp/cadence-release-confirmation-smoke-final-20261008/smoke-mantis-201/receipt.json",
+    "original_raw_sha256": "13001acee56a5ee711368cb6853d9d3c4f3c1f1e2367105f37438d29a08a60a6",
+    "original_raw_bytes": 84132,
+    "original_gzip_sha256": "600a3868b6ce551c6983b8c12701cd41e39147b4a4d5d1f907e5476c14774684"
   },
   "hexapod-301.json.gz": {
-    "raw_sha256": "e4e4690573ecec3943a96a9e24e3ed3808f619e0d25fc8915d6287841cf953ca",
-    "raw_bytes": 89477,
-    "gzip_sha256": "bf6559ba9719e5b1d5571ee4771b001a2d8128d717e301124fef61edb210171a",
+    "raw_sha256": "c478d11adc2973b254c7c3db4a7e7cf67ab4701866760c4efbb5255bff6a29e6",
+    "raw_bytes": 89365,
+    "gzip_sha256": "7d172c72ebe90b64de9a271818422c52e686a83d80ea23ffe8ccbf3e9c981e25",
     "expected_status": "complete",
-    "source_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-release-confirmation-smoke-final-20261008/smoke-hexapod-301/receipt.json"
+    "source_path": "/workspace/temp/cadence-release-confirmation-smoke-final-20261008/smoke-hexapod-301/receipt.json",
+    "original_raw_sha256": "e4e4690573ecec3943a96a9e24e3ed3808f619e0d25fc8915d6287841cf953ca",
+    "original_raw_bytes": 89477,
+    "original_gzip_sha256": "bf6559ba9719e5b1d5571ee4771b001a2d8128d717e301124fef61edb210171a"
   },
   "refusal.json.gz": {
-    "raw_sha256": "e50c62ec4041aa721d482086317059d068b6100833579166b6212c054fe03ed8",
-    "raw_bytes": 19916,
-    "gzip_sha256": "5ed381c6e27e4e7ef528add2e6aea62b7901092bf3ffd81c5f5636cd2f205b24",
+    "raw_sha256": "819653cf89545033c6567d4f82aa25eb23cc26d7a85171891f5333a8cbd0b86f",
+    "raw_bytes": 19804,
+    "gzip_sha256": "4b8b412d2265fe7a1da39fc18925784448362346f4da76b3d616218e899663d5",
     "expected_status": "failed",
-    "source_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-release-confirmation-refusal-smoke-20261008/smoke-tumbler-101/receipt.json"
+    "source_path": "/workspace/temp/cadence-release-confirmation-refusal-smoke-20261008/smoke-tumbler-101/receipt.json",
+    "original_raw_sha256": "e50c62ec4041aa721d482086317059d068b6100833579166b6212c054fe03ed8",
+    "original_raw_bytes": 19916,
+    "original_gzip_sha256": "5ed381c6e27e4e7ef528add2e6aea62b7901092bf3ffd81c5f5636cd2f205b24"
   },
   "wrong-source.json.gz": {
-    "raw_sha256": "7b93fe610a3cb30dcdf8d89aba3e84d6a542d812f28eb96617036a317f2dc172",
-    "raw_bytes": 10886,
-    "gzip_sha256": "a1222c55a2ba6f0625d980e944f2d870963ac5c0edd68ef4b5bdb1e16fafaab6",
+    "raw_sha256": "9a2c231501df76d399307dab2a0f466a7662b290e7c5af7208656e1724f4b112",
+    "raw_bytes": 10774,
+    "gzip_sha256": "30bc5ae03a6c9cb66dd229000e79a12308834b8d533f94175271de5d9e863ef8",
     "expected_status": "failed",
-    "source_path": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-release-confirmation-admission-smoke-20261008/smoke-tumbler-101/receipt.json"
+    "source_path": "/workspace/temp/cadence-release-confirmation-admission-smoke-20261008/smoke-tumbler-101/receipt.json",
+    "original_raw_sha256": "7b93fe610a3cb30dcdf8d89aba3e84d6a542d812f28eb96617036a317f2dc172",
+    "original_raw_bytes": 10886,
+    "original_gzip_sha256": "a1222c55a2ba6f0625d980e944f2d870963ac5c0edd68ef4b5bdb1e16fafaab6"
   }
 }

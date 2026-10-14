@@ -1,5 +1,109 @@
 # Changelog
 
+## 0.83.0 — 2026-10-13
+
+- An episodic memory for the composed brain, opt-in: `Brain.compose(..., memory_choice=True)`
+  remembers what happened in a situation at once and lets that vote in the next choice there,
+  and learns chains of actions from rewards without the world marking the end of an attempt;
+  the [episodic memory guide](docs/episodic.md) explains it. Each record is kept twice, keyed
+  by the observation (place) and by the temporal context, the observation with a fading trace
+  of what the stream saw and did before it (`memory_context` 0.5); the mean of the two reads
+  is added to the motor readout before the softmax, greedy or sampled. A record is written
+  when an outcome is known (a reward or a punishment, the end of an attempt, a surprise that
+  woke a calm `live` brain, or an outcome the caller marks with a positive `salience`), per
+  stream; a zero outcome in the middle of an attempt leaves it. A write corrects the
+  stream's record halfway at once (`memory_rate` 0.5), fading by `memory_decay` per later
+  write, and consolidates into the record every stream shares at `consolidation`. A
+  caregiver's demonstration is recorded at `memory_demonstrations` (1.0). A reward is replayed
+  backwards along the stream's recent path, one decision per situation, back to the last
+  known outcome, discounted by the actor's `gamma` (`memory_replay` 8): a reward that ends an
+  attempt whole, into both kinds of record; a reward in a continuing life in proportion to
+  its surprise, into the context records, and into the place records of the decisions that
+  were explorations rather than the brain's best guess. Keys are separated
+  (`memory_expansion` 1,024, `memory_winners` 24). `ActorCritic.act` and `probabilities`
+  take a `bias` added to the readout before the softmax; eligibility still scores the
+  readout's own policy, so reward consolidates what the memory chose.
+  On fresh founders and seeds against the composition without it: a four-step crafting chain
+  corrected by a caregiver 38.1% -> 98.7% success, and 9.0% -> 97.8% after 80 episodes alone
+  through `live`; the same chain from reward alone 9.1% -> 73.2%; a second crafting chain
+  2.8% -> 99.0% after the caregiver leaves, 15.0% -> 75.6% from reward alone; a four-step chain
+  in one continuing life paid only at its completion, without `done`, 0 -> 108 greedy
+  completions per thousand moments; reversals in a continuing life (the odour nursery) pass
+  every gate in 20 of 20 lives; delayed response 6 of 6; two songs cued once 0.52 -> 0.65 of
+  their notes after ten lessons; taught recall of a vanished cue 0.70 -> 0.75 over its four
+  hardest conditions, unevenly. A continuing bandit whose history does not matter falls from
+  0.86 to 0.75, and it is not the default. `Brain.compose` without `memory_choice` builds the
+  0.82.0 composition unchanged.
+  Compatibility: a brain with the episodic memory saves checkpoint format
+  `cadence-generic/6`, which earlier releases refuse; every other checkpoint keeps its format.
+- The sequential-task guide adds the measured continuation after teaching: a brain left alone
+  through `live` keeps a taught chain where `step` erodes it; lowering the step stays the remedy
+  where surprises are mostly punishments. No runtime change.
+
+## 0.82.0 — 2026-10-12
+
+- The composed brain's context starts quiet and is learned. `Brain.compose` gains the
+  construction setting `working_memory_scale`, the initial scale of the plastic projection
+  through which the prefrontal region feeds the carried interpretation back to the
+  association cortex: founder 1.2, where earlier releases fixed 12. The trace keeps
+  amplitude 3.0, so the prefrontal region holds the copy as clearly as before, and its
+  retention default (`working_memory_decay`, also the constructor's) is now 0: the trace
+  carries exactly the last interpretation, and older moments reach the present through the
+  interpretations they shaped. A newborn reads its context about as strongly as amplitude 0.3 at the
+  old scale did, the operating point of the chain, competing, key-door, recall and odour
+  chambers, while every update of that projection scales with the ten times clearer copy, so
+  learning raises the past's influence where it predicts the outcome. With the earlier
+  composition an untrained brain completed a fully observed four-step chain less often than
+  uniform random, and on a continuing contextual bandit whose history does not matter the
+  hit rate stayed at chance; the quiet amplitude alone lost the delayed response learned
+  from reward. On development seeds the composed brain now reaches a mean hit rate of 0.60
+  on that bandit (seeds 0 to 5, two above 0.9; the earlier composition 0.25, none) and still
+  learns the delayed response of `tests/test_generic.py` from reward in 6 of 6 seeds (8 to
+  13; amplitude 0.3 at scale 12 learned 3). `Brain.build` keeps its
+  `memory_scale` of 12. The new [context guide](docs/context.md) explains what a brain
+  carries, how to wire it for retention and which settings to change.
+  Compatibility: a composed checkpoint records `working_memory_scale` in its composition;
+  one saved before 0.82.0 loads as 12 with its own synapses and settings, and releases
+  before 0.82.0 refuse 0.82.0 composed checkpoints as invalid composition provenance.
+  Frozen chamber protocols build the composition they were frozen under (scale 12, and
+  retention 0.2 where the key-door and odour protocols leave it unnamed); the night-replay
+  chamber's `defaults` setting follows the current composition. Benchmark READMEs that
+  name the composed default describe the composition of their own release.
+
+- Remove the readout's intrinsic plasticity of 0.81.0 (`LearnerConfig.homeostasis_rate`
+  and `homeostasis_target`, `learning_homeostasis_*` in `compose` and `retune`, and
+  `homeostasis_step` in learning reports). A set point per action neuron constrains how
+  often each action is chosen; under reward it flattened a six-action policy, and the
+  prerequisite-chain nursery drops its homeostasis arm. Checkpoints written with the
+  founder rate 0 load unchanged; one written with a positive rate (`cadence-checkpoint/3`)
+  is refused with a message naming 0.81 as the release that reads it.
+
+- Clarify continuing-life state, model-specific agreement and residuals, and the
+  distinction between solver updates, environment time and learning events.
+  Make current architectural guidance self-contained. No runtime or default change.
+
+- Document existing results on self-stabilization, asynchronous contraction,
+  moving equilibria and sheaf diffusion, with explicit applicability limits and
+  consumers in context, retention and measured-work research. Clarify that the
+  sufficient contraction certificate is stronger than state qualification.
+  No runtime, default or behavioral claim changes.
+
+- Extend the settling guide with nonlinear sheaf coordination and bounded-delay
+  diffusion results, their fixed-map assumptions, and source checks needed before
+  reusing a scheduler or quantitative bound. No runtime change.
+
+- Normalize machine-specific storage prefixes in benchmark publication copies,
+  preserving original fingerprints, measurements and historical outcomes in an
+  explicit publication manifest; verify copied bytes and receipt envelope digests.
+
+- Make mathematical and historical-experiment guidance self-contained; distinguish
+  equation qualification from behavioral and physics claims. Trace reference
+  equations are stated directly alongside their checks. Correct sequential-task
+  guidance to reflect the unsuccessful backward-lesson comparison and the bounded
+  scope of recall and critic-rate results. No runtime change.
+
+- The source distribution leaves out receipts no test reads (the competing-skill and chain receipts, the recall receipts except `finite-3`, and the rhythm `native-history-*` receipts); they stay in the repository and in the GitHub release assets: 14.7 MB against 54.8 MB for 0.81.0, of which 35 MB were the competing-skill and recall receipts, against PyPI's 100 MB file limit. The README's CI badge reads the `main` branch only, so a failed run on another branch no longer shows as failing. No runtime change.
+
 ## 0.81.0 — 2026-10-11
 
 - Add `Brain.wait` for an outcome that arrives after the stream has sensed more: an

@@ -31,10 +31,11 @@ under `end` pay (`need_share`).
 
 The brain is the arena founder of the competing ring (two modules of 48 and 24, sensory
 scale 4, temperature 0.3, actor step 0.03 with a bias step of 0.003, lam 0.6, gamma 0.95,
-critic rate 5, trace 0.3 / 0.1, consolidation 0.05, youth 300). Four arms from birth:
+critic rate 5, trace 0.3 / 0.1, consolidation 0.05, youth 300). Three arms from birth:
 `gene`, the founder; `small`, a tenth of the actor step; `taper`, the gene step for the
-first half of life and a tenth after (`retune`); `homeo`, the readout's intrinsic plasticity
-(`learning_homeostasis_rate` 0.1 toward 0.3). Four controls: `random`, uniform over every
+first half of life and a tenth after (`retune`). The development receipt of 2026-10-11 also
+holds a `homeo` arm, the readout's intrinsic plasticity of 0.81.0, which lowered every reading
+under reward; 0.82.0 removed that gene. Four controls: `random`, uniform over every
 action; `stationary`, uniform over the chain's actions, the memoryless ceiling of the hidden
 mode; `frozen`, the newborn founder acting greedily; `tabular`, Q-learning over the stage it
 observes (one state in the hidden mode; alpha 0.1, epsilon 0.1, gamma 0.95), the competent
@@ -62,8 +63,8 @@ PYTHONPATH=src python benchmarks/chain/prerequisite_chain.py --verify benchmarks
 
 ## What this does and does not establish
 
-The chamber measures one declared founder brain in one table world. It does not have a
-body whose commands change what it next senses, a competing need, or a reward that stops
+The chamber measures one declared founder brain in one table world. Its actions change the chain state and, in observed mode, the next sensory
+stage bit. It has no physical body, competing need, or reward that stops
 paying once the skill succeeds. A completion rate at the tabular learner's level with the
 state observed establishes credit across the chain's steps at that length; the same with
 the state hidden establishes a memory horizon the trace does not have on fresh founders
@@ -121,8 +122,9 @@ and learns less, and the probe from stage zero finds a weaker chain than under p
 end. Fourth, with the state hidden no arm beats the stationary ceiling (62) or uniform random
 (42): the sampled policies complete 7 to 33 and the greedy ones 0, the tabular learner with
 one state collapses onto one action, and the frozen newborn's greedy copy answers with one
-action in every situation (one-action share 1.00). The chain's state must be in the
-observation. Fifth, the readout's intrinsic plasticity at its development point (rate 0.1
+action in every situation (one-action share 1.00). For this tested operating point and exposure, supplying observable inventory
+state is the supported recipe; the result does not prove hidden-state learning
+impossible under other experience or configurations. Fifth, the readout's intrinsic plasticity at its development point (rate 0.1
 toward 0.3) lowers every reading under reward learning here (stage accuracy 0.17 to 0.21):
 a six-action readout whose right answer stands near 1 and whose others stand near 0 has a
 mean activation near 0.17, and a pull toward 0.3 flattens it. The gene as declared is a

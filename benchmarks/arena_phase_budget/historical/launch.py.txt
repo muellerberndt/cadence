@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 root=Path(__file__).resolve().parent
-python='/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena/.venv/bin/python'
+python='/workspace/cadence-robot-arena/.venv/bin/python'
 env={**os.environ,'OPENBLAS_NUM_THREADS':'1','OMP_NUM_THREADS':'1','MKL_NUM_THREADS':'1'}
 protocol=json.loads((root/'protocol.json').read_text())
 admission=json.loads((root/'sources-control.json').read_text())

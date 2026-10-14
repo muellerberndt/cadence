@@ -1,7 +1,6 @@
 # Cadence, in one page
 
-The full manifesto accompanies the flagship paper; these are its design points, the
-ones every change to this library answers to.
+These are the design points every change to this library answers to.
 
 Every change must meet these bars. [Contributing](CONTRIBUTING.md) gives the
 required review and evidence checks; keep these two documents in sync whenever
@@ -19,6 +18,13 @@ the learned world model in the current situation. Learning is the same local rep
 driven by witnessed mismatch with reality and failed objectives. Every part of the brain
 answers with a settled state of that one rule. There is no separate answer head.
 
+Here agreement means satisfying the declared coupled relations, not identical
+neural states or guaranteed correctness about the world. A fixed-input settle
+holds its parameters and memory readback fixed; the continuing brain encounters
+new observations, carries context and learns across such solves. Neural equation
+residuals and the experimental population model's stationarity residual have
+different contracts; stationarity can retain nonzero prediction error.
+
 **Simple first; evolved brains are the reference.** Start from the simplest existing
 System 1 and check state, memory, experience and available information before adding a
 mechanism. Animal and human brains are the functional reference, with biology suggesting
@@ -28,7 +34,9 @@ unfamiliar environment are possible limits to measure, not a promise of a perfec
 **One continuing life.** A brain is composed once and lives on: short-term memory in the
 working trace, long-term memory in the associative stores and the plastic weights, one
 reward channel that carries relief and suffering, temporal credit through eligibility over
-its own recent actions. Nothing is reset between episodes. Routine is equilibrium: a calm
+its own recent actions. The acquired brain persists across episodes; explicit terminal
+handling can reset transient state while retaining learned parameters and durable memory.
+Routine is equilibrium: a calm
 brain answers from one greedy settle and learns nothing; surprise, pain and want raise its
 arousal, and an aroused brain explores, learns from every outcome and writes memory. The
 share of routine moments and the sweeps per moment are measured, not assumed.

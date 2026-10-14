@@ -436,7 +436,8 @@ of its RMS while association↔motor drifts 0.83 to 0.98; founder 1 has 130 of 7
 refused by qualified teaching, the others none.
 
 **The library gene.** The same rule as two `LearnerConfig` genes, `homeostasis_rate` and
-`homeostasis_target` (founder rate 0), applied at every accepted lesson from the lesson's
+`homeostasis_target` (founder rate 0, Cadence 0.81.0 only: 0.82.0 removed them, so recall/4
+and recall/5 reproduce with `cadence-net==0.81.0`), applied at every accepted lesson from the lesson's
 free state, with raw steps: at rate 0.1 all four founders end at clean-0 recall of 0.95 to
 1.00 (1 0.95, 304 1.00, 305 0.99, 306 0.99; clean-1 and clean-2 0.53 to 1.00), replacement
 and the latest of two cues are read above chance in three (304 0.82 and 0.50, 305 0.61 and

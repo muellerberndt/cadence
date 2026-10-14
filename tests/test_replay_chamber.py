@@ -62,7 +62,7 @@ def test_settings_change_only_what_they_name():
     quiet = chamber.make_brain(chamber.SETTINGS["trace-1-0.8+actor-0.1"], 0)
     assert quiet.working_memory is not None and base.working_memory is not None
     assert (quiet.working_memory.amplitude, quiet.working_memory.decay) == (1.0, 0.8)
-    assert (base.working_memory.amplitude, base.working_memory.decay) == (3.0, 0.2)
+    assert (base.working_memory.amplitude, base.working_memory.decay) == (3.0, 0.0)
     assert quiet.basal_ganglia.config.eta == 0.1 and quiet.basal_ganglia.config.eta_bias == 0.01
     assert base.basal_ganglia.config == quiet.basal_ganglia.config.__class__(
         **{**quiet.basal_ganglia.config.to_dict(), "eta": 1.0, "eta_bias": 0.05}

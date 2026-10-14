@@ -1,7 +1,7 @@
 {
   "format": "cadence-robot-arena/issue158-development/2",
   "scope": "Exploratory paired continuation; no claim of acquired fighting skill or fresh confirmation.",
-  "cadence_source": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-issue159-fix-20261008",
+  "cadence_source": "/workspace/temp/cadence-issue159-fix-20261008",
   "cadence_commit": "ca25076bbe29343ee186f5d8c1ce72daf544d3ae",
   "arousal_sha256": "9a7bf70fe38965bf04796d483814502440c087d75168a45e372e689dfb5bce76",
   "arena_commit": "14eb800543923c9e1f64f28319490ea4435decb6",

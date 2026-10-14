@@ -6,7 +6,7 @@ number can be wrong.
 
 ## Install and run
 
-**`pip install cadence-net==0.81.0` and then `import cadence`.** The distribution is `cadence-net`;
+**`pip install cadence-net==0.83.0` and then `import cadence`.** The distribution is `cadence-net`;
 the import is `cadence`. Python 3.11 or newer and NumPy are the only requirements.
 
 **Do I need a GPU?** No. Everything runs on NumPy float64. `[fast]` adds Numba and SciPy
@@ -67,9 +67,10 @@ warns about such configurations, including through named overrides. Use
 `learning_qualified=True, learning_nudged_steps=1024` on a composed brain
 with its default free budget; preserve other settings with `retune`.
 
-**Is the answer an equilibrium?** `cd.certificate(brain)` says whether settling is a
-contraction and bounds the remaining distance; when the row mass is above the limit,
-`brain.equilibrate` with a tolerance and `brain.residual` are the checks
+**Is the neural answer an equilibrium?** `brain.residual` checks the declared equations
+at that state; `brain.equilibrate` uses this check with a tolerance and work budget.
+`cd.certificate(brain)` supplies a stronger sufficient contraction bound when its
+hypotheses hold: uniqueness, convergence and a bound on remaining distance
 ([certificate](certificate.md)).
 
 **Two heads on one brain.** An update replaces `learner.brain`; hand the new brain to the

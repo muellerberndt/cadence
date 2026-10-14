@@ -12,7 +12,7 @@ from arena.nursery import run_nursery
 from arena.probe import fingerprint
 
 core=Path(cadence.__file__).resolve().parents[2]
-arena=Path('/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena')
+arena=Path('/workspace/cadence-robot-arena')
 root=arena/'runs/cadence-issues-159-160-learning-20261008'
 root.mkdir(parents=True,exist_ok=True)
 arm=sys.argv[1]

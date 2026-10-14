@@ -1,7 +1,7 @@
 {
   "format": "cadence-robot-arena/issue158-development/1",
   "scope": "Exploratory paired continuation; no claim of acquired fighting skill or fresh confirmation.",
-  "cadence_source": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-robot-blockers-20261008",
+  "cadence_source": "/workspace/temp/cadence-robot-blockers-20261008",
   "cadence_commit": "2566ccf2c23b76505a82b941111535ffd50f8ae4",
   "arousal_sha256": "3538fd0732be622b3c0c36d399eb365736bd44705d50b05da678364b472dd47f",
   "arena_commit": "14eb800543923c9e1f64f28319490ea4435decb6",

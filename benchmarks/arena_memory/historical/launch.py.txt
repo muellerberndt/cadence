@@ -8,7 +8,7 @@ from pathlib import Path
 import subprocess
 import sys
 root=Path(__file__).resolve().parent
-python='/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena/.venv/bin/python'
+python='/workspace/cadence-robot-arena/.venv/bin/python'
 env={**os.environ,'OPENBLAS_NUM_THREADS':'1','OMP_NUM_THREADS':'1','MKL_NUM_THREADS':'1'}
 jobs=[(case,arm) for case in ['tumbler-103','mantis-202'] for arm in ['control','memory']]
 manifest={'started_utc':datetime.now(timezone.utc).isoformat(),'jobs':jobs,'max_workers':2,'hashes':{name:hashlib.sha256((root/name).read_bytes()).hexdigest() for name in ['compare.py','protocol.json','sources.json','launch.py']}}

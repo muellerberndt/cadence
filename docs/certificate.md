@@ -1,7 +1,10 @@
 # The settling certificate
 
-A settled state is only an answer if the settling was going somewhere. The certificate says
-when it was, and how far the answer can be from the equilibrium after any number of steps.
+The certificate gives a sufficient condition for convergence and bounds distance
+to the equilibrium after a finite number of steps. Full-equation qualification
+can succeed without this stronger guarantee. For recovery, asynchronous updates,
+changing inputs and linear compatibility models, see
+[existing settling results and their assumptions](settling-literature.md).
 
 ## The rule
 

@@ -24,10 +24,9 @@
  },
  "stages": {
   "small": {"actor_eta": 0.003, "actor_eta_bias": 0.0003},
-  "taper": {"actor_eta": 0.003, "actor_eta_bias": 0.0003},
-  "homeo": {"learning_homeostasis_rate": 0.1, "learning_homeostasis_target": 0.3}
+  "taper": {"actor_eta": 0.003, "actor_eta_bias": 0.0003}
  },
- "stages_note": "gene: the founder as composed; small: a tenth of the actor step from birth; taper: the gene step for the first half of life, then retune to a tenth; homeo: the readout's intrinsic plasticity from birth",
+ "stages_note": "gene: the founder as composed; small: a tenth of the actor step from birth; taper: the gene step for the first half of life, then retune to a tenth",
  "tabular": {"alpha": 0.1, "epsilon": 0.1, "gamma": 0.95},
  "controls_note": "random: uniform over every action; stationary: uniform over the chain's actions, the memoryless ceiling of the hidden mode; frozen: the newborn founder, greedy; tabular: Q-learning over the stage it observes (one state in the hidden mode)",
  "seeds": {"development": [0, 1, 2, 3, 4, 5], "confirmation": []},

@@ -23,6 +23,7 @@ provides independent stream records and an immediate residual-write rule.
 | `Efference` copy (opt-in gene) | The fading one-hot of the commands the stream issued | Each admitted live action | Nothing; the copy is cleared |
 | Graph plasticity | Learned synaptic parameters and biases | Supervised contrasts and reward-modulated eligibility | Learned parameters |
 | `SynapticMemory` | Cue-to-outcome associations, with fast per-stream `F` and shared persistent `C` | Observed chosen-action outcomes | Both `F` and `C` |
+| Episodic memory (`memory_choice=True`) | The same store keyed by the observation, and a second keyed by the temporal context; their mean votes in the choice | Known outcomes, demonstrations, replay of the path to a reward | The records; the temporal context and replay path are cleared |
 
 These are functional software mechanisms. Their capacities follow their state
 dimensions, coding and update rules; a human working-memory estimate does not set
@@ -48,24 +49,30 @@ answer = remembering.act(np.array([[1.0, 0.0, 0.0, 0.0]]), greedy=True)
 assert answer.shape == (1,)
 ```
 
-`teacher=` teaches graph parameters without inserting its label into the store.
-The normal reward loop stores the actual chosen action's observed reward, not an
-invented reward for a teacher label. Direct `observe` calls are an explicit
-key/value acquisition rule; they test that store rather than graph plasticity.
-An associative read is a linear drive into the graph; the resulting action must
-still qualify the complete neural equations.
+With `memory_choice=True` the composed brain's hippocampus is an
+[episodic memory](episodic.md): keyed by the observation and, in a second store, by the
+temporal context, it records known outcomes and demonstrated actions
+(`memory_demonstrations`) and its records vote in the choice, added to the motor readout
+before the softmax. By default it is the earlier store: `teacher=` teaches
+graph parameters without inserting its label, the reward loop stores the actual chosen
+action's observed reward, and the read is a linear drive into the graph whose resulting
+action must still qualify the complete neural equations. Direct `observe` calls are an
+explicit key/value acquisition rule; they test that store rather than graph plasticity.
 
 Measure acquisition first, then expose the same brain to competing experience
 and query old and new responses without teachers. Rehearsal can protect recall
 and must be counted as additional teaching or record writes. Finite storage and
 successful bounded recall do not establish lifelong retention.
 
-Working-trace amplitude and decay are task-dependent settings. A stronger trace
-retains earlier context and can also interfere with acquiring a new relation,
-and neither a smaller amplitude nor a different decay is a general fix. Where
-the previous moment carries nothing the decision needs, the trace is
-interference the actor has to learn away: on a continuing contextual bandit the
-composed default amplitude held the hit rate at chance over several seeds while
+Working-trace amplitude, retention and scale are task-dependent settings. Since
+0.82.0 the composed brain carries exactly its last interpretation (retention 0),
+holds it clearly in the prefrontal region (amplitude 3.0) and reads it back through
+plastic synapses that start quiet (`working_memory_scale` 1.2, where earlier releases
+used 12); [context](context.md) explains it. A stronger trace retains earlier context
+and can also interfere with acquiring a new relation, and no single setting is a
+general fix. Where the previous moment carries nothing the decision needs, the trace
+is interference the actor has to learn away: on a continuing contextual bandit the
+composition of earlier releases held the hit rate at chance over several seeds while
 amplitude 0.0 reached 1.0, and a small amplitude with a smaller actor rate also
 reached 1.0
 ([night-replay chamber](../benchmarks/replay/README.md#the-working-trace-on-a-continuing-bandit)).

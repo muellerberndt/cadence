@@ -5,12 +5,12 @@
     "sha256": "52ed05fe7c63e9292fd1b35b613475aabdab2fa72f7a38cfe613cbcab2508a9b"
   },
   "command": [
-    "/Users/muellerberndt/Projects/oph-meta/cadence/.venv/bin/python",
+    "/workspace/cadence/.venv/bin/python",
     "benchmarks/arena_policy/frozen_newborn.py",
     "--cadence",
-    "/Users/muellerberndt/Projects/oph-meta/temp/cadence-issue159-fix-20261008",
+    "/workspace/temp/cadence-issue159-fix-20261008",
     "--arena",
-    "/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena",
+    "/workspace/cadence-robot-arena",
     "--output",
     "benchmarks/arena_policy/frozen-newborn-2026-10-08.json"
   ],

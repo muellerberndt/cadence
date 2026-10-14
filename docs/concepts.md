@@ -14,7 +14,7 @@ bootstrap useful relationships and memory, use them, repair witnessed failures,
 then continue the same life. The equations and isolated controls below describe
 mechanisms within that design.
 
-In OPH terms this is an observer-like, self-reading design: local state, declared
+This is a self-reading computational design: local state, declared
 synaptic boundaries, readback, records and feedback, with protocols and source-bound
 receipts for evidence. The biological names describe computational roles.
 
@@ -42,9 +42,10 @@ records, readings on other cells keep their reads, and records learn from one st
 without replay. Reading and writing need no settling. See [records](memory.md#records).
 
 **Local repair.** Each neuron reads its own potential, its synaptic input and its drive,
-and moves toward their sum. `brain.settle_batch(drive,
+and moves toward the input plus drive and bias, with adaptation when enabled.
+`brain.settle_batch(drive,
 steps=..., tolerance=...)` runs that update for every neuron of a batch; `brain.settle(stimulus)`
-does the same for one stimulus. The synapse follows the same rule. `Learner.step(drive, labels)`
+does the same for one stimulus. `Learner.step(drive, labels)`
 runs a free phase and nudged phases on the same brain, then changes each synapse from the
 activities of its own two neurons in those phases. Output nudges can read a target
 and an output group; reward learning broadcasts a prediction-error signal. These
@@ -103,6 +104,11 @@ v[i] += dt * (synaptic_input[i] + drive[i] + bias[i] - strength * a[i] - v[i])
 s[i]  = activation(v[i])
 ```
 
+Here `dt` is the numerical relaxation fraction, and `steps` counts updates of
+this map. Neither quantity supplies elapsed environment seconds or biological
+neural time without an explicit model and calibration. Environment events,
+settling work and learning updates have [separate clocks](equilibrium-world-models.md#three-clocks).
+
 The adaptation term is absent unless enabled. The effective weight of synapse `e`
 is `gain * count[e] * efficacy[e] * exp(log_gain[pre[e]])`, where `count` is the
 number of synaptic contacts. The synaptic `efficacy` starts from the connectome's
@@ -118,7 +124,10 @@ bias and adaptation still move a stimulated neuron.
 
 Named functional regions can share one connectome. Neuron-local updates cross the
 synapses between regions and seek a common fixed point of the whole brain under the
-current drive. Settle the brain once for that joint state; independent solves
+current drive. Agreement means satisfying these coupled equations, not making
+all neurons equal. The drive includes the memory readback held for this solve;
+the full life can change that context and its parameters between solves.
+Settle the brain once for that joint state; independent solves
 followed by a merged visualization do not couple the regions. See [composition](experience.md#connect-functions-through-actual-ports).
 
 Settling runs the update from rest or from a supplied state. A returned
@@ -129,8 +138,10 @@ Settling runs the update from rest or from a supplied state. A returned
 error. Saturation can produce small movement with a large residual.
 
 An equilibrium need not be unique or stable. Carrying a state between inputs can
-save work or select a different attractor. Test both cold and warm starts, and
-reset state at independent episode boundaries. A unique attracting equilibrium
+save work or select a different attractor. Test both cold and warm starts as
+declared controls. Preserve context through a continuing life; reset transient
+state only under the application's explicit terminal or independent-control
+contract. A unique attracting equilibrium
 under a fixed drive erases its initial condition; keeping history then requires
 an explicit record, a trace, or a drive that carries history.
 
@@ -160,7 +171,7 @@ equilibrium learning; its gradient interpretation needs additional assumptions.
 | State | What changes it | How to manage it |
 |---|---|---|
 | Potential, activation, adaptation | Settling steps | Pass `state=` to continue; omit it to start from rest |
-| A trace or fast-memory matrix | Explicit activity or observation updates | Reset at episode boundaries and preserve batch row identities |
+| A trace or fast-memory matrix | Explicit activity or observation updates | Preserve within a continuing stream; declare any terminal/control resets and preserve batch row identities |
 | Learned weights, biases, records and consolidated associations | Local learner updates, reward/eligibility, `Records.write` or `SynapticMemory.observe` | Save each owning component; evaluate on a separate snapshot |
 
 A [trace](api.md#streams-cadencestream) retains fading activity.

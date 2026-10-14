@@ -1,43 +1,27 @@
-"""The trace bridge: ``Trace.update`` against the recurrence of ``CadenceFlagship/Trace.lean``.
+"""Check the working trace against its independently written recurrence.
 
-Correspondence statement
-------------------------
-The Lean module ``CadenceFlagship/Trace.lean`` in the canonical library (``cadence-flagship/lean``
-of the oph-meta repository) states the working trace over the real numbers. At ``focus = 0`` one
-update of one coordinate is ``trace' = decay * trace + (1 - decay) * h``, ``last' = h`` and
-``cold' = false``, with ``h`` the source activation read before any write. Under the named
-hypotheses it proves: the one-step identity and its equality with
-``CadenceMission.ReadableTrace.repair`` (``step_eq_repair``, ``update_trace``); the closed form
-after ``k`` events under a zero source (``zero_source_closed_form``, ``decay ^ k * trace``), a
-constant source (``constant_source_closed_form``, ``h + decay ^ k * (trace - h)``, with
-``constant_source_tendsto`` for ``0 <= decay < 1``) and an arbitrary source
-(``evolve_closed_form``); the bound ``|trace'| <= max(|trace|, |h|)`` for ``0 <= decay <= 1``
-(``abs_step_le_max``) and its consequence that a source within ``B`` keeps the trace within ``B``
-(``abs_evolve_le``); row independence (``updateRows_row_independent``); the reset semantics
-(``reset_selected``, ``reset_unselected``, ``reset_all``); the keep semantics (``keep_apply``,
-``keep_update``); the order contract that the new ``last`` is the source read before the write
-(``update_last``, ``focusedUpdate_last``) and that a mutant writing ``last`` before reading the
-movement weight at ``focus > 0`` is pure decay on a warm row and differs from the reference
-wherever the weighted source is nonzero (``lateLast_warm_trace``, ``focusedUpdate_ne_lateLast``).
+For ``focus = 0``, one update is ``trace' = decay * trace + (1 - decay) * h``,
+``last' = h`` and ``cold' = false``, with ``h`` read before any write. Iterating
+with a zero source gives ``decay ** k * trace``; with a constant source it gives
+``h + decay ** k * (trace - h)``. Induction gives these identities and the
+arbitrary-source weighted sum. For ``0 <= decay <= 1``, the update is a convex
+combination, so its magnitude is at most ``max(abs(trace), abs(h))``; bounded
+sources therefore preserve that bound. Rows evolve independently.
 
-This module checks the pinned NumPy execution of ``Trace.update``, ``reset``, ``keep`` and
-``stimulate`` against a literal NumPy transcription of those definitions on a small real
-connectome at ``focus = 0`` and ``focus = 1``, for several batch sizes, decays and random
-inputs. The hypotheses of each statement are asserted on the data before the comparison. The
-save, reset and row boundaries are checked: reset of selected rows, dropped rows, a checkpoint
-round trip that preserves the trace arrays byte for byte, and ``stimulate`` writing amplitude
-times trace into the target columns only. A mutation harness replaces the runtime methods by
-deliberately wrong variants (wrong decay, wrong source row or columns, wrong order, aliasing,
-wrong reset, keep and stimulate) and records which checks kill each one.
+These checks compare NumPy execution of ``Trace.update``, ``reset``, ``keep``
+and ``stimulate`` with the reference below at ``focus = 0`` and ``focus = 1``,
+for several batch sizes, decays and random inputs. They check reset, row and
+checkpoint boundaries, plus stimulation of the selected columns only. Focused
+updates weight source motion before writing ``last``: reversing that order
+incorrectly makes a warm row pure decay. A mutation harness checks that wrong
+source rows, decay, update order, aliasing and reset/keep/stimulation semantics
+are rejected.
 
-What neither side establishes: nothing about settlement of the brain that reads the trace,
-about learning, recall or behavior, and nothing about the torch device path. The Lean
-statements are over the reals; the Python comparison trusts NumPy float64 arithmetic and the
-tolerances declared below (exact equality where the runtime and the transcription perform the
-same operations in the same order, a relative slack of ``1e-12`` for closed forms computed by
-another route). The focused rule at ``focus = 1`` is checked by execution against its
-transcription; its Lean statements cover the order contract and the cold row, not its full
-arithmetic. This executable bridge is tested code, not formally refined code.
+The checks concern the trace, not settlement, learning, recall or behavior of
+the brain reading it, and not the torch device path. They trust NumPy float64
+arithmetic, use exact equality for equal operation order, and allow relative
+slack ``1e-12`` for closed forms evaluated differently. This is executable
+reference checking, not formal verification of floating-point Python.
 """
 
 from __future__ import annotations
@@ -58,16 +42,16 @@ CLOSED_FORM = dict(rtol=1e-12, atol=1e-14)
 
 
 # ---------------------------------------------------------------------------
-# The reference, written from the Lean definitions
+# The independent recurrence reference
 
 
 def reference_step(decay: float, trace: np.ndarray, h: np.ndarray) -> np.ndarray:
-    """``CadenceFlagship.Trace.step``: ``decay * trace + (1 - decay) * h`` coordinatewise."""
+    """``decay * trace + (1 - decay) * h`` coordinatewise."""
     return decay * trace + (1.0 - decay) * h
 
 
 def movement_weight(focus: float, h: np.ndarray, last: np.ndarray) -> np.ndarray:
-    """``CadenceFlagship.Trace.movementWeight``: movement since ``last`` over the row mean."""
+    """movement since ``last`` over the row mean."""
     moved = np.abs(h - last)
     return (moved / (moved.mean(axis=1, keepdims=True) + EPS)) ** focus
 
@@ -92,7 +76,7 @@ def reference_update(
 
 
 def hypotheses(decay: float, *arrays: np.ndarray) -> None:
-    """The hypotheses of the Lean statements, asserted on the data they are applied to."""
+    """Assert the recurrence hypotheses on every compared input."""
     assert 0.0 <= decay < 1.0, decay
     for array in arrays:
         assert np.isfinite(array).all()

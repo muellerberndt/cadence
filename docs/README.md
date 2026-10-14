@@ -8,8 +8,8 @@ relationships and retained memories support a family of such interpretations
 across situations. Start with [the world-model guide](world-model.md), then run
 the [quickstart](quickstart.md) and [continuing example](../examples/continuing_brain.py).
 
-These guides use Cadence 0.81.0. Install it with
-`python -m pip install cadence-net==0.81.0`; contributors can install the checkout
+These guides use Cadence 0.83.0. Install it with
+`python -m pip install cadence-net==0.83.0`; contributors can install the checkout
 with `python -m pip install -e .` from the repository root.
 The [index](index.md) is the catalogue; this page gives a reading order.
 
@@ -22,7 +22,8 @@ The [index](index.md) is the catalogue; this page gives a reading order.
    records actual outcomes, correction, settling work and saved continuation.
 3. Use [composition](brain.md) and [continuous interaction](continuous.md) to
    connect your own environment. Declare what the brain observes, what its
-   actions do, and when the body reports each outcome.
+   actions do, and when the body reports each outcome. Read [context](context.md)
+   for what the brain carries between moments and how to wire it for retention.
 4. Read [contracts](contracts.md) before changing a solver or learning rule,
    and [task design](task-design.md) before claiming acquired behavior.
 
@@ -127,7 +128,7 @@ recurrence; they are not required for the lifecycle.
 | Run a continuing brain | [Quickstart](quickstart.md), [composition](brain.md), [continuous interaction](continuous.md), [experience design](experience.md), [memory](memory.md), [reward](reward.md) |
 | Understand and test local updates | [Concepts](concepts.md), [learning](learning.md), [task controls](tasks.md), [arrays and component controls](build.md) |
 | Evaluate a whole life | [Task design](task-design.md), [sequential tasks and prerequisite chains](sequential-tasks.md), [missteps](missteps.md), [scaling](scaling.md), [troubleshooting](troubleshooting.md), [creativity](creativity.md) |
-| Check numerical and evidence contracts | [Contracts](contracts.md), [certificates](certificate.md), [protocols](protocols.md), [receipts](receipts.md), [API](api.md), [backends](backends.md) |
+| Check numerical and evidence contracts | [Contracts](contracts.md), [certificates](certificate.md), [existing settling and recovery results](settling-literature.md), [protocols](protocols.md), [receipts](receipts.md), [API](api.md), [backends](backends.md) |
 | Study learned consequences and records | [Interaction](interaction.md), [temporal models](temporal.md), [planning](planning.md), [response protection](temporal-memory.md), [record patches](record-patch.md), [belief](belief.md), [steering](steering.md), [habit/imagination/learning](howto-demo.md) |
 | Build custom reciprocal graphs | [PatchNet](patchnet.md), [recursive settlement](recursive-settlement.md), [recursive training](recursive-training.md), [cortices](cortex.md), [genomes](evolution.md), [connectomes](connectomes.md), [partitioned settling](partitioned.md) |
 | Explore execution and visualization | [Population execution](population.md), [viewer pages](pages.md), [advanced state-and-error solver](equilibrium/index.md) |

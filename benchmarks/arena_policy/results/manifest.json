@@ -1,39 +1,57 @@
 {
   "combined-tumbler-seed11-4000.json.gz": {
     "raw_name": "combined-tumbler-seed11-4000.json",
-    "raw_sha256": "ba36032ee7476628625d097a2c3862fef705051b248f9173b5b11821aff0ffe1",
-    "raw_bytes": 21579,
-    "gzip_sha256": "d1b67daf9943f4b826c21dfb2090463eae647c6782149aed7b71be2b9bfd3bc8"
+    "raw_sha256": "72ae4bd0703c5e4d81340a5d1ed280b4f4420157e46667095fcfdf69c3f645a5",
+    "raw_bytes": 19591,
+    "gzip_sha256": "d3c4b2c74e997391e621f79aedfdf50e474ecee1bc71895298006566518cf46c",
+    "original_raw_sha256": "ba36032ee7476628625d097a2c3862fef705051b248f9173b5b11821aff0ffe1",
+    "original_raw_bytes": 21579,
+    "original_gzip_sha256": "d1b67daf9943f4b826c21dfb2090463eae647c6782149aed7b71be2b9bfd3bc8"
   },
   "combined-tumbler-seed11-bearing-ablation.json.gz": {
     "raw_name": "combined-tumbler-seed11-bearing-ablation.json",
-    "raw_sha256": "2151065df8f5a782fb41cb14e975f531c3e75698e874bb02230f9f9b92b9c7b2",
-    "raw_bytes": 14162,
-    "gzip_sha256": "76b95da1f45c2087937544ea9b9f4b8a6092f5c71bc718701980d3c5e3dc7f59"
+    "raw_sha256": "1ba1b22859d8ab1c78c79d0b991caa40295e6c3632fbdcacc0664305e6b105f1",
+    "raw_bytes": 12622,
+    "gzip_sha256": "52cb0369b817f8947d6b248ca0921c23e77069d9ad0c63dd5525a008b0b8ed70",
+    "original_raw_sha256": "2151065df8f5a782fb41cb14e975f531c3e75698e874bb02230f9f9b92b9c7b2",
+    "original_raw_bytes": 14162,
+    "original_gzip_sha256": "76b95da1f45c2087937544ea9b9f4b8a6092f5c71bc718701980d3c5e3dc7f59"
   },
   "combined-tumbler-seed12-4000.json.gz": {
     "raw_name": "combined-tumbler-seed12-4000.json",
-    "raw_sha256": "b01d5a4c0a4a9b1e836f5e2723db8c6d061954ef64f74fae8e284f092e4bde4e",
-    "raw_bytes": 21084,
-    "gzip_sha256": "b190ddddad64a7415fdeecf3b6e0421dcf28b9c9cef29ba156578701923c4925"
+    "raw_sha256": "7fc3cac54611e0eff872affdaa30b7d3ddcc87c79a4396cd33aaabda67257779",
+    "raw_bytes": 19096,
+    "gzip_sha256": "deaff997d976302a35c8a4b9a75254a4a50f2834612dfe7e041ed00c73aa3a12",
+    "original_raw_sha256": "b01d5a4c0a4a9b1e836f5e2723db8c6d061954ef64f74fae8e284f092e4bde4e",
+    "original_raw_bytes": 21084,
+    "original_gzip_sha256": "b190ddddad64a7415fdeecf3b6e0421dcf28b9c9cef29ba156578701923c4925"
   },
   "combined-tumbler-seed12-bearing-ablation.json.gz": {
     "raw_name": "combined-tumbler-seed12-bearing-ablation.json",
-    "raw_sha256": "a898e5ff4582f923ae0eb16f4f3cc790324c4f75a078ff791a78dfdd1b5b425d",
-    "raw_bytes": 13682,
-    "gzip_sha256": "c5aaf198081bdb4be14405da8c14a63d125a27a1c2d6e9cba5e3fe88799bc049"
+    "raw_sha256": "5390bb153182eed3d1f062c076825905b2e5deeee3cf6712a6c19a2e2ccd9591",
+    "raw_bytes": 12142,
+    "gzip_sha256": "443139bae47091c265b5bc3a36b39117499676e64d6940a89e03c9a9f63f4d7f",
+    "original_raw_sha256": "a898e5ff4582f923ae0eb16f4f3cc790324c4f75a078ff791a78dfdd1b5b425d",
+    "original_raw_bytes": 13682,
+    "original_gzip_sha256": "c5aaf198081bdb4be14405da8c14a63d125a27a1c2d6e9cba5e3fe88799bc049"
   },
   "combined-tumbler-seed13-4000.json.gz": {
     "raw_name": "combined-tumbler-seed13-4000.json",
-    "raw_sha256": "29b2e83a1e24bddbf818eb403694bd754052bd548d29e53cfb2ea9fce82961fb",
-    "raw_bytes": 21079,
-    "gzip_sha256": "b53713c7eaea8f8067098e230364383a82451d04a24659e112123bb8dbb67591"
+    "raw_sha256": "260990f389a03e5b80cfb0bebbcc857cb1e701c00dbea8c7c582e960be787857",
+    "raw_bytes": 19091,
+    "gzip_sha256": "b6814e2445a8ca3443f6b3848bb1fd8bdfeddd09d07b790ffcdb660fd0bb79e6",
+    "original_raw_sha256": "29b2e83a1e24bddbf818eb403694bd754052bd548d29e53cfb2ea9fce82961fb",
+    "original_raw_bytes": 21079,
+    "original_gzip_sha256": "b53713c7eaea8f8067098e230364383a82451d04a24659e112123bb8dbb67591"
   },
   "combined-tumbler-seed13-bearing-ablation.json.gz": {
     "raw_name": "combined-tumbler-seed13-bearing-ablation.json",
-    "raw_sha256": "f4b752fff6130efb05c9b80a918384bc788f9a746b6fae16ab1f17a8498f397f",
-    "raw_bytes": 13734,
-    "gzip_sha256": "ccba29d797d0dd4fc7ad74af25d6cec2f08ee16232c9f6fb6ab94a6eb06cbe32"
+    "raw_sha256": "cf371e2b224a8f5afdf2e631b3b461d2e78b777413a9a9cf783a9856a9903f70",
+    "raw_bytes": 12194,
+    "gzip_sha256": "8cad651142256cc636c235b9b5399b4ff29d50f5e137d690711eb75d182d9e5b",
+    "original_raw_sha256": "f4b752fff6130efb05c9b80a918384bc788f9a746b6fae16ab1f17a8498f397f",
+    "original_raw_bytes": 13734,
+    "original_gzip_sha256": "ccba29d797d0dd4fc7ad74af25d6cec2f08ee16232c9f6fb6ab94a6eb06cbe32"
   },
   "control-tumbler-4000.json.gz": {
     "raw_name": "control-tumbler-4000.json",
@@ -43,15 +61,21 @@
   },
   "control-tumbler-seed12-4000.json.gz": {
     "raw_name": "control-tumbler-seed12-4000.json",
-    "raw_sha256": "a5663a295da3578a804540612bd8f09d54a1aa715e16329ee103a1023cdfb78a",
-    "raw_bytes": 21557,
-    "gzip_sha256": "8848c139edd0b83db59be5c8171b95c03b01206fea67ff2807aad4787a77da85"
+    "raw_sha256": "100cbe7000767e9b35b2bee6a9def54fb1cbfcfa99ae6d36ab65d51edc222344",
+    "raw_bytes": 19569,
+    "gzip_sha256": "cce21a8683f42ee9cbc302758618b247da5216c892f6d872dfe6fa05ca1aa059",
+    "original_raw_sha256": "a5663a295da3578a804540612bd8f09d54a1aa715e16329ee103a1023cdfb78a",
+    "original_raw_bytes": 21557,
+    "original_gzip_sha256": "8848c139edd0b83db59be5c8171b95c03b01206fea67ff2807aad4787a77da85"
   },
   "control-tumbler-seed13-4000.json.gz": {
     "raw_name": "control-tumbler-seed13-4000.json",
-    "raw_sha256": "fc29cbd8321e90324580f609c506277239414d54b068bb7c4e00bc8c783b0123",
-    "raw_bytes": 21520,
-    "gzip_sha256": "2d8a89f559fe3dd4b1340663798055922d1d66bcdb68df8cac1d9989f0736c3e"
+    "raw_sha256": "1c269ac1033364aff4bfaf8c6de7f3d7b4a73a10650d637ab2861d30805612c4",
+    "raw_bytes": 19532,
+    "gzip_sha256": "482d9e8543822deda02fa629b3c428862c10fcd9a4f8a07b0f5dd4c37940a40f",
+    "original_raw_sha256": "fc29cbd8321e90324580f609c506277239414d54b068bb7c4e00bc8c783b0123",
+    "original_raw_bytes": 21520,
+    "original_gzip_sha256": "2d8a89f559fe3dd4b1340663798055922d1d66bcdb68df8cac1d9989f0736c3e"
   },
   "credit-tumbler-4000.json.gz": {
     "raw_name": "credit-tumbler-4000.json",
@@ -61,33 +85,48 @@
   },
   "credit-tumbler-seed11-bearing-ablation.json.gz": {
     "raw_name": "credit-tumbler-seed11-bearing-ablation.json",
-    "raw_sha256": "658d599aa7b4bcd7c4bd5f64b154f811db16d995e2240d525e772135c74542d2",
-    "raw_bytes": 14256,
-    "gzip_sha256": "e99a18a4917a1cbf862769462e01f78429fd1b61e6e897074d6376fac305b496"
+    "raw_sha256": "08f2faeb9c36f2397c64adc42dd4bc97732b15a82642b272bc3ce65e723b368a",
+    "raw_bytes": 12716,
+    "gzip_sha256": "0459b36c868c17938ac28c0d46fc944f5c95e73b0e552afdf0858efb45c999a5",
+    "original_raw_sha256": "658d599aa7b4bcd7c4bd5f64b154f811db16d995e2240d525e772135c74542d2",
+    "original_raw_bytes": 14256,
+    "original_gzip_sha256": "e99a18a4917a1cbf862769462e01f78429fd1b61e6e897074d6376fac305b496"
   },
   "credit-tumbler-seed12-4000.json.gz": {
     "raw_name": "credit-tumbler-seed12-4000.json",
-    "raw_sha256": "9e7b8c6ec86e85d3cad45db8b90eddd288dfcd71e66af33a2f770c46f9c61473",
-    "raw_bytes": 21053,
-    "gzip_sha256": "7897d55b7768517467db43b16ff1554a52355963458cf6781e4dd2d082fe5e43"
+    "raw_sha256": "044c2cce43ed7f07dfc37e8889e54a95b521e62e9e1d07fcee80b66b77f73edb",
+    "raw_bytes": 19065,
+    "gzip_sha256": "2255f3e2c6326491eb60c2df1bd83e7ddddc9d64a9971e4f07f2a1ee422eeaf9",
+    "original_raw_sha256": "9e7b8c6ec86e85d3cad45db8b90eddd288dfcd71e66af33a2f770c46f9c61473",
+    "original_raw_bytes": 21053,
+    "original_gzip_sha256": "7897d55b7768517467db43b16ff1554a52355963458cf6781e4dd2d082fe5e43"
   },
   "credit-tumbler-seed12-bearing-ablation.json.gz": {
     "raw_name": "credit-tumbler-seed12-bearing-ablation.json",
-    "raw_sha256": "ab3c9bf7d9d4f7365eb2e19b442be3b104bb125c986987d44aa5bd3e48cf8628",
-    "raw_bytes": 13650,
-    "gzip_sha256": "c36741552aa4d51a56162ca945048f299f5725b3765ed36ca19275d3557d1673"
+    "raw_sha256": "24ad025d71f6f1e27339971de1ca905fa811fdd4af98412e803a5a5a4abc7abf",
+    "raw_bytes": 12110,
+    "gzip_sha256": "8601f60f1fa83c53e15c261cee4885fb52f874a30173a515849a24d496120404",
+    "original_raw_sha256": "ab3c9bf7d9d4f7365eb2e19b442be3b104bb125c986987d44aa5bd3e48cf8628",
+    "original_raw_bytes": 13650,
+    "original_gzip_sha256": "c36741552aa4d51a56162ca945048f299f5725b3765ed36ca19275d3557d1673"
   },
   "credit-tumbler-seed13-4000.json.gz": {
     "raw_name": "credit-tumbler-seed13-4000.json",
-    "raw_sha256": "719357716be388291d058fe488c8dac38b81a0e7aca2e018eef93a9ad28ea330",
-    "raw_bytes": 21061,
-    "gzip_sha256": "48f09f5e6bb6508aaa10784dfb75ce4363a2f805be4378c5984dcb49f715eab8"
+    "raw_sha256": "c25aafeb4a6ebde5a04c598a18b84ad9eaed0e4a88cce2a888330d722dd58a82",
+    "raw_bytes": 19073,
+    "gzip_sha256": "d2ef438fbdbb47ee5ea41f2504d81db907b295ef27d1978f5f975536a425828f",
+    "original_raw_sha256": "719357716be388291d058fe488c8dac38b81a0e7aca2e018eef93a9ad28ea330",
+    "original_raw_bytes": 21061,
+    "original_gzip_sha256": "48f09f5e6bb6508aaa10784dfb75ce4363a2f805be4378c5984dcb49f715eab8"
   },
   "credit-tumbler-seed13-bearing-ablation.json.gz": {
     "raw_name": "credit-tumbler-seed13-bearing-ablation.json",
-    "raw_sha256": "6a3270f9d2f8c6815bbbc280bb694fd128b0d842cf7c5945fa83e1a1dc158e39",
-    "raw_bytes": 13744,
-    "gzip_sha256": "d387538792cf2d512ce5662da049727eab6e5c157bb549705cc611582fcd251a"
+    "raw_sha256": "a19a6e34d1e8b46bfa885458f2400671f91676cb270a10fde212c43aba103906",
+    "raw_bytes": 12204,
+    "gzip_sha256": "c1b9b53146dafc9d06231291d1957e066405f9365105a792aa60f9c6a1866685",
+    "original_raw_sha256": "6a3270f9d2f8c6815bbbc280bb694fd128b0d842cf7c5945fa83e1a1dc158e39",
+    "original_raw_bytes": 13744,
+    "original_gzip_sha256": "d387538792cf2d512ce5662da049727eab6e5c157bb549705cc611582fcd251a"
   },
   "contextual-initial.jsonl.gz": {
     "raw_name": "contextual-initial.jsonl",

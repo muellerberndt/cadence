@@ -130,7 +130,9 @@ def delayed_response(brain: cd.Brain, episodes: int, seed: int) -> float:
 
 
 def test_the_prefrontal_cortex_bridges_a_delay() -> None:
-    # defaults; on twelve fresh seeds (8 to 19) eleven solve the task and one stays at chance
+    # defaults; on twelve fresh seeds (8 to 19) eleven solve the task and one stays at chance.
+    # ``build`` keeps the prefrontal projection's scale 12; since 0.82.0 the trace carries only
+    # the last interpretation (retention 0), and seeds 8 to 13 all solve it.
     remembering = cd.Brain.build(3, 2, working_memory=True, seed=8)
     assert delayed_response(remembering, episodes=1500, seed=8) >= 0.9
     forgetting = cd.Brain.build(3, 2, seed=8)

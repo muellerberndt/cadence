@@ -14,6 +14,11 @@
   working memory of the moments before;
 * a default hippocampal-memory analogue, ``SynapticMemory`` from sensory to motor
   neurons, recording outcomes quickly and consolidating them through repetition/salience.
+  With ``memory_choice=True`` (opt-in) it is an episodic memory: its
+  records of outcomes and of demonstrated actions are kept twice, keyed by the observation
+  (place) and by the temporal context of what the stream saw and did (context), the two
+  reads vote in the choice, and an attempt that ended in reward is replayed backwards along
+  the path that reached it.
 
 ``step`` runs one ongoing perceive/feedback/act loop; demonstrations and rewards are
 signals in that loop, without a train/eval mode. The lower-level ``fit``, ``act``
@@ -123,6 +128,35 @@ def _validate_efference_amplitude(value: Any) -> float:
     return float(value)
 
 
+def _count(name: str, value: Any, low: int = 0) -> int:
+    """A Python or NumPy integer of at least ``low``; booleans are refused."""
+    if (
+        isinstance(value, (bool, np.bool_))
+        or not isinstance(value, (int, np.integer))
+        or value < low
+    ):
+        raise ValueError(f"{name} must be an integer of at least {low}")
+    return int(value)
+
+
+# The episodic memory that ``Brain.compose(..., memory_choice=True)`` builds: place and context
+# records vote in the choice, remember demonstrations and replay an attempt that ended in reward.
+_EPISODIC_FOUNDERS: dict[str, Any] = {
+    "memory_choice": True,
+    "memory_context": 0.5,
+    # a known outcome moves a record halfway: remembered at once, revised by repetition
+    "memory_rate": 0.5,
+    "memory_replay": 8,
+    "memory_demonstrations": 1.0,
+    "memory_expansion": 1024,
+    "memory_winners": 24,
+}
+_EPISODIC_SETTINGS = (
+    "memory_choice", "memory_context", "memory_replay", "memory_demonstrations",
+    "memory_expansion", "memory_winners",
+)
+
+
 def _region_widths(populations: Mapping[str, Any], prefix: str) -> list[int]:
     """Numbered regions in topology order, independent of serialized mapping order."""
     names = [name for name in populations
@@ -136,7 +170,10 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
         return None
     expected = {"inputs", "actions", "modules", "observers", "slots", "lateral",
                 "sensory_scale", "seed"}
-    if not isinstance(value, dict) or set(value) != expected:
+    if isinstance(value, dict) and set(value) == expected:
+        # saved before 0.82.0, whose composition read the trace at the fixed scale 12
+        value = {**value, "working_memory_scale": 12.0}
+    if not isinstance(value, dict) or set(value) != expected | {"working_memory_scale"}:
         raise ValueError("invalid saved composition provenance")
     for name in ("inputs", "actions", "seed"):
         number = value[name]
@@ -152,6 +189,7 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
         if not numbers and name != "observers":
             raise ValueError(f"invalid saved composition {name}")
     real("saved sensory_scale", value["sensory_scale"], low=0)
+    real("saved working_memory_scale", value["working_memory_scale"], low=0)
     real("saved lateral", value["lateral"])
     populations = learner.brain.connectome.populations
     modules = _region_widths(populations, "module_") + [len(populations.get("association", ()))]
@@ -167,9 +205,10 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
     return dict(plain(value))
 
 
-def _load_memory(metadata: Any, data: Mapping[str, Any], neurons: int) -> FastSynapses | None:
+def _load_memory(
+    metadata: Any, data: Mapping[str, Any], neurons: int, prefix: str = "episodic/"
+) -> FastSynapses | None:
     """Validate and restore a detached memory before constructing the resumed composition."""
-    prefix = "episodic/"
 
     def array(name: str, shape: tuple[int, ...] | None = None) -> np.ndarray:
         key = prefix + name
@@ -381,8 +420,12 @@ def _validate_life_state(meta: dict[str, Any], data: Mapping[str, Any], learner:
             ):
                 raise ValueError("saved lived action must match its pending feedback")
     awaiting = meta.get("awaiting")
-    if (meta.get("format") == "cadence-generic/5") != ("awaiting" in meta):
-        raise ValueError("a sensed state awaiting an outcome belongs to format cadence-generic/5")
+    if meta.get("format") == "cadence-generic/5" and "awaiting" not in meta:
+        raise ValueError("format cadence-generic/5 carries a sensed state awaiting an outcome")
+    if "awaiting" in meta and meta.get("format") not in ("cadence-generic/5", "cadence-generic/6"):
+        raise ValueError(
+            "a sensed state awaiting an outcome belongs to formats cadence-generic/5 and /6"
+        )
     if "awaiting" not in meta:
         if any(name.startswith("awaiting/") for name in data):
             raise ValueError("saved awaiting arrays require awaiting metadata")
@@ -412,9 +455,11 @@ def _validate_life_state(meta: dict[str, Any], data: Mapping[str, Any], learner:
     ):
         raise ValueError("saved efference neurons and state require efference metadata")
     if efference is not None:
-        if meta.get("format") not in ("cadence-generic/4", "cadence-generic/5"):
+        if meta.get("format") not in (
+            "cadence-generic/4", "cadence-generic/5", "cadence-generic/6"
+        ):
             raise ValueError(
-                "an efference copy belongs to checkpoint formats cadence-generic/4 and /5"
+                "an efference copy belongs to checkpoint formats cadence-generic/4 to /6"
             )
         source, target = efference["source"], efference["target"]
         if (
@@ -430,6 +475,105 @@ def _validate_life_state(meta: dict[str, Any], data: Mapping[str, Any], learner:
         array("efference/last", (batch, width))
         if array("efference/cold", (batch,)).dtype != np.bool_:
             raise ValueError("invalid saved efference cold flags")
+    _validate_episodic_state(meta, data, learner, sensory)
+
+
+def _validate_episodic_state(
+    meta: dict[str, Any], data: Mapping[str, Any], learner: Learner, sensory: int
+) -> None:
+    """The settings and stream state of an episodic memory's choice (format /6)."""
+    names = ("episode/context", "episode/decision") + tuple(
+        "episode/path/" + name
+        for name in (
+            "keys", "actions", "observations", "lengths", "rewards", "received", "guess"
+        )
+    )
+    episodic = meta.get("episodic")
+    if episodic is None:
+        if any(name in data for name in names) or any(n.startswith("temporal/") for n in data):
+            raise ValueError("saved episodic stream state requires episodic metadata")
+        return
+    if (
+        not isinstance(episodic, dict)
+        or set(episodic) != {"choice", "context", "replay", "demonstrations", "context_memory"}
+        or episodic["choice"] is not True
+    ):
+        raise ValueError("invalid episodic metadata")
+    context = real("saved memory_context", episodic["context"], low=0)
+    if context >= 1:
+        raise ValueError("invalid saved memory_context")
+    replay = _count("saved memory_replay", episodic["replay"])
+    real("saved memory_demonstrations", episodic["demonstrations"], low=0)
+    memory = meta.get("hippocampus")
+    if not isinstance(memory, dict) or memory.get("pre") != sensory:
+        raise ValueError("an episodic memory's place records are keyed by the sensory neurons")
+    width = sensory + len(learner.output_index)
+    temporal = episodic["context_memory"]
+    if (temporal is None) != (context == 0):
+        raise ValueError("a temporal context keys a second store of records, and only then")
+    if temporal is not None and (not isinstance(temporal, dict) or temporal.get("pre") != width):
+        raise ValueError("an episodic memory's context records are keyed by sensory and motor")
+    if temporal is None and any(name in data for name in names[:2] + (names[2],)):
+        raise ValueError("saved temporal context state requires context records")
+
+    def array(name: str) -> np.ndarray:
+        value: np.ndarray = data[name]
+        if value.dtype.kind not in "biuf" or not np.isfinite(value).all():
+            raise ValueError(f"invalid saved state: {name}")
+        return value
+
+    for name in ("episode/context", "episode/decision"):
+        if name in data:
+            value = array(name)
+            if value.ndim != 2 or not len(value) or value.shape[1] != width:
+                raise ValueError(f"invalid saved state: {name}")
+    path = [name for name in names[3:] if name in data]
+    if path and len(path) != 6:
+        raise ValueError("incomplete saved replay paths")
+    if path and (temporal is not None) != ("episode/path/keys" in data):
+        raise ValueError("saved replay paths carry context keys exactly with context records")
+    if path:
+        lengths = array("episode/path/lengths")
+        actions = array("episode/path/actions")
+        observations = array("episode/path/observations")
+        streams = len(lengths)
+        if (
+            lengths.ndim != 1
+            or lengths.dtype.kind not in "iu"
+            or not streams
+            or (lengths < 0).any()
+            or (lengths > replay + 1).any()
+        ):
+            raise ValueError("invalid saved replay path lengths")
+        longest = int(lengths.max())
+        slotted = learner.slot_count > 1
+        shape = (streams, longest, learner.slot_count) if slotted else (streams, longest)
+        if (
+            (
+                temporal is not None
+                and array("episode/path/keys").shape != (streams, longest, width)
+            )
+            or observations.shape != (streams, longest, sensory)
+            or actions.shape != shape
+            or actions.dtype.kind not in "iu"
+        ):
+            raise ValueError("invalid saved replay path dimensions")
+        limit = learner.slot_sizes[None, None, :] if slotted else len(learner.output_index)
+        if (actions < 0).any() or (actions >= limit).any():
+            raise ValueError("invalid saved replay path actions")
+        rewards, received = array("episode/path/rewards"), array("episode/path/received")
+        guess = array("episode/path/guess")
+        if (
+            rewards.shape != (streams, longest)
+            or received.shape != (streams, longest)
+            or received.dtype != np.bool_
+            or guess.shape != (streams, longest)
+            or not np.isfinite(rewards).all()
+            or not np.isfinite(guess).all()
+            or (guess < 0).any()
+            or (guess > 1).any()
+        ):
+            raise ValueError("invalid saved replay path outcomes")
 
 
 class Brain:
@@ -450,7 +594,13 @@ class Brain:
         memory_decay: float = 0.9,
         memory_rate: float = 1.0,
         memory_amplitude: float = 1.0,
-        working_memory_decay: float = 0.2,
+        memory_choice: bool = False,
+        memory_context: float = 0.0,
+        memory_replay: int = 0,
+        memory_demonstrations: float = 0.0,
+        memory_expansion: int = 0,
+        memory_winners: int = 32,
+        working_memory_decay: float = 0.0,
         working_memory_amplitude: float = 3.0,
         working_memory_focus: float = 0.0,
         efference_decay: float = 0.2,
@@ -476,6 +626,24 @@ class Brain:
         memory_decay = real("memory_decay", memory_decay, low=0, high=1)
         memory_rate = real("memory_rate", memory_rate, low=0, high=1)
         memory_amplitude = real("memory_amplitude", memory_amplitude)
+        if not isinstance(memory_choice, bool):
+            raise ValueError("memory_choice must be boolean")
+        memory_context = real("memory_context", memory_context, low=0)
+        if memory_context >= 1:
+            raise ValueError("memory_context must lie in [0, 1)")
+        memory_replay = _count("memory_replay", memory_replay)
+        memory_demonstrations = real("memory_demonstrations", memory_demonstrations, low=0)
+        memory_expansion = _count("memory_expansion", memory_expansion)
+        memory_winners = _count("memory_winners", memory_winners, low=1)
+        if memory_choice and not episodic:
+            raise ValueError("memory_choice needs the episodic memory")
+        if not memory_choice and (
+            memory_context or memory_replay or memory_demonstrations or memory_expansion
+        ):
+            raise ValueError(
+                "memory_context, memory_replay, memory_demonstrations and memory_expansion "
+                "need memory_choice"
+            )
         working_memory_decay = real("working_memory_decay", working_memory_decay, low=0)
         efference_decay = real("efference_decay", efference_decay, low=0)
         if working_memory_decay >= 1 or efference_decay >= 1:
@@ -540,11 +708,39 @@ class Brain:
                 target="efference",
             )
         self.hippocampus: FastSynapses | None = None
+        # ``memory_choice`` with a temporal context: the same records keyed by the stream's
+        # temporal context, the fading activity of the sensory and the motor neurons
+        self.context_memory: SynapticMemory | None = None
         if episodic:
-            self.hippocampus = SynapticMemory(
-                self.sensory_index, self.motor_index, consolidation=consolidation,
-                decay=memory_decay, rate=memory_rate, amplitude=memory_amplitude,
-            )
+
+            def store(keys: np.ndarray, offset: int) -> SynapticMemory:
+                return SynapticMemory(
+                    keys, self.motor_index, consolidation=consolidation,
+                    decay=memory_decay, rate=memory_rate, amplitude=memory_amplitude,
+                    separator=PatternSeparator(
+                        len(keys), memory_expansion, memory_winners, seed=seed + offset
+                    )
+                    if memory_expansion
+                    else None,
+                )
+
+            self.hippocampus = store(self.sensory_index, 0)
+            if memory_choice and memory_context:
+                self.context_memory = store(
+                    np.concatenate([self.sensory_index, self.motor_index]), 1
+                )
+        self.memory_choice = memory_choice
+        self.memory_context = memory_context
+        self.memory_replay = memory_replay
+        self.memory_demonstrations = memory_demonstrations
+        # ``memory_choice``, per stream: the temporal context after its last decision, that
+        # decision's key, and the recent path, one decision per situation it left: (key,
+        # action, observation, outcome, outcome received, how far it was the best guess)
+        self._context: np.ndarray | None = None
+        self._decision: np.ndarray | None = None
+        self._paths: list[
+            list[tuple[np.ndarray | None, np.ndarray, np.ndarray, float, bool, float]]
+        ] = []
         self.rng = np.random.default_rng(seed)
         self._moment: tuple[np.ndarray, np.ndarray] | None = None
         self._prepared: np.ndarray | None = None  # the observations ``learn`` settled
@@ -753,6 +949,7 @@ class Brain:
         observers: Sequence[int] = (),
         lateral: float | None = None,
         sensory_scale: float = 1.0,
+        working_memory_scale: float = 1.2,
         seed: int = 0,
         slots: int | Sequence[int] = 1,
         **options: Any,
@@ -787,12 +984,17 @@ class Brain:
         ``sensory_scale`` sets the initial sensory projection's magnitude;
         its founder value 1.0 preserves the existing wiring. It is a construction
         setting, not a gain that can be retuned after learning.
+        ``working_memory_scale`` sets the initial magnitude of the plastic projection
+        through which the prefrontal region feeds the carried interpretation back to the
+        association region. The prefrontal region holds the copy at
+        ``working_memory_amplitude`` (3.0); the founder scale 1.2 starts its influence on
+        the next settle where amplitude 0.3 at the earlier fixed scale 12 did, and
+        learning strengthens it where the past predicts the outcome. Releases before
+        0.82.0 used 12; pass it to rebuild their composition. It is a construction
+        setting, like ``sensory_scale``.
         ``options`` accepts the constructor's memory settings and every existing
         configuration field as ``learning_<field>``, ``actor_<field>`` or
         ``arousal_<field>``. ``temperature`` aliases ``learning_temperature``.
-        ``learning_homeostasis_rate`` and ``learning_homeostasis_target`` select the
-        readout's intrinsic plasticity, a bias step toward a target activation at every
-        teaching or reward update; the founder rate 0 leaves the readout as composed.
         ``arousal=True`` enables the founder arousal config; a mapping patches
         those founders. Supplied config objects remain full replacements.
         ``resting_bias`` initializes processing-region biases to a selected nonnegative
@@ -800,9 +1002,37 @@ class Brain:
         A positive ``efference_amplitude`` adds the efference copy: one ``efference``
         neuron per motor neuron, driven by the fading one-hot of the command the
         stream issued (``efference_decay``) and read by the association region
-        through a plastic projection of the working trace's scale. The founder
+        through a plastic projection of founder scale 12. The founder
         value zero builds the brain without it, byte-identical to the released
         composition; the copy is a gene to select against that control.
+        ``memory_choice=True`` makes the hippocampus an episodic memory: its records vote
+        in every choice, greedy or sampled, added to the motor readout before the softmax.
+        Each record is kept twice: keyed by the observation (place), and keyed by the
+        stream's temporal context, the observation with the fading trace of what the stream
+        saw and did before it (``memory_context``, the share the past keeps per moment, 0.5;
+        zero keeps the place records alone). The vote is the mean of the two reads: the
+        place records answer a known situation reached along a new path, the context records
+        tell apart situations that look the same. It records the outcome of the chosen action
+        when the outcome is known: a reward or a punishment, the end of an attempt
+        (``done``), or a surprise that woke a calm ``live`` brain; a zero outcome in the
+        middle of an attempt leaves the record as it was. A demonstrated action is recorded
+        at ``memory_demonstrations`` (1.0) for the situation it was shown in. A write corrects
+        the stream's record halfway at once (``memory_rate`` 0.5), a trace that fades by
+        ``memory_decay`` (0.9) per later write, and consolidates into the record every stream
+        shares and resets keep at ``consolidation`` (0.05). A reward is replayed backwards
+        along the stream's recent path (``memory_replay`` steps, 8; one decision per
+        situation, the one that left it), through the decisions whose own outcome was
+        nothing, back to the last known outcome, discounted per step and up to the discounted
+        reward. A reward that ends an attempt (``done``) is replayed whole into both kinds of
+        record. In a continuing life a reward is replayed in proportion to its surprise, the
+        reward less what the memory expected of the paid decision: into each decision's
+        context record, and into its place record as far as it was an exploration rather than
+        the brain's best guess. Nothing has to mark the end of an attempt. Keys are separated
+        (``memory_expansion`` 1,024 cells, ``memory_winners`` 24). Each setting can be passed
+        beside ``memory_choice=True``. The founder ``memory_choice=False`` keeps the
+        hippocampus of earlier releases, keyed by the senses and read into the motor drive;
+        ``episodic=False`` builds none. On fresh seeds the episodic memory scored below the
+        earlier hippocampus on a continuing bandit whose history does not matter.
         Use ``genome``/``Genome`` for custom ports, sparsity and named wiring.
         """
 
@@ -815,6 +1045,7 @@ class Brain:
 
         inputs, actions = size(inputs), size(actions)
         sensory_scale = real("sensory_scale", sensory_scale, low=0)
+        working_memory_scale = real("working_memory_scale", working_memory_scale, low=0)
         if lateral is None:
             lateral = _default_lateral(max(slot_sizes(actions, slots)))
         if (
@@ -834,6 +1065,9 @@ class Brain:
             raise ValueError("seed must be a nonnegative integer")
         if "episodic" in options and not isinstance(options["episodic"], bool):
             raise ValueError("episodic must be boolean")
+        if options.get("episodic", True) and options.get("memory_choice") is True:
+            for name, value in _EPISODIC_FOUNDERS.items():
+                options.setdefault(name, value)
         if isinstance(modules, (str, bytes)) or isinstance(observers, (str, bytes)):
             raise ValueError("modules and observers must be sequences of population sizes")
         try:
@@ -856,7 +1090,9 @@ class Brain:
         projections.extend(
             (
                 Projection("association", "motor"),
-                Projection("prefrontal", "association", scale=12.0, reciprocal=False),
+                Projection(
+                    "prefrontal", "association", scale=working_memory_scale, reciprocal=False
+                ),
             )
         )
         observed = [*names, "motor"]
@@ -881,6 +1117,7 @@ class Brain:
             "slots": [int(width) for width in result.learner.slot_sizes],
             "lateral": lateral,
             "sensory_scale": sensory_scale,
+            "working_memory_scale": working_memory_scale,
             "seed": int(seed),
         }
         return result
@@ -912,7 +1149,8 @@ class Brain:
         options = dict(genes)
         construction = {
             "inputs", "actions", "modules", "observers", "lateral", "sensory_scale",
-            "resting_bias", "slots", "seed", "episodic", "backend", "device", "connectome",
+            "working_memory_scale", "resting_bias", "slots", "seed", "episodic", "backend",
+            "device", "connectome", *_EPISODIC_SETTINGS,
         }
         for name in options:
             if name in construction:
@@ -960,6 +1198,8 @@ class Brain:
             else:
                 value = real(name, value)
             memory_changes.append((component, field, value))
+            if component is self.hippocampus and self.context_memory is not None:
+                memory_changes.append((self.context_memory, field, value))
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, learning_genes, "learning")
@@ -1035,6 +1275,18 @@ class Brain:
             else self.working_memory.to_dict(),
             "efference": None if self.efference is None else self.efference.to_dict(),
             "memory": None if self.hippocampus is None else self.hippocampus.to_dict(),
+            # construction settings of an episodic memory whose records vote in the choice
+            "episodic": None
+            if not self.memory_choice
+            else {
+                "choice": True,
+                "context": self.memory_context,
+                "replay": self.memory_replay,
+                "demonstrations": self.memory_demonstrations,
+                "context_memory": None
+                if self.context_memory is None
+                else self.context_memory.to_dict(),
+            },
             "initialization": {"resting_bias": self.resting_bias, "composition": self._composition},
             "pending_feedback": self.pending_feedback,
         }
@@ -1057,7 +1309,8 @@ class Brain:
 
     def stimulus(self, observations: Any, *, memory: bool = True) -> np.ndarray:
         """The drive of a batch of observations: the sensory neurons stimulated, plus the
-        working memory and the hippocampal recall when ``memory`` is set."""
+        working memory and the hippocampal recall when ``memory`` is set. An episodic memory
+        that votes in the choice (``memory_choice``) is not read into the drive."""
         x = self._observations(observations)
         drive = np.zeros((len(x), self.connectome.n))
         drive[:, self.sensory_index] = x * self.brain.neuron_model.stimulus_amplitude
@@ -1065,7 +1318,7 @@ class Brain:
             drive = self.working_memory.stimulate(drive)
         if memory and self.efference is not None:
             drive = self.efference.stimulate(drive)
-        if memory and self.hippocampus is not None:
+        if memory and self.hippocampus is not None and not self.memory_choice:
             drive = self.hippocampus.stimulate(drive)
         return drive
 
@@ -1281,7 +1534,8 @@ class Brain:
             raise RuntimeError("feedback needs a preceding action; start with step(observations)")
         # All feedback and demonstrations are checked before changing any state.
         if pending:
-            self.last_learning = self.learn(r, ended, x, bootstrap=bootstrap, salience=importance)
+            supplied = None if salience is None else importance
+            self.last_learning = self.learn(r, ended, x, bootstrap=bootstrap, salience=supplied)
         else:
             self.last_learning = {}
         if labels is not None:
@@ -1299,7 +1553,14 @@ class Brain:
             self.last_learning.update(
                 {"demonstration_" + name: value for name, value in teaching.items()}
             )
-            # A demonstration teaches the slow policy, not an invented reward value.
+            # A demonstration teaches the slow policy, not an invented reward value. An
+            # episodic memory also records the shown action for the situation it was shown in.
+            if self.memory_choice and self.memory_demonstrations and self.hippocampus is not None:
+                value = np.full(batch, self.memory_demonstrations)
+                self._remember(
+                    x, self._episode_key(x) if self.context_memory is not None else None,
+                    labels, value, np.ones(batch, bool),
+                )
             self._prepared = None
             self.basal_ganglia._drive = None
             self.last_learning["demonstrations"] = float(batch)
@@ -1414,12 +1675,28 @@ class Brain:
                 agent.fade(ended)
             if routine and arousal.aroused and self.hippocampus is not None:
                 assert lived is not None
-                self._record(lived[0], lived[1], r, SynapticMemory.salience_vector(np.abs(r), 1))
-                recorded = True
-                assert answer is not None
-                # the record can change this moment's recall: settle again under it, warm
-                agent._free, agent._free_brain, agent._drive = answer[1], self.brain, answer[0]
-                answer = None
+                if not self.memory_choice:
+                    self._record(
+                        lived[0], lived[1], r, SynapticMemory.salience_vector(np.abs(r), 1)
+                    )
+                    recorded = True
+                else:
+                    # the outcome that woke the brain surprised it: known at any reward
+                    self._record_outcome(
+                        lived[0], lived[1], r, ended, np.ones(1, bool), woken=True
+                    )
+                    recorded = True
+                if recorded and not self.memory_choice:
+                    assert answer is not None
+                    # the record can change this moment's recall: settle again under it, warm
+                    agent._free, agent._free_brain, agent._drive = (
+                        answer[1], self.brain, answer[0]
+                    )
+                    answer = None
+            if routine and self.memory_choice:
+                self._received(r)  # a calm outcome joins the path; replay may value it later
+            if routine and ended[0]:
+                self._end_attempt(ended)
         aroused = arousal.aroused
         temperature = self.learner.config.temperature * arousal.heat if aroused else None
         # Validate before qualification; invalid heating must draw nothing.
@@ -1523,6 +1800,8 @@ class Brain:
         state = self._qualified(drive, self._activity(), operation="wait")
         if self.working_memory is not None:
             self.working_memory.update(state)
+        if self.context_memory is not None:
+            self._context = self._episode_key(x)  # what was sensed enters the temporal context
         self._awaiting = (current, state)
 
     def _owned(self, decision_id: Any) -> None:
@@ -1572,7 +1851,8 @@ class Brain:
         if memory is None or not np.isfinite(memory.amplitude) or memory.amplitude == 0.0:
             return None
         units = np.asarray(chosen) + np.asarray(self.learner.slot_offsets)[: len(chosen)]
-        values = np.asarray(memory.recall(x))[0, units] / memory.amplitude
+        read = self._vote(x, self._decided(1)) if self.memory_choice else memory.recall(x)
+        values = np.asarray(read)[0, units] / memory.amplitude
         return float(np.mean(values)) if np.isfinite(values).all() else None
 
     def _forecast(self, x: np.ndarray, ended: bool) -> tuple[np.ndarray, BrainState]:
@@ -1662,7 +1942,7 @@ class Brain:
                 drive = trace.stimulate(drive)
             if echo is not None:
                 drive = echo.stimulate(drive)
-            if self.hippocampus is not None:
+            if self.hippocampus is not None and not self.memory_choice:
                 drive = self.hippocampus.stimulate(drive)
             phase = self._equilibrate(drive, current, budget=budget, tolerance=tolerance)
             phases.append(phase)
@@ -1724,14 +2004,240 @@ class Brain:
         self.basal_ganglia._drive = drive.copy()
         self._prepared = None
         self._awaiting = None
-        action = self.basal_ganglia.act(drive, greedy=greedy, temperature=temperature)
+        key = bias = None
+        if self.memory_choice and self.hippocampus is not None:
+            key = self._episode_key(x) if self.context_memory is not None else None
+            bias = self._vote(x, key)
+        action = self.basal_ganglia.act(drive, greedy=greedy, temperature=temperature, bias=bias)
         state = self.basal_ganglia.state
         if self.working_memory is not None and state is not None:
             self.working_memory.update(state)
         if self.efference is not None:
             self.efference.issue(self._command(action))
+        if bias is not None:
+            if key is not None:
+                # what the stream did joins its temporal context after what it saw
+                self._decision = key
+                self._context = key.copy()
+                self._context[:, len(self.sensory_index):] += (1.0 - self.memory_context) * (
+                    self._command(action)
+                )
+            if self.memory_replay:
+                assert state is not None
+                # how far the choice was the brain's best guess: the chosen action's
+                # probability under its own policy, without the heat of exploration, over the
+                # most probable action's (1 for the best guess), averaged over the slots
+                p = self.basal_ganglia.probabilities(state, bias=bias)
+                rows = np.arange(len(action))
+                if action.ndim == 2:
+                    slots = np.arange(action.shape[1])
+                    picked = p[rows[:, None], slots[None, :], action]
+                    guess = (picked / np.maximum(p.max(axis=-1), 1e-12)).mean(axis=1)
+                else:
+                    guess = p[rows, action] / np.maximum(p.max(axis=-1), 1e-12)
+                self._extend_paths(x, key, action, np.minimum(guess, 1.0))
         self._moment = None if greedy else (x.copy(), action.copy())
         return action
+
+    def _vote(self, x: np.ndarray, key: np.ndarray | None) -> np.ndarray:
+        """The records' vote for every motor neuron: the mean of the place read of the
+        observations and the context read of the decision's key."""
+        memory = self.hippocampus
+        assert memory is not None
+        place = np.asarray(memory.recall(np.asarray(x, dtype=float)), dtype=float)
+        if self.context_memory is None or key is None:
+            return place
+        context = np.asarray(self.context_memory.recall(key), dtype=float)
+        return np.asarray(0.5 * (place + context))
+
+    def _decided(self, batch: int) -> np.ndarray | None:
+        """The context key of each stream's last decision, when it belongs to this batch."""
+        decision = self._decision
+        return decision if decision is not None and len(decision) == batch else None
+
+    def _episode_key(self, x: np.ndarray) -> np.ndarray:
+        """The key of a decision on these observations: the stream's temporal context with
+        the observations entered, ``(batch, sensory + motor)``. The observations take the
+        share ``1 - memory_context``; the context before them keeps the rest."""
+        x = np.asarray(x, dtype=float)
+        keep = self.memory_context
+        fresh = np.zeros((len(x), len(self.sensory_index) + len(self.motor_index)))
+        fresh[:, : len(self.sensory_index)] = x
+        context = self._context
+        if context is None or len(context) != len(x) or not keep:
+            return (1.0 - keep) * fresh if keep else fresh
+        return keep * context + (1.0 - keep) * fresh
+
+    def _extend_paths(
+        self, x: np.ndarray, key: np.ndarray | None, action: np.ndarray, guess: np.ndarray
+    ) -> None:
+        """Add each stream's decision to its recent path. A decision taken on the observations
+        of the stream's previous decision replaces it: that decision left the situation as
+        it was, and only the decision that leaves a situation lies on the path onwards."""
+        if len(self._paths) != len(x):
+            self._paths = [[] for _ in range(len(x))]
+        for row, path in enumerate(self._paths):
+            entry = (
+                None if key is None else key[row].copy(),
+                np.array(action[row], copy=True),
+                x[row].copy(),
+                0.0,
+                False,
+                float(guess[row]),
+            )
+            if path and np.array_equal(path[-1][2], entry[2]):
+                path[-1] = entry
+            else:
+                path.append(entry)
+                del path[: -(self.memory_replay + 1)]
+
+    def _received(self, reward: np.ndarray) -> None:
+        """The outcome of each stream's last decision joins its path."""
+        if len(self._paths) != len(reward):
+            return
+        for row, path in enumerate(self._paths):
+            if path:
+                key, action, observation, _, _, guess = path[-1]
+                path[-1] = (key, action, observation, float(reward[row]), True, guess)
+
+    def _record_outcome(
+        self,
+        observations: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        done: np.ndarray,
+        learned: np.ndarray,
+        woken: bool = False,
+        salience: np.ndarray | None = None,
+    ) -> None:
+        """Record the outcome of the last decision for the streams in ``learned``, where it is
+        known: a reward or a punishment, the end of an attempt, a surprise that woke a calm
+        brain, or an outcome the caller marked with a positive ``salience``. A zero outcome
+        in the middle of an attempt is not yet one. A supplied salience also sets how fast
+        the outcome consolidates; without one every write moves a record equally. A reward
+        replays the decisions that led to it."""
+        marked = np.zeros(len(reward), bool) if salience is None else salience > 0
+        known = learned & ((reward != 0) | done | woken | marked)
+        keys = self._decided(len(action))
+        # what the memory expected of the decision, read before its outcome is written; an
+        # attempt that ends is a closed episode, whose reward is replayed whole
+        surprise = np.where(done, reward, reward - self._held(observations, keys, action))
+        if known.any():
+            self._remember(observations, keys, action, reward, known, salience)
+        self._replay(reward, surprise, done, learned)
+
+    def _held(
+        self,
+        observations: np.ndarray,
+        keys: np.ndarray | None,
+        action: np.ndarray,
+        memory: FastSynapses | None = None,
+    ) -> np.ndarray:
+        """Each stream's record of its chosen action in reward units: the records' vote for
+        the chosen motor neuron, or the read of ``memory`` alone, averaged over the slots of a
+        slotted readout."""
+        hippocampus = self.hippocampus
+        assert hippocampus is not None
+        if not hippocampus.amplitude:
+            return np.zeros(len(action))
+        if memory is None:
+            read = self._vote(observations, keys)
+        else:
+            assert keys is not None  # one store is read under the keys it is keyed by
+            read = memory.recall(keys)
+        vote = np.asarray(read) / hippocampus.amplitude
+        rows = np.arange(len(action))
+        if action.ndim == 2:
+            chosen = action + self.learner.slot_offsets[None, :]
+            return np.asarray(vote[rows[:, None], chosen].mean(axis=1))
+        return np.asarray(vote[rows, action])
+
+    def _replay(
+        self, reward: np.ndarray, surprise: np.ndarray, done: np.ndarray, learned: np.ndarray
+    ) -> None:
+        """Reverse replay: a reward credits, backwards along the stream's recent path (one
+        decision per situation, the one that left it), the decisions whose own outcome was
+        nothing, back to the last decision whose outcome was known (a reward or a
+        punishment), each discounted per step of the path and up to the discounted reward.
+        A reward that ends an attempt (``done``) closes an episode: it is replayed whole, into
+        both kinds of record. In a continuing life, where it is not known where the paid
+        effort began, a reward is replayed in proportion to its surprise (the reward less
+        what the memory expected of the paid decision): into each decision's context record,
+        that decision in the history it was taken in, and into its place record only as far
+        as it was an exploration rather than the brain's best guess. There an expected reward
+        replays nothing. Replay only adds credit."""
+        if not self.memory_replay or len(self._paths) != len(reward):
+            return
+        gamma = float(self.basal_ganglia.config.gamma)
+        temporal = self.context_memory
+        paid = (reward > 0) & (surprise > 0) & learned
+        if temporal is None:
+            paid &= done  # without context records, a continuing life replays nothing
+        rows = [row for row in np.flatnonzero(paid) if self._paths[row]]
+        width = len(reward)
+        for k in range(1, self.memory_replay + 1):
+            discount = gamma**k
+            if not discount:
+                break  # with gamma zero no credit flows back
+            # the decision k steps before the paid one (each path's last entry), while the
+            # outcomes on the way back were nothing
+            rows = [
+                row
+                for row in rows
+                if len(self._paths[row]) > k
+                and self._paths[row][-1 - k][4]
+                and self._paths[row][-1 - k][3] == 0.0
+            ]
+            if not rows:
+                break
+            earlier = [self._paths[row][-1 - k] for row in rows]
+            observations = np.zeros((width, len(self.sensory_index)))
+            observations[rows] = [entry[2] for entry in earlier]
+            keys = None
+            if earlier[0][0] is not None:
+                keys = np.zeros((width, len(earlier[0][0])))
+                keys[rows] = [entry[0] for entry in earlier]
+            action = np.zeros((width, *np.shape(earlier[0][1])), dtype=np.int64)
+            action[rows] = [entry[1] for entry in earlier]
+            ended = np.zeros(width, bool)
+            ended[rows] = done[rows]
+            guess = np.ones(width)
+            guess[rows] = [entry[5] for entry in earlier]
+            # what the written records hold: both kinds at the end of an attempt, the context
+            # records in a continuing life
+            held = self._held(observations, keys, action)
+            if temporal is not None and keys is not None and not ended[rows].all():
+                held = np.where(ended, held, self._held(keys, keys, action, temporal))
+            credit = np.zeros(width)
+            credit[rows] = np.minimum(
+                discount * surprise[rows], discount * reward[rows] - held[rows]
+            )
+            write = credit > 0
+            if (write & ended).any():
+                self._remember(observations, keys, action, held + credit, write & ended)
+            if (write & ~ended).any():
+                assert temporal is not None and keys is not None
+                steady = np.zeros(width)  # every write moves a record equally
+                self._record(keys, action, held + credit, steady, write & ~ended, temporal)
+                # the place record only as far as the decision was an exploration: the best
+                # guess tells nothing about what paid apart from its history
+                place = self._held(observations, observations, action, self.hippocampus)
+                surprising = credit * (1.0 - guess)
+                gain = write & ~ended & (surprising > 0)
+                if gain.any():
+                    target = place + np.minimum(surprising, discount * reward - place)
+                    gain &= target > place
+                    if gain.any():
+                        self._record(observations, action, target, steady, gain)
+
+    def _end_attempt(self, done: np.ndarray) -> None:
+        """The streams whose attempt ended begin the next with no context and no path."""
+        rows = np.flatnonzero(done)
+        if self._context is not None and len(self._context) == len(done):
+            self._context[rows] = 0.0
+        if len(self._paths) == len(done):
+            for row in rows:
+                self._paths[row] = []
 
     def _command(self, action: np.ndarray) -> np.ndarray:
         """The ``(batch, motor)`` one-hot of an issued action: one per row, or one per slot."""
@@ -1783,6 +2289,15 @@ class Brain:
         separator_mean = (
             None if memory is None or memory.separator is None else memory.separator.mean
         )
+        temporal = self.context_memory
+        temporal_values = (
+            {}
+            if temporal is None
+            else {
+                name: getattr(temporal, name)
+                for name in ("strength", "mass", "writes", "consolidated")
+            }
+        )
         trace = self.working_memory
         trace_values = (
             {}
@@ -1795,10 +2310,27 @@ class Brain:
             if echo is None or not done.any()
             else {name: getattr(echo, name).copy() for name in ("trace", "last", "cold")}
         )
+        episode_values = (
+            None
+            if not self.memory_choice
+            else (
+                None if self._context is None else self._context.copy(),
+                [list(path) for path in self._paths],
+            )
+        )
         try:
             if memory is not None and self._moment is not None:
                 keys, action = self._moment
-                self._record(keys, action, reward, importance)
+                if not self.memory_choice:
+                    self._record(keys, action, reward, importance)
+                else:
+                    self._received(reward)
+                    self._record_outcome(
+                        keys, action, reward, done, np.ones(len(action), bool),
+                        salience=None if salience is None else importance,
+                    )
+            if self.memory_choice and done.any():
+                self._end_attempt(done)
             if trace is not None and done.any():
                 trace.reset(len(done), rows=np.flatnonzero(done))
             if echo is not None and done.any():
@@ -1818,18 +2350,53 @@ class Brain:
             if echo is not None:
                 for name, value in echo_values.items():
                     setattr(echo, name, value)
+            if temporal is not None:
+                for name, value in temporal_values.items():
+                    setattr(temporal, name, value)
+            if episode_values is not None:
+                self._context, self._paths = episode_values
             raise
         self._moment = None
         self._prepared = following.copy()
         self._awaiting = None
         return report
 
-    def _record(
-        self, keys: np.ndarray, action: np.ndarray, reward: np.ndarray, importance: np.ndarray
+    def _remember(
+        self,
+        observations: np.ndarray,
+        keys: np.ndarray | None,
+        action: np.ndarray,
+        value: np.ndarray,
+        streams: np.ndarray,
+        salience: np.ndarray | None = None,
     ) -> None:
-        """Write the outcome of a chosen action for the situation it was chosen in."""
-        memory = self.hippocampus
+        """The episodic memory's write for the streams in ``streams``: the place records under
+        the observations and, with a temporal context, the context records under the
+        decision's keys. The stream's record moves ``memory_rate`` toward ``value`` at once,
+        and the shared record ``consolidation`` toward it, faster with a supplied
+        ``salience``; without one every write moves a record equally."""
+        sized = np.zeros(len(action)) if salience is None else salience
+        self._record(observations, action, value, sized, streams)
+        if self.context_memory is not None and keys is not None:
+            self._record(keys, action, value, sized, streams, self.context_memory)
+
+    def _record(
+        self,
+        keys: np.ndarray,
+        action: np.ndarray,
+        reward: np.ndarray,
+        importance: np.ndarray,
+        known: np.ndarray | None = None,
+        memory: FastSynapses | None = None,
+    ) -> None:
+        """Write the outcome of a chosen action for the situation it was chosen in; with
+        ``known``, only for the streams where it is set. The hippocampus unless ``memory``."""
+        memory = self.hippocampus if memory is None else memory
         assert memory is not None
+        # Every stream writes when ``known`` is unset: the released write, without a mask.
+        write = None if known is None else np.asarray(known, bool)
+        if write is not None and not write.any():
+            return
         # The chosen motor neurons in motor order: one per row, or one per slot.
         rows: np.ndarray = np.arange(len(action))
         value: np.ndarray = reward
@@ -1842,11 +2409,11 @@ class Brain:
             target[rows, chosen] = value
             observed = np.zeros(target.shape, bool)
             observed[rows, chosen] = True
-            memory.observe(keys, target, salience=importance, value_mask=observed)
+            memory.observe(keys, target, write, salience=importance, value_mask=observed)
         else:
             target = memory.recall(keys)
             target[rows, chosen] = value
-            memory.observe(keys, target)
+            memory.observe(keys, target, write)
 
     def reset(self) -> None:
         """Start every stream afresh; hippocampal records are kept. A brain with arousal
@@ -1863,15 +2430,22 @@ class Brain:
         self._lived = None
         self._last_arousal = None
         self._awaiting = None
+        self._context = None
+        self._decision = None
+        self._paths = []
         if self.arousal is not None:
             self.arousal.reset()
 
     def parameters(self) -> int:
         """Actor/critic and consolidated weights; per-stream transient storage is additional."""
-        return self.basal_ganglia.parameters() + (
-            self.hippocampus.consolidated.size
-            if isinstance(self.hippocampus, SynapticMemory)
-            else 0
+        return (
+            self.basal_ganglia.parameters()
+            + (
+                self.hippocampus.consolidated.size
+                if isinstance(self.hippocampus, SynapticMemory)
+                else 0
+            )
+            + (0 if self.context_memory is None else self.context_memory.consolidated.size)
         )
 
     def save(self, path: str | Path) -> Path:
@@ -1935,6 +2509,30 @@ class Brain:
             metadata["awaiting"] = {"steps": int(awaited.steps)}
             for name in ("v", "activation", "adaptation"):
                 data["awaiting/" + name] = np.asarray(getattr(awaited, name))
+        if self.memory_choice:
+            # An episodic memory's choice and its stream state are part of the continuation;
+            # earlier formats would read its records into the drive instead.
+            metadata["format"] = "cadence-generic/6"
+            temporal = self.context_memory
+            metadata["episodic"] = {
+                "choice": True,
+                "context": float(self.memory_context),
+                "replay": int(self.memory_replay),
+                "demonstrations": float(self.memory_demonstrations),
+                "context_memory": None if temporal is None else temporal.to_dict(),
+            }
+            if temporal is not None:
+                for name in ("pre", "post", "strength", "mass", "consolidated"):
+                    data["temporal/" + name] = getattr(temporal, name)
+                if temporal.separator is not None:
+                    for name in ("projection", "mean"):
+                        data["temporal/separator/" + name] = getattr(temporal.separator, name)
+                if self._context is not None:
+                    data["episode/context"] = self._context
+                if self._decision is not None:
+                    data["episode/decision"] = self._decision
+            if self._paths and any(self._paths):
+                data.update(self._saved_paths())
         if agent._pending is not None:
             kind, plus, minus, value = agent._pending
             if kind != "states":
@@ -1977,6 +2575,36 @@ class Brain:
         data["generic"] = np.array(canonical_json(metadata))
         return _write(data, path)
 
+    def _saved_paths(self) -> dict[str, np.ndarray]:
+        """The replay paths as padded arrays, with each stream's length."""
+        streams, longest = len(self._paths), max(len(path) for path in self._paths)
+        width = len(self.sensory_index) + len(self.motor_index)
+        slots = self.learner.slot_count
+        keys = np.zeros((streams, longest, width))
+        observations = np.zeros((streams, longest, len(self.sensory_index)))
+        actions = np.zeros((streams, longest, slots) if slots > 1 else (streams, longest), int)
+        rewards = np.zeros((streams, longest))
+        received = np.zeros((streams, longest), bool)
+        guesses = np.zeros((streams, longest))
+        for row, path in enumerate(self._paths):
+            for index, (key, action, observation, reward, known, guess) in enumerate(path):
+                if key is not None:
+                    keys[row, index] = key
+                actions[row, index], observations[row, index] = action, observation
+                rewards[row, index], received[row, index] = reward, known
+                guesses[row, index] = guess
+        saved = {
+            "episode/path/actions": actions,
+            "episode/path/observations": observations,
+            "episode/path/rewards": rewards,
+            "episode/path/received": received,
+            "episode/path/guess": guesses,
+            "episode/path/lengths": np.array([len(path) for path in self._paths]),
+        }
+        if self.context_memory is not None:
+            saved["episode/path/keys"] = keys
+        return saved
+
     @classmethod
     def load(
         cls,
@@ -2003,9 +2631,16 @@ class Brain:
                 "cadence-generic/3",
                 "cadence-generic/4",
                 "cadence-generic/5",
+                "cadence-generic/6",
             ):
                 raise ValueError("unsupported Brain checkpoint format")
-            if meta["format"] == "cadence-generic/5":
+            if (meta["format"] == "cadence-generic/6") != ("episodic" in meta):
+                raise ValueError(
+                    "an episodic memory's choice belongs to checkpoint format cadence-generic/6"
+                )
+            if meta["format"] == "cadence-generic/6":
+                pass  # arousal, an efference copy and a sensed state are each optional here
+            elif meta["format"] == "cadence-generic/5":
                 if "arousal" not in meta:
                     raise ValueError("format cadence-generic/5 carries a live stream's arousal")
             elif meta["format"] == "cadence-generic/4":
@@ -2096,6 +2731,42 @@ class Brain:
                 for name in ("trace", "last", "cold"):
                     setattr(result.efference, name, data["efference/" + name].copy())
             result.hippocampus = memory
+            episodic = meta.get("episodic")
+            if episodic is not None:
+                result.memory_choice = True
+                result.memory_context = float(episodic["context"])
+                result.memory_replay = int(episodic["replay"])
+                result.memory_demonstrations = float(episodic["demonstrations"])
+                temporal = _load_memory(
+                    episodic["context_memory"], data, learner.brain.connectome.n, "temporal/"
+                )
+                if temporal is not None and not isinstance(temporal, SynapticMemory):
+                    raise ValueError("an episodic memory's context records consolidate")
+                result.context_memory = temporal
+                for name in ("context", "decision"):
+                    if "episode/" + name in data:
+                        setattr(result, "_" + name, data["episode/" + name].astype(float))
+                if "episode/path/lengths" in data:
+                    lengths = data["episode/path/lengths"]
+                    keys = data.get("episode/path/keys")
+                    actions = data["episode/path/actions"]
+                    observations = data["episode/path/observations"]
+                    rewards, received = data["episode/path/rewards"], data["episode/path/received"]
+                    guesses = data["episode/path/guess"]
+                    result._paths = [
+                        [
+                            (
+                                None if keys is None else keys[row, index].astype(float),
+                                np.array(actions[row, index], dtype=np.int64),
+                                observations[row, index].astype(float),
+                                float(rewards[row, index]),
+                                bool(received[row, index]),
+                                float(guesses[row, index]),
+                            )
+                            for index in range(int(lengths[row]))
+                        ]
+                        for row in range(len(lengths))
+                    ]
             result.arousal = arousal
             if "lived" in meta:
                 state = agent._free  # validated above: a lived action has its free state

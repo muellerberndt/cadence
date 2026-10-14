@@ -125,6 +125,12 @@ def load_protocol(path: Path = PROTOCOL_PATH) -> tuple[dict, str]:
 
 def make_brain(protocol: dict, seed: int, *, decay: float, amplitude: float) -> Brain:
     genes = protocol["brain"]
+    removed = sorted(name for name in protocol["learning"] if name.startswith("homeostasis_"))
+    if removed:
+        raise ValueError(
+            f"this protocol sets {', '.join(removed)}, the readout's intrinsic plasticity that "
+            "cadence-net 0.82.0 removed; recall/4 and recall/5 reproduce with cadence-net 0.81.0"
+        )
     learning = LearnerConfig(**protocol["learning"])
     return Brain.compose(
         inputs.INPUTS,
@@ -136,6 +142,8 @@ def make_brain(protocol: dict, seed: int, *, decay: float, amplitude: float) -> 
         episodic=False,
         working_memory_decay=decay,
         working_memory_amplitude=amplitude,
+        # frozen protocols ran the composition of releases before 0.82.0 (scale 12)
+        working_memory_scale=float(genes.get("trace_scale", 12.0)),
         sensory_scale=float(genes.get("sensory_scale", 1.0)),
     )
 

@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 import numpy as np
 
-ROOT=Path('/Users/muellerberndt/Projects/oph-meta')
+ROOT=Path('/workspace')
 HERE=ROOT/'temp/cadence-memory-repair-20261009'
 OLD=ROOT/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
 sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()

@@ -1,5 +1,5 @@
 {
-  "path": "/Users/muellerberndt/Projects/oph-meta/runs/cadence-memory-first-stage-audit-20261009.json",
+  "path": "/workspace/runs/cadence-memory-first-stage-audit-20261009.json",
   "sha256": "9b454a89c4b14abced82f40ef9c68ec53d482241cc5e715469b36411f0dc1b38",
   "total_work": {
     "actual_sweeps": 1984822,

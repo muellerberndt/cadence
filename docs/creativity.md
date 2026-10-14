@@ -65,9 +65,8 @@ Compare aligned internal readback with matched ordinary recurrence,
 disconnected feedback and shuffled readback. Preserve access to goals and
 observations in every arm, and count added state and computation. Test whether
 self-reflection improves correction, transfer, retained skills or creative
-solutions. This is a functional engineering hypothesis inspired by OPH's
-self-reading observers, not a derivation of intelligence or consciousness
-from a physical theory.
+solutions. This is a functional engineering hypothesis; self-readback alone
+establishes neither intelligence nor consciousness.
 
 ## Transfer across uses
 

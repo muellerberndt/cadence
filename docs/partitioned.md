@@ -21,8 +21,9 @@ y[t] = C @ tanh(h[t])
 The masks have the same shapes as `A`, `B` and `C`: `(hidden, hidden)`,
 `(hidden, inputs)` and `(outputs, hidden)`. An `A[row, column]` entry permits a
 connection from the preceding state's column to the current state's row.
-Communication therefore takes one time step; there is no added instantaneous
-coupling or independent component clock.
+Recurrent communication therefore spans one represented path step. Its physical
+duration, if any, belongs to the application; it is not one solver iteration.
+There is no added instantaneous coupling or independent component clock.
 
 Initialization first draws the ordinary dense parameters, then zeros forbidden
 entries. It does **not** renormalize the masked recurrence. `initial_radius`

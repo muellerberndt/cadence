@@ -6,7 +6,7 @@
 
 [Website](https://floatingpragma.io/cadence/) · [Documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) · [Application demos](https://github.com/muellerberndt/cadence-demos) · [Paper](https://philpapers.org/rec/MUECAP-2) · [PyPI](https://pypi.org/project/cadence-net/)
 
-[![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
+[![CI](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/muellerberndt/cadence/actions/workflows/ci.yml)
 [![License: GPL v3](https://img.shields.io/badge/license-GPLv3-blue.svg)](https://github.com/muellerberndt/cadence/blob/main/LICENSE)
 
 **One continuing equilibrium brain: learn a world, act in it, repair what fails.**
@@ -107,10 +107,10 @@ Python 3.11+ and NumPy are required.
 Install the published release for this basic example:
 
 ```sh
-python -m pip install cadence-net==0.81.0
+python -m pip install cadence-net==0.83.0
 ```
 
-Its [released documentation](https://github.com/muellerberndt/cadence/blob/v0.81.0/docs/README.md)
+Its [released documentation](https://github.com/muellerberndt/cadence/blob/v0.83.0/docs/README.md)
 describes the APIs included in that package.
 
 ```python
@@ -214,15 +214,6 @@ provides exact state-and-error readback under its own numerical contract.
 
 [cadence-demos](https://github.com/muellerberndt/cadence-demos) contains the
 application demos.
-
-## Related physics project
-
-Cadence shares its basic principle with
-[Observer Patch Holography](https://github.com/FloatingPragma/observer-patch-holography)
-(OPH), a physics project that uses local repair to derive the laws of physics. In
-OPH, observer patches repair disagreements where they overlap until the whole
-network is consistent. In Cadence, neurons settle against what their connections
-predict, and learning changes those connections locally.
 
 ## Cadence memecoin
 

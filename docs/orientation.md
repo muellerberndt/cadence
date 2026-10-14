@@ -132,13 +132,17 @@ learning. `observe` learns and, for a record patch, writes.
 - **Port.** A declared band of a patch's state that another patch, or the world,
   reads or drives. Populations of a connectome, the input and output ports of a path,
   a `Port` between record patches.
-- **Settle, settling.** Repeating local updates under fixed evidence. A qualified
-  equilibrium requires the equation residual to pass, not merely small movement
-  or an exhausted iteration budget.
-- **Equilibrium.** The settled state under fixed inputs and weights. For a path, the
-  causal recurrence, which satisfies its temporal equations with zero defect.
-- **Residual.** The remaining error of the fixed-point equations at a state. Small
-  movement per step is not a residual; the residual is the check.
+- **Settle, settling.** Repeating local updates under fixed evidence. Qualification
+  requires the component's declared equation or stationarity check to pass,
+  not merely small movement or an exhausted iteration budget.
+- **Equilibrium.** A state satisfying the component's settlement contract under
+  fixed boundary conditions. For the neural graph these include drive, parameters
+  and held memory readback; the population engine checks constrained stationarity.
+  For a free path, the causal recurrence satisfies its temporal equations with zero defect.
+- **Residual.** A model-specific numerical quantity: neural equation error,
+  population stationarity error, or temporal seam defect. `BeliefPatch.residual`
+  instead reports the last damped move; it is not an independent fixed-point
+  certificate. See [the numerical contracts](contracts.md). None establishes task success.
 - **Certificate.** The contraction bound that says settling has a unique equilibrium
   and how far the last step's movement leaves the state from it.
 - **Free phase, nudged phase.** The settle under the inputs alone, and the settle

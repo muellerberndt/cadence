@@ -16,23 +16,26 @@ rules. Internal consistency does not establish correct understanding or cheap
 computation.
 
 Python 3.11+ and NumPy are required.
-These guides use Cadence 0.81.0:
+These guides use Cadence 0.83.0:
 
 ```sh
-python -m pip install cadence-net==0.81.0
+python -m pip install cadence-net==0.83.0
 ```
 
 ## Start here
 
 For a version-pinned reading order, use the
-[release documentation](https://github.com/muellerberndt/cadence/blob/v0.81.0/docs/README.md).
+[release documentation](https://github.com/muellerberndt/cadence/blob/v0.83.0/docs/README.md).
 
 1. [The continuing world model](world-model.md): lifecycle, design intent and current boundaries.
 2. [Quickstart](quickstart.md): run one brain through observations and outcomes.
 3. [Build a brain](brain.md): compose System 1, add optional observers and save it.
-4. [Continuous interaction](continuous.md): observations, actual rewards,
+4. [Context](context.md): what the brain carries from moment to moment, and how to wire it
+   for better retention. [Episodic memory](episodic.md) (opt-in): what happened in a
+   situation before, remembered at once and voting in the choice.
+5. [Continuous interaction](continuous.md): observations, actual rewards,
    demonstrations, memory and private imagination.
-5. [Contracts](contracts.md): numerical qualification, learning and refusal.
+6. [Contracts](contracts.md): numerical qualification, learning and refusal.
 
 `Brain.compose(inputs, actions, modules=(64,), observers=())` includes working
 and consolidating memory. Add observer widths for recursive feedback. Actions
@@ -46,6 +49,7 @@ require a qualified full state; more regions do not guarantee better decisions.
 | Routine and repair in one continuing stream; reversal after long experience | [Routine and repair](continuous.md#routine-and-repair-live), [odour nursery](../benchmarks/reversal/README.md) |
 | Isolated graph learning or calibration controls | [Learning rule](learning.md), [task recipes](tasks.md) |
 | Acquisition and retention receipts | [Acquisition protocol](../benchmarks/acquisition/README.md) |
+| Context across moments, retention, sequences | [Context](context.md), [episodic memory](episodic.md), [sequential tasks](sequential-tasks.md) |
 | Trace and associative-memory rules | [Memory](memory.md), [continued learning](continuous.md) |
 | Event records, dreaming and sleep consolidation | [Record patch](record-patch.md), [day/night acquisition](record-patch.md#acquisition-in-two-phases-records-by-day-weights-by-night) |
 | Learned environmental consequences and private action planning | [Interaction](interaction.md), [temporal model](temporal.md), [planning](planning.md) |
@@ -53,6 +57,7 @@ require a qualified full state; more regions do not guarantee better decisions.
 | Recursive wiring and learning | [Recursive settlement](recursive-settlement.md), [recursive training](recursive-training.md) |
 | Custom regions and connections | [Cortices](cortex.md), [genomes](evolution.md), [data shapes](build.md) |
 | Device execution and cost | [Backends](backends.md), [scaling](scaling.md) |
+| Reuse results on recovery, asynchronous updates and changing inputs | [Settling literature and its assumptions](settling-literature.md) |
 | Exact state-and-error population model | [Advanced population solver](equilibrium/index.md) |
 
 <a id="kept-for-existing-experiments"></a>

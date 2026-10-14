@@ -51,7 +51,9 @@ def test_plain_compose_keeps_the_released_founders():
     assert brain.basal_ganglia.config.eta == 1.0
     assert brain.basal_ganglia.config.eta_bias == 0.05
     assert brain.working_memory.amplitude == 3.0
-    assert brain.working_memory.decay == 0.2
+    assert brain.working_memory.decay == 0.0  # 0.2 before 0.82.0
+    # the projection that reads the carried interpretation back: 12 before 0.82.0
+    assert brain.describe()["initialization"]["composition"]["working_memory_scale"] == 1.2
 
 
 @pytest.mark.parametrize("arousal", [True, {}, {"need": 2.0}])

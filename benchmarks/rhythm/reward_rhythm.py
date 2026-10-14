@@ -108,6 +108,8 @@ def make_brain(seed: int, protocol: dict, arm: str) -> Brain:
         "episodic": False,
         "working_memory_amplitude": point["trace_amplitude"],
         "working_memory_decay": point["trace_decay"],
+        # the composition of releases before 0.82.0 read the trace back at scale 12
+        "working_memory_scale": point.get("trace_scale", 12.0),
     }
     if arm != "nocopy":
         options["efference_amplitude"] = point["efference_amplitude"]

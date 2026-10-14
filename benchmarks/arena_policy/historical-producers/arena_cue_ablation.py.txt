@@ -8,7 +8,7 @@ import cadence
 import arena.nursery as nursery
 from arena.parts import stock_designs
 
-root=Path('/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena/runs/cadence-issues-159-160-learning-20261008')
+root=Path('/workspace/cadence-robot-arena/runs/cadence-issues-159-160-learning-20261008')
 core=Path(cadence.__file__).resolve().parents[2]
 source={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (core/'src/cadence').rglob('*.py')}
 observe=nursery.observe

@@ -8,9 +8,9 @@ import sys
 import time
 import types
 
-CORE = Path('/Users/muellerberndt/Projects/oph-meta/temp/cadence-issue160-learning-20261009')
-ARENA = Path('/Users/muellerberndt/Projects/oph-meta/cadence-robot-arena')
-FROZEN = Path('/Users/muellerberndt/Projects/oph-meta/temp/cadence-robot-release-confirmation-20261008')
+CORE = Path('/workspace/temp/cadence-issue160-learning-20261009')
+ARENA = Path('/workspace/cadence-robot-arena')
+FROZEN = Path('/workspace/temp/cadence-robot-release-confirmation-20261008')
 DATA = ARENA/'runs/cadence-release-confirmation-20261008-9ecbd0f'
 OUT = Path(__file__).parent
 sys.path[:0] = [str(CORE/'src'),str(ARENA)]

@@ -2,7 +2,7 @@
 import gzip,hashlib,json
 from pathlib import Path
 import numpy as np
-B=Path('/Users/muellerberndt/Projects/oph-meta'); P=B/'temp/cadence-phase-repair-20261009'; D=B/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
+B=Path('/workspace'); P=B/'temp/cadence-phase-repair-20261009'; D=B/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
 protocol=json.loads((P/'protocol.json').read_text()); refs=json.loads((P/'reused-controls.json').read_text())
 def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
 def same(a,b):

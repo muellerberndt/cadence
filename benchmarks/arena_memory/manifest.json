@@ -2,11 +2,15 @@
   {
     "file": "historical/compare.py.txt",
     "original": "temp/cadence-memory-repair-20261009/compare.py",
-    "raw_sha256": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
-    "raw_bytes": 9214,
-    "file_sha256": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
-    "file_bytes": 9214,
-    "gzip_wrapper": false
+    "raw_sha256": "bd527cadb5d0263fcbe0373b9b2d97948b03f07e3231a88281e621763db0b5c2",
+    "raw_bytes": 9186,
+    "file_sha256": "bd527cadb5d0263fcbe0373b9b2d97948b03f07e3231a88281e621763db0b5c2",
+    "file_bytes": 9186,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
+    "original_raw_bytes": 9214,
+    "original_file_sha256": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
+    "original_file_bytes": 9214
   },
   {
     "file": "historical/summarize.py.txt",
@@ -20,20 +24,28 @@
   {
     "file": "historical/launch.py.txt",
     "original": "temp/cadence-memory-repair-20261009/launch.py",
-    "raw_sha256": "5ed40ca987ca28139e4679df8c6ecbb3de4eaa6a79bc9ebe5b59df26e7c097d9",
-    "raw_bytes": 1455,
-    "file_sha256": "5ed40ca987ca28139e4679df8c6ecbb3de4eaa6a79bc9ebe5b59df26e7c097d9",
-    "file_bytes": 1455,
-    "gzip_wrapper": false
+    "raw_sha256": "addf50a76a494cfa345d49ac22ce82b4eedbe6cbb000e9ed5d5478cbaa6e8f98",
+    "raw_bytes": 1427,
+    "file_sha256": "addf50a76a494cfa345d49ac22ce82b4eedbe6cbb000e9ed5d5478cbaa6e8f98",
+    "file_bytes": 1427,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "5ed40ca987ca28139e4679df8c6ecbb3de4eaa6a79bc9ebe5b59df26e7c097d9",
+    "original_raw_bytes": 1455,
+    "original_file_sha256": "5ed40ca987ca28139e4679df8c6ecbb3de4eaa6a79bc9ebe5b59df26e7c097d9",
+    "original_file_bytes": 1455
   },
   {
     "file": "historical/launch-retention.py.txt",
     "original": "temp/cadence-memory-repair-20261009/launch-retention.py",
-    "raw_sha256": "cd779e56b296aa80ce2e1693b7daa09134772d4415e8b14626d46f19df20dcd0",
-    "raw_bytes": 1485,
-    "file_sha256": "cd779e56b296aa80ce2e1693b7daa09134772d4415e8b14626d46f19df20dcd0",
-    "file_bytes": 1485,
-    "gzip_wrapper": false
+    "raw_sha256": "f24e4a6434de832ae5073cd6bc607254e0752b68c4c06f3613323f53472d128f",
+    "raw_bytes": 1457,
+    "file_sha256": "f24e4a6434de832ae5073cd6bc607254e0752b68c4c06f3613323f53472d128f",
+    "file_bytes": 1457,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "cd779e56b296aa80ce2e1693b7daa09134772d4415e8b14626d46f19df20dcd0",
+    "original_raw_bytes": 1485,
+    "original_file_sha256": "cd779e56b296aa80ce2e1693b7daa09134772d4415e8b14626d46f19df20dcd0",
+    "original_file_bytes": 1485
   },
   {
     "file": "protocol.json",
@@ -101,11 +113,15 @@
   {
     "file": "receipts/mantis-201-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/mantis-201-control/receipt.json",
-    "raw_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
-    "raw_bytes": 103884,
-    "file_sha256": "ebeaddbf2dd6d3fd58bb710b912017b99560c21dab570e932e1e4e3d109a8123",
-    "file_bytes": 15875,
-    "gzip_wrapper": true
+    "raw_sha256": "2afd7c2bed43f82548c97518c51ffecbb887937c8289e6da59fea70ef887982c",
+    "raw_bytes": 103828,
+    "file_sha256": "fc85f736ebc21ddb793fc68499c3bad52a8a62336f2ba8fa8122f64a31e3b21d",
+    "file_bytes": 15848,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
+    "original_raw_bytes": 103884,
+    "original_file_sha256": "ebeaddbf2dd6d3fd58bb710b912017b99560c21dab570e932e1e4e3d109a8123",
+    "original_file_bytes": 15875
   },
   {
     "file": "streams/mantis-201-control.jsonl.gz",
@@ -119,11 +135,15 @@
   {
     "file": "receipts/mantis-201-memory.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/mantis-201-memory/receipt.json",
-    "raw_sha256": "42ef16c86b602de76a0709206e2e542c8a197d4e44a273c9cfb9496f9b3bd108",
-    "raw_bytes": 104885,
-    "file_sha256": "0ab98f1e851ff45b47493e865e095793d1eb29dbfb2682dd7c5fa322c3889ad8",
-    "file_bytes": 16070,
-    "gzip_wrapper": true
+    "raw_sha256": "34cf316bcb2f58a02c6ef22c7c7cc9c2807fd38fc56b3bb083f6c40f82e303a4",
+    "raw_bytes": 104829,
+    "file_sha256": "ba3f801858682ef780f3215dfc21a25c7e4df96c9873b9c9f8a83fbc64996db3",
+    "file_bytes": 16041,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "42ef16c86b602de76a0709206e2e542c8a197d4e44a273c9cfb9496f9b3bd108",
+    "original_raw_bytes": 104885,
+    "original_file_sha256": "0ab98f1e851ff45b47493e865e095793d1eb29dbfb2682dd7c5fa322c3889ad8",
+    "original_file_bytes": 16070
   },
   {
     "file": "streams/mantis-201-memory.jsonl.gz",
@@ -137,11 +157,15 @@
   {
     "file": "receipts/mantis-202-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/mantis-202-control/receipt.json",
-    "raw_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
-    "raw_bytes": 104001,
-    "file_sha256": "5d1e509b10d83d5fda708c98ee7bbe65b88f05134a10731a6c1a57530d592870",
-    "file_bytes": 15765,
-    "gzip_wrapper": true
+    "raw_sha256": "dde366d00b3c9e9e5a83200394174ed3b6d931e5f0f93322e666029f8a2c41e3",
+    "raw_bytes": 103945,
+    "file_sha256": "aff075492bedc5fdaebcee18466b563f3fe53b8e513b28fe0004901337f74e6d",
+    "file_bytes": 15739,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+    "original_raw_bytes": 104001,
+    "original_file_sha256": "5d1e509b10d83d5fda708c98ee7bbe65b88f05134a10731a6c1a57530d592870",
+    "original_file_bytes": 15765
   },
   {
     "file": "streams/mantis-202-control.jsonl.gz",
@@ -155,11 +179,15 @@
   {
     "file": "receipts/mantis-202-memory.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/mantis-202-memory/receipt.json",
-    "raw_sha256": "699184b8b44f3cf042a8d286cdbef6f77ddb759741cfb65f0ad3f14d66e54e12",
-    "raw_bytes": 104784,
-    "file_sha256": "1171af7a99da458cdb2a1b66994a52e10d766d5adee6e2ce811e858b1de10587",
-    "file_bytes": 15675,
-    "gzip_wrapper": true
+    "raw_sha256": "6137a1345e97aab41c8d1de1382229b61dbb46e7bfcff5b2fb83dd2d685f87db",
+    "raw_bytes": 104728,
+    "file_sha256": "ab641cb4e1caac8792ab75844208b7aa7fc0e90797218accc806c9ba21f4818b",
+    "file_bytes": 15648,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "699184b8b44f3cf042a8d286cdbef6f77ddb759741cfb65f0ad3f14d66e54e12",
+    "original_raw_bytes": 104784,
+    "original_file_sha256": "1171af7a99da458cdb2a1b66994a52e10d766d5adee6e2ce811e858b1de10587",
+    "original_file_bytes": 15675
   },
   {
     "file": "streams/mantis-202-memory.jsonl.gz",
@@ -173,11 +201,15 @@
   {
     "file": "receipts/smoke-mantis-202-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/smoke-mantis-202-control/receipt.json",
-    "raw_sha256": "1a82945430af1550479f7d15bc285528117b2afb4e932a77d1c1bb40ddefadb7",
-    "raw_bytes": 50677,
-    "file_sha256": "c1df9d8ce426eaabd97cc447517bcd23c81b4a919ff18818d15fc1229f3cec78",
-    "file_bytes": 11931,
-    "gzip_wrapper": true
+    "raw_sha256": "a3408000123b6278c18e3713dcc8d1488618b72e8bf031c2116e36df3c013c7e",
+    "raw_bytes": 50649,
+    "file_sha256": "e641650d12462a415d2ae8e1ce5ac63b2848bd784eec3210d6876837a9ec9716",
+    "file_bytes": 11904,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "1a82945430af1550479f7d15bc285528117b2afb4e932a77d1c1bb40ddefadb7",
+    "original_raw_bytes": 50677,
+    "original_file_sha256": "c1df9d8ce426eaabd97cc447517bcd23c81b4a919ff18818d15fc1229f3cec78",
+    "original_file_bytes": 11931
   },
   {
     "file": "streams/smoke-mantis-202-control.jsonl.gz",
@@ -191,11 +223,15 @@
   {
     "file": "receipts/smoke-tumbler-103-memory.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/smoke-tumbler-103-memory/receipt.json",
-    "raw_sha256": "07e59f7078166ad5fe10da46c76fd39f59f1391558473ad5a50bfafdf2ee2772",
-    "raw_bytes": 49128,
-    "file_sha256": "334205d705879ca30dc800c93940051debf893ce14c07195132c37da4039455b",
-    "file_bytes": 12032,
-    "gzip_wrapper": true
+    "raw_sha256": "250de473568327db9fe65e0e9f9406fe7cf9790d3df36fdacd9350d68d7e56da",
+    "raw_bytes": 49100,
+    "file_sha256": "b9821835a5fa14a4f5ec95567cd7e821ed57a080252b3dcbdc59aacfd262fec3",
+    "file_bytes": 12003,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "07e59f7078166ad5fe10da46c76fd39f59f1391558473ad5a50bfafdf2ee2772",
+    "original_raw_bytes": 49128,
+    "original_file_sha256": "334205d705879ca30dc800c93940051debf893ce14c07195132c37da4039455b",
+    "original_file_bytes": 12032
   },
   {
     "file": "streams/smoke-tumbler-103-memory.jsonl.gz",
@@ -209,11 +245,15 @@
   {
     "file": "receipts/tumbler-102-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/tumbler-102-control/receipt.json",
-    "raw_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
-    "raw_bytes": 99698,
-    "file_sha256": "9c63333fb6ce3b7566c20bb0c5b1ef3b15ee589189e813b532cae01bb6364a1a",
-    "file_bytes": 15841,
-    "gzip_wrapper": true
+    "raw_sha256": "c3da7c993cc1c4362cd63345412f4152c708c2d130d2a8e466e3e588191cdaa3",
+    "raw_bytes": 99642,
+    "file_sha256": "5c84d03eee6e980c0533a52ea67fe64572bed22b4da6b30fe1108a91fe730f2c",
+    "file_bytes": 15813,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+    "original_raw_bytes": 99698,
+    "original_file_sha256": "9c63333fb6ce3b7566c20bb0c5b1ef3b15ee589189e813b532cae01bb6364a1a",
+    "original_file_bytes": 15841
   },
   {
     "file": "streams/tumbler-102-control.jsonl.gz",
@@ -227,11 +267,15 @@
   {
     "file": "receipts/tumbler-102-memory.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/tumbler-102-memory/receipt.json",
-    "raw_sha256": "70f70ee9294c8b9975c38425671d44348b86680c02f9d4fdf1d656a1ee01b830",
-    "raw_bytes": 100327,
-    "file_sha256": "421ef40872f63a109d2df4d2d5542b28959d651b5c4a8b3b6b5193d81f82f9b6",
-    "file_bytes": 15959,
-    "gzip_wrapper": true
+    "raw_sha256": "1130dd239a175cec1dca0a4617715c70ccb1ece4d6be0cef071fa423b0917c9e",
+    "raw_bytes": 100271,
+    "file_sha256": "5d37b492a5a4c8abf52bc70217dc95b232d008deda0f0b2bb4ff20423ef40237",
+    "file_bytes": 15934,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "70f70ee9294c8b9975c38425671d44348b86680c02f9d4fdf1d656a1ee01b830",
+    "original_raw_bytes": 100327,
+    "original_file_sha256": "421ef40872f63a109d2df4d2d5542b28959d651b5c4a8b3b6b5193d81f82f9b6",
+    "original_file_bytes": 15959
   },
   {
     "file": "streams/tumbler-102-memory.jsonl.gz",
@@ -245,11 +289,15 @@
   {
     "file": "receipts/tumbler-103-control.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/tumbler-103-control/receipt.json",
-    "raw_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
-    "raw_bytes": 99363,
-    "file_sha256": "ae70deb93e3cd167af3954becd74a82ed77b8778d29085aa03cfa4adc3e368fb",
-    "file_bytes": 15166,
-    "gzip_wrapper": true
+    "raw_sha256": "a0240d9996fa22b8dbc4525162b514cfc64d9683fbc32f326cd47e81eb5b6fe8",
+    "raw_bytes": 99307,
+    "file_sha256": "95ac8a2a6bea1c6acc0d1ba958809057aaad827e202fd092a9a3c70f295425fb",
+    "file_bytes": 15139,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+    "original_raw_bytes": 99363,
+    "original_file_sha256": "ae70deb93e3cd167af3954becd74a82ed77b8778d29085aa03cfa4adc3e368fb",
+    "original_file_bytes": 15166
   },
   {
     "file": "streams/tumbler-103-control.jsonl.gz",
@@ -263,11 +311,15 @@
   {
     "file": "receipts/tumbler-103-memory.json.gz",
     "original": "temp/cadence-memory-repair-20261009/runs/tumbler-103-memory/receipt.json",
-    "raw_sha256": "3f4a007ad653399067362ad746e97b3968cfd3c24204c42ed3d5b83066834825",
-    "raw_bytes": 100689,
-    "file_sha256": "f0233c3b25beaf82213db571ab941d456b198622a2208fd6082de54430312af7",
-    "file_bytes": 15647,
-    "gzip_wrapper": true
+    "raw_sha256": "d414a3c6dfb4d728f0496e112c430508687e316b765fa130986d7542fe28642f",
+    "raw_bytes": 100633,
+    "file_sha256": "e886b73ea8d93705d33de3ccd94872418551b48ee216b2d4035ca910402c0bd7",
+    "file_bytes": 15621,
+    "gzip_wrapper": true,
+    "original_raw_sha256": "3f4a007ad653399067362ad746e97b3968cfd3c24204c42ed3d5b83066834825",
+    "original_raw_bytes": 100689,
+    "original_file_sha256": "f0233c3b25beaf82213db571ab941d456b198622a2208fd6082de54430312af7",
+    "original_file_bytes": 15647
   },
   {
     "file": "streams/tumbler-103-memory.jsonl.gz",
@@ -380,29 +432,41 @@
   {
     "file": "reviews/cadence-memory-first-stage-audit-20261009.py.txt",
     "original": "runs/cadence-memory-first-stage-audit-20261009.py",
-    "raw_sha256": "2341745969c0f31507bf3ab4a5477be11930e48ae4d47fadbb9ccdde7ed2e3f6",
-    "raw_bytes": 7774,
-    "file_sha256": "2341745969c0f31507bf3ab4a5477be11930e48ae4d47fadbb9ccdde7ed2e3f6",
-    "file_bytes": 7774,
-    "gzip_wrapper": false
+    "raw_sha256": "55d7ce6d9178e2c9e6aaf4bcc8ba1e8adc83bd526f9f261bb6c3838bc181ba85",
+    "raw_bytes": 7746,
+    "file_sha256": "55d7ce6d9178e2c9e6aaf4bcc8ba1e8adc83bd526f9f261bb6c3838bc181ba85",
+    "file_bytes": 7746,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "2341745969c0f31507bf3ab4a5477be11930e48ae4d47fadbb9ccdde7ed2e3f6",
+    "original_raw_bytes": 7774,
+    "original_file_sha256": "2341745969c0f31507bf3ab4a5477be11930e48ae4d47fadbb9ccdde7ed2e3f6",
+    "original_file_bytes": 7774
   },
   {
     "file": "reviews/cadence-memory-first-stage-audit-20261009.log",
     "original": "runs/cadence-memory-first-stage-audit-20261009.log",
-    "raw_sha256": "c343dbedebb9d6e09b191a92a84dcd5d9c389ed7fde7cc5991990a0da1ddd2e9",
-    "raw_bytes": 310,
-    "file_sha256": "c343dbedebb9d6e09b191a92a84dcd5d9c389ed7fde7cc5991990a0da1ddd2e9",
-    "file_bytes": 310,
-    "gzip_wrapper": false
+    "raw_sha256": "a7d4787cc5c6bea9107fd9546cf760873b7c094cc0ccf9e36b7964cc493b62de",
+    "raw_bytes": 282,
+    "file_sha256": "a7d4787cc5c6bea9107fd9546cf760873b7c094cc0ccf9e36b7964cc493b62de",
+    "file_bytes": 282,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "c343dbedebb9d6e09b191a92a84dcd5d9c389ed7fde7cc5991990a0da1ddd2e9",
+    "original_raw_bytes": 310,
+    "original_file_sha256": "c343dbedebb9d6e09b191a92a84dcd5d9c389ed7fde7cc5991990a0da1ddd2e9",
+    "original_file_bytes": 310
   },
   {
     "file": "historical/microscope.py.txt",
     "original": "temp/cadence-learning-microscope-20261009/microscope.py",
-    "raw_sha256": "808386d8e56ffa64bf3467654943e9ab97052844b8f43c0368227219d18d52e6",
-    "raw_bytes": 8149,
-    "file_sha256": "808386d8e56ffa64bf3467654943e9ab97052844b8f43c0368227219d18d52e6",
-    "file_bytes": 8149,
-    "gzip_wrapper": false
+    "raw_sha256": "b8455cd1803ad237cb7f811665a029f6df09beadf498b89b5a28761e102f638e",
+    "raw_bytes": 8065,
+    "file_sha256": "b8455cd1803ad237cb7f811665a029f6df09beadf498b89b5a28761e102f638e",
+    "file_bytes": 8065,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "808386d8e56ffa64bf3467654943e9ab97052844b8f43c0368227219d18d52e6",
+    "original_raw_bytes": 8149,
+    "original_file_sha256": "808386d8e56ffa64bf3467654943e9ab97052844b8f43c0368227219d18d52e6",
+    "original_file_bytes": 8149
   },
   {
     "file": "microscope-summary.json",
@@ -425,28 +489,40 @@
   {
     "file": "reviews/cadence-memory-all-stage-audit-20261009.py.txt",
     "original": "runs/cadence-memory-all-stage-audit-20261009.py",
-    "raw_sha256": "fede9d26095f2ba5dbda765df24b4107c218fc3fe3ea49a56051d3b23425b85c",
-    "raw_bytes": 8190,
-    "file_sha256": "fede9d26095f2ba5dbda765df24b4107c218fc3fe3ea49a56051d3b23425b85c",
-    "file_bytes": 8190,
-    "gzip_wrapper": false
+    "raw_sha256": "6c40af3c89153bb8205ad03ee4c46677bfe5aadeb5051699e21b440bf1ec07db",
+    "raw_bytes": 8162,
+    "file_sha256": "6c40af3c89153bb8205ad03ee4c46677bfe5aadeb5051699e21b440bf1ec07db",
+    "file_bytes": 8162,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "fede9d26095f2ba5dbda765df24b4107c218fc3fe3ea49a56051d3b23425b85c",
+    "original_raw_bytes": 8190,
+    "original_file_sha256": "fede9d26095f2ba5dbda765df24b4107c218fc3fe3ea49a56051d3b23425b85c",
+    "original_file_bytes": 8190
   },
   {
     "file": "reviews/cadence-memory-all-stage-audit-20261009.log",
     "original": "runs/cadence-memory-all-stage-audit-20261009.log",
-    "raw_sha256": "24a8f0659cd3766d12df3be2797819b9f1ee66378eaaa0a18058246a935ed44e",
-    "raw_bytes": 308,
-    "file_sha256": "24a8f0659cd3766d12df3be2797819b9f1ee66378eaaa0a18058246a935ed44e",
-    "file_bytes": 308,
-    "gzip_wrapper": false
+    "raw_sha256": "a0d49cd1071f74f7c17570606733a4e16b3c55a633ab45c83aaa3394ddfd426e",
+    "raw_bytes": 280,
+    "file_sha256": "a0d49cd1071f74f7c17570606733a4e16b3c55a633ab45c83aaa3394ddfd426e",
+    "file_bytes": 280,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "24a8f0659cd3766d12df3be2797819b9f1ee66378eaaa0a18058246a935ed44e",
+    "original_raw_bytes": 308,
+    "original_file_sha256": "24a8f0659cd3766d12df3be2797819b9f1ee66378eaaa0a18058246a935ed44e",
+    "original_file_bytes": 308
   },
   {
     "file": "reviews/cadence-memory-first-stage-audit-20261009-initial-timing-comparison.log",
     "original": "runs/cadence-memory-first-stage-audit-20261009-initial-timing-comparison.log",
-    "raw_sha256": "5675bd94244e1f89dc7454edc67583367cc3706c577b8ae97e308531163f41ef",
-    "raw_bytes": 328,
-    "file_sha256": "5675bd94244e1f89dc7454edc67583367cc3706c577b8ae97e308531163f41ef",
-    "file_bytes": 328,
-    "gzip_wrapper": false
+    "raw_sha256": "dda28546734de73004b8d421adcbedc825985a67f7498cf180d13affc9409aee",
+    "raw_bytes": 300,
+    "file_sha256": "dda28546734de73004b8d421adcbedc825985a67f7498cf180d13affc9409aee",
+    "file_bytes": 300,
+    "gzip_wrapper": false,
+    "original_raw_sha256": "5675bd94244e1f89dc7454edc67583367cc3706c577b8ae97e308531163f41ef",
+    "original_raw_bytes": 328,
+    "original_file_sha256": "5675bd94244e1f89dc7454edc67583367cc3706c577b8ae97e308531163f41ef",
+    "original_file_bytes": 328
   }
 ]

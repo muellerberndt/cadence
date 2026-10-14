@@ -21,7 +21,7 @@
       "sha256": "8f29ea0877558cf64cc7ca840f2158af207ce37b6b763881259600fc5077ffb6"
     }
   ],
-  "local_run_directory": "/Users/muellerberndt/Projects/oph-meta/runs/issue140-native-instrument-reproduction",
+  "local_run_directory": "/workspace/runs/issue140-native-instrument-reproduction",
   "local_checkpoint_count": 66,
   "development_gate": {
     "passed": true,
@@ -39,14 +39,14 @@
   "custody": "The gzip contains the complete unmodified source-bound summary receipt. Original receipt, archived source copies and 66 acquired/preservation checkpoints remain in the local run directory. Their hashes are in the receipt; rerun native_history.py --verify on that directory to recheck checkpoint relations. This compressed receipt alone cannot recheck binary relations.",
   "execution": {
     "finished_utc": "2026-10-09T02:03:33.847673+00:00",
-    "interpreter": "/Users/muellerberndt/Projects/oph-meta/cadence/.venv/bin/python",
+    "interpreter": "/workspace/cadence/.venv/bin/python",
     "argv": [
       "benchmarks/rhythm/native_history.py",
       "--full",
       "--out",
-      "/Users/muellerberndt/Projects/oph-meta/runs/issue140-native-instrument-reproduction"
+      "/workspace/runs/issue140-native-instrument-reproduction"
     ],
-    "pythonpath": "/Users/muellerberndt/Projects/oph-meta/temp/cadence-issue140-native-history/src",
+    "pythonpath": "/workspace/temp/cadence-issue140-native-history/src",
     "thread_environment": {
       "OPENBLAS_NUM_THREADS": null,
       "MKL_NUM_THREADS": null,

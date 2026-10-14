@@ -44,6 +44,14 @@ coexist with inaccurate predictions of the external world.
 | Inference iteration | Interpretation of the same evidence | Evidence, parameters and the admitted memory snapshot |
 | Learning update | Parameters, memory contents or an explicitly learned address map | Which targets were observed, taught or imagined |
 
+These are operation indices, not interchangeable physical clocks. An environment
+step has the duration declared by its simulator or measured body interface;
+irregular intervals need that information explicitly. Solver sweeps and the
+neural `dt` relaxation fraction do not assign physical duration. Measure wall
+time separately, including sensing, scheduling and qualification. The current
+[`live`/`wait` contract](continuous.md#defaults-and-the-thinking-clock) specifies
+which events advance trace, eligibility, arousal and learning.
+
 An imagined future has its own step index within a private branch. Its steps
 simulate environment time; they are not extra inference iterations on the
 present. They also do not count as new external observations.

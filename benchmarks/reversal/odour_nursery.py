@@ -120,8 +120,10 @@ def make_brain(point: dict[str, Any], seed: int, genes: dict[str, Any] | None) -
     options: dict[str, Any] = {}
     if "trace_amplitude" in point:
         options["working_memory_amplitude"] = point["trace_amplitude"]
-    if "trace_decay" in point:
-        options["working_memory_decay"] = point["trace_decay"]
+    # frozen protocols ran the composition of releases before 0.82.0: the retention they
+    # leave unnamed was 0.2, and the carried interpretation was read back at scale 12
+    options["working_memory_decay"] = point.get("trace_decay", 0.2)
+    options["working_memory_scale"] = point.get("trace_scale", 12.0)
     if "consolidation" in point:
         options["consolidation"] = point["consolidation"]
     if not point.get("episodic", True):

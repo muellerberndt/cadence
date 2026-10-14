@@ -12,7 +12,7 @@ import sys
 import time
 import traceback
 
-ROOT = Path('/Users/muellerberndt/Projects/oph-meta')
+ROOT = Path('/workspace')
 HERE = Path(__file__).resolve().parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--case', required=True)

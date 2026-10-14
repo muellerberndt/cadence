@@ -2,7 +2,7 @@
 import gzip,hashlib,json
 from pathlib import Path
 import numpy as np
-ROOT=Path('/Users/muellerberndt/Projects/oph-meta')
+ROOT=Path('/workspace')
 HERE=ROOT/'temp/cadence-phase-repair-20261009'
 DATA=ROOT/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
 protocol=json.loads((HERE/'protocol.json').read_text())

@@ -142,8 +142,9 @@ and valence to the rest of the learning life.
 ## Budget the ongoing loop
 
 Choose the settling budget using changing observations and the task's outcome
-metric. Compare cold and warm starts, reset independent episodes, and
-measure all decision work. A small step count or a cached response to one unchanged
+metric. Compare cold and warm starts as controls, declare terminal resets, retain
+learned state across the continuing life, and measure all decision work.
+A small step count or a cached response to one unchanged
 input does not establish reliable control or lower decision cost.
 
 ## What delayed credit requires
