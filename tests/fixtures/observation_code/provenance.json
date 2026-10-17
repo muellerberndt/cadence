@@ -1,0 +1,37 @@
+{
+  "written_by": "tests/test_observation_code.py FOUNDERS['recalled'] after its life, saved at checkpoint format cadence-generic/8",
+  "format": "cadence-generic/8",
+  "founders": {
+    "recalled": [
+      4,
+      2,
+      {
+        "modules": [
+          8
+        ],
+        "seed": 5,
+        "arousal": true,
+        "recall": true,
+        "history_decays": [
+          0.2,
+          0.9
+        ],
+        "efference_amplitude": 1.0,
+        "memory_choice": true
+      }
+    ]
+  },
+  "continuation": {
+    "recalled": {
+      "digest": "3e7266a0975693142274332e9e76742fc1b3d3df5fa703fe438fe3eed527bbd8",
+      "acts": [
+        1,
+        1,
+        0,
+        0,
+        1,
+        1
+      ]
+    }
+  }
+}

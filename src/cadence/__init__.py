@@ -28,6 +28,7 @@ from .generic import Brain
 from .genome import Genome, Projection, develop, evolve, genes
 from .instruments import dishabituation, orienting
 from .learning import (
+    GraphHolder,
     Learner,
     LearnerConfig,
     LearningPhaseError,
@@ -77,7 +78,17 @@ from .records import Mulberry32, Records
 from .reference import conformance
 from .regions import Region
 from .steering import Boundary, Gaze, Rule, Softmax, Steered, SteeredPath
-from .stream import Afterglow, Echo, Efference, FastSynapses, PatternSeparator, Trace, stateful
+from .stream import (
+    Afterglow,
+    Echo,
+    Efference,
+    FastSynapses,
+    History,
+    PatternSeparator,
+    Recall,
+    Trace,
+    stateful,
+)
 from .temporal import TemporalObservation, TemporalPatchNet, TemporalPhase, TemporalReadback
 from .temporal_memory import ConstraintReport, TemporalMemory
 
@@ -147,9 +158,12 @@ __all__ = [
     "Afterglow",
     "Trace",
     "Efference",
+    "History",
+    "Recall",
     "FastSynapses",
     "SynapticMemory",
     "NeuronModel",
+    "GraphHolder",
     "Learner",
     "LearnerConfig",
     "LearningPhaseError",

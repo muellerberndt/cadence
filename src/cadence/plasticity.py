@@ -19,7 +19,11 @@ linear reading of the neurons named for it, trained by its own trace and the
 prediction error selected by ``critic_signal``. Use ``"td"`` to fit return in
 reward units; ``"modulated"`` retains the bounded legacy critic update.
 ``normalize`` divides each synapse's step by the running RMS of its own
-steps, the local counterpart of an adaptive optimiser.
+steps, the local counterpart of an adaptive optimiser. A ``memory`` with learned
+parameters of its own (``contrast_rows``, ``propose`` and ``accept``, as ``Recall`` has)
+keeps their eligibility in a trace of its own, ``trace_memory``: each sampled act's
+per-row contrast joins it, it decays as every synapse's trace does, and the same dopamine
+steps the parameters on it.
 """
 
 from __future__ import annotations
@@ -314,6 +318,12 @@ class ActorCritic:
         self.trace: np.ndarray | None = None
         self.trace_bias: np.ndarray | None = None
         self.trace_critic: np.ndarray | None = None
+        # a memory whose learned parameters reward trains beside the synapses (the brain that
+        # owns it sets it), their eligibility per row, and the contrast of the action that
+        # awaits its outcome
+        self.memory: Any = None
+        self.trace_memory: np.ndarray | None = None
+        self._pending_memory: np.ndarray | None = None
         # one stream's traces on the torch device, when it settles there
         self._trace_device: Any = None
         self.second_moment = np.zeros(self.synapses)
@@ -438,6 +448,7 @@ class ActorCritic:
         self._free_brain = self.learner.brain
         self._drive = drive.copy()
         self._pending = None
+        self._pending_memory = None
         return self._free
 
     def _validated_drive(self, drive: np.ndarray) -> np.ndarray:
@@ -470,7 +481,9 @@ class ActorCritic:
         for the sampled action's policy score. A greedy read ignores them.
         ``bias`` joins the choice as in ``probabilities``, greedy or sampled; the
         eligibility of a sampled action still scores the readout's own policy, so
-        reward teaches the readout the actions that the bias helped choose.
+        reward teaches the readout the actions that the bias helped choose. With a
+        ``memory`` whose parameters keep an eligibility, its contrast between the two
+        nudged phases is kept for the outcome too.
         """
         drive = self._validated_drive(drive)
         if temperature is not None:
@@ -492,6 +505,7 @@ class ActorCritic:
             else self.settle(drive)
         )
         self._pending = None  # eligibility always belongs to this decision, including greedy reads
+        self._pending_memory = None
         if self.bins is not None:
             return self._act_bins(drive, free, greedy, temperature)
         p = self.probabilities(free, None if greedy else temperature, bias=bias)
@@ -511,6 +525,7 @@ class ActorCritic:
             plus = self._nudged_groups(drive, free, target, beta, temperature)
             minus = self._nudged_groups(drive, free, target, -beta, temperature)
             self._pending = ("states", plus, minus, self.value(free))
+            self._pending_memory = self._memory_contrast(plus, minus)
         return np.asarray(action, dtype=np.int64)
 
     def _act_bins(
@@ -541,8 +556,43 @@ class ActorCritic:
             plus = self._nudged_groups(drive, free, target, cfg.beta, temperature)
             minus = self._nudged_groups(drive, free, target, -cfg.beta, temperature)
             self._pending = ("states", plus, minus, self.value(free))
+            self._pending_memory = self._memory_contrast(plus, minus)
         out: np.ndarray = np.asarray(action, dtype=float)
         return out
+
+    def _memory_contrast(self, plus: BrainState, minus: BrainState) -> np.ndarray | None:
+        """The per-row contrast of the memory's learned parameters between a sampled act's
+        two nudged phases, read through the current graph; None without such a memory, or
+        when it keeps no eligibility."""
+        rows = None if self.memory is None else getattr(self.memory, "contrast_rows", None)
+        if rows is None:
+            return None
+        contrast = rows(self.learner.brain, plus, minus)
+        return None if contrast is None else np.asarray(contrast, dtype=float)
+
+    def _memory_eligibility(self, batch: int, decay: float) -> None:
+        """The memory's trace after an outcome, as every synapse's: ``e <- gamma lam e +
+        contrast``. A pending action that kept no contrast belongs to a memory that learns
+        nothing by reward, and the trace is dropped, as is a trace of another batch."""
+        contrast, trace = self._pending_memory, self.trace_memory
+        if contrast is None or len(contrast) != batch:
+            self.trace_memory = None
+            return
+        if trace is None or trace.shape != contrast.shape:
+            trace = np.zeros_like(contrast)
+        trace *= decay
+        trace += contrast
+        self.trace_memory = trace
+
+    def _memory_proposal(self, delta: np.ndarray) -> Any:
+        """The memory's parameters stepped on their trace by the dopamine, as every synapse
+        steps: proposed and checked by the memory, not installed. None without a trace, or
+        when the memory takes no step."""
+        trace = self.trace_memory
+        if trace is None or self.memory is None:
+            return None
+        weighted = delta.reshape(-1, *([1] * (trace.ndim - 1))) * trace
+        return self.memory.propose(weighted.mean(axis=0))
 
     def _nudged_groups(
         self,
@@ -641,9 +691,12 @@ class ActorCritic:
         averaged over the observed rows, independent of padding.
         ``warm`` is the state the next state settles from when the streams' activity
         moved on after the action (``Brain.wait``); by default it is the free phase the
-        action was chosen in, which always carries the critic's eligibility.
+        action was chosen in, which always carries the critic's eligibility. A ``memory``'s
+        parameters step on their own trace by the same dopamine, checked before the graph's
+        update and installed after it; a refused update leaves them and their trace as they
+        were, and the report names the step (``address_reward_step``).
         """
-        arrays = ("trace", "trace_bias", "trace_critic")
+        arrays = ("trace", "trace_bias", "trace_critic", "trace_memory")
         saved = {
             name: None if getattr(self, name) is None else getattr(self, name).copy()
             for name in arrays
@@ -753,6 +806,7 @@ class ActorCritic:
         self.trace_critic *= cfg.gamma * cfg.lam
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
+        self._memory_eligibility(batch, decay)
         # the next state, warm from this one; a finished row starts its next life from rest
         next_state = self._next_state(next_drive, done, warm)
         next_value_raw = self.value(next_state)
@@ -815,18 +869,27 @@ class ActorCritic:
         ):
             raise ValueError("optimizer moments must remain finite")
         critic_weights, critic_bias = self._critic_candidate(td_error, delta, observed)
+        # the memory's parameters step on their trace by the same dopamine, checked before
+        # anything is installed
+        proposal = self._memory_proposal(delta)
         next_brain = self.learner.brain
         report = self.learner.apply(step_scale, step_bias)
         self.w_critic, self.b_critic = critic_weights, critic_bias
+        if proposal is not None:
+            self.memory.accept(proposal)
+            report["address_reward_step"] = float(proposal[3])
         # a finished row forgets its traces
         if done.any():
             self.trace[done] = 0.0
             self.trace_bias[done] = 0.0
             self.trace_critic[done] = 0.0
+            if self.trace_memory is not None:
+                self.trace_memory[done] = 0.0
         self._free = next_state
         self._free_brain = next_brain
         self._drive = next_drive.copy()
         self._pending = None
+        self._pending_memory = None
         report["delta"] = float(np.abs(delta).mean())
         report["dopamine"] = float(delta.mean())
         report["td_error"] = float(np.abs(td_error[observed]).mean())
@@ -980,6 +1043,7 @@ class ActorCritic:
         self.trace_critic *= cfg.gamma * cfg.lam
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
+        self._memory_eligibility(batch, decay)
         next_state = self._next_state(next_drive, done, warm)
         next_value_raw = self.value(next_state)
         next_value = np.where(
@@ -1000,21 +1064,28 @@ class ActorCritic:
         critic_weights, critic_bias = self._critic_candidate(td_error, delta, observed)
         d = torch.as_tensor(np.asarray(delta, dtype=float), dtype=trace.dtype, device=trace.device)
         d = d[:, None]
+        proposal = self._memory_proposal(delta)  # checked before anything is installed
         next_brain = self.learner.brain
         report = self.learner._apply_device(
             kernel, cfg.eta * (d * trace).mean(dim=0), cfg.eta_bias * (d * trace_bias).mean(dim=0)
         )
         self.w_critic, self.b_critic = critic_weights, critic_bias
+        if proposal is not None:
+            self.memory.accept(proposal)
+            report["address_reward_step"] = float(proposal[3])
         if done.any():  # a finished stream forgets its traces
             keep = torch.as_tensor(~done, dtype=trace.dtype, device=trace.device)[:, None]
             trace = trace * keep
             trace_bias = trace_bias * keep
             self.trace_critic[done] = 0.0
+            if self.trace_memory is not None:
+                self.trace_memory[done] = 0.0
         self._trace_device = (trace, trace_bias)
         self._free = next_state
         self._free_brain = next_brain
         self._drive = next_drive.copy()
         self._pending = None
+        self._pending_memory = None
         report["delta"] = float(np.abs(delta).mean())
         report["dopamine"] = float(delta.mean())
         report["td_error"] = float(np.abs(td_error[observed]).mean())
@@ -1040,8 +1111,9 @@ class ActorCritic:
 
         Every eligibility trace decays by ``gamma * lam``, the step ``learn`` applies
         between two sampled actions, so the credit of earlier actions keeps fading with
-        time while nothing is learned. ``done`` rows forget their traces, as in
-        ``learn``. Parameters, the critic and optimizer history are unchanged.
+        time while nothing is learned; a memory's trace decays with them. ``done`` rows
+        forget their traces, as in ``learn``. Parameters, the critic and optimizer
+        history are unchanged.
         """
         decay = self.config.gamma * self.config.lam
         ended = None if done is None else np.asarray(done)
@@ -1049,7 +1121,7 @@ class ActorCritic:
             raise ValueError("done must be a boolean vector")
         present = [
             name
-            for name in ("trace", "trace_bias", "trace_critic")
+            for name in ("trace", "trace_bias", "trace_critic", "trace_memory")
             if getattr(self, name) is not None
         ]
         rows = {len(getattr(self, name)) for name in present}
@@ -1075,7 +1147,9 @@ class ActorCritic:
         self._free_brain = None
         self._drive = None
         self._pending = None
+        self._pending_memory = None
         self.trace = self.trace_bias = self.trace_critic = None
+        self.trace_memory = None
         self._trace_device = None
         self.salience = None
         if self._valence is not None:

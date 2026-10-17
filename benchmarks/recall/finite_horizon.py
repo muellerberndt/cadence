@@ -16,6 +16,11 @@ Arms, one continuing life each per founder, on the same frozen episodes:
                 by the world; supplied assistance, counted separately;
 - ``random``    the frozen uniform-random actions of every row.
 
+A protocol may declare a heard history (``brain.history``: decays, amplitude, scale; the
+``Brain.compose`` option ``history_decays``) for the ``vanished`` brain and its ``history``
+comparator, never for ``default``; the erased and shuffled forks of a brain with a heard
+history erase and transplant that history, its working trace intact.
+
 Revision 3 retains raw accepted-event trace transitions, paired neural/trace separation,
 motor margins, history transport and both event-time forks. Each founder runs in a bounded
 child process. A deadline kills and reaps that worker, preserves completed journals and
@@ -123,7 +128,9 @@ def load_protocol(path: Path = PROTOCOL_PATH) -> tuple[dict, str]:
 # -- brains
 
 
-def make_brain(protocol: dict, seed: int, *, decay: float, amplitude: float) -> Brain:
+def make_brain(
+    protocol: dict, seed: int, *, decay: float, amplitude: float, heard: bool = False
+) -> Brain:
     genes = protocol["brain"]
     removed = sorted(name for name in protocol["learning"] if name.startswith("homeostasis_"))
     if removed:
@@ -132,6 +139,7 @@ def make_brain(protocol: dict, seed: int, *, decay: float, amplitude: float) -> 
             "cadence-net 0.82.0 removed; recall/4 and recall/5 reproduce with cadence-net 0.81.0"
         )
     learning = LearnerConfig(**protocol["learning"])
+    history = genes.get("history") if heard else None
     return Brain.compose(
         inputs.INPUTS,
         2,
@@ -145,6 +153,15 @@ def make_brain(protocol: dict, seed: int, *, decay: float, amplitude: float) -> 
         # frozen protocols ran the composition of releases before 0.82.0 (scale 12)
         working_memory_scale=float(genes.get("trace_scale", 12.0)),
         sensory_scale=float(genes.get("sensory_scale", 1.0)),
+        **(
+            {}
+            if history is None
+            else {
+                "history_decays": tuple(float(d) for d in history["decays"]),
+                "history_amplitude": float(history["amplitude"]),
+                "history_scale": float(history["scale"]),
+            }
+        ),
     )
 
 
@@ -155,7 +172,7 @@ def brain_for(arm: str, protocol: dict, seed: int) -> Brain:
             protocol, seed, decay=genes["default_decay"], amplitude=genes["default_amplitude"]
         )
     return make_brain(
-        protocol, seed, decay=genes["trace_decay"], amplitude=genes["trace_amplitude"]
+        protocol, seed, decay=genes["trace_decay"], amplitude=genes["trace_amplitude"], heard=True
     )
 
 
@@ -614,14 +631,19 @@ def train_arm(
 
 
 def fork_answers(checkpoint: Path, x: np.ndarray, permutation: np.ndarray, work: Work) -> dict:
-    """Every control begins at the same complete pre-query state, with learning disabled."""
+    """Every control begins at the same complete pre-query state, with learning disabled. The
+    erased and shuffled forks act on the heard history when the brain has one, else on the
+    working trace."""
     out = {}
     for control in CONTROLS[1:]:
         branch = work.load(checkpoint)
         trace = branch.working_memory
+        heard = branch.history
         assert trace is not None
         if control == "erased":
-            trace.reset(len(x))
+            (trace if heard is None else heard).reset(len(x))
+        elif control == "shuffled" and heard is not None:
+            heard.trace = heard.trace[permutation].copy()
         elif control == "shuffled":
             for name in ("trace", "last", "cold"):
                 setattr(trace, name, getattr(trace, name)[permutation].copy())

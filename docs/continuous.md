@@ -225,8 +225,10 @@ weights does not require growing new anatomical connections.
 `step` samples an action, keeps its eligibility and learns from its outcome at
 every moment. `live` lets the brain's arousal decide. A calm brain answers with
 the greedy choice of one qualified settle and learns nothing: no eligibility
-phases, no parameter change, no memory write, and the eligibility of its earlier
-sampled actions fades with each moment.
+phases, no parameter change, no write to the associative memory, and the
+eligibility of its earlier sampled actions fades with each moment. The working
+trace, the heard history and the recall memory's slots advance at every accepted
+moment, calm or aroused; the recall memory's address map changes in lessons alone.
 
 Two things rouse it:
 

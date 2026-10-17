@@ -639,6 +639,19 @@ action of the basal ganglia, chosen per moment and taught by a reward at the que
 eligibility the actor keeps over its recent actions, in a recall protocol that pays
 the answer instead of teaching it.
 
+### The heard history (protocol-finite-history.json)
+
+[`protocol-finite-history.json`](protocol-finite-history.json) runs the chamber with the
+heard history of [issue 199](https://github.com/muellerberndt/cadence/issues/199):
+`brain.history` declares its decays (0.2, 0.8, 0.95), amplitude (3) and projection scale
+(1.2), and `brain_for` gives it to the `vanished` brain and its external-history comparator,
+never to `default`. Both brain arms carry the composed working trace of 0.82.0 (decay 0,
+amplitude 3, scale 1.2), so `default` is the founder control of the one change. The erased
+and shuffled forks of a brain with a heard history erase and transplant that history at the
+query, its working trace intact; the gates, rule, budget, evaluation and caps are recall/3's.
+The founders are development founders. A protocol without `brain.history` runs the chamber
+exactly as before.
+
 ## Reward-based recall
 
 `reward_recall.py` pays one continuing `Brain.live` life at the query instead of teaching it,

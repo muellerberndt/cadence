@@ -404,3 +404,66 @@ def test_packed_trace_records_preserve_exact_values_shapes_and_dtypes(tmp_path):
     records[-1]["activation"] = records[-1]["activation"].astype(np.float32)
     with pytest.raises(ValueError, match="promote dtypes"):
         chamber.pack_traces(records)
+
+
+HISTORY_PROTOCOL = ROOT / "protocol-finite-history.json"
+
+
+def test_the_history_protocol_adds_the_heard_history_to_the_composed_trace():
+    third = json.loads((ROOT / "protocol-finite-3.json").read_text())
+    heard, _ = chamber.load_protocol(HISTORY_PROTOCOL)
+    kept = ("schema", "reviewed_protocol", "learning", "arms", "training", "evaluation", "caps")
+    assert {k: heard[k] for k in kept} == {k: third[k] for k in kept}
+    assert heard["gates"] == third["gates"] and heard["seeds"]["founders"] == [0, 1, 304, 305, 306]
+    vanished = chamber.brain_for("vanished", heard, 0)
+    default = chamber.brain_for("default", heard, 0)
+    history = chamber.brain_for("history", heard, 0)
+    assert vanished.history.decays == (0.2, 0.8, 0.95) and default.history is None
+    assert len(vanished.connectome.populations["history"]) == 3 * inputs.INPUTS
+    for brain in (vanished, default):
+        assert (brain.working_memory.decay, brain.working_memory.amplitude) == (0.0, 3.0)
+        assert brain.describe()["initialization"]["composition"]["working_memory_scale"] == 1.2
+    np.testing.assert_array_equal(vanished.brain.efficacy, history.brain.efficacy)
+    # the founder part of the vanished brain is the default brain: the history is appended
+    added = np.isin(vanished.connectome.pre, vanished.connectome.populations["history"])
+    np.testing.assert_array_equal(vanished.brain.efficacy[~added], default.brain.efficacy)
+    np.testing.assert_array_equal(vanished.connectome.post[~added], default.connectome.post)
+
+
+def test_the_forks_of_a_heard_history_erase_and_transplant_that_history(tmp_path):
+    heard, _ = chamber.load_protocol(HISTORY_PROTOCOL)
+    brain = chamber.brain_for("vanished", heard, 0)
+    rng = np.random.default_rng(0)
+    for _ in range(3):
+        brain.act(rng.integers(0, 2, size=(inputs.STREAMS, inputs.INPUTS)).astype(float))
+    checkpoint = brain.save(tmp_path / "query.npz")
+    permutation = np.arange(inputs.STREAMS) ^ 1
+    seen = {}
+
+    class Spy(chamber.Work):
+        def act(self, branch, x, **kwargs):
+            seen[len(seen)] = (branch.history.trace.copy(), branch.working_memory.trace.copy())
+            return super().act(branch, x, **kwargs)
+
+    query = np.zeros((inputs.STREAMS, inputs.INPUTS))
+    query[:, inputs.QUERY.start] = 1.0
+    chamber.fork_answers(checkpoint, query, permutation, Spy())
+    (erased, erased_trace), (shuffled, shuffled_trace), (reset, _) = seen.values()
+    assert not erased.any() and not reset.size
+    np.testing.assert_array_equal(erased_trace, brain.working_memory.trace)
+    np.testing.assert_array_equal(shuffled, brain.history.trace[permutation])
+    np.testing.assert_array_equal(shuffled_trace, brain.working_memory.trace)
+
+
+def test_a_small_history_run_verifies(tmp_path):
+    out = tmp_path / "run"
+    code = chamber.main(
+        ["--out", str(out), "--protocol", str(HISTORY_PROTOCOL), "--seeds", "0",
+         "--repeats", "1", "1"]
+    )
+    assert code == 0
+    valid, reason = chamber.verify(out)
+    assert valid, reason
+    founder = json.loads((out / "summary.json").read_text())["body"]["founders"][0]
+    assert founder["history_initial_equal"] is True
+    assert founder["arms"]["vanished"]["timing"]["equal_arrays"]

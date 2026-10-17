@@ -72,6 +72,49 @@ retention 0; they reach the present through the interpretations they shaped.
 5. **Let the brain feel its own actions when the next step depends on them.** For sequences of
    its own actions, add the efference copy with `efference_amplitude=1.0`: the issued action
    becomes part of the next moment's input.
+6. **Let the brain hear its recent past when the answer depends on what was heard.** Add the
+   heard history (below) when the same present observation needs different answers after
+   different earlier observations, and the carried interpretation does not keep them apart.
+
+## Hear the past at several timescales
+
+The carried interpretation keeps what the brain made of the moment, at one timescale. Two
+different pasts that settled to the same interpretation are the same context for it. The heard
+history keeps the observations themselves, as they were heard, in a region of their own:
+
+```text
+moment t:    observation ──► settle ──► action
+                  │
+                  ▼ heard after the act, one block per decay
+moment t+1:  observation ──► settle ◄── heard history (history region, plastic projection)
+```
+
+- **One block per timescale.** `history_decays=(0.2, 0.8, 0.95)` adds a `history` region of
+  three blocks, each one neuron per sensory neuron. After each act the block of decay `d`
+  moves toward the observation the brain acted on: `h <- d h + (1 - d) x`. A fast block
+  keeps the last moments apart; a slow one keeps an average of many.
+- **The past and the present stay apart.** The history takes in an observation after the
+  act, so at a decision it holds the past and the sensory drive holds the present. `wait`
+  takes in what it senses in the same way.
+- **What the past means is learned.** The write is fixed, as the working trace's is. The
+  association region reads the blocks through a plastic projection that starts like the
+  working trace's (`history_scale` 1.2), and learning strengthens it where the past predicts
+  the outcome.
+- **It is the efference copy's pattern applied to the senses.** In a closed loop the brain
+  hears its own output as its next observation, so the history also carries what it did.
+
+```python
+listener = Brain.compose(inputs=3, actions=2, arousal=True, history_decays=(0.2, 0.8))
+listener.live([[1.0, 0.0, 0.0]])                 # a cue
+listener.live([[0.0, 0.0, 1.0]], reward=[0.0])  # the cue is gone; the history holds it
+print(listener.history.trace)                    # two blocks of three heard values
+```
+
+The founder `history_decays=()` builds the brain without the region, byte-identical to the
+brain before the option, and is the control. `history_amplitude` (3.0) sets how clearly the
+region holds the history and can be retuned; the decays and the scale are construction
+settings. A saved brain keeps its history and continues it exactly. Erase it on a copy with
+`brain.history.reset(1)` to check that it does the work, as in the check below.
 
 ## Expert settings
 
@@ -86,6 +129,9 @@ brain is born with, so it is a construction setting.
 | `working_memory_decay` | the context changes slowly and should be averaged over moments | (default 0 carries only the last interpretation) |
 | `working_memory_focus` | only the neurons that just changed should be carried | (default 0 carries everything) |
 | `efference_amplitude` | the next action depends on what the brain just did | (default 0 has no copy) |
+| `history_decays` | the answer depends on earlier observations that the carried interpretation merges | (default `()` has no heard history) |
+| `history_amplitude` | the heard history should weigh more in learning and in the settle | the heard history should fade out (0 silences it) |
+| `history_scale` | the heard past must matter from the first moment, before learning | the brain answers from its history and ignores the present observation |
 
 Saved brains keep their own settings and wiring: a brain saved with an older release loads
 with the trace and the synapses it was built with. To rebuild the composition of releases
@@ -113,8 +159,11 @@ never differ, it answers from the present observation alone.
 ## What context is not
 
 - It is not a recording of past inputs. Two different histories that lead to the same
-  interpretation are the same context. The [episodic memory](episodic.md) keys its records by
-  a fixed fading trace of what was seen and done, which does tell such histories apart.
+  interpretation are the same context. The heard history above keeps the observations
+  themselves at a few fixed timescales, the [recall memory](memory.md#recall-the-streams-own-moments)
+  keeps the stream's recent moments as slots the present moment addresses, and the
+  [episodic memory](episodic.md) keys its records by a fixed fading trace of what was seen
+  and done; each tells such histories apart.
 - There is no separate gate deciding what to store. A distractor that looks like real evidence
   can overwrite the context of a small brain; a wider association region resists it better.
 - `act` settles the present moment with the carried context; it does not plan a whole future

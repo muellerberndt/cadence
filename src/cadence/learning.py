@@ -53,6 +53,7 @@ from .connectome import Connectome
 from .neuron import NeuronModel
 
 __all__ = [
+    "GraphHolder",
     "Learner",
     "LearnerConfig",
     "LearningPhaseError",
@@ -292,9 +293,30 @@ class LearningPhaseError(RuntimeError):
         )
 
 
+class GraphHolder:
+    """The current graph of every learner built on it.
+
+    ``Learner.brain`` reads the graph held here, and a learner's update replaces it here in
+    one assignment, after every check has passed: each learner on one holder settles and
+    teaches the graph the latest update left, and a refused update replaces nothing. A
+    learner built from a graph has a holder of its own; ``Learner.sharing`` builds one on
+    another learner's holder. A checkpoint holds the graph, not the sharing.
+    """
+
+    def __init__(self, brain: Brain) -> None:
+        self.brain = brain
+
+    def __repr__(self) -> str:
+        return f"GraphHolder({self.brain!r})"
+
+
 @dataclass
 class Learner:
-    """Owns the plastic ``efficacy`` and ``bias`` of a brain and applies the learning rule."""
+    """Owns the plastic ``efficacy`` and ``bias`` of a brain and applies the learning rule.
+
+    ``brain`` is read from the learner's ``holder`` (``GraphHolder``); ``Learner.sharing``
+    builds a second learner on the same holder, so each one's updates reach the other.
+    """
 
     brain: Brain
     outputs: Sequence[int]
@@ -429,6 +451,22 @@ class Learner:
                     [root(int(i)) for i in self._members], return_inverse=True
                 )
                 self._member_count = np.bincount(self._member_groups).astype(float)
+
+    @property
+    def holder(self) -> GraphHolder:
+        """The holder of this learner's current graph, shared by the learners built on it."""
+        holder: GraphHolder = self.__dict__["_holder"]
+        return holder
+
+    @classmethod
+    def sharing(cls, other: Learner, outputs: Sequence[int], **options: Any) -> Learner:
+        """A learner on ``other``'s holder: it settles and teaches the graph ``other`` holds,
+        and each one's updates replace the graph both read. ``options`` are the constructor's
+        fields after ``outputs`` (``config``, ``plastic_synapses``, ``slots``, ...); masks
+        that keep the two learners' synapses apart keep one's decay off the other's."""
+        learner = cls(other.brain, outputs, **options)
+        learner.__dict__["_holder"] = other.holder
+        return learner
 
     # -- phases
 
@@ -1360,6 +1398,29 @@ def _moment_property(name: str) -> property:
 
 for _moment_name in _MOMENTS:
     setattr(Learner, _moment_name, _moment_property(_moment_name))
+
+
+def _graph_property() -> property:
+    """``Learner.brain``: the graph the learner's holder carries. Assigning a graph replaces
+    the holder's, for every learner built on it; construction gives a learner its own."""
+
+    def get(learner: Learner) -> Brain:
+        holder: GraphHolder = learner.__dict__["_holder"]
+        return holder.brain
+
+    def put(learner: Learner, brain: Brain) -> None:
+        holder = learner.__dict__.get("_holder")
+        if holder is None:
+            learner.__dict__["_holder"] = GraphHolder(brain)
+        else:
+            holder.brain = brain
+
+    return property(get, put, doc=get.__doc__)
+
+
+# The dataclass field ``brain`` stays the constructor's argument and keeps its type for readers;
+# the property reads and replaces it through the holder.
+setattr(Learner, "brain", _graph_property())  # noqa: B010
 
 
 def layered(

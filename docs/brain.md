@@ -47,6 +47,30 @@ population out, so the copy is a gene selected against that control. The
 [steady-rhythm chamber](../benchmarks/rhythm/README.md) measures it on the task
 the trace alone did not carry: alternate two actions under identical drive.
 
+`Brain.compose(..., history_decays=(0.2, 0.8, 0.95))` adds the heard history: a
+`history` region of one block of sensory width per decay, each block a fading
+trace of the observations as heard, the values the sensory neurons were
+stimulated with before settling. After each act the blocks take in the
+observation the brain acted on, so at a decision the history holds the past and
+the sensory drive the present. The association region reads it through a plastic
+projection that starts like the working trace's. The founder `history_decays=()`
+leaves the region out, so the history is a gene selected against that control
+([context](context.md#hear-the-past-at-several-timescales) explains when to add it).
+
+`Brain.compose(..., recall=True)` adds the recall memory, an index of the
+stream's own recent moments: a `recall` and a `next` region, read by the
+association region through plastic projections that start like the working
+trace's. Each moment the brain acts on is written as one slot per stream, keyed
+by the event heard; the slot before it learns it as its next. Before each settle
+the moment's address, the event heard plus a learned map of the event and of the
+cortex of the moment before, weighs the slots, and the recalled value and next
+drive the two regions, a drive held through the settle. After each teacher lesson
+the address lesson scores each slot's value and next against the association's
+movement under the nudge, read back through the recall and next projections, and
+steps the map toward the keys the scores weigh. The founder `recall=False` leaves
+the regions out, so the memory is a gene selected against that control
+([memory](memory.md#recall-the-streams-own-moments) explains it).
+
 The base can already be deep. Add recursive readback separately:
 
 ```python
@@ -106,6 +130,7 @@ retain their own defaults, listed in the [API reference](api.md).
 | Named setting | Composed founder | Used by |
 | --- | --- | --- |
 | `sensory_scale` | `1.0` | Initial sensory projection; construction only |
+| `code` | unset: the observation itself | `code=units` keys the memories on the brain's sparse code of the observation and makes the sensory region that code, the recommended setting above 1,024 inputs ([from pixels to keys](memory.md#from-pixels-to-keys)); construction only |
 | `working_memory_scale` | `1.2` | Initial projection that reads the carried interpretation back; construction only ([context](context.md)) |
 | `learning_eta`, `learning_eta_bias` | `0.5`, `0.05` | Teaching with `step(teacher=...)`, `fit` or the learner; `live` does not read these rates |
 | `actor_eta`, `actor_eta_bias` | `1.0`, `0.05` | Reward plasticity in `step`/`learn`, and aroused `live` |
@@ -127,10 +152,18 @@ retain their own defaults, listed in the [API reference](api.md).
 | `actor_center_scale`, `actor_critic_normalize`, `actor_critic_signal` | `True`, `True`, `"auto"` | Dopamine units and critic update law |
 | `working_memory_decay`, `working_memory_amplitude`, `working_memory_focus` | `0.0`, `3.0`, `0.0` | Continuing working trace: the carried interpretation ([context](context.md)) |
 | `efference_decay`, `efference_amplitude` | `0.2`, `0.0` | Issued-command trace; a positive amplitude at construction adds its population |
+| `history_decays` | `()` | Heard history: a nonempty sequence adds one block of sensory width per decay; construction only ([context](context.md#hear-the-past-at-several-timescales)) |
+| `history_amplitude`, `history_scale` | `3.0`, `1.2` | How clearly the heard history is held, and its projection's initial magnitude (construction only) |
+| `recall` | `False` | Recall memory: `True` adds the `recall` and `next` regions and the index of the stream's moments; construction only ([memory](memory.md#recall-the-streams-own-moments)) |
+| `recall_amplitude`, `recall_temperature`, `recall_heard`, `recall_recency` | `3.0`, `0.25`, `1.0`, `0.25` with `recall=True` | How strongly a recalled moment drives its regions, the softmax over the slots, the event's weight in its address, the cost per moment of a slot's age |
+| `recall_address`, `recall_address_temperature` | `0.01`, `0.1` with `recall=True` | The address lesson: its rate (each row's bounded by its own input energy), and how sharply it weighs the slots' scores against the lesson's movement, with the address's own attention as the prior |
+| `recall_context`, `recall_context_decay` | `0.0`, `0.5` with `recall=True` | The fading history of earlier events in a key |
+| `recall_capacity`, `recall_value`, `recall_next`, `recall_scale` | `64`, `"event"`, `True`, `1.2` | Slots per stream, what a slot stores, the next region, and the projections' initial magnitude; construction only |
 | `memory_decay`, `memory_rate`, `memory_amplitude`, `consolidation` | `0.9`, `1.0` (`0.5` with `memory_choice=True`), `1.0`, `0.05` | Associative retention, actual-outcome writes, recall and consolidation |
 | `memory_choice` | `False` | `True` builds the episodic memory and its settings below ([episodic memory](episodic.md)); construction only |
 | `memory_context`, `memory_replay`, `memory_demonstrations` | `0.5`, `8`, `1.0` with `memory_choice=True` | The share of the past in the context key, replay of the path to a reward, remembered demonstrations; construction only |
 | `memory_expansion`, `memory_winners` | `1024`, `24` with `memory_choice=True` | Separation of the episodic memory's keys; construction only |
+| `memory_fan_in` | `0` | How many of the key's values each cell of the episodic memory's separation reads; 0 reads them all, and 32 is the recommended setting above 256 key values; a coded brain has no separation; construction only |
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor` | `0.2`, `0.9`, `2.0`, `0.1` | Routine/aroused decision in `live`, when arousal is enabled |
 | `arousal_fast`, `arousal_slow` | `0.05`, `0.005` | Recent and long-run outcome statistics in `live` |
 | `arousal_heat`, `arousal_youth` | `2.0`, `100` | Exploration and initial aroused moments in `live` |
@@ -180,9 +213,14 @@ A pending sampled action retains its actual eligibility and behavior temperature
 Rate changes apply when its next real outcome is learned. A change of
 `learning_beta` is refused while that action awaits feedback, because the pending
 contrast was formed at the earlier nudge scale; consume its outcome before
-changing the scale. Construction choices such as `sensory_scale`, `working_memory_scale`, topology,
-backend and `resting_bias` cannot be retuned, nor can a retune add a missing
-memory, efference or arousal component. Create those components when composing.
+changing the scale. With `recall_address_reward` above zero the action also holds the
+recall memory's address contrast, formed at the address lesson's form and rates, so a change
+of `recall_address_step`, `recall_address` or `recall_address_reward` is refused likewise.
+Construction choices such as `sensory_scale`, `working_memory_scale`,
+`history_decays`, `history_scale`, `recall` with its capacity, value, next region, code and
+scale, topology, backend and `resting_bias` cannot be retuned, nor can a retune add a missing
+memory, efference, history, recall or arousal component. Create those components when
+composing.
 
 ## Choose settings for the application
 

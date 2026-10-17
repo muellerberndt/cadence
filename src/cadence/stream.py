@@ -19,16 +19,21 @@ flow back through time: the trace is a stimulus the rule sees, not a path it dif
 from __future__ import annotations
 
 from collections.abc import Iterable
-from dataclasses import dataclass, field
-from typing import Any
+from copy import copy
+from dataclasses import dataclass, field, fields
+from typing import Any, NamedTuple
 
 import numpy as np
 
+from ._configuration import real
+from .brain import Brain as NeuralGraph
 from .brain import BrainState
 from .connectome import Connectome
-from .learning import embedded
+from .learning import LearnedState, embedded
 
-__all__ = ["Trace", "Afterglow", "stateful", "Echo", "FastSynapses", "columns"]
+__all__ = [
+    "Trace", "Afterglow", "stateful", "Echo", "FastSynapses", "History", "Recall", "columns"
+]
 
 
 def stateful(
@@ -283,6 +288,866 @@ class Efference(Trace):
 
 
 @dataclass
+class History:
+    """The observations as heard, carried at several timescales in a region of their own.
+
+    One block of ``target`` neurons per decay, each block one neuron per ``source`` neuron.
+    After each act the block of decay ``d`` moves toward the observation the brain acted on,
+    ``h <- d * h + (1 - d) * x``: the values the ``source`` neurons were stimulated with,
+    before any settling. The next moment reads ``amplitude * h`` as the stimulus of the
+    block's own neurons, so at a decision the history holds the past and the sensory drive
+    holds the present. A fast block keeps the last moments apart, a slow one keeps an
+    average of many. The write is fixed, as the working trace's is; the association region
+    reads the blocks through a plastic projection, so what the past means is learned. This
+    is the pattern of the efference copy applied to the senses: in a closed loop the brain
+    hears its own output as its next observation.
+    """
+
+    connectome: Connectome
+    decays: tuple[float, ...]
+    amplitude: float = 3.0
+    source: str = "sensory"  # the range heard
+    target: str = "history"  # one block of source width per decay
+    trace: np.ndarray = field(init=False)
+
+    def __post_init__(self) -> None:
+        decays = tuple(self.decays)
+        if not decays or any(
+            isinstance(d, (bool, np.bool_))
+            or not isinstance(d, (int, float, np.integer, np.floating))
+            or not 0 <= d < 1
+            for d in decays
+        ):
+            raise ValueError("decays are one or more real values in [0, 1)")
+        self.decays = tuple(float(d) for d in decays)
+        if (
+            isinstance(self.amplitude, (bool, np.bool_))
+            or not isinstance(self.amplitude, (int, float, np.integer, np.floating))
+            or not np.isfinite(self.amplitude)
+            or self.amplitude < 0
+        ):
+            raise ValueError("amplitude must be a finite nonnegative real scalar")
+        self.amplitude = float(self.amplitude)
+        self.glow = np.asarray(self.connectome.populations[self.target], dtype=np.int64)
+        self.width = len(self.connectome.populations[self.source])
+        if len(self.glow) != len(self.decays) * self.width:
+            raise ValueError(f"one block of {self.source} width per decay in {self.target}")
+        self._glow_columns = columns(self.glow)
+        # the decay of every history neuron: block by block
+        self._decay = np.repeat(np.asarray(self.decays), self.width)
+        self.reset(0)
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """Silence for every stream, or for ``rows`` only (streams that begin again)."""
+        if rows is None or len(self.trace) != batch:
+            self.trace = np.zeros((batch, len(self.glow)))
+        else:
+            self.trace[rows] = 0.0
+
+    def keep(self, rows: np.ndarray) -> None:
+        """Keep the histories of ``rows`` only (streams that ended are dropped)."""
+        self.trace = self.trace[rows]
+
+    def stimulate(self, drive: np.ndarray) -> np.ndarray:
+        """Read the history into a drive copy; another batch size reads silence."""
+        out = np.array(drive, dtype=float)
+        out[:, self._glow_columns] = (
+            self.amplitude * self.trace if len(self.trace) == len(out) else 0.0
+        )
+        return out
+
+    def hear(self, observations: np.ndarray) -> None:
+        """After the act: every block decays toward the ``(batch, source)`` observations the
+        streams acted on; another batch size begins the streams in silence first."""
+        x = np.asarray(observations, dtype=float)
+        if x.ndim != 2 or x.shape[1] != self.width:
+            raise ValueError(f"observations are one row of {self.width} values per stream")
+        if not np.isfinite(x).all():
+            raise ValueError("observations must be finite")
+        if len(self.trace) != len(x):
+            self.reset(len(x))
+        heard = np.tile(x, (1, len(self.decays)))
+        self.trace = self._decay * self.trace + (1.0 - self._decay) * heard
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "decays": list(self.decays),
+            "amplitude": self.amplitude,
+            "source": self.source,
+            "target": self.target,
+            "neurons": int(len(self.glow)),
+        }
+
+
+class _Moment(NamedTuple):
+    """The present moment of every stream as the recall memory addresses it."""
+
+    event: np.ndarray  # the observations as given, to recognise the moment at its write
+    cortex: np.ndarray  # the settled association activity of the moment before
+    address: np.ndarray  # the address q, computed before the settle
+    key: np.ndarray  # the fixed part of the address, the slot's key once it is written
+
+
+@dataclass
+class Recall:
+    """The index memory, a held-input recall: each stream's recent moments as slots, the
+    address of a moment computed before its settle and the recalled drive held through it.
+
+    Each moment the brain accepts (an act, a moment ``wait`` senses) is written after its
+    settle as one slot per stream (``witness``); with ``write="aroused"`` a moment is written
+    for the streams that chose it aroused alone. The slot's key is ``heard * x``: ``x`` is
+    the observation as given (a brain gives its observation code), and with ``context`` the
+    fading history of the events before it is added. The slot's value is
+    the event ``x`` (``value="event"``) or the settled activity of the association region
+    (``value="cortex"``), and the slot before it learns its next: the value of the moment
+    that followed it, zero until that moment comes. Before each settle the present moment's
+    address
+
+        q = heard * x + context * h + x W_x + c W_c + b
+
+    (``h`` the fading history of the events before, ``c`` the settled association activity
+    of the moment before) weighs the stream's slots once,
+    ``p_i = softmax_i(q . K_i / temperature - recency * age_i)`` (kept as ``attended``;
+    with ``recency=None`` the age charge is ``r * log(1 + age_i)``, ``charges``; with a
+    ``null`` slot of logit ``null / temperature`` in the softmax, which reads nothing, the
+    slots' shares sum to one less the null slot's), and
+    ``stimulate`` sets the drive of the ``target`` region to ``amplitude * sum_i p_i V_i``
+    and, with ``next``, of the ``next`` region to ``amplitude * sum_i p_i N_i``. Both
+    regions are sources: their drive is held through the settle as a sensory drive is, so
+    the settle answers on the mixture the address chose and does not revise the choice, and
+    the address of a moment cannot depend on what that moment recalls (a second recall takes
+    a second moment). Their one-way plastic synapses into the association region learn by
+    the settle's own contrast, as the sensory ones do. With ``W_x``, ``W_c`` and ``b`` at
+    zero the address is the event heard: a moment that shares an event with a stored one
+    finds it before any lesson.
+
+    ``learn`` is the address lesson, a rule of its own beside the graph's contrast, which the
+    brain runs after teacher lessons (at the founder ``address_reward=0`` rewards leave the
+    map as it is). After a lesson it reads the association's movement between the nudged
+    phases back through the recall and next synapses, ``d``, scores each slot's value and
+    next against it,
+    ``(d_r . V_i + d_n . N_i) / |d|`` (the stored values themselves, not their effect
+    through the source neurons), weighs the scores with the attention the address gave the
+    slots, ``p* = softmax(score / address_temperature + log p)``, and takes the
+    least-mean-squares step of the map toward ``K* = sum_i p*_i K_i`` on ``z = [x, c, 1]``
+    at the taught rows, each row at the rate ``min(address, 1 / |z|^2)``; a step whose
+    result is not finite is refused. The founder step (``address_step="lms"``) takes the
+    error ``K* - q``. With ``address_step="toward"`` the error is ``K* - sum_i p_i K_i``, the
+    named keys less the mixture the address attended to (``p`` over the slots alone, a null
+    slot left out, as in the prior): to first order the step raises the logits of the slots
+    the scores name against those the address attended to, whatever the keys' norms.
+    ``capacity`` bounds the slots per stream, the oldest dropped first (with aroused writes
+    in a batch, the store's columns: a stream that wrote fewer holds fewer). ``reset`` empties
+    streams, and an empty stream reads silence.
+
+    With ``address_reward`` above zero reward trains the map as well: at each sampled act
+    the step the address lesson would take at each row, were the act's action the lesson's
+    label, is that row's eligibility (``contrast_rows``), which the actor keeps in a trace
+    of its own beside the synapses' and steps by ``address_reward`` times the dopamine
+    (``propose`` and ``accept``). The eligibility is a lesson's step at the lesson's bounded
+    rate ``min(address, 1 / |z|^2)``: at ``address_reward=1`` a unit of dopamine moves the
+    map by one lesson's step, and ``address=0`` leaves the map as it is under reward too.
+    """
+
+    connectome: Connectome
+    amplitude: float = 3.0
+    temperature: float = 0.25
+    heard: float = 1.0
+    recency: float | None = 0.25  # None: the power-law charge of ``charges``
+    capacity: int = 64
+    value: str = "event"
+    next: bool = True
+    address: float = 0.01
+    address_temperature: float = 0.1
+    context: float = 0.0
+    context_decay: float = 0.5
+    # the options beside the founder memory (``OPTIONS``)
+    address_step: str = "lms"
+    write: str = "always"
+    null: float | None = None
+    address_reward: float = 0.0
+    source: str = "sensory"  # the observations' range
+    target: str = "recall"  # the recall region; the next region is ``next``
+    # the width of the observations the memory is given, when it is not the source range's: a
+    # brain whose memories key on a code of the observation passes the code
+    inputs: int = 0
+    writes: int = 0  # slots written over the memory's life, one per stream and moment
+    keys: np.ndarray = field(init=False, repr=False)
+    values: np.ndarray = field(init=False, repr=False)
+    nexts: np.ndarray = field(init=False, repr=False)
+    held: np.ndarray = field(init=False, repr=False)
+    previous: np.ndarray = field(init=False, repr=False)
+    history: np.ndarray = field(init=False, repr=False)
+    w_x: np.ndarray = field(init=False, repr=False)
+    w_c: np.ndarray = field(init=False, repr=False)
+    b: np.ndarray = field(init=False, repr=False)
+
+    VALUES = ("event", "cortex")
+    STEPS = ("lms", "toward")
+    WRITES = ("always", "aroused")
+    # the settings ``Brain.retune`` may change in a life, and those that shape the memory
+    RUNTIME = (
+        "amplitude", "temperature", "heard", "recency", "address", "address_temperature",
+        "context", "context_decay",
+    )
+    CONSTRUCTION = ("capacity", "value", "next")
+    # options beside the founder memory, each one runtime: a memory at their founders
+    # describes and saves itself as before, and a saved memory without one takes its founder
+    OPTIONS = ("address_step", "write", "null", "address_reward")
+
+    @classmethod
+    def founders(cls) -> dict[str, Any]:
+        """The founder value of every setting the memory always describes: the genes of
+        ``Brain.compose(..., recall=True)``; ``options()`` gives the options beside them."""
+        defaults = {item.name: item.default for item in fields(cls)}
+        return {name: defaults[name] for name in (*cls.RUNTIME, *cls.CONSTRUCTION)}
+
+    @classmethod
+    def options(cls) -> dict[str, Any]:
+        """The founder value of every option (``OPTIONS``), a gene ``recall_<option>`` of
+        ``Brain.compose(..., recall=True)`` as well, which a memory describes and saves only
+        where it differs from its founder."""
+        defaults = {item.name: item.default for item in fields(cls)}
+        return {name: defaults[name] for name in cls.OPTIONS}
+
+    @staticmethod
+    def setting(name: str, value: Any) -> Any:
+        """One setting, validated and converted; ``name`` is a field of the memory."""
+        if name == "recency":
+            return None if value is None else real(name, value, low=0)
+        if name in ("amplitude", "address", "context"):
+            return real(name, value, low=0)
+        if name in ("temperature", "address_temperature"):
+            number = real(name, value, low=0)
+            if number <= 0:
+                raise ValueError(f"{name} must be positive")
+            return number
+        if name == "heard":
+            return real(name, value)
+        if name == "context_decay":
+            number = real(name, value, low=0)
+            if number >= 1:
+                raise ValueError("context_decay must lie in [0, 1)")
+            return number
+        if name == "capacity":
+            if (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, np.integer))
+                or value < 1
+            ):
+                raise ValueError("capacity must be an integer of at least 1")
+            return int(value)
+        if name == "value":
+            if not isinstance(value, str) or value not in Recall.VALUES:
+                raise ValueError(f"value is one of {Recall.VALUES}")
+            return value
+        if name == "next":
+            if not isinstance(value, bool):
+                raise ValueError("next must be boolean")
+            return value
+        if name == "address_step":
+            if not isinstance(value, str) or value not in Recall.STEPS:
+                raise ValueError(f"address_step is one of {Recall.STEPS}")
+            return value
+        if name == "write":
+            if not isinstance(value, str) or value not in Recall.WRITES:
+                raise ValueError(f"write is one of {Recall.WRITES}")
+            return value
+        if name == "null":
+            return None if value is None else real(name, value)
+        if name == "address_reward":
+            return real(name, value, low=0)
+        raise TypeError(f"unknown recall setting: {name!r}")
+
+    @staticmethod
+    def null_logit(null: float | None, temperature: float) -> float | None:
+        """The null slot's logit ``null / temperature``, or None without a null slot; a pair
+        of settings whose logit is not finite is refused."""
+        if null is None:
+            return None
+        logit = float(null) / float(temperature)
+        if not np.isfinite(logit):
+            raise ValueError("null / temperature must be finite")
+        return logit
+
+    def __post_init__(self) -> None:
+        for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
+            setattr(self, name, self.setting(name, getattr(self, name)))
+        self.null_logit(self.null, self.temperature)
+        populations = self.connectome.populations
+        regions = (self.source, "association", self.target, *(("next",) if self.next else ()))
+        for name in regions:
+            if name not in populations:
+                raise ValueError(f"a recall memory needs a population named {name!r}")
+        self.observed: np.ndarray = np.asarray(populations[self.source], dtype=np.int64)
+        self.association: np.ndarray = np.asarray(populations["association"], dtype=np.int64)
+        self.recall_neurons: np.ndarray = np.asarray(populations[self.target], dtype=np.int64)
+        self.next_neurons: np.ndarray = (
+            np.asarray(populations["next"], dtype=np.int64) if self.next else np.zeros(0, np.int64)
+        )
+        if (
+            isinstance(self.inputs, (bool, np.bool_))
+            or not isinstance(self.inputs, (int, np.integer))
+            or self.inputs < 0
+        ):
+            raise ValueError("inputs must be a nonnegative integer; 0 reads the source range")
+        self.inputs = int(self.inputs)
+        self.key_width = self.inputs or len(self.observed)
+        self.value_width = self.key_width if self.value == "event" else len(self.association)
+        if len(self.recall_neurons) != self.value_width or (
+            self.next and len(self.next_neurons) != self.value_width
+        ):
+            raise ValueError(
+                f"the {self.target} and next regions need one neuron per value coordinate "
+                f"({self.value_width})"
+            )
+        width = self.key_width
+        self.w_x = np.zeros((width, width))
+        self.w_c = np.zeros((len(self.association), width))
+        self.b = np.zeros(width)
+        self._recall_columns = columns(self.recall_neurons)
+        self._next_columns = columns(self.next_neurons)
+        self._association_columns = columns(self.association)
+        self._recall_synapses = self._synapses(self.recall_neurons)
+        self._next_synapses = self._synapses(self.next_neurons)
+        self.last: _Moment | None = None
+        self._attended: np.ndarray | None = None  # the attention of the latest read
+        self._private = False  # an imagined branch reads the slots and writes none
+        self.reset(0)
+
+    # -- layout and per-stream state
+
+    @property
+    def neurons(self) -> int:
+        """The neurons the memory drives: the recall region, and the next region with ``next``."""
+        return int(len(self.recall_neurons) + len(self.next_neurons))
+
+    @property
+    def streams(self) -> int:
+        return int(len(self.keys))
+
+    @property
+    def slots(self) -> int:
+        """The slots every stream holds (a stream that began since holds fewer, ``held``)."""
+        return int(self.keys.shape[1])
+
+    def ages(self) -> np.ndarray:
+        """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest."""
+        return np.arange(self.slots - 1, -1, -1, dtype=float)
+
+    def charges(self) -> np.ndarray:
+        """The logit each slot's age costs it, oldest first: ``recency * age``, or with
+        ``recency=None`` the power-law charge ``r * log(1 + age)``, ``r = heard^2 /
+        temperature / log(1 + capacity)``. Under that charge the weight of an unmatched old
+        slot falls as a power of its age, ``(1 + age)^-r``, two equal matches of ages 1 and 3
+        keep weights in the ratio ``2^r``, and a full match of a unit-length key outweighs the
+        age of every slot the capacity holds."""
+        if self.recency is None:
+            exponent = self.heard**2 / self.temperature / np.log1p(self.capacity)
+            return np.asarray(exponent * np.log1p(self.ages()))
+        return np.asarray(self.recency * self.ages())
+
+    @property
+    def attended(self) -> np.ndarray | None:
+        """The attention ``p`` the latest read gave each stream's slots, ``(streams, slots)``,
+        as that read used it (recency included) and before the moment was written, read-only;
+        None before a read, when the read found no slots, and once the streams changed."""
+        return self._attended
+
+    def _empty(self, batch: int) -> None:
+        self.keys = np.zeros((batch, 0, self.key_width))
+        self.values = np.zeros((batch, 0, self.value_width))
+        self.nexts = np.zeros((batch, 0, self.value_width))
+        self.held = np.zeros((batch, 0), dtype=bool)
+        self.previous = np.zeros((batch, len(self.association)))
+        self.history = np.zeros((0, self.key_width))
+        self.last = None
+        self._attended = None
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """Empty every stream, or the streams of ``rows`` only (streams that begin again): their
+        slots, the cortex of the moment before and the history. The address map is learned
+        and stays."""
+        if rows is None or self.streams != batch:
+            self._empty(batch)
+            return
+        chosen = np.zeros(batch, dtype=bool)
+        chosen[np.asarray(rows)] = True
+        if chosen.all():
+            self._empty(batch)
+            return
+        if not chosen.any():
+            return
+        keep = ~chosen
+        # new arrays, never writes into the old ones: a caller may hold them to restore
+        held = self.held & keep[:, None]
+        keys = np.where(keep[:, None, None], self.keys, 0.0)
+        values = np.where(keep[:, None, None], self.values, 0.0)
+        nexts = np.where(keep[:, None, None], self.nexts, 0.0)
+        # slots no stream holds any more are dropped from the oldest end
+        lead = held.any(axis=0)
+        first = int(np.argmax(lead)) if lead.any() else held.shape[1]
+        self.keys, self.values, self.nexts, self.held = (
+            a[:, first:].copy() for a in (keys, values, nexts, held)
+        )
+        self.previous = np.where(keep[:, None], self.previous, 0.0)
+        if len(self.history) == batch:
+            self.history = np.where(keep[:, None], self.history, 0.0)
+        self.last = None
+        self._attended = None
+
+    def keep(self, rows: np.ndarray) -> None:
+        """Keep the memories of ``rows`` only (streams that ended are dropped)."""
+        self.keys, self.values, self.nexts, self.held = (
+            a[rows] for a in (self.keys, self.values, self.nexts, self.held)
+        )
+        self.previous = self.previous[rows]
+        if len(self.history):
+            self.history = self.history[rows]
+        self.last = None
+        self._attended = None
+
+    def snapshot(self) -> dict[str, Any]:
+        """The per-stream state, to restore after a refused operation; every write replaces
+        these arrays rather than changing them."""
+        return {
+            name: getattr(self, name)
+            for name in ("keys", "values", "nexts", "held", "previous", "history")
+        }
+
+    def restore(self, snapshot: dict[str, Any]) -> None:
+        """Return to a ``snapshot``; the next moment is addressed afresh."""
+        for name, value in snapshot.items():
+            setattr(self, name, value)
+        self.last = None
+        self._attended = None
+
+    def imagined(self) -> Recall:
+        """A private copy for an imagined branch: it reads the live slots and writes none; the
+        cortex of the moment before and the history follow the branch."""
+        branch = copy(self)
+        branch.previous = self.previous.copy()
+        branch.history = self.history.copy()
+        branch.last = None
+        branch._attended = None
+        branch._private = True
+        return branch
+
+    # -- the moment's address and read
+
+    def _port(self, observations: np.ndarray) -> np.ndarray:
+        x = np.asarray(observations, dtype=float)
+        if x.ndim != 2 or x.shape[1] != self.key_width:
+            raise ValueError(f"observations are one row of {self.key_width} values per stream")
+        if not np.isfinite(x).all():
+            raise ValueError("observations must be finite")
+        return x
+
+    def _moment(self, event: np.ndarray) -> _Moment:
+        """The address of the present moment of each stream, from the cortex of the moment
+        before and, with ``context``, the history of the events before it."""
+        x = np.asarray(event, dtype=float)
+        n = len(x)
+        c = (
+            self.previous
+            if len(self.previous) == n
+            else np.zeros((n, len(self.association)))
+        )
+        key = self.heard * x
+        if self.context:
+            h = self.history if len(self.history) == n else np.zeros_like(x)
+            key = key + self.context * h
+        q = key + x @ self.w_x + c @ self.w_c + self.b
+        return _Moment(x, c, q, key)
+
+    def _attention(
+        self, address: np.ndarray, keys: np.ndarray, held: np.ndarray | None
+    ) -> np.ndarray:
+        """The logits of the attention over slots: ``address . key / temperature`` less the
+        charge of each slot's age (``charges``), ``-inf`` at a slot its stream does not
+        hold."""
+        logits = np.einsum("bk,bmk->bm", address, keys) / self.temperature
+        if self.recency is None or self.recency:
+            logits = logits - self.charges()[None, :]
+        return logits if held is None else np.where(held, logits, -np.inf)
+
+    def weights(self, address: np.ndarray) -> np.ndarray | None:
+        """``p`` over each stream's slots for the ``(batch, key)`` addresses, or None when the
+        streams hold no slot or are another batch. With a ``null`` slot, whose logit
+        ``null / temperature`` joins the softmax and which reads nothing, the slots' shares
+        sum to one less the null slot's."""
+        if not self.slots or self.streams != len(address):
+            return None
+        if self.null is not None:
+            logits = self._attention(address, self.keys, None if self.held.all() else self.held)
+            null = self.null / self.temperature
+            top = np.maximum(logits.max(axis=1), null)  # a stream that holds no slot: the null
+            p = np.exp(logits - top[:, None])
+            total = p.sum(axis=1) + np.exp(null - top)
+            return np.asarray(p / total[:, None])
+        if self.held.all():
+            logits = self._attention(address, self.keys, None)
+            p = np.exp(logits - logits.max(axis=1, keepdims=True))
+            return np.asarray(p / p.sum(axis=1, keepdims=True))
+        # a stream that began since holds fewer slots; one that holds none reads silence
+        logits = self._attention(address, self.keys, self.held)
+        empty = ~self.held.any(axis=1)
+        top = np.where(empty, 0.0, logits.max(axis=1))
+        p = np.exp(logits - top[:, None])
+        total = p.sum(axis=1, keepdims=True)
+        return np.asarray(p / np.where(total > 0, total, 1.0))
+
+    def stimulate(self, drive: np.ndarray, observations: np.ndarray) -> np.ndarray:
+        """Address the present moment of every stream and read its slots into a drive copy:
+        ``amplitude * sum_i p_i V_i`` on the recall region and, with ``next``,
+        ``amplitude * sum_i p_i N_i`` on the next region. ``observations`` are ``(batch,
+        inputs)``. Streams without slots, or of another batch, read silence. The moment is
+        kept for its write and its lesson, and the attention the read used as ``attended``."""
+        moment = self._moment(self._port(observations))
+        self.last = moment
+        out = np.array(drive, dtype=float)
+        p = self.weights(moment.address)
+        if p is not None:
+            p.flags.writeable = False
+        self._attended = p  # the attention this read uses, kept past the moment's write
+        if p is not None:
+            out[:, self._recall_columns] = self.amplitude * np.einsum("bm,bmc->bc", p, self.values)
+            if self.next:
+                out[:, self._next_columns] = self.amplitude * np.einsum(
+                    "bm,bmc->bc", p, self.nexts
+                )
+        return out
+
+    # -- the write after the settle
+
+    def activity(self, state: BrainState) -> np.ndarray:
+        """The association region's settled activation as a host array, ``(batch,
+        association)``. A state on a torch device is sliced there, and only the slice comes
+        to the host."""
+        device = getattr(state, "device", None)
+        s = device.get("s") if isinstance(device, dict) else None
+        cols = self._association_columns
+        if s is not None and hasattr(s, "device") and hasattr(s, "cpu"):
+            if isinstance(cols, slice):
+                part = s[:, cols]
+            else:
+                import torch
+
+                part = s[:, torch.as_tensor(np.asarray(cols), device=s.device)]
+            return np.ascontiguousarray(part.detach().to("cpu").numpy().astype(float))
+        settled = np.atleast_2d(np.asarray(state.activation, dtype=float))
+        return np.asarray(settled[:, cols], dtype=float).copy()
+
+    def witness(
+        self, observations: np.ndarray, state: BrainState, *, aroused: bool | np.ndarray = True
+    ) -> None:
+        """After the settle: the ``(batch, inputs)`` observations the streams acted on join
+        their slots under the moment's key, the slot before learns them as its next, and the
+        settled cortex of ``state`` and the history move on to this moment. ``aroused`` marks
+        the streams that chose the moment aroused, one flag or one per stream: with
+        ``write="aroused"`` only those streams write it, and a moment no stream writes leaves
+        the slots as they were. Another batch size begins the streams with empty memories
+        first. An imagined branch moves the cortex and the history only."""
+        x = self._port(observations)
+        flags = np.asarray(aroused)
+        if flags.dtype != np.bool_ or flags.shape not in ((), (len(x),)):
+            raise ValueError("aroused marks the streams that chose the moment aroused")
+        moment = self.last
+        if moment is None or moment.event.shape != x.shape or not np.array_equal(moment.event, x):
+            moment = self._moment(x)
+        cortex = self.activity(state)
+        if len(cortex) != len(x):
+            raise ValueError("the settled state needs one row per stream")
+        if not self._private:
+            value = moment.event if self.value == "event" else cortex
+            if self.write == "always" or flags.all():
+                self._observe(moment.key, value)
+                self.writes += len(x)
+            elif flags.any():
+                written = np.broadcast_to(flags, (len(x),)).copy()
+                self._observe(moment.key, value, written)
+                self.writes += int(written.sum())
+            elif len(x) != self.streams:
+                self._empty(len(x))  # another batch begins with empty memories, as a write would
+        self.previous = cortex
+        if self.context:
+            h = self.history if len(self.history) == len(x) else np.zeros_like(moment.event)
+            self.history = self.context_decay * h + moment.event
+        self.last = None
+
+    def _observe(
+        self, key: np.ndarray, value: np.ndarray, written: np.ndarray | None = None
+    ) -> None:
+        """Write one moment per stream: the latest slot learns what followed it, a new slot
+        holds this moment; beyond ``capacity`` the oldest slot is dropped. With ``written``,
+        one flag per stream, the new slot is a column every stream has and the written
+        streams alone hold (the others keep zeros there), and each written stream's latest
+        held slot, wherever it lies, learns this moment as its next."""
+        if len(key) != self.streams:
+            self._empty(len(key))
+        nexts = self.nexts
+        if self.slots:
+            nexts = nexts.copy()
+            if written is None and self.held.all():
+                nexts[:, -1] = value
+            else:
+                # each written stream's latest held slot learns what followed it
+                held = self.held
+                rows = held.any(axis=1) if written is None else held.any(axis=1) & written
+                latest = held.shape[1] - 1 - np.argmax(held[:, ::-1], axis=1)
+                index = np.flatnonzero(rows)
+                nexts[index, latest[index]] = value[index]
+        fresh = np.ones((len(key), 1), dtype=bool)
+        if written is not None:
+            fresh = written[:, None].copy()
+            key, value = np.where(fresh, key, 0.0), np.where(fresh, value, 0.0)
+        keys = np.concatenate([self.keys, key[:, None, :]], axis=1)
+        values = np.concatenate([self.values, value[:, None, :]], axis=1)
+        nexts = np.concatenate([nexts, np.zeros_like(value)[:, None, :]], axis=1)
+        held = np.concatenate([self.held, fresh], axis=1)
+        if keys.shape[1] > self.capacity:
+            drop = keys.shape[1] - self.capacity
+            keys, values, nexts, held = (a[:, drop:].copy() for a in (keys, values, nexts, held))
+        self.keys, self.values, self.nexts, self.held = keys, values, nexts, held
+
+    # -- the address lesson
+
+    def _synapses(self, region: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """The synapses from ``region`` into the association region: their indices, and the
+        source and association coordinate of each."""
+        connectome = self.connectome
+        pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
+        local_source = -np.ones(connectome.n, dtype=np.int64)
+        local_source[region] = np.arange(len(region))
+        local_cortex = -np.ones(connectome.n, dtype=np.int64)
+        local_cortex[self.association] = np.arange(len(self.association))
+        synapses = np.flatnonzero((local_source[pre] >= 0) & (local_cortex[post] >= 0))
+        return synapses, local_source[pre[synapses]], local_cortex[post[synapses]]
+
+    def readback(self, graph: NeuralGraph, region: str, movement: np.ndarray) -> np.ndarray:
+        """``movement @ W.T`` for the one-way synapses of the ``"recall"`` or ``"next"``
+        region into the association region: per source neuron, the sum over its synapses of
+        effective weight times the movement of its association neuron."""
+        synapses, rows, cols = self._recall_synapses if region == "recall" else self._next_synapses
+        width = len(self.recall_neurons) if region == "recall" else len(self.next_neurons)
+        w = np.zeros((width, len(self.association)))
+        np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+        return np.asarray(movement @ w.T)
+
+    def learn(self, graph: NeuralGraph, learned: LearnedState) -> dict[str, float]:
+        """The address lesson after a lesson whose phases are ``learned``, at its taught rows,
+        through the synapses of ``graph`` (the learner's brain after the lesson's update).
+        Reads the moment the lesson's drive addressed (``stimulate``); returns how many rows
+        moved, the mean absolute error the step corrects before it (``address_error``: the
+        addresses' error ``K* - q`` under ``address_step="lms"``, the attended mixture's
+        ``K* - sum_i p_i K_i`` under ``"toward"``), and how many rows a refused step left as
+        they were (``address_refused``)."""
+        quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
+        moment = self.last
+        if (
+            not self.address
+            or moment is None
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return quiet
+        taught = learned.taught
+        rows = (
+            np.arange(len(moment.address))
+            if taught is None
+            else np.flatnonzero(np.asarray(taught, dtype=bool))
+        )
+        if not self.slots or not len(rows) or self.streams != len(moment.address):
+            return quiet
+        plus = np.atleast_2d(learned.nudged.activation)
+        minus = np.atleast_2d(
+            learned.free.activation if learned.opposite is None else learned.opposite.activation
+        )
+        movement = (plus - minus)[:, self.association]
+        d_value = self.readback(graph, "recall", movement)
+        d_next = self.readback(graph, "next", movement) if self.next else None
+        return self._step(moment, rows, d_value, d_next)
+
+    def _step(
+        self, moment: _Moment, rows: np.ndarray, d_value: np.ndarray, d_next: np.ndarray | None
+    ) -> dict[str, float]:
+        """The least-mean-squares step of the address map toward the keys of the slots the
+        scores name, on each row's inputs ``z = [x, c, 1]``. A row's rate is ``address``
+        bounded by the row's own energy, ``r = min(address, 1 / |z|^2)``: a row taught alone
+        moves its own address toward its target, at most onto it. The rows' steps are
+        averaged, and each row's step moves the addresses of the rows whose inputs overlap
+        its own, so in a batch a row can pass its target. The batch error does not grow: the
+        rows' squared distances to their targets, each weighted by the row's rate ``r``, sum
+        to no more after the step than before (with equal weights where no row reaches the
+        bound). The candidate map and the candidate addresses of the rows are checked before
+        the step is kept; one that is not finite refuses the step, the map stays as it was
+        and the report counts the refused rows. With ``address_step="toward"`` each row's
+        error, the one ``address_error`` reports, is its target less the keys' mixture its
+        address attended to."""
+        quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
+        found = self._row_steps(moment, rows, d_value, d_next)
+        if found is None:
+            return quiet
+        _, x, c, key, error, step = found
+        n = len(x)
+        rate = self.address
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            w_x = rate * x.T @ step
+            w_x /= n
+            w_x += self.w_x
+            w_c = rate * c.T @ step
+            w_c /= n
+            w_c += self.w_c
+            b = self.b + rate * step.mean(axis=0)
+            address = key + x @ w_x + c @ w_c + b
+        if not all(np.isfinite(a).all() for a in (w_x, w_c, b, address)):
+            return {**quiet, "address_refused": float(n)}
+        self.w_x, self.w_c, self.b = w_x, w_c, b
+        return {
+            "address_rows": float(n),
+            "address_error": float(np.abs(error).mean()),
+            "address_refused": 0.0,
+        }
+
+    def _row_steps(
+        self, moment: _Moment, rows: np.ndarray, d_value: np.ndarray, d_next: np.ndarray | None
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray] | None:
+        """Each row's step of the address lesson before the average over rows: the rows of
+        ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
+        the cortex ``c``, the key, the error toward the named keys and the error bounded by
+        the row's own energy, ``error * min(1, 1 / (address |z|^2))``. None when no row
+        moves. The arithmetic is unchecked: a caller checks what it keeps."""
+        values, nexts, keys = self.values[rows], self.nexts[rows], self.keys[rows]
+        held = self.held[rows]
+        masked = not held.all()
+        score = np.einsum("bc,bmc->bm", d_value, values)
+        norm = np.sum(d_value * d_value, axis=1)
+        if d_next is not None:
+            score += np.einsum("bc,bmc->bm", d_next, nexts)
+            norm += np.sum(d_next * d_next, axis=1)
+        norm = np.sqrt(norm)
+        moving = norm > 1e-12
+        if masked:
+            moving &= held.any(axis=1)  # a stream that began since and holds no slot
+        if not moving.any():
+            return None
+        x, c, q, key = (
+            a[rows][moving] for a in (moment.event, moment.cortex, moment.address, moment.key)
+        )
+        rate = self.address
+        # finite inputs can still overflow the arithmetic below: the check before the step is
+        # kept refuses what is not finite
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            logits = score[moving] / norm[moving, None] / self.address_temperature
+            if masked:
+                logits = np.where(held[moving], logits, -np.inf)
+            # among the moments the address attended to: the attention is the prior
+            attention = self._attention(q, keys[moving], held[moving] if masked else None)
+            attention -= attention.max(axis=1, keepdims=True)
+            attention -= np.log(np.exp(attention).sum(axis=1, keepdims=True))
+            logits = logits + attention
+            p = np.exp(logits - logits.max(axis=1, keepdims=True))
+            p /= p.sum(axis=1, keepdims=True)
+            target = np.einsum("bm,bmk->bk", p, keys[moving])
+            if self.address_step == "toward":
+                # from the mixture the address attended to: moving q by s (K* - K_bar) raises
+                # the named slots' mean logit by s |K* - K_bar|^2 / T over the attended ones'
+                error = target - np.einsum("bm,bmk->bk", np.exp(attention), keys[moving])
+            else:
+                error = target - q
+            # each row's gain on its own address, rate * |z|^2, is at most one: a row taught
+            # alone lands on its target at most, and a row within the bound keeps the rate as
+            # it is. Over a batch the step maps the errors E to (I - M) E, M = rate / n * G D
+            # with G the rows' Gram matrix of z and D their bounds; D^(1/2) M D^(-1/2) is
+            # symmetric with its eigenvalues in [0, 1] (its trace is the mean of the rows'
+            # gains), so sum_i D_i |e_i|^2 does not grow, though one row can pass its target.
+            energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
+            step = error * np.minimum(1.0, 1.0 / (rate * energy))[:, None]
+        return moving, x, c, key, error, step
+
+    # -- reward trains the address map
+
+    def contrast_rows(
+        self, graph: NeuralGraph, plus: BrainState, minus: BrainState
+    ) -> np.ndarray | None:
+        """The address map's eligibility from a sampled act, one ``(inputs + association + 1,
+        inputs)`` array per row (the rows of ``w_x``, ``w_c`` and ``b`` in that order), or
+        None at ``address_reward=0``: the step the address lesson would take at each row,
+        were the act's action a lesson's label, before the average over rows. The
+        association's movement between the act's two nudged phases, ``plus`` less ``minus``,
+        is read back through the recall and next synapses of ``graph`` and scored against the
+        slots of the moment the act read (``last``, before its write); a row contributes
+        ``min(address, 1 / |z|^2)`` times the outer product of ``z = [x, c, 1]`` and its
+        error, of the form ``address_step`` names. A row that does not move, or whose
+        contribution is not finite, keeps none."""
+        if not self.address_reward:
+            return None
+        movement = self.activity(plus) - self.activity(minus)
+        batch, width = len(movement), self.key_width
+        out = np.zeros((batch, width + len(self.association) + 1, width))
+        moment = self.last
+        if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
+            return out
+        d_value = self.readback(graph, "recall", movement)
+        d_next = self.readback(graph, "next", movement) if self.next else None
+        found = self._row_steps(moment, np.arange(batch), d_value, d_next)
+        if found is None:
+            return out
+        moving, x, c, _, _, step = found
+        z = np.concatenate([x, c, np.ones((len(x), 1))], axis=1)
+        with np.errstate(over="ignore", invalid="ignore"):
+            rows = self.address * np.einsum("bi,bk->bik", z, step)
+        kept = np.isfinite(rows).all(axis=(1, 2))
+        out[np.flatnonzero(moving)[kept]] = rows[kept]
+        return out
+
+    def propose(
+        self, step: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, float] | None:
+        """The address map after a reward's step, not installed: ``step`` is the rows'
+        eligibility weighted by the dopamine and averaged (``contrast_rows``' shape), taken at
+        ``address_reward``. Returns ``w_x``, ``w_c``, ``b`` and the norm of the step, or None
+        at ``address_reward=0``, which takes none; a step whose map is not finite is refused
+        (``ValueError``)."""
+        if not self.address_reward:
+            return None
+        step = np.asarray(step, dtype=float)
+        width = self.key_width
+        shape = (width + len(self.association) + 1, width)
+        if step.shape != shape:
+            raise ValueError(f"an address map's step is a {shape} array")
+        with np.errstate(over="ignore", invalid="ignore"):
+            moved = self.address_reward * step
+            w_x, w_c, b = self.w_x + moved[:width], self.w_c + moved[width:-1], self.b + moved[-1]
+        if not all(np.isfinite(a).all() for a in (moved, w_x, w_c, b)):
+            raise ValueError("the address map's reward step must be finite")
+        return w_x, w_c, b, float(np.linalg.norm(moved))
+
+    def accept(self, proposal: tuple[np.ndarray, np.ndarray, np.ndarray, float]) -> None:
+        """Install a step ``propose`` made."""
+        self.w_x, self.w_c, self.b = proposal[0], proposal[1], proposal[2]
+
+    def to_dict(self) -> dict[str, Any]:
+        out = {
+            **{name: getattr(self, name) for name in (*self.RUNTIME, *self.CONSTRUCTION)},
+            "source": self.source,
+            "target": self.target,
+            "neurons": self.neurons,
+            "writes": int(self.writes),
+        }
+        if self.inputs:  # a memory on the source range's observations describes itself as before
+            out["inputs"] = self.inputs
+        # an option at its founder is left out: the founder memory describes itself as before
+        founders = self.options()
+        out.update(
+            {name: getattr(self, name) for name in self.OPTIONS
+             if getattr(self, name) != founders[name]}
+        )
+        return out
+
+
+@dataclass
 class PatternSeparator:
     """Pattern separation: expand a key into a wider random code and keep the strongest winners.
 
@@ -293,6 +1158,26 @@ class PatternSeparator:
     in proportion to their dot product. ``center`` > 0 keeps a running mean of the keys
     seen by ``observe`` (forgetting factor ``center``) and subtracts it first. Updating that
     mean can move the code of a previously stored key.
+
+    ``fan_in`` above zero makes the projection sparse: each code neuron reads ``fan_in``
+    distinct inputs chosen at random from the seed, with random weights of variance
+    ``1 / fan_in``. ``index`` and ``weight``, ``(expansion, fan_in)`` each, hold them in place
+    of ``projection``, so the separator's storage and work follow the expansion and the
+    fan-in, whatever the number of inputs. The founder ``fan_in=0`` keeps the dense
+    ``projection``; ``index`` and ``weight`` are then None, and ``projection`` is None for a
+    sparse separator.
+
+    ``cover`` above zero (with a fan-in) reads every input in both signs, through two
+    rectified channels: ON ``max(x, 0)``, channel ``i`` of input ``i``, and OFF
+    ``max(-x, 0)``, channel ``inputs + i`` (``channels`` is ``2 * inputs``, and ``index``
+    numbers channels). Each channel is given ``cover`` distinct code neurons first, each
+    code neuron's remaining fan-in is then filled with distinct channels at random, and the
+    weights are positive, uniform in ``(0, 1]`` over ``sqrt(fan_in)``. Without ``center``, a
+    single input of either sign, the others zero, drives each reader of its channel above
+    zero, so it never codes to zero, and a nonnegative key leaves every OFF channel silent.
+    It needs ``fan_in`` within the channels, ``cover * 2 * inputs`` within
+    ``expansion * fan_in`` and ``cover`` within ``expansion``. The founder ``cover=0`` draws
+    the signed sparse weights over the inputs independently, as above.
     """
 
     inputs: int
@@ -300,7 +1185,11 @@ class PatternSeparator:
     winners: int
     seed: int = 0
     center: float = 0.0
-    projection: np.ndarray = field(init=False, repr=False)
+    fan_in: int = 0
+    cover: int = 0
+    projection: np.ndarray | None = field(init=False, repr=False)
+    index: np.ndarray | None = field(init=False, repr=False)
+    weight: np.ndarray | None = field(init=False, repr=False)
     mean: np.ndarray = field(init=False, repr=False)
 
     def __post_init__(self) -> None:
@@ -308,13 +1197,94 @@ class PatternSeparator:
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 1:
                 raise ValueError(f"{name} must be a positive integer")
+        fan_in = self.fan_in
+        for name in ("fan_in", "cover"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
+                raise ValueError(f"{name} must be a nonnegative integer")
+        if fan_in > self.channels:
+            raise ValueError(
+                "fan_in must not exceed the channels, two per input"
+                if self.cover
+                else "fan_in must not exceed the inputs"
+            )
         if self.winners > self.expansion:
             raise ValueError("winners must not exceed the expansion")
         if not 0 <= self.center < 1:
             raise ValueError("center lies in [0, 1)")
+        if self.cover and (
+            not fan_in
+            or self.cover > self.expansion
+            or self.cover * self.channels > self.expansion * fan_in
+        ):
+            raise ValueError(
+                "cover needs a fan-in, at most the expansion, and cover * 2 * inputs (the "
+                "channels) within expansion * fan_in"
+            )
         rng = np.random.default_rng(self.seed)
-        self.projection = rng.standard_normal((self.inputs, self.expansion)) / np.sqrt(self.inputs)
+        self.projection = self.index = self.weight = None
+        if fan_in and self.cover:
+            self.index = self._covering(rng)
+            self.weight = (1.0 - rng.random((self.expansion, fan_in))) / np.sqrt(fan_in)
+        elif fan_in:
+            # each code neuron's inputs, distinct and in order, then their weights
+            self.index = np.sort(
+                np.stack([rng.choice(self.inputs, fan_in, replace=False)
+                          for _ in range(self.expansion)]),
+                axis=1,
+            ).astype(np.int64)
+            self.weight = rng.standard_normal((self.expansion, fan_in)) / np.sqrt(fan_in)
+        else:
+            self.projection = (
+                rng.standard_normal((self.inputs, self.expansion)) / np.sqrt(self.inputs)
+            )
         self.mean = np.zeros(self.inputs)
+
+    @property
+    def channels(self) -> int:
+        """The values a code neuron's fan-in is drawn from: the inputs, or with ``cover`` the
+        ON and the OFF channel of each input, ``2 * inputs``."""
+        return 2 * int(self.inputs) if self.cover else int(self.inputs)
+
+    def _covering(self, rng: np.random.Generator) -> np.ndarray:
+        """Each code neuron's channels, distinct and in order, every channel among those of
+        ``cover`` distinct code neurons: the readers of the channels are dealt first, from the
+        places of every neuron's fan-in in a random order, and each neuron's places left over
+        take distinct other channels at random."""
+        channels, units, fan_in, cover = self.channels, self.expansion, self.fan_in, self.cover
+        places = rng.permutation(np.repeat(np.arange(units), fan_in))
+        readers = places[: cover * channels].reshape(channels, cover).copy()
+        spare = places[cover * channels:].copy()
+        ordered = np.sort(readers, axis=1)
+        for row in np.flatnonzero((ordered[:, 1:] == ordered[:, :-1]).any(axis=1)):
+            # a neuron dealt twice to one channel trades the place for another neuron's
+            given = readers[row]
+            for k in range(1, cover):
+                for _ in range(64 * (channels + len(spare))):
+                    if given[k] not in given[:k]:
+                        break
+                    open_ = np.flatnonzero(~np.isin(spare, given))
+                    if len(open_):
+                        s = open_[rng.integers(len(open_))]
+                        given[k], spare[s] = spare[s], given[k]
+                        continue
+                    other, place = rng.integers(channels), rng.integers(cover)
+                    if readers[other, place] not in given and given[k] not in readers[other]:
+                        given[k], readers[other, place] = readers[other, place], given[k]
+                else:
+                    raise ValueError("the channels could not be covered")
+        owner = readers.ravel()
+        order = np.argsort(owner, kind="stable")  # each neuron's given channels, in order
+        read = np.repeat(np.arange(channels), cover)[order]
+        bounds = np.searchsorted(owner[order], np.arange(units + 1))
+        index = np.empty((units, fan_in), dtype=np.int64)
+        for unit in range(units):
+            given = read[bounds[unit] : bounds[unit + 1]]
+            # the remaining places: distinct channels the neuron does not read yet, by rank
+            ranks = rng.choice(channels - len(given), fan_in - len(given), replace=False)
+            extra = ranks + np.searchsorted(given - np.arange(len(given)), ranks, side="right")
+            index[unit] = np.sort(np.concatenate([given, extra]))
+        return index
 
     def habituate(self, keys: np.ndarray) -> None:
         """Initialize the running mean from ``keys`` before storing records.
@@ -329,7 +1299,8 @@ class PatternSeparator:
 
     def code(self, key: np.ndarray, learn: bool = False) -> np.ndarray:
         """The sparse code of ``(batch, inputs)`` keys: ``(batch, expansion)``, ``winners``
-        nonzero entries per row at most. ``learn`` updates the running mean (writes only)."""
+        nonzero entries per row at most. ``learn`` updates the running mean (writes only).
+        With ``cover`` each key is read through its ON and its OFF channels."""
         x = np.asarray(key, dtype=float)
         if x.ndim != 2 or x.shape[1] != self.inputs or not np.isfinite(x).all():
             raise ValueError(f"key must be a finite (batch, {self.inputs}) array")
@@ -340,7 +1311,14 @@ class PatternSeparator:
             with np.errstate(over="ignore", invalid="ignore"):
                 x = x - mean
         with np.errstate(over="ignore", invalid="ignore"):
-            drive = np.maximum(x @ self.projection, 0.0)
+            if self.fan_in:
+                assert self.index is not None and self.weight is not None
+                if self.cover:  # the ON channels, then the OFF channels
+                    x = np.concatenate([np.maximum(x, 0.0), np.maximum(-x, 0.0)], axis=1)
+                drive = np.maximum(np.einsum("bek,ek->be", x[:, self.index], self.weight), 0.0)
+            else:
+                assert self.projection is not None
+                drive = np.maximum(x @ self.projection, 0.0)
         if not np.isfinite(mean).all() or not np.isfinite(drive).all():
             raise ValueError("pattern separation overflowed; scale the input keys")
         if learn:
@@ -352,14 +1330,28 @@ class PatternSeparator:
         np.put_along_axis(out, keep, np.take_along_axis(drive, keep, axis=1), axis=1)
         return np.asarray(out)
 
+    def arrays(self) -> dict[str, np.ndarray]:
+        """The separator's state by name, as a checkpoint holds it: ``projection`` and ``mean``,
+        or with a fan-in ``index``, ``weight`` and ``mean``."""
+        if self.fan_in:
+            assert self.index is not None and self.weight is not None
+            return {"index": self.index, "weight": self.weight, "mean": self.mean}
+        assert self.projection is not None
+        return {"projection": self.projection, "mean": self.mean}
+
     def to_dict(self) -> dict[str, float | int]:
-        return {
+        out: dict[str, float | int] = {
             "inputs": self.inputs,
             "expansion": self.expansion,
             "winners": self.winners,
             "seed": self.seed,
             "center": self.center,
         }
+        if self.fan_in:  # the dense founder's description is as it was
+            out["fan_in"] = int(self.fan_in)
+        if self.cover:  # and the independent sparse draw's
+            out["cover"] = int(self.cover)
+        return out
 
 
 @dataclass
@@ -552,10 +1544,14 @@ class FastSynapses:
         """
         return self.recall(drive[:, self._pre_columns])
 
-    def stimulate(self, drive: np.ndarray, inplace: bool = False) -> np.ndarray:
-        """Add the read to the post columns of ``drive`` (a copy, unless ``inplace``)."""
+    def stimulate(
+        self, drive: np.ndarray, inplace: bool = False, key: np.ndarray | None = None
+    ) -> np.ndarray:
+        """Add the read to the post columns of ``drive`` (a copy, unless ``inplace``): the read
+        of the pre columns of ``drive``, or with ``key`` the read of that ``(batch, pre)``
+        key, for a memory keyed on a code of the observation rather than on neurons."""
         out = drive if inplace else np.array(drive, dtype=float)
-        out[:, self._post_columns] += self.read(out)
+        out[:, self._post_columns] += self.read(out) if key is None else self.recall(key)
         return out
 
     def update(

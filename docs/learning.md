@@ -373,6 +373,36 @@ learner.config = replace(learner.config, eta=0.5)
 `learner.brain` is a plain `NeuralGraph` at every moment. Settle it, run `conformance` on
 it, export `learner.brain.dense()` for a page, or put its `to_dict()` in a receipt.
 
+### Two learners on one graph
+
+An update replaces a learner's graph with a new `NeuralGraph`. A second learner built from
+the first one's `brain` keeps the graph it was given, so it would teach parameters the
+first had moved on from. Build it on the first one's holder instead:
+
+```python
+import numpy as np
+
+import cadence as cd
+
+connectome = cd.layered(4, 8, 4, seed=1)
+outputs = list(connectome.populations["output"])
+first = cd.Learner(cd.NeuralGraph(connectome, cd.learning_neuron_model()), outputs[:2])
+second = cd.Learner.sharing(first, outputs[2:])  # the constructor's other fields as keywords
+drive = np.zeros((1, connectome.n))
+drive[:, :4] = 1.0
+first.step(drive, np.array([1]))
+assert second.brain is first.brain  # the second settles and teaches what the first learned
+```
+
+Both read `holder.brain` (a `GraphHolder`), the graph the latest update of either left. An
+update replaces it there in one assignment once every check has passed, so a refused update
+leaves every learner on the holder as it was. Masks (`plastic_synapses`, `plastic_neurons`)
+that keep the two learners' synapses apart keep one's decay off the other's. Assigning
+`learner.brain` replaces the graph for every learner on the holder. A checkpoint holds the
+graph, not the sharing: `Learner.load` gives the learner a holder of its own, and
+`Learner.sharing` builds the sharing again. A shallow `copy.copy` of a learner shares its
+holder; `dataclasses.replace` builds a learner with a holder of its own.
+
 ### Calibrating the operating point
 
 `learner.calibrate(drive, level=None, grid=None)` chooses a global synaptic

@@ -1,0 +1,15 @@
+{
+  "schema": "cadence-selective-recall/1",
+  "scope": "bounded component: current-query selection from two earlier named facts",
+  "founders": [0, 1],
+  "rounds": 128,
+  "neutral_events": 1,
+  "seconds": 60,
+  "brain": {"modules": [32], "episodic": false},
+  "acquisition_floor": 0.95,
+  "selection": "Existing composed System 1 with resolved founder genes; no parameter search. These are development founders, not fresh confirmation seeds.",
+  "boundary": "Transient neural state and working trace reset at each trial; the same learned parameters persist. The trace is held during each present-state solve. No continuing-life or sentence-generation claim.",
+  "teaching": "One local final-query lesson per case per round; earlier observations receive no labels or fabricated rewards. Finite default teaching phases have their own contract; each published action is qualified.",
+  "arms": ["trace", "exposed", "frozen"],
+  "interpretation": "The exposed arm receives both witnessed facts, never the selected answer. Its overall, unequal-fact and per-query accuracy must reach the acquisition floor before a trace failure is localized to retention or selection. This gate alone does not establish general relevance learning."
+}

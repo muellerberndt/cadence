@@ -2,6 +2,53 @@
 
 ## Unreleased
 
+- Memories key on the observation code: `Brain.observation_code(x)` is what the episodic
+  memory (place and context records), the hippocampus of earlier releases and the recall
+  memory key on. It is the observation itself, or with `code=units` (opt-in) the brain's
+  own sparse code of it: `units` code neurons with positive weights that read each input
+  through two rectified channels, ON `max(x, 0)` and OFF `max(-x, 0)`, and every channel at
+  least twice (each channel is dealt two readers first, and each unit's fan-in of 32
+  channels, more where 32 cannot read every channel twice, is filled at random from the
+  seed after), the largest sums of one unit in ten kept (102 of 1,024; too sparse a code
+  leaves the cortex and the memory too little overlap between a question and the moment it
+  asks for), the code scaled to unit length; a `PatternSeparator` with a fan-in and
+  `cover=2`, owned by the brain (`brain.sparse_code`, `code_width`, `inputs`) and saved with
+  it. A single input of either sign always reaches the code, a signed observation reaches
+  the code (and the cortex, when the sensory region is the code) in both signs, and a
+  nonnegative observation leaves the OFF channels silent; channels read by the same units
+  are told apart by their weights. The code's seed is drawn from the brain's seed on a
+  stream of its own, `SeedSequence([seed, 7103])`; the earlier `seed + 2` was the stream a
+  brain of seed `seed + 2` develops and acts from, so the code of one founder and the
+  connectome of another were drawn from the same stream. A coded brain's episodic stores
+  take no separator of their own and refuse `memory_expansion` and `memory_fan_in`. A sense
+  organ's own code (a retina, a cochlea, a V1 region) belongs to the application or the
+  anatomy, not to the library. `describe()` reports `observation_code`; a brain with a code
+  saves as `cadence-generic/9` with the code's settings, seed and tables, which `load`
+  installs as saved; `load` checks the records' key widths against the code's and refuses a
+  mismatch naming both widths, as it refuses place and context records keyed on other
+  coordinates than the brain's, bounds a memory's key coordinates by the code's width (which
+  can exceed the graph's neurons) and its outputs by the graph, and refuses code tables that
+  do not read every channel twice with positive weights, and a code saved before the
+  covering construction, whose metadata has no `cover`, naming that cause. Every brain
+  without `code` is byte-identical at 4, 256 and 2,000 inputs and on an image shape, the
+  checkpoint included at 4 and 2,000 inputs and on the image
+  ([from pixels to keys](docs/memory.md#from-pixels-to-keys)).
+- `Brain.compose(inputs, actions, code=units)` makes the sensory region the code: every
+  observation is coded before the drive, so 12,824 inputs reach the cortex as 1,024 units
+  through 1,024 x 64 sensory synapses in place of 12,824 x 64, and the memories key on the
+  same code; the heard history then holds blocks of the code. The founder leaves the cortex
+  and the memories on the observation. A custom anatomy names a coded sensory region with
+  `inputs=` beside `code=`; `Brain.observation_width(inputs, code)` sizes its recall regions.
+- `Brain.compose` accepts image shapes like `Brain.genome`: `inputs=(height, width)` or
+  `(height, width, channels)` makes the sensory region a `visual_cortex` (`features`,
+  `field`), whose feature maps project to the first module at `sensory_scale`; everything
+  else is as for a vector length, and `compose(inputs=int)` is unchanged.
+- The recommended settings for wide observations, with the founder unchanged at every
+  width: `memory_fan_in=32` above 256 key values (the episodic separators 0.63 MB each in
+  place of 105 MB at 12,824 inputs) and `code=1024` above 1,024 inputs, where the two
+  episodic separators and the recall address map go from 2 x 105 MB and 1,322 MB on the
+  observation to none and 8.9 MB on the code, the code's tables 0.84 MB
+  ([from pixels to keys](docs/memory.md#from-pixels-to-keys)).
 - The episodic and sequential-task guides state the founder dependence of the continuation
   after teaching: the readings in which `step` eroded a taught chain where `live` kept it
   belong to the five fresh founders of the chain instrument, and on other founders both paths
@@ -32,6 +79,93 @@
   composed founder keeps every-row lessons; the
   [learning guide](docs/learning.md#lessons-only-where-the-answer-differs) says when to
   select the rule.
+- The heard history, opt-in ([issue 199](https://github.com/muellerberndt/cadence/issues/199)):
+  `Brain.compose(..., history_decays=(0.2, 0.8, 0.95))` adds a `history` region of one block
+  of sensory width per decay, each block a fading trace of the observations as heard (the
+  values the sensory neurons were stimulated with, before settling), held at
+  `history_amplitude` (3.0) and read by the association region through a plastic projection
+  that starts like the working trace's (`history_scale`, 1.2). After each act the blocks take
+  in the observation the brain acted on, so at a decision the history holds the past and the
+  drive the present. `History` keeps it per stream; `reset`, the end of an episode,
+  imagination, `wait`, `describe()` and `retune(history_amplitude=...)` treat it as they
+  treat the working trace, and a brain with one saves as `cadence-generic/7` and continues
+  exactly. The founder `history_decays=()` builds the brain without it, byte-identical; the
+  [context guide](docs/context.md#hear-the-past-at-several-timescales) says when to add it.
+- The recall memory, opt-in ([issue 199](https://github.com/muellerberndt/cadence/issues/199),
+  [issue 201](https://github.com/muellerberndt/cadence/issues/201)): `Brain.compose(...,
+  recall=True)` adds an index of the stream's own recent moments, a `recall` and a `next`
+  region read by the association region through plastic projections that start like the
+  working trace's (`recall_scale`, 1.2). Each moment the brain acts on, and each moment
+  `wait` senses, is written as one slot per stream (`Recall`): its key the event heard
+  (`recall_heard` 1.0 times the observation code),
+  its value the event (`recall_value="event"`) or the settled association activity, and the
+  slot before learns it as its next. Before each settle the moment's address, the key plus a
+  learned map of the event and of the association activity of the moment before, weighs the
+  slots by a softmax (`recall_temperature` 0.25, `recall_recency` 0.25 per moment of age), and
+  the recalled value and next drive the two regions at `recall_amplitude` (3.0), a drive held
+  through the settle, which answers on it and does not revise the choice: a held-input recall,
+  whose last attention `Recall.attended` keeps. After each teacher lesson the address lesson,
+  a rule of its own beside the graph's contrast, scores each slot's value and next against
+  the association's movement under the nudge, read back through the recall and next
+  projections, weighs the scores with the address's own attention
+  (`recall_address_temperature` 0.1), and takes a least-mean-squares step of the map toward
+  the keys so weighted at the taught rows (`recall_address` 0.01, each row's rate bounded by
+  `1 / |z|^2` on its inputs `z = [x, c, 1]`; a step that is not finite is refused and
+  reported as `address_refused`); rewards leave the map as it is. `recall_capacity` (64)
+  bounds the slots per stream. `Brain.lesson(observations, labels)` gives the lesson of
+  `step(..., teacher=...)` without its act. `reset`, ended episodes, imagination (reads, no
+  writes), `wait`, `describe()` and `retune` of the read and lesson genes treat the memory as
+  they treat the heard history; the address map is a learned parameter that resets keep and
+  `parameters()` counts, and a brain with the memory saves as `cadence-generic/8` and
+  continues exactly. The founder `recall=False` builds the brain without it, byte-identical;
+  the [memory guide](docs/memory.md#recall-the-streams-own-moments) explains it, with its
+  storage at camera width (14.5 MB with a code of 1,024 neurons, cortex values and an
+  association region of 512 neurons, against 105 MB for one dense separator). The option
+  reproduces the binding instrument
+  `benchmarks/binding/index_read.py` moment for moment (`tests/test_recall_memory.py`).
+- Options for the recall memory, each a gene beside `recall=True` that `retune` can change,
+  described and saved only where it differs from its founder, so every founder brain and its
+  checkpoint are as before ([memory guide](docs/memory.md#recall-the-streams-own-moments)).
+  `recall_address_step="toward"` steps the address by the named keys less the mixture it
+  attended to, in place of the founder `"lms"` step toward the named keys: to first order
+  the named slots' logits rise against the attended ones, whatever the keys' norms.
+  `recall_recency=None` charges a slot's age `r * log(1 + age)`, `r = heard^2 / temperature /
+  log(1 + capacity)` (`Recall.charges()`): an unmatched old slot's weight falls as a power of
+  its age, and a full match of a unit-length key outweighs the age of every slot the capacity
+  holds; a number keeps the linear charge. `recall_write="aroused"` writes a moment only when
+  its act was sampled, and a moment `wait` senses while a sampled action awaits its outcome;
+  in a batch a moment written for some streams is held by those streams alone, and each
+  stream's latest held slot learns its own next. A number `recall_null` adds a null slot of
+  logit `null / temperature` that reads nothing, so the slots' shares sum to one less its
+  share; the address lesson weighs the slots alone. `recall_address_reward` above zero lets
+  reward train the address map: each sampled act keeps, beside the synapses' eligibility, the
+  step the address lesson would take were the act's action a lesson's label
+  (`Recall.contrast_rows`), `ActorCritic` keeps it in a trace of its own (`trace_memory`,
+  decaying and forgotten as the synapses' traces are) and steps the map by that rate times
+  the dopamine times the trace, checked before the graph's update and installed after it
+  (`address_reward_step` in the report); a checkpoint carries the trace and a pending action's
+  contrast. The binding instrument's index memory takes the same genes (`address_step`,
+  `recency=None`, `write` with `IndexBrain.aroused_rows`, and `null`).
+- A sparse pattern separator, opt-in: `PatternSeparator(..., fan_in=k)` lets each code
+  neuron read `k` distinct inputs chosen at random from its seed, with random weights, held
+  as `index` and `weight` arrays of shape `(expansion, k)` in place of the dense
+  `projection`; the rectification and the winners are as before, so storage and work follow
+  the expansion and the fan-in at any input width. `Brain.compose(..., memory_choice=True,
+  memory_fan_in=16)` gives both episodic stores such a separator (1,024 x 16 indices and
+  weights each); `memory_fan_in=0` keeps the dense one, byte-identical with its
+  checkpoint, and a sparse separator saves its arrays and its fan-in. With `cover=c` as well
+  each input is read through an ON and an OFF channel and every channel by `c` code neurons
+  at least, the readers dealt first and the weights positive (the brain's code); the
+  episodic separators keep the independent draw over the inputs.
+- One holder of the current graph for several learners: `Learner.brain` reads the graph from
+  the learner's `holder`, a `GraphHolder`, and an update replaces the holder's graph in one
+  assignment after every check, so a refused update changes nothing. `Learner.sharing(first,
+  outputs, ...)` builds a second learner on the first one's holder: each one's updates reach
+  the other, where a learner built from `first.brain` keeps the graph it was given, as before.
+  The composed brain, the actor-critic and checkpoints (which hold the graph, not the sharing)
+  read the graph through it; a shallow `copy.copy` of a learner shares its holder, and
+  `dataclasses.replace` builds a learner with a holder of its own. The
+  [learning guide](docs/learning.md#two-learners-on-one-graph) shows the use.
 
 ## 0.83.0 — 2026-10-13
 

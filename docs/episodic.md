@@ -21,19 +21,22 @@ reward beyond what was expected ─► replay: the decisions on the recent path,
 ```
 
 - **Two keys for every record.** Each record is kept twice. The place records are keyed by
-  the present observation. The context records are keyed by the temporal context: the
-  present observation together with a fading trace of what the stream saw and did before,
-  past observations and the brain's own issued actions. `memory_context` is the share the
-  past keeps from one moment to the next; the present observation enters with the rest.
+  the present observation code: the observation itself, or with `code=units` the brain's
+  sparse code of it ([from pixels to keys](memory.md#from-pixels-to-keys)). The context
+  records are keyed by the temporal context: the present code together with a fading trace
+  of what the stream saw and did before, past codes and the brain's own issued actions.
+  `memory_context` is the share the past keeps from one moment to the next; the present
+  code enters with the rest.
 - **Why two.** Two moments that look alike but follow different histories get different
   context keys, so a cue that is gone still shapes the vote, and so does the place in a
   sequence of the brain's own actions. Where history does not matter, the context splits one
   situation's records over every path that reaches it; the place records keep them together,
   so a known situation reached along a new path is still recognized. The trace is fixed,
   not learned: a record stays addressable while the cortex learns.
-- **Records** hold one value per action for each key, in reward units. Keys are separated
-  first (a fixed random expansion to 1,024 cells, of which the 24 most active stay), so
-  different situations write different synapses.
+- **Records** hold one value per action for each key, in reward units. An uncoded key is
+  separated first (a fixed random expansion to 1,024 cells, of which the 24 most active
+  stay; dense, or with `memory_fan_in` each cell reading that many key values), so
+  different situations write different synapses; a coded brain's key is the code itself.
 - **What is written.** The outcome of the chosen action, when it is known: a reward or a
   punishment, the end of an attempt (`done`), a surprise that woke a calm `live` brain, or an
   outcome the caller marks with a positive `salience=`. A zero outcome in the middle of an
@@ -88,6 +91,7 @@ action = brain.live([[1.0, 0.0, 0.0]])                      # the record votes f
 | `memory_demonstrations` | `1.0` | The value at which a shown action is recorded; 0 records none |
 | `memory_rate` | `0.5` | How far one write moves the stream's record at once; 1.0 lets the last outcome replace it |
 | `memory_expansion`, `memory_winners` | `1024`, `24` | Separation of the keys; 0 cells use the key as it is |
+| `memory_fan_in` | `0` | How many of the key's values each cell of the separation reads; 0 reads them all, 32 is the recommended setting above 256 key values; a coded brain has no separation |
 
 These are construction settings: pass them to `Brain.compose(...)`; `retune` refuses them,
 except `memory_rate`, a store setting like `memory_decay`, `memory_amplitude` and
@@ -153,6 +157,17 @@ Where the world has attempts (a chain completed, a trial over, a game lost), `do
 the outcome of the last decision known and starts the next attempt with a fresh context and
 path. The memory needs no such mark to learn a sequence: rewards and punishments bound what a
 reward replays.
+
+## A sparse separation
+
+`memory_fan_in` above zero makes the separation sparse: each of its 1,024 cells reads that
+many of the key's values, chosen at random, so a store's separation holds
+`1,024 x memory_fan_in` indices and weights at any width (0.52 MB at a fan-in of 32) beside
+a running mean of one float per key value, where the dense separation holds `width x
+1,024` floats (105 MB at 12,824 inputs). The founder 0 keeps the dense separation; 32 is
+the recommended setting above 256 key values. The key is the
+[observation code](memory.md#from-pixels-to-keys): with `code=units` the brain codes the
+observation and the stores key on that code as it is, with no separation of their own.
 
 ## Check that the memory does the work
 

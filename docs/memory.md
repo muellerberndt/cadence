@@ -13,6 +13,72 @@ shared synapses and fading per-stream residuals. `Brain.compose` includes this
 consolidation rule; `episodic=False` omits that pathway. The `FastSynapses` API below
 provides independent stream records and an immediate residual-write rule.
 
+## From pixels to keys
+
+An observation reaches two things: the cortex, which settles on it, and the memories, which
+key on it. A sense organ's own code, a retina, a cochlea, a V1 region, belongs to the
+application or to the anatomy that builds the brain; `Brain.build((height, width), actions)`
+and `Brain.compose((height, width), actions)` give the cortex the pixels through a
+`visual_cortex`, feature maps with local receptive fields that learning shapes. The
+library's generic compression is the brain's sparse code. `brain.observation_code(x)` is
+what both memories key on: the observation itself, or with `code=units` the brain's own
+code of it, `units` code neurons with positive weights that read each input through two
+rectified channels, ON `max(x, 0)` and OFF `max(-x, 0)`, and every channel at least twice,
+the largest sums of one unit in ten kept (102 of 1,024) and the code scaled to unit length
+(a `PatternSeparator` with a fan-in and `cover=2`, owned by the brain and saved with it).
+The code deals each channel two readers first, then fills each unit's fan-in of 32
+channels at random from the seed (more channels per unit where 32 cannot read every
+channel twice: 51 for 1,024 units and 401 for 128 units at 12,824 inputs). A single input
+of either sign reaches the code, a signed observation reaches it in both signs, and a
+nonnegative observation leaves the OFF channels silent. Too sparse a code leaves the
+cortex and the memory too little overlap between a question and the moment it asks for.
+The code compresses: channels read by the same units are told apart by their weights
+alone, and an observation lit widely keeps one unit in ten, so the brain on its raw
+observation is the control a code is chosen against. Left unset, every brain keys on its
+observation, whatever its width; a code of 1,024 units is the recommended setting above
+1,024 inputs.
+
+```text
+observation ─► sensory region ─► association cortex ─► motor readout
+      └──────► sparse code (fixed: 1,024 units, ON and OFF channels each read twice, one in ten active, unit length)
+                   ├─► episodic memory: place records, and context records with the command
+                   └─► recall memory: the slots and their address
+```
+
+- **What keys on it.** The episodic memory's place records key on the code and its context
+  records on the code with the issued command; the recall memory's slots and address key on
+  it. A coded brain's stores take no separator of their own: the code is the separation. An
+  uncoded key (the observation itself) keeps the stores' separators, dense by default
+  (`memory_fan_in` 0); above 256 key values the recommended setting is sparse, each of the
+  1,024 cells reading 32 values (`memory_fan_in` 32), with 24 cells active as before.
+- **The cortex's input.** `Brain.compose(inputs, actions, code=1024)` makes the sensory
+  region the code: every observation is coded before the drive, so 12,824 inputs reach the
+  cortex as 1,024 units through 1,024 x 64 sensory synapses in place of 12,824 x 64, and the
+  memories key on the same code. The founder leaves the cortex and the memories on the
+  observation; `code=units` is opt-in.
+- **Custom anatomies.** `Brain(connectome, ..., code=units)` keys the memories on the code
+  with the cortex on the observation, and names a coded sensory region with `inputs=` (the
+  observation width) beside `code=` (the region's width). A recall memory, opt-in there,
+  needs `recall` and `next` regions of the code's width (`Brain.observation_width(inputs,
+  code)`); the heard history holds blocks of the sensory region's width.
+
+At 12,824 inputs (a 128 by 100 camera and 24 body senses, an association region of 64
+neurons, three actions), the episodic memory's separators and the recall memory's address
+map, keyed on the observation itself (the founder at every width) and on the recommended
+code of 1,024 units:
+
+| Part | On the observation (the founder) | On the code (`code=1024`) |
+| --- | --- | --- |
+| Key width | 12,824 values | 1,024 units |
+| Episodic separators, place and context | 105.1 MB and 105.1 MB, dense (0.63 MB each with `memory_fan_in=32`) | none: the code is the separation |
+| The code's tables, indices and weights | | 0.84 MB |
+| Recall address map `W_x`, `W_c`, `b` | 1,322 MB (`W_x` 1,316 MB) | 8.9 MB |
+| Together | 1,532 MB | 9.8 MB |
+| Sensory synapses into a module of 64 | 820,736 | 65,536 |
+
+The recall memory with cortex values (`recall_value="cortex"`) and an association region of
+512 neurons holds 14.5 MB at that width, [below](#recall-the-streams-own-moments).
+
 <a id="three-kinds-of-memory-in-brain"></a>
 
 ## Memory in the composed brain
@@ -21,6 +87,7 @@ provides independent stream records and an immediate residual-write rule.
 | --- | --- | --- | --- |
 | Working `Trace` | Recent association-region activity used as context | Each admitted live action | Nothing; the trace is cleared |
 | `Efference` copy (opt-in gene) | The fading one-hot of the commands the stream issued | Each admitted live action | Nothing; the copy is cleared |
+| `Recall` memory (opt-in gene) | The stream's recent moments as slots, each addressed before its settle ([below](#recall-the-streams-own-moments)) | Each admitted live action and each moment `wait` senses (the aroused ones alone with `recall_write="aroused"`); the address map by each teacher lesson, and with `recall_address_reward` by reward | The address map; the slots are emptied |
 | Graph plasticity | Learned synaptic parameters and biases | Supervised contrasts and reward-modulated eligibility | Learned parameters |
 | `SynapticMemory` | Cue-to-outcome associations, with fast per-stream `F` and shared persistent `C` | Observed chosen-action outcomes | Both `F` and `C` |
 | Episodic memory (`memory_choice=True`) | The same store keyed by the observation, and a second keyed by the temporal context; their mean votes in the choice | Known outcomes, demonstrations, replay of the path to a reward | The records; the temporal context and replay path are cleared |
@@ -31,8 +98,8 @@ the number of durable associations they can retain. A lost response can come
 from a missing trace, interfering parameter updates or interfering record writes.
 Test the mechanism that was used to acquire the response.
 
-`predict` and `accuracy` ignore the working trace, the efference copy and the
-associative store.
+`predict` and `accuracy` ignore the working trace, the efference copy, the recall
+memory and the associative store.
 They qualify the current learned graph's independent response. `act` reads the
 available memory pathways before qualifying the full graph state. To test consolidated
 recall, reset live state and clear only fast residuals before each free query:
@@ -81,6 +148,187 @@ continuing brain against checkpoint-matched trace interventions and an
 explicitly trained history comparator; its software checks validate the
 instrument, not a recall horizon. For demonstrations without a reward protocol,
 use the [supervised-only stream](continuous.md#a-supervised-only-stream).
+
+## Recall the stream's own moments
+
+The working trace keeps what the brain made of the moment before, and the
+[heard history](context.md#hear-the-past-at-several-timescales) keeps the observations at a
+few fixed timescales. Neither gives back one earlier moment when the present asks for it.
+The recall memory, `Brain.compose(..., recall=True)`, keeps each stream's recent moments as
+slots, addresses them before each settle and holds what it recalled through the settle: a
+held-input recall. Its two regions add one neuron per observation
+coordinate each: `compose(250, 2)` grows from 380 to 880 neurons, which a world that charges
+per neuron feels; a brain's `code` bounds the regions at the code's width.
+
+```text
+moment t:  observation x -> address q -> weights over the slots -> recall and next regions -> settle -> act
+                                                                                                         |
+           after the act: a new slot (key heard * x, value x); the slot before learns x as its next  <---+
+```
+
+- **One slot per moment.** After each act, and after each moment `wait` senses, every stream
+  writes one slot: its key `heard * x` (`recall_heard` 1.0, `x` the observation as heard),
+  its value `x` (`recall_value="event"`) or the settled activity of the association region
+  (`"cortex"`), and its next, the value of the moment that follows, written when that moment
+  comes. `recall_capacity` (64) bounds a stream's slots; the oldest is dropped first.
+- **The address comes before the settle.** Before each settle the moment's address is
+  `q = heard * x + context * h + x W_x + c W_c + b`, with `h` the fading history of the
+  earlier events (`recall_context` 0.0, kept at `recall_context_decay` 0.5 per moment), `c`
+  the settled association activity of the moment before and `W_x`, `W_c`, `b` a learned
+  map that starts at zero. The slots are weighed once, by
+  `p = softmax(q . K / 0.25 - 0.25 * age)` (`recall_temperature`, `recall_recency`), which
+  `brain.recall.attended` keeps. With the map at zero the address is the event heard: a
+  name finds the moment it was stated in before any lesson.
+- **Two source regions, held through the settle.** The `recall` region is driven at
+  `3.0 * sum p V` and the `next` region at `3.0 * sum p N` (`recall_amplitude`;
+  `recall_next=False` leaves the next region out), a drive set before the settle and held
+  through it as a sensory drive is: the settle answers on the mixture the address chose and
+  does not revise the choice. Both regions reach the association region through one-way
+  plastic synapses of initial magnitude `recall_scale` (1.2), which the settle's contrast
+  teaches as it teaches the sensory ones. A moment's address cannot depend on what that
+  moment recalls: a second recall takes a second moment.
+- **The address lesson.** After each teacher lesson (`step(..., teacher=...)` or
+  `Brain.lesson`) a rule of its own moves the map. It reads the movement of the association
+  region between the nudged phases back through the recall and next synapses, scores each
+  slot's value and next against that movement (the stored values themselves, not their
+  effect through the source neurons), weighs the scores with the address's own attention
+  (`recall_address_temperature` 0.1), and takes a least-mean-squares step of the map
+  (`recall_address` 0.01) toward the keys so weighted, at the rows the lesson taught. Each
+  row's rate is bounded by the row's own energy, `min(0.01, 1 / |z|^2)` on the map's inputs
+  `z = [x, c, 1]`, so a row taught alone moves its address at most onto its target. The
+  rows' steps are averaged, and a row's step moves every row whose inputs overlap its own,
+  so in a batch one row can pass its target; the batch error, each row's squared distance
+  to its target weighted by the row's rate, does not grow under the step. A step whose
+  result is not finite is refused and counted (`address_refused`). The keys hold the fixed
+  part of the address (the event heard, and with `recall_context` the history before it),
+  so a target never contains the map's own output. At the founder
+  `recall_address_reward=0` rewards through `learn` and `live` leave the map as it is.
+- **Streams and episodes.** Each stream has its own slots. `reset` empties them, an ended
+  episode empties its stream's slots, and imagination reads the live slots and writes none.
+  The address map is learned: a reset keeps it, `parameters()` counts it and a checkpoint
+  saves it.
+- **Wide inputs.** The memory keys on the [observation code](#from-pixels-to-keys): the
+  observation itself, or with `code=units` the brain's sparse code of it. The keys, the
+  event values and the address map follow that width; on the observation itself the address
+  map is inputs by inputs, 1,322 MB at 12,824 values, and a code of 1,024 units is the
+  recommended setting above 1,024 inputs. `recall_value="cortex"` stores the settled
+  association activity in place of the event and sizes the two regions by the association
+  width; the settled association activity does not carry a moment's content in a form the
+  next settle can read back, so the founder stores events.
+
+Options beside the founder change one part of the memory each and leave the founder as it
+is. Each is a gene beside `recall=True` that `retune` can change in a life, and a saved brain
+keeps it ([genes](api.md#recall-memory-genes)):
+
+- **The address step toward the named slots** (`recall_address_step="toward"`). The founder
+  step (`"lms"`) moves the address toward the named keys `K* = sum p* K`; where the keys are
+  shorter than the address, that shortens it, the attention flattens and the slot the lesson
+  names can lose weight. The toward step takes the error `K* - sum p K`, the named keys less
+  the mixture the address attended to, so that to first order the named slots' logits rise
+  against the attended ones, whatever the keys' norms. The rate, its bound and the refusal
+  are the founder's.
+- **A power-law age charge** (`recall_recency=None`). A slot's logit is lowered by
+  `r * log(1 + age)`, `r = heard^2 / temperature / log(1 + capacity)`: the weight of an
+  unmatched old slot falls as a power of its age, `(1 + age)^-r`, two equal matches at ages
+  1 and 3 keep weights in the ratio `2^r`, and a full match of a unit-length key outweighs
+  the age of every slot the capacity holds. `brain.recall.charges()` gives each slot's
+  charge; a number keeps the linear charge `recency * age`.
+- **Aroused writes** (`recall_write="aroused"`). A moment is written when its act was
+  chosen aroused, which is the act's own flag: a sampled act (`step`, `act`, an aroused
+  `live` moment) writes, a greedy act (`act(..., greedy=True)`, a calm `live` moment)
+  writes nothing, and a moment `wait` senses is written while the action it awaits was
+  sampled. The cortex of the moment before and the history move on at every moment. In a
+  batch a moment written for some streams is a column every stream has, held by the written
+  ones, and each stream's latest held slot learns its next from that stream's next written
+  moment. `recall_capacity` then bounds the store's columns, so a stream that wrote fewer of
+  them holds fewer slots than the capacity.
+- **A null slot** (`recall_null`, a number). A slot of logit `null / temperature` joins the
+  read's softmax and reads nothing, so a moment that matches no slot recalls little:
+  `attended` and the drives read the slots' shares, which sum to one less the null slot's.
+  The address lesson weighs the slots alone.
+- **Reward trains the address map** (`recall_address_reward` above zero). At each sampled
+  act, before its moment is written, the step the address lesson would take were the act's
+  action a lesson's label is the map's eligibility. The actor keeps it in a trace of its own
+  beside the synapses' (it decays by `gamma * lam` per outcome and per calm moment, and an
+  ended stream forgets it), and each outcome steps the map by `recall_address_reward` times
+  the dopamine times that trace, checked before the graph's update; the report names the
+  step (`address_reward_step`). The eligibility is a lesson's step, taken at the lesson's
+  bounded rate `min(recall_address, 1 / |z|^2)`, so at `recall_address_reward` 1.0 a unit of
+  dopamine moves the map by one lesson's step, and `recall_address=0` leaves the map as it is
+  under reward too.
+
+```python
+import numpy as np
+from cadence import Brain
+
+optioned = Brain.compose(
+    inputs=4, actions=2, modules=(16,), seed=1, recall=True,
+    recall_address_step="toward", recall_recency=None, recall_write="aroused",
+    recall_null=0.0, recall_address_reward=0.1,
+)
+fact, other = np.array([[1.0, 0.0, 0.0, 1.0]]), np.array([[0.0, 1.0, 0.0, 0.0]])
+optioned.act(fact)  # sampled: chosen aroused, the moment is written
+optioned.act(other)  # written too
+optioned.act(other, greedy=True)  # greedy: nothing is written
+assert optioned.recall.slots == 2
+optioned.stimulus(np.array([[0.0, 0.0, 1.0, 0.0]]))  # a moment that matches no slot
+assert optioned.recall.attended.sum() < 1.0  # the null slot keeps the rest
+optioned.act(np.array([[1.0, 0.0, 0.0, 0.0]]))  # sampled: the map's eligibility is kept
+report = optioned.learn(np.array([1.0]), np.array([False]), fact)
+assert report["address_reward_step"] > 0.0  # the outcome stepped the map on its trace
+assert optioned.describe()["genes"]["recall_address_step"] == "toward"
+```
+
+At camera width, with 12,824 inputs, an association region of 512 neurons, 64 slots, the
+brain's code of 1,024 units and cortex values, one stream:
+
+| Part | Size |
+| --- | --- |
+| Slots of one stream (keys, values, nexts) | 1.05 MB |
+| Address map (`W_x`, `W_c`, `b`) | 12.6 MB |
+| Code tables | 0.84 MB |
+| The memory in all | 14.5 MB |
+| One dense `PatternSeparator` of the same inputs into 1,024 cells, for comparison | 105 MB |
+
+```python
+import numpy as np
+from cadence import Brain
+
+indexed = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1, recall=True)
+fact = np.array([[1.0, 0.0, 0.0, 1.0]])  # a name (0) stated with a value (3)
+indexed.act(fact, greedy=True)
+indexed.act(np.array([[0.0, 1.0, 0.0, 0.0]]), greedy=True)  # another moment
+name = np.array([[1.0, 0.0, 0.0, 0.0]])
+drive = indexed.stimulus(name)  # the name addresses the slots before its settle
+recalled = drive[0, indexed.connectome.populations["recall"]]
+assert recalled[3] > recalled[1]  # the moment that shares the name comes back
+report = indexed.lesson(name, [1])  # the lesson, then the address lesson at the taught row
+assert report["address_rows"] == 1.0
+indexed.act(name, greedy=True)  # the moment is written
+assert indexed.recall.slots == 3
+indexed.reset()  # a new stream begins with no slots; the address map is kept
+assert indexed.recall.slots == 0 and indexed.recall.w_x.any()
+```
+
+The founder `recall=False` builds the brain without the two regions, byte-identical to the
+brain before the option, and is the control. A custom anatomy (`Brain(connectome, ...)`)
+opts in with `recall=True` and its own `recall` and `next` regions, one neuron per value
+coordinate each, the width of the observation code with event values or of the
+association region with cortex values. The read and lesson genes can be retuned; the
+capacity, the value, the next region and the scale are construction settings
+([genes](api.md#recall-memory-genes)). A saved brain keeps its slots and its address map
+(format `cadence-generic/8`; `/9` with the brain's code) and continues exactly. Erase a copy's slots before the
+query (`brain.recall.reset(batch)`) to check that the memory does the work. The binding
+instruments keep the reference implementation, `benchmarks/binding/index_read.py`, which the
+option reproduces moment for moment (`tests/test_recall_memory.py`).
+
+Limits: the address is a linear map of the event and of the cortex of the moment before,
+chosen before the settle and held through it, so the settle cannot change which moments it
+receives and its stopping check covers the graph on that drive, not the choice. An
+address that depends on a recalled token and the question together reaches it only through
+conjunctions held in the cortex of the moment before. The slots are a record within one
+stream; nothing consolidates across streams except through the plastic synapses that read
+them.
 
 ## One correction
 
