@@ -201,3 +201,17 @@ python -m pytest tests/test_local_work.py -q
 `run.py` pins the thread counts before importing NumPy and writes `environment.json`, one
 JSON per case under `cases/` and `summary-<campaign>.json`. `tables.py` prints the markdown
 tables. Results are not committed to this repository.
+
+## Amendment 1 (18 October 2026, after the first campaign): the local stop margin
+
+Declared after the first campaign's results were read, so its runs are diagnostics and
+cannot count as gate results of this protocol. ``LocalRepair(margin=k)`` and
+``run.py --local-margin k`` make the worklist stop when every error is within
+``tolerance / k`` while the complete check stays at the tolerance, the library's
+qualification. The question it asks is whether the gate failures of the first campaign (two
+lives qualified at the same tolerance answering differently at near ties, and activation
+distances above the declared constant) come from the local life stopping exactly at the
+tolerance where the chunked full settlement overshoots, at what extra work. Its case names
+carry ``-m<k>`` and its summaries ``summary-<campaign>-m<k>.json``. A margin earns nothing
+by itself: the same-answer and state gates would have to be met in a fresh declared campaign
+on founders not used to choose ``k``.

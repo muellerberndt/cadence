@@ -76,6 +76,28 @@ def test_repair_leaves_an_unchanged_moment_alone_and_matches_the_library(lw):
     assert counts.updated is not None and int(counts.updated.sum()) == counts.cone
 
 
+def test_margin_tightens_the_worklist_and_keeps_the_check(lw):
+    brain = lw.build_brain("sparse", (8, 8), 0)
+    maps = lw.skill_maps(2, 0, 4, 2)
+    lw.acquire(brain, maps, 0, d=4, lessons=20)
+    brain.reset()
+    x = lw.observations(np.zeros((1, 2), int), 4)
+    brain.act(x, greedy=True)
+    state, drive = brain.basal_ganglia.state, brain.basal_ganglia._drive
+    tolerance = float(brain.learner.config.tolerance)
+    drive2 = brain.stimulus(lw.observations(np.array([[1, 0]]), 4))
+    plain = lw.LocalRepair(brain.brain, state, drive, tolerance=tolerance)
+    tight = lw.LocalRepair(brain.brain, state, drive, tolerance=tolerance, margin=10.0)
+    _, loose = plain.repair(drive2)
+    repaired, counts = tight.repair(drive2)
+    assert counts.rounds >= loose.rounds and counts.qualified
+    assert float(np.max(np.abs(tight.e))) <= tolerance / 10.0
+    assert float(brain.brain.residual(drive2, repaired)[0]) <= tolerance
+    with pytest.raises(ValueError, match="margin"):
+        lw.LocalRepair(brain.brain, state, drive, tolerance=tolerance, margin=0.5)
+    assert lw.CaseSpec("sparse", (8, 8), 0, local_margin=10.0).name.endswith("-m10")
+
+
 def test_sync_reference_follows_the_library_sweep(lw):
     brain = lw.build_brain("dense", (8, 8), 2)
     x = lw.observations(np.array([[2, 1]]), 4)

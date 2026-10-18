@@ -40,13 +40,15 @@ def main(argv: list[str] | None = None) -> int:
                         help="host budget per case; a case over it is flagged in its record")
     parser.add_argument("--verbose", action="store_true")
     parser.add_argument("--only", nargs="*", default=None, help="case names to run, if given")
+    parser.add_argument("--local-margin", type=float, default=1.0,
+                        help="amendment 1: the worklist stops at tolerance / margin")
     args = parser.parse_args(argv)
     warnings.simplefilter("ignore", RuntimeWarning)  # the library's budget warnings, retained
     out = args.out
     (out / "cases").mkdir(parents=True, exist_ok=True)
     (out / "environment.json").write_text(json.dumps(lw.environment(), indent=1))
     summaries = []
-    specs = lw.case_specs(args.campaign, args.founders, args.arms)
+    specs = lw.case_specs(args.campaign, args.founders, args.arms, args.local_margin)
     if args.only:
         specs = [spec for spec in specs if spec.name in set(args.only)]
     for spec in specs:
@@ -68,7 +70,10 @@ def main(argv: list[str] | None = None) -> int:
             f"max dist {gates['max_distance_activation']:.3g}",
             flush=True,
         )
-        (out / f"summary-{args.campaign}.json").write_text(json.dumps(summaries, indent=1))
+        suffix = "" if args.local_margin == 1.0 else f"-m{args.local_margin:g}"
+        (out / f"summary-{args.campaign}{suffix}.json").write_text(
+            json.dumps(summaries, indent=1)
+        )
     return 0
 
 

@@ -411,9 +411,15 @@ class LocalRepair:
         tolerance: float,
         max_rounds: int = 1024,
         max_checks: int = 3,
+        margin: float = 1.0,
     ) -> None:
+        if not np.isfinite(margin) or margin < 1.0:
+            raise ValueError("margin must be a finite factor of at least one")
         self.g = Graph(graph)
         self.tolerance = float(tolerance)
+        # the worklist threshold: the tolerance over the margin (amendment 1); the complete
+        # check stays at the tolerance, the library's qualification
+        self.threshold = float(tolerance) / float(margin)
         self.max_rounds = int(max_rounds)
         self.max_checks = int(max_checks)
         self.v = np.array(np.atleast_2d(state.v)[0], dtype=float)
@@ -465,7 +471,7 @@ class LocalRepair:
         self.e[changed] += delta[changed]
         self.drive = new
         candidates = np.union1d(changed, touched)
-        active = candidates[np.abs(self.e[candidates]) > self.tolerance]
+        active = candidates[np.abs(self.e[candidates]) > self.threshold]
         counts.seed_active = int(len(active))
         ever = np.zeros(g.n, dtype=bool)
         dt = float(g.model.dt)
@@ -497,7 +503,7 @@ class LocalRepair:
                     self.u[receivers] + self.drive[receivers] + g.bias[receivers]
                     - self.v[receivers]
                 )
-                active = receivers[np.abs(self.e[receivers]) > self.tolerance]
+                active = receivers[np.abs(self.e[receivers]) > self.threshold]
             if not len(active) and counts.rounds == 0 and check == 0 and not len(touched):
                 # nothing was violated and nothing moved: the kept certificate stands
                 break
@@ -508,7 +514,7 @@ class LocalRepair:
             counts.residual = float(np.max(np.abs(self.e)))
             if counts.residual <= self.tolerance:
                 break
-            active = np.flatnonzero(np.abs(self.e) > self.tolerance)
+            active = np.flatnonzero(np.abs(self.e) > self.threshold)
             if counts.rounds >= self.max_rounds:
                 counts.exhausted = True
                 break
@@ -639,6 +645,7 @@ class CaseSpec:
     hold: int = 64
     state_gate: float = 10.0  # times the tolerance, on activations
     reference_moments: int = 3  # change moment and the ripple moments measured against it
+    local_margin: float = 1.0  # amendment 1: the worklist stops at tolerance / margin
 
     @property
     def S(self) -> int:
@@ -646,7 +653,11 @@ class CaseSpec:
 
     @property
     def name(self) -> str:
-        return f"{self.arm}-S{self.S}-w{'x'.join(str(w) for w in self.widths)}-f{self.founder}"
+        margin = "" if self.local_margin == 1.0 else f"-m{self.local_margin:g}"
+        return (
+            f"{self.arm}-S{self.S}-w{'x'.join(str(w) for w in self.widths)}-f{self.founder}"
+            f"{margin}"
+        )
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -654,6 +665,7 @@ class CaseSpec:
             "founder": self.founder, "d": self.d, "a": self.a, "lessons": self.lessons,
             "probes": self.probes, "relation_probes": self.relation_probes, "hold": self.hold,
             "state_gate": self.state_gate, "reference_moments": self.reference_moments,
+            "local_margin": self.local_margin,
         }
 
 
@@ -698,7 +710,7 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
     assert state_local is not None and drive_first is not None
     repair = LocalRepair(
         local.brain, state_local, drive_first, tolerance=tolerance,
-        max_rounds=free_steps,
+        max_rounds=free_steps, margin=spec.local_margin,
     )
     moments.append({
         "index": 0, "kind": "first", "episode": -1, "cue0": 0,
@@ -916,19 +928,21 @@ def environment() -> dict[str, Any]:
 
 
 def case_specs(
-    campaign: str, founders: Sequence[int], arms: Sequence[str] = ("dense", "sparse")
+    campaign: str, founders: Sequence[int], arms: Sequence[str] = ("dense", "sparse"),
+    local_margin: float = 1.0,
 ) -> list[CaseSpec]:
     """The declared case grids: ``skills`` scales S at width 16; ``widths`` keeps two
-    skills and widens the undisturbed one."""
+    skills and widens the undisturbed one. A ``local_margin`` above one is amendment 1."""
     specs = []
     for founder in founders:
         for arm in arms:
             if campaign == "skills":
                 for S in (1, 2, 4, 8):
-                    specs.append(CaseSpec(arm, tuple([16] * S), founder))
+                    specs.append(CaseSpec(arm, tuple([16] * S), founder,
+                                          local_margin=local_margin))
             elif campaign == "widths":
                 for width in (16, 64, 256, 1024):
-                    specs.append(CaseSpec(arm, (16, width), founder))
+                    specs.append(CaseSpec(arm, (16, width), founder, local_margin=local_margin))
             else:
                 raise ValueError(f"unknown campaign {campaign!r}")
     return specs
