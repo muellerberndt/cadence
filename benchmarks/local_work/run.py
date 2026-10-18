@@ -32,7 +32,8 @@ import local_work as lw  # noqa: E402
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("--campaign", choices=("skills", "widths"), required=True)
+    parser.add_argument("--campaign", choices=("skills", "widths", "relearn"), required=True,
+                        help="relearn: amendment 3's relearning reading on the skills grid")
     parser.add_argument("--founders", type=int, nargs="+", default=[0, 1, 2])
     parser.add_argument("--arms", nargs="+", default=["dense", "sparse"])
     parser.add_argument("--out", type=Path, required=True)
@@ -46,6 +47,11 @@ def main(argv: list[str] | None = None) -> int:
                         help="amendment 2: the charged check follows the cone")
     parser.add_argument("--momentum", type=float, default=None,
                         help="amendment 2's reading: the learner's momentum gene")
+    parser.add_argument("--lesson", choices=lw.LESSONS, default="library",
+                        help="amendment 3: the relation disturbance's lesson")
+    parser.add_argument("--fallback", type=int, default=None,
+                        help="amendment 3: hand a stalled repair to the library's damped "
+                             "settle after this many rounds without progress")
     args = parser.parse_args(argv)
     warnings.simplefilter("ignore", RuntimeWarning)  # the library's budget warnings, retained
     out = args.out
@@ -53,10 +59,30 @@ def main(argv: list[str] | None = None) -> int:
     (out / "environment.json").write_text(json.dumps(lw.environment(), indent=1))
     summaries = []
     specs = lw.case_specs(
-        args.campaign, args.founders, args.arms, args.local_margin, args.check, args.momentum
+        "skills" if args.campaign == "relearn" else args.campaign, args.founders, args.arms,
+        args.local_margin, args.check, args.momentum, args.lesson, args.fallback,
     )
     if args.only:
         specs = [spec for spec in specs if spec.name in set(args.only)]
+    if args.campaign == "relearn":
+        (out / "relearn").mkdir(parents=True, exist_ok=True)
+        for spec in specs:
+            print(f"relearn {spec.name}", flush=True)
+            result = lw.run_relearning(spec)
+            result["environment"] = lw.environment()
+            (out / "relearn" / f"{spec.name}.json").write_text(json.dumps(result))
+            arms = result["arms"]
+            print(
+                f"  {result['seconds']:7.1f}s acquired {result['acquisition']['at_gate']} "
+                + " ".join(
+                    f"{arm}: {a['lessons']} lessons relearned {a['relearned']} others "
+                    f"{a['others_lowest']} outside "
+                    f"{a['footprint_mean']['synapses_outside_block0']:.0f}"
+                    for arm, a in arms.items()
+                ),
+                flush=True,
+            )
+        return 0
     for spec in specs:
         print(f"case {spec.name}", flush=True)
         started = time.perf_counter()
@@ -77,7 +103,9 @@ def main(argv: list[str] | None = None) -> int:
             f"verified {gates['check_verified']} ({gates['max_verify_difference']:.1e})",
             flush=True,
         )
-        suffix = lw.spec_suffix(args.local_margin, args.check, args.momentum)
+        suffix = lw.spec_suffix(
+            args.local_margin, args.check, args.momentum, args.lesson, args.fallback
+        )
         (out / f"summary-{args.campaign}{suffix}.json").write_text(
             json.dumps(summaries, indent=1)
         )

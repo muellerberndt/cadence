@@ -13,7 +13,12 @@ qualified answer; the instrument counts what each did.
   anatomies, acquisition, `LocalRepair`, the reference arms, one case and its summary).
 * [run.py](run.py): the campaign runner; [tables.py](tables.py): markdown tables from the
   summaries.
-* `tests/test_local_work.py`: the block anatomy, the repair's contracts, determinism.
+* [recurrent.py](recurrent.py): conventional recurrent baselines on the same skills and the
+  same lives (an online GRU, and an oracle-routed bank of one small GRU per skill as a
+  privileged control), with their multiply-accumulates per decision.
+* `tests/test_local_work.py` and `tests/test_local_work_baselines.py`: the block anatomy,
+  the repair's contracts, determinism, the baselines' gradients and work counts, the
+  per-slot lesson and the damped fallback.
 
 Measured results stay with their runs, outside this repository. Nothing here establishes an
 energy figure, a hardware claim or a learned capability; it measures the work of the current

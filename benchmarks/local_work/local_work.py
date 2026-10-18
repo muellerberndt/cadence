@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import copy
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -238,8 +238,11 @@ def acquire(
     started = time.perf_counter()
     taken = 0
     accuracy = np.zeros(S)
+    predicted = np.zeros_like(y_probe)
+    seen: set[tuple[int, ...]] = set()  # the joint cue combinations the lessons showed
     for lesson in range(lessons):
         cues = rng.integers(0, d, size=(batch, S))
+        seen.update(tuple(row) for row in cues.tolist())
         brain.step(observations(cues, d), teacher=labels(cues, maps))
         taken = lesson + 1
         report = brain.last_settlement
@@ -253,10 +256,17 @@ def acquire(
             if bool((accuracy >= gate).all()):
                 break
     certificate = cd.certificate(brain.brain)
+    unseen = np.array([tuple(row) not in seen for row in probe.tolist()], dtype=bool)
     return {
         "lessons": taken,
         "batch": batch,
         "accuracy": [float(v) for v in accuracy],
+        # amendment 3: per skill, on the probe rows whose joint cue combination no lesson showed
+        "heldout_rows": int(unseen.sum()),
+        "heldout_accuracy": (
+            [float(v) for v in (predicted[unseen] == y_probe[unseen]).mean(axis=0)]
+            if unseen.any() else None
+        ),
         "at_gate": bool((accuracy >= gate).all()),
         "gate": gate,
         "history": history,
@@ -388,10 +398,18 @@ class RepairCounts:
     check_equations: int = 0  # equations the checks evaluated freshly this moment
     dirty: int = 0  # neurons whose cached inputs or errors this moment touched
     cached_residual: float = 0.0  # the largest cached error outside the cone check, uncharged
+    fallbacks: int = 0  # amendment 3: hand-overs to the library's damped settle
+    stalled_round: int = 0  # the round at which the last hand-over happened
+    fallback_sweeps: int = 0
+    fallback_checks: int = 0
+    fallback_updates: int = 0  # every neuron per sweep of the library's settle
+    fallback_contacts: int = 0  # the library's effective contacts for those sweeps and checks
+    fallback_halvings: int = 0
     updated: np.ndarray | None = None  # the neurons updated at least once, not serialized
+    seeded: np.ndarray | None = None  # the neurons violated at the moment's start, not serialized
 
     def contacts(self) -> int:
-        return self.messages + self.check_contacts
+        return self.messages + self.check_contacts + self.fallback_contacts
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -406,6 +424,11 @@ class RepairCounts:
             "exhausted": self.exhausted, "check_mode": self.check_mode,
             "check_contacts": self.check_contacts, "check_equations": self.check_equations,
             "dirty": self.dirty, "cached_residual": self.cached_residual,
+            "fallbacks": self.fallbacks, "stalled_round": self.stalled_round,
+            "fallback_sweeps": self.fallback_sweeps, "fallback_checks": self.fallback_checks,
+            "fallback_updates": self.fallback_updates,
+            "fallback_contacts": self.fallback_contacts,
+            "fallback_halvings": self.fallback_halvings,
         }
 
 
@@ -448,12 +471,21 @@ class LocalRepair:
         max_checks: int = 3,
         margin: float = 1.0,
         check: str = "complete",
+        fallback: Callable[[np.ndarray, BrainState], Any] | None = None,
+        patience: int = 64,
     ) -> None:
         if not np.isfinite(margin) or margin < 1.0:
             raise ValueError("margin must be a finite factor of at least one")
         if check not in ("complete", "cone"):
             raise ValueError("check must be 'complete' or 'cone'")
+        if isinstance(patience, bool) or not isinstance(patience, int) or patience < 1:
+            raise ValueError("patience must be a positive number of rounds")
         self.check = check
+        # amendment 3: when the worklist's largest error has made no new minimum for
+        # ``patience`` rounds, or the round budget is spent, the current state goes to the
+        # library's damped settle (``fallback(drive, state)``, an ``Equilibrium``)
+        self.fallback = fallback
+        self.patience = patience
         self.g = Graph(graph)
         # amendment 2: the neurons whose cached inputs or errors a moment touched (the only
         # ones a fresh recomputation can change); cleared by a qualified check
@@ -518,10 +550,20 @@ class LocalRepair:
         candidates = np.union1d(changed, touched)
         active = candidates[np.abs(self.e[candidates]) > self.threshold]
         counts.seed_active = int(len(active))
+        counts.seeded = np.zeros(g.n, dtype=bool)
+        counts.seeded[active] = True
         ever = np.zeros(g.n, dtype=bool)
         dt = float(g.model.dt)
         for check in range(self.max_checks):
+            best, stale = np.inf, 0
             while len(active) and counts.rounds < self.max_rounds:
+                worst = float(np.max(np.abs(self.e[active])))
+                if worst < best:
+                    best, stale = worst, 0
+                else:
+                    stale += 1
+                if self.fallback is not None and stale >= self.patience:
+                    break
                 counts.rounds += 1
                 counts.updates += int(len(active))
                 counts.largest_active = max(counts.largest_active, int(len(active)))
@@ -551,6 +593,11 @@ class LocalRepair:
                     - self.v[receivers]
                 )
                 active = receivers[np.abs(self.e[receivers]) > self.threshold]
+            if len(active) and self.fallback is not None:
+                # no progress for ``patience`` rounds, or the round budget spent
+                self._hand_over(counts)
+                ever[:] = True  # the library's sweeps update every neuron
+                break
             if not len(active) and counts.rounds == 0 and check == 0 and not len(touched):
                 # nothing was violated and nothing moved: the kept certificate stands
                 break
@@ -597,6 +644,30 @@ class LocalRepair:
         counts.cone = int(ever.sum())
         counts.updated = ever
         return self.state, counts
+
+    def _hand_over(self, counts: RepairCounts) -> None:
+        """The current state to the library's damped settle; its work is counted, and every
+        cache follows the returned state by one complete transport."""
+        assert self.fallback is not None
+        g = self.g
+        phase = self.fallback(self.drive[None, :], self.state)
+        sweeps, checks = int(phase.steps), int(phase.residual_checks)
+        counts.fallbacks += 1
+        counts.stalled_round = counts.rounds
+        counts.fallback_sweeps += sweeps
+        counts.fallback_checks += checks
+        counts.fallback_updates += g.n * sweeps
+        counts.fallback_contacts += effective_contacts(g, sweeps, checks)
+        counts.fallback_halvings = max(counts.fallback_halvings, int(phase.damping_halvings))
+        self.v = np.array(np.atleast_2d(phase.state.v)[0], dtype=float)
+        self.s = g.model.activation(self.v)
+        self.u = g.transport(self.s)
+        self.e = self.u + self.drive + g.bias - self.v
+        counts.global_checks += 1
+        counts.check_contacts += g.E
+        counts.check_equations += g.n
+        counts.residual = float(np.max(np.abs(self.e)))
+        self.dirty[:] = counts.residual > self.tolerance
 
 
 # -- the full arm and the synchronous reference
@@ -653,7 +724,7 @@ def full_moment(brain: cd.Brain, x: np.ndarray) -> tuple[np.ndarray, dict[str, A
 
 def local_moment(
     brain: cd.Brain, repair: LocalRepair, x: np.ndarray, *, relation: bool = False
-) -> tuple[np.ndarray, dict[str, Any], BrainState, np.ndarray, np.ndarray]:
+) -> tuple[np.ndarray, dict[str, Any], BrainState, np.ndarray, dict[str, np.ndarray]]:
     """One greedy moment of the local life: the drive the library composes (senses plus the
     working trace), the repair from the stream's kept state, then the library's own
     bookkeeping of a chosen action (the trace advances, the stream keeps the state)."""
@@ -665,8 +736,12 @@ def local_moment(
     seconds = time.perf_counter() - started
     record = counts.to_dict()
     record["seconds"] = seconds
-    updated = counts.updated if counts.updated is not None else np.zeros(repair.g.n, bool)
-    return action, record, state, drive, updated
+    none = np.zeros(repair.g.n, dtype=bool)
+    masks = {
+        "updated": none if counts.updated is None else counts.updated,
+        "seeded": none if counts.seeded is None else counts.seeded,
+    }
+    return action, record, state, drive, masks
 
 
 def reference_state(
@@ -721,6 +796,8 @@ class CaseSpec:
     local_margin: float = 1.0  # amendment 1: the worklist stops at tolerance / margin
     check: str = "complete"  # amendment 2: ``cone`` makes the check follow the cone
     momentum: float | None = None  # amendment 2's reading: the learner's momentum gene
+    lesson: str = "library"  # amendment 3: ``slot`` or ``slot-fixed`` (``slot_lesson``)
+    fallback: int | None = None  # amendment 3: the patience of the damped fallback, in rounds
 
     @property
     def S(self) -> int:
@@ -728,7 +805,9 @@ class CaseSpec:
 
     @property
     def suffix(self) -> str:
-        return spec_suffix(self.local_margin, self.check, self.momentum)
+        return spec_suffix(
+            self.local_margin, self.check, self.momentum, self.lesson, self.fallback
+        )
 
     @property
     def name(self) -> str:
@@ -744,17 +823,98 @@ class CaseSpec:
             "probes": self.probes, "relation_probes": self.relation_probes, "hold": self.hold,
             "state_gate": self.state_gate, "reference_moments": self.reference_moments,
             "local_margin": self.local_margin, "check": self.check, "momentum": self.momentum,
+            "lesson": self.lesson, "fallback": self.fallback,
         }
 
 
-def spec_suffix(local_margin: float, check: str, momentum: float | None) -> str:
+def spec_suffix(
+    local_margin: float, check: str, momentum: float | None, lesson: str = "library",
+    fallback: int | None = None,
+) -> str:
     """What a case name and a summary file carry beyond the declared protocol."""
     out = "" if local_margin == 1.0 else f"-m{local_margin:g}"
     if check == "cone":
         out += "-cone"
     if momentum is not None:
         out += f"-mom{momentum:g}"
+    if lesson != "library":
+        out += "-" + lesson.replace("-", "")
+    if fallback is not None:
+        out += f"-fb{fallback}"
     return out
+
+
+LESSONS = ("library", "slot", "slot-fixed")
+
+
+def slot_lesson(
+    brain: cd.Brain, x: np.ndarray, label: Any, slot: int = 0, *, fixed_phases: bool = False
+) -> dict[str, float]:
+    """A lesson that nudges one slot's motor neurons and leaves the other slots free.
+
+    It follows the library's finite teaching law of ``Brain.lesson`` (the drive with every
+    memory the act reads, a free phase from rest, a nudged phase each way from it, one
+    contrast update): the nudge is the learner's own (``beta / slots``, cross-entropy over
+    the slot at the learner's temperature) with its mask on ``slot`` alone, so the taught
+    slot is pulled as hard as in the library's lesson and the others not at all. With
+    ``fixed_phases`` both nudged phases run exactly ``nudged_steps`` sweeps; otherwise they
+    stop as the library's do, at the movement tolerance, and may then differ in length.
+    Instrument-only (amendment 3); ``label`` is one action of the slot per observation.
+    """
+    from cadence.brain import Nudge
+
+    learner = brain.learner
+    cfg = learner.config
+    if cfg.qualified:
+        raise ValueError("the per-slot lesson follows the finite teaching law")
+    validated = brain._observations(x)
+    batch = len(validated)
+    brain._coded_moment = (validated, brain._code(validated))
+    drive = brain.stimulus(validated)
+    n = brain.connectome.n
+    offset, size = int(learner.slot_offsets[slot]), int(learner.slot_sizes[slot])
+    members = learner.output_index[offset : offset + size]
+    chosen = np.broadcast_to(np.asarray(label, dtype=np.int64).reshape(-1), (batch,))
+    if ((chosen < 0) | (chosen >= size)).any():
+        raise ValueError("a label lies outside the slot's choices")
+    target = np.zeros((batch, n))
+    target[np.arange(batch), members[chosen]] = 1.0
+    mask = np.zeros(n)
+    mask[members] = 1.0
+    temperature = cfg.temperature if cfg.nudge == "cross_entropy" else None
+
+    def nudge(sign: float) -> Any:
+        return Nudge(
+            target, mask, sign * cfg.beta / learner.slot_count,
+            softmax_temperature=temperature, groups=learner.output_groups,
+        )
+
+    free = learner.free(drive)
+    tolerance = None if fixed_phases else cfg.tolerance
+    graph = learner.brain
+    nudged = graph.settle_batch(
+        drive, steps=cfg.nudged_steps, state=free, nudge=nudge(1.0), tolerance=tolerance
+    )
+    opposite = (
+        graph.settle_batch(
+            drive, steps=cfg.nudged_steps, state=free, nudge=nudge(-1.0), tolerance=tolerance
+        )
+        if cfg.centered else None
+    )
+    report = learner.update(free, nudged, opposite)
+    brain._prepared = None
+    brain.basal_ganglia._drive = None
+    return report
+
+
+def apply_lesson(brain: cd.Brain, x: np.ndarray, shown: Any, kind: str) -> dict[str, float]:
+    """The library's lesson (every slot labelled) or the per-slot lesson on slot 0."""
+    if kind == "library":
+        return brain.lesson(x, shown)
+    if kind not in LESSONS:
+        raise ValueError(f"unknown lesson {kind!r}")
+    first = np.asarray(shown).reshape(len(x), -1)[:, 0]
+    return slot_lesson(brain, x, first, 0, fixed_phases=kind == "slot-fixed")
 
 
 def _distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -798,9 +958,15 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
     state_local = local.basal_ganglia.state
     drive_first = local.basal_ganglia._drive
     assert state_local is not None and drive_first is not None
+    def damped(drive: np.ndarray, state: BrainState) -> Any:
+        # the library's qualified-answer solve, with its damped fallback, from this state
+        return local._equilibrate(drive, state, budget=free_steps, tolerance=tolerance)
+
     repair = LocalRepair(
         local.brain, state_local, drive_first, tolerance=tolerance,
         max_rounds=free_steps, margin=spec.local_margin, check=spec.check,
+        fallback=damped if spec.fallback is not None else None,
+        patience=spec.fallback if spec.fallback is not None else 64,
     )
     moments.append({
         "index": 0, "kind": "first", "episode": -1, "cue0": 0,
@@ -820,9 +986,10 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
         )
         drive_full = full.stimulus(x)
         action_full, report_full = full_moment(full, x)
-        action_local, report_local, state_local, drive_local, updated = local_moment(
+        action_local, report_local, state_local, drive_local, masks = local_moment(
             local, repair, x, relation=relation
         )
+        updated, seeded = masks["updated"], masks["seeded"]
         settled_full = full.basal_ganglia.state
         assert settled_full is not None
         # the library's own check of the local state, uncharged: the verification of the
@@ -838,7 +1005,10 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
         report_full["residual_evaluations"] = g.n * report_full["residual_checks"]
         report_local["library_residual"] = library_residual
         report_local["library_qualified"] = library_residual <= tolerance
-        report_local["contacts"] = report_local["messages"] + report_local["check_contacts"]
+        report_local["contacts"] = (
+            report_local["messages"] + report_local["check_contacts"]
+            + report_local["fallback_contacts"]
+        )
         # amendment 2's verifier, uncharged: every neuron's error from the library's dense
         # synapse matrix against the instrument's kept errors, and the library's own
         # residual against the instrument's largest kept error
@@ -872,6 +1042,7 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
             "drive_distance": _distance(drive_full, drive_local),
             "cone_outside_block0": int((blocks[updated] != 0).sum()),
             "cone_by_block": np.bincount(blocks[updated], minlength=spec.S).tolist(),
+            "seed_outside_block0": int((blocks[seeded] != 0).sum()),
             "state_gate": _distance(settled_full.activation, state_local.activation)
             <= spec.state_gate * tolerance,
         }
@@ -926,14 +1097,23 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
         y[0, 0] = (y[0, 0] + 1 + r) % spec.a
         shown = y[:, 0] if spec.S == 1 else y
         weights_before = np.array(local.brain.weights, copy=True)
-        full.lesson(x, shown)
-        local.lesson(x, shown)
+        bias_before = np.array(local.brain.bias, copy=True)
+        apply_lesson(full, x, shown, spec.lesson)
+        apply_lesson(local, x, shown, spec.lesson)
         g.refresh(full.brain)  # the reference and the effective-contact count follow the full life
-        changed = int(np.count_nonzero(local.brain.weights - weights_before))
+        delta_w = np.asarray(local.brain.weights) - weights_before
+        delta_b = np.asarray(local.brain.bias) - bias_before
+        outside = blocks[g.post] != 0
+        changed = int(np.count_nonzero(delta_w))
         change = live("relation", episode, True, True)
         change["lesson_changed_synapses"] = changed
-        change["lesson_changed_synapses_above_1e-9"] = int(
-            (np.abs(local.brain.weights - weights_before) > 1e-9).sum()
+        change["lesson_changed_synapses_above_1e-9"] = int((np.abs(delta_w) > 1e-9).sum())
+        change["lesson_changed_synapses_outside_block0"] = int(np.count_nonzero(delta_w[outside]))
+        change["lesson_largest_change_outside_block0"] = (
+            float(np.max(np.abs(delta_w[outside]))) if outside.any() else 0.0
+        )
+        change["lesson_changed_biases_outside_block0"] = int(
+            np.count_nonzero(delta_b[blocks != 0])
         )
         episodes.append({"kind": "relation", "episode": episode,
                          "change_index": change["index"], **hold("relation", episode)})
@@ -954,6 +1134,90 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
         "spec": spec.to_dict(), "anatomy": anatomy, "acquisition": acquisition,
         "maps": [m.tolist() for m in maps], "episodes": episodes, "moments": moments,
         "gates": gates, "seconds": time.perf_counter() - started,
+    }
+
+
+def run_relearning(
+    spec: CaseSpec, *, budget: int = 400, every: int = 20, batch: int = 16,
+    gate: float = 0.95, arms: Sequence[str] = LESSONS, probe_rows: int = 256,
+) -> dict[str, Any]:
+    """Amendment 3's reading: relearn skill 0 with each lesson kind from one acquired brain.
+
+    After the acquisition of ``run_case``, skill 0's map is reversed (every cue to the other
+    action) and taught by lessons alone, ``batch`` observations of uniform cues per lesson
+    (streams reset, so the lessons read no working trace), until skill 0's probe accuracy
+    on the reversed map reaches ``gate`` or ``budget`` lessons are spent. The library's
+    lesson labels every slot (the other skills their unchanged maps); the per-slot lessons
+    label slot 0 alone. Recorded per arm: the lessons, every skill's probe accuracy against
+    its present map through the relearning, and each lesson's footprint (synapses and
+    biases changed, inside and outside skill 0's block).
+    """
+    started = time.perf_counter()
+    maps = skill_maps(spec.S, spec.founder, spec.d, spec.a)
+    brain = build_brain(
+        spec.arm, spec.widths, spec.founder, d=spec.d, a=spec.a, momentum=spec.momentum
+    )
+    blocks = block_of(brain, spec.widths, spec.d, spec.a)
+    acquisition = acquire(brain, maps, spec.founder, d=spec.d, lessons=spec.lessons)
+    brain.reset()
+    reversed_maps = [(maps[0] + 1) % spec.a, *maps[1:]]
+    probe = np.random.default_rng([spec.founder, 7]).integers(
+        0, spec.d, size=(probe_rows, spec.S)
+    )
+    x_probe = observations(probe, spec.d)
+    y_probe = np.asarray(labels(probe, reversed_maps)).reshape(probe_rows, spec.S)
+    post = np.asarray(brain.connectome.post, dtype=np.int64)
+    outside = blocks[post] != 0
+    arms_out: dict[str, Any] = {}
+    for arm in arms:
+        life = clone(brain)
+        rng = np.random.default_rng([spec.founder, 13, spec.S])
+        history: list[dict[str, Any]] = []
+        footprint: list[dict[str, float]] = []
+        taken, accuracy = 0, np.zeros(spec.S)
+        for lesson in range(budget):
+            cues = rng.integers(0, spec.d, size=(batch, spec.S))
+            x = observations(cues, spec.d)
+            weights_before = np.array(life.brain.weights, copy=True)
+            bias_before = np.array(life.brain.bias, copy=True)
+            apply_lesson(life, x, labels(cues, reversed_maps), arm)
+            delta_w = np.asarray(life.brain.weights) - weights_before
+            delta_b = np.asarray(life.brain.bias) - bias_before
+            footprint.append({
+                "synapses": float(np.count_nonzero(delta_w)),
+                "synapses_outside_block0": float(np.count_nonzero(delta_w[outside])),
+                "largest_outside_block0": (
+                    float(np.max(np.abs(delta_w[outside]))) if outside.any() else 0.0
+                ),
+                "biases_outside_block0": float(np.count_nonzero(delta_b[blocks != 0])),
+            })
+            taken = lesson + 1
+            if taken % every == 0 or taken == budget:
+                predicted = life.predict(x_probe).reshape(probe_rows, spec.S)
+                accuracy = (predicted == y_probe).mean(axis=0)
+                history.append({"lessons": taken, "accuracy": [float(v) for v in accuracy]})
+                if accuracy[0] >= gate:
+                    break
+        others = [h["accuracy"][1:] for h in history]
+        arms_out[arm] = {
+            "lessons": taken,
+            "relearned": bool(accuracy[0] >= gate),
+            "accuracy": [float(v) for v in accuracy],
+            "others_final_min": float(min(accuracy[1:])) if spec.S > 1 else None,
+            "others_lowest": float(min(min(o) for o in others)) if spec.S > 1 else None,
+            "history": history,
+            "footprint_mean": {
+                key: float(np.mean([f[key] for f in footprint])) for key in footprint[0]
+            },
+            "footprint_largest_outside_block0": float(
+                max(f["largest_outside_block0"] for f in footprint)
+            ),
+        }
+    return {
+        "spec": spec.to_dict(), "acquisition": acquisition,
+        "maps": [m.tolist() for m in maps], "arms": arms_out,
+        "E": int(brain.connectome.synapses), "block0_contacts": int((blocks[post] == 0).sum()),
+        "seconds": time.perf_counter() - started,
     }
 
 
@@ -988,6 +1252,9 @@ def summarize(case: dict[str, Any]) -> dict[str, Any]:
                 lo.get("check_equations", n * lo["global_checks"]) for lo in local
             ),
             "local_residual_evaluations": sum(lo["residual_evaluations"] for lo in local),
+            "local_fallbacks": sum(lo.get("fallbacks", 0) for lo in local),
+            "local_fallback_updates": sum(lo.get("fallback_updates", 0) for lo in local),
+            "local_fallback_contacts": sum(lo.get("fallback_contacts", 0) for lo in local),
             "local_seconds": sum(lo["seconds"] for lo in local),
             "local_largest_cone": max(lo["cone"] for lo in local),
             "sync_sweeps": sum(s["sweeps"] for s in sync),
@@ -1039,6 +1306,7 @@ def environment() -> dict[str, Any]:
 def case_specs(
     campaign: str, founders: Sequence[int], arms: Sequence[str] = ("dense", "sparse"),
     local_margin: float = 1.0, check: str = "complete", momentum: float | None = None,
+    lesson: str = "library", fallback: int | None = None,
 ) -> list[CaseSpec]:
     """The declared case grids: ``skills`` scales S at width 16; ``widths`` keeps two
     skills and widens the undisturbed one. A ``local_margin`` above one is amendment 1;
@@ -1046,6 +1314,7 @@ def case_specs(
     specs = []
     options: dict[str, Any] = {
         "local_margin": local_margin, "check": check, "momentum": momentum,
+        "lesson": lesson, "fallback": fallback,
     }
     for founder in founders:
         for arm in arms:

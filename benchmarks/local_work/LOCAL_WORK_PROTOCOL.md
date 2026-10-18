@@ -264,3 +264,123 @@ skills grid (S in {1, 2, 4, 8}, width 16), founders 0 to 2, complete check, decl
 how many synapses a lesson on skill 0 changes, how many neurons outside skill 0's block the
 repair after it updates, and the lessons the skills needed. Case names carry `-mom0`,
 summaries `summary-skills-mom0.json`.
+
+## Amendment 3 (18 October 2026): a recurrent baseline, a per-slot lesson, a damped fallback
+
+Declared before its runs. At most two worker processes; each batch starts only when the
+host's one-minute load average is below 12, checked before the batch and every five minutes
+while it waits.
+
+### (a) The recurrent baseline (`recurrent.py`)
+
+**Learners.** `SkillGRU`: the gated recurrent unit of `benchmarks/competitors.py`
+(`GRUCell`, its equations and initialization) with one softmax readout per skill slot
+(readout initialization normal with deviation 0.1), learning by the stream chamber's online
+rule (`OnlineGRU`): at every lesson the cross-entropy of the present frame is taken back
+through the last 16 frames (their cached forward passes, the current weights), its norm
+clipped at 5, and one Adam step is made (rate 0.003, betas 0.9 and 0.999, epsilon 1e-8).
+Two extensions, declared: a batch of streams with one hidden state each and the loss the mean
+over the streams and the slots; one softmax per slot. Initialization seed
+`[founder, 21, S, H]`. `Bank`: S modules, module k a `SkillGRU` of one slot reading only
+block k (seed `[founder, 23, S, k, H]`): the skill's block is supplied as routing, a
+privileged control, the best a modular conventional learner with an oracle router can do.
+
+**Workload.** The brain's: the lesson stream of `acquire` (`default_rng([founder, 5, S])`,
+16 observations of uniform cues per lesson, every slot labelled), its 256 probe rows
+(`default_rng([founder, 7])`), the gate 0.95 per skill probed every 20 lessons. The probe
+answers from a zero state (independent samples, as the brain's `predict` reads no trace).
+Budget 2,000 lessons, five times the brain's 400; reaching the gate within 400 is recorded.
+
+**Width search** on the development founders 0 to 2: for S in {1, 2, 4, 8} the hidden
+widths 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64 in ascending order; the selected width
+`H*(S)` is the smallest at which all three founders reach the gate; the search for an S
+stops there. Every run is recorded.
+
+**Report** on founders 3 to 5, on every block-anatomy, declared-stop, cone-check case of
+those founders (the skills grid run under (c) below and amendment 2's widths grid): the GRU
+at `H*(S)` (at S = 2 one width for every unrelated width, the task being the same), the
+size-matched GRU at `H = sum(widths)` (the brain's association width), and the bank of
+width `H*(1)` per module. Each is trained on the workload, then lives the case's own
+sequence of moments (`schedule_from_case`): the same cues at the same moments, and before
+each relation change moment one lesson at the present observation with the case's label
+(skill 0's label moved on by `1 + r`, the other slots their maps). The lesson is not a
+moment: the stream's state and cached frames stay as before it. The GRU's lesson labels
+every slot; the bank's teaches module 0 alone. In the life the bank's router steps module k
+at a moment when block k's input changed, when its weights changed, or when its own last
+step moved its state by more than 3e-3 (largest coordinate); a skipped module holds its
+answer; the router's decisions are free.
+
+**Counting.** Per decision: the multiply-accumulates of one step of one stream, input
+contacts `3 H D`, recurrent `3 H H`, readout `A H` (`A = S a`; the bank: the sum over the
+modules it stepped), the units recomputed (`H` per step), and the host seconds of the step.
+Learning: per lesson, the batch times one forward step and one backward step per cached
+frame (`backward_macs + 3 H^2`), plus six per parameter for Adam (the `OnlineGRU` count).
+Reported per change moment, per held moment and per episode (the change moment and its held
+moments in the case's schedule), beside the brain's full life and its cone-following local
+repair on the same cases.
+
+**Competence.** Per skill: probe accuracy; accuracy on the probe rows whose joint cue
+combination no lesson showed (held-out combinations; the instrument's `acquire` now records
+the same for the brain, which changes no draw and no result); and the share of the life's
+moments answered with every slot's map label. A reading at matched competence, no gate; a
+learner that misses the gate on a report founder is reported with its cost.
+
+### (b) The per-slot lesson (`slot_lesson`)
+
+The library's finite teaching law of `Brain.lesson` (the drive with every memory the act
+reads, a free phase from rest, one nudged phase each way from it, one contrast update) with
+the nudge mask on the taught slot's motor neurons alone, at the learner's strength
+`beta / slots` and the slot's cross-entropy at the learner's temperature: the taught slot
+is pulled as in the library's lesson, the other slots not at all. Two variants: `slot`, whose
+nudged phases stop at the movement tolerance as the library's do, and `slot-fixed`, whose two
+nudged phases run exactly `nudged_steps` sweeps each. Instrument-only.
+
+**Life footprint.** Block anatomy, skills grid, founders 0 to 2, momentum at the founder
+(0.9) and at 0, complete check, declared stop: the relation disturbances with the per-slot
+lesson in both lives (`--lesson slot`, `--lesson slot-fixed`), against the library-lesson
+runs of the first campaign and amendment 2's reading. Read: the synapses the lesson changed
+(all, outside skill 0's block, the largest change outside it), the biases changed outside
+it, the neurons outside it violated beyond tolerance right after the lesson (the repair's
+seed) and the repair's cone outside it.
+
+**Relearning** (`run_relearning`, `run.py --campaign relearn`). From the acquired brain,
+skill 0's map is reversed and taught by lessons alone, 16 observations of uniform cues per
+lesson (`default_rng([founder, 13, S])`; streams reset, so no lesson reads a trace), with each
+lesson kind on its own clone of the same brain, until skill 0's probe accuracy on the
+reversed map reaches 0.95 or 400 lessons; probes every 20 lessons. Read: lessons to relearn,
+every other skill's probe accuracy against its unchanged map (lowest through the relearning
+and final), and each lesson's footprint. Block anatomy, skills grid, founders 0 to 2,
+momentum at the founder and at 0. A reading, no gate.
+
+### (c) The damped fallback (`LocalRepair(fallback=..., patience=k)`)
+
+At the start of every round the worklist's largest error is compared with the smallest seen
+in the moment's current check. After `k` rounds without a new minimum, or when the round
+budget is spent with a nonempty worklist, the current state goes to the library's
+qualified-answer solve with its damped fallback, `Brain._equilibrate` at the learner's free
+budget and tolerance (at the founder's finite law: half the budget at the step, the rest at
+half the step) from that state. Its sweeps (every neuron) and checks are counted as the
+full life's are (effective contacts); every cache follows the returned state by one complete
+transport, counted as a complete check. The returned state's equations qualify the moment;
+an unqualified return fails the moment, as the library's act would refuse it. Patience 64
+rounds (two of the library's chunks).
+
+Runs: the brain's arms of (a), the skills grid on founders 3 to 5, both anatomies, cone
+check, declared stop and margin 10, all with the fallback at patience 64 (`--fallback 64`);
+and the one case that spent its 1,024 rounds under margin 10 (dense, widths 16 and 16,
+founder 3, cone check), rerun with it. Read: how often it triggers per case and per moment,
+the work it adds, and the gates.
+
+### Reproduce
+
+```sh
+python benchmarks/local_work/recurrent.py search --out /path/out
+python benchmarks/local_work/run.py --campaign skills --founders 3 4 5 --check cone \
+    --fallback 64 --out /path/out          # and again with --local-margin 10
+python benchmarks/local_work/recurrent.py report --search /path/out/search.json \
+    --cases /path/out/cases /path/widths/cases --founders 3 4 5 --out /path/out
+python benchmarks/local_work/run.py --campaign skills --arms sparse --founders 0 1 2 \
+    --lesson slot-fixed --momentum 0 --out /path/out
+python benchmarks/local_work/run.py --campaign relearn --arms sparse --founders 0 1 2 \
+    --momentum 0 --out /path/out
+```
