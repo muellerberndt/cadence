@@ -140,7 +140,10 @@ independent verification of the instrument's own complete check.
 
 The drive comparison that finds the changed entries is one pass over `n` values; in a
 continuing life the sensory adapter and the trace writer know which entries they changed, so
-it is reported, not charged. The scan that finds a lesson's changed weights is one pass over
+it is reported, not charged. The implementation scatters a round's messages to their
+receivers through an `n`-length accumulator, a shortcut of the NumPy implementation that a
+compiled kernel would not need; it is not counted as work. The repair also records which
+neurons it updated in a moment (the cone), per skill block. The scan that finds a lesson's changed weights is one pass over
 `E`; the learner knows which synapses it moved, so it is reported, not charged. An uncharged
 synchronous reference runs the library's sweep over every neuron from the same state and
 stops at the first sweep whose complete residual is within tolerance: it separates the chunk

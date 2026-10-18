@@ -355,6 +355,7 @@ class RepairCounts:
     qualified: bool = True
     residual: float = 0.0  # the instrument's own final complete residual
     exhausted: bool = False
+    updated: np.ndarray | None = None  # the neurons updated at least once, not serialized
 
     def contacts(self, E: int) -> int:
         return self.messages + self.global_checks * E
@@ -482,9 +483,13 @@ class LocalRepair:
                 # one message per outgoing contact of every member
                 contacts = g.out_contacts(active)  # in worklist order, sender by sender
                 counts.messages += int(len(contacts))
-                np.add.at(
-                    self.u, g.post[contacts],
-                    g.weights[contacts] * np.repeat(ds, g.out_degree[active]),
+                # one message per contact, summed at the receivers; the scatter uses an
+                # n-length accumulator, an implementation shortcut that a compiled kernel
+                # would not need and that is not counted as work
+                self.u += np.bincount(
+                    g.post[contacts],
+                    weights=g.weights[contacts] * np.repeat(ds, g.out_degree[active]),
+                    minlength=g.n,
                 )
                 receivers = np.union1d(active, g.post[contacts])
                 counts.residual_evaluations += int(len(receivers))
@@ -511,6 +516,7 @@ class LocalRepair:
             counts.global_checks
         ) else True
         counts.cone = int(ever.sum())
+        counts.updated = ever
         return self.state, counts
 
 
@@ -534,6 +540,7 @@ def sync_reference(
     s = g.model.activation(v)
     dt = float(g.model.dt)
     e = g.transport(s) + d + g.bias - v
+    over_tolerance = int((np.abs(e) > tolerance).sum())
     sweeps = 0
     residual = float(np.max(np.abs(e)))
     while residual > tolerance and sweeps < max_sweeps:
@@ -545,6 +552,7 @@ def sync_reference(
     return {
         "sweeps": sweeps, "residual": residual, "qualified": residual <= tolerance,
         "updates": g.n * sweeps, "contacts": g.E * (2 * sweeps + 1), "activation": s,
+        "over_tolerance_at_start": over_tolerance,
     }
 
 
@@ -566,7 +574,7 @@ def full_moment(brain: cd.Brain, x: np.ndarray) -> tuple[np.ndarray, dict[str, A
 
 def local_moment(
     brain: cd.Brain, repair: LocalRepair, x: np.ndarray, *, relation: bool = False
-) -> tuple[np.ndarray, dict[str, Any], BrainState, np.ndarray]:
+) -> tuple[np.ndarray, dict[str, Any], BrainState, np.ndarray, np.ndarray]:
     """One greedy moment of the local life: the drive the library composes (senses plus the
     working trace), the repair from the stream's kept state, then the library's own
     bookkeeping of a chosen action (the trace advances, the stream keeps the state)."""
@@ -578,7 +586,8 @@ def local_moment(
     seconds = time.perf_counter() - started
     record = counts.to_dict()
     record["seconds"] = seconds
-    return action, record, state, drive
+    updated = counts.updated if counts.updated is not None else np.zeros(repair.g.n, bool)
+    return action, record, state, drive, updated
 
 
 def reference_state(
@@ -709,7 +718,7 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
         )
         drive_full = full.stimulus(x)
         action_full, report_full = full_moment(full, x)
-        action_local, report_local, state_local, drive_local = local_moment(
+        action_local, report_local, state_local, drive_local, updated = local_moment(
             local, repair, x, relation=relation
         )
         settled_full = full.basal_ganglia.state
@@ -750,11 +759,8 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
             "distance_sync_full": _distance(reference["activation"], settled_full.activation),
             "distance_sync_local": _distance(reference["activation"], state_local.activation),
             "drive_distance": _distance(drive_full, drive_local),
-            "cone_outside_block0": int(
-                (blocks[np.flatnonzero(
-                    np.abs(np.asarray(state_local.v)[0] - np.asarray(before.v)[0]) > 0
-                )] != 0).sum()
-            ) if spec.arm == "sparse" else None,
+            "cone_outside_block0": int((blocks[updated] != 0).sum()),
+            "cone_by_block": np.bincount(blocks[updated], minlength=spec.S).tolist(),
             "state_gate": _distance(settled_full.activation, state_local.activation)
             <= spec.state_gate * tolerance,
         }

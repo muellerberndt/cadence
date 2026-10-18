@@ -73,6 +73,7 @@ def test_repair_leaves_an_unchanged_moment_alone_and_matches_the_library(lw):
     # every contact pushed left a worklist member, and the cone is what was updated
     assert counts.messages <= counts.updates * int(np.max(repair.g.out_degree))
     assert 0 < counts.cone <= brain.connectome.n
+    assert counts.updated is not None and int(counts.updated.sum()) == counts.cone
 
 
 def test_sync_reference_follows_the_library_sweep(lw):
@@ -110,6 +111,10 @@ def test_case_is_deterministic_and_meets_its_gates(lw):
     change = next(m for m in first["moments"] if m["kind"] == "input")
     assert change["local"]["seed_changed_drive"] == 2  # the old and the new cue neuron
     assert change["local"]["updates"] < change["full"]["updates"]
+    # in the block anatomy a cue of skill 0 reaches no other skill's neurons
+    assert sum(change["cone_by_block"]) == change["local"]["cone"]
+    assert change["cone_outside_block0"] == 0 and change["cone_by_block"][1] == 0
+    assert change["sync"]["over_tolerance_at_start"] >= 1
     relation = next(m for m in first["moments"] if m["kind"] == "relation")
     assert relation["local"]["relation_changed_synapses"] > 0
     summary = lw.summarize(first)
