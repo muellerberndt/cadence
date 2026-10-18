@@ -135,7 +135,9 @@ def block_sparse_connectome(parts: Sequence[Connectome], label: str) -> Connecto
     )
 
 
-def genes(S: int, actor_rates: bool = False) -> dict[str, Any]:
+def genes(
+    S: int, actor_rates: bool = False, momentum: float | None = None
+) -> dict[str, Any]:
     """The declared construction settings beside the composed founder.
 
     The learner nudges every motor slot at ``beta / slots`` and divides the contrast by the
@@ -148,6 +150,8 @@ def genes(S: int, actor_rates: bool = False) -> dict[str, Any]:
     out: dict[str, Any] = {"learning_eta": 0.5 * S, "learning_eta_bias": 0.05 * S}
     if not actor_rates:
         out.update({"actor_eta": 0.0, "actor_eta_bias": 0.0, "actor_eta_critic": 0.0})
+    if momentum is not None:  # amendment 2's reading: the learner's momentum as a gene
+        out["learning_momentum"] = float(momentum)
     return out
 
 
@@ -157,7 +161,8 @@ def part_seed(founder: int, k: int) -> int:
 
 
 def build_brain(
-    arm: str, widths: Sequence[int], founder: int, *, d: int = 4, a: int = 2
+    arm: str, widths: Sequence[int], founder: int, *, d: int = 4, a: int = 2,
+    momentum: float | None = None,
 ) -> cd.Brain:
     """The composed brain of one arm: ``dense`` (``Brain.compose`` as released, one shared
     association cortex of ``sum(widths)``) or ``sparse`` (the block-diagonal join of
@@ -166,7 +171,7 @@ def build_brain(
     if arm == "dense":
         return cd.Brain.compose(
             inputs=S * d, actions=S * a, modules=(int(sum(widths)),), slots=S, seed=founder,
-            episodic=False, **genes(S),
+            episodic=False, **genes(S, momentum=momentum),
         )
     if arm == "sparse":
         parts = [
@@ -177,7 +182,9 @@ def build_brain(
             for k, width in enumerate(widths)
         ]
         connectome = block_sparse_connectome(parts, label=f"block-sparse-{S}")
-        return cd.Brain(connectome, seed=founder, slots=S, episodic=False, **genes(S))
+        return cd.Brain(
+            connectome, seed=founder, slots=S, episodic=False, **genes(S, momentum=momentum)
+        )
     raise ValueError(f"unknown arm {arm!r}")
 
 
@@ -333,6 +340,27 @@ class Graph:
         """The synapse indices leaving ``neurons``."""
         return np.asarray(self.out_order[_ranges(self.out_ptr[neurons], self.out_degree[neurons])])
 
+    def fresh_inputs(self, neurons: np.ndarray, s: np.ndarray) -> tuple[np.ndarray, int]:
+        """The synaptic inputs of ``neurons`` recomputed from their incoming contacts alone
+        (the connectome orders synapses by receiver), and the number of contacts read."""
+        contacts = _ranges(self.in_ptr[neurons], self.in_degree[neurons])
+        segments = np.repeat(np.arange(len(neurons)), self.in_degree[neurons])
+        fresh = np.bincount(
+            segments, weights=self.weights[contacts] * s[self.pre[contacts]],
+            minlength=len(neurons),
+        )
+        return np.asarray(fresh), int(len(contacts))
+
+    def library_errors(self, drive: np.ndarray, v: np.ndarray) -> np.ndarray:
+        """Every neuron's equation error from the library's dense synapse matrix
+        (``Brain.dense``: the synaptic input of ``s`` is ``s @ W``), the uncharged verifier."""
+        dense = self.__dict__.get("_dense")
+        if dense is None or dense[0] is not self.graph:
+            dense = (self.graph, self.graph.dense())
+            self.__dict__["_dense"] = dense
+        s = self.model.activation(v)
+        return np.asarray(s @ dense[1] + drive + self.bias - v)
+
 
 # -- the prototype scheduler
 
@@ -353,12 +381,17 @@ class RepairCounts:
     largest_active: int = 0  # the largest worklist of any round
     cone: int = 0  # neurons updated at least once this moment
     qualified: bool = True
-    residual: float = 0.0  # the instrument's own final complete residual
+    residual: float = 0.0  # the instrument's own final checked residual
     exhausted: bool = False
+    check_mode: str = "complete"  # ``complete`` (E contacts) or ``cone`` (amendment 2)
+    check_contacts: int = 0  # contacts the checks read this moment
+    check_equations: int = 0  # equations the checks evaluated freshly this moment
+    dirty: int = 0  # neurons whose cached inputs or errors this moment touched
+    cached_residual: float = 0.0  # the largest cached error outside the cone check, uncharged
     updated: np.ndarray | None = None  # the neurons updated at least once, not serialized
 
-    def contacts(self, E: int) -> int:
-        return self.messages + self.global_checks * E
+    def contacts(self) -> int:
+        return self.messages + self.check_contacts
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -370,7 +403,9 @@ class RepairCounts:
             "relation_changed_biases": self.relation_changed_biases,
             "largest_active": self.largest_active, "cone": self.cone,
             "qualified": self.qualified, "residual": self.residual,
-            "exhausted": self.exhausted,
+            "exhausted": self.exhausted, "check_mode": self.check_mode,
+            "check_contacts": self.check_contacts, "check_equations": self.check_equations,
+            "dirty": self.dirty, "cached_residual": self.cached_residual,
         }
 
 
@@ -412,10 +447,17 @@ class LocalRepair:
         max_rounds: int = 1024,
         max_checks: int = 3,
         margin: float = 1.0,
+        check: str = "complete",
     ) -> None:
         if not np.isfinite(margin) or margin < 1.0:
             raise ValueError("margin must be a finite factor of at least one")
+        if check not in ("complete", "cone"):
+            raise ValueError("check must be 'complete' or 'cone'")
+        self.check = check
         self.g = Graph(graph)
+        # amendment 2: the neurons whose cached inputs or errors a moment touched (the only
+        # ones a fresh recomputation can change); cleared by a qualified check
+        self.dirty = np.zeros(self.g.n, dtype=bool)
         self.tolerance = float(tolerance)
         # the worklist threshold: the tolerance over the margin (amendment 1); the complete
         # check stays at the tolerance, the library's qualification
@@ -470,6 +512,9 @@ class LocalRepair:
         counts.seed_changed_drive = int(len(changed))
         self.e[changed] += delta[changed]
         self.drive = new
+        self.dirty[changed] = True
+        self.dirty[touched] = True
+        counts.check_mode = self.check
         candidates = np.union1d(changed, touched)
         active = candidates[np.abs(self.e[candidates]) > self.threshold]
         counts.seed_active = int(len(active))
@@ -481,6 +526,7 @@ class LocalRepair:
                 counts.updates += int(len(active))
                 counts.largest_active = max(counts.largest_active, int(len(active)))
                 ever[active] = True
+                self.dirty[active] = True
                 # the library's neuron rule on the worklist, from the cached inputs
                 self.v[active] += dt * self.e[active]
                 published = g.model.activation(self.v[active])
@@ -498,6 +544,7 @@ class LocalRepair:
                     minlength=g.n,
                 )
                 receivers = np.union1d(active, g.post[contacts])
+                self.dirty[receivers] = True
                 counts.residual_evaluations += int(len(receivers))
                 self.e[receivers] = (
                     self.u[receivers] + self.drive[receivers] + g.bias[receivers]
@@ -507,20 +554,46 @@ class LocalRepair:
             if not len(active) and counts.rounds == 0 and check == 0 and not len(touched):
                 # nothing was violated and nothing moved: the kept certificate stands
                 break
-            # the complete check, as the library's qualification requires
             counts.global_checks += 1
-            self.u = g.transport(self.s)
-            self.e = self.u + self.drive + g.bias - self.v
-            counts.residual = float(np.max(np.abs(self.e)))
+            if self.check == "complete":
+                # the complete check, as the library's qualification requires
+                self.u = g.transport(self.s)
+                self.e = self.u + self.drive + g.bias - self.v
+                counts.check_contacts += g.E
+                counts.check_equations += g.n
+                checked = np.arange(g.n)
+            else:
+                # the cone check (amendment 2): a fresh recomputation of every cached input
+                # and error this moment touched; an untouched neuron's cached values are the
+                # last fresh ones and nothing entering its equation changed
+                checked = np.flatnonzero(self.dirty)
+                fresh, read = g.fresh_inputs(checked, self.s)
+                self.u[checked] = fresh
+                self.e[checked] = (
+                    self.u[checked] + self.drive[checked] + g.bias[checked] - self.v[checked]
+                )
+                counts.check_contacts += read
+                counts.check_equations += int(len(checked))
+                counts.dirty = max(counts.dirty, int(len(checked)))
+                untouched = ~self.dirty
+                counts.cached_residual = (
+                    float(np.max(np.abs(self.e[untouched]))) if untouched.any() else 0.0
+                )
+            counts.residual = (
+                float(np.max(np.abs(self.e[checked]))) if len(checked) else 0.0
+            )
             if counts.residual <= self.tolerance:
+                self.dirty[:] = False
                 break
-            active = np.flatnonzero(np.abs(self.e) > self.threshold)
+            active = checked[np.abs(self.e[checked]) > self.threshold]
             if counts.rounds >= self.max_rounds:
                 counts.exhausted = True
                 break
         counts.qualified = bool(counts.residual <= self.tolerance) if (
             counts.global_checks
         ) else True
+        if not counts.qualified:
+            self.dirty[:] = True  # the next check is complete whatever its mode
         counts.cone = int(ever.sum())
         counts.updated = ever
         return self.state, counts
@@ -646,17 +719,22 @@ class CaseSpec:
     state_gate: float = 10.0  # times the tolerance, on activations
     reference_moments: int = 3  # change moment and the ripple moments measured against it
     local_margin: float = 1.0  # amendment 1: the worklist stops at tolerance / margin
+    check: str = "complete"  # amendment 2: ``cone`` makes the check follow the cone
+    momentum: float | None = None  # amendment 2's reading: the learner's momentum gene
 
     @property
     def S(self) -> int:
         return len(self.widths)
 
     @property
+    def suffix(self) -> str:
+        return spec_suffix(self.local_margin, self.check, self.momentum)
+
+    @property
     def name(self) -> str:
-        margin = "" if self.local_margin == 1.0 else f"-m{self.local_margin:g}"
         return (
             f"{self.arm}-S{self.S}-w{'x'.join(str(w) for w in self.widths)}-f{self.founder}"
-            f"{margin}"
+            f"{self.suffix}"
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -665,8 +743,18 @@ class CaseSpec:
             "founder": self.founder, "d": self.d, "a": self.a, "lessons": self.lessons,
             "probes": self.probes, "relation_probes": self.relation_probes, "hold": self.hold,
             "state_gate": self.state_gate, "reference_moments": self.reference_moments,
-            "local_margin": self.local_margin,
+            "local_margin": self.local_margin, "check": self.check, "momentum": self.momentum,
         }
+
+
+def spec_suffix(local_margin: float, check: str, momentum: float | None) -> str:
+    """What a case name and a summary file carry beyond the declared protocol."""
+    out = "" if local_margin == 1.0 else f"-m{local_margin:g}"
+    if check == "cone":
+        out += "-cone"
+    if momentum is not None:
+        out += f"-mom{momentum:g}"
+    return out
 
 
 def _distance(a: np.ndarray, b: np.ndarray) -> float:
@@ -677,7 +765,9 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
     """Acquire the skills, then live the probe schedule in both arms and compare."""
     started = time.perf_counter()
     maps = skill_maps(spec.S, spec.founder, spec.d, spec.a)
-    brain = build_brain(spec.arm, spec.widths, spec.founder, d=spec.d, a=spec.a)
+    brain = build_brain(
+        spec.arm, spec.widths, spec.founder, d=spec.d, a=spec.a, momentum=spec.momentum
+    )
     blocks = block_of(brain, spec.widths, spec.d, spec.a)
     acquisition = acquire(brain, maps, spec.founder, d=spec.d, lessons=spec.lessons)
     assert brain.learner.config.tolerance is not None
@@ -710,7 +800,7 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
     assert state_local is not None and drive_first is not None
     repair = LocalRepair(
         local.brain, state_local, drive_first, tolerance=tolerance,
-        max_rounds=free_steps, margin=spec.local_margin,
+        max_rounds=free_steps, margin=spec.local_margin, check=spec.check,
     )
     moments.append({
         "index": 0, "kind": "first", "episode": -1, "cue0": 0,
@@ -748,9 +838,18 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
         report_full["residual_evaluations"] = g.n * report_full["residual_checks"]
         report_local["library_residual"] = library_residual
         report_local["library_qualified"] = library_residual <= tolerance
-        report_local["contacts"] = report_local["messages"] + g.E * report_local[
-            "global_checks"
-        ]
+        report_local["contacts"] = report_local["messages"] + report_local["check_contacts"]
+        # amendment 2's verifier, uncharged: every neuron's error from the library's dense
+        # synapse matrix against the instrument's kept errors, and the library's own
+        # residual against the instrument's largest kept error
+        errors = repair.g.library_errors(np.asarray(drive_local)[0], repair.v)
+        difference = float(np.max(np.abs(errors - repair.e)))
+        largest = float(np.max(np.abs(repair.e)))
+        report_local["verify_max_difference"] = difference
+        report_local["verify_residual_difference"] = abs(largest - library_residual)
+        report_local["verify_ok"] = bool(
+            difference <= 1e-9 and abs(largest - library_residual) <= 1e-9
+        )
         reference = sync_reference(g, before, drive_full, tolerance=tolerance,
                                    max_sweeps=free_steps)
         record: dict[str, Any] = {
@@ -788,8 +887,9 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
                 f"  {record['index']:4d} {kind:9s} full {report_full['sweeps']:4d}/"
                 f"{report_full['residual_checks']} local r{report_local['rounds']:3d} "
                 f"u{report_local['updates']:5d} m{report_local['messages']:7d} "
-                f"c{report_local['global_checks']} same {record['same_action']} "
-                f"dist {record['distance_activation']:.2e}"
+                f"c{report_local['global_checks']}:{report_local['check_contacts']} "
+                f"same {record['same_action']} dist {record['distance_activation']:.2e} "
+                f"verify {report_local['verify_max_difference']:.1e}"
             )
         return record
 
@@ -841,6 +941,10 @@ def run_case(spec: CaseSpec, *, verbose: bool = False) -> dict[str, Any]:
     gates = {
         "same_action": all(m["same_action"] for m in moments),
         "local_qualified": all(m["local"]["library_qualified"] for m in comparisons),
+        "check_verified": all(m["local"]["verify_ok"] for m in comparisons),
+        "max_verify_difference": max(
+            m["local"]["verify_max_difference"] for m in comparisons
+        ),
         "state_within_gate": all(m["state_gate"] for m in comparisons),
         "max_distance_activation": max(m["distance_activation"] for m in comparisons),
         "moments": len(moments),
@@ -877,7 +981,12 @@ def summarize(case: dict[str, Any]) -> dict[str, Any]:
             "local_messages": sum(lo["messages"] for lo in local),
             "local_checks": sum(lo["global_checks"] for lo in local),
             "local_contacts": sum(lo["contacts"] for lo in local),
-            "local_check_contacts": E * sum(lo["global_checks"] for lo in local),
+            "local_check_contacts": sum(
+                lo.get("check_contacts", E * lo["global_checks"]) for lo in local
+            ),
+            "local_check_equations": sum(
+                lo.get("check_equations", n * lo["global_checks"]) for lo in local
+            ),
             "local_residual_evaluations": sum(lo["residual_evaluations"] for lo in local),
             "local_seconds": sum(lo["seconds"] for lo in local),
             "local_largest_cone": max(lo["cone"] for lo in local),
@@ -929,20 +1038,23 @@ def environment() -> dict[str, Any]:
 
 def case_specs(
     campaign: str, founders: Sequence[int], arms: Sequence[str] = ("dense", "sparse"),
-    local_margin: float = 1.0,
+    local_margin: float = 1.0, check: str = "complete", momentum: float | None = None,
 ) -> list[CaseSpec]:
     """The declared case grids: ``skills`` scales S at width 16; ``widths`` keeps two
-    skills and widens the undisturbed one. A ``local_margin`` above one is amendment 1."""
+    skills and widens the undisturbed one. A ``local_margin`` above one is amendment 1;
+    ``check="cone"`` and a ``momentum`` are amendment 2."""
     specs = []
+    options: dict[str, Any] = {
+        "local_margin": local_margin, "check": check, "momentum": momentum,
+    }
     for founder in founders:
         for arm in arms:
             if campaign == "skills":
                 for S in (1, 2, 4, 8):
-                    specs.append(CaseSpec(arm, tuple([16] * S), founder,
-                                          local_margin=local_margin))
+                    specs.append(CaseSpec(arm, tuple([16] * S), founder, **options))
             elif campaign == "widths":
                 for width in (16, 64, 256, 1024):
-                    specs.append(CaseSpec(arm, (16, width), founder, local_margin=local_margin))
+                    specs.append(CaseSpec(arm, (16, width), founder, **options))
             else:
                 raise ValueError(f"unknown campaign {campaign!r}")
     return specs

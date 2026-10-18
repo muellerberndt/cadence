@@ -98,6 +98,67 @@ def test_margin_tightens_the_worklist_and_keeps_the_check(lw):
     assert lw.CaseSpec("sparse", (8, 8), 0, local_margin=10.0).name.endswith("-m10")
 
 
+def test_cone_check_agrees_with_the_complete_check(lw):
+    widths = (8, 8)
+    brain = lw.build_brain("sparse", widths, 0)
+    maps = lw.skill_maps(2, 0, 4, 2)
+    lw.acquire(brain, maps, 0, d=4, lessons=20)
+    brain.reset()
+    x = lw.observations(np.zeros((1, 2), int), 4)
+    brain.act(x, greedy=True)
+    state, drive = brain.basal_ganglia.state, brain.basal_ganglia._drive
+    tolerance = float(brain.learner.config.tolerance)
+    blocks = lw.block_of(brain, widths, 4, 2)
+    block0_contacts = int((blocks[brain.connectome.pre] == 0).sum())
+    complete = lw.LocalRepair(brain.brain, state, drive, tolerance=tolerance)
+    cone = lw.LocalRepair(brain.brain, state, drive, tolerance=tolerance, check="cone")
+    for cue in (1, 2):
+        drive2 = brain.stimulus(lw.observations(np.array([[cue, 0]]), 4))
+        state_c, counts_c = complete.repair(drive2)
+        state_k, counts_k = cone.repair(drive2)
+        assert counts_c.qualified and counts_k.qualified
+        assert counts_k.check_mode == "cone" and counts_c.check_mode == "complete"
+        # the same rounds and the same state; the cone check read block 0's contacts at most
+        assert counts_k.rounds == counts_c.rounds and counts_k.updates == counts_c.updates
+        np.testing.assert_allclose(state_k.v, state_c.v, rtol=0, atol=1e-12)
+        assert counts_c.check_contacts == brain.connectome.synapses
+        # the check read the incoming contacts of the touched neurons alone (at the second
+        # moment the trace of both blocks changed, so the cone may span both blocks)
+        assert 0 < counts_k.check_contacts <= brain.connectome.synapses
+        assert counts_k.check_equations == counts_k.dirty
+        touched_blocks = set(blocks[counts_k.updated].tolist())
+        assert counts_k.check_contacts <= block0_contacts * len(touched_blocks)
+        # every kept error agrees with the library's dense equations, neuron by neuron
+        errors = cone.g.library_errors(drive2[0], cone.v)
+        assert float(np.max(np.abs(errors - cone.e))) <= 1e-9
+        assert abs(float(np.max(np.abs(cone.e))) - float(
+            brain.brain.residual(drive2, state_k)[0])) <= 1e-9
+        assert counts_k.cached_residual <= tolerance
+    with pytest.raises(ValueError, match="check"):
+        lw.LocalRepair(brain.brain, state, drive, tolerance=tolerance, check="half")
+
+
+def test_case_options_name_the_amendments(lw):
+    spec = lw.CaseSpec("sparse", (8, 8), 0, check="cone", momentum=0.0, local_margin=10.0)
+    assert spec.name.endswith("-m10-cone-mom0")
+    assert lw.spec_suffix(1.0, "complete", None) == ""
+    brain = lw.build_brain("sparse", (8, 8), 0, momentum=0.0)
+    assert brain.learner.config.momentum == 0.0
+    case = lw.run_case(lw.CaseSpec(
+        "sparse", (8, 8), 0, lessons=20, probes=1, relation_probes=1, hold=24, check="cone"
+    ))
+    assert case["gates"]["check_verified"] and case["gates"]["local_qualified"]
+    assert case["gates"]["max_verify_difference"] <= 1e-9
+    change = next(m for m in case["moments"] if m["kind"] == "input")
+    assert change["local"]["check_mode"] == "cone"
+    assert change["local"]["check_contacts"] < case["anatomy"]["E"]
+    if change["cone_outside_block0"] == 0:  # after settling in, a cue reaches block 0 alone
+        assert change["local"]["check_contacts"] <= case["anatomy"]["block0_contacts"]
+    assert change["local"]["contacts"] == (
+        change["local"]["messages"] + change["local"]["check_contacts"]
+    )
+
+
 def test_sync_reference_follows_the_library_sweep(lw):
     brain = lw.build_brain("dense", (8, 8), 2)
     x = lw.observations(np.array([[2, 1]]), 4)

@@ -42,13 +42,19 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--only", nargs="*", default=None, help="case names to run, if given")
     parser.add_argument("--local-margin", type=float, default=1.0,
                         help="amendment 1: the worklist stops at tolerance / margin")
+    parser.add_argument("--check", choices=("complete", "cone"), default="complete",
+                        help="amendment 2: the charged check follows the cone")
+    parser.add_argument("--momentum", type=float, default=None,
+                        help="amendment 2's reading: the learner's momentum gene")
     args = parser.parse_args(argv)
     warnings.simplefilter("ignore", RuntimeWarning)  # the library's budget warnings, retained
     out = args.out
     (out / "cases").mkdir(parents=True, exist_ok=True)
     (out / "environment.json").write_text(json.dumps(lw.environment(), indent=1))
     summaries = []
-    specs = lw.case_specs(args.campaign, args.founders, args.arms, args.local_margin)
+    specs = lw.case_specs(
+        args.campaign, args.founders, args.arms, args.local_margin, args.check, args.momentum
+    )
     if args.only:
         specs = [spec for spec in specs if spec.name in set(args.only)]
     for spec in specs:
@@ -67,10 +73,11 @@ def main(argv: list[str] | None = None) -> int:
             f"  {seconds:7.1f}s acquired {case['acquisition']['at_gate']} "
             f"lessons {case['acquisition']['lessons']} same {gates['same_action']} "
             f"qualified {gates['local_qualified']} state {gates['state_within_gate']} "
-            f"max dist {gates['max_distance_activation']:.3g}",
+            f"max dist {gates['max_distance_activation']:.3g} "
+            f"verified {gates['check_verified']} ({gates['max_verify_difference']:.1e})",
             flush=True,
         )
-        suffix = "" if args.local_margin == 1.0 else f"-m{args.local_margin:g}"
+        suffix = lw.spec_suffix(args.local_margin, args.check, args.momentum)
         (out / f"summary-{args.campaign}{suffix}.json").write_text(
             json.dumps(summaries, indent=1)
         )

@@ -215,3 +215,52 @@ tolerance where the chunked full settlement overshoots, at what extra work. Its 
 carry ``-m<k>`` and its summaries ``summary-<campaign>-m<k>.json``. A margin earns nothing
 by itself: the same-answer and state gates would have to be met in a fresh declared campaign
 on founders not used to choose ``k``.
+
+## Amendment 2 (18 October 2026): validation that follows the cone
+
+Declared before its runs. The first campaign found the complete check to be the floor of
+every local count (its `E` contacts are 0.8 to 1.0 of the local contacts in the block
+anatomy from S = 4 or width 64 on). This amendment replaces the charged check by one whose
+cost follows the cone, verifies it against the library, and reruns the widths grid.
+
+**The cone check** (`LocalRepair(check="cone")`, `run.py --check cone`). The scheduler
+marks the neurons a moment touches: those whose drive entry changed, the receivers of
+changed weights and changed biases, every worklist member, and every receiver of a message.
+Only their cached inputs and errors can differ from a fresh evaluation; an untouched
+neuron's cached input is the value of the last fresh evaluation and nothing that enters its
+equation changed (no drive entry, no incoming weight, no sender's activation, all tracked),
+so a fresh recomputation can return nothing else, and its cached error is within the
+worklist threshold or it would be on the worklist. When the worklist is empty the check
+recomputes the synaptic inputs of the marked neurons from their incoming contacts alone,
+re-evaluates their equations, and qualifies the state when their largest error is within
+the tolerance. The marks are cleared by a qualified check; a moment that ends unqualified
+marks every neuron, so the next check is complete whatever its mode. Counted: the incoming
+contacts read (`check_contacts`) and the equations evaluated freshly (`check_equations`),
+beside the messages; `contacts` is their sum. Reported, uncharged: the largest cached
+error outside the check (`cached_residual`).
+
+**The verifier**, uncharged, at every moment of every case in every mode: every neuron's
+equation error from the library's dense synapse matrix (`Brain.dense`, the synaptic input of
+`s` being `s @ W`) against the instrument's kept errors, and the library's own `residual`
+against the instrument's largest kept error. Both must agree within 1e-9 at every moment;
+a disagreement at any moment is a failed case, reported as such.
+
+**Campaigns.** Verification: the widths grid (S = 2, widths 16, 64, 256, 1,024, both
+anatomies) on founders 0 to 2 with the cone check and the declared stop (margin 1); its
+counts beside the check must equal the first campaign's on the same cases. Report: the
+widths grid on founders 3 to 5, both anatomies, the cone check as the charged validation,
+under both stop rules (margin 1, the declared stop; margin 10, amendment 1), with the gates
+of this protocol (same answer, qualified, state) and the verifier's gate. Case names carry
+`-cone` (and `-m10`); summaries `summary-widths-cone.json` and `summary-widths-m10-cone.json`.
+
+**Prediction.** In the block anatomy the local contacts (messages plus check contacts) are
+flat against the width of the unrelated skill, the check reading at most skill 0's contacts;
+in the dense anatomy the check follows the cone, which is the cortex, so its contacts grow
+with the width. The full life's counts are unchanged.
+
+**A reading, no gate.** The lesson footprint under `learning_momentum = 0` against the
+founder 0.9 (the gene passed at construction, `run.py --momentum 0`), block anatomy, the
+skills grid (S in {1, 2, 4, 8}, width 16), founders 0 to 2, complete check, declared stop:
+how many synapses a lesson on skill 0 changes, how many neurons outside skill 0's block the
+repair after it updates, and the lessons the skills needed. Case names carry `-mom0`,
+summaries `summary-skills-mom0.json`.
