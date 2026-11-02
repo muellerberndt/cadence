@@ -6,8 +6,8 @@
   `amplitude * sum_i p_i F_i` on a region of its own (`Recall.when_regions`), with `F_i` two
   features of the slot's age and, with the anchor, two of its place in the episode
   (`Recall.when_features`). The regions reach the association through synapses that start at
-  zero; the address lesson reads the movement back through them, so a lesson can name slots by
-  when they happened.
+  zero. The address lesson names the slots to read by what they hold; the region says when the
+  slots read happened.
 - `recall_slope` (opt-in, #232): above 0, every head's position term also leans by age at
   every length, `s(x, c) * age / 8` with `s` read from the moment as the table is
   (`Recall.slope_maps`), so a preference for old or recent slots holds at ages no lesson

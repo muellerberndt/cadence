@@ -1038,8 +1038,11 @@ when = sum_i p_i [log(1 + age_i) / log 9, exp(-age_i / 8)]
 and with the anchor the same two features of each slot's place in the episode (zero for a slot
 written before it began). The regions reach the association through synapses that start at
 zero, so a newborn settles as one without the option, and lessons give them weight. The address
-lesson reads the association's movement back through them as it does through the read port, so
-a lesson can name the slots to read by when they happened as well as by what they hold
+lesson names the slots to read by what they hold, and the region says when the slots read
+happened. A lesson that named slots by when they happened as well taught the read to find slots
+whose age matched the answer instead of the item asked about: on "how long ago was X told?"
+(stories of 8 to 16 distinct tokens, four age buckets) the read's median attention on X fell to
+0.08 to 0.10 and the answers to 0.62 to 0.66, against 0.63 to 0.71 and 0.94 to 0.96 without it
 ([#237](https://github.com/muellerberndt/cadence/issues/237)).
 
 ### Episodes, keys and windows

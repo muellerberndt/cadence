@@ -644,9 +644,10 @@ class Recall:
     ``exp(-age_i / SLOPE)``, and with ``anchor`` the same two of its place in the episode
     (zero for a slot written before the episode began). The regions reach the association
     through synapses that start at zero, so a newborn settles as one without the option, and
-    the lessons give them weight. The address lesson reads the association's movement back
-    through them as it does through the read port, so a lesson can name slots by when they
-    happened as well as by what they hold.
+    the lessons give them weight. The address lesson does not read the movement back through
+    them: a lesson names the slots to read by what they hold, and the region says when the
+    slots read happened (a lesson that named slots by when they happened as well taught the
+    read to find slots whose age matched the answer instead of the item asked about).
 
     With ``chain`` (an option, founder off; a construction setting; it needs ``heads`` of at least
     2) the heads read in a chain: each head after the first adds to its address what the head
@@ -2040,17 +2041,13 @@ class Recall:
     def readback(
         self, graph: NeuralGraph, region: str, movement: np.ndarray, head: int = 0
     ) -> np.ndarray:
-        """``movement @ W.T`` for the one-way synapses of the ``"recall"``, ``"next"`` or
-        (with ``when``) ``"when"`` region of head ``head``'s port into the association region:
-        per source neuron, the sum over its synapses of effective weight times the movement
-        of its association neuron."""
-        if region == "when":
-            neurons, _, (synapses, rows, cols) = self._whens[head]
-            width = len(neurons)
-        else:
-            recall_synapses, next_synapses = self._head_synapses[head]
-            synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
-            width = len(self._heads[head][0 if region == "recall" else 1])
+        """``movement @ W.T`` for the one-way synapses of the ``"recall"`` or ``"next"``
+        region of head ``head``'s port into the association region: per source neuron, the
+        sum over its synapses of effective weight times the movement of its association
+        neuron."""
+        recall_synapses, next_synapses = self._head_synapses[head]
+        synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
+        width = len(self._heads[head][0 if region == "recall" else 1])
         w = np.zeros((width, len(self.association)))
         np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
         return np.asarray(movement @ w.T)
@@ -2103,16 +2100,13 @@ class Recall:
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
-            d_when = self.readback(graph, "when", movement, h) if self._whens else None
             # head 0 steps ``w_x``, ``w_c`` and ``b`` as a memory of one head does
             head_moment = (
                 moment if h == 0 else moment._replace(address=self._head_address(moment, h))
             )
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
-            found = self._row_steps(
-                head_moment, rows, d_value, d_next, h, reads[h], chains[h], d_when
-            )
+            found = self._row_steps(head_moment, rows, d_value, d_next, h, reads[h], chains[h])
             if found is None:  # no row moves (a competing head may have had nothing to read)
                 continue
             if self.address:
@@ -2310,7 +2304,6 @@ class Recall:
         head: int = 0,
         read: np.ndarray | None = None,
         chained: np.ndarray | None = None,
-        d_when: np.ndarray | None = None,
     ) -> tuple[Any, ...] | None:
         """Each row's step of the address lesson before the average over rows: the rows of
         ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
@@ -2321,9 +2314,7 @@ class Recall:
         with over every stream's slots (``_lesson_reads``), and it is the prior; a row it read
         nothing at does not move. With ``chain`` ``chained`` is the read of the head before
         (``_lesson_chained``) over every stream, and the rows' share of it joins the inputs
-        (the ninth item, None without). With ``when`` ``d_when`` is the movement read back
-        through the head's when region, scored against each slot's features of when as
-        ``d_value`` is against its value. None when no row moves. The arithmetic is unchecked:
+        (the ninth item, None without). None when no row moves. The arithmetic is unchecked:
         a caller checks what it keeps."""
         if len(rows) == len(self.keys):  # every stream, in order: the slots themselves
             values, nexts, keys, held = self.values, self.nexts, self.keys, self.held
@@ -2336,10 +2327,6 @@ class Recall:
         if d_next is not None:
             score += _einsum("bc,bmc->bm", d_next, nexts)
             norm += np.sum(d_next * d_next, axis=1)
-        if d_when is not None:
-            whens = self.when_features(None if len(rows) == len(self.keys) else rows)
-            score += _einsum("bw,bmw->bm", d_when, whens)
-            norm += np.sum(d_when * d_when, axis=1)
         norm = np.sqrt(norm)
         moving = norm > 1e-12
         if masked:
@@ -2435,10 +2422,9 @@ class Recall:
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
-            d_when = self.readback(graph, "when", movement, h) if self._whens else None
             head_moment = moment._replace(address=self._head_address(moment, h))
             found = self._row_steps(
-                head_moment, np.arange(batch), d_value, d_next, h, reads[h], chains[h], d_when
+                head_moment, np.arange(batch), d_value, d_next, h, reads[h], chains[h]
             )
             if found is None:
                 continue
