@@ -55,10 +55,24 @@ def test_the_read_drives_the_when_region_with_its_attention():
     np.testing.assert_allclose(drive[:, neurons], expected)
 
 
-def test_a_newborn_when_channel_settles_as_the_memory_without_it():
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"recall_copy": 0.5}, {"recall_copy": 0.5, "recall_heads": 2}],
+    ids=["recall", "copy", "copy_heads"],
+)
+def test_a_newborn_when_channel_settles_as_the_memory_without_it(options):
     rng = np.random.default_rng(2)
-    plain, brain = when(), when(recall_when=True)
+    plain, brain = when(**options), when(recall_when=True, **options)
     n = plain.connectome.n
+
+    def synapses(b: cd.Brain, below: int) -> list[tuple[int, int, float]]:
+        c = b.connectome
+        pre, post = np.asarray(c.pre), np.asarray(c.post)
+        kept = (pre < below) & (post < below)  # the when regions' neurons are numbered last
+        return sorted(zip(pre[kept].tolist(), post[kept].tolist(),
+                          np.asarray(b.brain.efficacy)[kept].tolist(), strict=True))
+
+    assert synapses(plain, n) == synapses(brain, n)
     for _ in range(4):
         x = rng.random((2, 6))
         np.testing.assert_array_equal(plain.act(x, greedy=True), brain.act(x, greedy=True))

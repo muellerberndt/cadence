@@ -1663,13 +1663,6 @@ def _layout(
                 projections.append(
                     Projection(f"{name}_action", "association", scale=0.0, reciprocal=False)
                 )
-        if recalled.get("when", False):
-            # every head's read of when, two neurons of the age and with the anchor two of the
-            # place, appended last: the brain that delivers when is the brain without it plus
-            # these regions, whose synapses into the association start at zero
-            for name in Recall.when_regions(recalled.get("heads", 1)):
-                regions.append(Region(name, 4 if recalled.get("anchor", False) else 2))
-                projections.append(Projection(name, "association", scale=0.0, reciprocal=False))
         if recalled.get("copy", 0.0):
             # the copy pathway from every read port into the motor region, appended last: the
             # brain with it is the brain without it plus these synapses, drawn at the initial
@@ -1690,6 +1683,14 @@ def _layout(
                 projections.append(
                     Projection(regions[0].name, "motor", scale=0.0, reciprocal=False)
                 )
+        if recalled.get("when", False):
+            # every head's read of when, two neurons of the age and with the anchor two of the
+            # place, appended after everything else (the copy pathway's draws included): the
+            # brain that delivers when is the brain without it plus these regions, whose
+            # synapses into the association start at zero
+            for name in Recall.when_regions(recalled.get("heads", 1)):
+                regions.append(Region(name, 4 if recalled.get("anchor", False) else 2))
+                projections.append(Projection(name, "association", scale=0.0, reciprocal=False))
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
         "inputs": inputs,
@@ -5111,10 +5112,19 @@ class Brain:
                     if "recall/ended" in data
                     else np.zeros(len(recall.keys), dtype=bool)
                 )
-                if recall.anchor:  # validated above: the episodes' counts, saved with anchor
-                    recall.told = data["recall/told"].astype(np.int64)
-                if recall.relative:  # validated above: the reads' focus, saved with relative
-                    recall.focus = data["recall/focus"].astype(np.int64)
+                # the episodes' counts and the reads' focus, saved with anchor and relative
+                # (validated above); without them each stream starts them afresh
+                streams = len(recall.keys)
+                recall.told = (
+                    data["recall/told"].astype(np.int64)
+                    if recall.anchor
+                    else np.zeros(streams, dtype=np.int64)
+                )
+                recall.focus = (
+                    data["recall/focus"].astype(np.int64)
+                    if recall.relative
+                    else np.full(streams, -1, dtype=np.int64)
+                )
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command
