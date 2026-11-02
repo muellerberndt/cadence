@@ -65,6 +65,7 @@ testpaths = [
     "benchmarks/attention",
     "benchmarks/depth",
     "benchmarks/context_key",
+    "benchmarks/credit",
 ]
 
 [tool.ruff]
