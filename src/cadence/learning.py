@@ -125,9 +125,9 @@ class LearnerConfig:
     # moves less than a coarse tolerance in a sweep, and the opposite phases' common drift
     # cancels in the contrast, so the free phase may stay coarse
     nudged_fixed: bool = False
-    # opt-in (#238): after each lesson this many rows per taught row, drawn from a reservoir of
-    # the lessons' rows (their drives and labels) kept over the life, are taught again under the
-    # same rule; with ``surprise`` only the rows the net now answers wrong move it
+    # opt-in (#238): after each lesson this many times its rows (at least one row), drawn from a
+    # reservoir of the lessons' rows (their drives and labels) kept over the life, are taught
+    # again under the same rule; with ``surprise`` only the rows the net now answers wrong move it
     rehearsal: float = 0.0
     # the rows the reservoir keeps: a uniform sample of every lesson row so far
     rehearsal_capacity: int = 512
@@ -680,6 +680,7 @@ class Learner:
         drive = np.asarray(drive, dtype=float)
         labels = self._labels(np.asarray(labels))
         report: dict[str, float] | None = None
+        self.trim_reservoir()
         kept = len(self.rehearsal_drives)
         if kept:
             count = max(1, int(round(cfg.rehearsal * len(drive))))
@@ -710,6 +711,19 @@ class Learner:
             len(drives), *self.rehearsal_labels.shape[1:]
         )
         return report
+
+    def trim_reservoir(self) -> None:
+        """Cut the rehearsal's reservoir to ``rehearsal_capacity`` once a smaller capacity was
+        set: a uniform choice of the rows it kept, keyed by the count of rows seen (so the same
+        after a checkpoint), in their order. Nothing changes within the capacity."""
+        capacity = self.config.rehearsal_capacity
+        kept = len(self.rehearsal_drives)
+        if kept <= capacity:
+            return
+        keys = [_mixed(self.rehearsal_seen + (1 << 40) + row) for row in range(kept)]
+        index = np.sort(np.argsort(keys, kind="stable")[:capacity])
+        self.rehearsal_drives = self.rehearsal_drives[index]
+        self.rehearsal_labels = self.rehearsal_labels[index]
 
     def _labels(self, labels: np.ndarray) -> np.ndarray:
         labels = np.asarray(labels)

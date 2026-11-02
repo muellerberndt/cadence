@@ -28,7 +28,8 @@
   to 0.74 in closed loop against 0.10 to 0.14 without it, 0.93 teacher-forced; the first token
   after the cue is where it still fails.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
-  that many rows per taught row are taught again, drawn from a reservoir of the lessons' rows
+  that many times the lesson's rows (at least one) are taught again, drawn from a reservoir of
+  the lessons' rows
   (their drives and labels) kept over the life, a uniform sample of every row
   (`rehearsal_capacity`, 512), under the same rule. Types taught one after another keep what
   earlier lessons taught. The reservoir and its counts are saved with the brain; at the founder

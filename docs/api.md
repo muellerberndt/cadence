@@ -426,8 +426,8 @@ when `normalize > 0` with a rate above 0.05
 ([rates under normalization](teach.md#rates-under-normalization)), and when
 `qualified=True` with `nudged_steps < free_steps`
 ([qualified budgets](settling.md#qualified-teaching-budgets)).
-`rehearsal` above zero teaches, after each lesson, that many rows per taught row again, drawn
-from a reservoir of the lessons' rows (`Learner.rehearse`; `rehearsal_drives`,
+`rehearsal` above zero teaches, after each lesson, that many times the lesson's rows again
+(at least one row), drawn from a reservoir of the lessons' rows (`Learner.rehearse`; `rehearsal_drives`,
 `rehearsal_labels`, `rehearsal_seen`); `rehearsal_capacity` rows are kept, a uniform sample of
 every row ([teach several types in sequence](teach.md#teach-several-types-in-sequence-rehearsal)).
 `initial_damping` is an integer in `0..damping`; nonzero requires qualified learning

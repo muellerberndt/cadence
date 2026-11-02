@@ -78,3 +78,44 @@ def test_rehearsal_settings_are_validated():
         cd.Brain.compose(12, 4, learning_rehearsal=-1.0)
     with pytest.raises(ValueError, match="rehearsal_capacity"):
         cd.Brain.compose(12, 4, learning_rehearsal=1.0, learning_rehearsal_capacity=0)
+
+
+def test_the_capacity_is_a_named_integer_setting():
+    brain = cd.Brain.compose(6, 4, seed=0, learning_rehearsal=1.0, learning_rehearsal_capacity=256)
+    assert brain.learner.config.rehearsal_capacity == 256
+    brain.retune(learning_rehearsal_capacity=128)
+    assert brain.learner.config.rehearsal_capacity == 128
+
+
+def _filled(rows: int = 8) -> tuple[cd.Brain, np.random.Generator]:
+    brain = cd.Brain.compose(6, 4, seed=0, learning_rehearsal=1.0,
+                             learning_rehearsal_capacity=rows)
+    rng = np.random.default_rng(0)
+    for _ in range(rows // 2):
+        brain.step(rng.random((2, 6)), teacher=rng.integers(0, 4, size=2))
+    assert len(brain.learner.rehearsal_drives) == rows
+    return brain, rng
+
+
+def test_a_smaller_capacity_trims_the_reservoir_and_the_brain_saves_and_loads(tmp_path):
+    brain, rng = _filled()
+    brain.retune(learning_rehearsal_capacity=4)
+    copy = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
+    assert len(copy.learner.rehearsal_drives) == 4
+    for _ in range(3):
+        x, label = rng.random((2, 6)), rng.integers(0, 4, size=2)
+        np.testing.assert_array_equal(brain.step(x, teacher=label), copy.step(x, teacher=label))
+    assert len(brain.learner.rehearsal_drives) == 4
+    np.testing.assert_array_equal(brain.learner.rehearsal_drives, copy.learner.rehearsal_drives)
+
+
+def test_the_reservoir_is_saved_while_rehearsal_is_off(tmp_path):
+    brain, rng = _filled()
+    brain.retune(learning_rehearsal=0.0)
+    copy = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
+    np.testing.assert_array_equal(brain.learner.rehearsal_drives, copy.learner.rehearsal_drives)
+    for twin in (brain, copy):
+        twin.retune(learning_rehearsal=1.0)
+    for _ in range(3):
+        x, label = rng.random((2, 6)), rng.integers(0, 4, size=2)
+        np.testing.assert_array_equal(brain.step(x, teacher=label), copy.step(x, teacher=label))

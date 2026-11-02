@@ -91,8 +91,10 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     if learner.config.normalize_relative or learner.config.nudged_fixed:
         meta["format"] = APICAL_FORMAT
     rehearsal: dict[str, np.ndarray] = {}
-    if learner.config.rehearsal and len(learner.rehearsal_drives):
-        # the rehearsal's reservoir and its counts (#238); none without rehearsal
+    learner.trim_reservoir()
+    if len(learner.rehearsal_drives):
+        # the rehearsal's reservoir and its counts (#238), kept while rehearsal is retuned off;
+        # a learner that never rehearsed holds none
         meta["rehearsal"] = {"seen": learner.rehearsal_seen, "draws": learner.rehearsal_draws}
         rehearsal = {
             "rehearsal_drives": learner.rehearsal_drives,
