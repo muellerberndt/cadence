@@ -29,6 +29,12 @@
   `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back
   out of the context. `benchmarks/context_key` ports Will Glynn's Stone Age chains (the
   ambiguous chain, the invisible-action boundary and the fully observed chain) with credit.
+  On fresh seeds, declared before the run: `"unchanged"` passes the ambiguous chain cleanly in
+  35 of 96 lives against 6 for the founder key (30 against 1 discordant pairs, exact McNemar
+  p < .0001) and keeps the fully observed chain (40 against 43 of 48, p = .51); on the chain
+  whose right action leaves the observation unchanged it costs (0 against 9 clean passes).
+  `"punished"`, with misses costing .05, passes that chain in 20 of 48 lives against 13 for
+  the cost alone (p = .039).
 - `memory_extinction` (opt-in, #210): with `memory_choice=True`, a zero outcome writes a learned
   zero for the chosen action where the records' vote for it and its direct payment in this
   place both reach the setting (0.5). A third store, `memories["episodic"].paid`, keeps which
