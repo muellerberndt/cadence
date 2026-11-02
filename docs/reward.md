@@ -175,8 +175,9 @@ latches on one action. `memory_extinction` and `memory_context_hold` leave these
 they are. Added to the other reward chambers, the same settings acquire the key-door chamber on
 16 of 16 lives (8 without), win 30 of 30 blocks of a bandit with reversals (27) and learn the
 contextual bandit on 6 of 6 seeds (3); in the odour nursery two of six lives at the short
-exposure reverse late (10 of 12 lives pass every check, 11 without).
-Measured through `step`; `live` was not read.
+exposure reverse late (10 of 12 lives pass every check, 11 without; these chambers' readings
+are their `live` arms). The two-cue readings are measured through `step`; the chamber under
+`live` was not read.
 
 Taught by a lesson at the answer instead, the cue has to reach the answer through the events
 in between. The working trace keeps about half of it per event and fails from two; the recall
@@ -352,13 +353,16 @@ More drilling past acquisition moves the policy instead of consolidating it.
 3. **Average the associative record where noisy pay follows acquisition.** In the competing
    ring, actor steps of 0.003 and 0.001 retain no more than the nursery's 0.03 and do not
    prevent the loss under signed noisy pay; a brain composed with an averaged associative
-   record (`memory_rate=0.2`) acquires as before and loses half as much
-   ([memory](memory.md#associative-store-the-hippocampus)).
+   record (`memory_rate=0.2`) acquires as before and takes about 0.10 off the loss over the ring,
+   and a store frozen where the noisy pay begins (`retune(memory_rate=0.0, consolidation=0.0)`)
+   holds the skill there at a cost to a competing one
+   ([the competing ring](../benchmarks/competing/README.md)).
 4. **Choose `live` or `step` after the caregiver leaves.** `live` learns only while aroused,
    by a surprising outcome or by pay below what life usually brings; `step` learns from every
    outcome ([routine and repair](start.md#routine-and-repair-live)). Which path erodes a taught
    chain depends on the founder. Where most surprises are punishments, as in the melee,
-   `live` alone does not hold the skill; lower `memory_rate` instead. Teaching by demonstration
+   `live` alone does not hold the skill; an averaged record holds a little more, a frozen store
+   holds it (item 3). Teaching by demonstration
    and correction goes through the episodic memory ([episodic](memory.md#episodic-memory-what-happened-in-this-situation-before)).
 5. **Read the greedy policy stage by stage.** Whole-chain success hides a stalled stage.
    Read the greedy answer, the right action's probability and its margin at every stage, and

@@ -65,3 +65,10 @@ def test_position_reward_needs_the_position_term():
     brain = cd.Brain.compose(6, 3, seed=0, recall=True, recall_position=0)
     with pytest.raises(ValueError, match="needs position"):
         brain.retune(recall_position_reward=1.0)
+
+
+def test_the_position_rate_retunes_freely_where_reward_does_not_train_the_position_maps():
+    brain = lived(recall_address_reward=1.0)  # position_reward at its founder 0
+    assert brain.basal_ganglia._pending_memory is not None
+    brain.retune(recall_position_rate=0.05)
+    assert brain.recall.position_rate == 0.05

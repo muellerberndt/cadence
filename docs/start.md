@@ -509,8 +509,8 @@ continues once from where it stopped on the damping ladder, another `free_steps`
 equal shares at the full step and at successively halved steps (the learner's `damping`
 halvings, at least one), and only then is the answer refused; `last_settlement["rescue_steps"]`
 counts that continuation, and `steps`, `residual_checks` and `stagnation_checks` sum both
-solves. `tolerance=None` is refused
-(`ValueError`).
+solves. A solve that ended with a value that is not finite, and a budget of no sweeps, are
+refused without a rescue. `tolerance=None` is refused (`ValueError`).
 Other operations keep their own tolerances: `imagine` uses `1e-6`.
 
 A refused answer raises `RuntimeError` before changing activity, memory, random state
@@ -527,7 +527,7 @@ a routine choice; read it before resubmitting.
 
 ```python
 answer_work = brain.last_settlement
-assert answer_work["qualified"] and answer_work["steps"] <= answer_work["budget"]
+assert answer_work["qualified"] and answer_work["steps"] <= 2 * answer_work["budget"]
 assert answer_work["max_residual"] <= answer_work["tolerance"]
 ```
 
@@ -535,7 +535,8 @@ assert answer_work["max_residual"] <= answer_work["tolerance"]
 included: `operation` (`"act"`, `"wait"` or `"predict"`; `step` reports `act`,
 `accuracy` and `fit` their last `predict` batch), `scope` (`"free_answer"`), `qualified`,
 per-row `row_qualified` and `residual`, `max_residual`, `steps`, `budget`,
-`tolerance`, `residual_checks`, `damping_halvings` and `stagnation_checks`.
+`tolerance`, `residual_checks`, `damping_halvings` and `stagnation_checks`, and `rescue_steps`
+where the solve was rescued (`steps` then exceeds `budget`).
 Validation errors, `learn` and `imagine` leave it; reset and load clear it. It counts
 answer work only: teaching and feedback work, refused teaching included, is in
 `last_learning`, and [settlement records](api.md#record-every-settling-step) capture

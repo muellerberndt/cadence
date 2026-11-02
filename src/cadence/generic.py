@@ -686,8 +686,24 @@ def _load_memory(
         separator = None
         spec = metadata.get("separator")  # An unseparated memory may omit this field.
         if shared is not None:
-            if spec is not None or any(key.startswith(prefix + "separator/") for key in data):
-                raise ValueError("a memory that shares a separator saves none of its own")
+            saved = {
+                key[len(prefix + "separator/"):]: data[key]
+                for key in data
+                if key.startswith(prefix + "separator/")
+            }
+            if spec is not None or saved:
+                # a checkpoint of the 0.93 development line saved its own copy of the shared
+                # separator: the same separator is read as the shared one, another is refused
+                arrays = shared.arrays()
+                if (
+                    spec != shared.to_dict()
+                    or set(saved) != set(arrays)
+                    or any(not np.array_equal(saved[name], value) for name, value in arrays.items())
+                ):
+                    raise ValueError(
+                        "the saved direct payments carry a separator other than the place "
+                        "records'"
+                    )
             separator = shared
         elif spec is None:
             if any(key.startswith(prefix + "separator/") for key in data):
@@ -2324,9 +2340,10 @@ class Brain:
         ``accuracy``/``fit`` scores expose their last ``predict`` batch.
         ``qualified`` covers the whole batch; ``row_qualified`` and ``residual``
         are tuples in observation order. ``steps`` counts all free-solve sweeps,
-        including damping, within ``budget``. ``residual_checks`` counts extra
-        equation transports; ``stagnation_checks`` counts complete-state
-        comparisons. ``damping_halvings`` reports the final numerical halving.
+        including damping: within ``budget``, or with a rescue (``rescue_steps``) within
+        twice it. ``residual_checks`` counts extra equation transports and
+        ``stagnation_checks`` complete-state comparisons, both solves' with a rescue.
+        ``damping_halvings`` reports the final numerical halving.
 
         The scope is ``free_answer``: reward eligibility, feedback, teaching,
         imagination and memory work are excluded. These counts are neither
@@ -2859,12 +2876,12 @@ class Brain:
         feedback pending is refused: its saved contrast belongs to the old beta.
         Submit that outcome before changing beta; do not discard it to retune. So is
         changing ``recall_address_step``, ``recall_address``, ``recall_address_reward``,
-        ``recall_position_reward`` or ``recall_position_rate`` while that feedback holds the
-        recall memory's address contrast, which belongs to the lesson's form and rates it
-        was taken at. A change of ``recall_position_reward`` that changes the eligibility's
-        columns drops the read's trace; with neither ``recall_address_reward`` nor
-        ``recall_position_reward`` the actor drops it, and the brain reports and saves as
-        one composed at 0.
+        ``recall_position_reward``, or ``recall_position_rate`` where reward trains the position
+        maps, while that feedback holds the recall memory's address contrast, which belongs to
+        the lesson's form and rates it was taken at. A change of ``recall_position_reward``
+        that changes the eligibility's columns drops the read's trace; with neither
+        ``recall_address_reward`` nor ``recall_position_reward`` the actor drops it, and the
+        brain reports and saves as one composed at 0.
 
         Wiring, initialization and enabling/disabling components are construction
         choices. ``retune`` resets nothing; ``brain.arousal.reset()`` resets the arousal level
@@ -2996,13 +3013,15 @@ class Brain:
         if self.basal_ganglia._pending_memory is not None:
             # held with sampled feedback alone: the pending address contrast belongs to the
             # lesson's form and rates
+            # the position rate shapes the contrast only where reward trains the position maps
+            held = ["address_step", "address", "address_reward", "position_reward"]
+            recall = self.recall
+            if recall is not None and recall.position_reward and recall.position_maps:
+                held.append("position_rate")
             for component, field, value in memory_changes:
                 if (
                     component is self.recall
-                    and field in (
-                        "address_step", "address", "address_reward", "position_reward",
-                        "position_rate",
-                    )
+                    and field in held
                     and value != getattr(component, field)
                 ):
                     raise ValueError(
@@ -3013,6 +3032,7 @@ class Brain:
         # Publication begins only after all validation. Never reconstruct a live
         # memory or optimizer to change its scalar settings.
         self.learner.config = learning
+        self.learner.trim_reservoir()  # a smaller rehearsal capacity cuts the reservoir now
         agent = self.basal_ganglia
         agent.config = reward
         if self.arousal is not None:

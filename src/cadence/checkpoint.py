@@ -91,15 +91,13 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     if learner.config.normalize_relative or learner.config.nudged_fixed:
         meta["format"] = APICAL_FORMAT
     rehearsal: dict[str, np.ndarray] = {}
-    learner.trim_reservoir()
     if len(learner.rehearsal_drives):
-        # the rehearsal's reservoir and its counts (#238), kept while rehearsal is retuned off;
-        # a learner that never rehearsed holds none
+        # the rehearsal's reservoir and its counts (#238), kept while rehearsal is retuned off,
+        # within its capacity (the learner trims to the same rows at its next lesson); a
+        # learner that never rehearsed holds none
+        drives, labels = learner.trimmed_reservoir()
         meta["rehearsal"] = {"seen": learner.rehearsal_seen, "draws": learner.rehearsal_draws}
-        rehearsal = {
-            "rehearsal_drives": learner.rehearsal_drives,
-            "rehearsal_labels": learner.rehearsal_labels,
-        }
+        rehearsal = {"rehearsal_drives": drives, "rehearsal_labels": labels}
     if brain.apical is not None:
         meta["format"] = APICAL_FORMAT
         meta["apical"] = {"fraction": brain.apical.fraction, "floor": brain.apical.floor}

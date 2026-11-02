@@ -720,18 +720,22 @@ class Learner:
         )
         return report
 
-    def trim_reservoir(self) -> None:
-        """Cut the rehearsal's reservoir to ``rehearsal_capacity`` once a smaller capacity was
-        set: a uniform choice of the rows it kept, keyed by the count of rows seen (so the same
-        after a checkpoint), in their order. Nothing changes within the capacity."""
+    def trimmed_reservoir(self) -> tuple[np.ndarray, np.ndarray]:
+        """The rehearsal's reservoir cut to ``rehearsal_capacity`` (its drives and labels), the
+        learner unchanged: within the capacity the reservoir as it is; above it a uniform choice
+        of its rows keyed by the count of rows seen (so the same after a checkpoint), in their
+        order."""
         capacity = self.config.rehearsal_capacity
         kept = len(self.rehearsal_drives)
         if kept <= capacity:
-            return
+            return self.rehearsal_drives, self.rehearsal_labels
         keys = [_mixed(self.rehearsal_seen + (1 << 40) + row) for row in range(kept)]
         index = np.sort(np.argsort(keys, kind="stable")[:capacity])
-        self.rehearsal_drives = self.rehearsal_drives[index]
-        self.rehearsal_labels = self.rehearsal_labels[index]
+        return self.rehearsal_drives[index], self.rehearsal_labels[index]
+
+    def trim_reservoir(self) -> None:
+        """Cut the rehearsal's reservoir to ``rehearsal_capacity`` (``trimmed_reservoir``)."""
+        self.rehearsal_drives, self.rehearsal_labels = self.trimmed_reservoir()
 
     def _labels(self, labels: np.ndarray) -> np.ndarray:
         labels = np.asarray(labels)

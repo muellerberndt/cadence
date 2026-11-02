@@ -215,7 +215,7 @@ renewal and nursery-only arms are reported on
 [#169](https://github.com/muellerberndt/cadence/issues/169#issuecomment-6097083259). In short:
 at the nursery's actor step 0.03 the loss reproduces and is terminal (the driving test falls
 from 0.54 to 0.23, and to 0.25 with the second seed of fights), carried and reset alike; with
-the memory's writes off the loss is the same, so in the arena it lies in the actor's own
+the memory's writes off it falls further (0.54 to 0.08), so in the arena it lies in the actor's own
 updates, which in the first twenty fights are mostly negative, after which the brains
 habituate and learn almost nothing; the smaller steps 0.003 and 0.001 hold the test (0.49 to
 0.54) while learning continues; a slow set point under every parameter keeps more than the

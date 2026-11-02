@@ -4,6 +4,8 @@ same rule, so types taught in sequence keep what earlier lessons taught."""
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import numpy as np
 import pytest
 
@@ -119,3 +121,14 @@ def test_the_reservoir_is_saved_while_rehearsal_is_off(tmp_path):
     for _ in range(3):
         x, label = rng.random((2, 6)), rng.integers(0, 4, size=2)
         np.testing.assert_array_equal(brain.step(x, teacher=label), copy.step(x, teacher=label))
+
+
+def test_save_grow_and_graft_leave_the_living_reservoir_as_it_is(tmp_path):
+    brain, _ = _filled()
+    # set without retune: the next lesson trims
+    brain.learner.config = replace(brain.learner.config, rehearsal_capacity=4)
+    before = brain.learner.rehearsal_drives.copy()
+    brain.save(tmp_path / "brain.npz")
+    np.testing.assert_array_equal(brain.learner.rehearsal_drives, before)
+    brain.retune(learning_rehearsal_capacity=4)  # retune trims at once
+    assert len(brain.learner.rehearsal_drives) == 4

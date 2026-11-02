@@ -141,8 +141,8 @@ keeps a reservoir of the lessons' rows, their drives and labels, a uniform sampl
 lesson row (`learning_rehearsal_capacity`, 512 rows), and after each lesson teaches `r` times the
 lesson's rows again (at least one row), drawn from it, under the same rule: with
 `learning_surprise=True` only the rows the brain now answers wrong move it. The reservoir is
-saved with the brain, also while rehearsal is retuned off, and cut to a smaller capacity when
-one is set; a grown brain starts it afresh, since its rows hold the old layout's drives
+saved with the brain, also while rehearsal is retuned off, and cut when `retune` sets a smaller
+capacity; a grown brain starts it afresh, since its rows hold the old layout's drives
 ([#238](https://github.com/muellerberndt/cadence/issues/238)).
 
 ```python
