@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- State learned memory relevance as a goal in the manifesto, AGENTS.md, the contribution rules
+  and the pull request template: the same acquired brain uses the same memories differently
+  under changed context, and experience improves that selection within the coupled equilibrium.
+  Retention, selection and temporal credit stay separate, with the acquisition controls, context
+  interventions, generalization and recovery gates of the
+  [task protocol](docs/task-design.md#test-learned-memory-relevance); the
+  [named-fact selection instrument](benchmarks/relevance/README.md) is the bounded diagnostic
+  for the existing System 1 graph and trace. The capability is not yet demonstrated: no runtime
+  or default change, and no sentence-training claim.
+- Restate the scope and evidence rules for behavior over time in CONTRIBUTING.md and the pull
+  request template, and add an issue template that asks for scope, boundary and evidence.
+
 ## 0.92.0 — 2026-11-02
 
 - Grow a trained brain: `brain.grow(**parts)` returns a new brain, the trained one with new parts.

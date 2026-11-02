@@ -75,6 +75,16 @@ expressed through successive equilibria. Next-event accuracy, or a rollout fed i
 output, is component evidence at most. Tests use earlier context against identical recent
 events, persistence through rests and missing feedback, and recovery after a disturbance.
 
+**Learn what matters now.** The same acquired brain must use the same memories differently
+when the question, goal or context changes, and experience must improve that selection.
+Retaining a fact, selecting it for the present interpretation and assigning credit to an
+earlier action are distinct capabilities. Learned relevance belongs to local repair in the
+same coupled equilibrium. An adapter that supplies the relevant memory index, or an answer
+vote added after settlement, does not demonstrate it. Start with existing state and memory;
+no new module is prescribed. This capability is not yet demonstrated, and is tested through
+[context changes, interference and recovery](docs/task-design.md#test-learned-memory-relevance),
+separately from numerical qualification.
+
 **Language in the equilibrium.** Cadence formulates whole, consistent sentences from its
 settled state, as the composer forms a groove from it: meaning held in context and memory,
 words emitted in time, each word answering the same settled interpretation. This is a

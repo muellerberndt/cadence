@@ -99,6 +99,39 @@ state, a working trace and associative memory. A retained trace may be a held
 boundary during a present solve; a live coordinate must still qualify. Do not freeze unresolved live state or weaken
 qualification to manufacture a whole-brain answer.
 
+## Coherent behavior over time
+
+Sequence competence means behavior governed by coherent, continuing learned
+context and temporal organization. Sequential output, sensory feedback, working
+traces, associative memory and efference are legitimate parts of that life.
+Next-event accuracy or a self-feeding loop alone is bounded component evidence;
+it does not establish phrase, sentence or whole-sequence competence. Test retained
+context, its absence or perturbation under matched exposure, and recovery or
+counterfactual contexts where relevant. Keep numerical residuals separate from
+musical surprise and other task judgments.
+
+Learned memory relevance means the same acquired brain uses the same memories
+differently when context changes, and experience improves that selection. Keep
+retention, selection during the present read and temporal credit separate.
+This goal is not implemented or established by a fixed history key or a vote
+added after settlement. Selection must participate through local repair in the
+same coupled equilibrium; an adapter must not supply the relevant memory index.
+Start with existing state and memory. Apply the
+[memory-relevance comparisons](docs/task-design.md#test-learned-memory-relevance)
+before claiming this capability or beginning sentence training on its premise.
+
+The current `Brain.act` qualifies a present neural state with held trace and
+memory input; it is not already a joint future-trajectory solve. This principle
+prescribes neither a new phrase module nor producing a whole song at once.
+Adapters must not supply hidden answers, phase or arrangement. Any added
+mechanism must still use local repair in the same coupled global equilibrium.
+
+Every issue and plan must declare component, integrated-behavior or infrastructure
+scope, applicable equilibrium boundaries, a simpler control and preservation
+gates. Infrastructure can explain applicability without acquiring a whole-brain
+acceptance test. Follow the [scope and evidence review](CONTRIBUTING.md#scope-and-evidence-for-behavior-over-time)
+and the [canonical principle in #109](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time).
+
 ## Build and demonstrate the lifecycle
 
 1. Declare observations, action meanings, stream identities and the environment's

@@ -89,32 +89,75 @@ invent success thresholds to make an example read as a completed capability.
 
 ## Scope and evidence for behavior over time
 
-Every issue, plan and pull request must declare bounded component,
-integrated-behavior or infrastructure scope. Name the applicable equilibrium
-boundaries, the simpler control and preservation gates. Keep one acquired brain
-through use, interference and recovery; a fresh brain per observation or an
-external trained answer path is a control, not the intended continuing life.
-Designed brain settings remain genes, with the composed founder as the control.
+Every issue, plan and pull request must declare its scope: a bounded component,
+integrated continuing behavior, or infrastructure. Name the applicable equilibrium
+boundaries, simpler control and preservation gates. Infrastructure work can explain
+which requirements apply; it need not establish whole-brain competence to ship.
+Keep bounded component tests useful without promoting their result into an
+integrated capability claim.
 
-The manifesto's sequence and language goals concern coherent activity governed
-by retained context and learned relationships. Next-event accuracy or a
-self-feeding rollout alone is component evidence. Integrated claims need earlier
-contexts against identical recent events, persistence through rests or familiar
-missing feedback, and recovery after disturbance, with matched information and
-exposure. Disclose supplied timing, phase, goals and arrangements. Today's
-`Brain.act` settles a present state with held trace and memory input; it does
-not jointly solve a future phrase or trajectory. No particular new module is
-required: start with the existing System 1 state and memory.
+Keep one acquired brain through use, interference and recovery. Designed brain
+settings remain genes, with the composed founder as the control.
+
+The sequence goal is coherent behavior governed by continuing learned context
+and temporal organization. Sequential output and sensory feedback are permitted;
+working trace, memory and efference remain legitimate. Next-event accuracy and
+self-feeding alone establish only bounded component behavior. For phrase or
+sequence claims, test retained context, its absence or perturbation with matched
+exposure, and recovery or counterfactual contexts where relevant. Measure numerical
+residuals separately from musical surprise, structural coherence and task success.
+
+The manifesto's sequence and language goals also call for earlier contexts against
+identical recent events and persistence through rests or familiar missing feedback.
+Disclose supplied timing, phase, goals and arrangements.
+
+For learned memory relevance, require the same acquired brain to use the same
+memories differently under a changed query, goal or context, with experience
+improving that selection. Distinguish retention, selection during a read and
+temporal credit. First establish acquisition with the simplest directly cued
+control; a failure there does not isolate memory selection. Then test query
+switches on copies with identical saved memories, relevant and irrelevant
+perturbations, fresh bindings and order, held-out roles, interference and
+recovery. Follow the [task protocol](docs/task-design.md#test-learned-memory-relevance).
+Neither equation qualification, an adapter-supplied memory index nor a vote
+added after settlement establishes learned relevance in the coupled equilibrium.
+This is an unimplemented capability goal, not a new default or a requirement
+to begin sentence training.
+
+Declare what the solve actually includes. Default `Brain.act` qualifies the
+present neural state with held trace and memory input; it does not jointly solve
+a future trajectory. No phrase module or whole-song-at-once output is mandated.
+Check existing state, information and experience first. Any added mechanism must
+participate through local repair in the same coupled global equilibrium; adapters
+must not hide answers, phase or arrangement outside that brain.
+
+Use the [canonical principle in #109](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time)
+and the applicable existing owner among
+[#121](https://github.com/muellerberndt/cadence/issues/121),
+[#116](https://github.com/muellerberndt/cadence/issues/116),
+[#93](https://github.com/muellerberndt/cadence/issues/93),
+[#122](https://github.com/muellerberndt/cadence/issues/122) and
+[#140](https://github.com/muellerberndt/cadence/issues/140), rather than creating
+duplicate capability tracks. [Task design](docs/task-design.md#test-coherent-behavior-over-time)
+describes the behavioral comparisons.
+
+Memory relevance keeps the existing owners: [selective attention #101](https://github.com/muellerberndt/cadence/issues/101),
+[context and recall #84](https://github.com/muellerberndt/cadence/issues/84),
+[learned temporal context #189](https://github.com/muellerberndt/cadence/issues/189),
+[learning and retention #85](https://github.com/muellerberndt/cadence/issues/85),
+[temporal credit #111](https://github.com/muellerberndt/cadence/issues/111),
+[episodic source memory #112](https://github.com/muellerberndt/cadence/issues/112) and
+[language #173](https://github.com/muellerberndt/cadence/issues/173), feeding the sequence
+acceptance in #121. Keep each issue's bounded contract; this criterion does not
+replace its existing gates or open a second roadmap.
 
 Compare behavioral claims with uniform-random, frozen-copy and conventional
 online learners where applicable, at matched information and work. Count
 teaching, settling, replay and refused work, including routine and repair costs.
-Keep numerical residuals, meaningful surprise, task success and physical energy
-separate. Preserve original failed comparisons and useful earlier skills while
-testing adaptation; neither a better reward average nor a smaller residual
-establishes retention or understanding. Link the relevant capability owner under
-[#109](https://github.com/muellerberndt/cadence/issues/109), rather than creating
-a competing roadmap or silently waiving an unmet gate.
+Keep physical energy separate from numerical residuals and task success.
+Preserve original failed comparisons and useful earlier skills while testing
+adaptation; neither a better reward average nor a smaller residual establishes
+retention or understanding. Do not silently waive an unmet gate.
 
 ## Set up
 
