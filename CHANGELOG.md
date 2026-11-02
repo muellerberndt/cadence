@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- `memory_extinction` (opt-in, #210): with `memory_choice=True`, a zero outcome writes a learned
+  zero for the chosen action where the records' vote for it and its direct payment in this
+  place both reach the setting (0.5). A third store, `memories["episodic"].paid`, keeps which
+  actions were paid directly where; replayed and demonstrated credit is never extinguished. In
+  the issue's bandit, whose paying arm moves and whose failures pay 0, 11 of 12 lives learn the
+  new arm against 5 of 12 without it. Off, every brain and checkpoint is as before. The rule is
+  Sean McClane's (#210).
 - Document how the project is planned (AGENTS.md, CONTRIBUTING.md): the roadmap (#109), the
   goal epics (#118, a Doom player; #173, a language model that understands sequences and
   grammar), a milestone per release and the shared threads live on GitHub; how an issue is

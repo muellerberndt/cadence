@@ -659,7 +659,8 @@ observation now ─► settle ─► motor readout ─────────�
 - **What is written.** The outcome of the chosen action, once it is known: a reward or a
   punishment, the end of an attempt (`done`), a surprise that woke a calm `live` brain, or an
   outcome marked with a positive `salience=`. A zero outcome in the middle of an attempt
-  writes nothing. A demonstration (`teacher=`) is recorded for its situation as if the shown
+  writes nothing, unless `memory_extinction` extinguishes a record the action earned by its
+  own payments in this place (the settings below). A demonstration (`teacher=`) is recorded for its situation as if the shown
   action had paid `memory_demonstrations`. `done=True` makes the last outcome known and starts
   the next attempt with a fresh temporal context and path.
 - **Replay.** A reward replays the stream's recent path backwards, up to `memory_replay`
@@ -734,6 +735,7 @@ All of these are construction settings: pass them at construction; `retune` refu
 | `memory_demonstrations` | `1.0` | Raise when shown actions should outweigh the brain's own trials; lower for an unreliable teacher; 0 records none |
 | `memory_expansion` | `1024` (0 with a fixed code) | Raise when many situations must be told apart; 0 uses the key unseparated. With `code=units` it is set to 0 and a nonzero value is refused |
 | `memory_winners` | `24` | How many separation cells stay active per key; at most `memory_expansion` |
+| `memory_extinction` | `0` (off) | Set it (0.5) when a paid action can stop paying without a punishment, a reversal whose failures pay 0. A zero outcome then writes a learned zero for the chosen action where the records' vote for it and its direct payment in this place both reach the setting. Only a known outcome with a reward is a direct payment: replayed and demonstrated credit is never extinguished. The rule is Sean McClane's ([#210](https://github.com/muellerberndt/cadence/issues/210)) |
 | `memory_fan_in` | `0` (dense) | Above 0 each separation cell reads that many random key values; use 32 for keys wider than 256 values. Needs `memory_expansion` and at most the key width; refused with `code=units` |
 
 A dense separation holds `width x 1,024` floats per store (105 MB at 12,824 inputs); with
@@ -795,8 +797,8 @@ for every memory.
   halve the context records' share of the vote.
 - Records are in reward units: rewards of a very different size weigh the vote more or less
   against the readout. `memory_amplitude` scales the read.
-- A record that paid is not automatically extinguished by failures that pay nothing: while
-  already aroused, an unmarked intermediate zero outcome writes nothing, and replay only adds
+- Without `memory_extinction`, a record that paid is not extinguished by failures that pay
+  nothing: while already aroused, an unmarked intermediate zero outcome writes nothing, and replay only adds
   credit. In a continuing life where
   a once-paid action stops paying and its failures pay 0, its record keeps voting for it and
   the new action is often not learned: in a two-armed bandit through `live` whose paying arm
@@ -811,8 +813,11 @@ for every memory.
   feedback changes anything. In the `step`-based
   [follow-up comparison](https://github.com/muellerberndt/cadence/issues/210#issuecomment-6320661291),
   marking misses recovered much of the penalty's harm but still lost against unmarked
-  zero outcomes. Compare with `memory_choice=False` on the same task. Automatic extinction
-  of these records remains unimplemented ([#210](https://github.com/muellerberndt/cadence/issues/210)).
+  zero outcomes. Compare with `memory_choice=False` on the same task.
+  `memory_extinction=0.5` extinguishes such a record: in the same bandit, 11 of 12 lives
+  learned the new arm against 5 of 12 without it ([#210](https://github.com/muellerberndt/cadence/issues/210)). It reads the place: where
+  one observation stands for several situations, an action paid in one of them meets zeros in
+  the others, and its record is extinguished there as well.
 - `predict` and `fit` answer independent samples and read no memory.
 
 ## The recall memory in full

@@ -171,7 +171,14 @@ class EpisodicRecords:
     nothing to the drive. Per stream it keeps the temporal context after its last decision
     (``context``), that decision's key (``decision``) and the recent path (``paths``), one
     decision per situation the stream left, along which a reward is replayed (``steps``
-    decisions back). A demonstration is recorded at the value ``demonstrations``."""
+    decisions back). A demonstration is recorded at the value ``demonstrations``.
+
+    With an extinction threshold (``memory_extinction``, above zero) a third store, ``paid``,
+    keeps which actions were paid directly in which places: a known outcome with a reward,
+    never a replayed or demonstrated credit. A zero outcome then writes a learned zero for
+    the chosen action where the records' vote for it and its direct payment in this place
+    both reach the threshold, so a paid record is extinguished when failures pay nothing.
+    The rule is Sean McClane's (cadence#210)."""
 
     def __init__(
         self,
@@ -183,9 +190,17 @@ class EpisodicRecords:
         share: float,
         steps: int,
         demonstrations: float,
+        paid: SynapticMemory | None = None,
+        extinction: float = 0.0,
     ) -> None:
+        if (paid is None) != (not extinction):
+            raise ValueError(
+                "an extinction threshold reads a store of direct payments, and only then"
+            )
         self.place = place
         self.temporal = temporal
+        self.paid = paid  # the places where each action was paid directly
+        self.extinction = float(extinction)  # (``memory_extinction``)
         self.width = int(width)  # the place key's width; a context key adds the motor neurons
         self.motor = int(len(place.post))
         self.offsets = np.asarray(offsets, dtype=np.int64)  # each motor slot's first neuron
@@ -250,24 +265,24 @@ class EpisodicRecords:
         """What an outcome's write changes, for ``restore`` when the write is refused: the
         context records' arrays (a write replaces them), the temporal contexts and the
         paths."""
-        temporal = self.temporal
+        def kept(store: SynapticMemory | None) -> dict[str, Any] | None:
+            names = ("strength", "mass", "writes", "consolidated")
+            return None if store is None else {name: getattr(store, name) for name in names}
+
         return (
-            None
-            if temporal is None
-            else {
-                name: getattr(temporal, name)
-                for name in ("strength", "mass", "writes", "consolidated")
-            },
+            kept(self.temporal),
             None if self.context is None else self.context.copy(),
             [list(path) for path in self.paths],
+            kept(self.paid),
         )
 
     def restore(self, saved: tuple[Any, ...]) -> None:
         """The state ``snapshot`` kept."""
-        records, self.context, self.paths = saved
-        if records is not None:
-            for name, value in records.items():
-                setattr(self.temporal, name, value)
+        records, self.context, self.paths, paid = saved
+        for store, state in ((self.temporal, records), (self.paid, paid)):
+            if state is not None:
+                for name, value in state.items():
+                    setattr(store, name, value)
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -276,6 +291,11 @@ class EpisodicRecords:
             "replay": int(self.steps),
             "demonstrations": float(self.demonstrations),
             "context_memory": None if self.temporal is None else self.temporal.to_dict(),
+            **(
+                {}
+                if self.paid is None
+                else {"extinction": self.extinction, "paid_memory": self.paid.to_dict()}
+            ),
         }
 
     def arrays(self) -> dict[str, np.ndarray]:
@@ -283,6 +303,8 @@ class EpisodicRecords:
         replay paths as padded arrays with each stream's length; the place records are the
         associative store's."""
         out: dict[str, np.ndarray] = {}
+        if self.paid is not None:
+            out.update({"paid_memory/" + k: v for k, v in self.paid.arrays().items()})
         if self.temporal is not None:
             out.update({"context_memory/" + k: v for k, v in self.temporal.arrays().items()})
             if self.context is not None:
@@ -448,9 +470,21 @@ class EpisodicRecords:
         keys = self.decided(len(action))
         # what the memory expected of the decision, read before its outcome is written; an
         # attempt that ends is a closed episode, whose reward is replayed whole
-        surprise = np.where(done, reward, reward - self.held(observations, keys, action))
+        held = self.held(observations, keys, action)
+        surprise = np.where(done, reward, reward - held)
+        if self.paid is not None:
+            # a zero outcome extinguishes a record the action earned by its own payments here
+            zero = learned & ~known & (reward == 0)
+            if zero.any():
+                direct = self.held(observations, observations, action, self.paid)
+                known |= zero & (held >= self.extinction) & (direct >= self.extinction)
         if known.any():
             self.remember(observations, keys, action, reward, known, salience)
+        if self.paid is not None and (learned & (reward > 0)).any():
+            record_action(
+                self.paid, observations, action, np.ones(len(action)), np.zeros(len(action)),
+                learned & (reward > 0), self.offsets,
+            )
         self.replay(reward, surprise, done, learned, gamma=gamma)
 
     def held(

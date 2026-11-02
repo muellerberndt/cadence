@@ -432,7 +432,7 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
 }
 _EPISODIC_SETTINGS = (
     "memory_choice", "memory_context", "memory_replay", "memory_demonstrations",
-    "memory_expansion", "memory_winners", "memory_fan_in",
+    "memory_expansion", "memory_winners", "memory_fan_in", "memory_extinction",
 )
 
 
@@ -1295,6 +1295,8 @@ def _earlier_layout(
             arrays[_MEMORY_PREFIXES[group] + rest] = data[name]
         elif rest.startswith("context_memory/"):
             arrays["temporal/" + rest[len("context_memory/"):]] = data[name]
+        elif rest.startswith("paid_memory/"):
+            arrays["paid/" + rest[len("paid_memory/"):]] = data[name]
         elif rest in ("context", "decision") or rest.startswith("path/"):
             arrays["episode/" + rest] = data[name]
         else:
@@ -1318,12 +1320,23 @@ def _validate_episodic_state(
         if any(name in data for name in names) or any(n.startswith("temporal/") for n in data):
             raise ValueError("saved episodic stream state requires episodic metadata")
         return
+    founders = {"choice", "context", "replay", "demonstrations", "context_memory"}
     if (
         not isinstance(episodic, dict)
-        or set(episodic) != {"choice", "context", "replay", "demonstrations", "context_memory"}
+        or set(episodic) not in (founders, founders | {"extinction", "paid_memory"})
         or episodic["choice"] is not True
     ):
         raise ValueError("invalid episodic metadata")
+    if "extinction" in episodic:
+        threshold = real("saved memory_extinction", episodic["extinction"], low=0, high=1)
+        paid = episodic["paid_memory"]
+        if not threshold or not isinstance(paid, dict) or paid.get("pre") != sensory:
+            raise ValueError(
+                "an extinction threshold reads a store of direct payments keyed by the "
+                f"observation code: {sensory} coordinates"
+            )
+    elif any(name.startswith("paid/") for name in data):
+        raise ValueError("saved direct payments require an extinction threshold")
     context = real("saved memory_context", episodic["context"], low=0)
     if context >= 1:
         raise ValueError("invalid saved memory_context")
@@ -1737,6 +1750,7 @@ class Brain:
         memory_expansion: int = 0,
         memory_winners: int = 32,
         memory_fan_in: int | None = None,
+        memory_extinction: float = 0.0,
         working_memory_decay: float = 0.0,
         working_memory_amplitude: float = 3.0,
         efference_decay: float = 0.2,
@@ -1872,6 +1886,7 @@ class Brain:
             raise ValueError("memory_context must lie in [0, 1)")
         memory_replay = _count("memory_replay", memory_replay)
         memory_demonstrations = real("memory_demonstrations", memory_demonstrations, low=0)
+        memory_extinction = real("memory_extinction", memory_extinction, low=0, high=1)
         memory_expansion = _count("memory_expansion", memory_expansion)
         memory_winners = _count("memory_winners", memory_winners, low=1)
         memory_fan_in = _count("memory_fan_in", 0 if memory_fan_in is None else memory_fan_in)
@@ -1887,10 +1902,11 @@ class Brain:
             raise ValueError("memory_choice needs the episodic memory")
         if not memory_choice and (
             memory_context or memory_replay or memory_demonstrations or memory_expansion
+            or memory_extinction
         ):
             raise ValueError(
-                "memory_context, memory_replay, memory_demonstrations and memory_expansion "
-                "need memory_choice"
+                "memory_context, memory_replay, memory_demonstrations, memory_expansion and "
+                "memory_extinction need memory_choice"
             )
         if memory_fan_in and not memory_expansion:
             raise ValueError("memory_fan_in needs memory_expansion")
@@ -2053,7 +2069,22 @@ class Brain:
 
             # keyed on the sensory neurons, or on the coordinates of the observation code
             coded = self._coded_keys
-            self.hippocampus = store(np.arange(self.code_width) if coded else self.sensory_index, 0)
+            places = np.arange(self.code_width) if coded else self.sensory_index
+            self.hippocampus = store(places, 0)
+            paid = None
+            if memory_extinction:
+                # where each action was paid directly: one lasting record every stream shares,
+                # keyed and separated as the place records are, so it is read as they are
+                paid = SynapticMemory(
+                    places, self.motor_index, consolidation=1.0, decay=memory_decay, rate=1.0,
+                    amplitude=memory_amplitude,
+                    separator=PatternSeparator(
+                        len(places), memory_expansion, memory_winners, seed=seed,
+                        fan_in=memory_fan_in,
+                    )
+                    if separated
+                    else None,
+                )
             if memory_choice:
                 self._episodic = EpisodicRecords(
                     self.hippocampus,
@@ -2070,6 +2101,8 @@ class Brain:
                     share=memory_context,
                     steps=memory_replay,
                     demonstrations=memory_demonstrations,
+                    paid=paid,
+                    extinction=memory_extinction,
                 )
         self.rng = np.random.default_rng(seed)
         # the validated observations a settle is being prepared for and their code, computed
@@ -2157,6 +2190,12 @@ class Brain:
     def memory_demonstrations(self) -> float:
         """The value a demonstration is recorded at; 0.0 without ``memory_choice``."""
         return 0.0 if self._episodic is None else self._episodic.demonstrations
+
+    @property
+    def memory_extinction(self) -> float:
+        """The vote and direct payment at which a zero outcome extinguishes a record; 0.0
+        when off or without ``memory_choice``."""
+        return 0.0 if self._episodic is None else self._episodic.extinction
 
     def _read_moment(self, x: np.ndarray, code: np.ndarray, place: Any = None) -> Moment:
         """What the memories read of a moment: the store reads under the place key with a
@@ -5057,6 +5096,14 @@ class Brain:
                         "the saved context records are keyed on other coordinates than the "
                         "brain's observation code and its motor neurons"
                     )
+                paid = _load_memory(episodic.get("paid_memory"), data, neurons, "paid/", keys=coded)
+                if paid is not None and (
+                    not isinstance(paid, SynapticMemory) or not np.array_equal(paid.pre, memory.pre)
+                ):
+                    raise ValueError(
+                        "the saved direct payments are keyed on other coordinates than the "
+                        "place records"
+                    )
                 records = EpisodicRecords(
                     memory,
                     temporal,
@@ -5065,6 +5112,8 @@ class Brain:
                     share=float(episodic["context"]),
                     steps=int(episodic["replay"]),
                     demonstrations=float(episodic["demonstrations"]),
+                    paid=paid,
+                    extinction=float(episodic.get("extinction", 0.0)),
                 )
                 result._episodic = records
                 for name in ("context", "decision"):
@@ -5398,6 +5447,7 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             memory_context=brain.memory_context,
             memory_replay=brain.memory_replay,
             memory_demonstrations=brain.memory_demonstrations,
+            memory_extinction=brain.memory_extinction,
         )
         if separator is not None:
             settings.update(
