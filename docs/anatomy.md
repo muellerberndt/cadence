@@ -318,8 +318,9 @@ compiled fly wiring with plastic connections in the browser.
 
 A brain on a connectome takes new parts by grafting: build a larger anatomy with the connectome
 as one region (`Region(name, circuit=connectome)`) and the new regions wired to it, compose it,
-and graft the trained brain in with `into=`; the joints start at zero, so the larger brain acts
-as the trained one until they learn
+and graft the trained brain in with `into=`; the joints start at zero, so the larger brain
+settles on the trained weights as the trained brain does, its memories and settings its own,
+until the joints learn
 ([a whole brain as one region](grow.md#a-whole-brain-as-one-region-of-a-larger-anatomy)).
 
 ### 1. Custody: manifest and dictionary decisions

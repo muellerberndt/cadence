@@ -2921,12 +2921,15 @@ class Brain:
 
         The grown brain is this brain's layout composed again from its recorded construction
         and its settings, the parts added, carrying every learned parameter, the optimizer's
-        history, the memories' records, the actor and the arousal. Every new synapse onto a
-        neuron this brain has starts at zero, with its reciprocal partner, so the grown brain
-        settles and chooses exactly as this brain does after ``reset()``: its streams start
-        afresh, and an outcome this brain awaits stays with this brain. Learning gives the new
-        synapses weight: a synapse moves on what its two neurons do in the free and nudged
-        phases, not on its own weight.
+        history, the memories' records and settings, the actor and the arousal. Every new synapse
+        onto a neuron this brain has starts at zero, with its reciprocal partner, so the grown
+        brain settles to the states this brain settles to after ``reset()`` and makes its
+        greedy choices: bit for bit where the larger graph sums in the same order, within
+        rounding where it does not. New slots draw random numbers of their own, so the sampled
+        choices of the brain's slots follow other draws. The streams start afresh, and an
+        outcome this brain awaits stays with this brain. Learning gives the new synapses weight:
+        a synapse moves on what its two neurons do in the free and nudged phases, not on its own
+        weight.
 
         Refused: a brain that records no construction (a custom anatomy); a part inside the brain's
         loop (``modules``, ``observers``, a code), which learns nothing at zero and changes the
@@ -2953,20 +2956,26 @@ class Brain:
         grafts the whole donor into one population of this brain, its neurons in order (a
         measured connectome placed as one region of a larger anatomy). A grafted pair holds the
         same number of neurons, taken in order, and every synapse of the donor among the grafted
-        neurons is a synapse of this brain.
+        neurons is a synapse of this brain. A composed region has no synapses inside it, so a
+        graft takes the regions a trained pathway runs through together.
 
         The grafted neurons take the donor's biases and gains, the synapses among them the
-        donor's efficacies, both with the donor's optimizer history; ``freeze=True`` stops them
-        learning. Every other synapse onto or from a grafted neuron starts at zero, with its
-        reciprocal partner: a joint between the graft and the rest of this brain, or wiring of
-        this brain among the grafted neurons that the donor lacks. The graft therefore settles at
-        first on what it reads from its own regions, as in the donor, and learning gives the
-        joints weight. Everything else is this brain's: its other weights, memories, actor and
-        arousal. The streams start afresh, as after ``reset()``.
+        donor's efficacies, contact counts, signs and plasticity masks; their optimizer history
+        starts afresh, as a new synapse's does. ``freeze=True`` stops them learning. A joint, a
+        synapse of this brain between a grafted neuron and the rest, starts at zero with its
+        reciprocal partner (``joints="zero"``), or keeps this brain's weight
+        (``joints="kept"``); wiring of this brain among the grafted neurons that the donor lacks
+        starts at zero. With joints at zero the graft settles at first on what it reads from its
+        own regions, and learning gives the joints weight. Everything else is this brain's: its
+        other weights, its memories and their records, its settings, actor and arousal, so a
+        whole donor grafted into a larger anatomy chooses as the donor does where those agree.
+        The streams start afresh, as after ``reset()``.
 
-        Refused: populations either brain lacks or of different sizes, a donor synapse among the
-        grafted neurons that this brain lacks, a different neuron model or apical compartment, a
-        learned code's region and tied or rated synapses. See ``docs/grow.md``.
+        Refused: populations either brain lacks or of different sizes; grafted regions that
+        share no synapse; a donor synapse among the grafted neurons that this brain lacks, or a
+        one-way donor synapse landing on half of one of this brain's reciprocal pairs; a
+        different neuron model, apical compartment or apical role; a learned code's region, or
+        a joint landing on it; tied or rated synapses. See ``docs/grow.md``.
         """
         return _graft(self, donor, regions, into, joints, freeze)
 
@@ -4611,7 +4620,7 @@ class Brain:
             + (0 if self.learned_code is None else self.learned_code.parameters())
         )
 
-    def save(self, path: str | Path) -> Path:
+    def save(self, path: str | Path, *, compressed: bool = True) -> Path:
         """Save the complete composition, including an action awaiting its real outcome.
 
         The file is ``cadence-brain/1``: the learner's checkpoint, the actor (its config,
@@ -4621,7 +4630,9 @@ class Brain:
         ``memories/<name>/...`` per present memory (``working_memory``, ``efference``,
         ``history``, ``recall``, ``hippocampus``, ``episodic``) with the memory's settings
         under ``memories`` in the metadata. ``Learner.save`` saves the slow learned response
-        alone.
+        alone. ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does:
+        float parameters compress little, and a large brain deflates in seconds where a plain
+        archive takes a tenth of one.
         """
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
@@ -4708,7 +4719,7 @@ class Brain:
             for array, value in arrays.items():
                 data[f"memories/{name}/{array}"] = value
         data["brain"] = np.array(canonical_json(metadata))
-        return _write(data, path)
+        return _write(data, path, compressed=compressed)
 
     def _saved_memories(self) -> dict[str, tuple[Any, dict[str, np.ndarray]]]:
         """Each present memory's settings and arrays, in the order the brain reads them."""
@@ -5120,6 +5131,11 @@ _GROW_PARTS = (
     "(the brain's slots followed by new ones)"
 )
 # settings of the brain's own loop: a new part there cannot start invisible and learn
+_GROW_TOKENS = (
+    "recall_tokens start the copy pathway as an identity onto the motor neurons, which grow "
+    "starts at zero on a trained brain: grow adds no recall memory with tokens and no heads to "
+    "a brain with them"
+)
 _GROW_LOOP = frozenset(
     {
         "inputs",
@@ -5183,11 +5199,12 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
         root = Path(folder)
         # the trained brain through its checkpoint, on the CPU, whatever device it lives on;
         # the grown brain starts its streams afresh, as after reset()
-        brain.save(root / "living.npz")
+        brain.save(root / "living.npz", compressed=False)
         trained = type(brain).load(root / "living.npz")
         trained.reset()
-        trained.save(root / "trained.npz")
-        template.save(root / "template.npz")
+        trained.save(root / "trained.npz", compressed=False)
+        template.save(root / "template.npz", compressed=False)
+        del trained, template
         with (
             np.load(root / "trained.npz", allow_pickle=False) as old,
             np.load(root / "template.npz", allow_pickle=False) as new,
@@ -5222,12 +5239,16 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
         changes.update(
             {name: names.pop(name) for name in list(names) if name.startswith("recall_")}
         )
+        if changes.get("recall_tokens") is not None:
+            raise ValueError(_GROW_TOKENS)
     elif "recall_heads" in names:
         heads = names.pop("recall_heads")
         if recall is None:
             raise ValueError(
                 "recall_heads needs the recall memory: grow(recall=True, recall_heads=k)"
             )
+        if recall.tokens is not None:
+            raise ValueError(_GROW_TOKENS)
         if isinstance(heads, (bool, np.bool_)) or not isinstance(heads, (int, np.integer)):
             raise ValueError("recall_heads must be an integer")
         if heads <= recall.heads:
@@ -5237,13 +5258,20 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
             )
         changes["recall_heads"] = int(heads)
     for name in names:
+        if name.startswith("recall_") and recall is None:
+            raise ValueError(f"{name} is a setting of the recall memory: grow it with recall=True")
         if name.startswith("recall_"):
             raise ValueError(
                 f"{name}: the brain's recall memory keeps its construction; grow adds read heads "
                 "(recall_heads) and retune changes its runtime settings"
             )
     if "history_decays" in names:
-        decays = tuple(names.pop("history_decays"))
+        value = names.pop("history_decays")
+        if isinstance(value, (str, bytes, Mapping)) or not isinstance(
+            value, (Sequence, np.ndarray)
+        ):
+            raise ValueError("history_decays must be a sequence of decays")
+        decays = tuple(value)
         had = () if brain.history is None else tuple(brain.history.decays)
         if len(decays) <= len(had) or decays[: len(had)] != had:
             raise ValueError(
@@ -5256,7 +5284,14 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
     if "efference_amplitude" in names:
         if brain.efference is not None:
             raise ValueError("the brain has its efference copy; retune changes its amplitude")
-        changes["efference_amplitude"] = names.pop("efference_amplitude")
+        amplitude = names.pop("efference_amplitude")
+        if (
+            isinstance(amplitude, (bool, np.bool_))
+            or not isinstance(amplitude, (int, float, np.integer, np.floating))
+            or not amplitude > 0
+        ):
+            raise ValueError("efference_amplitude above zero adds an efference copy")
+        changes["efference_amplitude"] = amplitude
         if "efference_decay" in names:
             changes["efference_decay"] = names.pop("efference_decay")
     if "slots" in names:
@@ -5274,6 +5309,11 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"{name} changes the brain's own loop, where a new part learns nothing at zero "
                 f"and changes the brain at any other start; grow adds {_GROW_PARTS}"
+            )
+        if name == "arousal" or (name.startswith("arousal_") and brain.arousal is None):
+            raise ValueError(
+                f"{name}: arousal is a construction choice grow does not add; compose the brain "
+                "with arousal=True"
             )
         raise ValueError(f"{name} is not a part; retune changes a living brain's settings")
     return changes
@@ -5357,10 +5397,15 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             memory_context=brain.memory_context,
             memory_replay=brain.memory_replay,
             memory_demonstrations=brain.memory_demonstrations,
-            memory_expansion=0 if separator is None else separator.expansion,
-            memory_winners=0 if separator is None else separator.winners,
-            memory_fan_in=0 if separator is None else separator.fan_in,
         )
+        if separator is not None:
+            settings.update(
+                memory_expansion=separator.expansion,
+                memory_winners=separator.winners,
+                memory_fan_in=separator.fan_in,
+            )
+        elif brain.sparse_code is None:  # keys without separation; a fixed code's are founders
+            settings["memory_expansion"] = 0
     inputs: Any = composition["inputs"]
     if "image" in composition:
         inputs = tuple(composition["image"])
@@ -5587,11 +5632,12 @@ def _graft(
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-graft-") as folder:
         root = Path(folder)
-        host.save(root / "living.npz")
+        host.save(root / "living.npz", compressed=False)
         fresh = type(host).load(root / "living.npz")
         fresh.reset()  # the grafted brain starts its streams afresh, as after reset()
-        fresh.save(root / "host.npz")
-        donor.save(root / "donor.npz")
+        fresh.save(root / "host.npz", compressed=False)
+        donor.save(root / "donor.npz", compressed=False)
+        del fresh
         with (
             np.load(root / "host.npz", allow_pickle=False) as mine,
             np.load(root / "donor.npz", allow_pickle=False) as theirs,
@@ -5670,7 +5716,7 @@ def _grafted_checkpoint(
 ) -> dict[str, np.ndarray]:
     """The checkpoint of the grafted brain: ``host`` carrying the donor's neurons ``source`` on
     its neurons ``target`` and the donor's synapses among them (both saved by ``Brain.save``);
-    no joint may touch the neurons ``untouchable``."""
+    no joint may land on the neurons ``untouchable``."""
     import json
 
     meta_host, meta_donor = json.loads(str(host["meta"])), json.loads(str(donor["meta"]))
@@ -5687,6 +5733,11 @@ def _grafted_checkpoint(
     pre = np.asarray(donor["pre"], dtype=np.int64)
     post = np.asarray(donor["post"], dtype=np.int64)
     inner = (where[pre] >= 0) & (where[post] >= 0)
+    if not inner.any():
+        raise ValueError(
+            "the grafted regions share no synapse, so nothing the donor learned would carry: "
+            "graft the regions they connect to as well"
+        )
     key = np.asarray(host["post"], dtype=np.int64) * n + np.asarray(host["pre"], dtype=np.int64)
     wanted = where[post[inner]] * n + where[pre[inner]]
     at = np.searchsorted(key, wanted)
@@ -5695,32 +5746,55 @@ def _grafted_checkpoint(
             "the donor has a synapse among the grafted neurons that this brain lacks: wire the "
             "grafted regions as the donor wires them"
         )
+    copied = np.zeros(len(key), dtype=bool)
+    copied[at] = True
+    host_pre = np.asarray(host["pre"], dtype=np.int64)
+    host_post = np.asarray(host["post"], dtype=np.int64)
+    if meta_host["reciprocal"]:  # a synapse and its reverse share one efficacy here
+        reverse = host_pre[at] * n + host_post[at]
+        partner = np.minimum(np.searchsorted(key, reverse), len(key) - 1)
+        if ((key[partner] == reverse) & ~copied[partner]).any():
+            raise ValueError(
+                "a one-way synapse of the donor would land on half of a reciprocal pair of this "
+                "brain: graft regions that the two brains wire alike"
+            )
+    if "apical_synapses" in host and not np.array_equal(
+        np.asarray(host["apical_synapses"])[at], np.asarray(donor["apical_synapses"])[inner]
+    ):
+        raise ValueError(
+            "the grafted synapses' apical roles differ in the two brains: graft the regions in "
+            "the order the donor stacks them"
+        )
     data = dict(host)
-    for name in ("count", "sign", "efficacy", "plastic_synapses", "velocity", "second_moment"):
+    # the donor's weights, contact counts, signs and plasticity masks; an optimizer history
+    # afresh, as a new synapse's: the donor's moments belong to the donor's count of lessons
+    for name in ("count", "sign", "efficacy", "plastic_synapses"):
         values = np.array(host[name])
         values[at] = donor[name][inner]
         data[name] = values
-    for name in ("bias", "log_gain", "plastic_neurons", "velocity_bias", "second_moment_bias"):
+    for name in ("bias", "log_gain", "plastic_neurons"):
         values = np.array(host[name])
         values[target] = donor[name][source]
         data[name] = values
-    # every other synapse onto or from a grafted neuron starts at zero, its reciprocal partner
-    # (another such synapse) with it, and with a newborn's optimizer history
-    copied = np.zeros(len(key), dtype=bool)
-    copied[at] = True
+    for name in ("velocity", "second_moment"):
+        data[name] = np.array(host[name])
+        data[name][at] = 0.0
+    for name in ("velocity_bias", "second_moment_bias"):
+        data[name] = np.array(host[name])
+        data[name][target] = 0.0
     grafted = np.zeros(n, dtype=bool)
     grafted[target] = True
-    pre = np.asarray(host["pre"], dtype=np.int64)
-    post = np.asarray(host["post"], dtype=np.int64)
-    silent = (grafted[pre] | grafted[post]) & ~copied
-    if (silent & (np.isin(pre, untouchable) | np.isin(post, untouchable))).any():
+    joint = grafted[host_pre] ^ grafted[host_post]
+    if (joint & np.isin(host_post, untouchable)).any():
         raise ValueError(
             "this brain's learned code lives in its tables as well as its synapses; a graft "
-            "joined to its code region is refused"
+            "whose joints land on its code region is refused"
         )
-    if joints == "zero":
-        for name in ("efficacy", "velocity", "second_moment"):
-            data[name][silent] = 0.0
+    # wiring of this brain among the grafted neurons that the donor lacks is not the donor's:
+    # it starts at zero; a joint starts at zero, or keeps this brain's weight
+    silent = (grafted[host_pre] & grafted[host_post] & ~copied) | (joint & (joints == "zero"))
+    for name in ("efficacy", "velocity", "second_moment"):
+        data[name][silent] = 0.0
     if freeze:
         data["plastic_synapses"][at] = False
         data["plastic_neurons"][target] = False

@@ -433,7 +433,10 @@ def test_the_grown_brain_describes_the_trained_brain_and_its_new_parts():
     before, after = trained.describe(), grown.describe()
     assert {name: after["genes"][name] for name in before["genes"]} == before["genes"]
     assert set(after["genes"]) - set(before["genes"]) == {
-        "recall_heads", "recall_compete", "history_decays", "history_amplitude",
+        "recall_heads",
+        "recall_compete",
+        "history_decays",
+        "history_amplitude",
     }
     assert after["memories"]["working_memory"] == before["memories"]["working_memory"]
     assert after["memories"]["hippocampus"] == before["memories"]["hippocampus"]
@@ -486,3 +489,61 @@ def test_two_brains_combine_by_teaching():
     answers = combined.predict(test)
     assert np.mean(answers[:, 1] == second.predict(test)) > 0.75
     assert np.mean(answers[:, 0] == first.predict(test)) > 0.85
+
+
+@pytest.mark.parametrize(
+    "inputs, settings",
+    [(40, dict(code=64, memory_choice=True)), (6, dict(memory_choice=True, memory_expansion=0))],
+)
+def test_episodic_brains_without_a_separation_grow(inputs, settings):
+    trained = taught(inputs=inputs, seed=2, **settings)
+    check_identical(trained, trained.grow(recall=True), inputs=inputs)
+
+
+def test_sampled_choices_follow_the_trained_brain_without_new_slots():
+    """Without new slots the grown brain draws the trained brain's random numbers."""
+    trained = taught(recall=True)
+    twin = copy.deepcopy(trained)
+    twin.reset()
+    grown = trained.grow(recall_heads=2, history_decays=(0.5,))
+    rng = np.random.default_rng(8)
+    for _ in range(8):
+        x = rng.random((3, 6))
+        np.testing.assert_array_equal(twin.act(x), grown.act(x))
+
+
+@pytest.mark.parametrize(
+    "base, parts, message",
+    [
+        ({}, dict(efference_amplitude=0.0), "above zero"),
+        ({}, dict(recall_temperature=0.3), "grow it with recall=True"),
+        ({}, dict(recall=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]), "tokens"),
+        (
+            dict(recall=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
+            dict(recall_heads=2),
+            "tokens",
+        ),
+        (
+            dict(recall=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
+            dict(slots=(4, 2)),
+            "per action",
+        ),
+        ({}, dict(history_decays=0.5), "sequence"),
+        ({}, dict(arousal=True), "construction choice"),
+    ],
+)
+def test_grow_refuses_with_the_reason(base, parts, message):
+    trained = taught(**base, lessons=2)
+    with pytest.raises(ValueError, match=message):
+        trained.grow(**parts)
+
+
+def test_a_plain_archive_saves_and_loads_the_same_brain(tmp_path):
+    brain = taught(recall=True)
+    brain.save(tmp_path / "plain.npz", compressed=False)
+    brain.save(tmp_path / "packed.npz")
+    plain, packed = cd.Brain.load(tmp_path / "plain.npz"), cd.Brain.load(tmp_path / "packed.npz")
+    assert (tmp_path / "plain.npz").stat().st_size > (tmp_path / "packed.npz").stat().st_size
+    x = np.random.default_rng(9).random((3, 6))
+    np.testing.assert_array_equal(plain.act(x, greedy=True), packed.act(x, greedy=True))
+    np.testing.assert_array_equal(plain.brain.efficacy, packed.brain.efficacy)

@@ -274,11 +274,73 @@ def test_graft_refuses_a_learned_code_region():
     host = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=1)
     with pytest.raises(ValueError, match="learned code"):
         host.graft(donor, ["code"])
-    with pytest.raises(ValueError, match="learned code"):
-        host.graft(donor, ["association"])  # the code region feeds the association
 
 
 def test_graft_refuses_a_donor_that_is_not_a_brain():
     _, host = vision_pair()
     with pytest.raises(TypeError, match="a Brain"):
         host.graft(host.connectome, VISION)
+
+
+def test_the_graft_starts_a_fresh_optimizer_history():
+    """The donor's moments belong to the donor's count of lessons: carried under this brain's
+    count, the first steps of the grafted synapses would be many times too large."""
+    donor, host = vision_pair()
+    rng = np.random.default_rng(5)
+    for _ in range(30):
+        donor.lesson(rng.random((8, 6, 6)), rng.integers(0, 4, size=8))
+    assert np.abs(donor.learner.velocity).sum() > 0
+    grafted = host.graft(donor, VISION)
+    h = grafted.connectome
+    inside = np.zeros(h.n, dtype=bool)
+    for mine in VISION.values():
+        inside[list(h.populations[mine])] = True
+    graft = inside[h.pre] & inside[h.post]
+    assert not grafted.learner.velocity[graft].any()
+    assert not grafted.learner.second_moment[graft].any()
+    assert not grafted.learner.velocity_bias[inside].any()
+
+
+def test_graft_refuses_a_one_way_synapse_on_half_of_a_pair():
+    """The donor's sensory region feeds its association one way; this brain's module_0 and
+    association read each other through pairs that share one efficacy."""
+    donor = cd.Brain.compose(6, 4, modules=(16,), seed=0)
+    host = cd.Brain.compose(6, 4, modules=(6, 16), seed=1)
+    with pytest.raises(ValueError, match="half of a reciprocal pair"):
+        host.graft(donor, {"sensory": "module_0", "association": "association"})
+
+
+def test_graft_refuses_regions_that_share_no_synapse():
+    donor, host = vision_pair()
+    with pytest.raises(ValueError, match="share no synapse"):
+        host.graft(donor, {"association": "module_1"})
+
+
+def test_graft_refuses_another_apical_role():
+    donor = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=0)
+    host = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=1)
+    with pytest.raises(ValueError, match="apical roles"):
+        host.graft(donor, {"module_0": "association", "association": "module_0"})
+
+
+def test_a_learned_code_host_takes_a_graft_its_code_reads_into():
+    """Synapses from the code region are ordinary synapses; only a joint landing on the code
+    region, which lives in its tables, is refused."""
+    donor = taught(cd.Brain.compose(40, 4, modules=(16, 16), seed=0), inputs=40)
+    host = cd.Brain.compose(40, 4, learned_code=16, modules=(16, 16), seed=1)
+    grafted = host.graft(donor, ["module_0", "association"])
+    grafted.act(np.random.default_rng(0).random((2, 40)), greedy=True)
+    coded = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=2)
+    with pytest.raises(ValueError, match="land on its code region"):
+        host.graft(coded, ["prefrontal", "association"])
+
+
+def test_wiring_the_donor_lacks_starts_at_zero_even_with_kept_joints():
+    """This brain's motor neurons inhibit one another; the donor's do not."""
+    donor = taught(cd.Brain.compose(6, 4, modules=(16,), seed=0))
+    host = cd.Brain.compose(6, 4, modules=(16,), lateral=-0.2, seed=1)
+    grafted = host.graft(donor, ["association", "motor"], joints="kept")
+    motor = host.connectome.populations["motor"]
+    lateral = np.isin(grafted.connectome.pre, motor) & np.isin(grafted.connectome.post, motor)
+    assert lateral.any() and not grafted.brain.efficacy[lateral].any()
+    assert host.brain.efficacy[lateral].any()

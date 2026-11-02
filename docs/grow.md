@@ -9,8 +9,10 @@ brains they read unchanged.
   visual system into a larger brain, or a whole brain (a measured connectome, say) as one region
   of a larger anatomy.
 
-In both, every synapse that joins the new part to the rest of the brain starts at zero. The
-brain therefore acts exactly as it did, and learning then gives those synapses weight.
+Both start the synapses that join the new part to the rest of the brain at zero. A grown brain
+therefore settles to the states the trained brain settles to and makes the same greedy choices;
+a graft settles at first on what it reads from its own regions. Learning then gives the joining
+synapses weight.
 
 ## Grow a trained brain
 
@@ -37,10 +39,10 @@ bigger.step(x, teacher=labels)
 
 | Setting | Adds | Starts at zero |
 | --- | --- | --- |
-| `recall=True`, with any `recall_*` setting `compose` takes | The [recall memory](memory.md#recall-memory): its read ports, empty slots, address and position maps at their founders | The ports' synapses into the association region (and a copy pathway's into the motor region) |
+| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory): its read ports, empty slots, address and position maps at their founders | The ports' synapses into the association region (and a copy pathway's into the motor region) |
 | `recall_heads=k` | More read heads of the brain's recall memory, over its bank | The new ports' synapses |
 | `history_decays=(...)` | A heard history (with `history_amplitude`), or the brain's decays followed by new ones | The history's synapses into the association region |
-| `efference_amplitude=a` | An efference copy (with `efference_decay`) | The copy's synapses into the association region |
+| `efference_amplitude=a` (above zero) | An efference copy (with `efference_decay`) | The copy's synapses into the association region |
 | `slots=(...)` | New output slots after the brain's own: `slots=(4, 2)` gives a brain of one slot of four a second slot of two | Every synapse between the association region and the new motor neurons |
 
 Several parts grow in one call, and a grown brain grows again. The grown brain is the brain's
@@ -54,9 +56,10 @@ generators. `grown.describe()` differs from `brain.describe()` in the new parts 
 ### A trained visual system
 
 A composed image brain sees through its `visual` region: the pixels and the feature maps that
-read them. What it learns to see lives in the modules above the maps, so a trained visual
-system is the `visual` region with the modules a brain trained on images built over it. Graft it
-into a larger brain whose regions of the same sizes sit in the same places:
+read them. What it learns to see lives in the synapses of the modules above the maps, and a
+composed region has no synapses inside it: a trained visual system is the `visual` region
+together with the modules a brain trained on images built over it. Graft them together, into a
+larger brain whose regions of the same sizes sit in the same places:
 
 ```python
 import numpy as np
@@ -75,10 +78,12 @@ larger = Brain.compose(inputs=(6, 6), actions=2, modules=(32, 16, 24), seed=1)
 seeing = larger.graft(eye, {"visual": "visual", "module_0": "module_0", "association": "module_1"})
 ```
 
-The eye's `association` region becomes `module_1` of the larger brain, under a new association
-region of 24 neurons. The grafted regions keep the eye's weights. Their joints to the larger
-brain's own regions (here `module_1` and the new association) start at zero: at first the graft
-settles on what it reads from the image, and the larger brain learns to read the graft.
+The eye's pathway from the pixels through `module_0` to its `association` region becomes the
+pathway to `module_1` of the larger brain, under a new association region of 24 neurons. The
+grafted regions keep the eye's weights. Their joints to the larger brain's own regions (here the
+synapses between `module_1` and the new association) start at zero: at first the graft settles on
+what it reads from the image, and the larger brain learns to read the graft. A graft of regions
+that share no synapse would carry nothing the donor learned, and is refused.
 
 ### A whole brain as one region of a larger anatomy
 
@@ -123,7 +128,11 @@ assert np.array_equal(speaking.act(np.hstack([x, np.zeros((3, 5))]), greedy=True
 ```
 
 The language region reads the words, so it is active, and the fly's association moves between
-the phases when the fly is taught: the joints between them learn from zero.
+the phases when the fly is taught: the joints between them learn from zero. The larger brain
+acts as the fly brain here because nothing but weights tells the two apart: both are composed
+without a hippocampus and with the same settings. A graft carries weights; the memories, their
+records and the settings are the larger brain's own, and where they differ from the donor's
+the choices can differ too.
 
 ### Options
 
@@ -132,26 +141,32 @@ the phases when the fly is taught: the joints between them learn from zero.
 | `regions=["visual", "module_0"]` | Donor populations grafted into this brain's populations of the same names |
 | `regions={"association": "module_1"}` | A donor population mapped onto one of this brain's |
 | `into="fly"` | The whole donor into one population of this brain, its neurons in order |
-| `joints="zero"` (founder) | Every synapse joining the graft to the rest of this brain starts at zero |
-| `joints="kept"` | The joints keep this brain's own weights (a newborn's founder draw): the graft is read at once, and the brain changes at once |
+| `joints="zero"` (founder) | Every synapse joining the graft to the rest of this brain starts at zero, with its reciprocal partner |
+| `joints="kept"` | The joints keep this brain's own weights (a newborn's founder draw, or what this brain learned): the graft is read at once, and the brain changes at once |
 | `freeze=True` | The grafted synapses and neurons stop learning; the joints and the rest of the brain learn |
 
 Each grafted pair of populations holds the same number of neurons, taken in order, and every
-synapse of the donor among the grafted neurons must be a synapse of this brain: wire the larger
-brain as the donor is wired where the graft goes. A synapse of this brain among the grafted
-neurons that the donor lacks starts at zero, as a joint does. The grafted neurons take the
-donor's biases and gains and the synapses among them the donor's efficacies, both with the
-donor's optimizer history. Everything else is this brain's own: its other weights, its memories
-and their records, its actor and its arousal.
+synapse of the donor among the grafted neurons must be a synapse of this brain, wired alike: a
+one-way synapse of the donor may not land on half of a reciprocal pair here, whose halves share
+one efficacy. Wiring of this brain among the grafted neurons that the donor lacks starts at zero.
+The grafted neurons take the donor's biases and gains, and the synapses among them the donor's
+efficacies, contact counts, signs and plasticity masks, so a synapse frozen in the donor stays
+frozen. Their optimizer history starts afresh, as a new synapse's does: the donor's moments
+belong to the donor's count of lessons. Everything else is this brain's own: its other weights,
+its memories and their records, its settings, its actor and its arousal.
 
 ## How a new part joins the brain
 
 A brain settles to the state in which every neuron's drive balances its activity. A new part
-changes that state only through the synapses that join it to the rest. With those at zero (and a
-reciprocal pair shares one efficacy, so both directions start at zero), every trained neuron
-receives exactly the drive it received before, settles to the same state and makes the same
-choice. Where the new part lies inside the layout, the larger graph can sum in another order,
-and the trained neurons settle as before within rounding.
+changes that state only through the synapses that join it to the rest. With those at zero (a
+reciprocal pair shares one efficacy, so both directions start at zero), every trained neuron of
+a grown brain receives exactly the drive it received before, settles to the same state and makes
+the same greedy choice. Where the new part lies inside the layout (new slots, in front of the
+memory regions), or the brain lives on an accelerator, the larger graph can sum in another order,
+and the trained neurons settle as before within rounding. Sampled choices draw random numbers:
+new slots draw their own, so the sampled choices of the brain's slots follow other draws, and an
+aroused brain in `live`, which explores one slot at a time, shares its exploration with the new
+slots. Without new slots the draws, and the sampled choices, are those of the trained brain.
 
 The [free/nudged rule](settling.md#learning-the-freenudged-rule) moves a synapse on what its two
 neurons do in the two phases, `s+[pre] s+[post] - s0[pre] s0[post]`, never on its own weight. A
@@ -182,9 +197,14 @@ feedback, as an association region does, settles in the larger brain without tha
   lessons, with their correct answers or with the answers the brain gave before it grew.
 - **Mind the rates.** New synapses learn at the brain's current rates. A brain whose rates were
   lowered late in training teaches its new parts slowly; raise them with `retune` for a while,
-  knowing that the trained parts move faster as well.
+  knowing that the trained parts move faster as well. Under the `"normalized"` teaching point a
+  new synapse's optimizer history is short while the brain's count of lessons is long, so its
+  first tens of steps are up to about twice the size a settled synapse takes.
 - **A new memory starts empty.** Every act writes a slot of a new recall memory; lessons teach
-  the brain to read the slots.
+  the brain to read the slots. A brain composed with `attention=True` keeps its one-head
+  address settings when it grows heads; retune `recall_address` and `recall_temperature` to the
+  values `compose` gives several heads (0.01 and 0.25) if the new heads should learn their own
+  addresses.
 - **Living brains.** The arousal, its age included, carries over. A calm adult brain acts
   without learning in `live`, so its new parts learn on aroused moments; teach them with `step`
   or `lesson` to proceed faster.
@@ -193,6 +213,10 @@ feedback, as an association region does, settles in the larger brain without tha
   back to `True` to let the graft learn again.
 - **Streams and outcomes.** The new brain starts its streams afresh, as after `reset()`. An
   outcome the trained brain awaits stays with the trained brain.
+- **Cost.** Growing or grafting goes through the brains' checkpoints in a temporary folder: a
+  brain of a few million synapses takes seconds and the memory of a few copies of itself.
+  `save(path, compressed=False)` writes a large brain's checkpoint in a fraction of the time a
+  compressed one takes.
 
 ## Combine the skills of two brains
 
@@ -229,7 +253,7 @@ new slot what the other brain knows.
   do, those of earlier releases included. A custom anatomy (`compose(connectome=...)`) records
   no construction to compose again; graft it into a larger anatomy instead.
 - **Which brains graft.** Any two brains, composed or custom, whose grafted populations match in
-  size and wiring, with the same neuron model and the same apical compartment.
+  size and wiring, with the same neuron model, apical compartment and apical roles.
 - **Devices.** The new brain lives on the backend, device and precision of the brain whose method
   made it.
 - **Checkpoints.** A grown or grafted brain is an ordinary brain: it saves and loads like any
@@ -240,9 +264,12 @@ What does not grow or graft:
 
 - a part inside the brain's loop through `grow` (`modules`, `observers`, `code`, `learned_code`,
   `lateral`, `apical`, other `inputs`); compose the larger layout and graft instead;
-- new slots where a memory is laid out per action (`recall_action`, `recall_tokens`,
-  `memory_choice`), or where the motor region is a deep brain's [apical](tune.md#deep-brains)
-  pool (observers above it): a new neuron would join the pool's normalization;
-- a learned code's region, or a joint onto it: the code lives in its tables as well as its
+- `arousal` or the episodic memory (`memory_choice`), choices of the brain's construction;
+- `recall_tokens`, which start the copy pathway as an identity onto the motor neurons: no recall
+  memory with them, and no heads or slots for a brain with them;
+- new slots where a memory is laid out per action (`recall_action`, `memory_choice`), or where
+  the motor region is a deep brain's [apical](tune.md#deep-brains) pool (observers above it): a
+  new neuron would join the pool's normalization;
+- a learned code's region, or a joint landing on it: the code lives in its tables as well as its
   synapses;
 - brains with tied or rated synapses.
