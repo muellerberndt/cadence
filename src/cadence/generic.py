@@ -2956,8 +2956,8 @@ class Brain:
         grafts the whole donor into one population of this brain, its neurons in order (a
         measured connectome placed as one region of a larger anatomy). A grafted pair holds the
         same number of neurons, taken in order, and every synapse of the donor among the grafted
-        neurons is a synapse of this brain. A composed region has no synapses inside it, so a
-        graft takes the regions a trained pathway runs through together.
+        neurons is a synapse of this brain. A module has no synapses inside it, so a graft takes
+        the regions a trained pathway runs through together.
 
         The grafted neurons take the donor's biases and gains, the synapses among them the
         donor's efficacies, contact counts, signs and plasticity masks; their optimizer history
@@ -4631,8 +4631,8 @@ class Brain:
         ``history``, ``recall``, ``hippocampus``, ``episodic``) with the memory's settings
         under ``memories`` in the metadata. ``Learner.save`` saves the slow learned response
         alone. ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does:
-        float parameters compress little, and a large brain deflates in seconds where a plain
-        archive takes a tenth of one.
+        larger on disk, and a large brain's is written in a small part of the time deflating
+        takes.
         """
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
@@ -5136,6 +5136,7 @@ _GROW_TOKENS = (
     "starts at zero on a trained brain: grow adds no recall memory with tokens and no heads to "
     "a brain with them"
 )
+_GROW_EPISODIC = frozenset({"episodic", *_EPISODIC_SETTINGS})
 _GROW_LOOP = frozenset(
     {
         "inputs",
@@ -5152,14 +5153,6 @@ _GROW_LOOP = frozenset(
         "apical",
         "seed",
         "connectome",
-        "episodic",
-        "memory_choice",
-        "memory_context",
-        "memory_replay",
-        "memory_demonstrations",
-        "memory_expansion",
-        "memory_winners",
-        "memory_fan_in",
         "backend",
         "device",
     }
@@ -5267,8 +5260,10 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
             )
     if "history_decays" in names:
         value = names.pop("history_decays")
-        if isinstance(value, (str, bytes, Mapping)) or not isinstance(
-            value, (Sequence, np.ndarray)
+        if (
+            isinstance(value, (str, bytes, Mapping))
+            or not isinstance(value, (Sequence, np.ndarray))
+            or np.ndim(value) != 1
         ):
             raise ValueError("history_decays must be a sequence of decays")
         decays = tuple(value)
@@ -5314,6 +5309,11 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
             raise ValueError(
                 f"{name}: arousal is a construction choice grow does not add; compose the brain "
                 "with arousal=True"
+            )
+        if name in _GROW_EPISODIC:
+            raise ValueError(
+                f"{name}: the hippocampus and its episodic memory are a construction choice grow "
+                "does not add or change; compose the brain with them"
             )
         raise ValueError(f"{name} is not a part; retune changes a living brain's settings")
     return changes

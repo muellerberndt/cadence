@@ -56,10 +56,10 @@ generators. `grown.describe()` differs from `brain.describe()` in the new parts 
 ### A trained visual system
 
 A composed image brain sees through its `visual` region: the pixels and the feature maps that
-read them. What it learns to see lives in the synapses of the modules above the maps, and a
-composed region has no synapses inside it: a trained visual system is the `visual` region
-together with the modules a brain trained on images built over it. Graft them together, into a
-larger brain whose regions of the same sizes sit in the same places:
+read them, its receptive fields the synapses inside it. What it learns to see lives in the
+synapses of the modules above the maps, and a module has no synapses inside it: a trained visual
+system is the `visual` region together with the modules a brain trained on images built over it.
+Graft them together, into a larger brain whose regions of the same sizes sit in the same places:
 
 ```python
 import numpy as np

@@ -528,7 +528,10 @@ def test_sampled_choices_follow_the_trained_brain_without_new_slots():
             "per action",
         ),
         ({}, dict(history_decays=0.5), "sequence"),
+        ({}, dict(history_decays=np.array(0.5)), "sequence"),
         ({}, dict(arousal=True), "construction choice"),
+        ({}, dict(memory_choice=True), "construction choice"),
+        ({}, dict(episodic=False), "construction choice"),
     ],
 )
 def test_grow_refuses_with_the_reason(base, parts, message):
