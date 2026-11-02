@@ -2856,11 +2856,13 @@ class Brain:
         for an already issued action. Changing ``learning_beta`` with sampled
         feedback pending is refused: its saved contrast belongs to the old beta.
         Submit that outcome before changing beta; do not discard it to retune. So is
-        changing ``recall_address_step``, ``recall_address`` or ``recall_address_reward``
-        while that feedback holds the recall memory's address contrast, which belongs to
-        the lesson's form and rates it was taken at. At ``recall_address_reward=0`` the
-        actor drops the address map's trace, and the brain reports and saves as one
-        composed at 0.
+        changing ``recall_address_step``, ``recall_address``, ``recall_address_reward``,
+        ``recall_position_reward`` or ``recall_position_rate`` while that feedback holds the
+        recall memory's address contrast, which belongs to the lesson's form and rates it
+        was taken at. A change of ``recall_position_reward`` that changes the eligibility's
+        columns drops the read's trace; with neither ``recall_address_reward`` nor
+        ``recall_position_reward`` the actor drops it, and the brain reports and saves as
+        one composed at 0.
 
         Wiring, initialization and enabling/disabling components are construction
         choices. ``retune`` resets nothing; ``brain.arousal.reset()`` resets the arousal level
@@ -2968,6 +2970,14 @@ class Brain:
                 retuned.get("null", self.recall.null),
                 retuned.get("temperature", self.recall.temperature),
             )
+            # the pairings construction refuses
+            if self.recall.chain and retuned.get("address_reward", self.recall.address_reward):
+                raise ValueError("chain is not combined with address_reward")
+            if (
+                retuned.get("position_reward", self.recall.position_reward)
+                and not self.recall.position_maps
+            ):
+                raise ValueError("position_reward trains the position maps: it needs position")
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, {**pointed, **learning_genes}, "learning")
@@ -2987,7 +2997,10 @@ class Brain:
             for component, field, value in memory_changes:
                 if (
                     component is self.recall
-                    and field in ("address_step", "address", "address_reward")
+                    and field in (
+                        "address_step", "address", "address_reward", "position_reward",
+                        "position_rate",
+                    )
                     and value != getattr(component, field)
                 ):
                     raise ValueError(
@@ -3006,17 +3019,25 @@ class Brain:
                 # held calm moments belong to the hindsight they were held under
                 self._calm, self._calm_issued = [], None
             self.arousal.config = arousal
+        # the columns of the read's reward eligibility, which position_reward sets
+        columns = None if self.recall is None else self.recall.reward_columns
         for component, field, value in memory_changes:
             setattr(component, field, value)
+        if self.recall is not None and self.recall.reward_columns != columns:
+            # a trace of the old columns cannot continue (no contrast is pending: refused above)
+            agent.trace_memory = None
         if self.learned_code is not None and any(
             component is self.learned_code for component, _, _ in memory_changes
         ):
             # the region's sub-network and the graph take the tables again
             self.learned_code.install()
             self.learner.brain = self._installed(self.brain)
-        if self.recall is not None and not self.recall.address_reward:
-            # reward leaves the address map as it is: the actor keeps no eligibility of it, and
-            # the brain reports and saves as one composed without it
+        if self.recall is not None and not (
+            self.recall.address_reward
+            or (self.recall.position_reward and self.recall.position_maps)
+        ):
+            # reward leaves the read as it is: the actor keeps no eligibility of it, and the
+            # brain reports and saves as one composed without it
             agent.trace_memory = agent._pending_memory = None
         return self
 
