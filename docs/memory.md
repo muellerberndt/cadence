@@ -982,7 +982,11 @@ The anchored buckets follow the age buckets, and one more holds every slot writt
 episode began. Each stream counts the moments written in its episode (`brain.recall.told`);
 `Recall.end`, a reset and `done` start it again. The maps start at zero, so a newborn reads as
 without the option, and the lesson steps them with the position maps; rewards do not
-([#237](https://github.com/muellerberndt/cadence/issues/237)).
+([#237](https://github.com/muellerberndt/cadence/issues/237)). On stories of 24 to 60 events
+with the cues `first`, `second` and `last` mixed (six confirmation founders, declared before
+the run), the anchor answers `first` at 0.998 to 1.000 and `second` at 0.990 to 1.000, against
+0.31 to 0.45 and 0.31 to 0.34 without it; induction, n-back, periodic continuation and copying
+read the same with and without it.
 
 **The relative read (opt-in, `recall_relative=True`; it needs the position term).** Some reads
 are placed where an earlier read pointed: copying a sequence, the token after the one just

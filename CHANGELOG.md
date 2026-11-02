@@ -29,7 +29,10 @@
   ages are, with one more bucket for slots written before the episode began. Ages count back
   from the present, so "the first told" moved with the story's length; its place in the
   episode does not. Each stream counts the moments of its episode (`Recall.told`); the maps
-  start at zero and the lesson steps them with the position maps. Checkpoints keep both.
+  start at zero and the lesson steps them with the position maps. Checkpoints keep both. On six
+  confirmation founders (declared before the run), stories of 24 to 60 with the cues mixed:
+  `first` 0.998 to 1.000 and `second` 0.990 to 1.000 with it, 0.31 to 0.45 and 0.31 to 0.34
+  without; the sequence battery (induction, n-back, periodic, copying) reads the same.
 - `recall_chain` (opt-in, #234): with several heads, each head after the first adds to its
   address what the head before it read (its recall and next reads) through a map that starts at
   zero and the address lesson steps, so one moment can place a read where an earlier read
