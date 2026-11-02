@@ -15,7 +15,7 @@
   synapse onto a trained neuron starts at zero with its reciprocal partner, so the grown brain
   settles to the trained brain's states and makes its greedy choices: bit for bit where the
   larger graph sums in the same order, within rounding where it does not (new slots inside the
-  layout, an accelerator). New slots draw random numbers of their own, so the old slots' sampled
+  layout, another processor's kernel, an accelerator). New slots draw random numbers of their own, so the old slots' sampled
   choices follow other draws. The free/nudged rule moves a synapse on what its two neurons do,
   not on its own weight, so the new synapses learn. The trained brain is unchanged. Refused with
   the reason: a brain that records no construction (a custom anatomy), a part inside the brain's

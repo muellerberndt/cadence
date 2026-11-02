@@ -63,9 +63,11 @@ def test_a_whole_donor_grafted_into_a_larger_anatomy_acts_as_the_donor():
     for _ in range(10):
         x = rng.random((3, 6))
         np.testing.assert_array_equal(twin.act(x, greedy=True), grafted.act(x, greedy=True))
-        np.testing.assert_array_equal(
+        np.testing.assert_allclose(  # bit for bit where the larger graph sums in the same order
             np.asarray(twin.basal_ganglia.state.activation),
             np.asarray(grafted.basal_ganglia.state.activation)[:, neurons],
+            rtol=0,
+            atol=1e-12,
         )
     language = bigger.populations["language"]
     joints = np.isin(grafted.connectome.pre, language) | np.isin(grafted.connectome.post, language)

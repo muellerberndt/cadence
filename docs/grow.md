@@ -161,9 +161,9 @@ A brain settles to the state in which every neuron's drive balances its activity
 changes that state only through the synapses that join it to the rest. With those at zero (a
 reciprocal pair shares one efficacy, so both directions start at zero), every trained neuron of
 a grown brain receives exactly the drive it received before, settles to the same state and makes
-the same greedy choice. Where the new part lies inside the layout (new slots, in front of the
-memory regions), or the brain lives on an accelerator, the larger graph can sum in another order,
-and the trained neurons settle as before within rounding. Sampled choices draw random numbers:
+the same greedy choice: bit for bit where the larger graph sums in the same order, and within
+rounding where it sums in another (new slots inside the layout, another processor's kernel, an
+accelerator). Sampled choices draw random numbers:
 new slots draw their own, so the sampled choices of the brain's slots follow other draws, and an
 aroused brain in `live`, which explores one slot at a time, shares its exploration with the new
 slots. Without new slots the draws, and the sampled choices, are those of the trained brain.
