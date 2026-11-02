@@ -80,6 +80,7 @@ Brain(connectome, *, episodic=True, consolidation=0.05, memory_decay=0.9,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
       memory_context=0.0, memory_replay=0, memory_demonstrations=0.0,
       memory_expansion=0, memory_winners=32, memory_fan_in=None, memory_extinction=0.0,
+      memory_context_hold=None,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
       history_decays=(), history_amplitude=3.0, recall=False, learning=None,
@@ -106,7 +107,7 @@ above, so pass these here or use `compose` ([episodic settings](memory.md#episod
 | Rule | Raised |
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
-| `memory_context`, `memory_replay`, `memory_demonstrations`, `memory_expansion`, `memory_extinction` need `memory_choice` | `ValueError` |
+| `memory_context`, `memory_replay`, `memory_demonstrations`, `memory_expansion`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `memory_fan_in` needs `memory_expansion` (so `memory_choice` too) and at most the key width; a brain with a fixed `code` refuses both | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, a removed `learned_code_*` name (`LearnedCode.REMOVED`), `code` beside it, an image brain, a backend other than `cpu`, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
@@ -157,7 +158,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
 | `attention` | whether `compose` applied the opt-in learned-code contextual-memory recipe; its effective mechanism is recorded by the learned-code and Recall settings |
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |
-| `memory_choice`, `memory_context`, `memory_replay`, `memory_demonstrations`, `memory_extinction` | the resolved construction settings |
+| `memory_choice`, `memory_context`, `memory_replay`, `memory_demonstrations`, `memory_extinction`, `memory_context_hold` | the resolved construction settings |
 | `arousal` | the stream's `Arousal`, or `None` |
 | `pending_feedback` | read-only: the issued action awaits its outcome (`wait` keeps it) |
 | `decision_id` | read-only: the `arousal.age` at which `live` issued the awaited action, or `None`; saved and restored |
@@ -262,7 +263,9 @@ associative store (`brain.hippocampus`) and `temporal` the context records
 (`brain.context_memory`, None at `memory_context=0`); `share`, `steps`, `demonstrations`
 and `extinction` are `memory_context`, `memory_replay`, `memory_demonstrations` and
 `memory_extinction`; `paid`, the store of direct payments that `memory_extinction` reads, is
-None without it. Per stream it holds
+None without it; `hold` is `memory_context_hold`, and with it the streams also keep
+`before` (the context before the last decision) and `seen` (that decision's observation
+code). Per stream it holds
 `context` (the temporal context after the last decision), `decision` (that decision's key)
 and `paths` (the recent decisions, one per situation left). `vote(code, key)` is the mean of
 the place read and the context read that joins the motor readout; `key(code)` is the key of a

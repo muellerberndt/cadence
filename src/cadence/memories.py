@@ -178,7 +178,15 @@ class EpisodicRecords:
     never a replayed or demonstrated credit. A zero outcome then writes a learned zero for
     the chosen action where the records' vote for it and its direct payment in this place
     both reach the threshold, so a paid record is extinguished when failures pay nothing.
-    The rule is Sean McClane's (cadence#210)."""
+    The rule is Sean McClane's (cadence#210).
+
+    With a hold (``memory_context_hold``) some decisions stay out of the temporal context:
+    ``"unchanged"`` keys a decision taken on the observation of the stream's previous decision
+    as if that decision had not been taken, the replay path's rule for the key; ``"punished"``
+    takes a decision whose outcome was below zero, in the middle of an attempt, back out of
+    the context. Will Glynn measured both (cadence#202). Per stream it then also keeps the
+    context before the last decision (``before``) and that decision's observation code
+    (``seen``)."""
 
     def __init__(
         self,
@@ -192,7 +200,12 @@ class EpisodicRecords:
         demonstrations: float,
         paid: SynapticMemory | None = None,
         extinction: float = 0.0,
+        hold: str | None = None,
     ) -> None:
+        if hold not in (None, "unchanged", "punished"):
+            raise ValueError('memory_context_hold is None, "unchanged" or "punished"')
+        if hold is not None and temporal is None:
+            raise ValueError("memory_context_hold needs a temporal context (memory_context)")
         if (paid is None) != (not extinction):
             raise ValueError(
                 "an extinction threshold reads a store of direct payments, and only then"
@@ -201,6 +214,9 @@ class EpisodicRecords:
         self.temporal = temporal
         self.paid = paid  # the places where each action was paid directly
         self.extinction = float(extinction)  # (``memory_extinction``)
+        self.hold = hold  # the decisions kept out of the temporal context
+        self.before: np.ndarray | None = None
+        self.seen: np.ndarray | None = None
         self.width = int(width)  # the place key's width; a context key adds the motor neurons
         self.motor = int(len(place.post))
         self.offsets = np.asarray(offsets, dtype=np.int64)  # each motor slot's first neuron
@@ -223,6 +239,8 @@ class EpisodicRecords:
         out = copy.copy(self)
         out.context = None if self.context is None else self.context.copy()
         out.decision = None if self.decision is None else self.decision.copy()
+        out.before = None if self.before is None else self.before.copy()
+        out.seen = None if self.seen is None else self.seen.copy()
         out.paths = []
         return out
 
@@ -231,6 +249,8 @@ class EpisodicRecords:
         stay."""
         self.context = None
         self.decision = None
+        self.before = None
+        self.seen = None
         self.paths = []
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
@@ -242,6 +262,8 @@ class EpisodicRecords:
         rows = _stream_rows(rows, batch)
         if self.context is not None and len(self.context) == batch:
             self.context[rows] = 0.0
+        if self.before is not None and len(self.before) == batch:
+            self.before[rows] = 0.0  # with the context at zero a hold changes nothing there
         if len(self.paths) == batch:
             for row in rows:
                 self.paths[row] = []
@@ -258,6 +280,10 @@ class EpisodicRecords:
             self.context = self.context[rows]
         if self.decision is not None:
             self.decision = self.decision[rows]
+        if self.before is not None:
+            self.before = self.before[rows]
+        if self.seen is not None:
+            self.seen = self.seen[rows]
         if self.paths:
             self.paths = [self.paths[row] for row in rows]
 
@@ -296,6 +322,7 @@ class EpisodicRecords:
                 if self.paid is None
                 else {"extinction": self.extinction, "paid_memory": self.paid.to_dict()}
             ),
+            **({} if self.hold is None else {"hold": self.hold}),
         }
 
     def arrays(self) -> dict[str, np.ndarray]:
@@ -311,6 +338,10 @@ class EpisodicRecords:
                 out["context"] = self.context
             if self.decision is not None:
                 out["decision"] = self.decision
+            if self.before is not None:
+                out["before"] = self.before
+            if self.seen is not None:
+                out["seen"] = self.seen
         if self.paths and any(self.paths):
             streams, longest = len(self.paths), max(len(path) for path in self.paths)
             slots = len(self.offsets)
@@ -357,7 +388,27 @@ class EpisodicRecords:
     def key(self, code: np.ndarray) -> np.ndarray | None:
         """The temporal key of a decision taken now on this observation code, before the
         decision moves the stream's context on; None without context records."""
-        return None if self.temporal is None else self.keyed(code, self.context)
+        return None if self.temporal is None else self.keyed(code, self.held_context(code))
+
+    def held_context(self, code: np.ndarray) -> np.ndarray | None:
+        """The temporal context a decision on this observation code is keyed in: with the
+        hold ``"unchanged"``, a stream whose previous decision was taken on this same code
+        keys in the context before that decision, which left its observation as it was."""
+        context, seen = self.context, self.seen
+        if (
+            self.hold != "unchanged"
+            or context is None
+            or seen is None
+            or len(seen) != len(code)
+            or self.before is None
+        ):
+            return context
+        same = np.all(np.asarray(code, dtype=float) == seen, axis=1)
+        if not same.any():
+            return context
+        out = context.copy()
+        out[same] = self.before[same]
+        return out
 
     def keyed(self, code: np.ndarray, context: np.ndarray | None) -> np.ndarray:
         """The key of a decision on this observation code in a temporal ``context``,
@@ -397,11 +448,22 @@ class EpisodicRecords:
         key: np.ndarray | None,
         action: np.ndarray,
         guess: np.ndarray | None = None,
+        code: np.ndarray | None = None,
     ) -> None:
-        """A decision on the place key ``place`` under ``key``: the temporal context moves on,
-        and with replay the decision joins the stream's path with ``guess``, how far it was
-        the brain's best guess."""
+        """A decision on the place key ``place`` under ``key``, keyed on the observation code
+        ``code`` (``place`` when omitted): the temporal context moves on, and with replay the
+        decision joins the stream's path with ``guess``, how far it was the brain's best
+        guess."""
         if key is not None:
+            if self.hold is not None:
+                # the context this decision was keyed in, and the code it was taken on
+                observed = place if code is None else code
+                context = self.held_context(observed)
+                self.before = (
+                    np.zeros_like(key) if context is None or len(context) != len(key)
+                    else context.copy()
+                )
+                self.seen = np.array(observed, dtype=float, copy=True)
             self.move(key, action)
         if self.steps:
             assert guess is not None
@@ -480,6 +542,11 @@ class EpisodicRecords:
                 known |= zero & (held >= self.extinction) & (direct >= self.extinction)
         if known.any():
             self.remember(observations, keys, action, reward, known, salience)
+        if self.hold == "punished" and self.context is not None and self.before is not None:
+            # a decision punished in the middle of an attempt leaves the temporal context
+            punished = learned & (reward < 0) & ~done
+            if punished.any() and len(self.before) == len(reward):
+                self.context[punished] = self.before[punished]
         if self.paid is not None and (learned & (reward > 0)).any():
             record_action(
                 self.paid, observations, action, np.ones(len(action)), np.zeros(len(action)),

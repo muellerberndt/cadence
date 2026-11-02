@@ -433,6 +433,7 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
 _EPISODIC_SETTINGS = (
     "memory_choice", "memory_context", "memory_replay", "memory_demonstrations",
     "memory_expansion", "memory_winners", "memory_fan_in", "memory_extinction",
+    "memory_context_hold",
 )
 
 
@@ -1297,7 +1298,7 @@ def _earlier_layout(
             arrays["temporal/" + rest[len("context_memory/"):]] = data[name]
         elif rest.startswith("paid_memory/"):
             arrays["paid/" + rest[len("paid_memory/"):]] = data[name]
-        elif rest in ("context", "decision") or rest.startswith("path/"):
+        elif rest in ("context", "decision", "before", "seen") or rest.startswith("path/"):
             arrays["episode/" + rest] = data[name]
         else:
             raise ValueError("unexpected saved episodic array")
@@ -1321,12 +1322,17 @@ def _validate_episodic_state(
             raise ValueError("saved episodic stream state requires episodic metadata")
         return
     founders = {"choice", "context", "replay", "demonstrations", "context_memory"}
+    extra = set(episodic) - founders if isinstance(episodic, dict) else set()
     if (
         not isinstance(episodic, dict)
-        or set(episodic) not in (founders, founders | {"extinction", "paid_memory"})
+        or not founders <= set(episodic)
+        or extra - {"extinction", "paid_memory", "hold"}
+        or ("extinction" in extra) != ("paid_memory" in extra)
         or episodic["choice"] is not True
     ):
         raise ValueError("invalid episodic metadata")
+    if "hold" in episodic and episodic["hold"] not in ("unchanged", "punished"):
+        raise ValueError("invalid saved memory_context_hold")
     if "extinction" in episodic:
         threshold = real("saved memory_extinction", episodic["extinction"], low=0, high=1)
         paid = episodic["paid_memory"]
@@ -1358,8 +1364,11 @@ def _validate_episodic_state(
             "an episodic memory's context records are keyed by the observation code and the "
             f"motor neurons: {width} coordinates"
         )
-    if temporal is None and any(name in data for name in names[:2] + (names[2],)):
+    holds = ("episode/before", "episode/seen")
+    if temporal is None and any(name in data for name in names[:2] + (names[2],) + holds):
         raise ValueError("saved temporal context state requires context records")
+    if "hold" not in episodic and any(name in data for name in holds):
+        raise ValueError("saved held contexts require memory_context_hold")
 
     def array(name: str) -> np.ndarray:
         value: np.ndarray = data[name]
@@ -1367,10 +1376,13 @@ def _validate_episodic_state(
             raise ValueError(f"invalid saved state: {name}")
         return value
 
-    for name in ("episode/context", "episode/decision"):
+    for name, columns in (
+        ("episode/context", width), ("episode/decision", width), ("episode/before", width),
+        ("episode/seen", sensory),
+    ):
         if name in data:
             value = array(name)
-            if value.ndim != 2 or not len(value) or value.shape[1] != width:
+            if value.ndim != 2 or not len(value) or value.shape[1] != columns:
                 raise ValueError(f"invalid saved state: {name}")
     path = [name for name in names[3:] if name in data]
     if path and len(path) != 6:
@@ -1751,6 +1763,7 @@ class Brain:
         memory_winners: int = 32,
         memory_fan_in: int | None = None,
         memory_extinction: float = 0.0,
+        memory_context_hold: str | None = None,
         working_memory_decay: float = 0.0,
         working_memory_amplitude: float = 3.0,
         efference_decay: float = 0.2,
@@ -1887,6 +1900,10 @@ class Brain:
         memory_replay = _count("memory_replay", memory_replay)
         memory_demonstrations = real("memory_demonstrations", memory_demonstrations, low=0)
         memory_extinction = real("memory_extinction", memory_extinction, low=0, high=1)
+        if memory_context_hold not in (None, "unchanged", "punished"):
+            raise ValueError('memory_context_hold is None, "unchanged" or "punished"')
+        if memory_context_hold is not None and not (memory_choice and memory_context):
+            raise ValueError("memory_context_hold needs memory_choice and memory_context")
         memory_expansion = _count("memory_expansion", memory_expansion)
         memory_winners = _count("memory_winners", memory_winners, low=1)
         memory_fan_in = _count("memory_fan_in", 0 if memory_fan_in is None else memory_fan_in)
@@ -2103,6 +2120,7 @@ class Brain:
                     demonstrations=memory_demonstrations,
                     paid=paid,
                     extinction=memory_extinction,
+                    hold=memory_context_hold,
                 )
         self.rng = np.random.default_rng(seed)
         # the validated observations a settle is being prepared for and their code, computed
@@ -2190,6 +2208,12 @@ class Brain:
     def memory_demonstrations(self) -> float:
         """The value a demonstration is recorded at; 0.0 without ``memory_choice``."""
         return 0.0 if self._episodic is None else self._episodic.demonstrations
+
+    @property
+    def memory_context_hold(self) -> str | None:
+        """The decisions kept out of the temporal context: ``"unchanged"``, ``"punished"``,
+        or None."""
+        return None if self._episodic is None else self._episodic.hold
 
     @property
     def memory_extinction(self) -> float:
@@ -4409,7 +4433,7 @@ class Brain:
                 guess = np.minimum(guess, 1.0)
             # what the stream did joins its temporal context after what it saw, and with replay
             # the decision its path
-            episodic.decide(place, key, action, guess)
+            episodic.decide(place, key, action, guess, code)
         self._moment = None if greedy else (x.copy(), action.copy())
         # with a learned code the place key the decision was taken under, settled at this moment
         self._moment_code = (
@@ -5114,9 +5138,10 @@ class Brain:
                     demonstrations=float(episodic["demonstrations"]),
                     paid=paid,
                     extinction=float(episodic.get("extinction", 0.0)),
+                    hold=episodic.get("hold"),
                 )
                 result._episodic = records
-                for name in ("context", "decision"):
+                for name in ("context", "decision", "before", "seen"):
                     if "episode/" + name in data:
                         setattr(records, name, data["episode/" + name].astype(float))
                 if "episode/path/lengths" in data:
@@ -5448,6 +5473,7 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             memory_replay=brain.memory_replay,
             memory_demonstrations=brain.memory_demonstrations,
             memory_extinction=brain.memory_extinction,
+            memory_context_hold=brain.memory_context_hold,
         )
         if separator is not None:
             settings.update(

@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `memory_context_hold` (opt-in, #202): with `memory_choice=True` and a temporal context,
+  `"unchanged"` keys a decision taken on the observation of the stream's previous decision as
+  if that decision had not been taken (the replay path's rule, applied to the key), and
+  `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back
+  out of the context. `benchmarks/context_key` ports Will Glynn's Stone Age chains (the
+  ambiguous chain, the invisible-action boundary and the fully observed chain) with credit.
 - `memory_extinction` (opt-in, #210): with `memory_choice=True`, a zero outcome writes a learned
   zero for the chosen action where the records' vote for it and its direct payment in this
   place both reach the setting (0.5). A third store, `memories["episodic"].paid`, keeps which
