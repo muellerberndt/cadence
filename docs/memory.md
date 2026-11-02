@@ -1024,6 +1024,24 @@ tokens at unseen lengths 0.99 to 1.00, against 0.03 to 0.09. The slower table co
 need exact ages (Stone Age ordered recall 0.82 against 0.99), and with the table at the founder
 rate the brain takes the position shortcut over the content route again.
 
+**When a read item happened (opt-in, `recall_when=True`).** A read delivers what its slots hold
+and what followed them; the position term only chooses the slots. Nothing reaching the cortex
+says when a read item happened, so "was A told before B?" has nothing to compare. With the
+option every head's read also delivers when: a region of its own per head (`recall_when`,
+`recall_1_when`, ...), driven at the read's amplitude by the attention-weighted features of its
+slots' ages,
+
+```text
+when = sum_i p_i [log(1 + age_i) / log 9, exp(-age_i / 8)]
+```
+
+and with the anchor the same two features of each slot's place in the episode (zero for a slot
+written before it began). The regions reach the association through synapses that start at
+zero, so a newborn settles as one without the option, and lessons give them weight. The address
+lesson reads the association's movement back through them as it does through the read port, so
+a lesson can name the slots to read by when they happened as well as by what they hold
+([#237](https://github.com/muellerberndt/cadence/issues/237)).
+
 ### Episodes, keys and windows
 
 Each stream has its own slots. A plain `reset()` empties them and keeps the address map. When
@@ -1090,6 +1108,7 @@ map.
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
+| `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when](#position-how-long-ago-a-moment-happened)) |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#position-how-long-ago-a-moment-happened)); needs `recall_position` |

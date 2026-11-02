@@ -1120,11 +1120,15 @@ def _validate_recall_state(
     address = window * key + command
     heads = settings.get("heads", 1)
     regions = tuple(name for port in Recall.ports(heads, settings["next"]) for name in port)
+    # with ``when`` every head's when region: two features of the age, two more of the place
+    when = (4 if settings.get("anchor", False) else 2) if settings.get("when", False) else 0
     if (
         any(len(populations.get(name, ())) != key for name in regions)
         or any(len(populations.get(f"{name}_action", ())) != command
                for name in (regions if command else ()))
-        or recalled["neurons"] != value * len(regions)
+        or any(len(populations.get(name, ())) != when
+               for name in (Recall.when_regions(heads) if when else ()))
+        or recalled["neurons"] != value * len(regions) + when * heads
     ):
         raise ValueError("a saved recall memory needs recall and next regions of its value width")
 
@@ -1659,6 +1663,13 @@ def _layout(
                 projections.append(
                     Projection(f"{name}_action", "association", scale=0.0, reciprocal=False)
                 )
+        if recalled.get("when", False):
+            # every head's read of when, two neurons of the age and with the anchor two of the
+            # place, appended last: the brain that delivers when is the brain without it plus
+            # these regions, whose synapses into the association start at zero
+            for name in Recall.when_regions(recalled.get("heads", 1)):
+                regions.append(Region(name, 4 if recalled.get("anchor", False) else 2))
+                projections.append(Projection(name, "association", scale=0.0, reciprocal=False))
         if recalled.get("copy", 0.0):
             # the copy pathway from every read port into the motor region, appended last: the
             # brain with it is the brain without it plus these synapses, drawn at the initial

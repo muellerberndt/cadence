@@ -637,6 +637,17 @@ class Recall:
     rate ``slope`` by the same gradient as the table, ``g = sum_i (p*_i - p_i) age_i /
     SLOPE``, each row's rate bounded by its own energy; reward does not train them.
 
+    With ``when`` (an option, founder off; a construction setting; it reads into the recall
+    regions) every head's read also delivers when what it read happened: a region of its own
+    per head, ``<recall region>_when`` (``when_regions``), driven at ``amplitude * sum_i p_i
+    F_i`` with ``F_i`` the slot's age features ``log(1 + age_i) / log(1 + SLOPE)`` and
+    ``exp(-age_i / SLOPE)``, and with ``anchor`` the same two of its place in the episode
+    (zero for a slot written before the episode began). The regions reach the association
+    through synapses that start at zero, so a newborn settles as one without the option, and
+    the lessons give them weight. The address lesson reads the association's movement back
+    through them as it does through the read port, so a lesson can name slots by when they
+    happened as well as by what they hold.
+
     With ``chain`` (an option, founder off; a construction setting; it needs ``heads`` of at least
     2) the heads read in a chain: each head after the first adds to its address what the head
     before it read, ``r W_r`` with ``r`` that head's read of the recall and the next regions
@@ -697,6 +708,8 @@ class Recall:
     relative: bool = False
     # above 0: every head's position term also leans by age (``slope_maps``), taught at this rate
     slope: float = 0.0
+    # every head's read also delivers its slots' age features on a region of its own
+    when: bool = False
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -720,10 +733,10 @@ class Recall:
         "address_step", "null", "address_reward", "position_reward", "window", "window_decay",
         "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain", "anchor",
-        "relative", "slope",
+        "relative", "slope", "when",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
-                            "action", "chain", "anchor", "relative", "slope")
+                            "action", "chain", "anchor", "relative", "slope", "when")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
     # the settings of 0.84.3 this version removed, refused by name with a message naming it
@@ -781,7 +794,9 @@ class Recall:
             ):
                 raise ValueError("capacity must be an integer of at least 1")
             return int(value)
-        if name in ("next", "boundary", "action", "compete", "chain", "anchor", "relative"):
+        if name in (
+            "next", "boundary", "action", "compete", "chain", "anchor", "relative", "when"
+        ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -970,6 +985,10 @@ class Recall:
             regions = (*regions, *(
                 name for port in self.action_ports(self.heads, self.next) for name in port
             ))
+        if self.when and self.target != "recall":
+            raise ValueError("a recall memory that delivers when reads into the recall regions")
+        if self.when:
+            regions = (*regions, *self.when_regions(self.heads))
         for name in regions:
             if name not in populations:
                 raise ValueError(f"a recall memory needs a population named {name!r}")
@@ -1023,6 +1042,16 @@ class Recall:
             self._heads.append((recall, following))
         self._head_columns = [(columns(r), columns(n)) for r, n in self._heads]
         self._head_synapses = [(self._synapses(r), self._synapses(n)) for r, n in self._heads]
+        # with ``when`` every head's when region: its neurons, columns and synapses into the
+        # association
+        self._whens: list[tuple[np.ndarray, Any, tuple[np.ndarray, np.ndarray, np.ndarray]]] = []
+        for name in self.when_regions(self.heads) if self.when else ():
+            neurons = np.asarray(populations[name], dtype=np.int64)
+            if len(neurons) != self.when_width:
+                raise ValueError(
+                    f"the {name} region needs one neuron per feature of when ({self.when_width})"
+                )
+            self._whens.append((neurons, columns(neurons), self._synapses(neurons)))
         # the address maps of heads 1 and up, each ``(w_x, w_c, b)``; head 0's is ``w_x``,
         # ``w_c`` and ``b``
         self.head_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
@@ -1109,8 +1138,48 @@ class Recall:
     @property
     def neurons(self) -> int:
         """The neurons the memory drives: every head's recall region, and next region with
-        ``next``."""
-        return int(sum(len(r) + len(n) for r, n in self._heads))
+        ``next``, and with ``when`` its when region."""
+        return int(
+            sum(len(r) + len(n) for r, n in self._heads)
+            + sum(len(neurons) for neurons, _, _ in self._whens)
+        )
+
+    @property
+    def when_width(self) -> int:
+        """The features of when a head's read delivers with ``when``: two of each slot's age,
+        and with ``anchor`` two of its place in the episode."""
+        return 4 if self.anchor else 2
+
+    @staticmethod
+    def when_regions(heads: int) -> tuple[str, ...]:
+        """The region of each head's read of when with ``when``: ``recall_when`` for head 0
+        and ``recall_h_when`` for head h."""
+        return tuple(f"{port[0]}_when" for port in Recall.ports(heads, False))
+
+    def when_features(self, rows: np.ndarray | None = None) -> np.ndarray:
+        """Each slot's features of when for each stream, or for the streams ``rows``,
+        ``(rows, slots, when_width)``: ``log(1 + age) / log(1 + SLOPE)`` and ``exp(-age /
+        SLOPE)``, and with ``anchor`` the same of its place in the episode (``told - 1 -
+        age``), zero for a slot written before the episode began."""
+        streams = self.streams if rows is None else len(rows)
+        ages = self.ages()
+        scale = np.log1p(self.SLOPE)
+        age = np.stack([np.log1p(ages) / scale, np.exp(-ages / self.SLOPE)], axis=1)
+        out = np.broadcast_to(age[None], (streams, len(ages), 2))
+        if not self.anchor:
+            return np.asarray(out)
+        told = self.told if rows is None else self.told[rows]
+        places = told[:, None] - 1.0 - ages[None, :]
+        inside = places >= 0
+        place = np.maximum(places, 0.0)
+        anchored = np.stack(
+            [
+                np.where(inside, np.log1p(place) / scale, 0.0),
+                np.where(inside, np.exp(-place / self.SLOPE), 0.0),
+            ],
+            axis=2,
+        )
+        return np.concatenate([out, anchored], axis=2)
 
     @property
     def streams(self) -> int:
@@ -1677,6 +1746,7 @@ class Recall:
         self.last = moment
         out = np.array(drive, dtype=float)
         addresses, attended, chained = self._reads(moment)
+        whens = self.when_features() if self._whens and self.slots else None
         for h, p in enumerate(attended):
             if p is not None:
                 p.flags.writeable = False
@@ -1684,6 +1754,8 @@ class Recall:
                 out[:, recall_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.values)
                 if self.next:
                     out[:, next_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.nexts)
+                if whens is not None:
+                    out[:, self._whens[h][1]] = self.amplitude * _einsum("bm,bmw->bw", p, whens)
         self._attended = attended[0]  # the attention this read uses, kept past the write
         # with several heads, every head's address and attention, and the writes the bank had
         self._head_reads = (
@@ -1968,13 +2040,17 @@ class Recall:
     def readback(
         self, graph: NeuralGraph, region: str, movement: np.ndarray, head: int = 0
     ) -> np.ndarray:
-        """``movement @ W.T`` for the one-way synapses of the ``"recall"`` or ``"next"``
-        region of head ``head``'s port into the association region: per source neuron, the
-        sum over its synapses of effective weight times the movement of its association
-        neuron."""
-        recall_synapses, next_synapses = self._head_synapses[head]
-        synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
-        width = len(self._heads[head][0 if region == "recall" else 1])
+        """``movement @ W.T`` for the one-way synapses of the ``"recall"``, ``"next"`` or
+        (with ``when``) ``"when"`` region of head ``head``'s port into the association region:
+        per source neuron, the sum over its synapses of effective weight times the movement
+        of its association neuron."""
+        if region == "when":
+            neurons, _, (synapses, rows, cols) = self._whens[head]
+            width = len(neurons)
+        else:
+            recall_synapses, next_synapses = self._head_synapses[head]
+            synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
+            width = len(self._heads[head][0 if region == "recall" else 1])
         w = np.zeros((width, len(self.association)))
         np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
         return np.asarray(movement @ w.T)
@@ -2027,13 +2103,16 @@ class Recall:
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_when = self.readback(graph, "when", movement, h) if self._whens else None
             # head 0 steps ``w_x``, ``w_c`` and ``b`` as a memory of one head does
             head_moment = (
                 moment if h == 0 else moment._replace(address=self._head_address(moment, h))
             )
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
-            found = self._row_steps(head_moment, rows, d_value, d_next, h, reads[h], chains[h])
+            found = self._row_steps(
+                head_moment, rows, d_value, d_next, h, reads[h], chains[h], d_when
+            )
             if found is None:  # no row moves (a competing head may have had nothing to read)
                 continue
             if self.address:
@@ -2231,6 +2310,7 @@ class Recall:
         head: int = 0,
         read: np.ndarray | None = None,
         chained: np.ndarray | None = None,
+        d_when: np.ndarray | None = None,
     ) -> tuple[Any, ...] | None:
         """Each row's step of the address lesson before the average over rows: the rows of
         ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
@@ -2241,7 +2321,9 @@ class Recall:
         with over every stream's slots (``_lesson_reads``), and it is the prior; a row it read
         nothing at does not move. With ``chain`` ``chained`` is the read of the head before
         (``_lesson_chained``) over every stream, and the rows' share of it joins the inputs
-        (the ninth item, None without). None when no row moves. The arithmetic is unchecked:
+        (the ninth item, None without). With ``when`` ``d_when`` is the movement read back
+        through the head's when region, scored against each slot's features of when as
+        ``d_value`` is against its value. None when no row moves. The arithmetic is unchecked:
         a caller checks what it keeps."""
         if len(rows) == len(self.keys):  # every stream, in order: the slots themselves
             values, nexts, keys, held = self.values, self.nexts, self.keys, self.held
@@ -2254,6 +2336,10 @@ class Recall:
         if d_next is not None:
             score += _einsum("bc,bmc->bm", d_next, nexts)
             norm += np.sum(d_next * d_next, axis=1)
+        if d_when is not None:
+            whens = self.when_features(None if len(rows) == len(self.keys) else rows)
+            score += _einsum("bw,bmw->bm", d_when, whens)
+            norm += np.sum(d_when * d_when, axis=1)
         norm = np.sqrt(norm)
         moving = norm > 1e-12
         if masked:
@@ -2349,9 +2435,10 @@ class Recall:
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_when = self.readback(graph, "when", movement, h) if self._whens else None
             head_moment = moment._replace(address=self._head_address(moment, h))
             found = self._row_steps(
-                head_moment, np.arange(batch), d_value, d_next, h, reads[h], chains[h]
+                head_moment, np.arange(batch), d_value, d_next, h, reads[h], chains[h], d_when
             )
             if found is None:
                 continue
