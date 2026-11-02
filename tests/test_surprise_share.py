@@ -6,6 +6,7 @@ from __future__ import annotations
 from copy import deepcopy
 
 import numpy as np
+import pytest
 
 import cadence as cd
 
@@ -66,3 +67,35 @@ def test_a_checkpoint_keeps_the_setting(tmp_path):
     for _ in range(3):
         x, label = rng.random((2, 6)), rng.integers(0, 4, size=2)
         np.testing.assert_array_equal(twin.step(x, teacher=label), copy.step(x, teacher=label))
+
+
+@pytest.mark.parametrize(
+    ("device", "precision", "rtol"),
+    [("cpu", "float64", 1e-9), ("mps:0", "float32", 1e-4)],
+    ids=["torch_cpu64", "mps32"],
+)
+def test_the_share_scales_the_step_on_a_torch_device(device, precision, rtol):
+    torch = pytest.importorskip("torch")
+    if device.startswith("mps") and not torch.backends.mps.is_available():
+        pytest.skip("MPS hardware unavailable")
+    moved = []
+    for share in (False, True):
+        brain = cd.Brain.compose(
+            6, 4, seed=7, episodic=False, learning_surprise=True,
+            learning_surprise_share=share,
+        )
+        graph = brain.brain
+        brain.learner.brain = cd.NeuralGraph(
+            graph.connectome, graph.neuron_model, efficacy=graph.efficacy, bias=graph.bias,
+            log_gain=graph.log_gain, backend="torch", device=device, precision=precision,
+        )
+        x = np.random.default_rng(0).random((8, 6))
+        answer = np.asarray(brain.act(x, greedy=True)).reshape(-1)
+        labels = answer.copy()
+        labels[:3] = (answer[:3] + 1) % 4
+        before = np.asarray(brain.learner.brain.efficacy, dtype=float).copy()
+        brain.lesson(x, labels)
+        moved.append(np.asarray(brain.learner.brain.efficacy, dtype=float) - before)
+    full, part = moved
+    assert np.abs(full).sum() > 0
+    np.testing.assert_allclose(part, full * 3 / 8, rtol=rtol, atol=1e-7)
