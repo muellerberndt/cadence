@@ -9,11 +9,12 @@ import cadence as cd
 
 
 def test_refused_cortex_restores_code_policy_and_checkpoint(tmp_path):
+    # the code region settles; the cortex refuses after its budget and the rescue
     brain = cd.Brain.compose(1, 12, modules=(8,), learned_code=16, seed=1,
-                             episodic=False, learning_free_steps=16, lateral=-0.5)
+                             episodic=False, learning_free_steps=16, lateral=-1.0)
     region = brain.learned_code
     policy = region.halvings, region.graph, region.last
-    with pytest.raises(RuntimeError, match="settle"):
+    with pytest.raises(RuntimeError, match="brain did not settle"):
         brain.act([[1.0]], greedy=True)
     assert (region.halvings, region.graph, region.last) == policy
     assert brain.basal_ganglia.state is None

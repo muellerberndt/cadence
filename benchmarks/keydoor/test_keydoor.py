@@ -259,7 +259,8 @@ def test_a_refused_answer_is_charged_and_the_crashed_life_keeps_its_ledger(quick
     monkeypatch.setattr(keydoor, "make_life", strict)
     row = keydoor.run_life("live", 0, 2, {**quick, "episodes": 20})
     assert "error" in row and "did not settle" in row["error"] and row["completed_phases"] == 0
-    assert row["work"]["refused_sweeps"] == 48 and row["work"]["brains"] == 1
+    # the budget and the rescue of as many before the answer is refused
+    assert row["work"]["refused_sweeps"] == 96 and row["work"]["brains"] == 1
     assert "phases" not in row and row["work"]["latency_ms"]["aroused"] is None
 
 
@@ -560,7 +561,7 @@ def test_feedback_work_is_charged_when_the_following_action_refuses(protocol, mo
         life.act(keydoor.CHEST, False, 0.0, False)
     assert life.brain.last_learning["free_steps"] > 0
     assert life.work["learning_sweeps"] == before + life.brain.last_learning["free_steps"]
-    assert life.work["refused_sweeps"] == 1
+    assert life.work["refused_sweeps"] == 2  # the budget and its rescue
 
 
 def test_a_completed_routine_forecast_is_charged_if_the_woken_answer_refuses(
@@ -607,7 +608,7 @@ def test_a_completed_routine_forecast_is_charged_if_the_woken_answer_refuses(
     assert life.brain.arousal.aroused and life.brain.hippocampus.writes == 1
     assert len(forecast_steps) == 1 and forecast_steps[0] > 0
     assert life.work["aborted_forecast_sweeps"] == sum(forecast_steps)
-    assert life.work["refused_sweeps"] == 1
+    assert life.work["refused_sweeps"] == 2  # the budget and its rescue
     assert life._forecast_sweeps == 0
     with (
         np.load(life.brain.save(tmp_path / "after.npz")) as actual,
@@ -621,4 +622,4 @@ def test_a_completed_routine_forecast_is_charged_if_the_woken_answer_refuses(
     with pytest.raises(RuntimeError, match="did not settle"):
         life.act(keydoor.CHEST, False, None, False)
     assert life.work["aborted_forecast_sweeps"] == sum(forecast_steps)
-    assert life.work["refused_sweeps"] == 2
+    assert life.work["refused_sweeps"] == 4  # two refusals, each the budget and its rescue

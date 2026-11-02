@@ -504,7 +504,11 @@ potential/adaptation equations, observers included, to `learning.tolerance` (`3e
 within `learning.free_steps` (1024). A hard solve may fall back to half-step
 numerical damping inside the same budget (a `LearnerConfig(qualified=True)` learner
 uses its `damping` instead); the final residual is checked against the original
-model, and the teaching rule is unchanged. `tolerance=None` is refused (`ValueError`).
+model, and the teaching rule is unchanged. A solve that does not qualify within the budget
+continues once from where it stopped, with halved steps (the learner's `damping`, at least one
+halving), for another `free_steps` sweeps, and only then is the answer refused;
+`last_settlement["rescue_steps"]` counts that continuation. `tolerance=None` is refused
+(`ValueError`).
 Other operations keep their own tolerances: `imagine` uses `1e-6`.
 
 A refused answer raises `RuntimeError` before changing activity, memory, random state

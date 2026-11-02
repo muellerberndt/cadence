@@ -290,7 +290,8 @@ def test_a_refused_answer_is_charged_and_the_crashed_life_keeps_its_ledger(short
     def strict(arm, protocol, seed, genes):
         life = made(arm, protocol, seed, genes)
         learner = life.brain.learner
-        learner.config = replace(learner.config, free_steps=48, tolerance=1e-15)
+        # 24 sweeps and a rescue of as many: the first answer refuses
+        learner.config = replace(learner.config, free_steps=24, tolerance=1e-15)
         return life
 
     monkeypatch.setattr(nursery, "make_life", strict)

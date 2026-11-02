@@ -239,7 +239,7 @@ def test_refused_answer_and_lesson_preserve_pending_feedback_and_optimizer(execu
     before = archive(brain.save(tmp_path / "before.npz"))
     with pytest.raises(RuntimeError, match="no action issued"):
         brain.act(cue + 0.7)
-    assert brain.last_settlement["steps"] == 1
+    assert brain.last_settlement["steps"] == 2  # the budget and its rescue
     assert not brain.last_settlement["qualified"]
     unchanged(brain, before, tmp_path / "after-act.npz")
     with pytest.raises(cd.LearningPhaseError) as refused:
