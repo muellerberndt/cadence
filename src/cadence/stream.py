@@ -618,6 +618,15 @@ class Recall:
     in its episode (``told``; ``end`` and ``reset`` start it again). The maps start at zero and
     the lesson steps them as it steps the position maps; reward does not.
 
+    With ``relative`` (an option, founder off; a construction setting; it needs ``position``)
+    every head's position term also reads each slot's age relative to the slot the stream's
+    previous read gave the most attention (head 0's, ``focus``): ``0`` for that slot, ``-1``
+    for the one written after it, ``+1`` for the one before, offsets beyond ``RELATIVE`` sharing
+    the outermost buckets and one more bucket for a stream with no read before. A read can
+    then be placed where an earlier read pointed, "the token after the one I just said",
+    whatever the length of what was told. The maps start at zero and the lesson steps them
+    as it steps the position maps.
+
     With ``chain`` (an option, founder off; a construction setting; it needs ``heads`` of at least
     2) the heads read in a chain: each head after the first adds to its address what the head
     before it read, ``r W_r`` with ``r`` that head's read of the recall and the next regions
@@ -674,6 +683,8 @@ class Recall:
     chain: bool = False
     # every head's position term also reads a slot's place in its episode (``anchor_maps``)
     anchor: bool = False
+    # every head's position term also reads a slot's age relative to the previous read's focus
+    relative: bool = False
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -697,9 +708,11 @@ class Recall:
         "address_step", "null", "address_reward", "position_reward", "window", "window_decay",
         "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain", "anchor",
+        "relative",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
-                            "action", "chain", "anchor")
+                            "action", "chain", "anchor", "relative")
+    RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the settings of 0.84.3 this version removed, refused by name with a message naming it
     RETIRED = ("write", "key", "episodes", "value", "context", "context_decay")
     # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
@@ -755,7 +768,7 @@ class Recall:
             ):
                 raise ValueError("capacity must be an integer of at least 1")
             return int(value)
-        if name in ("next", "boundary", "action", "compete", "chain", "anchor"):
+        if name in ("next", "boundary", "action", "compete", "chain", "anchor", "relative"):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -1037,6 +1050,19 @@ class Recall:
             )
             for _ in range(self.heads if self.anchor else 0)
         ]
+        if self.relative and not count:
+            raise ValueError("relative reads beside the position term: it needs position")
+        # every head's relative maps ``(R_x, R_c, r)``, one column per offset and one for a
+        # stream with no read before; none without ``relative``
+        width_r = 2 * self.RELATIVE + 2
+        self.relative_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
+            (
+                np.zeros((self.map_width, width_r)),
+                np.zeros((len(self.association), width_r)),
+                np.zeros(width_r),
+            )
+            for _ in range(self.heads if self.relative else 0)
+        ]
         self._check_copy()
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
@@ -1131,6 +1157,16 @@ class Recall:
         out = np.minimum(out, count - 1)
         return np.where(places < 0, count, out).astype(np.int64)
 
+    def relative_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
+        """Each slot's relative bucket for each stream, or for the streams ``rows``, ``(rows,
+        slots)``: its age less the age of the previous read's focus, clipped to
+        ``[-RELATIVE, RELATIVE]`` and shifted to start at zero; ``2 * RELATIVE + 1`` for a
+        stream with no read before."""
+        focus = self.focus if rows is None else self.focus[rows]
+        offsets = self.ages()[None, :] - focus[:, None].astype(float)
+        out = np.clip(offsets, -self.RELATIVE, self.RELATIVE) + self.RELATIVE
+        return np.where(focus[:, None] < 0, 2 * self.RELATIVE + 1, out).astype(np.int64)
+
     def position_term(
         self, head: int, event: np.ndarray, cortex: np.ndarray, rows: np.ndarray | None = None
     ) -> np.ndarray | None:
@@ -1148,6 +1184,10 @@ class Recall:
             e_x, e_c, e = self.anchor_maps[head]
             anchored = event @ e_x + cortex @ e_c + e
             term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
+        if self.relative_maps:
+            q_x, q_c, q = self.relative_maps[head]
+            relative = event @ q_x + cortex @ q_c + q
+            term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
         return np.asarray(term)
 
     @property
@@ -1195,6 +1235,9 @@ class Recall:
         self.ended = np.zeros(batch, dtype=bool)
         # per stream: the moments written in its current episode (``anchor``)
         self.told = np.zeros(batch, dtype=np.int64)
+        # per stream: the age of the slot its previous read attended most (``relative``); -1
+        # before any read
+        self.focus = np.full(batch, -1, dtype=np.int64)
         # the window's previous events per stream, the latest first; none: zeros
         self.past = np.zeros((0, self.window - 1, self.key_width))
         self.last = None
@@ -1241,6 +1284,7 @@ class Recall:
         self._fresh(keep)
         self.ended = self.ended & keep
         self.told = np.where(keep, self.told, 0)
+        self.focus = np.where(keep, self.focus, -1)
         self.last = None
         self._attended = None
         self._head_reads = None
@@ -1286,6 +1330,7 @@ class Recall:
         else:
             self.ended = self.ended | chosen
         self.told = np.where(chosen, 0, self.told)  # the next moment is the episode's first
+        self.focus = np.where(chosen, -1, self.focus)  # and follows no read of this episode
         self._fresh(~chosen)
         self.last = None
         self._attended = None
@@ -1321,6 +1366,7 @@ class Recall:
             self.past = self.past[rows]
         self.ended = self.ended[rows]
         self.told = self.told[rows]
+        self.focus = self.focus[rows]
         self.last = None
         self._attended = None
         self._head_reads = None
@@ -1331,7 +1377,8 @@ class Recall:
         return {
             name: getattr(self, name)
             for name in (
-                "keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told"
+                "keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told",
+                "focus",
             )
         }
 
@@ -1398,11 +1445,21 @@ class Recall:
             out.update(dict(zip(self.position_names(h), maps, strict=True)))
         for h, chained in enumerate(self.chain_maps, start=1):  # saved only with ``chain``
             out[f"chain_{h}"] = chained
+        if self.relative_maps:  # saved only with ``relative``
+            out["focus"] = self.focus
+            for h, maps in enumerate(self.relative_maps):
+                out.update(dict(zip(self.relative_names(h), maps, strict=True)))
         if self.anchor_maps:  # saved only with ``anchor``
             out["told"] = self.told
             for h, maps in enumerate(self.anchor_maps):
                 out.update(dict(zip(self.anchor_names(h), maps, strict=True)))
         return out
+
+    @staticmethod
+    def relative_names(head: int) -> tuple[str, str, str]:
+        """The checkpoint names of head ``head``'s relative maps ``(R_x, R_c, r)``."""
+        suffix = "" if head == 0 else f"_{head}"
+        return f"relative_x{suffix}", f"relative_c{suffix}", f"relative_b{suffix}"
 
     @staticmethod
     def anchor_names(head: int) -> tuple[str, str, str]:
@@ -1799,8 +1856,22 @@ class Recall:
                 successor = (index, latest[index], value[index])
         if self.ended.any():  # every stream's new slot is open to its successor
             self.ended = np.zeros(len(key), dtype=bool)
+        # the slot this moment's read attended most, one moment older once this moment is
+        # written; without a read the previous focus ages too
+        attended = self._attended
+        if (
+            attended is not None
+            and attended.shape == (len(key), self.slots)
+            and self.slots
+        ):
+            read = np.argmax(attended, axis=1)
+            seen = attended.max(axis=1) > 0
+            focus = np.where(seen, self.ages()[read].astype(np.int64) + 1, -1)
+        else:
+            focus = np.where(self.focus >= 0, self.focus + 1, -1)
         self._append(key, np.ones(len(key), dtype=bool), value, successor)
         self.told = self.told + 1
+        self.focus = focus
 
     def _append(
         self,
@@ -2025,6 +2096,22 @@ class Recall:
             self.anchor_maps = [
                 anchored if h == head else kept for h, kept in enumerate(self.anchor_maps)
             ]
+        if self.relative_maps:
+            q_x, q_c, q = self.relative_maps[head]
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                offsets = np.zeros((len(gradient), 2 * self.RELATIVE + 2))
+                buckets = self.relative_buckets(np.asarray(rows)[moving])
+                np.add.at(offsets, (np.arange(len(gradient))[:, None], buckets), gradient)
+                offsets *= bound
+                relative = (
+                    q_x + rate * x.T @ offsets / len(x),
+                    q_c + rate * c.T @ offsets / len(x),
+                    q + rate * offsets.mean(axis=0),
+                )
+            if all(np.isfinite(a).all() for a in relative):
+                self.relative_maps = [
+                    relative if h == head else kept for h, kept in enumerate(self.relative_maps)
+                ]
         return int(len(x)), 0
 
     def _step(

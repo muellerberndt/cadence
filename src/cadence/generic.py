@@ -1182,6 +1182,15 @@ def _validate_recall_state(
             raise ValueError("invalid saved recall state: told")
     elif "recall/told" in data or any(name.startswith("recall/anchor_") for name in data):
         raise ValueError("saved anchored maps belong to a recall memory with anchor")
+    if settings.get("relative", False):  # every head's relative maps and the reads' focus
+        width_r = 2 * Recall.RELATIVE + 2
+        for h in range(heads):
+            shapes_r = ((key + command, width_r), (association, width_r), (width_r,))
+            maps.update(dict(zip(Recall.relative_names(h), shapes_r, strict=True)))
+        if array("focus", (batch,)).dtype.kind not in "iu" or (data["recall/focus"] < -1).any():
+            raise ValueError("invalid saved recall state: focus")
+    elif "recall/focus" in data or any(name.startswith("recall/relative_") for name in data):
+        raise ValueError("saved relative maps belong to a recall memory with relative")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1210,6 +1219,8 @@ def _validate_recall_state(
         expected |= {"past"}
     if settings.get("anchor", False):
         expected |= {"told"}
+    if settings.get("relative", False):
+        expected |= {"focus"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
         "trace", "pending", "ended"
     } != expected:
@@ -5053,6 +5064,14 @@ class Brain:
                     data[f"recall/chain_{h}"].astype(float)
                     for h in range(1, recall.heads if recall.chain else 1)
                 ]
+                if recall.relative:  # validated above: saved with relative
+                    recall.relative_maps = [
+                        tuple(
+                            data["recall/" + name].astype(float)
+                            for name in Recall.relative_names(h)
+                        )
+                        for h in range(recall.heads)
+                    ]
                 if recall.anchor:  # validated above: saved with anchor
                     recall.anchor_maps = [
                         tuple(
@@ -5069,6 +5088,8 @@ class Brain:
                 )
                 if recall.anchor:  # validated above: the episodes' counts, saved with anchor
                     recall.told = data["recall/told"].astype(np.int64)
+                if recall.relative:  # validated above: the reads' focus, saved with relative
+                    recall.focus = data["recall/focus"].astype(np.int64)
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command

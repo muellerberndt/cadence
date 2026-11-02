@@ -979,6 +979,16 @@ episode began. Each stream counts the moments written in its episode (`brain.rec
 without the option, and the lesson steps them with the position maps; rewards do not
 ([#237](https://github.com/muellerberndt/cadence/issues/237)).
 
+**The relative read (opt-in, `recall_relative=True`; it needs the position term).** Some reads
+are placed where an earlier read pointed: copying a sequence, the token after the one just
+said is the slot written after the slot the previous read found, whatever the length. With the
+option every head's term also reads each slot's age relative to the slot the stream's previous
+read attended most (`brain.recall.focus`, the age of that slot, which ages with every written
+moment): offset 0 for that slot, -1 for the one written after it, +1 for the one before,
+offsets beyond `Recall.RELATIVE` (8) sharing the outermost buckets, and one more bucket for a
+stream with no read before. The maps start at zero and the lesson steps them with the
+position maps ([#234](https://github.com/muellerberndt/cadence/issues/234)).
+
 ### Episodes, keys and windows
 
 Each stream has its own slots. A plain `reset()` empties them and keeps the address map. When
@@ -1045,6 +1055,7 @@ map.
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
+| `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_copy` | `0.0` | construction | Above 0, plastic synapses from every read port into the motor region at that initial magnitude ([the copy pathway](#the-copy-pathway-opt-in)) |

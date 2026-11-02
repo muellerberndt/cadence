@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `recall_relative` (opt-in, #234): every head's position term also reads each slot's age
+  relative to the slot the stream's previous read attended most (`Recall.focus`), offsets
+  within `Recall.RELATIVE` (8) a bucket each, so a read can be placed where an earlier read
+  pointed (the token after the one just said) at any length. The maps start at zero and the
+  lesson steps them with the position maps; checkpoints keep the focus and the maps.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
   that many rows per taught row are taught again, drawn from a reservoir of the lessons' rows
   (their drives and labels) kept over the life, a uniform sample of every row
