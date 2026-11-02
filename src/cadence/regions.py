@@ -215,8 +215,10 @@ def visual_cortex(
     array ``(height, width, channels)`` flattened row by row. Population ``output`` holds the
     feature maps: every neuron of a map receives synapses from one ``field`` by ``field``
     window of the input, the windows stepping by ``stride``, so neighbouring neurons see
-    neighbouring parts of the picture. Initial efficacies are random and fan-scaled; learning
-    shapes each receptive field.
+    neighbouring parts of the picture. Initial efficacies are random and fan-scaled. Learning
+    shapes a receptive field where a nudge reaches the maps. A composed brain's maps project one
+    way into its first module, so the contrast rule teaches them nothing: they move only by
+    what phases that stop short of equilibrium leave unsettled.
     """
     for label, value in (
         ("height", height),

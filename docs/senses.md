@@ -19,7 +19,10 @@ from cadence import Brain
 `inputs=(height, width)` or `(height, width, channels)` makes the sensory region a
 `visual_cortex`: `features` maps (8) of `field` by `field` receptive fields (3) feed
 the first module. Observations may be flat `(1, height * width * channels)` or keep
-the image shape.
+the image shape. The maps project one way into the first module, so no nudge reaches them and the
+contrast rule teaches them nothing: the receptive fields keep their initial draw, and
+learning shapes what the modules read from the maps. Phases that stop short of equilibrium,
+as a deep brain's founder phases can, move the fields by what they leave unsettled.
 
 ```python
 eyes = Brain.compose(inputs=(8, 8), actions=3, features=4, seed=1)

@@ -1,5 +1,60 @@
 # Changelog
 
+## 0.92.0 — 2026-11-02
+
+- Grow a trained brain: `brain.grow(**parts)` returns a new brain, the trained one with new parts.
+  The parts are the recall memory (`recall=True`, with any `recall_*` setting `compose` takes but
+  `recall_tokens`), more read heads of the brain's recall memory (`recall_heads`), a heard history
+  or the brain's decays followed by new ones (`history_decays`), an efference copy
+  (`efference_amplitude` above zero) and new output slots after the brain's own (`slots`); several
+  grow in one call. The grown brain is the brain's layout composed again from its recorded
+  construction and settings, with the same seed, and the parts added. It carries every learned
+  parameter, the optimizer's history, the plasticity masks, the memories' records and settings,
+  the actor and critic, the arousal and the random generators, keeps the brain's backend, device
+  and precision, and starts its streams afresh, as after `reset()`. Every new synapse onto a
+  trained neuron starts at zero with its reciprocal partner, so the grown brain settles to the
+  trained brain's states and makes its greedy choices: bit for bit where the larger graph sums in
+  the same order, within rounding where it does not (new slots inside the layout, another
+  processor's kernel, an accelerator). New slots draw random numbers of their own, so the old
+  slots' sampled choices follow other draws. The free/nudged rule moves a synapse on what its two
+  neurons do, not on its own weight, so the new synapses learn. The trained brain is unchanged.
+  Refused with the reason: a brain that records no construction (a custom anatomy), a part inside
+  the brain's loop (`modules`, `observers`, a code: at zero its neurons learn nothing, at any
+  other start the brain changes), arousal and the episodic memory, a setting `retune` changes,
+  recall tokens, and new slots where a memory is laid out per action (`recall_action`,
+  `recall_tokens`, `memory_choice`) or a new motor neuron would join a deep brain's apical pool.
+- Graft trained regions of one brain into another: `brain.graft(donor, regions)` returns a new
+  brain, this one with the donor's populations `regions` (names, or a mapping of donor names to
+  this brain's, such as `{"association": "module_1"}`), and `graft(donor, into=name)` puts the
+  whole donor into one population of a larger anatomy, a measured connectome built as one
+  region with new regions wired to it among them. A module has no synapses inside it, so a graft
+  takes the regions of a trained pathway together (a trained visual system is `visual` with the
+  modules above it). The grafted neurons take the donor's biases and gains, and
+  the synapses among them its efficacies, contact counts, signs and plasticity masks; their
+  optimizer history starts afresh. `freeze=True` stops them learning. A joint, a synapse between
+  a grafted neuron and the rest of the brain, starts at zero with its reciprocal partner
+  (`joints="zero"`, the founder) or keeps this brain's weight (`joints="kept"`); wiring of this
+  brain among the grafted neurons that the donor lacks starts at zero. The brain's other
+  weights, its memories and their records, its settings, actor and arousal stay its own, so a
+  whole donor grafted into a larger anatomy with joints at zero chooses as the donor does where
+  those agree. A joint at zero learns where one of its neurons is active and the other moves
+  between the phases, so a new region needs a drive of its own or joints that start with weight.
+  Refused with the reason: populations of other sizes, regions that share no synapse, donor
+  wiring the brain lacks among the grafted neurons or a one-way donor synapse on half of a
+  reciprocal pair, another neuron model, apical compartment or apical role, a learned code's
+  region or a joint landing on it, tied or rated synapses.
+- [Grow and combine brains](docs/grow.md) is the guide: growing, grafting, how a new part joins
+  the brain and when a joint at zero learns, teaching and living after the change, combining two
+  brains' skills by teaching, compatibility and cost. Grown and grafted brains save as ordinary
+  checkpoints, which 0.91.3 loads.
+- `Brain.save(path, compressed=False)` writes a plain archive, as `cadence.checkpoint.save`
+  does: a large brain's checkpoint in a fraction of the time a compressed one takes.
+- State what learns in a composed visual cortex: its maps project one way into the first
+  module, so no nudge reaches them and the contrast rule teaches them nothing. The receptive
+  fields keep their initial draw, apart from what phases that stop short of equilibrium leave
+  unsettled (a deep brain's founder phases can). `visual_cortex` said that learning shapes
+  each receptive field, which holds where a nudge reaches the maps.
+
 ## 0.91.3 — 2026-10-31
 
 - Several recall heads compete for the slots (`recall_compete=True`, the founder). A slot can be

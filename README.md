@@ -64,11 +64,11 @@ a small fixed-label task is a control.
 ## Start with System 1
 
 Python 3.11+ and NumPy are required. Install the published release, whose
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.91.3/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.92.0/docs/README.md)
 describes the APIs in that package:
 
 ```sh
-python -m pip install cadence-net==0.91.3
+python -m pip install cadence-net==0.92.0
 ```
 
 ```python
@@ -109,6 +109,12 @@ relevant recent context and its successor, and `recall_heads=k` when one answer 
 witnessed facts at once. The options can be used together.
 [Choose a memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
 starts with these common cases before giving the complete reference.
+A brain trained without one of them gets it later: `brain.grow(recall=True)`, or new output
+slots with `brain.grow(slots=...)`, returns a new brain, the trained one with the part added,
+settling as before until learning gives the part weight. `brain.graft(donor, ...)` puts trained
+regions of another brain into a larger one, such as a trained visual system, or a whole
+connectome as one region of a larger anatomy
+([grow and combine brains](https://github.com/muellerberndt/cadence/blob/main/docs/grow.md)).
 
 ```python
 phases = brain.imagine([observation, next_observation])
