@@ -1,106 +1,138 @@
 # Changelog
 
-## Unreleased
+## 0.93.0 — 2026-11-03
 
-- `docs/reward.md`, reward at the end of an episode (#216): the spread check of the critic's
-  values, the critic school (demonstrated episodes replayed through `step` with `actor_eta`,
-  `actor_eta_bias`, `memory_rate` and `consolidation` at zero; `memory_rate=0` alone leaves the
-  consolidated record learning) and the value lesson (a second slot taught each moment's
-  eventual outcome), measured on a light-cycle game. On lessons whose outcomes vary the value
-  lesson lifts the association's best linear readout of the winner by 0.03 to 0.04 AUC, and
-  after a critic school the critic ranks 0.09 to 0.14 higher at move 10; on a demonstrator's own
-  games, which it mostly wins, it does nothing. No runtime change.
-- `learning_surprise_share` (opt-in, #239; `LearnerConfig.surprise_share`, founder `False`): with
-  surprise lessons, a lesson's step is scaled by the share of its rows it taught, so one wrong row
-  of sixteen moves the net a sixteenth as far as sixteen. The contrast and the optimizer's running
-  moments still read the taught rows alone. At width 1,024 on induction, surprise lessons without
-  it swing between collapse and recovery (one seed at 0.01 after 1,000 lessons); with it three
-  seeds end at 0.95 to 0.99.
-- `recall_when` (opt-in, #237): every head's read also delivers when what it read happened,
-  `amplitude * sum_i p_i F_i` on a region of its own (`Recall.when_regions`), with `F_i` two
-  features of the slot's age and, with the anchor, two of its place in the episode
-  (`Recall.when_features`). The regions reach the association through synapses that start at
-  zero. The address lesson names the slots to read by what they hold; the region says when the
-  slots read happened.
-- `recall_slope` (opt-in, #232): above 0, every head's position term also leans by age at
-  every length, `s(x, c) * age / 8` with `s` read from the moment as the table is
-  (`Recall.slope_maps`), so a preference for old or recent slots holds at ages no lesson
-  reached. The maps start at zero and the lesson steps them at that rate by the table's
-  gradient; checkpoints keep them.
-- `recall_relative` (opt-in, #234): every head's position term also reads each slot's age
-  relative to the slot the stream's previous read attended most (`Recall.focus`), offsets
-  within `Recall.RELATIVE` (8) a bucket each, so a read can be placed where an earlier read
-  pointed (the token after the one just said) at any length. The maps start at zero and the
-  lesson steps them with the position maps; checkpoints keep the focus and the maps. Copying
-  with repeated tokens at unseen lengths (taught 3 to 6, tested 8 to 12, with the anchor): 0.54
-  to 0.74 in closed loop against 0.10 to 0.14 without it, 0.93 teacher-forced; the first token
-  after the cue is where it still fails.
-- `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
-  that many times the lesson's rows (at least one) are taught again, drawn from a reservoir of
-  the lessons' rows
-  (their drives and labels) kept over the life, a uniform sample of every row
-  (`rehearsal_capacity`, 512), under the same rule. Types taught one after another keep what
-  earlier lessons taught. The reservoir and its counts are saved with the brain; at the founder
-  nothing is kept and checkpoints are as before. A grown brain starts the reservoir afresh.
-  It teaches the cortex again, not a recall memory's maps: on look-back's three cues taught in
-  sequence it does not keep the earlier cues (first 0.62 and last 0.89 of their interleaved
-  accuracy, against 0.77 and 0.83 without it), so #238's gate is not met there.
-- `recall_position_reward` (opt-in, #236; runtime, founder 0): reward trains the recall read's
-  position maps, and with `recall_anchor` the anchored maps. At each sampled act the step the
-  position lesson would take, were the act's action the lesson's label, joins the eligibility
-  the actor traces beside the address map's, and dopamine steps the maps by the setting times
-  one lesson's step. At the founder the eligibility and its checkpoint keep their shape. On
-  the Stone Age ordered recall world from reward alone (development founders) it moves the
-  answer from chance (0.49) to 0.84 sampled success with `recall_position_reward=4` and
-  `recall_address_reward=1` (greedy 0.875 to 1.0); the 0.90 of #236's gate is not yet reached.
+Learning during a continuing life, positions at lengths no lesson reached, and wider brains
+(milestone v0.93.0). Every mechanism is opt-in: a brain at its founder settings acts, learns and
+saves as on 0.92.1, except that an answer whose solve does not qualify within its budget is now
+rescued once before it is refused. Settings that did not meet their issue's gate ship as
+documented opt-ins with the readings that bound them.
+
+### Positions at lengths no lesson reached
+
 - `recall_anchor` (opt-in, #237): every head's position term also reads each slot's place in
   its stream's current episode (the moments from the episode's first to the slot), bucketed as
   ages are, with one more bucket for slots written before the episode began. Ages count back
   from the present, so "the first told" moved with the story's length; its place in the
   episode does not. Each stream counts the moments of its episode (`Recall.told`); the maps
-  start at zero and the lesson steps them with the position maps. Checkpoints keep both. On six
-  confirmation founders (declared before the run), stories of 24 to 60 with the cues mixed:
-  `first` 0.998 to 1.000 and `second` 0.990 to 1.000 with it, 0.31 to 0.45 and 0.31 to 0.34
-  without; the sequence battery (induction, n-back, periodic, copying) reads the same.
+  start at zero and the lesson steps them with the position maps. On six confirmation founders,
+  stories of 24 to 60 with the cues mixed: `first` 0.998 to 1.000 and `second` 0.990 to 1.000
+  with it, 0.31 to 0.45 and 0.31 to 0.34 without.
+- `recall_slope` (opt-in, #232): above 0, every head's position term also leans by age at every
+  length, `s(x, c) * age / 8` with `s` read from the moment as the table is
+  (`Recall.slope_maps`), so a preference for old or recent slots holds at ages no lesson
+  reached. The maps start at zero and the lesson steps them at that rate by the table's
+  gradient.
+- `recall_relative` (opt-in, #234): every head's position term also reads each slot's age
+  relative to the slot the stream's previous read attended most (`Recall.focus`), offsets
+  within `Recall.RELATIVE` (8) a bucket each, so a read can be placed where an earlier read
+  pointed (the token after the one just said) at any length.
+- **The recipe for unseen lengths**, confirmed on six fresh founders declared before the run:
+  `recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01` (with the boundary and no age
+  charge) reads look back taught at 5 to 12 at 24 to 60, `first` 0.986 to 1.000 and `second`
+  0.988 to 1.000, and copies unique tokens taught at 3 to 6 at 8 to 12 at 0.992 to 1.000 (the
+  founder table, on the development seeds: 0.25 to 0.27, 0.25 to 0.32 and 0.30 to 0.36); with
+  `recall_relative=True` as
+  well it copies repeated tokens at 0.918 to 0.941 in closed loop. Zeroing the anchored maps
+  drops `second` to 0.48 to 0.63. Induction and n-back stay within 0.014 of the founder; a
+  period of 40 stays where the founder leaves it (0.35 to 0.39), since it needs the table exact to
+  64 ages. The slower
+  table costs reads that need exact ages (#232's candidate: Stone Age ordered recall 0.82
+  against 0.99).
+- `recall_when` (opt-in, #237): every head's read also delivers when what it read happened,
+  `amplitude * sum_i p_i F_i` on a region of its own (`Recall.when_regions`), with `F_i` two
+  features of the slot's age and, with the anchor, two of its place in the episode
+  (`Recall.when_features`). The regions reach the association through synapses that start at
+  zero, laid out after every other part. "How long ago was X told?" answers 0.93 to 0.97 with it,
+  0.21 to 0.68 without; "was A told before B?" over two moments stays at 0.61 to 0.73, since
+  the comparison needs the first read carried to the second moment.
 - `recall_chain` (opt-in, #234): with several heads, each head after the first adds to its
-  address what the head before it read (its recall and next reads) through a map that starts at
-  zero and the address lesson steps, so one moment can place a read where an earlier read
-  pointed (two hops). A newborn chain reads exactly as the heads without it; checkpoints keep
-  the maps. It does not beat its control: two hops asked in one moment read 0.45 with it and
+  address what the head before it read, through a map that starts at zero and the address
+  lesson steps. It does not beat its control: two hops asked in one moment read 0.45 with it and
   without it (three development seeds); one think moment answers 0.99.
-- An answer whose solve does not qualify within `free_steps` continues once from where it
-  stopped on the damping ladder, another `free_steps` sweeps in equal shares at the full step and
-  at successively halved steps (the learner's `damping`, at least one halving), before the brain
-  refuses it (#239); the settlement report counts the rescue (`rescue_steps`) and sums both
-  solves' sweeps and checks. Nothing changes where the first solve
-  qualifies. The width sweep of #239 found trained recall brains refusing acts whose settle
-  needed more full-step sweeps than the finite learner's budget left them.
-- `memory_context_hold` (opt-in, #202): with `memory_choice=True` and a temporal context,
-  `"unchanged"` keys a decision taken on the observation of the stream's previous decision as
-  if that decision had not been taken, whatever its outcome (the replay path drops such a
-  decision only when its outcome was nothing), and
-  `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back
-  out of the context. `benchmarks/context_key` ports Will Glynn's Stone Age chains (the
-  ambiguous chain, the invisible-action boundary and the fully observed chain) with credit.
-  On fresh seeds, declared before the run: `"unchanged"` passes the ambiguous chain cleanly in
-  35 of 96 lives against 6 for the founder key (30 against 1 discordant pairs, exact McNemar
-  p < .0001) and keeps the fully observed chain (40 against 43 of 48, p = .51); on the chain
-  whose right action leaves the observation unchanged it costs (0 against 9 clean passes).
-  `"punished"`, with misses costing .05, passes that chain in 20 of 48 lives against 13 for
-  the cost alone (p = .039).
+
+Each of these maps starts at zero, so a newborn reads as one without the option, and
+checkpoints keep the maps and the per-stream counts.
+
+### Learning during a continuing life
+
 - `memory_extinction` (opt-in, #210): with `memory_choice=True`, a zero outcome writes a learned
   zero for the chosen action where the records' vote for it and its direct payment in this
   place both reach the setting (0.5). A third store, `memories["episodic"].paid`, keeps which
   actions were paid directly where; replayed and demonstrated credit is never extinguished. In
   the issue's bandit, whose paying arm moves and whose failures pay 0, 11 of 12 lives learn the
-  new arm against 5 of 12 without it. Off, every brain and checkpoint is as before. The rule is
-  Sean McClane's (#210).
-- Document how the project is planned (AGENTS.md, CONTRIBUTING.md): the roadmap (#109), the
-  goal epics (#118, a Doom player; #173, a language model that understands sequences and
-  grammar), a milestone per release and the shared threads live on GitHub; how an issue is
-  opened, folded, parked and closed; the work and release rules. The issue and pull request
-  templates name the goal epic or milestone issue a change serves, and the contribution rules
-  name the epics that hold the folded capability contracts.
+  new arm against 5 of 12 without it. A confirmation panel on fresh seeds found every reward
+  chamber's gate where it stands without the rule; the return to the first arm after a second
+  reversal is slower (median
+  15 trials against 6), and a continuing chain changes on 7 of 10 seeds. The rule is Sean
+  McClane's (#210).
+- `memory_context_hold` (opt-in, #202): with `memory_choice=True` and a temporal context,
+  `"unchanged"` keys a decision taken on the observation of the stream's previous decision as if
+  that decision had not been taken, whatever its outcome, and `"punished"` takes a decision whose
+  outcome was below zero, in the middle of an attempt, back out of the context.
+  `benchmarks/context_key` ports Will Glynn's Stone Age chains with credit. On fresh seeds,
+  declared before the run: `"unchanged"` passes the ambiguous chain cleanly in 35 of 96 lives
+  against 6 (exact McNemar p < .0001) and keeps the fully observed chain (40 against 43 of 48,
+  p = .51); on the chain whose right action leaves the observation unchanged it costs (0 against
+  9). `"punished"`, with misses costing .05, passes that chain in 20 of 48 lives against 13
+  (p = .039).
+- `recall_position_reward` (opt-in, #236; runtime): reward trains the recall read's position
+  maps, and with the anchor the anchored maps, through the eligibility the actor traces beside
+  the address map's. On the Stone Age ordered recall world from reward alone it moves the answer
+  from chance (0.49) to 0.74 to 0.87 sampled success with `recall_position_reward=4` and
+  `recall_address_reward=1` (mean 0.84, 0.86 after 3,072 episodes; greedy 0.875 to 1.0); #236's
+  0.90 is not yet reached. It needs the position
+  term, and a pending outcome holds its settings as it holds the address map's.
+- `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
+  that many times the lesson's rows (at least one) are taught again, drawn from a reservoir of
+  the lessons' rows kept over the life, a uniform sample (`rehearsal_capacity`, 512). Types the
+  cortex holds, taught one after another, keep what earlier lessons taught; types held by a
+  recall read do not (look back's cues in sequence: first 0.62 and last 0.89 of their
+  interleaved accuracy, against 0.77 and 0.83 without it).
+- A cue the answer does not show (#208, #209; `benchmarks/credit`, a two-cue chamber, and a new
+  section of docs/reward.md). Taught by the terminal reward alone, `actor_eta=0.1,
+  actor_eta_bias=0.01` with `memory_choice=True` learns the cue-dependent answer at delay 0 on
+  11 of 12 fresh founders (the composed founder on 2 of 12); one event between the cue and the
+  answer gives 4 of 6, two give none. Taught by a lesson at the answer, `recall=True,
+  recall_recency=0.0` carries the cue through 4 and 8 distractors on 12 of 12 fresh founders.
+  No library setting changed for these readings.
+- Reward at the end of an episode (#216, a new section of docs/reward.md): a check of the spread
+  of the critic's values beside their mean, the critic school (demonstrated episodes replayed
+  through `step` with `actor_eta`, `actor_eta_bias`, `memory_rate` and `consolidation` at zero;
+  `memory_rate=0` alone leaves the consolidated record learning) and the value lesson (a second
+  motor slot taught each moment's eventual outcome), measured on a light-cycle game. On lessons
+  whose outcomes vary the value lesson lifts the association's best linear readout of the winner
+  by 0.03 to 0.04 AUC, and after a critic school the critic ranks 0.09 to 0.14 higher at move 10;
+  on a demonstrator's own games, which it mostly wins, it does nothing.
+- The competing ring (#169) read again on 0.93 (benchmarks/competing/README.md): under the
+  melee's signed pay the loss of an acquired skill reproduces at a smaller depth and still lies in
+  the associative store's latest records; an averaged record takes about 0.10 off it, and a store
+  frozen where the noisy pay begins holds the skill in that table world.
+
+### Wider brains (#239)
+
+- An answer whose solve does not qualify within `free_steps` continues once from where it
+  stopped on the damping ladder, another `free_steps` sweeps in equal shares at the full step and
+  at successively halved steps, before the brain refuses it; the settlement report counts the
+  rescue (`rescue_steps`) and sums both solves' sweeps and checks. Nothing changes where the
+  first solve qualifies, after a solve that is not finite, or at a budget of no sweeps. Trained
+  recall brains refused acts whose settle needed more full-step sweeps than the finite learner's
+  budget left them; the life that refused at lesson 343 now runs to its end.
+- `learning_surprise_share` (opt-in; `LearnerConfig.surprise_share`, founder `False`): with
+  surprise lessons, a lesson's step is scaled by the share of its rows it taught, so one wrong
+  row of sixteen moves the net a sixteenth as far as sixteen. At width 1,024 on induction,
+  surprise lessons without it swing between collapse and recovery (one seed at 0.01 after 1,000
+  lessons); with it three seeds end at 0.95 to 0.99.
+- docs/tune.md's "Wide brains" section states the three causes the width sweep located and a
+  recipe of fan-in-scaled steps (`Learner.synapse_rate`) for a saturated readout, with its cost.
+
+### Project
+
+- How the project is planned (AGENTS.md, CONTRIBUTING.md): the roadmap (#109), the goal epics
+  (#118, a Doom player; #173, a language model that understands sequences and grammar), a
+  milestone per release and the shared threads live on GitHub; how an issue is opened, folded,
+  parked and closed; the work and release rules. The issue and pull request templates name the
+  goal epic or milestone issue a change serves.
 
 ## 0.92.1 — 2026-11-02
 
