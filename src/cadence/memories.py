@@ -564,15 +564,17 @@ class EpisodicRecords:
         """Each stream's record of its chosen action in reward units: the records' vote for
         the chosen motor neuron, or the read of ``memory`` alone, averaged over the slots of a
         slotted readout."""
-        place = self.place
-        if not place.amplitude:
+        # in reward units: the read divided by the amplitude of the store that was read (the
+        # vote's, the place store's), which a retune of memory_amplitude leaves the paid store
+        scale = self.place.amplitude if memory is None else memory.amplitude
+        if not scale:
             return np.zeros(len(action))
         if memory is None:
             read = self.vote(observations, keys)
         else:
             assert keys is not None  # one store is read under the keys it is keyed by
             read = memory.recall(keys)
-        vote = np.asarray(read) / place.amplitude
+        vote = np.asarray(read) / scale
         rows = np.arange(len(action))
         if action.ndim == 2:
             chosen = action + self.offsets[None, :]

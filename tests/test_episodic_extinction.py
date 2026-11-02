@@ -158,3 +158,19 @@ def test_grow_keeps_the_extinction_and_the_direct_payments():
         grown.memories["episodic"].paid.consolidated,
         brain.memories["episodic"].paid.consolidated,
     )
+
+
+@pytest.mark.parametrize("amplitude", [None, 3.0])
+def test_extinction_reads_the_direct_payment_in_reward_units_after_a_retune(amplitude):
+    brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5)
+    if amplitude is not None:
+        brain.retune(memory_amplitude=amplitude)
+    episodic = brain.memories["episodic"]
+    x = brain.observation_code(np.array([[1.0, 0.0, 0.0, 0.0]]))
+    action, learned, done = np.array([0]), np.array([True]), np.array([False])
+    for _ in range(6):  # the action pays here, directly
+        episodic.outcome(x, action, np.array([1.0]), done, learned, gamma=0.9)
+    assert float(episodic.held(x, x, action, episodic.paid)[0]) == pytest.approx(1.0)
+    before = float(episodic.held(x, None, action)[0])
+    episodic.outcome(x, action, np.array([0.0]), done, learned, gamma=0.9)  # it stops paying
+    assert float(episodic.held(x, None, action)[0]) < before - 0.3
