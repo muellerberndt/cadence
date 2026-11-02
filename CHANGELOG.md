@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `recall_position_reward` (opt-in, #236; runtime, founder 0): reward trains the recall read's
+  position maps, and with `recall_anchor` the anchored maps. At each sampled act the step the
+  position lesson would take, were the act's action the lesson's label, joins the eligibility
+  the actor traces beside the address map's, and dopamine steps the maps by the setting times
+  one lesson's step. At the founder the eligibility and its checkpoint keep their shape.
 - `recall_anchor` (opt-in, #237): every head's position term also reads each slot's place in
   its stream's current episode (the moments from the episode's first to the slot), bucketed as
   ages are, with one more bucket for slots written before the episode began. Ages count back

@@ -553,6 +553,14 @@ class Recall:
     rate ``min(address, 1 / |z|^2)``: at ``address_reward=1`` a unit of dopamine moves the
     map by one lesson's step, and ``address=0`` leaves the map as it is under reward too.
 
+    With ``position_reward`` above zero (an option, founder 0; runtime) reward trains the position
+    maps as well, and with ``anchor`` the anchored maps: at each sampled act the step the
+    position lesson would take at each row, were the act's action the lesson's label (the
+    cross-entropy gradient of the head's terms toward the slots the act's contrast names, at
+    the lesson's bounded rate ``position_rate``), joins the eligibility the actor traces, and a
+    unit of dopamine moves the maps by ``position_reward`` times one lesson's step. Which slot a
+    head reads by its age (the first told or the latest) is then reachable from reward alone.
+
     With ``heads`` H above 1 (a construction setting) the memory reads its one bank through
     H heads. Head h has a read port of its own, the regions ``recall_h`` and ``next_h``
     (``recall`` and ``next`` for head 0), wired one way into the association as the first,
@@ -644,6 +652,7 @@ class Recall:
     address_step: str = "lms"
     null: float | None = None
     address_reward: float = 0.0
+    position_reward: float = 0.0
     window: int = 1
     window_decay: float = 1.0
     heads: int = 1
@@ -685,7 +694,8 @@ class Recall:
     # runtime except the window, the heads, the position term, the copy pathway and the
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
-        "address_step", "null", "address_reward", "window", "window_decay", "heads", "position",
+        "address_step", "null", "address_reward", "position_reward", "window", "window_decay",
+        "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain", "anchor",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
@@ -782,7 +792,7 @@ class Recall:
             return value
         if name == "null":
             return None if value is None else real(name, value)
-        if name == "address_reward":
+        if name in ("address_reward", "position_reward"):
             return real(name, value, low=0)
         if name == "window":
             if (
@@ -2191,69 +2201,139 @@ class Recall:
         ``min(address, 1 / |z|^2)`` times the outer product of ``z = [x, c, 1]`` and its
         error, of the form ``address_step`` names. A row that does not move, or whose
         contribution is not finite, keeps none."""
-        if not self.address_reward:
+        positions = bool(self.position_reward) and bool(self.position_maps)
+        if not (self.address_reward or positions):
             return None
         movement = self.activity(plus) - self.activity(minus)
         batch, width, columns_ = len(movement), self.map_width, self.address_width
-        out = np.zeros((batch, width + len(self.association) + 1, self.heads * columns_))
+        count = self.position_buckets
+        out = np.zeros((batch, width + len(self.association) + 1, self.reward_columns))
         moment = self.last
         if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
             return out
         reads = self._lesson_reads(moment)
+        chains = self._lesson_chained(moment)
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
             head_moment = moment._replace(address=self._head_address(moment, h))
-            found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
+            found = self._row_steps(
+                head_moment, np.arange(batch), d_value, d_next, h, reads[h], chains[h]
+            )
             if found is None:
                 continue
-            moving, x, c, _, _, step, _, _, _ = found
+            moving, x, c, _, _, step, target, prior, _ = found
+            index = np.flatnonzero(moving)
             z = np.concatenate([x, c, np.ones((len(x), 1))], axis=1)
-            with np.errstate(over="ignore", invalid="ignore"):
-                rows = self.address * np.einsum("bi,bk->bik", z, step)
-            kept = np.isfinite(rows).all(axis=(1, 2))
-            out[np.flatnonzero(moving)[kept], :, h * columns_:(h + 1) * columns_] = rows[kept]
+            if self.address_reward:
+                with np.errstate(over="ignore", invalid="ignore"):
+                    rows = self.address * np.einsum("bi,bk->bik", z, step)
+                kept = np.isfinite(rows).all(axis=(1, 2))
+                out[index[kept], :, h * columns_:(h + 1) * columns_] = rows[kept]
+            if not positions:
+                continue
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                # the position lesson's step at each row, as ``_position_step`` takes it
+                gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
+                rate = self.position_rate
+                energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
+                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
+                blocks = [(self.buckets()[None, :].repeat(len(x), axis=0), count)]
+                if self.anchor_maps:
+                    blocks.append((self.anchored_buckets(index), count + 1))
+                start = self.heads * columns_
+                for buckets, size in blocks:
+                    terms = np.zeros((len(x), size))
+                    np.add.at(terms, (np.arange(len(x))[:, None], buckets), gradient)
+                    rows = rate * np.einsum("bi,bk->bik", z, terms * bound)
+                    kept = np.isfinite(rows).all(axis=(1, 2))
+                    out[index[kept], :, start + h * size:start + (h + 1) * size] = rows[kept]
+                    start += self.heads * size
         return out
 
-    def propose(self, step: np.ndarray) -> tuple[Any, Any, Any, float] | None:
+    @property
+    def reward_columns(self) -> int:
+        """The columns of the reward eligibility (``contrast_rows``): every head's address
+        columns, and with ``position_reward`` every head's position buckets, then with
+        ``anchor`` every head's anchored buckets."""
+        columns_ = self.heads * self.address_width
+        if self.position_reward and self.position_maps:
+            columns_ += self.heads * self.position_buckets
+            if self.anchor_maps:
+                columns_ += self.heads * (self.position_buckets + 1)
+        return columns_
+
+    def propose(self, step: np.ndarray) -> tuple[Any, ...] | None:
         """The address map after a reward's step, not installed: ``step`` is the rows'
         eligibility weighted by the dopamine and averaged (``contrast_rows``' shape), taken at
         ``address_reward``. Returns ``w_x``, ``w_c``, ``b`` and the norm of the step (with
-        several heads, each of the three a tuple of every head's, head 0's first), or None
-        at ``address_reward=0``, which takes none; a step whose map is not finite is refused
-        (``ValueError``)."""
-        if not self.address_reward:
+        several heads, each of the three a tuple of every head's, head 0's first), then with
+        ``position_reward`` every head's position maps and, with ``anchor``, its anchored maps
+        (None without), or None when neither reward trains the read; a step whose map is not
+        finite is refused (``ValueError``)."""
+        positions = bool(self.position_reward) and bool(self.position_maps)
+        if not (self.address_reward or positions):
             return None
         step = np.asarray(step, dtype=float)
         width, columns_ = self.map_width, self.address_width
-        shape = (width + len(self.association) + 1, self.heads * columns_)
+        shape = (width + len(self.association) + 1, self.reward_columns)
         if step.shape != shape:
             raise ValueError(f"an address map's step is a {shape} array")
+        split = self.heads * columns_
         with np.errstate(over="ignore", invalid="ignore"):
-            moved = self.address_reward * step
+            moved = self.address_reward * step[:, :split]
             maps = []
             for h in range(self.heads):
                 block = moved[:, h * columns_:(h + 1) * columns_]
                 w_x, w_c, b = self.head_map(h)
                 maps.append((w_x + block[:width], w_c + block[width:-1], b + block[-1]))
-        if not np.isfinite(moved).all() or not all(
-            np.isfinite(a).all() for head in maps for a in head
-        ):
+            stepped: list[np.ndarray] = [moved]
+            position_maps = anchor_maps = None
+            if positions:
+                count, start = self.position_buckets, split
+                kinds = [(self.position_maps, count)]
+                if self.anchor_maps:
+                    kinds.append((self.anchor_maps, count + 1))
+                found_maps = []
+                for kept_maps, size in kinds:
+                    part = self.position_reward * step[:, start:start + self.heads * size]
+                    stepped.append(part)
+                    found_maps.append([
+                        (
+                            m_x + part[:width, h * size:(h + 1) * size],
+                            m_c + part[width:-1, h * size:(h + 1) * size],
+                            m + part[-1, h * size:(h + 1) * size],
+                        )
+                        for h, (m_x, m_c, m) in enumerate(kept_maps)
+                    ])
+                    start += self.heads * size
+                position_maps = found_maps[0]
+                anchor_maps = found_maps[1] if len(found_maps) > 1 else None
+        every = [*(a for head in maps for a in head), *stepped]
+        for found in (position_maps, anchor_maps):
+            every += [a for head in found or () for a in head]
+        if not all(np.isfinite(a).all() for a in every):
             raise ValueError("the address map's reward step must be finite")
-        norm = float(np.linalg.norm(moved))
+        norm = float(np.sqrt(sum(float(np.sum(part * part)) for part in stepped)))
         if self.heads == 1:
-            return maps[0][0], maps[0][1], maps[0][2], norm
+            return maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps
         return (
-            tuple(m[0] for m in maps), tuple(m[1] for m in maps), tuple(m[2] for m in maps), norm
+            tuple(m[0] for m in maps), tuple(m[1] for m in maps), tuple(m[2] for m in maps), norm,
+            position_maps, anchor_maps,
         )
 
-    def accept(self, proposal: tuple[Any, Any, Any, float]) -> None:
-        """Install a step ``propose`` made."""
+    def accept(self, proposal: tuple[Any, ...]) -> None:
+        """Install a step ``propose`` made: the address maps, and with ``position_reward`` the
+        position maps (and the anchored ones)."""
         if self.heads == 1:
             self.w_x, self.w_c, self.b = proposal[0], proposal[1], proposal[2]
-            return
-        for h in range(self.heads):
-            self._set_map(h, proposal[0][h], proposal[1][h], proposal[2][h])
+        else:
+            for h in range(self.heads):
+                self._set_map(h, proposal[0][h], proposal[1][h], proposal[2][h])
+        if len(proposal) > 4 and proposal[4] is not None:
+            self.position_maps = list(proposal[4])
+        if len(proposal) > 5 and proposal[5] is not None:
+            self.anchor_maps = list(proposal[5])
 
     def to_dict(self) -> dict[str, Any]:
         """The memory's settings and counts: the founders, the ports, and each option where it

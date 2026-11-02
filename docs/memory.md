@@ -937,7 +937,12 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
   events the lesson's movement names, gives each taught row the gradient of its terms toward
   that target, and each head's maps take a bounded least-mean-squares step at
   `recall_position_rate`. This happens whatever `recall_address` is: a frozen address map does
-  not freeze the position term. Rewards do not train it.
+  not freeze the position term. Rewards train it only at `recall_position_reward` above
+  zero: at each sampled act the step the position lesson would take, were the act's action
+  the lesson's label, joins the eligibility the actor traces, and dopamine steps the maps by
+  `recall_position_reward` times one lesson's step (with the anchor, its maps too). Which slot
+  a head reads by its age, the first told or the latest, is then reachable from reward alone
+  ([#236](https://github.com/muellerberndt/cadence/issues/236)).
 
 ```python
 brain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)
@@ -1033,6 +1038,7 @@ map.
 | `recall_address_step` | `"lms"` | retune | `"toward"`: the named keys less the attended mixture |
 | `recall_null` | `None` | retune | A number adds a null slot; a non-finite logit is refused |
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
+| `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)) |
 | `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
 | `recall_chain` | `False` | construction | Each head after the first also addresses what the head before it read ([chained heads](#several-heads-opt-in)); needs `recall_heads` of 2 or more |

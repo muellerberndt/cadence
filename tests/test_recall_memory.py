@@ -1172,7 +1172,8 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
     """Each option passed at its founder builds the founder memory: the same life, the same
     checkpoint bytes and the same description, which leaves the options out."""
     assert cd.Recall.options() == {
-        "address_step": "lms", "null": None, "address_reward": 0.0, "window": 1,
+        "address_step": "lms", "null": None, "address_reward": 0.0, "position_reward": 0.0,
+        "window": 1,
         "window_decay": 1.0, "heads": 1, "position": 32, "position_rate": 0.1,
         "boundary": False, "copy": 0.0, "tokens": None, "action": False, "compete": True,
         "chain": False, "anchor": False,

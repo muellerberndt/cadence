@@ -1188,7 +1188,10 @@ def _validate_recall_state(
         past = data.get("recall/past")  # is refused by the shape
         array("past", (0 if past is None or not len(past) else batch, window - 1, key))
     # the actor's eligibility of the address map, and the contrast of a pending action
-    eligibility = (batch, key + command + association + 1, heads * address)
+    columns = heads * address  # with position_reward the position and anchored buckets follow
+    if settings.get("position_reward", 0.0) and count:
+        columns += heads * count + (heads * (count + 1) if settings.get("anchor", False) else 0)
+    eligibility = (batch, key + command + association + 1, columns)
     if "recall/trace" in data:
         array("trace", eligibility)
     if "recall/pending" in data:
