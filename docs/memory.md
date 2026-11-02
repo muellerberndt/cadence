@@ -942,7 +942,12 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
   the lesson's label, joins the eligibility the actor traces, and dopamine steps the maps by
   `recall_position_reward` times one lesson's step (with the anchor, its maps too). Which slot
   a head reads by its age, the first told or the latest, is then reachable from reward alone
-  ([#236](https://github.com/muellerberndt/cadence/issues/236)).
+  ([#236](https://github.com/muellerberndt/cadence/issues/236)). On the Stone Age ordered
+  recall world through `live` from reward alone (two values written, the first or the latest
+  asked; five development founders, 1,536 episodes), the founder answers at chance (0.49),
+  and `recall_position_reward=4` with `recall_address_reward=1` reaches 0.74 to 0.87 sampled
+  success (mean 0.84; greedy 0.875 to 1.0), 0.86 after 3,072 episodes. Rates of 16 are
+  unstable. The 0.90 the issue asks for is not yet reached.
 
 ```python
 brain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)

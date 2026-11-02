@@ -17,7 +17,10 @@
   position maps, and with `recall_anchor` the anchored maps. At each sampled act the step the
   position lesson would take, were the act's action the lesson's label, joins the eligibility
   the actor traces beside the address map's, and dopamine steps the maps by the setting times
-  one lesson's step. At the founder the eligibility and its checkpoint keep their shape.
+  one lesson's step. At the founder the eligibility and its checkpoint keep their shape. On
+  the Stone Age ordered recall world from reward alone (development founders) it moves the
+  answer from chance (0.49) to 0.84 sampled success with `recall_position_reward=4` and
+  `recall_address_reward=1` (greedy 0.875 to 1.0); the 0.90 of #236's gate is not yet reached.
 - `recall_anchor` (opt-in, #237): every head's position term also reads each slot's place in
   its stream's current episode (the moments from the episode's first to the slot), bucketed as
   ages are, with one more bucket for slots written before the episode began. Ages count back
