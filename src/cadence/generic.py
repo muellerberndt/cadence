@@ -40,6 +40,7 @@ import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from copy import deepcopy
+from dataclasses import replace
 from functools import wraps
 from pathlib import Path
 from types import MappingProxyType
@@ -3506,11 +3507,32 @@ class Brain:
     def _qualified(
         self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer"
     ) -> BrainState:
-        """Check the complete current graph before publishing an answer."""
+        """Check the complete current graph before publishing an answer. A solve that does not
+        qualify within ``free_steps`` continues once from where it stopped, with halved
+        integration steps (the learner's ``damping``, at least one halving), for another
+        ``free_steps`` sweeps; only then is the answer refused. The rescue changes nothing
+        where the first solve qualifies; the report counts its sweeps (``rescue_steps``)."""
+        from .brain import _copy_state
+
         cfg = self.learner.config
         if cfg.tolerance is None:
             raise ValueError("Brain answers require a finite residual tolerance")
         phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
+        rescue = 0
+        if not all(bool(value) for value in phase.qualified) and all(
+            np.isfinite(np.asarray(value)).all()
+            for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
+        ):
+            first = int(phase.steps)
+            phase = self.brain.equilibrate(
+                drive,
+                state=_copy_state(phase.state),
+                budget=cfg.free_steps,
+                tolerance=cfg.tolerance,
+                damping=max(int(cfg.damping), 1),
+            )
+            rescue = int(phase.steps)
+            phase = replace(phase, steps=first + rescue)
         rows = tuple(bool(value) for value in phase.qualified)
         residual = tuple(float(value) for value in phase.residual)
         report: dict[str, Any] = {
@@ -3527,12 +3549,14 @@ class Brain:
             "damping_halvings": int(phase.damping_halvings),
             "stagnation_checks": int(phase.stagnation_checks),
         }
+        if rescue:
+            report["rescue_steps"] = rescue
         if self.learned_code is not None and self._code_settlement is not None:
             report.update(self._code_settlement)  # the code phase this settle started from
         self._last_settlement = MappingProxyType(report)
         if not all(rows):
             raise RuntimeError(
-                f"brain did not settle within {cfg.free_steps} steps: "
+                f"brain did not settle within {cfg.free_steps} steps and a rescue of as many: "
                 f"residual={float(np.max(phase.residual)):.6g}, tolerance={cfg.tolerance:g}; "
                 "no action issued"
             )
