@@ -57,7 +57,8 @@
   address what the head before it read (its recall and next reads) through a map that starts at
   zero and the address lesson steps, so one moment can place a read where an earlier read
   pointed (two hops). A newborn chain reads exactly as the heads without it; checkpoints keep
-  the maps.
+  the maps. It does not beat its control: two hops asked in one moment read 0.45 with it and
+  without it (three development seeds); one think moment answers 0.99.
 - An answer whose solve does not qualify within `free_steps` continues once with halved
   integration steps for another `free_steps` sweeps before the brain refuses it (#239); the
   settlement report counts the rescue (`rescue_steps`). Nothing changes where the first solve

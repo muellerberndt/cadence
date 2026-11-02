@@ -447,6 +447,10 @@ second head can learn to look for `b`. A newborn chain reads as the heads withou
 address lesson steps the maps, and reward does not (`recall_address_reward` is refused with it).
 A "think" moment remains the way to chain reads across moments: the second read's address then
 comes from the cortex that holds the first ([#234](https://github.com/muellerberndt/cadence/issues/234)).
+The chain does not beat its control: on two hops asked in one moment (three development seeds,
+1,500 lessons) it answers 0.45, as the two heads without it do, and 0.51 against 0.49 with the
+copy pathway as the tokens' identity over 3,000 lessons; with one think moment the same brains
+answer 0.99.
 
 Use several heads when one answer needs several witnessed facts at once, and compare them with
 one head and with the facts asked one per moment (one head reads one fact per moment through
