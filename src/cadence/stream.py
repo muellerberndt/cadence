@@ -2520,7 +2520,8 @@ class Recall:
             every += [a for head in found or () for a in head]
         if not all(np.isfinite(a).all() for a in every):
             raise ValueError("the address map's reward step must be finite")
-        norm = float(np.sqrt(sum(float(np.sum(part * part)) for part in stepped)))
+        # one norm over every part stepped: with the address map alone, 0.92.1's own
+        norm = float(np.linalg.norm(np.concatenate([part.ravel() for part in stepped])))
         if self.heads == 1:
             return maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps
         return (
