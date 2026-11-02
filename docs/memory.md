@@ -832,7 +832,13 @@ for every memory.
   `memory_extinction=0.5` extinguishes such a record: in the same bandit, 11 of 12 lives
   learned the new arm against 5 of 12 without it ([#210](https://github.com/muellerberndt/cadence/issues/210)). It reads the place: where
   one observation stands for several situations, an action paid in one of them meets zeros in
-  the others, and its record is extinguished there as well.
+  the others, and its record is extinguished there as well. A confirmation panel on fresh seeds
+  found every reward chamber's gate where it stands without the rule (the Stone Age crafting
+  chain and V5, taught recall, the odour nursery, delayed response, the contextual bandit, the
+  songs and the key-door chamber), and the bandit's repair held, 11 of 12 lives against 3 of 12. Its costs there: the
+  return to the first arm after a second reversal is slower (median 15 trials against 6), and a
+  continuing chain changes on 7 of 10 seeds, its greedy chain passing on 10 of 10 against 7 with
+  one seed losing it and the income 1.1 lower.
 - `predict` and `fit` answer independent samples and read no memory.
 
 ## The recall memory in full
