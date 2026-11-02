@@ -1,8 +1,10 @@
-Describe the concrete problem, intended behavior and current evidence.
+Describe the concrete problem, intended behavior and current evidence. For a defect,
+give the version, a minimal reproduction and the expected and observed behavior.
 
 - Scope: bounded component, integrated continuing behavior, or infrastructure.
-  Link the applicable existing owner under the
-  [canonical principle in #109](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time).
+  Name the goal epic it serves, [the Doom player #118](https://github.com/muellerberndt/cadence/issues/118) or
+  [language #173](https://github.com/muellerberndt/cadence/issues/173), or the milestone issue it extends; behavior over
+  time follows the [principle](https://github.com/muellerberndt/cadence/blob/main/AGENTS.md#coherent-behavior-over-time).
 - Boundary: name the implemented model, live and held state, information supplied
   by adapters, and any proposed change within the same coupled global equilibrium.
 - Evidence: give the simpler control, acceptance and preservation gates, failures,

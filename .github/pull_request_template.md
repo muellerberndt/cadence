@@ -9,8 +9,8 @@ Declare scope: bounded component, integrated continuing behavior, or infrastruct
 Name the applicable equilibrium boundaries, simpler control and preservation gates.
 Infrastructure can explain applicability without an unrelated whole-brain test.
 Follow the [behavior-over-time evidence contract](https://github.com/muellerberndt/cadence/blob/main/CONTRIBUTING.md#scope-and-evidence-for-behavior-over-time)
-and link the applicable owner coordinated by
-[#109](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time).
+and link the issue it serves: a milestone issue or a goal epic of the
+[roadmap](https://github.com/muellerberndt/cadence/issues/109).
 
 For sequence claims, identify the continuing learned context and temporal
 organization, then report retained/absent/perturbed-context comparisons with

@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+- Document how the project is planned (AGENTS.md, CONTRIBUTING.md): the roadmap (#109), the
+  goal epics (#118, a Doom player; #173, a language model that understands sequences and
+  grammar), a milestone per release and the shared threads live on GitHub; how an issue is
+  opened, folded, parked and closed; the work and release rules. The issue and pull request
+  templates name the goal epic or milestone issue a change serves, and the contribution rules
+  name the epics that hold the folded capability contracts.
+
 ## 0.92.1 — 2026-11-02
 
 - MLX discovery runs in a child interpreter (#105). `available_backends()` imported `mlx.core`

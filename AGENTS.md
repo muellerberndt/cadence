@@ -16,6 +16,7 @@ guides. Read the owning guide, [numerical contracts](docs/contracts.md) and
 | Manage streams, outcomes and memory | [Continuous interaction](docs/start.md#continuous-interaction), [memory](docs/memory.md), [episodic memory](docs/memory.md#episodic-memory-what-happened-in-this-situation-before), [recall memory](docs/memory.md#the-recall-memory-in-full), [reward](docs/reward.md), [world model](docs/start.md#one-continuing-equilibrium-brain) |
 | Diagnose learning or settling work | [Learning](docs/settling.md#learning-the-freenudged-rule), [contracts](docs/contracts.md), [API diagnostics](docs/api.md), [troubleshooting](docs/troubleshooting.md) |
 | Add optional recursive observation | [Composition](docs/tune.md#brain) (`observers=`), [cortical regions](docs/anatomy.md#write-a-cortex) |
+| Plan work or open an issue | [How the project is planned](#how-the-project-is-planned), the [roadmap](https://github.com/muellerberndt/cadence/issues/109) |
 | Change or release the library | [Contributing and required checks](CONTRIBUTING.md), [evaluation](docs/evaluate.md), [instruments](benchmarks/instruments/README.md), [receipts](docs/evaluate.md#receipts) |
 
 ## What Cadence is, and is not
@@ -130,7 +131,8 @@ Every issue and plan must declare component, integrated-behavior or infrastructu
 scope, applicable equilibrium boundaries, a simpler control and preservation
 gates. Infrastructure can explain applicability without acquiring a whole-brain
 acceptance test. Follow the [scope and evidence review](CONTRIBUTING.md#scope-and-evidence-for-behavior-over-time)
-and the [canonical principle in #109](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time).
+and name the goal epic or milestone issue the work serves
+([how the project is planned](#how-the-project-is-planned)).
 
 ## Build and demonstrate the lifecycle
 
@@ -277,10 +279,51 @@ Save/load must still preserve the current supported model's complete continuatio
 Keep GPL-3.0 and required source attribution. NumPy is required; optional backends
 must not become hidden default dependencies.
 
-Use individual GitHub issues for missing or untested capabilities and optimization.
+Use GitHub issues for missing or untested capabilities and optimization, as
+[how the project is planned](#how-the-project-is-planned) describes.
 Optional System 2 can ship without a demonstrated task advantage. Release checks
 cover correctness, capability preservation, continuation and installed artifacts;
 completed general cognition is not a release gate.
+
+## How the project is planned
+
+The plan lives on GitHub; no local plan documents are kept.
+
+- **The roadmap, [#109](https://github.com/muellerberndt/cadence/issues/109):** the two goals, the release line, the order of
+  work and the parked research.
+- **Two goal epics:** [#118](https://github.com/muellerberndt/cadence/issues/118), a Doom player, and [#173](https://github.com/muellerberndt/cadence/issues/173), a
+  language model that understands sequences and grammar. Each states its definition of
+  done, its stages and the capability contracts folded into it.
+- **A milestone per release**, holding the library issues that release delivers, each
+  with its gate.
+- **Shared threads:** learned codes of meaning ([#211](https://github.com/muellerberndt/cadence/issues/211)), comparisons with
+  conventional learners ([#183](https://github.com/muellerberndt/cadence/issues/183)) and runtime ([#98](https://github.com/muellerberndt/cadence/issues/98)).
+
+An issue's life:
+
+- **Open** it from the [issue template](.github/ISSUE_TEMPLATE.md): scope, boundary and
+  evidence, and the goal epic or milestone issue it serves. A defect gives the version
+  and a minimal reproduction. Check the epics' contract tables first: a capability they
+  already hold is extended there, not opened again.
+- **Fold** an issue whose contract a goal epic consumes: copy the contract into the
+  epic's table, then close the issue with a comment that names the epic. Its text and
+  history stay.
+- **Park** research that no delivery needs yet: close it with the reason and list it
+  under the roadmap's parked work. It reopens when a delivery makes it the next question.
+- **Close** an issue when the pull request that fixes it merges, or when a release ships
+  it, with a comment that states the evidence: the gate as measured, or the test that
+  covers the fix. A candidate that fails its gate lands as a documented opt-in or stays
+  open with its reading.
+
+Work and releases:
+
+- Code changes go through a pull request with every CI job green; a release pull
+  request also gets an independent review. Documentation-only changes go straight to
+  `main`.
+- No default changes without a passed gate and the preservation panel. A mechanism that
+  learns is also read under `live`, with reward only.
+- A release closes its milestone: the roadmap's release line is updated, and each
+  delivered issue closes with its evidence ([releases](CONTRIBUTING.md#releases)).
 
 ## Related physics project
 

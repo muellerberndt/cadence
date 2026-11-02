@@ -131,25 +131,18 @@ Check existing state, information and experience first. Any added mechanism must
 participate through local repair in the same coupled global equilibrium; adapters
 must not hide answers, phase or arrangement outside that brain.
 
-Use the [canonical principle in #109](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time)
-and the applicable existing owner among
-[#121](https://github.com/muellerberndt/cadence/issues/121),
-[#116](https://github.com/muellerberndt/cadence/issues/116),
-[#93](https://github.com/muellerberndt/cadence/issues/93),
-[#122](https://github.com/muellerberndt/cadence/issues/122) and
-[#140](https://github.com/muellerberndt/cadence/issues/140), rather than creating
-duplicate capability tracks. [Task design](docs/task-design.md#test-coherent-behavior-over-time)
+Use the [principle](AGENTS.md#coherent-behavior-over-time) and the goal epic that
+owns the behavior, [the Doom player #118](https://github.com/muellerberndt/cadence/issues/118) or
+[language #173](https://github.com/muellerberndt/cadence/issues/173), whose tables hold the folded capability
+contracts, rather than creating duplicate capability tracks. [Task design](docs/task-design.md#test-coherent-behavior-over-time)
 describes the behavioral comparisons.
 
-Memory relevance keeps the existing owners: [selective attention #101](https://github.com/muellerberndt/cadence/issues/101),
-[context and recall #84](https://github.com/muellerberndt/cadence/issues/84),
-[learned temporal context #189](https://github.com/muellerberndt/cadence/issues/189),
-[learning and retention #85](https://github.com/muellerberndt/cadence/issues/85),
-[temporal credit #111](https://github.com/muellerberndt/cadence/issues/111),
-[episodic source memory #112](https://github.com/muellerberndt/cadence/issues/112) and
-[language #173](https://github.com/muellerberndt/cadence/issues/173), feeding the sequence
-acceptance in #121. Keep each issue's bounded contract; this criterion does not
-replace its existing gates or open a second roadmap.
+Memory relevance belongs to [language #173](https://github.com/muellerberndt/cadence/issues/173), which holds
+the contracts of selective attention (#101), context and recall (#84), learned
+temporal context (#189), learning and retention (#85), episodic source memory (#112)
+and sequence acceptance (#121); temporal credit (#111) is in
+[the Doom player #118](https://github.com/muellerberndt/cadence/issues/118). Keep each contract's bounded gates;
+this criterion does not replace them or open a second roadmap.
 
 Compare behavioral claims with uniform-random, frozen-copy and conventional
 online learners where applicable, at matched information and work. Count
@@ -299,7 +292,15 @@ attribution and license notices with their source.
 Releases are tagged `vX.Y.Z`, published to PyPI as `cadence-net`, and listed in
 `CHANGELOG.md`. Pin a release or a commit for reproducible work.
 
-Before publication, complete
-source-bound foundation, consumer, CI and installed-artifact checks before
-publication; record any missing application parity rather than inferring it
-from a successful library suite.
+A release is planned as a GitHub milestone of the issues it delivers
+([how the project is planned](AGENTS.md#how-the-project-is-planned)). Its code arrives
+through pull requests with every CI job green, and the release pull request gets an
+independent review before it merges. The tag goes on the merge commit. The wheel and
+sdist are built from that tree, checked with `twine check`, uploaded to PyPI and
+attached to the GitHub release with their SHA256 sums and the CI record. The
+milestone then closes, the roadmap's release line is updated, and each delivered issue
+closes with the evidence that settles it.
+
+Before publication, complete source-bound foundation, consumer, CI and
+installed-artifact checks; record any missing application parity rather than
+inferring it from a successful library suite.

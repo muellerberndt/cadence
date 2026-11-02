@@ -114,8 +114,8 @@ on the brain's behalf.
 
 Declare component versus integrated scope in the
 [task's evidence contract](task-design.md#test-coherent-behavior-over-time).
-The [canonical principle and capability coordination](https://github.com/muellerberndt/cadence/issues/109#coherent-behavior-over-time)
-keep these targets distinct from current implementation claims.
+The [roadmap](https://github.com/muellerberndt/cadence/issues/109) and its goal epics keep these targets distinct
+from current implementation claims.
 
 ## What the current interface provides
 
