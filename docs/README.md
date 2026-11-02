@@ -9,13 +9,13 @@ and an MLP or classifier setup is a control to compare against. The
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.92.0
+python -m pip install cadence-net==0.92.1
 ```
 
 Cadence needs Python 3.11 or later and NumPy. From a checkout, run `python -m pip install -e .`
 at the repository root. The extras `[fast]` (Numba and SciPy), `[accel]` (PyTorch) and
 `[apple]` (MLX) add backends; [backends](backends.md) says which to choose. The
-[v0.92.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.92.0/docs/README.md)
+[v0.92.1 documentation](https://github.com/muellerberndt/cadence/blob/v0.92.1/docs/README.md)
 is pinned to the release tag.
 
 ## By situation

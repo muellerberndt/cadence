@@ -346,3 +346,18 @@ def test_wiring_the_donor_lacks_starts_at_zero_even_with_kept_joints():
     lateral = np.isin(grafted.connectome.pre, motor) & np.isin(grafted.connectome.post, motor)
     assert lateral.any() and not grafted.brain.efficacy[lateral].any()
     assert host.brain.efficacy[lateral].any()
+
+
+def test_a_graft_keeps_this_brains_contact_counts_and_signs(tmp_path):
+    """A recall copy pathway with tokens is laid out again from the brain's construction on
+    load; with the donor's signs carried, the brain's connectome and its learner's disagreed."""
+    tokens = dict(recall=True, recall_copy=2.0)
+    host = cd.Brain.compose(6, 4, seed=1, modules=(16,), recall_tokens=[0, 1, 2, 3], **tokens)
+    donor = cd.Brain.compose(6, 4, seed=7, modules=(16,), **tokens)
+    grafted = host.graft(donor, ["recall", "next", "motor", "association"])
+    np.testing.assert_array_equal(grafted.connectome.sign, host.connectome.sign)
+    np.testing.assert_array_equal(grafted.connectome.count, host.connectome.count)
+    grafted.save(tmp_path / "grafted.npz")
+    loaded = cd.Brain.load(tmp_path / "grafted.npz")
+    assert loaded.connectome.digest() == loaded.learner.brain.connectome.digest()
+    np.testing.assert_array_equal(loaded.brain.efficacy, grafted.brain.efficacy)

@@ -64,11 +64,11 @@ a small fixed-label task is a control.
 ## Start with System 1
 
 Python 3.11+ and NumPy are required. Install the published release, whose
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.92.0/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.92.1/docs/README.md)
 describes the APIs in that package:
 
 ```sh
-python -m pip install cadence-net==0.92.0
+python -m pip install cadence-net==0.92.1
 ```
 
 ```python

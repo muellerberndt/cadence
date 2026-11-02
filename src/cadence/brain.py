@@ -91,13 +91,46 @@ def available_backends() -> dict[str, str]:
             out["torch"] = "cpu float64"
     except ImportError:
         pass
-    try:
-        import mlx.core as mx
-
-        out["mlx"] = f"{mx.default_device().type.name} float32"
-    except ImportError:
-        pass
+    device, _ = _mlx_probe()
+    if device is not None:
+        out["mlx"] = f"{device} float32"
     return out
+
+
+_MLX_PROBE: tuple[str | None, str] | None = None
+
+
+def _mlx_probe() -> tuple[str | None, str]:
+    """The device MLX would use, or None with the reason, probed once per process in a child
+    interpreter: an MLX whose discovery aborts the interpreter (an unsupported Metal or system
+    configuration) ends the child, and this process reads MLX as unavailable."""
+    global _MLX_PROBE
+    if _MLX_PROBE is None:
+        import importlib.util
+        import subprocess
+        import sys
+
+        if importlib.util.find_spec("mlx") is None:
+            _MLX_PROBE = (None, "mlx is not installed")
+        else:
+            code = "import mlx.core as mx; print(mx.default_device().type.name)"
+            try:
+                done = subprocess.run(
+                    [sys.executable, "-c", code], capture_output=True, text=True, timeout=300,
+                    check=False,
+                )
+            except (OSError, subprocess.SubprocessError) as exc:
+                _MLX_PROBE = (None, f"mlx discovery could not run: {exc}")
+            else:
+                lines = done.stdout.strip().splitlines()
+                if done.returncode == 0 and lines:
+                    _MLX_PROBE = (lines[-1], "")
+                else:
+                    tail = (done.stderr.strip().splitlines() or ["no message"])[-1]
+                    _MLX_PROBE = (
+                        None, f"mlx discovery failed (exit {done.returncode}): {tail}"
+                    )
+    return _MLX_PROBE
 
 
 @dataclass(frozen=True)
@@ -3152,6 +3185,9 @@ class _MlxKernel:
         neuron_model: NeuronModel,
         layout: Layout,
     ) -> None:
+        device, reason = _mlx_probe()
+        if device is None:  # an MLX that aborts on import would take this interpreter down
+            raise RuntimeError(f"the mlx backend is unavailable here: {reason}")
         import mlx.core as mx
 
         neuron_model._validate_precision("float32")
