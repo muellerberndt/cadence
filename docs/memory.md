@@ -992,7 +992,13 @@ read attended most (`brain.recall.focus`, the age of that slot, which ages with 
 moment): offset 0 for that slot, -1 for the one written after it, +1 for the one before,
 offsets beyond `Recall.RELATIVE` (8) sharing the outermost buckets, and one more bucket for a
 stream with no read before. The maps start at zero and the lesson steps them with the
-position maps ([#234](https://github.com/muellerberndt/cadence/issues/234)).
+position maps ([#234](https://github.com/muellerberndt/cadence/issues/234)). Copying sequences
+with repeated tokens, taught at lengths 3 to 6 and tested at 8 to 12 (three development seeds,
+the anchor in both arms), the relative read answers 0.54 to 0.74 of the tokens in closed loop,
+against 0.10 to 0.14 without it; given the right token before (teacher-forced) it answers 0.93,
+every position after the first above 0.9. The first token after the cue is where it still
+fails: the age term, taught at the short lengths, pulls that read away from the episode's
+start.
 
 ### Episodes, keys and windows
 

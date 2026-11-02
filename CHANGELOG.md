@@ -6,7 +6,10 @@
   relative to the slot the stream's previous read attended most (`Recall.focus`), offsets
   within `Recall.RELATIVE` (8) a bucket each, so a read can be placed where an earlier read
   pointed (the token after the one just said) at any length. The maps start at zero and the
-  lesson steps them with the position maps; checkpoints keep the focus and the maps.
+  lesson steps them with the position maps; checkpoints keep the focus and the maps. Copying
+  with repeated tokens at unseen lengths (taught 3 to 6, tested 8 to 12, with the anchor): 0.54
+  to 0.74 in closed loop against 0.10 to 0.14 without it, 0.93 teacher-forced; the first token
+  after the cue is where it still fails.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
   that many rows per taught row are taught again, drawn from a reservoir of the lessons' rows
   (their drives and labels) kept over the life, a uniform sample of every row
