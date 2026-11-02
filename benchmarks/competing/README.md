@@ -24,8 +24,11 @@ and beside the competing skill, while the actor's efficacies barely move: what t
 overwrites is the associative store's one-shot record of the chosen action's reward, which
 carries a short nursery's competence (see "Signed pay" below). The smaller actor steps
 retain no more than the gene step under the certain and weak payoffs, hold the competing skill
-less, and do not prevent the melee's loss. Gates are declared only after development;
-`protocol.json` carries `"gates": null`.
+less, and do not prevent the melee's loss. The [0.93 reading](#093-reading-2026-11-02) reads
+the melee again on the release-0.93 source: the loss reproduces at a smaller depth and still
+lies in the store's records, and a store frozen at the ring's door holds the skill in this
+table world. Gates are declared only after development; `protocol.json` carries
+`"gates": null`.
 
 ## What runs
 
@@ -219,6 +222,111 @@ habituate and learn almost nothing; the smaller steps 0.003 and 0.001 hold the t
 nursery's step and less than the smaller steps; and no candidate meets the issue's
 acceptance, persistence at the nursery's step at least as good as 0.003's.
 
+## 0.93 reading (2026-11-02)
+
+The melee reading ran again on the release-0.93 source (commit `80c0ecc`, version string
+0.92.1) at the chamber's founder, on the six development seeds: hard and soft nurseries, the
+full ring and the ring alone (`none`), arms `gene`, `small` and `frozen`, `--ring-pay 0.4 0.3
+0.1 0.1`; then the associative store's write rate beside it (`--brain memory_rate=0.2` and
+`0.05`, from birth) and the store's absence (`--brain episodic=0`), six nurseries and 30 ring
+lives each. Its receipts are kept with the project's research records, outside the library.
+
+**What reproduced: the shape, at a smaller depth.** Under the melee's pay every arm that keeps
+learning loses the hard skill, at the gene step and at eta 0.003 alike, while the frozen copy
+reads 1.00 / 1.00; the association-to-motor efficacies drift by 0.09 and 0.009 of their RMS in
+the full ring, and the dopamine on skill A's learned moments is zero-mean (−0.003, positive in
+0.50 of them). Without the store the hard nursery acquires poorly (0.50 / 0.50 at the door,
+income 0.29 against 0.72) and the ring changes nothing (every seed ends at or above its door
+value on the reset reading): what the melee takes is the store's competence, as at 0.80. The
+loss is shallower than at 0.80. At the gene step the hard skill ends the full ring at 0.71 /
+0.79 (carried / reset) and the ring alone at 0.58 / 0.71; at eta 0.003 at 0.62 / 0.71 and
+0.58 / 0.67 (0.80: 0.50 / 0.58, 0.38 / 0.46, 0.42 / 0.62 and 0.42 / 0.42). One end probe is a
+snapshot of a greedy map that keeps moving, so the table also gives skill A averaged over the
+twenty probes of the ring's second half: pooled over both arms, both rings and both readings,
+0.63 against 0.55 in the 0.80 receipt. The hard nursery learns from more of its moments than at
+0.80 (aroused in 0.29 to 0.71 of them against 0.29 to 0.44, income 0.72 against 0.82) and
+reaches the same door (1.00 / 1.00 on every seed, reset margins 0.62 to 0.76). The soft nursery
+reproduces within the seeds' spread: door 0.67 / 0.67 (0.80: 0.75 / 0.67), skill A over the
+ring's second half 0.47 to 0.59 carried and 0.53 to 0.61 reset (0.80: 0.50 to 0.55 and 0.56 to
+0.59), the frozen copy 0.58 / 0.67 at the end. Skill B stays near chance in the full ring under
+the melee's pay (0.31 to 0.37 reset over the second half wherever the store is on, chance 0.25).
+
+In the ring the life is in want from its first moments and samples a heated policy: every
+learning arm, at every store setting, picks skill A's right action on 0.26 to 0.36 of A's
+moments (chance 0.25) and earns −0.10 to −0.09 in the full ring and 0.03 to 0.04 alone. The
+ring's income does not separate the settings; the greedy readings on saved copies do.
+
+Hard nursery, mean over the six seeds, carried / reset; the frozen copy reads 1.00 / 1.00 at the
+door and at the end wherever the store is on, and `--report` prints every arm:
+
+| Brain | Door A, nursery income | Ring | A at the end, `gene` | Seeds at the door's value at the end, `gene` | A over the second half, `gene` | A over the second half, `small` |
+| --- | --- | --- | --- | --- | --- | --- |
+| founder (`memory_rate` 1.0) | 1.00 / 1.00, 0.72 | `full` | 0.71 / 0.79 | 2 / 3 | 0.58 / 0.66 | 0.61 / 0.67 |
+| | | `none` | 0.58 / 0.71 | 0 / 2 | 0.62 / 0.70 | 0.59 / 0.63 |
+| `memory_rate=0.2` | 1.00 / 1.00, 0.72 | `full` | 0.83 / 0.88 | 3 / 3 | 0.65 / 0.78 | 0.72 / 0.79 |
+| | | `none` | 0.62 / 0.71 | 0 / 2 | 0.65 / 0.78 | 0.73 / 0.80 |
+| `memory_rate=0.05` | 1.00 / 1.00, 0.71 | `full` | 0.83 / 0.83 | 2 / 2 | 0.65 / 0.77 | 0.75 / 0.80 |
+| | | `none` | 0.71 / 0.79 | 2 / 2 | 0.69 / 0.75 | 0.74 / 0.79 |
+| `episodic=0` | 0.50 / 0.50, 0.29 | `full` | 0.54 / 0.50 | 6 / 6 | 0.55 / 0.49 | 0.51 / 0.50 |
+| | | `none` | 0.50 / 0.54 | 6 / 6 | 0.55 / 0.50 | 0.53 / 0.50 |
+
+**The store's write rate lowers the loss and does not hold the skill.** An averaged record
+acquires as the founder does (door 1.00 / 1.00 on every seed, nursery income 0.71 and 0.72) and
+takes about 0.10 off the hard skill's loss: pooled over the ring's second half, skill A reads
+0.74 at `memory_rate` 0.2 and at 0.05 against 0.63 at 1.0. The 0.80 receipts give 0.64 and
+0.66 against 0.55 on the same statistic; the halving read in "Signed pay" above comes from
+their end probes. At the end at most 3 of 6 seeds read the door's 1.00, and over the second
+half a seed reads 1.00 at 0.26 to 0.42 of the probes on the reset reading (founder 0.18 to 0.26,
+frozen copy 1.00). On the soft nursery the averaged record raises the door's reset
+reading from 0.67 to 0.79 and the ring's level by about as much (pooled second half 0.62
+against 0.54); the fall from the door is the same (0.11 to 0.13).
+
+**Where the loss lies: the store's latest records.** A development readout outside the chamber
+(its script and numbers are not shipped) replays the hard-nursery lives from their saved
+nurseries, each replay ending where the receipt's life ends (24 of 24), and reads skill A on
+saved copies three ways: as is, with the store's fast residual cleared (the consolidated matrix
+alone), and with the store's read silenced (`memory_amplitude` 0). At the door the cortex and
+actor alone answer 0.75 / 0.75 and the consolidated records lift the answer to 1.00. At the
+ring's end the cortex and actor alone read 0.67 to 0.75 carried and 0.79 to 0.92 reset in both
+arms and rings, and the consolidated matrix alone 0.67 to 0.92 and 0.71 to 0.96: in this world
+the actor's continued learning at the gene step does not lose skill A, and the store's latest
+records turn the greedy answer.
+
+**A recipe for this table world: freeze the store at the ring's door.** Two existing runtime
+settings, retuned on the acquired brain when the ring begins, stop every write from moving the
+store; its fast residual then fades and the read is the door's consolidated records:
+
+```python
+brain.retune(memory_rate=0.0, consolidation=0.0)  # at the ring's door; the actor keeps its step
+```
+
+In a development screen outside the chamber (the chamber's arms cannot retune memory settings
+at the door without a code change; the screen's script and numbers are not shipped), the
+founder's hard nursery continued this way at the gene step keeps skill A at 1.00 / 1.00 on all
+six seeds at every probe of the ring's second half, in the full ring and alone, while the actor
+learns from every outcome; the soft nursery ends above its door (0.77 to 0.81 carried and 0.76
+to 0.84 reset over the second half, door 0.67 / 0.67). Neither half of it holds alone: with the
+fast write off (`memory_rate=0.0`) the consolidated records go on learning the melee's values and
+the hard skill erodes as with an averaged record (0.65 to 0.75 carried, 0.77 to 0.80 reset over
+the second half), and `memory_rate=0.2` from the door does what it does from birth. The
+boundary: a frozen store records nothing after the door, so it keeps whatever the door held and
+does not follow a change in what pays; its door records vote skill A's answers in the competing
+skill's half-overlapping situations, and skill B reads 0.17 (hard) and 0.23 (soft) over the
+full ring's second half against 0.31 to 0.37 with a learning store. In the arena the loss lies
+in the actor's updates: with the memory's writes off the driving test fell further (0.54 to
+0.08, against 0.23 with them on), and the smaller actor steps held it. The recipe does not carry
+over there.
+
+**Episodic records: not read.** `memory_choice` and `memory_extinction` are construction
+settings, and the chamber's `make_brain` passes the brain point's `episodic` and `memory_rate`
+to `Brain.compose` and no other memory setting: `--brain memory_choice=1` would record an
+override that never reaches the brain. Reading them needs the chamber to pass them through.
+
+**What stays open.** A store that keeps an acquired answer under a signed, noisy pay and still
+records a new skill; the episodic records under the melee; a chamber arm that receipts the
+frozen store; and the arena's own loss in the actor's updates. No default changes, no gate is
+passed, and #169 stays open.
+
 ## What this does and does not establish
 
 On this brain at the arena's genes, over ten thousand ring moments: when the ring pays the
@@ -229,9 +337,11 @@ acquire far less; and a frozen greedy test reads the context the working trace c
 #169 reproduces at every actor step while the actor's efficacies barely move: the competence
 of a four-thousand-moment nursery lives mostly in the associative store's one-shot record of
 the chosen action's reward (`memory_rate` 1.0), which the noisy pay overwrites. An averaged
-record (`memory_rate` 0.2 or 0.05) halves the loss; a slow set point under every parameter
-and a sign-consistency stiffness, screened on unshipped library variants, do not hold the
-skill.
+record (`memory_rate` 0.2 or 0.05) lowers the loss by about 0.10 over the ring's second half,
+at 0.80 and at 0.93 (the end probes of 0.80 read it as a halving), and does not hold the skill;
+a store frozen at the ring's door holds it in this world at the cost of the store's learning
+(see the [0.93 reading](#093-reading-2026-11-02)); a slow set point under every parameter and a
+sign-consistency stiffness, screened on unshipped library variants, do not hold the skill.
 
 It does not establish what loses the skill in the arena, where the same founder learns in a
 far longer nursery and the memory's writes are not the cause (see the section above). The
@@ -256,10 +366,20 @@ python benchmarks/competing/competing_skills.py --verify <receipt> [--current]
 python -m pytest -q benchmarks/competing
 ```
 
+The 0.93 reading's receipts, one run per nursery and brain (`--contingency 0.6 0.3` for the soft
+nursery; `--brain memory_rate=0.2`, `memory_rate=0.05` or `episodic=0` for the settings):
+
+```sh
+PYTHONPATH=src python benchmarks/competing/competing_skills.py --workers 3 --contingency 1 0 \
+    --ring-pay 0.4 0.3 0.1 0.1 --arms gene small frozen --rings full none \
+    --out benchmarks/competing/results/development-hard-melee-<date>.json.gz
+```
+
 A receipt is a `cadence.Receipt` bound to `competing_skills.py` and every module of the
 library as they were when the run began; `--verify --current` also requires the present
-sources. The receipts under `results/` were run on commit `c922553` of this chamber's branch:
-`--verify` checks them anywhere, and `--verify --current` holds in a checkout of that commit,
-since later library changes alter the bound sources. Nurseries are saved to `--checkpoints` (a temporary directory by default) so every
+sources. The receipts dated 2026-10-10 were run on commit `c922553` of this chamber's branch:
+`--verify` checks them anywhere, and `--verify --current` holds in a checkout whose library and
+chamber sources are those of the run's commit, since later library changes alter the bound
+sources. Nurseries are saved to `--checkpoints` (a temporary directory by default) so every
 arm of a seed starts from the same bytes. Overrides of the phases, the probe interval and the
 contingency are recorded in the receipt's `overrides`.

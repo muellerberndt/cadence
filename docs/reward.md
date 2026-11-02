@@ -331,7 +331,8 @@ continued learning, most clearly when the later pay is signed and noisy
 ([#169](https://github.com/muellerberndt/cadence/issues/169)). In the
 [competing ring](../benchmarks/competing/README.md), under signed noisy pay the loss reproduces
 at every actor step, because the noisy pay overwrites the associative store's one-shot record
-of the chosen action's reward (`memory_rate` 1.0; an averaged record at 0.2 halves the loss).
+of the chosen action's reward (`memory_rate` 1.0; an averaged record at 0.2 takes about 0.10 off
+the loss over the ring, and a store frozen at the ring's door holds the skill there).
 More drilling past acquisition moves the policy instead of consolidating it.
 
 ### The pattern the measurements support
