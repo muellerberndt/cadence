@@ -148,7 +148,7 @@ the normalized point) located three causes at the widest modules:
 - **Refused answers.** A trained brain's settle could run out of budget: the finite learner spends
   half its sweeps at the full step and the rest at half the step, and a state that needs more
   full-step sweeps was refused, which stops a continuing life. A solve that does not qualify now
-  continues once with halved steps before the answer is refused
+  continues once on the damping ladder before the answer is refused
   ([qualification and refusal](start.md#qualification-and-refusal)).
 - **Surprise lessons out of proportion.** A surprise lesson gives one wrong row a whole lesson's
   step, and at 1,024 neurons the answers swing between collapse and recovery.

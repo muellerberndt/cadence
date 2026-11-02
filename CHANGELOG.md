@@ -60,9 +60,11 @@
   pointed (two hops). A newborn chain reads exactly as the heads without it; checkpoints keep
   the maps. It does not beat its control: two hops asked in one moment read 0.45 with it and
   without it (three development seeds); one think moment answers 0.99.
-- An answer whose solve does not qualify within `free_steps` continues once with halved
-  integration steps for another `free_steps` sweeps before the brain refuses it (#239); the
-  settlement report counts the rescue (`rescue_steps`). Nothing changes where the first solve
+- An answer whose solve does not qualify within `free_steps` continues once from where it
+  stopped on the damping ladder, another `free_steps` sweeps in equal shares at the full step and
+  at successively halved steps (the learner's `damping`, at least one halving), before the brain
+  refuses it (#239); the settlement report counts the rescue (`rescue_steps`) and sums both
+  solves' sweeps and checks. Nothing changes where the first solve
   qualifies. The width sweep of #239 found trained recall brains refusing acts whose settle
   needed more full-step sweeps than the finite learner's budget left them.
 - `memory_context_hold` (opt-in, #202): with `memory_choice=True` and a temporal context,

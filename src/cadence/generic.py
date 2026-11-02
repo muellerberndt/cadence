@@ -3576,22 +3576,24 @@ class Brain:
         self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer"
     ) -> BrainState:
         """Check the complete current graph before publishing an answer. A solve that does not
-        qualify within ``free_steps`` continues once from where it stopped, with halved
-        integration steps (the learner's ``damping``, at least one halving), for another
-        ``free_steps`` sweeps; only then is the answer refused. The rescue changes nothing
-        where the first solve qualifies; the report counts its sweeps (``rescue_steps``)."""
+        qualify within ``free_steps`` continues once from where it stopped on the damping
+        ladder: another ``free_steps`` sweeps in equal shares at the full step and at
+        successively halved steps (the learner's ``damping`` halvings, at least one); only then
+        is the answer refused. A solve that ended with a value that is not finite is refused
+        without one. The rescue changes nothing where the first solve qualifies; the report
+        counts its sweeps (``rescue_steps``) and sums both solves' sweeps and checks."""
         from .brain import _copy_state
 
         cfg = self.learner.config
         if cfg.tolerance is None:
             raise ValueError("Brain answers require a finite residual tolerance")
         phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
-        rescue = 0
+        rescue, rescued = 0, False
         if not all(bool(value) for value in phase.qualified) and all(
             np.isfinite(np.asarray(value)).all()
             for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
         ):
-            first = int(phase.steps)
+            before = phase
             phase = self.brain.equilibrate(
                 drive,
                 state=_copy_state(phase.state),
@@ -3599,8 +3601,14 @@ class Brain:
                 tolerance=cfg.tolerance,
                 damping=max(int(cfg.damping), 1),
             )
-            rescue = int(phase.steps)
-            phase = replace(phase, steps=first + rescue)
+            rescue, rescued = int(phase.steps), True
+            # the work of both solves; the halvings are the rescue's, whose ladder decided
+            phase = replace(
+                phase,
+                steps=int(before.steps) + rescue,
+                residual_checks=int(before.residual_checks) + int(phase.residual_checks),
+                stagnation_checks=int(before.stagnation_checks) + int(phase.stagnation_checks),
+            )
         rows = tuple(bool(value) for value in phase.qualified)
         residual = tuple(float(value) for value in phase.residual)
         report: dict[str, Any] = {
@@ -3624,9 +3632,10 @@ class Brain:
         self._last_settlement = MappingProxyType(report)
         if not all(rows):
             raise RuntimeError(
-                f"brain did not settle within {cfg.free_steps} steps and a rescue of as many: "
-                f"residual={float(np.max(phase.residual)):.6g}, tolerance={cfg.tolerance:g}; "
-                "no action issued"
+                f"brain did not settle within {cfg.free_steps} steps"
+                + (" and a rescue of as many" if rescued else "")
+                + f": residual={float(np.max(phase.residual)):.6g}, "
+                f"tolerance={cfg.tolerance:g}; no action issued"
             )
         return phase.state
 
@@ -4422,8 +4431,9 @@ class Brain:
     ) -> np.ndarray:
         """Qualify the whole graph and choose an action for each continuing stream.
 
-        ``learning.free_steps`` bounds repair; ``learning.tolerance`` checks the
-        full potential/adaptation equations, including optional observers.
+        ``learning.free_steps`` bounds repair, with one rescue of as many sweeps on the
+        damping ladder; ``learning.tolerance`` checks the full potential/adaptation
+        equations, including optional observers.
         Exhaustion raises ``RuntimeError`` before changing activity, memory,
         random state or pending feedback. A cached state is always checked anew.
         Reward eligibility retains its separate finite nudged-phase contract.

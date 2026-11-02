@@ -1,6 +1,6 @@
-"""An answer whose solve does not qualify within ``free_steps`` continues once with halved
-integration steps before the brain refuses it (cadence#239: trained recall brains refused acts
-whose settle needed more sweeps at the full step than the budget left them)."""
+"""An answer whose solve does not qualify within ``free_steps`` continues once on the damping
+ladder before the brain refuses it (cadence#239: trained recall brains refused acts whose
+settle needed more sweeps at the full step than the budget left them)."""
 
 from __future__ import annotations
 
@@ -43,3 +43,31 @@ def test_an_answer_whose_rescue_fails_too_is_refused():
         hopeless.act(X, greedy=True)
     report = hopeless.last_settlement
     assert not report["qualified"] and report["rescue_steps"] >= 1
+
+
+def test_a_refused_rescue_reports_the_work_of_both_solves():
+    brain = cd.Brain.compose(6, 4, seed=0)
+    brain.learner.config = replace(brain.learner.config, free_steps=8, tolerance=1e-15)
+    with pytest.raises(RuntimeError, match="and a rescue of as many"):
+        brain.act(np.random.default_rng(0).random((1, 6)), greedy=True)
+    report = brain.last_settlement
+    assert report["rescue_steps"] == 8 and report["steps"] == 16
+    assert report["residual_checks"] >= 2  # at least one check of each solve
+
+
+def test_a_state_that_is_not_finite_is_refused_without_a_rescue(monkeypatch):
+    from cadence.generic import Brain
+
+    original = Brain._equilibrate
+
+    def blown(self, drive, state, *, budget, tolerance):
+        phase = original(self, drive, state, budget=budget, tolerance=tolerance)
+        bad = replace(phase.state, v=np.full_like(np.asarray(phase.state.v), np.nan))
+        return replace(phase, state=bad, residual=np.full_like(np.asarray(phase.residual), np.inf))
+
+    monkeypatch.setattr(Brain, "_equilibrate", blown)
+    brain = cd.Brain.compose(6, 4, seed=0)
+    with pytest.raises(RuntimeError, match="did not settle") as refused:
+        brain.act(np.random.default_rng(0).random((1, 6)), greedy=True)
+    assert "rescue" not in str(refused.value)
+    assert "rescue_steps" not in brain.last_settlement
