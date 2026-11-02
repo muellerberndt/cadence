@@ -3579,8 +3579,8 @@ class Brain:
         qualify within ``free_steps`` continues once from where it stopped on the damping
         ladder: another ``free_steps`` sweeps in equal shares at the full step and at
         successively halved steps (the learner's ``damping`` halvings, at least one); only then
-        is the answer refused. A solve that ended with a value that is not finite is refused
-        without one. The rescue changes nothing where the first solve qualifies; the report
+        is the answer refused. A solve that ended with a value that is not finite, or a budget
+        of no sweeps, is refused without one. The rescue changes nothing where the first solve qualifies; the report
         counts its sweeps (``rescue_steps``) and sums both solves' sweeps and checks."""
         from .brain import _copy_state
 
@@ -3589,7 +3589,8 @@ class Brain:
             raise ValueError("Brain answers require a finite residual tolerance")
         phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
         rescue, rescued = 0, False
-        if not all(bool(value) for value in phase.qualified) and all(
+        # a budget of no sweeps has no rescue of as many
+        if cfg.free_steps > 0 and not all(bool(value) for value in phase.qualified) and all(
             np.isfinite(np.asarray(value)).all()
             for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
         ):
