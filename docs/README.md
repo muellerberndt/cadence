@@ -9,13 +9,13 @@ and an MLP or classifier setup is a control to compare against. The
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.91.3
+python -m pip install cadence-net==0.92.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. From a checkout, run `python -m pip install -e .`
 at the repository root. The extras `[fast]` (Numba and SciPy), `[accel]` (PyTorch) and
 `[apple]` (MLX) add backends; [backends](backends.md) says which to choose. The
-[v0.91.3 documentation](https://github.com/muellerberndt/cadence/blob/v0.91.3/docs/README.md)
+[v0.92.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.92.0/docs/README.md)
 is pinned to the release tag.
 
 ## By situation
@@ -29,6 +29,7 @@ is pinned to the release tag.
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
 | A deep brain, with every memory and attention feature | `modules=(64, 32, 32)`, `apical=0.25`, the depth teaching settings, `attention=True`, `recall_heads=2` | [Deep brains](tune.md#deep-brains) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement`, the founders | [Tune and read](tune.md) |
+| To give a trained brain a memory, more read heads or more outputs | `grow(recall=True)`, `grow(recall_heads=2)`, `grow(slots=(4, 2))` | [Grow a brain](grow.md) |
 | To show a result | baselines, controls, `fit` as a control, receipts | [Evaluate a brain](evaluate.md) |
 | To design a behavioral claim or a continuing application | observation/action boundaries, context interventions, acquisition and recovery | [Task design](task-design.md), [world-model scope](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |

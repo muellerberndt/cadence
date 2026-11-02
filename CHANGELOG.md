@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.92.0 — 2026-11-02
+
+- Grow a trained brain: `brain.grow(**parts)` returns a new brain, the trained one with new
+  parts. The parts are the recall memory (`recall=True`, with any `recall_*` setting `compose`
+  takes), more read heads of the brain's recall memory (`recall_heads`), a heard history or the
+  brain's decays followed by new ones (`history_decays`), an efference copy
+  (`efference_amplitude`) and new output slots after the brain's own (`slots`); several grow in
+  one call. The grown brain is the brain's layout composed again from its recorded construction
+  and settings, with the same seed, and the parts added. It carries every learned parameter, the
+  optimizer's history, the plasticity masks, the memories' records, the actor and critic, the
+  arousal and the random generators, keeps the brain's backend, device and precision, and starts
+  its streams afresh, as after `reset()`. Every new synapse onto a trained neuron starts at zero
+  with its reciprocal partner, so the grown brain settles to the trained brain's states and makes
+  its choices: bit for bit where the larger graph sums in the same order, within rounding where
+  new slots lie inside the layout. The free/nudged rule moves a synapse on what its two neurons
+  do, not on its own weight, so the new synapses learn. The trained brain is unchanged.
+  Refused with the reason: a custom anatomy (it records no construction), a part inside the
+  brain's loop (`modules`, `observers`, a code: at zero its neurons get the same updates, at any
+  other start the brain changes), a setting `retune` changes, and new slots where a memory is
+  laid out per action (`recall_action`, `recall_tokens`, `memory_choice`) or a new motor neuron
+  would join a deep brain's apical pool. [Grow a brain](docs/grow.md) is the guide.
+- State what learns in a composed visual cortex: its maps project one way into the first
+  module, so no nudge reaches them and the contrast rule teaches them nothing. The receptive
+  fields keep their initial draw, apart from what phases that stop short of equilibrium leave
+  unsettled (a deep brain's founder phases can). `visual_cortex` said that learning shapes
+  each receptive field, which holds where a nudge reaches the maps.
+
 ## 0.91.3 — 2026-10-31
 
 - Several recall heads compete for the slots (`recall_compete=True`, the founder). A slot can be
