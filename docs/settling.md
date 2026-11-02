@@ -537,6 +537,7 @@ unless set again or passed as `None`. Select rates on development data and freez
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `initial_damping` | `LearnerConfig` | first numerical halving index, in `0..damping`; nonzero requires qualified teaching on CPU float64 | 0 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
+| `surprise_share` | `LearnerConfig` | with `surprise`, scale a lesson's step by the share of its rows it taught ([in proportion to the surprise](teach.md#lessons-only-where-the-answer-differs)) | `False` |
 | `outputs`, `config` | `Learner` | output neuron indices; the `LearnerConfig` | required, `LearnerConfig()` |
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |
 | `reciprocal` | `Learner` | tie each synapse and its reverse into one efficacy | `True` |

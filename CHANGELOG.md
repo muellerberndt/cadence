@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `learning_surprise_share` (opt-in, #239; `LearnerConfig.surprise_share`, founder `False`): with
+  surprise lessons, a lesson's step is scaled by the share of its rows it taught, so one wrong row
+  of sixteen moves the net a sixteenth as far as sixteen. The contrast and the optimizer's running
+  moments still read the taught rows alone. At width 1,024 on induction, surprise lessons without
+  it swing between collapse and recovery (one seed at 0.01 after 1,000 lessons); with it three
+  seeds end at 0.95 to 0.99.
 - `recall_when` (opt-in, #237): every head's read also delivers when what it read happened,
   `amplitude * sum_i p_i F_i` on a region of its own (`Recall.when_regions`), with `F_i` two
   features of the slot's age and, with the anchor, two of its place in the episode

@@ -110,6 +110,22 @@ relevant fact still dropped the held-out answers to chance
 ([EXP-72](https://github.com/WGlynn/cadence-teachers/blob/main/experiments/EXP-72.md), Will
 Glynn). Founder 59201 reads 1.00 / .88 against .39 / .31 on the series' runner.
 
+**In proportion to the surprise (opt-in, `learning_surprise_share=True`).** A surprise lesson's
+contrast is read over the rows it teaches, so a lesson with one wrong row of sixteen takes as
+large a step as a lesson with sixteen. Under the normalized point that step does not shrink as
+the answers become right, and a few wrong rows can undo what the others hold. With
+`surprise_share` the step is scaled by the share of the lesson's rows it taught: three wrong rows
+of eight move the net three eighths as far as eight would. The contrast and the optimizer's
+running moments still read the taught rows alone. On induction over a vocabulary of 128 at
+width 1,024 (the recall memory, the normalized point, each synapse's step scaled to its neuron's
+fan-in at width 64 through `Learner.synapse_rate`, three seeds, 1,500 lessons) the held-out
+answers end at 0.95 to 0.99 with it and stay at or above 0.85 at every reading from 500 lessons
+on. Without it the readings swing: one seed reads 0.01 after 1,000 lessons, 0.18 after 1,300 and
+0.98 at the end. Teaching every row holds 0.92 to 0.98 from 800 lessons on at about a quarter
+more time per lesson. Scaling the contrast instead, so that the running moments read it as
+well, swings as the plain rule does: the normalization divides the scale out
+([#239](https://github.com/muellerberndt/cadence/issues/239)).
+
 ## Acquisition, working memory and durable retention
 
 Acquisition, working-memory recall and durable retention are separate measurements: `predict`

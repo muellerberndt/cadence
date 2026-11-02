@@ -413,7 +413,8 @@ LearnerConfig(beta=0.1, eta=0.2, eta_bias=None, free_steps=100, nudged_steps=50,
               tolerance=1e-4, nudge="cross_entropy", temperature=0.2, normalize=0.0,
               normalize_floor=1e-3, momentum=0.0, scale_cap=8.0, qualified=False,
               damping=3, surprise=False, initial_damping=0, normalize_relative=0.0,
-              nudged_fixed=False, rehearsal=0.0, rehearsal_capacity=512)
+              nudged_fixed=False, rehearsal=0.0, rehearsal_capacity=512,
+              surprise_share=False)
 Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None,
         plastic_neurons=None, reciprocal=True, tie_groups=None,
         synapse_rate=None, slots=1, updates=0, contrast_updates=0)

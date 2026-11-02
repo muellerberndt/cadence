@@ -176,7 +176,7 @@ or `retune`, as before.
 | `learning_beta`, `temperature` | `0.1`, `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
 | `learning_initial_damping` | `0` | retune, qualified CPU float64 teaching only | [initial numerical step](settling.md#qualified-teaching-budgets) |
-| `learning_scale_cap`, `learning_surprise` | `8.0`, `False` | retune | [learning](settling.md#7-every-knob) |
+| `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False`, `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_momentum` | `0.9` | retune | [learning](teach.md#rates-under-normalization) |
 | `learning_normalize_relative` | `0.0`: the teaching point's `normalize_floor` | retune | [learning](teach.md#rates-under-normalization) |
 | `actor_gamma`, `actor_lam`, `actor_eligibility_steps`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `12`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |

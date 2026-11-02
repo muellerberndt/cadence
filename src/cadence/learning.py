@@ -109,6 +109,10 @@ class LearnerConfig:
     # opt-in: a lesson teaches only the rows whose free answer differs from the label; a row the
     # net already answers as shown gets no nudged phase and no update: the lesson is the surprise
     surprise: bool = False
+    # with ``surprise``, opt-in: a lesson's step is scaled by the share of its rows it taught, so
+    # one wrong row of sixteen moves the net a sixteenth as far as sixteen do; the contrast and
+    # the optimizer's running moments still read the taught rows alone
+    surprise_share: bool = False
     # qualified phases only: start at this index of the existing dt-halving schedule
     initial_damping: int = 0
     # >0: in place of normalize_floor, each synapse's RMS gets this share of the RMS of its
@@ -245,6 +249,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
+    "surprise_share": False,
 }
 
 
@@ -1153,22 +1158,33 @@ class Learner:
         return delta_scale, cfg.eta_bias * neuron_term
 
     def update(
-        self, free: BrainState, nudged: BrainState, opposite: BrainState | None = None
+        self,
+        free: BrainState,
+        nudged: BrainState,
+        opposite: BrainState | None = None,
+        *,
+        share: float = 1.0,
     ) -> dict[str, float]:
-        """Move every trainable synapse and every neuron on its own two-phase difference."""
+        """Move every trainable synapse and every neuron on its own two-phase difference.
+        ``share`` scales the step the optimizer takes (``surprise_share``: the share of the
+        lesson's rows it taught); the contrast and the running moments are read in full."""
         # Proposed optimizer history is part of the update transaction. A bad
         # contrast or an unrepresentable parameter step must not poison a retry.
         moments = {"_" + name: self.__dict__.get("_" + name) for name in _MOMENTS}
         held = self.__dict__.get("_device_moments")
         try:
-            return self._update(free, nudged, opposite)
+            return self._update(free, nudged, opposite, share)
         except Exception:
             self.__dict__.update(moments)
             self.__dict__["_device_moments"] = held
             raise
 
     def _update(
-        self, free: BrainState, nudged: BrainState, opposite: BrainState | None = None
+        self,
+        free: BrainState,
+        nudged: BrainState,
+        opposite: BrainState | None = None,
+        share: float = 1.0,
     ) -> dict[str, float]:
         self._validate_phases(free, nudged, opposite)
         cfg = self.config
@@ -1179,7 +1195,9 @@ class Learner:
             edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
             norm = float(nudged.device["s"].shape[0]) * span
             edges, neurons = self._adaptive_device(kernel, edges / norm, neurons / norm)
-            report = self._apply_device(kernel, cfg.eta * edges, cfg.eta_bias * neurons)
+            report = self._apply_device(
+                kernel, share * cfg.eta * edges, share * cfg.eta_bias * neurons
+            )
             self.contrast_updates += 1
             return report
         synapse_term, neuron_term = self.contrast(free, nudged, opposite)
@@ -1191,7 +1209,7 @@ class Learner:
             delta_scale, delta_bias = self._compiled_step(raw_synapse, raw_neuron, count)
             if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
                 raise ValueError("optimizer moments must remain finite")
-            report = self.apply(delta_scale, delta_bias)
+            report = self.apply(share * delta_scale, share * delta_bias)
             self.contrast_updates += 1
             return report
         if cfg.momentum > 0:  # local: a synapse accumulates only its own contrast
@@ -1214,8 +1232,8 @@ class Learner:
                 rms = np.sqrt(self.second_moment / correction) + cfg.normalize_floor
                 rms_bias = np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor
             synapse_term, neuron_term = synapse_term / rms, neuron_term / rms_bias
-        delta_scale = cfg.eta * synapse_term
-        delta_bias = cfg.eta_bias * neuron_term
+        delta_scale = share * cfg.eta * synapse_term
+        delta_bias = share * cfg.eta_bias * neuron_term
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
         report = self.apply(delta_scale, delta_bias)
@@ -1286,7 +1304,7 @@ class Learner:
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
             opposite = replace(phases["opposite"].state, steps=phases["opposite"].steps)
-            report = self.update(free, nudged, opposite)
+            report = self.update(free, nudged, opposite, share=self._share(taught))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
@@ -1327,7 +1345,7 @@ class Learner:
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
-        report = self.update(free, nudged, opposite)
+        report = self.update(free, nudged, opposite, share=self._share(taught))
         report.update(_phase_report(phases, accepted=True, qualified=False))
         report.update(_taught_report(taught, batch))
         report["free_budget_exhausted"] = float(exhausted)
@@ -1340,6 +1358,12 @@ class Learner:
             raise ValueError("answer must have the labels' shape")
         differs = np.asarray(answer != labels, dtype=bool)
         return np.asarray(differs.any(axis=1)) if differs.ndim == 2 else differs
+
+    def _share(self, taught: np.ndarray | None) -> float:
+        """Under ``surprise_share``, the share of the lesson's rows it taught; else one."""
+        if taught is None or not (self.config.surprise and self.config.surprise_share):
+            return 1.0
+        return float(np.mean(taught))
 
     def _taught(self, free: BrainState, labels: np.ndarray) -> np.ndarray | None:
         """Under ``surprise``, True per row where the free answer differs from its label."""
