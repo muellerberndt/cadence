@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+- `recall_anchor` (opt-in, #237): every head's position term also reads each slot's place in
+  its stream's current episode (the moments from the episode's first to the slot), bucketed as
+  ages are, with one more bucket for slots written before the episode began. Ages count back
+  from the present, so "the first told" moved with the story's length; its place in the
+  episode does not. Each stream counts the moments of its episode (`Recall.told`); the maps
+  start at zero and the lesson steps them with the position maps. Checkpoints keep both.
 - `recall_chain` (opt-in, #234): with several heads, each head after the first adds to its
   address what the head before it read (its recall and next reads) through a map that starts at
   zero and the address lesson steps, so one moment can place a read where an earlier read

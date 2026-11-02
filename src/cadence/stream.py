@@ -599,6 +599,17 @@ class Recall:
     settles as one without the option, and the address lesson can teach the maps to look for
     a slot by what was done there.
 
+    With ``anchor`` (an option, founder off; a construction setting; it needs ``position``) every
+    head's position term also reads each slot's place in its stream's current episode, the
+    moments from the episode's first to the slot: the logit of slot ``i`` gains ``e_h(x,
+    c)[anchored(i)]``, a term per anchored bucket read from the moment as the position term is,
+    ``e_h = x E_x^h + c E_c^h + e^h``. The anchored buckets follow the age buckets (exact below
+    ``position``, then one per doubling) and one more holds every slot written before the
+    episode began. Ages count back from the present, so "the first told" moves with the length
+    of what was told; its place in the episode does not. Each stream counts the moments written
+    in its episode (``told``; ``end`` and ``reset`` start it again). The maps start at zero and
+    the lesson steps them as it steps the position maps; reward does not.
+
     With ``chain`` (an option, founder off; a construction setting; it needs ``heads`` of at least
     2) the heads read in a chain: each head after the first adds to its address what the head
     before it read, ``r W_r`` with ``r`` that head's read of the recall and the next regions
@@ -652,6 +663,8 @@ class Recall:
     compete: bool = True
     # each head after the first also reads what the head before it read (``chain_maps``)
     chain: bool = False
+    # every head's position term also reads a slot's place in its episode (``anchor_maps``)
+    anchor: bool = False
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -673,10 +686,10 @@ class Recall:
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
         "address_step", "null", "address_reward", "window", "window_decay", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain",
+        "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain", "anchor",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
-                            "action", "chain")
+                            "action", "chain", "anchor")
     # the settings of 0.84.3 this version removed, refused by name with a message naming it
     RETIRED = ("write", "key", "episodes", "value", "context", "context_decay")
     # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
@@ -732,7 +745,7 @@ class Recall:
             ):
                 raise ValueError("capacity must be an integer of at least 1")
             return int(value)
-        if name in ("next", "boundary", "action", "compete", "chain"):
+        if name in ("next", "boundary", "action", "compete", "chain", "anchor"):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -1002,6 +1015,18 @@ class Recall:
             )
             for _ in range(self.heads if count else 0)
         ]
+        if self.anchor and not count:
+            raise ValueError("anchor reads beside the position term: it needs position")
+        # every head's anchored maps ``(E_x, E_c, e)``, one column per anchored bucket and one
+        # for the slots written before the episode began; none without ``anchor``
+        self.anchor_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
+            (
+                np.zeros((self.map_width, count + 1)),
+                np.zeros((len(self.association), count + 1)),
+                np.zeros(count + 1),
+            )
+            for _ in range(self.heads if self.anchor else 0)
+        ]
         self._check_copy()
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
@@ -1081,17 +1106,39 @@ class Recall:
         out = np.where(ages < exact, ages, exact + np.floor(np.log2(np.maximum(ages, 1.0) / exact)))
         return np.minimum(out, self.position_buckets - 1).astype(np.int64)
 
+    def anchored_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
+        """Each slot's anchored bucket for each stream, or for the streams ``rows``, ``(rows,
+        slots)``: its place in the stream's current episode (``told - 1 - age``) bucketed as
+        an age is, and ``position_buckets`` for a slot written before the episode began."""
+        told = self.told if rows is None else self.told[rows]
+        places = told[:, None] - 1.0 - self.ages()[None, :]
+        count = self.position_buckets
+        exact = float(self.position)
+        place = np.maximum(places, 0.0)
+        out = np.where(
+            place < exact, place, exact + np.floor(np.log2(np.maximum(place, 1.0) / exact))
+        )
+        out = np.minimum(out, count - 1)
+        return np.where(places < 0, count, out).astype(np.int64)
+
     def position_term(
-        self, head: int, event: np.ndarray, cortex: np.ndarray
+        self, head: int, event: np.ndarray, cortex: np.ndarray, rows: np.ndarray | None = None
     ) -> np.ndarray | None:
         """Head ``head``'s position term at every slot for the moments ``event`` (the event
         heard; with ``action`` the event and the command executed at the moment before, the
         maps' inputs) and ``cortex`` (the association of the moment before), ``(rows,
-        slots)``; None without a position term or without slots."""
+        slots)``; None without a position term or without slots. With ``anchor`` the term over
+        each slot's place in the episode joins it; ``rows`` names the streams of the moments
+        (every stream, in order, without)."""
         if not self.position_maps or not self.slots:
             return None
         p_x, p_c, p = self.position_maps[head]
-        return np.asarray((event @ p_x + cortex @ p_c + p)[:, self.buckets()])
+        term = (event @ p_x + cortex @ p_c + p)[:, self.buckets()]
+        if self.anchor_maps:
+            e_x, e_c, e = self.anchor_maps[head]
+            anchored = event @ e_x + cortex @ e_c + e
+            term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
+        return np.asarray(term)
 
     @property
     def attended(self) -> np.ndarray | None:
@@ -1136,6 +1183,8 @@ class Recall:
         self.acted = np.zeros((batch, self.command_width))
         # per stream: its latest slot closed an episode (``end``) and learns no successor
         self.ended = np.zeros(batch, dtype=bool)
+        # per stream: the moments written in its current episode (``anchor``)
+        self.told = np.zeros(batch, dtype=np.int64)
         # the window's previous events per stream, the latest first; none: zeros
         self.past = np.zeros((0, self.window - 1, self.key_width))
         self.last = None
@@ -1181,6 +1230,7 @@ class Recall:
         )
         self._fresh(keep)
         self.ended = self.ended & keep
+        self.told = np.where(keep, self.told, 0)
         self.last = None
         self._attended = None
         self._head_reads = None
@@ -1225,6 +1275,7 @@ class Recall:
             self.ended = np.zeros(batch, dtype=bool)
         else:
             self.ended = self.ended | chosen
+        self.told = np.where(chosen, 0, self.told)  # the next moment is the episode's first
         self._fresh(~chosen)
         self.last = None
         self._attended = None
@@ -1259,6 +1310,7 @@ class Recall:
         if len(self.past):
             self.past = self.past[rows]
         self.ended = self.ended[rows]
+        self.told = self.told[rows]
         self.last = None
         self._attended = None
         self._head_reads = None
@@ -1268,7 +1320,9 @@ class Recall:
         these arrays rather than changing them."""
         return {
             name: getattr(self, name)
-            for name in ("keys", "values", "nexts", "held", "previous", "ended", "past", "acted")
+            for name in (
+                "keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told"
+            )
         }
 
     def restore(self, snapshot: dict[str, Any]) -> None:
@@ -1334,7 +1388,17 @@ class Recall:
             out.update(dict(zip(self.position_names(h), maps, strict=True)))
         for h, chained in enumerate(self.chain_maps, start=1):  # saved only with ``chain``
             out[f"chain_{h}"] = chained
+        if self.anchor_maps:  # saved only with ``anchor``
+            out["told"] = self.told
+            for h, maps in enumerate(self.anchor_maps):
+                out.update(dict(zip(self.anchor_names(h), maps, strict=True)))
         return out
+
+    @staticmethod
+    def anchor_names(head: int) -> tuple[str, str, str]:
+        """The checkpoint names of head ``head``'s anchored maps ``(E_x, E_c, e)``."""
+        suffix = "" if head == 0 else f"_{head}"
+        return f"anchor_x{suffix}", f"anchor_c{suffix}", f"anchor_b{suffix}"
 
     @staticmethod
     def position_names(head: int) -> tuple[str, str, str]:
@@ -1726,6 +1790,7 @@ class Recall:
         if self.ended.any():  # every stream's new slot is open to its successor
             self.ended = np.zeros(len(key), dtype=bool)
         self._append(key, np.ones(len(key), dtype=bool), value, successor)
+        self.told = self.told + 1
 
     def _append(
         self,
@@ -1910,28 +1975,46 @@ class Recall:
             )
         if found is None:
             return 0, 0
-        _, x, c, _, _, _, target, prior, _ = found
+        moving, x, c, _, _, _, target, prior, _ = found
         rate = self.position_rate
         count = self.position_buckets
         p_x, p_c, p = self.position_maps[head]
+        anchored = None
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             # a slot its stream does not hold has neither attention nor a target
             gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
             terms = np.zeros((len(gradient), count))
             np.add.at(terms, (np.arange(len(gradient))[:, None], self.buckets()[None, :]), gradient)
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
-            step = terms * np.minimum(1.0, 1.0 / (rate * energy))[:, None]
+            bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None]
+            step = terms * bound
             maps = (
                 p_x + rate * x.T @ step / len(x),
                 p_c + rate * c.T @ step / len(x),
                 p + rate * step.mean(axis=0),
             )
-        if not all(np.isfinite(a).all() for a in maps):
+            if self.anchor_maps:  # the same gradient over each slot's place in the episode
+                e_x, e_c, e = self.anchor_maps[head]
+                places = np.zeros((len(gradient), count + 1))
+                buckets = self.anchored_buckets(np.asarray(rows)[moving])
+                np.add.at(places, (np.arange(len(gradient))[:, None], buckets), gradient)
+                places *= bound
+                anchored = (
+                    e_x + rate * x.T @ places / len(x),
+                    e_c + rate * c.T @ places / len(x),
+                    e + rate * places.mean(axis=0),
+                )
+        checked = maps if anchored is None else (*maps, *anchored)
+        if not all(np.isfinite(a).all() for a in checked):
             return 0, int(len(x))
         # new arrays, never written in place: an imagined branch may hold the old ones
         self.position_maps = [
             maps if h == head else kept for h, kept in enumerate(self.position_maps)
         ]
+        if anchored is not None:
+            self.anchor_maps = [
+                anchored if h == head else kept for h, kept in enumerate(self.anchor_maps)
+            ]
         return int(len(x)), 0
 
     def _step(
@@ -2050,8 +2133,10 @@ class Recall:
                 logits = np.where(held, logits, -np.inf)
             # among the moments the address attended to: the attention is the prior
             if read is None:
+                streams = np.asarray(rows)[moving]
                 attention = self._attention(
-                    q, keys, held if masked else None, self.position_term(head, x, c)
+                    q, keys, held if masked else None,
+                    self.position_term(head, x, c, streams),
                 )
             else:  # a competing head's: the shares it read
                 attention = np.log(read[rows][moving])

@@ -1174,6 +1174,14 @@ def _validate_recall_state(
         maps.update({f"chain_{h}": (chained, address) for h in range(1, heads)})
     elif any(name.startswith("recall/chain_") for name in data):
         raise ValueError("saved chain maps belong to a recall memory with chain")
+    if settings.get("anchor", False):  # every head's anchored maps and the episodes' counts
+        for h in range(heads):
+            shapes_a = ((key + command, count + 1), (association, count + 1), (count + 1,))
+            maps.update(dict(zip(Recall.anchor_names(h), shapes_a, strict=True)))
+        if array("told", (batch,)).dtype.kind not in "iu" or (data["recall/told"] < 0).any():
+            raise ValueError("invalid saved recall state: told")
+    elif "recall/told" in data or any(name.startswith("recall/anchor_") for name in data):
+        raise ValueError("saved anchored maps belong to a recall memory with anchor")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1197,6 +1205,8 @@ def _validate_recall_state(
         expected |= {"history"}
     if window > 1:
         expected |= {"past"}
+    if settings.get("anchor", False):
+        expected |= {"told"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
         "trace", "pending", "ended"
     } != expected:
@@ -5033,12 +5043,22 @@ class Brain:
                     data[f"recall/chain_{h}"].astype(float)
                     for h in range(1, recall.heads if recall.chain else 1)
                 ]
+                if recall.anchor:  # validated above: saved with anchor
+                    recall.anchor_maps = [
+                        tuple(
+                            data["recall/" + name].astype(float)
+                            for name in Recall.anchor_names(h)
+                        )
+                        for h in range(recall.heads)
+                    ]
                 recall.held = data["recall/held"].astype(bool)
                 recall.ended = (
                     data["recall/ended"].astype(bool)
                     if "recall/ended" in data
                     else np.zeros(len(recall.keys), dtype=bool)
                 )
+                if recall.anchor:  # validated above: the episodes' counts, saved with anchor
+                    recall.told = data["recall/told"].astype(np.int64)
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command

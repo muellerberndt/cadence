@@ -958,6 +958,22 @@ cues at 1.00, against 0.29 to 0.80 per cue without the term and 0.25 for uniform
 ([receipt](../benchmarks/attention/results/look-back.json)). Without the boundary one founder
 answered `first` at 0.83.
 
+**The anchor (opt-in, `recall_anchor=True`; it needs the position term).** An age counts back
+from the present, so the first moment of a story has a different age in every story of another
+length: a head that learned "the first told" on stories of 12 reads the wrong slot in stories of
+36. With the anchor every head's term also reads each slot's place in its stream's current
+episode, the moments from the episode's first to the slot:
+
+```text
+logit_i += e(x, c)[anchored(place_i)]      e(x, c) = x E_x + c E_c + e   (one map per head)
+```
+
+The anchored buckets follow the age buckets, and one more holds every slot written before the
+episode began. Each stream counts the moments written in its episode (`brain.recall.told`);
+`Recall.end`, a reset and `done` start it again. The maps start at zero, so a newborn reads as
+without the option, and the lesson steps them with the position maps; rewards do not
+([#237](https://github.com/muellerberndt/cadence/issues/237)).
+
 ### Episodes, keys and windows
 
 Each stream has its own slots. A plain `reset()` empties them and keeps the address map. When
@@ -1023,6 +1039,7 @@ map.
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
+| `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_copy` | `0.0` | construction | Above 0, plastic synapses from every read port into the motor region at that initial magnitude ([the copy pathway](#the-copy-pathway-opt-in)) |
 | `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none); the pathway starts as their identity, echo suppressed; needs `recall_copy` |
