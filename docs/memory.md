@@ -1005,8 +1005,9 @@ with repeated tokens, taught at lengths 3 to 6 and tested at 8 to 12 (three deve
 the anchor in both arms), the relative read answers 0.54 to 0.74 of the tokens in closed loop,
 against 0.10 to 0.14 without it; given the right token before (teacher-forced) it answers 0.93,
 every position after the first above 0.9. The first token after the cue is where it still
-fails: the age term, taught at the short lengths, pulls that read away from the episode's
-start.
+failed: the age term, taught at the short lengths, pulled that read away from the episode's
+start. With the slope at 0.1 and the table at 0.01 beside the anchor that read answers 0.91 to
+1.00, and the whole copy 0.92 to 0.94 in closed loop (0.918 to 0.941 on six fresh founders).
 
 **The slope (opt-in, `recall_slope` above 0; it needs the position term).** The table holds one
 term per age bucket, and an age no lesson reached keeps its zero: a head taught to look back to
@@ -1037,7 +1038,12 @@ seeds, 1,500 lessons):
 | the anchor, the slope at 0.1, the table at 0.01 | | 1.00 (every cue 0.97 to 1.00) |
 
 With the anchor, the slope and the slower table every head reads "the first told", "the second"
-and "the latest" at two to five times the longest length it was taught. The slower table costs
+and "the latest" at two to five times the longest length it was taught. A declared confirmation
+on six fresh founders read the recipe as the development seeds did: look back taught at 5 to 12
+and read at 24 to 60 answers "first" at 0.986 to 1.000 and "second" at 0.988 to 1.000; copying
+unique tokens at unseen lengths 0.992 to 1.000; copying repeated tokens, with
+`recall_relative=True` as well, 0.918 to 0.941 in closed loop. Setting the anchored maps to zero
+after training drops "second" to 0.48 to 0.63, so the anchor carries it. The slower table costs
 reads that need exact ages (in #232's candidate, Stone Age ordered recall 0.82 against 0.99),
 and with the table at the founder rate the brain takes the position shortcut over the content
 route again.
