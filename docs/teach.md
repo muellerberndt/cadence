@@ -135,6 +135,14 @@ assert brain.learner.config.rehearsal == 1.0 and not len(brain.learner.rehearsal
 Compare it with the types taught interleaved (the upper control) and in sequence without
 rehearsal (the lower control) at matched lesson counts.
 
+The rehearsal teaches the cortex again; it does not replay what a recall memory's maps
+learned. A stored row holds the drive as the read gave it then, so a type that rests on where
+the read looks is not protected, and the stale reads can cost it: on look-back's three cues
+taught in sequence (first, then last, then second; a recall brain with the anchor, three
+development seeds, 600 lessons each) the earlier cues keep 0.62 (first) and 0.89 (last) of
+their interleaved accuracy with rehearsal, 0.77 and 0.83 without; taught interleaved every
+cue reads 1.00.
+
 ## Rates under normalization
 
 With `normalize > 0` each plastic efficacy and bias keeps a running second moment of its raw

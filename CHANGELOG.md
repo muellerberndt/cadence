@@ -16,6 +16,9 @@
   (`rehearsal_capacity`, 512), under the same rule. Types taught one after another keep what
   earlier lessons taught. The reservoir and its counts are saved with the brain; at the founder
   nothing is kept and checkpoints are as before. A grown brain starts the reservoir afresh.
+  It teaches the cortex again, not a recall memory's maps: on look-back's three cues taught in
+  sequence it does not keep the earlier cues (first 0.62 and last 0.89 of their interleaved
+  accuracy, against 0.77 and 0.83 without it), so #238's gate is not met there.
 - `recall_position_reward` (opt-in, #236; runtime, founder 0): reward trains the recall read's
   position maps, and with `recall_anchor` the anchored maps. At each sampled act the step the
   position lesson would take, were the act's action the lesson's label, joins the eligibility
