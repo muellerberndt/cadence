@@ -29,7 +29,7 @@ is pinned to the release tag.
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
 | A deep brain, with every memory and attention feature | `modules=(64, 32, 32)`, `apical=0.25`, the depth teaching settings, `attention=True`, `recall_heads=2` | [Deep brains](tune.md#deep-brains) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement`, the founders | [Tune and read](tune.md) |
-| To give a trained brain a memory, more read heads or more outputs | `grow(recall=True)`, `grow(recall_heads=2)`, `grow(slots=(4, 2))` | [Grow a brain](grow.md) |
+| To give a trained brain a memory, more heads or more outputs, or to put trained regions into a larger brain | `grow(recall=True)`, `grow(slots=(4, 2))`, `graft(donor, regions)`, `graft(donor, into=...)` | [Grow and combine brains](grow.md) |
 | To show a result | baselines, controls, `fit` as a control, receipts | [Evaluate a brain](evaluate.md) |
 | To design a behavioral claim or a continuing application | observation/action boundaries, context interventions, acquisition and recovery | [Task design](task-design.md), [world-model scope](world-model.md) |
 | Your own regions, a connectome, evolution | `Genome`, `develop`, `compose(connectome=)`, `evolve` | [Your own anatomy](anatomy.md) |

@@ -241,7 +241,8 @@ left in this version are refused by name, at `compose` and `retune` alike
 ([removed in this version](memory.md#removed-in-this-version)). A part that a
 construction setting adds (the recall memory or more of its heads, a heard history, an
 efference copy, new output slots) is added to a trained brain by `grow`, which returns a new
-brain ([grow a brain](grow.md)).
+brain; `graft` puts trained regions of another brain into it ([grow and combine
+brains](grow.md)).
 
 `retune` resets nothing. `brain.arousal.reset()` resets the arousal level and reward
 references and keeps its age and work counters; an adult brain at the founder `need=0` is

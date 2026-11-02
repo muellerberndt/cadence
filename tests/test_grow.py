@@ -377,7 +377,7 @@ def test_grow_refuses_what_it_cannot_add_invisibly(base, parts, message):
 def test_grow_refuses_a_custom_anatomy():
     genome = cd.Genome.composed(6, ACTIONS, modules=(16,))
     brain = cd.Brain.compose(6, ACTIONS, connectome=cd.develop(genome, seed=0), seed=0)
-    with pytest.raises(ValueError, match="custom anatomy"):
+    with pytest.raises(ValueError, match="records its construction"):
         brain.grow(recall=True)
 
 
@@ -397,3 +397,92 @@ def test_a_composed_visual_cortex_keeps_its_receptive_fields():
     after = np.asarray(brain.brain.efficacy)
     np.testing.assert_array_equal(after[fields], before[fields])
     assert not np.array_equal(after[~fields], before[~fields])
+
+
+FIXTURES = Path(__file__).resolve().parent / "fixtures"
+
+
+def test_a_brain_saved_by_an_earlier_version_grows():
+    """A brain of checkpoint format cadence-generic/8 (0.84) with arousal, recall, a history, an
+    efference copy and episodic records grows heads and decays."""
+    trained = cd.Brain.load(FIXTURES / "observation_code" / "recalled.npz")
+    grown = trained.grow(recall_heads=2, history_decays=(0.2, 0.9, 0.99))
+    assert grown.recall.heads == 2 and tuple(grown.history.decays) == (0.2, 0.9, 0.99)
+    check_identical(trained, grown, inputs=4, moments=12)
+
+
+def test_a_grown_brain_grows_again():
+    trained = taught()
+    once = trained.grow(recall=True)
+    twice = once.grow(slots=(4, 2), recall_heads=2)
+    check_identical(trained, copy.deepcopy(twice))  # each check acts on the brain it reads
+    check_identical(once, twice)
+
+
+def test_growing_is_deterministic():
+    trained = taught(recall=True)
+    first, second = trained.grow(recall_heads=2), trained.grow(recall_heads=2)
+    assert first.connectome.digest() == second.connectome.digest()
+    np.testing.assert_array_equal(first.brain.efficacy, second.brain.efficacy)
+    assert first.describe() == second.describe()
+
+
+def test_the_grown_brain_describes_the_trained_brain_and_its_new_parts():
+    trained = taught(recall=True)
+    grown = trained.grow(recall_heads=2, history_decays=(0.5,))
+    before, after = trained.describe(), grown.describe()
+    assert {name: after["genes"][name] for name in before["genes"]} == before["genes"]
+    assert set(after["genes"]) - set(before["genes"]) == {
+        "recall_heads", "recall_compete", "history_decays", "history_amplitude",
+    }
+    assert after["memories"]["working_memory"] == before["memories"]["working_memory"]
+    assert after["memories"]["hippocampus"] == before["memories"]["hippocampus"]
+
+
+def test_identity_holds_while_the_recall_memory_fills_and_evicts():
+    trained = taught(recall=True, recall_capacity=6)
+    check_identical(trained, trained.grow(recall_heads=2, slots=(4, 3)), moments=24)
+
+
+def test_a_living_brain_grows_and_lives_on():
+    rng = np.random.default_rng(6)
+    trained = cd.Brain.compose(6, ACTIONS, seed=1, modules=(16,), arousal=True)
+    reward = None
+    for _ in range(40):
+        action = trained.live(rng.random((1, 6)), reward=reward)
+        reward = np.array([float(action[0] == 0)])
+    grown = trained.grow(recall=True)
+    assert grown.arousal.to_dict() == trained.arousal.to_dict()
+    ports = np.isin(grown.connectome.pre, grown.connectome.populations["recall"])
+    assert not grown.brain.efficacy[ports].any()
+    reward = None
+    for _ in range(60):
+        action = grown.live(rng.random((1, 6)), reward=reward)
+        reward = np.array([float(action[0] == 0)])
+    assert grown.brain.efficacy[ports].any()  # the aroused moments taught the new ports
+
+
+def test_two_brains_combine_by_teaching():
+    """One brain learns another's skill in a new slot: the other brain's answers are its
+    teacher, its own answers at growth hold its own slot."""
+    rng = np.random.default_rng(7)
+    prototypes = rng.normal(size=(12, 8))
+
+    def views(count):
+        kind = rng.integers(0, 12, size=count)
+        return prototypes[kind] + 0.4 * rng.normal(size=(count, 8)), kind
+
+    first = cd.Brain.compose(8, 4, seed=3, modules=(32,))
+    second = cd.Brain.compose(8, 3, seed=4, modules=(32,))
+    for _ in range(200):
+        x, kind = views(16)
+        first.lesson(x, kind % 4)
+        second.lesson(x, kind // 4)
+    combined = first.grow(slots=(4, 3))
+    for _ in range(300):
+        x, _ = views(16)
+        combined.lesson(x, np.stack([first.predict(x), second.predict(x)], axis=1))
+    test, _ = views(400)
+    answers = combined.predict(test)
+    assert np.mean(answers[:, 1] == second.predict(test)) > 0.75
+    assert np.mean(answers[:, 0] == first.predict(test)) > 0.85

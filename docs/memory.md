@@ -17,7 +17,7 @@ Most applications need only one of these choices:
 | A recalled token as the answer, tokens never taught as answers included | `recall=True, recall_copy=2.0, recall_tokens=...` ([the copy pathway](#the-copy-pathway-opt-in)) |
 | What it did itself, where the observations are alike | `recall=True, recall_action=True` ([its own actions](#its-own-actions-in-the-slots-opt-in)) |
 | Both episodic voting and contextual retrieval | Use `memory_choice=True` and `attention=True` together. |
-| A memory for a brain already trained without it | `brain.grow(recall=True)` ([grow a brain](grow.md)) |
+| A memory for a brain already trained without it | `brain.grow(recall=True)` ([grow and combine brains](grow.md)) |
 
 If the present observation already contains everything needed for the action, keep the
 opt-in memories off. Add one mechanism at a time and compare it with the same mechanism

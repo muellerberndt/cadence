@@ -316,6 +316,12 @@ page is the import recipe. Biological dynamics and behaviour need their own vali
 [Connectome demo](https://github.com/muellerberndt/cadence-demos/tree/main/connectome) runs
 compiled fly wiring with plastic connections in the browser.
 
+A brain on a connectome takes new parts by grafting: build a larger anatomy with the connectome
+as one region (`Region(name, circuit=connectome)`) and the new regions wired to it, compose it,
+and graft the trained brain in with `into=`; the joints start at zero, so the larger brain acts
+as the trained one until they learn
+([a whole brain as one region](grow.md#a-whole-brain-as-one-region-of-a-larger-anatomy)).
+
 ### 1. Custody: manifest and dictionary decisions
 
 Pin the release files by URL and SHA-256, fetch them once, and build a fixture that the checks

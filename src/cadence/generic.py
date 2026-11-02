@@ -2928,13 +2928,47 @@ class Brain:
         synapses weight: a synapse moves on what its two neurons do in the free and nudged
         phases, not on its own weight.
 
-        Refused: a custom anatomy, which records no construction; a part inside the brain's
+        Refused: a brain that records no construction (a custom anatomy); a part inside the brain's
         loop (``modules``, ``observers``, a code), which learns nothing at zero and changes the
         brain at any other start; a setting that is not a part, which ``retune`` changes; new
         slots where a memory is laid out per action (``recall_action``, ``recall_tokens``,
         ``memory_choice``) or would join a deep brain's apical pool. See ``docs/grow.md``.
         """
         return _grow(self, parts)
+
+    def graft(
+        self,
+        donor: Brain,
+        regions: Sequence[str] | Mapping[str, str] | None = None,
+        *,
+        into: str | None = None,
+        joints: str = "zero",
+        freeze: bool = False,
+    ) -> Brain:
+        """This brain with trained regions of another brain, as a new brain; both are unchanged.
+
+        ``regions`` names populations of ``donor`` grafted into this brain's populations of the
+        same names, or maps a donor population to one of this brain's (``{"association":
+        "module_1"}``: a trained association becomes a module of a larger brain). ``into``
+        grafts the whole donor into one population of this brain, its neurons in order (a
+        measured connectome placed as one region of a larger anatomy). A grafted pair holds the
+        same number of neurons, taken in order, and every synapse of the donor among the grafted
+        neurons is a synapse of this brain.
+
+        The grafted neurons take the donor's biases and gains, the synapses among them the
+        donor's efficacies, both with the donor's optimizer history; ``freeze=True`` stops them
+        learning. Every other synapse onto or from a grafted neuron starts at zero, with its
+        reciprocal partner: a joint between the graft and the rest of this brain, or wiring of
+        this brain among the grafted neurons that the donor lacks. The graft therefore settles at
+        first on what it reads from its own regions, as in the donor, and learning gives the
+        joints weight. Everything else is this brain's: its other weights, memories, actor and
+        arousal. The streams start afresh, as after ``reset()``.
+
+        Refused: populations either brain lacks or of different sizes, a donor synapse among the
+        grafted neurons that this brain lacks, a different neuron model or apical compartment, a
+        learned code's region and tied or rated synapses. See ``docs/grow.md``.
+        """
+        return _graft(self, donor, regions, into, joints, freeze)
 
     def describe(self) -> dict[str, Any]:
         """Describe the brain without changing live state: four sections.
@@ -5278,8 +5312,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
     composition = brain._composition
     if composition is None:
         raise ValueError(
-            "grow needs a composed brain; a custom anatomy (compose(connectome=...)) records no "
-            "construction to grow from"
+            "grow needs a brain that records its construction: a custom anatomy "
+            "(compose(connectome=...)) records none, nor does a checkpoint saved without it"
         )
     if brain.learner.tie_groups is not None or brain.learner.synapse_rate is not None:
         raise ValueError("grow takes a composed brain without tied or rated synapses")
@@ -5515,3 +5549,180 @@ def _grown_array(
     out = np.zeros(shape, dtype=value.dtype)
     out[tuple(slice(0, k) for k in value.shape)] = value
     return out
+
+
+# -- grafting trained regions of one brain into another (``Brain.graft``)
+
+
+def _graft(
+    host: Brain,
+    donor: Brain,
+    regions: Sequence[str] | Mapping[str, str] | None,
+    into: str | None,
+    joints: str,
+    freeze: bool,
+) -> Brain:
+    """``host`` with the trained regions of ``donor`` (``Brain.graft``); both are unchanged."""
+    import tempfile
+
+    from .checkpoint import _write
+
+    if not isinstance(donor, Brain):
+        raise TypeError("graft takes a Brain to graft from")
+    if not isinstance(freeze, bool):
+        raise ValueError("freeze must be boolean")
+    if joints not in ("zero", "kept"):
+        raise ValueError("joints is 'zero' or 'kept'")
+    source, target = _graft_pairs(donor.connectome, host.connectome, regions, into)
+    for brain, index, whose in ((donor, source, "the donor's"), (host, target, "this brain's")):
+        code = brain.connectome.populations.get("code", ()) if brain.learned_code else ()
+        if np.isin(index, code).any():
+            raise ValueError(
+                f"{whose} learned code lives in its tables as well as its synapses; graft takes "
+                "no learned code region"
+            )
+    # a joint onto a learned code would change it outside its tables
+    untouchable = host.connectome.populations.get("code", ()) if host.learned_code else ()
+    graph = host.brain
+    device = None if graph._torch is None else str(graph._torch.device)
+    with tempfile.TemporaryDirectory(prefix="cadence-graft-") as folder:
+        root = Path(folder)
+        host.save(root / "living.npz")
+        fresh = type(host).load(root / "living.npz")
+        fresh.reset()  # the grafted brain starts its streams afresh, as after reset()
+        fresh.save(root / "host.npz")
+        donor.save(root / "donor.npz")
+        with (
+            np.load(root / "host.npz", allow_pickle=False) as mine,
+            np.load(root / "donor.npz", allow_pickle=False) as theirs,
+        ):
+            data = _grafted_checkpoint(
+                {name: mine[name] for name in mine.files},
+                {name: theirs[name] for name in theirs.files},
+                source,
+                target,
+                joints,
+                freeze,
+                np.asarray(untouchable, dtype=np.int64),
+            )
+        _write(data, root / "grafted.npz", compressed=False)
+        return type(host).load(
+            root / "grafted.npz", backend=graph.backend, device=device, precision=graph.precision
+        )
+
+
+def _graft_pairs(
+    donor: Connectome,
+    host: Connectome,
+    regions: Sequence[str] | Mapping[str, str] | None,
+    into: str | None,
+) -> tuple[np.ndarray, np.ndarray]:
+    """The grafted neurons: each donor neuron and the neuron of this brain it becomes."""
+    if (regions is None) == (into is None):
+        raise ValueError("graft takes the donor's regions, or into= for the whole donor")
+    if into is not None:
+        if into not in host.populations:
+            raise ValueError(f"this brain has no population {into!r}")
+        members = np.asarray(host.populations[into], dtype=np.int64)
+        if len(members) != donor.n:
+            raise ValueError(
+                f"population {into!r} holds {len(members)} neurons; the donor has {donor.n}"
+            )
+        return np.arange(donor.n, dtype=np.int64), members
+    if regions is None or isinstance(regions, (str, bytes)):
+        raise ValueError("regions must list population names or map them, not be one name")
+    pairs = dict(regions) if isinstance(regions, Mapping) else {name: name for name in regions}
+    if not pairs:
+        raise ValueError("graft needs at least one region")
+    where = np.full(donor.n, -1, dtype=np.int64)
+    for theirs, mine in pairs.items():
+        if not isinstance(theirs, str) or not isinstance(mine, str):
+            raise ValueError("regions are population names")
+        if theirs not in donor.populations:
+            raise ValueError(f"the donor has no population {theirs!r}")
+        if mine not in host.populations:
+            raise ValueError(f"this brain has no population {mine!r}")
+        source = np.asarray(donor.populations[theirs], dtype=np.int64)
+        target = np.asarray(host.populations[mine], dtype=np.int64)
+        if len(source) != len(target):
+            raise ValueError(
+                f"the donor's {theirs!r} holds {len(source)} neurons and this brain's {mine!r} "
+                f"{len(target)}"
+            )
+        if ((where[source] >= 0) & (where[source] != target)).any():
+            raise ValueError("the grafted regions overlap differently in the two brains")
+        where[source] = target
+    source = np.flatnonzero(where >= 0)
+    target = where[source]
+    if len(np.unique(target)) != len(target):
+        raise ValueError("two donor neurons would graft onto one neuron of this brain")
+    return source, target
+
+
+def _grafted_checkpoint(
+    host: Mapping[str, np.ndarray],
+    donor: Mapping[str, np.ndarray],
+    source: np.ndarray,
+    target: np.ndarray,
+    joints: str,
+    freeze: bool,
+    untouchable: np.ndarray,
+) -> dict[str, np.ndarray]:
+    """The checkpoint of the grafted brain: ``host`` carrying the donor's neurons ``source`` on
+    its neurons ``target`` and the donor's synapses among them (both saved by ``Brain.save``);
+    no joint may touch the neurons ``untouchable``."""
+    import json
+
+    meta_host, meta_donor = json.loads(str(host["meta"])), json.loads(str(donor["meta"]))
+    if meta_host["neuron_model"] != meta_donor["neuron_model"]:
+        raise ValueError("the donor's neuron model differs from this brain's")
+    if meta_host.get("apical") != meta_donor.get("apical"):
+        raise ValueError("the donor's apical compartment differs from this brain's")
+    for checkpoint in (host, donor):
+        if checkpoint["tie_groups"].size or checkpoint["synapse_rate"].size:
+            raise ValueError("graft takes brains without tied or rated synapses")
+    n = int(meta_host["n"])
+    where = np.full(int(meta_donor["n"]), -1, dtype=np.int64)
+    where[source] = target
+    pre = np.asarray(donor["pre"], dtype=np.int64)
+    post = np.asarray(donor["post"], dtype=np.int64)
+    inner = (where[pre] >= 0) & (where[post] >= 0)
+    key = np.asarray(host["post"], dtype=np.int64) * n + np.asarray(host["pre"], dtype=np.int64)
+    wanted = where[post[inner]] * n + where[pre[inner]]
+    at = np.searchsorted(key, wanted)
+    if (at >= len(key)).any() or not np.array_equal(key[np.minimum(at, len(key) - 1)], wanted):
+        raise ValueError(
+            "the donor has a synapse among the grafted neurons that this brain lacks: wire the "
+            "grafted regions as the donor wires them"
+        )
+    data = dict(host)
+    for name in ("count", "sign", "efficacy", "plastic_synapses", "velocity", "second_moment"):
+        values = np.array(host[name])
+        values[at] = donor[name][inner]
+        data[name] = values
+    for name in ("bias", "log_gain", "plastic_neurons", "velocity_bias", "second_moment_bias"):
+        values = np.array(host[name])
+        values[target] = donor[name][source]
+        data[name] = values
+    # every other synapse onto or from a grafted neuron starts at zero, its reciprocal partner
+    # (another such synapse) with it, and with a newborn's optimizer history
+    copied = np.zeros(len(key), dtype=bool)
+    copied[at] = True
+    grafted = np.zeros(n, dtype=bool)
+    grafted[target] = True
+    pre = np.asarray(host["pre"], dtype=np.int64)
+    post = np.asarray(host["post"], dtype=np.int64)
+    silent = (grafted[pre] | grafted[post]) & ~copied
+    if (silent & (np.isin(pre, untouchable) | np.isin(post, untouchable))).any():
+        raise ValueError(
+            "this brain's learned code lives in its tables as well as its synapses; a graft "
+            "joined to its code region is refused"
+        )
+    if joints == "zero":
+        for name in ("efficacy", "velocity", "second_moment"):
+            data[name][silent] = 0.0
+    if freeze:
+        data["plastic_synapses"][at] = False
+        data["plastic_neurons"][target] = False
+    return data
+

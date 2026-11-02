@@ -20,7 +20,24 @@
   brain's loop (`modules`, `observers`, a code: at zero its neurons get the same updates, at any
   other start the brain changes), a setting `retune` changes, and new slots where a memory is
   laid out per action (`recall_action`, `recall_tokens`, `memory_choice`) or a new motor neuron
-  would join a deep brain's apical pool. [Grow a brain](docs/grow.md) is the guide.
+  would join a deep brain's apical pool.
+- Graft trained regions of one brain into another: `brain.graft(donor, regions)` returns a new
+  brain, this one with the donor's populations `regions` (names, or a mapping of donor names to
+  this brain's, such as `{"association": "module_1"}`), and `graft(donor, into=name)` puts the
+  whole donor into one population of a larger anatomy, a measured connectome built as one
+  region with new regions wired to it among them. The grafted neurons take the donor's biases
+  and gains and the synapses among them its efficacies, with its optimizer history;
+  `freeze=True` stops them learning. Every other synapse onto or from a grafted neuron starts at
+  zero (`joints="zero"`, the founder) or keeps this brain's weight (`joints="kept"`), and the
+  brain's other weights, memories, actor and arousal stay its own. A whole donor grafted into a
+  larger anatomy with joints at zero acts as the donor; a joint at zero learns where one of its
+  neurons is active and the other moves between the phases, so a new region needs a drive of its
+  own or joints that start with weight. Refused with the reason: populations of other sizes,
+  donor wiring the brain lacks among the grafted neurons, another neuron model or apical
+  compartment, a learned code's region or a joint onto it, tied or rated synapses.
+  [Grow and combine brains](docs/grow.md) is the guide: growing, grafting, how a new part joins
+  the brain, teaching and living after the change, combining two brains' skills by teaching, and
+  compatibility. Grown and grafted brains save as ordinary checkpoints, which 0.91.3 loads.
 - State what learns in a composed visual cortex: its maps project one way into the first
   module, so no nudge reaches them and the contrast rule teaches them nothing. The receptive
   fields keep their initial draw, apart from what phases that stop short of equilibrium leave

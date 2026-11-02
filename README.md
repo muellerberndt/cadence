@@ -111,8 +111,10 @@ witnessed facts at once. The options can be used together.
 starts with these common cases before giving the complete reference.
 A brain trained without one of them gets it later: `brain.grow(recall=True)`, or new output
 slots with `brain.grow(slots=...)`, returns the same brain with the part added, acting as
-before until learning gives the part weight
-([grow a brain](https://github.com/muellerberndt/cadence/blob/main/docs/grow.md)).
+before until learning gives the part weight. `brain.graft(donor, ...)` puts trained regions of
+another brain into a larger one, such as a trained visual system, or a whole connectome as one
+region of a larger anatomy
+([grow and combine brains](https://github.com/muellerberndt/cadence/blob/main/docs/grow.md)).
 
 ```python
 phases = brain.imagine([observation, next_observation])
