@@ -121,7 +121,7 @@ width 1,024 (the recall memory, the normalized point, each synapse's step scaled
 fan-in at width 64 through `Learner.synapse_rate`, three seeds, 1,500 lessons) the held-out
 answers end at 0.95 to 0.99 with it and stay at or above 0.85 at every reading from 500 lessons
 on. Without it the readings swing: one seed reads 0.01 after 1,000 lessons, 0.18 after 1,300 and
-0.98 at the end. Teaching every row holds 0.92 to 0.98 from 800 lessons on at about a quarter
+0.98 at the end. Teaching every row holds 0.92 to 0.99 from 800 lessons on at about a third
 more time per lesson. Scaling the contrast instead, so that the running moments read it as
 well, swings as the plain rule does: the normalization divides the scale out
 ([#239](https://github.com/muellerberndt/cadence/issues/239)).

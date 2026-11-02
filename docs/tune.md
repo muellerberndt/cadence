@@ -44,6 +44,7 @@ The composed graph, in the order its regions are developed:
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
 | `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False`; with `recall_copy` also into `motor` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
+| `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#position-how-long-ago-a-moment-happened) |
 
 The hippocampus is a `SynapticMemory` from the observation code to the motor drive,
 with `memory_choice=True` the [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before), and with
@@ -136,6 +137,56 @@ assert full.live(np.eye(16)[[3]]).shape == (1,)
 Every option is checked by the tests beside every other (`tests/test_observers_compat.py`), and
 the [memory benchmarks on deep brains](../benchmarks/depth/README.md#memory-on-deep-brains)
 measure what depth keeps and costs.
+
+### Wide brains
+
+On 0.89 more neurons in a module did not lower held-out error
+([#239](https://github.com/muellerberndt/cadence/issues/239)). A width sweep (64 to 1,024 neurons;
+induction over a vocabulary of 128, associative recall and a lookup task; the recall memory under
+the normalized point) located three causes at the widest modules:
+
+- **Refused answers.** A trained brain's settle could run out of budget: the finite learner spends
+  half its sweeps at the full step and the rest at half the step, and a state that needs more
+  full-step sweeps was refused, which stops a continuing life. A solve that does not qualify now
+  continues once with halved steps before the answer is refused
+  ([qualification and refusal](start.md#qualification-and-refusal)).
+- **Surprise lessons out of proportion.** A surprise lesson gives one wrong row a whole lesson's
+  step, and at 1,024 neurons the answers swing between collapse and recovery.
+  `learning_surprise_share=True` scales the step by the share of rows taught
+  ([in proportion to the surprise](teach.md#lessons-only-where-the-answer-differs)).
+- **A saturated readout.** A neuron's drive sums over its fan-in, so with every synapse stepped as
+  in a module of 64 the motor neurons of a wide module saturate: associative recall collapses at
+  1,024 neurons on the composed steps. Scaling each synapse's step to its neuron's fan-in in the
+  same brain composed at 64 (`Learner.synapse_rate`) keeps associative recall at 1.00 at every
+  width; it costs the lookup task its gain from width (0.82 to 0.87 at every width, against 0.77
+  at 64 and 0.92 at 1,024 on the composed steps), so it is a recipe, not a default:
+
+```python
+def fan_in_rates(wide: Brain, narrow: Brain) -> np.ndarray:
+    """Each synapse's step scaled to the largest fan-in of its neuron's population in
+    ``narrow``, the same composition at a smaller width; capped at 1."""
+    c, n = wide.connectome, narrow.connectome
+    fan = np.bincount(c.post, minlength=c.n).astype(float)
+    fan_narrow = np.bincount(n.post, minlength=n.n).astype(float)
+    reference = fan.copy()
+    for name, neurons in c.populations.items():
+        index = np.asarray(neurons, dtype=np.int64)
+        if name in n.populations and len(index):
+            top = fan_narrow[np.asarray(n.populations[name], dtype=np.int64)].max(initial=0.0)
+            if top > 0:
+                reference[index] = np.minimum(reference[index], top)
+    return np.minimum(1.0, reference[c.post] / np.maximum(fan[c.post], 1.0))
+
+
+wide = Brain.compose(8, 4, modules=(256,), seed=0, recall=True)
+narrow = Brain.compose(8, 4, modules=(64,), seed=0, recall=True)
+wide.learner.synapse_rate = fan_in_rates(wide, narrow)
+assert wide.learner.synapse_rate.max() <= 1.0
+```
+
+A brain with per-synapse rates cannot be grown (`grow` refuses it); set the rates on the grown
+brain instead. Whether a wider module then lowers held-out error on the composer and on Connect
+Four, the cases #239 opened with, is not yet measured.
 
 ## Defaults and expert overrides
 
