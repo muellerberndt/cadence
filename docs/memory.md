@@ -1043,7 +1043,9 @@ on six fresh founders read the recipe as the development seeds did: look back ta
 and read at 24 to 60 answers "first" at 0.986 to 1.000 and "second" at 0.988 to 1.000; copying
 unique tokens at unseen lengths 0.992 to 1.000; copying repeated tokens, with
 `recall_relative=True` as well, 0.918 to 0.941 in closed loop. Setting the anchored maps to zero
-after training drops "second" to 0.48 to 0.63, so the anchor carries it. The slower table costs
+after training drops "second" to 0.48 to 0.63, so the anchor carries it. On induction and
+n-back the recipe stays within 0.014 of the founder table, and a period of 40 stays where the
+founder leaves it (0.35 to 0.39): it needs the table exact to 64 ages. The slower table costs
 reads that need exact ages (in #232's candidate, Stone Age ordered recall 0.82 against 0.99),
 and with the table at the founder rate the brain takes the position shortcut over the content
 route again.
