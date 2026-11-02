@@ -37,13 +37,19 @@ and a float32 backend refuses a neuron rule whose constants float32 cannot repre
 
 `available_backends()` asks MLX for its device in a child interpreter, once per process. An MLX
 whose discovery aborts the interpreter, as an unsupported Metal or system configuration can,
-ends that child: MLX is then absent from the list, and `backend="mlx"` raises `RuntimeError`
-with the child's reason instead of importing it into the running program. Where MLX imports,
-[`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py) runs a composed brain on it against
-the CPU: it settles and learns as the CPU does within float32 rounding, lives, imagines, saves
-and continues a pending outcome, reads several recall heads and grows, and it refuses an apical
-compartment. These pass on Apple silicon (macOS 15, Python 3.13, MLX 0.32) together with the
-rest of the suite.
+ends that child: MLX is then absent from the list, and `backend="mlx"` raises `ImportError`
+with the child's reason instead of importing it into the running program (`ModuleNotFoundError`
+when MLX is not installed). The child imports from the program's import path, paths added at
+run time included, and from nothing else: not its working directory or environment. An MLX the
+program has already imported answers in the program, with its present default device, as MLX
+does in a frozen application, whose executable is the application itself. Only a found MLX's
+answer is kept, so an MLX installed later in the process is found.
+[`tests/test_mlx_discovery.py`](../tests/test_mlx_discovery.py) checks each case with stand-in
+packages. Where MLX imports, [`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py) runs a
+composed brain on it against the CPU: it settles and learns as the CPU does within float32
+rounding, lives, imagines, saves and continues a pending outcome, reads several recall heads and
+grows, and it refuses an apical compartment. These pass on Apple silicon (macOS 15, Python 3.13,
+MLX 0.32) together with the rest of the suite.
 
 ## What runs where
 

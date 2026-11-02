@@ -6,16 +6,23 @@
   into the running program, so an MLX whose discovery aborts the interpreter, as an unsupported
   Metal or system configuration can, took the program down with it. A child now asks MLX for its
   device once per process: when it fails, MLX is absent from the list and `backend="mlx"` raises
-  `RuntimeError` with the child's reason. Composed brains run on MLX against the CPU in
-  `tests/test_mlx_backend.py` where MLX imports: they settle and learn within float32 rounding,
-  live, imagine, save and continue a pending outcome, read several recall heads and grow, and an
-  apical compartment is refused; with MLX 0.32 on Apple silicon the whole suite passes.
-  docs/backends.md states the support.
-- `graft` keeps this brain's contact counts and signs; the grafted synapses take the donor's
-  efficacies and plasticity masks. With the donor's signs carried, a graft onto a recall copy
-  pathway of a brain with `recall_tokens`, which its construction lays out again on load, left
-  the brain's connectome and its learner's apart after a load (their digests differed; the
-  weights and the behaviour were the same).
+  `ImportError` with the child's reason (`ModuleNotFoundError`, as before, when MLX is not
+  installed). The child imports from the program's import path, paths added at run time
+  included, and not from its working directory or environment; an MLX already imported, or MLX
+  in a frozen application, answers in the program, the former with its present default device;
+  concurrent first calls ask one child, and an MLX installed later in the process is found.
+  `tests/test_mlx_discovery.py` checks these with stand-in packages. Composed brains run on MLX
+  against the CPU in `tests/test_mlx_backend.py` where MLX imports: they settle and learn within
+  float32 rounding, live, imagine, save and continue a pending outcome, read several recall heads
+  and grow, and an apical compartment is refused; with MLX 0.32 on Apple silicon (macOS 15,
+  Python 3.13) the whole suite passes. docs/backends.md states the support.
+- `graft` keeps this brain's signs: a grafted synapse takes the donor's contact count, efficacy
+  and plasticity mask. With the donor's signs carried, a graft onto a recall copy pathway of a
+  brain with `recall_tokens`, whose signs its construction lays out again on load, left the
+  brain's connectome and its learner's apart after a load (their digests differed; the weights
+  and the behaviour were the same). A sign is the efficacy a synapse started from, so
+  `to_dict()["efficacy_changed"]` and the excitatory and inhibitory counts of a grafted brain
+  read the grafted synapses against this brain's construction.
 - State learned memory relevance as a goal in the manifesto, AGENTS.md, the contribution rules
   and the pull request template: the same acquired brain uses the same memories differently
   under changed context, and experience improves that selection within the coupled equilibrium.
