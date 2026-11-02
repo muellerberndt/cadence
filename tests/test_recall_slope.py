@@ -78,3 +78,14 @@ def test_a_checkpoint_keeps_the_slope_and_continues(tmp_path):
     plain = slope()
     path = plain.save(tmp_path / "plain.npz")
     assert cd.Brain.load(path).recall.slope_maps == []
+
+
+def test_parameters_count_the_maps_of_the_options():
+    founder = slope().parameters()
+    extended = cd.Brain.compose(6, 4, seed=5, recall=True, recall_slope=0.1, recall_anchor=True,
+                                recall_relative=True).parameters()
+    recall = cd.Brain.compose(6, 4, seed=5, recall=True, recall_slope=0.1, recall_anchor=True,
+                              recall_relative=True).recall
+    added = sum(a.size for maps in (*recall.slope_maps, *recall.anchor_maps,
+                                    *recall.relative_maps) for a in maps)
+    assert extended == founder + added

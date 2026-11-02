@@ -22,7 +22,7 @@ def brains(**options) -> tuple[cd.Brain, cd.Brain]:
 
 def test_the_founder_config_leaves_the_setting_out():
     assert "surprise_share" not in cd.LearnerConfig().to_dict()
-    assert cd.LearnerConfig(surprise_share=True).to_dict()["surprise_share"] is True
+    assert cd.LearnerConfig(surprise=True, surprise_share=True).to_dict()["surprise_share"] is True
     _, shared = brains()
     assert shared.learner.config.surprise_share is True
 
@@ -99,3 +99,8 @@ def test_the_share_scales_the_step_on_a_torch_device(device, precision, rtol):
     full, part = moved
     assert np.abs(full).sum() > 0
     np.testing.assert_allclose(part, full * 3 / 8, rtol=rtol, atol=1e-7)
+
+
+def test_a_share_without_surprise_lessons_warns_that_it_changes_nothing():
+    with pytest.warns(RuntimeWarning, match="surprise_share"):
+        cd.LearnerConfig(surprise_share=True)

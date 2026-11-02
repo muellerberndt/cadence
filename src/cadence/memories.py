@@ -182,7 +182,8 @@ class EpisodicRecords:
 
     With a hold (``memory_context_hold``) some decisions stay out of the temporal context:
     ``"unchanged"`` keys a decision taken on the observation of the stream's previous decision
-    as if that decision had not been taken, the replay path's rule for the key; ``"punished"``
+    as if that decision had not been taken, whatever its outcome (the replay path drops such a
+    decision only when its outcome was nothing); ``"punished"``
     takes a decision whose outcome was below zero, in the middle of an attempt, back out of
     the context. Will Glynn measured both (cadence#202). Per stream it then also keeps the
     context before the last decision (``before``) and that decision's observation code

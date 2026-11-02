@@ -226,6 +226,14 @@ class LearnerConfig:
                 RuntimeWarning,
                 stacklevel=3,
             )
+        if self.surprise_share and not self.surprise:
+            warnings.warn(
+                "LearnerConfig with surprise_share=True and surprise=False: the share scales "
+                "surprise lessons only, so it changes nothing here; set surprise=True "
+                "(learning_surprise) to teach by surprise.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
         if self.qualified and self.nudged_steps < self.free_steps:
             warnings.warn(
                 f"LearnerConfig with qualified=True and nudged_steps ({self.nudged_steps}) "

@@ -69,7 +69,8 @@
   needed more full-step sweeps than the finite learner's budget left them.
 - `memory_context_hold` (opt-in, #202): with `memory_choice=True` and a temporal context,
   `"unchanged"` keys a decision taken on the observation of the stream's previous decision as
-  if that decision had not been taken (the replay path's rule, applied to the key), and
+  if that decision had not been taken, whatever its outcome (the replay path drops such a
+  decision only when its outcome was nothing), and
   `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back
   out of the context. `benchmarks/context_key` ports Will Glynn's Stone Age chains (the
   ambiguous chain, the invisible-action boundary and the fully observed chain) with credit.

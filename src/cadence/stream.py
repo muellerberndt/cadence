@@ -590,7 +590,9 @@ class Recall:
     ``g_b = sum_{i in b} (p*_i - p_i)`` of its terms, and each head's maps take the
     least-mean-squares step on ``z = [x, c, 1]`` at the rate ``position_rate``, each row's rate
     bounded by its own energy as the address map's is; a step that is not finite is refused.
-    Reward trains the address map only (``address_reward``), not the position maps.
+    Reward trains the address map with ``address_reward`` and the position maps (with
+    ``anchor`` the anchored maps) with ``position_reward``; the relative and slope maps learn
+    from lessons alone.
     ``position_map(h)`` gives head h's maps and ``position_term(h, x, c)`` its term at every
     slot; ``weights(address, position)`` with that term gives the attention the read used.
 
@@ -2202,7 +2204,30 @@ class Recall:
                     e_c + rate * c.T @ places / len(x),
                     e + rate * places.mean(axis=0),
                 )
-        checked = maps if anchored is None else (*maps, *anchored)
+        relative = leaned = None
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            if self.relative_maps:  # the same gradient over each slot's offset from the focus
+                q_x, q_c, q = self.relative_maps[head]
+                offsets = np.zeros((len(gradient), 2 * self.RELATIVE + 2))
+                buckets = self.relative_buckets(np.asarray(rows)[moving])
+                np.add.at(offsets, (np.arange(len(gradient))[:, None], buckets), gradient)
+                offsets *= bound
+                relative = (
+                    q_x + rate * x.T @ offsets / len(x),
+                    q_c + rate * c.T @ offsets / len(x),
+                    q + rate * offsets.mean(axis=0),
+                )
+            if self.slope_maps:  # the same gradient, read along each slot's age
+                s_x, s_c, s = self.slope_maps[head]
+                lean = gradient @ (self.ages() / self.SLOPE)
+                lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
+                leaned = (
+                    s_x + self.slope * x.T @ lean / len(x),
+                    s_c + self.slope * c.T @ lean / len(x),
+                    s + self.slope * lean.mean(keepdims=True),
+                )
+        # every map of the step or none: a step that is not finite is refused whole
+        checked = [*maps, *(a for found in (anchored, relative, leaned) if found for a in found)]
         if not all(np.isfinite(a).all() for a in checked):
             return 0, int(len(x))
         # new arrays, never written in place: an imagined branch may hold the old ones
@@ -2213,36 +2238,14 @@ class Recall:
             self.anchor_maps = [
                 anchored if h == head else kept for h, kept in enumerate(self.anchor_maps)
             ]
-        if self.relative_maps:
-            q_x, q_c, q = self.relative_maps[head]
-            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                offsets = np.zeros((len(gradient), 2 * self.RELATIVE + 2))
-                buckets = self.relative_buckets(np.asarray(rows)[moving])
-                np.add.at(offsets, (np.arange(len(gradient))[:, None], buckets), gradient)
-                offsets *= bound
-                relative = (
-                    q_x + rate * x.T @ offsets / len(x),
-                    q_c + rate * c.T @ offsets / len(x),
-                    q + rate * offsets.mean(axis=0),
-                )
-            if all(np.isfinite(a).all() for a in relative):
-                self.relative_maps = [
-                    relative if h == head else kept for h, kept in enumerate(self.relative_maps)
-                ]
-        if self.slope_maps:  # the same gradient, read along each slot's age
-            s_x, s_c, s = self.slope_maps[head]
-            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                lean = gradient @ (self.ages() / self.SLOPE)
-                lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
-                leaned = (
-                    s_x + self.slope * x.T @ lean / len(x),
-                    s_c + self.slope * c.T @ lean / len(x),
-                    s + self.slope * lean.mean(keepdims=True),
-                )
-            if all(np.isfinite(a).all() for a in leaned):
-                self.slope_maps = [
-                    leaned if h == head else kept for h, kept in enumerate(self.slope_maps)
-                ]
+        if relative is not None:
+            self.relative_maps = [
+                relative if h == head else kept for h, kept in enumerate(self.relative_maps)
+            ]
+        if leaned is not None:
+            self.slope_maps = [
+                leaned if h == head else kept for h, kept in enumerate(self.slope_maps)
+            ]
         return int(len(x)), 0
 
     def _step(
@@ -2408,10 +2411,12 @@ class Recall:
     def contrast_rows(
         self, graph: NeuralGraph, plus: BrainState, minus: BrainState
     ) -> np.ndarray | None:
-        """The address map's eligibility from a sampled act, one ``(inputs + association + 1,
-        address)`` array per row (the rows of ``w_x``, ``w_c`` and ``b`` in that order; with
-        several heads one block of ``address`` columns per head, head 0's first), or
-        None at ``address_reward=0``: the step the address lesson would take at each row,
+        """The read's eligibility from a sampled act, one ``(inputs + association + 1,
+        reward_columns)`` array per row (the rows of ``w_x``, ``w_c`` and ``b`` in that order;
+        with several heads one block of ``address`` columns per head, head 0's first, then
+        with ``position_reward`` the position and anchored buckets), or None when neither
+        ``address_reward`` nor ``position_reward`` trains the read: the step the address and
+        position lessons would take at each row,
         were the act's action a lesson's label, before the average over rows. The
         association's movement between the act's two nudged phases, ``plus`` less ``minus``,
         is read back through the recall and next synapses of ``graph`` and scored against the

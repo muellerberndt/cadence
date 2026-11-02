@@ -305,10 +305,11 @@ columns of a copy (another batch size reads silence). `reset(batch, rows=None)`,
 Recall(connectome, amplitude=3.0, temperature=0.25, heard=1.0, recency=0.25,
        capacity=64, next=True, address=0.01,
        address_temperature=0.1,
-       address_step="lms", null=None, address_reward=0.0,
+       address_step="lms", null=None, address_reward=0.0, position_reward=0.0,
        window=1, window_decay=1.0, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
-       boundary=False, copy=0.0, tokens=None, action=False, actions=0)
+       boundary=False, copy=0.0, tokens=None, action=False, compete=True, chain=False,
+       anchor=False, relative=False, slope=0.0, when=False, actions=0)
 ```
 
 The held-input index memory of each stream's recent moments. Each constructor argument is the
@@ -326,7 +327,7 @@ settings of 0.84.3 that left in this version, each with its reading, are
 | `witness(observations, state, command=None)` | Writes the moment as a slot after its settle; with `action` the `(batch, actions)` command executed at it joins the slot's key and value (zero when None). |
 | `copy_synapses()` | The copy pathway's synapses into the motor region, with the value coordinate and the motor neuron of each. |
 | `learn(graph, learned) -> dict` | The address lesson after a teaching step; returns `address_rows`, `address_error`, `address_refused`, and with a position term `position_rows` and `position_refused` (zero when nothing moved). A nonfinite step is refused per row (per head for the position maps). With several heads each head steps its own maps: rows and refusals are summed over the heads, the error averaged over the heads that moved. The position term learns whatever `address` is. |
-| `contrast_rows(graph, plus, minus)`, `propose(step)`, `accept(proposal)` | Reward training of the address map at `address_reward > 0`; `ActorCritic` calls them. `contrast_rows` is `None` at 0. |
+| `contrast_rows(graph, plus, minus)`, `propose(step)`, `accept(proposal)` | Reward training of the address map at `address_reward > 0` and of the position maps (and the anchored ones) at `position_reward > 0`; `ActorCritic` calls them. `contrast_rows` is `None` when neither trains the read; `reward_columns` is its width. |
 | `end(batch, rows=None)` | Ends episodes and keeps the slots, as `Brain.reset(keep=("slots",))` does; the latest slot learns no successor. With `boundary` an end of every stream opens one boundary slot. |
 | `weights(address, position=None)`, `position_term(head, event, cortex)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
 | `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `imagined()` | Stream bookkeeping; `imagined()` is a copy that reads the live slots and writes none. |

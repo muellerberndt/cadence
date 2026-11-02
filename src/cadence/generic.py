@@ -4774,9 +4774,12 @@ class Brain:
             self.arousal.reset()
 
     def parameters(self) -> int:
-        """Actor/critic and consolidated weights, the recall memory's address and position
-        maps and a learned code's tables; per-stream transient storage is additional."""
+        """Actor/critic and consolidated weights (the episodic records' paid store with
+        ``memory_extinction``), the recall memory's address and position maps and the maps of
+        its options (chain, anchor, relative, slope), and a learned code's tables; per-stream
+        transient storage is additional."""
         recall = self.recall
+        paid = None if self._episodic is None else self._episodic.paid
         return (
             self.basal_ganglia.parameters()
             + (
@@ -4785,10 +4788,19 @@ class Brain:
                 else 0
             )
             + (0 if self.context_memory is None else self.context_memory.consolidated.size)
+            + (0 if paid is None else paid.consolidated.size)
             + (
                 0 if recall is None
                 else sum(sum(a.size for a in recall.head_map(h)) for h in range(recall.heads))
-                + sum(a.size for maps in recall.position_maps for a in maps)
+                + sum(
+                    a.size
+                    for maps in (
+                        *recall.position_maps, *recall.anchor_maps, *recall.relative_maps,
+                        *recall.slope_maps,
+                    )
+                    for a in maps
+                )
+                + sum(a.size for a in recall.chain_maps)
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
         )
