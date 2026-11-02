@@ -1016,13 +1016,27 @@ logit_i += s(x, c) * age_i / 8      s(x, c) = x S_x + c S_c + s   (one map per h
 One number per moment says "lean old" (positive) or "lean recent" (negative), and the table
 keeps the exact offsets beside it. The maps start at zero, so a newborn reads as one without
 the option, and the lesson steps them by the table's gradient read along the ages, at the rate
-`recall_slope` (0.1 in [#232](https://github.com/muellerberndt/cadence/issues/232)'s
-candidate); rewards do not train them. The candidate there also read the table at
-`recall_position_rate=0.01` with `recall_recency=0`: look back "first" at two to five times the
-trained length then answers 0.95 to 0.97, against 0.24 to 0.26 without, and copying unique
-tokens at unseen lengths 0.99 to 1.00, against 0.03 to 0.09. The slower table costs reads that
-need exact ages (Stone Age ordered recall 0.82 against 0.99), and with the table at the founder
-rate the brain takes the position shortcut over the content route again.
+`recall_slope`; rewards do not train them
+([#232](https://github.com/muellerberndt/cadence/issues/232)).
+
+**Positions at lengths no lesson reached.** The slope pays with the table taught slowly beside
+it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary; three development
+seeds, 1,500 lessons):
+
+| Recall settings beside the position term | Copying unique tokens: taught 3 to 6, read at 8 to 12, closed loop | Look back: taught 5 to 12, read at 24 to 60, "first" |
+| --- | --- | --- |
+| the founder table | 0.30 to 0.36 | 0.25 to 0.27 |
+| the table at 0.01 | 0.86 to 0.99 | 0.31 to 0.35 |
+| the slope at 0.1 | 0.47 to 0.88 | 0.62 to 0.93 |
+| the slope at 0.1, the table at 0.01 | 0.99 to 1.00 | 0.70 to 0.81 |
+| the anchor | | 0.72 to 0.75 |
+| the anchor, the slope at 0.1, the table at 0.01 | | 1.00 (every cue 0.97 to 1.00) |
+
+With the anchor, the slope and the slower table every head reads "the first told", "the second"
+and "the latest" at two to five times the longest length it was taught. The slower table costs
+reads that need exact ages (in #232's candidate, Stone Age ordered recall 0.82 against 0.99),
+and with the table at the founder rate the brain takes the position shortcut over the content
+route again.
 
 **When a read item happened (opt-in, `recall_when=True`).** A read delivers what its slots hold
 and what followed them; the position term only chooses the slots. Nothing reaching the cortex
@@ -1039,11 +1053,17 @@ and with the anchor the same two features of each slot's place in the episode (z
 written before it began). The regions reach the association through synapses that start at
 zero, so a newborn settles as one without the option, and lessons give them weight. The address
 lesson names the slots to read by what they hold, and the region says when the slots read
-happened. A lesson that named slots by when they happened as well taught the read to find slots
-whose age matched the answer instead of the item asked about: on "how long ago was X told?"
-(stories of 8 to 16 distinct tokens, four age buckets) the read's median attention on X fell to
-0.08 to 0.10 and the answers to 0.62 to 0.66, against 0.63 to 0.71 and 0.94 to 0.96 without it
-([#237](https://github.com/muellerberndt/cadence/issues/237)).
+happened ([#237](https://github.com/muellerberndt/cadence/issues/237)).
+
+On "how long ago was X told?" (stories of 8 to 16 distinct tokens, X shown with a question
+mark, the answer one of four age buckets; three development seeds, 1,500 lessons) the option
+answers 0.93 to 0.97, against 0.21 to 0.68 without it. "Was A told before B?", asked over two
+moments (A, then B), stays at 0.61 to 0.73, against 0.57 to 0.75 without it: the comparison
+needs what the first read reported carried to the second moment, and the working trace does not
+carry it that far. A lesson that also named slots by when they happened taught the read to find
+slots whose age matched the answer instead of the item asked about (the read's median attention
+on X fell to 0.08 to 0.10, the answers to 0.62 to 0.66), so the lesson does not read the
+movement back through the when regions.
 
 ### Episodes, keys and windows
 
