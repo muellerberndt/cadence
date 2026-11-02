@@ -1169,6 +1169,11 @@ def _validate_recall_state(
     for h in range(heads if count else 0):  # every head's position maps, with a position term
         shapes_h = ((key + command, count), (association, count), (count,))
         maps.update(dict(zip(Recall.position_names(h), shapes_h, strict=True)))
+    if settings.get("chain", False):  # every further head's map of the read before it
+        chained = value * (2 if settings["next"] else 1)
+        maps.update({f"chain_{h}": (chained, address) for h in range(1, heads)})
+    elif any(name.startswith("recall/chain_") for name in data):
+        raise ValueError("saved chain maps belong to a recall memory with chain")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -5023,6 +5028,10 @@ class Brain:
                 recall.position_maps = [  # validated above: saved with a position term
                     tuple(data["recall/" + name].astype(float) for name in Recall.position_names(h))
                     for h in range(recall.heads if recall.position_maps else 0)
+                ]
+                recall.chain_maps = [  # validated above: saved with chain
+                    data[f"recall/chain_{h}"].astype(float)
+                    for h in range(1, recall.heads if recall.chain else 1)
                 ]
                 recall.held = data["recall/held"].astype(bool)
                 recall.ended = (

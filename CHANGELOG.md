@@ -2,6 +2,16 @@
 
 ## Unreleased
 
+- `recall_chain` (opt-in, #234): with several heads, each head after the first adds to its
+  address what the head before it read (its recall and next reads) through a map that starts at
+  zero and the address lesson steps, so one moment can place a read where an earlier read
+  pointed (two hops). A newborn chain reads exactly as the heads without it; checkpoints keep
+  the maps.
+- An answer whose solve does not qualify within `free_steps` continues once with halved
+  integration steps for another `free_steps` sweeps before the brain refuses it (#239); the
+  settlement report counts the rescue (`rescue_steps`). Nothing changes where the first solve
+  qualifies. The width sweep of #239 found trained recall brains refusing acts whose settle
+  needed more full-step sweeps than the finite learner's budget left them.
 - `memory_context_hold` (opt-in, #202): with `memory_choice=True` and a temporal context,
   `"unchanged"` keys a decision taken on the observation of the stream's previous decision as
   if that decision had not been taken (the replay path's rule, applied to the key), and

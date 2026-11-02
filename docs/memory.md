@@ -438,6 +438,16 @@ The heads' addresses learn from teaching steps; reward trains them only at
 maps stay at zero: head 0 reads the best-matching moment and each later head the best of what
 the heads before it left (with `recall_compete=False`, what head 0 reads).
 
+**Chained heads (opt-in).** With `recall_chain=True` (a construction setting; it needs
+`recall_heads` of 2 or more) the heads read in a chain: each head after the first adds to its
+address what the head before it read, its recall and next reads through a map of its own that
+starts at zero. One moment can then place a read where an earlier read pointed: in two hops
+(`a -> b`, `b -> c`, ask `a`), the first head finds `a`, its next region holds `b`, and the
+second head can learn to look for `b`. A newborn chain reads as the heads without it; the
+address lesson steps the maps, and reward does not (`recall_address_reward` is refused with it).
+A "think" moment remains the way to chain reads across moments: the second read's address then
+comes from the cortex that holds the first ([#234](https://github.com/muellerberndt/cadence/issues/234)).
+
 Use several heads when one answer needs several witnessed facts at once, and compare them with
 one head and with the facts asked one per moment (one head reads one fact per moment through
 the working trace). Long lesson curricula drive the shared readout into saturation once the
@@ -1009,6 +1019,7 @@ map.
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
 | `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
+| `recall_chain` | `False` | construction | Each head after the first also addresses what the head before it read ([chained heads](#several-heads-opt-in)); needs `recall_heads` of 2 or more |
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |

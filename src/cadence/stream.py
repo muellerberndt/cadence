@@ -599,6 +599,15 @@ class Recall:
     settles as one without the option, and the address lesson can teach the maps to look for
     a slot by what was done there.
 
+    With ``chain`` (an option, founder off; a construction setting; it needs ``heads`` of at least
+    2) the heads read in a chain: each head after the first adds to its address what the head
+    before it read, ``r W_r`` with ``r`` that head's read of the recall and the next regions
+    (``sum_i p_i V_i`` and ``sum_i p_i N_i``), so one moment can place a read where an earlier
+    read pointed (two hops: the first head finds ``a`` and its next region holds ``b``; the
+    second head looks for ``b``). The maps ``W_r`` start at zero, so a newborn reads as one
+    without the option, and the address lesson steps them on ``z = [x, c, r, 1]`` as it steps
+    the head's other maps. Reward does not train them (``address_reward`` is refused with it).
+
     ``copy`` and ``tokens`` (options, founders ``0.0`` and None; construction settings) record
     a pathway the composition adds: plastic synapses from every head's read port into the
     motor region, ``copy`` their initial magnitude, learned by the settle's contrast as every
@@ -641,6 +650,8 @@ class Recall:
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
     compete: bool = True
+    # each head after the first also reads what the head before it read (``chain_maps``)
+    chain: bool = False
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -662,10 +673,10 @@ class Recall:
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
         "address_step", "null", "address_reward", "window", "window_decay", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "compete",
+        "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
-                            "action")
+                            "action", "chain")
     # the settings of 0.84.3 this version removed, refused by name with a message naming it
     RETIRED = ("write", "key", "episodes", "value", "context", "context_decay")
     # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
@@ -721,7 +732,7 @@ class Recall:
             ):
                 raise ValueError("capacity must be an integer of at least 1")
             return int(value)
-        if name in ("next", "boundary", "action", "compete"):
+        if name in ("next", "boundary", "action", "compete", "chain"):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -969,6 +980,19 @@ class Recall:
             (np.zeros_like(self.w_x), np.zeros_like(self.w_c), np.zeros_like(self.b))
             for _ in range(self.heads - 1)
         ]
+        if self.chain and self.heads < 2:
+            raise ValueError(
+                "chain reads one head's read into the next: it needs heads of 2 or more"
+            )
+        if self.chain and self.address_reward:
+            raise ValueError("chain is not combined with address_reward")
+        # with ``chain`` the read of the head before (recall, then next) and every further head's
+        # map ``W_r`` from it into the address
+        self.chain_width = self.value_width * (2 if self.next else 1)
+        self.chain_maps: list[np.ndarray] = [
+            np.zeros((self.chain_width, self.address_width))
+            for _ in range(self.heads - 1 if self.chain else 0)
+        ]
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
         self.position_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
@@ -983,8 +1007,13 @@ class Recall:
         self._attended: np.ndarray | None = None  # the attention of the latest read
         # every head's address and attention of the latest read (head 0's are ``last.address``
         # and ``attended``), and the writes the bank had then
+        # and with ``chain`` every head's chained read (None for head 0)
         self._head_reads: (
-            tuple[tuple[np.ndarray, ...], tuple[np.ndarray | None, ...], int] | None
+            tuple[
+                tuple[np.ndarray, ...], tuple[np.ndarray | None, ...], int,
+                tuple[np.ndarray | None, ...],
+            ]
+            | None
         ) = None
         self._private = False  # an imagined branch reads the slots and writes none
         # the latest content scores per address over the present slots (``_content``)
@@ -1303,6 +1332,8 @@ class Recall:
             out.update({f"w_x_{h}": w_x, f"w_c_{h}": w_c, f"b_{h}": b})
         for h, maps in enumerate(self.position_maps):  # saved only with a position term
             out.update(dict(zip(self.position_names(h), maps, strict=True)))
+        for h, chained in enumerate(self.chain_maps, start=1):  # saved only with ``chain``
+            out[f"chain_{h}"] = chained
         return out
 
     @staticmethod
@@ -1482,10 +1513,7 @@ class Recall:
         moment = self._moment(self._port(observations))
         self.last = moment
         out = np.array(drive, dtype=float)
-        addresses = [moment.address] + [
-            self._address(moment, h) for h in range(1, self.heads)
-        ]
-        attended = self._read(addresses, moment)
+        addresses, attended, chained = self._reads(moment)
         for h, p in enumerate(attended):
             if p is not None:
                 p.flags.writeable = False
@@ -1496,19 +1524,57 @@ class Recall:
         self._attended = attended[0]  # the attention this read uses, kept past the write
         # with several heads, every head's address and attention, and the writes the bank had
         self._head_reads = (
-            (tuple(addresses), tuple(attended), self.writes) if self.heads > 1 else None
+            (tuple(addresses), tuple(attended), self.writes, tuple(chained))
+            if self.heads > 1
+            else None
         )
         return out
 
-    def _read(self, addresses: Sequence[np.ndarray], moment: _Moment) -> list[np.ndarray | None]:
+    def _reads(
+        self, moment: _Moment
+    ) -> tuple[list[np.ndarray], list[np.ndarray | None], list[np.ndarray | None]]:
+        """Every head's address and attention at ``moment``, and with ``chain`` every head's
+        chained read (None for head 0, and every head without ``chain``)."""
+        addresses: list[np.ndarray] = [moment.address]
+        if not self.chain:
+            addresses += [self._address(moment, h) for h in range(1, self.heads)]
+            return addresses, self._read(addresses, moment), [None] * self.heads
+        chained: list[np.ndarray | None] = [None]
+        attended = self._read(addresses, moment, chained)
+        return addresses, attended, chained
+
+    def _chained_read(self, attended: np.ndarray | None, batch: int) -> np.ndarray:
+        """What a head read, as the next head's address takes it: ``[sum_i p_i V_i, sum_i p_i
+        N_i]`` (the recall read, then the next read), zero where the head read nothing."""
+        if attended is None:
+            return np.zeros((batch, self.chain_width))
+        parts = [_einsum("bm,bmc->bc", attended, self.values)]
+        if self.next:
+            parts.append(_einsum("bm,bmc->bc", attended, self.nexts))
+        return np.concatenate(parts, axis=1)
+
+    def _read(
+        self,
+        addresses: Sequence[np.ndarray],
+        moment: _Moment,
+        chained: list[np.ndarray | None] | None = None,
+    ) -> list[np.ndarray | None]:
         """Every head's attention over the slots held now, head ``h`` at ``addresses[h]`` with
         its position term at ``moment``: its own (``weights``), or among competing heads, each
         after the first taking of every slot at most the share the heads before it left
-        (``_share``)."""
+        (``_share``). With ``chain`` and ``chained`` given (``addresses`` a list holding head
+        0's address alone), each further head's address is computed here from the read of the
+        head before it, appended to ``addresses``, and its chained read to ``chained``."""
         attended: list[np.ndarray | None] = []
         left: np.ndarray | None = None  # each slot's share the heads before have left
         competing = self.compete and self.heads > 1
-        for h, address in enumerate(addresses):
+        for h in range(self.heads):
+            if chained is not None and h >= len(addresses):
+                read = self._chained_read(attended[h - 1], len(moment.address))
+                chained.append(read)
+                assert isinstance(addresses, list)
+                addresses.append(self._address(moment, h) + read @ self.chain_maps[h - 1])
+            address = addresses[h]
             position = self.position_term(h, moment.inputs, moment.cortex)
             p = self.weights(address, position)
             if p is not None and competing:
@@ -1533,10 +1599,19 @@ class Recall:
         ):
             attended = list(reads[1])
         else:
-            attended = self._read(
-                [self._head_address(moment, h) for h in range(self.heads)], moment
-            )
+            attended = self._reads(moment)[1]
         return [None, *attended[1:]]
+
+    def _lesson_chained(self, moment: _Moment) -> list[np.ndarray | None]:
+        """For each head's lesson with ``chain``, the read of the head before that its address
+        took (None for head 0, and every head without ``chain``): the reads ``stimulate``
+        kept while the bank holds what they read, else the reads computed now."""
+        if not self.chain:
+            return [None] * self.heads
+        reads = self._head_reads
+        if reads is not None and len(reads) > 3 and reads[2] == self.writes:
+            return list(reads[3])
+        return self._reads(moment)[2]
 
     def _address(self, moment: _Moment, head: int) -> np.ndarray:
         """Head ``head``'s address of a moment: its key and head 0's inputs through the head's
@@ -1552,6 +1627,8 @@ class Recall:
         reads = self._head_reads
         if head and reads is not None and len(reads[0]) == self.heads:
             return reads[0][head]
+        if head and self.chain:
+            return self._reads(moment)[0][head]
         return self._address(moment, head)
 
     # -- the write after the settle
@@ -1765,8 +1842,10 @@ class Recall:
         movement = (plus - minus)[:, self.association]
         reports = []
         moved_positions = refused_positions = 0
-        # the attention every competing head read with, taken before any head's lesson steps
+        # the attention every competing head read with, taken before any head's lesson steps,
+        # and with ``chain`` what each head's address took of the head before
         reads = self._lesson_reads(moment)
+        chains = self._lesson_chained(moment)
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
@@ -1776,7 +1855,7 @@ class Recall:
             )
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
-            found = self._row_steps(head_moment, rows, d_value, d_next, h, reads[h])
+            found = self._row_steps(head_moment, rows, d_value, d_next, h, reads[h], chains[h])
             if found is None:  # no row moves (a competing head may have had nothing to read)
                 continue
             if self.address:
@@ -1826,11 +1905,12 @@ class Recall:
         if found is None:
             # the shares a competing head read are its prior, as in ``learn``
             found = self._row_steps(
-                moment, rows, d_value, d_next, head, self._lesson_reads(moment)[head]
+                moment, rows, d_value, d_next, head, self._lesson_reads(moment)[head],
+                self._lesson_chained(moment)[head],
             )
         if found is None:
             return 0, 0
-        _, x, c, _, _, _, target, prior = found
+        _, x, c, _, _, _, target, prior, _ = found
         rate = self.position_rate
         count = self.position_buckets
         p_x, p_c, p = self.position_maps[head]
@@ -1882,14 +1962,16 @@ class Recall:
         if found is None:
             # the shares a competing head read are its prior, as in ``learn``
             found = self._row_steps(
-                moment, rows, d_value, d_next, head, self._lesson_reads(moment)[head]
+                moment, rows, d_value, d_next, head, self._lesson_reads(moment)[head],
+                self._lesson_chained(moment)[head],
             )
         if found is None:
             return quiet
-        _, x, c, key, error, step, _, _ = found
+        _, x, c, key, error, step, _, _, read = found
         n = len(x)
         rate = self.address
         old_x, old_c, old_b = self.head_map(head)
+        w_r = None
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             w_x = rate * x.T @ step
             w_x /= n
@@ -1899,9 +1981,15 @@ class Recall:
             w_c += old_c
             b = old_b + rate * step.mean(axis=0)
             address = key + x @ w_x + c @ w_c + b
-        if not all(np.isfinite(a).all() for a in (w_x, w_c, b, address)):
+            if read is not None:  # a chained head: its map of the read before it steps too
+                w_r = self.chain_maps[head - 1] + rate * read.T @ step / n
+                address = address + read @ w_r
+        checked = (w_x, w_c, b, address) if w_r is None else (w_x, w_c, b, address, w_r)
+        if not all(np.isfinite(a).all() for a in checked):
             return {**quiet, "address_refused": float(n)}
         self._set_map(head, w_x, w_c, b)
+        if w_r is not None:
+            self.chain_maps[head - 1] = w_r
         return {
             "address_rows": float(n),
             "address_error": float(np.abs(error).mean()),
@@ -1916,7 +2004,8 @@ class Recall:
         d_next: np.ndarray | None,
         head: int = 0,
         read: np.ndarray | None = None,
-    ) -> tuple[np.ndarray, ...] | None:
+        chained: np.ndarray | None = None,
+    ) -> tuple[Any, ...] | None:
         """Each row's step of the address lesson before the average over rows: the rows of
         ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
         the cortex ``c``, the key, the error toward the named keys, the error bounded by
@@ -1924,8 +2013,10 @@ class Recall:
         the lesson names and the log of the prior attention the address gave (head ``head``'s
         position term in it). Among competing heads ``read`` is the attention the head read
         with over every stream's slots (``_lesson_reads``), and it is the prior; a row it read
-        nothing at does not move. None when no row moves. The arithmetic is unchecked: a
-        caller checks what it keeps."""
+        nothing at does not move. With ``chain`` ``chained`` is the read of the head before
+        (``_lesson_chained``) over every stream, and the rows' share of it joins the inputs
+        (the ninth item, None without). None when no row moves. The arithmetic is unchecked:
+        a caller checks what it keeps."""
         if len(rows) == len(self.keys):  # every stream, in order: the slots themselves
             values, nexts, keys, held = self.values, self.nexts, self.keys, self.held
         else:
@@ -1946,6 +2037,7 @@ class Recall:
         x, c, q, key = (
             a[rows][moving] for a in (moment.inputs, moment.cortex, moment.address, moment.key)
         )
+        r = None if chained is None else chained[rows][moving]
         everyone = bool(moving.all())
         keys = keys if everyone else keys[moving]
         rate = self.address
@@ -1971,6 +2063,7 @@ class Recall:
                     x, c, q, key, keys, logits, attention = (
                         a[alive] for a in (x, c, q, key, keys, logits, attention)
                     )
+                    r = None if r is None else r[alive]
                     if masked:
                         held = held[alive]
             attention -= attention.max(axis=1, keepdims=True)
@@ -1992,8 +2085,10 @@ class Recall:
             # symmetric with its eigenvalues in [0, 1] (its trace is the mean of the rows'
             # gains), so sum_i D_i |e_i|^2 does not grow, though one row can pass its target.
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
+            if r is not None:
+                energy = energy + np.einsum("bi,bi->b", r, r)
             step = error * np.minimum(1.0, 1.0 / (rate * energy))[:, None]
-        return moving, x, c, key, error, step, p, attention
+        return moving, x, c, key, error, step, p, attention, r
 
     # -- reward trains the address map
 
@@ -2027,7 +2122,7 @@ class Recall:
             found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
             if found is None:
                 continue
-            moving, x, c, _, _, step, _, _ = found
+            moving, x, c, _, _, step, _, _, _ = found
             z = np.concatenate([x, c, np.ones((len(x), 1))], axis=1)
             with np.errstate(over="ignore", invalid="ignore"):
                 rows = self.address * np.einsum("bi,bk->bik", z, step)
