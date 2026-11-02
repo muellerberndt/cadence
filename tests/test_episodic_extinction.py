@@ -174,3 +174,24 @@ def test_extinction_reads_the_direct_payment_in_reward_units_after_a_retune(ampl
     before = float(episodic.held(x, None, action)[0])
     episodic.outcome(x, action, np.array([0.0]), done, learned, gamma=0.9)  # it stops paying
     assert float(episodic.held(x, None, action)[0]) < before - 0.3
+
+
+def test_the_direct_payments_share_the_place_records_separator_saved_once(tmp_path):
+    brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5,
+                             arousal=True)
+    episodic = brain.memories["episodic"]
+    assert episodic.paid.separator is brain.hippocampus.separator
+    rng = np.random.default_rng(0)
+    reward = None
+    for _ in range(6):
+        feedback = {} if reward is None else {"reward": reward}
+        brain.live(rng.random((1, 4)), **feedback)
+        reward = rng.normal(size=1)
+    path = brain.save(tmp_path / "brain.npz")
+    with np.load(path) as data:
+        assert not [name for name in data.files if "paid" in name and "separator" in name]
+    copy = cd.Brain.load(path)
+    assert copy.memories["episodic"].paid.separator is copy.hippocampus.separator
+    for _ in range(4):
+        x, r = rng.random((1, 4)), rng.normal(size=1)
+        np.testing.assert_array_equal(brain.live(x, reward=r), copy.live(x, reward=r))

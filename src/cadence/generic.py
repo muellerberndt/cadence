@@ -633,13 +633,16 @@ def _load_memory(
     neurons: int,
     prefix: str = "episodic/",
     keys: int | None = None,
+    shared: PatternSeparator | None = None,
 ) -> FastSynapses | None:
     """Validate and restore a detached memory before constructing the resumed composition.
 
     The memory's outputs (``post``) are neurons of the graph, below ``neurons``. Its key
     coordinates (``pre``) are neurons too, unless ``keys`` names the width of the code they
     number from zero (the observation code, with the motor neurons after it for context
-    records), which can exceed the graph."""
+    records), which can exceed the graph. ``shared`` is the separator of the store this one
+    is separated as (the direct payments read the place records'), saved once with that
+    store: such a memory saves no separator of its own."""
 
     def array(name: str, shape: tuple[int, ...] | None = None) -> np.ndarray:
         key = prefix + name
@@ -682,7 +685,11 @@ def _load_memory(
             raise ValueError("saved memory outputs exceed the connectome")
         separator = None
         spec = metadata.get("separator")  # An unseparated memory may omit this field.
-        if spec is None:
+        if shared is not None:
+            if spec is not None or any(key.startswith(prefix + "separator/") for key in data):
+                raise ValueError("a memory that shares a separator saves none of its own")
+            separator = shared
+        elif spec is None:
             if any(key.startswith(prefix + "separator/") for key in data):
                 raise ValueError("saved separator arrays require separator metadata")
         else:
@@ -2139,16 +2146,11 @@ class Brain:
             paid = None
             if memory_extinction:
                 # where each action was paid directly: one lasting record every stream shares,
-                # keyed and separated as the place records are, so it is read as they are
+                # keyed and separated as the place records are (their separator, saved once
+                # with them), so it is read as they are
                 paid = SynapticMemory(
                     places, self.motor_index, consolidation=1.0, decay=memory_decay, rate=1.0,
-                    amplitude=memory_amplitude,
-                    separator=PatternSeparator(
-                        len(places), memory_expansion, memory_winners, seed=seed,
-                        fan_in=memory_fan_in,
-                    )
-                    if separated
-                    else None,
+                    amplitude=memory_amplitude, separator=self.hippocampus.separator,
                 )
             if memory_choice:
                 self._episodic = EpisodicRecords(
@@ -5284,7 +5286,10 @@ class Brain:
                         "the saved context records are keyed on other coordinates than the "
                         "brain's observation code and its motor neurons"
                     )
-                paid = _load_memory(episodic.get("paid_memory"), data, neurons, "paid/", keys=coded)
+                paid = _load_memory(
+                    episodic.get("paid_memory"), data, neurons, "paid/", keys=coded,
+                    shared=memory.separator,
+                )
                 if paid is not None and (
                     not isinstance(paid, SynapticMemory) or not np.array_equal(paid.pre, memory.pre)
                 ):

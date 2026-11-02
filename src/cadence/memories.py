@@ -321,7 +321,13 @@ class EpisodicRecords:
             **(
                 {}
                 if self.paid is None
-                else {"extinction": self.extinction, "paid_memory": self.paid.to_dict()}
+                else {
+                    "extinction": self.extinction,
+                    # its separator is the place records', saved once with them
+                    "paid_memory": {
+                        k: v for k, v in self.paid.to_dict().items() if k != "separator"
+                    },
+                }
             ),
             **({} if self.hold is None else {"hold": self.hold}),
         }
@@ -332,7 +338,11 @@ class EpisodicRecords:
         associative store's."""
         out: dict[str, np.ndarray] = {}
         if self.paid is not None:
-            out.update({"paid_memory/" + k: v for k, v in self.paid.arrays().items()})
+            out.update({
+                "paid_memory/" + k: v
+                for k, v in self.paid.arrays().items()
+                if not k.startswith("separator/")
+            })
         if self.temporal is not None:
             out.update({"context_memory/" + k: v for k, v in self.temporal.arrays().items()})
             if self.context is not None:
