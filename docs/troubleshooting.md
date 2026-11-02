@@ -102,6 +102,11 @@ clipped at `dopamine_cap`) and `report["saturation"]`, compare `predict` with gr
 ([replaying a life](reward.md#replaying-a-life-through-step)), and tune through the
 [rate ownership table](tune.md#defaults-and-expert-overrides).
 
+**Reward comes only at the end of an episode and the values sit in one band.** Read their
+spread across positions beside their mean, and their ranking of positions whose outcomes are
+known; a critic school and a value lesson are the measured remedies
+([reward at the end of an episode](reward.md#reward-at-the-end-of-an-episode)).
+
 **Every stimulus learns the same lesson.** The state code is shared. Score a `specific` row
 between two stimuli where the plastic synapses leave, and select the igniting population's gain
 by protocol ([connectomes](anatomy.md#brains-from-a-connectome)).

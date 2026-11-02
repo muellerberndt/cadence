@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+- `docs/reward.md`, reward at the end of an episode (#216): the spread check of the critic's
+  values, the critic school (demonstrated episodes replayed through `step` with `actor_eta`,
+  `actor_eta_bias`, `memory_rate` and `consolidation` at zero; `memory_rate=0` alone leaves the
+  consolidated record learning) and the value lesson (a second slot taught each moment's
+  eventual outcome), measured on a light-cycle game. On lessons whose outcomes vary the value
+  lesson lifts the association's best linear readout of the winner by 0.03 to 0.04 AUC, and
+  after a critic school the critic ranks 0.09 to 0.14 higher at move 10; on a demonstrator's own
+  games, which it mostly wins, it does nothing. No runtime change.
 - `learning_surprise_share` (opt-in, #239; `LearnerConfig.surprise_share`, founder `False`): with
   surprise lessons, a lesson's step is scaled by the share of its rows it taught, so one wrong row
   of sixteen moves the net a sixteenth as far as sixteen. The contrast and the optimizer's running

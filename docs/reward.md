@@ -213,6 +213,137 @@ assert 0.0 <= dependence <= 1.0                       # near 0: the choice ignor
 `predict` reads neither trace nor memory: against the greedy `act` it shows what holds the
 choice.
 
+## Reward at the end of an episode
+
+In a game that pays only when it ends, every move's dopamine is the outcome less the critic's
+value of the position the move was made in, so the critic decides how the moves of a game share
+its outcome. A critic whose values move together across positions gives every move the same
+baseline. What it can rank is set by what the association region it reads represents, by the
+experience it gets and by its rate.
+
+The readings below come from a light-cycle game on a 24 x 24 grid (260 egocentric inputs, three
+actions; +1 for a win, -1 for a loss, -0.5 for a double crash, 0 otherwise; games of 6 to 288
+moves, half of them under 75) and brains of one module of 256 (`teaching="normalized"`,
+`actor_gamma=0.97`, `actor_lam=0.9`, `actor_eta=0.03`) taught on 240,000 positions to copy a
+one-move look-ahead demonstrator. A value is scored by how well it ranks the eventual winner of
+600 held-out games of strong and weak riders at moves 10 and 20 (AUC, 0.5 is chance). The
+offline readouts are fitted on the positions of 1,200 other games, the ones a critic school
+replays. Ranges are over two or three development seeds per arm and, for the critic, the games
+it played; the critic runs at the composed `actor_eta_critic=0.3`:
+
+| Ranking of the eventual winner | Move 10 | Move 20 |
+| --- | --- | --- |
+| Territory difference (the cells each rider reaches first) | 0.77 | 0.72 |
+| Logistic readout of the 260 inputs | 0.73 | 0.70 |
+| A network of 256 hidden units trained by backpropagation on the 260 inputs | 0.81 | 0.74 |
+| Logistic readout of the association region, copy lessons | 0.72 to 0.76 | 0.67 to 0.70 |
+| The same with the [value lesson](#a-value-lesson) on varied outcomes | 0.79 to 0.80 | 0.71 to 0.73 |
+| The critic after 400 of the brain's own games, copy lessons | 0.50 to 0.63 | 0.54 to 0.64 |
+| The critic after a [critic school](#a-critic-school) and 400 own games, copy lessons | 0.58 to 0.71 | 0.55 to 0.64 |
+| The same with the value lesson on varied outcomes | 0.68 to 0.73 | 0.65 to 0.67 |
+
+A copying brain's association region holds what a linear readout of the raw inputs holds: less
+than the territory count, and less than a network trained on the same inputs reaches. The value
+lesson moves the region toward the outcome, and a critic school carries that into the critic.
+
+### Check the spread of the values
+
+The mean value settles near the average return whatever the critic ranks. Read the values of a
+fixed set of positions beside their mean, and where the positions' outcomes are known, how well
+the values rank them; `brain.basal_ganglia.value_of(brain.stimulus(positions, memory=False))`
+settles each position cold and leaves the streams as they are. After 400 of the brain's own
+games the values at move 20 had a mean of -0.12 to -0.27 and a standard deviation across
+positions of 0.03 to 0.08 at the composed rate. The rate sets the spread more than the
+ranking: at `actor_eta_critic=3` the spread was 0.06 to 0.10 and the ranking 0.54 to 0.73 at
+move 10 and 0.52 to 0.62 at move 20, against 0.50 to 0.72 and 0.54 to 0.65 at 0.3.
+
+### A critic school
+
+Replay demonstrated episodes through `step` before the brain's own outcome learning starts,
+with the actor's rates, the associative store's write rate and its consolidation at zero. The
+critic is then the only part that learns: the actions `step` issues did not run, and nothing
+credits them. `memory_rate=0` alone leaves the consolidated record learning at `consolidation`
+(0.05, more with salience), which would record the outcomes of the issued actions.
+
+```python
+def walk_school(rate, steps=600):
+    """Demonstrated walks on a line of seven cells that pay only at the ends."""
+    cells = 7
+    walker = Brain.compose(cells, 2, modules=(16,), seed=0)
+    school = {"actor_eta": 0.0, "actor_eta_bias": 0.0, "memory_rate": 0.0, "consolidation": 0.0}
+    kept = {name: walker.describe()["genes"][name] for name in school}
+    walker.retune(actor_eta_critic=rate, **school)
+    actor = walker.learner.brain.efficacy.copy()
+    rng = np.random.default_rng(1)
+    place = np.full(4, cells // 2)                  # four streams, each walking from the middle
+    walker.step(np.eye(cells)[place])
+    for _ in range(steps):                          # the demonstrator's steps run, not the brain's
+        place = place + rng.choice([-1, 1], size=4)
+        reward = np.select([place == cells - 1, place == 0], [1.0, -1.0], 0.0)
+        done = (place == 0) | (place == cells - 1)
+        place = np.where(done, cells // 2, place)
+        walker.step(np.eye(cells)[place], reward=reward, done=done)
+    walker.act(np.eye(cells)[place], greedy=True)   # nothing left awaiting an outcome
+    assert np.array_equal(actor, walker.learner.brain.efficacy)  # the actor did not move
+    assert not walker.hippocampus.consolidated.any()  # the store recorded no issued action
+    walker.retune(**kept)                           # the brain's own outcome learning starts here
+    return walker.basal_ganglia.value_of(walker.stimulus(np.eye(cells)[1:-1], memory=False))
+
+composed, raised = walk_school(0.3), walk_school(3.0)
+assert composed[-1] > composed[0] and raised[-1] > raised[0]  # both rank the two ends
+assert raised.std() > 2 * composed.std()            # a raised rate spreads the values wider
+```
+
+On the light-cycle brains a school of 1,200 replayed games of strong and weak riders brought the
+critic to 0.58 to 0.66 at move 10 and 0.60 to 0.63 at move 20 after copy lessons, and to 0.70
+to 0.73 and 0.67 to 0.69 after the value lesson. The school ranks the positions of the games it
+replays; the brain's own games then move the critic toward the outcomes of the brain's own
+play, and a raised rate lets them overwrite the school sooner: after the value lesson, the
+school and 400 own games the critic ranked at 0.68 to 0.73 and 0.65 to 0.67 at the composed
+rate, 0.61 to 0.68 and 0.62 to 0.63 at 3, and 0.56 to 0.65 and 0.57 to 0.61 at 10.
+
+### A value lesson
+
+During the copy lessons a second motor slot is taught each moment's eventual outcome, so that
+the association region has a reason to represent who is winning. The outcome must be known when
+the lesson is given: teach a game's moments once it has ended, or replay recorded games.
+
+```python
+judge = Brain.compose(7, 4, slots=(2, 2), modules=(16,), seed=0)  # a move of two, an outcome
+cells = np.eye(7)[[1, 2, 4, 5]]
+moves, won = np.array([0, 0, 1, 1]), np.array([0, 0, 1, 1])        # won: 1 for a won episode
+judge.lesson(cells, np.stack([moves, won], axis=1))                # one label per slot
+assert judge.predict(cells).shape == (4, 2)                        # one choice per slot
+```
+
+On the light-cycle game (`Brain.compose(260, 5, slots=(3, 2))`, the slot taught 1 for a moment
+of a game that was won and 0 for one lost or ended in a double crash):
+
+- **The taught outcomes must vary.** Taught on the demonstrator's own games, three in four of
+  which it won, the slot ranked the riders' positions at 0.47 to 0.57 at move 10 and 0.54 to
+  0.60 at move 20, and the association's readout did not move (0.71 to 0.72 and 0.69 to 0.71,
+  against 0.72 to 0.75 and 0.67 to 0.69 without the slot); a critic school after it ranked as
+  after copy lessons alone.
+- **On varied outcomes it shapes the region.** Taught at the positions of strong and weak
+  riders, each labelled with the demonstrator's move there and the rider's own outcome (31% of
+  the moments from won games), the readout rose by 0.036 at move 10 and 0.034 at move 20 (95%
+  intervals over games 0.018 to 0.057 and 0.011 to 0.057, paired on the same positions, three
+  seeds), and the slot itself ranked at 0.77 and 0.68 to 0.72. A slot taught outcomes shuffled
+  between games moved the readout by 0.008.
+- **The critic gains through a school.** From the brain's own games alone it ranked at 0.60 to
+  0.72 and 0.61 to 0.65 after 400 games, against 0.50 to 0.62 and 0.54 to 0.64 after the same
+  lessons without the slot. After a critic school it ranked 0.09 to 0.14 higher at move 10 and
+  0.06 to 0.10 higher at move 20 than without the slot, on every seed, at the end of the school
+  and after 400 own games that followed it.
+- **The move slot pays a little.** Agreement with the demonstrator on its turns fell by 0.02 to
+  0.05 in each of the five pairs of brains, and by 0 to 0.08 with outcomes shuffled between
+  games: the cost is the second slot's. On the varied outcomes frozen play against the assay
+  opponents scored 0.06 to 0.07 higher, with shuffled outcomes 0.02 lower to 0.03 higher.
+
+The composed critic reads the association region, not the slot; `probabilities` reads the
+slot's choice among its two outcomes. A critic that ranks positions as the territory count
+does at move 20 is open ([#216](https://github.com/muellerberndt/cadence/issues/216)).
+
 ## Check before the first lesson
 
 `preflight(brain, outputs, plastic, drives, *, level=0.5, saturation=0.02, shared_max=0.25,
