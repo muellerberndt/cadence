@@ -148,6 +148,43 @@ three moments later: the greedy hit rate is at least 0.8 with `lam=0.9` and at m
 with `lam=0` ([policy credit tests](../tests/test_policy_credit.py)). Chains of
 prerequisite actions: [sequential tasks](#what-breaks-a-chain).
 
+## A cue the answer does not show
+
+When two situations end in the same observation and only an earlier cue tells which action
+pays, the composed brain does not learn the choice from the outcome. Its associative record is
+keyed on the observation, which both situations share at the answer, and every outcome writes
+it, so its vote there is the same for both cues; at the composed actor step the readout then
+walks to one action for both. In the [two-cue chamber](../benchmarks/credit/README.md) (a cue,
+then an identical two-event suffix, the answer paid +1 or -1 with the next episode's first
+event and `done`, every outcome learned through `step`) the composed founder reaches held-out
+.90 on 0 of 6 development founders and 2 of 12 fresh ones. The slower actor step with the
+episodic memory learns it:
+
+```python
+cued = Brain.compose(12, 2, arousal=True, actor_eta=0.1, actor_eta_bias=0.01,
+                     memory_choice=True)
+assert cued.memory_choice and cued.basal_ganglia.config.eta == 0.1
+```
+
+The context records key on the stream's temporal context, so the two cues' records differ at
+the shared answer, and the slower step keeps the readout off a rail while the actions the
+records chose teach it. With the suffix right after the cue it answers 1.00 on 6 of 6
+development founders and on 11 of 12 fresh ones. One event between the cue and the suffix gives
+4 of 6 and two give 0 of 6: the context keeps half of the cue per moment and the readout
+latches on one action. `memory_extinction` and `memory_context_hold` leave these readings as
+they are. Added to the other reward chambers, the same settings acquire the key-door chamber on
+16 of 16 lives (8 without), win 30 of 30 blocks of a bandit with reversals (27) and learn the
+contextual bandit on 6 of 6 seeds (3); in the odour nursery two of six lives at the short
+exposure reverse late (10 of 12 lives pass every check, 11 without).
+Measured through `step`; `live` was not read.
+
+Taught by a lesson at the answer instead, the cue has to reach the answer through the events
+in between. The working trace keeps about half of it per event and fails from two; the recall
+memory with no age charge, `recall=True, recall_recency=0.0`, carries it through eight (12 of
+12 fresh founders at 4 and at 8, where the founder recency of 0.25 reads 0 of 6 at 8). It keeps
+the binding chambers' continuing life, where its
+[position term](memory.md#position-how-long-ago-a-moment-happened) prefers the newer slots.
+
 ## Replaying a life through `step`
 
 `step` cannot tell a replayed observation from a live one, so replaying a saved copy's day
