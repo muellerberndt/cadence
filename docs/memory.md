@@ -981,8 +981,8 @@ logit_i += e(x, c)[anchored(place_i)]      e(x, c) = x E_x + c E_c + e   (one ma
 The anchored buckets follow the age buckets, and one more holds every slot written before the
 episode began. Each stream counts the moments written in its episode (`brain.recall.told`);
 `Recall.end`, a reset and `done` start it again. The maps start at zero, so a newborn reads as
-without the option, and the lesson steps them with the position maps; rewards do not
-([#237](https://github.com/muellerberndt/cadence/issues/237)). On stories of 24 to 60 events
+without the option, and the lesson steps them with the position maps, and rewards with
+`recall_position_reward` ([#237](https://github.com/muellerberndt/cadence/issues/237)). On stories of 24 to 60 events
 with the cues `first`, `second` and `last` mixed (six confirmation founders, declared before
 the run), the anchor answers `first` at 0.998 to 1.000 and `second` at 0.990 to 1.000, against
 0.31 to 0.45 and 0.31 to 0.34 without it; induction, n-back, periodic continuation and copying
@@ -1003,6 +1003,26 @@ against 0.10 to 0.14 without it; given the right token before (teacher-forced) i
 every position after the first above 0.9. The first token after the cue is where it still
 fails: the age term, taught at the short lengths, pulls that read away from the episode's
 start.
+
+**The slope (opt-in, `recall_slope` above 0; it needs the position term).** The table holds one
+term per age bucket, and an age no lesson reached keeps its zero: a head taught to look back to
+the first of 5 to 12 symbols does not look back past 12. With the slope every head's term also
+leans by age at every length:
+
+```text
+logit_i += s(x, c) * age_i / 8      s(x, c) = x S_x + c S_c + s   (one map per head)
+```
+
+One number per moment says "lean old" (positive) or "lean recent" (negative), and the table
+keeps the exact offsets beside it. The maps start at zero, so a newborn reads as one without
+the option, and the lesson steps them by the table's gradient read along the ages, at the rate
+`recall_slope` (0.1 in [#232](https://github.com/muellerberndt/cadence/issues/232)'s
+candidate); rewards do not train them. The candidate there also read the table at
+`recall_position_rate=0.01` with `recall_recency=0`: look back "first" at two to five times the
+trained length then answers 0.95 to 0.97, against 0.24 to 0.26 without, and copying unique
+tokens at unseen lengths 0.99 to 1.00, against 0.03 to 0.09. The slower table costs reads that
+need exact ages (Stone Age ordered recall 0.82 against 0.99), and with the table at the founder
+rate the brain takes the position shortcut over the content route again.
 
 ### Episodes, keys and windows
 
@@ -1070,6 +1090,7 @@ map.
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
+| `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#position-how-long-ago-a-moment-happened)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |

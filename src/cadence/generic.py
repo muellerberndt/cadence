@@ -1191,6 +1191,12 @@ def _validate_recall_state(
             raise ValueError("invalid saved recall state: focus")
     elif "recall/focus" in data or any(name.startswith("recall/relative_") for name in data):
         raise ValueError("saved relative maps belong to a recall memory with relative")
+    if settings.get("slope", 0.0):  # every head's slope maps
+        for h in range(heads):
+            shapes_s = ((key + command,), (association,), (1,))
+            maps.update(dict(zip(Recall.slope_names(h), shapes_s, strict=True)))
+    elif any(name.startswith("recall/slope_") for name in data):
+        raise ValueError("saved slope maps belong to a recall memory with slope")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -5064,6 +5070,14 @@ class Brain:
                     data[f"recall/chain_{h}"].astype(float)
                     for h in range(1, recall.heads if recall.chain else 1)
                 ]
+                if recall.slope:  # validated above: saved with slope
+                    recall.slope_maps = [
+                        tuple(
+                            data["recall/" + name].astype(float)
+                            for name in Recall.slope_names(h)
+                        )
+                        for h in range(recall.heads)
+                    ]
                 if recall.relative:  # validated above: saved with relative
                     recall.relative_maps = [
                         tuple(

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- `recall_slope` (opt-in, #232): above 0, every head's position term also leans by age at
+  every length, `s(x, c) * age / 8` with `s` read from the moment as the table is
+  (`Recall.slope_maps`), so a preference for old or recent slots holds at ages no lesson
+  reached. The maps start at zero and the lesson steps them at that rate by the table's
+  gradient; checkpoints keep them.
 - `recall_relative` (opt-in, #234): every head's position term also reads each slot's age
   relative to the slot the stream's previous read attended most (`Recall.focus`), offsets
   within `Recall.RELATIVE` (8) a bucket each, so a read can be placed where an earlier read

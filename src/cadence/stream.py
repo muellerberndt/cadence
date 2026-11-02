@@ -616,7 +616,8 @@ class Recall:
     episode began. Ages count back from the present, so "the first told" moves with the length
     of what was told; its place in the episode does not. Each stream counts the moments written
     in its episode (``told``; ``end`` and ``reset`` start it again). The maps start at zero and
-    the lesson steps them as it steps the position maps; reward does not.
+    the lesson steps them as it steps the position maps, and with ``position_reward`` reward
+    does as well.
 
     With ``relative`` (an option, founder off; a construction setting; it needs ``position``)
     every head's position term also reads each slot's age relative to the slot the stream's
@@ -626,6 +627,15 @@ class Recall:
     then be placed where an earlier read pointed, "the token after the one I just said",
     whatever the length of what was told. The maps start at zero and the lesson steps them
     as it steps the position maps.
+
+    With ``slope`` above zero (an option, founder 0; a construction setting; it needs
+    ``position``) every head's position term also leans by age at every length: the logit of
+    slot ``i`` gains ``s_h(x, c) * age_i / SLOPE``, one number per moment and head read from
+    the moment as the position term is, ``s_h = x S_x^h + c S_c^h + s^h``. Positive leans to
+    old slots, negative to recent ones, and the lean holds at ages no lesson reached, where
+    the table's terms stay at zero. The maps start at zero and the lesson steps them at the
+    rate ``slope`` by the same gradient as the table, ``g = sum_i (p*_i - p_i) age_i /
+    SLOPE``, each row's rate bounded by its own energy; reward does not train them.
 
     With ``chain`` (an option, founder off; a construction setting; it needs ``heads`` of at least
     2) the heads read in a chain: each head after the first adds to its address what the head
@@ -685,6 +695,8 @@ class Recall:
     anchor: bool = False
     # every head's position term also reads a slot's age relative to the previous read's focus
     relative: bool = False
+    # above 0: every head's position term also leans by age (``slope_maps``), taught at this rate
+    slope: float = 0.0
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -708,11 +720,12 @@ class Recall:
         "address_step", "null", "address_reward", "position_reward", "window", "window_decay",
         "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "chain", "anchor",
-        "relative",
+        "relative", "slope",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
-                            "action", "chain", "anchor", "relative")
+                            "action", "chain", "anchor", "relative", "slope")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
+    SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
     # the settings of 0.84.3 this version removed, refused by name with a message naming it
     RETIRED = ("write", "key", "episodes", "value", "context", "context_decay")
     # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
@@ -772,7 +785,7 @@ class Recall:
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
-        if name == "copy":
+        if name in ("copy", "slope"):
             return real(name, value, low=0)
         if name == "tokens":
             if value is None:
@@ -1063,6 +1076,13 @@ class Recall:
             )
             for _ in range(self.heads if self.relative else 0)
         ]
+        if self.slope and not count:
+            raise ValueError("slope leans beside the position term: it needs position")
+        # every head's slope maps ``(S_x, S_c, s)``; none without ``slope``
+        self.slope_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
+            (np.zeros(self.map_width), np.zeros(len(self.association)), np.zeros(1))
+            for _ in range(self.heads if self.slope else 0)
+        ]
         self._check_copy()
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
@@ -1188,6 +1208,10 @@ class Recall:
             q_x, q_c, q = self.relative_maps[head]
             relative = event @ q_x + cortex @ q_c + q
             term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
+        if self.slope_maps:
+            s_x, s_c, s = self.slope_maps[head]
+            lean = event @ s_x + cortex @ s_c + s
+            term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
         return np.asarray(term)
 
     @property
@@ -1445,6 +1469,8 @@ class Recall:
             out.update(dict(zip(self.position_names(h), maps, strict=True)))
         for h, chained in enumerate(self.chain_maps, start=1):  # saved only with ``chain``
             out[f"chain_{h}"] = chained
+        for h, maps in enumerate(self.slope_maps):  # saved only with ``slope``
+            out.update(dict(zip(self.slope_names(h), maps, strict=True)))
         if self.relative_maps:  # saved only with ``relative``
             out["focus"] = self.focus
             for h, maps in enumerate(self.relative_maps):
@@ -1454,6 +1480,12 @@ class Recall:
             for h, maps in enumerate(self.anchor_maps):
                 out.update(dict(zip(self.anchor_names(h), maps, strict=True)))
         return out
+
+    @staticmethod
+    def slope_names(head: int) -> tuple[str, str, str]:
+        """The checkpoint names of head ``head``'s slope maps ``(S_x, S_c, s)``."""
+        suffix = "" if head == 0 else f"_{head}"
+        return f"slope_x{suffix}", f"slope_c{suffix}", f"slope_b{suffix}"
 
     @staticmethod
     def relative_names(head: int) -> tuple[str, str, str]:
@@ -1964,7 +1996,7 @@ class Recall:
         if self.position_maps:
             quiet.update(position_rows=0.0, position_refused=0.0)
         moment = self.last
-        positions = bool(self.position_maps) and self.position_rate > 0
+        positions = bool(self.position_maps) and (self.position_rate > 0 or self.slope > 0)
         if (
             not (self.address or positions)
             or moment is None
@@ -2111,6 +2143,20 @@ class Recall:
             if all(np.isfinite(a).all() for a in relative):
                 self.relative_maps = [
                     relative if h == head else kept for h, kept in enumerate(self.relative_maps)
+                ]
+        if self.slope_maps:  # the same gradient, read along each slot's age
+            s_x, s_c, s = self.slope_maps[head]
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                lean = gradient @ (self.ages() / self.SLOPE)
+                lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
+                leaned = (
+                    s_x + self.slope * x.T @ lean / len(x),
+                    s_c + self.slope * c.T @ lean / len(x),
+                    s + self.slope * lean.mean(keepdims=True),
+                )
+            if all(np.isfinite(a).all() for a in leaned):
+                self.slope_maps = [
+                    leaned if h == head else kept for h, kept in enumerate(self.slope_maps)
                 ]
         return int(len(x)), 0
 
