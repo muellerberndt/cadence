@@ -3787,6 +3787,13 @@ class Brain:
         if episodic is not None and episodic.demonstrations and shown.any():
             value = np.full(batch, episodic.demonstrations)
             episodic.remember(place, key, labels, value, shown)
+        # with ``learning_rehearsal``, rows of earlier lessons are taught again, and this
+        # lesson's rows join the reservoir they are drawn from
+        rehearsed = self.learner.rehearse(drive, labels)
+        if rehearsed is not None:
+            self.last_learning.update(
+                {"rehearsal_" + name: value for name, value in rehearsed.items()}
+            )
         self._prepared = None
         self.basal_ganglia._drive = None
         self.last_learning["demonstrations"] = float(batch)
@@ -5657,6 +5664,8 @@ def _grown_checkpoint(
     for name, value in old.items():
         if name in _GROW_NEURON + _GROW_SYNAPSE + _GROW_LAYOUT:
             continue
+        if name in ("rehearsal_drives", "rehearsal_labels"):
+            continue  # the rows hold the old layout's drives: the grown brain starts afresh
         if name not in new:
             raise RuntimeError(f"grow could not lay this brain out again: {name} is missing")
         target = new[name]

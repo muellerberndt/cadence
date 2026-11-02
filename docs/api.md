@@ -412,7 +412,8 @@ settings the readings retired with what the region does instead. Guide:
 LearnerConfig(beta=0.1, eta=0.2, eta_bias=None, free_steps=100, nudged_steps=50,
               tolerance=1e-4, nudge="cross_entropy", temperature=0.2, normalize=0.0,
               normalize_floor=1e-3, momentum=0.0, scale_cap=8.0, qualified=False,
-              damping=3, surprise=False, initial_damping=0, normalize_relative=0.0)
+              damping=3, surprise=False, initial_damping=0, normalize_relative=0.0,
+              nudged_fixed=False, rehearsal=0.0, rehearsal_capacity=512)
 Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None,
         plastic_neurons=None, reciprocal=True, tie_groups=None,
         synapse_rate=None, slots=1, updates=0, contrast_updates=0)
@@ -424,6 +425,10 @@ when `normalize > 0` with a rate above 0.05
 ([rates under normalization](teach.md#rates-under-normalization)), and when
 `qualified=True` with `nudged_steps < free_steps`
 ([qualified budgets](settling.md#qualified-teaching-budgets)).
+`rehearsal` above zero teaches, after each lesson, that many rows per taught row again, drawn
+from a reservoir of the lessons' rows (`Learner.rehearse`; `rehearsal_drives`,
+`rehearsal_labels`, `rehearsal_seen`); `rehearsal_capacity` rows are kept, a uniform sample of
+every row ([teach several types in sequence](teach.md#teach-several-types-in-sequence-rehearsal)).
 `initial_damping` is an integer in `0..damping`; nonzero requires qualified learning
 on CPU float64 and affects only its qualified phases. It skips initial integration
 steps without changing the live model or the full-equation residual tolerance.

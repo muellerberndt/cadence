@@ -121,6 +121,12 @@ class LearnerConfig:
     # moves less than a coarse tolerance in a sweep, and the opposite phases' common drift
     # cancels in the contrast, so the free phase may stay coarse
     nudged_fixed: bool = False
+    # opt-in (#238): after each lesson this many rows per taught row, drawn from a reservoir of
+    # the lessons' rows (their drives and labels) kept over the life, are taught again under the
+    # same rule; with ``surprise`` only the rows the net now answers wrong move it
+    rehearsal: float = 0.0
+    # the rows the reservoir keeps: a uniform sample of every lesson row so far
+    rehearsal_capacity: int = 512
 
     def __post_init__(self) -> None:
         # Config fields have host scalar semantics, including before a save/load.
@@ -131,6 +137,14 @@ class LearnerConfig:
                 object.__setattr__(self, name, int(value))
             elif isinstance(value, np.floating):
                 object.__setattr__(self, name, float(value))
+        if not np.isfinite(self.rehearsal) or self.rehearsal < 0:
+            raise ValueError("rehearsal must be finite and nonnegative")
+        if (
+            isinstance(self.rehearsal_capacity, bool)
+            or not isinstance(self.rehearsal_capacity, int)
+            or self.rehearsal_capacity < 1
+        ):
+            raise ValueError("rehearsal_capacity must be a positive integer")
         if self.eta_bias is None:
             # Unless chosen, the bias rate follows the synapse rate.
             if not np.isfinite(self.eta) or self.eta < 0:
@@ -229,7 +243,19 @@ class LearnerConfig:
         }
 
 
-_NEUTRAL: dict[str, Any] = {"normalize_relative": 0.0, "nudged_fixed": False}
+_NEUTRAL: dict[str, Any] = {
+    "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
+}
+
+
+def _mixed(count: int) -> int:
+    """A fixed pseudo-random 64-bit number for each count (splitmix64): the rehearsal's draws
+    and the reservoir's replacements, the same after a checkpoint without a random state."""
+    mask = (1 << 64) - 1
+    z = (int(count) + 0x9E3779B97F4A7C15) & mask
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & mask
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & mask
+    return z ^ (z >> 31)
 
 
 @dataclass(frozen=True)
@@ -498,6 +524,14 @@ class Learner:
                 )
                 self._member_count = np.bincount(self._member_groups).astype(float)
 
+        # the rehearsal's reservoir (``rehearsal``): lesson rows kept over the life, how many rows
+        # were offered to it and how many rehearsal draws were taken
+        self.rehearsal_drives = np.zeros((0, self.brain.connectome.n))
+        shape = () if self.slot_count == 1 else (self.slot_count,)
+        self.rehearsal_labels = np.zeros((0, *shape), dtype=np.int64)
+        self.rehearsal_seen = 0
+        self.rehearsal_draws = 0
+
     @property
     def holder(self) -> GraphHolder:
         """The holder of this learner's current graph, shared by the learners built on it."""
@@ -627,6 +661,50 @@ class Learner:
             drive, state=state, budget=budget, tolerance=cfg.tolerance,
             nudge=nudge, damping=cfg.damping,
         )
+
+    def rehearse(self, drive: np.ndarray, labels: np.ndarray) -> dict[str, float] | None:
+        """After a lesson of ``drive`` and ``labels``: with ``rehearsal`` above zero, teach again
+        ``rehearsal`` rows per row of the lesson drawn from the reservoir of earlier lessons'
+        rows (their drives and labels), under the same rule, then offer the lesson's rows to the
+        reservoir, which keeps a uniform sample of every row offered (``rehearsal_capacity``).
+        Returns the rehearsal's report, or None without ``rehearsal`` or before any row is
+        kept; a refused rehearsal changes nothing and reports its refusal."""
+        cfg = self.config
+        if not cfg.rehearsal:
+            return None
+        drive = np.asarray(drive, dtype=float)
+        labels = self._labels(np.asarray(labels))
+        report: dict[str, float] | None = None
+        kept = len(self.rehearsal_drives)
+        if kept:
+            count = max(1, int(round(cfg.rehearsal * len(drive))))
+            index = np.array(
+                [_mixed(self.rehearsal_draws + i) % kept for i in range(count)], dtype=np.int64
+            )
+            self.rehearsal_draws += count
+            try:
+                _, report = self.step(self.rehearsal_drives[index], self.rehearsal_labels[index])
+            except LearningPhaseError as error:
+                report = {**error.report, "refused": 1.0}
+            report = {**report, "rows": float(count)}
+        drives, kept_labels = list(self.rehearsal_drives), list(self.rehearsal_labels)
+        for row in range(len(drive)):
+            seen = self.rehearsal_seen
+            self.rehearsal_seen += 1
+            if len(drives) < cfg.rehearsal_capacity:
+                drives.append(drive[row])
+                kept_labels.append(labels[row])
+            else:
+                slot = _mixed(seen) % (seen + 1)
+                if slot < cfg.rehearsal_capacity:
+                    drives[slot], kept_labels[slot] = drive[row], labels[row]
+        self.rehearsal_drives = np.asarray(drives, dtype=float).reshape(
+            len(drives), self.brain.connectome.n
+        )
+        self.rehearsal_labels = np.asarray(kept_labels, dtype=np.int64).reshape(
+            len(drives), *self.rehearsal_labels.shape[1:]
+        )
+        return report
 
     def _labels(self, labels: np.ndarray) -> np.ndarray:
         labels = np.asarray(labels)

@@ -117,6 +117,24 @@ and `accuracy` test the graph, `act` the graph with its memories
 ([check that a memory does the work](memory.md#check-that-a-memory-does-the-work),
 [evaluate a brain](evaluate.md)).
 
+### Teach several types in sequence: rehearsal
+
+Lessons on a new type move the same synapses the earlier types' answers rest on, so teaching
+types one after another can erase the earlier ones. `learning_rehearsal=r` (opt-in, founder 0)
+keeps a reservoir of the lessons' rows, their drives and labels, a uniform sample of every row
+taught (`learning_rehearsal_capacity`, 512 rows), and after each lesson teaches `r` rows per
+row of the lesson again, drawn from it, under the same rule: with `learning_surprise=True` only
+the rows the brain now answers wrong move it. The reservoir is saved with the brain; a grown
+brain starts it afresh, since its rows hold the old layout's drives ([#238](https://github.com/muellerberndt/cadence/issues/238)).
+
+```python
+brain = Brain.compose(12, 4, seed=0, learning_rehearsal=1.0, learning_surprise=True)
+assert brain.learner.config.rehearsal == 1.0 and not len(brain.learner.rehearsal_drives)
+```
+
+Compare it with the types taught interleaved (the upper control) and in sequence without
+rehearsal (the lower control) at matched lesson counts.
+
 ## Rates under normalization
 
 With `normalize > 0` each plastic efficacy and bias keeps a running second moment of its raw
