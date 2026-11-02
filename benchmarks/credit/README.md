@@ -108,4 +108,59 @@ PYTHONPATH=src python benchmarks/credit/preservation.py --chamber nursery --arm 
 python -m pytest -q benchmarks/credit
 ```
 
-A life at delay 0 takes about a minute on one laptop core, a lesson life at delay 8 a few.
+A reward life at delay 0 takes 10 to 60 seconds on one core, a lesson life at delay 8 25 to
+80 seconds, depending on the host's load.
+
+## Readings on 0.93
+
+Development founders 0 to 5, then founders 500 to 511 for the settings that passed, each
+confirmation declared before it ran. Founders at held-out .90 at 2,048 episodes, the mean
+held-out accuracy in brackets.
+
+**Terminal reward through `step`** ([issue 208](https://github.com/muellerberndt/cadence/issues/208)):
+
+| arm | delay 0 | delay 1 | delay 2 | delay 0, founders 500 to 511 |
+| --- | --- | --- | --- | --- |
+| `founder` | 0 of 6 (.50) | 0 of 6 (.54) | 0 of 6 (.50) | 2 of 12 (.58) |
+| `slow_episodic` | 6 of 6 (1.00) | 4 of 6 (.92) | 0 of 6 (.51) | 11 of 12 (.96) |
+| `slow_episodic_extinction` | 6 of 6 (1.00) | 4 of 6 (.92) | 0 of 6 (.51) | 11 of 12 (.96) |
+| `slow_episodic_hold` | 6 of 6 (1.00) | 4 of 6 (.92) | 0 of 6 (.56) | 11 of 12 (.96) |
+
+The composed founder's associative record is keyed on the observation, which both cues share
+at `S2`, and every outcome writes it: its greedy answers are right on about a quarter of the
+first episodes and its readout ends with one policy for both cues. With the slower step and
+the episodic memory the context records split the cues at the shared answer and the readout
+follows. `memory_extinction` never acts here (its lives are byte-identical to
+`slow_episodic`'s: zero outcomes fall where nothing was paid directly), and
+`memory_context_hold="unchanged"` acts only on two equal distractors in a row, so at delays 0
+and 1 its lives are `slow_episodic`'s too. From one distractor on, the context key keeps half
+of the cue per moment and the readout latches on one action for both cues.
+
+**A lesson at the answer alone** ([issue 209](https://github.com/muellerberndt/cadence/issues/209)):
+
+| arm | 2 distractors | 4 | 8 | 4 and 8, founders 500 to 511 |
+| --- | --- | --- | --- | --- |
+| `founder` | 0 of 6 (.66) | 0 of 6 (.50) | 0 of 6 (.50) | 0 and 0 of 12 |
+| `recall` | 6 of 6 (1.00) | 6 of 6 (1.00) | 0 of 6 (.53) | |
+| `recall_recency0` | 6 of 6 (1.00) | 6 of 6 (1.00) | 5 of 6 (.98) | 12 and 12 of 12 |
+| `recall_recency0_boundary` | 4 of 6 (.93) | 6 of 6 (.99) | 6 of 6 (1.00) | 12 and 12 of 12 |
+
+The working trace keeps .55 to .64 of the two cues' separation per later event: from about
+1.2 after the cue it falls to .06 to .11 before the answer at 4 distractors and .01 to .02 at
+8, and the answer's lesson has nothing to read. The recall memory re-presents the cue at every
+moment, and every-row lessons at the answer then reshape the carried state (separation before
+the answer .5 to 1.4 in the passing lives, median 1.27). Its founder age charge of .25 per
+moment leaves the cue's slot too faint at 8 distractors; with no charge the slot reaches the
+answer. Run on the binding chambers' continuing life (token binding without resets, three
+trials in twelve slots), `recall_recency=0.0` keeps that life on 6 of 6 seeds, as the recall
+memory at its founders does; the same memory without its position term (`recall_position=0`)
+loses it at recency .05 and at 0 (0 of 6), the loss recorded for recency .05 before the
+position term existed.
+
+**Preservation** of the three reward settings (`preservation.py`, seeds as above, against each
+chamber without the setting): odour nursery `live`, lives passing every check 10 of 12 against
+11 (the hold 11), `step` 8 against 7; key-door rule A acquired 16 of 16 against 8; bandit with
+reversal 30 of 30 blocks against 27; contextual bandit 6 of 6 seeds against 3; delayed response
+6 of 6 against 6. No fall of two or more. In the nursery two lives at the 300-trial exposure
+(seeds 2 and 5) reverse late with `slow_episodic` (lags 355 and 482 trials, against 97 and 34
+without it); the hold avoids those two and reverses late on one life at 1,000.

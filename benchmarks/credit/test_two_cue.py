@@ -224,3 +224,31 @@ def test_the_bandit_moves_its_paying_arm_every_block(monkeypatch):
     row = pr.run_life({"chamber": "bandit", "seed": 0, "settings": {}})
     assert "error" not in row and len(row["blocks"]) == 2
     assert all(0.0 <= b["share"] <= 1.0 for b in row["blocks"])
+
+
+def _phase(**values):
+    return {"final": 1.0, "lag": 10, "stable": 1.0, "aroused_late": 0.0, "fed": 1.0,
+            "wrong": 0.0, **values}
+
+
+def test_the_nurserys_checks_and_the_learning_checks_of_its_step_arm(monkeypatch):
+    nursery = pr._module("odour_nursery", pr.ROOT / "benchmarks/reversal/odour_nursery.py")
+    phases = [_phase(), _phase(final=0.85, lag=None), _phase(aroused_late=0.5)]
+    monkeypatch.setattr(nursery, "run_life", lambda *a, **k: {"phases": phases})
+    live = pr.nursery_life(0, {}, "live", 300)
+    assert live["checks"] == {"acquired": True, "reversed": False, "returned": True,
+                              "stable_kept": True, "calm": False}
+    assert not live["passed"] and live["lag"] == [10, None, 10]
+    phases[1] = _phase()
+    assert not pr.nursery_life(0, {}, "live", 300)["passed"]  # not calm
+    assert pr.nursery_life(0, {}, "step", 300)["passed"]  # calm is not a learning check
+
+
+def test_the_key_doors_acquisition_and_its_joint_predicates(monkeypatch):
+    keydoor = pr._module("key_door", pr.ROOT / "benchmarks/keydoor/key_door.py")
+    phases = [_phase(fed=0.92), _phase(fed=0.5), _phase(lag=80)]
+    monkeypatch.setattr(keydoor, "run_life", lambda *a, **k: {"phases": phases})
+    row = pr.keydoor_life(0, {}, 2)
+    assert row["passed"] and not row["joint"]
+    assert row["checks"] == {"acquired": True, "adapted": False, "retained": False,
+                             "frugal": True, "calm": True}
