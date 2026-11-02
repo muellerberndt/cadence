@@ -1270,6 +1270,10 @@ class Recall:
             return None
         p_x, p_c, p = self.position_maps[head]
         term = (event @ p_x + cortex @ p_c + p)[:, self.buckets()]
+        # the terms over each stream's episode and previous read need the moments' streams; a
+        # batch of other streams reads silence (``weights``) and gets the table and the slope
+        if rows is None and len(event) != self.streams:
+            return self._lean(head, event, cortex, term)
         if self.anchor_maps:
             e_x, e_c, e = self.anchor_maps[head]
             anchored = event @ e_x + cortex @ e_c + e
@@ -1278,6 +1282,12 @@ class Recall:
             q_x, q_c, q = self.relative_maps[head]
             relative = event @ q_x + cortex @ q_c + q
             term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
+        return self._lean(head, event, cortex, term)
+
+    def _lean(
+        self, head: int, event: np.ndarray, cortex: np.ndarray, term: np.ndarray
+    ) -> np.ndarray:
+        """``term`` with head ``head``'s slope over age added (``slope``), or as it is."""
         if self.slope_maps:
             s_x, s_c, s = self.slope_maps[head]
             lean = event @ s_x + cortex @ s_c + s

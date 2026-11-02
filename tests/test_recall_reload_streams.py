@@ -34,3 +34,19 @@ def test_a_reloaded_recall_brain_continues_through_partial_ends(options, tmp_pat
     copy.reset(keep=("slots",))
     x = rng.random((2, 6))
     np.testing.assert_array_equal(brain.act(x, greedy=True), copy.act(x, greedy=True))
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"recall_anchor": True}, {"recall_relative": True}, {"recall_slope": 0.1},
+     {"recall_when": True, "recall_anchor": True}],
+    ids=["founder", "anchor", "relative", "slope", "when_anchor"],
+)
+def test_a_batch_of_other_streams_after_a_reset_that_keeps_the_slots(options):
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, **options)
+    rng = np.random.default_rng(0)
+    for _ in range(3):
+        brain.act(rng.random((2, 6)), greedy=True)
+    brain.reset(keep=("slots",))
+    assert np.asarray(brain.act(rng.random((3, 6)), greedy=True)).shape == (3,)
+    assert np.asarray(brain.act(rng.random((3, 6)), greedy=True)).shape == (3,)
