@@ -3580,8 +3580,9 @@ class Brain:
         ladder: another ``free_steps`` sweeps in equal shares at the full step and at
         successively halved steps (the learner's ``damping`` halvings, at least one); only then
         is the answer refused. A solve that ended with a value that is not finite, or a budget
-        of no sweeps, is refused without one. The rescue changes nothing where the first solve qualifies; the report
-        counts its sweeps (``rescue_steps``) and sums both solves' sweeps and checks."""
+        of no sweeps, is refused without one. The rescue changes nothing where the first solve
+        qualifies; the report counts its sweeps (``rescue_steps``) and sums both solves' sweeps
+        and checks."""
         from .brain import _copy_state
 
         cfg = self.learner.config
