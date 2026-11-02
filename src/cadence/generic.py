@@ -2960,14 +2960,15 @@ class Brain:
         the regions a trained pathway runs through together.
 
         The grafted neurons take the donor's biases and gains, the synapses among them the
-        donor's efficacies, contact counts, signs and plasticity masks; their optimizer history
-        starts afresh, as a new synapse's does. ``freeze=True`` stops them learning. A joint, a
-        synapse of this brain between a grafted neuron and the rest, starts at zero with its
-        reciprocal partner (``joints="zero"``), or keeps this brain's weight
-        (``joints="kept"``); wiring of this brain among the grafted neurons that the donor lacks
-        starts at zero. With joints at zero the graft settles at first on what it reads from its
-        own regions, and learning gives the joints weight. Everything else is this brain's: its
-        other weights, its memories and their records, its settings, actor and arousal, so a
+        donor's contact counts, efficacies and plasticity masks, so they drive as they did in the
+        donor; their signs, the construction their efficacies started from, stay this brain's,
+        and the optimizer history starts afresh, as a new synapse's does. ``freeze=True`` stops
+        them learning. A joint, a synapse of this brain between a grafted neuron and the rest,
+        starts at zero with its reciprocal partner (``joints="zero"``), or keeps this brain's
+        weight (``joints="kept"``); wiring of this brain among the grafted neurons that the donor
+        lacks starts at zero. With joints at zero the graft settles at first on what it reads from
+        its own regions, and learning gives the joints weight. Everything else is this brain's:
+        its other weights, its memories and their records, its settings, actor and arousal, so a
         whole donor grafted into a larger anatomy chooses as the donor does where those agree.
         The streams start afresh, as after ``reset()``.
 
@@ -5766,9 +5767,12 @@ def _grafted_checkpoint(
             "the order the donor stacks them"
         )
     data = dict(host)
-    # the donor's weights, contact counts, signs and plasticity masks; an optimizer history
-    # afresh, as a new synapse's: the donor's moments belong to the donor's count of lessons
-    for name in ("count", "sign", "efficacy", "plastic_synapses"):
+    # the donor's contact counts, efficacies and plasticity masks, so a grafted synapse drives
+    # its neuron as it did in the donor; this brain's signs, the construction its efficacies
+    # started from, which a recall copy pathway's tokens lay out again on load; an optimizer
+    # history afresh, as a new synapse's: the donor's moments belong to the donor's count of
+    # lessons
+    for name in ("count", "efficacy", "plastic_synapses"):
         values = np.array(host[name])
         values[at] = donor[name][inner]
         data[name] = values

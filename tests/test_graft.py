@@ -346,3 +346,55 @@ def test_wiring_the_donor_lacks_starts_at_zero_even_with_kept_joints():
     lateral = np.isin(grafted.connectome.pre, motor) & np.isin(grafted.connectome.post, motor)
     assert lateral.any() and not grafted.brain.efficacy[lateral].any()
     assert host.brain.efficacy[lateral].any()
+
+
+def test_a_graft_carries_the_donors_contact_counts_and_keeps_this_brains_signs(tmp_path):
+    """A recall copy pathway with tokens is laid out again from the brain's construction on
+    load; with the donor's signs carried, the brain's connectome and its learner's disagreed."""
+    tokens = dict(recall=True, recall_copy=2.0)
+    host = cd.Brain.compose(6, 4, seed=1, modules=(16,), recall_tokens=[0, 1, 2, 3], **tokens)
+    donor = cd.Brain.compose(6, 4, seed=7, modules=(16,), **tokens)
+    grafted = host.graft(donor, ["recall", "next", "motor", "association"])
+    np.testing.assert_array_equal(grafted.connectome.sign, host.connectome.sign)
+    np.testing.assert_array_equal(grafted.connectome.count, host.connectome.count)
+    grafted.save(tmp_path / "grafted.npz")
+    loaded = cd.Brain.load(tmp_path / "grafted.npz")
+    assert loaded.connectome.digest() == loaded.learner.brain.connectome.digest()
+    np.testing.assert_array_equal(loaded.brain.efficacy, grafted.brain.efficacy)
+
+
+def test_a_donor_on_measured_contact_counts_acts_as_itself_in_an_anatomy_of_other_counts(
+    tmp_path,
+):
+    """A synapse drives its neuron by its contact count times its efficacy: the grafted
+    synapses carry the donor's counts, so the grafted pathway computes as the donor's."""
+    fly = fly_connectome()
+    counts = np.random.default_rng(5).integers(1, 6, size=fly.synapses).astype(float)
+    measured = cd.Connectome(
+        fly.n, fly.pre, fly.post, counts, fly.sign, dict(fly.populations), fly.label
+    )
+    donor = taught(cd.Brain.compose(6, 4, connectome=measured, seed=0, episodic=False))
+    bigger = larger_anatomy(fly)  # the fly's wiring with a contact count of 1 everywhere
+    host = cd.Brain.compose(6, 4, connectome=bigger, seed=0, episodic=False)
+    grafted = host.graft(donor, into="fly")
+    neurons = np.asarray(bigger.populations["fly"])
+    inside = np.isin(grafted.connectome.pre, neurons) & np.isin(grafted.connectome.post, neurons)
+    np.testing.assert_array_equal(np.sort(grafted.connectome.count[inside]), np.sort(counts))
+    np.testing.assert_array_equal(grafted.connectome.sign, host.connectome.sign)
+    np.testing.assert_array_equal(grafted.connectome.count[~inside], host.connectome.count[~inside])
+    twin = copy.deepcopy(donor)
+    twin.reset()
+    rng = np.random.default_rng(1)
+    for _ in range(10):
+        x = rng.random((3, 6))
+        np.testing.assert_array_equal(twin.act(x, greedy=True), grafted.act(x, greedy=True))
+        np.testing.assert_allclose(
+            np.asarray(twin.basal_ganglia.state.activation),
+            np.asarray(grafted.basal_ganglia.state.activation)[:, neurons],
+            rtol=0,
+            atol=1e-12,
+        )
+    grafted.save(tmp_path / "grafted.npz")
+    loaded = cd.Brain.load(tmp_path / "grafted.npz")
+    np.testing.assert_array_equal(loaded.connectome.count, grafted.connectome.count)
+    assert loaded.connectome.digest() == loaded.learner.brain.connectome.digest()

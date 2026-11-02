@@ -147,13 +147,15 @@ the choices can differ too.
 
 Each grafted pair of populations holds the same number of neurons, taken in order, and every
 synapse of the donor among the grafted neurons must be a synapse of this brain, wired alike: a
-one-way synapse of the donor may not land on half of a reciprocal pair here, whose halves share
-one efficacy. Wiring of this brain among the grafted neurons that the donor lacks starts at zero.
-The grafted neurons take the donor's biases and gains, and the synapses among them the donor's
-efficacies, contact counts, signs and plasticity masks, so a synapse frozen in the donor stays
-frozen. Their optimizer history starts afresh, as a new synapse's does: the donor's moments
-belong to the donor's count of lessons. Everything else is this brain's own: its other weights,
-its memories and their records, its settings, its actor and its arousal.
+one-way synapse of the donor may not land on half of a reciprocal pair here, whose halves share one
+efficacy. Wiring of this brain among the grafted neurons that the donor lacks starts at zero. The
+grafted neurons take the donor's biases and gains, and the synapses among them the donor's
+contact counts, efficacies and plasticity masks: they drive their neurons as they did in the donor,
+and a synapse frozen in the donor stays frozen. Their signs, the construction their efficacies
+started from, stay this brain's, so `to_dict()["efficacy_changed"]` counts a grafted synapse whose
+efficacy differs from this brain's sign. Their optimizer history starts afresh, as a new synapse's
+does: the donor's moments belong to the donor's count of lessons. Everything else is this brain's own: its
+other weights, its memories and their records, its settings, its actor and its arousal.
 
 ## How a new part joins the brain
 

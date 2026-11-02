@@ -38,6 +38,8 @@ from __future__ import annotations
 
 import copy
 import os
+import sys
+import threading
 import weakref
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
@@ -91,13 +93,75 @@ def available_backends() -> dict[str, str]:
             out["torch"] = "cpu float64"
     except ImportError:
         pass
-    try:
-        import mlx.core as mx
-
-        out["mlx"] = f"{mx.default_device().type.name} float32"
-    except ImportError:
-        pass
+    device, _ = _mlx_probe()
+    if device is not None:
+        out["mlx"] = f"{device} float32"
     return out
+
+
+_MLX_PROBE: tuple[str | None, str] | None = None
+_MLX_LOCK = threading.Lock()
+_MLX_MISSING = "mlx is not installed"
+# the child: this process's import path, isolated from its working directory and environment;
+# it leaves without the interpreter's shutdown once it has written the device
+_MLX_CHILD = (
+    "import os, sys; sys.path[:] = {path!r}; import mlx.core as mx; "
+    "sys.stdout.write(mx.default_device().type.name + '\\n'); sys.stdout.flush(); os._exit(0)"
+)
+
+
+def _mlx_probe() -> tuple[str | None, str]:
+    """The device MLX would use, or None with the reason.
+
+    An MLX already imported here answers here. Otherwise a child interpreter imports it, once
+    per process: an MLX whose discovery aborts the interpreter (an unsupported Metal or system
+    configuration) ends the child, and this process reads MLX as unavailable. The child sees this
+    process's import path and nothing else. A frozen application, whose executable is itself,
+    imports MLX here, as releases before 0.92.1 did."""
+    import importlib.util
+
+    imported = sys.modules.get("mlx.core")
+    if imported is not None:
+        try:
+            return str(imported.default_device().type.name), ""
+        except Exception as exc:  # noqa: BLE001 - any failure reads as unavailable
+            return None, f"mlx failed here: {exc}"
+    try:
+        installed = importlib.util.find_spec("mlx") is not None
+    except (ImportError, ValueError):
+        installed = False
+    if not installed:  # not kept: an MLX installed later in this process is found
+        return None, _MLX_MISSING
+    global _MLX_PROBE
+    with _MLX_LOCK:
+        if _MLX_PROBE is None:
+            _MLX_PROBE = _mlx_discover()
+        return _MLX_PROBE
+
+
+def _mlx_discover() -> tuple[str | None, str]:
+    """MLX's device, asked of a child interpreter, or here in a frozen application."""
+    import subprocess
+
+    if getattr(sys, "frozen", False) or not sys.executable:
+        try:
+            import mlx.core as mx
+
+            return str(mx.default_device().type.name), ""
+        except Exception as exc:  # noqa: BLE001 - any failure reads as unavailable
+            return None, f"mlx failed here: {exc}"
+    code = _MLX_CHILD.format(path=[entry for entry in sys.path if isinstance(entry, str)])
+    try:
+        done = subprocess.run(
+            [sys.executable, "-I", "-c", code], capture_output=True, timeout=300, check=False
+        )
+    except (OSError, subprocess.SubprocessError, ValueError) as exc:
+        return None, f"mlx discovery could not run: {exc}"
+    lines = done.stdout.decode("utf-8", "replace").strip().splitlines()
+    if done.returncode == 0 and lines:
+        return lines[-1], ""
+    tail = (done.stderr.decode("utf-8", "replace").strip().splitlines() or ["no message"])[-1]
+    return None, f"mlx discovery failed (exit {done.returncode}): {tail}"
 
 
 @dataclass(frozen=True)
@@ -3152,6 +3216,10 @@ class _MlxKernel:
         neuron_model: NeuronModel,
         layout: Layout,
     ) -> None:
+        device, reason = _mlx_probe()
+        if device is None:  # an MLX that aborts on import would take this interpreter down
+            missing = ModuleNotFoundError if reason == _MLX_MISSING else ImportError
+            raise missing(f"the mlx backend is unavailable here: {reason}", name="mlx")
         import mlx.core as mx
 
         neuron_model._validate_precision("float32")
