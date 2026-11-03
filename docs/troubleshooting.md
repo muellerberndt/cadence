@@ -60,8 +60,7 @@ brain and compare answers ([check](memory.md#check-that-a-memory-does-the-work))
 learned weights; test a memory through `act`, `step` or `live`
 ([memory](memory.md#memory-in-the-composed-brain)).
 
-**Which memory carries this task?** See [which memory for which
-task](memory.md#which-memory-for-which-task). No memory holds a state the observation never shows.
+**Which memory carries this task?** See [the memory inventory](memory.md#complete-memory-inventory). No memory holds a state the observation never shows.
 
 **What survives `reset()`?** Records, the recall address map and learned weights. The working
 trace, efference copy, heard history, episodic context and recall slots are cleared

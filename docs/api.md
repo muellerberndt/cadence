@@ -192,7 +192,7 @@ which 0.84.3 reads, and `/10`, which development builds of the learned code wrot
 0.84.3 that this version removed loads at the value whose law this version keeps
 and is refused otherwise with a message naming 0.84.3; a setting 0.93.0 retired, folded or
 made a constant (the CHANGELOG's list, the recall memory's
-[on the recall page](memory.md#retired-settings)) loads at the one value the release keeps
+[on the memory page](memory.md#removed-in-this-version)) loads at the one value the release keeps
 for it and is refused otherwise by name with the release; a file saved with a resting bias
 loads as it is, the biases it set being in the saved arrays. Record and recall key widths are checked
 against the code; code tables that do not read every ON and OFF channel twice with positive
@@ -328,7 +328,7 @@ brain's `recall_<name>` gene; their meanings, founders and retune rules are the
 when it differs from the `source` population (a coded brain passes the code width), `actions`
 the motor width a slot's command covers with `action` (a brain passes its motor neurons). A
 retired setting is refused by name with one sentence naming the release that retired it and
-what the memory does instead ([retired settings](memory.md#retired-settings)).
+what the memory does instead ([removed in this version](memory.md#removed-in-this-version)).
 
 | Member | Behaviour |
 | --- | --- |

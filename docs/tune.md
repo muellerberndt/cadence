@@ -44,7 +44,7 @@ The composed graph, in the order its regions are developed:
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
 | `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False`; with `recall_copy` also into `motor` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
-| `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#position-how-long-ago-a-moment-happened) |
+| `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#when-a-read-item-happened-opt-in) |
 
 The hippocampus is a `SynapticMemory` from the observation code to the motor drive,
 with `memory_choice=True` the [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before), and with
@@ -297,7 +297,7 @@ marked construction above) and for a missing component (arousal included). With 
 above zero the same holds for `recall_address` and
 `recall_address_reward` ([recall memory](memory.md#the-recall-memory-in-full)). A retired
 recall setting is refused by name at `compose`, `retune` and load, with the release that
-retired it ([retired settings](memory.md#retired-settings)). A part that a
+retired it ([removed in this version](memory.md#removed-in-this-version)). A part that a
 construction setting adds (the recall memory or more of its heads, a heard history, an
 efference copy, new output slots) is added to a trained brain by `grow`, which returns a new
 brain; `graft` puts trained regions of another brain into it ([grow and combine

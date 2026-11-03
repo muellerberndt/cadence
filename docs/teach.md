@@ -9,7 +9,7 @@ demonstrator, `teaching="normalized"` holds more of what was shown
 path when its mistakes take it where the demonstrator never went
 ([below](#teach-on-the-brains-own-path)). A lesson changes the graph's weights; the episodic
 memory (`memory_choice=True`) also records the shown act for its situation
-([memory](memory.md#episodic-memory)).
+([episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before)).
 
 ## Explicit learning with `step`
 
