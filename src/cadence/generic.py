@@ -445,6 +445,22 @@ def _unit_rows(code: np.ndarray) -> np.ndarray:
     return np.asarray(code / np.where(norm > 0.0, norm, 1.0))
 
 
+# The arrays of a settled state, as a checkpoint keeps each state it holds (the free phase, a
+# pending action's two nudged phases, the state sensed while an outcome is awaited).
+_STATE_ARRAYS = ("v", "activation", "adaptation")
+
+
+def _state_arrays(prefix: str, state: BrainState) -> dict[str, np.ndarray]:
+    """A settled state's arrays as a checkpoint keeps them, under ``prefix``."""
+    return {prefix + name: np.asarray(getattr(state, name)) for name in _STATE_ARRAYS}
+
+
+def _saved_state(data: Mapping[str, Any], prefix: str, steps: Any) -> BrainState:
+    """The settled state a checkpoint keeps under ``prefix``, settled in ``steps`` sweeps."""
+    v, activation, adaptation = (data[prefix + name].copy() for name in _STATE_ARRAYS)
+    return BrainState(v, activation, adaptation, int(steps))
+
+
 # The episodic memory that ``Brain.compose(..., memory_choice=True)`` builds: place and context
 # records vote in the choice, remember demonstrations and replay an attempt that ended in reward.
 _EPISODIC_FOUNDERS: dict[str, Any] = {
@@ -933,7 +949,7 @@ def _validate_life_state(
         if v.ndim != 2 or v.shape[1] != n or not len(v):
             raise ValueError("invalid saved free-state dimensions")
         batch = len(v)
-        for name in ("activation", "adaptation"):
+        for name in _STATE_ARRAYS[1:]:
             array("free/" + name, (batch, n))
     elif meta.get("pending", False) or meta.get("free_current", False):
         raise ValueError("saved pending action or cache needs a free state")
@@ -961,7 +977,7 @@ def _validate_life_state(
         array("pending/value", (batch,))
         for phase in ("plus", "minus"):
             count("pending_" + phase + "_steps")
-            for name in ("v", "activation", "adaptation"):
+            for name in _STATE_ARRAYS:
                 array(f"pending/{phase}/{name}", (batch, n))
     if meta.get("pending", False) or "moment/observations" in data or "moment/action" in data:
         if not meta.get("pending", False):
@@ -1040,7 +1056,7 @@ def _validate_life_state(
         steps = awaiting.get("steps")
         if isinstance(steps, bool) or not isinstance(steps, int) or steps < 0:
             raise ValueError("invalid saved count: awaiting steps")
-        for name in ("v", "activation", "adaptation"):
+        for name in _STATE_ARRAYS:
             array("awaiting/" + name, (1, n))
     working = meta["working_memory"]
     if working is not None:
@@ -5019,8 +5035,7 @@ class Brain:
         awaited = self._awaited()
         if awaited is not None:  # what the stream sensed while its outcome is awaited
             metadata["awaiting"] = {"steps": int(awaited.steps)}
-            for name in ("v", "activation", "adaptation"):
-                data["awaiting/" + name] = np.asarray(getattr(awaited, name))
+            data.update(_state_arrays("awaiting/", awaited))
         if self.sparse_code is not None:
             # the records have the code's width and the keys read its tables
             metadata["code"] = {**self.sparse_code.to_dict(), "cortex": self.coded_cortex}
@@ -5038,8 +5053,7 @@ class Brain:
             data["pending/value"] = value
             for name, phase in (("plus", plus), ("minus", minus)):
                 metadata["pending_" + name + "_steps"] = phase.steps
-                for field in ("v", "activation", "adaptation"):
-                    data[f"pending/{name}/{field}"] = np.asarray(getattr(phase, field))
+                data.update(_state_arrays(f"pending/{name}/", phase))
             if self._moment is not None:
                 data["moment/observations"], data["moment/action"] = self._moment
                 if self._moment_code is not None:  # the code the decision was keyed on
@@ -5052,8 +5066,7 @@ class Brain:
             for name, tensor in zip(("trace", "trace_bias"), agent._trace_device, strict=True):
                 data["actor/" + name] = tensor.detach().cpu().double().numpy()
         if agent.state is not None:
-            for name in ("v", "activation", "adaptation"):
-                data["free/" + name] = np.asarray(getattr(agent.state, name))
+            data.update(_state_arrays("free/", agent.state))
         if self._prepared is not None:
             data["prepared"] = self._prepared
         for name, (settings, arrays) in self._saved_memories().items():
@@ -5332,26 +5345,15 @@ class Brain:
             result.rng.bit_generator.state = meta["rng"]
             agent.rng.bit_generator.state = meta["actor_rng"]
             if meta["free_steps"] is not None:
-                agent._free = BrainState(
-                    data["free/v"].copy(),
-                    data["free/activation"].copy(),
-                    data["free/adaptation"].copy(),
-                    int(meta["free_steps"]),
-                )
+                agent._free = _saved_state(data, "free/", meta["free_steps"])
                 agent._free_brain = learner.brain if meta.get("free_current", False) else None
             result._prepared = data["prepared"].copy() if "prepared" in data else None
             result.last_learning = meta.get("last_learning", {})
             if meta.get("pending", False):
-                phases = []
-                for name in ("plus", "minus"):
-                    phases.append(
-                        BrainState(
-                            data[f"pending/{name}/v"].copy(),
-                            data[f"pending/{name}/activation"].copy(),
-                            data[f"pending/{name}/adaptation"].copy(),
-                            int(meta["pending_" + name + "_steps"]),
-                        )
-                    )
+                phases = [
+                    _saved_state(data, f"pending/{name}/", meta["pending_" + name + "_steps"])
+                    for name in ("plus", "minus")
+                ]
                 agent._pending = ("states", phases[0], phases[1], data["pending/value"].copy())
                 if "recall/pending" in data:  # validated above: a pending action's contrast
                     agent._pending_memory = data["recall/pending"].astype(float)
@@ -5484,15 +5486,8 @@ class Brain:
             if "awaiting" in meta:
                 acted = agent._free  # validated above: the awaited action has its free state
                 assert acted is not None
-                result._awaiting = (
-                    acted,
-                    BrainState(
-                        data["awaiting/v"].copy(),
-                        data["awaiting/activation"].copy(),
-                        data["awaiting/adaptation"].copy(),
-                        int(meta["awaiting"]["steps"]),
-                    ),
-                )
+                sensed = _saved_state(data, "awaiting/", meta["awaiting"]["steps"])
+                result._awaiting = (acted, sensed)
             if "rehearsal" in meta or any(name.startswith("rehearsal/") for name in data):
                 _load_episodes(result, meta, data)
         return result
