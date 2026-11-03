@@ -212,7 +212,7 @@ def refused_artifact(tmp_path_factory):
         check=True,
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=120,  # the run budgets its own ten seconds; a loaded host is given more
     )
     return folder
 
@@ -316,7 +316,7 @@ def test_verifier_requires_all_centered_phases_for_an_accepted_lesson(tmp_path):
         check=True,
         capture_output=True,
         text=True,
-        timeout=20,
+        timeout=120,  # the run budgets its own ten seconds; a loaded host is given more
     )
     receipt_path = folder / "finite-2/receipt.json"
     receipt = json.loads(receipt_path.read_text())

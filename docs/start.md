@@ -459,6 +459,39 @@ calm moments it lives after loading. The gene is experimental: on a delayed-harm
 rarely, because the brain was seldom calm before the harm, and no gain over `hindsight=0` has
 been measured yet.
 
+### Learning during a continuing life
+
+A brain that keeps living learns from what happens to it: outcomes through `live` and
+`step`, lessons where a teacher answers. Where the founder's learning does not reach a
+behaviour, these settings do, each an opt-in that leaves the founder unchanged, each read in
+the chamber that measures it (under `live` with reward only where it learns from reward):
+
+| Situation | Settings | Chamber and reading |
+| --- | --- | --- |
+| A reversal whose failures pay nothing: the paid arm's record keeps voting after the pay moves | `memory_choice=True, memory_extinction=0.5` | [extinction](../benchmarks/extinction/README.md): 11 of 12 lives learn the new arm against 5 of 12 on the development seeds, 11 against 3 on the confirmation seeds; the return to the first arm is slower (median 15 trials against 6) |
+| A chain whose stages look alike and whose misses leave the observation as it was | `memory_choice=True, memory_context_hold="unchanged"` | [context key](../benchmarks/context_key/stone_chains.py): the ambiguous chain passes cleanly on 35 of 96 lives against 6; where the right action leaves the observation unchanged it costs (0 against 9) |
+| A choice that depends on a cue the answer does not show, from the terminal reward alone | `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True` | [credit](../benchmarks/credit/README.md): the cue right before the answer on 11 of 12 fresh founders (the founder on 2 of 12); one event between on 4 of 6, two on none |
+| The same cue carried through distractors, taught by a lesson at the answer | `recall=True, recall_recency=0.0` | the same chamber: 4 and 8 distractors on 12 of 12 fresh founders |
+| Which of two writes a read finds, from reward alone | `recall=True, recall_position_reward=4.0` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy): 0.73 to 1.00 of the last 256 queries, three of five founders every one |
+
+The chambers' READMEs state each setting's costs beside its gains;
+[episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) and
+[reward](reward.md#a-cue-the-answer-does-not-show) give the mechanisms.
+
+```python
+import numpy as np
+from cadence import Brain
+
+bandit = Brain.compose(1, 2, modules=(8,), seed=0, arousal=True, memory_choice=True,
+                       memory_extinction=0.5)
+cue = np.ones((1, 1))
+arm = int(bandit.live(cue)[0])
+for trial in range(24):  # arm 0 pays for twelve trials, then arm 1; failures pay nothing
+    reward = 1.0 if arm == (0 if trial < 12 else 1) else 0.0
+    arm = int(bandit.live(cue, reward=[reward])[0])
+assert bandit.last_arousal is not None
+```
+
 <a id="observations-actions-and-reward"></a>
 
 ### Outcomes that arrive later: `wait`

@@ -139,6 +139,11 @@ checkpoints keep the maps and the per-stream counts.
   lessons or by reward through `live`, and the width sweep. They are the instruments of this
   release's readings for #232, #234, #236, #237, #238 and #239.
 - `benchmarks/extinction`: the bandit of #210, failures paying 0 or -1.
+- The odour nursery charges a probe copy's refused answer to the life's work (`refused_sweeps`),
+  as the key-door chamber does; the settle rescue exposed a strict life's refusal at a probe.
+  The acquisition protocol test gives its runs two minutes on a loaded host.
+- docs/start.md, "Learning during a continuing life": the settings that reach a behaviour the
+  founder's learning does not, each with the chamber that measures it.
 - The readings above were taken on this release with these instruments: the declared
   confirmations of #232, #234 and #237 and the #210 bandit's panel lives on their own founders,
   each repeating its earlier reading exactly, and samples of the #202, #208 and #209
