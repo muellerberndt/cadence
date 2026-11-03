@@ -813,7 +813,9 @@ for every memory.
   credit. In a continuing life where
   a once-paid action stops paying and its failures pay 0, its record keeps voting for it and
   the new action is often not learned: in a two-armed bandit through `live` whose paying arm
-  moved, 4 of 12 lives learned the new arm, against 12 of 12 when failures cost 1. That
+  moved ([extinction](../benchmarks/extinction/README.md)), 5 of 12 lives learned the new arm
+  on the development seeds and 3 of 12 on the confirmation seeds, against 12 of 12 when
+  failures cost 1. That
   one-step result does not establish a remedy for chains learned from reward alone: any
   nonzero intermediate reward stops replay at that decision, and even tiny miss penalties
   harmed acquisition in the [reported chain comparison](https://github.com/muellerberndt/cadence/issues/210#issuecomment-6300283848).
