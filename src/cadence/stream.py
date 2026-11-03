@@ -777,6 +777,11 @@ class Recall:
                             "action", "anchor", "relative", "slope", "when")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
+    # the kinds of a head's maps beside its address map (``map_names``), in the order a
+    # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
+    # kept before its maps: the reads' focus for the relative maps, the moments told for the
+    # anchored ones
+    _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"))
     # the retired settings, by name: the release that retired each, the one value a saved
     # memory loads at (the founder's, or the value its law keeps) and what the memory does
     # instead; ``removed`` makes the one sentence that refuses the name wherever it is given
@@ -1524,25 +1529,19 @@ class Recall:
             name: getattr(self, name) for name in ("keys", "values", "nexts", "held", "previous")
         }
         for h, maps in enumerate(self.head_maps):  # every head's address map, head 0's first
-            out.update(dict(zip(self.map_names("address", h), maps, strict=True)))
+            out.update(zip(self.map_names("address", h), maps, strict=True))
         if self.ended.any():
             out["ended"] = self.ended
         if self.window > 1:
             out["past"] = self.past
         if self.action:  # the command each stream executed at the moment before
             out["acted"] = self.acted
-        for h, maps in enumerate(self.position_maps):  # saved only with a position term
-            out.update(dict(zip(self.map_names("position", h), maps, strict=True)))
-        for h, maps in enumerate(self.slope_maps):  # saved only with ``slope``
-            out.update(dict(zip(self.map_names("slope", h), maps, strict=True)))
-        if self.relative_maps:  # saved only with ``relative``
-            out["focus"] = self.focus
-            for h, maps in enumerate(self.relative_maps):
-                out.update(dict(zip(self.map_names("relative", h), maps, strict=True)))
-        if self.anchor_maps:  # saved only with ``anchor``
-            out["told"] = self.told
-            for h, maps in enumerate(self.anchor_maps):
-                out.update(dict(zip(self.map_names("anchor", h), maps, strict=True)))
+        for kind, state in self._KINDS:  # each kind saved only with its option
+            kept = getattr(self, f"{kind}_maps")
+            if kept and state:
+                out[state] = getattr(self, state)
+            for h, maps in enumerate(kept):
+                out.update(zip(self.map_names(kind, h), maps, strict=True))
         return out
 
     @staticmethod
@@ -1554,7 +1553,7 @@ class Recall:
         suffix = "" if head == 0 else f"_{head}"
         if kind == "address":
             return f"w_x{suffix}", f"w_c{suffix}", f"b{suffix}"
-        if kind not in ("position", "anchor", "relative", "slope"):
+        if kind not in dict(Recall._KINDS):
             raise ValueError(f"unknown map kind: {kind!r}")
         return f"{kind}_x{suffix}", f"{kind}_c{suffix}", f"{kind}_b{suffix}"
 

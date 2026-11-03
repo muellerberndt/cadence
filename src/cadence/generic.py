@@ -1229,37 +1229,38 @@ def _validate_recall_state(
     history = data.get("recall/history")
     if history is not None:
         array("history", (0 if not len(history) else batch, key))
-    shapes = ((key + command, address), (association, address), (address,))
     maps: dict[str, tuple[int, ...]] = {}
-    for h in range(heads):  # every head's address map
-        maps.update(dict(zip(Recall.map_names("address", h), shapes, strict=True)))
+    states: set[str] = set()
+
+    def saved(kind: str, *outputs: int) -> None:
+        # every head's maps of one kind, each onto ``outputs`` (one number without)
+        shapes = ((key + command, *outputs), (association, *outputs), outputs or (1,))
+        for h in range(heads):
+            maps.update(zip(Recall.map_names(kind, h), shapes, strict=True))
+
+    saved("address", address)
     count = Recall.position_count(settings.get("position", 0), settings["capacity"])
-    for h in range(heads if count else 0):  # every head's position maps, with a position term
-        shapes_h = ((key + command, count), (association, count), (count,))
-        maps.update(dict(zip(Recall.map_names("position", h), shapes_h, strict=True)))
-    if settings.get("anchor", False):  # every head's anchored maps and the episodes' counts
-        for h in range(heads):
-            shapes_a = ((key + command, count + 1), (association, count + 1), (count + 1,))
-            maps.update(dict(zip(Recall.map_names("anchor", h), shapes_a, strict=True)))
-        if array("told", (batch,)).dtype.kind not in "iu" or (data["recall/told"] < 0).any():
-            raise ValueError("invalid saved recall state: told")
-    elif "recall/told" in data or any(name.startswith("recall/anchor_") for name in data):
-        raise ValueError("saved anchored maps belong to a recall memory with anchor")
-    if settings.get("relative", False):  # every head's relative maps and the reads' focus
-        width_r = 2 * Recall.RELATIVE + 2
-        for h in range(heads):
-            shapes_r = ((key + command, width_r), (association, width_r), (width_r,))
-            maps.update(dict(zip(Recall.map_names("relative", h), shapes_r, strict=True)))
-        if array("focus", (batch,)).dtype.kind not in "iu" or (data["recall/focus"] < -1).any():
-            raise ValueError("invalid saved recall state: focus")
-    elif "recall/focus" in data or any(name.startswith("recall/relative_") for name in data):
-        raise ValueError("saved relative maps belong to a recall memory with relative")
-    if settings.get("slope", 0.0):  # every head's slope maps
-        for h in range(heads):
-            shapes_s = ((key + command,), (association,), (1,))
-            maps.update(dict(zip(Recall.map_names("slope", h), shapes_s, strict=True)))
-    elif any(name.startswith("recall/slope_") for name in data):
-        raise ValueError("saved slope maps belong to a recall memory with slope")
+    if count:  # every head's position maps, with a position term
+        saved("position", count)
+    # the maps beside the table, each with its option, and the per-stream state each reads:
+    # the episodes' counts (at least 0) and the reads' focus (at least -1, before a read)
+    for kind, noun, outputs, state, low in (
+        ("anchor", "anchored", (count + 1,), "told", 0),
+        ("relative", "relative", (2 * Recall.RELATIVE + 2,), "focus", -1),
+        ("slope", "slope", (), None, 0),
+    ):
+        if settings.get(kind):
+            saved(kind, *outputs)
+            if state:
+                states.add(state)
+                if array(state, (batch,)).dtype.kind not in "iu" or (
+                    data["recall/" + state] < low
+                ).any():
+                    raise ValueError(f"invalid saved recall state: {state}")
+        elif (state and "recall/" + state in data) or any(
+            name.startswith(f"recall/{kind}_") for name in data
+        ):
+            raise ValueError(f"saved {noun} maps belong to a recall memory with {kind}")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1279,17 +1280,13 @@ def _validate_recall_state(
     # the streams whose latest slot closed an episode, saved while one does
     if "recall/ended" in data and array("ended", (batch,)).dtype != np.bool_:
         raise ValueError("invalid saved recall state: ended")
-    expected = {"keys", "values", "nexts", "held", "previous", *maps}
+    expected = {"keys", "values", "nexts", "held", "previous", *maps, *states}
     if command:
         expected |= {"acted"}
     if history is not None:
         expected |= {"history"}
     if window > 1:
         expected |= {"past"}
-    if settings.get("anchor", False):
-        expected |= {"told"}
-    if settings.get("relative", False):
-        expected |= {"focus"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
         "trace", "pending", "ended"
     } != expected:
@@ -5320,33 +5317,22 @@ class Brain:
                     return maps
 
                 recall.head_maps = saved_maps("address")
-                if recall.position_maps:  # saved with a position term
-                    recall.position_maps = saved_maps("position")
-                if recall.slope:  # saved with slope
-                    recall.slope_maps = saved_maps("slope")
-                if recall.anchor:  # saved with anchor
-                    recall.anchor_maps = saved_maps("anchor")
-                if recall.relative:  # saved with relative
-                    recall.relative_maps = saved_maps("relative")
                 recall.held = data["recall/held"].astype(bool)
+                streams = len(recall.keys)
                 recall.ended = (
                     data["recall/ended"].astype(bool)
                     if "recall/ended" in data
-                    else np.zeros(len(recall.keys), dtype=bool)
+                    else np.zeros(streams, dtype=bool)
                 )
-                # the episodes' counts and the reads' focus, saved with anchor and relative
-                # (validated above); without them each stream starts them afresh
-                streams = len(recall.keys)
-                recall.told = (
-                    data["recall/told"].astype(np.int64)
-                    if recall.anchor
-                    else np.zeros(streams, dtype=np.int64)
-                )
-                recall.focus = (
-                    data["recall/focus"].astype(np.int64)
-                    if recall.relative
-                    else np.full(streams, -1, dtype=np.int64)
-                )
+                # the episodes' counts and the reads' focus start afresh, and a kind of maps
+                # saved with its option (validated above) loads with the state it reads
+                recall.told = np.zeros(streams, dtype=np.int64)
+                recall.focus = np.full(streams, -1, dtype=np.int64)
+                for kind, read in Recall._KINDS:
+                    if getattr(recall, f"{kind}_maps"):
+                        setattr(recall, f"{kind}_maps", saved_maps(kind))
+                        if read:
+                            setattr(recall, read, data["recall/" + read].astype(np.int64))
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command
