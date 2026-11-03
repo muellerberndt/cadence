@@ -1327,6 +1327,17 @@ def _given(
     return kept, True
 
 
+def _rule(neuron_model: NeuronModel) -> tuple[Any, ...]:
+    """The neuron rule as the kernels read it, read once per call (the rest emission is an
+    exponential): ``(dt, slope, threshold, rest emission, leak, adaptation strength,
+    adaptation time constant)``."""
+    m, adapt = neuron_model, neuron_model.adaptation
+    return (
+        m.dt, m.slope, m.threshold, m.rest_emission, m.leak,
+        0.0 if adapt is None else adapt.strength, 1.0 if adapt is None else adapt.tau_steps,
+    )
+
+
 def _kept(flat: np.ndarray, flat_apical: np.ndarray, batch: int, kept: np.ndarray) -> Products:
     made = weakref.ref(flat)
     return made, made if flat_apical is flat else weakref.ref(flat_apical), batch, kept
@@ -1370,25 +1381,22 @@ def fused_settle(
         # one (batch, n) array of the kernel's type, a shared mask broadcast
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
+    dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
+    s = np.empty((batch, n))
     if not v.any():  # from rest every neuron publishes the same thing
         row = np.empty(n)
-        m = neuron_model
-        _activation(np.zeros(n), m.slope, m.threshold, m.rest_emission, m.leak, row)
-        s = np.empty((batch, n))
+        _activation(np.zeros(n), slope, threshold, rest, leak, row)
         s[:] = row
-    else:
-        s = np.empty_like(v)
-        for b in range(batch):
-            m = neuron_model
-            _activation(v[b], m.slope, m.threshold, m.rest_emission, m.leak, s[b])
+    else:  # every row in one call
+        _activation(np.ascontiguousarray(v).reshape(-1), slope, threshold, rest, leak,
+                    s.reshape(-1))
     if masked:
         s *= keep
     if steps == 0:  # no sweep: the activations are published and nothing else is read
         if apical is not None:  # a held gain's shape is checked at no sweeps too
             _compartment(apical, layout, flat, nudge, batch, n)
         return s, 0, np.zeros(batch), products
-    adapt = neuron_model.adaptation
-    has_adapt = adapt is not None
+    has_adapt = neuron_model.adaptation is not None
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n
     )
@@ -1427,14 +1435,14 @@ def fused_settle(
         freezable,
         keep,
         masked,
-        neuron_model.dt,
-        neuron_model.slope,
-        neuron_model.threshold,
-        neuron_model.rest_emission,
-        neuron_model.leak,
+        dt,
+        slope,
+        threshold,
+        rest,
+        leak,
         has_adapt,
-        0.0 if adapt is None else adapt.strength,
-        1.0 if adapt is None else adapt.tau_steps,
+        strength,
+        tau,
         nudge is not None,
         target,
         nmask,
@@ -1479,14 +1487,13 @@ def fused_residual(
     """
     assert njit is not None
     batch, n = v.shape
-    m = neuron_model
+    dt, slope, threshold, rest, leak, strength, _ = _rule(neuron_model)
     if keep is None:
         masked = False
         keep = _NO_MASK
     else:
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
-    adapt = m.adaptation
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n
     )
@@ -1512,13 +1519,13 @@ def fused_residual(
         layout.offset,
         keep,
         masked,
-        m.dt,
-        m.slope,
-        m.threshold,
-        m.rest_emission,
-        m.leak,
-        adapt is not None,
-        0.0 if adapt is None else adapt.strength,
+        dt,
+        slope,
+        threshold,
+        rest,
+        leak,
+        neuron_model.adaptation is not None,
+        strength,
         nudge is not None,
         target,
         nmask,

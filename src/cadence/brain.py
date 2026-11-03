@@ -1227,10 +1227,13 @@ class Brain:
             v, a, s, traj, taken, activity_change, handle = kernel.run(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance, state, capture
             )
-        elif not trajectory and capture is None and _FUSED and self._fused_blocks() is not None:
+        elif (
+            not trajectory and capture is None and _FUSED
+            and (compiled := self._fused_blocks()) is not None
+        ):
             from .fused import fused_settle
 
-            flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
+            flat, apical = compiled
             s, taken, activity_change, products = fused_settle(
                 v,
                 a,
@@ -1339,13 +1342,13 @@ class Brain:
         a = np.atleast_2d(state.adaptation)
         if v.shape != d.shape or a.shape != d.shape:
             raise ValueError("state batch does not match the drive batch")
-        if _FUSED and self._fused_blocks() is not None:
+        if _FUSED and (compiled := self._fused_blocks()) is not None:
             # the same equations in one compiled pass: a checked settle on the CPU then costs
             # the products of the ranges that moved since the state's were made, not one NumPy
             # operation per term
             from .fused import fused_residual
 
-            flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
+            flat, apical = compiled
             error, products = fused_residual(
                 v, a, d, self.bias, self.layout, flat, None if mask is None else keep,
                 self.neuron_model, nudge, apical=apical,
