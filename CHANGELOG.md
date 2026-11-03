@@ -253,6 +253,38 @@ takes it`), and a 0.93.0 retirement names 0.93.0.
   `Recall.imagined()` is `branch()`, the contract's name. `AttributeError` names the missing
   method.
 
+### Settling and learning: the same bits in less time
+
+Every change here leaves every array, every answer and every count as it was: the recall
+pins, the founder parity of 0.92.1 and a battery of 14,591 recorded values over the kernels,
+the learner and the composed operations read identical. Timings are medians of interleaved
+runs against 0.93.0 at 18aa94c on one thread, relative.
+
+- The fused CPU kernels' per-call work is made once where it does not depend on the call: the
+  arrays of a settle without a nudge (per batch size and width), a nudge's arrays (kept on the
+  nudge for the check that follows its settle), the plain compartment's arrays and the fed
+  ranges (per layout), and an apical compartment's pool tables (per compartment). A settle or
+  check without a mask hands the kernel none, and a settle of no sweeps publishes the
+  activations without a launch. The founder's greedy act takes 0.80 of its time, a lesson
+  0.87, a reward step 0.93; a recall brain's act 0.76; a qualified learner's lesson 0.73.
+- The flat block array of new weights (`Layout.flat`, remade after every update) is written
+  in the order of its entries, the weights gathered by the layout's permutation first (found
+  once per layout): the same array in half the time on a wide brain (the 1.06M entries of a
+  1,024-neuron module in 5.9 ms where 11.8). A lesson of that brain takes 0.86 of its time, a
+  reward step 0.89; with a 256-neuron module 0.89 and 0.93; the founder's 512 entries take
+  microseconds either way.
+- A finite lesson builds one `Nudge` per nudged phase and reads it for the phase's diagnostic
+  check too, where it built the nudge twice and the kernel its arrays twice. The founder's
+  lesson takes 0.92 of its time, a recall brain's 0.90 to 0.94.
+- The compiled tied step of an update (`fused.tied_step`) also makes the effective weights
+  and reads whether the step, the efficacies and the weights are finite, and the brain takes
+  those arrays as they are (`_with_update`, the same brain and the same refusals as
+  `with_parameters`): three passes over the synapses (a copy of the step, a copy of the
+  efficacies, the weights' product) and three `isfinite` passes fewer per update. The
+  1,024-module lesson takes 0.92 of its time, its reward step 0.89; the 256-module brain's
+  0.92 and 0.92 (old and new alternated call by call in one process); the founder's 512
+  synapses are microseconds either way.
+
 ### Project
 
 - How the project is planned (AGENTS.md, CONTRIBUTING.md): the roadmap (#109), the goal epics

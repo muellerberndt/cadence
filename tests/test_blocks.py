@@ -106,3 +106,24 @@ def test_torch_precision_option_and_block_transport_agree_with_cpu() -> None:
     assert single.with_parameters(bias=np.zeros(w.n)).precision == "float32"
     with pytest.raises(ValueError):
         cd.NeuralGraph(w, neuron_model, backend="torch", device="cpu", precision="half")
+
+
+def test_the_flat_blocks_are_written_in_the_order_of_their_entries() -> None:
+    """The scatter of new weights into the flat array writes it front to back, the synapses
+    gathered by the layout's permutation (found once); the array is the one synapse order gives."""
+    pytest.importorskip("numba")
+    brain = cd.Brain.compose(6, 3, modules=(24,), seed=2)
+    lay = brain.brain.layout
+    held = lay._flat_order
+    assert held is not None and lay._flat_order is held
+    order, sorted_index = held
+    assert np.array_equal(sorted_index, lay.edge_index[order])
+    assert np.all(np.diff(sorted_index) > 0) and not np.all(np.diff(lay.edge_index) > 0)
+    weights = np.random.default_rng(3).normal(size=brain.connectome.synapses)
+    expected = np.zeros(lay.size)
+    expected[lay.edge_index] = weights
+    np.testing.assert_array_equal(lay.flat(weights), expected)
+    # entries already in order: no permutation
+    in_order = layout(cd.Connectome.from_synapses(3, pre=[0, 0, 1], post=[1, 2, 2]))
+    assert np.all(np.diff(in_order.edge_index) > 0) and in_order._flat_order is None
+    np.testing.assert_array_equal(in_order.flat(np.array([1.0, 2.0, 3.0]))[[1, 2, 5]], [1.0, 2.0, 3.0])

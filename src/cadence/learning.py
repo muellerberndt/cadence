@@ -641,25 +641,20 @@ class Learner:
         target is an action that was taken).
         """
         # an apical compartment passes the nudge's change at the gain the free phase set
-        return self._nudged(drive, free, target, self.brain.apical_gain(drive, free), sign, weight)
+        held = self.brain.apical_gain(drive, free)
+        return self._nudged(
+            drive, free, self.nudge_for(target, sign * self.config.beta, weight, held),
+            "nudged" if sign >= 0 else "opposite",
+        )
 
     def _nudged(
-        self,
-        drive: np.ndarray,
-        free: BrainState,
-        target: np.ndarray,
-        held: np.ndarray | None,
-        sign: float = 1.0,
-        weight: np.ndarray | None = None,
+        self, drive: np.ndarray, free: BrainState, nudge: Nudge, name: str
     ) -> BrainState:
-        """``nudged`` at the apical gain ``held`` the caller read from the free phase."""
+        """The phase ``name`` (``nudged`` or ``opposite``) under ``nudge``, from the free state;
+        the caller built the nudge, so a check that follows can read the same one."""
         cfg = self.config
         if cfg.qualified:
-            phase = self._qualified_phase(
-                drive, free, cfg.nudged_steps,
-                self.nudge_for(target, sign * cfg.beta, weight, held),
-            )
-            name = "nudged" if sign >= 0 else "opposite"
+            phase = self._qualified_phase(drive, free, cfg.nudged_steps, nudge)
             if not np.all(phase.qualified):
                 raise LearningPhaseError(name, {name: phase}, self._nudged_budget_hint())
             return replace(phase.state, steps=phase.steps)
@@ -667,7 +662,7 @@ class Learner:
             drive,
             steps=cfg.nudged_steps,
             state=free,
-            nudge=self.nudge_for(target, sign * cfg.beta, weight, held),
+            nudge=nudge,
             tolerance=None if cfg.nudged_fixed else cfg.tolerance,
         )
 
@@ -814,7 +809,7 @@ class Learner:
         cfg = self.config
         assert self.plastic_synapses is not None
         all_trainable = bool(self.plastic_synapses.all())
-        delta_scale = np.array(delta_scale, dtype=float)  # this update's own copy
+        delta_scale = np.asarray(delta_scale, dtype=float)
         delta_bias = np.asarray(delta_bias, dtype=float)
         if (
             delta_scale.shape != (self.brain.connectome.synapses,)
@@ -825,7 +820,8 @@ class Learner:
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
         if (all_trainable and self.synapse_rate is None and not len(self._members)
                 and len(delta_scale) and self.brain._torch is None and _compiled_passes()):
-            return self._compiled_apply(delta_scale, delta_bias)
+            return self._compiled_apply(delta_scale, delta_bias)  # reads the step, moves nothing
+        delta_scale = np.array(delta_scale, dtype=float)  # this update's own copy
         if not all_trainable:
             delta_scale[~self.plastic_synapses] = 0.0
         if self.synapse_rate is not None:  # each synapse's own step, before tying
@@ -868,7 +864,8 @@ class Learner:
 
     def _compiled_apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
         """``apply`` for an all-plastic learner without per-synapse rates or tied groups: the
-        pair tying and the bound in one compiled pass (``fused.tied_step``, the same bits)."""
+        pair tying, the bound and the effective weights in one compiled pass (``fused.tied_step``,
+        the same bits), which the brain takes as they are."""
         from .fused import tied_step
 
         partner = self.__dict__.get("_partner")
@@ -877,13 +874,17 @@ class Learner:
             full[self._paired] = self._paired_reverse
             partner = (self._paired, full)
             self.__dict__["_partner"] = partner
-        delta_scale, scale = tied_step(delta_scale, partner[1], self.brain.efficacy,
-                                       self.config.scale_cap)
-        if not np.isfinite(delta_scale).all():
+        delta_scale, scale, weights, finite = tied_step(
+            delta_scale, partner[1], self.brain.efficacy, self.brain._gain_pre,
+            self.config.scale_cap,
+        )
+        if not finite[0]:
             raise ValueError("scaled and tied steps must remain finite")
         assert self.plastic_neurons is not None
         delta_bias = np.where(self.plastic_neurons, delta_bias, 0.0)
-        self.brain = self.brain.with_parameters(efficacy=scale, bias=self.brain.bias + delta_bias)
+        self.brain = self.brain._with_update(
+            scale, weights, self.brain.bias + delta_bias, finite[1:]
+        )
         self.updates += 1
         return {
             "scale_step": float(np.abs(delta_scale).mean()),
@@ -1319,17 +1320,18 @@ class Learner:
             drive, target, weight = self._lesson(taught, drive, target, weight)
             free = _restrict(free, taught)
         held = self.brain.apical_gain(drive, free)  # read once, held by both phases
-        nudged = self._nudged(drive, free, target, held, weight=weight)
-        opposite = self._nudged(drive, free, target, held, sign=-1.0, weight=weight)
+        # one nudge per phase, read by the phase and by its diagnostic check
+        pull = self.nudge_for(target, cfg.beta, weight, held)
+        push = self.nudge_for(target, -cfg.beta, weight, held)
+        nudged = self._nudged(drive, free, pull, "nudged")
+        opposite = self._nudged(drive, free, push, "opposite")
         phases["nudged"] = Equilibrium(
-            nudged, self.brain.residual(drive, nudged,
-                nudge=self.nudge_for(target, cfg.beta, weight, held)),
+            nudged, self.brain.residual(drive, nudged, nudge=pull),
             nudged.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
         phases["opposite"] = Equilibrium(
-            opposite, self.brain.residual(drive, opposite,
-                nudge=self.nudge_for(target, -cfg.beta, weight, held)),
+            opposite, self.brain.residual(drive, opposite, nudge=push),
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )

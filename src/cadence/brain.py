@@ -810,6 +810,32 @@ class Brain:
             apical=self.apical,
         )
 
+    def _with_update(
+        self,
+        efficacy: np.ndarray,
+        weights: np.ndarray,
+        bias: np.ndarray,
+        finite: tuple[bool, bool],
+    ) -> Brain:
+        """``with_parameters`` for a learner's compiled update on the CPU backend: ``efficacy``,
+        its effective ``weights`` (the product ``with_parameters`` makes, made by the update's
+        pass) and ``bias`` are fresh arrays of the right shape that the update made, taken as
+        they are; ``finite`` says whether the efficacy and the weights are finite, as that pass
+        found them. The same brain, and the same refusals, as ``with_parameters`` gives."""
+        if not finite[0]:
+            raise ValueError("efficacy must have one finite entry per synapse")
+        if not finite[1]:
+            raise ValueError("effective synaptic weights must be finite; reduce gain or efficacy")
+        if not np.isfinite(bias).all():
+            raise ValueError("bias must have one finite entry per neuron")
+        new = copy.copy(self)
+        new._efficacy = efficacy
+        new._weights_host = weights
+        new._flat = None
+        new._csr = None
+        new._bias = bias
+        return new
+
     @property
     def weights(self) -> np.ndarray:
         """Effective drive per unit presynaptic activation, one per synapse."""
@@ -1148,10 +1174,11 @@ class Brain:
         if n == 0 or not np.isfinite(drive).all():
             raise ValueError("drive must be finite and the brain must contain neurons")
         keep = np.ones(n) if mask is None else np.asarray(mask, float)
-        if keep.shape not in ((n,), (1, n), (batch, n)):
-            raise ValueError("mask must have one entry per neuron, optionally per batch row")
-        if not np.isfinite(keep).all() or ((keep < 0) | (keep > 1)).any():
-            raise ValueError("mask must contain finite fractions in [0, 1]")
+        if mask is not None:
+            if keep.shape not in ((n,), (1, n), (batch, n)):
+                raise ValueError("mask must have one entry per neuron, optionally per batch row")
+            if not np.isfinite(keep).all() or ((keep < 0) | (keep > 1)).any():
+                raise ValueError("mask must contain finite fractions in [0, 1]")
         if nudge is not None:
             if np.asarray(nudge.mask).shape != (n,):
                 raise ValueError("nudge mask must have one entry per neuron")
@@ -1210,7 +1237,7 @@ class Brain:
                 self.bias,
                 self.layout,
                 flat,
-                keep,
+                None if mask is None else keep,  # the kernel reads no mask where none is given
                 self.neuron_model,
                 nudge,
                 steps,
@@ -1286,7 +1313,9 @@ class Brain:
         if d.ndim != 2 or d.shape[1] != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
         keep = np.ones(self.connectome.n) if mask is None else np.asarray(mask, dtype=float)
-        if keep.shape not in ((self.connectome.n,), (1, self.connectome.n), d.shape):
+        if mask is not None and keep.shape not in (
+            (self.connectome.n,), (1, self.connectome.n), d.shape
+        ):
             raise ValueError("mask must have one entry per neuron, optionally per batch row")
         handle, kernel = state.device, self._torch
         if (
@@ -1312,8 +1341,8 @@ class Brain:
 
             flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
             return fused_residual(
-                v, a, d, self.bias, self.layout, flat, keep, self.neuron_model, nudge,
-                apical=apical,
+                v, a, d, self.bias, self.layout, flat, None if mask is None else keep,
+                self.neuron_model, nudge, apical=apical,
             )
         s = self.neuron_model.activation(v) * keep
         adapt = self.neuron_model.adaptation

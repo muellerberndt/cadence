@@ -148,7 +148,8 @@ changing-temperature life does not retain a new set of nudge tensors at every mo
 Masks have shape `(n,)` or `(1, n)` for every row, or `(batch, n)` per row, with entries in
 [0, 1], on every backend. A mask scales potential and activation at each step; zero removes a
 neuron's published activity while its adaptation decays. A warm start recomputes the published
-activation under the current mask, and the fused kernel reads a shared mask without copying it.
+activation under the current mask; the fused kernel is handed a shared mask laid out per row,
+and no mask at all when none is given.
 
 `cd.conformance(graph, stimulus, steps=60)` settles a `NeuralGraph` (`brain.learner.brain`
 for a composed brain) from rest and compares its trajectory with the neuron-by-neuron float64
