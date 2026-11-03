@@ -1196,11 +1196,6 @@ def _validate_recall_state(
     for h in range(heads if count else 0):  # every head's position maps, with a position term
         shapes_h = ((key + command, count), (association, count), (count,))
         maps.update(dict(zip(Recall.position_names(h), shapes_h, strict=True)))
-    if settings.get("chain", False):  # every further head's map of the read before it
-        chained = value * (2 if settings["next"] else 1)
-        maps.update({f"chain_{h}": (chained, address) for h in range(1, heads)})
-    elif any(name.startswith("recall/chain_") for name in data):
-        raise ValueError("saved chain maps belong to a recall memory with chain")
     if settings.get("anchor", False):  # every head's anchored maps and the episodes' counts
         for h in range(heads):
             shapes_a = ((key + command, count + 1), (association, count + 1), (count + 1,))
@@ -2993,8 +2988,6 @@ class Brain:
                 retuned.get("temperature", self.recall.temperature),
             )
             # the pairings construction refuses
-            if self.recall.chain and retuned.get("address_reward", self.recall.address_reward):
-                raise ValueError("chain is not combined with address_reward")
             if (
                 retuned.get("position_reward", self.recall.position_reward)
                 and not self.recall.position_maps
@@ -4810,7 +4803,7 @@ class Brain:
     def parameters(self) -> int:
         """Actor/critic and consolidated weights (the episodic records' paid store with
         ``memory_extinction``), the recall memory's address and position maps and the maps of
-        its options (chain, anchor, relative, slope), and a learned code's tables; per-stream
+        its options (anchor, relative, slope), and a learned code's tables; per-stream
         transient storage is additional."""
         recall = self.recall
         paid = None if self._episodic is None else self._episodic.paid
@@ -4834,7 +4827,6 @@ class Brain:
                     )
                     for a in maps
                 )
-                + sum(a.size for a in recall.chain_maps)
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
         )
@@ -5154,10 +5146,6 @@ class Brain:
                 recall.position_maps = [  # validated above: saved with a position term
                     tuple(data["recall/" + name].astype(float) for name in Recall.position_names(h))
                     for h in range(recall.heads if recall.position_maps else 0)
-                ]
-                recall.chain_maps = [  # validated above: saved with chain
-                    data[f"recall/chain_{h}"].astype(float)
-                    for h in range(1, recall.heads if recall.chain else 1)
                 ]
                 if recall.slope:  # validated above: saved with slope
                     recall.slope_maps = [

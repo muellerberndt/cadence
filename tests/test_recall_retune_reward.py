@@ -52,12 +52,6 @@ def test_an_unrelated_retune_keeps_the_position_trace():
         np.testing.assert_array_equal(kept, retuned)
 
 
-def test_chain_refuses_address_reward_through_retune_as_at_construction():
-    brain = cd.Brain.compose(6, 3, seed=0, recall=True, recall_heads=2, recall_chain=True)
-    with pytest.raises(ValueError, match="chain"):
-        brain.retune(recall_address_reward=1.0)
-
-
 def test_position_reward_needs_the_position_term():
     with pytest.raises(ValueError, match="needs position"):
         cd.Brain.compose(6, 3, seed=0, recall=True, recall_position=0,

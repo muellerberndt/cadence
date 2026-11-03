@@ -438,20 +438,15 @@ The heads' addresses learn from teaching steps; reward trains them only at
 maps stay at zero: head 0 reads the best-matching moment and each later head the best of what
 the heads before it left (with `recall_compete=False`, what head 0 reads).
 
-**Chained heads (opt-in).** With `recall_chain=True` (a construction setting; it needs
-`recall_heads` of 2 or more) the heads read in a chain: each head after the first adds to its
-address what the head before it read, its recall and next reads through a map of its own that
-starts at zero. One moment can then place a read where an earlier read pointed: in two hops
-(`a -> b`, `b -> c`, ask `a`), the first head finds `a`, its next region holds `b`, and the
-second head can learn to look for `b`. A newborn chain reads as the heads without it; the
-address lesson steps the maps, and reward does not (`recall_address_reward` is refused with it).
-A "think" moment remains the way to chain reads across moments: the second read's address then
-comes from the cortex that holds the first ([#234](https://github.com/muellerberndt/cadence/issues/234)).
-The chain does not answer two hops in one moment (the
-[sequence battery](../benchmarks/sequence/README.md), three development seeds, 1,500 lessons): it
-answers 0.44 to 0.46, as the two heads without it do (0.44 to 0.47). With the copy pathway as
-the tokens' identity over 3,000 lessons it reads 0.51 to 0.53, 0.03 above the heads without it
-on each seed (0.47 to 0.50). With one think moment the same brains answer 0.98 to 0.99.
+**A read that needs another read.** The address is fixed before the settle, so a read that
+depends on what another read found takes a second moment: a "think" moment chains the reads,
+the first read landing in the cortex and the second moment's address reading from there. In
+two hops (`a -> b`, `b -> c`, ask `a`) two heads with a think moment answer the second hop at
+0.98 to 0.99 ([sequence battery](../benchmarks/sequence/README.md), three development seeds).
+A chained second head in one settle, each head after the first adding to its address what the
+head before it read, was tried on the release branch and withdrawn before release: it answered
+0.44 to 0.46, as the two heads without it do (0.44 to 0.47)
+([#234](https://github.com/muellerberndt/cadence/issues/234)).
 
 Use several heads when one answer needs several witnessed facts at once, and compare them with
 one head and with the facts asked one per moment (one head reads one fact per moment through
@@ -1153,7 +1148,6 @@ map.
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
-| `recall_chain` | `False` | construction | Each head after the first also addresses what the head before it read ([chained heads](#several-heads-opt-in)); needs `recall_heads` of 2 or more |
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |

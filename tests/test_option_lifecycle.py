@@ -38,14 +38,21 @@ def greedy(brain: cd.Brain) -> list:
 
 @pytest.mark.parametrize(
     ("name", "value"),
-    [*POSITIONS.items(), ("recall_chain", True), ("memory_context_hold", "unchanged"),
-     ("memory_extinction", 0.5)],
+    [*POSITIONS.items(), ("memory_context_hold", "unchanged"), ("memory_extinction", 0.5)],
 )
 def test_retune_refuses_the_construction_settings(name, value):
     brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_heads=2,
                              memory_choice=True)
     with pytest.raises(ValueError, match=f"{name} is a construction setting"):
         brain.retune(**{name: value})
+
+
+def test_the_withdrawn_chain_setting_is_unknown():
+    """A chained second head was built on the release branch and withdrawn before release:
+    its setting is refused as any unknown setting is."""
+    with pytest.raises(TypeError, match="unknown brain setting: 'recall_chain'"):
+        cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_heads=2,
+                         recall_chain=True)
 
 
 def taught(brain: cd.Brain) -> np.ndarray:
@@ -90,12 +97,10 @@ def test_a_retuned_setting_acts_as_built_and_is_saved(tmp_path, name, value, bas
 @pytest.mark.parametrize(
     ("parts", "options"),
     [({"recall": True, **POSITIONS}, {}),
-     ({"recall": True, "recall_heads": 2, "recall_chain": True}, {}),
      ({"recall_heads": 2}, {"recall": True, "recall_when": True, "recall_anchor": True}),
-     ({"recall_heads": 3}, {"recall": True, "recall_heads": 2, "recall_chain": True}),
      ({"recall_heads": 2}, {"recall": True, "recall_position_reward": 1.0,
                             "recall_address_reward": 1.0, "recall_anchor": True})],
-    ids=["positions", "chain", "when_heads", "chain_heads", "position_reward_heads"],
+    ids=["positions", "when_heads", "position_reward_heads"],
 )
 def test_a_brain_grows_into_the_recall_options_and_saves_what_it_grew(tmp_path, parts, options):
     brain = lived(**options)

@@ -48,14 +48,13 @@ documented opt-ins with the readings that bound them.
   (0.91 to 0.92 with the anchor too), 0.51 to 0.80 without; "was A told before B?" over two
   moments reads 0.59 to 0.80 with it and 0.59 to 0.72 without, since the comparison needs the
   first read carried to the second moment.
-- `recall_chain` (opt-in, #234): with several heads, each head after the first adds to its
-  address what the head before it read, through a map that starts at zero and the address
-  lesson steps. It does not answer two hops asked in one moment: 0.44 to 0.46 with it, 0.44 to
-  0.47 without (three development seeds), and 0.51 to 0.53 against 0.47 to 0.50 with the copy
-  pathway as the tokens' identity; one think moment answers 0.98 to 0.99.
 
 Each of these maps starts at zero, so a newborn reads as one without the option, and
-checkpoints keep the maps and the per-stream counts.
+checkpoints keep the maps and the per-stream counts. A chained second head (each head after the
+first adding to its address what the head before it read) was built on the release branch and
+withdrawn before release: it did not answer two hops asked in one moment, 0.44 to 0.46 with it
+against 0.44 to 0.47 without on three development seeds, where one think moment answers 0.98
+to 0.99.
 
 ### Learning during a continuing life
 
