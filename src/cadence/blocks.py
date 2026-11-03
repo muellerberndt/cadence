@@ -85,7 +85,10 @@ class Layout:
                 return scatter(self.size, self.edge_index, weights)
             # the entries written front to back: the synapses gathered in their order first
             order, sorted_index = held
-            return scatter(self.size, sorted_index, weights[order])
+            gathered: np.ndarray = np.asarray(weights, dtype=float)[order]
+            if len(order) == self.size:  # a synapse at every entry: gathered, it is the array
+                return gathered
+            return scatter(self.size, sorted_index, gathered)
         out = np.zeros(self.size)
         if self.parallel_synapses:
             np.add.at(out, self.edge_index, weights)
@@ -98,7 +101,8 @@ class Layout:
         """The synapses in the order of their entries in the flat array, and the entries in
         that order; found once per layout. None when the entries are already in order. A
         scatter in this order writes the array front to back, which costs half of writing it
-        in synapse order on a wide brain (the same array either way)."""
+        in synapse order on a wide brain (the same array either way); where a synapse sits at
+        every entry, the weights gathered in this order are the array."""
         index = self.edge_index
         if len(index) < 2 or bool(np.all(index[1:] > index[:-1])):
             return None

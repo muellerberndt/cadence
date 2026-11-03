@@ -127,3 +127,22 @@ def test_the_flat_blocks_are_written_in_the_order_of_their_entries() -> None:
     in_order = layout(cd.Connectome.from_synapses(3, pre=[0, 0, 1], post=[1, 2, 2]))
     assert np.all(np.diff(in_order.edge_index) > 0) and in_order._flat_order is None
     np.testing.assert_array_equal(in_order.flat(np.array([1.0, 2.0, 3.0]))[[1, 2, 5]], [1.0, 2.0, 3.0])
+
+
+def test_a_synapse_at_every_entry_makes_the_gathered_weights_the_flat_array() -> None:
+    """Where every entry holds a synapse the weights gathered in entry order are the array, with
+    nothing more written; where entries stay empty the scatter writes the zeros between them."""
+    pytest.importorskip("numba")
+    rng = np.random.default_rng(4)
+    full = cd.Brain.compose(6, 3, modules=(24,), seed=2).brain.layout
+    sparse = layout(cd.layered(6, 5, 4, density=0.5, seed=1))
+    assert len(full.edge_index) == full.size and len(sparse.edge_index) < sparse.size
+    for lay in (full, sparse):
+        assert lay._flat_order is not None
+        weights = rng.normal(size=len(lay.edge_index))
+        expected = np.zeros(lay.size)
+        expected[lay.edge_index] = weights
+        flat = lay.flat(weights)
+        assert flat.dtype == np.float64 and flat.flags.c_contiguous
+        assert not np.shares_memory(flat, weights)
+        np.testing.assert_array_equal(flat, expected)
