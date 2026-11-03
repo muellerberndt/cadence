@@ -124,8 +124,9 @@ answers end at 0.95 to 0.99 with it and stay at or above 0.85 at every reading f
 on. Without it the readings swing: one seed reads 0.01 after 1,000 lessons, 0.18 after 1,300 and
 0.98 at the end. On six fresh founders declared before the run, every life with the share ends
 at 0.97 to 0.99; four of the six keep every reading from 500 lessons on above 0.80, and two dip
-once (to 0.18 and to 0.77) before they recover, so the share removes the collapse at the end,
-not every swing on the way. Teaching every row (the sweep with `learning_surprise` off) holds 0.92 to 0.99
+once (to 0.18 and to 0.77) before they recover; without the share every one of the six collapses
+at least once after 500 lessons (to 0.01 to 0.29) and still ends at 0.93 to 0.99. The share
+removes the collapse at the end everywhere and the collapses on the way on four of six. Teaching every row (the sweep with `learning_surprise` off) holds 0.92 to 0.99
 from 800 lessons on at about a third more time per lesson. Scaling the contrast instead, so
 that the running moments read it as
 well, swings as the plain rule does: the normalization divides the scale out

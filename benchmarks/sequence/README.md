@@ -284,8 +284,9 @@ accuracy every 100 lessons:
 A confirmation declared before the run on six fresh founders (239300 to 239305): with the share
 every life ends at 0.966 to 0.992 (the gate, .90 on at least 5 of 6: passed), and four of the six
 keep every reading from 500 lessons on above 0.80 (the gate, 5 of 6: failed), founder 239300
-dipping once to 0.18 and 239304 to 0.77 before they recover. The control without the share runs
-on the same founders under the same protocol.
+dipping once to 0.18 and 239304 to 0.77 before they recover. Without the share, on the same
+founders, every life ends at 0.935 to 0.992 and every one collapses at least once after 500
+lessons, to 0.013 to 0.294.
 
 No act was refused in these lives. The life that refused an act at lesson 343 before the settle
 rescue existed (induction at 64 neurons on the composed steps, founder 0) runs its 1,500

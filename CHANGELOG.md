@@ -154,7 +154,8 @@ to 0.99.
   row of sixteen moves the net a sixteenth as far as sixteen. At width 1,024 on induction,
   surprise lessons without it swing between collapse and recovery (one seed at 0.01 after 1,000
   lessons); with it three seeds end at 0.95 to 0.99, and six fresh founders declared before the
-  run at 0.97 to 0.99, two of them dipping once on the way (to 0.18 and 0.77).
+  run at 0.97 to 0.99, two of them dipping once on the way (to 0.18 and 0.77), where every one
+  of the six collapses at least once without it (to 0.01 to 0.29).
 - docs/tune.md's "Wide brains" section states the three causes the width sweep located and a
   recipe of fan-in-scaled steps (`Learner.synapse_rate`) for a saturated readout, with its cost.
 
