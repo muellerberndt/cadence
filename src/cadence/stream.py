@@ -465,6 +465,53 @@ class _Moment(NamedTuple):
     inputs: np.ndarray
 
 
+# A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
+# inputs ``x`` and the cortex ``c`` of the moment before: the address map, the position table and
+# the maps beside it.
+_Maps = tuple[np.ndarray, np.ndarray, np.ndarray]
+
+
+def _read(maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """A map of the moment read at the inputs ``x`` and the cortex ``c``."""
+    m_x, m_c, m = maps
+    return np.asarray(x @ m_x + c @ m_c + m)
+
+
+def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarray) -> _Maps:
+    """A map of the moment after the least-mean-squares ``step`` at ``rate``: each row's step on
+    its inputs ``z = [x, c, 1]``, averaged over the rows. Unchecked: a caller checks what it
+    keeps."""
+    m_x, m_c, m = maps
+    s_x = rate * x.T @ step
+    s_x /= len(x)
+    s_x += m_x
+    s_c = rate * c.T @ step
+    s_c /= len(x)
+    s_c += m_c
+    return s_x, s_c, m + rate * step.mean(axis=0)
+
+
+def _per_bucket(gradient: np.ndarray, buckets: np.ndarray, size: int) -> np.ndarray:
+    """Each row's ``gradient`` over the slots summed into ``size`` buckets, slot ``i`` into its
+    bucket ``buckets[..., i]`` (one row of buckets for every row, or a row each)."""
+    out = np.zeros((len(gradient), size))
+    np.add.at(out, (np.arange(len(gradient))[:, None], buckets), gradient)
+    return out
+
+
+def _added(maps: _Maps, step: np.ndarray, width: int) -> _Maps:
+    """A map of the moment with ``step`` added, a row of it per input of ``z = [x, c, 1]``, the
+    ``width`` inputs ``x`` first."""
+    m_x, m_c, m = maps
+    return m_x + step[:width], m_c + step[width:-1], m + step[-1]
+
+
+def _with_head(maps: list[_Maps], head: int, new: _Maps) -> list[_Maps]:
+    """``maps`` with head ``head``'s replaced by ``new``, a new list: an imagined branch may hold
+    the old one."""
+    return [new if h == head else kept for h, kept in enumerate(maps)]
+
+
 @dataclass
 class Recall:
     """The index memory, a held-input recall: each stream's recent moments as slots, the
@@ -1028,14 +1075,7 @@ class Recall:
         # the maps read the event, and with ``action`` the command of the moment before
         self.map_width = width + self.command_width
         # every head's address map ``(w_x, w_c, b)``, head 0's first
-        self.head_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, self.address_width)),
-                np.zeros((len(self.association), self.address_width)),
-                np.zeros(self.address_width),
-            )
-            for _ in range(self.heads)
-        ]
+        self.head_maps = self._zero_maps(self.heads, self.address_width)
         self._recall_columns = columns(self.recall_neurons)
         self._next_columns = columns(self.next_neurons)
         self._association_columns = columns(self.association)
@@ -1071,45 +1111,19 @@ class Recall:
             )
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
-        self.position_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, count)), np.zeros((len(self.association), count)),
-                np.zeros(count),
-            )
-            for _ in range(self.heads if count else 0)
-        ]
-        if self.anchor and not count:
-            raise ValueError("anchor reads beside the position term: it needs position")
+        self.position_maps = self._zero_maps(self.heads if count else 0, count)
+        for name, verb in (("anchor", "reads"), ("relative", "reads"), ("slope", "leans")):
+            if getattr(self, name) and not count:
+                raise ValueError(f"{name} {verb} beside the position term: it needs position")
         # every head's anchored maps ``(E_x, E_c, e)``, one column per anchored bucket and one
         # for the slots written before the episode began; none without ``anchor``
-        self.anchor_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, count + 1)),
-                np.zeros((len(self.association), count + 1)),
-                np.zeros(count + 1),
-            )
-            for _ in range(self.heads if self.anchor else 0)
-        ]
-        if self.relative and not count:
-            raise ValueError("relative reads beside the position term: it needs position")
+        self.anchor_maps = self._zero_maps(self.heads if self.anchor else 0, count + 1)
         # every head's relative maps ``(R_x, R_c, r)``, one column per offset and one for a
         # stream with no read before; none without ``relative``
         width_r = 2 * self.RELATIVE + 2
-        self.relative_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, width_r)),
-                np.zeros((len(self.association), width_r)),
-                np.zeros(width_r),
-            )
-            for _ in range(self.heads if self.relative else 0)
-        ]
-        if self.slope and not count:
-            raise ValueError("slope leans beside the position term: it needs position")
-        # every head's slope maps ``(S_x, S_c, s)``; none without ``slope``
-        self.slope_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (np.zeros(self.map_width), np.zeros(len(self.association)), np.zeros(1))
-            for _ in range(self.heads if self.slope else 0)
-        ]
+        self.relative_maps = self._zero_maps(self.heads if self.relative else 0, width_r)
+        # every head's slope maps ``(S_x, S_c, s)``, one number each; none without ``slope``
+        self.slope_maps = self._zero_maps(self.heads if self.slope else 0)
         self._check_copy()
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
@@ -1246,29 +1260,18 @@ class Recall:
         (every stream, in order, without)."""
         if not self.position_maps or not self.slots:
             return None
-        p_x, p_c, p = self.position_maps[head]
-        term = (event @ p_x + cortex @ p_c + p)[:, self.buckets()]
+        term = _read(self.position_maps[head], event, cortex)[:, self.buckets()]
         # the terms over each stream's episode and previous read need the moments' streams; a
         # batch of other streams reads silence (``weights``) and gets the table and the slope
-        if rows is None and len(event) != self.streams:
-            return self._lean(head, event, cortex, term)
-        if self.anchor_maps:
-            e_x, e_c, e = self.anchor_maps[head]
-            anchored = event @ e_x + cortex @ e_c + e
-            term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
-        if self.relative_maps:
-            q_x, q_c, q = self.relative_maps[head]
-            relative = event @ q_x + cortex @ q_c + q
-            term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
-        return self._lean(head, event, cortex, term)
-
-    def _lean(
-        self, head: int, event: np.ndarray, cortex: np.ndarray, term: np.ndarray
-    ) -> np.ndarray:
-        """``term`` with head ``head``'s slope over age added (``slope``), or as it is."""
+        if rows is not None or len(event) == self.streams:
+            if self.anchor_maps:
+                anchored = _read(self.anchor_maps[head], event, cortex)
+                term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
+            if self.relative_maps:
+                relative = _read(self.relative_maps[head], event, cortex)
+                term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
         if self.slope_maps:
-            s_x, s_c, s = self.slope_maps[head]
-            lean = event @ s_x + cortex @ s_c + s
+            lean = _read(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
         return np.asarray(term)
 
@@ -1289,9 +1292,18 @@ class Recall:
         return self.head_maps[head]
 
     def _set_map(self, head: int, w_x: np.ndarray, w_c: np.ndarray, b: np.ndarray) -> None:
-        # a new list, never written in place: an imagined branch may hold the old one
-        self.head_maps = [
-            (w_x, w_c, b) if h == head else maps for h, maps in enumerate(self.head_maps)
+        self.head_maps = _with_head(self.head_maps, head, (w_x, w_c, b))
+
+    def _zero_maps(self, heads: int, *columns: int) -> list[_Maps]:
+        """``heads`` maps of the moment at zero, each onto ``columns`` outputs (one number
+        without)."""
+        return [
+            (
+                np.zeros((self.map_width, *columns)),
+                np.zeros((len(self.association), *columns)),
+                np.zeros(columns or (1,)),
+            )
+            for _ in range(heads)
         ]
 
     def _empty(self, batch: int) -> None:
@@ -2018,14 +2030,9 @@ class Recall:
             if found is None:  # no row moves (a competing head may have had nothing to read)
                 continue
             if self.address:
-                reports.append(
-                    self._step(moment, rows, d_value, d_next, found=found) if h == 0
-                    else self._step(head_moment, rows, d_value, d_next, head=h, found=found)
-                )
+                reports.append(self._step(head_moment, rows, d_value, d_next, head=h, found=found))
             if positions:
-                rows_moved, rows_refused = self._position_step(
-                    head_moment, rows, d_value, d_next, h, found
-                )
+                rows_moved, rows_refused = self._position_step(rows, h, found)
                 moved_positions += rows_moved
                 refused_positions += rows_refused
         if not reports:
@@ -2046,99 +2053,43 @@ class Recall:
         return report
 
     def _position_step(
-        self,
-        moment: _Moment,
-        rows: np.ndarray,
-        d_value: np.ndarray,
-        d_next: np.ndarray | None,
-        head: int,
-        found: tuple[np.ndarray, ...] | None = None,
+        self, rows: np.ndarray, head: int, found: tuple[np.ndarray, ...]
     ) -> tuple[int, int]:
         """The step of head ``head``'s position maps toward the slots the lesson's movement
-        names (``p*`` of the address lesson): each moving row's terms take the cross-entropy
-        gradient ``g_b = sum_{i in b} (p*_i - p_i)``, and the maps the least-mean-squares step on
-        ``z = [x, c, 1]`` at ``position_rate``, each row's rate bounded by its own energy.
-        ``found`` is the rows' reading (``_row_steps``) when the caller has it. Returns the rows
-        that moved and the rows a refused step left as they were: a step that is not finite is
-        refused and moves none."""
-        if found is None:
-            # the shares a competing head read are its prior, as in ``learn``
-            found = self._row_steps(
-                moment, rows, d_value, d_next, head, self._lesson_reads(moment)[head]
-            )
-        if found is None:
-            return 0, 0
+        names (``p*`` of the address lesson; ``found`` is the reading of the streams ``rows``,
+        ``_row_steps``): each moving row's terms take the cross-entropy gradient ``g_b =
+        sum_{i in b} (p*_i - p_i)``, and the maps the least-mean-squares step on ``z = [x, c,
+        1]`` at ``position_rate``, each row's rate bounded by its own energy; the anchored and
+        relative maps take the same gradient over their buckets, and the slope maps along each
+        slot's age at ``slope``. Returns the rows that moved and the rows a refused step left
+        as they were: a step that is not finite is refused whole and moves none."""
         moving, x, c, _, _, _, target, prior = found
         rate = self.position_rate
         count = self.position_buckets
-        p_x, p_c, p = self.position_maps[head]
-        anchored = None
+        streams = np.asarray(rows)[moving]
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             # a slot its stream does not hold has neither attention nor a target
             gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
-            terms = np.zeros((len(gradient), count))
-            np.add.at(terms, (np.arange(len(gradient))[:, None], self.buckets()[None, :]), gradient)
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
             bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None]
-            step = terms * bound
-            maps = (
-                p_x + rate * x.T @ step / len(x),
-                p_c + rate * c.T @ step / len(x),
-                p + rate * step.mean(axis=0),
-            )
+            step = _per_bucket(gradient, self.buckets()[None, :], count) * bound
+            stepped = {"position_maps": _lms(self.position_maps[head], step, rate, x, c)}
             if self.anchor_maps:  # the same gradient over each slot's place in the episode
-                e_x, e_c, e = self.anchor_maps[head]
-                places = np.zeros((len(gradient), count + 1))
-                buckets = self.anchored_buckets(np.asarray(rows)[moving])
-                np.add.at(places, (np.arange(len(gradient))[:, None], buckets), gradient)
-                places *= bound
-                anchored = (
-                    e_x + rate * x.T @ places / len(x),
-                    e_c + rate * c.T @ places / len(x),
-                    e + rate * places.mean(axis=0),
-                )
-        relative = leaned = None
-        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                step = _per_bucket(gradient, self.anchored_buckets(streams), count + 1) * bound
+                stepped["anchor_maps"] = _lms(self.anchor_maps[head], step, rate, x, c)
             if self.relative_maps:  # the same gradient over each slot's offset from the focus
-                q_x, q_c, q = self.relative_maps[head]
-                offsets = np.zeros((len(gradient), 2 * self.RELATIVE + 2))
-                buckets = self.relative_buckets(np.asarray(rows)[moving])
-                np.add.at(offsets, (np.arange(len(gradient))[:, None], buckets), gradient)
-                offsets *= bound
-                relative = (
-                    q_x + rate * x.T @ offsets / len(x),
-                    q_c + rate * c.T @ offsets / len(x),
-                    q + rate * offsets.mean(axis=0),
-                )
+                width = 2 * self.RELATIVE + 2
+                step = _per_bucket(gradient, self.relative_buckets(streams), width) * bound
+                stepped["relative_maps"] = _lms(self.relative_maps[head], step, rate, x, c)
             if self.slope_maps:  # the same gradient, read along each slot's age
-                s_x, s_c, s = self.slope_maps[head]
                 lean = gradient @ (self.ages() / self.SLOPE)
                 lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
-                leaned = (
-                    s_x + self.slope * x.T @ lean / len(x),
-                    s_c + self.slope * c.T @ lean / len(x),
-                    s + self.slope * lean.mean(keepdims=True),
-                )
+                stepped["slope_maps"] = _lms(self.slope_maps[head], lean, self.slope, x, c)
         # every map of the step or none: a step that is not finite is refused whole
-        checked = [*maps, *(a for found in (anchored, relative, leaned) if found for a in found)]
-        if not all(np.isfinite(a).all() for a in checked):
+        if not all(np.isfinite(a).all() for maps in stepped.values() for a in maps):
             return 0, int(len(x))
-        # new arrays, never written in place: an imagined branch may hold the old ones
-        self.position_maps = [
-            maps if h == head else kept for h, kept in enumerate(self.position_maps)
-        ]
-        if anchored is not None:
-            self.anchor_maps = [
-                anchored if h == head else kept for h, kept in enumerate(self.anchor_maps)
-            ]
-        if relative is not None:
-            self.relative_maps = [
-                relative if h == head else kept for h, kept in enumerate(self.relative_maps)
-            ]
-        if leaned is not None:
-            self.slope_maps = [
-                leaned if h == head else kept for h, kept in enumerate(self.slope_maps)
-            ]
+        for name, maps in stepped.items():
+            setattr(self, name, _with_head(getattr(self, name), head, maps))
         return int(len(x)), 0
 
     def _step(
@@ -2172,23 +2123,14 @@ class Recall:
         if found is None:
             return quiet
         _, x, c, key, error, step, _, _ = found
-        n = len(x)
-        rate = self.address
-        old_x, old_c, old_b = self.head_map(head)
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-            w_x = rate * x.T @ step
-            w_x /= n
-            w_x += old_x
-            w_c = rate * c.T @ step
-            w_c /= n
-            w_c += old_c
-            b = old_b + rate * step.mean(axis=0)
+            w_x, w_c, b = _lms(self.head_map(head), step, self.address, x, c)
             address = key + x @ w_x + c @ w_c + b
         if not all(np.isfinite(a).all() for a in (w_x, w_c, b, address)):
-            return {**quiet, "address_refused": float(n)}
+            return {**quiet, "address_refused": float(len(x))}
         self._set_map(head, w_x, w_c, b)
         return {
-            "address_rows": float(n),
+            "address_rows": float(len(x)),
             "address_error": float(np.abs(error).mean()),
             "address_refused": 0.0,
         }
@@ -2334,13 +2276,12 @@ class Recall:
                 gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
                 rate = self.position_rate
                 bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
-                blocks = [(self.buckets()[None, :].repeat(len(x), axis=0), count)]
+                blocks = [(self.buckets()[None, :], count)]
                 if self.anchor_maps:
                     blocks.append((self.anchored_buckets(index), count + 1))
                 start = self.heads * columns_
                 for buckets, size in blocks:
-                    terms = np.zeros((len(x), size))
-                    np.add.at(terms, (np.arange(len(x))[:, None], buckets), gradient)
+                    terms = _per_bucket(gradient, buckets, size)
                     rows = rate * np.einsum("bi,bk->bik", z, terms * bound)
                     kept = np.isfinite(rows).all(axis=(1, 2))
                     out[index[kept], :, start + h * size:start + (h + 1) * size] = rows[kept]
@@ -2378,11 +2319,10 @@ class Recall:
         split = self.heads * columns_
         with np.errstate(over="ignore", invalid="ignore"):
             moved = self.address_reward * step[:, :split]
-            maps = []
-            for h in range(self.heads):
-                block = moved[:, h * columns_:(h + 1) * columns_]
-                w_x, w_c, b = self.head_map(h)
-                maps.append((w_x + block[:width], w_c + block[width:-1], b + block[-1]))
+            maps = [
+                _added(self.head_map(h), moved[:, h * columns_:(h + 1) * columns_], width)
+                for h in range(self.heads)
+            ]
             stepped: list[np.ndarray] = [moved]
             position_maps = anchor_maps = None
             if positions:
@@ -2395,12 +2335,8 @@ class Recall:
                     part = self.position_reward * step[:, start:start + self.heads * size]
                     stepped.append(part)
                     found_maps.append([
-                        (
-                            m_x + part[:width, h * size:(h + 1) * size],
-                            m_c + part[width:-1, h * size:(h + 1) * size],
-                            m + part[-1, h * size:(h + 1) * size],
-                        )
-                        for h, (m_x, m_c, m) in enumerate(kept_maps)
+                        _added(kept, part[:, h * size:(h + 1) * size], width)
+                        for h, kept in enumerate(kept_maps)
                     ])
                     start += self.heads * size
                 position_maps = found_maps[0]
@@ -2422,11 +2358,8 @@ class Recall:
     def accept(self, proposal: tuple[Any, ...]) -> None:
         """Install a step ``propose`` made: the address maps, and with ``position_reward`` the
         position maps (and the anchored ones)."""
-        if self.heads == 1:
-            self._set_map(0, proposal[0], proposal[1], proposal[2])
-        else:
-            for h in range(self.heads):
-                self._set_map(h, proposal[0][h], proposal[1][h], proposal[2][h])
+        heads = [proposal[:3]] if self.heads == 1 else zip(*proposal[:3], strict=True)
+        self.head_maps = [(w_x, w_c, b) for w_x, w_c, b in heads]
         if len(proposal) > 4 and proposal[4] is not None:
             self.position_maps = list(proposal[4])
         if len(proposal) > 5 and proposal[5] is not None:
