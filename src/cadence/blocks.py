@@ -85,9 +85,9 @@ class Layout:
                 return scatter(self.size, self.edge_index, weights)
             # the entries written front to back: the synapses gathered in their order first
             order, sorted_index = held
-            gathered: np.ndarray = np.asarray(weights, dtype=float)[order]
+            gathered = weights[order]
             if len(order) == self.size:  # a synapse at every entry: gathered, it is the array
-                return gathered
+                return np.asarray(gathered, dtype=float)
             return scatter(self.size, sorted_index, gathered)
         out = np.zeros(self.size)
         if self.parallel_synapses:

@@ -1382,14 +1382,15 @@ def fused_settle(
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
     dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
-    s = np.empty((batch, n))
     if not v.any():  # from rest every neuron publishes the same thing
         row = np.empty(n)
         _activation(np.zeros(n), slope, threshold, rest, leak, row)
+        s = np.empty((batch, n))
         s[:] = row
-    else:  # every row in one call
-        _activation(np.ascontiguousarray(v).reshape(-1), slope, threshold, rest, leak,
-                    s.reshape(-1))
+    else:  # row by row, in the state's own memory order
+        s = np.empty_like(v)
+        for b in range(batch):
+            _activation(v[b], slope, threshold, rest, leak, s[b])
     if masked:
         s *= keep
     if steps == 0:  # no sweep: the activations are published and nothing else is read

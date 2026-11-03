@@ -528,12 +528,24 @@ class BrainState:
         return held
 
 
-@functools.lru_cache(maxsize=64)
 def _check_ladder(neuron_model: NeuronModel, halvings: int, dtype: str) -> None:
     """Refuse a damping ladder whose smallest step's rule is not a valid rule representable at
     the backend's precision. A rule that passes is remembered by value (the check is a function
-    of the rule's fields alone); one that fails is refused at every call."""
+    of the rule's fields alone); one that fails is refused at every call, and so is one whose
+    fields are arrays, which cannot be remembered."""
+    try:
+        hash(neuron_model)
+    except TypeError:
+        _ladder_rule(neuron_model, halvings, dtype)
+    else:
+        _checked_ladder(neuron_model, halvings, dtype)
+
+
+def _ladder_rule(neuron_model: NeuronModel, halvings: int, dtype: str) -> None:
     neuron_model.replace(dt=float(np.ldexp(neuron_model.dt, -halvings)))._validate_precision(dtype)
+
+
+_checked_ladder = functools.lru_cache(maxsize=64)(_ladder_rule)
 
 
 def _copy_state(state: BrainState | None) -> BrainState | None:

@@ -160,3 +160,21 @@ def test_copies_leave_the_kept_products_and_the_solver_copy_and_no_sweeps_keep_t
         assert "_products" not in graph.settle_batch(drive, steps=5).__dict__
     finally:
         brain_module._FUSED = original
+
+
+def test_a_warm_state_keeps_its_memory_order():
+    """A settle from a Fortran-ordered state publishes activations in that order, as 0.93.0's
+    kernels did, with the same values as from the C-ordered state."""
+    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=1)
+    graph = brain.brain
+    drive = brain.stimulus(np.random.default_rng(4).random((3, 10)), memory=False)
+    warm = graph.settle_batch(drive, steps=5)
+    fortran = cd.BrainState(
+        np.asfortranarray(warm.v), np.asfortranarray(warm.activation),
+        np.asfortranarray(warm.adaptation), warm.steps,
+    )
+    after = graph.settle_batch(drive, steps=3, state=fortran)
+    plain = graph.settle_batch(drive, steps=3, state=bare(warm))
+    assert np.array_equal(after.activation, plain.activation)
+    zero = graph.settle_batch(drive, steps=0, state=fortran)
+    assert zero.activation.flags.f_contiguous and not zero.activation.flags.c_contiguous

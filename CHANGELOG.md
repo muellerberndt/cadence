@@ -9,8 +9,8 @@ answer, report, checkpoint and refusal is as it was: a battery of 13,076 recorde
 the kernels, the learner and the composed operations, one of 57,060 over lives with every 0.93
 option (saved, reloaded and continued, retuned, grown and grafted), one of 4,458 over lives of
 several motor slots and one over 2,802 altered checkpoints and every setting at 27 values read
-identical to 0.93.0, and the founder parity reads 0 of 24 lives differing. `src/cadence` holds
-192 fewer lines.
+identical to 0.93.0, and the founder parity reads 0 of 24 lives differing. These changes take
+192 lines out of `src/cadence`.
 
 - The recall memory's maps of the moment (the address map, the position table and the
   anchored, relative and slope maps) are built, read, stepped, saved, loaded and checked
@@ -44,7 +44,8 @@ per moment where 371, its living life 15 where 57, over 1,500 moments with the s
 efficacies and maps to the bit.
 
 - A state the compiled CPU kernels settled or checked keeps the block products of its
-  activations (`copy` and `pickle` leave them out): a residual check of the state, or a settle
+  activations, as a private attribute about four fifths the size of the state's own arrays
+  (`copy` and `pickle` leave them out; `vars(state)` shows them): a residual check of the state, or a settle
   from it, makes only the products of the ranges whose activations differ from the ones they
   were made from. A bounded solve's check makes those of the ranges its chunk's last sweep
   moved and the next chunk's first sweep makes none; a finite lesson's three diagnostic checks
@@ -65,8 +66,8 @@ efficacies and maps to the bit.
   0.83 to 0.93 on 69,632 synapses and 0.98 to 1.08 on 1,064,960, where the pass is bound by its
   square root and divisions.
 - A compiled settle reads the neuron rule once per call, where it computed the rest emission
-  (an exponential) once per row and again for the kernel, and makes every row's starting
-  activations in one call; `settle_batch` and `residual` find the graph's blocks once per call.
+  (an exponential) once per row and again for the kernel; `settle_batch` and `residual` find
+  the graph's blocks once per call.
   The founder's settle takes 1 to 2 microseconds less, a check 0.3; its act 0.98 of its time.
 - The block contrast of a lesson (`block_contrast`) writes each block's float64 products into
   their place in the flat array where it made them apart and copied them (8.5 MB per lesson
@@ -92,8 +93,8 @@ efficacies and maps to the bit.
   stop reads the step's movement. The same states to the bit, in a fraction of the host
   synchronizations: an act on mlx takes 0.32 to 0.36 of its time, a reward step 0.43 to 0.61, a
   lesson 0.69 to 0.75 (0.97 on the 1,024-neuron module).
-- A settle on mlx under a movement tolerance (every lesson's phases, every reward step's
-  eligibility phases) evaluates each step's largest movement with the step's state, one host
+- A settle on mlx under a movement tolerance (a finite lesson's phases, every reward step's
+  eligibility phases; a qualified learner's phases solve without one) evaluates each step's largest movement with the step's state, one host
   synchronization per step where it took two. A lesson takes 0.80 to 0.94 of its time, a reward
   step 0.89 to 0.97; acts settle without the tolerance and are unchanged.
 

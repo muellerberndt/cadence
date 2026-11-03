@@ -411,3 +411,24 @@ def test_a_corrupt_episodic_checkpoint_is_refused(tmp_path, tamper):
     np.savez(corrupt, **data)
     with pytest.raises(ValueError):
         cd.Brain.load(corrupt)
+
+
+def test_a_written_outcome_broadcasts_as_given():
+    """The records take one outcome for every stream (a number) as they take the same outcome
+    per stream, and refuse an outcome of another shape, as 0.93.0 did."""
+    stores = []
+    for value in (np.array([0.5, 0.5]), 0.5, np.float64(0.5), np.array([0.5])):
+        brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, memory_choice=True)
+        records = brain._episodic
+        obs = np.random.default_rng(0).random((2, len(records.place.pre)))
+        keys = np.random.default_rng(1).random((2, len(records.temporal.pre)))
+        records.remember(obs, keys, np.array([1, 3]), value, np.array([True, True]))
+        stores.append(records.place.arrays())
+    for arrays in stores[1:]:
+        assert all(np.array_equal(arrays[k], stores[0][k]) for k in stores[0])
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, memory_choice=True)
+    records = brain._episodic
+    obs = np.random.default_rng(0).random((2, len(records.place.pre)))
+    with pytest.raises(ValueError, match="shape mismatch"):
+        records.remember(obs, None, np.array([1, 3]), np.array([[0.5], [0.5]]),
+                         np.array([True, True]))

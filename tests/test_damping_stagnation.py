@@ -191,3 +191,22 @@ def test_the_ladders_rule_check_is_made_once_per_rule_and_refuses_at_every_call(
         with pytest.raises(ValueError, match="dt must lie"):
             graph.equilibrate(drive, budget=4000, tolerance=1e-12, damping=1200)
     assert brain_module._check_ladder.cache_info().currsize == 2
+
+
+def test_a_ladder_takes_a_rule_whose_fields_are_arrays():
+    """A neuron rule built from 0-d arrays (as ``np.load`` hands scalars back) cannot be a
+    cache key; its damping ladder is checked at every call and solves as the rule of floats
+    does."""
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=2)
+    graph = brain.brain
+    fields = {k: v for k, v in graph.neuron_model.to_dict().items() if k != "adaptation"}
+    arrays = cd.NeuronModel(**{k: np.asarray(v) for k, v in fields.items()})
+    floats = cd.NeuronModel(**fields)
+    drive = brain.stimulus(np.random.default_rng(0).random((2, 8)), memory=False)
+    solved = []
+    for model in (arrays, floats):
+        g = cd.NeuralGraph(graph.connectome, model, efficacy=graph.efficacy, bias=graph.bias,
+                           layout=graph.layout)
+        solved.append(g.equilibrate(drive, budget=96, chunk=16, tolerance=1e-6, damping=2))
+    assert solved[0].steps == solved[1].steps
+    assert np.array_equal(solved[0].state.activation, solved[1].state.activation)

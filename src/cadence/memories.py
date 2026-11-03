@@ -145,7 +145,7 @@ def record_action(
         return
     # The chosen motor neurons in motor order: one per row, or one per slot.
     rows, chosen = _chosen(action, offsets)
-    value = reward.reshape(rows.shape)
+    value = reward[:, None] if action.ndim == 2 else reward
     if isinstance(memory, SynapticMemory):
         target = np.zeros((len(action), len(memory.post)))
         target[rows, chosen] = value
