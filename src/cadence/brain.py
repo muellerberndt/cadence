@@ -3440,14 +3440,18 @@ class _MlxKernel:
                 a = a + (s - a) / adapt.tau_steps
             movement = mx.abs(s - previous)
             activity_change = activity_change + movement.sum(axis=1)
-            if tolerance is not None or (t + 1) % _MLX_GRAPH_STEPS == 0:
-                mx.eval(v, s, a, activity_change)  # a stop reads the step's number
+            peak = None
+            if tolerance is not None:  # the stop reads the step's largest movement, made with it
+                peak = movement.max()
+                mx.eval(v, s, a, activity_change, peak)
+            elif (t + 1) % _MLX_GRAPH_STEPS == 0:
+                mx.eval(v, s, a, activity_change)
             if capture is not None:
                 capture.step(np.array(v), np.array(s), np.array(a))
             if want:
                 traj.append(np.array(s, dtype=np.float64))
             taken = t + 1
-            if tolerance is not None and float(movement.max().item()) < tolerance:
+            if tolerance is not None and peak is not None and float(peak.item()) < tolerance:
                 break
         return (
             np.array(v, dtype=np.float64),
