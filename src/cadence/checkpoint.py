@@ -166,14 +166,15 @@ def load(
     """
     with np.load(Path(path), allow_pickle=False) as data:
         meta: dict[str, Any] = json.loads(str(data["meta"]))
-        first = meta.get("format") == FIRST_FORMAT
-        if meta.get("format") == HOMEOSTASIS_FORMAT:
+        saved = meta.get("format")
+        first = saved == FIRST_FORMAT
+        if saved == HOMEOSTASIS_FORMAT:
             raise ValueError(
                 "this checkpoint was saved by cadence-net 0.81 with the readout's intrinsic "
                 "plasticity (homeostasis_rate above 0), which 0.82.0 removed; load it with 0.81"
             )
-        apical_format = meta.get("format") == APICAL_FORMAT
-        if meta.get("format") == INITIAL_DAMPING_FORMAT or "numerical_policy" in meta:
+        apical_format = saved == APICAL_FORMAT
+        if saved == INITIAL_DAMPING_FORMAT or "numerical_policy" in meta:
             policy = meta.get("numerical_policy")
             value = policy.get("initial_damping") if isinstance(policy, dict) else policy
             release, _, instead = LearnerConfig.RETIRED["initial_damping"]
@@ -181,9 +182,8 @@ def load(
                 f"this checkpoint was saved under {INITIAL_DAMPING_FORMAT} with the learner's "
                 f"initial_damping={value!r}, which was retired in {release}: {instead}"
             )
-        known = (FORMAT, APICAL_FORMAT)
-        if not first and meta.get("format") not in known:
-            raise ValueError(f"not a cadence checkpoint: {meta.get('format')!r}")
+        if not first and saved not in (FORMAT, APICAL_FORMAT):
+            raise ValueError(f"not a cadence checkpoint: {saved!r}")
         compartment_arrays = {"apical_synapses", "apical_groups"} & set(data.files)
         if (
             ("apical" in meta and compartment_arrays != {"apical_synapses", "apical_groups"})
@@ -208,8 +208,7 @@ def load(
             )
         # An ordinary checkpoint keeps the documented complete-config override, including
         # when the saved config contains unsupported old settings.
-        saved_config = config or LearnerConfig(**_known_config(meta["config"]))
-        effective_config = config or saved_config
+        effective_config = config or LearnerConfig(**_known_config(meta["config"]))
         target_backend = backend or meta["backend"]
         target_precision = precision if precision is not None else meta.get("precision")
 
