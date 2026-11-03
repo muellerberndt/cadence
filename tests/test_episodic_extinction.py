@@ -195,3 +195,22 @@ def test_the_direct_payments_share_the_place_records_separator_saved_once(tmp_pa
     for _ in range(4):
         x, r = rng.random((1, 4)), rng.normal(size=1)
         np.testing.assert_array_equal(brain.live(x, reward=r), copy.live(x, reward=r))
+
+
+def test_a_retuned_memory_decay_reaches_the_store_of_direct_payments():
+    brain = episodic(3, 3, seed=4, memory_extinction=0.5, memory_decay=0.9)
+    paid = brain.memories["episodic"].paid
+    assert paid is not None and paid.decay == brain.hippocampus.decay == 0.9
+    brain.retune(memory_decay=0.5)
+    assert paid.decay == brain.hippocampus.decay == 0.5
+
+
+def test_extinction_reads_the_vote_with_a_temporal_context_too():
+    brain = episodic(3, 3, seed=4, memory_extinction=0.5, memory_context=0.5)
+    x, after = one_hot(0, 3), one_hot(1, 3)
+    for _ in range(2):
+        outcome(brain, x, 2, 1.0, after)
+    paid = place(brain, x, 2)
+    assert paid > 0.5
+    outcome(brain, x, 2, 0.0, after)
+    assert place(brain, x, 2) < 0.5 <= paid

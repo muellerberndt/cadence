@@ -132,3 +132,52 @@ def test_save_grow_and_graft_leave_the_living_reservoir_as_it_is(tmp_path):
     np.testing.assert_array_equal(brain.learner.rehearsal_drives, before)
     brain.retune(learning_rehearsal_capacity=4)  # retune trims at once
     assert len(brain.learner.rehearsal_drives) == 4
+
+
+def test_a_rehearsing_brain_learns_on_a_torch_device_as_on_the_cpu():
+    torch = pytest.importorskip("torch")
+    del torch
+    rng = np.random.default_rng(3)
+    rows = [rng.random((8, 12)) for _ in range(3)]
+    labels = [rng.integers(0, 4, size=8) for _ in range(3)]
+    brains = []
+    for device in (None, "cpu"):
+        brain = cd.Brain.compose(12, 4, seed=0, learning_rehearsal=1.0, learning_surprise=True)
+        if device is not None:
+            graph = brain.brain
+            brain.learner.brain = cd.NeuralGraph(
+                graph.connectome, graph.neuron_model, efficacy=graph.efficacy, bias=graph.bias,
+                log_gain=graph.log_gain, backend="torch", device=device, precision="float64",
+            )
+        for x, y in zip(rows, labels, strict=True):
+            brain.lesson(x, y)
+        brains.append(brain)
+    cpu, moved = brains
+    assert len(cpu.learner.rehearsal_drives) == 24 and cpu.learner.rehearsal_draws > 0
+    np.testing.assert_allclose(np.asarray(moved.learner.brain.efficacy, dtype=float),
+                               np.asarray(cpu.learner.brain.efficacy, dtype=float), rtol=0, atol=1e-9)
+    assert moved.learner.rehearsal_draws == cpu.learner.rehearsal_draws
+
+
+def test_a_refused_rehearsal_is_reported_and_the_lesson_stands():
+    rng = np.random.default_rng(4)
+    brain = cd.Brain.compose(12, 4, seed=0, learning_rehearsal=1.0)
+    brain.lesson(rng.random((8, 12)), rng.integers(0, 4, size=8))  # fills the reservoir
+    learner = brain.learner
+    stored = np.array(learner.rehearsal_drives)
+    step = learner.step
+    strict = cd.Brain.compose(12, 4, seed=0, learning_qualified=True, learning_nudged_steps=1,
+                              learning_tolerance=1e-12)
+    with pytest.raises(cd.LearningPhaseError) as caught:  # a refusal as the learner raises it
+        strict.lesson(rng.random((8, 12)), rng.integers(0, 4, size=8))
+
+    def refusing(drive, labels, *args, **kwargs):
+        if any((np.asarray(drive)[0] == row).all() for row in stored):  # a rehearsed row
+            raise caught.value
+        return step(drive, labels, *args, **kwargs)
+
+    learner.step = refusing
+    before = np.asarray(brain.brain.efficacy).copy()
+    brain.lesson(rng.random((8, 12)), rng.integers(0, 4, size=8))
+    assert brain.last_learning["rehearsal_refused"] == 1.0
+    assert not np.array_equal(np.asarray(brain.brain.efficacy), before)  # the lesson itself

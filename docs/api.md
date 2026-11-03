@@ -164,7 +164,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `decision_id` | read-only: the `arousal.age` at which `live` issued the awaited action, or `None`; saved and restored |
 | `last_arousal` | immutable snapshot of the latest `live` moment; `None` after construction, reset or load ([fields](start.md#routine-and-repair-live)) |
 | `last_settlement` | immutable report of the latest free-answer solve, refused ones included: `operation`, `scope`, `qualified`, `row_qualified`, `residual`, `max_residual`, `steps`, `budget`, `tolerance`, `residual_checks`, `damping_halvings`, `stagnation_checks`, `rescue_steps` when a solve that did not qualify within `free_steps` continued once on the damping ladder before it qualified or was refused (`steps` and the checks then sum both solves), and with a learned code `code_steps`, `code_residual`, `code_halvings` and, for a brain with a place store, `context_free_steps` ([inspect the work](start.md#inspect-the-work-of-answering)) |
-| `last_learning` | the latest transition's learning report, teaching under `demonstration_*` keys |
+| `last_learning` | the latest transition's learning report, teaching under `demonstration_*` keys and, with `learning_rehearsal`, the replayed lesson's report under `rehearsal_*` keys (`rehearsal_rows`; `rehearsal_refused` when its phase refused) |
 | `rng` | the brain's `numpy.random.Generator` |
 
 ### Checkpoint format
@@ -173,15 +173,15 @@ their shape. Keep row identities fixed until `reset()`.
 
 | Members | What they hold |
 | --- | --- |
-| `meta` and the unprefixed arrays | the learner's checkpoint ([checkpoints](#checkpoints-cadencecheckpoint)) |
+| `meta` and the unprefixed arrays | the learner's checkpoint ([checkpoints](#checkpoints-cadencecheckpoint)), with the rehearsal reservoir (`rehearsal_drives`, `rehearsal_labels`) whenever it holds rows |
 | `brain` | the metadata: the actor's config, both random states, the free phase and a pending action, the arousal and the action `live` issued with its forecast, the state a waiting stream sensed, a `code=units` code or a learned code, the composition, and under `memories` the settings of each memory the brain holds |
 | `actor/`, `free/`, `pending/`, `moment/`, `prepared`, `lived/`, `awaiting/` | the critic and eligibility, the free phase, a pending action's phases and decision, the action `live` issued, the sensed state |
 | `code/`, `learned_code/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds` |
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
 | `memories/history/` | the heard history's `trace` |
-| `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past` |
+| `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative, slope and chain maps of the options that have them |
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator |
-| `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, and the replay `path/` |
+| `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
 `Brain.load` reads it and, through 0.85.x, the earlier formats: `cadence-generic/1` to `/9`,
 which 0.84.3 reads, and `/10`, which development builds of the learned code wrote. A setting of
@@ -269,7 +269,8 @@ code). Per stream it holds
 `context` (the temporal context after the last decision), `decision` (that decision's key)
 and `paths` (the recent decisions, one per situation left). `vote(code, key)` is the mean of
 the place read and the context read that joins the motor readout; `key(code)` is the key of a
-decision taken now; `outcome(...)` records a known outcome and replays a reward along the
+decision taken now, in the context `held_context(code)` gives (the hold applied), and
+`issue(key, action, code)` the bookkeeping of a decision the stream or an imagined branch takes; `outcome(...)` records a known outcome and replays a reward along the
 path; `remember(...)` writes both kinds of record; `reset(batch, rows)` begins the next
 attempt of `rows` with no context and no path. Its `stimulus` returns the drive unchanged:
 the vote joins after the settle.
@@ -329,9 +330,10 @@ settings of 0.84.3 that left in this version, each with its reading, are
 | `learn(graph, learned) -> dict` | The address lesson after a teaching step; returns `address_rows`, `address_error`, `address_refused`, and with a position term `position_rows` and `position_refused` (zero when nothing moved). A nonfinite step is refused per row (per head for the position maps). With several heads each head steps its own maps: rows and refusals are summed over the heads, the error averaged over the heads that moved. The position term learns whatever `address` is. |
 | `contrast_rows(graph, plus, minus)`, `propose(step)`, `accept(proposal)` | Reward training of the address map at `address_reward > 0` and of the position maps (and the anchored ones) at `position_reward > 0`; `ActorCritic` calls them. `contrast_rows` is `None` when neither trains the read; `reward_columns` is its width. |
 | `end(batch, rows=None)` | Ends episodes and keeps the slots, as `Brain.reset(keep=("slots",))` does; the latest slot learns no successor. With `boundary` an end of every stream opens one boundary slot. |
-| `weights(address, position=None)`, `position_term(head, event, cortex)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
+| `weights(address, position=None)`, `position_term(head, event, cortex, rows=None)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
 | `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `imagined()` | Stream bookkeeping; `imagined()` is a copy that reads the live slots and writes none. |
 | `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.null_logit(null, temperature)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.position_names(head)` | The always-described genes, the twelve options saved only where they differ, validation of one gene, the null slot's logit, the refusal of a removed setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's position maps. |
+| `told`, `focus`, `anchor_maps`, `relative_maps`, `slope_maps`, `chain_maps`, `anchored_buckets(rows=None)`, `relative_buckets(rows=None)`, `when_regions(heads)`, `when_features`, `when_width`, `RELATIVE`, `SLOPE` | The 0.93 options' state: each stream's moments told in its episode and the age of the slot its previous read attended most (`-1` before a read); one `(E_x, E_c, e)`, `(Q_x, Q_c, q)`, `(S_x, S_c, s)` map per head for the anchor, the relative read and the slope, and one `W_r` per head after the first for the chain (empty lists without the option); each slot's anchored and relative bucket per stream; the when regions' names, the features a read delivers per slot (two of its age, with the anchor two more of its place) and their count; the relative offsets kept apart (8) and the slope's age scale (8). |
 | `attended_heads`, `head_map(head)`, `position_map(head)`, `position_maps`, `position_buckets` | Every head's attention of the latest read (head 0's is `attended`), one head's address map `(w_x, w_c, b)` (head 0's map is `w_x`, `w_c`, `b`), one head's position maps `(P_x, P_c, p)` (head 0's are `position_x`, `position_c`, `position_b`; refused at `position=0`), every head's (empty at `position=0`), and their number of age buckets. |
 | `RUNTIME`, `CONSTRUCTION`, `OPTIONS`, `CONSTRUCTION_OPTIONS`, `RETIRED`, `FORMAT`, `STEPS` | Class tuples: retunable genes, construction genes, the options and those fixed at construction, the settings this version removed, the keys the 0.84.3 format wrote for three of them with the one value at which such a file loads, and the allowed values of `address_step`. |
 | `keys`, `values`, `nexts`, `held`, `previous`, `ended`, `past`, `w_x`, `w_c`, `b`, `heads`, `head_maps`, `address_width`, `neurons`, `streams`, `slots`, `attended`, `to_dict()` | State arrays and sizes; `head_maps` holds the address maps of heads 1 and up. |
@@ -429,7 +431,9 @@ when `normalize > 0` with a rate above 0.05
 ([qualified budgets](settling.md#qualified-teaching-budgets)).
 `rehearsal` above zero teaches, after each lesson, that many times the lesson's rows again
 (at least one row), drawn from a reservoir of the lessons' rows (`Learner.rehearse`; `rehearsal_drives`,
-`rehearsal_labels`, `rehearsal_seen`); `rehearsal_capacity` rows are kept, a uniform sample of
+`rehearsal_labels`, `rehearsal_seen`, `rehearsal_draws`, the counter the draws are keyed on;
+`trimmed_reservoir()` is the reservoir cut to the capacity, `trim_reservoir()` installs that
+cut); `rehearsal_capacity` rows are kept, a uniform sample of
 every row ([teach several types in sequence](teach.md#teach-several-types-in-sequence-rehearsal)).
 `initial_damping` is an integer in `0..damping`; nonzero requires qualified learning
 on CPU float64 and affects only its qualified phases. It skips initial integration

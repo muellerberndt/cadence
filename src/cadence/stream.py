@@ -1069,6 +1069,11 @@ class Recall:
             raise ValueError("chain is not combined with address_reward")
         if self.position_reward and not self.position:
             raise ValueError("position_reward trains the position maps: it needs position")
+        if self.position_reward and not self.position_rate:
+            raise ValueError(
+                "position_reward steps the position maps by a lesson's step: it needs "
+                "position_rate above 0"
+            )
         # with ``chain`` the read of the head before (recall, then next) and every further head's
         # map ``W_r`` from it into the address
         self.chain_width = self.value_width * (2 if self.next else 1)

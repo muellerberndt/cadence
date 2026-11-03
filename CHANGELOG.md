@@ -85,8 +85,9 @@ checkpoints keep the maps and the per-stream counts.
   founder answers at chance (0.46 to 0.50 of its last 256 answers), `recall_position_reward=4`
   answers 0.73 to 1.00, three of five development founders every query (greedy 0.75 to 1.00,
   sampled 0.73 to 0.88); at 16 four answer every query and one stays at chance. #236's 0.90 is
-  reached by some founders, not by every one. It needs the position term, and a pending outcome
-  holds its settings as it holds the address map's.
+  reached by some founders, not by every one. It needs the position term and a position rate
+  above 0 (a frozen table would leave reward nothing to step), and a pending outcome holds its
+  settings as it holds the address map's.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
   that many times the lesson's rows (at least one) are taught again, drawn from a reservoir of
   the lessons' rows kept over the life, a uniform sample (`rehearsal_capacity`, 512). Types the
@@ -122,7 +123,9 @@ checkpoints keep the maps and the per-stream counts.
   rescue (`rescue_steps`) and sums both solves' sweeps and checks. Nothing changes where the
   first solve qualifies, after a solve that is not finite, or at a budget of no sweeps. Trained
   recall brains refused acts whose settle needed more full-step sweeps than the finite learner's
-  budget left them; the life that refused at lesson 343 now runs to its end.
+  budget left them; the life that refused at lesson 343 now runs to its end. The reward
+  chambers' founder lives are unchanged: samples of the context-key, two-cue and bandit lives
+  and a competing-ring life repeat byte for byte on this release, no answer in them rescued.
 - `learning_surprise_share` (opt-in; `LearnerConfig.surprise_share`, founder `False`): with
   surprise lessons, a lesson's step is scaled by the share of its rows it taught, so one wrong
   row of sixteen moves the net a sixteenth as far as sixteen. At width 1,024 on induction,

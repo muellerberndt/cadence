@@ -47,3 +47,12 @@ def test_a_life_with_position_reward_saves_and_continues_exactly(tmp_path):
         np.testing.assert_array_equal(brain.live(x, reward=reward), copy.live(x, reward=reward))
     for kept, saved in zip(copy.recall.position_maps[0], brain.recall.position_maps[0], strict=True):
         np.testing.assert_allclose(kept, saved, rtol=0, atol=1e-12)
+
+
+def test_position_reward_needs_a_position_rate_above_zero():
+    """With the table frozen a lesson's step is zero, so reward could train nothing: refused."""
+    import pytest
+
+    with pytest.raises(ValueError, match="position_rate above 0"):
+        cd.Brain.compose(6, 4, seed=0, recall=True, recall_position_reward=1.0,
+                         recall_position_rate=0.0)

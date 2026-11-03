@@ -2958,6 +2958,9 @@ class Brain:
             memory_changes.append((component, field, value))
             if component is self.hippocampus and self.context_memory is not None:
                 memory_changes.append((self.context_memory, field, value))
+            paid = None if self._episodic is None else self._episodic.paid
+            if component is self.hippocampus and field == "decay" and paid is not None:
+                memory_changes.append((paid, field, value))  # the direct payments decay alike
         for name in [name for name in options if name.startswith("recall_")]:
             setting = name[len("recall_"):]
             if setting in Recall.RETIRED:
@@ -2997,6 +3000,13 @@ class Brain:
                 and not self.recall.position_maps
             ):
                 raise ValueError("position_reward trains the position maps: it needs position")
+            if retuned.get("position_reward", self.recall.position_reward) and not retuned.get(
+                "position_rate", self.recall.position_rate
+            ):
+                raise ValueError(
+                    "position_reward steps the position maps by a lesson's step: it needs "
+                    "position_rate above 0"
+                )
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, {**pointed, **learning_genes}, "learning")
@@ -4426,7 +4436,7 @@ class Brain:
                     key = None if episodic is None else episodic.key(code)
                     choice = self._greedy(phase.state, place, key)
                     if episodic is not None and key is not None:
-                        episodic.move(key, choice)
+                        episodic.issue(key, choice, code)  # keyed as the stream keys its own
                     command = self._command(choice)
                 if echo is not None:
                     assert command is not None

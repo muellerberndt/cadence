@@ -60,3 +60,18 @@ def test_a_chained_brain_saves_and_continues_exactly(tmp_path):
         x, label = rng.random((2, 6)), rng.integers(0, 4, size=2)
         np.testing.assert_array_equal(brain.step(x, teacher=label), copy.step(x, teacher=label))
     np.testing.assert_array_equal(copy.recall.chain_maps[0], brain.recall.chain_maps[0])
+
+
+def test_the_chained_read_enters_the_second_heads_address():
+    rng = np.random.default_rng(0)
+    moments = [rng.random((2, 6)) for _ in range(8)]
+    plain, chain = chained(recall_chain=True), chained(recall_chain=True)
+    for x in moments[:-1]:
+        plain.act(x)
+        chain.act(x)
+    chain.recall.chain_maps = [np.full_like(chain.recall.chain_maps[0], 0.5)]
+    plain.act(moments[-1])
+    chain.act(moments[-1])
+    first, second = plain.recall.attended_heads, chain.recall.attended_heads
+    np.testing.assert_allclose(first[0], second[0])  # head 0 reads as before
+    assert not np.allclose(first[1], second[1])  # head 1's address took what head 0 read

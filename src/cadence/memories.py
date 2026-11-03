@@ -439,9 +439,25 @@ class EpisodicRecords:
         return decision if decision is not None and len(decision) == batch else None
 
     def sense(self, code: np.ndarray) -> None:
-        """What was sensed without a decision enters the temporal context."""
+        """What was sensed without a decision enters the temporal context, and ends the run of
+        decisions on one unchanged observation the hold keys out."""
         if self.temporal is not None:
             self.context = self.keyed(code, self.context)
+            self.seen = None
+
+    def issue(self, key: np.ndarray, action: np.ndarray, code: np.ndarray) -> None:
+        """A decision of ``key`` taken on the observation code ``code``: with the hold, the
+        context it was keyed in and the code are kept for the next decision; then the
+        temporal context moves on (``move``). The stream's decisions and an imagined
+        branch's share this bookkeeping."""
+        if self.hold is not None:
+            context = self.held_context(code)
+            self.before = (
+                np.zeros_like(key) if context is None or len(context) != len(key)
+                else context.copy()
+            )
+            self.seen = np.array(code, dtype=float, copy=True)
+        self.move(key, action)
 
     def move(self, key: np.ndarray, action: np.ndarray) -> None:
         """A decision of ``key``: what the stream did joins its temporal context after what it
@@ -466,16 +482,7 @@ class EpisodicRecords:
         decision joins the stream's path with ``guess``, how far it was the brain's best
         guess."""
         if key is not None:
-            if self.hold is not None:
-                # the context this decision was keyed in, and the code it was taken on
-                observed = place if code is None else code
-                context = self.held_context(observed)
-                self.before = (
-                    np.zeros_like(key) if context is None or len(context) != len(key)
-                    else context.copy()
-                )
-                self.seen = np.array(observed, dtype=float, copy=True)
-            self.move(key, action)
+            self.issue(key, action, place if code is None else code)
         if self.steps:
             assert guess is not None
             self.extend(place, key, action, guess)

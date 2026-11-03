@@ -113,3 +113,62 @@ def test_grow_keeps_the_hold():
     brain.act(one_hot(0, 3))
     grown = brain.grow(efference_amplitude=1.0)
     assert grown.memory_context_hold == "unchanged"
+
+
+def test_an_imagined_branch_keys_its_decisions_as_the_stream_keys_its_own():
+    """Two decisions on one observation: the second is keyed in the context before the first
+    (the hold), on the stream and on a branch alike."""
+    from copy import deepcopy
+
+    x, y = one_hot(0, 3), one_hot(1, 3)
+    for hold in (None, "unchanged"):
+        brain = episodic(3, 3, seed=1, memory_context=0.5, memory_context_hold=hold)
+        brain.act(y, greedy=True)
+        records, code = brain.memories["episodic"], brain.observation_code(x)
+        stream = deepcopy(brain)
+        stream.act(x, greedy=True)
+        branch = records.branch()
+        first = branch.key(code)
+        branch.issue(first, np.asarray(brain.act(x, greedy=True)), code)
+        np.testing.assert_array_equal(branch.key(code), stream.memories["episodic"].key(code))
+
+
+def test_imagine_issues_its_decisions_through_the_shared_bookkeeping(monkeypatch):
+    from cadence.memories import EpisodicRecords
+
+    issued = []
+    original = EpisodicRecords.issue
+
+    def spy(self, key, action, code):
+        issued.append(np.array(code))
+        return original(self, key, action, code)
+
+    monkeypatch.setattr(EpisodicRecords, "issue", spy)
+    brain = episodic(3, 3, seed=1, memory_context=0.5, memory_context_hold="unchanged",
+                     efference_amplitude=1.0)  # with an efference copy the branch issues acts
+    x = one_hot(0, 3)
+    brain.act(one_hot(1, 3), greedy=True)
+    issued.clear()
+    brain.imagine([x, x])
+    assert len(issued) == 2
+    for code in issued:
+        np.testing.assert_array_equal(code, brain.observation_code(x))
+
+
+def test_a_waited_moment_ends_the_run_the_hold_keys_out():
+    """live on X, then Y sensed without a decision: the next decision on X is keyed in the
+    context after Y, as without the hold; the hold removes the previous decision, not what
+    was sensed after it."""
+    x, y = one_hot(0, 3), one_hot(1, 3)
+    keys = {}
+    for hold in (None, "unchanged"):
+        brain = episodic(3, 2, seed=0, arousal=True, memory_context=0.5,
+                         memory_context_hold=hold)
+        brain.live(x)
+        brain.wait(y)
+        keys[hold] = key(brain, x)
+    np.testing.assert_array_equal(keys["unchanged"], keys[None])
+    held = episodic(3, 2, seed=0, arousal=True, memory_context=0.5,
+                    memory_context_hold="unchanged")
+    held.live(x)
+    assert not np.array_equal(key(held, x), keys[None])  # without the wait the hold applies

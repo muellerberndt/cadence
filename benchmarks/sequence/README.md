@@ -254,6 +254,9 @@ accuracy every 100 lessons:
 No act was refused in these lives. The life that refused an act at lesson 343 before the settle
 rescue existed (induction at 64 neurons on the composed steps, founder 0) runs its 1,500
 lessons: two answers are rescued, none is refused, and it reads 0.64, 0.82, 0.93 and 0.97
-held-out at 250, 500, 1,000 and 1,500 lessons. Lookup and associative recall at 1,024 neurons,
-founder and `relative` arms, repeat their 0.92.0 lives exactly (checked at 250 lessons), so the
-sweep's readings in [docs/tune.md](../../docs/tune.md#wide-brains) stand on 0.93.
+held-out at 250, 500, 1,000 and 1,500 lessons. The 0.92.0 sweep that gave
+[docs/tune.md](../../docs/tune.md#wide-brains) its numbers (lookup 0.77 at 64 and 0.92 at 1,024
+neurons on the founder steps, 0.82 to 0.87 with the fan-in steps; associative recall 0.73 to 0.84
+at 1,024 on the founder steps, 1.00 with the fan-in steps; two founders) is `--task lookup` and
+`--task associative --memory` with `--arms founder relative --widths 64 128 256 512 1024`; its
+lives at 1,024 neurons repeat on 0.93 exactly (checked at 250 lessons).

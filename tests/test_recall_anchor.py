@@ -69,3 +69,21 @@ def test_lessons_step_the_anchored_maps_and_a_checkpoint_continues(tmp_path):
         np.testing.assert_array_equal(brain.step(x, teacher=label), copy.step(x, teacher=label))
     for kept, saved in zip(copy.recall.anchor_maps[0], brain.recall.anchor_maps[0], strict=True):
         np.testing.assert_array_equal(kept, saved)
+
+
+def test_the_anchored_term_enters_the_position_term():
+    brain = anchored(recall_anchor=True, recall_recency=0.0)
+    recall = brain.recall
+    rng = np.random.default_rng(0)
+    for _ in range(6):
+        brain.act(rng.random((2, 6)))
+    e_x, e_c, e = recall.anchor_maps[0]
+    bias = np.arange(1.0, len(e) + 1.0)  # one value per anchored bucket
+    recall.anchor_maps = [(e_x, e_c, bias)]
+    p_x, p_c, p = recall.position_maps[0]
+    event, cortex = rng.random((2, 6)), np.zeros((2, p_c.shape[0]))
+    table = (event @ p_x + p)[:, recall.buckets()]
+    anchored_term = recall.position_term(0, event, cortex) - table
+    expected = np.take_along_axis(np.repeat(bias[None], 2, axis=0), recall.anchored_buckets(), axis=1)
+    np.testing.assert_allclose(anchored_term, expected)
+    assert len(set(expected[0].tolist())) > 1  # the slots sit at different places of the episode

@@ -168,8 +168,9 @@ assert cued.memory_choice and cued.basal_ganglia.config.eta == 0.1
 
 The context records key on the stream's temporal context, so the two cues' records differ at
 the shared answer, and the slower step keeps the readout off a rail while the actions the
-records chose teach it. With the suffix right after the cue it answers 1.00 on 6 of 6
-development founders and on 11 of 12 fresh ones. One event between the cue and the suffix gives
+records chose teach it. With the suffix right after the cue it reaches the gate (held-out .90)
+on 6 of 6 development founders and on 11 of 12 fresh ones (mean held-out .96, every passing
+founder at 1.00). One event between the cue and the suffix gives
 4 of 6 and two give 0 of 6: the context keeps half of the cue per moment and the readout
 latches on one action. `memory_extinction` and `memory_context_hold` leave these readings as
 they are. Added to the other reward chambers, the same settings acquire the key-door chamber on

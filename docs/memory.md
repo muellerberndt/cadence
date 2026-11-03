@@ -750,7 +750,7 @@ All of these are construction settings: pass them at construction; `retune` refu
 | `memory_demonstrations` | `1.0` | Raise when shown actions should outweigh the brain's own trials; lower for an unreliable teacher; 0 records none |
 | `memory_expansion` | `1024` (0 with a fixed code) | Raise when many situations must be told apart; 0 uses the key unseparated. With `code=units` it is set to 0 and a nonzero value is refused |
 | `memory_winners` | `24` | How many separation cells stay active per key; at most `memory_expansion` |
-| `memory_context_hold` | `None` | `"unchanged"` keys a decision taken on the observation of the stream's previous decision as if that decision had not been taken, whatever its outcome (the replay path drops such a decision only when its outcome was nothing); use it where a miss leaves the observation as it was and the stages look alike. It takes the wrong decision out of a decision that changes nothing visible as well, so it hides a right action that leaves the observation unchanged. `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back out of the context; it needs a world that charges for misses. Will Glynn measured both on his Stone Age chains ([#202](https://github.com/muellerberndt/cadence/issues/202); `benchmarks/context_key`). On those chains, 48 fresh seeds per signal: `"unchanged"` passes the ambiguous chain cleanly in 35 of 96 lives against 6 (sampled success .77 against .50) and keeps the fully observed chain (40 against 43 of 48, sampled .92 against .94); on the chain whose right action changes nothing visible it costs (0 against 9 clean passes, sampled .32 against .44). `"punished"` with misses costing .05 passes the invisible-action chain in 20 of 48 lives against 13 for the cost alone |
+| `memory_context_hold` | `None` | `"unchanged"` keys a decision taken on the observation of the stream's previous decision as if that decision had not been taken, whatever its outcome (the replay path drops such a decision only when its outcome was nothing); use it where a miss leaves the observation as it was and the stages look alike. It takes the wrong decision out of a decision that changes nothing visible as well, so it hides a right action that leaves the observation unchanged. `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back out of the context; it needs a world that charges for misses. Will Glynn measured both on his Stone Age chains ([#202](https://github.com/muellerberndt/cadence/issues/202); `benchmarks/context_key`). On those chains, 48 fresh seeds per signal: `"unchanged"` passes the ambiguous chain cleanly in 35 of 96 lives against 6 (sampled success .77 against .50) and keeps the fully observed chain (40 against 43 of 48, sampled .92 against .94); on the chain whose right action changes nothing visible it costs (0 against 9 clean passes, sampled .32 against .44). `"punished"` with misses costing .05 passes the invisible-action chain in 20 of 48 lives against 13 for the cost alone. A moment sensed without a decision (`wait`) ends the run of decisions the hold keys out, and an imagined branch keys its decisions as the stream does |
 | `memory_extinction` | `0` (off) | Set it (0.5) when a paid action can stop paying without a punishment, a reversal whose failures pay 0. A zero outcome then writes a learned zero for the chosen action where the records' vote for it and its direct payment in this place both reach the setting. Only a known outcome with a reward is a direct payment: replayed and demonstrated credit is never extinguished. The rule is Sean McClane's ([#210](https://github.com/muellerberndt/cadence/issues/210)) |
 | `memory_fan_in` | `0` (dense) | Above 0 each separation cell reads that many random key values; use 32 for keys wider than 256 values. Needs `memory_expansion` and at most the key width; refused with `code=units` |
 
@@ -1088,9 +1088,8 @@ buckets; three development seeds, 1,500 lessons) the option answers 0.81 to 0.91
 moments (A, then B), reads 0.59 to 0.80 with it, against 0.59 to 0.72 without it: the
 comparison needs what the first read reported carried to the second moment, and the working
 trace does not carry it that far. A lesson that also named slots by when they happened taught the read to find
-slots whose age matched the answer instead of the item asked about (the read's median attention
-on X fell to 0.08 to 0.10, the answers to 0.62 to 0.66), so the lesson does not read the
-movement back through the when regions.
+slots whose age matched the answer instead of the item asked about, so the lesson does not read the movement back through the
+when regions.
 
 ### Episodes, keys and windows
 
@@ -1151,7 +1150,7 @@ map.
 | `recall_address_step` | `"lms"` | retune | `"toward"`: the named keys less the attended mixture |
 | `recall_null` | `None` | retune | A number adds a null slot; a non-finite logit is refused |
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
-| `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)) |
+| `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
 | `recall_chain` | `False` | construction | Each head after the first also addresses what the head before it read ([chained heads](#several-heads-opt-in)); needs `recall_heads` of 2 or more |

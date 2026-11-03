@@ -72,3 +72,14 @@ def test_the_position_rate_retunes_freely_where_reward_does_not_train_the_positi
     assert brain.basal_ganglia._pending_memory is not None
     brain.retune(recall_position_rate=0.05)
     assert brain.recall.position_rate == 0.05
+
+
+def test_retune_refuses_a_position_reward_at_a_frozen_table():
+    brain = cd.Brain.compose(6, 4, seed=0, recall=True, recall_position_reward=1.0)
+    with pytest.raises(ValueError, match="position_rate above 0"):
+        brain.retune(recall_position_rate=0.0)
+    frozen = cd.Brain.compose(6, 4, seed=0, recall=True, recall_position_rate=0.0)
+    with pytest.raises(ValueError, match="position_rate above 0"):
+        frozen.retune(recall_position_reward=1.0)
+    frozen.retune(recall_position_rate=0.05, recall_position_reward=1.0)  # both at once
+    assert frozen.recall.position_reward == 1.0 and frozen.recall.position_rate == 0.05
