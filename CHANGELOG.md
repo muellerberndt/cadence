@@ -36,9 +36,10 @@ brains: `Brain.compose(8, 4)` with the founder's modules, a 256-neuron or a 1,02
 module, batch 2); each item's were read on a machine shared with other work, the totals below
 on a quiet one.
 
-Together, against 0.93.0: on the 1,024-neuron module an act takes 0.73 of its time, a lesson
-0.72, a reward step 0.90; with a 256-neuron module 0.95, 0.90 and 0.91; a qualified learner's
-0.92, 0.93 and 0.95; the founder, a recall brain and an apical brain 0.99 to 1.00. On the
+Together, against 0.93.0 (four runs): on the 1,024-neuron module an act takes 0.70 to 0.73 of
+its time, a lesson 0.72 to 0.82, a reward step 0.90; with a 256-neuron module 0.94 to 0.95, 0.90
+to 0.92 and 0.91 to 0.95; a qualified learner's 0.92, 0.93 to 0.94 and 0.95 to 0.96; the
+founder, a recall brain and an apical brain take the time they took (0.99 to 1.01). On the
 mlx backend the 0.93.0 soak's taught life (lessons with rehearsal on four streams) takes 59 ms
 per moment where 371, its living life 15 where 57, over 1,500 moments with the same final
 efficacies and maps to the bit.
@@ -68,7 +69,6 @@ efficacies and maps to the bit.
 - A compiled settle reads the neuron rule once per call, where it computed the rest emission
   (an exponential) once per row and again for the kernel; `settle_batch` and `residual` find
   the graph's blocks once per call.
-  The founder's settle takes 1 to 2 microseconds less, a check 0.3; its act 0.98 of its time.
 - The block contrast of a lesson (`block_contrast`) writes each block's float64 products into
   their place in the flat array where it made them apart and copied them (8.5 MB per lesson
   on the 1,024-neuron module); another precision's products are made apart as before. The
