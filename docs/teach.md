@@ -117,8 +117,9 @@ the answers become right, and a few wrong rows can undo what the others hold. Wi
 `surprise_share` the step is scaled by the share of the lesson's rows it taught: three wrong rows
 of eight move the net three eighths as far as eight would. The contrast and the optimizer's
 running moments still read the taught rows alone. On induction over a vocabulary of 128 at
-width 1,024 (the recall memory, the normalized point, each synapse's step scaled to its neuron's
-fan-in at width 64 through `Learner.synapse_rate`, three seeds, 1,500 lessons) the held-out
+width 1,024 in the [width sweep](../benchmarks/sequence/README.md#the-width-sweep-widthpy) (the
+recall memory, the normalized point, each synapse's step scaled to its neuron's fan-in at width
+64 through `Learner.synapse_rate`, three seeds, 1,500 lessons) the held-out
 answers end at 0.95 to 0.99 with it and stay at or above 0.85 at every reading from 500 lessons
 on. Without it the readings swing: one seed reads 0.01 after 1,000 lessons, 0.18 after 1,300 and
 0.98 at the end. Teaching every row holds 0.92 to 0.99 from 800 lessons on at about a third
@@ -155,11 +156,11 @@ rehearsal (the lower control) at matched lesson counts.
 
 The rehearsal teaches the cortex again; it does not replay what a recall memory's maps
 learned. A stored row holds the drive as the read gave it then, so a type that rests on where
-the read looks is not protected, and the stale reads can cost it: on look-back's three cues
-taught in sequence (first, then last, then second; a recall brain with the anchor, three
-development seeds, 600 lessons each) the earlier cues keep 0.62 (first) and 0.89 (last) of
-their interleaved accuracy with rehearsal, 0.77 and 0.83 without; taught interleaved every
-cue reads 1.00.
+the read looks is not protected, and the stale reads cost it: on look-back's three cues taught
+in sequence (the [sequence battery](../benchmarks/sequence/README.md): first, then last, then
+second; a recall brain with the anchor, three development seeds, 600 lessons each) the earlier
+cues read 0.29 to 0.44 (first) and 0.43 to 0.59 (last) with rehearsal, 0.32 to 0.74 and 0.65 to
+0.95 without; taught interleaved every cue reads 1.00.
 
 ## Rates under normalization
 

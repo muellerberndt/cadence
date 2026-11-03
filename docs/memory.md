@@ -447,10 +447,11 @@ second head can learn to look for `b`. A newborn chain reads as the heads withou
 address lesson steps the maps, and reward does not (`recall_address_reward` is refused with it).
 A "think" moment remains the way to chain reads across moments: the second read's address then
 comes from the cortex that holds the first ([#234](https://github.com/muellerberndt/cadence/issues/234)).
-The chain does not beat its control: on two hops asked in one moment (three development seeds,
-1,500 lessons) it answers 0.45, as the two heads without it do, and 0.51 against 0.49 with the
-copy pathway as the tokens' identity over 3,000 lessons; with one think moment the same brains
-answer 0.99.
+The chain does not answer two hops in one moment (the
+[sequence battery](../benchmarks/sequence/README.md), three development seeds, 1,500 lessons): it
+answers 0.44 to 0.46, as the two heads without it do (0.44 to 0.47). With the copy pathway as
+the tokens' identity over 3,000 lessons it reads 0.51 to 0.53, 0.03 above the heads without it
+on each seed (0.47 to 0.50). With one think moment the same brains answer 0.98 to 0.99.
 
 Use several heads when one answer needs several witnessed facts at once, and compare them with
 one head and with the facts asked one per moment (one head reads one fact per moment through
@@ -829,7 +830,8 @@ for every memory.
   [follow-up comparison](https://github.com/muellerberndt/cadence/issues/210#issuecomment-6320661291),
   marking misses recovered much of the penalty's harm but still lost against unmarked
   zero outcomes. Compare with `memory_choice=False` on the same task.
-  `memory_extinction=0.5` extinguishes such a record: in the same bandit, 11 of 12 lives
+  `memory_extinction=0.5` extinguishes such a record: in the same bandit
+  ([benchmarks/extinction](../benchmarks/extinction/README.md)), 11 of 12 lives
   learned the new arm against 5 of 12 without it ([#210](https://github.com/muellerberndt/cadence/issues/210)). It reads the place: where
   one observation stands for several situations, an action paid in one of them meets zeros in
   the others, and its record is extinguished there as well. A confirmation panel on fresh seeds
@@ -952,12 +954,14 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
   the lesson's label, joins the eligibility the actor traces, and dopamine steps the maps by
   `recall_position_reward` times one lesson's step (with the anchor, its maps too). Which slot
   a head reads by its age, the first told or the latest, is then reachable from reward alone
-  ([#236](https://github.com/muellerberndt/cadence/issues/236)). On the Stone Age ordered
-  recall world through `live` from reward alone (two values written, the first or the latest
-  asked; five development founders, 1,536 episodes), the founder answers at chance (0.49),
-  and `recall_position_reward=4` with `recall_address_reward=1` reaches 0.74 to 0.87 sampled
-  success (mean 0.84; greedy 0.875 to 1.0), 0.86 after 3,072 episodes. Rates of 16 are
-  unstable. The 0.90 the issue asks for is not yet reached.
+  ([#236](https://github.com/muellerberndt/cadence/issues/236)). In the
+  [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy)
+  through `live` from reward alone (two values written, the first or the latest asked; five
+  development founders, 3,072 episodes) the founder answers at chance, 0.46 to 0.50 of its last
+  256 answers. With `recall_position_reward=4` the lives answer 0.73 to 1.00 of them, three of
+  the five every query (greedy reads 0.75 to 1.00, sampled acts 0.73 to 0.88). At 16 four lives
+  answer every query and one stays at chance; `recall_address_reward=1` beside 4 leaves one at
+  chance too. The 0.90 the issue asks for is reached by some founders, not by every one.
 
 ```python
 brain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)
@@ -993,7 +997,8 @@ episode began. Each stream counts the moments written in its episode (`brain.rec
 `Recall.end`, a reset and `done` start it again. The maps start at zero, so a newborn reads as
 without the option, and the lesson steps them with the position maps, and rewards with
 `recall_position_reward` ([#237](https://github.com/muellerberndt/cadence/issues/237)). On stories of 24 to 60 events
-with the cues `first`, `second` and `last` mixed (six confirmation founders, declared before
+with the cues `first`, `second` and `last` mixed (the
+[sequence battery](../benchmarks/sequence/README.md), six confirmation founders, declared before
 the run), the anchor answers `first` at 0.998 to 1.000 and `second` at 0.990 to 1.000, against
 0.31 to 0.45 and 0.31 to 0.34 without it; induction, n-back, periodic continuation and copying
 read the same with and without it.
@@ -1009,11 +1014,11 @@ stream with no read before. The maps start at zero and the lesson steps them wit
 position maps ([#234](https://github.com/muellerberndt/cadence/issues/234)). Copying sequences
 with repeated tokens, taught at lengths 3 to 6 and tested at 8 to 12 (three development seeds,
 the anchor in both arms), the relative read answers 0.54 to 0.74 of the tokens in closed loop,
-against 0.10 to 0.14 without it; given the right token before (teacher-forced) it answers 0.93,
-every position after the first above 0.9. The first token after the cue is where it still
-failed: the age term, taught at the short lengths, pulled that read away from the episode's
-start. With the slope at 0.1 and the table at 0.01 beside the anchor that read answers 0.91 to
-1.00, and the whole copy 0.92 to 0.94 in closed loop (0.918 to 0.941 on six fresh founders).
+against 0.10 to 0.14 without it; given the right token before (teacher-forced) it answers 0.87
+to 0.93. The first token after the cue reads 0.63 to 0.80: the age term, taught at the short
+lengths, pulls that read away from the episode's start. With the slope at 0.1 and the table at
+0.01 beside the anchor that read answers 0.97 to 0.99 and the whole copy 0.918 to 0.941 in
+closed loop (six confirmation founders).
 
 **The slope (opt-in, `recall_slope` above 0; it needs the position term).** The table holds one
 term per age bucket, and an age no lesson reached keeps its zero: a head taught to look back to
@@ -1031,8 +1036,8 @@ the option, and the lesson steps them by the table's gradient read along the age
 ([#232](https://github.com/muellerberndt/cadence/issues/232)).
 
 **Positions at lengths no lesson reached.** The slope pays with the table taught slowly beside
-it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary; three development
-seeds, 1,500 lessons):
+it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary; the
+[sequence battery](../benchmarks/sequence/README.md), three development seeds, 1,500 lessons):
 
 | Recall settings beside the position term | Copying unique tokens: taught 3 to 6, read at 8 to 12, closed loop | Look back: taught 5 to 12, read at 24 to 60, "first" |
 | --- | --- | --- |
@@ -1052,9 +1057,12 @@ unique tokens at unseen lengths 0.992 to 1.000; copying repeated tokens, with
 after training drops "second" to 0.48 to 0.63, so the anchor carries it. On induction and
 n-back the recipe stays within 0.014 of the founder table, and a period of 40 stays where the
 founder leaves it (0.35 to 0.39): it needs the table exact to 64 ages. The slower table costs
-reads that need exact ages (in #232's candidate, Stone Age ordered recall 0.82 against 0.99),
-and with the table at the founder rate the brain takes the position shortcut over the content
-route again.
+reads that need exact ages: in the
+[ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy)
+taught by lessons (five development founders, 1,536 episodes) the founder table answers every
+query greedily, the table at 0.01 alone 0.50 to 1.00 (mean 0.80), and with the anchor and the
+slope beside it 0.875 to 1.00 (mean 0.975). With the table at the founder rate the brain takes
+the position shortcut over the content route again.
 
 **When a read item happened (opt-in, `recall_when=True`).** A read delivers what its slots hold
 and what followed them; the position term only chooses the slots. Nothing reaching the cortex
@@ -1073,12 +1081,13 @@ zero, so a newborn settles as one without the option, and lessons give them weig
 lesson names the slots to read by what they hold, and the region says when the slots read
 happened ([#237](https://github.com/muellerberndt/cadence/issues/237)).
 
-On "how long ago was X told?" (stories of 8 to 16 distinct tokens, X shown with a question
-mark, the answer one of four age buckets; three development seeds, 1,500 lessons) the option
-answers 0.93 to 0.97, against 0.21 to 0.68 without it. "Was A told before B?", asked over two
-moments (A, then B), stays at 0.61 to 0.73, against 0.57 to 0.75 without it: the comparison
-needs what the first read reported carried to the second moment, and the working trace does not
-carry it that far. A lesson that also named slots by when they happened taught the read to find
+On "how long ago was X told?" (the [sequence battery](../benchmarks/sequence/README.md):
+stories of 8 to 16 distinct tokens, X shown with a question mark, the answer one of four age
+buckets; three development seeds, 1,500 lessons) the option answers 0.81 to 0.91, and 0.91 to
+0.92 with the anchor, against 0.51 to 0.80 without it. "Was A told before B?", asked over two
+moments (A, then B), reads 0.59 to 0.80 with it, against 0.59 to 0.72 without it: the
+comparison needs what the first read reported carried to the second moment, and the working
+trace does not carry it that far. A lesson that also named slots by when they happened taught the read to find
 slots whose age matched the answer instead of the item asked about (the read's median attention
 on X fell to 0.08 to 0.10, the answers to 0.62 to 0.66), so the lesson does not read the
 movement back through the when regions.

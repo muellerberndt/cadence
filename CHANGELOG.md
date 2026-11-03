@@ -37,19 +37,22 @@ documented opt-ins with the readings that bound them.
   drops `second` to 0.48 to 0.63. Induction and n-back stay within 0.014 of the founder; a
   period of 40 stays where the founder leaves it (0.35 to 0.39), since it needs the table exact to
   64 ages. The slower
-  table costs reads that need exact ages (#232's candidate: Stone Age ordered recall 0.82
-  against 0.99).
+  table costs reads that need exact ages: ordered recall taught by lessons answers every query
+  at the founder rate, 0.50 to 1.00 (mean 0.80) with the table at 0.01 alone, and 0.875 to 1.00
+  with the anchor and the slope beside it.
 - `recall_when` (opt-in, #237): every head's read also delivers when what it read happened,
   `amplitude * sum_i p_i F_i` on a region of its own (`Recall.when_regions`), with `F_i` two
   features of the slot's age and, with the anchor, two of its place in the episode
   (`Recall.when_features`). The regions reach the association through synapses that start at
-  zero, laid out after every other part. "How long ago was X told?" answers 0.93 to 0.97 with it,
-  0.21 to 0.68 without; "was A told before B?" over two moments stays at 0.61 to 0.73, since
-  the comparison needs the first read carried to the second moment.
+  zero, laid out after every other part. "How long ago was X told?" answers 0.81 to 0.91 with it
+  (0.91 to 0.92 with the anchor too), 0.51 to 0.80 without; "was A told before B?" over two
+  moments reads 0.59 to 0.80 with it and 0.59 to 0.72 without, since the comparison needs the
+  first read carried to the second moment.
 - `recall_chain` (opt-in, #234): with several heads, each head after the first adds to its
   address what the head before it read, through a map that starts at zero and the address
-  lesson steps. It does not beat its control: two hops asked in one moment read 0.45 with it and
-  without it (three development seeds); one think moment answers 0.99.
+  lesson steps. It does not answer two hops asked in one moment: 0.44 to 0.46 with it, 0.44 to
+  0.47 without (three development seeds), and 0.51 to 0.53 against 0.47 to 0.50 with the copy
+  pathway as the tokens' identity; one think moment answers 0.98 to 0.99.
 
 Each of these maps starts at zero, so a newborn reads as one without the option, and
 checkpoints keep the maps and the per-stream counts.
@@ -60,8 +63,8 @@ checkpoints keep the maps and the per-stream counts.
   zero for the chosen action where the records' vote for it and its direct payment in this
   place both reach the setting (0.5). A third store, `memories["episodic"].paid`, keeps which
   actions were paid directly where; replayed and demonstrated credit is never extinguished. In
-  the issue's bandit, whose paying arm moves and whose failures pay 0, 11 of 12 lives learn the
-  new arm against 5 of 12 without it. A confirmation panel on fresh seeds found every reward
+  the issue's bandit (`benchmarks/extinction`), whose paying arm moves and whose failures pay 0,
+  11 of 12 lives learn the new arm against 5 of 12 without it. A confirmation panel on fresh seeds found every reward
   chamber's gate where it stands without the rule; the return to the first arm after a second
   reversal is slower (median
   15 trials against 6), and a continuing chain changes on 7 of 10 seeds. The rule is Sean
@@ -78,17 +81,19 @@ checkpoints keep the maps and the per-stream counts.
   (p = .039).
 - `recall_position_reward` (opt-in, #236; runtime): reward trains the recall read's position
   maps, and with the anchor the anchored maps, through the eligibility the actor traces beside
-  the address map's. On the Stone Age ordered recall world from reward alone it moves the answer
-  from chance (0.49) to 0.74 to 0.87 sampled success with `recall_position_reward=4` and
-  `recall_address_reward=1` (mean 0.84, 0.86 after 3,072 episodes; greedy 0.875 to 1.0); #236's
-  0.90 is not yet reached. It needs the position
-  term, and a pending outcome holds its settings as it holds the address map's.
+  the address map's. In the ordered recall world through `live` from reward alone, where the
+  founder answers at chance (0.46 to 0.50 of its last 256 answers), `recall_position_reward=4`
+  answers 0.73 to 1.00, three of five development founders every query (greedy 0.75 to 1.00,
+  sampled 0.73 to 0.88); at 16 four answer every query and one stays at chance. #236's 0.90 is
+  reached by some founders, not by every one. It needs the position term, and a pending outcome
+  holds its settings as it holds the address map's.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
   that many times the lesson's rows (at least one) are taught again, drawn from a reservoir of
   the lessons' rows kept over the life, a uniform sample (`rehearsal_capacity`, 512). Types the
   cortex holds, taught one after another, keep what earlier lessons taught; types held by a
-  recall read do not (look back's cues in sequence: first 0.62 and last 0.89 of their
-  interleaved accuracy, against 0.77 and 0.83 without it).
+  recall read do not, and rehearsal costs them (look back's cues taught first, last, second, 600
+  lessons each: first 0.29 to 0.44 and last 0.43 to 0.59 with it, 0.32 to 0.74 and 0.65 to 0.95
+  without; every cue 1.00 taught interleaved).
 - A cue the answer does not show (#208, #209; `benchmarks/credit`, a two-cue chamber, and a new
   section of docs/reward.md). Taught by the terminal reward alone, `actor_eta=0.1,
   actor_eta_bias=0.01` with `memory_choice=True` learns the cue-dependent answer at delay 0 on
@@ -125,6 +130,22 @@ checkpoints keep the maps and the per-stream counts.
   lessons); with it three seeds end at 0.95 to 0.99.
 - docs/tune.md's "Wide brains" section states the three causes the width sweep located and a
   recipe of fan-in-scaled steps (`Learner.synapse_rate`) for a saturated readout, with its cost.
+
+### Benchmarks
+
+- `benchmarks/sequence`: the sequence battery (look back, copying, induction, n-back, periodic
+  continuation, two hops, "how long ago" and "before" over stories; a reading with the anchored
+  maps set to zero, and look back's cues taught one after another), ordered recall taught by
+  lessons or by reward through `live`, and the width sweep. They are the instruments of this
+  release's readings for #232, #234, #236, #237, #238 and #239.
+- `benchmarks/extinction`: the bandit of #210, failures paying 0 or -1.
+- The readings above were taken on this release with these instruments: the declared
+  confirmations of #232, #234 and #237 and the #210 bandit's panel lives on their own founders,
+  each repeating its earlier reading exactly, and samples of the #202, #208 and #209
+  confirmations' lives (`benchmarks/context_key`, `benchmarks/credit`), which repeat byte for
+  byte. The #210 panel's other chambers and the competing ring (#169) were read before the
+  review's fixes; a ring life repeats on this release with every reading identical. The value
+  lesson's readings (#216) come from a game outside the library.
 
 ### Project
 

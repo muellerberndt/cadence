@@ -141,7 +141,8 @@ measure what depth keeps and costs.
 ### Wide brains
 
 On 0.89 more neurons in a module did not lower held-out error
-([#239](https://github.com/muellerberndt/cadence/issues/239)). A width sweep (64 to 1,024 neurons;
+([#239](https://github.com/muellerberndt/cadence/issues/239)). A
+[width sweep](../benchmarks/sequence/README.md#the-width-sweep-widthpy) (64 to 1,024 neurons;
 induction over a vocabulary of 128, associative recall and a lookup task; the recall memory under
 the normalized point) located three causes at the widest modules:
 
