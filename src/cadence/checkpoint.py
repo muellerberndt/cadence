@@ -90,14 +90,6 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     compartment: dict[str, np.ndarray] = {}
     if learner.config.normalize_relative or learner.config.nudged_fixed:
         meta["format"] = APICAL_FORMAT
-    rehearsal: dict[str, np.ndarray] = {}
-    if len(learner.rehearsal_drives):
-        # the rehearsal's reservoir and its counts (#238), kept while rehearsal is retuned off,
-        # within its capacity (the learner trims to the same rows at its next lesson); a
-        # learner that never rehearsed holds none
-        drives, labels = learner.trimmed_reservoir()
-        meta["rehearsal"] = {"seen": learner.rehearsal_seen, "draws": learner.rehearsal_draws}
-        rehearsal = {"rehearsal_drives": drives, "rehearsal_labels": labels}
     if brain.apical is not None:
         meta["format"] = APICAL_FORMAT
         meta["apical"] = {"fraction": brain.apical.fraction, "floor": brain.apical.floor}
@@ -108,7 +100,6 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     assert learner.plastic_synapses is not None and learner.plastic_neurons is not None
     return dict(
         **compartment,
-        **rehearsal,
         meta=np.array(canonical_json(meta)),
         pre=c.pre,
         post=c.post,
@@ -311,23 +302,6 @@ def load(
         )
         if learner.updates < 0 or not 0 <= learner.contrast_updates <= learner.updates:
             raise ValueError("checkpoint update count must be nonnegative")
-        if "rehearsal" in meta:
-            counts = meta["rehearsal"]
-            drives = data["rehearsal_drives"].astype(float)
-            labels = data["rehearsal_labels"].astype(np.int64)
-            if (
-                drives.ndim != 2
-                or drives.shape[1] != connectome.n
-                or len(labels) != len(drives)
-                or labels.shape[1:] != learner.rehearsal_labels.shape[1:]
-                or not np.isfinite(drives).all()
-                or len(drives) > learner.config.rehearsal_capacity
-                or not all(isinstance(counts.get(k), int) and counts[k] >= 0
-                           for k in ("seen", "draws"))
-            ):
-                raise ValueError("invalid saved rehearsal reservoir")
-            learner.rehearsal_drives, learner.rehearsal_labels = drives, labels
-            learner.rehearsal_seen, learner.rehearsal_draws = counts["seen"], counts["draws"]
         for name in ("velocity", "velocity_bias", "second_moment", "second_moment_bias"):
             value = data[name].astype(float)
             size = connectome.n if name.endswith("bias") else connectome.synapses

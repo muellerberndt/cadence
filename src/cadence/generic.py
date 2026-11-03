@@ -66,7 +66,14 @@ from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
 from .genome import Genome, Projection, develop
-from .learning import Learner, LearnerConfig, learning_neuron_model
+from .learning import (
+    Learner,
+    LearnerConfig,
+    _reservoir_cut,
+    _reservoir_draws,
+    _reservoir_slot,
+    learning_neuron_model,
+)
 from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig
@@ -96,6 +103,22 @@ _REWARD_ARRAYS = (
     "salience",
     "_drive",
 )
+# A stream's state in the actor, which a replay of episodes holds (``Brain._streams``): its free
+# phase and the parameters it was settled under, the drive, a pending action and the
+# eligibility.
+_STREAM_ACTOR = (
+    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "trace", "trace_bias",
+    "trace_critic", "trace_memory", "_trace_device", "salience",
+)
+# The brain's records of its streams' moments, held by a replay with the streams themselves.
+_STREAM_RECORDS = (
+    "_moment", "_moment_code", "_coded_moment", "_code_settlement", "_prepared", "last_learning",
+    "_last_settlement", "_lived", "_last_arousal", "_calm", "_calm_issued", "_acted", "_awaiting",
+    "_forecast_read", "_episode_moments", "_episode_told",
+)
+# The moments a replayed episode reaches without a recall memory: as many as the founder
+# memory keeps slots (with one, its ``capacity``).
+_EPISODE_REACH = 64
 
 
 # The motor lateral weight an unset ``lateral`` resolves to: no motor-to-motor synapses, at
@@ -1491,6 +1514,55 @@ def _validate_episodic_state(
             raise ValueError("invalid saved replay path outcomes")
 
 
+def _load_episodes(brain: Brain, meta: dict[str, Any], data: Mapping[str, Any]) -> None:
+    """The rehearsal's reservoir and the streams' episodes a brain saved
+    (``learning_rehearsal``), validated, into the loaded ``brain``."""
+    learner = brain.learner
+    counts = meta.get("rehearsal")
+    names = ("heard", "told", "lengths", "moments", "labels")
+    if (
+        not isinstance(counts, dict)
+        or any("rehearsal/" + name not in data for name in names)
+        or not all(
+            isinstance(counts.get(name), int) and not isinstance(counts[name], bool)
+            and counts[name] >= 0
+            for name in ("seen", "draws")
+        )
+    ):
+        raise ValueError("invalid saved rehearsal episodes")
+    heard, told, lengths, moments, labels = (data["rehearsal/" + name] for name in names)
+    reach, width = brain._episode_reach(), brain.inputs
+    slots = learner.slot_count
+    if (
+        told.ndim != 1
+        or told.dtype.kind not in "iu"
+        or (told < 0).any()
+        or heard.ndim != 3
+        or heard.shape[1:] != (len(told), width)
+        or len(heard) > reach - 1
+        or lengths.ndim != 1
+        or lengths.dtype.kind not in "iu"
+        or (lengths < 1).any()
+        or (lengths > reach).any()
+        or len(lengths) > learner.config.rehearsal_capacity
+        or moments.shape != (int(lengths.sum()), width)
+        or labels.shape != ((len(lengths),) if slots == 1 else (len(lengths), slots))
+        or labels.dtype.kind not in "iu"
+        or (labels < 0).any()
+        or (labels >= learner.slot_sizes).any()
+        or not np.isfinite(heard).all()
+        or not np.isfinite(moments).all()
+    ):
+        raise ValueError("invalid saved rehearsal episodes")
+    brain._episode_moments = [np.array(moment, dtype=float) for moment in heard]
+    brain._episode_told = told.astype(np.int64)
+    brain.rehearsal_moments = [
+        part.astype(float) for part in np.split(moments, np.cumsum(lengths)[:-1])
+    ] if len(lengths) else []
+    brain.rehearsal_labels = labels.astype(np.int64)
+    brain.rehearsal_seen, brain.rehearsal_draws = counts["seen"], counts["draws"]
+
+
 def _observation_width(
     inputs: int | Sequence[int], code: int | None = None, learned_code: int | None = None,
 ) -> int:
@@ -2220,6 +2292,20 @@ class Brain:
         self._awaiting: tuple[BrainState, BrainState] | None = None
         # a terminal forecast's read of the recall memory, held once its end is committed
         self._forecast_read: tuple[Any, ...] | None = None
+        # ``learning_rehearsal`` (#238): the latest moments the streams heard (one row per
+        # stream each, as many as a replay reaches) and the moments each stream heard in its
+        # current episode; the reservoir of lessons, each row with the moments of its episode
+        # up to it, a uniform sample of every lesson row (``rehearsal_capacity``), and how many
+        # rows were offered to it and how many draws were taken
+        self._episode_moments: list[np.ndarray] = []
+        self._episode_told = np.zeros(0, dtype=np.int64)
+        self.rehearsal_moments: list[np.ndarray] = []
+        self.rehearsal_labels = np.zeros(
+            (0,) if self.learner.slot_count == 1 else (0, self.learner.slot_count),
+            dtype=np.int64,
+        )
+        self.rehearsal_seen = 0
+        self.rehearsal_draws = 0
 
     @property
     def brain(self) -> NeuralGraph:
@@ -2879,7 +2965,10 @@ class Brain:
         brain reports and saves as one composed at 0.
 
         Wiring, initialization and enabling/disabling components are construction
-        choices. ``retune`` resets nothing; ``brain.arousal.reset()`` resets the arousal level
+        choices. A ``learning_rehearsal`` retuned above zero keeps the streams' moments from then
+        on, so an episode in progress is replayed from the moments heard after the retune; a
+        lowered ``learning_rehearsal_capacity`` cuts the rehearsal's reservoir at once.
+        ``retune`` resets nothing; ``brain.arousal.reset()`` resets the arousal level
         and reward references and keeps its age and work counters. Returns this same brain.
         """
         if "reset_arousal" in genes:
@@ -3035,7 +3124,7 @@ class Brain:
         # Publication begins only after all validation. Never reconstruct a live
         # memory or optimizer to change its scalar settings.
         self.learner.config = learning
-        self.learner.trim_reservoir()  # a smaller rehearsal capacity cuts the reservoir now
+        self._trim_episodes()  # a smaller rehearsal capacity cuts the reservoir now
         agent = self.basal_ganglia
         agent.config = reward
         if self.arousal is not None:
@@ -3084,9 +3173,10 @@ class Brain:
         greedy choices: bit for bit where the larger graph sums in the same order, within
         rounding where it does not. New slots draw random numbers of their own, so the sampled
         choices of the brain's slots follow other draws. The streams start afresh, and an
-        outcome this brain awaits stays with this brain. Learning gives the new synapses weight:
-        a synapse moves on what its two neurons do in the free and nudged phases, not on its own
-        weight.
+        outcome this brain awaits stays with this brain; so does the rehearsal's reservoir
+        (``learning_rehearsal``), which the grown brain starts afresh.
+        Learning gives the new synapses weight: a synapse moves on what its two neurons do in the
+        free and nudged phases, not on its own weight.
 
         Refused: a brain that records no construction (a custom anatomy); a part inside the brain's
         loop (``modules``, ``observers``, a code), which learns nothing at zero and changes the
@@ -3829,8 +3919,13 @@ class Brain:
         with self._code_attempt():
             return self._teach(x, labels)
 
-    def _teach(self, x: np.ndarray, labels: np.ndarray) -> dict[str, float]:
-        """The provisional code phase and the local demonstration consuming it."""
+    def _teach(
+        self, x: np.ndarray, labels: np.ndarray, *, replayed: bool = False
+    ) -> dict[str, float]:
+        """The provisional code phase and the local demonstration consuming it. A ``replayed``
+        lesson (``learning_rehearsal``) teaches the cortex and the recall read as any lesson
+        does; the episodic records take no demonstration from it, since nothing was shown
+        again, and it rehearses nothing."""
         from .learning import LearningPhaseError
 
         batch = len(x)
@@ -3870,20 +3965,217 @@ class Brain:
         # lesson taught, those whose complete answer differed from the label.
         shown = np.ones(batch, bool) if lesson.taught is None else lesson.taught
         episodic = self._episodic
-        if episodic is not None and episodic.demonstrations and shown.any():
+        if episodic is not None and episodic.demonstrations and shown.any() and not replayed:
             value = np.full(batch, episodic.demonstrations)
             episodic.remember(place, key, labels, value, shown)
-        # with ``learning_rehearsal``, rows of earlier lessons are taught again, and this
-        # lesson's rows join the reservoir they are drawn from
-        rehearsed = self.learner.rehearse(drive, labels)
-        if rehearsed is not None:
-            self.last_learning.update(
-                {"rehearsal_" + name: value for name, value in rehearsed.items()}
-            )
         self._prepared = None
         self.basal_ganglia._drive = None
+        if not replayed:
+            # with ``learning_rehearsal``, rows of earlier lessons are replayed with their
+            # episodes on fresh streams that leave the live ones as they are, and this lesson's
+            # rows join the reservoir they are drawn from
+            rehearsed = self._rehearse(x, labels)
+            if rehearsed is not None:
+                self.last_learning.update(
+                    {"rehearsal_" + name: value for name, value in rehearsed.items()}
+                )
         self.last_learning["demonstrations"] = float(batch)
         return teaching
+
+    # -- rehearsal: the lessons' episodes replayed (``learning_rehearsal``, #238)
+
+    def _episode_reach(self) -> int:
+        """The most moments a replayed episode holds, its taught moment among them: as many as
+        the recall memory keeps slots (its ``capacity``), ``_EPISODE_REACH`` without one."""
+        return _EPISODE_REACH if self.recall is None else int(self.recall.capacity)
+
+    def _hear_episode(self, x: np.ndarray) -> None:
+        """With ``learning_rehearsal`` above zero: the moment ``x`` the streams heard (an act,
+        or a moment ``wait`` sensed) joins their episodes; the latest moments a replay reaches
+        are kept. At zero nothing is kept, so a rate retuned above zero keeps the moments heard
+        from then on."""
+        if not self.learner.config.rehearsal:
+            if self._episode_moments:
+                self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
+            return
+        if len(self._episode_told) != len(x):
+            self._episode_moments, self._episode_told = [], np.zeros(len(x), dtype=np.int64)
+        self._episode_moments.append(np.array(x, dtype=float, copy=True))
+        excess = len(self._episode_moments) - (self._episode_reach() - 1)
+        if excess > 0:
+            del self._episode_moments[:excess]
+        self._episode_told = self._episode_told + 1
+
+    def _begin_episodes(self, rows: np.ndarray) -> None:
+        """The streams the boolean ``rows`` mark begin their next episode, no moment heard."""
+        if len(self._episode_told) == len(rows) and rows.any():
+            self._episode_told = np.where(rows, 0, self._episode_told)
+
+    def _episodes(self, x: np.ndarray) -> list[np.ndarray]:
+        """Each stream's episode up to the moment ``x`` it is taught on: the moments it heard
+        since its episode began (the latest a replay reaches), then ``x``; ``(moments,
+        inputs)`` per stream."""
+        heard = self._episode_moments if len(self._episode_told) == len(x) else []
+        episodes = []
+        for row in range(len(x)):
+            count = min(int(self._episode_told[row]), len(heard)) if heard else 0
+            earlier = [moment[row] for moment in heard[len(heard) - count:]]
+            episodes.append(np.stack([*earlier, x[row]]))
+        return episodes
+
+    def _rehearse(self, x: np.ndarray, labels: np.ndarray) -> dict[str, float] | None:
+        """After a lesson of ``x`` and ``labels``, with ``rehearsal`` above zero: replay that
+        many times the lesson's rows (at least one), drawn from the reservoir of earlier
+        lessons' rows (``_replayed``); then this lesson's rows, each with its episode, join the
+        reservoir, a uniform sample of every row offered (``rehearsal_capacity``). Returns the
+        replay's report, or None at a rate of zero (the reservoir then stays as it is) or before
+        any row is kept."""
+        cfg = self.learner.config
+        if not cfg.rehearsal:
+            return None
+        episodes = self._episodes(x)
+        self._trim_episodes()
+        report: dict[str, float] | None = None
+        kept = len(self.rehearsal_moments)
+        if kept:
+            count = max(1, int(round(cfg.rehearsal * len(x))))
+            index = _reservoir_draws(self.rehearsal_draws, count, kept)
+            self.rehearsal_draws += count
+            report = self._replayed(
+                [self.rehearsal_moments[row] for row in index], self.rehearsal_labels[index]
+            )
+        moments, kept_labels = list(self.rehearsal_moments), list(self.rehearsal_labels)
+        for row, episode in enumerate(episodes):
+            slot = _reservoir_slot(self.rehearsal_seen, len(moments), cfg.rehearsal_capacity)
+            self.rehearsal_seen += 1
+            if slot == len(moments):
+                moments.append(episode)
+                kept_labels.append(labels[row])
+            elif slot is not None:
+                moments[slot], kept_labels[slot] = episode, labels[row]
+        self.rehearsal_moments = moments
+        self.rehearsal_labels = np.asarray(kept_labels, dtype=np.int64).reshape(
+            len(moments), *self.rehearsal_labels.shape[1:]
+        )
+        return report
+
+    def _replayed(self, moments: list[np.ndarray], labels: np.ndarray) -> dict[str, float]:
+        """Replay kept lesson rows, ``moments`` each its episode up to its taught moment, and
+        their ``labels``: the rows of equally long episodes together on fresh streams (as
+        after ``reset``), which hear each moment before the last as a greedy act hears it
+        (without a learned code's step) and are taught at the last as a lesson teaches, the
+        recall read's address lesson with the cortex. Every stream then returns to the state
+        it was in: the live streams continue as they would have without the replay, under the
+        parameters the replay taught. A refused act or lesson ends the replay; what it taught
+        before stays, and the report says so (``refused``)."""
+        presentations = (
+            "attempted_presentations", "accepted_presentations", "agreed_presentations"
+        )
+        report = dict.fromkeys(("rows", "moments", *presentations), 0.0)
+        lengths = [len(episode) for episode in moments]
+        held = self._streams()
+        try:
+            for length in dict.fromkeys(lengths):
+                rows = [row for row, count in enumerate(lengths) if count == length]
+                episode = np.stack([moments[row] for row in rows], axis=1)
+                self.reset()
+                for x in episode[:-1]:
+                    drive, free = self._settled(x)
+                    self._choose(x, drive, free, greedy=True, learn_code=False)
+                taught = self._teach(episode[-1], labels[rows], replayed=True)
+                report["rows"] += len(rows)
+                report["moments"] += len(rows) * length
+                for name in presentations:
+                    report[name] += float(taught.get(name, 0.0))
+        except RuntimeError:  # a refused settle, or a refused lesson (LearningPhaseError)
+            report["refused"] = 1.0
+        finally:
+            self._resume(held)
+        return report
+
+    def _streams(self) -> tuple[Any, ...]:
+        """Every stream's state, for ``_resume`` after a replay: the actor's (its free phase,
+        drive, pending action and eligibility), each memory's streams (the recall memory's
+        slots, ``told`` and ``focus`` among them, with its latest read and count of writes),
+        the learned code's phase and the brain's records of its streams' moments. A replay
+        replaces what it changes, starting from ``reset``; what an operation could write into
+        in place is copied."""
+        agent, recall, episodic, region = (
+            self.basal_ganglia, self.recall, self._episodic, self.learned_code
+        )
+        records = {name: getattr(self, name) for name in _STREAM_RECORDS}
+        records["last_learning"] = dict(self.last_learning)
+        records["_calm"] = list(self._calm)
+        records["_episode_moments"] = list(self._episode_moments)
+        return (
+            {name: getattr(agent, name) for name in _STREAM_ACTOR},
+            [
+                (trace, {name: getattr(trace, name).copy() for name in ("trace", "last", "cold")})
+                for trace in (self.working_memory, self.efference)
+                if trace is not None
+            ],
+            None if self.history is None else self.history.trace.copy(),
+            None if recall is None else (recall.snapshot(), recall.reading(), recall.writes),
+            None if episodic is None else (
+                *(
+                    None if value is None else value.copy()
+                    for value in (
+                        episodic.context, episodic.decision, episodic.before, episodic.seen
+                    )
+                ),
+                [list(path) for path in episodic.paths],
+            ),
+            None if region is None else (
+                region.halvings, region.graph, region.last, dict(region.work)
+            ),
+            records,
+        )
+
+    def _resume(self, held: tuple[Any, ...]) -> None:
+        """Return every stream to the state ``_streams`` held."""
+        actor, traces, heard, recalled, episode, phase, records = held
+        for name, value in actor.items():
+            setattr(self.basal_ganglia, name, value)
+        for trace, values in traces:
+            for name, value in values.items():
+                setattr(trace, name, value)
+        if self.history is not None:
+            self.history.trace = heard
+        recall = self.recall
+        if recall is not None:
+            snapshot, reading, writes = recalled
+            recall.restore(snapshot)
+            recall.hold(reading)
+            recall.writes = writes
+            recall._contents, recall._content_keys = [], None
+        episodic = self._episodic
+        if episodic is not None:
+            (
+                episodic.context, episodic.decision, episodic.before, episodic.seen,
+                episodic.paths,
+            ) = episode
+        region = self.learned_code
+        if region is not None:
+            region.halvings, region.graph, region.last, work = phase
+            region.work.clear()
+            region.work.update(work)
+        for name, value in records.items():
+            setattr(self, name, value)
+
+    def _trimmed_episodes(self) -> tuple[list[np.ndarray], np.ndarray]:
+        """The rehearsal's reservoir cut to ``rehearsal_capacity`` (its rows' episodes and
+        labels), the brain unchanged: within the capacity the reservoir as it is; above it a
+        uniform choice of its rows keyed by the count of rows seen (so the same after a
+        checkpoint), in their order."""
+        kept = len(self.rehearsal_moments)
+        index = _reservoir_cut(self.rehearsal_seen, kept, self.learner.config.rehearsal_capacity)
+        if len(index) == kept:
+            return self.rehearsal_moments, self.rehearsal_labels
+        return [self.rehearsal_moments[row] for row in index], self.rehearsal_labels[index]
+
+    def _trim_episodes(self) -> None:
+        """Cut the rehearsal's reservoir to ``rehearsal_capacity`` (``_trimmed_episodes``)."""
+        self.rehearsal_moments, self.rehearsal_labels = self._trimmed_episodes()
 
     @_operation
     def live(
@@ -4025,6 +4317,7 @@ class Brain:
                     if self._forecast_read is not None:
                         self.recall.hold(self._forecast_read)
                 self._forecast_read = None
+                self._begin_episodes(ended)
                 # a moment without eligibility has passed: the credit of earlier sampled
                 # actions fades as it does between two outcomes that are learned from; an end
                 # credited in hindsight clears the traces at its replayed step instead
@@ -4245,6 +4538,7 @@ class Brain:
             self.history.hear(self._heard(x, code))  # what was sensed joins the heard past
         if self.recall is not None:
             self.recall.witness(code, state)  # the sensed moment joins the stream's slots
+        self._hear_episode(x)
         if self._episodic is not None:
             self._episodic.sense(code)  # what was sensed enters the temporal context
         self._awaiting = (current, state)
@@ -4551,6 +4845,7 @@ class Brain:
             self.recall.witness(
                 code, free, self._command(action) if self.recall.action else None
             )
+        self._hear_episode(x)  # with ``learning_rehearsal``, the moment joins its episode
         if episodic is not None:
             guess = None
             if episodic.steps:
@@ -4730,6 +5025,7 @@ class Brain:
         self._moment_code = None
         self._prepared = following.copy()
         self._awaiting = None
+        self._begin_episodes(done)  # the streams whose attempt ended begin an episode
         return report
 
     def _record(
@@ -4797,6 +5093,7 @@ class Brain:
         self._calm, self._calm_issued = [], None
         self._acted = None
         self._awaiting = None
+        self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
         if self.arousal is not None and "arousal" not in kept:
             self.arousal.reset()
 
@@ -4840,10 +5137,11 @@ class Brain:
         was chosen, the arousal, the observation code or the learned code, and one group
         ``memories/<name>/...`` per present memory (``working_memory``, ``efference``,
         ``history``, ``recall``, ``hippocampus``, ``episodic``) with the memory's settings
-        under ``memories`` in the metadata. ``Learner.save`` saves the slow learned response
-        alone. ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does:
-        larger on disk, and a large brain's is written in a small part of the time deflating
-        takes.
+        under ``memories`` in the metadata; with ``learning_rehearsal`` the reservoir of lessons
+        with their episodes and the streams' episodes (``rehearsal/...``, the counts under
+        ``rehearsal``). ``Learner.save`` saves the slow learned response alone.
+        ``compressed=False`` writes a plain archive, as ``cadence.checkpoint.save`` does: larger
+        on disk, and a large brain's is written in a small part of the time deflating takes.
         """
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
@@ -4929,6 +5227,22 @@ class Brain:
             memories[name] = settings
             for array, value in arrays.items():
                 data[f"memories/{name}/{array}"] = value
+        if self.rehearsal_moments or self._episode_moments:
+            # the rehearsal's reservoir (#238) within its capacity (the next lesson trims to the
+            # same rows), its counts and the streams' episodes; kept while rehearsal is retuned
+            # off, and a brain that never rehearsed holds none
+            moments, labels = self._trimmed_episodes()
+            metadata["rehearsal"] = {"seen": self.rehearsal_seen, "draws": self.rehearsal_draws}
+            data["rehearsal/heard"] = (
+                np.stack(self._episode_moments) if self._episode_moments
+                else np.zeros((0, len(self._episode_told), self.inputs))
+            )
+            data["rehearsal/told"] = self._episode_told
+            data["rehearsal/lengths"] = np.array([len(m) for m in moments], dtype=np.int64)
+            data["rehearsal/moments"] = (
+                np.concatenate(moments) if moments else np.zeros((0, self.inputs))
+            )
+            data["rehearsal/labels"] = labels
         data["brain"] = np.array(canonical_json(metadata))
         return _write(data, path, compressed=compressed)
 
@@ -5377,6 +5691,8 @@ class Brain:
                         int(meta["awaiting"]["steps"]),
                     ),
                 )
+            if "rehearsal" in meta or any(name.startswith("rehearsal/") for name in data):
+                _load_episodes(result, meta, data)
         return result
 
 
@@ -5784,12 +6100,16 @@ def _grown_checkpoint(
         name: _grown_settings(life_old["memories"].get(name), settings)
         for name, settings in life_new["memories"].items()
     }
+    # the reservoir of episodes starts afresh, as the rows' does
+    life.pop("rehearsal", None)
+    if "rehearsal" in life_new:
+        life["rehearsal"] = life_new["rehearsal"]
     data["brain"] = np.array(canonical_json(life))
     for name, value in old.items():
         if name in _GROW_NEURON + _GROW_SYNAPSE + _GROW_LAYOUT:
             continue
-        if name in ("rehearsal_drives", "rehearsal_labels"):
-            continue  # the rows hold the old layout's drives: the grown brain starts afresh
+        if name.startswith("rehearsal/"):
+            continue  # the reservoir's labels may lack a new slot: the grown brain starts afresh
         if name not in new:
             raise RuntimeError(f"grow could not lay this brain out again: {name} is missing")
         target = new[name]

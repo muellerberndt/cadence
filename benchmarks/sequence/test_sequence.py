@@ -114,6 +114,7 @@ def test_a_short_life_reads_every_reading():
                           "phases": [["first"], ["last"]], **SMALL})
     assert phased["phases"] == [["first"], ["last"]] and phased["lessons"] == 3
     assert phased["settings"]["learning_rehearsal"] == 1.0
+    assert phased["refused_lessons"] == 0
     with pytest.raises(ValueError, match="look back's cue groups"):
         bt.run_life({"task": "ago", "arm": "when", "founder": 0, "phases": [["first"]],
                      **SMALL})

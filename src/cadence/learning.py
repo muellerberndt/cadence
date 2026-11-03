@@ -125,11 +125,13 @@ class LearnerConfig:
     # moves less than a coarse tolerance in a sweep, and the opposite phases' common drift
     # cancels in the contrast, so the free phase may stay coarse
     nudged_fixed: bool = False
-    # opt-in (#238): after each lesson this many times its rows (at least one row), drawn from a
-    # reservoir of the lessons' rows (their drives and labels) kept over the life, are taught
-    # again under the same rule; with ``surprise`` only the rows the net now answers wrong move it
+    # opt-in (#238), a composed brain's: after each lesson this many times its rows (at least one
+    # row), drawn from a reservoir of the lessons' rows kept over the life, each with the moments
+    # its stream heard in its episode, are replayed on fresh streams and taught again under the
+    # same rule (``Brain``); with ``surprise`` only the rows the brain now answers wrong move it.
+    # A learner alone replays nothing.
     rehearsal: float = 0.0
-    # the rows the reservoir keeps: a uniform sample of every lesson row so far
+    # the lesson rows the reservoir keeps, each with its episode: a uniform sample of every row
     rehearsal_capacity: int = 512
 
     def __post_init__(self) -> None:
@@ -261,6 +263,9 @@ _NEUTRAL: dict[str, Any] = {
 }
 
 
+# The rehearsal's reservoir (``LearnerConfig.rehearsal``), which the composed brain keeps: its
+# draws, replacements and cut are keyed by counts, so a checkpoint continues them without a
+# random state.
 def _mixed(count: int) -> int:
     """A fixed pseudo-random 64-bit number for each count (splitmix64): the rehearsal's draws
     and the reservoir's replacements, the same after a checkpoint without a random state."""
@@ -269,6 +274,33 @@ def _mixed(count: int) -> int:
     z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & mask
     z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & mask
     return z ^ (z >> 31)
+
+
+def _reservoir_slot(seen: int, kept: int, capacity: int) -> int | None:
+    """Where a rehearsal reservoir of ``kept`` items puts the item offered as its ``seen``-th:
+    after them within ``capacity``; beyond it in place of the item at a fixed draw from
+    ``0..seen``, when the draw falls within ``capacity`` (None: the item is not kept), so the
+    reservoir is a uniform sample of every item offered."""
+    if kept < capacity:
+        return kept
+    slot = _mixed(seen) % (seen + 1)
+    return slot if slot < capacity else None
+
+
+def _reservoir_draws(draws: int, count: int, kept: int) -> np.ndarray:
+    """The items of a reservoir of ``kept`` items that ``count`` rehearsal draws take, the draws
+    counted on from ``draws``."""
+    return np.array([_mixed(draws + i) % kept for i in range(count)], dtype=np.int64)
+
+
+def _reservoir_cut(seen: int, kept: int, capacity: int) -> np.ndarray:
+    """The items a reservoir of ``kept`` items keeps within ``capacity``: all of them, or a
+    uniform choice keyed by the count of items seen (so the same after a checkpoint), in
+    their order."""
+    if kept <= capacity:
+        return np.arange(kept)
+    keys = [_mixed(seen + (1 << 40) + row) for row in range(kept)]
+    return np.sort(np.argsort(keys, kind="stable")[:capacity])
 
 
 @dataclass(frozen=True)
@@ -537,14 +569,6 @@ class Learner:
                 )
                 self._member_count = np.bincount(self._member_groups).astype(float)
 
-        # the rehearsal's reservoir (``rehearsal``): lesson rows kept over the life, how many rows
-        # were offered to it and how many rehearsal draws were taken
-        self.rehearsal_drives = np.zeros((0, self.brain.connectome.n))
-        shape = () if self.slot_count == 1 else (self.slot_count,)
-        self.rehearsal_labels = np.zeros((0, *shape), dtype=np.int64)
-        self.rehearsal_seen = 0
-        self.rehearsal_draws = 0
-
     @property
     def holder(self) -> GraphHolder:
         """The holder of this learner's current graph, shared by the learners built on it."""
@@ -674,68 +698,6 @@ class Learner:
             drive, state=state, budget=budget, tolerance=cfg.tolerance,
             nudge=nudge, damping=cfg.damping,
         )
-
-    def rehearse(self, drive: np.ndarray, labels: np.ndarray) -> dict[str, float] | None:
-        """After a lesson of ``drive`` and ``labels``: with ``rehearsal`` above zero, teach again
-        ``rehearsal`` rows per row of the lesson drawn from the reservoir of earlier lessons'
-        rows (their drives and labels), under the same rule, then offer the lesson's rows to the
-        reservoir, which keeps a uniform sample of every row offered (``rehearsal_capacity``).
-        Returns the rehearsal's report, or None without ``rehearsal`` or before any row is
-        kept; a refused rehearsal changes nothing and reports its refusal."""
-        cfg = self.config
-        if not cfg.rehearsal:
-            return None
-        drive = np.asarray(drive, dtype=float)
-        labels = self._labels(np.asarray(labels))
-        report: dict[str, float] | None = None
-        self.trim_reservoir()
-        kept = len(self.rehearsal_drives)
-        if kept:
-            count = max(1, int(round(cfg.rehearsal * len(drive))))
-            index = np.array(
-                [_mixed(self.rehearsal_draws + i) % kept for i in range(count)], dtype=np.int64
-            )
-            self.rehearsal_draws += count
-            try:
-                _, report = self.step(self.rehearsal_drives[index], self.rehearsal_labels[index])
-            except LearningPhaseError as error:
-                report = {**error.report, "refused": 1.0}
-            report = {**report, "rows": float(count)}
-        drives, kept_labels = list(self.rehearsal_drives), list(self.rehearsal_labels)
-        for row in range(len(drive)):
-            seen = self.rehearsal_seen
-            self.rehearsal_seen += 1
-            if len(drives) < cfg.rehearsal_capacity:
-                drives.append(drive[row])
-                kept_labels.append(labels[row])
-            else:
-                slot = _mixed(seen) % (seen + 1)
-                if slot < cfg.rehearsal_capacity:
-                    drives[slot], kept_labels[slot] = drive[row], labels[row]
-        self.rehearsal_drives = np.asarray(drives, dtype=float).reshape(
-            len(drives), self.brain.connectome.n
-        )
-        self.rehearsal_labels = np.asarray(kept_labels, dtype=np.int64).reshape(
-            len(drives), *self.rehearsal_labels.shape[1:]
-        )
-        return report
-
-    def trimmed_reservoir(self) -> tuple[np.ndarray, np.ndarray]:
-        """The rehearsal's reservoir cut to ``rehearsal_capacity`` (its drives and labels), the
-        learner unchanged: within the capacity the reservoir as it is; above it a uniform choice
-        of its rows keyed by the count of rows seen (so the same after a checkpoint), in their
-        order."""
-        capacity = self.config.rehearsal_capacity
-        kept = len(self.rehearsal_drives)
-        if kept <= capacity:
-            return self.rehearsal_drives, self.rehearsal_labels
-        keys = [_mixed(self.rehearsal_seen + (1 << 40) + row) for row in range(kept)]
-        index = np.sort(np.argsort(keys, kind="stable")[:capacity])
-        return self.rehearsal_drives[index], self.rehearsal_labels[index]
-
-    def trim_reservoir(self) -> None:
-        """Cut the rehearsal's reservoir to ``rehearsal_capacity`` (``trimmed_reservoir``)."""
-        self.rehearsal_drives, self.rehearsal_labels = self.trimmed_reservoir()
 
     def _labels(self, labels: np.ndarray) -> np.ndarray:
         labels = np.asarray(labels)

@@ -140,31 +140,55 @@ and `accuracy` test the graph, `act` the graph with its memories
 
 ### Teach several types in sequence: rehearsal
 
-Lessons on a new type move the same synapses the earlier types' answers rest on, so teaching
-types one after another can erase the earlier ones. `learning_rehearsal=r` (opt-in, founder 0)
-keeps a reservoir of the lessons' rows, their drives and labels, a uniform sample of every
-lesson row (`learning_rehearsal_capacity`, 512 rows), and after each lesson teaches `r` times the
-lesson's rows again (at least one row), drawn from it, under the same rule: with
-`learning_surprise=True` only the rows the brain now answers wrong move it. The reservoir is
-saved with the brain, also while rehearsal is retuned off, and cut when `retune` sets a smaller
-capacity; a grown brain starts it afresh, since its rows hold the old layout's drives
+Lessons on a new type move the same synapses the earlier types' answers rest on, so teaching types
+one after another can erase the earlier ones. `learning_rehearsal=r` (opt-in, founder 0) keeps a
+reservoir of the lessons' rows, a uniform sample of every lesson row
+(`learning_rehearsal_capacity`, 512 rows), each row with its episode: the moments its stream heard
+since the episode began (at a `reset`, or where a `done` ended the stream's attempt), at most as
+many as the recall memory keeps slots (its `capacity`, 64 at the founder; 64 without a recall
+memory), then the moment it was taught on. After each lesson `r` times the lesson's rows (at least
+one) are drawn and replayed: the rows of equally long episodes together on fresh streams, as after
+`reset`, which hear every moment before the last as a greedy `act` hears it (a learned code takes
+no step on them) and are taught at the last as a lesson teaches, under the same rule, so with
+`learning_surprise=True` only the rows the brain now answers wrong move it. The memories are read
+again under the present parameters, and a recall read's maps take their lesson with the cortex.
+Every stream then returns to the state it was in, the recall memory's slots, `told` and `focus`
+among it, so the live streams continue as they would have without the replay, under the parameters
+it taught. A replayed lesson writes no demonstration to the episodic records, and a refused act or
+lesson ends the replay (`rehearsal_refused` in `last_learning`) while the lesson that called it
+stands. An episode begins on fresh streams, so slots that `reset(keep=("slots",))` carried over
+from an earlier episode are not replayed with it
 ([#238](https://github.com/muellerberndt/cadence/issues/238)).
 
+The reservoir (`Brain.rehearsal_moments` and `rehearsal_labels`, with `rehearsal_seen` and
+`rehearsal_draws`) and the streams' episodes are saved with the brain, the reservoir also while
+rehearsal is retuned off. A rate retuned above zero keeps the streams' moments from then on, so an
+episode in progress is replayed from the moments heard after the retune; a lowered
+`learning_rehearsal_capacity` cuts the reservoir at once; a grown brain starts the reservoir
+afresh, a grafted one keeps this brain's. The capacity counts lesson rows: at 512, up to 512
+episodes of up to 64 moments each.
+
 ```python
-brain = Brain.compose(12, 4, seed=0, learning_rehearsal=1.0, learning_surprise=True)
-assert brain.learner.config.rehearsal == 1.0 and not len(brain.learner.rehearsal_drives)
+brain = Brain.compose(7, 4, seed=0, recall=True, learning_surprise=True, learning_rehearsal=1.0)
+assert brain.learner.config.rehearsal == 1.0 and not brain.rehearsal_moments
 ```
 
-Compare it with the types taught interleaved (the upper control) and in sequence without
-rehearsal (the lower control) at matched lesson counts.
-
-The rehearsal teaches the cortex again; it does not replay what a recall memory's maps
-learned. A stored row holds the drive as the read gave it then, so a type that rests on where
-the read looks is not protected, and the stale reads cost it: on look-back's three cues taught
-in sequence (the [sequence battery](../benchmarks/sequence/README.md): first, then last, then
-second; a recall brain with the anchor, three development seeds, 600 lessons each) the earlier
-cues read 0.29 to 0.44 (first) and 0.43 to 0.59 (last) with rehearsal, 0.32 to 0.74 and 0.65 to
-0.95 without; taught interleaved every cue reads 1.00.
+Compare it with the types taught interleaved (the upper control) and in sequence without rehearsal
+(the lower control) at matched lesson counts. On look back's three cues taught in sequence (first,
+then last, then second, 600 lessons each; the [sequence
+battery](../benchmarks/sequence/README.md#cues-taught-in-sequence-238), six development founders)
+the rehearsal keeps the earlier cues at 0.994 to 1.000 (first) and 0.968 to 1.000 (last), and the
+newest reads 1.000; taught interleaved every cue reads 0.998 to 1.000. In sequence without it first
+reads 0.32 to 0.74 and last 0.58 to 0.95, and 3,600 lessons in sequence, the lessons and the
+replayed rows given as ordinary lessons, leave 0.40 to 0.79 and 0.49 to 0.90: more lessons alone do
+not keep the earlier cues. On six fresh founders declared before the run the rehearsal keeps first
+at 0.994 to 1.000 and last at 0.984 to 1.000, every cue reading 1.000 interleaved; 3,600 lessons in
+sequence keep 0.42 to 0.85 and 0.57 to 0.89. In a paired run on one host a life with the rehearsal
+took 3.1 times as long as without it: the replayed rows settle in small batches, one per episode
+length. A form that kept each row's drive instead of its episode, as the read gave it when the row
+was kept, tried on the release branch and withdrawn before release, kept types the cortex holds but
+cost the cues the read holds (first 0.286 to 0.458 and last 0.458 to 0.700 on the same fresh
+founders): the stale reads taught the cortex, and the read's own maps were never taught again.
 
 ## Rates under normalization
 

@@ -429,12 +429,11 @@ when `normalize > 0` with a rate above 0.05
 ([rates under normalization](teach.md#rates-under-normalization)), and when
 `qualified=True` with `nudged_steps < free_steps`
 ([qualified budgets](settling.md#qualified-teaching-budgets)).
-`rehearsal` above zero teaches, after each lesson, that many times the lesson's rows again
-(at least one row), drawn from a reservoir of the lessons' rows (`Learner.rehearse`; `rehearsal_drives`,
-`rehearsal_labels`, `rehearsal_seen`, `rehearsal_draws`, the counter the draws are keyed on;
-`trimmed_reservoir()` is the reservoir cut to the capacity, `trim_reservoir()` installs that
-cut); `rehearsal_capacity` rows are kept, a uniform sample of
-every row ([teach several types in sequence](teach.md#teach-several-types-in-sequence-rehearsal)).
+`rehearsal` above zero: a composed brain replays, after each lesson, that many times the lesson's
+rows again (at least one row), each with its episode, drawn from a reservoir of
+`rehearsal_capacity` rows, a uniform sample of every lesson row (`Brain.rehearsal_moments`,
+`rehearsal_labels`, `rehearsal_seen`, `rehearsal_draws`); a learner alone replays nothing
+([teach several types in sequence](teach.md#teach-several-types-in-sequence-rehearsal)).
 `initial_damping` is an integer in `0..damping`; nonzero requires qualified learning
 on CPU float64 and affects only its qualified phases. It skips initial integration
 steps without changing the live model or the full-equation residual tolerance.

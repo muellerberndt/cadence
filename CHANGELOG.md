@@ -88,12 +88,27 @@ to 0.99.
   above 0 (a frozen table would leave reward nothing to step), and a pending outcome holds its
   settings as it holds the address map's.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
-  that many times the lesson's rows (at least one) are taught again, drawn from a reservoir of
-  the lessons' rows kept over the life, a uniform sample (`rehearsal_capacity`, 512). Types the
-  cortex holds, taught one after another, keep what earlier lessons taught; types held by a
-  recall read do not, and rehearsal costs them (look back's cues taught first, last, second, 600
-  lessons each: first 0.29 to 0.44 and last 0.43 to 0.59 with it, 0.32 to 0.74 and 0.65 to 0.95
-  without; every cue 1.00 taught interleaved).
+  that many times the lesson's rows (at least one) are replayed, drawn from a reservoir of the
+  lessons' rows kept over the life, a uniform sample (`learning_rehearsal_capacity`, 512 rows),
+  each with its episode: the moments its stream heard since the episode began (at most as many
+  as the recall memory keeps slots) and the moment it was taught on. A replay runs on fresh
+  streams, the earlier moments heard as greedy acts hear them and the last taught as a lesson,
+  so the recall read is computed again and its maps are taught with the cortex; the streams
+  then return to their state and continue as without the replay. The reservoir
+  (`Brain.rehearsal_moments`) and the streams' episodes are saved with the brain; a rate retuned
+  above zero keeps the streams' moments from then on. Look back's cues taught first, last,
+  second, 600 lessons each, on six development founders: first 0.994 to 1.000 and last 0.968 to
+  1.000 with it, 0.32 to 0.74 and 0.58 to 0.95 without, and 0.40 to 0.79 and 0.49 to 0.90 with
+  the lessons and the replayed rows given as 3,600 ordinary lessons; every cue 0.998 to 1.000
+  taught interleaved. Confirmed on six fresh founders declared before the run: first 0.994 to
+  1.000 and last 0.984 to 1.000 with it, 0.42 to 0.85 and 0.57 to 0.89 with 3,600 ordinary
+  lessons; every cue 1.000 interleaved. A life with it takes about three times as long. The
+  reward chambers of `benchmarks/credit/preservation.py` teach by no lesson, so nothing is
+  replayed there: every life reads as without the setting. A form that kept each row's drive
+  instead of its episode, tried on the release branch and withdrawn before release, kept types
+  the cortex holds but cost the cues a recall read holds (first 0.286 to 0.458 and last 0.458 to
+  0.700 on the same fresh founders): a stored drive holds the read as it was when the row was
+  kept, and the read's own maps were never taught again.
 - A cue the answer does not show (#208, #209; `benchmarks/credit`, a two-cue chamber, and a new
   section of docs/reward.md). Taught by the terminal reward alone, `actor_eta=0.1,
   actor_eta_bias=0.01` with `memory_choice=True` learns the cue-dependent answer at delay 0 on

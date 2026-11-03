@@ -59,7 +59,7 @@ what do the earlier cues keep?
 | `every_row` | `recall=True, recall_recency=0.0`: every row taught |
 | `when` | `every_row` with `recall_when=True` |
 | `when_anchor` | `when` with `recall_anchor=True` |
-| `rehearsal` | `anchor` with `learning_rehearsal=1.0` |
+| `rehearsal` | `anchor` with `learning_rehearsal=1.0`: the lessons' episodes replayed |
 
 ## Ordered recall (`order.py`)
 
@@ -206,16 +206,45 @@ Founders 0 to 2, every row taught:
 
 ### Cues taught in sequence (#238)
 
-Look back at its defaults, founders 0 to 2, 1,800 lessons: taught mixed (`anchor` without
-phases) every cue reads 1.000. Taught `first`, then `last`, then `second`, 600 lessons each:
+Look back at its defaults, 1,800 lessons: taught mixed (`anchor` without phases) every cue reads
+0.998 to 1.000 on founders 0 to 5. Taught `first`, then `last`, then `second`, 600 lessons each:
 
-| Arm | `first` | `last` | `second` |
-| --- | --- | --- | --- |
-| `anchor` | 0.324 to 0.739 | 0.647 to 0.949 | 1.000 |
-| `rehearsal` | 0.285 to 0.437 | 0.432 to 0.589 | 1.000 |
+| Arm | Founders | `first` | `last` | `second` |
+| --- | --- | --- | --- | --- |
+| `anchor` | 0 to 5 | 0.324 to 0.739 | 0.583 to 0.949 | 1.000 |
+| `rehearsal` | 0 to 5 | 0.994 to 1.000 | 0.968 to 1.000 | 1.000 |
+| `anchor`, 3,600 lessons (1,200 each) | 0 to 5 | 0.400 to 0.791 | 0.491 to 0.900 | 1.000 |
 
-The rehearsal teaches stored drives again, as the read gave them when they were stored; the
-cues held by where the read looks lose more with it than without it.
+The rehearsal hears each kept lesson's episode again on fresh streams and teaches its last
+moment, so the read is computed and its maps taught under the present parameters: every earlier
+cue keeps at least 0.968, against at most 0.949 in sequence without it. The last arm gives the
+lessons and the replayed rows (16 a lesson) as ordinary lessons in sequence and keeps no more than
+1,800 lessons in sequence do. In a paired run on one host (founder 0, 900 lessons) a rehearsed
+life took 3.1 times as long. The `anchor` lives of founders 0 to 2 repeat the release re-reading
+exactly; the `rehearsal` lives were read on the development commit of the replay, the mechanism
+as released here.
+
+**The rehearsal's confirmation**, declared before any run on founders 238400 to 238405 (gates: G1
+`first` and `last` under `rehearsal` each at 0.9 of the founder's interleaved reading, G3 `second`
+the same, each on at least 5 of 6 founders; G2 the matched lessons, 3,600 in sequence, meeting
+G1's condition on at most 1 of 6):
+
+| Founder | Interleaved | `rehearsal` `first` | `last` | `second` | 3,600 lessons `first` | `last` | `anchor` `first` | `last` |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 238400 | 1.000 | 0.998 | 1.000 | 1.000 | 0.760 | 0.892 | 0.580 | 0.868 |
+| 238401 | 1.000 | 1.000 | 1.000 | 1.000 | 0.571 | 0.891 | 0.605 | 0.843 |
+| 238402 | 1.000 | 1.000 | 0.993 | 1.000 | 0.845 | 0.758 | 0.777 | 0.890 |
+| 238403 | 1.000 | 1.000 | 1.000 | 1.000 | 0.585 | 0.780 | 0.735 | 0.890 |
+| 238404 | 1.000 | 0.998 | 1.000 | 1.000 | 0.558 | 0.726 | 0.474 | 0.656 |
+| 238405 | 1.000 | 0.994 | 0.984 | 1.000 | 0.420 | 0.571 | 0.433 | 0.398 |
+
+Interleaved every cue reads 1.000 on every founder. G1 and G3 pass on 6 of 6, and G2 holds: no
+founder keeps both earlier cues at 0.9 with the matched lessons. The newest cue, `second`, reads
+0.996 to 1.000 in every arm. A form of the rehearsal that kept each row's drive instead of its
+episode, tried on the release branch and withdrawn before release, kept first 0.286 to 0.458 and
+last 0.458 to 0.700 on these founders (0.285 to 0.437 and 0.432 to 0.589 on founders 0 to 2):
+it taught stored drives again, as the read gave them when they were stored, and the cues held by
+where the read looks lost more with it than without it.
 
 ### Ordered recall (#236, #232)
 
