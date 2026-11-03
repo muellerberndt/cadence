@@ -26,6 +26,76 @@ identical to 0.93.0, and the founder parity reads 0 of 24 lives differing. `src/
 - Gone: copies of head 0's port columns and synapses that nothing read, and two arguments of
   the observation code that it never read.
 
+### Settling and learning: the same bits in less time
+
+Every change here leaves every array, every answer and every count as it was: the recall pins,
+the founder parity of 0.93.0 and a battery of 13,076 recorded values over the kernels, the
+learner, the composed operations and the checkpoints read identical. Timings are medians of
+calls alternated with the code before each change in one process on one thread, relative, on
+a machine shared with other work (the brains: `Brain.compose(8, 4)` with the founder's
+modules, a 256-neuron or a 1,024-neuron module, batch 2).
+
+Together, against 0.93.0: on the 1,024-neuron module an act takes 0.68 of its time, a lesson
+0.73, a reward step 0.81; with a 256-neuron module 0.95, 0.94 and 0.96; a qualified learner's
+0.94, 0.95 and 0.97; the founder, a recall brain and an apical brain 1.00 to 1.01. On the
+mlx backend the 0.93.0 soak's taught life (lessons with rehearsal on four streams) takes 125 ms
+per moment where 608, its living life 44 where 111, over 1,500 moments with the same final
+efficacies and maps to the bit.
+
+- A state the compiled CPU kernels settled or checked keeps the block products of its
+  activations (`copy` and `pickle` leave them out): a residual check of the state, or a settle
+  from it, makes only the products of the ranges whose activations differ from the ones they
+  were made from. A bounded solve's check makes those of the ranges its chunk's last sweep
+  moved and the next chunk's first sweep makes none; a finite lesson's three diagnostic checks
+  read the products their settles left, and both nudged phases start on the free phase's.
+  The 1,024-module act takes 0.59 of its time, a lesson 0.91, a reward step 0.92; the
+  256-module brain's 0.97, 0.98 and 0.98. The founder's four small blocks cost less to remake
+  than to hand over: its act, lesson and reward step take 1.01 to 1.02, which the fourth item
+  below returns.
+- `Layout.flat` (the flat blocks remade after every update) returns the weights gathered in
+  entry order as the array where a synapse sits at every entry, as in the composed brains'
+  layouts, without zeroing the array and writing it a second time: the 1,024-module array in
+  2.0 ms where 2.8. Its lesson takes 0.91 of its time, a reward step 0.98; the 256-module
+  lesson 0.96.
+- The optimizer step of a lesson (`fused.optimizer_step`) makes each synapse's moments and step
+  in one pass where no projection-relative floor is set (the founder, `teaching="normalized"`),
+  without the array of terms between two passes; the relative floor keeps its two. Without
+  normalization (the founder) the step takes 0.65 to 0.80 of its time; with the absolute floor
+  0.83 to 0.93 on 69,632 synapses and 0.98 to 1.08 on 1,064,960, where the pass is bound by its
+  square root and divisions.
+- A compiled settle reads the neuron rule once per call, where it computed the rest emission
+  (an exponential) once per row and again for the kernel, and makes every row's starting
+  activations in one call; `settle_batch` and `residual` find the graph's blocks once per call.
+  The founder's settle takes 1 to 2 microseconds less, a check 0.3; its act 0.98 of its time.
+- The block contrast of a lesson (`block_contrast`) writes each block's float64 products into
+  their place in the flat array where it made them apart and copied them (8.5 MB per lesson
+  on the 1,024-neuron module); another precision's products are made apart as before. The
+  1,024-module contrast in 8.0 ms where 9.5 at batch 2 and 10.3 where 14.4 at batch 1; its
+  lesson takes 0.92 of its time, the 256-module lesson 0.98.
+- A damping ladder (`equilibrate(damping=k)`: every qualified phase and every rescue) checks
+  its smallest step's rule once per rule, where it rebuilt and checked the rule at every call;
+  a rule the backend cannot represent is still refused at every call. A qualified learner's act
+  takes 0.92 of its time, a lesson 0.95, a reward step 0.97.
+- A bounded solve reads its stopping test with the residual's own array methods, and a damping
+  ladder whose first attempt qualifies returns that attempt's report, which equals the one it
+  rebuilt field for field. A qualified learner's act takes 0.98 of its time, a lesson 0.98.
+- A compiled update on the mlx backend (every lesson and every reward step) gives the new brain
+  a kernel of its own whose bias and weight blocks are made from the update's host weights as
+  construction makes them, sharing the layout's tables, where it built a whole new brain and
+  kernel; the brain before the update keeps its kernel and its blocks. A 1,024-module lesson on
+  mlx takes 0.90 of its time, a reward step 0.92; a 256-module lesson 0.97.
+- The mlx backend makes every block's products at every step, where it read each source
+  range's equality back to the host at every step to reuse an unchanged range's products, and
+  evaluates a settle's graph once at its end (at least every 64 steps of a long one), where it
+  evaluated every step; a settle under a movement tolerance still evaluates every step, as its
+  stop reads the step's movement. The same states to the bit, in a fraction of the host
+  synchronizations: an act on mlx takes 0.32 to 0.36 of its time, a reward step 0.43 to 0.61, a
+  lesson 0.69 to 0.75 (0.97 on the 1,024-neuron module).
+- A settle on mlx under a movement tolerance (every lesson's phases, every reward step's
+  eligibility phases) evaluates each step's largest movement with the step's state, one host
+  synchronization per step where it took two. A lesson takes 0.80 to 0.94 of its time, a reward
+  step 0.89 to 0.97; acts settle without the tolerance and are unchanged.
+
 ## 0.93.0 — 2026-11-03
 
 Learning during a continuing life, positions at lengths no lesson reached, and wider brains
