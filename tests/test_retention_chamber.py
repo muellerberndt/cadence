@@ -423,8 +423,7 @@ def test_refused_store_write_has_no_donor_credit(chamber, capsule, monkeypatch):
 
     def refuse(*args, **kwargs):
         phase = SimpleNamespace(steps=0, residual=np.ones(8), tolerance=0.003,
-                                residual_checks=1, damping_halvings=0, stagnation_checks=0,
-                                initial_damping=0, relative_damping_halvings=0)
+                                residual_checks=1, damping_halvings=0, stagnation_checks=0)
         raise chamber.LearningPhaseError("free", {"free": phase})
 
     monkeypatch.setattr(cd.SynapticMemory, "observe", refuse)

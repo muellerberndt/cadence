@@ -286,7 +286,7 @@ found again along a new path. An observation wider than the code (more inputs th
 camera's frame) is keyed on the code alone, at the observation's norm, so that the key keeps
 the code's width (`LearnedCode.joins`), and `brain.code_width` is then `units`. With
 `memory_choice=True` the episodic stores separate these keys as an observation's
-(`memory_expansion` 1,024 cells, `memory_winners` 24). A decision
+(`memory_expansion` 1,024 cells, 24 active). A decision
 keeps the key it was taken under until its outcome is recorded. `stimulus(..., memory=False)`,
 `fit`, `predict` and `accuracy` settle the context-free code alone. The heard history holds
 the code, in blocks of `units` per decay.

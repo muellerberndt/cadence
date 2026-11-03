@@ -22,6 +22,7 @@ from typing import Any
 
 import numpy as np
 
+from ._configuration import removed_on_load
 from .brain import Apical, Backend, Brain
 from .connectome import Connectome
 from .learning import Learner, LearnerConfig
@@ -33,12 +34,12 @@ FIRST_FORMAT = "cadence-checkpoint/1"
 # A learner saved with the readout's intrinsic plasticity on (homeostasis_rate above 0).
 # This version has no such setting, so such a file is refused instead of loaded without it.
 HOMEOSTASIS_FORMAT = "cadence-checkpoint/3"
-# Non-default numerical policy; older loaders must refuse instead of dropping it.
+# A learner saved by 0.86.0 to 0.92.1 with the numerical policy ``initial_damping`` above 0,
+# which 0.93.0 retired: refused by name.
 INITIAL_DAMPING_FORMAT = "cadence-checkpoint/4"
-_INITIAL_DAMPING_POLICY = "initial-damping/1"
 # A graph with an apical compartment, or a learner with the settings that came with it
 # (``normalize_relative``, ``nudged_fixed``): older loaders must refuse it instead of settling or
-# teaching the brain without them. Carries the initial-damping policy too when it has one.
+# teaching the brain without them.
 APICAL_FORMAT = "cadence-checkpoint/5"
 
 __all__ = ["FORMAT", "load", "save"]
@@ -57,17 +58,10 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     from . import __version__
 
     brain = learner.brain
-    if learner.config.initial_damping and (
-        brain.backend != "cpu" or brain.precision not in (None, "float64")
-    ):
-        raise ValueError("nonzero initial_damping requires CPU float64")
     config = learner.config.to_dict()
-    if not learner.config.initial_damping:
-        # A neutral new setting must not change ordinary checkpoint metadata.
-        config.pop("initial_damping")
     c = brain.connectome
     meta = {
-        "format": INITIAL_DAMPING_FORMAT if learner.config.initial_damping else FORMAT,
+        "format": FORMAT,
         "version": __version__,
         "n": int(c.n),
         "label": c.label,
@@ -82,11 +76,6 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
         "precision": brain.precision,
         "dense_limit": int(brain.dense_limit),
     }
-    if learner.config.initial_damping:
-        meta["numerical_policy"] = {
-            "kind": _INITIAL_DAMPING_POLICY,
-            "initial_damping": learner.config.initial_damping,
-        }
     compartment: dict[str, np.ndarray] = {}
     if learner.config.normalize_relative or learner.config.nudged_fixed:
         meta["format"] = APICAL_FORMAT
@@ -148,24 +137,16 @@ def save(learner: Learner, path: str | Path, *, compressed: bool = True) -> Path
     return _write(_learner_data(learner), path, compressed=compressed)
 
 
-# Settings of 0.84.3 that this version removed, with the value at which a saved config's law
-# is the law of this version: the contrast of +beta against -beta, and no leak.
-_REMOVED = {"centered": True, "decay": 0.0}
-
-
 def _known_config(saved: dict[str, Any]) -> dict[str, Any]:
     """The saved config's fields that ``LearnerConfig`` has; any other saved field is dropped
     silently, so a checkpoint carrying settings this version lacks loads without them. A
-    setting of 0.84.3 that this version removed loads at the value its law has here and is
-    refused otherwise, with a message naming 0.84.3."""
-    for name, kept in _REMOVED.items():
+    field the learner retired (``LearnerConfig.RETIRED``) loads at the one value at which its
+    law is this version's and is refused otherwise, with the release that retired it."""
+    for name, (_, kept, _) in LearnerConfig.RETIRED.items():
         if name in saved:
             value = saved[name]
             if isinstance(value, bool) != isinstance(kept, bool) or value != kept:
-                raise ValueError(
-                    f"this checkpoint was saved with the learner's {name}={value!r}, which "
-                    "this version removed; load it with cadence-net 0.84.3"
-                )
+                raise ValueError(removed_on_load("learner", name, value, f"learning_{name}"))
     fields = {f.name for f in dataclasses.fields(LearnerConfig)}
     return {k: v for k, v in saved.items() if k in fields}
 
@@ -192,10 +173,15 @@ def load(
                 "plasticity (homeostasis_rate above 0), which 0.82.0 removed; load it with 0.81"
             )
         apical_format = meta.get("format") == APICAL_FORMAT
-        initial_policy = meta.get("format") == INITIAL_DAMPING_FORMAT or (
-            apical_format and "numerical_policy" in meta
-        )
-        known = (FORMAT, INITIAL_DAMPING_FORMAT, APICAL_FORMAT)
+        if meta.get("format") == INITIAL_DAMPING_FORMAT or "numerical_policy" in meta:
+            policy = meta.get("numerical_policy")
+            value = policy.get("initial_damping") if isinstance(policy, dict) else policy
+            release, _, instead = LearnerConfig.RETIRED["initial_damping"]
+            raise ValueError(
+                f"this checkpoint was saved under {INITIAL_DAMPING_FORMAT} with the learner's "
+                f"initial_damping={value!r}, which was retired in {release}: {instead}"
+            )
+        known = (FORMAT, APICAL_FORMAT)
         if not first and meta.get("format") not in known:
             raise ValueError(f"not a cadence checkpoint: {meta.get('format')!r}")
         compartment_arrays = {"apical_synapses", "apical_groups"} & set(data.files)
@@ -220,26 +206,12 @@ def load(
                 "normalize_relative and nudged_fixed belong to checkpoint format "
                 "cadence-checkpoint/5"
             )
-        if initial_policy:
-            saved_config = LearnerConfig(**_known_config(meta["config"]))
-            if not saved_config.initial_damping or meta.get("numerical_policy") != {
-                "kind": _INITIAL_DAMPING_POLICY,
-                "initial_damping": saved_config.initial_damping,
-            }:
-                raise ValueError("invalid initial-damping checkpoint policy")
-        elif meta["config"].get("initial_damping", 0) != 0 or "numerical_policy" in meta:
-            raise ValueError("initial_damping requires checkpoint format cadence-checkpoint/4")
-        else:
-            # An ordinary checkpoint keeps the documented complete-config override,
-            # including when the saved config contains unsupported old settings.
-            saved_config = config or LearnerConfig(**_known_config(meta["config"]))
+        # An ordinary checkpoint keeps the documented complete-config override, including
+        # when the saved config contains unsupported old settings.
+        saved_config = config or LearnerConfig(**_known_config(meta["config"]))
         effective_config = config or saved_config
         target_backend = backend or meta["backend"]
         target_precision = precision if precision is not None else meta.get("precision")
-        if effective_config.initial_damping and (
-            target_backend != "cpu" or target_precision not in (None, "float64")
-        ):
-            raise ValueError("nonzero initial_damping requires CPU float64")
 
         def entry(name: str) -> Any:
             return meta[_FIRST_META[name] if first else name]

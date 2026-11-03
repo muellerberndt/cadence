@@ -14,7 +14,7 @@ OBSERVATIONS = np.eye(4)
 def brain(*, sampled=True, episodic=True, learned=False):
     return cd.Brain.compose(
         4, 2, modules=(8,), seed=3, working_memory_amplitude=0.3,
-        arousal={"youth": 100 if sampled else 0, "need_scale": 0.0},
+        arousal={"youth": 100 if sampled else 0},
         memory_choice=episodic, learned_code=8 if learned else None,
         recall=True, history_decays=(0.5,), actor_eta=0.03, actor_eta_bias=0.003,
     )

@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from dataclasses import replace
 from pathlib import Path
 
 import numpy as np
@@ -278,8 +279,12 @@ def test_the_saved_recall_brain_loads_continues_and_saves_the_same(tmp_path):
     if NUMPY_SOLVER:
         assert acts == provenance["continuation"]["recalled"]["acts"]
         inputs, actions, options = FOUNDERS["recalled"]["build"]
-        # the fixture's genes: a save of 0.84.3 carries the need scale of zero
-        relived = cd.Brain.compose(inputs, actions, **options, arousal_need_scale=0.0)
+        # the fixture's genes: a save of 0.84.3 carries the need scale of zero, the expert
+        # route's value since the constant of 0.93.0
+        relived = cd.Brain.compose(
+            inputs, actions,
+            **{**options, "arousal": replace(options["arousal"], need_scale=0.0)},
+        )
         FOUNDERS["recalled"]["life"](relived)
         assert checkpoint_digest(relived.save(tmp_path / "relived.npz")) == (
             checkpoint_digest(again)
@@ -590,8 +595,7 @@ def test_a_custom_anatomy_takes_the_code_and_keeps_recall_off_unless_asked(tmp_p
     # the memories' code with the cortex on the observation: the regions sized by the code
     assert cd.Genome.observation_width(3_230, 1024) == 1024
     brain = cd.Brain(anatomy(3_230, 16, 1024), code=1024, recall=True, memory_choice=True,
-                     memory_context=0.5, memory_replay=8, memory_demonstrations=1.0,
-                     arousal=True)
+                     memory_context=0.5, arousal=True)
     x = frames(3_230, 1, 5, density=0.1)
     brain.live(x)
     brain.live(x, reward=[1.0])

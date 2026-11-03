@@ -545,14 +545,8 @@ class Equilibrium:
     steps: int
     tolerance: float
     residual_checks: int = 0  # additional transport evaluations, outside the local sweeps
-    damping_halvings: int = 0  # absolute final halving index of this bounded solve
+    damping_halvings: int = 0  # final halving index of this bounded solve
     stagnation_checks: int = 0  # complete-state comparisons, with no synaptic transport
-    initial_damping: int = 0  # initial halving index, relative to the unchanged live model
-
-    @property
-    def relative_damping_halvings(self) -> int:
-        """Further halvings after the explicitly selected initial numerical step."""
-        return self.damping_halvings - self.initial_damping
 
     @property
     def converged(self) -> np.ndarray:
@@ -967,7 +961,6 @@ class Brain:
         mask: np.ndarray | None = None,
         nudge: Nudge | None = None,
         damping: int = 0,
-        initial_damping: int = 0,
     ) -> Equilibrium:
         """Continue a joint state until its equations hold or the exact step budget expires.
 
@@ -981,16 +974,11 @@ class Brain:
         complete-state checkpoints at rounding precision end an unqualified
         attempt early, leaving its unused sweeps for the remaining attempts.
         Every attempt checks the original equations; a halved step changes only the
-        numerical method. Repetition never qualifies an answer.
-
-        ``initial_damping`` optionally skips initial attempts, without changing
-        the live model or the shared budget. It lies in ``0..damping``; nonzero
-        values currently require CPU float64. Results report the absolute final
-        halving index and the additional ``relative_damping_halvings`` separately.
+        numerical method. Repetition never qualifies an answer. Results report the final
+        halving index (``damping_halvings``).
         """
         for name, value, minimum in (
             ("budget", budget, 0), ("chunk", chunk, 1), ("damping", damping, 0),
-            ("initial_damping", initial_damping, 0),
         ):
             if (
                 isinstance(value, bool)
@@ -998,21 +986,13 @@ class Brain:
                 or value < minimum
             ):
                 raise ValueError(f"{name} must be an integer >= {minimum}")
-        if initial_damping > damping:
-            raise ValueError("initial_damping must lie in 0..damping")
-        budget, chunk, damping, initial_damping = map(
-            int, (budget, chunk, damping, initial_damping))
-        if initial_damping and (self.backend != "cpu" or self.precision not in (None, "float64")):
-            raise ValueError("nonzero initial_damping requires CPU float64")
-        if (initial_damping and type(self) is not Brain
-                and type(self)._with_dt is Brain._with_dt):
-            raise ValueError("a boundary graph must preserve its numerical copies")
+        budget, chunk, damping = map(int, (budget, chunk, damping))
         if not np.isfinite(tolerance) or tolerance < 0:
             raise ValueError("tolerance must be finite and nonnegative")
         if damping:
-            attempts = min(damping - initial_damping + 1, max(1, budget))
+            attempts = min(damping + 1, max(1, budget))
             minimum_rule = self.neuron_model.replace(
-                dt=float(np.ldexp(self.neuron_model.dt, -(initial_damping + attempts - 1)))
+                dt=float(np.ldexp(self.neuron_model.dt, -(attempts - 1)))
             )
             dtype = "float32" if (self._mlx is not None or (
                 self._torch is not None and self._torch.dtype == self._torch.torch.float32
@@ -1020,17 +1000,14 @@ class Brain:
             minimum_rule._validate_precision(dtype)
             used = checks = stagnation_checks = 0
             current_state = state
-            for relative in range(attempts):
-                halving = initial_damping + relative
-                portion = (budget - used + attempts - relative - 1) // (attempts - relative)
+            for halving in range(attempts):
+                portion = (budget - used + attempts - halving - 1) // (attempts - halving)
                 candidate = self if halving == 0 else self._with_dt(
                     float(np.ldexp(self.neuron_model.dt, -halving)))
-                if initial_damping and type(candidate) is not type(self):
-                    raise ValueError("numerical copy changed the boundary graph type")
                 phase = candidate._equilibrate_local(
                     drive, state=current_state, budget=portion, chunk=chunk,
                     tolerance=tolerance, mask=mask, nudge=nudge,
-                    stop_if_stalled=relative < attempts - 1,
+                    stop_if_stalled=halving < attempts - 1,
                 )
                 used += phase.steps
                 checks += phase.residual_checks
@@ -1043,7 +1020,6 @@ class Brain:
                     phase.state, error, used, tolerance,
                     residual_checks=checks, damping_halvings=halving,
                     stagnation_checks=stagnation_checks,
-                    initial_damping=initial_damping,
                 )
                 if np.all(result.qualified) or used >= budget:
                     return result

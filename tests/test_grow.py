@@ -82,7 +82,7 @@ LAYOUTS = {
     "episodic": dict(memory_choice=True, memory_expansion=256, memory_fan_in=4),
     "history": dict(history_decays=(0.5, 0.9), history_amplitude=2.0),
     "efference": dict(efference_amplitude=1.0, efference_decay=0.3),
-    "arousal": dict(arousal=True, arousal_need_scale=0.5),
+    "arousal": dict(arousal=True, arousal_heat=1.5),
     "deep": dict(modules=(16, 16), apical=0.5),
     "observers": dict(observers=(5,), lateral=-0.2, slots=(2, 2)),
     "no hippocampus": dict(episodic=False),
@@ -216,7 +216,7 @@ def test_retuned_settings_carry_into_the_grown_brain():
         "recall_temperature",
         "working_memory_amplitude",
         "efference_amplitude",
-        "learning_temperature",
+        "temperature",
         "actor_eta",
     ):
         assert after[name] == before[name], name

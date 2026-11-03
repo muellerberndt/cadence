@@ -1,4 +1,5 @@
-"""The apical compartment and the projection-relative normalization floor."""
+"""The apical compartment and the deep teaching point: the projection-relative normalization
+floor and nudged phases that run their whole budget."""
 
 from dataclasses import replace
 
@@ -147,7 +148,7 @@ def test_blocked_and_segmented_settles_agree():
 
 def test_torch_settles_and_learns_as_the_host():
     pytest.importorskip("torch")
-    options = {"teaching": "normalized", "learning_normalize_relative": 0.1, "episodic": False}
+    options = {"teaching": "deep", "episodic": False}
     host = apical_brain(seed=7, **options)
     device = apical_brain(seed=7, backend="torch", device="cpu", **options)
     x = np.random.default_rng(8).normal(size=(6, 4))
@@ -166,7 +167,7 @@ def test_torch_settles_and_learns_as_the_host():
 
 
 def test_checkpoints_keep_the_compartment_in_a_format_of_their_own(tmp_path):
-    brain = apical_brain(teaching="normalized", learning_normalize_relative=0.1)
+    brain = apical_brain(teaching="deep")
     rng = np.random.default_rng(9)
     for _ in range(3):
         brain.lesson(rng.normal(size=(4, 4)), rng.integers(0, 3, 4))
@@ -228,15 +229,16 @@ def test_the_relative_floor_is_validated_and_neutral_when_off():
     with pytest.raises(ValueError, match="normalize above zero"):
         LearnerConfig(normalize_relative=0.1)
     founder = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized")
-    assert "learning_normalize_relative" not in founder.describe()["genes"]
-    relative = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized",
-                             learning_normalize_relative=0.1)
-    assert relative.describe()["genes"]["learning_normalize_relative"] == 0.1
+    assert founder.learner.config.normalize_relative == 0.0
+    assert founder.describe()["genes"]["teaching"] == "normalized"
+    deep = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    assert deep.learner.config.normalize_relative == 0.1
+    assert deep.describe()["genes"]["teaching"] == "deep"
+    assert "learning_normalize_relative" not in deep.describe()["genes"]
 
 
 def test_each_step_is_divided_by_its_projection_scale():
-    brain = Brain.compose(4, 3, modules=(6, 5), seed=3, teaching="normalized",
-                          learning_normalize_relative=0.1, episodic=False)
+    brain = Brain.compose(4, 3, modules=(6, 5), seed=3, teaching="deep", episodic=False)
     learner = brain.learner
     rng = np.random.default_rng(4)
     rms = rng.uniform(0.0, 1.0, learner.brain.connectome.synapses)
@@ -263,14 +265,14 @@ def test_fixed_nudged_phases_run_their_whole_budget():
     rng = np.random.default_rng(10)
     x, labels = rng.normal(size=(4, 4)), np.array([0, 1, 2, 0])
     stopping = apical_brain(teaching="normalized", learning_nudged_steps=40)
-    fixed = apical_brain(teaching="normalized", learning_nudged_steps=40,
-                         learning_nudged_fixed=True)
+    fixed = apical_brain(teaching="deep", learning_nudged_steps=40)  # the budget is the brain's
     early = stopping.lesson(x, labels)
     whole = fixed.lesson(x, labels)
     assert early["nudged_steps"] < 40 and whole["nudged_steps"] == 40
     assert whole["free_steps"] == early["free_steps"]  # the free phase keeps its tolerance
     assert "nudged_fixed" not in LearnerConfig().to_dict()
-    assert fixed.describe()["genes"]["learning_nudged_fixed"] is True
+    assert fixed.describe()["genes"]["teaching"] == "deep"
+    assert fixed.describe()["genes"]["learning_nudged_steps"] == 40
     with pytest.raises(ValueError, match="nudged_fixed"):
         LearnerConfig(nudged_fixed=1)
 
@@ -359,8 +361,7 @@ def test_a_settlement_record_carries_the_compartment():
 def test_the_new_learner_settings_take_the_new_format_without_the_compartment(tmp_path):
     import json
 
-    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized",
-                          learning_normalize_relative=0.1, learning_nudged_fixed=True)
+    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
     path = brain.learner.save(tmp_path / "learner.npz")
     with np.load(path, allow_pickle=False) as data:
         meta = json.loads(str(data["meta"]))
@@ -382,9 +383,41 @@ def test_the_new_learner_settings_take_the_new_format_without_the_compartment(tm
         Learner.load(tmp_path / "empty.npz")
 
 
-def test_retune_takes_a_teaching_point_and_the_relative_floor_together():
-    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized",
-                          learning_normalize_relative=0.1)
-    brain.retune(teaching="founder", learning_normalize_relative=0.0)
+def test_retune_moves_between_the_teaching_points_with_their_floors_and_phases():
+    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    brain.retune(teaching="founder")
     config = brain.learner.config
     assert config.normalize == 0.0 and config.normalize_relative == 0.0 and config.eta == 0.5
+    assert not config.nudged_fixed and brain.describe()["genes"]["teaching"] == "founder"
+    brain.retune(teaching="deep")
+    deep = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    assert brain.learner.config == deep.learner.config
+
+
+def test_the_folded_names_are_refused_and_a_depth_checkpoint_of_0921_describes_as_deep(tmp_path):
+    """``learning_normalize_relative`` and ``learning_nudged_fixed`` left in 0.93.0 for the
+    point ``teaching="deep"``; the expert route to the same configuration, which 0.92.1 composed
+    by the three names, saves and loads as the point."""
+    for name, value in (("learning_normalize_relative", 0.1), ("learning_nudged_fixed", True)):
+        with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0.*teaching='deep'"):
+            Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized", **{name: value})
+        with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0"):
+            apical_brain(teaching="deep").retune(**{name: value})
+    normalized = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized").learner.config
+    expert = Brain.compose(
+        4, 3, modules=(6, 5), seed=2, apical=0.25,
+        learning=replace(normalized, normalize_relative=0.1, nudged_steps=32, nudged_fixed=True),
+    )
+    deep = apical_brain(teaching="deep")
+    assert expert.learner.config == deep.learner.config
+    assert expert.describe() == deep.describe()
+    assert deep.describe()["genes"]["teaching"] == "deep"
+    twin = Brain.load(expert.save(tmp_path / "depth.npz"))
+    assert twin.describe()["genes"]["teaching"] == "deep"
+    assert twin.learner.config == deep.learner.config
+    custom = Brain.compose(4, 3, modules=(6, 5), seed=2, apical=0.25,
+                           learning=replace(normalized, normalize_relative=0.2))
+    genes = custom.describe()["genes"]
+    assert genes["teaching"] == "custom" and genes["learning"]["normalize_relative"] == 0.2
+    assert set(genes["learning"]) == {"eta", "eta_bias", "normalize", "normalize_floor",
+                                      "normalize_relative", "nudged_fixed"}

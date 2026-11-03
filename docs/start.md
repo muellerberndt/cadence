@@ -229,7 +229,7 @@ integrates no learned model of environmental transitions
 | Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
 | Memories | Working trace and associative store on; efference copy, heard history, episodic and recall memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
 | Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
-| Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` or `need_scale` (founders 0) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
+| Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
 | Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](#private-imagination). |
 
 `step` learns from every outcome it is given. `live` gates learning by arousal;
@@ -400,12 +400,11 @@ outside their ranges, a negative `need` or `need_scale` and `fast < slow`.
 | `youth` | 100 | first moments of a life spent aroused |
 | `value_surprise` | 1.0 | weight of surprise at the critic's forecast |
 | `need` | 0.0 | reward per moment the body requires; 0 removes the need's want |
-| `need_scale` | 0.1 | the need as a share of the reward scale, `need_scale * scale`, after youth; 0 removes it |
-| `hindsight` | 0 | calm moments an outcome that wakes the brain credits; 0 credits none ([hindsight](#calm-moments-in-hindsight)) |
+| `need_scale` | 0.1 | the need as a share of the reward scale, `need_scale * scale`, after youth; a constant of the composed brain since 0.93.0 (`ArousalConfig(need_scale=...)` moves it for the law alone) |
 
 `brain.last_arousal` snapshots the latest moment: `mode`, `level`, `error`,
 `surprise`, `want`, `temperature`, per-slot `temperatures`, `heated_slot`, `learned`,
-`recorded`, `credited` (calm moments credited in hindsight), `sweeps` and `learning_sweeps`;
+`recorded`, `sweeps` and `learning_sweeps`;
 it is `None`
 after construction, reset or load. `brain.arousal` counts `moments` and `sweeps` per
 mode, `learning_sweeps` and `age` ([class methods](api.md#arousal-cadencearousal)).
@@ -419,9 +418,9 @@ adaptation, and a minority of lives never find the moved reward. In an unchangin
 world, reward noise rouses the founders for a small share of moments. A routine moment
 pays one full settle.
 
-`need_scale` is 0.1 at the founder; `need_scale=0` is the brain without the scaled need, the
-law of 0.84.3. It is outside `ArousalConfig.space()`, so seeded mutations at the founder draw
-as before; add it to a space to select on it. A positive `need_scale` rouses an adult whose income falls below
+`need_scale` is 0.1, a constant of the composed brain since 0.93.0 (the law alone takes
+`ArousalConfig(need_scale=0)`, the brain of 0.84.3 without the scaled need). It is outside
+`ArousalConfig.space()`. A positive `need_scale` rouses an adult whose income falls below
 that share of its learned reward spread, whatever the unit of its rewards, and leaves a life
 that never paid at all calm (its scale is zero). At `need_scale=0.1`, with the actor step at
 the composed founder, against the founder on fresh seeds the composed brain kept every
@@ -439,25 +438,6 @@ at every moment. With pay at the end of the chain, 5 of 6 lives stayed aroused f
 .67 of the life on an income of .017 to .022 per moment, the sixth, earning .15 per moment,
 for .06, and the founder's 6 lives, all collapsed, for .02. Through `step` the gene is
 inert.
-
-<a id="calm-moments-in-hindsight"></a>
-
-A calm moment keeps no eligibility, so at `hindsight=0` the outcome that wakes the brain
-reaches its arousal and its associative store but no synapse: the routine actions that led
-to it are not credited. `hindsight=k` (opt-in, founder 0) holds the stream's last `k` calm
-transitions, each its drive, free state, greedy action and reward. When an outcome wakes the
-brain, `live` scores each held action's eligibility as it scores a sampled action's and steps
-the actor and critic through them in order, as temporal-difference steps with their own
-rewards, the waking outcome last; `last_arousal["credited"]` counts them. Calm moments change
-no parameter, so the first held action is scored under the parameters it was issued with and
-each later one after the credited steps before it, as online learning would. The held
-moments' recall reads are gone, so a learned recall address map is not credited. Routine
-work is unchanged; a waking moment pays two nudged settles and one forecast per credited
-moment. Held moments end with the stream (`done`, `reset`, an aroused moment, or another
-operation acting in between) and are not saved in checkpoints: a loaded brain credits only the
-calm moments it lives after loading. The gene is experimental: on a delayed-harm task it fired
-rarely, because the brain was seldom calm before the harm, and no gain over `hindsight=0` has
-been measured yet.
 
 ### Learning during a continuing life
 
@@ -573,7 +553,7 @@ where the solve was rescued (`steps` then exceeds `budget`).
 Validation errors, `learn` and `imagine` leave it; reset and load clear it. It counts
 answer work only: teaching and feedback work, refused teaching included, is in
 `last_learning`, and [settlement records](api.md#record-every-settling-step) capture
-every solver call. Reward eligibility has its own budget, `actor_eligibility_steps=12`;
+every solver call. Reward eligibility has its own budget, 12 sweeps (a constant);
 qualified teaching is opt-in ([budgets](settling.md#qualified-teaching-budgets)).
 
 ### Private imagination

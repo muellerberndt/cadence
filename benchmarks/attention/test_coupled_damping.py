@@ -276,52 +276,32 @@ def test_composed_default_damping_and_dt_are_unchanged():
 
 
 @pytest.mark.parametrize("kind", ["none", "agreement", "fixed"])
-def test_initial_index_preserves_current_parameters_boundary_and_original_residual(kind):
+def test_the_halved_copies_keep_current_parameters_boundary_and_original_residual(kind):
     graph, drive, _ = orbital_graph(kind)
     graph = graph.with_parameters(bias=graph.bias + .001)
     memory, model = graph.memory, graph.neuron_model
-    reference = graph._with_dt(.25).equilibrate(
-        drive, budget=256, damping=1, tolerance=3e-3)
-    actual = graph.equilibrate(
-        drive, budget=256, damping=3, initial_damping=2, tolerance=3e-3)
+    actual = graph.equilibrate(drive, budget=256, damping=3, tolerance=3e-3)
     assert graph.memory is memory and graph.neuron_model is model
     same = graph._with_dt(.125)
     assert type(same) is type(graph) and same.memory is memory
     for name in ("efficacy", "bias", "log_gain"):
         np.testing.assert_array_equal(getattr(same, name), getattr(graph, name))
-    for name in ("v", "activation", "adaptation"):
-        np.testing.assert_array_equal(getattr(actual.state, name), getattr(reference.state, name))
     np.testing.assert_array_equal(actual.residual, graph.residual(drive, actual.state))
-    assert actual.steps == reference.steps
-    assert actual.residual_checks == reference.residual_checks + 1
-    assert actual.damping_halvings == 2 + reference.damping_halvings
-    assert actual.relative_damping_halvings == reference.damping_halvings
+    assert 0 <= actual.damping_halvings <= 3
 
 
-def test_initial_index_rejects_inherited_copy_that_drops_a_boundary_subclass():
-    class ExtendedGraph(Graph):
-        pass
-
-    graph, drive, _ = orbital_graph("agreement")
-    extra = ExtendedGraph(graph.connectome, graph.neuron_model,
-                          efficacy=graph.efficacy, bias=graph.bias)
-    extra.memory = graph.memory
-    with pytest.raises(ValueError, match="boundary graph type"):
-        extra.equilibrate(drive, budget=256, damping=3, initial_damping=2)
-
-
-def test_benchmark_life_archive_keeps_nondefault_initial_index(tmp_path):
+def test_benchmark_life_archive_keeps_the_qualified_damping_policy(tmp_path):
     brain = heads.MultiHeadBrain.compose(
         3, 2, heads=1, modules=(4,), episodic=False, recall_next=False,
-        dt=1., learning_qualified=True, learning_damping=3, learning_initial_damping=2,
+        dt=1., learning_qualified=True, learning_damping=3,
         learning_free_steps=256, learning_nudged_steps=256,
     )
     brain.act([[1., 0., 0.]])
     assert brain.pending_feedback
-    path = brain.save(tmp_path / "initial-policy.npz")
+    path = brain.save(tmp_path / "qualified-policy.npz")
     resumed = heads.MultiHeadBrain.load(path)
     assert resumed.learner.config == brain.learner.config
-    assert resumed.learner.config.initial_damping == 2
+    assert resumed.learner.config.damping == 3 and resumed.learner.config.qualified
     assert type(resumed.brain) is Graph
     for owner in (brain, resumed):
         owner.learn(np.array([.1]), np.array([False]), [[0., 1., 0.]])

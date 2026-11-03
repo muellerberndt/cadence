@@ -1,7 +1,7 @@
 """Seconds per lesson of a composed brain at several Numba thread counts.
 
 Two brains by default: a deep apical brain (four processing regions with the apical compartment
-and the depth benchmark's teaching settings) and a flat founder (one module, founder settings).
+at the depth benchmark's teaching point) and a flat founder (one module, founder settings).
 For every thread count each brain is composed afresh from the same seed and taught the same
 lessons, so the runs differ only in the threads; the learned weights must come out bit for bit
 the same at every count, and the script checks that they do.
@@ -36,10 +36,7 @@ import cadence as cd
 # projection-relative floor, nudged phases of a whole 32 sweeps, no memories
 DEEP: dict[str, Any] = {
     "apical": 0.25,
-    "teaching": "normalized",
-    "learning_normalize_relative": 0.1,
-    "learning_nudged_steps": 32,
-    "learning_nudged_fixed": True,
+    "teaching": "deep",
     "learning_surprise": False,
     "episodic": False,
     "working_memory_amplitude": 0.0,

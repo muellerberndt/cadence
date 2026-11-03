@@ -212,8 +212,9 @@ the readout's quiet synapses still swallows the deep region's whole signal. `nor
 above zero replaces it by a floor of that share of each synapse's projection (the block of synapses
 between its two neuron ranges; a bias reads its range): every projection steps at about the rate on
 its own scale, the faint one as the strong one, and a synapse quieter than its projection still
-steps less. It needs `normalize` above zero; 0.1 is the founder of brains with the
-[apical compartment](anatomy.md#the-apical-compartment), and 0 keeps `normalize_floor`.
+steps less. It needs `normalize` above zero; the teaching point `"deep"` sets it at 0.1 for
+brains with the [apical compartment](anatomy.md#the-apical-compartment), the other points keep
+`normalize_floor`, and `LearnerConfig.normalize_relative` sets it for an expert configuration.
 
 The composed rates (`eta=0.5` teaching, 1.0 actor) are unnormalized; normalized at those rates,
 steps can dwarf the raw signals and saturate the outputs. Retune `eta` and `eta_bias` together;

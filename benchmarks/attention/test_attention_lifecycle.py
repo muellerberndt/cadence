@@ -181,7 +181,7 @@ def test_accepted_partial_done_uses_new_boundary_and_clears_only_ended_credit():
 
 
 def test_terminal_routine_forecast_keeps_the_new_empty_boundary_for_its_answer():
-    b = brain(arousal=True, arousal_youth=0, arousal_need=0.0, arousal_need_scale=0.0)
+    b = brain(arousal=True, arousal_youth=0, arousal_need=0.0)
     b.live([[1, 0, 0]])
     previous = b._action_boundary
     b.live([[0, 1, 0]], reward=[0.0], done=[True])
@@ -219,7 +219,7 @@ def test_pending_action_prevents_an_unowned_teacher_update():
 
 
 def test_calm_live_keeps_weights_and_outcome_stores_still_but_witnesses_each_moment():
-    b = brain(arousal=True, arousal_youth=0, arousal_need=0.0, arousal_need_scale=0.0)
+    b = brain(arousal=True, arousal_youth=0, arousal_need=0.0)
     parameters = b.brain.efficacy.copy()
     b.live([[1, 0, 0]])
     assert b.last_arousal["mode"] == "routine"
@@ -250,7 +250,7 @@ def test_wait_keeps_original_action_eligibility_and_decision_ownership():
 
 
 def test_accepted_routine_outcome_cannot_remain_pending_after_answer_refusal(monkeypatch):
-    b = brain(arousal=True, arousal_youth=0, arousal_need=0.0, arousal_need_scale=0.0)
+    b = brain(arousal=True, arousal_youth=0, arousal_need=0.0)
     b.live([[1, 0, 0]])
     original = b._choose
 
@@ -378,8 +378,7 @@ def test_independent_scoring_restores_learned_code_phase_and_pending_caches(oper
 
 
 def test_calm_live_advances_held_code_phases_without_learning_its_tables():
-    b = brain(learned_code=6, arousal=True, arousal_youth=0,
-              arousal_need=0.0, arousal_need_scale=0.0)
+    b = brain(learned_code=6, arousal=True, arousal_youth=0, arousal_need=0.0)
     region = b.learned_code
     arrays = deepcopy(region.arrays())
     b.live([[1, 0, 0]])

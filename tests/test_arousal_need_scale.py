@@ -3,43 +3,25 @@
 Above zero, at every outcome the want is at least the unmet share of ``need_scale * scale``,
 with the scale as it stood before that outcome entered it; the want and heat read afterwards
 use the scale as it stands; youth, and a scale no outcome has entered, leave the founder need
-of zero. At the founder 0 the law is unchanged: every brain and composed life pinned below
-is the one the library before the gene gives (the acts and readings were recorded on main at
-c7dc2f0, with the NumPy solver). The saved arousal states and checkpoints are pinned as this
-version writes them: ``cadence-arousal/4`` carries every gene, and the record channel of
-0.84.3, inert at its founder weight of zero, is gone with its readings; every other value
-of those states and files is the one recorded on main.
+of zero. These are the law's tests: the gene against the reference subclass the reading used,
+and the saves of 0.84.3. The composed brain's need scale is 0.1, a constant since 0.93.0
+(``tests/test_public_configuration.py``); the law alone takes any value. The law's readings at
+the founder are pinned as recorded on main at c7dc2f0 (the NumPy solver).
 """
 
 from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterator
-from pathlib import Path
+from collections.abc import Iterator
 from typing import Any
 
 import numpy as np
 import pytest
-from checkpoints import metadata
 
 import cadence as cd
-from cadence import brain as cadence_brain
 from cadence.arousal import Arousal
 
-NUMPY_SOLVER = not cadence_brain._FUSED
-BYTES_REASON = (
-    "acts and array contents were recorded on the NumPy solver; this run uses the compiled "
-    "dense kernel (CADENCE_FUSED=0 selects the NumPy loop)"
-)
-OBS = np.array([[1.0]])  # the bandit's one constant observation
-CUE = np.array([[1.0, 0.0, 0.5, 0.0]])
-GO = np.array([[0.0, 0.0, 0.0, 1.0]])
-FACT = np.array([[1.0, 0.0, 0.0, 1.0]])
-NAME = np.array([[1.0, 0.0, 0.0, 0.0]])
-STREAM = (CUE, GO, FACT, NAME)
-# What the default reset forgets beside the level: the counts and the running statistics.
-STATISTICS = ("outcomes", "rewards", "spreads", "square", "recent", "longrun", "usual")
 Outcome = tuple[float, float, bool, bool, float | None]
 
 
@@ -58,14 +40,6 @@ class ScaledNeedReference(Arousal):
         need = k * scale
         unmet = 1.0 if recent <= 0.0 else (0.0 if recent >= need else (need - recent) / need)
         return max(want, unmet)
-
-
-def with_reference(brain: cd.Brain, scale: float) -> cd.Brain:
-    """The subclass installed in place on a composed brain's arousal, as the instrument did."""
-    assert brain.arousal is not None and brain.arousal.config.need_scale == 0.0
-    brain.arousal.__class__ = ScaledNeedReference
-    brain.arousal.need_scale = scale  # type: ignore[attr-defined]
-    return brain
 
 
 def outcomes(count: int, seed: int) -> Iterator[Outcome]:
@@ -92,55 +66,8 @@ def law_want(arousal: cd.Arousal, scale: float) -> float:
     )
 
 
-def reading(brain: cd.Brain) -> dict[str, Any]:
-    last = brain.last_arousal
-    assert last is not None
-    return dict(last)
-
-
-def saved(path: Path) -> tuple[dict[str, Any], dict[str, np.ndarray]]:
-    with np.load(path, allow_pickle=False) as data:
-        meta = metadata(data)
-        arrays = {name: data[name].copy() for name in data.files if name not in ("generic", "brain")}
-    meta.pop("version", None)
-    return meta, arrays
-
-
-def assert_same_checkpoint(first: Path, second: Path, *, but: tuple[str, ...] = ()) -> None:
-    (meta_a, arrays_a), (meta_b, arrays_b) = saved(first), saved(second)
-    for name in but:
-        meta_a.pop(name, None)
-        meta_b.pop(name, None)
-    assert meta_a == meta_b
-    assert set(arrays_a) == set(arrays_b)
-    for name in arrays_a:
-        np.testing.assert_array_equal(arrays_a[name], arrays_b[name], err_msg=name)
-
-
-def twin(brain: cd.Brain, path: Path) -> cd.Brain:
-    return cd.Brain.load(brain.save(path))
-
-
 def state_without_config(state: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in state.items() if k not in ("format", "config")}
-
-
-def sparse_life(brain: cd.Brain, moments: int, start: int = 0) -> tuple[list[int], list[Any]]:
-    """A world that pays rarely: 1.0 at every fourteenth moment, whatever the brain does, and
-    nothing otherwise, so the income is far below the spread of the rewards."""
-    acts = [int(brain.live(OBS)[0])]
-    readings = [reading(brain)]
-    for t in range(start, start + moments):
-        acts.append(int(brain.live(OBS, reward=[1.0 if t % 14 == 0 else 0.0])[0]))
-        readings.append(reading(brain))
-    return acts, readings
-
-
-def sparse_adult(scale: float, seed: int = 0, moments: int = 300, **options: Any) -> cd.Brain:
-    brain = cd.Brain.compose(1, 2, modules=(16,), seed=seed, arousal=True,
-                             arousal_need_scale=scale, **options)
-    sparse_life(brain, moments)
-    return brain
 
 
 # -- the gene
@@ -280,94 +207,6 @@ def test_a_need_and_a_need_scale_together_want_the_larger() -> None:
         assert both.want == max(fixed.want, scaled.want)
 
 
-# -- the composed brain
-
-
-def test_a_composed_brain_with_the_gene_lives_as_the_reference_subclass(tmp_path: Path) -> None:
-    """In a world that pays rarely, the brain with the gene at .5 acts and reads at every
-    moment as the brain with the subclass installed, and saves the same checkpoint but for the
-    arousal's config; the brain without the scaled need calms and the gene keeps the brain
-    wanting."""
-    k = 0.5
-    gene = cd.Brain.compose(1, 2, modules=(16,), seed=0, arousal=True, arousal_need_scale=k)
-    reference = with_reference(
-        cd.Brain.compose(1, 2, modules=(16,), seed=0, arousal=True, arousal_need_scale=0.0), k
-    )
-    founder = cd.Brain.compose(1, 2, modules=(16,), seed=0, arousal=True, arousal_need_scale=0.0)
-    lives = {name: sparse_life(brain, 260) for name, brain in
-             (("gene", gene), ("reference", reference), ("founder", founder))}
-    assert lives["gene"] == lives["reference"]
-    assert lives["gene"] != lives["founder"]
-    assert gene.arousal is not None and reference.arousal is not None
-    assert founder.arousal is not None
-    assert founder.arousal.moments["routine"] > 0
-    assert gene.arousal.moments["aroused"] > founder.arousal.moments["aroused"]
-    assert_same_checkpoint(gene.save(tmp_path / "gene"), reference.save(tmp_path / "ref"),
-                           but=("arousal",))
-    state, other = gene.arousal.to_dict(), reference.arousal.to_dict()
-    assert state["format"] == "cadence-arousal/4" and state["config"]["need_scale"] == k
-    assert state_without_config(state) == state_without_config(other)
-
-
-def test_the_scaled_need_survives_the_default_reset_and_a_reset_without_the_arousal_zeroes_it(
-    tmp_path: Path,
-) -> None:
-    brain = sparse_adult(0.5)
-    arousal = brain.arousal
-    assert arousal is not None and arousal.age > arousal.config.youth
-    assert arousal.scale > 0.0 and arousal.want > 0.0 and arousal.aroused
-    want, scale, state = arousal.want, arousal.scale, arousal.to_dict()
-    default = twin(brain, tmp_path / "default")
-    restored = twin(brain, tmp_path / "restored")
-    brain.reset()  # the default keeps the arousal
-    default.reset(keep=())
-    kept, left = brain.arousal, default.arousal
-    assert kept is not None and left is not None
-    assert kept.to_dict() == state and kept.scale == scale and kept.want == want
-    assert kept.aroused and kept.config.need_scale == 0.5
-    assert left.config.need_scale == 0.5 and left.age == kept.age
-    assert left.scale == 0.0 and left.spreads == 0 and left.want == 0.0
-    assert left.mode == "routine" and all(left.to_dict()[name] == 0 for name in STATISTICS)
-    after_default = left.to_dict()
-    default.live(OBS)
-    default.live(OBS, reward=[0.0])
-    assert reading(default)["want"] == 0.0
-    # brain.arousal.reset() leaves the arousal as reset(keep=()) does
-    retuned = twin(restored, tmp_path / "retuned")
-    retuned.arousal.reset()
-    assert retuned.arousal is not None and retuned.arousal.config.need_scale == 0.5
-    assert retuned.arousal.scale == 0.0 and retuned.arousal.want == 0.0
-    assert retuned.arousal.age == kept.age and retuned.arousal.to_dict() == after_default
-    # the kept reset continues as the documented restore of the state saved before it
-    restored.reset(keep=())
-    assert restored.arousal is not None
-    restored.arousal = cd.Arousal.from_dict(state)
-    lives = [sparse_life(b, 40, start=300) for b in (brain, restored)]
-    assert lives[0] == lives[1] and lives[0][1][0]["mode"] == "aroused"
-    assert_same_checkpoint(brain.save(tmp_path / "kept"), restored.save(tmp_path / "again"))
-
-
-def test_a_saved_life_with_the_gene_continues_identically(tmp_path: Path) -> None:
-    brain = sparse_adult(0.5, seed=1, moments=120)
-    assert brain.basal_ganglia._pending is not None  # a sampled action awaits its outcome
-    copy = twin(brain, tmp_path / "life")
-    assert copy.arousal is not None and brain.arousal is not None
-    assert copy.arousal.to_dict() == brain.arousal.to_dict()
-    assert copy.arousal.config.need_scale == 0.5
-    assert copy.arousal.to_dict()["format"] == "cadence-arousal/4"
-    lives = []
-    for b in (brain, copy):
-        acts: list[int] = []
-        readings = []
-        for t in range(120, 160):
-            acts.append(int(b.live(OBS, reward=[1.0 if t % 14 == 0 else 0.0])[0]))
-            readings.append(reading(b))
-        lives.append((acts, readings))
-    assert lives[0] == lives[1]
-    assert copy.arousal.to_dict() == brain.arousal.to_dict()
-    assert_same_checkpoint(brain.save(tmp_path / "a"), copy.save(tmp_path / "b"))
-
-
 def test_saves_under_earlier_formats_load_at_the_founder_and_a_scaled_save_needs_its_gene() -> None:
     """The saves of 0.84.3: ``cadence-arousal/2`` leaves out the need scale of zero (0.84.3's
     founder), ``/3`` carries a positive one, and every one carries the record channel, removed
@@ -411,217 +250,8 @@ def test_saves_under_earlier_formats_load_at_the_founder_and_a_scaled_save_needs
     assert zero.to_dict() == current
 
 
-def test_compose_retune_and_describe_carry_the_gene(tmp_path: Path) -> None:
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=3, arousal=True, arousal_need_scale=0.2)
-    assert brain.arousal is not None and brain.arousal.config.need_scale == 0.2
-    described = brain.describe()
-    assert described["genes"]["arousal_need_scale"] == 0.2
-    assert described["genes"]["arousal_need_scale"] == 0.2
-    mapped = cd.Brain.compose(3, 2, modules=(8,), seed=3, arousal={"need_scale": 0.2})
-    assert mapped.arousal is not None and mapped.arousal.config == brain.arousal.config
-    assert_same_checkpoint(brain.save(tmp_path / "named"), mapped.save(tmp_path / "mapped"))
-    for bad in (
-        {"arousal": True, "arousal_need_scale": -0.1},
-        {"arousal": True, "arousal_need_scale": np.inf},
-        {"arousal": True, "arousal_need_scale": True},
-        {"arousal_need_scale": 0.2},
-        {"arousal": {"need_scale": 0.1}, "arousal_need_scale": 0.2},
-    ):
-        with pytest.raises((ValueError, TypeError)):
-            cd.Brain.compose(3, 2, modules=(8,), seed=3, **bad)
-    brain.live(np.eye(3)[[0]])
-    for t in range(1, 12):
-        brain.live(np.eye(3)[[t % 3]], reward=[float(t % 3 == 0)])
-    state = brain.arousal.to_dict()
-    brain.retune(arousal_need_scale=0.4)
-    assert brain.arousal.config.need_scale == 0.4 and brain.pending_feedback
-    assert state_without_config(brain.arousal.to_dict()) == state_without_config(state)
-    assert brain.describe()["genes"]["arousal_need_scale"] == 0.4
-    restored = cd.Brain.load(brain.save(tmp_path / "retuned"))
-    assert restored.describe() == brain.describe()
-    assert restored.arousal is not None and restored.arousal.to_dict() == brain.arousal.to_dict()
-    without = cd.Brain.compose(3, 2, modules=(8,), seed=3)
-    with pytest.raises(ValueError):
-        without.retune(arousal_need_scale=0.2)
-
-
-# -- at the founder every brain, checkpoint and composed life is the one main gives
-
-
-def checkpoint_digest(path: Path) -> str:
-    """SHA-256 over every array of a checkpoint, by name: dtype, shape and bytes, the
-    metadata JSON entries read back without the library version that wrote them."""
-    h = hashlib.sha256()
-    with np.load(path, allow_pickle=False) as data:
-        for name in sorted(data.files):
-            value = data[name]
-            h.update(name.encode())
-            if name in ("meta", "generic", "brain"):
-                meta = json.loads(str(value))
-                meta.pop("version", None)
-                h.update(json.dumps(meta, sort_keys=True).encode())
-                continue
-            h.update(str(value.dtype).encode() + str(value.shape).encode())
-            h.update(np.ascontiguousarray(value).tobytes())
-    return h.hexdigest()
-
-
-def names(path: Path) -> tuple[str, str]:
-    """The checkpoint's format and a digest of its metadata keys and member names."""
-    with np.load(path, allow_pickle=False) as data:
-        meta = json.loads(str(data["brain"]))
-        listed = json.dumps([sorted(meta), sorted(data.files)])
-    return str(meta["format"]), hashlib.sha256(listed.encode()).hexdigest()
-
-
 def digest(value: Any) -> str:
     return hashlib.sha256(json.dumps(value, sort_keys=True).encode()).hexdigest()
-
-
-def bandit(brain: cd.Brain) -> tuple[str, list[dict[str, Any]]]:
-    """150 moments of arm 0 paying, a default reset, 30 moments of arm 1 paying, a reset that
-    keeps the arousal, 20 moments in which nothing pays; the acts and what each reset left."""
-    assert brain.arousal is not None
-    acts = [int(brain.live(OBS)[0])]
-    for _ in range(150):
-        acts.append(int(brain.live(OBS, reward=[float(acts[-1] == 0)])[0]))
-    brain.reset()
-    left = [brain.arousal.to_dict()]
-    acts.append(int(brain.live(OBS)[0]))
-    for _ in range(30):
-        acts.append(int(brain.live(OBS, reward=[float(acts[-1] == 1)])[0]))
-    brain.reset(keep=("arousal",))
-    left.append(brain.arousal.to_dict())
-    acts.append(int(brain.live(OBS)[0]))
-    for _ in range(20):
-        acts.append(int(brain.live(OBS, reward=[0.0])[0]))
-    return "".join(map(str, acts)), left
-
-
-def streams(brain: cd.Brain) -> tuple[str, list[dict[str, Any]]]:
-    """Four streams of a composed life: live moments with a wait and episode ends, a default
-    reset, a reset that keeps the memory, a reset that keeps the arousal."""
-    assert brain.arousal is not None
-    acts, left = [], []
-    for start, length, kind in ((0, 14, None), (14, 8, "reset"), (22, 8, "memory"),
-                                (30, 8, "arousal")):
-        if kind == "reset":
-            brain.reset()
-        elif kind == "memory":
-            brain.reset(keep=("slots",))
-        elif kind == "arousal":
-            brain.reset(keep=("arousal",))
-        if start:
-            left.append(brain.arousal.to_dict())
-        for t in range(start, start + length):
-            first = t == start
-            reward = None if first else [float(t % 3 == 0)]
-            done = None if first else [t % 7 == 6]
-            acts.append(int(brain.live(STREAM[t % 4], reward=reward, done=done)[0]))
-            if t == 5:
-                brain.wait(GO)
-    return "".join(map(str, acts)), left
-
-
-Life = Callable[[cd.Brain], tuple[str, list[dict[str, Any]]]]
-LIVES: dict[str, tuple[tuple[int, int, dict[str, Any]], Life]] = {
-    "adult": ((1, 2, {"modules": (16,), "seed": 0, "arousal": True}), bandit),
-    "needy": ((1, 2, {"modules": (16,), "seed": 2, "arousal": cd.ArousalConfig(need=0.05)}),
-              bandit),
-    # recall without the position term of 0.89.0: the acts and states predate it; the
-    # checkpoint names recall_position=0, which differs from its founder
-    "composed": ((4, 2, {"modules": (8,), "seed": 5,
-                         "arousal": cd.ArousalConfig(youth=10, need=0.02), "recall": True,
-                         "recall_position": 0, "history_decays": (0.2, 0.9),
-                         "efference_amplitude": 1.0}), streams),
-    "episodic": ((4, 2, {"modules": (8,), "seed": 7, "arousal": True, "memory_choice": True}),
-                 streams),
-}
-# Recorded on main at c7dc2f0 (0.84.3 with ``reset(keep=("arousal",))``): each life's acts,
-# what its resets left the arousal and the arousal at the end (digests of the saved states),
-# and the format, the member and metadata names and the contents of every array of the
-# checkpoint it saves. Where the library later removed a setting that was inert at its
-# founder, the state, names and checkpoint digests were re-recorded after every other value
-# matched the recording.
-# Re-recorded with the unset motor lateral at 0.0 (issue 220) where a founder has at most
-# 8 motor neurons in a slot, at the founder need scale 0.1 (issue 198) and with the default
-# reset keeping the arousal (issue 213).
-PINS: dict[str, dict[str, str]] = {
-    "adult": {
-        "acts": (
-            "10000000000000000000000000110000000000000000000000000000000000000000000000000100"
-            "00000000000100110100000000000000000000000000000000000000000000000000000000000000"
-            "1011010111010111101100110110011100110010101"
-        ),
-        "format": "cadence-brain/1",
-        "names": "51719b2e743a574301384fd5a9fd16fd200f979ba8585760a6db73faaaa43233",
-        "checkpoint": "0f9e5412a909cb88e6460251437d293b63585c93ed9fd54679a1caf75eae2d3c",
-        "left": "5f79c8b45764809288b904afc4ae6b05a763a93cef04a8847dffc9af4fa16743",
-        "arousal": "c56a59bdad35f5e2292cda162dbe8986030f70046022ae5546da328f44ef1012",
-    },
-    "needy": {
-        "acts": (
-            "00100000000000001000000000000000000000000000000000000001000000000000000000001000"
-            "00000000001000000000000000000000000000000000000000000000000000000000000000000001"
-            "0110011001111101101111110101110111000001100"
-        ),
-        "format": "cadence-brain/1",
-        "names": "51719b2e743a574301384fd5a9fd16fd200f979ba8585760a6db73faaaa43233",
-        "checkpoint": "523fd0a98d765fbbf955cad2a4851c65a39700ff9fa17356d31cb6d2712bac6e",
-        "left": "c75f0293027614944aa9d0608f246d469b2b6af9b2ed7b14aa1a094d7565fb55",
-        "arousal": "71851b18074b65d04c13e784544931015393b8b28d2bbef9d3961fb7ba5af855",
-    },
-    "composed": {
-        "acts": "11110110010001110110111110111111111110",
-        "format": "cadence-brain/1",
-        "names": "e78b45e964572a6df43fb29ef5d436b89ce341e486e4f55a1708b355cacefd00",
-        "checkpoint": "047da8a67a633b139ce79601b76559dc41ec8ea6015fdfde697ba873daf4caca",
-        "left": "4111a55fd31b33dcd98d117cb9dd7054943833aaa07a1be5f5e317e353e6eb5c",
-        "arousal": "0c85926f0929b8310648d68b84e0e231f5d6d859de2406d83a047684944f2ba5",
-    },
-    "episodic": {
-        "acts": "11111101111111111111111111111111111110",
-        "format": "cadence-brain/1",
-        "names": "1c418d7da8207299c6e8058e90cd3f627a6c3119a3287e65090a2cbd06ed603a",
-        "checkpoint": "bce0c3d4da4b569366bb2ddc32459e00a98a22a168e7ae90cbe9caf8e02a042b",
-        "left": "844dcf60629037dc09b7eaf1ef9b3b398da1175584cc4e6f53236cbba33191f3",
-        "arousal": "1e053bb33b0496101f7a205c5dd5491ae1cdb5871def277b6731785621266aeb",
-    },
-}
-
-
-def _build(name: str) -> tuple[cd.Brain, Life]:
-    (inputs, actions, options), life = LIVES[name]
-    return cd.Brain.compose(inputs, actions, **options), life
-
-
-@pytest.mark.parametrize("name", sorted(PINS))
-def test_the_founder_saves_and_describes_as_on_main(tmp_path: Path, name: str) -> None:
-    """On every backend: the checkpoint's format, members and metadata keys, and the saved
-    arousal states, which carry the need scale at its founder 0.1."""
-    brain, life = _build(name)
-    _, left = life(brain)
-    assert brain.arousal is not None
-    path = brain.save(tmp_path / name)
-    assert names(path) == (PINS[name]["format"], PINS[name]["names"])
-    for state in (*left, brain.arousal.to_dict()):
-        assert state["format"] == "cadence-arousal/4" and state["config"]["need_scale"] == 0.1
-    assert brain.describe()["genes"]["arousal_need_scale"] == 0.1
-    assert cd.Brain.load(path).describe() == brain.describe()
-
-
-@pytest.mark.skipif(not NUMPY_SOLVER, reason=BYTES_REASON)
-@pytest.mark.parametrize("name", sorted(PINS))
-def test_the_founder_acts_arousal_states_and_checkpoint_bytes_are_those_of_main(
-    tmp_path: Path, name: str
-) -> None:
-    brain, life = _build(name)
-    acts, left = life(brain)
-    assert brain.arousal is not None
-    assert acts == PINS[name]["acts"]
-    assert digest(left) == PINS[name]["left"]
-    assert digest(brain.arousal.to_dict()) == PINS[name]["arousal"]
-    assert checkpoint_digest(brain.save(tmp_path / name)) == PINS[name]["checkpoint"]
 
 
 def law_readings() -> dict[str, tuple[list[list[Any]], dict[str, Any]]]:

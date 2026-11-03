@@ -159,7 +159,7 @@ def test_the_arms_change_only_what_they_declare(protocol):
         elif arm == "stage":
             assert (actor["actor_eta"], actor["actor_eta_bias"]) == (0.001, 0.0001)
             assert arousal["arousal_need"] == 0.0 and arousal["arousal_heat"] == 0.0
-            assert genes["learning_temperature"] == 0.2
+            assert genes["temperature"] == 0.2
             assert brain.arousal is not None and brain.arousal.level == 0.0
 
 
@@ -261,10 +261,13 @@ def test_a_tampered_receipt_fails_verification(small_receipt, tmp_path):
 def test_learning_overrides_reach_the_brain_and_the_founder_has_none(protocol):
     brain = chamber.make_brain(protocol["brain"], 0)
     assert brain.describe()["genes"]["learning_scale_cap"] == 8.0
-    point = {**protocol["brain"], "learning": {"scale_cap": 4.0, "momentum": 0.5}}
+    # the overrides are named genes (learning_<field>): a constant of 0.93.0 is refused there
+    point = {**protocol["brain"], "learning": {"scale_cap": 4.0, "damping": 2}}
     brain = chamber.make_brain(point, 0)
     genes = brain.describe()["genes"]
-    assert (genes["learning_scale_cap"], genes["learning_momentum"]) == (4.0, 0.5)
+    assert (genes["learning_scale_cap"], genes["learning_damping"]) == (4.0, 2)
+    with pytest.raises(ValueError, match="learning_momentum was retired in 0.93.0"):
+        chamber.make_brain({**protocol["brain"], "learning": {"momentum": 0.5}}, 0)
 
 
 def test_the_arena_founder_brain_is_the_declared_one(protocol):

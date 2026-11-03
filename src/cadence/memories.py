@@ -168,8 +168,8 @@ class EpisodicRecords:
     mean of the two reads, joins the motor readout after the settle, so the memory adds
     nothing to the drive. Per stream it keeps the temporal context after its last decision
     (``context``), that decision's key (``decision``) and the recent path (``paths``), one
-    decision per situation the stream left, along which a reward is replayed (``steps``
-    decisions back). A demonstration is recorded at the value ``demonstrations``.
+    decision per situation the stream left, along which a reward is replayed (``REPLAY``
+    decisions back). A demonstration is recorded at the value ``DEMONSTRATIONS``.
 
     With an extinction threshold (``memory_extinction``, above zero) a third store, ``paid``,
     keeps which actions were paid directly in which places: a known outcome with a reward,
@@ -187,6 +187,12 @@ class EpisodicRecords:
     context before the last decision (``before``) and that decision's observation code
     (``seen``)."""
 
+    # the decisions a reward replays and the value a demonstration is recorded at: constants
+    # of the composed brain since 0.93.0 (``memory_replay``, ``memory_demonstrations``), the
+    # founders every reading used
+    REPLAY = 8
+    DEMONSTRATIONS = 1.0
+
     def __init__(
         self,
         place: FastSynapses,
@@ -195,8 +201,6 @@ class EpisodicRecords:
         width: int,
         offsets: np.ndarray,
         share: float,
-        steps: int,
-        demonstrations: float,
         paid: SynapticMemory | None = None,
         extinction: float = 0.0,
         hold: str | None = None,
@@ -220,8 +224,8 @@ class EpisodicRecords:
         self.motor = int(len(place.post))
         self.offsets = np.asarray(offsets, dtype=np.int64)  # each motor slot's first neuron
         self.share = float(share)  # the share the past keeps per moment (``memory_context``)
-        self.steps = int(steps)  # the decisions a reward replays (``memory_replay``)
-        self.demonstrations = float(demonstrations)  # (``memory_demonstrations``)
+        self.steps = self.REPLAY  # the decisions a reward replays
+        self.demonstrations = self.DEMONSTRATIONS
         self.context: np.ndarray | None = None
         self.decision: np.ndarray | None = None
         self.paths: list[list[Entry]] = []

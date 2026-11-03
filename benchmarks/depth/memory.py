@@ -3,10 +3,12 @@
 The look-back, contextual-choice and held-heads benchmarks of ``benchmarks/attention`` run
 unedited, with every brain they compose deepened: each module width repeated ``depth`` times
 (look-back's ``(24,)`` becomes ``(24, 24)`` at depth 2), the apical compartment
-(``apical=0.25``), the projection-relative floor (``learning_normalize_relative=0.1``) where the
-learner normalizes, and normalized teaching where a benchmark sets no teaching of its own. Each
-benchmark's own gates decide each founder, against its own controls; the receipt keeps every
-founder's readings.
+(``apical=0.25``) and the teaching point ``"deep"`` (the normalized point with the
+projection-relative floor and nudged phases of a whole 32 sweeps), whatever teaching the
+benchmark sets. The retained receipt was taken before the point, with the floor alone
+(``learning_normalize_relative=0.1``) beside normalized teaching where a benchmark set none.
+Each benchmark's own gates decide each founder, against its own controls; the receipt keeps
+every founder's readings.
 
     python benchmarks/depth/memory.py --out /tmp/depth-memory --depths 2 3 --jobs 32
     python benchmarks/depth/memory.py --verify /tmp/depth-memory/summary.json
@@ -57,15 +59,14 @@ def sources() -> list[tuple[str, Path]]:
 @contextmanager
 def deepen(depth: int):
     """Every ``Brain.compose`` in this process composes ``depth`` times the modules, with the
-    compartment, the relative floor and normalized teaching where the call sets none."""
+    compartment and the deep teaching point."""
     original = cd.Brain.compose.__func__
 
     def compose(cls: type, *args: Any, **options: Any) -> cd.Brain:
         options["modules"] = tuple(options.get("modules", (64,))) * depth
         options.setdefault("apical", APICAL)
-        if "learning" not in options and options.get("teaching") is None:
-            options["teaching"] = "normalized"
-        options.setdefault("learning_normalize_relative", RELATIVE)
+        if "learning" not in options:
+            options["teaching"] = "deep"
         return original(cls, *args, **options)
 
     cd.Brain.compose = classmethod(compose)  # type: ignore[method-assign]
@@ -190,8 +191,7 @@ def main() -> None:
         "configuration": {"depths": args.depths, "seeds": args.seeds, "rules": list(RULES),
                           "apical": APICAL, "normalize_relative": RELATIVE},
         "execution": evidence["environment"](),
-        "compose": {"apical": APICAL, "learning_normalize_relative": RELATIVE,
-                    "teaching": "normalized where the benchmark sets none",
+        "compose": {"apical": APICAL, "teaching": "deep",
                     "modules": "each benchmark's widths repeated depth times"},
         "depths": args.depths, "seeds": args.seeds, "rules": list(RULES),
         "version": cd.__version__, "runs": runs, "summary": summarize(runs),

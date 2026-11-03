@@ -85,7 +85,7 @@ def test_replayed_credit_is_not_extinguished():
     """A reward at the end of an attempt replays credit to the decision that led to it; that
     decision was never paid itself, so its zero outcomes leave the credit. One action, so
     every decision is the one replayed."""
-    brain = episodic(3, 1, seed=4, memory_extinction=0.5, memory_replay=8)
+    brain = episodic(3, 1, seed=4, memory_extinction=0.5)
     start, middle, end = one_hot(0, 3), one_hot(1, 3), one_hot(2, 3)
     for _ in range(6):
         brain.act(start)
@@ -197,12 +197,10 @@ def test_the_direct_payments_share_the_place_records_separator_saved_once(tmp_pa
         np.testing.assert_array_equal(brain.live(x, reward=r), copy.live(x, reward=r))
 
 
-def test_a_retuned_memory_decay_reaches_the_store_of_direct_payments():
-    brain = episodic(3, 3, seed=4, memory_extinction=0.5, memory_decay=0.9)
+def test_the_store_of_direct_payments_decays_as_the_place_records_do():
+    brain = episodic(3, 3, seed=4, memory_extinction=0.5)
     paid = brain.memories["episodic"].paid
-    assert paid is not None and paid.decay == brain.hippocampus.decay == 0.9
-    brain.retune(memory_decay=0.5)
-    assert paid.decay == brain.hippocampus.decay == 0.5
+    assert paid is not None and paid.decay == brain.hippocampus.decay == 0.9  # a constant
 
 
 def test_extinction_reads_the_vote_with_a_temporal_context_too():

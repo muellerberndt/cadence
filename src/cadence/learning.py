@@ -43,6 +43,7 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, cast
 
 import numpy as np
@@ -113,8 +114,6 @@ class LearnerConfig:
     # one wrong row of sixteen moves the net a sixteenth as far as sixteen do; the contrast and
     # the optimizer's running moments still read the taught rows alone
     surprise_share: bool = False
-    # qualified phases only: start at this index of the existing dt-halving schedule
-    initial_damping: int = 0
     # >0: in place of normalize_floor, each synapse's RMS gets this share of the RMS of its
     # projection (the block of synapses between its two neuron ranges) added, and each bias
     # this share of its range's; a constant floor binds where credit is faint (a deep module)
@@ -133,6 +132,19 @@ class LearnerConfig:
     rehearsal: float = 0.0
     # the lesson rows the reservoir keeps, each with its episode: a uniform sample of every row
     rehearsal_capacity: int = 512
+
+    # Fields this library no longer takes, each with the release that retired it, the one
+    # value at which a saved config still loads (the law of this version) and what the learner
+    # does instead. ``checkpoint.load`` refuses another saved value by name, and a composed
+    # brain refuses the public name ``learning_<field>`` (``cadence._configuration.RETIRED``).
+    RETIRED = MappingProxyType({
+        "centered": ("0.85.0", True, "every lesson contrasts the +beta and -beta phases; "
+                     "cadence-net 0.84.3 takes it"),
+        "decay": ("0.85.0", 0.0, "no leak: a synapse moves on its contrast alone; cadence-net "
+                  "0.84.3 takes it"),
+        "initial_damping": ("0.93.0", 0, "every qualified phase starts at the full step of the "
+                            "damping ladder; cadence 0.92.1 takes it"),
+    })
 
     def __post_init__(self) -> None:
         # Config fields have host scalar semantics, including before a save/load.
@@ -199,12 +211,6 @@ class LearnerConfig:
             or self.damping < 0
         ):
             raise ValueError("damping must be a nonnegative integer")
-        if (isinstance(self.initial_damping, bool)
-                or not isinstance(self.initial_damping, (int, np.integer))
-                or not 0 <= self.initial_damping <= self.damping):
-            raise ValueError("initial_damping must be an integer in 0..damping")
-        if self.initial_damping and not self.qualified:
-            raise ValueError("nonzero initial_damping requires qualified learning")
         for name in ("free_steps", "nudged_steps"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
@@ -316,7 +322,7 @@ class LearnedState:
 
 _PHASE_KEYS = (
     "steps", "residual", "residual_checks", "damping_halvings", "stagnation_checks",
-    "row_sweeps", "row_residual_checks", "initial_damping", "relative_damping_halvings",
+    "row_sweeps", "row_residual_checks",
 )
 
 
@@ -361,8 +367,6 @@ def _phase_report(
         report[f"{name}_residual"] = float(np.max(phase.residual))
         report[f"{name}_residual_checks"] = float(phase.residual_checks)
         report[f"{name}_damping_halvings"] = float(phase.damping_halvings)
-        report[f"{name}_initial_damping"] = float(phase.initial_damping)
-        report[f"{name}_relative_damping_halvings"] = float(phase.relative_damping_halvings)
         report[f"{name}_stagnation_checks"] = float(phase.stagnation_checks)
         report[f"{name}_row_sweeps"] = float(rows * phase.steps)
         report[f"{name}_row_residual_checks"] = float(rows * phase.residual_checks)
@@ -453,10 +457,6 @@ class Learner:
     last_calibration: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.config.initial_damping and (
-            self.brain.backend != "cpu" or self.brain.precision not in (None, "float64")
-        ):
-            raise ValueError("nonzero initial_damping requires CPU float64")
         outputs = np.asarray(list(self.outputs))
         if outputs.ndim != 1 or outputs.size == 0:
             raise ValueError("outputs must contain at least one neuron index")
@@ -684,11 +684,6 @@ class Learner:
         cfg = self.config
         if cfg.tolerance is None:
             raise ValueError("qualified learning requires a finite residual tolerance")
-        if cfg.initial_damping:
-            return self.brain.equilibrate(
-                drive, state=state, budget=budget, tolerance=cfg.tolerance,
-                nudge=nudge, damping=cfg.damping, initial_damping=cfg.initial_damping,
-            )
         return self.brain.equilibrate(
             drive, state=state, budget=budget, tolerance=cfg.tolerance,
             nudge=nudge, damping=cfg.damping,

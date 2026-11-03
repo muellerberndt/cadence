@@ -81,8 +81,9 @@ assert {"td_error", "delta", "dopamine", "capped", "saturation", "trace"} <= set
 
 `ActorCritic(learner, critic, config=None, seed=0)`. In a composed brain
 each field is the named setting `actor_<field>`, set in `Brain.compose` or `brain.retune`;
-the composed founders are `gamma=0.9, lam=0.8, eta=1.0, eta_bias=0.05, eta_critic=0.3,
-eligibility_steps=12` ([defaults table](tune.md#defaults-and-expert-overrides)).
+the composed founders are `gamma=0.9, lam=0.8, eta=1.0, eta_bias=0.05, eta_critic=0.3`, and
+`dopamine_cap=1.0` and `eligibility_steps=12` are constants of the composed brain
+([defaults table](tune.md#defaults-and-expert-overrides)).
 
 | `ActorCriticConfig` field | Default | Meaning |
 | --- | --- | --- |
@@ -95,7 +96,7 @@ eligibility_steps=12` ([defaults table](tune.md#defaults-and-expert-overrides)).
 | `eligibility_steps` | `None` | Steps of each reward-nudged phase; `None` uses the learner's `nudged_steps` |
 
 `beta`, the base `temperature` and `tolerance` come from the learner's `LearnerConfig`
-(composed: `learning_beta`, `temperature`); the teaching point (`teaching`) sets the steps
+(composed: `temperature`; `beta` is 0.1, a constant); the teaching point (`teaching`) sets the steps
 of lessons alone.
 
 - `act(drive, greedy=False, temperature=None, *, bias=None)`: one temperature or one per

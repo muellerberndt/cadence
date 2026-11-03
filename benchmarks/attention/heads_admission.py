@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import runpy
 import sys
 import time
 from contextlib import contextmanager
@@ -25,6 +26,7 @@ from cadence.learning import LearningPhaseError
 from cadence.receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "heads-protocol.json"
 PROTOCOL_NAMES = ("heads-protocol.json", "heads-longer-protocol.json",
                   "heads-fixed-read-protocol.json", "heads-anchored-protocol.json",
@@ -152,7 +154,7 @@ def boundary(brain: Brain, batch: int) -> None:
 
 
 def make_brain(arm: str, seed: int, protocol: dict[str, Any], mode="agreement") -> Brain:
-    options = dict(protocol["brain"])
+    options = genes(protocol["brain"])
     options["modules"] = tuple(options["modules"])
     options["slots"] = 2
     if arm == "exposed":
@@ -204,12 +206,15 @@ def numerical_settings(brain: Brain) -> dict[str, Any]:
 def _numerical_record_matches(record, expected, key, *, historical):
     if not historical:
         return record == expected
-    # Old receipts predate this neutral numerical option. No other absent,
-    # changed or future option is equivalent to the originally recorded policy.
-    if (type(expected.get(key)) is not int or expected[key] != 0
-            or (key in record and (type(record[key]) is not int or record[key] != 0))):
-        return False
-    return {**record, key: 0} == expected
+    # A retained receipt of 0.86.0 to 0.92.1 may carry the numerical policy those releases had
+    # (retired in 0.93.0) at its neutral zero; no other value is the recorded policy. A
+    # retained record names its genes as its protocol does (``genes``).
+    record = dict(genes(record))
+    if key in record:
+        value = record.pop(key)
+        if type(value) is not int or value != 0:
+            return False
+    return record == expected
 
 
 def numerical_check(result: dict[str, Any], protocol: dict[str, Any], *,

@@ -262,7 +262,7 @@ def test_an_update_at_rate_zero_leaves_every_synapse_as_it_was() -> None:
     for name, value in (("decay", 0.1), ("centered", False)):
         with pytest.raises(TypeError):
             cd.LearnerConfig(**{name: value})
-        with pytest.raises(ValueError, match=f"learning_{name} was removed.*0.84.3"):
+        with pytest.raises(ValueError, match=f"learning_{name} was retired.*0.84.3"):
             cd.Brain.compose(4, 2, modules=(8,), **{f"learning_{name}": value})
 
 
@@ -270,7 +270,7 @@ def test_a_composed_brain_learns_with_the_cross_entropy_nudge(tmp_path) -> None:
     """The quadratic nudge is a standalone learner's: a composed brain refuses it by name, in
     its learning configuration, through retune and in a checkpoint, and describes no nudge
     gene."""
-    with pytest.raises(ValueError, match="learning_nudge was removed.*0.84.3"):
+    with pytest.raises(ValueError, match="learning_nudge was retired.*0.84.3"):
         cd.Brain.compose(4, 2, modules=(8,), learning_nudge="quadratic")
     quadratic = cd.LearnerConfig(nudge="quadratic")
     with pytest.raises(ValueError, match="cross-entropy nudge"):
@@ -288,7 +288,7 @@ def test_a_composed_brain_learns_with_the_cross_entropy_nudge(tmp_path) -> None:
     meta["config"]["nudge"] = "quadratic"
     arrays["meta"] = np.array(json.dumps(meta))
     np.savez(path, **arrays)
-    with pytest.raises(ValueError, match="learning_nudge='quadratic'.*0.84.3"):
+    with pytest.raises(ValueError, match="nudge='quadratic'.*retired in 0.85.0.*0.84.3"):
         cd.Brain.load(path)
     assert cd.Learner.load(path).config.nudge == "quadratic"  # a standalone learner keeps it
 

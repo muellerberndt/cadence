@@ -265,9 +265,8 @@ def test_the_apical_blocks_are_found_once_per_compartment_and_layout() -> None:
 def test_lessons_learn_the_same_bits_on_one_thread_and_on_many(apical: float) -> None:
     def run(parallel: bool, threads: int) -> list[np.ndarray]:
         brain = cd.Brain.compose(
-            12, 5, modules=(16, 12, 12), seed=6, apical=apical, teaching="normalized",
-            learning_normalize_relative=0.1, learning_nudged_steps=16, learning_nudged_fixed=True,
-            episodic=False,
+            12, 5, modules=(16, 12, 12), seed=6, apical=apical, teaching="deep",
+            learning_nudged_steps=16, episodic=False,
         )
         rng = np.random.default_rng(7)
         with build(parallel, threads):

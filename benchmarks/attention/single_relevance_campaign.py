@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import runpy
 import time
 from copy import deepcopy
 from dataclasses import asdict, replace
@@ -21,6 +22,7 @@ from cadence import Brain
 from cadence.receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "single-relevance-protocol.json"
 STAGES = ("capacity", "learned_h1")
 CONDITIONS = (
@@ -169,7 +171,7 @@ def prior():
 
 def make_brain(arm, seed):
     ctx, f = context(), declared()["factory"]
-    options = deepcopy(f["brain"])
+    options = genes(deepcopy(f["brain"]))
     options["modules"] = tuple(options["modules"])
     if arm == "exposed":
         options.pop("empty_anchor")
@@ -966,7 +968,7 @@ def check(body):
                 if r[field] != value:
                     return "single-reader founder/config differs: " + field
             if (
-                r["resolved"]["genes"] != expected_brain.describe()["genes"]
+                genes(r["resolved"]["genes"]) != expected_brain.describe()["genes"]
                 or r["resolved"]["layout"] != expected_brain.describe()["layout"]
             ):
                 return "single-reader resolved anatomy/genes differ"

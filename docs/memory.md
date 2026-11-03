@@ -204,9 +204,8 @@ trace = brain.history.trace                               # two blocks of three 
 assert trace.shape == (1, 6) and trace[0, 3] > 0          # the slow block holds the cue
 ```
 
-`history_decays` (`()`, each in [0, 1)) and `scales["history"]` (1.2, the projection's initial
-magnitude, a `compose` argument) are construction settings; `history_amplitude` (3.0) can be
-retuned. On a coded vector brain the blocks hold the code. Three decays at 256 inputs and
+`history_decays` (`()`, each in [0, 1)) is a construction setting and the projection's initial
+magnitude 1.2 a constant (since 0.93.0); `history_amplitude` (3.0) can be retuned. On a coded vector brain the blocks hold the code. Three decays at 256 inputs and
 four actions add 768 neurons and 49,152 synapses to a founder of 21,004 synapses.
 
 ## Associative store (the hippocampus)
@@ -217,7 +216,7 @@ residual `F` per stream. Before each settle the read `C + F` drives the motor ne
 `memory_amplitude`. For a unit-length key `k` and the observed value `v` of the chosen action:
 
 ```text
-F     *= memory_decay
+F     *= 0.9                       # the decay, a constant
 alpha  = min(1, consolidation * (1 + salience))
 C     += alpha * outer(k, v - k @ C)
 F     += memory_rate * outer(k, v - k @ (C + F))
@@ -248,7 +247,6 @@ assert not memory.recall(x).any()
 | --- | --- | --- | --- |
 | `episodic` | `True` | construction | `False` builds the brain without a store |
 | `memory_rate` | 1.0, in [0, 1] | `retune` | how far a write moves `F` toward the outcome; 1.0 keeps the last one |
-| `memory_decay` | 0.9, in [0, 1] | `retune` | how much of `F` each later write keeps |
 | `memory_amplitude` | 1.0 | `retune` | the strength of the read as drive |
 | `consolidation` | 0.05, in [0, 1] | `retune` | the slow rate into the shared `C` |
 
@@ -664,7 +662,7 @@ observation now ─► settle ─► motor readout ─────────�
   different histories get different context keys, so a cue that is gone can decide the vote.
   The place records keep a situation together when a new path reaches it.
 - **Records** hold one value per action in reward units. An uncoded key passes a fixed random
-  separation first (`memory_expansion` cells, the `memory_winners` most active kept), so
+  separation first (`memory_expansion` cells, the 24 most active kept), so
   different situations write different synapses. A brain with a fixed code keys on its code
   as it is; a learned code's keys pass the separation as an observation's do.
 - **What is written.** The outcome of the chosen action, once it is known: a reward or a
@@ -672,10 +670,10 @@ observation now ─► settle ─► motor readout ─────────�
   outcome marked with a positive `salience=`. A zero outcome in the middle of an attempt
   writes nothing, unless `memory_extinction` extinguishes a record the action earned by its
   own payments in this place (the settings below). A demonstration (`teacher=`) is recorded for its situation as if the shown
-  action had paid `memory_demonstrations`. `done=True` makes the last outcome known and starts
+  action had paid 1.0. `done=True` makes the last outcome known and starts
   the next attempt with a fresh temporal context and path.
-- **Replay.** A reward replays the stream's recent path backwards, up to `memory_replay`
-  decisions, each credited up to the reward discounted by the actor's `gamma` per step.
+- **Replay.** A reward replays the stream's recent path backwards, up to 8 decisions, each
+  credited up to the reward discounted by the actor's `gamma` per step.
   Replay only adds credit. Its rules:
   - the path keeps one decision per situation, the one that left it; a decision whose own
     outcome was a reward or a punishment stays on the path even in an unchanged situation;
@@ -692,7 +690,7 @@ observation now ─► settle ─► motor readout ─────────�
   what paid consolidates into its synapses over time.
 - **Two speeds.** Each store is a [`SynapticMemory`](#associative-store-the-hippocampus).
   A write corrects the stream's record halfway at once (`memory_rate` 0.5), a correction that
-  fades by `memory_decay` per later write. The record all streams share, which `reset` keeps,
+  fades by 0.9 per later write. The record all streams share, which `reset` keeps,
   moves by `consolidation`, faster with a supplied `salience=`. One outcome is remembered at
   once, repetition makes it lasting, and one misleading outcome cannot erase it.
 
@@ -724,14 +722,13 @@ from cadence import Brain
 brain = Brain.compose(inputs=3, actions=2, arousal=True, memory_choice=True, seed=0)
 x = np.array([[1.0, 0.0, 0.0]])
 assert brain.act(x, greedy=True)[0] == 0   # the newborn's answer
-brain.step(x, teacher=[1])                 # shown once: recorded at memory_demonstrations
+brain.step(x, teacher=[1])                 # shown once: recorded at 1.0
 assert brain.live(x)[0] == 1               # the record votes for the shown action
 ```
 
 `memory_choice=True` in `Brain.compose` brings the founder values in the table below; each can
 be passed beside it, also with `connectome=` for a custom anatomy. `Brain(...)` takes the
-same names, but its defaults are 0 (and `memory_winners` 32, `memory_rate` 1.0), so name
-every setting there.
+same names, but its defaults are 0 (and `memory_rate` 1.0), so name every setting there.
 `memory_choice` needs `episodic=True`.
 
 ### Episodic settings
@@ -742,10 +739,7 @@ All of these are construction settings: pass them at construction; `retune` refu
 | --- | --- | --- |
 | `memory_choice` | `True` (founder `False`) | `False` keeps the [associative store](#associative-store-the-hippocampus), keyed by the senses and read into the motor drive |
 | `memory_context` | `0.5` | Raise toward 1 (exclusive) when the answer depends on what came long before; lower when history does not matter; 0 keeps the place records alone and builds no `context_memory` |
-| `memory_replay` | `8` | Raise when rewards come at the end of long chains; 0 replays nothing |
-| `memory_demonstrations` | `1.0` | Raise when shown actions should outweigh the brain's own trials; lower for an unreliable teacher; 0 records none |
 | `memory_expansion` | `1024` (0 with a fixed code) | Raise when many situations must be told apart; 0 uses the key unseparated. With `code=units` it is set to 0 and a nonzero value is refused |
-| `memory_winners` | `24` | How many separation cells stay active per key; at most `memory_expansion` |
 | `memory_context_hold` | `None` | `"unchanged"` keys a decision taken on the observation of the stream's previous decision as if that decision had not been taken, whatever its outcome (the replay path drops such a decision only when its outcome was nothing); use it where a miss leaves the observation as it was and the stages look alike. It takes the wrong decision out of a decision that changes nothing visible as well, so it hides a right action that leaves the observation unchanged. `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back out of the context; it needs a world that charges for misses. Will Glynn measured both on his Stone Age chains ([#202](https://github.com/muellerberndt/cadence/issues/202); `benchmarks/context_key`). On those chains, 48 fresh seeds per signal: `"unchanged"` passes the ambiguous chain cleanly in 35 of 96 lives against 6 (sampled success .77 against .50) and keeps the fully observed chain (40 against 43 of 48, sampled .92 against .94); on the chain whose right action changes nothing visible it costs (0 against 9 clean passes, sampled .32 against .44). `"punished"` with misses costing .05 passes the invisible-action chain in 20 of 48 lives against 13 for the cost alone. A moment sensed without a decision (`wait`) ends the run of decisions the hold keys out, and an imagined branch keys its decisions as the stream does |
 | `memory_extinction` | `0` (off) | Set it (0.5) when a paid action can stop paying without a punishment, a reversal whose failures pay 0. A zero outcome then writes a learned zero for the chosen action where the records' vote for it and its direct payment in this place both reach the setting. Only a known outcome with a reward is a direct payment: replayed and demonstrated credit is never extinguished. The rule is Sean McClane's ([#210](https://github.com/muellerberndt/cadence/issues/210)) |
 | `memory_fan_in` | `0` (dense) | Above 0 each separation cell reads that many random key values; use 32 for keys wider than 256 values. Needs `memory_expansion` and at most the key width; refused with `code=units` |
@@ -754,9 +748,11 @@ A dense separation holds `width x 1,024` floats per store (105 MB at 12,824 inpu
 `memory_fan_in=32` it holds `1,024 x 32` indices and weights at any width. A brain with
 [`code=units`](senses.md#the-observation-code) has no separation of its own.
 
-`memory_rate` (0.5 here, 1.0 without `memory_choice`), `memory_decay`, `memory_amplitude` and
+`memory_rate` (0.5 here, 1.0 without `memory_choice`), `memory_amplitude` and
 `consolidation` belong to the [associative store](#associative-store-the-hippocampus);
-`retune` changes them for both stores together.
+`retune` changes them for both stores together. The constants of both stores since 0.93.0: a
+stream's record fades by 0.9 per later write, a reward replays up to 8 decisions, a
+demonstration is recorded at 1.0, and the separation keeps 24 active cells per key.
 
 ### When to turn it on
 
@@ -888,7 +884,7 @@ and a name finds the moment it was stated in. `a` is the
 `recall` region is driven at
 `amplitude * sum p V` and the `next` region at `amplitude * sum p N`, held through the settle as a sensory drive is: the settle answers
 on the mixture the address chose and cannot revise the choice. Both regions reach the
-association region through one-way plastic synapses of initial magnitude `scales["recall"]`.
+association region through one-way plastic synapses of initial magnitude 1.2 (a constant).
 
 A number `recall_null` adds a slot of logit `null / temperature` that reads nothing, so a
 moment that matches no slot recalls little.

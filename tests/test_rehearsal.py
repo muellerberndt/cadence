@@ -218,8 +218,7 @@ def checkpoint(brain: cd.Brain, path) -> tuple[dict[str, np.ndarray], dict]:
 
 @pytest.mark.parametrize(
     "options",
-    [{}, {"recall_heads": 2}, {"memory_choice": True, "memory_context": 0.5, "memory_replay": 2,
-                               "memory_demonstrations": 1.0},
+    [{}, {"recall_heads": 2}, {"memory_choice": True, "memory_context": 0.5},
      {"learned_code": 8, "recall_window": 2}],
     ids=["read", "heads", "episodic", "learned_code"],
 )
@@ -252,8 +251,8 @@ def test_the_lessons_read_stays_readable_after_the_replay():
 def test_a_live_stream_continues_exactly_as_without_the_replay():
     """``live`` with arousal: a moment ``wait`` senses, which the episode keeps, and a lesson
     while a calm action awaits its outcome, which is reported after it."""
-    twins = [frozen(rehearsal, arousal=True, arousal_youth=4, arousal_threshold=0.5,
-                    arousal_hindsight=2) for rehearsal in (1.0, 0.0)]
+    twins = [frozen(rehearsal, arousal=True, arousal_youth=4, arousal_threshold=0.5)
+             for rehearsal in (1.0, 0.0)]
     rng, outs = np.random.default_rng(5), [[], []]
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

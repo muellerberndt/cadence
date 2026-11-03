@@ -71,6 +71,7 @@ def test_expert_teaching_description_keeps_effective_steps_and_is_observational(
     assert description["genes"]["teaching"] == "custom"
     assert description["genes"]["learning"] == {
         "eta": 0.017, "eta_bias": 0.004, "normalize": 0.4, "normalize_floor": 0.005,
+        "normalize_relative": 0.0, "nudged_fixed": False,
     }
     description["genes"]["learning"]["eta"] = 99.0
     assert brain.learner.config == config

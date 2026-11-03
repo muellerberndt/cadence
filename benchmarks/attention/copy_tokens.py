@@ -22,7 +22,8 @@ drawn at random as every projection is. Each founder lives
 once per arm, at ``teaching="normalized"`` with lessons where the answer differs
 (``learning_surprise=True``), ``episodic=False``, on a brain of one module of 24 neurons; the
 recipe and the founder also on a deep apical brain (``modules=(32, 24, 24)``, ``apical=0.25``
-with the depth benchmark's learning settings). Every reading reports the read's own prediction
+at the depth benchmark's teaching point, ``teaching="deep"``). Every reading reports the read's
+own prediction
 beside the answer: the token most driven on the port that holds the answer (``read_*``).
 
 Component evidence for the pathway: a token the read delivers drives its own action, untaught
@@ -55,11 +56,8 @@ LENGTH = 5  # tokens in a succession trial
 LESSONS = {"heldout": 300, "succession": 600}
 TESTS = 160
 UNIFORM = 1 / T
-FLAT = {"modules": (24,)}
-DEEP = {
-    "modules": (32, 24, 24), "apical": 0.25, "learning_normalize_relative": 0.1,
-    "learning_nudged_steps": 32, "learning_nudged_fixed": True,
-}
+FLAT = {"modules": (24,), "teaching": "normalized"}
+DEEP = {"modules": (32, 24, 24), "apical": 0.25, "teaching": "deep"}
 # arm -> the copy options
 ARMS: dict[str, dict[str, Any]] = {
     "founder": {},
@@ -88,8 +86,7 @@ def compose(seed: int, arm: str, depth: str = "flat") -> cd.Brain:
     options = dict(FLAT if depth == "flat" else DEEP)
     options.update(ARMS[arm])
     return cd.Brain.compose(
-        INPUTS, T, seed=seed, episodic=False, recall=True, teaching="normalized",
-        learning_surprise=True, **options,
+        INPUTS, T, seed=seed, episodic=False, recall=True, learning_surprise=True, **options,
     )
 
 

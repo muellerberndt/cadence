@@ -78,9 +78,6 @@ def parameter_digest(brain: cd.Brain) -> str:
 
 def describe_digest(brain: cd.Brain) -> str:
     description = brain.describe()
-    # These historical founders predate this optional numerical gene. Require
-    # its unchanged schedule and compare every previously recorded field.
-    assert description["genes"].pop("learning_initial_damping") == 0
     return hashlib.sha256(json.dumps(description, sort_keys=True).encode()).hexdigest()
 
 
@@ -143,6 +140,8 @@ def taught(brain: cd.Brain) -> list[int]:
 # and checkpoint digests were re-recorded after every other value matched the recording.
 # Re-recorded with the unset motor lateral at 0.0 (issue 220) where a founder has at most
 # 8 motor neurons in a slot, and at the founder need scale 0.1 (issue 198) where it has arousal.
+# The descriptions were re-recorded at the one spelling of the learner's temperature and
+# without the constants of the composed brain (0.93.0, every other value matching the recording).
 FOUNDERS: dict[str, dict] = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3}),
@@ -152,7 +151,7 @@ FOUNDERS: dict[str, dict] = {
         "format": "cadence-brain/1",
         "names": "cf4f510fd7745ee140166219a1a6e0af36750c92b9eb41a38f9262d2272f7dda",
         "checkpoint": "995ca55ca539707fc98e5d17c3132b091dcbdc070adeb5dbff229981072998fc",
-        "describe": "627782aa3674fd3feeca3751f78859d446362594cdf48574e158c95b903723b8",
+        "describe": "a80424edb7491028f605098d8dea02c63e7075f56beefeddd8e7aa5c40141490",
     },
     "episodic": {
         "build": (4, 2, {"modules": (8,), "seed": 7, "memory_choice": True, "arousal": True}),
@@ -162,7 +161,7 @@ FOUNDERS: dict[str, dict] = {
         "format": "cadence-brain/1",
         "names": "1c418d7da8207299c6e8058e90cd3f627a6c3119a3287e65090a2cbd06ed603a",
         "checkpoint": "819a806d35bf843679477ab0595e97fe8140ca880de3dc0791800e4c6befe72a",
-        "describe": "d7ea6c6f8e4d0e8373b0edc05145c309f019ada55fdae730e2f8657591a9424c",
+        "describe": "61751c8ade06e677e4846ca3e097b36ce97b4728f1d5ed476c0fb9e7ebf78a9a",
     },
     # recall without the position term of 0.89.0: the acts and parameters predate it; the
     # description and the checkpoint name recall_position=0, which differs from its founder
@@ -176,7 +175,7 @@ FOUNDERS: dict[str, dict] = {
         "format": "cadence-brain/1",
         "names": "272cd7aa87c6eb361ba04b442ba83f88b5d63f2acfdf46de8aecf36e40ac76bd",
         "checkpoint": "8508c80b74047c133e5e18f4cb11d40e36cc517fa9eed748f44cb6057b9d9bae",
-        "describe": "ca65c4a09a951886ad3401385f70aa953a0f8fcca023d4f67be4085212644187",
+        "describe": "66b1635161d1487eeff5ae1a8af0b08050a83f81414069c581834fefa55d862f",
     },
     "taught": {
         "build": (16, 8, {"modules": (64,), "lateral": 0.0, "seed": 1,
@@ -187,7 +186,7 @@ FOUNDERS: dict[str, dict] = {
         "format": "cadence-brain/1",
         "names": "0aab0d179b44428d742d358f48b22b0571e9fd78c4cefa76ad52551d9920c16e",
         "checkpoint": "67f8a80c4c28c099ea268a7b8c0fc6d607f1c7dc46ea96e1eed2690fc730e2d3",
-        "describe": "9c8cd5a3e9440ccd3be18329b6947870d00801cfdc0c0308379799d2206d50d8",
+        "describe": "cc8ab01bf4d13f18c5a4053a6e5ad23b0affb3679b08ec32f05a96df72703f5a",
     },
     "wide": {
         "build": (2_000, 3, {"modules": (8,), "seed": 13, "memory_choice": True,
@@ -198,7 +197,7 @@ FOUNDERS: dict[str, dict] = {
         "format": "cadence-brain/1",
         "names": "1c418d7da8207299c6e8058e90cd3f627a6c3119a3287e65090a2cbd06ed603a",
         "checkpoint": "d26023c492f2b68d4117f558bb347716da946a4b3aaed192b56e865b2001fd29",
-        "describe": "5ea48210172da756f147ed3b356416f0bb1f0ea61dc471f460fc7d5776e13738",
+        "describe": "23f961fb05db69d83cc676ed0f0db8437b40024a849698985578d9dac8961e65",
     },
 }
 

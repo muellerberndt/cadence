@@ -341,14 +341,12 @@ def test_the_memory_adds_its_two_regions_and_their_projections_last():
     assert "next" not in composed(recall_next=False).connectome.populations
 
 
-def test_the_projections_start_at_their_scale_like_the_working_trace():
-    quiet, loud = composed(scales={"recall": 1.2}), composed(scales={"recall": 12.0})
-    recall, following = regions(quiet)
-    rows = np.isin(np.asarray(quiet.connectome.pre), np.r_[recall, following])
-    np.testing.assert_allclose(
-        np.asarray(loud.connectome.sign)[rows], 10.0 * np.asarray(quiet.connectome.sign)[rows]
-    )
-    assert quiet.describe()["layout"]["composition"]["recall_scale"] == 1.2
+def test_the_projections_start_at_their_constant_scale_like_the_working_trace():
+    """The recall and next projections start at magnitude 1.2, a constant since 0.93.0: the
+    composition records it, and ``scales["recall"]`` is refused by name."""
+    assert composed().describe()["layout"]["composition"]["recall_scale"] == 1.2
+    with pytest.raises(ValueError, match="recall_scale was retired in 0.93.0"):
+        composed(scales={"recall": 12.0})
 
 
 def test_a_custom_connectome_needs_regions_of_the_value_width():

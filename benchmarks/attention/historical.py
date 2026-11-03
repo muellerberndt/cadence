@@ -14,8 +14,38 @@ from types import SimpleNamespace
 
 from cadence.receipts import Receipt
 
+# The names a retained protocol or record gives the brain's genes where this library spells
+# them otherwise: the campaign protocols of 0.88 to 0.92 name the learner's softmax temperature
+# ``learning_temperature``, one spelling since 0.93.0, and carry the constants of the composed
+# brain since 0.93.0 at their founders (``CONSTANTS``: no gene since). A retained protocol is
+# bound by its receipts and keeps its bytes; ``genes`` reads it for ``Brain.compose`` and reads
+# a record's resolved genes for a comparison with ``describe()["genes"]``.
+RENAMED = {"learning_temperature": "temperature"}
+CONSTANTS = {"learning_beta": 0.1, "learning_momentum": 0.9, "actor_dopamine_cap": 1.0,
+             "actor_eligibility_steps": 12, "arousal_need_scale": 0.1, "memory_decay": 0.9,
+             "recall_heard": 1.0, "recall_address_temperature": 0.1, "recall_window_decay": 1.0}
+
+
+def genes(brain):
+    """``brain`` (a protocol's brain or a record's resolved genes) under the current names: a
+    constant at its founder is left out, at another value refused."""
+    out = {}
+    for name, value in brain.items():
+        if name in CONSTANTS:
+            if value != CONSTANTS[name]:
+                raise ValueError(
+                    f"{name}={value!r} is a constant of the composed brain since 0.93.0, "
+                    f"{CONSTANTS[name]!r}"
+                )
+            continue
+        out[RENAMED.get(name, name)] = value
+    return out
+
 
 class _ConfigView:
+    """The actual learner config as a retained record of 0.86.0 to 0.92.1 wrote it: with the
+    numerical policy those releases carried (``initial_damping``, retired in 0.93.0) at its
+    neutral zero."""
     def __init__(self, actual):
         self.actual = actual
 
@@ -23,18 +53,17 @@ class _ConfigView:
         return getattr(self.actual, name)
 
     def to_dict(self):
-        value = self.actual.to_dict()
-        if type(value.get("initial_damping")) is not int or value["initial_damping"] != 0:
-            raise ValueError("historical checker requires the neutral numerical default")
-        return {key: item for key, item in value.items() if key != "initial_damping"}
+        return {**self.actual.to_dict(), "initial_damping": 0}
 
 
 class _FounderView:
-    """Read-only expected-record view, used only inside one offline arithmetic check."""
+    """Read-only expected-record view, used only inside one offline arithmetic check: the
+    actual brain as the retained record wrote it, with the retired numerical policy at its
+    neutral zero where the record carries it."""
     def __init__(self, actual, record):
         self.actual, self.record = actual, record
         self.learner = actual.learner
-        if "initial_damping" not in record["learning_config"]:
+        if "initial_damping" in record["learning_config"]:
             self.learner = _LearnerView(actual.learner)
 
     def __getattr__(self, name):
@@ -42,12 +71,8 @@ class _FounderView:
 
     def describe(self):
         value = self.actual.describe()
-        genes = value["genes"]
-        if "learning_initial_damping" not in self.record["resolved"]["genes"]:
-            if (type(genes.get("learning_initial_damping")) is not int
-                    or genes["learning_initial_damping"] != 0):
-                raise ValueError("historical checker requires the neutral numerical default")
-            del genes["learning_initial_damping"]
+        if "learning_initial_damping" in self.record["resolved"]["genes"]:
+            value["genes"]["learning_initial_damping"] = 0
         return value
 
 

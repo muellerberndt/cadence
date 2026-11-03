@@ -12,7 +12,7 @@ depth pays here, and quickly.
 
 | arm | what it is |
 | --- | --- |
-| `one` to `four` | `Brain.compose(48, 7, modules=...)` with (128,), (128, 64), (128, 64, 64) and (128, 64, 64, 64): the apical compartment (`apical=0.25`), normalized teaching with the projection-relative floor (`learning_normalize_relative=0.1`) and nudged phases of a whole 32 sweeps (`learning_nudged_steps=32`, `learning_nudged_fixed=True`), every row taught, no memories |
+| `one` to `four` | `Brain.compose(48, 7, modules=...)` with (128,), (128, 64), (128, 64, 64) and (128, 64, 64, 64): the apical compartment (`apical=0.25`) at the teaching point `"deep"` (the normalized point with the projection-relative floor 0.1 and nudged phases of a whole 32 sweeps), every row taught, no memories |
 | `mlp_one`, `mlp_two` | tanh networks of hidden layers (128,) and (128, 64), backpropagation with Adam at 1e-3 on the softmax cross-entropy |
 | `random` | the uniform-random choice |
 
@@ -68,9 +68,11 @@ phases' common drift cancels in the contrast.
 
 [`memory.py`](memory.py) runs the [look-back, contextual-choice and held-heads
 benchmarks](../attention/README.md) unedited, with every brain they compose deepened: each
-module width repeated two or three times, the apical compartment (`apical=0.25`), the
-projection-relative floor (`learning_normalize_relative=0.1`) and normalized teaching where a
-benchmark sets none. Each benchmark's own gates and controls decide each founder.
+module width repeated two or three times, the apical compartment (`apical=0.25`) and the
+teaching point `"deep"` (the normalized point with the projection-relative floor 0.1 and nudged
+phases of a whole 32 sweeps). The retained receipt was taken before the point, with the floor
+alone (`learning_normalize_relative=0.1`) beside normalized teaching where a benchmark set none.
+Each benchmark's own gates and controls decide each founder.
 
 ```sh
 CADENCE_FUSED=0 python benchmarks/depth/memory.py --out /tmp/depth-memory --depths 2 3 --jobs 32

@@ -12,8 +12,7 @@ BASE = {"inputs": 8, "actions": 3, "seed": 5, "observers": (6, 4), "arousal": Tr
         "modules": (12, 8)}
 CASES = {
     "plain": {},
-    "apical": {"apical": 0.25, "teaching": "normalized", "learning_normalize_relative": 0.1,
-               "learning_nudged_fixed": True},
+    "apical": {"apical": 0.25, "teaching": "deep"},
     "recall and boundary": {"recall": True, "recall_boundary": True, "apical": 0.25},
     "held heads": {"learned_code": 8, "attention": True, "recall_heads": 2, "apical": 0.25},
     "episodic": {"memory_choice": True, "apical": 0.25},

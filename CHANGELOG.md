@@ -8,6 +8,94 @@ saves as on 0.92.1, except that an answer whose solve does not qualify within it
 rescued once before it is refused. Settings that did not meet their issue's gate ship as
 documented opt-ins with the readings that bound them.
 
+### Removed in this version
+
+Each name below is refused at `compose`, `retune` and on load with the sentence given; a
+checkpoint of 0.92.1 that carries one at another value than its founder is refused by name,
+and every founder checkpoint is byte-identical. Each component keeps its retirement table
+(the recall memory's is `Recall.RETIRED`, and `Recall.removed(name)` gives its sentence); the
+settings 0.85.0 retired keep naming 0.84.3 as the release that takes them (`recall_write was
+retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3 takes it`), and a
+0.93.0 retirement names 0.93.0.
+
+- `arousal_hindsight` (0.88.1): the outcome that woke a calm `live` brain credited the
+  stream's last `k` calm moments; no gain over the founder was measured. "arousal_hindsight
+  was retired in 0.93.0: a calm moment keeps no eligibility, so the outcome that wakes the
+  brain credits no earlier action; cadence 0.92.1 takes it". A `cadence-arousal/5` state (a
+  positive hindsight) is refused by name; `last_arousal["credited"]` and `ActorCritic.unfade`
+  are gone.
+- `learning_normalize_relative` and `learning_nudged_fixed` (0.90.0): the projection-relative
+  floor and nudged phases that run their whole budget, set in every reading beside
+  `teaching="normalized"`, `learning_nudged_steps=32` and `apical`. Folded into the teaching
+  point `teaching="deep"`, the normalized point with the floor at 0.1 and nudged phases of a
+  whole 32 sweeps; the `LearnerConfig` fields stay for `learning=LearnerConfig(...)`, and a
+  0.92.1 depth checkpoint loads and describes as `"deep"`. "learning_normalize_relative was
+  retired in 0.93.0: teaching='deep' sets the projection-relative floor at 0.1 with nudged
+  phases of a whole 32 sweeps, the one point ever read; learning=LearnerConfig(...) sets it as
+  an expert; cadence 0.92.1 takes it" (and likewise `learning_nudged_fixed`).
+- `learning_temperature`: the second spelling of `temperature`, the learner's softmax
+  temperature, which `describe()` emitted while the docs and chambers wrote `temperature`.
+  One spelling, `temperature`, at `compose`, `retune` and in `describe()`.
+  "learning_temperature was retired in 0.93.0: temperature is the one spelling of the
+  learner's softmax temperature, at compose, retune and in describe; cadence 0.92.1 takes it".
+- The keyword shims of 0.84.3: `reset(keep_memory=True)` and `reset(keep_arousal=True)` named
+  their `keep` form, and `retune(reset_arousal=True)` named `brain.arousal.reset()`. They are
+  unknown keywords now: `reset()` raises Python's `TypeError` for an unexpected keyword, and
+  `retune` "unknown brain setting: 'reset_arousal'" (`TypeError`).
+- `learning_initial_damping` (0.86.0): the numerical policy that started qualified teaching
+  phases at a later index of the damping ladder; no chamber reading since. Retired with the
+  policy: the `Equilibrium` fields `initial_damping` and `relative_damping_halvings`, the
+  `equilibrate` argument, the per-phase report keys `<phase>_initial_damping` and
+  `<phase>_relative_damping_halvings`, and checkpoint format `cadence-checkpoint/4` (refused
+  by name on load). "learning_initial_damping was retired in 0.93.0: every qualified phase
+  starts at the full step of the damping ladder; cadence 0.92.1 takes it". The attention
+  chambers keep verifying retained receipts that carry the policy at its neutral zero.
+- The constants of the composed brain. Each was a gene no reading ever moved from its founder
+  and no recipe set; by the manifesto's amended sentence a designed number stays a gene until
+  the readings show nothing changes it. The name leaves `compose`, `retune` and `describe()`
+  ("<name> was retired in 0.93.0: ..., a constant; cadence 0.92.1 takes it"); the value stays
+  on its dataclass or as a constant of its component; every key 0.92.1 wrote is still written
+  at the constant, so founder checkpoints are byte-identical, and a saved value other than the
+  constant is refused by name where the composed brain alone sets it (the episodic records'
+  replay and demonstrations, the composition's scales). A `LearnerConfig`, `ActorCriticConfig`
+  or `ArousalConfig` passed whole (`learning=`, `reward=`, `arousal=`) is the expert route and
+  keeps its values, as the frozen recipes of the acquisition and rhythm chambers compose
+  (`LearnerConfig(**recipe)` at momentum 0): `describe()` then names a moved constant by its
+  old name, which `compose` and `retune` do not take, and a checkpoint carries and loads the
+  expert's value. A saved memory's decay and separation are the memory's own on load, so an
+  instrument's memory attached to a brain keeps them. `scales["history"]` and
+  `scales["recall"]` are taken at 1.2 alone.
+  - `learning_beta` 0.1: the nudge strength (`LearnerConfig.beta` stays for a standalone learner).
+  - `learning_momentum` 0.9: the running mean of each synapse's contrast (`LearnerConfig.momentum` stays).
+  - `actor_dopamine_cap` 1.0: the clip of the actor's signal (`ActorCriticConfig.dopamine_cap` stays).
+  - `actor_eligibility_steps` 12: the sweeps of each reward-nudged phase (`ActorCriticConfig.eligibility_steps` stays).
+  - `arousal_need_scale` 0.1: the need in reward scales (`ArousalConfig.need_scale` stays for the law alone; a 0.84.3 brain checkpoint, saved without the scaled need, is refused by name).
+  - `memory_decay` 0.9: the share of a stream's record each later write keeps (both stores).
+  - `memory_replay` 8 and `memory_demonstrations` 1.0: the decisions a reward replays and the value a demonstration is recorded at (`EpisodicRecords.REPLAY`, `.DEMONSTRATIONS`).
+  - `memory_winners` 24: the active cells of the episodic separation per key.
+  - `scales["history"]` and `scales["recall"]` 1.2 (and the 0.84.3 names `history_scale`, `recall_scale`): the initial magnitudes of the history's and the recall memory's projections; `scales` names `"sensory"` and `"trace"`.
+  - `recall_heard` 1.0, `recall_address_temperature` 0.1 and `recall_window_decay` 1.0: the present event's weight in its key and its address, the temperature of the slots' scores in the address lesson, and the weight of the window's earlier events (`Recall.heard`, `.address_temperature`, `.window_decay`). A checkpoint still carries `heard` and `address_temperature` at 1.0 and 0.1, as 0.92.1 wrote them, and loads; another value, or `window_decay` other than 1.0, is refused by name ("recall_heard was retired in 0.93.0: the present event weighs 1.0 in its key and its address, the one weight ever read", and likewise the other two).
+- `recall_address_step` (0.84.0, runtime): `"toward"` stepped the address by the named keys
+  less the mixture it attended to; described and never read in a chamber. The step toward the
+  named keys, the founder `"lms"`, is the step. The message: `recall_address_step was retired
+  in 0.93.0: the address lesson steps toward the named keys, as it did at 'lms'`.
+- `Recall`'s head-0 aliases `w_x`, `w_c`, `b`, `position_x`, `position_c`, `position_b` and
+  `attended` are gone: `head_map(0)`, `position_map(0)` and `attended_heads[0]` are the one
+  spelling, `head_maps` holds every head's address map (head 0's first), and
+  `Recall.map_names(kind, head)` replaces `position_names`, `anchor_names`, `relative_names`
+  and `slope_names`. An `AttributeError` names the missing alias; the checkpoint names are
+  unchanged.
+- `last_settlement["scope"]` (always `"free_answer"`) and `code_halvings` (a learned code's
+  step, read by nothing) leave the settlement report; the other keys stay.
+- `imagine` loses its `tolerance` argument: its phases settle to the learner's tolerance
+  (`learning_tolerance`, 3e-3), the one tolerance an answer is held to, where they settled to
+  1e-6 before. `imagine(..., tolerance=...)` raises `TypeError`.
+- One name per memory for fresh streams and for a private copy: `begin(keep=False)` leaves
+  the memory contract and every memory (`Brain.reset` calls `reset(0)`, or `Recall.end` for
+  the slots it keeps, and leaves the stores' records and fast residuals as before), and
+  `Recall.imagined()` is `branch()`, the contract's name. `AttributeError` names the missing
+  method.
+
 ### Positions at lengths no lesson reached
 
 - `recall_anchor` (opt-in, #237): every head's position term also reads each slot's place in
@@ -211,47 +299,6 @@ that added the position term, loads at its settings and reads as it did (a test 
   byte. The #210 panel's other chambers and the competing ring (#169) were read before the
   review's fixes; a ring life repeats on this release with every reading identical. The value
   lesson's readings (#216) come from a game outside the library.
-
-### Removed in this version
-
-A retired setting is refused at `compose`, `retune` and load with one sentence that names the
-release that retired it and what the brain does instead; a saved brain loads where it carries
-the one value the release keeps for the setting and is refused with the same sentence
-otherwise. The recall memory's table is `Recall.RETIRED` and `Recall.removed(name)` gives its
-sentence; the settings 0.85.0 retired keep naming 0.84.3 as the release that takes them
-(`recall_write was retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3
-takes it`), and a 0.93.0 retirement names 0.93.0.
-
-- `recall_address_step` (0.84.0, runtime): `"toward"` stepped the address by the named keys
-  less the mixture it attended to; described and never read in a chamber. The step toward the
-  named keys, the founder `"lms"`, is the step. The message: `recall_address_step was retired
-  in 0.93.0: the address lesson steps toward the named keys, as it did at 'lms'`.
-- `recall_heard` (1.0), `recall_address_temperature` (0.1) and `recall_window_decay` (1.0):
-  genes no reading changed and no recipe set, now constants of the memory (`Recall.heard`,
-  `Recall.address_temperature`, `Recall.window_decay`). A checkpoint still carries `heard` and
-  `address_temperature` at 1.0 and 0.1, as 0.92.1 wrote them, and loads; a file that carries
-  another value, or `window_decay` other than 1.0, is refused by name. The messages:
-  `recall_heard was retired in 0.93.0: the present event weighs 1.0 in its key and its address,
-  the one weight ever read`; `recall_address_temperature was retired in 0.93.0: the address
-  lesson weighs the slots' scores at the temperature 0.1, the one value ever read`;
-  `recall_window_decay was retired in 0.93.0: the window's earlier events enter the key at
-  their full weight (1.0), the one value ever read`.
-- `Recall`'s head-0 aliases `w_x`, `w_c`, `b`, `position_x`, `position_c`, `position_b` and
-  `attended` are gone: `head_map(0)`, `position_map(0)` and `attended_heads[0]` are the one
-  spelling, `head_maps` holds every head's address map (head 0's first), and
-  `Recall.map_names(kind, head)` replaces `position_names`, `anchor_names`, `relative_names`
-  and `slope_names`. An `AttributeError` names the missing alias; the checkpoint names are
-  unchanged.
-- `last_settlement["scope"]` (always `"free_answer"`) and `code_halvings` (a learned code's
-  step, read by nothing) leave the settlement report; the other keys stay.
-- `imagine` loses its `tolerance` argument: its phases settle to the learner's tolerance
-  (`learning_tolerance`, 3e-3), the one tolerance an answer is held to, where they settled to
-  1e-6 before. `imagine(..., tolerance=...)` raises `TypeError`.
-- One name per memory for fresh streams and for a private copy: `begin(keep=False)` leaves
-  the memory contract and every memory (`Brain.reset` calls `reset(0)`, or `Recall.end` for
-  the slots it keeps, and leaves the stores' records and fast residuals as before), and
-  `Recall.imagined()` is `branch()`, the contract's name. `AttributeError` names the missing
-  method.
 
 ### Settling and learning: the same bits in less time
 

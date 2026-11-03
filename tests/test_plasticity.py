@@ -334,7 +334,7 @@ def test_the_critic_learns_the_actors_capped_dopamine() -> None:
                         ("critic_signal", "td")):
         with pytest.raises(TypeError):
             cd.ActorCriticConfig(**{name: value})
-        with pytest.raises(ValueError, match=f"actor_{name} was removed.*0.84.3"):
+        with pytest.raises(ValueError, match=f"actor_{name} was retired.*0.84.3"):
             cd.Brain.compose(4, 2, modules=(8,), **{f"actor_{name}": value})
     assert not hasattr(cd, "Valence")
 
