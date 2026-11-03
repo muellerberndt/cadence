@@ -127,6 +127,24 @@ def test_a_short_life_reads_every_reading():
                      **SMALL})
 
 
+def test_the_sharp_when_read_learns_its_address_and_keeps_its_table_at_zero():
+    task = bt.Before(lengths=(8, 8))
+    row = bt.run_life({"task": "before", "arm": "when_sharp", "founder": 0, **SMALL})
+    assert set(row["test"]["conditions"]) <= {"yes", "no"}
+    settings = row["settings"]
+    assert settings["recall_when"] and settings["recall_position_rate"] == 0.0
+    assert settings["recall_temperature"] == 0.1
+    brain = bt.make_brain(task, "when_sharp", 0, module=16)
+    rng, stats = np.random.default_rng(5), bt.new_stats()
+    for _ in range(2):
+        bt.run_episode(brain, task, task.episode(rng, True), teach=True, closed=False,
+                       stats=stats)
+    recall = brain.recall
+    assert brain.learner.updates > 0  # the lessons taught the synapses
+    assert recall.w_x.any() or recall.w_c.any() or recall.b.any()  # and the address map
+    assert not any(a.any() for maps in recall.position_maps for a in maps)  # the table stays
+
+
 def test_a_life_is_the_same_twice_and_the_summary_spans_its_founders():
     spec = {"task": "ago", "arm": "when", **SMALL}
     rows = [bt.run_life({**spec, "founder": f}) for f in (0, 1, 0)]

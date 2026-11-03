@@ -63,6 +63,9 @@ ARMS: dict[str, dict[str, Any]] = {
     "every_row": WHEN,
     "when": {**WHEN, "recall_when": True},
     "when_anchor": {**WHEN, "recall_when": True, "recall_anchor": True},
+    # the when read that stays on the item heard: a sharp softmax, the position term not taught
+    "when_sharp": {**WHEN, "recall_when": True, "recall_position_rate": 0.0,
+                   "recall_temperature": 0.1},
     "rehearsal": {**BOUNDARY, "recall_anchor": True, "learning_rehearsal": 1.0},
 }
 

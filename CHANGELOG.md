@@ -45,9 +45,14 @@ documented opt-ins with the readings that bound them.
   features of the slot's age and, with the anchor, two of its place in the episode
   (`Recall.when_features`). The regions reach the association through synapses that start at
   zero, laid out after every other part. "How long ago was X told?" answers 0.81 to 0.91 with it
-  (0.91 to 0.92 with the anchor too), 0.51 to 0.80 without; "was A told before B?" over two
-  moments reads 0.59 to 0.80 with it and 0.59 to 0.72 without, since the comparison needs the
-  first read carried to the second moment.
+  (0.91 to 0.92 with the anchor too), 0.51 to 0.80 without. "Was A told before B?" over two
+  moments reads 0.59 to 0.80 at the founder settings, where the position lesson pulls the read
+  off the items asked about (the answer is no slot's content); with the position term not taught
+  and a sharp read (`recall_position_rate=0, recall_temperature=0.1`) it answers 0.938 to 0.966
+  on six fresh founders declared before the run, and "how long ago" 0.866 to 0.953 (mean 0.912,
+  against 0.794 for the learning read with the anchor). The regions' age features at ages no
+  lesson reached enter the association through synapses taught at short ages: beside the recipe
+  for unseen lengths, look back read at 24 to 60 fell to 0.93 on one of six founders.
 
 Each of these maps starts at zero, so a newborn reads as one without the option, and
 checkpoints keep the maps and the per-stream counts. A chained second head (each head after the

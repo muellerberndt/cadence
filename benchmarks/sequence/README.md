@@ -59,6 +59,7 @@ what do the earlier cues keep?
 | `every_row` | `recall=True, recall_recency=0.0`: every row taught |
 | `when` | `every_row` with `recall_when=True` |
 | `when_anchor` | `when` with `recall_anchor=True` |
+| `when_sharp` | `when` with `recall_position_rate=0.0, recall_temperature=0.1`: the position term not taught and a sharp softmax, so the read lands on the item heard and stays there |
 | `rehearsal` | `anchor` with `learning_rehearsal=1.0`: the lessons' episodes replayed |
 
 ## Ordered recall (`order.py`)
@@ -214,6 +215,52 @@ Founders 0 to 2, every row taught:
 | `every_row` | 0.509 to 0.796 | 0.594 to 0.718 |
 | `when` | 0.809 to 0.907 | 0.594 to 0.796 |
 | `when_anchor` | 0.911 to 0.917 | 0.590 to 0.803 |
+| `when_sharp` | 0.861 to 0.951 | 0.944 to 0.958 |
+
+**The read that stays on its items** (`when_sharp`). The position lesson, and to a lesser degree
+the address lesson, take their target from the slots whose stored contents the lesson's
+movement points to; "was A told before B?" is answered yes or no, which no slot holds, and the
+lessons pull the read off the items. At the founder settings the read gives A's slot a median
+0.008 of its attention at A and B's slot 0.0005 at B (founder 0; with the address and position
+lessons off, 0.83 and 0.82). With the position term not taught and a sharp softmax the read
+lands on the item (median attention 0.999 on A's slot at A and on B's at B), and the working
+trace carries A's report to B's moment. Freezing the address map as well (`when_sharp` with
+`recall_address=0.0`) reads 0.927 to 0.957 on founders 0 to 2. Development founders 0 to 5 and
+fresh founders 237050 to 237055, every row taught, 1,500 lessons:
+
+| Founder | "Before" `when_sharp` | "How long ago" `when_sharp` | "How long ago" `when_anchor` |
+| --- | --- | --- | --- |
+| 0 | 0.944 | 0.951 | 0.911 |
+| 1 | 0.958 | 0.861 | 0.917 |
+| 2 | 0.949 | 0.898 | 0.911 |
+| 3 | 0.947 | 0.898 | 0.817 |
+| 4 | 0.942 | 0.876 | 0.933 |
+| 5 | 0.953 | 0.904 | 0.854 |
+| 237050 | 0.938 | 0.953 | 0.685 |
+| 237051 | 0.966 | 0.953 | 0.783 |
+| 237052 | 0.949 | 0.880 | 0.899 |
+| 237053 | 0.963 | 0.866 | 0.849 |
+| 237054 | 0.958 | 0.894 | 0.853 |
+| 237055 | 0.946 | 0.928 | 0.696 |
+
+`when_anchor` reads "before" 0.587 to 0.793 on the fresh founders. "How long ago" with
+`when_sharp` averages 0.898 on the development founders and 0.912 on the fresh ones, against
+0.891 and 0.794 with `when_anchor`; its misses lie in the middle buckets, 2 to 3 and 4 to 7
+moments back.
+
+Founders 237050 to 237055 were declared before any run on them, as the simpler control of a
+protocol whose mechanism was withdrawn: a region per head carrying its previous read of when to
+the next moment read "before" 0.969 to 0.983 on them, 0.006 to 0.040 above `when_sharp`, and
+0.599 to 0.843 at the founder read (founders 0 to 2), where the read leaves the items; it is not
+in the library.
+
+**A boundary of the when regions.** Beside the recipe for unseen lengths (`recipe` with
+`recall_when=True`), look back taught at 5 to 12 and read at 24 to 60 reads 0.996, 0.999 and
+0.992 on founders 0 to 2 and 0.926, 0.996 and 0.996 on 237050 to 237052; on 237050 `first`
+falls from 0.998 to 0.899 and `second` from 0.988 to 0.899 (`recipe` alone reads 0.984 there).
+The regions' age features at ages no lesson reached (`log(1 + age) / log 9` reaches 1.87 at age
+60 and 1.17 at age 12, the oldest a lesson taught) enter the association through synapses
+taught at short ages.
 
 ### Cues taught in sequence (#238)
 

@@ -3,10 +3,18 @@ the attention-weighted features of its slots' ages on a region of its own."""
 
 from __future__ import annotations
 
+import hashlib
+import json
+from pathlib import Path
+
 import numpy as np
 import pytest
 
 import cadence as cd
+
+# a brain with the when regions saved by 0.93.0 (two heads, the anchor), mid-episode, with the
+# answers and synapses 0.93.0 recorded after the save
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recall_when_093"
 
 
 def when(**options) -> cd.Brain:
@@ -101,3 +109,26 @@ def test_lessons_give_the_when_synapses_weight_and_a_checkpoint_continues(tmp_pa
 def test_when_reads_into_the_recall_regions():
     with pytest.raises(ValueError, match="reads into the recall regions"):
         cd.Recall(when(recall_when=True).connectome, target="next", next=False, when=True)
+
+
+def test_a_checkpoint_of_093_loads_and_continues_as_it_did(tmp_path):
+    record = json.loads((FIXTURE / "provenance.json").read_text())
+    brain = cd.Brain.load(FIXTURE / "when093.npz")
+    recall = brain.recall
+    assert recall.when and recall.anchor and recall.heads == 2
+    assert recall.when_width == 4 and recall.neurons == 2 * (2 * 6) + 2 * 4
+    with np.load(FIXTURE / "when093.npz", allow_pickle=False) as saved:
+        members = set(saved.files)
+    with np.load(brain.save(tmp_path / "again.npz"), allow_pickle=False) as again:
+        assert set(again.files) == members
+    rng = np.random.default_rng(8)
+    answers = []
+    for _ in range(3):
+        answers.append(np.asarray(
+            brain.step(rng.random((2, 6)), teacher=rng.integers(0, 3, size=2))
+        ).tolist())
+    for _ in range(2):
+        answers.append(np.asarray(brain.act(rng.random((2, 6)), greedy=True)).tolist())
+    assert answers == record["continuation"]["answers"]
+    efficacy = np.ascontiguousarray(np.asarray(brain.brain.efficacy, dtype=float))
+    assert hashlib.sha256(efficacy.tobytes()).hexdigest() == record["continuation"]["efficacy"]

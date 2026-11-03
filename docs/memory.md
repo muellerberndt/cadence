@@ -1122,11 +1122,34 @@ On "how long ago was X told?" (the [sequence battery](../benchmarks/sequence/REA
 stories of 8 to 16 distinct tokens, X shown with a question mark, the answer one of four age
 buckets; three development seeds, 1,500 lessons) the option answers 0.81 to 0.91, and 0.91 to
 0.92 with the anchor, against 0.51 to 0.80 without it. "Was A told before B?", asked over two
-moments (A, then B), reads 0.59 to 0.80 with it, against 0.59 to 0.72 without it: the
-comparison needs what the first read reported carried to the second moment, and the working
-trace does not carry it that far. A lesson that also named slots by when they happened taught the read to find
-slots whose age matched the answer instead of the item asked about, so the lesson does not read the movement back through the
-when regions.
+moments (A, then B), reads 0.59 to 0.80 with it, against 0.59 to 0.72 without it: the reads
+leave the items asked about (the read that stays on its items, below). A lesson that also named
+slots by when they happened taught the read to find slots whose age matched the answer instead
+of the item asked about, so the lesson does not read the movement back through the when regions.
+
+**The read that stays on its items.** "Was A told before B?" needs the read at A to land on A's
+slot and the read at B on B's. The position lesson, and to a lesser degree the address lesson,
+take their target from the slots whose stored contents the lesson's movement points to; the
+answer here, yes or no, is no slot's content, and the lessons pull the read off the items. With
+every row taught at the founder settings the read gives A's slot a median 0.008 of its attention
+at A and B's slot 0.0005 at B (development founder 0); with the address and position lessons
+off, 0.83 and 0.82. With the position term not taught and a sharp softmax, `recall_when=True,
+recall_position_rate=0.0, recall_temperature=0.1` (the battery's `when_sharp`), the read lands
+on the item's slot (median attention 0.999 on A's at A and on B's at B, the same founder) and
+the working trace carries A's report to B's moment: the question answers 0.942 to 0.958 on six
+development founders and 0.938 to 0.966 on six fresh founders declared before the run, and "how
+long ago" 0.861 to 0.951 (mean 0.898) on the development founders and 0.866 to 0.953 (mean
+0.912) on the fresh ones (the learning read with the anchor: 0.817 to 0.933, mean 0.891, and
+0.685 to 0.899, mean 0.794). A region per head carrying its previous read of when to the next
+moment was tried beside this read on the branch and withdrawn: it read "before" 0.969 to 0.983
+on the same fresh founders, 0.006 to 0.040 above the read without it, for a region per head and
+a per-stream state.
+
+A boundary of the when regions: their age features at ages no lesson reached (`log(1 + age) /
+log 9` reaches 1.87 at age 60 and 1.17 at age 12, the oldest a lesson taught) enter the
+association through synapses taught at short ages. Beside the recipe for unseen lengths, look
+back taught at 5 to 12 and read at 24 to 60 holds at 0.992 to 0.999 on five of six founders
+read and falls to 0.93 on one (`first` 0.998 to 0.899, `second` 0.988 to 0.899).
 
 ### Episodes, keys and windows
 
