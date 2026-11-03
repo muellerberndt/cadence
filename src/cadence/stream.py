@@ -857,27 +857,35 @@ class Recall:
         retired setting is refused by name (``removed``)."""
         if name in Recall.RETIRED or (name == "recency" and value is None):
             raise ValueError(Recall.removed(name))
-        if name in ("amplitude", "recency", "address"):
+        if name in (
+            "amplitude", "recency", "address", "address_reward", "position_reward",
+            "position_rate", "copy", "slope",
+        ):
             return real(name, value, low=0)
         if name == "temperature":
             number = real(name, value, low=0)
             if number <= 0:
                 raise ValueError(f"{name} must be positive")
             return number
-        if name == "capacity":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 1
-            ):
-                raise ValueError("capacity must be an integer of at least 1")
-            return int(value)
+        if name == "null":
+            return None if value is None else real(name, value)
         if name in ("next", "boundary", "action", "compete", "anchor", "relative", "when"):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
-        if name in ("copy", "slope"):
-            return real(name, value, low=0)
+        if name in ("capacity", "window", "heads", "position"):
+            low = 0 if name == "position" else 1  # no position term at 0
+            if (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, np.integer))
+                or value < low
+            ):
+                raise ValueError(
+                    f"{name} must be an integer of at least 1" if low else
+                    "position must be a nonnegative integer: the ages with a bucket each, 0 for "
+                    "no position term"
+                )
+            return int(value)
         if name == "tokens":
             if value is None:
                 return None
@@ -903,39 +911,6 @@ class Recall:
             if not any(item >= 0 for item in out):
                 raise ValueError("tokens must name at least one observation coordinate")
             return tuple(out)
-        if name == "null":
-            return None if value is None else real(name, value)
-        if name in ("address_reward", "position_reward"):
-            return real(name, value, low=0)
-        if name == "window":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 1
-            ):
-                raise ValueError("window must be an integer of at least 1")
-            return int(value)
-        if name == "heads":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 1
-            ):
-                raise ValueError("heads must be an integer of at least 1")
-            return int(value)
-        if name == "position":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 0
-            ):
-                raise ValueError(
-                    "position must be a nonnegative integer: the ages with a bucket each, 0 for "
-                    "no position term"
-                )
-            return int(value)
-        if name == "position_rate":
-            return real(name, value, low=0)
         raise TypeError(f"unknown recall setting: {name!r}")
 
     @staticmethod
