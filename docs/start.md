@@ -71,226 +71,6 @@ agrees with itself; whether the action was good is measured by the task's outcom
 The [continuing example](../examples/continuing_brain.py) tracks these counters
 through bootstrap, unchanged conditions, disruption and correction.
 
-## Imagine privately and resume
-
-```python
-phases = brain.imagine([observation, next_observation])
-assert len(phases) == 2 and all(np.all(phase.qualified) for phase in phases)
-
-brain.save("brain.npz")
-resumed = Brain.load("brain.npz")
-
-# Resume the same pending action with the same measured outcome.
-reward = (action == 0).astype(float)
-continued = brain.live(observation, reward=reward)
-replayed = resumed.live(observation, reward=reward)
-assert np.array_equal(continued, replayed)
-assert brain.arousal.to_dict() == resumed.arousal.to_dict()
-assert brain.last_arousal == resumed.last_arousal
-```
-
-`imagine` settles the brain's responses to a supplied sequence of observations
-along a private trace. Live memory, parameters, random state and pending feedback
-are unchanged. A refused phase ends the branch and stays in the result, so check
-each phase's `qualified` flags before using a response. `Brain.compose` builds no
-transition model.
-
-`save` and `load` keep the brain's full continuation, pending feedback included.
-Save the environment separately and resume its stream as well. If `live` refuses
-an answer, the [qualification rules](#qualification-and-refusal) say
-how to retry without reporting an outcome twice.
-
-## Add optional observers
-
-**System 2** adds observer regions to the same graph:
-
-```python
-recursive = Brain.compose(
-    inputs=4, actions=2, modules=(16, 8), observers=(8,), seed=7,
-    arousal=True,
-)
-assert recursive.live(observation).shape == (1,)
-```
-
-Observers read from and return influence to the processing regions, the motor
-region and earlier observers, inside the same settlement and the same `live` and
-`step` calls. They attach to any module count; this project adds them to a developed
-two-module System 1 by convention. Any task advantage they bring has to be learned
-and measured. [Compose a brain](tune.md#brain) covers modules and observers.
-
-## One continuing equilibrium brain
-
-Cadence builds one brain that acquires a reusable interpretation of its world,
-carries it through experience and repairs it when experience disagrees.
-Perception, memory and action constrain one another through reciprocal
-connections, and the answer is read from the settled state of the brain's motor
-population.
-
-The learned relations and retained memories encode a family of possible
-equilibria, one for each combination of evidence and context. Learning changes
-the family; ordinary use moves between its members as observations, goals and
-context change.
-
-`Brain.compose` builds the default **System 1** brain: reciprocal processing
-regions, local plasticity, a working trace and associative memory. Optional
-**System 2** observers add regions with returning feedback inside the same
-settlement. Biological names describe software roles.
-
-### Bootstrap, use, repair, continue
-
-```mermaid
-flowchart LR
-    O[Observation and retained context] --> S[Bounded neural settlement]
-    S -->|Qualified| A[Execute action]
-    S -->|Refused| R[Inspect solve and retry]
-    R --> S
-    A --> W[Witness actual outcome]
-    W --> F[Feedback and optional correction]
-    F --> O
-```
-
-1. **Bootstrap.** Present real observations, consequences and demonstrations to
-   one brain until its connections and memory support answers with the teacher
-   absent. Judge this on held-out experience and retention.
-2. **Use.** New evidence and remembered context change the boundary of the solve;
-   the regions settle a compatible present state, the brain acts and the
-   environment supplies the consequence.
-3. **Repair.** Compare the issued action, or a saved prediction, with the observed
-   outcome before correcting. A missed goal is task evidence; a large equation
-   residual means the solve did not qualify. `Brain.live` receives the measured
-   reward and predicts no environmental transition.
-4. **Continue.** Keep parameters, memories and pending feedback through the
-   correction, and measure recovery and old capabilities on the same brain.
-
-The [common missteps](evaluate.md#common-missteps) list what this lifecycle rules out.
-
-### A life in code
-
-Compose a brain with arousal and call `live` once per moment. Each call receives
-the preceding action's outcome and chooses the next action; arousal decides when
-the brain explores and learns.
-
-```python
-import numpy as np
-from cadence import Brain
-
-brain = Brain.compose(inputs=2, actions=2, arousal=True)
-observations = np.eye(2)
-cue = 0
-action = brain.live(observations[[cue]])
-
-for transition in range(8):
-    target = 1 - cue if transition < 4 else cue  # the body's rule changes halfway
-    reward = (action == target).astype(float)    # outcome of the executed action
-    cue = 1 - cue
-    action = brain.live(observations[[cue]], reward=reward)
-
-assert brain.learner.updates > 0
-assert brain.hippocampus is not None and brain.hippocampus.writes > 0
-```
-
-`live` takes the preceding outcome before it settles the current observation; if
-that settle refuses, retry `live(observations)` without the reward
-([refusal](#qualification-and-refusal)). Use `step` for batches,
-supplied teachers or learning from every outcome. The
-[lifecycle example](../examples/continuing_brain.py) runs bootstrap, unchanged and
-changed conditions and resumes from a saved pending action.
-
-### One moment in causal order
-
-1. Receive the observation and the feedback for the **preceding action**.
-2. Score its saved prediction before the learner sees the outcome. Update from the
-   observed components and apply reward to the saved eligibility of that action.
-3. Retain relevant actual events with their time, context and provenance.
-4. Combine current evidence, remembered events and the goal. Imagination uses
-   isolated branch state and read-only parameters.
-5. Save the next prediction, execute the action or utterance, and attend to the
-   result.
-
-A missing feature differs from an observed zero: give the reading a missing flag
-for it, in witnessed and imagined readings alike. A UI tick or other host event is
-no action outcome; report each issued action's outcome once, success included.
-
-`Genome`/`develop` connect regions by declared
-synapses. Put regions that should settle jointly into one `NeuralGraph`;
-independent solves shown side by side are uncoupled dynamics. Wire an auxiliary
-memory's recall into declared drive ports and count its store in the cost. A
-named region gets a function only from its connections and experience.
-
-### What the composed brain provides
-
-The composed `Brain` provides a continuing interpretation, action and memory. It
-integrates no learned model of environmental transitions
-([issue #93](https://github.com/muellerberndt/cadence/issues/93)).
-
-| Mechanism | Contract and boundary |
-| --- | --- |
-| Present interpretation and action | `Brain.act` qualifies the whole neural graph's residual with the trace and memory reads held as drive. With `memory_choice=True` the episodic vote joins the motor readout after the settle. The memory stores do not equilibrate jointly with the graph. |
-| Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
-| Memories | Working trace and associative store on; efference copy, heard history, episodic and recall memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
-| Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
-| Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
-| Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](#private-imagination). |
-
-`step` learns from every outcome it is given. `live` gates learning by arousal;
-its evidence is the [odour nursery](../benchmarks/reversal/README.md), where the
-associative memory carries the repair. Reuse of a settled state across moments
-and repair confined to declared dependencies belong to
-[issue #122](https://github.com/muellerberndt/cadence/issues/122).
-
-Components for compositions beyond the default brain:
-
-| Function | Build with | Learned or supplied explicitly |
-| --- | --- | --- |
-| Perception and grounding | Input regions, associations and local updates (`Brain.compose`, `Genome`) | Features, entities, word/referent bindings |
-| Episodes and consolidation | `FastSynapses`, `SynapticMemory` | Addressing, relevant writes, retention, correction |
-| Workspace and goals | Recurrent state, `Trace`, goal and readback ports | Persistent context, goals and subgoals |
-| Action and value | `ActorCritic`, eligibility, dopamine | Exploration, delayed credit |
-
-### Coherent behavior over time
-
-The target is behavior governed by continuing learned context: a phrase, sentence
-or action sequence unfolds one event at a time with sensory feedback, carried by
-the working trace, associative memory and efference. Next-event accuracy or a
-self-feeding rollout is component evidence. Integrated evidence retains the
-context, removes or perturbs it under matched exposure, and measures recovery and
-counterfactual contexts. A surprising event need not be a numerical failure.
-
-`Brain.act` solves the present neural state with trace and memory input held,
-which is no joint equilibrium over future events. Keep any addition inside the
-same coupled equilibrium; no adapter may supply the answer, the phase or the
-arrangement. Declare component or integrated scope in the
-[evaluation contract](evaluate.md#test-coherent-behavior-over-time)
-([issue #109](https://github.com/muellerberndt/cadence/issues/109)).
-
-### Build and measure the whole life
-
-The default sensory projection feeds a chain of processing regions without
-internal synapses; neighbouring regions and the association/motor pair exchange
-reciprocal signals, so even `modules=(64,)` answers by recurrent settlement.
-Measure the benefit of more modules or observers.
-
-Keep the same brain across acquisition, use, interference and repair, with
-stream identities preserved and transient state reset only at declared
-boundaries. Each stream keeps its own episode records, random state and pending
-actions; `SynapticMemory` shares its slow weights across streams, so a
-measurement snapshot must leave the live learner's shared matrix unchanged.
-`Brain.save` covers the standard composition; save the environment, partner,
-curriculum and replay state beside it, and custom stores with their owner.
-
-`predict`, `accuracy` and `fit` are independent-sample controls: they read no
-memory (trace, efference, history, recall or associative store), and `fit` resets
-pending stream state. A
-frozen evaluation loads a checkpoint, provided it holds the state the tested
-capability needs. Measure residuals, task quality, retention, recovery and work
-separately, and count bootstrap, stable use, learning, replay, imagination and
-refused attempts. What a numerical fixed point checks is set out in
-[contracts](contracts.md).
-
-For language, the target is understanding and producing full sentences through
-this continuing system. A fixed word classifier tests a narrower mechanism; an
-external language model that supplies the answer is a separate baseline.
-
 ## Continuous interaction
 
 A `Brain.compose` brain is one continuing life with no training/inference switch.
@@ -419,96 +199,17 @@ world, reward noise rouses the founders for a small share of moments. A routine 
 pays one full settle.
 
 `need_scale` is 0.1, a constant of the composed brain since 0.93.0 (the law alone takes
-`ArousalConfig(need_scale=0)`, the brain of 0.84.3 without the scaled need). It is outside
-`ArousalConfig.space()`. A positive `need_scale` rouses an adult whose income falls below
-that share of its learned reward spread, whatever the unit of its rewards, and leaves a life
-that never paid at all calm (its scale is zero). At `need_scale=0.1`, with the actor step at
-the composed founder, against the founder on fresh seeds the composed brain kept every
-preservation chamber: in the [key-door chamber](../benchmarks/keydoor/README.md)
-it acquired rule A on 10 of 16 lives against 8 of 16, with fed rule-ends calm on 20 of 21
-and unfed ones aroused (late aroused share .10 at fed rule-ends against .84 at unfed ones,
-where the founder is calm at both, .01 and .00, with 17 of 17 fed rule-ends calm and 16 of
-16 lives calm in every rule); in the [prerequisite chain](../benchmarks/chain/README.md) 3 of
-12 lives collapsed onto one action against 12 of 12 and 7 of 12 learned the chain against 1
-of 12; the [odour nursery](../benchmarks/reversal/README.md) passed 8 of 12 lives in both;
-and a two-armed bandit with reversal won 30 of 30 blocks in both. The cost follows from the
-law: in a world whose income stays below the share, the want stays at the unmet share and
-the level settles above the threshold, so the brain stays aroused and pays learning sweeps
-at every moment. With pay at the end of the chain, 5 of 6 lives stayed aroused for .60 to
-.67 of the life on an income of .017 to .022 per moment, the sixth, earning .15 per moment,
-for .06, and the founder's 6 lives, all collapsed, for .02. Through `step` the gene is
-inert.
-
-### Learning during a continuing life
-
-A brain that keeps living learns from what happens to it: outcomes through `live` and
-`step`, lessons where a teacher answers. Where the founder's learning does not reach a
-behaviour, these settings do, each an opt-in that leaves the founder unchanged, each read in
-the chamber that measures it (under `live` with reward only where it learns from reward):
-
-| Situation | Settings | Chamber and reading |
-| --- | --- | --- |
-| A reversal whose failures pay nothing: the paid arm's record keeps voting after the pay moves | `memory_choice=True, memory_extinction=0.5` | [extinction](../benchmarks/extinction/README.md): 11 of 12 lives learn the new arm against 5 of 12 on the development seeds, 11 against 3 on the confirmation seeds; the return to the first arm is slower (median 15 trials against 6) |
-| A chain whose stages look alike and whose misses leave the observation as it was | `memory_choice=True, memory_context_hold="unchanged"` | [context key](../benchmarks/context_key/stone_chains.py): the ambiguous chain passes cleanly on 35 of 96 lives against 6; where the right action leaves the observation unchanged it costs (0 against 9) |
-| A choice that depends on a cue the answer does not show, from the terminal reward alone | `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True` | [credit](../benchmarks/credit/README.md): the cue right before the answer on 11 of 12 fresh founders (the founder on 2 of 12); one event between on 4 of 6, two on none |
-| The same cue carried through distractors, taught by a lesson at the answer | `recall=True, recall_recency=0.0` | the same chamber: 4 and 8 distractors on 12 of 12 fresh founders |
-| Which of two writes a read finds, from reward alone | `recall=True, recall_position_reward=4.0` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy): 0.73 to 1.00 of the last 256 queries, three of five founders every one |
-
-The chambers' READMEs state each setting's costs beside its gains;
-[episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) and
-[reward](reward.md#a-cue-the-answer-does-not-show) give the mechanisms.
-
-```python
-import numpy as np
-from cadence import Brain
-
-bandit = Brain.compose(1, 2, modules=(8,), seed=0, arousal=True, memory_choice=True,
-                       memory_extinction=0.5)
-cue = np.ones((1, 1))
-arm = int(bandit.live(cue)[0])
-for trial in range(24):  # arm 0 pays for twelve trials, then arm 1; failures pay nothing
-    reward = 1.0 if arm == (0 if trial < 12 else 1) else 0.0
-    arm = int(bandit.live(cue, reward=[reward])[0])
-assert bandit.last_arousal is not None
-```
-
-<a id="observations-actions-and-reward"></a>
-
-### Outcomes that arrive later: `wait`
-
-When a body reports an outcome only after more frames, sense those frames with
-`wait(observations)`. It settles the frame, advancing activity, working trace, heard
-history and recall slots, and issues no action and takes no outcome. The awaited
-action keeps its forecasts, eligibility and situation, so its outcome is credited as
-an immediate one would be.
-
-```python
-creature = Brain.compose(4, 2, modules=(16,), seed=0, arousal=True)
-creature.live(cues[[0]])
-owner = creature.decision_id                 # the action that owns the next outcome
-waited = 0
-for frame in (cues[[1]], cues[[2]]):         # the reach is under way
-    creature.wait(frame)
-    waited += creature.last_settlement["steps"]
-assert creature.pending_feedback and creature.decision_id == owner
-creature.live(cues[[3]], reward=[1.0], decision_id=owner)
-assert creature.decision_id == owner + 1     # the outcome was taken once
-work = sum(creature.arousal.sweeps.values()) + creature.arousal.learning_sweeps + waited
-```
-
-Waits are outside arousal's counts; add their `steps` to total a stream's work. One
-outcome is one temporal-difference step however many frames were waited. `decision_id`
-is the arousal age of the awaiting `live` action (the first is 1), or `None`; an
-outcome under another identity, or one reported twice, raises `ValueError` and changes
-nothing. Give the awaited outcome an explicit `reward`, since an omitted one is a zero
-outcome. There is no deadline: for an outcome that will never come, `act` replaces the
-action without learning and `reset` starts a new stream. `wait` refuses without
-arousal or with several streams (`ValueError`) and with no awaited action
-(`RuntimeError`).
-
-The caller decides which frames are waited and links the late outcome to its action.
-Where the brain is to learn that link, as in a delayed key-door reward, report the
-moments in between through `live` and leave the credit to eligibility.
+`ArousalConfig(need_scale=0)`, the brain of 0.84.3 without the scaled need); it is outside
+`ArousalConfig.space()`. It rouses an adult whose income falls below that share of its learned
+reward spread, whatever the unit of its rewards, and leaves a life that never paid at all calm
+(its scale is zero). The cost follows from the law: in a world whose income stays below the
+share, the want stays at the unmet share and the level settles above the threshold, so the brain
+stays aroused and pays learning sweeps at every moment. The readings that selected it against
+the founder without it are in the CHANGELOG's 0.85.0 section: every preservation chamber kept
+(the [key-door chamber](../benchmarks/keydoor/README.md) acquiring rule A on 10 of 16 lives
+against 8 of 16, the [prerequisite chain](../benchmarks/chain/README.md) learned on 7 of 12
+lives against 1 of 12), and with pay at the end of the chain 5 of 6 lives aroused for .60 to
+.67 of the life on an income of .017 to .022 per moment. Through `step` the gene is inert.
 
 ### Qualification and refusal
 
@@ -556,6 +257,74 @@ answer work only: teaching and feedback work, refused teaching included, is in
 every solver call. Reward eligibility has its own budget, 12 sweeps (a constant);
 qualified teaching is opt-in ([budgets](settling.md#qualified-teaching-budgets)).
 
+### Outcomes that arrive later: `wait`
+
+When a body reports an outcome only after more frames, sense those frames with
+`wait(observations)`. It settles the frame, advancing activity, working trace, heard
+history and recall slots, and issues no action and takes no outcome. The awaited
+action keeps its forecasts, eligibility and situation, so its outcome is credited as
+an immediate one would be.
+
+```python
+creature = Brain.compose(4, 2, modules=(16,), seed=0, arousal=True)
+creature.live(cues[[0]])
+owner = creature.decision_id                 # the action that owns the next outcome
+waited = 0
+for frame in (cues[[1]], cues[[2]]):         # the reach is under way
+    creature.wait(frame)
+    waited += creature.last_settlement["steps"]
+assert creature.pending_feedback and creature.decision_id == owner
+creature.live(cues[[3]], reward=[1.0], decision_id=owner)
+assert creature.decision_id == owner + 1     # the outcome was taken once
+work = sum(creature.arousal.sweeps.values()) + creature.arousal.learning_sweeps + waited
+```
+
+Waits are outside arousal's counts; add their `steps` to total a stream's work. One
+outcome is one temporal-difference step however many frames were waited. `decision_id`
+is the arousal age of the awaiting `live` action (the first is 1), or `None`; an
+outcome under another identity, or one reported twice, raises `ValueError` and changes
+nothing. Give the awaited outcome an explicit `reward`, since an omitted one is a zero
+outcome. There is no deadline: for an outcome that will never come, `act` replaces the
+action without learning and `reset` starts a new stream. `wait` refuses without
+arousal or with several streams (`ValueError`) and with no awaited action
+(`RuntimeError`).
+
+The caller decides which frames are waited and links the late outcome to its action.
+Where the brain is to learn that link, as in a delayed key-door reward, report the
+moments in between through `live` and leave the credit to eligibility.
+
+### Learning during a continuing life
+
+A brain that keeps living learns from what happens to it: outcomes through `live` and
+`step`, lessons where a teacher answers. Where the founder's learning does not reach a
+behaviour, these settings do, each an opt-in that leaves the founder unchanged, each read in
+the chamber that measures it (under `live` with reward only where it learns from reward):
+
+| Situation | Settings | Chamber and mechanism |
+| --- | --- | --- |
+| A reversal whose failures pay nothing: the paid arm's record keeps voting after the pay moves | `memory_choice=True, memory_extinction=0.5` | [extinction](../benchmarks/extinction/README.md); [a paid action that stops paying](memory.md#a-paid-action-that-stops-paying-extinction) |
+| A chain whose stages look alike and whose misses leave the observation as it was | `memory_choice=True, memory_context_hold="unchanged"` | [context key](../benchmarks/context_key/README.md); [stages that look alike](memory.md#stages-that-look-alike-the-context-hold) |
+| A choice that depends on a cue the answer does not show, from the terminal reward alone | `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True` | [credit](../benchmarks/credit/README.md); [a cue the answer does not show](reward.md#a-cue-the-answer-does-not-show) |
+| The same cue carried through distractors, taught by a lesson at the answer | `recall=True, recall_recency=0.0` | the same chamber and section |
+| Which of two writes a read finds, from reward alone | `recall=True, recall_position_reward=4.0, recall_address_reward=1.0, recall_anchor=True, recall_next=False` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
+
+The chambers' READMEs state each setting's readings and costs; the linked sections give the
+mechanism and the reading.
+
+```python
+import numpy as np
+from cadence import Brain
+
+bandit = Brain.compose(1, 2, modules=(8,), seed=0, arousal=True, memory_choice=True,
+                       memory_extinction=0.5)
+cue = np.ones((1, 1))
+arm = int(bandit.live(cue)[0])
+for trial in range(24):  # arm 0 pays for twelve trials, then arm 1; failures pay nothing
+    reward = 1.0 if arm == (0 if trial < 12 else 1) else 0.0
+    arm = int(bandit.live(cue, reward=[reward])[0])
+assert bandit.last_arousal is not None
+```
+
 ### Private imagination
 
 ```python
@@ -567,7 +336,8 @@ assert all(phase.qualified for phase in phases)
 observations (each a batch of the live streams) on a private trace and reads durable
 memory without writing it, each phase to the learner's tolerance within `budget` sweeps.
 The branch's efference copy takes in the act the brain
-would issue at each phase. A refused phase ends the branch and is returned. Live state,
+would issue at each phase. A refused phase ends the branch and is returned, so check each
+phase's `qualified` flags before using a response. Live state,
 parameters, records, random state and pending outcomes are untouched. The composed brain
 integrates no learned model of the world's consequences.
 
@@ -601,6 +371,26 @@ reset starts the neural state afresh: in the stream that paid as before, the fir
 12 moments after a reset settled from rest at 32 sweeps each, and the continuing stream
 needed no sweep.
 
+A save carries parameters, critic, the learner's optimizer, random state, every trace and
+memory, arousal, an action awaiting feedback and what a waiting stream has sensed; load
+validates them ([formats](api.md#brain-cadence)). Resume the same rows, supply the
+pending outcome once and save the environment separately. If `live` refuses an answer, the
+[qualification rules](#qualification-and-refusal) say how to retry without reporting an outcome
+twice.
+
+```python
+brain.save("brain.npz")
+resumed = Brain.load("brain.npz")
+
+# Resume the same pending action with the same measured outcome.
+reward = (action == 0).astype(float)
+continued = brain.live(observation, reward=reward)
+replayed = resumed.live(observation, reward=reward)
+assert np.array_equal(continued, replayed)
+assert brain.arousal.to_dict() == resumed.arousal.to_dict()
+assert brain.last_arousal == resumed.last_arousal
+```
+
 ```python
 state = brain.arousal.to_dict()
 brain.reset()                                    # the arousal state carries on as it is
@@ -609,10 +399,23 @@ brain.save("continuing-brain.npz")
 resumed = Brain.load("continuing-brain.npz")
 ```
 
-A save carries parameters, critic, the learner's optimizer, random state, every trace and
-memory, arousal, an action awaiting feedback and what a waiting stream has sensed; load
-validates them ([formats](api.md#brain-cadence)). Resume the same rows, supply the
-pending outcome once and save the environment separately.
+### Add optional observers
+
+**System 2** adds observer regions to the same graph:
+
+```python
+recursive = Brain.compose(
+    inputs=4, actions=2, modules=(16, 8), observers=(8,), seed=7,
+    arousal=True,
+)
+assert recursive.live(observation).shape == (1,)
+```
+
+Observers read from and return influence to the processing regions, the motor
+region and earlier observers, inside the same settlement and the same `live` and
+`step` calls. They attach to any module count; this project adds them to a developed
+two-module System 1 by convention. Any task advantage they bring has to be learned
+and measured. [Compose a brain](tune.md#brain) covers modules and observers.
 
 ### Defaults and the thinking clock
 
@@ -628,3 +431,52 @@ pending outcome once and save the environment separately.
 No hidden thread drives the brain; the application owns scheduling. A `step` consumes
 a real transition, so never call it per UI frame; frames before a `live` outcome go to
 `wait`. [Memory](memory.md) describes each store.
+
+## One continuing equilibrium brain
+
+Cadence builds one brain that acquires a reusable interpretation of its world,
+carries it through experience and repairs it when experience disagrees.
+Perception, memory and action constrain one another through reciprocal
+connections, and the answer is read from the settled state of the brain's motor
+population.
+
+The learned relations and retained memories encode a family of possible
+equilibria, one for each combination of evidence and context. Learning changes
+the family; ordinary use moves between its members as observations, goals and
+context change.
+
+`Brain.compose` builds the default **System 1** brain: reciprocal processing
+regions, local plasticity, a working trace and associative memory. Optional
+**System 2** observers add regions with returning feedback inside the same
+settlement. Biological names describe software roles.
+
+The composed `Brain` provides a continuing interpretation, action and memory. It
+integrates no learned model of environmental transitions
+([issue #93](https://github.com/muellerberndt/cadence/issues/93)).
+
+| Mechanism | Contract and boundary |
+| --- | --- |
+| Present interpretation and action | `Brain.act` qualifies the whole neural graph's residual with the trace and memory reads held as drive. With `memory_choice=True` the episodic vote joins the motor readout after the settle. The memory stores do not equilibrate jointly with the graph. |
+| Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
+| Memories | Working trace and associative store on; efference copy, heard history, episodic and recall memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
+| Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
+| Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
+| Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](#private-imagination). |
+
+`step` learns from every outcome it is given. `live` gates learning by arousal;
+its evidence is the [odour nursery](../benchmarks/reversal/README.md), where the
+associative memory carries the repair. Reuse of a settled state across moments
+and repair confined to declared dependencies belong to
+[issue #122](https://github.com/muellerberndt/cadence/issues/122).
+
+Components for compositions beyond the default brain:
+
+| Function | Build with | Learned or supplied explicitly |
+| --- | --- | --- |
+| Perception and grounding | Input regions, associations and local updates (`Brain.compose`, `Genome`) | Features, entities, word/referent bindings |
+| Episodes and consolidation | `FastSynapses`, `SynapticMemory` | Addressing, relevant writes, retention, correction |
+| Workspace and goals | Recurrent state, `Trace`, goal and readback ports | Persistent context, goals and subgoals |
+| Action and value | `ActorCritic`, eligibility, dopamine | Exploration, delayed credit |
+
+[One continuing equilibrium brain](world-model.md) states the direction in full: bootstrap, use,
+repair and continue; coherent behavior over time; how to build and measure the whole life.

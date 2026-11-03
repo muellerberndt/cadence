@@ -62,6 +62,19 @@ schedule](assets/patchnet.svg)
    pending feedback through correction. Measure recovery and old capabilities
    after the disturbance, without rebuilding the brain for each observation.
 
+```mermaid
+flowchart LR
+    O[Observation and retained context] --> S[Bounded neural settlement]
+    S -->|Qualified| A[Execute action]
+    S -->|Refused| R[Inspect solve and retry]
+    R --> S
+    A --> W[Witness actual outcome]
+    W --> F[Feedback and optional correction]
+    F --> O
+```
+
+The [common missteps](evaluate.md#common-missteps) list what this lifecycle rules out.
+
 The stored relationships and memories encode a **family of possible equilibria**
 under different evidence and context. Learning changes that family. Ordinary use
 does not mean holding one activation vector forever: even a well-learned world
@@ -73,6 +86,27 @@ are working traces and learned cue/outcome associations. Reciprocal signals and
 local plasticity supply feedback and repair. A numerical
 fixed point checks the declared equations only: not external truth, useful
 meaning, retention or a unique stable interpretation.
+
+**One moment in causal order.**
+
+1. Receive the observation and the feedback for the **preceding action**.
+2. Score its saved prediction before the learner sees the outcome. Update from the
+   observed components and apply reward to the saved eligibility of that action.
+3. Retain relevant actual events with their time, context and provenance.
+4. Combine current evidence, remembered events and the goal. Imagination uses
+   isolated branch state and read-only parameters.
+5. Save the next prediction, execute the action or utterance, and attend to the
+   result.
+
+A missing feature differs from an observed zero: give the reading a missing flag
+for it, in witnessed and imagined readings alike. A UI tick or other host event is
+no action outcome; report each issued action's outcome once, success included.
+
+`Genome`/`develop` connect regions by declared
+synapses. Put regions that should settle jointly into one `NeuralGraph`;
+independent solves shown side by side are uncoupled dynamics. Wire an auxiliary
+memory's recall into declared drive ports and count its store in the cost. A
+named region gets a function only from its connections and experience.
 
 ## Coherent behavior over time
 
@@ -156,14 +190,8 @@ and verifies identical continuation from a saved pending action.
 [Continuous interaction](start.md) specifies event order, refusal/retry,
 memory writes and reset semantics. Save the environment separately.
 
-| Mechanism | Implemented contract and boundary |
-| --- | --- |
-| Present interpretation and action | `Brain.act` checks the whole neural-graph residual with held trace and memory input. It does not jointly equilibrate the auxiliary memory stores. |
-| Inspectable settling work | `Brain.last_settlement` retains free-answer residuals, sweeps, checks and qualification, including refused attempts. It excludes eligibility, teaching, feedback and memory work. |
-| Short and long memory | Working traces and fast/persistent associations influence actions; graph parameters also retain learning. Their capacities, update clocks and interference differ. |
-| Local correction | Current teacher labels change graph parameters; actual chosen-action outcomes drive reward plasticity and associative writes. Opt-in [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) also records demonstrations and replays reward along a retained path; these mechanisms do not establish learned selection of relevant memories. |
-| Routine and repair | `Brain.live`, for a brain constructed with `arousal`, answers greedily and learns nothing while calm; youth or arousal enables sampling, learning and memory writes. Surprise, reward shortfall or an unmet `need` can raise arousal. One stream; the law's constants are genes. |
-| Private imagination | `Brain.imagine` evaluates **supplied** observation sequences with private trace and read-only durable memory. It does not learn or generate environmental transitions. |
+The contract and boundary of each mechanism are tabled under
+[one continuing equilibrium brain](start.md#one-continuing-equilibrium-brain).
 
 The full world-model lifecycle is the design direction, not a completed default.
 `step` processes real feedback even when the task succeeded; it does not gate an
@@ -193,6 +221,11 @@ for the distinction between stochastic innovation and a learning error.
 
 Keep the same brain across acquisition, use, interference and repair. Preserve
 stream identities and reset transient state only at declared boundaries.
+Each stream keeps its own episode records, random state and pending
+actions; `SynapticMemory` shares its slow weights across streams, so a
+measurement snapshot must leave the live learner's shared matrix unchanged.
+`Brain.save` covers the standard composition; save the environment, partner,
+curriculum and replay state beside it, and custom stores with their owner.
 `predict`, `accuracy` and `fit` are independent-sample controls: they omit
 working and associative memory, and `fit` clears pending stream state. A frozen
 evaluation can load a checkpoint, provided it retains the state the tested
