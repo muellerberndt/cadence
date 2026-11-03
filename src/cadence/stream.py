@@ -1723,9 +1723,7 @@ class Recall:
         if not (self.compete and self.heads > 1):
             return [None] * self.heads
         reads = self._head_reads
-        if reads is not None and len(reads) > 2 and reads[2] == self.writes and all(
-            r is not None for r in reads[1]
-        ):
+        if reads is not None and reads[2] == self.writes and all(r is not None for r in reads[1]):
             attended = list(reads[1])
         else:
             attended = self._reads(moment)[1]
@@ -1973,10 +1971,7 @@ class Recall:
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
-            # head 0 steps its map as a memory of one head does
-            head_moment = (
-                moment if h == 0 else moment._replace(address=self._head_address(moment, h))
-            )
+            head_moment = moment._replace(address=self._head_address(moment, h))
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
             found = self._row_steps(head_moment, rows, d_value, d_next, h, reads[h])
@@ -1988,18 +1983,13 @@ class Recall:
                 rows_moved, rows_refused = self._position_step(rows, h, found)
                 moved_positions += rows_moved
                 refused_positions += rows_refused
-        if not reports:
-            report = dict(quiet)
-        elif len(reports) == 1:
-            report = reports[0]
-        else:
-            # every head's rows and refusals summed, the error averaged over the heads that moved
-            moved = [r["address_error"] for r in reports if r["address_rows"]]
-            report = {
-                "address_rows": float(sum(r["address_rows"] for r in reports)),
-                "address_error": float(np.mean(moved)) if moved else 0.0,
-                "address_refused": float(sum(r["address_refused"] for r in reports)),
-            }
+        # every head's rows and refusals summed, the error averaged over the heads that moved
+        moved = [r["address_error"] for r in reports if r["address_rows"]]
+        report = {
+            "address_rows": float(sum(r["address_rows"] for r in reports)),
+            "address_error": float(np.mean(moved)) if moved else 0.0,
+            "address_refused": float(sum(r["address_refused"] for r in reports)),
+        }
         if self.position_maps:
             report["position_rows"] = float(moved_positions)
             report["position_refused"] = float(refused_positions)
