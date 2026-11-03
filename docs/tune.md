@@ -153,6 +153,42 @@ Override rules:
   `1e-4`; `ActorCriticConfig()` has `gamma=0.99`, `lam=0.9` and rates `0.5/0.05/0.05`.
   Use named overrides for a one-field edit.
 
+### Removed in this version
+
+Each name below is refused at `compose`, `retune` and on load with the sentence given; a
+checkpoint of 0.92.1 that carries one at another value than its constant is refused by name,
+and every founder checkpoint is byte-identical. The recall memory's own retirements are
+[on the memory page](memory.md#removed-in-this-version).
+
+| Setting | The sentence |
+| --- | --- |
+| `learning_beta` | `learning_beta was retired in 0.93.0: a composed brain nudges at beta 0.1, a constant; learning=LearnerConfig(beta=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `learning_momentum` | `learning_momentum was retired in 0.93.0: a composed brain steps each synapse on a running average of its contrast at 0.9, a constant; learning=LearnerConfig(momentum=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `learning_normalize_relative` | `learning_normalize_relative was retired in 0.93.0: teaching='deep' sets the projection-relative floor at 0.1 with nudged phases of a whole 32 sweeps, the one point ever read; learning=LearnerConfig(...) sets it as an expert; cadence 0.92.1 takes it` |
+| `learning_nudged_fixed` | `learning_nudged_fixed was retired in 0.93.0: teaching='deep' runs the nudged phases their whole 32 sweeps with the projection-relative floor at 0.1, the one point ever read; learning=LearnerConfig(...) sets it as an expert; cadence 0.92.1 takes it` |
+| `learning_temperature` | `learning_temperature was retired in 0.93.0: temperature is the one spelling of the learner's softmax temperature, at compose, retune and in describe; cadence 0.92.1 takes it` |
+| `learning_initial_damping` | `learning_initial_damping was retired in 0.93.0: every qualified phase starts at the full step of the damping ladder; cadence 0.92.1 takes it` |
+| `actor_dopamine_cap` | `actor_dopamine_cap was retired in 0.93.0: a composed brain's dopamine saturates at 1.0, a constant; reward=ActorCriticConfig(dopamine_cap=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `actor_eligibility_steps` | `actor_eligibility_steps was retired in 0.93.0: a composed brain scores a sampled action's eligibility in nudged phases of 12 sweeps, a constant; reward=ActorCriticConfig(eligibility_steps=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `arousal_need_scale` | `arousal_need_scale was retired in 0.93.0: a composed brain's need in reward scales is 0.1, a constant, the founder the reading selected; arousal=ArousalConfig(need_scale=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `arousal_hindsight` | `arousal_hindsight was retired in 0.93.0: a calm moment keeps no eligibility, so the outcome that wakes the brain credits no earlier action; cadence 0.92.1 takes it` |
+| `memory_decay` | `memory_decay was retired in 0.93.0: a stream's record fades by 0.9 per later write, a constant; cadence 0.92.1 takes it` |
+| `memory_replay` | `memory_replay was retired in 0.93.0: a reward replays up to 8 decisions of the stream's path, a constant; cadence 0.92.1 takes it` |
+| `memory_demonstrations` | `memory_demonstrations was retired in 0.93.0: a demonstrated action is recorded at 1.0, a constant; cadence 0.92.1 takes it` |
+| `memory_winners` | `memory_winners was retired in 0.93.0: the episodic separation keeps its 24 most active cells per key, a constant; cadence 0.92.1 takes it` |
+| `scales["history"]` at another value than 1.2, and the 0.84.3 name `history_scale` | `history_scale was retired in 0.93.0: the heard history's projection starts at magnitude 1.2, a constant (scales={'history': 1.2} alone is taken); cadence 0.92.1 takes scales={'history': ...}` |
+| `scales["recall"]` at another value than 1.2, and the 0.84.3 name `recall_scale` | `recall_scale was retired in 0.93.0: the recall and next projections start at magnitude 1.2, a constant (scales={'recall': 1.2} alone is taken); cadence 0.92.1 takes scales={'recall': ...}` |
+
+The keyword shims of 0.84.3 are unknown keywords now: `reset(keep_memory=True)` and
+`reset(keep_arousal=True)` raise Python's `TypeError` for an unexpected keyword, and
+`retune(reset_arousal=True)` raises `TypeError: unknown brain setting: 'reset_arousal'`.
+`imagine(..., tolerance=...)` raises `TypeError`: the phases settle to the learner's tolerance.
+`last_settlement["scope"]` and `code_halvings` leave the settlement report and
+`last_arousal["credited"]` the arousal snapshot. The memories' `begin(keep=False)` and
+`Recall.imagined()` are `reset(0)` (`Recall.end` for kept slots) and `branch()`, and the
+recall memory's head-0 aliases are `head_map(0)`, `position_map(0)` and `attended_heads[0]`
+(`AttributeError` names a missing one).
+
 ## Retune the same life
 
 `retune` changes named settings on a living brain, for example from practice to
