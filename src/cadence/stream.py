@@ -1067,11 +1067,7 @@ class Recall:
         self.map_width = width + self.command_width
         # every head's address map ``(w_x, w_c, b)``, head 0's first
         self.head_maps = self._zero_maps(self.heads, self.address_width)
-        self._recall_columns = columns(self.recall_neurons)
-        self._next_columns = columns(self.next_neurons)
         self._association_columns = columns(self.association)
-        self._recall_synapses = self._synapses(self.recall_neurons)
-        self._next_synapses = self._synapses(self.next_neurons)
         # every head's port: its recall and next neurons, their columns and their synapses into
         # the association; head 0's are the ones above
         self._heads: list[tuple[np.ndarray, np.ndarray]] = [
