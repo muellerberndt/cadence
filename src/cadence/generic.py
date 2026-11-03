@@ -461,6 +461,13 @@ def _saved_state(data: Mapping[str, Any], prefix: str, steps: Any) -> BrainState
     return BrainState(v, activation, adaptation, int(steps))
 
 
+def _restore_traces(held: list[tuple[Trace | History, dict[str, np.ndarray]]]) -> None:
+    """Return the traces ``Brain._held_traces`` held to their arrays."""
+    for trace, values in held:
+        for name, value in values.items():
+            setattr(trace, name, value)
+
+
 # The episodic memory that ``Brain.compose(..., memory_choice=True)`` builds: place and context
 # records vote in the choice, remember demonstrations and replay an attempt that ended in reward.
 _EPISODIC_FOUNDERS: dict[str, Any] = {
@@ -4033,6 +4040,16 @@ class Brain:
             self._resume(held)
         return report
 
+    def _held_traces(self) -> list[tuple[Trace | History, dict[str, np.ndarray]]]:
+        """The working trace, the efference copy and the heard history with copies of their
+        arrays (``arrays()``), for ``_restore_traces`` after settling a moment that is not the
+        stream's own."""
+        return [
+            (trace, {name: value.copy() for name, value in trace.arrays().items()})
+            for trace in (self.working_memory, self.efference, self.history)
+            if trace is not None
+        ]
+
     def _streams(self) -> tuple[Any, ...]:
         """Every stream's state, for ``_resume`` after a replay: the actor's (its free phase,
         drive, pending action and eligibility), each memory's streams (the recall memory's
@@ -4048,12 +4065,7 @@ class Brain:
         records["_episode_moments"] = list(self._episode_moments)
         return (
             {name: getattr(agent, name) for name in _STREAM_ACTOR},
-            [
-                (trace, {name: getattr(trace, name).copy() for name in ("trace", "last", "cold")})
-                for trace in (self.working_memory, self.efference)
-                if trace is not None
-            ],
-            None if self.history is None else self.history.trace.copy(),
+            self._held_traces(),
             None if recall is None else (recall.snapshot(), recall.reading(), recall.writes),
             None if episodic is None else (
                 {name: deepcopy(getattr(episodic, name)) for name in EpisodicRecords._STATE},
@@ -4067,14 +4079,10 @@ class Brain:
 
     def _resume(self, held: tuple[Any, ...]) -> None:
         """Return every stream to the state ``_streams`` held."""
-        actor, traces, heard, recalled, episode, phase, records = held
+        actor, traces, recalled, episode, phase, records = held
         for name, value in actor.items():
             setattr(self.basal_ganglia, name, value)
-        for trace, values in traces:
-            for name, value in values.items():
-                setattr(trace, name, value)
-        if self.history is not None:
-            self.history.trace = heard
+        _restore_traces(traces)
         recall = self.recall
         if recall is not None:
             snapshot, reading, writes = recalled
@@ -4452,13 +4460,7 @@ class Brain:
         if not ended:
             return self._settled(x)
         kept = (agent._free, agent._free_brain, agent._drive)
-        traces: list[tuple[Any, dict[str, np.ndarray]]] = [
-            (trace, {name: getattr(trace, name).copy() for name in ("trace", "last", "cold")})
-            for trace in (self.working_memory, self.efference)
-            if trace is not None
-        ]
-        if self.history is not None:
-            traces.append((self.history, {"trace": self.history.trace.copy()}))
+        traces = self._held_traces()
         recalled = None if self.recall is None else self.recall.snapshot()
         self._forecast_read = None
         try:
@@ -4475,9 +4477,7 @@ class Brain:
             return answer
         finally:
             agent._free, agent._free_brain, agent._drive = kept
-            for trace, values in traces:
-                for name, value in values.items():
-                    setattr(trace, name, value)
+            _restore_traces(traces)
             if self.recall is not None and recalled is not None:
                 self.recall.restore(recalled)
 
