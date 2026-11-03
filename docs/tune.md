@@ -99,7 +99,7 @@ or `retune`, as before.
 | `scales`: `"sensory"`, `"trace"` | `1.0`, `1.2` | construction | [image inputs](senses.md#image-inputs), [memory](memory.md#working-trace) |
 | `features`, `field`, `seed` | `8`, `3`, `0` | construction | [image inputs](senses.md#image-inputs) |
 | `attention` | `False`; `True` requires `learned_code=units` and supplies the contextual Recall recipe | construction | [single-head learned-code attention](memory.md#single-head-learned-code-attention-opt-in) |
-| `teaching` | `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases of a whole 32 sweeps | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
+| `teaching` | `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
 | `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False`, `False` | retune | [learning](settling.md#7-every-knob) |
@@ -129,7 +129,8 @@ passed whole (`learning=`, `reward=`, `arousal=`) is the expert route and keeps 
 the frozen recipes of the chambers compose; `describe()` then names a moved constant by its old
 name, which `compose` and `retune` do not take, and a checkpoint carries and loads the expert's
 value as it does every field. A saved memory's decay and separation are the memory's own on
-load, so an instrument's memory attached to a brain keeps them.
+load, so an instrument's memory attached to a brain keeps them (`describe()["memories"]` shows
+them; they are no gene).
 
 Override rules:
 
@@ -157,7 +158,9 @@ Override rules:
 
 Each name below is refused at `compose`, `retune` and on load with the sentence given; a
 checkpoint of 0.92.1 that carries one at another value than its constant is refused by name,
-and every founder checkpoint is byte-identical. The recall memory's own retirements are
+and every founder checkpoint is byte-identical; the two folded learner fields are the one
+exception on load, a checkpoint carrying them at other values loading as an expert
+configuration that `describe()` names `"custom"`. The recall memory's own retirements are
 [on the memory page](memory.md#removed-in-this-version).
 
 | Setting | The sentence |

@@ -12,7 +12,9 @@ documented opt-ins with the readings that bound them.
 
 Each name below is refused at `compose`, `retune` and on load with the sentence given; a
 checkpoint of 0.92.1 that carries one at another value than its founder is refused by name,
-and every founder checkpoint is byte-identical. Each component keeps its retirement table
+and every founder checkpoint is byte-identical. The two folded learner fields are the one
+exception on load: a checkpoint that carries them at other values loads as an expert
+configuration, which `describe()` names `"custom"`. Each component keeps its retirement table
 (the recall memory's is `Recall.RETIRED`, and `Recall.removed(name)` gives its sentence); the
 settings 0.85.0 retired keep naming 0.84.3 as the release that takes them (`recall_write was
 retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3 takes it`), and a
@@ -28,8 +30,10 @@ retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3 takes it
   floor and nudged phases that run their whole budget, set in every reading beside
   `teaching="normalized"`, `learning_nudged_steps=32` and `apical`. Folded into the teaching
   point `teaching="deep"`, the normalized point with the floor at 0.1 and nudged phases of a
-  whole 32 sweeps; the `LearnerConfig` fields stay for `learning=LearnerConfig(...)`, and a
-  0.92.1 depth checkpoint loads and describes as `"deep"`. "learning_normalize_relative was
+  whole 32 sweeps; the `LearnerConfig` fields stay for `learning=LearnerConfig(...)`.
+  `teaching="deep"` sets the budget `learning_nudged_steps=32` on the way in and a brain keeps
+  the budget it has; `describe()` names the point by its floor and fixed phases, so a 0.92.1
+  depth checkpoint loads and describes as `"deep"` at its own budget. "learning_normalize_relative was
   retired in 0.93.0: teaching='deep' sets the projection-relative floor at 0.1 with nudged
   phases of a whole 32 sweeps, the one point ever read; learning=LearnerConfig(...) sets it as
   an expert; cadence 0.92.1 takes it" (and likewise `learning_nudged_fixed`).
@@ -63,7 +67,8 @@ retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3 takes it
   (`LearnerConfig(**recipe)` at momentum 0): `describe()` then names a moved constant by its
   old name, which `compose` and `retune` do not take, and a checkpoint carries and loads the
   expert's value. A saved memory's decay and separation are the memory's own on load, so an
-  instrument's memory attached to a brain keeps them. `scales["history"]` and
+  instrument's memory attached to a brain keeps them (`describe()["memories"]` shows them; they
+  are no gene). `scales["history"]` and
   `scales["recall"]` are taken at 1.2 alone.
   - `learning_beta` 0.1: the nudge strength (`LearnerConfig.beta` stays for a standalone learner).
   - `learning_momentum` 0.9: the running mean of each synapse's contrast (`LearnerConfig.momentum` stays).

@@ -811,17 +811,21 @@ class Brain:
         bias: np.ndarray,
         finite: tuple[bool, bool],
     ) -> Brain:
-        """``with_parameters`` for a learner's compiled update on the CPU backend: ``efficacy``,
-        its effective ``weights`` (the product ``with_parameters`` makes, made by the update's
-        pass) and ``bias`` are fresh arrays of the right shape that the update made, taken as
-        they are; ``finite`` says whether the efficacy and the weights are finite, as that pass
-        found them. The same brain, and the same refusals, as ``with_parameters`` gives."""
+        """``with_parameters`` for a learner's compiled update: ``efficacy``, its effective
+        ``weights`` (the product ``with_parameters`` makes, made by the update's pass) and
+        ``bias`` are fresh arrays of the right shape that the update made; ``finite`` says
+        whether the efficacy and the weights are finite, as that pass found them. On the
+        ``"cpu"`` backend they are taken as they are; another backend's kernel holds its own
+        weights, so ``with_parameters`` builds the new brain. The same brain, and the same
+        refusals, as ``with_parameters`` gives."""
         if not finite[0]:
             raise ValueError("efficacy must have one finite entry per synapse")
         if not finite[1]:
             raise ValueError("effective synaptic weights must be finite; reduce gain or efficacy")
         if not np.isfinite(bias).all():
             raise ValueError("bias must have one finite entry per neuron")
+        if self.backend != "cpu":
+            return self.with_parameters(efficacy=efficacy, bias=bias)
         new = copy.copy(self)
         new._efficacy = efficacy
         new._weights_host = weights

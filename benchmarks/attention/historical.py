@@ -29,6 +29,8 @@ CONSTANTS = {"learning_beta": 0.1, "learning_momentum": 0.9, "actor_dopamine_cap
 def genes(brain):
     """``brain`` (a protocol's brain or a record's resolved genes) under the current names: a
     constant at its founder is left out, at another value refused."""
+    if "learning_temperature" in brain and "temperature" in brain:
+        raise ValueError("a brain names the learner's softmax temperature once")
     out = {}
     for name, value in brain.items():
         if name in CONSTANTS:
