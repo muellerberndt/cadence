@@ -192,7 +192,12 @@ With Numba installed, the CPU backend settles blocked connectomes in one compile
 transport, then each neuron's update, activation, adaptation and nudge in place) with the
 NumPy loop's float64 arithmetic whenever no trajectory or recording is requested, and computes
 `residual` the same way; a graph with an apical compartment is settled there too, its pool RMS
-summed in NumPy's order. The rows of a batch settle on Numba's threads, as many as
+summed in NumPy's order. A state these kernels settled or checked keeps the block products of
+its activations: a check of the state, or a settle from it, makes only the products of the
+ranges whose activations differ from the ones they were made from, to the same bits (a bounded
+solve's check makes those of the ranges the chunk's last sweep moved, and the next chunk's
+first sweep makes none). The products hold for the blocks they were made with; `copy` and
+`pickle` leave them out. The rows of a batch settle on Numba's threads, as many as
 `NUMBA_NUM_THREADS` or `numba.set_num_threads` allow, to the same bits at any count, once a
 sweep covers at least 65,536 neurons over its rows (an 8,000-neuron brain from a batch of 8);
 a smaller sweep, a single row, or `NUMBA_NUM_THREADS=1` never starts them. A sweep waits for

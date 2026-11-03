@@ -475,6 +475,10 @@ class BrainState:
 
     From ``settle`` every array is ``(n,)`` and ``trajectory`` is ``(steps, n)``;
     from ``settle_batch`` they carry a leading batch axis.
+
+    A state the compiled CPU kernels settled or checked keeps the block products of its
+    activations, so a check of it or a settle from it computes only the products whose
+    activations differ (the same bits); ``copy`` and ``pickle`` leave them out.
     """
 
     v: np.ndarray
@@ -517,11 +521,16 @@ class BrainState:
     def active(self, level: float = 0.5, i: int = 0) -> int:
         return int((self.row(i) >= level).sum())
 
+    def __getstate__(self) -> dict[str, Any]:
+        held = dict(self.__dict__)
+        held.pop("_products", None)  # the kernels' products stay with this object
+        return held
+
 
 def _copy_state(state: BrainState | None) -> BrainState | None:
     if state is None:
         return None
-    return BrainState(
+    copied = BrainState(
         state.v.copy(),
         state.activation.copy(),
         state.adaptation.copy(),
@@ -529,6 +538,15 @@ def _copy_state(state: BrainState | None) -> BrainState | None:
         activity_change=None if state.activity_change is None else state.activity_change.copy(),
         discarded_steps=state.discarded_steps,
     )
+    _keep_products(copied, state.__dict__.get("_products"))  # the same activations
+    return copied
+
+
+def _keep_products(state: BrainState, products: Any) -> None:
+    """Keep the compiled kernels' block products with ``state`` (``fused.Products``); a check
+    of the state or a settle from it reads them where they hold for its activations."""
+    if products is not None:
+        state.__dict__["_products"] = products
 
 
 @dataclass(frozen=True)
@@ -544,7 +562,7 @@ class Equilibrium:
     residual: np.ndarray
     steps: int
     tolerance: float
-    residual_checks: int = 0  # additional transport evaluations, outside the local sweeps
+    residual_checks: int = 0  # equation checks, each a transport outside the local sweeps
     damping_halvings: int = 0  # final halving index of this bounded solve
     stagnation_checks: int = 0  # complete-state comparisons, with no synaptic transport
 
@@ -930,7 +948,7 @@ class Brain:
             nudge=nudge,
             tolerance=tolerance,
         )
-        return BrainState(
+        single = BrainState(
             v=out.v[0],
             activation=out.activation[0],
             adaptation=out.adaptation[0],
@@ -939,6 +957,8 @@ class Brain:
             activity_change=None if out.activity_change is None else out.activity_change[0],
             discarded_steps=out.discarded_steps,
         )
+        _keep_products(single, out.__dict__.get("_products"))  # the same row
+        return single
 
     def _with_dt(self, dt: float) -> Brain:
         """A numerical copy on current parameters; boundary subclasses must override.
@@ -970,7 +990,8 @@ class Brain:
 
         Unlike ``settle_batch(tolerance=...)``, this tests the potential and adaptation
         equations, including the same mask and nudge. Checks cost one extra transport
-        per chunk. Resident float64 Torch states are checked on their device. All rows
+        per chunk (on the compiled CPU path, the block products of the ranges the chunk's last
+        sweep moved). Resident float64 Torch states are checked on their device. All rows
         advance together; a row's small residual does not freeze it.
         ``drive`` is dense, with one column per neuron, as in ``settle_batch``.
         Optional ``damping`` reserves equal portions of the one sweep budget
@@ -1200,7 +1221,7 @@ class Brain:
         if v is not None and (not np.isfinite(v).all() or not np.isfinite(a).all()):
             raise ValueError("warm potentials and adaptation must be finite")
         capture = _capture()
-        handle = None
+        handle = products = None
         if self.backend in ("torch", "mlx"):
             kernel = self._torch if self.backend == "torch" else self._mlx
             v, a, s, traj, taken, activity_change, handle = kernel.run(
@@ -1210,7 +1231,7 @@ class Brain:
             from .fused import fused_settle
 
             flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
-            s, taken, activity_change = fused_settle(
+            s, taken, activity_change, products = fused_settle(
                 v,
                 a,
                 drive,
@@ -1223,6 +1244,7 @@ class Brain:
                 steps,
                 tolerance,
                 apical=apical,
+                products=None if state is None else state.__dict__.get("_products"),
             )
             traj = None
         else:
@@ -1239,6 +1261,7 @@ class Brain:
             device=handle,
             discarded_steps=0 if handle is None else int(handle.get("discarded_steps", 0)),
         )
+        _keep_products(result, products)
         if capture is not None:
             capture.finish(self, drive, keep, nudge, result)
         return result
@@ -1280,11 +1303,13 @@ class Brain:
         A small residual certifies these equations at this state only; it says nothing
         about stability, uniqueness or convergence from another start. Activation-movement
         tolerance and reaching a step cap do not provide this certificate.
-        The calculation performs one transport. An unread resident Torch state is checked
-        on its device in float64, returning only one scalar per row (a float32 state by a
-        float64 copy of the kernel, the same float64 reference). Other states, MPS and MLX
-        states included, use the float64 CPU reference; ``on_device=False`` forces that
-        reference. No state or parameter is changed.
+        The calculation performs one transport; on the compiled CPU path it reads the block
+        products the state keeps where its activations are the ones they were made from, and
+        the state keeps the check's products for a settle from it. An unread resident Torch
+        state is checked on its device in float64, returning only one scalar per row (a
+        float32 state by a float64 copy of the kernel, the same float64 reference). Other
+        states, MPS and MLX states included, use the float64 CPU reference; ``on_device=False``
+        forces that reference. No state value or parameter is changed.
         A single state returns a length-one array; nonfinite errors return infinity.
         """
         d = np.asarray(drive, dtype=float)
@@ -1315,15 +1340,19 @@ class Brain:
         if v.shape != d.shape or a.shape != d.shape:
             raise ValueError("state batch does not match the drive batch")
         if _FUSED and self._fused_blocks() is not None:
-            # the same equations in one compiled pass: a checked settle on the CPU then
-            # costs one transport per chunk, not one NumPy operation per term
+            # the same equations in one compiled pass: a checked settle on the CPU then costs
+            # the products of the ranges that moved since the state's were made, not one NumPy
+            # operation per term
             from .fused import fused_residual
 
             flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
-            return fused_residual(
+            error, products = fused_residual(
                 v, a, d, self.bias, self.layout, flat, None if mask is None else keep,
                 self.neuron_model, nudge, apical=apical,
+                products=state.__dict__.get("_products"),
             )
+            _keep_products(state, products)  # every one current, for a settle from it
+            return error
         s = self.neuron_model.activation(v) * keep
         adapt = self.neuron_model.adaptation
         if self.apical is None:
