@@ -1163,23 +1163,25 @@ class Recall:
         age``), zero for a slot written before the episode began."""
         streams = self.streams if rows is None else len(rows)
         ages = self.ages()
-        scale = np.log1p(self.SLOPE)
-        age = np.stack([np.log1p(ages) / scale, np.exp(-ages / self.SLOPE)], axis=1)
-        out = np.broadcast_to(age[None], (streams, len(ages), 2))
+        out = np.broadcast_to(self._when(ages)[None], (streams, len(ages), 2))
         if not self.anchor:
             return np.asarray(out)
-        told = self.told if rows is None else self.told[rows]
-        places = told[:, None] - 1.0 - ages[None, :]
-        inside = places >= 0
-        place = np.maximum(places, 0.0)
-        anchored = np.stack(
-            [
-                np.where(inside, np.log1p(place) / scale, 0.0),
-                np.where(inside, np.exp(-place / self.SLOPE), 0.0),
-            ],
-            axis=2,
-        )
+        places = self._places(rows)
+        anchored = np.where((places >= 0)[..., None], self._when(np.maximum(places, 0.0)), 0.0)
         return np.concatenate([out, anchored], axis=2)
+
+    def _when(self, ages: np.ndarray) -> np.ndarray:
+        """The two features of when of ``ages`` (or places in an episode), on a last axis:
+        ``log(1 + age) / log(1 + SLOPE)`` and ``exp(-age / SLOPE)``."""
+        return np.stack(
+            [np.log1p(ages) / np.log1p(self.SLOPE), np.exp(-ages / self.SLOPE)], axis=-1
+        )
+
+    def _places(self, rows: np.ndarray | None) -> np.ndarray:
+        """Each slot's place in its stream's current episode, ``told - 1 - age``, for each
+        stream or for the streams ``rows``; below zero for a slot written before it began."""
+        told = self.told if rows is None else self.told[rows]
+        return np.asarray(told[:, None] - 1.0 - self.ages()[None, :])
 
     @property
     def streams(self) -> int:
@@ -1213,24 +1215,22 @@ class Recall:
         ages = self.ages()
         if not self.position:
             return np.zeros(len(ages), dtype=np.int64)
+        return self._bucket(ages).astype(np.int64)
+
+    def _bucket(self, ages: np.ndarray) -> np.ndarray:
+        """``ages`` (or places in an episode) in the position term's buckets: below
+        ``position`` one each, then one per doubling, the last holding every older one."""
         exact = float(self.position)
         out = np.where(ages < exact, ages, exact + np.floor(np.log2(np.maximum(ages, 1.0) / exact)))
-        return np.minimum(out, self.position_buckets - 1).astype(np.int64)
+        return np.asarray(np.minimum(out, self.position_buckets - 1))
 
     def anchored_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Each slot's anchored bucket for each stream, or for the streams ``rows``, ``(rows,
         slots)``: its place in the stream's current episode (``told - 1 - age``) bucketed as
         an age is, and ``position_buckets`` for a slot written before the episode began."""
-        told = self.told if rows is None else self.told[rows]
-        places = told[:, None] - 1.0 - self.ages()[None, :]
-        count = self.position_buckets
-        exact = float(self.position)
-        place = np.maximum(places, 0.0)
-        out = np.where(
-            place < exact, place, exact + np.floor(np.log2(np.maximum(place, 1.0) / exact))
-        )
-        out = np.minimum(out, count - 1)
-        return np.where(places < 0, count, out).astype(np.int64)
+        places = self._places(rows)
+        out = self._bucket(np.maximum(places, 0.0))
+        return np.where(places < 0, self.position_buckets, out).astype(np.int64)
 
     def relative_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Each slot's relative bucket for each stream, or for the streams ``rows``, ``(rows,
