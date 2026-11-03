@@ -942,6 +942,23 @@ def _validate_life_state(
             raise ValueError(f"invalid saved count: {name}")
         return value
 
+    def actions(name: str, rows: int, what: str) -> np.ndarray:
+        # each row's action, one per motor slot, within its slot's menu
+        slotted = learner.slot_count > 1
+        action = array(name, (rows, learner.slot_count) if slotted else (rows,))
+        limit = learner.slot_sizes[None, :] if slotted else len(learner.output_index)
+        if action.dtype.kind not in "iu" or (action < 0).any() or (action >= limit).any():
+            raise ValueError(f"invalid saved {what}action indices")
+        return action
+
+    def trace(prefix: str, width: int, what: str) -> None:
+        # a trace's arrays: its value and the latest source read per stream, and cold flags
+        array(prefix + "trace", (batch, width))
+        array(prefix + "last", (batch, width))
+        if array(prefix + "cold", (batch,)).dtype != np.bool_:
+            raise ValueError(f"invalid saved {what} cold flags")
+
+    level = int(meta["format"].rpartition("/")[2])  # cadence-generic/1 to /10 (Brain.load)
     count("updates")
     bias = meta.get("b_critic")
     if isinstance(bias, bool) or not isinstance(bias, (int, float)) or not np.isfinite(bias):
@@ -990,11 +1007,7 @@ def _validate_life_state(
         if not meta.get("pending", False):
             raise ValueError("saved action observations need pending credit")
         array("moment/observations", (batch, observed))
-        slotted = learner.slot_count > 1
-        action = array("moment/action", (batch, learner.slot_count) if slotted else (batch,))
-        limit = learner.slot_sizes[None, :] if slotted else len(learner.output_index)
-        if action.dtype.kind not in "iu" or (action < 0).any() or (action >= limit).any():
-            raise ValueError("invalid saved action indices")
+        actions("moment/action", batch, "")
         if learned:  # the code the decision was keyed on, settled at its moment
             array("moment/code", (batch, code_width))
     if "moment/code" in data and (not learned or "moment/observations" not in data):
@@ -1026,11 +1039,7 @@ def _validate_life_state(
         if was_sampled != bool(meta.get("pending", False)) or batch != 1:
             raise ValueError("a saved lived action must match the pending action of one stream")
         observations = array("lived/observations", (1, observed))
-        slotted = learner.slot_count > 1
-        action = array("lived/action", (1, learner.slot_count) if slotted else (1,))
-        limit = learner.slot_sizes[None, :] if slotted else len(learner.output_index)
-        if action.dtype.kind not in "iu" or (action < 0).any() or (action >= limit).any():
-            raise ValueError("invalid saved lived action indices")
+        action = actions("lived/action", 1, "lived ")
         if learned:
             array("lived/code", (1, code_width))
         if was_sampled:
@@ -1043,12 +1052,9 @@ def _validate_life_state(
     if "lived/code" in data and (not learned or "lived" not in meta):
         raise ValueError("a saved lived code belongs to a lived action of a learned code")
     awaiting = meta.get("awaiting")
-    if meta.get("format") == "cadence-generic/5" and "awaiting" not in meta:
+    if level == 5 and "awaiting" not in meta:
         raise ValueError("format cadence-generic/5 carries a sensed state awaiting an outcome")
-    if "awaiting" in meta and meta.get("format") not in (
-        "cadence-generic/5", "cadence-generic/6", "cadence-generic/7", "cadence-generic/8",
-        "cadence-generic/9", "cadence-generic/10",
-    ):
+    if "awaiting" in meta and level < 5:
         raise ValueError(
             "a sensed state awaiting an outcome belongs to formats cadence-generic/5 to /10"
         )
@@ -1076,26 +1082,14 @@ def _validate_life_state(
             raise ValueError(
                 removed_on_load("working trace", "focus", working["focus"], "working_memory_focus")
             )
-        width = len(populations[source])
-        array("working/trace", (batch, width))
-        array("working/last", (batch, width))
-        if array("working/cold", (batch,)).dtype != np.bool_:
-            raise ValueError("invalid saved working-memory cold flags")
+        trace("working/", len(populations[source]), "working-memory")
     efference = meta.get("efference")
     if efference is None and (
         "efference" in populations or any(name.startswith("efference/") for name in data)
     ):
         raise ValueError("saved efference neurons and state require efference metadata")
     if efference is not None:
-        if meta.get("format") not in (
-            "cadence-generic/4",
-            "cadence-generic/5",
-            "cadence-generic/6",
-            "cadence-generic/7",
-            "cadence-generic/8",
-            "cadence-generic/9",
-            "cadence-generic/10",
-        ):
+        if level < 4:
             raise ValueError(
                 "an efference copy belongs to checkpoint formats cadence-generic/4 to /10"
             )
@@ -1108,11 +1102,7 @@ def _validate_life_state(
         ):
             raise ValueError("invalid saved efference ports")
         _validate_efference_amplitude(efference["amplitude"])
-        width = len(populations[source])
-        array("efference/trace", (batch, width))
-        array("efference/last", (batch, width))
-        if array("efference/cold", (batch,)).dtype != np.bool_:
-            raise ValueError("invalid saved efference cold flags")
+        trace("efference/", len(populations[source]), "efference")
     heard = meta.get("history")
     if heard is None and (
         "history" in populations or any(name.startswith("history/") for name in data)
