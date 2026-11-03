@@ -99,8 +99,9 @@ def test_a_retuned_setting_acts_as_built_and_is_saved(tmp_path, name, value, bas
     [({"recall": True, **POSITIONS}, {}),
      ({"recall_heads": 2}, {"recall": True, "recall_when": True, "recall_anchor": True}),
      ({"recall_heads": 2}, {"recall": True, "recall_position_reward": 1.0,
-                            "recall_address_reward": 1.0, "recall_anchor": True})],
-    ids=["positions", "when_heads", "position_reward_heads"],
+                            "recall_address_reward": 1.0, "recall_anchor": True}),
+     ({"recall_heads": 3}, {"recall": True, "recall_heads": 2, "recall_anchor": True})],
+    ids=["positions", "when_heads", "position_reward_heads", "three_heads"],
 )
 def test_a_brain_grows_into_the_recall_options_and_saves_what_it_grew(tmp_path, parts, options):
     brain = lived(**options)
