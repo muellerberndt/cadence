@@ -41,7 +41,7 @@ saved with the brain as `brain.sparse_code`. In `compose` a vector brain's senso
 reads the code too; on an image brain and in `Brain(connectome, code=units)` only the
 memories use it. Set it when wide observations make the episodic separators and the recall
 address map too large: at 12,824 inputs they take 1,532 MB uncoded with `memory_choice` and
-`recall`, and 9.8 MB with `code=1024`. A brain with this code refuses `memory_expansion`
+`recall`, and 8.9 MB with `code=1024`. A brain with this code refuses `memory_expansion`
 and `memory_fan_in`, and keys stored under one code do not match another.
 `Genome.observation_width(inputs, code)` gives the key width before building, the size of a
 custom anatomy's `recall` and `next` regions. The code is fixed and learns nothing.
@@ -239,8 +239,9 @@ Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
 `learned_code`, an image brain, a backend other than `cpu`, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
-sensory neurons project anywhere but to the code region. The settings the readings retired
-are refused by name ([retired settings](#retired-settings)).
+sensory neurons project anywhere but to the code region. The `learned_code_*` settings 0.85.0
+retired are refused by name with what the region does instead (`LearnedCode.REMOVED`; the
+CHANGELOG's 0.85.0 section holds their readings).
 
 ### When to declare fields
 
@@ -305,7 +306,7 @@ it leaves the weights.
 The region adds `units` neurons, `inputs * units` dictionary synapses, `units * (units - 1)`
 lateral synapses and `width * units` predictor synapses, and replaces the `inputs * width`
 sensory synapses of the first module by `units * width`: `compose(53, 4, learned_code=64)` has
-20,236 synapses against 8,012 without the region. Each moment costs the code phase's sweeps
+20,224 synapses against 8,000 without the region. Each moment costs the code phase's sweeps
 (about 33 per phase in the embedding chamber, twice at a moment the region learns from, and 34
 to 120 per moment in the small worlds of continuous interaction) and one learning step of
 `2 * inputs * units + units * width` multiply-adds. In the embedding chamber a life costs
@@ -313,18 +314,3 @@ about three times the processor time of the brain without the region; in the sma
 continuous interaction (the odour nursery, the key door, the cue task) a moment costs about
 four to six times the time of the brain without it. The dictionary is stored dense,
 `inputs * units` values, with fields as well.
-
-### Retired settings
-
-Settings the readings retired are refused by name with what the region does instead:
-
-| Name | What the region does | The reading that retired it |
-| --- | --- | --- |
-| `learned_code_cortex` | the first module reads the code alone | with the observation read beside the code the embedding chamber read held-out members at .24 on 0 of 6 founders |
-| `learned_code_output` | the first module reads the rectified code at unit length | the activations as they are read .48 on 0 of 6; a read at the observation's own loudness lost delayed cues |
-| `learned_code_floor` | every code that is not silent is read at unit length | a floor of one full input's activation read .61 on 0 of 6 |
-| `learned_code_scale` | the key takes the norm the observation itself has as a key | a key at unit length read the binding family's continuing task at .770 against .935 |
-| `learned_code_place` | every memory keys on the context-free code | no reading ran the code in context as the place key |
-| `learned_code_reads` | the cortex and the memories read the context-free code | the code in context read the chamber's fresh founders at .90 on 7 of 12, against 11 of 12 |
-| `learned_code_held` | the code is held as a source; the brain keeps the model's step | settling the code with the whole graph lost the binding family (continuing .185) |
-| `learned_code_top_down`, `_rate`, `_predictor`, `_threshold`, `_threshold_rate`, `_target`, `_repair`, `_silence`, `_active`, `_identity` | constants of the region (above) | the values the readings selected; a control sets `brain.learned_code.top_down`, a reading on a copy `brain.learned_code.learning` |
