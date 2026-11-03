@@ -141,7 +141,7 @@ def test_the_sharp_when_read_learns_its_address_and_keeps_its_table_at_zero():
                        stats=stats)
     recall = brain.recall
     assert brain.learner.updates > 0  # the lessons taught the synapses
-    assert recall.w_x.any() or recall.w_c.any() or recall.b.any()  # and the address map
+    assert any(m.any() for m in recall.head_map(0))  # and the address map
     assert not any(a.any() for maps in recall.position_maps for a in maps)  # the table stays
 
 
