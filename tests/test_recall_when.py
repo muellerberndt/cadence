@@ -3,7 +3,6 @@ the attention-weighted features of its slots' ages on a region of its own."""
 
 from __future__ import annotations
 
-import hashlib
 import json
 from pathlib import Path
 
@@ -130,5 +129,7 @@ def test_a_checkpoint_of_093_loads_and_continues_as_it_did(tmp_path):
     for _ in range(2):
         answers.append(np.asarray(brain.act(rng.random((2, 6)), greedy=True)).tolist())
     assert answers == record["continuation"]["answers"]
-    efficacy = np.ascontiguousarray(np.asarray(brain.brain.efficacy, dtype=float))
-    assert hashlib.sha256(efficacy.tobytes()).hexdigest() == record["continuation"]["efficacy"]
+    # the efficacies after the continuation, within the rounding of another platform's BLAS
+    continued = np.load(FIXTURE / "continued_efficacy.npy")
+    np.testing.assert_allclose(np.asarray(brain.brain.efficacy, dtype=float), continued,
+                               rtol=0, atol=1e-8)
