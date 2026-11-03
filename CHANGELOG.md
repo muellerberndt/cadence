@@ -101,7 +101,16 @@ checkpoints keep the maps and the per-stream counts.
   11 of 12 fresh founders (the composed founder on 2 of 12); one event between the cue and the
   answer gives 4 of 6, two give none. Taught by a lesson at the answer, `recall=True,
   recall_recency=0.0` carries the cue through 4 and 8 distractors on 12 of 12 fresh founders.
-  No library setting changed for these readings.
+  No library setting changed for these readings. Split into its parts, the composed founder's
+  reward update at the answer moves the preference 40 times more along the association activity
+  both cues share than along the cue, four fifths of it through the presynaptic activity; an
+  actor-critic with exact gradients on a small model of the same structure learns delay 0 from
+  the same reward on 6 of 6 founders. The chamber now empties several carriers together and
+  reads a donor's carriers in place of the stream's own: a donor's trace and slots decide the
+  answer on every development founder, and the answer falls to chance on all of them only with
+  the settled activity of the moment before cleared as well. The recipe keeps a lesson-taught
+  prerequisite chain at 1.00; in the reward-learning chain chamber its intermediate stages read
+  on a fresh copy fall by .06 to .17 while completions hold.
 - Reward at the end of an episode (#216, a new section of docs/reward.md): a check of the spread
   of the critic's values beside their mean, the critic school (demonstrated episodes replayed
   through `step` with `actor_eta`, `actor_eta_bias`, `memory_rate` and `consolidation` at zero;

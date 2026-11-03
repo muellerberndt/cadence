@@ -145,6 +145,69 @@ follows. `memory_extinction` never acts here (its lives are byte-identical to
 and 1 its lives are `slow_episodic`'s too. From one distractor on, the context key keeps half
 of the cue per moment and the readout latches on one action for both cues.
 
+**Where the founder's updates go** (`founder` at delay 0, founders 0 to 5). A read-only
+recorder beside the library splits every update of the actor into parts and rebuilds the
+library's own change of every synapse and bias from them to within 1.2e-16; the recorded lives
+are the chamber's lives exactly. The reward step moves a synapse by `actor_eta` times the
+dopamine times its eligibility, which sums over the attempt's sampled acts, decayed by `gamma
+lam` per act, the presynaptic activity times the postsynaptic nudged contrast (the forward
+term) and the presynaptic nudged contrast times the postsynaptic activity (the feedback term);
+a bias moves on its own neuron's contrast, as a synapse from an input that is always one. The
+composition has no sensory-to-motor projection: the readout is the association-to-motor
+projection, tied to its reverse, and the motor bias. Its outcome updates (12,282), read on the
+preference at the answer (motor 1 less motor 0, in drive units) along the association activity
+both cues share there and along half their difference:
+
+| part of the update | share of the summed absolute shared change |
+| --- | --- |
+| forward term, the answer's act | .51 |
+| forward term, `S1`'s act and the cue's (through the eligibility) | .21 and .08 |
+| motor bias, the three acts | .18 |
+| feedback term, the three acts | .02 |
+
+Summed over the updates the shared change is 40 times the cue change (173 against 4.3 drive
+units; 3.6 times along unit directions of the association's activity). A forward part's shared
+over cue change equals its presynaptic activity's projection on the shared direction over its
+projection on the cue direction (median 24 to 301 per founder at the answer's act), whatever
+the dopamine and the contrast, which multiply both alike, and a bias part has no cue
+component: the term that makes the shared component is the presynaptic activity, the
+association activity both cues share at the answer (with the bias's constant input). Outcomes
+of either sign carry equal halves of it (86.4 and 86.3) whose nets cancel (-4.4 and +3.8), so
+the shared preference wanders (net over root of squares -.39 to +.26 per founder) with steps
+40 times the cue's, while the cue part points the right way on 6 of 6 founders (+.05 to +.74
+drive units net) and stays small. The nudged contrast sets the level instead: its common mode
+over the two motor neurons is not zero, since the activation has two slopes, positive for a
+greedy act and negative for an explored one, and the founder's greedy answers are mostly wrong
+under the associative record's cue-blind vote (right .25 to .42, explored .60 to .72), so
+outcomes of both signs push the common motor drive down (-1.0 to -2.1 drive units on 6 of 6).
+The motor potentials fall from about -.3 to between -2.5 and -3.5 on five founders, onto the
+activation's flat negative branch, where the cue part barely moves the policy (p(1) .50 to .54
+for both cues at the end); founder 2's readout latched on one action instead (.995 for both).
+Meanwhile the shared activity at the answer grows (norm .17 to .31, then .82 to 1.92) while
+the difference stays (.03 to .05, then .05 to .08): the separation falls on 6 of 6 (.22 to .49,
+then .05 to .20), and later updates are more shared still. The readout moves by about twice its
+initial size. The projections into the association change the cues' drive at the answer 10 to
+40 times more along the activity both cues share than along their difference, the sensory one
+not at all along the difference. Updates inside an episode (zero reward) carry 2% of the
+summed shared change.
+
+**Exact-gradient audit at delay 0.** An actor-critic with exact gradients on a tiny model of
+the same structure (twelve inputs; an association layer of 64 that reads its own previous
+activity through a prefrontal layer at the working trace's amplitude, cleared when an attempt
+begins; two motor units with the brain's activation, read at temperature .2; REINFORCE with a
+critic's baseline, one update per episode; a control, never installed in a brain), trained on
+this chamber's delay-0 schedule with the terminal reward, learns the answer on 6 of 6
+development founders from a fresh start and on 6 of 6 from the composed founder's own weights
+(rate .01, sized on founder 1000; greedy answers right for good from 448 to 1,344 and from 192
+to 576 episodes, sampled answers right on .95 to 1.00 at the end). The same exact rule on the
+composed founder's association states frozen at birth (cosine .89 to .98 between the cues at
+the answer) reads 0 of 6 at every rate from .01 to .3 while the readout's bias steps at the
+synapses' rate (the bias walks to one action for both cues and the policy latches there), and
+4 of 6 through the motor activation and 5 of 6 with the softmax on the drive at the founder's
+bias ratio (.05), sampled answers right on only .48 to .77. The structure learns the cue from
+the terminal reward under exact credit; by the issue's rule the brain's local update is the
+suspect, and its frozen states at birth carry the answer only by a thin margin.
+
 **A lesson at the answer alone** ([issue 209](https://github.com/muellerberndt/cadence/issues/209)):
 
 | arm | 2 distractors | 4 | 8 | 4 and 8, founders 500 to 511 |
@@ -165,6 +228,54 @@ trials in twelve slots), `recall_recency=0.0` keeps that life on 6 of 6 seeds, a
 memory at its founders does; the same memory without its position term (`recall_position=0`)
 loses it at recency .05 and at 0 (0 of 6), the loss recorded for recency .05 before the
 position term existed.
+
+**Erasure and transplant** (`recall_recency0`, the development lives of the table above read
+again with `--erase` and `--transplant`; every intact reading repeats exactly). Held-out
+accuracy at 2,048 episodes with carriers emptied just before the answer, and the share of
+answers that follow a donor's carriers, over founders 0 to 5:
+
+| reading | 4 distractors | 8 distractors |
+| --- | --- | --- |
+| intact | 1.00 on 6 | 1.00 on 5, .85 |
+| trace emptied | 1.00 on 6 | 1.00 on 5, .89 |
+| slots emptied | .97 to 1.00 | .90 to 1.00 on 5, .56 |
+| trace and slots emptied | .50 on 3; .98 to 1.00 on 3 | .50 on 3; .90 to 1.00 on 3 |
+| trace, slots and the settled activity emptied | .50 on 6 | .50 on 6 |
+| the donor's trace and slots | followed 1.00 on 6 | followed 1.00 on 5, .85 |
+| the donor's trace alone | followed .00 to .88 | followed .00 to .23 |
+| the donor's slots alone | followed .06 to .97 | followed .52 to 1.00 |
+| the donor's settled activity alone | followed .00 on 6 | followed .00 to .15 |
+
+The donor's trace and slots decide the answer against the recipient's own settled state on
+every founder; neither alone does on most. With both emptied the answer falls to chance on
+founders 0, 1 and 3 (.50: both cues of a tuple then answer alike) and stays on founders 2, 4
+and 5: the answer settles from the settled state of the moment before, which the cue shaped,
+and on those three that state alone keeps the answer in the cue's basin. With the settled
+activity cleared as well the answer settles from rest and every founder answers at chance.
+Read with the task-state criteria (held-out at least .90, the two memories emptied at most .60,
+the donor followed on at least .80), 3 of 6 founders meet all three at 4 distractors and 2 of 6
+at 8, where issue 209 asks 5 of 6: the trace, the slots and the settled activity of the moment
+before carry the cue to the answer together.
+
+**A chain's intermediate actions** (a chain whose earlier decisions own their actions, the
+preservation reading of issue 209). The [prerequisite chain](../chain/README.md) taught by
+lessons along the teacher's path: `Brain.compose(16, 6, seed=founder, arousal=True)`, founders
+0 to 5 (the world's seed is the founder), 512 episodes, each a fresh stream from stage 0; at
+every stage the greedy answer is read on a fork, then the stage's own action is taught
+(`lesson`) and lived by a greedy act. Over the last 64 episodes the intermediate stages and the
+last are right on 1.00 on every founder, with the stage observed and hidden, with and without
+`recall=True, recall_recency=0.0` (over the first 64 episodes .94 without and .96 with). In the
+chain chamber itself, where the arena founder learns the chain from reward through `live` in
+one continuing stream (`gene`, observed mode, seeds 0 to 5, 20,000 moments), the same two
+settings added to its `Brain.compose` call lower the intermediate stages' greedy answers read
+on reset copies at the last probe: .50 to .44 under pay at the end, .78 to .61 under shaped pay
+and .39 to .28 under the backward lessons, more than the .05 this reading allows. The last
+stage stays right on every life, and the greedy policy run from stage zero completes the chain
+as often (66 against 57, 214 against 215 and 22 against 24 per 1,000 moments). The recall
+memory at its founder recency moves the same readings (.28, .72 and .39; under pay at the end
+it also completes less often, 24 against 57): in a stream whose slots hold its past a stage's
+answer leans on them, and on a fresh copy, with none, several lives answer an intermediate
+stage with the final stage's action.
 
 **Preservation** of the three reward settings (`preservation.py`, seeds as above, against each
 chamber without the setting): odour nursery `live`, lives passing every check 10 of 12 against

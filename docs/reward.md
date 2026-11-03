@@ -180,12 +180,38 @@ exposure reverse late (10 of 12 lives pass every check, 11 without; these chambe
 are their `live` arms). The two-cue readings are measured through `step`; the chamber under
 `live` was not read.
 
+The founder's own updates show why the outcome does not reach its readout. Split into their
+parts in the chamber, their effect on the preference at the answer is about 40 times larger
+along the association activity both cues share there than along the cue, and four fifths of
+that shared part comes from the forward term's presynaptic activity, at the answer's act and
+through the eligibility at the two acts before it, with the motor bias adding most of the
+rest; each forward part is 24 to 301 times larger along the shared activity than along the cue
+(the median per founder), whatever the dopamine and the contrast. Right and wrong outcomes
+carry that shared part in equal halves that cancel, so the shared preference wanders with
+steps about 40 times the cue part's, and the two slopes of the motor activation let the
+outcomes sink the common motor drive onto the activation's flat branch, where the cue part
+barely moves the policy. An actor-critic with exact gradients on a small model of the same
+structure, trained on the same episodes with the same reward, learns the answer on 6 of 6
+development founders: the structure carries the cue, the local update does not deliver it.
+
 Taught by a lesson at the answer instead, the cue has to reach the answer through the events
 in between. The working trace keeps about half of it per event and fails from two; the recall
 memory with no age charge, `recall=True, recall_recency=0.0`, carries it through eight (12 of
 12 fresh founders at 4 and at 8, where the founder recency of 0.25 reads 0 of 6 at 8). It keeps
 the binding chambers' continuing life, where its
 [position term](memory.md#position-how-long-ago-a-moment-happened) prefers the newer slots.
+The trace, the slots and the settled activity of the moment before carry the cue to the answer
+together. A donor episode's trace and slots, put in place of the recipient's own just before
+the answer, decide it on every development founder; emptying both leaves the answer at chance
+on three of six at 4 and at 8 distractors, and on the other three the answer's settle, which
+starts from the moment before, still finds the cue's basin. With that settled state cleared as
+well every founder answers at chance. A chain whose earlier decisions own their actions keeps
+them when taught by lessons along the teacher's path: the prerequisite chain's intermediate
+stages stay right on every founder with and without the setting. In the reward-learning chain
+chamber, one continuing stream through `live`, the recall memory changes how its stage answers
+read: on a fresh copy, with no slots, the intermediate stages are right less often (by .06 to
+.17 with this setting, by up to .22 at the recall memory's founder recency), while with this
+setting the chain is completed from its start as often as without it.
 
 ## Replaying a life through `step`
 
