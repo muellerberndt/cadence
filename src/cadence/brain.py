@@ -841,9 +841,10 @@ class Brain:
         """``with_parameters`` for a learner's compiled update: ``efficacy``, its effective
         ``weights`` (the product ``with_parameters`` makes, made by the update's pass) and
         ``bias`` are fresh arrays of the right shape that the update made; ``finite`` says
-        whether the efficacy and the weights are finite, as that pass found them. On the
-        ``"cpu"`` backend they are taken as they are; another backend's kernel holds its own
-        weights, so ``with_parameters`` builds the new brain. The same brain, and the same
+        whether the efficacy and the weights are finite, as that pass found them. They are taken
+        as they are; on the ``"mlx"`` backend the new brain gets a kernel of its own whose
+        blocks are made from these weights as construction makes them (``_MlxKernel``), and
+        on ``"torch"`` ``with_parameters`` builds the new brain. The same brain, and the same
         refusals, as ``with_parameters`` gives."""
         if not finite[0]:
             raise ValueError("efficacy must have one finite entry per synapse")
@@ -851,9 +852,11 @@ class Brain:
             raise ValueError("effective synaptic weights must be finite; reduce gain or efficacy")
         if not np.isfinite(bias).all():
             raise ValueError("bias must have one finite entry per neuron")
-        if self.backend != "cpu":
+        if self.backend == "torch":
             return self.with_parameters(efficacy=efficacy, bias=bias)
         new = copy.copy(self)
+        if self._mlx is not None:  # before anything is replaced: a refusal changes nothing
+            new._mlx = self._mlx.with_parameters(weights, bias)
         new._efficacy = efficacy
         new._weights_host = weights
         new._flat = None
@@ -3275,6 +3278,17 @@ class _MlxKernel:
         self.neuron_model = neuron_model
         self.n = connectome.n
         self.layout = layout
+        self._take(weights, bias)
+        self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
+        for k in range(layout.pairs):
+            self.by_post[int(layout.pair_post[k])].append(k)
+        self.sources = layout.sources()
+        self.edge_index = mx.array(layout.edge_index)
+
+    def _take(self, weights: np.ndarray, bias: np.ndarray) -> None:
+        """The bias and the weight blocks on the device, made from the host ``weights`` and
+        ``bias``; refused where float32 cannot hold them."""
+        mx, layout = self.mx, self.layout
         with np.errstate(over="ignore", invalid="ignore"):
             live_bias = bias.astype(np.float32)
             flat = layout.flat(weights).astype(np.float32)
@@ -3286,11 +3300,14 @@ class _MlxKernel:
         self.blocks = [
             mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in layout.blocks(flat)
         ]
-        self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
-        for k in range(layout.pairs):
-            self.by_post[int(layout.pair_post[k])].append(k)
-        self.sources = layout.sources()
-        self.edge_index = mx.array(layout.edge_index)
+
+    def with_parameters(self, weights: np.ndarray, bias: np.ndarray) -> _MlxKernel:
+        """A kernel of its own on new parameters: its bias and blocks made from the host
+        ``weights`` and ``bias`` as construction makes them, the layout's tables shared. This
+        kernel keeps its own blocks, so a brain holding it still settles under its weights."""
+        new = copy.copy(self)
+        new._take(weights, bias)
+        return new
 
     def _activation(self, v: Any) -> Any:
         mx, neuron_model = self.mx, self.neuron_model
