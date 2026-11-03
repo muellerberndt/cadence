@@ -3283,18 +3283,15 @@ class Brain:
         unit in ten kept and the row scaled to unit length; with a learned code the
         rectified code the region settles to on the observations alone, without a context,
         at unit length, the key of every memory."""
-        return self._code(self._observations(observations), context=False)
+        return self._code(self._observations(observations))
 
-    def _code(
-        self, x: np.ndarray, *, context: bool = True, trace: Trace | None = None
-    ) -> np.ndarray:
+    def _code(self, x: np.ndarray) -> np.ndarray:
         """The observation code of validated observations; the observations themselves,
         the same array, without a code. A learned code settles here on the observations
-        alone, whatever ``context`` and ``trace`` say: the cortex and the memories read the
-        context-free code."""
+        alone: the cortex and the memories read the context-free code."""
         if self.learned_code is None:
             return x if self.sparse_code is None else _unit_rows(self.sparse_code.code(x))
-        phase = self._settle_code(x, context=False, trace=trace)
+        phase = self._settle_code(x, context=False)
         return self._moment_key(x, self.learned_code.code_of(phase.state.activation))
 
     def _prepare(
@@ -3495,13 +3492,13 @@ class Brain:
         hippocampal recall when ``memory`` is set. An episodic memory that votes in the
         choice (``memory_choice``) is not read into the drive. The recall memory addresses
         the moment here and keeps the address for the moment's write and lesson. Both
-        memories read the observation code; a learned code settles in the stream's context
-        with ``memory``, and on the observations alone without it."""
+        memories read the observation code; a learned code settles on the observations
+        alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
         if coded is not None and coded[0] is observations:
             return self._stimulus(coded[0], coded[1], memory=memory)
         x = self._observations(observations)
-        return self._stimulus(x, self._code(x, context=memory), memory=memory)
+        return self._stimulus(x, self._code(x), memory=memory)
 
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
@@ -4638,9 +4635,6 @@ class Brain:
         coded = self._coded_moment
         if coded is not None and coded[0] is x:
             return coded[3]
-        code = self.learned_code
-        if code is not None:
-            return self._code(x, context=False)
         return self._code(x)
 
     def _choose(
