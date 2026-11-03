@@ -177,10 +177,10 @@ def test_the_ladders_rule_check_is_made_once_per_rule_and_refuses_at_every_call(
 
     graph = motor_graph()
     drive = np.full((1, 36), 0.4)
-    brain_module._check_ladder.cache_clear()
+    brain_module._checked_ladder.cache_clear()
     for _ in range(3):
         graph.equilibrate(drive, budget=40, tolerance=1e-12, damping=2)
-    info = brain_module._check_ladder.cache_info()
+    info = brain_module._checked_ladder.cache_info()
     assert info.misses == 1 and info.hits == 2
     saturated = graph.neuron_model.replace(slope=4.0, threshold=-5.0)  # rests at one in float32
     for _ in range(2):
@@ -190,7 +190,7 @@ def test_the_ladders_rule_check_is_made_once_per_rule_and_refuses_at_every_call(
     for _ in range(2):
         with pytest.raises(ValueError, match="dt must lie"):
             graph.equilibrate(drive, budget=4000, tolerance=1e-12, damping=1200)
-    assert brain_module._check_ladder.cache_info().currsize == 2
+    assert brain_module._checked_ladder.cache_info().currsize == 2
 
 
 def test_a_ladder_takes_a_rule_whose_fields_are_arrays():
