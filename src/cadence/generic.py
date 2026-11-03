@@ -1376,7 +1376,7 @@ def _earlier_layout(
             arrays["temporal/" + rest[len("context_memory/"):]] = data[name]
         elif rest.startswith("paid_memory/"):
             arrays["paid/" + rest[len("paid_memory/"):]] = data[name]
-        elif rest in ("context", "decision", "before", "seen") or rest.startswith("path/"):
+        elif rest in EpisodicRecords._STATE or rest.startswith("path/"):
             arrays["episode/" + rest] = data[name]
         else:
             raise ValueError("unexpected saved episodic array")
@@ -4052,12 +4052,7 @@ class Brain:
             None if self.history is None else self.history.trace.copy(),
             None if recall is None else (recall.snapshot(), recall.reading(), recall.writes),
             None if episodic is None else (
-                *(
-                    None if value is None else value.copy()
-                    for value in (
-                        episodic.context, episodic.decision, episodic.before, episodic.seen
-                    )
-                ),
+                {name: deepcopy(getattr(episodic, name)) for name in EpisodicRecords._STATE},
                 [list(path) for path in episodic.paths],
             ),
             None if region is None else (
@@ -4085,10 +4080,9 @@ class Brain:
             recall._contents, recall._content_keys = [], None
         episodic = self._episodic
         if episodic is not None:
-            (
-                episodic.context, episodic.decision, episodic.before, episodic.seen,
-                episodic.paths,
-            ) = episode
+            state, episodic.paths = episode
+            for name, value in state.items():
+                setattr(episodic, name, value)
         region = self.learned_code
         if region is not None:
             region.halvings, region.graph, region.last, work = phase
@@ -5465,7 +5459,7 @@ class Brain:
                     hold=episodic.get("hold"),
                 )
                 result._episodic = records
-                for name in ("context", "decision", "before", "seen"):
+                for name in EpisodicRecords._STATE:
                     if "episode/" + name in data:
                         setattr(records, name, data["episode/" + name].astype(float))
                 if "episode/path/lengths" in data:
