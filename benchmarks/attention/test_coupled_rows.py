@@ -108,8 +108,9 @@ def test_saved_lesson_uses_one_reordered_snapshot_in_all_phases_and_parameter_co
     assert learned.free.activation.shape[0] == 2
     assert brain.brain is not original
     assert brain.brain.memory is original.memory is memory
+    after = brain.recall.arrays()
     for name, value in before.items():
-        np.testing.assert_array_equal(getattr(brain.recall, name), value)
+        np.testing.assert_array_equal(after[name], value)
     assert brain.recall.reading()[0] is reading[0]
     assert brain.recall.reading()[1] is reading[1]
 

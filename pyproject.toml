@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "cadence-net"
-version = "0.92.1"
+version = "0.93.0"
 description = "Research toward general intelligence through local repair, equilibrium detuning and self-reflection."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -64,6 +64,10 @@ testpaths = [
     "benchmarks/learned_code",
     "benchmarks/attention",
     "benchmarks/depth",
+    "benchmarks/context_key",
+    "benchmarks/credit",
+    "benchmarks/sequence",
+    "benchmarks/extinction",
 ]
 
 [tool.ruff]

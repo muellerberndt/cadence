@@ -179,7 +179,8 @@ of the listed guides in order and checks that every local link and anchor in `RE
 `MANIFESTO.md`, `CONTRIBUTING.md`, `AGENTS.md` and `docs/` resolves. Default pytest
 collection (`testpaths` in `pyproject.toml`) also includes the chambers under
 `benchmarks/`: `acquisition`, `rhythm`, `reversal`, `keydoor`, `recall`, `competing`,
-`chain`, `stream_words`, `binding` and `learned_code`, including their provenance, refusal,
+`chain`, `stream_words`, `binding`, `learned_code`, `attention`, `depth`, `context_key`,
+`credit`, `sequence` and `extinction`, including their provenance, refusal,
 source-admission, archive and confirmation-audit tests, and the protocol and timing
 instruments of `benchmarks/instruments`.
 A change to a guide's code is a change to a test. The

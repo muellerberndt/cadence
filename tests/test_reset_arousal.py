@@ -290,7 +290,7 @@ def test_keep_names_slots_and_arousal_and_a_refused_reset_changes_nothing(
     before = brain.save(tmp_path / "before")
     with pytest.raises(ValueError, match="'slots' and 'arousal'"):
         brain.reset(keep=value)
-    for name in ("keep_arousal", "keep_memory"):  # the keywords of 0.84.3, renamed
+    for name in ("keep_arousal", "keep_memory"):  # the keywords of 0.84.3: unknown keywords
         with pytest.raises(TypeError, match=name):
             brain.reset(**{name: True})
     assert brain.pending_feedback

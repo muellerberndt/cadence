@@ -213,3 +213,26 @@ def test_evolution_selects_a_generic_brain_genome() -> None:
         tied=(("association", "prefrontal"),),
     )
     assert lineage.best is not None and lineage.best.region("motor").size == 2
+
+
+def test_a_lesson_on_the_moment_just_acted_on_warns_with_a_recall_memory():
+    """An act writes its moment to the recall memory, so a lesson on the same observations
+    reads the moment itself, its successor still empty, and warns; the next moment taught
+    before its act, a lesson after a reset, and a brain without a recall memory do not."""
+    import warnings
+
+    obs = np.array([[1.0, 0.0, 0.0]])
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=0, learned_code=4, attention=True)
+    brain.act(obs, greedy=True)
+    with pytest.warns(RuntimeWarning, match="Teach before acting"):
+        brain.lesson(obs, [1])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        other = np.array([[0.0, 1.0, 0.0]])
+        brain.lesson(other, [0])  # the next moment, taught before its act
+        brain.act(other, greedy=True)
+        brain.reset()
+        brain.lesson(obs, [1])
+        plain = cd.Brain.compose(3, 2, modules=(8,), seed=0)  # no recall memory: no warning
+        plain.act(obs, greedy=True)
+        plain.lesson(obs, [1])

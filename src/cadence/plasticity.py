@@ -29,6 +29,7 @@ from __future__ import annotations
 import warnings
 from collections.abc import Sequence
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -65,6 +66,28 @@ class ActorCriticConfig:
     # settle steps of the two nudged phases that score a sampled action; None uses the
     # learner's nudged_steps
     eligibility_steps: int | None = None
+
+    # Genes this library no longer takes, each with the release that retired it, the value(s)
+    # at which a saved config still loads (the law of this version; None where the law never
+    # reads the gene, so any saved value loads) and what the actor does instead. ``Brain.load``
+    # refuses another saved value by name, and a composed brain refuses the public name
+    # ``actor_<gene>`` (``cadence._configuration.RETIRED``).
+    RETIRED = MappingProxyType({
+        "dopamine_center": ("0.85.0", 0.0, "the dopamine is the prediction error itself, "
+                            "uncentred; cadence-net 0.84.3 takes it"),
+        "dopamine_floor": ("0.85.0", None, "the dopamine is uncentred, so no floor is read; "
+                           "cadence-net 0.84.3 takes it"),
+        "center_scale": ("0.85.0", None, "the dopamine is uncentred, so no centre scale is "
+                         "read; cadence-net 0.84.3 takes it"),
+        "critic_signal": ("0.85.0", ("auto", "modulated"), "the critic learns from the actor's "
+                          "bounded dopamine; cadence-net 0.84.3 takes it"),
+        "critic_normalize": ("0.85.0", True, "the critic's step is divided by its trace's "
+                             "energy; cadence-net 0.84.3 takes it"),
+        "normalize": ("0.85.0", 0.0, "every synapse steps on its own contrast, without RMS "
+                      "normalization; cadence-net 0.84.3 takes it"),
+        "momentum": ("0.85.0", 0.0, "every synapse steps on its own contrast, without "
+                     "momentum; cadence-net 0.84.3 takes it"),
+    })
 
     def __post_init__(self) -> None:
         # Use the same scalar arithmetic before and after JSON checkpointing.
@@ -846,25 +869,6 @@ class ActorCritic:
             value *= decay
             if ended is not None and ended.any():
                 value[ended] = 0.0
-
-    def unfade(self, moments: int) -> None:
-        """Undo ``moments`` fades: every eligibility trace grows by ``(gamma * lam) **
-        -moments``. ``Brain.live`` credits calm moments in hindsight by stepping through them
-        with ``learn``, which applies the decay those moments' fades already applied; undoing
-        the fades first leaves earlier credit decayed once per moment. A decay of zero left
-        no trace to restore."""
-        decay = self.config.gamma * self.config.lam
-        if moments <= 0 or decay <= 0.0:
-            return
-        factor = decay ** -float(moments)
-        if not np.isfinite(factor):
-            raise ValueError("the traces cannot be restored over this many moments")
-        if self._trace_device is not None:
-            self._trace_device = tuple(factor * tensor for tensor in self._trace_device)
-        for name in ("trace", "trace_bias", "trace_critic", "trace_memory"):
-            value = getattr(self, name)
-            if value is not None:
-                value *= factor
 
     def reset(self) -> None:
         """Clear stream state and eligibility; keep learned parameters."""

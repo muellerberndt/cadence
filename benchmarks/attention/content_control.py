@@ -10,6 +10,7 @@ import argparse
 import copy
 import importlib.util
 import json
+import runpy
 import sys
 import tempfile
 import time
@@ -23,6 +24,7 @@ import cadence as cd
 from cadence.receipts import Receipt, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "content-protocol.json"
 SPEC = importlib.util.spec_from_file_location(
     "attention_content_controls", HERE.parent / "relevance" / "acquisition_controls.py")
@@ -45,7 +47,7 @@ def sources() -> list[tuple[str, Path]]:
 
 
 def make_brain(protocol: dict[str, Any], seed: int) -> cd.Brain:
-    brain = cd.Brain.compose(sr.INPUTS, 2, seed=seed, **protocol["brain"])
+    brain = cd.Brain.compose(sr.INPUTS, 2, seed=seed, **genes(protocol["brain"]))
     graph = brain.brain
     brain.learner.brain = cd.NeuralGraph(
         graph.connectome, graph.neuron_model.replace(dt=protocol["dt"]),
@@ -323,8 +325,12 @@ def check(body: dict[str, Any]) -> str | None:
                 elif name in ("episodic", "recall"):
                     actual = ("hippocampus" if name == "episodic" else "recall") in (
                         resolved["memories"])
-                else:
-                    actual = resolved["genes"][name]
+                else:  # a retained record names the gene as its protocol does, a new one as now
+                    mapped = genes({name: value})  # a constant at its founder: nothing to read
+                    if not mapped:
+                        continue
+                    current = next(iter(mapped))
+                    actual = resolved["genes"].get(name, resolved["genes"].get(current))
                 if actual != value:
                     return "resolved brain differs from the declared recipe"
             if result["neuron_model"]["dt"] != protocol["dt"]:

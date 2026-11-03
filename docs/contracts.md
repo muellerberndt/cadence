@@ -10,7 +10,7 @@ learning rule.
 | API | Equations | Stopping rule | Update contract |
 | --- | --- | --- | --- |
 | `NeuralGraph`, `Learner` | Rate neurons exchange activity over a directed graph ([concepts](settling.md#settling-and-equilibrium)). | `equilibrate` checks the full fixed-point equations; `settle` alone may run a fixed budget or stop on activity movement. | Free/nudged local contrast, finite phases by default; optional reward traces. The gradient reading needs symmetric effective weights, a smooth stable branch and a small nudge ([certificate](settling.md#equilibrium-propagation-scope)). |
-| `Brain` (composed) | One recurrent graph, with System 2 observers in the same equations and held trace, record and recall input. | `act`, `predict`, `accuracy` and `wait` need the full potential/adaptation residual below `learning.tolerance` within `learning.free_steps`; exhaustion refuses the answer. | The learner's contrast and the actor-critic's reward eligibility (always finite phases, `reward.eligibility_steps`), plus explicit trace and synaptic-memory writes. |
+| `Brain` (composed) | One recurrent graph, with System 2 observers in the same equations and held trace, record and recall input. | `act`, `predict`, `accuracy` and `wait` need the full potential/adaptation residual below `learning.tolerance` within `learning.free_steps`, with one rescue on the damping ladder before the answer is refused ([qualification and refusal](start.md#qualification-and-refusal)). | The learner's contrast and the actor-critic's reward eligibility (always finite phases, `reward.eligibility_steps`), plus explicit trace and synaptic-memory writes. |
 
 ### Component limits
 
@@ -41,9 +41,6 @@ and source identity stay attached to the action that was actually executed.
 - `LearnerConfig` teaches with finite phases by default. `qualified=True` is the opt-in that
   gates each phase on the full equations, with at most `damping=3` dt halvings by default. Give it a
   `nudged_steps` budget comparable to `free_steps` ([qualified teaching budgets](settling.md#qualified-teaching-budgets)).
-  Optional `initial_damping` skips earlier teaching attempts on CPU float64 while preserving
-  the live model and original-equation tolerance. It does not change acts, evaluation or
-  reward eligibility; the default index zero retains the existing schedule.
 - RMS-normalized rates are covered in [rates under normalization](teach.md#rates-under-normalization).
 - Apical normalization has its own held-gain learning law. The ordinary symmetric
   plain-sum EP gradient argument does not cover it, and `ep_structure` refuses apical

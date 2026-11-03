@@ -2,7 +2,7 @@
 
 This method applies to any task, demo or capability claim. Test one acquired
 brain through bootstrap, routine use, disturbance, repair and saved
-continuation ([the continuing life](start.md#bootstrap-use-repair-continue));
+continuation ([the continuing life](world-model.md#bootstrap-use-repair-continue));
 isolated classification is a mechanism control. A uniform-random policy with
 the same observations and actions is the baseline for every claim: a brain that
 does not beat it has learned nothing worth reporting. Declare a change's scope
@@ -96,7 +96,7 @@ Separate equation residual from meaningful surprise and from task success.
 `Brain.act` qualifies the present state with trace and memory as held input and
 settles no joint future trajectory. Supplied clocks, phase or goals belong in
 the declared information budget. The [world-model
-guide](start.md#coherent-behavior-over-time) gives the brain's side.
+guide](world-model.md#coherent-behavior-over-time) gives the brain's side.
 
 ## Close the action and consequence loop
 

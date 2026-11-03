@@ -134,15 +134,121 @@ def test_public_overrides_keep_teaching_and_reward_rates_distinct():
         learning=learning,
         reward=reward,
         temperature=0.4,
-        learning_beta=0.15,
         actor_eta=0.01,
         actor_eta_bias=None,
         arousal_need=2.0,
     )
-    assert brain.learner.config == replace(learning, temperature=0.4, beta=0.15)
+    assert brain.learner.config == replace(learning, temperature=0.4)
     assert brain.basal_ganglia.config == replace(reward, eta=0.01, eta_bias=None)
     assert brain.arousal.config.need == 2.0
     assert learning.temperature == 0.2 and reward.eta == 0.04
+
+
+@pytest.mark.parametrize(
+    ("name", "value"),
+    [("learning_beta", 0.2), ("learning_momentum", 0.5), ("actor_dopamine_cap", 0.0),
+     ("actor_eligibility_steps", 4), ("arousal_need_scale", 0.0), ("memory_decay", 0.5),
+     ("memory_replay", 2), ("memory_demonstrations", 0.5), ("memory_winners", 32),
+     ("history_scale", 12.0), ("recall_scale", 12.0)],
+)
+def test_the_constants_of_the_composed_brain_are_refused_by_name(name, value):
+    """The names 0.93.0 made constants are refused at compose and retune with the release and
+    the constant, whatever the value, and describe emits none of them."""
+    with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0"):
+        cd.Brain.compose(3, 2, modules=(8,), arousal=True, memory_choice=True, recall=True,
+                         history_decays=(0.5,), **{name: value})
+    brain = cd.Brain.compose(3, 2, modules=(8,), arousal=True, memory_choice=True, recall=True,
+                             history_decays=(0.5,))
+    with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0"):
+        brain.retune(**{name: value})
+    assert name not in brain.describe()["genes"]
+
+
+def test_a_whole_configuration_keeps_its_values_and_a_moved_constant_is_described(tmp_path):
+    """``learning=``, ``reward=`` and ``arousal=`` are the expert route and keep their fields,
+    as the chambers' frozen recipes compose; a mapping is the named route and refuses a
+    constant. ``describe()`` names a constant only where an expert configuration moved it, by
+    its old name, and a checkpoint carries and loads the expert's value."""
+    expert = cd.Brain.compose(
+        3, 2, modules=(8,), seed=1, learning=cd.LearnerConfig(beta=0.2, momentum=0.5),
+        reward=cd.ActorCriticConfig(dopamine_cap=0.0, eligibility_steps=4),
+        arousal=cd.ArousalConfig(need_scale=0.0),
+    )
+    config, actor = expert.learner.config, expert.basal_ganglia.config
+    assert (config.beta, config.momentum, actor.dopamine_cap, actor.eligibility_steps) == (
+        0.2, 0.5, 0.0, 4)
+    assert expert.arousal.config.need_scale == 0.0
+    genes = expert.describe()["genes"]
+    assert (genes["learning_beta"], genes["learning_momentum"]) == (0.2, 0.5)
+    assert (genes["actor_dopamine_cap"], genes["actor_eligibility_steps"]) == (0.0, 4)
+    assert genes["arousal_need_scale"] == 0.0
+    twin = cd.Brain.load(expert.save(tmp_path / "expert.npz"))
+    assert twin.describe() == expert.describe()
+    assert twin.learner.config == config and twin.basal_ganglia.config == actor
+    founder = cd.Brain.compose(3, 2, modules=(8,), seed=1, arousal=True)
+    assert not {"learning_beta", "learning_momentum", "actor_dopamine_cap",
+                "actor_eligibility_steps", "arousal_need_scale"} & set(founder.describe()["genes"])
+    with pytest.raises(ValueError, match="arousal_need_scale was retired in 0.93.0"):
+        cd.Brain.compose(3, 2, modules=(8,), arousal={"need_scale": 0.5})
+    with pytest.raises(ValueError, match="arousal_need_scale was retired in 0.93.0"):
+        founder.retune(arousal={"need_scale": 0.0})
+    # a standalone actor's eligibility_steps=None keeps its meaning, the learner's budget
+    budget = cd.Brain.compose(3, 2, modules=(8,), reward=cd.ActorCriticConfig(eta=0.1))
+    assert budget.basal_ganglia.config.eligibility_steps is None
+    assert budget.describe()["genes"]["actor_eligibility_steps"] is None
+
+
+def test_a_checkpoint_carries_each_constant_at_its_founder_and_another_value_is_refused(
+    tmp_path,
+):
+    """The writer keeps emitting every key 0.92.1 wrote for a founder brain, at the constant.
+    A saved value other than the constant is refused by name where the composed brain alone
+    sets it (the episodic records' replay and demonstrations, the composition's scales); the
+    expert route's fields load as saved, and a saved memory's decay and separation are its
+    own."""
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=2, arousal=True, memory_choice=True,
+                             recall=True, history_decays=(0.5,))
+    path = brain.save(tmp_path / "brain.npz")
+    with np.load(path, allow_pickle=False) as saved:
+        arrays = {name: saved[name].copy() for name in saved.files}
+    meta, learner = json.loads(str(arrays["brain"])), json.loads(str(arrays["meta"]))
+    assert (learner["config"]["beta"], learner["config"]["momentum"]) == (0.1, 0.9)
+    assert (meta["actor"]["dopamine_cap"], meta["actor"]["eligibility_steps"]) == (1.0, 12)
+    assert meta["arousal"]["config"]["need_scale"] == 0.1
+    assert meta["memories"]["hippocampus"]["decay"] == 0.9
+    assert meta["memories"]["hippocampus"]["separator"]["winners"] == 24
+    assert meta["memories"]["episodic"]["replay"] == 8
+    assert meta["memories"]["episodic"]["demonstrations"] == 1.0
+    assert (meta["composition"]["history_scale"], meta["composition"]["recall_scale"]) == (
+        1.2, 1.2)
+
+    def saved_with(change, field):
+        meta_, learner_ = json.loads(str(arrays["brain"])), json.loads(str(arrays["meta"]))
+        change(meta_, learner_)
+        bad = tmp_path / f"{field}.npz"
+        np.savez(bad, **{**arrays, "brain": np.array(json.dumps(meta_)),
+                         "meta": np.array(json.dumps(learner_))})
+        with pytest.raises(ValueError, match=f"{field}=.*retired in 0.93.0"):
+            cd.Brain.load(bad)
+
+    saved_with(lambda m, learner: m["memories"]["episodic"].update(replay=2), "replay")
+    saved_with(lambda m, learner: m["memories"]["episodic"].update(demonstrations=0.5),
+               "demonstrations")
+    saved_with(lambda m, learner: m["composition"].update(history_scale=12.0), "history_scale")
+    saved_with(lambda m, learner: m["composition"].update(recall_scale=12.0), "recall_scale")
+    # the expert route's fields and a memory's own decay and separation load as saved
+    meta_, learner_ = json.loads(str(arrays["brain"])), json.loads(str(arrays["meta"]))
+    learner_["config"].update(beta=0.2, momentum=0.5)
+    meta_["actor"].update(dopamine_cap=0.0, eligibility_steps=4)
+    meta_["arousal"]["config"].update(need_scale=0.0)
+    meta_["memories"]["hippocampus"].update(decay=0.5)
+    own = tmp_path / "own.npz"
+    np.savez(own, **{**arrays, "brain": np.array(json.dumps(meta_)),
+                     "meta": np.array(json.dumps(learner_))})
+    loaded = cd.Brain.load(own)
+    assert (loaded.learner.config.beta, loaded.learner.config.momentum) == (0.2, 0.5)
+    assert loaded.basal_ganglia.config.eligibility_steps == 4
+    assert loaded.arousal.config.need_scale == 0.0 and loaded.hippocampus.decay == 0.5
 
 
 def test_the_sensory_scale_changes_only_the_sensory_projection():
@@ -187,7 +293,7 @@ def test_multi_module_composition_description_survives_sorted_checkpoint_metadat
         {"learning_free_steps": 2.5},
         {"actor_center_scale": True},
         {"actor_dopamine_center": 0.0},
-        {"temperature": 0.3, "learning_temperature": 0.4},
+        {"learning_temperature": 0.4},
         {"arousal": {"need": 1.0}, "arousal_need": 2.0},
         {"sensory_scale": 4.0},
         {"scales": {"sensory": -1.0}},
@@ -278,7 +384,6 @@ def test_memory_and_trace_tuning_keeps_learned_contents(tmp_path):
     acquire(brain)
     before = archive(brain, tmp_path, "before-memory")
     brain.retune(
-        memory_decay=0.8,
         memory_rate=0.7,
         memory_amplitude=1.2,
         consolidation=0.2,
@@ -339,8 +444,6 @@ def test_pending_feedback_covers_sampled_routine_and_consumed_outcomes():
     assert brain.pending_feedback
     brain.learn([0.2], [False], OBSERVATIONS[[1]])
     assert not brain.pending_feedback
-    # Changing beta is safe only once its issued action's phases have been consumed.
-    brain.retune(learning_beta=0.2)
     brain.reset()
     brain.retune(arousal={"youth": 0, "threshold": 10.0})
     brain.live(OBSERVATIONS[[0]])
@@ -355,10 +458,10 @@ def test_the_trace_focus_of_0843_is_refused_by_name_and_read_at_zero(tmp_path):
     """The working trace's focus, a weighting of each neuron by its movement, is removed: the
     name is refused at compose and retune, and a checkpoint of 0.84.3 loads at the founder
     focus of zero and is refused above it, each refusal naming 0.84.3."""
-    with pytest.raises(ValueError, match="working_memory_focus was removed.*0.84.3"):
+    with pytest.raises(ValueError, match="working_memory_focus was retired.*0.84.3"):
         small(working_memory_focus=0.5)
     brain = small()
-    with pytest.raises(ValueError, match="working_memory_focus was removed.*0.84.3"):
+    with pytest.raises(ValueError, match="working_memory_focus was retired.*0.84.3"):
         brain.retune(working_memory_focus=0.0)
     assert "working_memory_focus" not in brain.describe()["genes"]
     path = brain.save(tmp_path / "trace.npz")
@@ -372,7 +475,7 @@ def test_the_trace_focus_of_0843_is_refused_by_name_and_read_at_zero(tmp_path):
         if loads:
             assert cd.Brain.load(path).working_memory.to_dict() == brain.working_memory.to_dict()
         else:
-            with pytest.raises(ValueError, match="working_memory_focus=0.5.*0.84.3"):
+            with pytest.raises(ValueError, match="focus=0.5.*retired in 0.85.0.*0.84.3"):
                 cd.Brain.load(path)
 
 
@@ -380,10 +483,10 @@ def test_the_resting_bias_of_0843_is_refused_by_name_and_its_record_loads(tmp_pa
     """The composed brain's resting bias, an initial bias of the processing regions, is
     removed: the name is refused at compose and retune with a message naming 0.84.3, and the
     value a checkpoint of 0.84.3 recorded is provenance its saved biases already hold."""
-    with pytest.raises(ValueError, match="resting_bias was removed.*0.84.3"):
+    with pytest.raises(ValueError, match="resting_bias was retired.*0.84.3"):
         small(resting_bias=0.5)
     brain = small()
-    with pytest.raises(ValueError, match="resting_bias was removed.*0.84.3"):
+    with pytest.raises(ValueError, match="resting_bias was retired.*0.84.3"):
         brain.retune(resting_bias=0.5)
     assert "resting_bias" not in brain.describe()["layout"]["composition"]
     path = brain.save(tmp_path / "recorded.npz")
@@ -423,7 +526,7 @@ def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
     founder = cd.Brain.compose(3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True)
     named = cd.Brain.compose(
         3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True,
-        scales={"sensory": 1.0, "trace": 1.2, "history": 1.2, "recall": 1.2},
+        scales={"sensory": 1.0, "trace": 1.2},
     )
     np.testing.assert_array_equal(named.brain.efficacy, founder.brain.efficacy)
     composition = founder.describe()["layout"]["composition"]
@@ -431,10 +534,19 @@ def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
         composition["sensory_scale"], composition["working_memory_scale"],
         composition["history_scale"], composition["recall_scale"],
     ) == (1.0, 1.2, 1.2, 1.2)
-    for old, key in (("sensory_scale", "sensory"), ("working_memory_scale", "trace"),
-                     ("history_scale", "history"), ("recall_scale", "recall")):
+    for old, key in (("sensory_scale", "sensory"), ("working_memory_scale", "trace")):
         with pytest.raises(ValueError, match=f"scales={{'{key}'"):
             cd.Brain.compose(3, 2, **{old: 1.0})
+    # the history's and the recall memory's projection scales are constants since 0.93.0,
+    # taken at the constant alone
+    for key in ("history", "recall"):
+        with pytest.raises(ValueError, match=f"{key}_scale was retired in 0.93.0"):
+            cd.Brain.compose(3, 2, modules=(8,), scales={key: 12.0})
+    at_constant = cd.Brain.compose(
+        3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True,
+        scales={"history": 1.2, "recall": 1.2},
+    )
+    np.testing.assert_array_equal(at_constant.brain.efficacy, founder.brain.efficacy)
 
 
 def test_the_description_has_four_sections_and_names_every_gene_as_compose_takes_it():
@@ -476,5 +588,5 @@ def test_fit_keeps_the_arousal_of_a_life_and_retune_resets_nothing():
     assert {k: v for k, v in brain.arousal.to_dict().items() if k != "config"} == {
         k: v for k, v in state.items() if k != "config"
     }
-    with pytest.raises(ValueError, match="brain.arousal.reset"):
+    with pytest.raises(TypeError, match="unknown brain setting: 'reset_arousal'"):
         brain.retune(reset_arousal=True)

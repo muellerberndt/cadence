@@ -43,6 +43,7 @@ import warnings
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, cast
 
 import numpy as np
@@ -109,8 +110,10 @@ class LearnerConfig:
     # opt-in: a lesson teaches only the rows whose free answer differs from the label; a row the
     # net already answers as shown gets no nudged phase and no update: the lesson is the surprise
     surprise: bool = False
-    # qualified phases only: start at this index of the existing dt-halving schedule
-    initial_damping: int = 0
+    # with ``surprise``, opt-in: a lesson's step is scaled by the share of its rows it taught, so
+    # one wrong row of sixteen moves the net a sixteenth as far as sixteen do; the contrast and
+    # the optimizer's running moments still read the taught rows alone
+    surprise_share: bool = False
     # >0: in place of normalize_floor, each synapse's RMS gets this share of the RMS of its
     # projection (the block of synapses between its two neuron ranges) added, and each bias
     # this share of its range's; a constant floor binds where credit is faint (a deep module)
@@ -121,6 +124,27 @@ class LearnerConfig:
     # moves less than a coarse tolerance in a sweep, and the opposite phases' common drift
     # cancels in the contrast, so the free phase may stay coarse
     nudged_fixed: bool = False
+    # opt-in (#238), a composed brain's: after each lesson this many times its rows (at least one
+    # row), drawn from a reservoir of the lessons' rows kept over the life, each with the moments
+    # its stream heard in its episode, are replayed on fresh streams and taught again under the
+    # same rule (``Brain``); with ``surprise`` only the rows the brain now answers wrong move it.
+    # A learner alone replays nothing.
+    rehearsal: float = 0.0
+    # the lesson rows the reservoir keeps, each with its episode: a uniform sample of every row
+    rehearsal_capacity: int = 512
+
+    # Fields this library no longer takes, each with the release that retired it, the one
+    # value at which a saved config still loads (the law of this version) and what the learner
+    # does instead. ``checkpoint.load`` refuses another saved value by name, and a composed
+    # brain refuses the public name ``learning_<field>`` (``cadence._configuration.RETIRED``).
+    RETIRED = MappingProxyType({
+        "centered": ("0.85.0", True, "every lesson contrasts the +beta and -beta phases; "
+                     "cadence-net 0.84.3 takes it"),
+        "decay": ("0.85.0", 0.0, "no leak: a synapse moves on its contrast alone; cadence-net "
+                  "0.84.3 takes it"),
+        "initial_damping": ("0.93.0", 0, "every qualified phase starts at the full step of the "
+                            "damping ladder; cadence 0.92.1 takes it"),
+    })
 
     def __post_init__(self) -> None:
         # Config fields have host scalar semantics, including before a save/load.
@@ -131,6 +155,14 @@ class LearnerConfig:
                 object.__setattr__(self, name, int(value))
             elif isinstance(value, np.floating):
                 object.__setattr__(self, name, float(value))
+        if not np.isfinite(self.rehearsal) or self.rehearsal < 0:
+            raise ValueError("rehearsal must be finite and nonnegative")
+        if (
+            isinstance(self.rehearsal_capacity, bool)
+            or not isinstance(self.rehearsal_capacity, int)
+            or self.rehearsal_capacity < 1
+        ):
+            raise ValueError("rehearsal_capacity must be a positive integer")
         if self.eta_bias is None:
             # Unless chosen, the bias rate follows the synapse rate.
             if not np.isfinite(self.eta) or self.eta < 0:
@@ -179,12 +211,6 @@ class LearnerConfig:
             or self.damping < 0
         ):
             raise ValueError("damping must be a nonnegative integer")
-        if (isinstance(self.initial_damping, bool)
-                or not isinstance(self.initial_damping, (int, np.integer))
-                or not 0 <= self.initial_damping <= self.damping):
-            raise ValueError("initial_damping must be an integer in 0..damping")
-        if self.initial_damping and not self.qualified:
-            raise ValueError("nonzero initial_damping requires qualified learning")
         for name in ("free_steps", "nudged_steps"):
             value = getattr(self, name)
             if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
@@ -205,6 +231,14 @@ class LearnerConfig:
                 "eta_bias to eta / 10; when lowering eta through dataclasses.replace, "
                 "set eta_bias too, or pass eta_bias=None to re-derive it. "
                 "See docs/settling.md#7-every-knob.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
+        if self.surprise_share and not self.surprise:
+            warnings.warn(
+                "LearnerConfig with surprise_share=True and surprise=False: the share scales "
+                "surprise lessons only, so it changes nothing here; set surprise=True "
+                "(learning_surprise) to teach by surprise.",
                 RuntimeWarning,
                 stacklevel=3,
             )
@@ -229,7 +263,50 @@ class LearnerConfig:
         }
 
 
-_NEUTRAL: dict[str, Any] = {"normalize_relative": 0.0, "nudged_fixed": False}
+_NEUTRAL: dict[str, Any] = {
+    "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
+    "surprise_share": False,
+}
+
+
+# The rehearsal's reservoir (``LearnerConfig.rehearsal``), which the composed brain keeps: its
+# draws, replacements and cut are keyed by counts, so a checkpoint continues them without a
+# random state.
+def _mixed(count: int) -> int:
+    """A fixed pseudo-random 64-bit number for each count (splitmix64): the rehearsal's draws
+    and the reservoir's replacements, the same after a checkpoint without a random state."""
+    mask = (1 << 64) - 1
+    z = (int(count) + 0x9E3779B97F4A7C15) & mask
+    z = ((z ^ (z >> 30)) * 0xBF58476D1CE4E5B9) & mask
+    z = ((z ^ (z >> 27)) * 0x94D049BB133111EB) & mask
+    return z ^ (z >> 31)
+
+
+def _reservoir_slot(seen: int, kept: int, capacity: int) -> int | None:
+    """Where a rehearsal reservoir of ``kept`` items puts the item offered as its ``seen``-th:
+    after them within ``capacity``; beyond it in place of the item at a fixed draw from
+    ``0..seen``, when the draw falls within ``capacity`` (None: the item is not kept), so the
+    reservoir is a uniform sample of every item offered."""
+    if kept < capacity:
+        return kept
+    slot = _mixed(seen) % (seen + 1)
+    return slot if slot < capacity else None
+
+
+def _reservoir_draws(draws: int, count: int, kept: int) -> np.ndarray:
+    """The items of a reservoir of ``kept`` items that ``count`` rehearsal draws take, the draws
+    counted on from ``draws``."""
+    return np.array([_mixed(draws + i) % kept for i in range(count)], dtype=np.int64)
+
+
+def _reservoir_cut(seen: int, kept: int, capacity: int) -> np.ndarray:
+    """The items a reservoir of ``kept`` items keeps within ``capacity``: all of them, or a
+    uniform choice keyed by the count of items seen (so the same after a checkpoint), in
+    their order."""
+    if kept <= capacity:
+        return np.arange(kept)
+    keys = [_mixed(seen + (1 << 40) + row) for row in range(kept)]
+    return np.sort(np.argsort(keys, kind="stable")[:capacity])
 
 
 @dataclass(frozen=True)
@@ -245,7 +322,7 @@ class LearnedState:
 
 _PHASE_KEYS = (
     "steps", "residual", "residual_checks", "damping_halvings", "stagnation_checks",
-    "row_sweeps", "row_residual_checks", "initial_damping", "relative_damping_halvings",
+    "row_sweeps", "row_residual_checks",
 )
 
 
@@ -290,8 +367,6 @@ def _phase_report(
         report[f"{name}_residual"] = float(np.max(phase.residual))
         report[f"{name}_residual_checks"] = float(phase.residual_checks)
         report[f"{name}_damping_halvings"] = float(phase.damping_halvings)
-        report[f"{name}_initial_damping"] = float(phase.initial_damping)
-        report[f"{name}_relative_damping_halvings"] = float(phase.relative_damping_halvings)
         report[f"{name}_stagnation_checks"] = float(phase.stagnation_checks)
         report[f"{name}_row_sweeps"] = float(rows * phase.steps)
         report[f"{name}_row_residual_checks"] = float(rows * phase.residual_checks)
@@ -382,10 +457,6 @@ class Learner:
     last_calibration: dict[str, Any] = field(default_factory=dict, init=False, repr=False)
 
     def __post_init__(self) -> None:
-        if self.config.initial_damping and (
-            self.brain.backend != "cpu" or self.brain.precision not in (None, "float64")
-        ):
-            raise ValueError("nonzero initial_damping requires CPU float64")
         outputs = np.asarray(list(self.outputs))
         if outputs.ndim != 1 or outputs.size == 0:
             raise ValueError("outputs must contain at least one neuron index")
@@ -570,25 +641,20 @@ class Learner:
         target is an action that was taken).
         """
         # an apical compartment passes the nudge's change at the gain the free phase set
-        return self._nudged(drive, free, target, self.brain.apical_gain(drive, free), sign, weight)
+        held = self.brain.apical_gain(drive, free)
+        return self._nudged(
+            drive, free, self.nudge_for(target, sign * self.config.beta, weight, held),
+            "nudged" if sign >= 0 else "opposite",
+        )
 
     def _nudged(
-        self,
-        drive: np.ndarray,
-        free: BrainState,
-        target: np.ndarray,
-        held: np.ndarray | None,
-        sign: float = 1.0,
-        weight: np.ndarray | None = None,
+        self, drive: np.ndarray, free: BrainState, nudge: Nudge, name: str
     ) -> BrainState:
-        """``nudged`` at the apical gain ``held`` the caller read from the free phase."""
+        """The phase ``name`` (``nudged`` or ``opposite``) under ``nudge``, from the free state;
+        the caller built the nudge, so a check that follows can read the same one."""
         cfg = self.config
         if cfg.qualified:
-            phase = self._qualified_phase(
-                drive, free, cfg.nudged_steps,
-                self.nudge_for(target, sign * cfg.beta, weight, held),
-            )
-            name = "nudged" if sign >= 0 else "opposite"
+            phase = self._qualified_phase(drive, free, cfg.nudged_steps, nudge)
             if not np.all(phase.qualified):
                 raise LearningPhaseError(name, {name: phase}, self._nudged_budget_hint())
             return replace(phase.state, steps=phase.steps)
@@ -596,7 +662,7 @@ class Learner:
             drive,
             steps=cfg.nudged_steps,
             state=free,
-            nudge=self.nudge_for(target, sign * cfg.beta, weight, held),
+            nudge=nudge,
             tolerance=None if cfg.nudged_fixed else cfg.tolerance,
         )
 
@@ -618,11 +684,6 @@ class Learner:
         cfg = self.config
         if cfg.tolerance is None:
             raise ValueError("qualified learning requires a finite residual tolerance")
-        if cfg.initial_damping:
-            return self.brain.equilibrate(
-                drive, state=state, budget=budget, tolerance=cfg.tolerance,
-                nudge=nudge, damping=cfg.damping, initial_damping=cfg.initial_damping,
-            )
         return self.brain.equilibrate(
             drive, state=state, budget=budget, tolerance=cfg.tolerance,
             nudge=nudge, damping=cfg.damping,
@@ -743,7 +804,7 @@ class Learner:
         cfg = self.config
         assert self.plastic_synapses is not None
         all_trainable = bool(self.plastic_synapses.all())
-        delta_scale = np.array(delta_scale, dtype=float)  # this update's own copy
+        delta_scale = np.asarray(delta_scale, dtype=float)
         delta_bias = np.asarray(delta_bias, dtype=float)
         if (
             delta_scale.shape != (self.brain.connectome.synapses,)
@@ -754,7 +815,8 @@ class Learner:
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
         if (all_trainable and self.synapse_rate is None and not len(self._members)
                 and len(delta_scale) and self.brain._torch is None and _compiled_passes()):
-            return self._compiled_apply(delta_scale, delta_bias)
+            return self._compiled_apply(delta_scale, delta_bias)  # reads the step, moves nothing
+        delta_scale = np.array(delta_scale, dtype=float)  # this update's own copy
         if not all_trainable:
             delta_scale[~self.plastic_synapses] = 0.0
         if self.synapse_rate is not None:  # each synapse's own step, before tying
@@ -797,7 +859,8 @@ class Learner:
 
     def _compiled_apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
         """``apply`` for an all-plastic learner without per-synapse rates or tied groups: the
-        pair tying and the bound in one compiled pass (``fused.tied_step``, the same bits)."""
+        pair tying, the bound and the effective weights in one compiled pass (``fused.tied_step``,
+        the same bits), which the brain takes as they are."""
         from .fused import tied_step
 
         partner = self.__dict__.get("_partner")
@@ -806,13 +869,17 @@ class Learner:
             full[self._paired] = self._paired_reverse
             partner = (self._paired, full)
             self.__dict__["_partner"] = partner
-        delta_scale, scale = tied_step(delta_scale, partner[1], self.brain.efficacy,
-                                       self.config.scale_cap)
-        if not np.isfinite(delta_scale).all():
+        delta_scale, scale, weights, finite = tied_step(
+            delta_scale, partner[1], self.brain.efficacy, self.brain._gain_pre,
+            self.config.scale_cap,
+        )
+        if not finite[0]:
             raise ValueError("scaled and tied steps must remain finite")
         assert self.plastic_neurons is not None
         delta_bias = np.where(self.plastic_neurons, delta_bias, 0.0)
-        self.brain = self.brain.with_parameters(efficacy=scale, bias=self.brain.bias + delta_bias)
+        self.brain = self.brain._with_update(
+            scale, weights, self.brain.bias + delta_bias, finite[1:]
+        )
         self.updates += 1
         return {
             "scale_step": float(np.abs(delta_scale).mean()),
@@ -1075,22 +1142,33 @@ class Learner:
         return delta_scale, cfg.eta_bias * neuron_term
 
     def update(
-        self, free: BrainState, nudged: BrainState, opposite: BrainState | None = None
+        self,
+        free: BrainState,
+        nudged: BrainState,
+        opposite: BrainState | None = None,
+        *,
+        share: float = 1.0,
     ) -> dict[str, float]:
-        """Move every trainable synapse and every neuron on its own two-phase difference."""
+        """Move every trainable synapse and every neuron on its own two-phase difference.
+        ``share`` scales the step the optimizer takes (``surprise_share``: the share of the
+        lesson's rows it taught); the contrast and the running moments are read in full."""
         # Proposed optimizer history is part of the update transaction. A bad
         # contrast or an unrepresentable parameter step must not poison a retry.
         moments = {"_" + name: self.__dict__.get("_" + name) for name in _MOMENTS}
         held = self.__dict__.get("_device_moments")
         try:
-            return self._update(free, nudged, opposite)
+            return self._update(free, nudged, opposite, share)
         except Exception:
             self.__dict__.update(moments)
             self.__dict__["_device_moments"] = held
             raise
 
     def _update(
-        self, free: BrainState, nudged: BrainState, opposite: BrainState | None = None
+        self,
+        free: BrainState,
+        nudged: BrainState,
+        opposite: BrainState | None = None,
+        share: float = 1.0,
     ) -> dict[str, float]:
         self._validate_phases(free, nudged, opposite)
         cfg = self.config
@@ -1101,7 +1179,9 @@ class Learner:
             edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
             norm = float(nudged.device["s"].shape[0]) * span
             edges, neurons = self._adaptive_device(kernel, edges / norm, neurons / norm)
-            report = self._apply_device(kernel, cfg.eta * edges, cfg.eta_bias * neurons)
+            report = self._apply_device(
+                kernel, share * cfg.eta * edges, share * cfg.eta_bias * neurons
+            )
             self.contrast_updates += 1
             return report
         synapse_term, neuron_term = self.contrast(free, nudged, opposite)
@@ -1113,7 +1193,7 @@ class Learner:
             delta_scale, delta_bias = self._compiled_step(raw_synapse, raw_neuron, count)
             if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
                 raise ValueError("optimizer moments must remain finite")
-            report = self.apply(delta_scale, delta_bias)
+            report = self.apply(share * delta_scale, share * delta_bias)
             self.contrast_updates += 1
             return report
         if cfg.momentum > 0:  # local: a synapse accumulates only its own contrast
@@ -1136,8 +1216,8 @@ class Learner:
                 rms = np.sqrt(self.second_moment / correction) + cfg.normalize_floor
                 rms_bias = np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor
             synapse_term, neuron_term = synapse_term / rms, neuron_term / rms_bias
-        delta_scale = cfg.eta * synapse_term
-        delta_bias = cfg.eta_bias * neuron_term
+        delta_scale = share * cfg.eta * synapse_term
+        delta_bias = share * cfg.eta_bias * neuron_term
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
         report = self.apply(delta_scale, delta_bias)
@@ -1208,7 +1288,7 @@ class Learner:
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
             opposite = replace(phases["opposite"].state, steps=phases["opposite"].steps)
-            report = self.update(free, nudged, opposite)
+            report = self.update(free, nudged, opposite, share=self._share(taught))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
@@ -1235,21 +1315,22 @@ class Learner:
             drive, target, weight = self._lesson(taught, drive, target, weight)
             free = _restrict(free, taught)
         held = self.brain.apical_gain(drive, free)  # read once, held by both phases
-        nudged = self._nudged(drive, free, target, held, weight=weight)
-        opposite = self._nudged(drive, free, target, held, sign=-1.0, weight=weight)
+        # one nudge per phase, read by the phase and by its diagnostic check
+        pull = self.nudge_for(target, cfg.beta, weight, held)
+        push = self.nudge_for(target, -cfg.beta, weight, held)
+        nudged = self._nudged(drive, free, pull, "nudged")
+        opposite = self._nudged(drive, free, push, "opposite")
         phases["nudged"] = Equilibrium(
-            nudged, self.brain.residual(drive, nudged,
-                nudge=self.nudge_for(target, cfg.beta, weight, held)),
+            nudged, self.brain.residual(drive, nudged, nudge=pull),
             nudged.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
         phases["opposite"] = Equilibrium(
-            opposite, self.brain.residual(drive, opposite,
-                nudge=self.nudge_for(target, -cfg.beta, weight, held)),
+            opposite, self.brain.residual(drive, opposite, nudge=push),
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
-        report = self.update(free, nudged, opposite)
+        report = self.update(free, nudged, opposite, share=self._share(taught))
         report.update(_phase_report(phases, accepted=True, qualified=False))
         report.update(_taught_report(taught, batch))
         report["free_budget_exhausted"] = float(exhausted)
@@ -1262,6 +1343,12 @@ class Learner:
             raise ValueError("answer must have the labels' shape")
         differs = np.asarray(answer != labels, dtype=bool)
         return np.asarray(differs.any(axis=1)) if differs.ndim == 2 else differs
+
+    def _share(self, taught: np.ndarray | None) -> float:
+        """Under ``surprise_share``, the share of the lesson's rows it taught; else one."""
+        if taught is None or not (self.config.surprise and self.config.surprise_share):
+            return 1.0
+        return float(np.mean(taught))
 
     def _taught(self, free: BrainState, labels: np.ndarray) -> np.ndarray | None:
         """Under ``surprise``, True per row where the free answer differs from its label."""

@@ -12,6 +12,7 @@ import hashlib
 import importlib.util
 import json
 import math
+import runpy
 import sys
 import time
 import types
@@ -27,6 +28,7 @@ import cadence
 from cadence.receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "empty-boundary-protocol.json"
 BASE = HERE / "heads-fixed-read-protocol.json"
 REFERENCE = HERE / "results" / "heads-capacity-fixed-read.json"
@@ -391,8 +393,8 @@ def check(body: dict[str, Any]) -> str | None:
                                   if p["arm"] == "supplied_reads" and p["seed"] == result["seed"])
             _require(canonical_sha256(result["neuron_model"])
                      == canonical_sha256(historical_run["neuron_model"])
-                     and canonical_sha256(result["resolved"]["genes"])
-                     == canonical_sha256(historical_run["resolved"]["genes"])
+                     and canonical_sha256(genes(result["resolved"]["genes"]))
+                     == canonical_sha256(genes(historical_run["resolved"]["genes"]))
                      and canonical_sha256(result["resolved"]["layout"])
                      == canonical_sha256(historical_run["resolved"]["layout"])
                      and canonical_sha256(result["learning_config"])

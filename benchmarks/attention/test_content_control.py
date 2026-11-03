@@ -41,8 +41,9 @@ def test_query_boundary_preserves_witnessed_facts_but_removes_trace_and_warm_sta
     content = control.query_boundary(brain, len(prefix[0]))
     np.testing.assert_array_equal(content, prefix[0] + prefix[1])
     assert brain.basal_ganglia.state is None and not brain.working_memory.trace.any()
+    after = brain.recall.arrays()
     for name, value in before.items():
-        np.testing.assert_array_equal(getattr(brain.recall, name), value)
+        np.testing.assert_array_equal(after[name], value)
     content[:] = 0
     assert brain.recall.values.any()  # caller owns its supplied-content copy
 

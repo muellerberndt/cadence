@@ -1,0 +1,30 @@
+{
+  "written_by": "cadence 0.93.0: Brain.compose(6, 3, modules=(8,), seed=6, recall=True, recall_when=True, recall_anchor=True, recall_heads=2), four steps on two streams with teachers from numpy.random.default_rng(7) (rng.random((2, 6)), rng.integers(0, 3, size=2)), saved mid-episode",
+  "format": "cadence-brain/1",
+  "continuation": {
+    "taken_by": "cadence 0.93.0 after the save, on the NumPy solver and on the compiled kernel alike: from numpy.random.default_rng(8), three steps with teachers, then two greedy acts",
+    "answers": [
+      [
+        2,
+        0
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    "efficacy": "continued_efficacy.npy: the efficacies after the continuation, written on macOS arm64; another platform's BLAS agrees within 1e-8 (the SHA-256 of these bytes on macOS was aa88723adb34e3a158efde379333bd34350eee742c7ad31b5b67f64e10258b13)"
+  }
+}

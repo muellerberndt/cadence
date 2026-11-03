@@ -50,17 +50,8 @@ youth and a level at or above the threshold always rouse the brain. A smaller ac
 reduces interference without retaining a skill
 (``docs/reward.md#traps-with-their-measurements``).
 
-A calm moment keeps no eligibility, so by default the outcome that wakes the brain reaches
-its memory and its arousal but no synapse: the routine actions that led to it are not
-credited. ``hindsight`` is the number of calm moments such an outcome credits. ``Brain.live``
-keeps the last ``hindsight`` calm transitions of the stream (drive, free state, greedy action,
-reward); when an outcome wakes the brain, it scores each held action's eligibility and steps
-the actor and critic through them in order, as temporal-difference steps with their own
-rewards, the waking outcome last. Calm moments change no parameter, so the first held action
-is scored as it would have been when it was issued, and each later one after the credited
-steps before it, as online learning would. Routine work is unchanged: the cost falls on
-waking moments, one eligibility scoring and one forecast per credited moment. Zero, the
-founder, credits none.
+A calm moment keeps no eligibility, so the outcome that wakes the brain reaches its memory
+and its arousal but no synapse: the routine actions that led to it are not credited.
 
 Every constant of the law is a gene of ``ArousalConfig``. The defaults are hand-set
 founders and serve as the control; ``ArousalConfig.space()`` declares the space for
@@ -72,6 +63,7 @@ parameter.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from types import MappingProxyType
 from typing import Any
 
 import numpy as np
@@ -81,7 +73,8 @@ __all__ = ["Arousal", "ArousalConfig"]
 MODES = ("routine", "aroused")
 _TINY = 1e-12  # keeps the unit of surprise positive in a world that has paid nothing yet
 _FORMAT = "cadence-arousal/4"  # every gene of the law and the state it reads
-_HINDSIGHT = "cadence-arousal/5"  # the same with a positive hindsight, which /4 leaves out
+# The format of 0.88.1 to 0.92.1 with a positive hindsight, which 0.93.0 retired: refused.
+_HINDSIGHT = "cadence-arousal/5"
 # The formats of 0.84.3, read through ``_earlier``: /2 at the founder need scale of zero, /3
 # with a positive one, /1 and the unversioned save before the reward count.
 _EARLIER = ("cadence-arousal/1", "cadence-arousal/2", "cadence-arousal/3")
@@ -123,7 +116,17 @@ class ArousalConfig:
     value_surprise: float = 1.0  # weight of the surprise at a contradicted value forecast
     need: float = 0.0  # the reward per moment the body requires; the unmet share is a want
     need_scale: float = 0.1  # a need in reward scales, need_scale * scale, after youth
-    hindsight: int = 0  # calm moments an outcome that wakes the brain credits (0: none)
+
+    # Genes this library no longer takes, each with the release that retired it, the one
+    # value at which a saved state still loads (the law of this version) and what the law does
+    # instead. ``from_dict`` refuses another saved value by name, and a composed brain refuses
+    # the public name ``arousal_<gene>`` (``cadence._configuration.RETIRED``).
+    RETIRED = MappingProxyType({
+        "record_surprise": ("0.85.0", 0.0, "the surprise reads the critic's forecast alone; "
+                            "cadence-net 0.84.3 takes it"),
+        "hindsight": ("0.93.0", 0, "a calm moment keeps no eligibility, so the outcome that "
+                      "wakes the brain credits no earlier action; cadence 0.92.1 takes it"),
+    })
 
     def __post_init__(self) -> None:
         # A scalar's Python/NumPy origin must not change continuation arithmetic.
@@ -146,23 +149,16 @@ class ArousalConfig:
         _real("value_surprise", self.value_surprise, low=0.0)
         _real("need", self.need, low=0.0)
         _real("need_scale", self.need_scale, low=0.0)
-        for name in ("youth", "hindsight"):
-            value = getattr(self, name)
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 0
-            ):
-                raise ValueError(f"{name} must be a nonnegative integer")
+        if (
+            isinstance(self.youth, (bool, np.bool_))
+            or not isinstance(self.youth, (int, np.integer))
+            or self.youth < 0
+        ):
+            raise ValueError("youth must be a nonnegative integer")
 
     def to_dict(self) -> dict[str, Any]:
         values: dict[str, Any] = {name: float(getattr(self, name)) for name in self.__slots__}
         values["youth"] = int(self.youth)
-        # the founder hindsight of zero is left out, so a founder's genes, descriptions and
-        # saves read as before the gene; a positive one is carried
-        hindsight = int(values.pop("hindsight"))
-        if hindsight:
-            values["hindsight"] = hindsight
         return values
 
     @staticmethod
@@ -173,10 +169,10 @@ class ArousalConfig:
         ``value_surprise`` at zero removes surprise, ``heat`` at zero removes the wider
         exploration and ``need`` at zero removes the need's want: the controls are inside the
         space. A mutation that leaves ``fast`` below ``slow`` is refused at
-        construction. ``need_scale`` and ``hindsight`` are left out, so a seeded mutation of
-        the founder draws as it did before those genes and copies the founder's values to the
-        child; to select on one, add it to the space, as ``{**ArousalConfig.space(),
-        "need_scale": ("linear", 0.02, 0.0, 1.0)}`` or ``"hindsight": ("int", 0, 32)``."""
+        construction. ``need_scale`` is left out, so a seeded mutation of the founder draws
+        as it did before that gene and copies the founder's value to the child; to select on
+        it, add it to the space, as ``{**ArousalConfig.space(), "need_scale": ("linear",
+        0.02, 0.0, 1.0)}``."""
         return {
             "threshold": ("log", 0.3, 0.02, 2.0),
             "decay": ("linear", 0.05, 0.0, 0.99),
@@ -358,10 +354,9 @@ class Arousal:
     # -- continuation
 
     def to_dict(self) -> dict[str, Any]:
-        """The complete state under ``cadence-arousal/4``: every gene and every reading, the
-        founder hindsight of zero left out; ``cadence-arousal/5`` with a positive one."""
+        """The complete state under ``cadence-arousal/4``: every gene and every reading."""
         return {
-            "format": _HINDSIGHT if self.config.hindsight else _FORMAT,
+            "format": _FORMAT,
             "config": self.config.to_dict(),
             "level": float(self.level),
             "age": int(self.age),
@@ -380,26 +375,27 @@ class Arousal:
     @classmethod
     def from_dict(cls, values: Any) -> Arousal:
         """Restore a saved arousal, rejecting incomplete or invalid state. A save of 0.84.3
-        (``cadence-arousal/1`` to ``/3``, or unversioned) loads as its state in this format."""
+        (``cadence-arousal/1`` to ``/3``, or unversioned) loads as its state in this format. A
+        gene the law retired (``ArousalConfig.RETIRED``) loads at the one value at which the
+        law is this version's and is refused otherwise, with the release that retired it:
+        ``cadence-arousal/5``, the format of a positive hindsight, is refused by name."""
         if not isinstance(values, dict) or not isinstance(values.get("config"), dict):
             raise ValueError("invalid saved arousal")
         try:
+            config = dict(values["config"])
+            release, kept, instead = ArousalConfig.RETIRED["hindsight"]
+            hindsight = config.pop("hindsight", kept)
             if values.get("format") == _HINDSIGHT:
-                hindsight = values["config"].get("hindsight")
-                if isinstance(hindsight, bool) or not isinstance(hindsight, int) or hindsight < 1:
-                    raise ValueError(
-                        "invalid saved arousal format: cadence-arousal/5 carries a positive "
-                        "hindsight"
-                    )
-                values = {**values, "format": _FORMAT}
-            elif values.get("format") != _FORMAT:
-                values = _earlier(values)
-            elif "hindsight" in values["config"]:
                 raise ValueError(
-                    "invalid saved arousal format: cadence-arousal/4 leaves out the founder "
-                    "hindsight"
+                    f"this arousal was saved under {_HINDSIGHT}, the format of a positive "
+                    f"hindsight, which was retired in {release}: {instead}"
                 )
-            config = {"hindsight": 0, **values["config"]}
+            if isinstance(hindsight, bool) or hindsight != kept:
+                raise ValueError(_retired_on_load("hindsight", hindsight))
+            values = {**values, "config": config}
+            if values.get("format") != _FORMAT:
+                values = _earlier(values)
+            config = values["config"]
             if set(config) != set(ArousalConfig.__slots__):
                 raise ValueError("invalid or incomplete saved arousal config")
             arousal = cls(ArousalConfig(**config))
@@ -436,6 +432,16 @@ class Arousal:
         return arousal
 
 
+def _retired_on_load(gene: str, value: Any) -> str:
+    """The refusal of a save that carries a retired gene at another value than the one it
+    loads at (``ArousalConfig.RETIRED``)."""
+    release, _, instead = ArousalConfig.RETIRED[gene]
+    return (
+        f"this arousal was saved with {gene}={value!r}, which was retired in {release}: "
+        f"{instead}"
+    )
+
+
 def _earlier(values: dict[str, Any]) -> dict[str, Any]:
     """A save of 0.84.3 as its state in ``cadence-arousal/4``. Format /2 left out the founder
     need scale of zero and /3 carried a positive one; /1 and the unversioned save counted
@@ -448,7 +454,7 @@ def _earlier(values: dict[str, Any]) -> dict[str, Any]:
     if "format" in values and values["format"] not in _EARLIER:
         raise ValueError("invalid saved arousal format")
     config = dict(values["config"])
-    genes = (set(ArousalConfig.__slots__) - {"hindsight"}) | {"record_surprise"}
+    genes = set(ArousalConfig.__slots__) | {"record_surprise"}
     if "format" not in values and set(config) == genes - {"need", "need_scale"}:
         # the format marker distinguishes that schema from a save missing a gene
         config["need"] = 0.0
@@ -460,11 +466,8 @@ def _earlier(values: dict[str, Any]) -> dict[str, Any]:
     if set(config) != genes:
         raise ValueError("invalid or incomplete saved arousal config")
     weight = config.pop("record_surprise")
-    if isinstance(weight, bool) or weight != 0.0:
-        raise ValueError(
-            "this arousal was saved with record_surprise above zero, which this version "
-            "removed; load it with cadence-net 0.84.3"
-        )
+    if isinstance(weight, bool) or weight != ArousalConfig.RETIRED["record_surprise"][1]:
+        raise ValueError(_retired_on_load("record_surprise", weight))
     records, usual = values["records"], values["usual_record"]
     if isinstance(records, bool) or not isinstance(records, int) or records < 0:
         raise ValueError("invalid saved arousal count: records")

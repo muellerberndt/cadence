@@ -218,16 +218,28 @@ def make_brain(point: dict[str, Any], seed: int, genes: dict[str, Any] | None) -
     return brain
 
 
-def frozen_choices(brain: cd.Brain) -> tuple[list[int], list[float], int]:
+def frozen_choices(
+    brain: cd.Brain, work: dict[str, int] | None = None
+) -> tuple[list[int], list[float], int]:
     """The greedy choice and the policy's approach probability per odour, each read on its
     own saved and reloaded copy, and the sweeps those copies settled; the live brain is
-    never read for a measurement."""
+    never read for a measurement. A copy's refused answer is charged to ``work`` like the
+    life's own (``refused_sweeps``, with the sweeps of the copies read before it as
+    ``probe_sweeps``) before it ends the life."""
     choices, approach, sweeps = [], [], 0
     with tempfile.TemporaryDirectory() as directory:
         path = brain.save(os.path.join(directory, "brain.npz"))
         for odour in range(ODOURS):
             copy = cd.Brain.load(path)
-            choices.append(int(copy.act(np.eye(ODOURS)[[odour]], greedy=True)[0]))
+            try:
+                choices.append(int(copy.act(np.eye(ODOURS)[[odour]], greedy=True)[0]))
+            except RuntimeError:
+                settlement = copy.last_settlement
+                if work is not None:
+                    work["probe_sweeps"] += sweeps
+                    if settlement is not None and not settlement["qualified"]:
+                        work["refused_sweeps"] += int(settlement["steps"])
+                raise
             state = copy.basal_ganglia.state
             assert state is not None and copy.last_settlement is not None
             approach.append(float(copy.basal_ganglia.probabilities(state)[0, APPROACH]))
@@ -354,7 +366,7 @@ class BrainLife:
         self.work["presentations"] += 1
 
     def probe(self) -> tuple[list[int], list[float]]:
-        choices, approach, sweeps = frozen_choices(self.brain)
+        choices, approach, sweeps = frozen_choices(self.brain, self.work)
         self.work["probes"] += 1
         self.work["probe_sweeps"] += sweeps
         self.work["checkpoints"] += 1 + ODOURS  # one file saved, one copy loaded per odour

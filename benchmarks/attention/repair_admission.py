@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import runpy
 import sys
 import time
 from dataclasses import asdict
@@ -23,6 +24,7 @@ from cadence import Brain, NeuralGraph
 from cadence.receipts import Receipt, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "repair-protocol.json"
 SPEC = importlib.util.spec_from_file_location(
     "attention_repair_controls", HERE.parent / "relevance" / "acquisition_controls.py")
@@ -106,7 +108,7 @@ def gate(training: dict[str, Any], evaluation: dict[str, Any], floor: float) -> 
 
 
 def make_brain(recipe: dict[str, Any], seed: int) -> Brain:
-    brain = Brain.compose(sr.INPUTS, 2, seed=seed, **recipe["brain"])
+    brain = Brain.compose(sr.INPUTS, 2, seed=seed, **genes(recipe["brain"]))
     original = brain.brain
     brain.learner.brain = NeuralGraph(
         original.connectome, original.neuron_model.replace(dt=recipe["dt"]),

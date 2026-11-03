@@ -259,7 +259,7 @@ new slot what the other brain knows.
 - **Devices.** The new brain lives on the backend, device and precision of the brain whose method
   made it.
 - **Checkpoints.** A grown or grafted brain is an ordinary brain: it saves and loads like any
-  other, and its checkpoint has the format of 0.91.3, which loads it.
+  other, in the one format `cadence-brain/1` ([checkpoint format](api.md#checkpoint-format)).
 - **Determinism.** The same brain grows, and grafts, to the same brain every time.
 
 What does not grow or graft:

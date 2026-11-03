@@ -86,14 +86,14 @@ def single_reader_stub():
 
     class Config:
         def to_dict(self):
-            return {"eta": 0.1, "initial_damping": 0}
+            return {"eta": 0.1}
 
     class Oracle:
         def __init__(self):
             self.learner = SimpleNamespace(config=Config())
 
         def describe(self):
-            return {"genes": {"learning_initial_damping": 0}}
+            return {"genes": {}}
 
     def factory(arm, seed):
         return Oracle()

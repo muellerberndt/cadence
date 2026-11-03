@@ -329,7 +329,6 @@ class Graph(NeuralGraph):
         self, drive: np.ndarray, *, budget: int = 512, chunk: int = 32,
         tolerance: float = 1e-5, state: BrainState | None = None,
         mask: np.ndarray | None = None, nudge: Nudge | None = None, damping: int = 0,
-        initial_damping: int = 0,
     ) -> Equilibrium:
         """The library's bounded halving schedule with memory in every candidate.
 
@@ -340,7 +339,6 @@ class Graph(NeuralGraph):
         return super().equilibrate(
             drive, budget=budget, chunk=chunk, tolerance=tolerance,
             state=state, mask=mask, nudge=nudge, damping=damping,
-            initial_damping=initial_damping,
         )
 
 

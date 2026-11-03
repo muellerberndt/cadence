@@ -147,7 +147,7 @@ def test_anchored_recipe_has_no_fallback_or_silent_operating_point_change(prereq
     elif change == "two_rounds":
         prerequisite.protocol["maximum_candidate_rounds"] = 2
     elif change == "different_brain":
-        prerequisite.protocol["brain"]["learning_beta"] *= 2
+        prerequisite.protocol["brain"]["learning_tolerance"] *= 2
     else:
         prerequisite.protocol["budget"]["additional_stage"] = False
     with pytest.raises(ValueError, match="recipe differs"):

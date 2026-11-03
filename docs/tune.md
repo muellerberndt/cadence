@@ -44,6 +44,7 @@ The composed graph, in the order its regions are developed:
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
 | `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False`; with `recall_copy` also into `motor` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
+| `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#when-a-read-item-happened-opt-in) |
 
 The hippocampus is a `SynapticMemory` from the observation code to the motor drive,
 with `memory_choice=True` the [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before), and with
@@ -62,80 +63,6 @@ assert recursive.live(observation).shape == (1,)
 
 Observers settle with the base and never override a finished answer. The wiring
 permits recursive correction without teaching it.
-
-### Deep brains
-
-Several processing regions learn features of features only with the
-[apical compartment](anatomy.md#the-apical-compartment). Without it each region hears the
-region above it through a loop that grows with the weights, and a second module carries an echo
-of the answer. The recipe of the [depth benchmark](../benchmarks/depth/README.md):
-
-```python
-deep = Brain.compose(
-    inputs=48, actions=7, modules=(128, 64, 64, 64), apical=0.25,
-    teaching="normalized", learning_normalize_relative=0.1,
-    learning_nudged_steps=32, learning_nudged_fixed=True, seed=0,
-)
-```
-
-- **What it buys.** On a task that needs two layers of thresholds, one module reads 0.58 of
-  held-out rows after 4,000 lessons, two 0.66, three 0.81 and four 0.86, against 0.89 for a
-  network of two hidden layers trained by backpropagation.
-- **Why the learning settings.** Credit reaching a region k levels below the motor region
-  shrinks about fourfold per level. The projection-relative floor lets each projection step on
-  its own scale, and fixed nudged phases carry the nudge down to the lower regions.
-- **Cost.** An apical brain settles at half the founder's step, yet its bounded top-down loop
-  settles in fewer sweeps than a flat brain whose loop has grown.
-- **Lessons.** A deeper brain acquires more slowly at first; compare depths at matched lessons
-  and give it a longer budget before reading it.
-- **Memories.** The recall memory reads into the top region, and its benchmarks run on brains
-  of two and three modules ([memory on deep brains](../benchmarks/depth/README.md#memory-on-deep-brains)).
-  With `recall_boundary=True` a question about the start of an episode has a slot to read.
-- **Observers.** An observer's return to the modules, the association and the motor region is a
-  top-down half too, so with `apical` set it lands on the same compartment: System 2 adds at most
-  `apical` times each region's bottom-up drive, enough to bias the settle and never enough to
-  take it over.
-
-A deep brain with every memory and attention feature is one call. Each line adds one feature to
-the recipe above:
-
-```python
-full = Brain.compose(
-    inputs=16, actions=4, seed=0, arousal=True,
-    modules=(64, 32, 32), apical=0.25,                  # three regions that learn in depth
-    teaching="normalized", learning_normalize_relative=0.1,
-    learning_nudged_steps=32, learning_nudged_fixed=True,
-    learned_code=16, attention=True,                     # a learned code, read by attention
-    recall_heads=2,                                      # two facts in one settle
-    recall_boundary=True,                                # the start of an episode has a slot
-    recall_action=True,                                  # the slots keep what it did
-    recall_copy=2.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
-    observers=(16,),                                     # optional System 2
-)
-assert full.live(np.eye(16)[[3]]).shape == (1,)
-```
-
-- `learned_code=16, attention=True`: the brain learns a code of its observations and its recall
-  memory attends over its own recent moments by that code
-  ([single-head attention](memory.md#single-head-learned-code-attention-opt-in)).
-- `recall_heads=2`: two heads read the memory with addresses of their own, so one settle can
-  combine two remembered facts ([several heads](memory.md#several-heads-opt-in)). The position
-  term, on by default, lets a cue choose how far back a head looks.
-- `recall_boundary=True`: a question about the start of an episode has a slot to read
-  ([the episode's boundary](memory.md#episodes-keys-and-windows)).
-- `recall_action=True`: every slot keeps the command executed at its moment, so a read can find
-  what the brain itself did ([its own actions](memory.md#its-own-actions-in-the-slots-opt-in);
-  measured on a brain of one module).
-- `recall_copy=2.0, recall_tokens=range(4)`: where observation coordinates and actions name the
-  same tokens, a token the read delivers drives its own action, tokens never taught as answers
-  included ([the copy pathway](memory.md#the-copy-pathway-opt-in)). Declare only identities the
-  task has: here observations 0 to 3 are the four actions' tokens. Without shared tokens leave it
-  out.
-- `observers=(16,)`: a System 2 region inside the same settle, bounded by the compartment.
-
-Every option is checked by the tests beside every other (`tests/test_observers_compat.py`), and
-the [memory benchmarks on deep brains](../benchmarks/depth/README.md#memory-on-deep-brains)
-measure what depth keeps and costs.
 
 ## Defaults and expert overrides
 
@@ -169,38 +96,50 @@ or `retune`, as before.
 | `modules`, `observers` | `(64,)`, `()` | construction | [map](#brain) |
 | `apical` | `0.0`: every synapse summed alike | construction | [the apical compartment](anatomy.md#the-apical-compartment) |
 | `lateral`, `slots` | `0.0`, `1` | construction | [motor competition](#operating-point-and-motor-competition) |
-| `scales`: `"sensory"`, `"trace"`, `"history"`, `"recall"` | `1.0`, `1.2`, `1.2`, `1.2` | construction | [image inputs](senses.md#image-inputs), [memory](memory.md#working-trace) |
+| `scales`: `"sensory"`, `"trace"` | `1.0`, `1.2` | construction | [image inputs](senses.md#image-inputs), [memory](memory.md#working-trace) |
 | `features`, `field`, `seed` | `8`, `3`, `0` | construction | [image inputs](senses.md#image-inputs) |
 | `attention` | `False`; `True` requires `learned_code=units` and supplies the contextual Recall recipe | construction | [single-head learned-code attention](memory.md#single-head-learned-code-attention-opt-in) |
-| `teaching` | `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation) |
-| `learning_beta`, `temperature` | `0.1`, `0.2` | retune | [learning](settling.md#7-every-knob) |
+| `teaching` | `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
+| `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
-| `learning_initial_damping` | `0` | retune, qualified CPU float64 teaching only | [initial numerical step](settling.md#qualified-teaching-budgets) |
-| `learning_scale_cap`, `learning_surprise` | `8.0`, `False` | retune | [learning](settling.md#7-every-knob) |
-| `learning_momentum` | `0.9` | retune | [learning](teach.md#rates-under-normalization) |
-| `learning_normalize_relative` | `0.0`: the teaching point's `normalize_floor` | retune | [learning](teach.md#rates-under-normalization) |
-| `actor_gamma`, `actor_lam`, `actor_eligibility_steps`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `12`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
-| `actor_dopamine_cap` | `1.0` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
+| `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False`, `False` | retune | [learning](settling.md#7-every-knob) |
+| `learning_rehearsal`, `learning_rehearsal_capacity` | `0.0` (off), `512` lesson rows, each with its episode | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
+| `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor`, `arousal_fast`, `arousal_slow` | `0.2`, `0.9`, `2.0`, `0.1`, `0.05`, `0.005` | retune | [continuous](start.md#routine-and-repair-live) |
-| `arousal_heat`, `arousal_youth`, `arousal_value_surprise`, `arousal_need`, `arousal_need_scale` | `2.0`, `100`, `1.0`, `0.0`, `0.1` | retune | [continuous](start.md#routine-and-repair-live) |
-| `arousal_hindsight` | `0` | retune | [continuous](start.md#calm-moments-in-hindsight) |
+| `arousal_heat`, `arousal_youth`, `arousal_value_surprise`, `arousal_need` | `2.0`, `100`, `1.0`, `0.0` | retune | [continuous](start.md#routine-and-repair-live) |
 | `working_memory_*` | amplitude `3.0`, decay `0.0` | retune | [memory](memory.md#working-trace) |
 | `efference_*` | amplitude `0.0` (absent), decay `0.2` | a positive amplitude at construction adds it | [memory](memory.md#efference-copy) |
 | `history_*` | decays `()` (absent), amplitude `3.0` | decays at construction | [memory](memory.md#heard-history) |
-| `episodic`, `memory_rate`, `memory_decay`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.5` with `memory_choice`), `0.9`, `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |
+| `episodic`, `memory_rate`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.5` with `memory_choice`), `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |
 | `code` | unset: the observation itself | construction | [memory](senses.md#the-observation-code) |
 | `memory_choice` and the other `memory_*` episodic settings | `False` | construction | [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) |
 | `recall` and every `recall_*` | `False` | see the page | [recall memory](memory.md#the-recall-memory-in-full) |
 | `backend`, `device` | `"cpu"`, `None` | construction | [backends](backends.md) |
 
+The constants of the composed brain, since 0.93.0 (each the founder every reading by name
+used, a constant until a reading shows a change; refused by name at `compose` and `retune`, in
+a mapping too; absent from `describe()` at the constant; written in checkpoints at the
+constant): `learning_beta` 0.1, `learning_momentum` 0.9, `actor_dopamine_cap` 1.0,
+`actor_eligibility_steps` 12, `arousal_need_scale` 0.1, `memory_decay` 0.9, `memory_replay` 8,
+`memory_demonstrations` 1.0, `memory_winners` 24, and the projection scales
+`scales["history"]` and `scales["recall"]` 1.2 (the two keys are taken at the constant alone).
+The fields stay on `LearnerConfig`, `ActorCriticConfig` and `ArousalConfig`: a configuration
+passed whole (`learning=`, `reward=`, `arousal=`) is the expert route and keeps its values, as
+the frozen recipes of the chambers compose; `describe()` then names a moved constant by its old
+name, which `compose` and `retune` do not take, and a checkpoint carries and loads the expert's
+value as it does every field. A saved memory's decay and separation are the memory's own on
+load, so an instrument's memory attached to a brain keeps them (`describe()["memories"]` shows
+them; they are no gene).
+
 Override rules:
 
 - Every field of `LearnerConfig`, `ActorCriticConfig` and `ArousalConfig` is a
-  `learning_<field>`, `actor_<field>` or `arousal_<field>` name, but the teaching steps
-  and their normalization (`eta`, `eta_bias`, `normalize`, `normalize_floor`), which
-  `teaching` sets: their names raise `ValueError`. `temperature` aliases
-  `learning_temperature` and sets both the teaching softmax and the sampled policy.
+  `learning_<field>`, `actor_<field>` or `arousal_<field>` name, but the fields of a
+  teaching point (`eta`, `eta_bias`, `normalize`, `normalize_floor`, `normalize_relative`,
+  `nudged_fixed`), which `teaching` sets, and the constants above: their names raise
+  `ValueError`. `temperature`, the
+  learner's `temperature`, sets both the teaching softmax and the sampled policy.
 - Unknown names and the ambiguous bare `eta` or `eta_bias` raise `TypeError`.
 - `arousal=True` uses the founders, a mapping such as `arousal={"heat": 1.0}` patches
   them, an `ArousalConfig` replaces them, and `arousal_*` names need one of the three.
@@ -214,6 +153,44 @@ Override rules:
   `eta=0.2`, `momentum=0`, `normalize=0` (raw steps), budgets `100/50` and tolerance
   `1e-4`; `ActorCriticConfig()` has `gamma=0.99`, `lam=0.9` and rates `0.5/0.05/0.05`.
   Use named overrides for a one-field edit.
+
+### Removed in this version
+
+Each name below is refused at `compose`, `retune` and on load with the sentence given; a
+checkpoint of 0.92.1 that carries one at another value than its constant is refused by name,
+and every founder checkpoint is byte-identical; the two folded learner fields are the one
+exception on load, a checkpoint carrying them at other values loading as an expert
+configuration that `describe()` names `"custom"`. The recall memory's own retirements are
+[on the memory page](memory.md#removed-in-this-version).
+
+| Setting | The sentence |
+| --- | --- |
+| `learning_beta` | `learning_beta was retired in 0.93.0: a composed brain nudges at beta 0.1, a constant; learning=LearnerConfig(beta=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `learning_momentum` | `learning_momentum was retired in 0.93.0: a composed brain steps each synapse on a running average of its contrast at 0.9, a constant; learning=LearnerConfig(momentum=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `learning_normalize_relative` | `learning_normalize_relative was retired in 0.93.0: teaching='deep' sets the projection-relative floor at 0.1 with nudged phases of a whole 32 sweeps, the one point ever read; learning=LearnerConfig(...) sets it as an expert; cadence 0.92.1 takes it` |
+| `learning_nudged_fixed` | `learning_nudged_fixed was retired in 0.93.0: teaching='deep' runs the nudged phases their whole 32 sweeps with the projection-relative floor at 0.1, the one point ever read; learning=LearnerConfig(...) sets it as an expert; cadence 0.92.1 takes it` |
+| `learning_temperature` | `learning_temperature was retired in 0.93.0: temperature is the one spelling of the learner's softmax temperature, at compose, retune and in describe; cadence 0.92.1 takes it` |
+| `learning_initial_damping` | `learning_initial_damping was retired in 0.93.0: every qualified phase starts at the full step of the damping ladder; cadence 0.92.1 takes it` |
+| `actor_dopamine_cap` | `actor_dopamine_cap was retired in 0.93.0: a composed brain's dopamine saturates at 1.0, a constant; reward=ActorCriticConfig(dopamine_cap=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `actor_eligibility_steps` | `actor_eligibility_steps was retired in 0.93.0: a composed brain scores a sampled action's eligibility in nudged phases of 12 sweeps, a constant; reward=ActorCriticConfig(eligibility_steps=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `arousal_need_scale` | `arousal_need_scale was retired in 0.93.0: a composed brain's need in reward scales is 0.1, a constant, the founder the reading selected; arousal=ArousalConfig(need_scale=...) moves it as an expert; cadence 0.92.1 takes it` |
+| `arousal_hindsight` | `arousal_hindsight was retired in 0.93.0: a calm moment keeps no eligibility, so the outcome that wakes the brain credits no earlier action; cadence 0.92.1 takes it` |
+| `memory_decay` | `memory_decay was retired in 0.93.0: a stream's record fades by 0.9 per later write, a constant; cadence 0.92.1 takes it` |
+| `memory_replay` | `memory_replay was retired in 0.93.0: a reward replays up to 8 decisions of the stream's path, a constant; cadence 0.92.1 takes it` |
+| `memory_demonstrations` | `memory_demonstrations was retired in 0.93.0: a demonstrated action is recorded at 1.0, a constant; cadence 0.92.1 takes it` |
+| `memory_winners` | `memory_winners was retired in 0.93.0: the episodic separation keeps its 24 most active cells per key, a constant; cadence 0.92.1 takes it` |
+| `scales["history"]` at another value than 1.2, and the 0.84.3 name `history_scale` | `history_scale was retired in 0.93.0: the heard history's projection starts at magnitude 1.2, a constant (scales={'history': 1.2} alone is taken); cadence 0.92.1 takes scales={'history': ...}` |
+| `scales["recall"]` at another value than 1.2, and the 0.84.3 name `recall_scale` | `recall_scale was retired in 0.93.0: the recall and next projections start at magnitude 1.2, a constant (scales={'recall': 1.2} alone is taken); cadence 0.92.1 takes scales={'recall': ...}` |
+
+The keyword shims of 0.84.3 are unknown keywords now: `reset(keep_memory=True)` and
+`reset(keep_arousal=True)` raise Python's `TypeError` for an unexpected keyword, and
+`retune(reset_arousal=True)` raises `TypeError: unknown brain setting: 'reset_arousal'`.
+`imagine(..., tolerance=...)` raises `TypeError`: the phases settle to the learner's tolerance.
+`last_settlement["scope"]` and `code_halvings` leave the settlement report and
+`last_arousal["credited"]` the arousal snapshot. The memories' `begin(keep=False)` and
+`Recall.imagined()` are `reset(0)` (`Recall.end` for kept slots) and `branch()`, and the
+recall memory's head-0 aliases are `head_map(0)`, `position_map(0)` and `attended_heads[0]`
+(`AttributeError` names a missing one).
 
 ## Retune the same life
 
@@ -232,13 +209,11 @@ It takes the same names, validates the whole request before installing anything,
 runs no moment and returns the same brain. Parameters, optimizer history, activity,
 traces, records, random state and pending feedback are kept, and new rates apply from
 the next learned outcome. It raises `ValueError` for a construction setting (those
-marked construction above), for a missing component (arousal included), and for a
-change of `learning_beta` while a sampled action awaits feedback, whose contrast
-belongs to the old scale; learn that outcome first. With `recall_address_reward`
-above zero the same holds for `recall_address`, `recall_address_step` and
-`recall_address_reward` ([recall memory](memory.md#the-recall-memory-in-full)). The recall settings of 0.84.3 that
-left in this version are refused by name, at `compose` and `retune` alike
-([removed in this version](memory.md#removed-in-this-version)). A part that a
+marked construction above) and for a missing component (arousal included). With `recall_address_reward`
+above zero the same holds for `recall_address` and
+`recall_address_reward` ([recall memory](memory.md#the-recall-memory-in-full)). A retired
+recall setting is refused by name at `compose`, `retune` and load, with the release that
+retired it ([removed in this version](memory.md#removed-in-this-version)). A part that a
 construction setting adds (the recall memory or more of its heads, a heard history, an
 efference copy, new output slots) is added to a trained brain by `grow`, which returns a new
 brain; `graft` puts trained regions of another brain into it ([grow and combine
@@ -249,19 +224,6 @@ references and keeps its age and work counters; an adult brain at the founder `n
 then roused only by surprise at its own forecasts, and a positive `need_scale` wants nothing
 until outcomes enter the new stream's reward scale ([reset and save](start.md#reset-and-save)).
 
-## Choose settings for the application
-
-| Application | Interface |
-| --- | --- |
-| Vector senses, several motors | One motor slot per motor, `live` and `retune`, each real action paired with its outcome across stage changes, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena). |
-| Pixels and a teacher | Image `inputs`, teaching through `step`; teaching rates are `learning_*`, reward rates `actor_*`. See the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade). |
-
-Gain, bias and solver steps are distinct levers: gain scales synaptic drive in the
-whole graph, a population bias moves selected neurons' operating points, and steps and
-damping change only how the equations are solved. Check candidate biases with the
-[calibration guide](settling.md#calibrating-the-operating-point), choose on development
-inputs and compare against the founders on your own task ([evaluation](evaluate.md)).
-
 ## Operating point and motor competition
 
 `lateral` is the signed weight between each pair of motor neurons in a slot; `0.0`
@@ -271,8 +233,8 @@ negative weight makes the actions of a slot compete, and at -0.5 the undamped fr
 oscillates from 4 actions on: on 8-action composed brains a fifth of one-row greedy acts and
 every act of 16 rows settled only under the damping fallback (544 sweeps against 32 at
 `0.0`), and a lesson of 16 rows, whose free phase has no fallback, ran out its 1,024-sweep
-budget on 28 of 30 lessons at 8 actions and 7 of 30 at 4. Choose a competing readout
-against `0.0` on development tasks.
+budget on 28 of 30 lessons at 8 actions and 7 of 30 at 4 (the readings of 0.85.0, in the
+CHANGELOG). Choose a competing readout against `0.0` on development tasks.
 
 `slots` groups the motor neurons into readouts that settle together, one softmax each:
 a count of equal groups or one size per group. An action with parts (kind, pitch,
@@ -312,6 +274,147 @@ Reward and termination describe the preceding executed action; a demonstration l
 the current observation. Keep batch-row identities fixed until `reset()`. The
 [continuing brain example](../examples/continuing_brain.py) runs the full reward,
 teacher and checkpoint loop.
+
+## Larger brains
+
+Deeper and wider brains need settings the founder does not; each recipe below names the
+benchmark that measured it.
+
+### Deep brains
+
+Several processing regions learn features of features only with the
+[apical compartment](anatomy.md#the-apical-compartment). Without it each region hears the
+region above it through a loop that grows with the weights, and a second module carries an echo
+of the answer. The recipe of the [depth benchmark](../benchmarks/depth/README.md):
+
+```python
+deep = Brain.compose(
+    inputs=48, actions=7, modules=(128, 64, 64, 64), apical=0.25, teaching="deep", seed=0,
+)
+```
+
+- **What it buys.** On a task that needs two layers of thresholds, one module reads 0.58 of
+  held-out rows after 4,000 lessons, two 0.66, three 0.81 and four 0.86, against 0.89 for a
+  network of two hidden layers trained by backpropagation.
+- **Why the teaching point.** `teaching="deep"` is the normalized point with the
+  projection-relative floor at 0.1 and nudged phases of a whole 32 sweeps. Credit reaching a
+  region k levels below the motor region shrinks about fourfold per level: the floor lets each
+  projection step on its own scale, and the fixed phases carry the nudge down to the lower
+  regions.
+- **Cost.** An apical brain settles at half the founder's step, yet its bounded top-down loop
+  settles in fewer sweeps than a flat brain whose loop has grown.
+- **Lessons.** A deeper brain acquires more slowly at first; compare depths at matched lessons
+  and give it a longer budget before reading it.
+- **Memories.** The recall memory reads into the top region, and its benchmarks run on brains
+  of two and three modules ([memory on deep brains](../benchmarks/depth/README.md#memory-on-deep-brains)).
+  With `recall_boundary=True` a question about the start of an episode has a slot to read.
+- **Observers.** An observer's return to the modules, the association and the motor region is a
+  top-down half too, so with `apical` set it lands on the same compartment: System 2 adds at most
+  `apical` times each region's bottom-up drive, enough to bias the settle and never enough to
+  take it over.
+
+A deep brain with every memory and attention feature is one call. Each line adds one feature to
+the recipe above:
+
+```python
+full = Brain.compose(
+    inputs=16, actions=4, seed=0, arousal=True,
+    modules=(64, 32, 32), apical=0.25, teaching="deep",  # three regions that learn in depth
+    learned_code=16, attention=True,                     # a learned code, read by attention
+    recall_heads=2,                                      # two facts in one settle
+    recall_boundary=True,                                # the start of an episode has a slot
+    recall_action=True,                                  # the slots keep what it did
+    recall_copy=2.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
+    observers=(16,),                                     # optional System 2
+)
+assert full.live(np.eye(16)[[3]]).shape == (1,)
+```
+
+- `learned_code=16, attention=True`: the brain learns a code of its observations and its recall
+  memory attends over its own recent moments by that code
+  ([single-head attention](memory.md#single-head-learned-code-attention-opt-in)).
+- `recall_heads=2`: two heads read the memory with addresses of their own, so one settle can
+  combine two remembered facts ([several heads](memory.md#several-heads-opt-in)). The position
+  term, on by default, lets a cue choose how far back a head looks.
+- `recall_boundary=True`: a question about the start of an episode has a slot to read
+  ([the episode's boundary](memory.md#episodes-keys-and-windows)).
+- `recall_action=True`: every slot keeps the command executed at its moment, so a read can find
+  what the brain itself did ([its own actions](memory.md#its-own-actions-in-the-slots-opt-in);
+  measured on a brain of one module).
+- `recall_copy=2.0, recall_tokens=range(4)`: where observation coordinates and actions name the
+  same tokens, a token the read delivers drives its own action, tokens never taught as answers
+  included ([the copy pathway](memory.md#the-copy-pathway-opt-in)). Declare only identities the
+  task has: here observations 0 to 3 are the four actions' tokens. Without shared tokens leave it
+  out.
+- `observers=(16,)`: a System 2 region inside the same settle, bounded by the compartment.
+
+Every option is checked by the tests beside every other (`tests/test_observers_compat.py`), and
+the [memory benchmarks on deep brains](../benchmarks/depth/README.md#memory-on-deep-brains)
+measure what depth keeps and costs.
+
+### Wide brains
+
+On 0.89 more neurons in a module did not lower held-out error
+([#239](https://github.com/muellerberndt/cadence/issues/239)). A
+[width sweep](../benchmarks/sequence/README.md#the-width-sweep-widthpy) (64 to 1,024 neurons;
+induction over a vocabulary of 128, associative recall and a lookup task; the recall memory under
+the normalized point) located three causes at the widest modules:
+
+- **Refused answers.** A trained brain's settle could run out of budget: the finite learner spends
+  half its sweeps at the full step and the rest at half the step, and a state that needs more
+  full-step sweeps was refused, which stops a continuing life. A solve that does not qualify now
+  continues once on the damping ladder before the answer is refused
+  ([qualification and refusal](start.md#qualification-and-refusal)).
+- **Surprise lessons out of proportion.** A surprise lesson gives one wrong row a whole lesson's
+  step, and at 1,024 neurons the answers swing between collapse and recovery.
+  `learning_surprise_share=True` scales the step by the share of rows taught
+  ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)).
+- **A saturated readout.** A neuron's drive sums over its fan-in, so with every synapse stepped as
+  in a module of 64 the motor neurons of a wide module saturate: associative recall collapses at
+  1,024 neurons on the composed steps. Scaling each synapse's step to its neuron's fan-in in the
+  same brain composed at 64 (`Learner.synapse_rate`) keeps associative recall at 1.00 at every
+  width; it costs the lookup task its gain from width (0.82 to 0.87 at every width, against 0.77
+  at 64 and 0.92 at 1,024 on the composed steps), so it is a recipe, not a default:
+
+```python
+def fan_in_rates(wide: Brain, narrow: Brain) -> np.ndarray:
+    """Each synapse's step scaled to the largest fan-in of its neuron's population in
+    ``narrow``, the same composition at a smaller width; capped at 1."""
+    c, n = wide.connectome, narrow.connectome
+    fan = np.bincount(c.post, minlength=c.n).astype(float)
+    fan_narrow = np.bincount(n.post, minlength=n.n).astype(float)
+    reference = fan.copy()
+    for name, neurons in c.populations.items():
+        index = np.asarray(neurons, dtype=np.int64)
+        if name in n.populations and len(index):
+            top = fan_narrow[np.asarray(n.populations[name], dtype=np.int64)].max(initial=0.0)
+            if top > 0:
+                reference[index] = np.minimum(reference[index], top)
+    return np.minimum(1.0, reference[c.post] / np.maximum(fan[c.post], 1.0))
+
+
+wide = Brain.compose(8, 4, modules=(256,), seed=0, recall=True)
+narrow = Brain.compose(8, 4, modules=(64,), seed=0, recall=True)
+wide.learner.synapse_rate = fan_in_rates(wide, narrow)
+assert wide.learner.synapse_rate.max() <= 1.0
+```
+
+A brain with per-synapse rates cannot be grown (`grow` refuses it); set the rates on the grown
+brain instead. Whether a wider module then lowers held-out error on the composer and on Connect
+Four, the cases #239 opened with, is not yet measured.
+
+## Choose settings for the application
+
+| Application | Interface |
+| --- | --- |
+| Vector senses, several motors | One motor slot per motor, `live` and `retune`, each real action paired with its outcome across stage changes, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena). |
+| Pixels and a teacher | Image `inputs`, teaching through `step`; teaching rates are `learning_*`, reward rates `actor_*`. See the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade). |
+
+Gain, bias and solver steps are distinct levers: gain scales synaptic drive in the
+whole graph, a population bias moves selected neurons' operating points, and steps and
+damping change only how the equations are solved. Check candidate biases with the
+[calibration guide](settling.md#calibrating-the-operating-point), choose on development
+inputs and compare against the founders on your own task ([evaluation](evaluate.md)).
 
 ## The brain in a browser page
 

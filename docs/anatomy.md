@@ -161,12 +161,12 @@ half the founder's step, which damps the loop's fast mode and moves no fixed poi
 graph the compartment: `synapses` a bool per synapse, `groups` a pool per neuron.
 
 Credit that reaches a region k levels below the motor region shrinks by about the fraction per
-level, below a coarse settle's error. A brain with the compartment therefore learns with the
-[projection-relative floor](teach.md#rates-under-normalization) and settled phases: the founder of
-`benchmarks/depth` composes `apical=0.25` with `teaching="normalized"`,
-`learning_normalize_relative=0.1`, `learning_nudged_steps=32` and `learning_nudged_fixed=True`
-(nudged phases of a whole 32 sweeps from a free phase at the founder's tolerance; the opposite
-phases' common drift cancels in the contrast).
+level, below a coarse settle's error. A brain with the compartment therefore learns at the
+teaching point `"deep"`: the normalized point with the
+[projection-relative floor](teach.md#rates-under-normalization) at 0.1 and nudged phases of a
+whole 32 sweeps from a free phase at the founder's tolerance (the opposite phases' common drift
+cancels in the contrast). The founder of `benchmarks/depth` composes `apical=0.25` with
+`teaching="deep"`.
 There, on a task that takes two layers of thresholds, one to four processing regions order by
 depth, and four finish about 2.2 percentage points below a network of two hidden layers; see the
 [depth benchmark](../benchmarks/depth/README.md) and [deep brains](tune.md#deep-brains).

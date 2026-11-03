@@ -123,5 +123,7 @@ def test_fallback_respects_zero_and_odd_total_budgets(monkeypatch, budget):
         agent._qualified(drive, state)
     report = agent.last_settlement
     assert not report["qualified"]
-    assert report["steps"] == sum(taken for _, _, taken in calls) == report["budget"] == budget
-    assert report["damping_halvings"] == (0 if budget < 2 else 1)
+    # the budget, then a rescue of as many from where it stopped, on the damping ladder
+    assert report["steps"] == sum(taken for _, _, taken in calls) == 2 * budget
+    assert report["budget"] == budget and report.get("rescue_steps", 0) == budget
+    assert report["damping_halvings"] == min(agent.learner.config.damping, max(budget - 1, 0))

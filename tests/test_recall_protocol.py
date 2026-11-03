@@ -120,7 +120,8 @@ def test_teacher_refusal_then_free_refusal_is_charged_without_reset(recall, tmp_
                                teacher=np.array([0, 1]))
     assert answer is None
     assert work.teacher_refusals == work.action_refusals == 1
-    assert work.teacher_sweeps == work.action_sweeps == 1
+    assert work.teacher_sweeps == 1
+    assert work.action_sweeps == 2  # the answer's budget and its rescue
     assert work.teacher_residual_checks > 0 and work.action_residual_checks > 0
     assert work.teacher_accepted_presentations == work.trace_row_updates == 0
     assert work.resets_after_refusal == 0

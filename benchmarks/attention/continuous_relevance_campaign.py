@@ -6,6 +6,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import runpy
 import sys
 import time
 from copy import deepcopy
@@ -19,6 +20,7 @@ from cadence import Brain
 from cadence.receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "continuous-relevance-protocol.json"
 STAGES = ("capacity", "learned_h1")
 CONDITIONS = (
@@ -203,7 +205,7 @@ def prior():
 
 def make_brain(arm, seed):
     ctx, f = context(), declared()["factory"]
-    options = deepcopy(f["brain"])
+    options = genes(deepcopy(f["brain"]))
     options["modules"] = tuple(options["modules"])
     if arm == "exposed":
         options.pop("empty_anchor")
@@ -1094,7 +1096,7 @@ def check(body):
                 or r["initial_interface_sha256"] != canonical_sha256(expected.brain.efficacy)
                 or r["learning_config"] != expected.learner.config.to_dict()
                 or r["neuron_model"] != expected.brain.neuron_model.to_dict()
-                or r["resolved"]["genes"] != expected.describe()["genes"]
+                or genes(r["resolved"]["genes"]) != expected.describe()["genes"]
                 or r["neurons"] != expected.connectome.n
                 or r["synapses"] != expected.connectome.synapses
                 or r["numerical_policy"] != ctx.admission.numerical_settings(expected)

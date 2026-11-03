@@ -52,8 +52,8 @@ def test_a_newborn_settles_as_one_without_the_command():
             kept.basal_ganglia.state.activation[0, kept.motor_index],
             founder.basal_ganglia.state.activation[0, founder.motor_index],
         )
-        if founder.recall.attended is not None:  # the first moment finds no slot
-            np.testing.assert_allclose(kept.recall.attended, founder.recall.attended)
+        if founder.recall.attended_heads is not None:  # the first moment finds no slot
+            np.testing.assert_allclose(kept.recall.attended_heads[0], founder.recall.attended_heads[0])
 
 
 def test_every_slot_carries_the_command_executed_at_its_moment():
@@ -91,7 +91,7 @@ def test_the_maps_read_the_command_and_a_lesson_teaches_them_to():
     brain = composed(recall_action=True, recall_heads=2, recall_window=2)
     recall = brain.recall
     assert recall.address_width == 2 * INPUTS + ACTIONS
-    assert recall.w_x.shape == (INPUTS + ACTIONS, recall.address_width)
+    assert recall.head_map(0)[0].shape == (INPUTS + ACTIONS, recall.address_width)
     assert recall.position_maps[1][0].shape[0] == INPUTS + ACTIONS
     assert {"recall_1_action", "next_1_action"} <= set(brain.connectome.populations)
     with warnings.catch_warnings():
@@ -99,7 +99,7 @@ def test_the_maps_read_the_command_and_a_lesson_teaches_them_to():
         for t in range(6):
             brain.lesson(event(t % 2), [t % 3])
             brain.act(event(t % 2), greedy=True)
-    assert np.abs(recall.w_x[INPUTS:]).sum() > 0  # the command rows moved
+    assert np.abs(recall.head_map(0)[0][INPUTS:]).sum() > 0  # the command rows moved
     action = np.isin(np.asarray(brain.connectome.pre), brain.connectome.populations["recall_action"])
     assert np.abs(brain.brain.efficacy[action]).sum() > 0  # the zero synapses learned
 
@@ -133,8 +133,11 @@ def test_the_commands_survive_a_checkpoint(tmp_path):
         brain.live(event(i), reward=None if i == 0 else [float(i % 2)])
     twin = cd.Brain.load(brain.save(tmp_path / "action.npz"))
     assert twin.recall.action
-    for name in ("keys", "values", "nexts", "acted", "w_x"):
+    for name in ("keys", "values", "nexts", "acted"):
         np.testing.assert_array_equal(getattr(twin.recall, name), getattr(brain.recall, name))
+    for h in range(2):
+        for kept, saved in zip(twin.recall.head_map(h), brain.recall.head_map(h), strict=True):
+            np.testing.assert_array_equal(kept, saved)
     for b in (brain, twin):
         b.live(event(4), reward=[1.0])
     np.testing.assert_array_equal(twin.recall.values, brain.recall.values)

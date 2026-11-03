@@ -230,7 +230,7 @@ def test_an_imagined_branch_issues_the_act_the_brain_would_issue(tmp_path, monke
     for shown in cues.values():
         sequence = [shown, go, go]
         issued.clear()
-        phases = brain.imagine(sequence, budget=config.free_steps, tolerance=config.tolerance)
+        phases = brain.imagine(sequence, budget=config.free_steps)
         imagined = list(issued)
         cortex = [int(np.argmax(phase.state.activation[0, brain.motor_index])) for phase in phases]
         live = cd.Brain.load(before)

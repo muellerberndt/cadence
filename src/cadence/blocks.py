@@ -80,13 +80,30 @@ class Layout:
         if not self.parallel_synapses and _compiled():
             from .fused import scatter
 
-            return scatter(self.size, self.edge_index, weights)
+            held = self._flat_order
+            if held is None:
+                return scatter(self.size, self.edge_index, weights)
+            # the entries written front to back: the synapses gathered in their order first
+            order, sorted_index = held
+            return scatter(self.size, sorted_index, weights[order])
         out = np.zeros(self.size)
         if self.parallel_synapses:
             np.add.at(out, self.edge_index, weights)
         else:
             out[self.edge_index] = weights
         return out
+
+    @cached_property
+    def _flat_order(self) -> tuple[np.ndarray, np.ndarray] | None:
+        """The synapses in the order of their entries in the flat array, and the entries in
+        that order; found once per layout. None when the entries are already in order. A
+        scatter in this order writes the array front to back, which costs half of writing it
+        in synapse order on a wide brain (the same array either way)."""
+        index = self.edge_index
+        if len(index) < 2 or bool(np.all(index[1:] > index[:-1])):
+            return None
+        order = np.asarray(np.argsort(index, kind="stable"))
+        return order, np.ascontiguousarray(index[order])
 
     @cached_property
     def block_of_edge(self) -> np.ndarray:

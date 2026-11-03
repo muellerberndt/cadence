@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import runpy
 import sys
 import time
 from pathlib import Path
@@ -22,6 +23,7 @@ from cadence import Brain
 from cadence.receipts import Receipt
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 SPEC = importlib.util.spec_from_file_location(
     "attention_relevance_control", HERE.parent / "relevance" / "selective_recall.py")
 assert SPEC is not None and SPEC.loader is not None
@@ -38,7 +40,7 @@ def run(protocol_path: Path = HERE / "protocol.json") -> Receipt:
         rng = np.random.default_rng(np.random.SeedSequence([31014, seed]))
         order = np.stack([rng.permutation(len(relevance.CASES))
                           for _ in range(protocol["rounds"])])
-        brain = Brain.compose(relevance.INPUTS, 2, seed=seed, **protocol["brain"])
+        brain = Brain.compose(relevance.INPUTS, 2, seed=seed, **genes(protocol["brain"]))
         original = brain.brain
         brain.learner.brain = cadence.NeuralGraph(
             original.connectome, original.neuron_model.replace(dt=protocol["dt"]),

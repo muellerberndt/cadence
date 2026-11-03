@@ -7,8 +7,9 @@ brain's teaching recipe, their contrast and one parameter update. Two brains:
   receptive fields (V1: 8 maps of 5 x 5 fields at stride 2; V2: 16 maps of 3 x 3; V4: 32 maps of
   3 x 3 at stride 2; IT: 128 neurons reading all of V4), an association region of 64 and five
   word slots of four motor neurons. Every pair of neighbouring stages after the retina is joined
-  reciprocally, the top-down half on the apical compartment (``apical=0.25``), with normalized
-  teaching and nudged phases of a whole 32 sweeps: 7,956 neurons and 903,520 synapses.
+  reciprocally, the top-down half on the apical compartment (``apical=0.25``), at the teaching
+  point ``"deep"`` (normalized, nudged phases of a whole 32 sweeps): 7,956 neurons and 903,520
+  synapses.
 * ``flat``: ``Brain.compose(3072, 20, slots=(4,) * 5)`` with every founder setting.
 
 Each lesson draws ``batch`` rows from a fixed pool of random observations and labels::
@@ -44,10 +45,7 @@ STAGES = (("v1", "local", 8, 5, 2), ("v2", "local", 16, 3, 1), ("v4", "local", 3
 ASSOCIATION = 64
 DEEP = {
     "apical": 0.25,
-    "teaching": "normalized",
-    "learning_normalize_relative": 0.1,
-    "learning_nudged_steps": 32,
-    "learning_nudged_fixed": True,
+    "teaching": "deep",
     "learning_surprise": False,
     "episodic": False,
     "working_memory_amplitude": 0.0,

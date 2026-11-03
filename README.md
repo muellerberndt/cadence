@@ -11,64 +11,13 @@
 
 **One continuing equilibrium brain: learn a world, act in it, repair what fails.**
 
-```python
-from cadence import Brain
-
-brain = Brain.compose(inputs=4, actions=2, arousal=True)
-action = brain.live([[1.0, 0.0, 0.0, 0.0]])
-```
-
-Execute the returned action, then pass its measured reward with the next
-observation: `brain.live(next_observation, reward=reward)`. Tune named settings
-with `compose` or `brain.retune(...)`; inspect them with `brain.describe()`.
-The [composition guide](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md#defaults-and-expert-overrides)
-explains the defaults and which learning rates each operation uses.
-
-Cadence builds a simulated animal-like brain from simplified biological
-mechanisms. Its default **System 1** is one continuing brain with perception,
-plastic connections, memory and action; optional **System 2** adds observing
-cortical regions that feed back into the same neural graph. Biological names
-describe functional software roles.
-
-[One continuing equilibrium brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#one-continuing-equilibrium-brain)
-is the guide to this lifecycle and its boundaries. `compose` constructs
-the brain; `live` runs its life. Integrated learned world prediction, repair
-localized to what failed and cheap stable operation are work in progress.
-Cadence is alpha research software.
-
-## How a Cadence brain differs from a feed-forward network
-
-`Brain.compose(inputs=4, actions=2, modules=(64, 32, 16))` builds reciprocal
-regions whose activity settles together, so later regions shape earlier ones
-while an answer forms, and the action comes from the qualified neural state.
-The learner compares local activities in a free and a nudged phase, without a
-backward differentiation pass. The relevant comparison with a recurrent
-backprop network is acquired behavior and total work on the same task, which
-[the orientation page](https://github.com/muellerberndt/cadence/blob/main/README.md#compared-with-a-backprop-network)
-sets out; other model families have
-[their own learning contracts](https://github.com/muellerberndt/cadence/blob/main/docs/contracts.md).
-
-## Why Cadence
-
-The library puts continuing state, reciprocal interpretation, local plasticity
-and memory behind one small interface. A saved brain resumes an action that
-awaits its actual outcome, and private imagination inspects responses without
-rewriting live experience. These are mechanisms for testing acquisition,
-retention and recovery through a life.
-
-The target includes full-sentence language and reusable world understanding;
-a small fixed-label task is a control.
-
-<a id="get-started"></a>
-
-## Start with System 1
-
-Python 3.11+ and NumPy are required. Install the published release, whose
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.92.1/docs/README.md)
-describes the APIs in that package:
+Cadence is a Python library (NumPy, Python 3.11 or later) for brains that settle rather than
+compute a pass: a graph of rate neurons relaxes to an equilibrium under the observation, the
+action is read from that equilibrium, and every synapse learns from the difference between two
+settles, with no backward pass and no training/inference switch.
 
 ```sh
-python -m pip install cadence-net==0.92.1
+python -m pip install cadence-net==0.93.0
 ```
 
 ```python
@@ -86,13 +35,42 @@ action = brain.live(next_observation, reward=reward)
 assert action.shape == (1,)
 ```
 
+By default `Brain.compose` builds one association region of 64 neurons between the senses and
+the motor choice, settling together with them; a working trace that carries the last
+interpretation into the next settle; and an associative store that keeps each situation's
+outcomes. Under `live` the brain learns while young (its first 100 moments) or aroused by
+surprise or want, and otherwise answers greedily from one settle; under `step` it learns from
+every outcome and from `teacher=` labels. Everything else is opt-in: System 2 observers, the
+episodic memory, the recall memory, a learned code, images.
+
+| You want to | Read |
+| --- | --- |
+| run a creature that lives, acts and learns | [Start a continuing brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md) |
+| teach by demonstration | [Teach by demonstration](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md) |
+| let the world pay for good acts | [Learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md) |
+| give the brain a memory for a task | [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md) |
+| read or change a living brain | [Tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md) |
+| a signature | [API reference](https://github.com/muellerberndt/cadence/blob/main/docs/api.md) |
+
+The [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md)
+lists the rest: wide inputs, growing and grafting, evaluation, your own anatomy, how the
+brain settles, backends; the
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.93.0/docs/README.md)
+describes the APIs of the installed package. Integrated learned world prediction, repair
+localized to what failed and cheap stable operation are work in progress; Cadence is alpha
+research software.
+
+<a id="get-started"></a>
+
+## Start with System 1
+
 `live` takes the **preceding action's** measured reward, then chooses the next
 action for one continuing stream; supply one observation row per call. It needs
-`arousal=True` (the founder arousal settings). A calm brain acts greedily without
-learning; youth (the first 100 moments) or arousal enables exploration, learning
-and writes to the associative memory. There is no training/inference mode switch.
-The working trace advances at every accepted moment; with the opt-in recall
-memory (`recall=True`) its slots advance at every accepted moment too.
+`arousal=True` (the founder arousal settings). The working trace advances at every
+accepted moment; with the opt-in recall memory (`recall=True`) its slots advance at
+every accepted moment too. Tune named settings with `compose` or `brain.retune(...)`
+and inspect them with `brain.describe()`
+([tune and read](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md#defaults-and-expert-overrides)).
 [Continuous interaction](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#continuous-interaction)
 covers arousal, resets and saved continuation.
 
@@ -107,7 +85,7 @@ ignores labels. Add `memory_choice=True` when remembered demonstrations and outc
 vote in the choice. Add `learned_code=units, attention=True` when the brain should retrieve a
 relevant recent context and its successor, and `recall_heads=k` when one answer needs several
 witnessed facts at once. The options can be used together.
-[Choose a memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
+[Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
 starts with these common cases before giving the complete reference.
 A brain trained without one of them gets it later: `brain.grow(recall=True)`, or new output
 slots with `brain.grow(slots=...)`, returns a new brain, the trained one with the part added,
@@ -126,8 +104,8 @@ or pending feedback; the composed brain builds no model of the world's
 consequences.
 
 Each action solve reports its residual, qualification, sweeps and check counts
-in read-only `brain.last_settlement`, as the
-[quickstart](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#inspect-the-work-of-answering)
+in read-only `brain.last_settlement`, as
+[start a continuing brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#inspect-the-work-of-answering)
 shows. An action whose settle exhausts its budget is refused without changing
 live state; [qualification and refusal](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#qualification-and-refusal)
 says when to retry `live(observation)` without resubmitting the reward.
@@ -154,13 +132,39 @@ observers. They join the same settlement and use the same interaction interface.
 Whether recursive feedback helps on a task is a question for experience and
 evaluation.
 
+## How a Cadence brain differs from a feed-forward network
+
+`Brain.compose(inputs=4, actions=2, modules=(64, 32, 16))` builds reciprocal
+regions whose activity settles together, so later regions shape earlier ones
+while an answer forms, and the action comes from the qualified neural state.
+The learner compares local activities in a free and a nudged phase, without a
+backward differentiation pass. The relevant comparison with a recurrent
+backprop network is acquired behavior and total work on the same task, which
+[the orientation page](https://github.com/muellerberndt/cadence/blob/main/README.md#compared-with-a-backprop-network)
+sets out; other model families have
+[their own learning contracts](https://github.com/muellerberndt/cadence/blob/main/docs/contracts.md).
+
+## Why Cadence
+
+The library puts continuing state, reciprocal interpretation, local plasticity
+and memory behind one small interface. A saved brain resumes an action that
+awaits its actual outcome, and private imagination inspects responses without
+rewriting live experience. These are mechanisms for testing acquisition,
+retention and recovery through a life. Biological names describe functional
+software roles;
+[one continuing equilibrium brain](https://github.com/muellerberndt/cadence/blob/main/docs/world-model.md)
+states the design direction.
+
+The target includes full-sentence language and reusable world understanding;
+a small fixed-label task is a control.
+
 ## For machine-learning readers
 
 This section maps Cadence onto models you know: which brain corresponds to which
 familiar model, where each one's learning signal comes from, what the arrays look
 like and what the words mean. The application interface is
 `Brain.compose(..., arousal=True)`, then `brain.live(observation, reward=...)` for
-each real outcome ([composition guide](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md), [quickstart](https://github.com/muellerberndt/cadence/blob/main/docs/start.md)); the
+each real outcome ([tune and read](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md), [start a continuing brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md)); the
 families below are the numerical mechanisms underneath and beside it.
 
 ### The picture

@@ -290,7 +290,8 @@ def test_a_refused_answer_is_charged_and_the_crashed_life_keeps_its_ledger(short
     def strict(arm, protocol, seed, genes):
         life = made(arm, protocol, seed, genes)
         learner = life.brain.learner
-        learner.config = replace(learner.config, free_steps=48, tolerance=1e-15)
+        # 24 sweeps and a rescue of as many: the first answer refuses
+        learner.config = replace(learner.config, free_steps=24, tolerance=1e-15)
         return life
 
     monkeypatch.setattr(nursery, "make_life", strict)
@@ -371,3 +372,17 @@ def test_every_source_bound_historical_receipt_still_verifies():
         if path.name.startswith("first-freeze"):
             continue  # historical raw body predates the Receipt wrapper and source manifest
         assert nursery.verify(path)[0], (path, nursery.verify(path))
+
+
+def test_a_probe_copys_refused_answer_is_charged_like_the_lifes_own():
+    work = nursery.fresh_work()
+    brain = cd.Brain.compose(nursery.ODOURS, 2, modules=(8,), seed=0)
+    choices, approach, sweeps = nursery.frozen_choices(brain, work)
+    assert len(choices) == len(approach) == nursery.ODOURS and sweeps > 0
+    assert work["refused_sweeps"] == 0 and work["probe_sweeps"] == 0  # the life charges these
+    strict = cd.Brain.compose(
+        nursery.ODOURS, 2, modules=(8,), seed=0, learning_free_steps=1, learning_tolerance=1e-12
+    )
+    with pytest.raises(RuntimeError, match="did not settle"):
+        nursery.frozen_choices(strict, work)
+    assert work["refused_sweeps"] > 0

@@ -91,15 +91,13 @@ def test_the_history_adds_only_its_blocks_and_their_projection():
     np.testing.assert_array_equal(control.predict(CUE), candidate.predict(CUE))
 
 
-def test_the_projection_starts_at_its_scale_like_the_working_trace():
-    quiet = composed(decays=(0.5,), scales={"history": 1.2})
-    loud = composed(decays=(0.5,), scales={"history": 12.0})
-    history = np.asarray(quiet.connectome.populations["history"])
-    rows = np.isin(np.asarray(quiet.connectome.pre), history)
-    np.testing.assert_allclose(
-        np.asarray(loud.connectome.sign)[rows], 10.0 * np.asarray(quiet.connectome.sign)[rows]
-    )
-    assert quiet.describe()["layout"]["composition"]["history_scale"] == 1.2
+def test_the_projection_starts_at_its_constant_scale_like_the_working_trace():
+    """The history's projection starts at magnitude 1.2, a constant since 0.93.0: the
+    composition records it, and ``scales["history"]`` is refused by name."""
+    brain = composed(decays=(0.5,))
+    assert brain.describe()["layout"]["composition"]["history_scale"] == 1.2
+    with pytest.raises(ValueError, match="history_scale was retired in 0.93.0"):
+        composed(decays=(0.5,), scales={"history": 12.0})
 
 
 @pytest.mark.parametrize("greedy", [True, False])

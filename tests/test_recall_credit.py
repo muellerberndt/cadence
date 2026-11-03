@@ -15,7 +15,7 @@ import pytest
 import cadence as cd
 
 EYE = np.eye(3)
-ARRAYS = ("keys", "values", "nexts", "held", "previous", "ended", "w_x", "w_c", "b")
+ARRAYS = ("keys", "values", "nexts", "held", "previous", "ended")
 
 
 def composed(seed=1, **options):
@@ -76,18 +76,18 @@ def assert_same_memory(first, second):
 def test_a_reading_is_held_through_a_restore_and_an_end():
     brain = routine(composed())
     recall = brain.recall
-    assert recall.last is None and recall.attended is not None  # written; its attention kept
+    assert recall.last is None and recall.attended_heads is not None  # written; its attention kept
     brain.stimulus(EYE[[1]])
     reading = recall.reading()
-    assert reading[0] is recall.last and reading[1] is recall.attended and recall.last is not None
+    assert reading[0] is recall.last and reading[1] is recall.attended_heads[0] and recall.last is not None
     recall.restore(recall.snapshot())
     assert recall.reading() == (None, None)
     recall.hold(reading)
-    assert recall.last is reading[0] and recall.attended is reading[1]
+    assert recall.last is reading[0] and recall.attended_heads[0] is reading[1]
     recall.end(1, np.array([0]))
     assert recall.reading() == (None, None)
     recall.hold(reading)
-    assert recall.last is reading[0] and recall.attended is reading[1]
+    assert recall.last is reading[0] and recall.attended_heads[0] is reading[1]
 
 
 def test_a_woken_brains_first_act_keeps_the_forecasts_read(tmp_path):
@@ -102,16 +102,16 @@ def test_a_woken_brains_first_act_keeps_the_forecasts_read(tmp_path):
             rereading(brain)
         action = brain.live(EYE[[1]], reward=[1.0], done=[False])
         assert brain.last_arousal["mode"] == "aroused" and brain.recall.slots == 7
-        attended = brain.recall.attended
+        attended = brain.recall.attended_heads[0]
         assert attended is not None and attended.shape == (1, 6)  # the six slots the act read
         pending = eligibility(brain)
         assert pending is not None and pending.any()
-        before = brain.recall.w_x.copy()
+        before = brain.recall.head_map(0)[0].copy()
         report = brain.learn([1.0], [False], EYE[[2]])
-        assert report["address_reward_step"] > 0.0 and not np.array_equal(brain.recall.w_x, before)
+        assert report["address_reward_step"] > 0.0 and not np.array_equal(brain.recall.head_map(0)[0], before)
         readings[name] = (
             action, brain.basal_ganglia.state.activation.copy(), attended, pending,
-            np.array(report["address_reward_step"]), brain.recall.w_x.copy(),
+            np.array(report["address_reward_step"]), brain.recall.head_map(0)[0].copy(),
         )
     for held, reread in zip(readings["held"], readings["reference"], strict=True):
         np.testing.assert_array_equal(held, reread)
@@ -130,7 +130,7 @@ def test_the_read_is_of_the_stream_as_the_end_leaves_it(tmp_path):
     held, reread = eligibility(brain), eligibility(reference)
     np.testing.assert_array_equal(held, reread)
     assert not held.any()
-    assert brain.recall.attended is None and reference.recall.attended is None
+    assert brain.recall.attended_heads is None and reference.recall.attended_heads is None
     assert_same_memory(brain.recall, reference.recall)
     assert_same_checkpoint(brain.save(tmp_path / "held"), reference.save(tmp_path / "reread"))
 
@@ -146,7 +146,7 @@ def test_a_calm_terminal_moment_witnesses_the_forecasts_read_without_eligibility
         assert subject.last_arousal["mode"] == "routine"
         assert subject.basal_ganglia._pending is None and eligibility(subject) is None
         assert subject.recall.last is None and subject.recall.slots == 1
-    assert brain.recall.attended is None and reference.recall.attended is None
+    assert brain.recall.attended_heads is None and reference.recall.attended_heads is None
     assert_same_memory(brain.recall, reference.recall)
     assert_same_checkpoint(brain.save(tmp_path / "held"), reference.save(tmp_path / "reread"))
 
@@ -173,8 +173,8 @@ def test_the_first_sampled_act_is_credited_whatever_the_associative_memory(tmp_p
     held, reread = eligibility(brain), eligibility(reference)
     assert held.any()
     np.testing.assert_array_equal(held, reread)
-    assert brain.recall.attended is not None
-    np.testing.assert_array_equal(brain.recall.attended, reference.recall.attended)
+    assert brain.recall.attended_heads is not None
+    np.testing.assert_array_equal(brain.recall.attended_heads[0], reference.recall.attended_heads[0])
     np.testing.assert_array_equal(
         brain.basal_ganglia.state.activation, reference.basal_ganglia.state.activation
     )
@@ -191,13 +191,13 @@ def test_without_an_address_rate_the_read_is_held_and_no_eligibility_is_kept(tmp
         subject.live(EYE[[1]], reward=[1.0], done=[False])
         assert subject.last_arousal["mode"] == "aroused"
         assert subject.basal_ganglia._pending is not None and eligibility(subject) is None
-    assert brain.recall.attended is not None
-    np.testing.assert_array_equal(brain.recall.attended, reference.recall.attended)
+    assert brain.recall.attended_heads is not None
+    np.testing.assert_array_equal(brain.recall.attended_heads[0], reference.recall.attended_heads[0])
     assert "recall/pending" not in saved_arrays(brain.save(tmp_path / "held"))
     assert_same_checkpoint(tmp_path / "held.npz", reference.save(tmp_path / "reread"))
-    before = brain.recall.w_x.copy()
+    before = brain.recall.head_map(0)[0].copy()
     brain.learn([1.0], [False], EYE[[2]])
-    np.testing.assert_array_equal(brain.recall.w_x, before)
+    np.testing.assert_array_equal(brain.recall.head_map(0)[0], before)
 
 
 def test_the_held_reads_eligibility_survives_a_checkpoint_while_its_outcome_is_pending(tmp_path):
@@ -214,7 +214,7 @@ def test_the_held_reads_eligibility_survives_a_checkpoint_while_its_outcome_is_p
     twin = cd.Brain.load(checkpoint)
     twin.live(EYE[[1]], reward=[1.0], done=[False])
     np.testing.assert_array_equal(eligibility(twin), pending)
-    np.testing.assert_array_equal(twin.recall.attended, brain.recall.attended)
+    np.testing.assert_array_equal(twin.recall.attended_heads[0], brain.recall.attended_heads[0])
     steps = [
         subject.learn([1.0], [False], EYE[[2]])["address_reward_step"]
         for subject in (brain, resumed, twin)
@@ -257,5 +257,5 @@ def test_a_refused_terminal_moment_keeps_the_outcome_and_the_retry_takes_it_once
     )
     assert brain.last_arousal["mode"] == "aroused" and brain.recall.slots == 1
     np.testing.assert_array_equal(eligibility(brain), eligibility(twin))
-    assert brain.recall.attended is None and twin.recall.attended is None
+    assert brain.recall.attended_heads is None and twin.recall.attended_heads is None
     assert_same_checkpoint(brain.save(tmp_path / "retried"), twin.save(tmp_path / "twin"))

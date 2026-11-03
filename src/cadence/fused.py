@@ -22,6 +22,7 @@ input per row and pool, in the order and summation the NumPy loop uses.
 
 from __future__ import annotations
 
+import functools
 import os
 import types
 from collections.abc import Callable, Sequence
@@ -1093,6 +1094,27 @@ if njit is not None:
     _residual_kernel, _residual_kernel_parallel = _rows_builds(_residual_rows)
 
 
+@functools.lru_cache(maxsize=32)
+def _no_nudge(
+    batch: int, n: int
+) -> tuple[
+    np.ndarray, np.ndarray, np.ndarray, int, float, np.ndarray, np.ndarray, np.ndarray, np.ndarray
+]:
+    """The arrays of a settle without a nudge, made once per batch size and width: the kernels
+    read them and never write them, so one set serves every such call."""
+    return (
+        np.zeros((1, 1)),
+        np.zeros(n),
+        np.full(n, -1, dtype=np.int64),
+        0,
+        0.0,
+        np.zeros(n),
+        np.ones(batch),
+        np.zeros((1, 1)),
+        np.zeros(n),
+    )
+
+
 def _nudge_arrays(
     nudge: Nudge | None, batch: int, n: int
 ) -> tuple[
@@ -1100,19 +1122,13 @@ def _nudge_arrays(
 ]:
     """The nudge as the dense arrays the kernels read: target, mask, group id per neuron
     (0..ngroups-1, -1 for none), the group count, beta, the per-neuron softmax temperatures (0 for a
-    plain nudge) and the per-row weight. A softmax nudge drives only grouped neurons."""
+    plain nudge) and the per-row weight. A softmax nudge drives only grouped neurons. A nudge
+    keeps its arrays for the calls that read it again (a phase's settle and its check)."""
     if nudge is None:
-        return (
-            np.zeros((1, 1)),
-            np.zeros(n),
-            np.full(n, -1, dtype=np.int64),
-            0,
-            0.0,
-            np.zeros(n),
-            np.ones(batch),
-            np.zeros((1, 1)),
-            np.zeros(n),
-        )
+        return _no_nudge(batch, n)
+    held = nudge.__dict__.get("_kernel_arrays")
+    if held is not None and held[0] == batch:
+        return cast(tuple[Any, ...], held[1])
     target = np.ascontiguousarray(np.broadcast_to(nudge.target, (batch, n)).astype(float))
     nmask = np.asarray(nudge.mask, float)
     softmax_t = (
@@ -1137,9 +1153,24 @@ def _nudge_arrays(
     if nudge.anchor is not None:
         anchor = np.ascontiguousarray(np.broadcast_to(nudge.anchor, (batch, n)), dtype=float)
         anchor_gain = np.ascontiguousarray(nudge.anchor_gain, dtype=float)
-    return target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain
+    arrays = target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain
+    nudge.__dict__["_kernel_arrays"] = (batch, arrays)
+    return arrays
 
 
+# the mask argument of a settle or check without a mask: the kernels read a mask only where
+# ``masked`` is set, so one unread array stands in for every such call
+_NO_MASK = np.ones((1, 1))
+
+
+def _fed_ranges(layout: Layout) -> np.ndarray:
+    """The ranges some block lands on, found once per layout."""
+    fed = layout.__dict__.get("_fed_ranges")
+    if fed is None:
+        fed = np.zeros(layout.ranges, dtype=np.bool_)
+        fed[layout.pair_post] = True
+        layout.__dict__["_fed_ranges"] = fed
+    return cast(np.ndarray, fed)
 
 
 # ``(compartment, basal blocks, apical flat blocks, apical blocks)`` of a graph with an apical
@@ -1153,13 +1184,22 @@ def _compartment(
 ) -> tuple[Any, ...]:
     """The kernels' arguments for the blocks and the apical compartment: ``(pairs,
     flat_apical, apical_pairs, has_apical, pool_of, pool_index, pool_starts, pool_run,
-    fraction, floor2, tiny, held, has_held)``. Without a compartment every block is basal."""
+    fraction, floor2, tiny, held, has_held)``. Without a compartment every block is basal. The
+    arrays a layout or a compartment determines are made once and kept on it: the kernels read
+    them and never write them."""
     if apical is None:
+        plain = layout.__dict__.get("_plain_compartment")
+        if plain is None or plain[0] != n:
+            plain = (
+                n, np.arange(layout.pairs, dtype=np.int64), np.zeros(0, dtype=np.int64),
+                np.full(n, -1, dtype=np.int64), np.zeros(0, dtype=np.int64),
+                np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64), np.zeros((1, 1)),
+            )
+            layout.__dict__["_plain_compartment"] = plain
+        _, pairs, apical_pairs, pool_of, pool_index, pool_starts, pool_run, no_held = plain
         return (
-            np.arange(layout.pairs, dtype=np.int64), flat, np.zeros(0, dtype=np.int64), False,
-            np.full(n, -1, dtype=np.int64), np.zeros(0, dtype=np.int64),
-            np.zeros(1, dtype=np.int64), np.zeros(0, dtype=np.int64), 1.0, 1.0, 0.0,
-            np.zeros((1, 1)), False,
+            pairs, flat, apical_pairs, False, pool_of, pool_index, pool_starts, pool_run,
+            1.0, 1.0, 0.0, no_held, False,
         )
     from .brain import _APICAL_TINY
 
@@ -1168,18 +1208,23 @@ def _compartment(
     held = None if nudge is None else nudge.apical_gain
     if held is not None and held.shape != (batch, pools):
         raise ValueError("a nudge's apical_gain needs one entry per row and pool")
-    index = np.arange(n, dtype=np.int64)
-    members = [index[m] for m in compartment.members]  # each pool in the order NumPy reads it
-    pool_of = np.full(n, -1, dtype=np.int64)
-    for k, part in enumerate(members):
-        pool_of[part] = k
-    pool_index = np.concatenate(members) if members else np.zeros(0, dtype=np.int64)
-    pool_starts = np.zeros(pools + 1, dtype=np.int64)
-    pool_starts[1:] = np.cumsum([len(part) for part in members])
-    pool_run = np.array(  # a pool that is one run of neurons is summed in place
-        [part[0] if part[-1] - part[0] + 1 == len(part) else -1 for part in members],
-        dtype=np.int64,
-    )
+    tables = compartment.__dict__.get("_kernel_pools")
+    if tables is None or tables[0] != n:
+        index = np.arange(n, dtype=np.int64)
+        members = [index[m] for m in compartment.members]  # each pool in the order NumPy reads it
+        pool_of = np.full(n, -1, dtype=np.int64)
+        for k, part in enumerate(members):
+            pool_of[part] = k
+        pool_index = np.concatenate(members) if members else np.zeros(0, dtype=np.int64)
+        pool_starts = np.zeros(pools + 1, dtype=np.int64)
+        pool_starts[1:] = np.cumsum([len(part) for part in members])
+        pool_run = np.array(  # a pool that is one run of neurons is summed in place
+            [part[0] if part[-1] - part[0] + 1 == len(part) else -1 for part in members],
+            dtype=np.int64,
+        )
+        tables = (n, pool_of, pool_index, pool_starts, pool_run)
+        compartment.__dict__["_kernel_pools"] = tables
+    _, pool_of, pool_index, pool_starts, pool_run = tables
     return (
         np.asarray(basal_pairs, dtype=np.int64), np.ascontiguousarray(flat_apical, dtype=float),
         np.asarray(apical_pairs, dtype=np.int64), True, pool_of, pool_index, pool_starts, pool_run,
@@ -1196,7 +1241,7 @@ def fused_settle(
     bias: np.ndarray,
     layout: Layout,
     flat: np.ndarray,
-    keep: np.ndarray,
+    keep: np.ndarray | None,
     neuron_model: NeuronModel,
     nudge: Nudge | None,
     steps: int,
@@ -1207,7 +1252,8 @@ def fused_settle(
     """Run the fused kernel in place on ``v`` and ``a``; returns ``(s, taken, activity_change)``.
 
     ``activation`` is accepted and ignored. Publication is recomputed
-    from ``v`` under the current mask, since cached readback may use an old mask.
+    from ``v`` under the current mask, since cached readback may use an old mask; ``keep`` is
+    None without a mask. A settle of no sweeps publishes the activations and launches nothing.
     ``apical`` settles a graph with an apical compartment (``ApicalBlocks``); ``flat`` then
     holds its basal synapses. With more than one row and more than one Numba thread the rows
     settle in parallel, to the same bits.
@@ -1215,9 +1261,13 @@ def fused_settle(
     assert njit is not None
     batch, n = v.shape
     standing = np.ascontiguousarray(drive + bias)
-    masked = bool((keep != 1.0).any())
-    # A broadcast view preserves shared masks without allocating a batch-sized copy.
-    keep = np.broadcast_to(np.asarray(keep, float), (batch, n))
+    if keep is None:
+        masked = False
+        keep = _NO_MASK
+    else:
+        # one (batch, n) array of the kernel's type, a shared mask broadcast
+        keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
+        masked = bool((keep != 1.0).any())
     if not v.any():  # from rest every neuron publishes the same thing
         row = np.empty(n)
         m = neuron_model
@@ -1231,15 +1281,17 @@ def fused_settle(
             _activation(v[b], m.slope, m.threshold, m.rest_emission, m.leak, s[b])
     if masked:
         s *= keep
+    if steps == 0:  # no sweep: the activations are published and nothing else is read
+        if apical is not None:  # a held gain's shape is checked at no sweeps too
+            _compartment(apical, layout, flat, nudge, batch, n)
+        return s, 0, np.zeros(batch)
     adapt = neuron_model.adaptation
     has_adapt = adapt is not None
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n
     )
     lay = layout
-    has_synaptic_input = np.zeros(lay.ranges, dtype=np.bool_)
-    has_synaptic_input[lay.pair_post] = True
-    freezable = ~has_synaptic_input  # nothing arrives: once still, still for good
+    freezable = ~_fed_ranges(lay)  # nothing arrives: once still, still for good
     if has_adapt:
         freezable = np.zeros(lay.ranges, dtype=np.bool_)
     elif nudge is not None:
@@ -1271,7 +1323,7 @@ def fused_settle(
         lay.pair_post,
         lay.offset,
         freezable,
-        np.asarray(keep, float),
+        keep,
         masked,
         neuron_model.dt,
         neuron_model.slope,
@@ -1306,24 +1358,28 @@ def fused_residual(
     bias: np.ndarray,
     layout: Layout,
     flat: np.ndarray,
-    keep: np.ndarray,
+    keep: np.ndarray | None,
     neuron_model: NeuronModel,
     nudge: Nudge | None,
     apical: ApicalBlocks | None = None,
 ) -> np.ndarray:
     """``Brain.residual`` for a host state of a blocked connectome, in one compiled call.
 
-    The same equations as the NumPy path: the activation of ``v`` under the mask, one block
-    transport, the potential equation with adaptation, nudge and apical compartment
-    (``apical``, as in ``fused_settle``), the mask's projection, and the adaptation
-    equation; the maximum absolute error per row, infinity where it is not finite. Nothing
-    is changed.
+    The same equations as the NumPy path: the activation of ``v`` under the mask (``keep``,
+    None without one), one block transport, the potential equation with adaptation, nudge and
+    apical compartment (``apical``, as in ``fused_settle``), the mask's projection, and the
+    adaptation equation; the maximum absolute error per row, infinity where it is not finite.
+    Nothing is changed.
     """
     assert njit is not None
     batch, n = v.shape
     m = neuron_model
-    keep = np.broadcast_to(np.asarray(keep, float), (batch, n))
-    masked = bool((keep != 1.0).any())
+    if keep is None:
+        masked = False
+        keep = _NO_MASK
+    else:
+        keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
+        masked = bool((keep != 1.0).any())
     adapt = m.adaptation
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n
@@ -1348,7 +1404,7 @@ def fused_residual(
         layout.pair_pre,
         layout.pair_post,
         layout.offset,
-        np.ascontiguousarray(keep, dtype=float),
+        keep,
         masked,
         m.dt,
         m.slope,
@@ -1647,15 +1703,33 @@ if njit is not None:
         delta: np.ndarray,
         partner: np.ndarray,
         efficacy: np.ndarray,
+        gain_pre: np.ndarray,
         cap: float,
         out_delta: np.ndarray,
         out_scale: np.ndarray,
-    ) -> None:
+        out_weight: np.ndarray,
+    ) -> tuple[int, int, int]:
+        """Each synapse's tied step, bounded efficacy and effective weight; returns how many
+        of each are not finite (``x <= big and x >= -big`` fails for an infinity and a NaN)."""
+        bad_delta = 0
+        bad_scale = 0
+        bad_weight = 0
+        big = 1.7976931348623157e308
         for e in prange(delta.shape[0]):
             k = partner[e]
             d = 0.5 * (delta[e] + delta[k]) if k >= 0 else delta[e]
             out_delta[e] = d
-            out_scale[e] = min(max(efficacy[e] + d, -cap), cap)
+            s = min(max(efficacy[e] + d, -cap), cap)
+            out_scale[e] = s
+            w = gain_pre[e] * s
+            out_weight[e] = w
+            if not (d <= big and d >= -big):
+                bad_delta += 1
+            if not (s <= big and s >= -big):
+                bad_scale += 1
+            if not (w <= big and w >= -big):
+                bad_weight += 1
+        return bad_delta, bad_scale, bad_weight
 
     _tied, _tied_parallel = _rows_builds(_tied_entries)
 
@@ -1708,17 +1782,21 @@ def optimizer_step(
 
 
 def tied_step(
-    delta: np.ndarray, partner: np.ndarray, efficacy: np.ndarray, cap: float
-) -> tuple[np.ndarray, np.ndarray]:
+    delta: np.ndarray, partner: np.ndarray, efficacy: np.ndarray, gain_pre: np.ndarray,
+    cap: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, tuple[bool, bool, bool]]:
     """``Learner.apply``'s per-synapse arithmetic for an all-plastic learner without per-synapse
     rates or groups, to the bit: each tied pair moves by the mean of its two steps (``partner``,
-    -1 for an untied synapse), and the new efficacy is bounded by ``cap``. Returns ``(step,
-    efficacy)``."""
+    -1 for an untied synapse), the new efficacy is bounded by ``cap``, and the effective weight
+    is ``gain_pre`` times it (the product ``Brain`` takes). Returns ``(step, efficacy, weights,
+    finite)``, ``finite`` saying whether every step, every efficacy and every weight is finite,
+    as ``np.isfinite(...).all()`` would."""
     assert njit is not None
     count = len(delta)
-    out_delta, out_scale = np.empty(count), np.empty(count)
-    (_tied_parallel if _elements_in_parallel(count) else _tied)(
+    out_delta, out_scale, out_weight = np.empty(count), np.empty(count), np.empty(count)
+    bad = (_tied_parallel if _elements_in_parallel(count) else _tied)(
         np.ascontiguousarray(delta, dtype=float), partner,
-        np.ascontiguousarray(efficacy, dtype=float), float(cap), out_delta, out_scale,
+        np.ascontiguousarray(efficacy, dtype=float), np.ascontiguousarray(gain_pre, dtype=float),
+        float(cap), out_delta, out_scale, out_weight,
     )
-    return out_delta, out_scale
+    return out_delta, out_scale, out_weight, (bad[0] == 0, bad[1] == 0, bad[2] == 0)

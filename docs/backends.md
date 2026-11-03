@@ -6,7 +6,7 @@ Every graph brain runs on the `"cpu"` backend in NumPy float64 unless you pick a
 from the NumPy-only [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.92.1"
+python -m pip install "cadence-net[fast]==0.93.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX; from a checkout, use
@@ -49,7 +49,11 @@ packages. Where MLX imports, [`tests/test_mlx_backend.py`](../tests/test_mlx_bac
 composed brain on it against the CPU: it settles and learns as the CPU does within float32
 rounding, lives, imagines, saves and continues a pending outcome, reads several recall heads and
 grows, and it refuses an apical compartment. These pass on Apple silicon (macOS 15, Python 3.13,
-MLX 0.32) together with the rest of the suite.
+MLX 0.32) together with the rest of the suite. On a float32 backend a brain reloaded from its
+checkpoint continues within that rounding, not bit for bit: on torch MPS, over 1,000 moments of a
+life with every 0.93 option on, the reloaded brain's efficacies stayed within 5e-4 of the living
+brain's and its acts were the same, and the difference was gone after 3,000; on the CPU the
+reloaded brain is exact.
 
 ## What runs where
 
@@ -144,7 +148,8 @@ changing-temperature life does not retain a new set of nudge tensors at every mo
 Masks have shape `(n,)` or `(1, n)` for every row, or `(batch, n)` per row, with entries in
 [0, 1], on every backend. A mask scales potential and activation at each step; zero removes a
 neuron's published activity while its adaptation decays. A warm start recomputes the published
-activation under the current mask, and the fused kernel reads a shared mask without copying it.
+activation under the current mask; the fused kernel is handed a shared mask laid out per row,
+and no mask at all when none is given.
 
 `cd.conformance(graph, stimulus, steps=60)` settles a `NeuralGraph` (`brain.learner.brain`
 for a composed brain) from rest and compares its trajectory with the neuron-by-neuron float64

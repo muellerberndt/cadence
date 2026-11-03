@@ -25,7 +25,7 @@ def run(protocol_path: Path) -> Receipt:
     r = admission.relevance
     results = []
     for seed in protocol["development_seeds"]:
-        brain = cd.Brain.compose(r.INPUTS, 2, seed=seed, **protocol["brain"])
+        brain = cd.Brain.compose(r.INPUTS, 2, seed=seed, **admission.genes(protocol["brain"]))
         graph = brain.brain
         brain.learner.brain = cd.NeuralGraph(
             graph.connectome, graph.neuron_model.replace(dt=protocol["dt"]),

@@ -210,9 +210,10 @@ def enter_ring(brain: cd.Brain, arm: str, stages: dict[str, Any]) -> None:
     if arm in ("gene", "frozen", "random"):
         return
     genes = dict(stages[arm])
+    # the protocol's own key, not a brain setting: the stage arm resets the arousal at the door
     reset = bool(genes.pop("reset_arousal", False))
     brain.retune(**genes)
-    if reset:  # the arousal's reset, which retune took as reset_arousal up to 0.84.3
+    if reset:
         assert brain.arousal is not None
         brain.arousal.reset()
 

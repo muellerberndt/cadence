@@ -10,6 +10,7 @@ import argparse
 import hashlib
 import importlib.util
 import json
+import runpy
 import sys
 import time
 from copy import deepcopy
@@ -20,6 +21,7 @@ import numpy as np
 from cadence.receipts import Receipt, canonical_json, canonical_sha256, source_manifest
 
 HERE = Path(__file__).resolve().parent
+genes = runpy.run_path(str(Path(__file__).with_name("historical.py")))["genes"]
 PROTOCOL = HERE / "heads-continuation-protocol.json"
 SPEC = importlib.util.spec_from_file_location("heads_suffix_relevance", HERE / "heads_relevance.py")
 assert SPEC is not None and SPEC.loader is not None
@@ -172,7 +174,7 @@ def restore(path, original, parent, protocol):
     if (sr.parameter_digest(brain) != original["initial_parameters"]
             or canonical_sha256(initial) != original["initial_interface_sha256"]
             or brain.brain.neuron_model.to_dict() != original["neuron_model"]
-            or brain.describe()["genes"] != original["resolved"]["genes"]):
+            or brain.describe()["genes"] != genes(original["resolved"]["genes"])):
         raise ValueError("fresh composed anatomy/parameters/config differ from parent")
     record = original["parameter_snapshot"]
     if path.name != record["file"] or hashlib.sha256(path.read_bytes()).hexdigest() != record[

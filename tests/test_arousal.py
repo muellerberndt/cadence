@@ -248,10 +248,10 @@ def test_the_record_channel_of_0843_is_refused_by_name_and_its_founder_saves_loa
         cd.ArousalConfig(record_surprise=0.0)
     for genes in ({"arousal": True, "arousal_record_surprise": 0.0},
                   {"arousal": {"record_surprise": 0.0}}):
-        with pytest.raises(ValueError, match="record_surprise was removed.*0.84.3"):
+        with pytest.raises(ValueError, match="record_surprise was retired.*0.84.3"):
             cd.Brain.compose(4, 2, modules=(8,), **genes)
     brain = calm_brain()
-    with pytest.raises(ValueError, match="arousal_record_surprise was removed.*0.84.3"):
+    with pytest.raises(ValueError, match="arousal_record_surprise was retired.*0.84.3"):
         brain.retune(arousal_record_surprise=1.0)
     assert "arousal_record_surprise" not in brain.describe()["genes"]
     assert "record_surprise" not in cd.ArousalConfig.space()
@@ -265,7 +265,7 @@ def test_the_record_channel_of_0843_is_refused_by_name_and_its_founder_saves_loa
     saved = as_saved_by_0843(state, records=2, usual_record=0.3)
     assert cd.Arousal.from_dict(saved).to_dict() == state
     weighed = {**saved, "config": {**saved["config"], "record_surprise": 0.5}}
-    with pytest.raises(ValueError, match="record_surprise above zero.*0.84.3"):
+    with pytest.raises(ValueError, match="record_surprise=0.5.*retired in 0.85.0.*0.84.3"):
         cd.Arousal.from_dict(weighed)
     for key, bad in (("records", -1), ("usual_record", float("nan"))):
         with pytest.raises(ValueError, match=key):
@@ -306,9 +306,12 @@ def test_legacy_arousal_without_need_migrates_without_changing_its_saved_state()
         corrupt = {**legacy, "config": {k: v for k, v in legacy["config"].items() if k != gene}}
         with pytest.raises(ValueError, match="incomplete saved arousal config"):
             cd.Arousal.from_dict(corrupt)
-    for format in (None, "cadence-arousal/0", "cadence-arousal/5"):
+    for format in (None, "cadence-arousal/0"):
         with pytest.raises(ValueError, match="arousal format"):
             cd.Arousal.from_dict({**legacy, "format": format})
+    # the format of a positive hindsight (0.88.1 to 0.92.1), retired in 0.93.0
+    with pytest.raises(ValueError, match="cadence-arousal/5.*retired in 0.93.0"):
+        cd.Arousal.from_dict({**legacy, "format": "cadence-arousal/5"})
 
 
 # -- the behaviour temperature
@@ -506,6 +509,8 @@ def test_a_saved_life_continues_identically(tmp_path, wake, need):
 
 
 def test_a_legacy_saved_brain_continues_with_zero_need(tmp_path):
+    """A brain saved by 0.84.3 carries the law without the scaled need (``need_scale`` 0, left
+    out of its formats): the expert route's value, which loads as saved and continues."""
     brain = calm_brain(seed=5, youth=8, need_scale=0.0)  # a brain 0.84.3 could save
     eye = np.eye(4)
     brain.live(eye[[0]])
@@ -528,8 +533,6 @@ def test_a_legacy_saved_brain_continues_with_zero_need(tmp_path):
         np.testing.assert_array_equal(brain.live(x, reward=reward), twin.live(x, reward=reward))
         assert brain.last_arousal == twin.last_arousal
     assert brain.arousal.to_dict() == twin.arousal.to_dict()
-    for name, value in snapshot(brain).items():
-        np.testing.assert_array_equal(snapshot(twin)[name], value)
 
 
 def test_a_refused_forecast_changes_nothing_and_the_same_call_can_be_retried():

@@ -79,3 +79,37 @@ def test_fit_cannot_publish_a_finite_accuracy_as_a_qualified_brain_score():
     with pytest.raises(RuntimeError, match="no action issued"):
         brain.fit(x, labels, epochs=1)
     assert brain.learner.updates == 1  # the accepted lesson remains; its score was refused
+
+
+def test_a_finite_lessons_diagnostic_check_reads_the_phases_own_nudge(monkeypatch):
+    """Each nudged phase and its residual diagnostic share one Nudge (its kernel arrays made
+    once); the opposite phase's is the pull reversed; the public phase builds its own."""
+    wire = cd.Connectome.from_synapses(
+        2, pre=np.array([0, 1]), post=np.array([1, 0]), sign=np.array([0.2, 0.2]),
+    )
+    graph = cd.NeuralGraph(wire, cd.learning_neuron_model(dt=0.5))
+    learner = cd.Learner(graph, [0, 1], cd.LearnerConfig(
+        free_steps=64, nudged_steps=16, tolerance=3e-3,
+    ))
+    settled, checked = [], []
+    settle, residual = cd.NeuralGraph.settle_batch, cd.NeuralGraph.residual
+
+    def recorded_settle(self, *args, **kwargs):
+        if kwargs.get("nudge") is not None:
+            settled.append(kwargs["nudge"])
+        return settle(self, *args, **kwargs)
+
+    def recorded_residual(self, *args, **kwargs):
+        if kwargs.get("nudge") is not None:
+            checked.append(kwargs["nudge"])
+        return residual(self, *args, **kwargs)
+
+    monkeypatch.setattr(cd.NeuralGraph, "settle_batch", recorded_settle)
+    monkeypatch.setattr(cd.NeuralGraph, "residual", recorded_residual)
+    drive, labels = np.array([[0.2, 0.0], [0.0, 0.2]]), np.array([0, 1])
+    states, report = learner.step(drive, labels)
+    assert [nudge.beta for nudge in settled] == [0.1, -0.1]
+    assert len(checked) == 2 and settled[0] is checked[0] and settled[1] is checked[1]
+    assert report["nudged_residual_checks"] == report["opposite_residual_checks"] == 1
+    pushed = learner.nudged(drive, states.free, learner.targets(labels), sign=-1.0)
+    assert settled[-1].beta == -0.1 and settled[-1] is not settled[1] and pushed.steps > 0

@@ -90,7 +90,8 @@ def test_historical_numerical_records_reject_other_missing_or_new_fields(histori
     admission = historical
     body = Receipt.read(HERE / "results" / "founder-capacity-development.json").body
     for section in ("learning_config", "genes"):
-        for mutate in (lambda record: record.pop(next(iter(record))),
+        # a real gene, not one of the constants of 0.93.0 the historical reader leaves out
+        for mutate in (lambda record: record.pop("actor_eta" if "actor_eta" in record else "eta"),
                        lambda record: record.update(unknown_numerical_policy=0)):
             result = deepcopy(body["runs"][0])
             record = result["resolved"]["genes"] if section == "genes" else result[section]

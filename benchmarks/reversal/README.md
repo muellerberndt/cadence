@@ -72,8 +72,8 @@ files, reads and writes of the associative memory, replay presentations, brains 
 the sweeps of a refused attempt, and records the wall time of a moment in each mode. The
 probe copies are read and the living brain is not: a life gives the same executed actions
 with and without its probes, and reading a probability from the settled state changes
-nothing. A refused answer raises; the life is recorded as crashed with the work it had
-done.
+nothing. A refused answer raises, a probe copy's as the life's own, and its sweeps are
+charged (`refused_sweeps`); the life is recorded as crashed with the work it had done.
 
 ## Gates, fixed before the confirmation run
 
