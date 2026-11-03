@@ -3255,6 +3255,11 @@ class _TorchKernel:
         }
 
 
+# The most sweeps one lazy MLX graph holds before it is evaluated: a settle without a movement
+# tolerance is evaluated once at its end, and a long one this often, which bounds its memory.
+_MLX_GRAPH_STEPS = 64
+
+
 class _MlxKernel:
     """Block settling on Apple silicon through MLX: float32, unified memory, lazy graphs."""
 
@@ -3282,7 +3287,6 @@ class _MlxKernel:
         self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
         for k in range(layout.pairs):
             self.by_post[int(layout.pair_post[k])].append(k)
-        self.sources = layout.sources()
         self.edge_index = mx.array(layout.edge_index)
 
     def _take(self, weights: np.ndarray, bias: np.ndarray) -> None:
@@ -3318,13 +3322,10 @@ class _MlxKernel:
             s = s + neuron_model.leak * mx.minimum(r, 0.0) / rest
         return s
 
-    def _synaptic_input(self, s: Any, previous: Any, cache: list[Any]) -> Any:
+    def _synaptic_input(self, s: Any) -> Any:
+        """Every block's product at every step: the device makes a product in less time than a
+        host synchronization would take to find its range unchanged."""
         mx, lay = self.mx, self.layout
-        moved = [True] * lay.ranges
-        if previous is not None:
-            for r in self.sources:
-                a0, a1 = int(lay.starts[r]), int(lay.starts[r + 1])
-                moved[r] = not bool(mx.array_equal(s[:, a0:a1], previous[:, a0:a1]).item())
         parts = []
         batch = s.shape[0]
         for r in range(lay.ranges):
@@ -3332,9 +3333,8 @@ class _MlxKernel:
             total = None
             for k in self.by_post[r]:
                 a0, a1, _, _ = lay.bounds(k)
-                if cache[k] is None or moved[int(lay.pair_pre[k])]:
-                    cache[k] = s[:, a0:a1] @ self.blocks[k]
-                total = cache[k] if total is None else total + cache[k]
+                product = s[:, a0:a1] @ self.blocks[k]
+                total = product if total is None else total + product
             parts.append(mx.zeros((batch, b1 - b0), dtype=mx.float32) if total is None else total)
         return mx.concatenate(parts, axis=1)
 
@@ -3397,8 +3397,6 @@ class _MlxKernel:
         traj = []
         taken = 0
         activity_change = mx.zeros((batch,), dtype=mx.float32)
-        cache: list[Any] = [None] * self.layout.pairs
-        previous = None
         s = self._activation(v)
         if masked:
             s = s * k
@@ -3406,7 +3404,7 @@ class _MlxKernel:
         if capture is not None:
             capture.step(np.array(v), np.array(s), np.array(a))
         for t in range(steps):
-            synaptic_input = self._synaptic_input(s, previous, cache)
+            synaptic_input = self._synaptic_input(s)
             total = synaptic_input + standing
             if adapt is not None:
                 total = total - adapt.strength * a
@@ -3442,7 +3440,8 @@ class _MlxKernel:
                 a = a + (s - a) / adapt.tau_steps
             movement = mx.abs(s - previous)
             activity_change = activity_change + movement.sum(axis=1)
-            mx.eval(v, s, a, activity_change)  # one graph per step; the tolerance needs the number
+            if tolerance is not None or (t + 1) % _MLX_GRAPH_STEPS == 0:
+                mx.eval(v, s, a, activity_change)  # a stop reads the step's number
             if capture is not None:
                 capture.step(np.array(v), np.array(s), np.array(a))
             if want:

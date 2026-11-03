@@ -101,3 +101,24 @@ def test_an_update_gives_the_new_brain_a_kernel_made_from_its_weights(tmp_path):
     huge = updated.weights * 1e300
     with pytest.raises(ValueError, match="runtime precision"):
         updated._with_update(updated.efficacy * 1e300, huge, updated.bias, (True, True))
+
+
+def test_a_settle_is_the_same_bits_as_one_graph_and_step_by_step(tmp_path):
+    """MLX makes every block's products at every step and evaluates a settle's graph at its end
+    (at least every 64 steps): the same state, to the bit, as the same sweeps evaluated one by
+    one; a movement tolerance still stops at the first quiet step."""
+    _, mlx = pair(tmp_path)
+    graph = mlx.brain
+    drive = mlx.stimulus(X)
+    whole = graph.settle_batch(drive, steps=130)
+    state = None
+    for _ in range(130):
+        state = graph.settle_batch(drive, steps=1, state=state)
+    for name in ("v", "activation", "adaptation"):
+        np.testing.assert_array_equal(getattr(whole, name), getattr(state, name))
+    halves = graph.settle_batch(drive, steps=65, state=graph.settle_batch(drive, steps=65))
+    np.testing.assert_array_equal(whole.v, halves.v)
+    stopped = graph.settle_batch(drive, steps=500, tolerance=1e-4)
+    again = graph.settle_batch(drive, steps=stopped.steps)
+    assert 0 < stopped.steps < 500
+    np.testing.assert_array_equal(stopped.v, again.v)

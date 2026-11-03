@@ -161,8 +161,10 @@ reference transmission `ledger` and `final_active` (neurons at activation 0.5 or
 On the CPU backend transport is dense, block products between neuron ranges, when the block
 layout fits `NeuralGraph(dense_limit=2048)` (at most `dense_limit ** 2` entries); the CPU paths
 reuse the products of a source range (one that receives no synapses) whose activation did not
-change. MLX checks each source range for equality on the host at every step, one
-synchronization per range per step, and reuses the products of an unchanged one.
+change. MLX makes every block's products at every step, which costs the device less than the
+host synchronization that would find a range unchanged, and evaluates a settle's graph once at
+its end (at least every 64 steps of a long one), or at every step when a movement `tolerance`
+is read.
 
 Torch keeps a settle's state on its device neuron-major, `(neurons, batch)`, and sums each
 sweep's synaptic input by a transport plan made once per graph. The rows of the synapse matrix
