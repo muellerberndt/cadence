@@ -11,6 +11,11 @@ path when its mistakes take it where the demonstrator never went
 memory (`memory_choice=True`) also records the shown act for its situation
 ([episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before)).
 
+Acquisition, working-memory recall and durable retention are separate measurements: `predict`
+and `accuracy` test the graph, `act` the graph with its memories
+([check that a memory does the work](memory.md#check-that-a-memory-does-the-work),
+[evaluate a brain](evaluate.md)).
+
 ## Explicit learning with `step`
 
 `step(observations, *, reward=None, done=None, teacher=None, salience=None,
@@ -60,22 +65,52 @@ a recall memory an act writes the moment to it, so a lesson after an act on the 
 observations reads the moment itself, its successor still empty, and warns: teach first,
 then act, where the order is yours to choose.
 
-## A supervised-only stream
+## Teach on the brain's own path
 
-`step(teacher=...)` issues a reward-eligible action, so the next `step` without a
-reward teaches the actor and critic a zero outcome. For demonstrations with no reward
-protocol, read context with greedy actions and teach the learner on the memory-bearing
-drive of `stimulus(observations, *, memory=True)`:
+A brain that only watches a demonstrator learns the states the demonstrator visits. Once it
+acts, its own small errors lead it to states no lesson covered, and the errors compound over an
+episode. Labels on the states the brain itself reaches cover exactly those. The recipe is DAgger
+(Ross, Gordon and Bagnell 2011). After a bootstrap by watching, the brain acts and its own move
+is executed with `brain.act(observation, greedy=True)`, the demonstrator labels that same
+observation, and `brain.lesson(observation, label)` teaches it. A greedy act holds nothing for
+reward, so the lesson is legal; `lesson` refuses while a sampled action awaits its outcome. Each
+batch row below is one stream:
 
 ```python
-supervised = Brain.compose(4, 2, modules=(16, 8), seed=7)
-supervised.act(observation, greedy=True)   # advance context without reward eligibility
-_, lesson_work = supervised.learner.step(supervised.stimulus(following), np.array([1]))
-assert supervised.act(following, greedy=True).shape == (1,)
+def observe(position):  # a one-hot position on a line of five cells
+    return np.eye(5)[position]
+
+def demonstrator(position):  # the policy the brain watches: 1 steps right, 0 steps left
+    return (position < 2).astype(np.int64)
+
+def move(position, action):
+    return np.clip(position + np.where(action == 1, 1, -1), 0, 4)
+
+pupil = cd.Brain.compose(inputs=5, actions=2, seed=0, teaching="normalized")  # the point above
+position = np.full(32, 2)  # 32 streams, one per batch row, starting in the middle
+for moment in range(32):  # bootstrap by watching: the demonstrator's moves are executed
+    label = demonstrator(position)
+    pupil.lesson(observe(position), label)
+    position = move(position, label)
+cells = np.arange(5)
+assert (pupil.predict(observe(cells)) != demonstrator(cells)).any()  # cells it never saw
+
+pupil.reset()  # new streams, starting anywhere
+position = np.random.default_rng(0).integers(0, 5, 32)
+for moment in range(32):  # then the brain's own path
+    shown = observe(position)
+    action = pupil.act(shown, greedy=True)  # its own move is executed; nothing awaits reward
+    pupil.lesson(shown, demonstrator(position))  # the demonstrator labels the state reached
+    position = move(position, action)
+assert (pupil.predict(observe(cells)) == demonstrator(cells)).all()
 ```
 
-Direct learner calls leave `Brain.last_learning` untouched; keep their report. Finish
-any outstanding real outcome before a reward-driven life switches to greedy actions.
+Watching alone, the pupil copies the two cells the demonstrator visits and answers the others
+wrongly; on its own path it reaches those cells and learns them. The labels must come from the
+demonstrator the brain watched: in the measurement of
+[issue 215](https://github.com/muellerberndt/cadence/issues/215), corrections from a different
+policy after a bootstrap by watching lowered the agreement with the watched demonstrator. Teach
+many rows at once at the normalized point [above](#many-lessons-the-normalized-point-for-imitation).
 
 ## Lessons only where the answer differs
 
@@ -110,7 +145,9 @@ relevant fact still dropped the held-out answers to chance
 ([EXP-72](https://github.com/WGlynn/cadence-teachers/blob/main/experiments/EXP-72.md), Will
 Glynn). Founder 59201 reads 1.00 / .88 against .39 / .31 on the series' runner.
 
-**In proportion to the surprise (opt-in, `learning_surprise_share=True`).** A surprise lesson's
+### In proportion to the surprise
+
+**Opt-in, `learning_surprise_share=True`.** A surprise lesson's
 contrast is read over the rows it teaches, so a lesson with one wrong row of sixteen takes as
 large a step as a lesson with sixteen. Under the normalized point that step does not shrink as
 the answers become right, and a few wrong rows can undo what the others hold. With
@@ -126,20 +163,13 @@ on. Without it the readings swing: one seed reads 0.01 after 1,000 lessons, 0.18
 at 0.97 to 0.99; four of the six keep every reading from 500 lessons on above 0.80, and two dip
 once (to 0.18 and to 0.77) before they recover; without the share every one of the six collapses
 at least once after 500 lessons (to 0.01 to 0.29) and still ends at 0.93 to 0.99. The share
-removes the collapse at the end everywhere and the collapses on the way on four of six. Teaching every row (the sweep with `learning_surprise` off) holds 0.92 to 0.99
-from 800 lessons on at about a third more time per lesson. Scaling the contrast instead, so
+removes the collapse at the end everywhere and the collapses on the way on four of six.
+Scaling the contrast instead, so
 that the running moments read it as
 well, swings as the plain rule does: the normalization divides the scale out
 ([#239](https://github.com/muellerberndt/cadence/issues/239)).
 
-## Acquisition, working memory and durable retention
-
-Acquisition, working-memory recall and durable retention are separate measurements: `predict`
-and `accuracy` test the graph, `act` the graph with its memories
-([check that a memory does the work](memory.md#check-that-a-memory-does-the-work),
-[evaluate a brain](evaluate.md)).
-
-### Teach several types in sequence: rehearsal
+## Teach several types in sequence: rehearsal
 
 Lessons on a new type move the same synapses the earlier types' answers rest on, so teaching types
 one after another can erase the earlier ones. `learning_rehearsal=r` (opt-in, founder 0) keeps a
@@ -191,46 +221,16 @@ was kept, tried on the release branch and withdrawn before release, kept types t
 cost the cues the read holds (first 0.286 to 0.458 and last 0.458 to 0.700 on the same fresh
 founders): the stale reads taught the cortex, and the read's own maps were never taught again.
 
-## Rates under normalization
-
-With `normalize > 0` each plastic efficacy and bias keeps a running second moment of its raw
-signal. Before masks, synapse rates, tying and clipping, the increment is
-
-```text
-increment = rate * signal / (sqrt(bias_corrected_second_moment) + floor)
-```
-
-with `rate` = `eta` or `eta_bias`, `signal` the raw contrast (its bias-corrected mean under
-`momentum`; the second moment always reads the raw contrast) and `floor` = `normalize_floor`. A
-first update is `rate * g / (abs(g) + floor)`, so a consistent signal well above the floor steps
-by about the rate whatever its size; changing signals can step above it. Momentum with RMS is an
-Adam-style update.
-
-A constant floor is no reference for every synapse at once. Credit that reaches a region several
-synapses from the output is orders of magnitude fainter than the readout's, so the floor that keeps
-the readout's quiet synapses still swallows the deep region's whole signal. `normalize_relative`
-above zero replaces it by a floor of that share of each synapse's projection (the block of synapses
-between its two neuron ranges; a bias reads its range): every projection steps at about the rate on
-its own scale, the faint one as the strong one, and a synapse quieter than its projection still
-steps less. It needs `normalize` above zero; the teaching point `"deep"` sets it at 0.1 for
-brains with the [apical compartment](anatomy.md#the-apical-compartment), the other points keep
-`normalize_floor`, and `LearnerConfig.normalize_relative` sets it for an expert configuration.
-
-The composed rates (`eta=0.5` teaching, 1.0 actor) are unnormalized; normalized at those rates,
-steps can dwarf the raw signals and saturate the outputs. Retune `eta` and `eta_bias` together;
-a development sweep might start at `eta` 0.001 to 0.003, checked against acquisition, retention
-and actual step sizes. `LearnerConfig` warns when `normalize > 0` and `eta` or `eta_bias` exceeds
-0.05; smaller rates can also fail. The actor steps on its raw contrast
-([actor rates](reward.md#actor-rates)).
-
-### Many lessons: the normalized point for imitation
+## Many lessons: the normalized point for imitation
 
 For a brain that learns a demonstrator's policy from many lessons, compose it with
 `teaching="normalized"` (the teaching learner's steps 0.003 and 0.0003 under a running RMS of
 forgetting 0.99 and floor 1e-4, momentum 0.9) or move a living brain there with
 `retune(teaching="normalized")`, and teach about 32 rows per lesson. In a copy measurement a composed
 brain with one region of 256 neurons (`Brain.compose(260, 3, modules=(256,))`) learned the moves
-of a three-move look-ahead demonstrator in a light-cycle game on a 24 x 24 grid: 260 inputs of an
+of a three-move look-ahead demonstrator in a light-cycle game on a 24 x 24 grid (a game outside
+the library; no instrument in this repository holds the light-cycle readings of this page): 260
+inputs of an
 egocentric view, three actions, about 124,000 labelled moments from 1,400 games, and 100 further
 games held out. The moments came in random order through
 `brain.learner.step(brain.stimulus(x, memory=False), labels)` and were scored cold with
@@ -273,49 +273,51 @@ A normalized founder for both composed learners was measured and declined in 0.7
 re-adaptation after a contingency change reached 0.486 against its 0.9 contract. The point above
 sets the teaching learner alone; the actor keeps its rates.
 
-## Teach on the brain's own path
+### Rates under normalization
 
-A brain that only watches a demonstrator learns the states the demonstrator visits. Once it
-acts, its own small errors lead it to states no lesson covered, and the errors compound over an
-episode. Labels on the states the brain itself reaches cover exactly those. The recipe is DAgger
-(Ross, Gordon and Bagnell 2011). After a bootstrap by watching, the brain acts and its own move
-is executed with `brain.act(observation, greedy=True)`, the demonstrator labels that same
-observation, and `brain.lesson(observation, label)` teaches it. A greedy act holds nothing for
-reward, so the lesson is legal; `lesson` refuses while a sampled action awaits its outcome. Each
-batch row below is one stream:
+With `normalize > 0` each plastic efficacy and bias keeps a running second moment of its raw
+signal. Before masks, synapse rates, tying and clipping, the increment is
 
-```python
-def observe(position):  # a one-hot position on a line of five cells
-    return np.eye(5)[position]
-
-def demonstrator(position):  # the policy the brain watches: 1 steps right, 0 steps left
-    return (position < 2).astype(np.int64)
-
-def move(position, action):
-    return np.clip(position + np.where(action == 1, 1, -1), 0, 4)
-
-pupil = cd.Brain.compose(inputs=5, actions=2, seed=0, teaching="normalized")  # the point above
-position = np.full(32, 2)  # 32 streams, one per batch row, starting in the middle
-for moment in range(32):  # bootstrap by watching: the demonstrator's moves are executed
-    label = demonstrator(position)
-    pupil.lesson(observe(position), label)
-    position = move(position, label)
-cells = np.arange(5)
-assert (pupil.predict(observe(cells)) != demonstrator(cells)).any()  # cells it never saw
-
-pupil.reset()  # new streams, starting anywhere
-position = np.random.default_rng(0).integers(0, 5, 32)
-for moment in range(32):  # then the brain's own path
-    shown = observe(position)
-    action = pupil.act(shown, greedy=True)  # its own move is executed; nothing awaits reward
-    pupil.lesson(shown, demonstrator(position))  # the demonstrator labels the state reached
-    position = move(position, action)
-assert (pupil.predict(observe(cells)) == demonstrator(cells)).all()
+```text
+increment = rate * signal / (sqrt(bias_corrected_second_moment) + floor)
 ```
 
-Watching alone, the pupil copies the two cells the demonstrator visits and answers the others
-wrongly; on its own path it reaches those cells and learns them. The labels must come from the
-demonstrator the brain watched: in the measurement of
-[issue 215](https://github.com/muellerberndt/cadence/issues/215), corrections from a different
-policy after a bootstrap by watching lowered the agreement with the watched demonstrator. Teach
-many rows at once at the normalized point [above](#many-lessons-the-normalized-point-for-imitation).
+with `rate` = `eta` or `eta_bias`, `signal` the raw contrast (its bias-corrected mean under
+`momentum`; the second moment always reads the raw contrast) and `floor` = `normalize_floor`. A
+first update is `rate * g / (abs(g) + floor)`, so a consistent signal well above the floor steps
+by about the rate whatever its size; changing signals can step above it. Momentum with RMS is an
+Adam-style update.
+
+A constant floor is no reference for every synapse at once. Credit that reaches a region several
+synapses from the output is orders of magnitude fainter than the readout's, so the floor that keeps
+the readout's quiet synapses still swallows the deep region's whole signal. `normalize_relative`
+above zero replaces it by a floor of that share of each synapse's projection (the block of synapses
+between its two neuron ranges; a bias reads its range): every projection steps at about the rate on
+its own scale, the faint one as the strong one, and a synapse quieter than its projection still
+steps less. It needs `normalize` above zero; the teaching point `"deep"` sets it at 0.1 for
+brains with the [apical compartment](anatomy.md#the-apical-compartment), the other points keep
+`normalize_floor`, and `LearnerConfig.normalize_relative` sets it for an expert configuration.
+
+The composed rates (`eta=0.5` teaching, 1.0 actor) are unnormalized; normalized at those rates,
+steps can dwarf the raw signals and saturate the outputs. Retune `eta` and `eta_bias` together;
+a development sweep might start at `eta` 0.001 to 0.003, checked against acquisition, retention
+and actual step sizes. `LearnerConfig` warns when `normalize > 0` and `eta` or `eta_bias` exceeds
+0.05; smaller rates can also fail. The actor steps on its raw contrast
+([actor rates](reward.md#actor-rates)).
+
+## A supervised-only stream
+
+`step(teacher=...)` issues a reward-eligible action, so the next `step` without a
+reward teaches the actor and critic a zero outcome. For demonstrations with no reward
+protocol, read context with greedy actions and teach the learner on the memory-bearing
+drive of `stimulus(observations, *, memory=True)`:
+
+```python
+supervised = Brain.compose(4, 2, modules=(16, 8), seed=7)
+supervised.act(observation, greedy=True)   # advance context without reward eligibility
+_, lesson_work = supervised.learner.step(supervised.stimulus(following), np.array([1]))
+assert supervised.act(following, greedy=True).shape == (1,)
+```
+
+Direct learner calls leave `Brain.last_learning` untouched; keep their report. Finish
+any outstanding real outcome before a reward-driven life switches to greedy actions.

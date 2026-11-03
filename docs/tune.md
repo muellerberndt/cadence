@@ -152,7 +152,7 @@ the normalized point) located three causes at the widest modules:
 - **Surprise lessons out of proportion.** A surprise lesson gives one wrong row a whole lesson's
   step, and at 1,024 neurons the answers swing between collapse and recovery.
   `learning_surprise_share=True` scales the step by the share of rows taught
-  ([in proportion to the surprise](teach.md#lessons-only-where-the-answer-differs)).
+  ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)).
 - **A saturated readout.** A neuron's drive sums over its fan-in, so with every synapse stepped as
   in a module of 64 the motor neurons of a wide module saturate: associative recall collapses at
   1,024 neurons on the composed steps. Scaling each synapse's step to its neuron's fan-in in the
