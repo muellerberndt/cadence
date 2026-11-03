@@ -39,13 +39,12 @@
   "genes": {
     "recall_amplitude": 3.0,
     "recall_temperature": 0.25,
-    "recall_heard": 1.0,
     "recall_recency": 0.25,
     "recall_address": 0.01,
-    "recall_address_temperature": 0.1,
     "recall_capacity": 40,
     "recall_next": true,
-    "recall_heads": 2
+    "recall_heads": 2,
+    "recall_compete": false
   },
   "parameters": 1249
 }
