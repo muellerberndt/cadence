@@ -226,6 +226,16 @@ takes it`), and a 0.93.0 retirement names 0.93.0.
   less the mixture it attended to; described and never read in a chamber. The step toward the
   named keys, the founder `"lms"`, is the step. The message: `recall_address_step was retired
   in 0.93.0: the address lesson steps toward the named keys, as it did at 'lms'`.
+- `recall_heard` (1.0), `recall_address_temperature` (0.1) and `recall_window_decay` (1.0):
+  genes no reading changed and no recipe set, now constants of the memory (`Recall.heard`,
+  `Recall.address_temperature`, `Recall.window_decay`). A checkpoint still carries `heard` and
+  `address_temperature` at 1.0 and 0.1, as 0.92.1 wrote them, and loads; a file that carries
+  another value, or `window_decay` other than 1.0, is refused by name. The messages:
+  `recall_heard was retired in 0.93.0: the present event weighs 1.0 in its key and its address,
+  the one weight ever read`; `recall_address_temperature was retired in 0.93.0: the address
+  lesson weighs the slots' scores at the temperature 0.1, the one value ever read`;
+  `recall_window_decay was retired in 0.93.0: the window's earlier events enter the key at
+  their full weight (1.0), the one value ever read`.
 - `Recall`'s head-0 aliases `w_x`, `w_c`, `b`, `position_x`, `position_c`, `position_b` and
   `attended` are gone: `head_map(0)`, `position_map(0)` and `attended_heads[0]` are the one
   spelling, `head_maps` holds every head's address map (head 0's first), and

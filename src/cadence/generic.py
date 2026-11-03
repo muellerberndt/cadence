@@ -2719,8 +2719,9 @@ class Brain:
         the association region through plastic projections of initial magnitude
         ``scales["recall"]`` (1.2), appended after any history. After each act, and after each
         moment ``wait`` senses, the moment is written as one slot per stream (``Recall``):
-        its key the event heard (``recall_heard`` 1.0 times the observation code, the
-        observation itself or the brain's sparse code of it), its value the event, and the
+        its key the event heard (the observation code, the observation itself or the brain's
+        sparse code of it, at the memory's constant weight ``Recall.heard`` 1.0), its value
+        the event, and the
         slot before learns it as its next.
         Before each settle the moment's address, the key plus a learned map of the event and
         of the association activity of the moment before, weighs the slots by a softmax
@@ -2729,8 +2730,9 @@ class Brain:
         held through the settle, which answers on it and does not revise the choice. After
         each teacher lesson the address lesson scores each slot's value and next against the
         association's movement under the nudge, read back through the recall and next
-        projections, weighs the scores with the address's own attention
-        (``recall_address_temperature`` 0.1), and steps the map toward the weighted keys
+        projections, weighs the scores with the address's own attention (at the memory's
+        constant temperature ``Recall.address_temperature`` 0.1), and steps the map toward
+        the weighted keys
         (``recall_address`` 0.01, each row's rate bounded by its own input energy).
         ``recall_capacity`` (64) bounds the slots per stream. Options beside the founder
         memory, each a gene described and saved only where it differs from its founder and a
@@ -2745,11 +2747,11 @@ class Brain:
         moment shares, learn from lessons alone.
         When an episode ends the stream's slots are emptied with its working trace;
         ``Brain.reset(keep=("slots",))`` keeps the slots across a reset.
-        ``recall_window`` k above 1 (construction, with ``recall_window_decay`` d in (0, 1])
-        makes every key an ordered window of the stream's last k events, ``[heard * x_t, d *
-        heard * x_(t-1), ..., d^(k-1) * heard * x_(t-k+1)]``, each position on coordinates of
-        its own, zeros before a stream's first moment and after an episode ends: a key of
-        ``k * code`` values, the address and the map's outputs as wide.
+        ``recall_window`` k above 1 (construction) makes every key an ordered window of the
+        stream's last k events, ``[x_t, x_(t-1), ..., x_(t-k+1)]`` (each at the memory's
+        constant weight, ``Recall.window_decay`` 1.0 per position back), each position on
+        coordinates of its own, zeros before a stream's first moment and after an episode
+        ends: a key of ``k * code`` values, the address and the map's outputs as wide.
         The founder ``recall=False`` builds the brain without it.
         Every head of a composed recall memory also reads each slot's age: ``recall_position``
         P (founder 32, construction) gives ages below P a bucket each and older ones one
@@ -2776,7 +2778,7 @@ class Brain:
         maps also read the command of the moment before, so a newborn reads and settles as
         one without it.
         ``recall_capacity``, ``recall_next``, ``recall_window``,
-        ``recall_window_decay``, ``recall_heads`` (several held heads over the one bank,
+        ``recall_heads`` (several held heads over the one bank,
         each with its own port and address map; ``recall_compete``, a runtime option with
         founder True, makes them read in turn, each taking of a slot at most the share the
         heads before it left), ``recall_position``, ``recall_copy``,

@@ -471,7 +471,8 @@ class Recall:
     address of a moment computed before its settle and the recalled drive held through it.
 
     Each moment the brain accepts (an act, a moment ``wait`` senses) is written after its
-    settle as one slot per stream (``witness``). The slot's key is ``heard * x``: ``x`` is
+    settle as one slot per stream (``witness``). The slot's key is ``heard * x`` (``heard`` a
+    constant of the memory, 1.0): ``x`` is
     the observation as given (a brain gives its observation code). The slot's value is the
     event ``x``, and the slot before it learns its next: the value of the moment that
     followed it, zero until that moment comes. Before each settle the present moment's
@@ -500,7 +501,8 @@ class Recall:
     next against it,
     ``(d_r . V_i + d_n . N_i) / |d|`` (the stored values themselves, not their effect
     through the source neurons), weighs the scores with the attention the address gave the
-    slots, ``p* = softmax(score / address_temperature + log p)``, and takes the
+    slots, ``p* = softmax(score / address_temperature + log p)`` (``address_temperature`` a
+    constant of the memory, 0.1), and takes the
     least-mean-squares step of the map toward ``K* = sum_i p*_i K_i`` on ``z = [x, c, 1]``
     at the taught rows, each row at the rate ``min(address, 1 / |z|^2)``, on the error
     ``K* - q``; a step whose result is not finite is refused.
@@ -526,7 +528,8 @@ class Recall:
     finds it by age through the position term, or by an address that points away from every
     stored key.
 
-    With ``window`` k above 1 (a construction setting, with ``window_decay`` d) the key's
+    With ``window`` k above 1 (a construction setting; ``window_decay`` d is a constant of the
+    memory, 1.0) the key's
     fixed part is an ordered window of the stream's last k events, ``[heard * x_t, d * heard
     * x_{t-1}, ..., d^(k-1) * heard * x_{t-k+1}]``, each position on coordinates of its own:
     ``x_{t-j}`` the events of the stream's previous moments, acts and moments ``wait`` senses,
@@ -662,18 +665,15 @@ class Recall:
     connectome: Connectome
     amplitude: float = 3.0
     temperature: float = 0.25
-    heard: float = 1.0
     recency: float = 0.25
     capacity: int = 64
     next: bool = True
     address: float = 0.01
-    address_temperature: float = 0.1
     # the options beside the founder memory (``OPTIONS``)
     null: float | None = None  # a number: a null slot of this logit (over the temperature)
     address_reward: float = 0.0
     position_reward: float = 0.0
     window: int = 1
-    window_decay: float = 1.0
     heads: int = 1
     source: str = "sensory"  # the observations' range
     target: str = "recall"  # the recall region; the next region is ``next``
@@ -705,19 +705,28 @@ class Recall:
     held: np.ndarray = field(init=False, repr=False)
     previous: np.ndarray = field(init=False, repr=False)
 
+    # the constants of the memory: settings of 0.92.1 that every reading took at one value,
+    # retired as genes in 0.93.0 (``RETIRED`` refuses the names and keeps the saved values)
+    heard = 1.0  # the present event's weight in its key and its address
+    address_temperature = 0.1  # the temperature of the slots' scores in the address lesson
+    window_decay = 1.0  # the weight of the window's events per position back
     # the settings ``Brain.retune`` may change in a life, and those that shape the memory
-    RUNTIME = ("amplitude", "temperature", "heard", "recency", "address", "address_temperature")
+    RUNTIME = ("amplitude", "temperature", "recency", "address")
     CONSTRUCTION = ("capacity", "next")
+    # the keys a memory always describes and saves, in the order 0.92.1 wrote them: the
+    # founders above and the constants that were its genes, at their one value
+    SAVED = ("amplitude", "temperature", "heard", "recency", "address", "address_temperature",
+             "capacity", "next")
     # options beside the founder memory: a memory describes and saves an option only where it
     # differs from its founder, and a saved memory without one takes its founder; each is
     # runtime except the window, the heads, the position term, the copy pathway and the
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
-        "null", "address_reward", "position_reward", "window", "window_decay", "heads", "position",
+        "null", "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
         "relative", "slope", "when",
     )
-    CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
+    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
                             "action", "anchor", "relative", "slope", "when")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
@@ -740,6 +749,13 @@ class Recall:
                           "key; cadence-net 0.84.3 takes it"),
         "address_step": ("0.93.0", "lms", "the address lesson steps toward the named keys, "
                          "as it did at 'lms'"),
+        "heard": ("0.93.0", heard, "the present event weighs 1.0 in its key and its address, "
+                  "the one weight ever read"),
+        "address_temperature": ("0.93.0", address_temperature, "the address lesson weighs "
+                                "the slots' scores at the temperature 0.1, the one value "
+                                "ever read"),
+        "window_decay": ("0.93.0", window_decay, "the window's earlier events enter the key "
+                         "at their full weight (1.0), the one value ever read"),
     })
     # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
     # for retired settings, at the one value at which such a file loads
@@ -780,13 +796,11 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in ("amplitude", "recency", "address"):
             return real(name, value, low=0)
-        if name in ("temperature", "address_temperature"):
+        if name == "temperature":
             number = real(name, value, low=0)
             if number <= 0:
                 raise ValueError(f"{name} must be positive")
             return number
-        if name == "heard":
-            return real(name, value)
         if name == "capacity":
             if (
                 isinstance(value, (bool, np.bool_))
@@ -838,11 +852,6 @@ class Recall:
             ):
                 raise ValueError("window must be an integer of at least 1")
             return int(value)
-        if name == "window_decay":
-            number = real(name, value, low=0)
-            if not 0 < number <= 1:
-                raise ValueError("window_decay must lie in (0, 1]")
-            return number
         if name == "heads":
             if (
                 isinstance(value, (bool, np.bool_))
@@ -2424,10 +2433,10 @@ class Recall:
             self.anchor_maps = list(proposal[5])
 
     def to_dict(self) -> dict[str, Any]:
-        """The memory's settings and counts: the founders, the ports, and each option where it
-        differs from its founder."""
+        """The memory's settings and counts: the keys always written (``SAVED``), the ports,
+        and each option where it differs from its founder."""
         out = {
-            **{name: getattr(self, name) for name in (*self.RUNTIME, *self.CONSTRUCTION)},
+            **{name: getattr(self, name) for name in self.SAVED},
             "source": self.source,
             "target": self.target,
             "neurons": self.neurons,

@@ -875,7 +875,7 @@ assert brain.recall.slots == 0 and brain.recall.head_map(0)[0].any()
 Before each settle the present moment computes its address
 
 ```text
-q = heard * x + x W_x + c W_c + b
+q = x + x W_x + c W_c + b
 p = softmax(q . K / temperature - recency * age + a(x, c)[bucket(age)])
 ```
 
@@ -902,7 +902,8 @@ dropped. Imagination writes none.
 The address lesson runs after each teacher lesson (`step(..., teacher=...)` or
 `brain.lesson`). It reads the association region's movement between the nudged phases back
 through the recall and next synapses, scores each slot's value and next against it, weighs
-the scores by `softmax(score / address_temperature + log p)` and steps the map toward the
+the scores by `softmax(score / T + log p)` at the temperature `T = 0.1`
+(`Recall.address_temperature`, a constant of the memory) and steps the map toward the
 keys so weighted (`K*`) at the taught rows, each at the rate `min(recall_address, 1 / |z|^2)`
 on `z = [x, c, 1]`. The report gives `address_rows`, `address_error` and `address_refused`
 (rows whose non-finite step was refused), and with the position term `position_rows` and
@@ -1210,8 +1211,8 @@ setting widens the key:
 
 | Key | Holds | Address width |
 | --- | --- | --- |
-| the founder key | `heard * x_t` | `code` |
-| `recall_window=k` | the ordered last k events, the event j moments back weighted `recall_window_decay^j` | `k * code` |
+| the founder key | `x_t` | `code` |
+| `recall_window=k` | the ordered last k events, each at its full weight | `k * code` |
 
 `code` is the width of the [observation code](senses.md#the-observation-code), and
 `brain.recall.address_width` reports the result. Keys, address, map outputs and a reward
@@ -1230,17 +1231,15 @@ map.
 | `recall` | `False` | construction | Adds the memory and its `recall` and `next` regions |
 | `recall_amplitude` | `3.0` | retune | Drive of a slot that holds the whole weight |
 | `recall_temperature` | `0.25` | retune | Softmax temperature over the slots |
-| `recall_heard` | `1.0` | retune | Weight of the present event in its key and address |
 | `recall_recency` | `0.25` | retune | Logit cost per moment of age |
 | `recall_address` | `0.01` | retune | Address lesson rate, bounded per row by `1 / \|z\|^2`; `0.0` freezes the map |
-| `recall_address_temperature` | `0.1` | retune | Temperature of the slots' scores in the address lesson |
 | `recall_capacity` | `64` | construction | Slots per stream, oldest dropped first |
 | `recall_next` | `True` | construction | The `next` region and each slot's next |
 | `scales["recall"]` | `1.2` | construction | Initial magnitude of the two projections (a `compose` argument) |
 | `recall_null` | `None` | retune | A number adds a null slot; a non-finite logit is refused |
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
-| `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
+| `recall_window` | `1` | construction | Window of the last k events |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
 | `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
@@ -1294,6 +1293,9 @@ otherwise. The CHANGELOG entry of the retiring release gives each reading.
 | `recall_value` | 0.85.0 | the values are the events |
 | `recall_context`, `recall_context_decay` | 0.85.0 | no fading history of the earlier events joins the key |
 | `recall_address_step` | 0.93.0 | the address lesson steps toward the named keys, as it did at `"lms"` |
+| `recall_heard` | 0.93.0 | the present event weighs 1.0 in its key and its address, the one weight ever read (`Recall.heard`) |
+| `recall_address_temperature` | 0.93.0 | the address lesson weighs the slots' scores at the temperature 0.1, the one value ever read (`Recall.address_temperature`) |
+| `recall_window_decay` | 0.93.0 | the window's earlier events enter the key at their full weight, the one value ever read (`Recall.window_decay`) |
 
 Release 0.84.3 takes the settings 0.85.0 retired, and their sentences say so. A checkpoint of
 0.84.3 carries `value="event"`, `context=0.0` and `context_decay=0.5`, the one value each had,
