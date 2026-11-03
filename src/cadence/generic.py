@@ -252,10 +252,10 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 
 
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
-    """The recall memory's settings, validated: its founders with every ``recall_<setting>``
-    of ``genes`` over them (those names are removed from ``genes``), an option only where it
-    is given, or an empty mapping for a brain without it. A retired setting is refused by name
-    (``Recall.removed``)."""
+    """The recall memory's settings, validated: its founders and options at their founders
+    with every ``recall_<setting>`` of ``genes`` over them (those names are removed from
+    ``genes``), or an empty mapping for a brain without it. A retired setting is refused by
+    name (``Recall.removed``)."""
     if not isinstance(recall, bool):
         raise ValueError("recall must be boolean")
     founders = Recall.founders()
@@ -271,7 +271,7 @@ def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
         if settings:
             raise ValueError("recall settings need recall=True")
         return {}
-    return {**founders, **settings}
+    return {**founders, **Recall.options(), **settings}
 
 
 def _copy_identity(
@@ -291,12 +291,11 @@ def _copy_identity(
     populations = connectome.populations
     n = connectome.n
     value = np.full(n, -1, dtype=np.int64)  # each port neuron's value coordinate
-    names = [name for port in Recall.ports(recalled.get("heads", 1), recalled["next"])
-             for name in port]
+    names = [name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port]
     for name in names:
         neurons = np.asarray(populations[name], dtype=np.int64)
         value[neurons] = np.arange(len(neurons))
-        if recalled.get("action", False):  # the command's part: no token, starts at zero
+        if recalled["action"]:  # the command's part: no token, starts at zero
             value[np.asarray(populations[f"{name}_action"], dtype=np.int64)] = -2
     sensory = np.asarray(populations["sensory"], dtype=np.int64)
     heard = np.full(n, -1, dtype=np.int64)
@@ -1729,25 +1728,18 @@ def _layout(
     if recalled:
         # Appended last, after any history: the brain with the recall memory is the brain
         # without it plus the recall and next regions, one neuron per value coordinate
-        # (the values are the events, of the code's width), and one projection from each.
-        for name in ("recall", "next") if recalled["next"] else ("recall",):
+        # (the values are the events, of the code's width), and one projection from each;
+        # every further head's read port is wired as the first and appended after it, so the
+        # brain of H heads is the brain of H - 1 heads plus one port and its projections.
+        ports = [
+            name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port
+        ]
+        for name in ports:
             regions.append(Region(name, code_width))
             projections.append(
                 Projection(name, "association", scale=recall_scale, reciprocal=False)
             )
-        # every further head's read port, wired as the first and appended last: the brain of
-        # H heads is the brain of H - 1 heads plus one port and its projections
-        for port in Recall.ports(recalled.get("heads", 1), recalled["next"])[1:]:
-            for name in port:
-                regions.append(Region(name, code_width))
-                projections.append(
-                    Projection(name, "association", scale=recall_scale, reciprocal=False)
-                )
-        ports = [
-            name for port in Recall.ports(recalled.get("heads", 1), recalled["next"])
-            for name in port
-        ]
-        if recalled.get("action", False):
+        if recalled["action"]:
             # every port's read of the executed command, one neuron per motor neuron, appended
             # last: the brain that keeps the command is the brain without it plus these regions,
             # whose synapses into the association start at zero, so a newborn settles as one
@@ -1757,7 +1749,7 @@ def _layout(
                 projections.append(
                     Projection(f"{name}_action", "association", scale=0.0, reciprocal=False)
                 )
-        if recalled.get("copy", 0.0):
+        if recalled["copy"]:
             # the copy pathway from every read port into the motor region, appended last: the
             # brain with it is the brain without it plus these synapses, drawn at the initial
             # magnitude ``recall_copy`` (the command's part at zero); declared tokens start it
@@ -1766,24 +1758,24 @@ def _layout(
                 projections.append(
                     Projection(name, "motor", scale=recalled["copy"], reciprocal=False)
                 )
-            if recalled.get("action", False):
+            if recalled["action"]:
                 for name in ports:
                     projections.append(
                         Projection(f"{name}_action", "motor", scale=0.0, reciprocal=False)
                     )
-            if recalled.get("tokens") is not None:
+            if recalled["tokens"] is not None:
                 # the present observation's tokens into their actions, the copy's echo
                 # suppression, drawn at zero and started at ``-recall_copy`` once developed
                 projections.append(
                     Projection(regions[0].name, "motor", scale=0.0, reciprocal=False)
                 )
-        if recalled.get("when", False):
+        if recalled["when"]:
             # every head's read of when, two neurons of the age and with the anchor two of the
             # place, appended after everything else (the copy pathway's draws included): the
             # brain that delivers when is the brain without it plus these regions, whose
             # synapses into the association start at zero
-            for name in Recall.when_regions(recalled.get("heads", 1)):
-                regions.append(Region(name, 4 if recalled.get("anchor", False) else 2))
+            for name in Recall.when_regions(recalled["heads"]):
+                regions.append(Region(name, 4 if recalled["anchor"] else 2))
                 projections.append(Projection(name, "association", scale=0.0, reciprocal=False))
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
@@ -1956,7 +1948,7 @@ class Brain:
         self._coded_keys = bool(units) or bool(learned)
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
         # declared tokens start the copy pathway as their identity, the echo included
-        tokened = recalled.get("tokens") is not None and bool(recalled.get("copy", 0.0))
+        tokened = bool(recalled.get("copy")) and recalled.get("tokens") is not None
         if tokened:
             # the observation's own coordinates in the recall values: the observation itself,
             # or a learned code joined to it, after the code's units
@@ -1979,10 +1971,9 @@ class Brain:
                     f"recall_tokens name observation coordinates below {self.inputs}"
                 )
             ports = [
-                name for port in Recall.ports(recalled.get("heads", 1), recalled["next"])
-                for name in port
+                name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port
             ]
-            if recalled.get("action", False):
+            if recalled["action"]:
                 ports += [f"{name}_action" for name in ports]
             if all(name in populations for name in (*ports, "motor")):  # else the memory names it
                 connectome = _copy_identity(
@@ -2142,7 +2133,7 @@ class Brain:
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
         self.recall: Recall | None = None
         if recalled:
-            for port in Recall.ports(recalled.get("heads", 1), recalled["next"]):
+            for port in Recall.ports(recalled["heads"], recalled["next"]):
                 for name in port:
                     if name not in populations:
                         raise ValueError(
