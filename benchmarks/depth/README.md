@@ -71,7 +71,8 @@ benchmarks](../attention/README.md) unedited, with every brain they compose deep
 module width repeated two or three times, the apical compartment (`apical=0.25`) and the
 teaching point `"deep"` (the normalized point with the projection-relative floor 0.1 and nudged
 phases of a whole 32 sweeps). The retained receipt was taken before the point, with the floor
-alone (`learning_normalize_relative=0.1`) beside normalized teaching where a benchmark set none.
+alone (`learning_normalize_relative=0.1`, a `compose` setting then, folded into `teaching="deep"` in 0.93.0)
+beside normalized teaching where a benchmark set none.
 Each benchmark's own gates and controls decide each founder.
 
 ```sh
