@@ -31,15 +31,16 @@ identical to 0.93.0, and the founder parity reads 0 of 24 lives differing. `src/
 Every change here leaves every array, every answer and every count as it was: the recall pins,
 the founder parity of 0.93.0 and a battery of 13,076 recorded values over the kernels, the
 learner, the composed operations and the checkpoints read identical. Timings are medians of
-calls alternated with the code before each change in one process on one thread, relative, on
-a machine shared with other work (the brains: `Brain.compose(8, 4)` with the founder's
-modules, a 256-neuron or a 1,024-neuron module, batch 2).
+calls alternated with the code before each change in one process on one thread, relative (the
+brains: `Brain.compose(8, 4)` with the founder's modules, a 256-neuron or a 1,024-neuron
+module, batch 2); each item's were read on a machine shared with other work, the totals below
+on a quiet one.
 
-Together, against 0.93.0: on the 1,024-neuron module an act takes 0.68 of its time, a lesson
-0.73, a reward step 0.81; with a 256-neuron module 0.95, 0.94 and 0.96; a qualified learner's
-0.94, 0.95 and 0.97; the founder, a recall brain and an apical brain 1.00 to 1.01. On the
-mlx backend the 0.93.0 soak's taught life (lessons with rehearsal on four streams) takes 125 ms
-per moment where 608, its living life 44 where 111, over 1,500 moments with the same final
+Together, against 0.93.0: on the 1,024-neuron module an act takes 0.73 of its time, a lesson
+0.72, a reward step 0.90; with a 256-neuron module 0.95, 0.90 and 0.91; a qualified learner's
+0.92, 0.93 and 0.95; the founder, a recall brain and an apical brain 0.99 to 1.00. On the
+mlx backend the 0.93.0 soak's taught life (lessons with rehearsal on four streams) takes 59 ms
+per moment where 371, its living life 15 where 57, over 1,500 moments with the same final
 efficacies and maps to the bit.
 
 - A state the compiled CPU kernels settled or checked keeps the block products of its
