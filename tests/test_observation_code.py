@@ -280,10 +280,10 @@ def test_the_saved_recall_brain_loads_continues_and_saves_the_same(tmp_path):
         assert acts == provenance["continuation"]["recalled"]["acts"]
         inputs, actions, options = FOUNDERS["recalled"]["build"]
         # the fixture's genes: a save of 0.84.3 carries the need scale of zero, the expert
-        # route's value since the constant of 0.93.0
+        # route's value since the constant of 0.93.0 (the founder's arousal law otherwise)
+        founder = cd.Brain.compose(inputs, actions, **options).arousal.config
         relived = cd.Brain.compose(
-            inputs, actions,
-            **{**options, "arousal": replace(options["arousal"], need_scale=0.0)},
+            inputs, actions, **{**options, "arousal": replace(founder, need_scale=0.0)}
         )
         FOUNDERS["recalled"]["life"](relived)
         assert checkpoint_digest(relived.save(tmp_path / "relived.npz")) == (
