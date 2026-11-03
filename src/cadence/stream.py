@@ -506,6 +506,12 @@ def _added(maps: _Maps, step: np.ndarray, width: int) -> _Maps:
     return m_x + step[:width], m_c + step[width:-1], m + step[-1]
 
 
+def _of(state: np.ndarray, streams: int) -> np.ndarray:
+    """A per-stream ``state`` where it holds a row for each of ``streams``, else zeros of its
+    rows' shape: streams of another batch begin afresh."""
+    return state if len(state) == streams else np.zeros((streams, *state.shape[1:]))
+
+
 def _with_head(maps: list[_Maps], head: int, new: _Maps) -> list[_Maps]:
     """``maps`` with head ``head``'s replaced by ``new``, a new list: an imagined branch may hold
     the old one."""
@@ -782,6 +788,11 @@ class Recall:
     # kept before its maps: the reads' focus for the relative maps, the moments told for the
     # anchored ones
     _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"))
+    # every stream's state: its slots, the cortex of the moment before, whether its latest slot
+    # closed an episode, the window's events, the command executed at the moment before, the
+    # moments told in its episode and the age of the slot its previous read attended most
+    _STATE = ("keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told",
+              "focus")
     # the retired settings, by name: the release that retired each, the one value a saved
     # memory loads at (the founder's, or the value its law keeps) and what the memory does
     # instead; ``removed`` makes the one sentence that refuses the name wherever it is given
@@ -1332,9 +1343,7 @@ class Recall:
         self.focus = np.full(batch, -1, dtype=np.int64)
         # the window's previous events per stream, the latest first; none: zeros
         self.past = np.zeros((0, self.window - 1, self.key_width))
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Empty every stream, or the streams of ``rows`` only (streams that begin again): their
@@ -1375,21 +1384,26 @@ class Recall:
         )
         self._fresh(keep)
         self.ended = self.ended & keep
-        self.told = np.where(keep, self.told, 0)
-        self.focus = np.where(keep, self.focus, -1)
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def _fresh(self, keep: np.ndarray) -> None:
         """The moment before begins afresh for the streams ``keep`` does not mark: the cortex
-        of the moment before, the window's events and the command executed at it."""
+        of the moment before, the window's events and the command executed at it; and so does
+        the episode: the next moment is its first and follows no read of it."""
         batch = len(keep)
         self.previous = np.where(keep[:, None], self.previous, 0.0)
         if len(self.acted) == batch:
             self.acted = np.where(keep[:, None], self.acted, 0.0)
         if len(self.past) == batch:
             self.past = np.where(keep[:, None, None], self.past, 0.0)
+        self.told = np.where(keep, self.told, 0)
+        self.focus = np.where(keep, self.focus, -1)
+
+    def _unread(self) -> None:
+        """No read is held: the next moment is addressed afresh."""
+        self.last = None
+        self._attended = None
+        self._head_reads = None
 
     def end(self, batch: int, rows: np.ndarray | None = None) -> None:
         """The streams of ``rows`` (every stream without) end an episode and keep their
@@ -1421,12 +1435,8 @@ class Recall:
             self.ended = np.zeros(batch, dtype=bool)
         else:
             self.ended = self.ended | chosen
-        self.told = np.where(chosen, 0, self.told)  # the next moment is the episode's first
-        self.focus = np.where(chosen, -1, self.focus)  # and follows no read of this episode
         self._fresh(~chosen)
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def _bounded(self) -> bool:
         """Whether streams that begin hold a boundary slot: ``boundary`` on, and room for the
@@ -1448,39 +1458,22 @@ class Recall:
     def keep(self, rows: np.ndarray) -> None:
         """Keep the memories of ``rows`` only (streams that ended are dropped)."""
         rows = _stream_rows(rows, self.streams)
-        self.keys, self.values, self.nexts, self.held = (
-            a[rows] for a in (self.keys, self.values, self.nexts, self.held)
-        )
-        self.previous = self.previous[rows]
-        if len(self.acted):
-            self.acted = self.acted[rows]
-        if len(self.past):
-            self.past = self.past[rows]
-        self.ended = self.ended[rows]
-        self.told = self.told[rows]
-        self.focus = self.focus[rows]
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        for name in self._STATE:
+            state = getattr(self, name)
+            if len(state):  # the window's events and the command may hold no stream
+                setattr(self, name, state[rows])
+        self._unread()
 
     def snapshot(self) -> dict[str, Any]:
         """The per-stream state, to restore after a refused operation; every write replaces
         these arrays rather than changing them."""
-        return {
-            name: getattr(self, name)
-            for name in (
-                "keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told",
-                "focus",
-            )
-        }
+        return {name: getattr(self, name) for name in self._STATE}
 
     def restore(self, snapshot: dict[str, Any]) -> None:
         """Return to a ``snapshot``; the next moment is addressed afresh."""
         for name, value in snapshot.items():
             setattr(self, name, value)
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def reading(self) -> tuple[Any, ...]:
         """The latest read as ``witness``, ``learn`` and ``contrast_rows`` take it: the moment
@@ -1513,9 +1506,7 @@ class Recall:
         branch.previous = self.previous.copy()
         branch.past = self.past.copy()
         branch.acted = self.acted.copy()
-        branch.last = None
-        branch._attended = None
-        branch._head_reads = None
+        branch._unread()
         branch._private = True
         branch._contents = []
         branch._content_keys = None
@@ -1572,19 +1563,11 @@ class Recall:
         before."""
         x = np.asarray(event, dtype=float)
         n = len(x)
-        c = (
-            self.previous
-            if len(self.previous) == n
-            else np.zeros((n, len(self.association)))
-        )
+        c = _of(self.previous, n)
         key = self.heard * x
         if self.window > 1:
             # the stream's previous events in order, each on coordinates of its own
-            past = (
-                self.past
-                if len(self.past) == n
-                else np.zeros((n, self.window - 1, self.key_width))
-            )
+            past = _of(self.past, n)
             scale = self.heard * self.window_decay ** np.arange(1, self.window)
             key = np.concatenate([key, (scale[None, :, None] * past).reshape(n, -1)], axis=1)
         inputs = x
@@ -1592,7 +1575,7 @@ class Recall:
             # the command coordinates of the key are the slot's own command, written after the
             # settle; before it the address holds zero there, and the maps read the command
             # the stream executed at the moment before
-            acted = self.acted if len(self.acted) == n else np.zeros((n, self.command_width))
+            acted = _of(self.acted, n)
             key = np.concatenate([key, np.zeros((n, self.command_width))], axis=1)
             inputs = np.concatenate([x, acted], axis=1)
         w_x, w_c, b = self.head_maps[0]
@@ -1853,11 +1836,7 @@ class Recall:
             self.acted = done.copy()
         self.previous = cortex
         if self.window > 1:  # this moment enters the window, the oldest leaves it
-            past = (
-                self.past
-                if len(self.past) == len(x)
-                else np.zeros((len(x), self.window - 1, self.key_width))
-            )
+            past = _of(self.past, len(x))
             self.past = np.concatenate([moment.event[:, None, :], past[:, :-1]], axis=1)
         self.last = None
 
