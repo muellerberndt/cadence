@@ -561,12 +561,15 @@ class Recall:
     and an address map of its own, ``q_h = heard * x + x W_x^h + c W_c^h + b^h``, starting
     at zero: the heads differ at birth only in their ports' synapses, and no head is
     assigned what to read. Each head weighs the slots with its own address, and its port
-    holds its own mixture through the settle. The heads compete for the slots: a slot can be
-    read in full once per moment, so the heads read in turn and each after the first takes
-    of every slot at most the share the heads before it left (``_share``), and its lessons
-    take that read as the prior. The address lesson steps each head's map through that
-    head's own synapses, and reward eligibility (``contrast_rows``) keeps one block of
-    columns per head. One bank is written per moment, whatever the heads.
+    holds its own mixture through the settle. The heads compete for the slots (``compete``,
+    the founder): a slot can be read in full once per moment, so the heads read in turn and
+    each after the first takes of every slot at most the share the heads before it left
+    (``_share``), and its lessons take that read as the prior. The address lesson steps each
+    head's map through that head's own synapses, and reward eligibility (``contrast_rows``)
+    keeps one block of columns per head. One bank is written per moment, whatever the heads.
+    Without competition (``compete=False``, the read before 0.91.3), with the address map
+    frozen (``address=0``) and no position term (``position=0``) every head reads what head 0
+    reads.
 
     With ``position`` P above 0 (a construction setting, founder 32; 0 builds none) every head also
     reads each slot's age,
@@ -684,6 +687,8 @@ class Recall:
     copy: float = 0.0
     tokens: tuple[int, ...] | None = None
     action: bool = False
+    # several heads read in turn, each from the share of every slot the heads before it left
+    compete: bool = True
     # every head's position term also reads a slot's place in its episode (``anchor_maps``)
     anchor: bool = False
     # every head's position term also reads a slot's age relative to the previous read's focus
@@ -709,7 +714,7 @@ class Recall:
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "window_decay", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "anchor",
+        "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
         "relative", "slope", "when",
     )
     CONSTRUCTION_OPTIONS = ("window", "window_decay", "heads", "position", "copy", "tokens",
@@ -733,7 +738,6 @@ class Recall:
                     "cadence-net 0.84.3 takes it"),
         "context_decay": ("0.85.0", 0.5, "no fading history of the earlier events joins the "
                           "key; cadence-net 0.84.3 takes it"),
-        "compete": ("0.93.0", True, "the heads read competing, as they did at True"),
         "address_step": ("0.93.0", "lms", "the address lesson steps toward the named keys, "
                          "as it did at 'lms'"),
     })
@@ -791,7 +795,7 @@ class Recall:
             ):
                 raise ValueError("capacity must be an integer of at least 1")
             return int(value)
-        if name in ("next", "boundary", "action", "anchor", "relative", "when"):
+        if name in ("next", "boundary", "action", "compete", "anchor", "relative", "when"):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -1715,12 +1719,12 @@ class Recall:
 
     def _read(self, addresses: Sequence[np.ndarray], moment: _Moment) -> list[np.ndarray | None]:
         """Every head's attention over the slots held now, head ``h`` at ``addresses[h]`` with
-        its position term at ``moment``: one head's own (``weights``), or among several heads,
-        each after the first taking of every slot at most the share the heads before it left
+        its position term at ``moment``: its own (``weights``), or among competing heads, each
+        after the first taking of every slot at most the share the heads before it left
         (``_share``)."""
         attended: list[np.ndarray | None] = []
         left: np.ndarray | None = None  # each slot's share the heads before have left
-        competing = self.heads > 1
+        competing = self.compete and self.heads > 1
         for h, address in enumerate(addresses):
             position = self.position_term(h, moment.inputs, moment.cortex)
             p = self.weights(address, position)
@@ -1734,12 +1738,12 @@ class Recall:
         return attended
 
     def _lesson_reads(self, moment: _Moment) -> list[np.ndarray | None]:
-        """For each head's lesson, the attention it read the moment with among several heads
-        (None for head 0, whose prior is its own attention, and for the one head of a memory):
-        the reads ``stimulate`` kept while the bank holds what they read, else the read
-        computed now, before any lesson steps a map."""
-        if self.heads == 1:
-            return [None]
+        """For each head's lesson, the attention it read the moment with where heads compete
+        (None for head 0, whose prior is its own attention, and without competition): the reads
+        ``stimulate`` kept while the bank holds what they read, else the read computed now,
+        before any lesson steps a map."""
+        if not (self.compete and self.heads > 1):
+            return [None] * self.heads
         reads = self._head_reads
         if reads is not None and len(reads) > 2 and reads[2] == self.writes and all(
             r is not None for r in reads[1]
@@ -2438,11 +2442,9 @@ class Recall:
              if getattr(self, name) != founders[name]}
         )
         if self.heads > 1:
-            # the key a memory of several heads has written since 0.91.3, when the heads began
-            # to compete, at the one value the retired setting keeps (``RETIRED``); a file of
-            # several heads without it, or with False, was saved to read its heads alike and
-            # is refused on load
-            out["compete"] = True
+            # always kept with several heads: a file saved before heads competed holds none,
+            # and loads with heads that read alike as they did
+            out["compete"] = self.compete
         if "tokens" in out:  # JSON-safe: a list, as a checkpoint keeps it
             out["tokens"] = list(out["tokens"])
         return out

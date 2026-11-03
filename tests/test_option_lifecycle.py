@@ -22,7 +22,6 @@ POSITIONS = {"recall_anchor": True, "recall_slope": 0.1, "recall_relative": True
              "recall_when": True}
 # the recall settings 0.93.0 retired: a value each took, and the brain that could take it
 RETIRED = {
-    "recall_compete": (False, {"recall_heads": 2}),
     "recall_address_step": ("toward", {}),
 }
 

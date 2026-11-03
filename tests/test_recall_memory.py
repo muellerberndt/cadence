@@ -1179,7 +1179,7 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
         "null": None, "address_reward": 0.0, "position_reward": 0.0,
         "window": 1,
         "window_decay": 1.0, "heads": 1, "position": 32, "position_rate": 0.1,
-        "boundary": False, "copy": 0.0, "tokens": None, "action": False,
+        "boundary": False, "copy": 0.0, "tokens": None, "action": False, "compete": True,
         "anchor": False, "relative": False, "slope": 0.0, "when": False,
     }
     founder = composed(seed=5, arousal=True, learning_surprise=True)

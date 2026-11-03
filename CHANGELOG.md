@@ -222,12 +222,6 @@ sentence; the settings 0.85.0 retired keep naming 0.84.3 as the release that tak
 (`recall_write was retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3
 takes it`), and a 0.93.0 retirement names 0.93.0.
 
-- `recall_compete` (0.91.3, runtime): `False` read every head on its own, as before 0.91.3,
-  the read measured worse (two heads on one slot on 184 of 192 decisions). The competing read
-  is the only read; a memory of several heads still writes the key at `true`, and a file that
-  sets `false`, or one of several heads saved before 0.91.3 without the key, is refused on
-  load. The message: `recall_compete was retired in 0.93.0: the heads read competing, as they
-  did at True`.
 - `recall_address_step` (0.84.0, runtime): `"toward"` stepped the address by the named keys
   less the mixture it attended to; described and never read in a chamber. The step toward the
   named keys, the founder `"lms"`, is the step. The message: `recall_address_step was retired

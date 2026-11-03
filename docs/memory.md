@@ -391,8 +391,8 @@ assert len(heads_brain.recall.attended_heads) == 2
 
 Each head is a copy of the held read: a read port of its own (the regions `recall_h` and
 `next_h`, wired into the association like the first) and an address map of its own, which
-starts at zero. The heads compete for the slots: a slot can be read in full once per
-moment, so the heads read in turn and each takes of every slot
+starts at zero. The heads compete for the slots (`recall_compete=True`, the founder): a slot
+can be read in full once per moment, so the heads read in turn and each takes of every slot
 at most the share the heads before it left. A head keeps the shape of its own attention where
 the slots allow and gives what a taken slot cannot give to the slots it prefers next, with
 its whole mass while enough is left; a head whose slots the heads before took whole reads
@@ -413,10 +413,9 @@ what head 0 read, and the lesson's prior is the head's own attention: a sharp re
 the attention on one slot) gave it no other slot to move toward, and the heads stayed on the
 same moment, at `recall_address=0` for good. On the stream of
 [the heads' tests](../tests/test_recall_heads.py) two heads without competition read the
-slot they share 1.83 times in one moment; competing, no slot more than once. The earlier read
-was kept as `recall_compete=False` until 0.93.0 retired the setting
-([retired settings](#retired-settings)); a file of several heads saved before 0.91.3 is
-refused on load.
+slot they share 1.83 times in one moment; competing, no slot more than once.
+`recall_compete=False` keeps the earlier read, and a file of several heads saved before
+0.91.3 loads with it, continuing as it was saved; `retune` changes it in a living brain.
 
 In the [held-heads benchmark](../benchmarks/attention/held_heads.py) each trial witnesses
 four facts `role -> value` with values drawn fresh, and one question asks for two of them in
@@ -438,7 +437,7 @@ is a continuing-world result.
 The heads' addresses learn from teaching steps; reward trains them only at
 `recall_address_reward` above zero. In a life of rewards alone, with the founder 0, the address
 maps stay at zero: head 0 reads the best-matching moment and each later head the best of what
-the heads before it left.
+the heads before it left (with `recall_compete=False`, what head 0 reads).
 
 **A read that needs another read.** The address is fixed before the settle, so a read that
 depends on what another read found takes a second moment: a "think" moment chains the reads,
@@ -1243,6 +1242,7 @@ map.
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
+| `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when](#position-how-long-ago-a-moment-happened)) |
@@ -1293,7 +1293,6 @@ otherwise. The CHANGELOG entry of the retiring release gives each reading.
 | `recall_recency=None` | 0.85.0 | a number keeps the linear charge `recency * age` |
 | `recall_value` | 0.85.0 | the values are the events |
 | `recall_context`, `recall_context_decay` | 0.85.0 | no fading history of the earlier events joins the key |
-| `recall_compete` | 0.93.0 | the heads read competing, as they did at True; a file of several heads saved before 0.91.3, whose heads read alike, is refused |
 | `recall_address_step` | 0.93.0 | the address lesson steps toward the named keys, as it did at `"lms"` |
 
 Release 0.84.3 takes the settings 0.85.0 retired, and their sentences say so. A checkpoint of
