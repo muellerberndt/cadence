@@ -3021,18 +3021,11 @@ class Brain:
                 retuned.get("temperature", self.recall.temperature),
             )
             # the pairings construction refuses
-            if (
-                retuned.get("position_reward", self.recall.position_reward)
-                and not self.recall.position_maps
-            ):
-                raise ValueError("position_reward trains the position maps: it needs position")
-            if retuned.get("position_reward", self.recall.position_reward) and not retuned.get(
-                "position_rate", self.recall.position_rate
-            ):
-                raise ValueError(
-                    "position_reward steps the position maps by a lesson's step: it needs "
-                    "position_rate above 0"
-                )
+            Recall._rewarded(
+                retuned.get("position_reward", self.recall.position_reward),
+                self.recall.position,
+                retuned.get("position_rate", self.recall.position_rate),
+            )
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, {**pointed, **learning_genes}, "learning")

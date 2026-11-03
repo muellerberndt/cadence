@@ -1000,6 +1000,18 @@ class Recall:
                 )
 
     @staticmethod
+    def _rewarded(position_reward: float, position: int, position_rate: float) -> None:
+        """Reward trains the position maps (``position_reward`` above 0) only where they exist
+        and a lesson's step moves them: refused at construction and by ``Brain.retune``."""
+        if position_reward and not position:
+            raise ValueError("position_reward trains the position maps: it needs position")
+        if position_reward and not position_rate:
+            raise ValueError(
+                "position_reward steps the position maps by a lesson's step: it needs "
+                "position_rate above 0"
+            )
+
+    @staticmethod
     def null_logit(null: float | None, temperature: float) -> float | None:
         """The null slot's logit ``null / temperature``, or None without a null slot; a pair
         of settings whose logit is not finite is refused."""
@@ -1089,13 +1101,7 @@ class Recall:
                     f"the {name} region needs one neuron per feature of when ({self.when_width})"
                 )
             self._whens.append((neurons, columns(neurons), self._synapses(neurons)))
-        if self.position_reward and not self.position:
-            raise ValueError("position_reward trains the position maps: it needs position")
-        if self.position_reward and not self.position_rate:
-            raise ValueError(
-                "position_reward steps the position maps by a lesson's step: it needs "
-                "position_rate above 0"
-            )
+        self._rewarded(self.position_reward, self.position, self.position_rate)
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
         self.position_maps = self._zero_maps(self.heads if count else 0, count)
