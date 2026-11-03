@@ -5447,15 +5447,14 @@ class Brain:
                 for name in ("keys", "values", "nexts", "previous"):
                     setattr(recall, name, data["recall/" + name].astype(float))
 
-                def saved_maps(kind: str) -> list[tuple[np.ndarray, ...]]:
+                def saved_maps(kind: str) -> list[tuple[np.ndarray, np.ndarray, np.ndarray]]:
                     # every head's three maps of one kind (validated above)
-                    return [
-                        tuple(
-                            data["recall/" + name].astype(float)
-                            for name in Recall.map_names(kind, h)
-                        )
-                        for h in range(recall.heads)
-                    ]
+                    maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = []
+                    for h in range(recall.heads):
+                        x, c, b = (data["recall/" + name].astype(float)
+                                   for name in Recall.map_names(kind, h))
+                        maps.append((x, c, b))
+                    return maps
 
                 recall.head_maps = saved_maps("address")
                 if recall.position_maps:  # saved with a position term
