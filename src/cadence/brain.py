@@ -37,6 +37,7 @@ target activation, which is how the learning rule's second phase enters.
 from __future__ import annotations
 
 import copy
+import functools
 import os
 import sys
 import threading
@@ -525,6 +526,14 @@ class BrainState:
         held = dict(self.__dict__)
         held.pop("_products", None)  # the kernels' products stay with this object
         return held
+
+
+@functools.lru_cache(maxsize=64)
+def _check_ladder(neuron_model: NeuronModel, halvings: int, dtype: str) -> None:
+    """Refuse a damping ladder whose smallest step's rule is not a valid rule representable at
+    the backend's precision. A rule that passes is remembered by value (the check is a function
+    of the rule's fields alone); one that fails is refused at every call."""
+    neuron_model.replace(dt=float(np.ldexp(neuron_model.dt, -halvings)))._validate_precision(dtype)
 
 
 def _copy_state(state: BrainState | None) -> BrainState | None:
@@ -1016,13 +1025,10 @@ class Brain:
             raise ValueError("tolerance must be finite and nonnegative")
         if damping:
             attempts = min(damping + 1, max(1, budget))
-            minimum_rule = self.neuron_model.replace(
-                dt=float(np.ldexp(self.neuron_model.dt, -(attempts - 1)))
-            )
             dtype = "float32" if (self._mlx is not None or (
                 self._torch is not None and self._torch.dtype == self._torch.torch.float32
             )) else "float64"
-            minimum_rule._validate_precision(dtype)
+            _check_ladder(self.neuron_model, attempts - 1, dtype)
             used = checks = stagnation_checks = 0
             current_state = state
             for halving in range(attempts):

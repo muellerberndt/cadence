@@ -167,3 +167,27 @@ def test_a_qualified_row_does_not_hide_another_rows_orbit(backend):
     np.testing.assert_array_equal(answer.state.v[0], 0)
     np.testing.assert_array_equal(answer.state.activation[0], 0)
     assert graph.residual(drive, answer.state).max() <= 3e-3
+
+
+def test_the_ladders_rule_check_is_made_once_per_rule_and_refuses_at_every_call():
+    """The smallest step's rule is checked by value: a rule that passed is not checked again,
+    while one the backend cannot represent, or a step that rounds to zero, is refused at every
+    call, as it was when every call checked it."""
+    from cadence import brain as brain_module
+
+    graph = motor_graph()
+    drive = np.full((1, 36), 0.4)
+    brain_module._check_ladder.cache_clear()
+    for _ in range(3):
+        graph.equilibrate(drive, budget=40, tolerance=1e-12, damping=2)
+    info = brain_module._check_ladder.cache_info()
+    assert info.misses == 1 and info.hits == 2
+    saturated = graph.neuron_model.replace(slope=4.0, threshold=-5.0)  # rests at one in float32
+    for _ in range(2):
+        with pytest.raises(ValueError, match="not representable"):
+            brain_module._check_ladder(saturated, 1, "float32")
+    brain_module._check_ladder(saturated, 1, "float64")
+    for _ in range(2):
+        with pytest.raises(ValueError, match="dt must lie"):
+            graph.equilibrate(drive, budget=4000, tolerance=1e-12, damping=1200)
+    assert brain_module._check_ladder.cache_info().currsize == 2
