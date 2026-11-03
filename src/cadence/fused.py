@@ -1752,7 +1752,7 @@ def relative_floor(
 
 if njit is not None:
 
-    def _moment_entries(
+    def _plain_entries(
         raw: np.ndarray,
         velocity: np.ndarray,
         second: np.ndarray,
@@ -1764,11 +1764,14 @@ if njit is not None:
         rho_correction: float,
         has_momentum: bool,
         has_normalize: bool,
+        eta: float,
+        floor: float,
         new_velocity: np.ndarray,
         new_second: np.ndarray,
-        term: np.ndarray,
-        root: np.ndarray,
+        out: np.ndarray,
     ) -> None:
+        """Each synapse's moments and step in one pass: the momentum, the second moment and the
+        absolute floor where they are set, then the rate."""
         for e in prange(raw.shape[0]):
             x = raw[e]
             t = x
@@ -1779,7 +1782,40 @@ if njit is not None:
             if has_normalize:
                 held = rho * second[e] + rho_rest * (x * x)
                 new_second[e] = held
-                root[e] = np.sqrt(held / rho_correction)
+                out[e] = eta * (t / (np.sqrt(held / rho_correction) + floor))
+            else:
+                out[e] = eta * t
+
+    _plain, _plain_parallel = _rows_builds(_plain_entries)
+
+    def _moment_entries(
+        raw: np.ndarray,
+        velocity: np.ndarray,
+        second: np.ndarray,
+        momentum: float,
+        momentum_rest: float,
+        momentum_correction: float,
+        rho: float,
+        rho_rest: float,
+        rho_correction: float,
+        has_momentum: bool,
+        new_velocity: np.ndarray,
+        new_second: np.ndarray,
+        term: np.ndarray,
+        root: np.ndarray,
+    ) -> None:
+        """The first pass of the projection-relative floor: each synapse's moments, the term
+        its step divides and the root of its second moment."""
+        for e in prange(raw.shape[0]):
+            x = raw[e]
+            t = x
+            if has_momentum:
+                moving = momentum * velocity[e] + momentum_rest * x
+                new_velocity[e] = moving
+                t = moving / momentum_correction
+            held = rho * second[e] + rho_rest * (x * x)
+            new_second[e] = held
+            root[e] = np.sqrt(held / rho_correction)
             term[e] = t
 
     _moments, _moments_parallel = _rows_builds(_moment_entries)
@@ -1790,19 +1826,13 @@ if njit is not None:
         group: np.ndarray,
         group_root: np.ndarray,
         eta: float,
-        mode: int,
-        floor: float,
         share: float,
         tiny: float,
         out: np.ndarray,
     ) -> None:
+        """The second pass: each step over its root plus its projection's share."""
         for e in prange(term.shape[0]):
-            if mode == 0:  # no normalization
-                out[e] = eta * term[e]
-            elif mode == 1:  # the absolute floor
-                out[e] = eta * (term[e] / (root[e] + floor))
-            else:  # the projection-relative floor
-                out[e] = eta * (term[e] / (root[e] + share * group_root[group[e]] + tiny))
+            out[e] = eta * (term[e] / (root[e] + share * group_root[group[e]] + tiny))
 
     _step, _step_parallel = _rows_builds(_step_entries)
 
@@ -1856,34 +1886,40 @@ def optimizer_step(
     group: np.ndarray,
     groups: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """``Learner._update``'s per-synapse arithmetic in two compiled passes, to the bit: the
+    """``Learner._update``'s per-synapse arithmetic in compiled passes, to the bit: the
     momentum (above zero), the second moment and its normalization (``rho`` above zero; the
     absolute ``floor``, or the projection-relative floor of share ``relative`` over ``group``),
     and the rate. Returns ``(velocity, second moment, step)``; the moments a setting leaves off
-    come back as given."""
+    come back as given. One pass without the relative floor; with it, a second after every
+    projection's mean square is summed."""
     assert njit is not None
     count = len(raw)
     raw = np.ascontiguousarray(raw, dtype=float)
     has_momentum, has_normalize = momentum > 0, rho > 0
     new_velocity = np.empty(count) if has_momentum else velocity
     new_second = np.empty(count) if has_normalize else second
-    term, root = np.empty(count), np.empty(count if has_normalize else 1)
     parallel = _elements_in_parallel(count)
+    if not (has_normalize and relative):
+        step = np.empty(count)
+        (_plain_parallel if parallel else _plain)(
+            raw, np.ascontiguousarray(velocity, dtype=float),
+            np.ascontiguousarray(second, dtype=float), float(momentum), float(1 - momentum),
+            float(momentum_correction), float(rho), float(1 - rho), float(rho_correction),
+            has_momentum, has_normalize, float(eta), float(floor), new_velocity, new_second,
+            step,
+        )
+        return new_velocity, new_second, step
+    term, root = np.empty(count), np.empty(count)
     (_moments_parallel if parallel else _moments)(
         raw, np.ascontiguousarray(velocity, dtype=float), np.ascontiguousarray(second, dtype=float),
         float(momentum), float(1 - momentum), float(momentum_correction), float(rho),
-        float(1 - rho), float(rho_correction), has_momentum, has_normalize, new_velocity,
-        new_second, term, root,
+        float(1 - rho), float(rho_correction), has_momentum, new_velocity, new_second, term, root,
     )
-    mode = 0 if not has_normalize else (2 if relative else 1)
-    group_root = np.zeros(1)
-    if mode == 2:
-        power, members = _group_power(root, group, int(groups))
-        group_root = np.sqrt(power / members)
+    power, members = _group_power(root, group, int(groups))
     step = np.empty(count)
     (_step_parallel if parallel else _step)(
-        term, root, group, group_root, float(eta), mode, float(floor), float(relative),
-        float(tiny), step,
+        term, root, group, np.sqrt(power / members), float(eta), float(relative), float(tiny),
+        step,
     )
     return new_velocity, new_second, step
 

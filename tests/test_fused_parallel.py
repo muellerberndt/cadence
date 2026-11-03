@@ -232,6 +232,52 @@ def test_the_compiled_lesson_passes_are_numpys_to_the_bit() -> None:
     np.testing.assert_array_equal(floor, values + 0.1 * np.sqrt(power / count)[group] + 1e-12)
 
 
+@pytest.mark.parametrize("momentum", [0.0, 0.9])
+@pytest.mark.parametrize("rho, relative", [(0.0, 0.0), (0.999, 0.0), (0.999, 0.1), (0.0, 0.1)])
+def test_the_optimizer_step_is_numpys_arithmetic_to_the_bit(
+    momentum: float, rho: float, relative: float
+) -> None:
+    """Each synapse's moments and step: one compiled pass without the relative floor, two with
+    it (its projection's mean square between them), serially and on Numba's threads."""
+    rng = np.random.default_rng(8)
+    eta, floor, tiny, count = 0.03, 1e-3, 1e-12, 7
+    m_corr, r_corr = 1.0 - momentum**count if momentum else 1.0, 1.0 - rho**count if rho else 1.0
+    for size in (5000, fused._PARALLEL_ELEMENTS):
+        raw = rng.normal(size=size) * 10.0 ** rng.integers(-4, 2, size=size)
+        velocity, second = rng.normal(size=size), rng.uniform(size=size)
+        group = rng.integers(0, 6, size=size)
+        groups = 7  # the last group empty: it divides by one
+        term = raw
+        if momentum:
+            new_velocity = momentum * velocity + (1 - momentum) * raw
+            term = new_velocity / m_corr
+        expected = eta * term
+        if rho:
+            new_second = rho * second + (1 - rho) * raw**2
+            root = np.sqrt(new_second / r_corr)
+            if relative:
+                power = np.bincount(group, weights=root * root, minlength=groups)
+                members = np.maximum(np.bincount(group, minlength=groups), 1)
+                expected = eta * (term / (root + relative * np.sqrt(power / members)[group] + tiny))
+            else:
+                expected = eta * (term / (root + floor))
+        for parallel in (False, True):
+            with build(parallel=parallel, threads=THREADS[-1] if parallel else 1):
+                v, s, step = fused.optimizer_step(
+                    raw, velocity, second, momentum, m_corr, rho, r_corr, eta, floor, relative,
+                    tiny, group, groups,
+                )
+            np.testing.assert_array_equal(step, expected)
+            if momentum:
+                np.testing.assert_array_equal(v, new_velocity)
+            else:
+                assert v is velocity
+            if rho:
+                np.testing.assert_array_equal(s, new_second)
+            else:
+                assert s is second
+
+
 def test_layout_flat_and_block_contrast_keep_their_numpy_bits() -> None:
     brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=4)
     graph = brain.brain
