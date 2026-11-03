@@ -80,6 +80,27 @@ def test_block_contrast_matches_the_gram_matrix() -> None:
     assert np.allclose(block_contrast(lay, s_plus, s_minus), gram, atol=1e-12)
 
 
+def test_the_block_contrast_writes_each_product_in_place_to_the_bits_made_apart() -> None:
+    """Float64 products land in the flat array where they are made; another precision's are made
+    apart and copied: either way the bits of each block's products made apart."""
+    w = cd.layered(6, 5, 4, density=1.0, seed=4)
+    lay = layout(w)
+    rng = np.random.default_rng(6)
+    for plus, minus in ((np.float64, np.float64), (np.float32, np.float32), (np.float32, np.float64)):
+        s_plus = rng.random((3, w.n)).astype(plus)
+        s_minus = (s_plus + rng.normal(size=s_plus.shape) * 0.1).astype(minus)
+        s_minus[:, :6] = s_plus[:, :6]  # the inputs alike: one product for their blocks
+        g = np.empty(lay.size)
+        for k in range(lay.pairs):
+            a0, a1, b0, b1 = lay.bounds(k)
+            block = s_plus[:, a0:a1].T @ (s_plus[:, b0:b1] - s_minus[:, b0:b1])
+            if not np.array_equal(s_plus[:, a0:a1], s_minus[:, a0:a1]):
+                block = block + (s_plus[:, a0:a1] - s_minus[:, a0:a1]).T @ s_minus[:, b0:b1]
+            g[lay.offset[k] : lay.offset[k + 1]] = block.ravel()
+        np.testing.assert_array_equal(block_contrast(lay, s_plus, s_minus, 2.5),
+                                      g[lay.edge_index] / 2.5)
+
+
 def test_layout_survives_with_parameters_and_learning() -> None:
     w = cd.layered(8, 6, 3, density=1.0, seed=6)
     brain = cd.NeuralGraph(w, cd.learning_neuron_model(dt=1.0))
