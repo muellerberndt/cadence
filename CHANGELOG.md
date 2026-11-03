@@ -7,9 +7,10 @@
 Where 0.93.0 wrote one rule out several times, the library states it once, and every array,
 answer, report, checkpoint and refusal is as it was: a battery of 13,076 recorded values over
 the kernels, the learner and the composed operations, one of 57,060 over lives with every 0.93
-option (saved, reloaded and continued, retuned, grown and grafted) and one over 2,802 altered
-checkpoints and every setting at 27 values read identical to 0.93.0, and the founder parity
-reads 0 of 24 lives differing. `src/cadence` holds 190 fewer lines.
+option (saved, reloaded and continued, retuned, grown and grafted), one of 4,458 over lives of
+several motor slots and one over 2,802 altered checkpoints and every setting at 27 values read
+identical to 0.93.0, and the founder parity reads 0 of 24 lives differing. `src/cadence` holds
+192 fewer lines.
 
 - The recall memory's maps of the moment (the address map, the position table and the
   anchored, relative and slope maps) are built, read, stepped, saved, loaded and checked
@@ -17,8 +18,8 @@ reads 0 of 24 lives differing. `src/cadence` holds 190 fewer lines.
   episode, its bucket and its features of when are each computed once.
 - Each stream's state is named once, for the recall memory and for the episodic records,
   across reset, end, keep, a new batch, save and load; a brain checkpoint names a settled
-  state's arrays once, and the traces held around a moment that is not the stream's own are
-  held in one place.
+  state's arrays once, the traces held around a moment that is not the stream's own are held
+  in one place, and the rows and motor neurons of a chosen action are found in one place.
 - A recall setting is validated by one branch per kind of value, the recall genes carry every
   option at its founder, the configurations' field kinds are read from their annotations, and
   the scale arguments and the position reward's pairings are refused in one place each.
