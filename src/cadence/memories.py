@@ -109,16 +109,21 @@ class Memories(Mapping[str, Any]):
 Entry = tuple[np.ndarray | None, np.ndarray, np.ndarray, float, bool, float]
 
 
+def _chosen(action: np.ndarray, offsets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The rows and the motor neurons of chosen actions, to index a ``(batch, motor)`` array:
+    one per row, or one per slot, the slots' motor neurons starting at ``offsets``."""
+    rows = np.arange(len(action))
+    if action.ndim == 2:
+        return rows[:, None], action + offsets[None, :]
+    return rows, action
+
+
 def command(action: np.ndarray, motor: int, offsets: np.ndarray) -> np.ndarray:
     """The ``(batch, motor)`` one-hot of an issued action: one per row, or one per slot, the
     slots' motor neurons starting at ``offsets``."""
     action = np.asarray(action, dtype=np.int64)
     out = np.zeros((len(action), motor))
-    rows = np.arange(len(action))
-    if action.ndim == 2:
-        out[rows[:, None], action + offsets[None, :]] = 1.0
-    else:
-        out[rows, action] = 1.0
+    out[_chosen(action, offsets)] = 1.0
     return out
 
 
@@ -139,12 +144,8 @@ def record_action(
     if write is not None and not write.any():
         return
     # The chosen motor neurons in motor order: one per row, or one per slot.
-    rows: np.ndarray = np.arange(len(action))
-    value: np.ndarray = reward
-    chosen: np.ndarray = action
-    if action.ndim == 2:
-        chosen = action + offsets[None, :]
-        rows, value = rows[:, None], reward[:, None]
+    rows, chosen = _chosen(action, offsets)
+    value = reward.reshape(rows.shape)
     if isinstance(memory, SynapticMemory):
         target = np.zeros((len(action), len(memory.post)))
         target[rows, chosen] = value
@@ -582,11 +583,8 @@ class EpisodicRecords:
             assert keys is not None  # one store is read under the keys it is keyed by
             read = memory.recall(keys)
         vote = np.asarray(read) / scale
-        rows = np.arange(len(action))
-        if action.ndim == 2:
-            chosen = action + self.offsets[None, :]
-            return np.asarray(vote[rows[:, None], chosen].mean(axis=1))
-        return np.asarray(vote[rows, action])
+        chosen = vote[_chosen(action, self.offsets)]
+        return np.asarray(chosen.mean(axis=1) if action.ndim == 2 else chosen)
 
     def remember(
         self,
