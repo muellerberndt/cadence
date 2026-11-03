@@ -1092,14 +1092,45 @@ and read at 24 to 60 answers "first" at 0.986 to 1.000 and "second" at 0.988 to 
 unique tokens at unseen lengths 0.992 to 1.000; copying repeated tokens, with
 `recall_relative=True` as well, 0.918 to 0.941 in closed loop. Setting the anchored maps to zero
 after training drops "second" to 0.48 to 0.63, so the anchor carries it. On induction and
-n-back the recipe stays within 0.014 of the founder table, and a period of 40 stays where the
-founder leaves it (0.35 to 0.39): it needs the table exact to 64 ages. The slower table costs
-reads that need exact ages: in the
+n-back the recipe stays within 0.014 of the founder table.
+
+A period of 40 needs the table exact to 64 ages. At the founder's `recall_position` of 32 the
+ages from 32 share one bucket per doubling, no term singles out the slot one period back, and
+the recipe continues the period at 0.35 to 0.39. With `recall_position=64` as well, a
+confirmation declared before the run on six fresh founders continues it at 0.86 to 0.94 and
+still reads "first" at 0.98 to 1.00 and copies unique tokens at 0.99 to 1.00 at the unseen
+lengths above.
+
+**What the recipe costs.** The 0.90 default search declared a panel for any change of the
+position term ([the sequence battery](../benchmarks/sequence/README.md#the-panel-of-position-changes-232),
+development founders, against the founder memory). With 32 or with 64 exact ages the recipe
+keeps n-back, two hops with a think moment and ordered recall within the panel's bars, and it
+costs three readings: periodic continuation at a period of 24 after 1,000 lessons (0.83 and 0.84
+against 0.92, means of four founders), the hidden route cue of the Stone Age sequence instrument
+after 480 guided episodes (frozen success 0.25 against 0.43), and a composer of C64 tunes (its
+read 0.79 and 0.80 against 0.82, its answer 1.61 and 1.56 against 1.47 nats). Taking one part
+away at a time locates two of them, and each part pays elsewhere:
+
+- The route's cost is the slower table: taught at the founder rate beside the anchor and the
+  slope, the route reads 0.49. At that rate the content shortcut returns: copying unique tokens
+  at unseen lengths reads 0.47 to 0.88 with the slope beside the table, 0.99 to 1.00 with the
+  table at 0.01.
+- The composer's cost is the slope: without it the recipe reads 0.815 and answers 1.46 nats (two
+  seeds), and the founder memory with the slope alone answers 1.52. Without the slope, look back
+  taught at 5 to 12 reads "first" at 24 to 60 at 0.57 to 0.66.
+- The period of 24 has no single cause: without the anchor it falls further (0.44 and 0.79 on two
+  founders, against 0.80 and 0.88), the anchor with the table at 0.1 and no slope, or the recipe
+  with the founder's recency, each recover part of it on one founder (0.86 and 0.84 against 0.80;
+  the founder memory 0.92), and 3,000 lessons do not close it (0.89 and 0.85).
+
+In the
 [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy)
 taught by lessons (five development founders, 1,536 episodes) the founder table answers every
 query greedily, the table at 0.01 alone 0.50 to 1.00 (mean 0.80), and with the anchor and the
 slope beside it 0.875 to 1.00 (mean 0.975). With the table at the founder rate the brain takes
-the position shortcut over the content route again.
+the position shortcut over the content route again. Use the recipe where the stories run longer
+than the lessons did; where they keep the taught lengths and few lessons must teach exact ages,
+the founder table serves.
 
 **When a read item happened (opt-in, `recall_when=True`).** A read delivers what its slots hold
 and what followed them; the position term only chooses the slots. Nothing reaching the cortex

@@ -34,12 +34,22 @@ documented opt-ins with the readings that bound them.
   founder table, on the development seeds: 0.25 to 0.27, 0.25 to 0.32 and 0.30 to 0.36); with
   `recall_relative=True` as
   well it copies repeated tokens at 0.918 to 0.941 in closed loop. Zeroing the anchored maps
-  drops `second` to 0.48 to 0.63. Induction and n-back stay within 0.014 of the founder; a
-  period of 40 stays where the founder leaves it (0.35 to 0.39), since it needs the table exact to
-  64 ages. The slower
-  table costs reads that need exact ages: ordered recall taught by lessons answers every query
-  at the founder rate, 0.50 to 1.00 (mean 0.80) with the table at 0.01 alone, and 0.875 to 1.00
-  with the anchor and the slope beside it.
+  drops `second` to 0.48 to 0.63. Induction and n-back stay within 0.014 of the founder. A
+  period of 40 needs the table exact to 64 ages: at 32 the ages from 32 share a bucket per
+  doubling and the recipe continues it at 0.35 to 0.39; with `recall_position=64` as well it
+  continues it at 0.86 to 0.94 on six fresh founders declared before the run, still reading
+  `first` at 0.98 to 1.00 and copying at 0.99 to 1.00 (#232's bar is .85). On the 0.90 default
+  search's panel of position changes, against the founder memory, the recipe with 32 or 64 ages
+  keeps n-back, two hops and ordered recall, and costs three readings: a period of 24 after
+  1,000 lessons (0.83 and 0.84 against 0.92), the Stone Age hidden route after 480 guided
+  episodes (0.25 against 0.43) and a composer's read and answer (0.79 and 0.80 against 0.82;
+  1.61 and 1.56 against 1.47 nats). The route's cost is the slower table (at
+  0.1 beside the anchor and the slope it reads 0.49), the composer's the slope (without it the
+  recipe reads 0.815 and answers 1.46 nats, but look back `first` at 24 to 60 falls to 0.57 to
+  0.66); the period of 24 has no single cause. The slower table costs reads that need exact
+  ages: ordered recall taught by lessons answers every query at the founder rate, 0.50 to 1.00
+  (mean 0.80) with the table at 0.01 alone, and 0.875 to 1.00 with the anchor and the slope
+  beside it.
 - `recall_when` (opt-in, #237): every head's read also delivers when what it read happened,
   `amplitude * sum_i p_i F_i` on a region of its own (`Recall.when_regions`), with `F_i` two
   features of the slot's age and, with the anchor, two of its place in the episode
@@ -59,7 +69,9 @@ checkpoints keep the maps and the per-stream counts. A chained second head (each
 first adding to its address what the head before it read) was built on the release branch and
 withdrawn before release: it did not answer two hops asked in one moment, 0.44 to 0.46 with it
 against 0.44 to 0.47 without on three development seeds, where one think moment answers 0.98
-to 0.99.
+to 0.99. A recall brain saved by 0.89.0, the release
+that added the position term, loads at its settings and reads as it did (a test with a file the
+0.89.0 wheel wrote).
 
 ### Learning during a continuing life
 
@@ -184,7 +196,8 @@ to 0.99.
   maps set to zero, and look back's cues taught one after another), ordered recall taught by
   lessons or by reward through `live` with the Stone Age instrument's recall world beside it
   (`--world recall`), and the width sweep. They are the instruments of this release's readings
-  for #232, #234, #236, #237, #238 and #239.
+  for #232, #234, #236, #237, #238 and #239. The battery's `recipe64` arm is
+  the positions recipe with the table exact to 64 ages.
 - `benchmarks/extinction`: the bandit of #210, failures paying 0 or -1.
 - The odour nursery charges a probe copy's refused answer to the life's work (`refused_sweeps`),
   as the key-door chamber does; the settle rescue exposed a strict life's refusal at a probe.

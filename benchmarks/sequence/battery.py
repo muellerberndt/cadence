@@ -57,6 +57,7 @@ ARMS: dict[str, dict[str, Any]] = {
     "anchor": {**BOUNDARY, "recall_anchor": True},
     "anchor_relative": {**BOUNDARY, "recall_anchor": True, "recall_relative": True},
     "recipe": RECIPE,
+    "recipe64": {**RECIPE, "recall_position": 64},
     "recipe_relative": {**RECIPE, "recall_relative": True},
     "heads": HEADS,
     "heads_copy": {**HEADS, **COPY},

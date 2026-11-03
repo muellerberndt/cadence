@@ -3,19 +3,29 @@ moment, and lessons teach it.
 
 The founder builds it (32 ages with a bucket each), zero at birth, so a brain reads as one
 without it until a lesson moves it; ``recall_position=0`` builds none; a checkpoint saved before
-the term loads without one. A moment chooses how far back its head looks: the term is read from
-the event heard and the cortex of the moment before.
+the term loads without one, and one saved by 0.89.0, the release that added it, reads as it did.
+A moment chooses how far back its head looks: the term is read from the event heard and the
+cortex of the moment before.
 """
 from __future__ import annotations
 
+import hashlib
 import json
+from pathlib import Path
 
 import numpy as np
 import pytest
 from checkpoints import earlier
 
 import cadence as cd
+from cadence import brain as cadence_brain
 from cadence.stream import _share
+
+FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recall_0890"
+# The fixture's continuation was recorded on the NumPy solver; the compiled dense kernel orders
+# the arithmetic otherwise, so its actions, attention and maps are read there alone
+# (CADENCE_FUSED=0 selects it).
+NUMPY_SOLVER = not cadence_brain._FUSED
 
 
 def composed(**options):
@@ -228,3 +238,63 @@ def test_head_zeros_maps_go_by_their_checkpoint_names():
     assert set(cd.Recall.position_names(0)) <= set(recall.arrays())
     with pytest.raises(ValueError):
         _ = composed(recall_position=0).recall.position_x
+
+
+def continued_0890(brain, moments=8):
+    """The fixture's continuation: one-hot moments of ``default_rng(11)``, each unlike the moment
+    before it (the first unlike the saved life's last, input 1), a lesson of label ``k % 2``
+    before a greedy act on each. Returns the actions, every head's attention and the maps."""
+    rng = np.random.default_rng(11)
+    last, actions, attention = 1, [], []
+    for k in range(moments):
+        last = int(rng.choice([i for i in range(4) if i != last]))
+        x = np.eye(4)[[last]]
+        brain.lesson(x, np.array([k % 2]))
+        actions.append(int(np.asarray(brain.act(x, greedy=True)).reshape(-1)[0]))
+        attention.append([np.asarray(p, dtype=np.float64).reshape(-1)
+                          for p in brain.recall.attended_heads])
+    maps = [np.asarray(m, dtype=np.float64) for head in brain.recall.position_maps for m in head]
+    return actions, attention, maps
+
+
+def sha256_of(arrays):
+    digest = hashlib.sha256()
+    for a in arrays:
+        digest.update(np.ascontiguousarray(a).tobytes())
+    return digest.hexdigest()
+
+
+def test_a_brain_saved_by_0_89_0_loads_and_reads_as_it_did(tmp_path):
+    """A two-head recall brain composed, taught and saved by cadence-net 0.89.0 (the fixture; a
+    capacity of 40, so ages from 32 share the doubling bucket) loads at 0.89.0's settings with
+    no option of a later release, its heads reading alike; continued with lessons, a save of it
+    continues as it does, and on the NumPy solver its actions, both heads' attention and the
+    position maps are the ones 0.89.0 recorded."""
+    provenance = json.loads((FIXTURE / "provenance.json").read_text())
+    brain = cd.Brain.load(FIXTURE / "brain.npz")
+    recall = brain.recall
+    assert {name: getattr(recall, name) for name in provenance["settings"]} == (
+        provenance["settings"]
+    )
+    assert recall.position_buckets == 33 and not recall.compete
+    assert recall.slope_maps == [] and recall.anchor_maps == [] and recall.relative_maps == []
+    assert (recall.slope, recall.when, recall.boundary, recall.position_reward) == (
+        0.0, False, False, 0.0
+    )
+    genes = {k: v for k, v in brain.describe()["genes"].items() if k.startswith("recall")}
+    assert genes == {**provenance["genes"], "recall_compete": False}
+    assert brain.parameters() == provenance["parameters"]
+    again = cd.Brain.load(brain.save(tmp_path / "again.npz"))
+    actions, attention, maps = continued_0890(brain)
+    resaved = continued_0890(again)
+    assert resaved[0] == actions
+    for kept, read in zip(resaved[1], attention, strict=True):
+        for a, b in zip(kept, read, strict=True):
+            np.testing.assert_array_equal(a, b)
+    for a, b in zip(resaved[2], maps, strict=True):
+        np.testing.assert_array_equal(a, b)
+    if NUMPY_SOLVER:
+        recorded = provenance["continuation"]
+        assert actions == recorded["actions"]
+        assert sha256_of([p for heads in attention for p in heads]) == recorded["attention_sha256"]
+        assert sha256_of(maps) == recorded["position_maps_sha256"]

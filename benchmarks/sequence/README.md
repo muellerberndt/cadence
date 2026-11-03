@@ -53,6 +53,7 @@ what do the earlier cues keep?
 | `anchor` | `boundary` with `recall_anchor=True` |
 | `anchor_relative` | `anchor` with `recall_relative=True` |
 | `recipe` | `boundary` with `recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01` |
+| `recipe64` | `recipe` with `recall_position=64`: the table exact to 64 ages |
 | `recipe_relative` | `recipe` with `recall_relative=True` |
 | `heads` | `table` with `recall_heads=2` |
 | `heads_copy` | `heads` with the copy pathway as the tokens' identity (`recall_copy=2.0, recall_tokens=range(16)`) |
@@ -128,6 +129,8 @@ PYTHONPATH=src python benchmarks/sequence/battery.py --task repeat \
     --arms anchor_relative recipe_relative --out DIR/copy.jsonl --workers 3
 PYTHONPATH=src python benchmarks/sequence/battery.py --task lookback --arms anchor rehearsal \
     --lessons 1800 --phases first last second --out DIR/phases.jsonl --workers 3
+PYTHONPATH=src python benchmarks/sequence/battery.py --task periodic \
+    --task-args '{"periods": [40]}' --arms recipe recipe64 --out DIR/period40.jsonl --workers 3
 python benchmarks/sequence/battery.py --summary DIR/lookback.jsonl
 PYTHONPATH=src python benchmarks/sequence/order.py --arms founder position_address \
     --out DIR/order.jsonl --workers 5
@@ -182,12 +185,98 @@ induction 0.999 to 1.000 against 0.998 to 1.000, n-back 1.000 against 0.986 to 0
 continuation at a period of 40 0.345 to 0.369 against 0.353 to 0.390: a period of 40 needs the
 table exact to 64 ages.
 
+**A period of 40** (#232 asks at least .85). At the founder's `recall_position` of 32 the ages
+from 32 share one bucket per doubling, so no term singles out the slot one period back. With the
+table exact to 64 ages (`recipe64`) development founders 0 to 2 answer 0.931, 0.941 and 0.912. A
+confirmation declared before any run on founders 232200 to 232205 (gates, each on at least 5 of 6
+founders: P = 40 at least .85, look back taught at 5 to 12 and read at 24 to 60 `first` at least
+.90, copying unique tokens taught at 3 to 6 and read at 8 to 12 at least .95, closed loop):
+
+| Founder | P = 40 | Look back `first` | `second` | `last` | Copying unique tokens | Teacher-forced |
+| --- | --- | --- | --- | --- | --- | --- |
+| 232200 | 0.937 | 0.998 | 0.998 | 0.998 | 0.999 | 1.000 |
+| 232201 | 0.941 | 1.000 | 0.998 | 0.985 | 0.999 | 1.000 |
+| 232202 | 0.907 | 1.000 | 1.000 | 1.000 | 0.999 | 1.000 |
+| 232203 | 0.941 | 1.000 | 0.994 | 0.994 | 0.986 | 0.998 |
+| 232204 | 0.858 | 0.981 | 0.947 | 0.968 | 0.999 | 1.000 |
+| 232205 | 0.943 | 0.998 | 0.998 | 1.000 | 0.999 | 1.000 |
+
+Every gate passes on 6 of 6.
+
 **The anchor's confirmation**, declared before any run on founders 300 to 305 (look back
 taught and read at 24 to 60, the cues mixed): `first` 0.998 to 1.000 and `second` 0.990 to
 1.000 with the anchor, 0.310 to 0.451 and 0.312 to 0.342 without (`boundary`); `last` 0.989 to
 1.000 in both. The battery at its defaults, mean over the six founders, without and with the
 anchor: induction 1.000 and 1.000, n-back 1.000 and 0.999, periodic continuation 0.988 and
 1.000, copying 1.000 and 1.000.
+
+### The panel of position changes (#232)
+
+The 0.90 default search declared a panel for any change of the position term. It is read here
+against the founder memory (`recall=True` at its founders: 32 exact ages taught at 0.1, recency
+0.25), each instrument with the lessons that search declared for it: surprise lessons for this
+battery and for the two module-32 benchmarks, every row for the Stone Age worlds and the
+composer. The parts:
+
+- this battery, founders 0 to 3, 2,000 lessons (1,000 for the period of 24): look back taught at
+  5 to 12 and read at 13 to 24, copying unique tokens taught at 3 to 6 and read at 8 to 10 in
+  closed loop, n-back with k from 1 to 4, periodic continuation at a period of 24, two hops with
+  a think moment;
+- look back with the cues `first` and `last`, and copying unique tokens of 16, as the held 0.90
+  benchmarks taught them (module 32, 600 lessons, read at 13 to 24 and at 8 to 10), founders 0
+  to 3;
+- the ordered recall world taught (1,536 episodes) and the hidden route cue guided (480
+  episodes) of the Stone Age sequence instrument, founders 1001 to 1010, frozen sampled success;
+- a composer of C64 tunes outside the library (128 neurons, a window of 4, 24,576 moments, seeds
+  0 and 1): the held-out read's accuracy and the answer's nats per voice-row.
+
+A change keeps the panel when look back `first` and copying at unseen lengths reach 0.90, no
+probe of this battery falls more than 0.03 below the founder memory (means over founders), the
+Stone Age worlds stay within 0.03 (the founder-paired mean), and the composer's read stays
+within 0.005 and its answer within 0.03 nats (means over seeds).
+
+| Reading | Founder memory | `recipe` | `recipe64` |
+| --- | --- | --- | --- |
+| Look back `first` at 13 to 24 | 0.226 to 0.281 | 0.998 to 1.000 | 0.993 to 1.000 |
+| Copying at 8 to 10, closed loop | 0.056 to 0.074 | 0.999 to 1.000 | 0.999 to 1.000 |
+| N-back, k from 1 to 4 | 1.000 | 0.996 to 0.999 | 0.996 to 0.999 |
+| A period of 24 | 0.910 to 0.930 (mean 0.920) | 0.792 to 0.883 (0.834) | 0.728 to 0.946 (0.837) |
+| Two hops with a think moment | 0.975 to 0.993 | 0.996 to 0.999 | 0.995 to 0.998 |
+| Module 32: look back `first` at 13 to 24 | 0.205 to 0.269 | 0.967 to 0.994 | 0.967 to 0.994 |
+| Module 32: copying at 8 to 10 | 0.080 to 0.119 | 0.992 to 0.999 | 0.992 to 0.999 |
+| Stone Age ordered recall, taught | 0.996 | 0.972 (paired -0.025) | 0.972 (paired -0.025) |
+| Stone Age hidden route, guided | 0.428 | 0.246 (paired -0.181) | 0.246 (paired -0.181) |
+| Composer read accuracy, seeds 0 and 1 | 0.819, 0.823 | 0.798, 0.775 | 0.794, 0.810 |
+| Composer answer nats, seeds 0 and 1 | 1.443, 1.492 | 1.542, 1.685 | 1.561, 1.561 |
+
+Neither keeps the panel. Both read at unseen lengths, and n-back, two hops and ordered recall
+stay within their bars (ordered recall loses one founder of ten, 0.750 against 0.996); both cost
+the period of 24 (0.08 on the mean), the hidden route (0.18; the route drops on six founders of
+ten and rises on four) and the composer (read 0.035 and 0.019 lower, answer 0.15 and 0.09 nats
+higher). No slot of the module-32 benchmarks or the Stone Age worlds reaches an age of 32, and
+there the two arms answer alike.
+
+Where the costs come from, one part of the recipe at a time (development readings after the
+panel; no gate):
+
+| Change | Reading | Founder memory | `recipe` | With the change |
+| --- | --- | --- | --- | --- |
+| The table at 0.1 | hidden route, founders 1001 to 1010 | 0.428 | 0.246 | 0.490 |
+| Recency 0.25 | hidden route | 0.428 | 0.246 | 0.296 |
+| No anchor | hidden route | 0.428 | 0.246 | 0.338 |
+| No slope | composer read, answer nats (seeds 0 and 1) | 0.821, 1.468 | 0.786, 1.613 | 0.815, 1.464 |
+| The slope alone, on the founder memory | composer read, answer nats | 0.821, 1.468 | | 0.809, 1.522 |
+| No slope | look back `first` at 24 to 60 (founders 0 to 2) | | 0.998 to 1.000 | 0.568 to 0.662 |
+| No anchor (`slope_slow`) | a period of 24, founders 0 and 1 | 0.923, 0.917 | 0.804, 0.883 | 0.444, 0.788 |
+| The anchor with the table at 0.1, no slope (`anchor`) | a period of 24, founder 0 | 0.923 | 0.804 | 0.858 |
+| Recency 0.25 | a period of 24, founder 0 | 0.923 | 0.804 | 0.837 |
+| No boundary | a period of 24, founder 0 | 0.923 | 0.804 | 0.745 |
+| 3,000 lessons | a period of 24, founders 0 and 1 | 0.923, 0.917 | 0.804, 0.883 | 0.888, 0.849 |
+
+The route's cost is the slower table, the composer's the slope; the period of 24 has no single
+cause. Each part pays elsewhere: the slope carries look back at unseen lengths, and the table at
+0.01 keeps copying at unseen lengths (0.99 to 1.00 with the slope beside it, 0.47 to 0.88 with
+the table at 0.1).
 
 ### A read placed where an earlier read pointed (#234)
 
