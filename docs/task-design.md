@@ -20,17 +20,9 @@ applicability without requiring an unrelated whole-brain demonstration. Use the
 
 ## Start at the boundary
 
-A patch has bounded local state, declared ports, readback and a repair rule.
-Give each external port a meaning, unit, availability condition and source.
-Distinguish an absent observation from an observed zero. Distinguish a goal,
-an executed action, a measured consequence and a private prediction even when
-their arrays have the same shape. The application supplies these semantics;
-array dimensions alone cannot enforce them.
-
-First supply correct action records directly to the environment or instrument.
-Check what actually happens. Then compare the learner's proposed actions using
-the same boundary. This separates a learning failure from an interface that
-cannot realize the requested behavior.
+The boundary rules are in [evaluate a brain](evaluate.md#start-at-the-boundary): a meaning,
+unit, availability condition and source for every port, an absent observation apart from an
+observed zero, and correct actions supplied to the environment before the learner's.
 
 For a sampler, an event can expose sample identity, onset time, gain and
 duration. Those are playable controls. Spectral brightness and onset density
@@ -44,18 +36,9 @@ forecast of an observation is not automatically an executable action.
 
 ## Check which differences survive encoding
 
-Use two cases whose distinction matters. If the encoder maps them to the same
-ports, a deterministic learner cannot recover that distinction from those
-ports alone. More context or a learned prior can support a guess, but cannot
-make the missing observation unique.
-
-For example, consider one event in each sixteenth-note interval. Times
-`j + 0.25` are equally spaced. Times `j + 0.25` for even `j` and `j + 0.75`
-for odd `j` alternate between long and short gaps. Both have the same event
-count, occupied intervals and unsigned distance to the nearest grid point.
-An unsigned timing-spread summary cannot distinguish them. This is a
-counterexample for that timing summary, not a claim that all audio features
-of the two rendered waveforms are identical.
+Two cases whose difference matters must reach different ports, or no deterministic learner
+recovers it ([evaluate a brain](evaluate.md#check-which-differences-survive-encoding), with
+the timing counterexample).
 
 Use explicit signed event offsets when the task requires them. Quantized
 patterns can still have musical groove; preserving microtiming alone does
@@ -76,30 +59,15 @@ capacity, exposure and original gates while diagnosing a failure.
 
 ## Test coherent behavior over time
 
-Sequence competence requires coherent, continuing learned context and temporal
-organization to govern behavior. Sequential output and sensory feedback are
-allowed. Working traces, associative memory and efference are legitimate; the
-question is what behavior their acquired context supports. Next-event accuracy
-and self-feeding alone are bounded component results, not evidence of phrase or
-whole-sequence competence.
-
-For an integrated sequence claim, declare the relevant context and time span,
-then compare the same acquired brain with retained context, absent context and
-perturbed context under matched exposure. Where relevant, test recovery after a
-disturbance and counterfactual contexts requiring different continuations. Keep
-the simpler control, earlier skills, pending continuation, refusals and work in
-the acceptance gates. These comparisons must test the claimed behavior, rather
-than only its aggregate next-event score.
-
-Separate equation residual from musical surprise, structural coherence and task
-success. State which coordinates are live in the solve and which are held:
-default `Brain.act` qualifies a present state with held trace and memory input,
-not a joint future trajectory. This does not require a new phrase module or
-whole-song-at-once generation. Check existing state, information and experience
-first; any added mechanism must use local repair in the same coupled global
-equilibrium. Adapters must not conceal answers, phase or arrangement. Supplied
-context or clocks belong in the declared information budget and appropriate
-controls, not in a claim that the brain learned that organization itself.
+The evidence contract of an integrated sequence claim is in
+[evaluate a brain](evaluate.md#test-coherent-behavior-over-time): the same acquired brain with
+retained, absent and perturbed context under matched exposure, recovery and counterfactual
+contexts, and the simpler control, earlier skills, refusals and work in the gates. The test
+does not require a new phrase module or whole-song-at-once generation. Check existing state,
+information and experience first; any added mechanism must use local repair in the same
+coupled global equilibrium. Adapters must not conceal answers, phase or arrangement. Supplied
+context or clocks belong in the declared information budget and appropriate controls, not in
+a claim that the brain learned that organization itself.
 
 ## Test learned memory relevance
 
@@ -149,14 +117,8 @@ interference and continuing-life gates above remain separate work.
 
 ## Close the action and consequence loop
 
-For an acting system, test this full sequence:
-
-1. Observe the current situation and retain the relevant context.
-2. Form a private action proposal under a sustained intention.
-3. Predict the proposal's consequences using relationships learned from
-   actual action/consequence records.
-4. Execute the selected action and measure the actual consequence.
-5. Repair the discrepancy and test earlier skills after the update.
+The five steps of the loop, from observing the situation to repairing the discrepancy, are in
+[evaluate a brain](evaluate.md#close-the-action-and-consequence-loop).
 
 `Brain.imagine` evaluates supplied observation sequences with a private trace and read-only
 durable memory. It does not predict the body's next observation or learn an environmental
