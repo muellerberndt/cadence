@@ -58,7 +58,7 @@ def test_the_read_drives_the_when_region_with_its_attention():
         brain.act(rng.random((2, 6)))
     drive = recall.stimulate(np.zeros((2, brain.connectome.n)), rng.random((2, 6)))
     neurons = np.asarray(brain.connectome.populations["recall_when"])
-    expected = recall.amplitude * np.einsum("bm,bmw->bw", recall.attended, recall.when_features())
+    expected = recall.amplitude * np.einsum("bm,bmw->bw", recall.attended_heads[0], recall.when_features())
     np.testing.assert_allclose(drive[:, neurons], expected)
 
 

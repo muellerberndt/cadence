@@ -85,7 +85,7 @@ def test_the_attention_recipe_learns_addresses_with_several_heads():
 def test_competing_heads_read_what_the_heads_before_them_left():
     brain = witnessed(composed(heads=2))
     recall = brain.recall
-    assert recall.compete and recall.to_dict()["compete"] is True
+    assert recall.to_dict()["compete"] is True  # the key a memory of several heads writes
     drive = recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
     first, second = recall.attended_heads
     # at birth both addresses are the key: head 1 takes of each slot at most what head 0 left,
@@ -149,10 +149,11 @@ def test_a_competing_head_learns_from_the_shares_it_read():
     brain.stimulus(STREAM[1])
     read = recall.attended_heads[1]
     assert recall._lesson_reads(recall.last)[1] is read  # noqa: SLF001
-    # without competition a head's prior is its own attention, recomputed in its lesson
-    alike = witnessed(composed(heads=2, seed=10, recall_compete=False))
-    alike.stimulus(STREAM[1])
-    assert alike.recall._lesson_reads(alike.recall.last) == [None, None]  # noqa: SLF001
+    # head 0's prior is its own attention, recomputed in its lesson, as one head's is
+    assert recall._lesson_reads(recall.last)[0] is None  # noqa: SLF001
+    one = witnessed(composed(heads=1, seed=10))
+    one.stimulus(STREAM[1])
+    assert one.recall._lesson_reads(one.recall.last) == [None]  # noqa: SLF001
 
 
 def test_a_null_slot_keeps_its_share_of_every_competing_head():
@@ -168,41 +169,43 @@ def test_a_null_slot_keeps_its_share_of_every_competing_head():
 
 
 def test_competing_heads_never_read_a_moment_twice_through_lessons():
-    most, overlap = {}, {}
-    for compete in (True, False):
-        brain = witnessed(composed(heads=2, seed=5, recall_compete=compete))
-        reads, shared = [], []
-        for x, label in zip(STREAM * 6, [0, 1, 1, 0] * 6, strict=True):
-            brain.lesson(x, np.array([label]))
-            brain.act(x, greedy=True)
-            first, second = brain.recall.attended_heads
-            reads.append(float((first + second).max()))
-            shared.append(float(np.minimum(first, second).sum()))
-        most[compete], overlap[compete] = max(reads), float(np.mean(shared))
-    # the heads together read each slot at most once; without competition the slot they share
-    # is read nearly twice (1.83 on this stream)
-    assert most[True] <= 1.0 + 1e-12 and most[False] > 1.5
-    assert overlap[True] < overlap[False] - 0.1
+    brain = witnessed(composed(heads=2, seed=5))
+    reads = []
+    for x, label in zip(STREAM * 6, [0, 1, 1, 0] * 6, strict=True):
+        brain.lesson(x, np.array([label]))
+        brain.act(x, greedy=True)
+        first, second = brain.recall.attended_heads
+        reads.append(float((first + second).max()))
+    # the heads together read each slot at most once (the read before 0.91.3, every head on
+    # its own, read the slot they share 1.83 times on this stream)
+    assert max(reads) <= 1.0 + 1e-12
 
 
-def test_competition_is_a_runtime_option_of_a_living_brain():
+def test_the_competing_read_is_the_only_read():
+    """``recall_compete`` was retired in 0.93.0: the name is refused at compose and retune
+    with the sentence naming the release, and a memory of several heads still writes the key
+    at True, the one value a saved file loads at."""
+    sentence = cd.Recall.removed("compete")
+    assert sentence == "recall_compete was retired in 0.93.0: the heads read competing, as they did at True"
+    for value in (False, True):
+        with pytest.raises(ValueError, match="recall_compete was retired in 0.93.0"):
+            composed(heads=2, recall_compete=value)
     brain = witnessed(composed(heads=2))
-    brain.retune(recall_compete=False)
-    assert not brain.recall.compete and brain.recall.to_dict()["compete"] is False
-    brain.recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    first, second = brain.recall.attended_heads
-    np.testing.assert_allclose(first, second)
-    with pytest.raises(ValueError, match="compete"):
-        brain.retune(recall_compete=1)
+    with pytest.raises(ValueError, match="recall_compete was retired in 0.93.0"):
+        brain.retune(recall_compete=False)
+    assert "recall_compete" not in brain.describe()["genes"]
+    assert brain.recall.to_dict()["compete"] is True
+    assert "compete" not in composed(heads=1).recall.to_dict()
 
 
-def test_a_file_saved_before_heads_competed_loads_with_heads_that_read_alike(tmp_path):
+def test_a_file_of_several_heads_saved_before_they_competed_is_refused(tmp_path):
     brain = witnessed(composed(heads=2, seed=6))
     path = brain.save(tmp_path / "heads")
-    assert cd.Brain.load(path).recall.compete
+    assert cd.Brain.load(path).recall.heads == 2
     with np.load(path, allow_pickle=False) as data:
         arrays = {name: data[name] for name in data.files}
     saved = json.loads(str(arrays["brain"]))
+    assert saved["memories"]["recall"]["compete"] is True
 
     def drop(node):  # the file as 0.91.2 wrote it: no ``compete`` beside ``heads``
         if isinstance(node, dict):
@@ -218,35 +221,15 @@ def test_a_file_saved_before_heads_competed_loads_with_heads_that_read_alike(tmp
     arrays["brain"] = np.array(json.dumps(saved))
     earlier = tmp_path / "earlier.npz"
     np.savez(earlier, **arrays)
-    loaded = cd.Brain.load(earlier)
-    assert not loaded.recall.compete
-    loaded.recall.stimulate(np.zeros((1, loaded.connectome.n)), STREAM[0])
-    first, second = loaded.recall.attended_heads
-    np.testing.assert_allclose(first, second)
-    assert not cd.Brain.load(loaded.save(tmp_path / "again")).recall.compete
-
-
-def test_heads_read_alike_without_competition():
-    brain = witnessed(composed(heads=2, recall_compete=False))
-    recall = brain.recall
-    drive = recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    (r0, n0), (r1, n1) = recall._head_columns  # noqa: SLF001
-    np.testing.assert_allclose(drive[:, r0], drive[:, r1])
-    np.testing.assert_allclose(drive[:, n0], drive[:, n1])
-    first, second = recall.attended_heads
-    np.testing.assert_allclose(first, second)
-    head0 = drive[:, r0].copy()
-    # head 1's address pointed at the oldest slot's key reads that slot; head 0 reads as before
-    w_x, w_c, b = recall.head_map(1)
-    recall._set_map(1, w_x, w_c, b + 20.0 * recall.keys[0, 0])  # noqa: SLF001
-    drive = recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    unchanged, second = recall.attended_heads
-    np.testing.assert_allclose(unchanged, first)
-    np.testing.assert_allclose(drive[:, r0], head0)
-    assert np.argmax(second[0]) == 0 and second[0, 0] > 0.99
-    np.testing.assert_allclose(drive[:, r1], recall.amplitude * recall.values[0, 0][None, :],
-                               atol=0.05 * recall.amplitude)
-    assert not np.allclose(drive[:, r0], drive[:, r1])
+    with pytest.raises(ValueError, match="saved before 0.91.3.*recall_compete was retired in 0.93.0"):
+        cd.Brain.load(earlier)
+    # a file saved to read its heads alike (0.91.3 to 0.92.1, ``recall_compete=False``)
+    saved["memories"]["recall"]["compete"] = False
+    arrays["brain"] = np.array(json.dumps(saved))
+    alike = tmp_path / "alike.npz"
+    np.savez(alike, **arrays)
+    with pytest.raises(ValueError, match="recall_compete was retired in 0.93.0"):
+        cd.Brain.load(alike)
 
 
 def test_the_address_lesson_reads_each_head_back_through_its_own_synapses():

@@ -40,7 +40,7 @@ def test_action_report_counts_actual_free_work_and_excludes_reward_eligibility(
     report = brain.last_settlement
     assert report is not None
     assert action.shape == (2,)
-    assert report["operation"] == "act" and report["scope"] == "free_answer"
+    assert report["operation"] == "act" and "scope" not in report
     assert report["qualified"] and report["row_qualified"] == (True, True)
     np.testing.assert_array_equal(report["residual"], checks[-1])
     assert report["max_residual"] == max(report["residual"]) <= report["tolerance"]

@@ -35,7 +35,8 @@ GO = np.array([[0.0, 0.0, 0.0, 1.0]])
 FACT = np.array([[1.0, 0.0, 0.0, 1.0]])  # a name (coordinate 0) stated with a value (3)
 NAME = np.array([[1.0, 0.0, 0.0, 0.0]])
 STREAM = (CUE, GO, FACT, NAME)
-ARRAYS = ("keys", "values", "nexts", "held", "previous", "w_x", "w_c", "b")
+ARRAYS = ("keys", "values", "nexts", "held", "previous")
+MAP = ("w_x", "w_c", "b")  # the names of head 0's address map, as a checkpoint keeps them
 
 
 def composed(seed=3, recall=True, **options):
@@ -58,6 +59,8 @@ def assert_same_checkpoint(first, second):
 def assert_same_memory(first, second):
     for name in ARRAYS:
         np.testing.assert_array_equal(getattr(first, name), getattr(second, name), err_msg=name)
+    for name, a, b in zip(MAP, first.head_map(0), second.head_map(0), strict=True):
+        np.testing.assert_array_equal(a, b, err_msg=name)
 
 
 def synapse_rows(connectome):
@@ -425,8 +428,8 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
         ir.lesson(inst, seq[-1], answer, work)
         moved += lib.lesson(seq[-1], answer)["address_rows"]
         np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
-        for name in ("w_x", "w_c", "b"):
-            np.testing.assert_array_equal(getattr(inst.index, name), getattr(lib.recall, name))
+        for name, kept in zip(MAP, lib.recall.head_map(0), strict=True):
+            np.testing.assert_array_equal(getattr(inst.index, name), kept, err_msg=name)
         np.testing.assert_array_equal(inst.act(seq[-1], greedy=True), lib.act(seq[-1], greedy=True))
         for name in ("keys", "values", "nexts"):
             np.testing.assert_array_equal(
@@ -460,8 +463,8 @@ def test_the_bounded_address_step_is_the_instruments_bit_for_bit():
     report = lib._step(moment, np.arange(2), d_value, d_next)
     assert report == inst.learn(np.arange(2), d_value, d_next, 0.5, lib.address_temperature)
     assert report["address_rows"] == 2.0
-    for name in ("w_x", "w_c", "b"):
-        np.testing.assert_array_equal(getattr(lib, name), getattr(inst, name), err_msg=name)
+    for name, kept in zip(MAP, lib.head_map(0), strict=True):
+        np.testing.assert_array_equal(kept, getattr(inst, name), err_msg=name)
 
 
 # -- addressing and reading
@@ -494,20 +497,20 @@ def test_the_memory_records_the_attention_each_read_used():
     moment's write, read-only; a reset forgets it."""
     brain = composed()
     recall = brain.recall
-    assert recall.attended is None
+    assert recall.attended_heads is None
     for x in (FACT, GO, CUE):
         brain.act(x, greedy=True)
     brain.stimulus(NAME)
     logits = np.einsum("bk,bmk->bm", NAME, recall.keys) / 0.25 - 0.25 * recall.ages()[None]
-    np.testing.assert_allclose(recall.attended, softmax(logits))
-    np.testing.assert_array_equal(recall.attended, recall.weights(recall.last.address))
+    np.testing.assert_allclose(recall.attended_heads[0], softmax(logits))
+    np.testing.assert_array_equal(recall.attended_heads[0], recall.weights(recall.last.address))
     brain.act(NAME, greedy=True)  # the act's own read, then its write
-    assert recall.slots == 4 and recall.attended.shape == (1, 3)
-    np.testing.assert_allclose(recall.attended, softmax(logits))
+    assert recall.slots == 4 and recall.attended_heads[0].shape == (1, 3)
+    np.testing.assert_allclose(recall.attended_heads[0], softmax(logits))
     with pytest.raises(ValueError):
-        recall.attended[0, 0] = 0.0
+        recall.attended_heads[0][0, 0] = 0.0
     brain.reset()
-    assert recall.attended is None
+    assert recall.attended_heads is None
 
 
 def test_capacity_drops_the_oldest_slot_and_recency_charges_age():
@@ -554,10 +557,11 @@ def test_the_brains_code_keys_the_moments_and_its_storage_follows_its_units_what
             brain.act((rng.random((2, brain.inputs)) < 0.05).astype(float), greedy=True)
 
     def storage(recall):
-        return {name: getattr(recall, name).shape for name in ARRAYS}
+        shapes = {name: getattr(recall, name).shape for name in ARRAYS}
+        return {**shapes, **{f"map_{i}": a.shape for i, a in enumerate(recall.head_map(0))}}
 
     assert storage(narrow.recall) == storage(wide.recall)
-    assert wide.recall.keys.shape == (2, 2, 128) and wide.recall.w_x.shape == (128, 128)
+    assert wide.recall.keys.shape == (2, 2, 128) and wide.recall.head_map(0)[0].shape == (128, 128)
     assert len(wide.connectome.populations["recall"]) == 128
     np.testing.assert_allclose(np.linalg.norm(wide.recall.keys, axis=2), 1.0)
     assert ((wide.recall.keys > 0).sum(axis=2) <= 24).all()
@@ -633,10 +637,10 @@ def test_the_address_lesson_reads_the_lessons_phases_at_the_taught_rows():
     learned = SimpleNamespace(free=SimpleNamespace(activation=free),
                               nudged=SimpleNamespace(activation=plus), opposite=None,
                               taught=np.array([False, True, False, True]))
-    before = brain.recall.w_x.copy()
+    before = brain.recall.head_map(0)[0].copy()
     report = brain.recall.learn(brain.learner.brain, learned)
     assert report["address_rows"] == 2
-    assert not np.array_equal(brain.recall.w_x, before)
+    assert not np.array_equal(brain.recall.head_map(0)[0], before)
     agreed = SimpleNamespace(free=learned.free, nudged=learned.free, opposite=None, taught=None)
     assert brain.recall.learn(brain.learner.brain, agreed)["address_rows"] == 0
     brain.recall.address = 0.0
@@ -691,7 +695,7 @@ def test_two_thousand_dense_lessons_keep_the_map_finite_and_the_brain_acting():
     assert (moved, refused) == (2_000.0, 0.0)
     np.testing.assert_array_equal(brain.brain.efficacy, efficacy)  # the graph stood still
     recall = brain.recall
-    assert all(np.isfinite(a).all() for a in (recall.w_x, recall.w_c, recall.b))
+    assert all(np.isfinite(a).all() for a in recall.head_map(0))
     np.testing.assert_allclose(recall._moment(x).address, recall.keys[:, 0], atol=1e-9)
     assert brain.act(x, greedy=True).shape == (1,)
     report = brain.lesson(x, [0])
@@ -708,26 +712,26 @@ def test_finite_inputs_that_overflow_the_step_leave_the_map_as_it_was():
     for x in (FACT, GO):
         brain.act(x, greedy=True)
     brain.lesson(NAME, [1])
-    kept = [a.copy() for a in (recall.w_x, recall.w_c, recall.b)]
+    kept = [a.copy() for a in recall.head_map(0)]
     loud = np.array([[1e200, 1e200, 0.0, 0.0]])  # finite; its |z|^2 is not
     report = recall._step(recall._moment(loud), np.array([0]), np.ones((1, 4)), None)
     assert report["address_rows"] == 1.0 and report["address_refused"] == 0.0
-    for before, after in zip(kept, (recall.w_x, recall.w_c, recall.b), strict=True):
+    for before, after in zip(kept, recall.head_map(0), strict=True):
         np.testing.assert_array_equal(after, before)
     louder = np.array([[1e300, 1e300, 0.0, 0.0]])
     recall._observe(louder, louder)  # a slot whose logit against the event overflows
     with np.errstate(over="ignore", invalid="ignore"):
         report = recall._step(recall._moment(louder), np.array([0]), np.ones((1, 4)), None)
     assert report == {"address_rows": 0.0, "address_error": 0.0, "address_refused": 1.0}
-    for before, after in zip(kept, (recall.w_x, recall.w_c, recall.b), strict=True):
+    for before, after in zip(kept, recall.head_map(0), strict=True):
         np.testing.assert_array_equal(after, before)
     brain.reset()
     for x in (FACT, GO):
         brain.act(x, greedy=True)
     report = brain.lesson(NAME, [0])
     assert report["address_rows"] == 1.0 and report["address_refused"] == 0.0
-    assert not np.array_equal(recall.w_x, kept[0])
-    assert all(np.isfinite(a).all() for a in (recall.w_x, recall.w_c, recall.b))
+    assert not np.array_equal(recall.head_map(0)[0], kept[0])
+    assert all(np.isfinite(a).all() for a in recall.head_map(0))
 
 
 def test_a_rows_step_is_its_own_whatever_the_batch():
@@ -748,10 +752,10 @@ def test_a_rows_step_is_its_own_whatever_the_batch():
             recall._observe(slot[order], slot[order])
         recall.previous = cortex[order].copy()
         moment = recall._moment(events[order])
-        before = [a.copy() for a in (recall.w_x, recall.w_c, recall.b)]
+        before = [a.copy() for a in recall.head_map(0)]
         report = recall._step(moment, np.arange(len(order)), d_value[order], None)
         assert report["address_rows"] == len(order) and report["address_refused"] == 0.0
-        moved = [a - b for a, b in zip((recall.w_x, recall.w_c, recall.b), before, strict=True)]
+        moved = [a - b for a, b in zip(recall.head_map(0), before, strict=True)]
         shift = recall._moment(events[order]).address - moment.address
         return moved, report, shift, _gain(recall, moment, np.arange(len(order)))
 
@@ -871,7 +875,7 @@ def test_lessons_teach_the_address_and_step_gives_the_same_lesson():
         taught += report["accepted_presentations"]
         brain.act(xs[-1], greedy=True)
     assert 0 < rows <= taught
-    assert np.abs(brain.recall.w_x).sum() > 0
+    assert np.abs(brain.recall.head_map(0)[0]).sum() > 0
     # the lesson of ``step(..., teacher=...)``: the same parameters, then the same act
     twins = [fork(brain), fork(brain)]
     labels = rng.integers(8, size=8)
@@ -938,12 +942,12 @@ def test_ended_streams_begin_with_empty_slots_and_a_refused_update_rolls_back(mo
     monkeypatch.setattr(brain.basal_ganglia, "learn", refused)
     with pytest.raises(RuntimeError, match="refused"):
         brain.learn(np.zeros(2), np.array([True, True]), x)
-    for name in ARRAYS[:5]:  # the per-stream arrays the snapshot holds
+    for name in ARRAYS:  # the per-stream arrays the snapshot holds
         assert getattr(recall, name) is before[name]
-    learned = recall.w_x.copy()
+    learned = recall.head_map(0)[0].copy()
     brain.reset()
     assert recall.keys.shape == (0, 0, 4) and recall.previous.shape == (0, 8)
-    np.testing.assert_array_equal(recall.w_x, learned)  # the address map is learned and stays
+    np.testing.assert_array_equal(recall.head_map(0)[0], learned)  # the address map is learned and stays
 
 
 def test_a_routine_moment_that_ends_the_episode_starts_the_slots_afresh(tmp_path):
@@ -1022,7 +1026,7 @@ def test_a_saved_memory_continues_identically_and_marks_its_format(tmp_path, opt
         brain.step(STREAM[t % 4], teacher=[t % 2])
     for t in range(4):
         brain.live(STREAM[t % 4], reward=[float(t % 3 == 0)])
-    assert np.abs(brain.recall.w_x).sum() > 0 and brain.recall.slots > 1
+    assert np.abs(brain.recall.head_map(0)[0]).sum() > 0 and brain.recall.slots > 1
     path = brain.save(tmp_path / "life")
     with np.load(path, allow_pickle=False) as data:
         meta = metadata(data)
@@ -1172,10 +1176,10 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
     """Each option passed at its founder builds the founder memory: the same life, the same
     checkpoint bytes and the same description, which leaves the options out."""
     assert cd.Recall.options() == {
-        "address_step": "lms", "null": None, "address_reward": 0.0, "position_reward": 0.0,
+        "null": None, "address_reward": 0.0, "position_reward": 0.0,
         "window": 1,
         "window_decay": 1.0, "heads": 1, "position": 32, "position_rate": 0.1,
-        "boundary": False, "copy": 0.0, "tokens": None, "action": False, "compete": True,
+        "boundary": False, "copy": 0.0, "tokens": None, "action": False,
         "anchor": False, "relative": False, "slope": 0.0, "when": False,
     }
     founder = composed(seed=5, arousal=True, learning_surprise=True)
@@ -1218,10 +1222,10 @@ def _option_lives(extra, seed=2, rounds=8):
             )
         ir.lesson(inst, seq[-1], answer, work)
         moved += lib.lesson(seq[-1], answer)["address_rows"]
-        np.testing.assert_array_equal(inst.index.attended, lib.recall.attended)
+        np.testing.assert_array_equal(inst.index.attended, lib.recall.attended_heads[0])
         np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
-        for name in ("w_x", "w_c", "b"):
-            np.testing.assert_array_equal(getattr(inst.index, name), getattr(lib.recall, name))
+        for name, kept in zip(MAP, lib.recall.head_map(0), strict=True):
+            np.testing.assert_array_equal(getattr(inst.index, name), kept, err_msg=name)
         np.testing.assert_array_equal(inst.act(seq[-1], greedy=True), lib.act(seq[-1], greedy=True))
         for name in ("keys", "values", "nexts"):
             np.testing.assert_array_equal(
@@ -1231,18 +1235,17 @@ def _option_lives(extra, seed=2, rounds=8):
     return moved
 
 
-# -- the address step toward the named slots
+# -- the address step
 
 
-@pytest.mark.parametrize(("form", "rises"), [("lms", False), ("toward", True)])
-def test_a_movement_that_names_a_short_key_raises_its_slot_under_the_toward_step(form, rises):
+def test_a_movement_that_names_a_short_key_moves_the_address_onto_it():
     """Two slots with the short keys [.25, 0] and [0, .25], the heard key [1, 0], no recency
     charge: the address attends to the first slot, and a movement that names it (its value)
-    gives a target near its short key. The founder step moves the address toward that
-    target, shortening it, and the first slot's weight falls; the toward step moves the
-    address by the target less the attended keys' mixture, and the first slot's weight
-    rises."""
-    recall = bare(recency=0.0, next=False, address_step=form)
+    gives a target near its short key. The step moves the address toward that target,
+    shortening it, and the first slot's weight falls (the step on the named keys less the
+    attended mixture, ``recall_address_step="toward"``, which raised it, was retired in
+    0.93.0)."""
+    recall = bare(recency=0.0, next=False)
     for key in 0.25 * np.eye(2):
         recall._observe(key[None], key[None])
     x = np.array([[1.0, 0.0]])
@@ -1251,123 +1254,7 @@ def test_a_movement_that_names_a_short_key_raises_its_slot_under_the_toward_step
     report = recall._step(before, np.array([0]), recall.values[:, 0].copy(), None)
     assert report["address_rows"] == 1.0 and report["address_refused"] == 0.0
     after = recall.weights(recall._moment(x).address)[0, 0]
-    assert after != weight and (after > weight) == rises
-
-
-@pytest.mark.parametrize("seed", range(6))
-def test_the_toward_step_raises_the_named_slots_against_the_attended_ones(seed):
-    """Random keys of any norms, widths, slot counts, cortex and movements. A row taught alone
-    moves its address by s (K* - K_bar), s = min(address |z|^2, 1), so the named slots' mean
-    logit rises by s |K* - K_bar|^2 / T over the attended ones', and at a small rate the
-    named slots' mean log-attention rises by that much to first order. In a batch the rows'
-    first-order rises, each weighed by its row's bound, sum to no less than zero."""
-    rng = np.random.default_rng(seed)
-    width, association = int(rng.choice([2, 5, 16])), int(rng.choice([3, 8]))
-    rows, slots = 4, int(rng.integers(2, 9))
-    temperature, recency = float(rng.choice([0.25, 1.0])), float(rng.choice([0.0, 0.25]))
-    keys = rng.normal(size=(slots, rows, width)) * rng.choice([0.1, 0.5, 2.0], (slots, rows, 1))
-    values = rng.normal(size=(slots, rows, width))
-    events = rng.normal(size=(rows, width)) * rng.choice([0.2, 1.0], size=(rows, 1))
-    cortex = 0.5 * rng.normal(size=(rows, association))
-    d_value, d_next = rng.normal(size=(rows, width)), rng.normal(size=(rows, width))
-    energy = (events**2).sum(axis=1) + (cortex**2).sum(axis=1) + 1.0
-
-    def memory(rate, order):
-        recall = bare(width, association, temperature=temperature, recency=recency,
-                      address=rate, address_step="toward")
-        for t in range(slots):
-            recall._observe(keys[t][order], values[t][order])
-        recall.previous = cortex[order].copy()
-        return recall
-
-    def named(recall, moment, r, row):
-        """The attention p, the named distribution p* and their keys' mixtures at a row."""
-        stored = recall.keys[row]
-        log_p = _log_softmax(stored @ moment.address[row] / temperature
-                             - recency * recall.ages())
-        movement = np.r_[d_value[r], d_next[r]]
-        score = np.c_[recall.values[row], recall.nexts[row]] @ movement / np.linalg.norm(movement)
-        p_star = np.exp(_log_softmax(score / recall.address_temperature + log_p))
-        p = np.exp(log_p)
-        return log_p, p, p_star, p_star @ stored, p @ stored
-
-    largest = 0.0
-    for r in range(rows):
-        for rate in (1e-7, 0.5):
-            recall = memory(rate, [r])
-            moment = recall._moment(events[[r]])
-            log_p, p, p_star, target, attended = named(recall, moment, r, 0)
-            report = recall._step(moment, np.array([0]), d_value[[r]], d_next[[r]])
-            # the error the toward step corrects is the named keys less the attended mixture
-            assert report["address_error"] == pytest.approx(np.abs(target - attended).mean())
-            moved = recall._moment(events[[r]]).address[0] - moment.address[0]
-            s = min(rate * energy[r], 1.0)
-            gap = target - attended
-            # the addresses' own rounding bounds what a difference of two of them can show
-            rounding = 1e-14 * (1.0 + np.abs(moment.address).max())
-            np.testing.assert_allclose(moved, s * gap, rtol=1e-6, atol=rounding)
-            stored = recall.keys[0]
-            rise = (p_star - p) @ (stored @ moved) / temperature
-            slack = 10 * rounding * np.abs((p_star - p) @ stored).sum() / temperature
-            np.testing.assert_allclose(rise, s * gap @ gap / temperature, rtol=1e-6, atol=slack)
-            assert rise >= -slack
-            largest = max(largest, rise)
-            if rate < 1e-3:  # to first order, the named slots' mean log-attention rises as much
-                later = _log_softmax(stored @ (moment.address[0] + moved) / temperature
-                                     - recency * recall.ages())
-                gained = p_star @ (later - log_p)
-                np.testing.assert_allclose(gained, rise, rtol=1e-3, atol=1e-12)
-                if rise > 1e-10:
-                    assert gained > 0.0
-    assert largest > 0.1  # rows whose attention leaves the scores room to name other slots
-    rate = 0.5
-    recall = memory(rate, list(range(rows)))
-    moment = recall._moment(events)
-    found = [named(recall, moment, r, r) for r in range(rows)]
-    recall._step(moment, np.arange(rows), d_value, d_next)
-    moved = recall._moment(events).address - moment.address
-    rises = np.array([(p_star - p) @ (recall.keys[r] @ moved[r]) / temperature
-                      for r, (_, p, p_star, _, _) in enumerate(found)])
-    bounds = np.minimum(1.0, 1.0 / (rate * energy))
-    z = np.c_[events, cortex, np.ones(rows)]
-    gaps = np.array([target - attended for _, _, _, target, attended in found])
-    total = np.einsum("r,ri,rk->ik", bounds, z, gaps)
-    expected = rate / rows * (total**2).sum() / temperature
-    rounding = 1e-12 * (1.0 + np.abs(moment.address).max()) * np.abs(gaps).sum() / temperature
-    np.testing.assert_allclose(bounds @ rises, expected, rtol=1e-6, atol=rounding)
-    assert bounds @ rises >= -rounding
-
-
-def test_the_toward_step_is_the_instruments_moment_for_moment():
-    assert _option_lives({"address_step": "toward"}) > 0
-
-
-def test_the_address_step_is_described_saved_retuned_and_refused_when_unknown(tmp_path):
-    brain = composed(seed=5, arousal=True, recall_address_step="toward")
-    assert brain.recall.address_step == "toward"
-    assert brain.describe()["genes"]["recall_address_step"] == "toward"
-    assert brain.recall.to_dict()["address_step"] == "toward"
-    for t in range(3):
-        brain.step(STREAM[t % 4], teacher=[t % 2])
-    twin = cd.Brain.load(brain.save(tmp_path / "toward"))
-    assert twin.recall.address_step == "toward" and twin.describe() == brain.describe()
-    np.testing.assert_array_equal(brain.step(GO, teacher=[1]), twin.step(GO, teacher=[1]))
-    assert_same_memory(brain.recall, twin.recall)
-    brain.retune(recall_address_step="lms")
-    assert brain.recall.address_step == "lms" and "address_step" not in brain.recall.to_dict()
-    with pytest.raises(ValueError, match="address_step"):
-        brain.retune(recall_address_step="newton")
-    with pytest.raises(ValueError, match="address_step"):
-        composed(recall_address_step=1)
-    with pytest.raises(ValueError, match="recall settings need recall=True"):
-        composed(recall=False, recall_address_step="toward")
-    arrays = saved_arrays(tmp_path / "toward.npz")
-    meta = metadata(arrays)
-    meta["recall"]["address_step"] = "newton"
-    arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "bad.npz", **arrays)
-    with pytest.raises(ValueError):
-        cd.Brain.load(tmp_path / "bad.npz")
+    assert after < weight
 
 
 # -- a null slot
@@ -1376,8 +1263,9 @@ def test_the_address_step_is_described_saved_retuned_and_refused_when_unknown(tm
 def test_a_null_slot_takes_its_share_of_an_unrelated_read_and_reads_nothing():
     """A null slot of logit ``null / temperature`` joins the read's softmax and reads
     nothing: for a query that matches no slot it takes ``exp(null / T) / (exp(null / T) +
-    sum_i exp(l_i))``, the slots' shares sum to one less it, ``attended`` records them and the
-    drive reads them; a full match leaves it little. Without one the shares sum to one."""
+    sum_i exp(l_i))``, the slots' shares sum to one less it, ``attended_heads`` records them
+    and the drive reads them; a full match leaves it little. Without one the shares sum to
+    one."""
     brain = composed(recall_null=0.0)
     for x in np.eye(4)[:3]:
         brain.act(x[None], greedy=True)
@@ -1385,21 +1273,22 @@ def test_a_null_slot_takes_its_share_of_an_unrelated_read_and_reads_nothing():
     drive = brain.stimulus(np.eye(4)[[3]])  # shares nothing with a stored moment
     logits = -0.25 * recall.ages()
     null = 1.0 / (1.0 + np.exp(logits).sum())
-    np.testing.assert_allclose(recall.attended[0], np.exp(logits) * null, rtol=1e-12)
-    np.testing.assert_allclose(recall.attended.sum(), 1.0 - null, rtol=1e-12)
-    np.testing.assert_array_equal(recall.weights(recall.last.address), recall.attended)
+    attended = recall.attended_heads[0]
+    np.testing.assert_allclose(attended[0], np.exp(logits) * null, rtol=1e-12)
+    np.testing.assert_allclose(attended.sum(), 1.0 - null, rtol=1e-12)
+    np.testing.assert_array_equal(recall.weights(recall.last.address), attended)
     first, following = regions(brain)
     np.testing.assert_allclose(drive[:, first],
-                               3.0 * np.einsum("bm,bmc->bc", recall.attended, recall.values))
+                               3.0 * np.einsum("bm,bmc->bc", attended, recall.values))
     np.testing.assert_allclose(drive[:, following],
-                               3.0 * np.einsum("bm,bmc->bc", recall.attended, recall.nexts))
+                               3.0 * np.einsum("bm,bmc->bc", attended, recall.nexts))
     brain.stimulus(np.eye(4)[[0]])  # the oldest moment's own event
-    assert 1.0 - recall.attended.sum() < 0.05
+    assert 1.0 - recall.attended_heads[0].sum() < 0.05
     founder = composed()
     for x in np.eye(4)[:3]:
         founder.act(x[None], greedy=True)
     founder.stimulus(np.eye(4)[[3]])
-    np.testing.assert_allclose(founder.recall.attended.sum(), 1.0)
+    np.testing.assert_allclose(founder.recall.attended_heads[0].sum(), 1.0)
     held = composed(recall_null=0.0)  # a stream that holds no slot reads the null slot alone
     held.act(np.eye(4)[:2], greedy=True)
     held.recall.reset(2, rows=np.array([0]))
@@ -1407,40 +1296,62 @@ def test_a_null_slot_takes_its_share_of_an_unrelated_read_and_reads_nothing():
     assert not shares[0].any() and 0.0 < shares[1].sum() < 1.0
 
 
-@pytest.mark.parametrize("form", ["lms", "toward"])
-def test_the_address_lesson_reads_the_slots_alone_beside_a_null_slot(form):
-    """The lesson's prior and the toward step's attended mixture are the attention over the
-    slots alone: a null slot leaves the address lesson's step as it is, bit for bit."""
+def test_the_address_lesson_reads_the_slots_alone_beside_a_null_slot():
+    """The lesson's prior is the attention over the slots alone: a null slot leaves the
+    address lesson's step as it is, bit for bit."""
     rng = np.random.default_rng(9)
     keys = [rng.normal(size=(2, 3)) for _ in range(3)]
     cortex, movement = rng.normal(size=(2, 2)), rng.normal(size=(2, 3))
     maps = []
     for null in (None, 2.0):
-        recall = bare(width=3, null=null, address=0.5, address_step=form)
+        recall = bare(width=3, null=null, address=0.5)
         for key in keys:
             recall._observe(key, key)
         recall.previous = cortex.copy()
         moment = recall._moment(np.ones((2, 3)))
         report = recall._step(moment, np.arange(2), movement, None)
         assert report["address_rows"] == 2.0
-        maps.append((recall.w_x, recall.w_c, recall.b))
+        maps.append(recall.head_map(0))
     for first, second in zip(*maps, strict=True):
         np.testing.assert_array_equal(first, second)
 
 
-@pytest.mark.parametrize(
-    "extra",
-    [{"null": 0.5}, {"null": -1.0, "address_step": "toward"}],
-    ids=["null", "null_toward"],
-)
-def test_the_null_slot_is_the_instruments_moment_for_moment(extra):
-    assert _option_lives(extra) > 0
+def test_the_null_slot_is_the_instruments_moment_for_moment():
+    assert _option_lives({"null": 0.5}) > 0
+
+
+def test_a_null_slot_whose_logit_is_not_finite_is_refused(tmp_path):
+    """The null slot's logit ``null / temperature`` must be finite: at composition, under
+    retune of either setting (nothing changes then) and in a saved memory."""
+    with pytest.raises(ValueError, match="null / temperature"):
+        composed(recall_null=1e300, recall_temperature=1e-10)
+    brain = composed(recall_null=1e10)
+    for change in ({"recall_temperature": 1e-300},
+                   {"recall_null": 1e308, "recall_temperature": 0.01}):
+        with pytest.raises(ValueError, match="null / temperature"):
+            brain.retune(**change)
+        assert (brain.recall.null, brain.recall.temperature) == (1e10, 0.25)
+    brain.retune(recall_null=1e300)  # a finite logit, 4e300
+    assert cd.Recall.null_logit(brain.recall.null, brain.recall.temperature) == 4e300
+    brain.act(CUE, greedy=True)
+    arrays = saved_arrays(brain.save(tmp_path / "null"))
+    meta = metadata(arrays)
+    meta["recall"]["temperature"] = 1e-10
+    arrays["generic"] = np.array(json.dumps(meta))
+    np.savez(tmp_path / "bad.npz", **arrays)
+    with pytest.raises(ValueError, match="null / temperature"):
+        cd.Brain.load(tmp_path / "bad.npz")
+    brain.retune(recall_null=None)
+    assert "null" not in brain.recall.to_dict()
+
+
+# -- the options in a checkpoint
 
 
 def test_the_options_survive_a_checkpoint_and_a_saved_memory_without_one_takes_its_founder(
     tmp_path,
 ):
-    options = {"recall_address_step": "toward", "recall_null": 0.5, "recall_address": 0.2}
+    options = {"recall_boundary": True, "recall_position_rate": 0.05, "recall_address": 0.2}
     brain = composed(seed=5, arousal=cd.ArousalConfig(youth=7, threshold=10.0),
                      learning_surprise=True, **options)
     for t in range(6):
@@ -1448,13 +1359,13 @@ def test_the_options_survive_a_checkpoint_and_a_saved_memory_without_one_takes_i
     for t in range(4):
         brain.live(STREAM[t % 4], reward=[float(t % 2)])
     brain.wait(GO)
-    assert brain.recall.slots > 1 and np.abs(brain.recall.w_x).sum() > 0
+    assert brain.recall.slots > 1 and np.abs(brain.recall.head_map(0)[0]).sum() > 0
     path = brain.save(tmp_path / "options")
     with np.load(path, allow_pickle=False) as data:
         meta = metadata(data)
     assert meta["format"] == "cadence-generic/8" and meta["recall"] == brain.recall.to_dict()
-    assert {k: meta["recall"][k] for k in ("address_step", "null", "recency")} == {
-        "address_step": "toward", "null": 0.5, "recency": 0.25,
+    assert {k: meta["recall"][k] for k in ("boundary", "position_rate", "recency")} == {
+        "boundary": True, "position_rate": 0.05, "recency": 0.25,
     }
     twin = cd.Brain.load(path)
     assert twin.describe() == brain.describe()
@@ -1477,24 +1388,26 @@ def test_the_options_survive_a_checkpoint_and_a_saved_memory_without_one_takes_i
     assert {name: getattr(plain.recall, name) for name in cd.Recall.OPTIONS} == (
         cd.Recall.options()
     )
-    for name, value in (("address_step", "sideways"), ("null", float("nan")), ("null", True)):
+    for name, value in (
+        ("boundary", "yes"), ("position_rate", float("nan")), ("position_rate", True),
+    ):
         meta["recall"][name] = value
         arrays["generic"] = np.array(json.dumps(meta))
         np.savez(tmp_path / "bad.npz", **arrays)
         with pytest.raises(ValueError):
             cd.Brain.load(tmp_path / "bad.npz")
         meta["recall"].pop(name)
-    with pytest.raises(ValueError, match="null"):
-        brain.retune(recall_null=float("inf"))
-    brain.retune(recall_null=None)
-    assert "null" not in brain.recall.to_dict()
+    with pytest.raises(ValueError, match="position_rate"):
+        brain.retune(recall_position_rate=-1.0)
+    brain.retune(recall_boundary=False)
+    assert "boundary" not in brain.recall.to_dict()
 
 
 # -- reward trains the address map
 
 
 def _map(recall):
-    return [a.copy() for a in (recall.w_x, recall.w_c, recall.b)]
+    return [a.copy() for a in recall.head_map(0)]
 
 
 def _split(step, width):
@@ -1503,14 +1416,13 @@ def _split(step, width):
     return step[:width], step[width:-1], step[-1]
 
 
-@pytest.mark.parametrize("form", ["lms", "toward"])
-def test_a_sampled_act_keeps_the_step_its_lesson_would_take_as_the_maps_eligibility(form):
+def test_a_sampled_act_keeps_the_step_its_lesson_would_take_as_the_maps_eligibility():
     """At a sampled act, before the moment is written, each row's eligibility of the address
     map is the step the address lesson would take at that row were the act's action the
     lesson's label, on the rows of the event heard: the association's movement between the
     act's two nudged phases read back through the recall and next synapses, scored against
     the slots the act read. The cortex and bias rows keep none: they learn from lessons."""
-    brain = composed(seed=6, recall_address_reward=0.5, recall_address_step=form)
+    brain = composed(seed=6, recall_address_reward=0.5)
     for x in (FACT, GO, CUE):
         brain.act(x, greedy=True)
     recall, agent = brain.recall, brain.basal_ganglia
@@ -1533,7 +1445,7 @@ def test_a_sampled_act_keeps_the_step_its_lesson_would_take_as_the_maps_eligibil
     np.testing.assert_allclose(event, lesson[0], rtol=1e-12, atol=1e-15)
     assert lesson[1].any() and lesson[2].any()  # the lesson moves the shared rows
     assert not cortex.any() and not bias.any()  # reward leaves them to the lesson
-    recall.w_x, recall.w_c, recall.b = start
+    recall._set_map(0, *start)  # noqa: SLF001
     recall.restore(after)
 
 
@@ -1615,13 +1527,13 @@ def test_the_maps_trace_follows_the_streams_and_a_refused_outcome_moves_nothing(
 
 def test_the_maps_trace_survives_a_checkpoint_and_the_life_continues_identically(tmp_path):
     brain = composed(seed=5, arousal=cd.ArousalConfig(youth=6, threshold=10.0),
-                     recall_address_reward=0.5, recall_address_step="toward")
+                     recall_address_reward=0.5)
     for t in range(5):
         brain.live(STREAM[t % 4], reward=None if t == 0 else [float(t % 2)])
     brain.wait(GO)  # the awaited act's contrast was taken before its moment and this one
     agent = brain.basal_ganglia
     assert agent.trace_memory is not None and agent._pending_memory is not None
-    assert np.abs(brain.recall.w_x).sum() > 0  # no lesson: the outcomes moved it
+    assert np.abs(brain.recall.head_map(0)[0]).sum() > 0  # no lesson: the outcomes moved it
     path = brain.save(tmp_path / "trace")
     with np.load(path, allow_pickle=False) as data:
         assert {"memories/recall/trace", "memories/recall/pending"} <= set(data.files)
@@ -1671,33 +1583,29 @@ def test_without_address_reward_nothing_is_allocated_and_no_byte_changes(tmp_pat
 
 
 def test_the_address_settings_cannot_change_while_an_address_contrast_is_pending():
-    """A sampled act's address contrast belongs to the lesson's form and rates it was taken
-    at: while its outcome is pending, retuning ``recall_address_step``, ``recall_address`` or
-    ``recall_address_reward`` is refused, as ``learning_beta`` is, and nothing changes. The
-    same values, other genes, a consumed outcome and a pending act that kept no contrast
-    retune as before."""
+    """A sampled act's address contrast belongs to the rates it was taken at: while its
+    outcome is pending, retuning ``recall_address`` or ``recall_address_reward`` is refused,
+    as ``learning_beta`` is, and nothing changes. The same values, other genes, a consumed
+    outcome and a pending act that kept no contrast retune as before."""
     brain = composed(seed=6, recall_address_reward=0.5)
     for x in (FACT, GO):
         brain.act(x, greedy=True)
     brain.act(NAME)  # sampled: the contrast is pending
     assert brain.basal_ganglia._pending_memory is not None
     recall = brain.recall
-    for name, value in (("recall_address_step", "toward"), ("recall_address", 0.02),
-                        ("recall_address_reward", 0.25)):
+    for name, value in (("recall_address", 0.02), ("recall_address_reward", 0.25)):
         with pytest.raises(ValueError, match=f"{name} cannot change while sampled feedback"):
             brain.retune(**{name: value}, recall_temperature=0.5)
-    assert (recall.address_step, recall.address, recall.address_reward, recall.temperature) == (
-        "lms", 0.01, 0.5, 0.25,
-    )
+    assert (recall.address, recall.address_reward, recall.temperature) == (0.01, 0.5, 0.25)
     brain.retune(recall_address=0.01, recall_temperature=0.5)  # the same rate, another gene
     assert recall.temperature == 0.5
     brain.learn(np.ones(1), np.zeros(1, bool), CUE)  # the outcome is consumed
-    brain.retune(recall_address_step="toward", recall_address=0.02, recall_address_reward=0.25)
-    assert (recall.address_step, recall.address, recall.address_reward) == ("toward", 0.02, 0.25)
+    brain.retune(recall_address=0.02, recall_address_reward=0.25)
+    assert (recall.address, recall.address_reward) == (0.02, 0.25)
     founder = composed(seed=6)
     founder.act(NAME)  # sampled, and no address contrast kept
-    founder.retune(recall_address_step="toward", recall_address=0.02)
-    assert founder.recall.address_step == "toward" and founder.recall.address == 0.02
+    founder.retune(recall_address=0.02)
+    assert founder.recall.address == 0.02
 
 
 def test_a_brain_retuned_to_no_address_reward_reports_and_saves_as_one_composed_without(
@@ -1740,29 +1648,6 @@ def test_a_brain_retuned_to_no_address_reward_reports_and_saves_as_one_composed_
         np.testing.assert_array_equal(now, then)
 
 
-def test_a_null_slot_whose_logit_is_not_finite_is_refused(tmp_path):
-    """The null slot's logit ``null / temperature`` must be finite: at composition, under
-    retune of either setting (nothing changes then) and in a saved memory."""
-    with pytest.raises(ValueError, match="null / temperature"):
-        composed(recall_null=1e300, recall_temperature=1e-10)
-    brain = composed(recall_null=1e10)
-    for change in ({"recall_temperature": 1e-300},
-                   {"recall_null": 1e308, "recall_temperature": 0.01}):
-        with pytest.raises(ValueError, match="null / temperature"):
-            brain.retune(**change)
-        assert (brain.recall.null, brain.recall.temperature) == (1e10, 0.25)
-    brain.retune(recall_null=1e300)  # a finite logit, 4e300
-    assert cd.Recall.null_logit(brain.recall.null, brain.recall.temperature) == 4e300
-    brain.act(CUE, greedy=True)
-    arrays = saved_arrays(brain.save(tmp_path / "null"))
-    meta = metadata(arrays)
-    meta["recall"]["temperature"] = 1e-10
-    arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "bad.npz", **arrays)
-    with pytest.raises(ValueError, match="null / temperature"):
-        cd.Brain.load(tmp_path / "bad.npz")
-
-
 # -- a reset that keeps the memory
 
 
@@ -1782,7 +1667,7 @@ def test_a_reset_that_keeps_the_memory_keeps_the_slots_and_starts_the_rest_afres
     assert brain.basal_ganglia.state is None and not len(brain.history.trace)
     assert not len(brain.working_memory.trace)
     brain.stimulus(NAME)
-    assert recall.attended is not None and recall.attended.shape == (1, 2)
+    assert recall.attended_heads is not None and recall.attended_heads[0].shape == (1, 2)
     brain.act(NAME, greedy=True)
     assert recall.slots == 3 and not recall.nexts[0, 1].any() and not recall.ended.any()
     np.testing.assert_array_equal(recall.nexts[0, 0], GO[0])
@@ -1841,7 +1726,7 @@ def test_the_window_key_orders_the_streams_last_events():
     map reads the event alone and writes the wider key; values stay the events."""
     brain = composed(seed=5, recall_heard=1.5, recall_window=3, recall_window_decay=0.5)
     recall = brain.recall
-    assert recall.address_width == 12 and recall.w_x.shape == (4, 12)
+    assert recall.address_width == 12 and recall.head_map(0)[0].shape == (4, 12)
     a, b, c = np.eye(4)[:2], np.eye(4)[[2, 3]], np.eye(4)[[1, 0]]
     for x in (a, b, c):
         brain.act(x, greedy=True)
@@ -1859,7 +1744,7 @@ def test_the_window_key_orders_the_streams_last_events():
     np.testing.assert_array_equal(recall.keys[1, -1], _window(b[1], [None, None], 1.5, 0.5))
     assert recall.held[1].sum() == 1
     report = brain.lesson(c, [0, 1])
-    assert report["address_rows"] > 0 and recall.w_x.shape == (4, 12)
+    assert report["address_rows"] > 0 and recall.head_map(0)[0].shape == (4, 12)
 
 
 def test_waited_moments_enter_the_window_and_imagination_keeps_its_own_copy():
@@ -1909,7 +1794,7 @@ def test_a_window_reads_the_successor_of_the_matching_history():
         for x in history[:-1]:
             recall.witness(x[None], SimpleNamespace(activation=np.zeros((1, n))))
         drive = recall.stimulate(np.zeros((1, n)), history[-1][None])
-        return recall.attended[0], drive[0, recall._next_columns]
+        return recall.attended_heads[0][0], drive[0, recall._next_columns]
 
     weight = {k: read(k, (A, B), True) for k in (1, 2)}
     matching = [1, 4]  # the B slots, each after A
@@ -1962,7 +1847,7 @@ def test_the_window_survives_a_checkpoint_and_a_window_of_another_length_is_refu
             cd.Brain.load(tmp_path / "bad.npz")
 
 
-# -- the settings this version removed
+# -- the settings retired in 0.85.0
 
 
 # each at a value 0.84.3 took, and its founder there
@@ -1979,13 +1864,14 @@ REMOVED = {
 
 @pytest.mark.parametrize("name", sorted(REMOVED))
 def test_a_removed_setting_is_refused_at_compose_and_retune_naming_the_release(name):
-    """Each setting 0.84.3 took and this version removed is refused with a message that names
-    it as removed and names the release that takes it: a removed name at any value, and
+    """Each setting 0.84.3 took and 0.85.0 retired is refused with the one sentence of
+    ``Recall.removed``, naming the release that retired it, what the memory does instead and
+    0.84.3 as the release that takes it: a retired name at any value, and
     ``recall_recency=None``, the power-law charge, at that value alone (a number stays the
-    linear charge). The description carries a removed name only where the 0.84.3 format
+    linear charge). The description carries a retired name only where the 0.84.3 format
     always wrote it, at its one value."""
     value, founder = REMOVED[name]
-    message = rf"{name}.*removed in this version.*cadence-net 0\.84\.3"
+    message = rf"{name}.*was retired in 0\.85\.0: .*cadence-net 0\.84\.3 takes it"
     brain = composed()
     with pytest.raises(ValueError, match=message):
         composed(**{name: value})
@@ -2002,28 +1888,44 @@ def test_a_removed_setting_is_refused_at_compose_and_retune_naming_the_release(n
             composed(**{name: founder})
         with pytest.raises(ValueError, match=message):
             brain.retune(**{name: founder})
-        assert name[len("recall_"):] in cd.Recall.RETIRED
+        setting = name[len("recall_"):]
+        assert cd.Recall.RETIRED[setting][0] == "0.85.0"
+        assert cd.Recall.removed(setting) == message_of(setting)
         assert name not in brain.describe()["genes"]
+
+
+def message_of(setting):
+    """The sentence ``Recall.removed`` gives, built from the table's row."""
+    key = "recency=None" if setting == "recency" else setting
+    release, _, instead = cd.Recall.RETIRED[key]
+    return f"recall_{key} was retired in {release}: {instead}"
 
 
 @pytest.mark.parametrize("name", sorted(REMOVED))
 def test_a_saved_brain_under_a_removed_setting_is_refused_naming_the_release(tmp_path, name):
-    """A checkpoint carrying a removed setting is refused on load with a message naming
-    0.84.3 as the release that reads it."""
+    """A checkpoint carrying a retired setting at a value other than the one the memory keeps
+    for it is refused on load with the same sentence, naming the release that retired it; one
+    carrying the kept value loads (``recall_recency=None`` has none)."""
     brain = composed()
     for x in (CUE, GO):
         brain.act(x, greedy=True)
     arrays = saved_arrays(brain.save(tmp_path / "founder"))
     meta = metadata(arrays)
-    meta["recall"][name[len("recall_"):]] = REMOVED[name][0]
+    setting = name[len("recall_"):]
+    meta["recall"][setting] = REMOVED[name][0]
     arrays["generic"] = np.array(json.dumps(meta))
     np.savez(tmp_path / "removed.npz", **arrays)
-    with pytest.raises(ValueError, match=r"removed; load it with cadence-net 0\.84\.3"):
+    with pytest.raises(ValueError, match=r"was retired in 0\.85\.0: .*cadence-net 0\.84\.3"):
         cd.Brain.load(tmp_path / "removed.npz")
+    if setting != "recency":
+        meta["recall"][setting] = cd.Recall.RETIRED[setting][1]
+        arrays["generic"] = np.array(json.dumps(meta))
+        np.savez(tmp_path / "kept.npz", **arrays)
+        assert cd.Brain.load(tmp_path / "kept.npz").describe() == brain.describe()
 
 
 def test_the_keys_the_last_release_wrote_load_at_their_one_value(tmp_path):
-    """The keys the format of 0.84.3 always wrote for removed settings (``Recall.FORMAT``)
+    """The keys the format of 0.84.3 always wrote for retired settings (``Recall.FORMAT``)
     and its empty context history leave the description and the checkpoint; a file of
     0.84.3 that carries them at their one value loads to the same brain."""
     brain = composed()

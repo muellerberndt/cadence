@@ -288,10 +288,10 @@ the next learned outcome. It raises `ValueError` for a construction setting (tho
 marked construction above), for a missing component (arousal included), and for a
 change of `learning_beta` while a sampled action awaits feedback, whose contrast
 belongs to the old scale; learn that outcome first. With `recall_address_reward`
-above zero the same holds for `recall_address`, `recall_address_step` and
-`recall_address_reward` ([recall memory](memory.md#the-recall-memory-in-full)). The recall settings of 0.84.3 that
-left in this version are refused by name, at `compose` and `retune` alike
-([removed in this version](memory.md#removed-in-this-version)). A part that a
+above zero the same holds for `recall_address` and
+`recall_address_reward` ([recall memory](memory.md#the-recall-memory-in-full)). A retired
+recall setting is refused by name at `compose`, `retune` and load, with the release that
+retired it ([retired settings](memory.md#retired-settings)). A part that a
 construction setting adds (the recall memory or more of its heads, a heard history, an
 efference copy, new output slots) is added to a trained brain by `grow`, which returns a new
 brain; `graft` puts trained regions of another brain into it ([grow and combine

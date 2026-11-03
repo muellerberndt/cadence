@@ -199,7 +199,7 @@ def preservation(path, directory, io, failure_context=None):
         loop.act(brain, loop.observation(int(event)), work)
     before = io.save(brain, directory / "before-imagine.npz")
     imagined = brain.imagine(
-        [loop.observation(0), loop.observation(1), loop.observation(0)], budget=200, tolerance=1e-3
+        [loop.observation(0), loop.observation(1), loop.observation(0)], budget=200
     )
     after = io.save(brain, directory / "after-imagine.npz")
     unchanged = io.equal(before, after)

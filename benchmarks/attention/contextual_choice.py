@@ -290,7 +290,8 @@ def evaluate(
         except RuntimeError:
             refusals += 1
             answers.append(-1)
-        weights = recall.attended
+        weights = recall.attended_heads
+        weights = None if weights is None else weights[0]
         if weights is None:
             masses.append((0.0, 0.0))
         else:

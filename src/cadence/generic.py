@@ -250,8 +250,8 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
     """The recall memory's settings, validated: its founders with every ``recall_<setting>``
     of ``genes`` over them (those names are removed from ``genes``), an option only where it
-    is given, or an empty mapping for a brain without it. A setting of 0.84.3 that this
-    version removed is refused by name (``Recall.RETIRED``)."""
+    is given, or an empty mapping for a brain without it. A retired setting is refused by name
+    (``Recall.removed``)."""
     if not isinstance(recall, bool):
         raise ValueError("recall must be boolean")
     founders = Recall.founders()
@@ -1114,7 +1114,8 @@ def _validate_recall_state(
 ) -> None:
     """The settings, slots and address map of a recall memory (formats /8 to /10); ``width``
     is the observation code's, the observations the memory is given. A file saved under a
-    setting this version removed is refused with a message naming 0.84.3."""
+    retired setting at a value other than the one the memory keeps for it is refused with the
+    sentence ``Recall.removed`` gives, naming the release that retired it."""
     populations = learner.brain.connectome.populations
     recalled = meta.get("recall")
     if recalled is None:
@@ -1122,8 +1123,9 @@ def _validate_recall_state(
             raise ValueError("saved recall state requires recall metadata")
         return
     names = {*Recall.RUNTIME, *Recall.CONSTRUCTION}
-    # the format of 0.84.3 always wrote the keys of ``FORMAT``; the other removed settings,
-    # like the options, were saved only where they differed from their founders
+    # a retired setting is saved where the format of its release wrote it: the keys of
+    # ``FORMAT`` always, the others, like the options, only where they differed from their
+    # founders
     optional = {"inputs", *Recall.OPTIONS, *Recall.RETIRED}
     if (
         not isinstance(recalled, dict)
@@ -1135,17 +1137,22 @@ def _validate_recall_state(
         or "recall" not in populations
     ):
         raise ValueError("invalid saved recall ports")
-    for name in Recall.RETIRED:
-        if name in recalled and recalled[name] != Recall.FORMAT.get(name):
-            raise ValueError(_removed_recall(name, recalled[name]))
+    for name, (_, kept, _) in Recall.RETIRED.items():
+        if name in recalled and recalled[name] != kept:
+            raise ValueError(Recall.removed(name))
     if recalled["recency"] is None:
-        raise ValueError(_removed_recall("recency", None))
+        raise ValueError(Recall.removed("recency"))
     settings = {name: Recall.setting(name, recalled[name]) for name in names}
     # an option is saved where it differs from its founder, and takes its founder where absent
     settings.update({name: Recall.setting(name, recalled[name]) for name in Recall.OPTIONS
                      if name in recalled})
     settings["position"] = _saved_position(recalled, data)
-    settings["compete"] = _saved_compete(recalled)
+    if int(recalled.get("heads", 1)) > 1 and "compete" not in recalled:
+        # a file of several heads saved before 0.91.3 read its heads alike
+        raise ValueError(
+            "a file of several heads saved before 0.91.3 reads its heads alike; "
+            + Recall.removed("compete")
+        )
     writes = recalled["writes"]
     if isinstance(writes, bool) or not isinstance(writes, int) or writes < 0:
         raise ValueError("invalid saved recall write count")
@@ -1211,18 +1218,18 @@ def _validate_recall_state(
     history = data.get("recall/history")
     if history is not None:
         array("history", (0 if not len(history) else batch, key))
-    shapes = {"w_x": (key + command, address), "w_c": (association, address), "b": (address,)}
-    maps = dict(shapes)
-    for h in range(1, heads):  # every further head's address map
-        maps.update({f"{name}_{h}": shape for name, shape in shapes.items()})
+    shapes = ((key + command, address), (association, address), (address,))
+    maps: dict[str, tuple[int, ...]] = {}
+    for h in range(heads):  # every head's address map
+        maps.update(dict(zip(Recall.map_names("address", h), shapes, strict=True)))
     count = Recall.position_count(settings.get("position", 0), settings["capacity"])
     for h in range(heads if count else 0):  # every head's position maps, with a position term
         shapes_h = ((key + command, count), (association, count), (count,))
-        maps.update(dict(zip(Recall.position_names(h), shapes_h, strict=True)))
+        maps.update(dict(zip(Recall.map_names("position", h), shapes_h, strict=True)))
     if settings.get("anchor", False):  # every head's anchored maps and the episodes' counts
         for h in range(heads):
             shapes_a = ((key + command, count + 1), (association, count + 1), (count + 1,))
-            maps.update(dict(zip(Recall.anchor_names(h), shapes_a, strict=True)))
+            maps.update(dict(zip(Recall.map_names("anchor", h), shapes_a, strict=True)))
         if array("told", (batch,)).dtype.kind not in "iu" or (data["recall/told"] < 0).any():
             raise ValueError("invalid saved recall state: told")
     elif "recall/told" in data or any(name.startswith("recall/anchor_") for name in data):
@@ -1231,7 +1238,7 @@ def _validate_recall_state(
         width_r = 2 * Recall.RELATIVE + 2
         for h in range(heads):
             shapes_r = ((key + command, width_r), (association, width_r), (width_r,))
-            maps.update(dict(zip(Recall.relative_names(h), shapes_r, strict=True)))
+            maps.update(dict(zip(Recall.map_names("relative", h), shapes_r, strict=True)))
         if array("focus", (batch,)).dtype.kind not in "iu" or (data["recall/focus"] < -1).any():
             raise ValueError("invalid saved recall state: focus")
     elif "recall/focus" in data or any(name.startswith("recall/relative_") for name in data):
@@ -1239,7 +1246,7 @@ def _validate_recall_state(
     if settings.get("slope", 0.0):  # every head's slope maps
         for h in range(heads):
             shapes_s = ((key + command,), (association,), (1,))
-            maps.update(dict(zip(Recall.slope_names(h), shapes_s, strict=True)))
+            maps.update(dict(zip(Recall.map_names("slope", h), shapes_s, strict=True)))
     elif any(name.startswith("recall/slope_") for name in data):
         raise ValueError("saved slope maps belong to a recall memory with slope")
     for name, shape in maps.items():
@@ -1287,24 +1294,6 @@ def _saved_position(recalled: dict[str, Any], data: Any) -> int:
     if any(name.startswith("recall/position_") for name in data):
         return int(Recall.options()["position"])
     return 0
-
-
-def _saved_compete(recalled: dict[str, Any]) -> bool:
-    """A saved memory's competing heads: the option as saved (a memory of several heads always
-    keeps it); a file of several heads saved before heads competed holds none and loads with
-    heads that read alike, as it was saved."""
-    if "compete" in recalled:
-        return bool(Recall.setting("compete", recalled["compete"]))
-    return bool(int(recalled.get("heads", 1)) == 1)
-
-
-def _removed_recall(name: str, value: Any) -> str:
-    """The refusal of a checkpoint saved under a recall setting this version removed."""
-    setting = "recency=None" if name == "recency" else f"{name}={value!r}"
-    return (
-        f"this checkpoint was saved with the recall memory's {setting}, which this version "
-        "removed; load it with cadence-net 0.84.3"
-    )
 
 
 def _actor_config(values: Any) -> ActorCriticConfig:
@@ -2741,10 +2730,8 @@ class Brain:
         (``recall_address`` 0.01, each row's rate bounded by its own input energy).
         ``recall_capacity`` (64) bounds the slots per stream. Options beside the founder
         memory, each a gene described and saved only where it differs from its founder and a
-        runtime one but the key and the window: ``recall_address_step="toward"`` steps the
-        address by the named keys less the mixture it attended to, in place of the founder's
-        ``"lms"`` step toward the named keys; a number ``recall_null`` adds a null slot of logit
-        ``recall_null / recall_temperature`` that reads nothing; and
+        runtime one but the key and the window: a number ``recall_null`` adds a null slot of
+        logit ``recall_null / recall_temperature`` that reads nothing; and
         ``recall_address_reward`` above zero lets reward train the address map, each sampled
         act keeping the step its lesson would take on the rows of the event heard as the map's
         eligibility and each outcome stepping those rows by that rate times the dopamine times
@@ -2786,15 +2773,13 @@ class Brain:
         one without it.
         ``recall_capacity``, ``recall_next``, ``recall_window``,
         ``recall_window_decay``, ``recall_heads`` (several held heads over the one bank,
-        each with its own port and address map; ``recall_compete``, a runtime option with
-        founder True, makes them read in turn, each taking of a slot at most the share the
-        heads before it left), ``recall_position``, ``recall_copy``,
+        each with its own port and address map, reading in turn, each taking of a slot at
+        most the share the heads before it left), ``recall_position``, ``recall_copy``,
         ``recall_tokens`` and ``recall_action`` are construction settings; the keys, the
         values and the address map follow the observation code's width, a brain's ``code``
-        among the ways to bound it. The settings of 0.84.3 that this version removed
-        (``recall_write``, ``recall_key``, ``recall_episodes``, ``recall_value``,
-        ``recall_context``, ``recall_context_decay`` and ``recall_recency=None``) are refused
-        by name; the CHANGELOG gives each one's reading.
+        among the ways to bound it. A retired recall setting (``Recall.RETIRED``, and
+        ``recall_recency=None``) is refused by name with one sentence naming the release that
+        retired it and what the memory does instead; the CHANGELOG gives each one's reading.
         ``memory_choice=True`` makes the hippocampus an episodic memory: its records vote
         in every choice, greedy or sampled, added to the motor readout before the softmax.
         Each record is kept twice: keyed by the observation (place), and keyed by the
@@ -2958,7 +2943,7 @@ class Brain:
         for an already issued action. Changing ``learning_beta`` with sampled
         feedback pending is refused: its saved contrast belongs to the old beta.
         Submit that outcome before changing beta; do not discard it to retune. So is
-        changing ``recall_address_step``, ``recall_address``, ``recall_address_reward``,
+        changing ``recall_address``, ``recall_address_reward``,
         ``recall_position_reward``, or ``recall_position_rate`` where reward trains the position
         maps, while that feedback holds the recall memory's address contrast, which belongs to
         the lesson's form and rates it was taken at. A change of ``recall_position_reward``
@@ -3108,7 +3093,7 @@ class Brain:
             # held with sampled feedback alone: the pending address contrast belongs to the
             # lesson's form and rates
             # the position rate shapes the contrast only where reward trains the position maps
-            held = ["address_step", "address", "address_reward", "position_reward"]
+            held = ["address", "address_reward", "position_reward"]
             recall = self.recall
             if recall is not None and recall.position_reward and recall.position_maps:
                 held.append("position_rate")
@@ -3490,7 +3475,6 @@ class Brain:
             self._code_settlement = {
                 "code_steps": int(phase.steps),
                 "code_residual": float(np.max(phase.residual)),
-                "code_halvings": int(code.halvings),
             }
             raise RuntimeError(
                 f"the code region did not settle within {budget()} steps: "
@@ -3505,7 +3489,6 @@ class Brain:
         self._code_settlement = {
             "code_steps": int(phase.steps),
             "code_residual": float(np.max(phase.residual)),
-            "code_halvings": int(code.halvings),
         }
         code.last = {
             "sensory": sensory, "context": z, "activation": np.asarray(phase.state.activation),
@@ -3732,7 +3715,6 @@ class Brain:
         residual = tuple(float(value) for value in phase.residual)
         report: dict[str, Any] = {
             "operation": operation,
-            "scope": "free_answer",
             "qualified": all(rows),
             "row_qualified": rows,
             "residual": residual,
@@ -4631,7 +4613,6 @@ class Brain:
         observations: Sequence[Any],
         *,
         budget: int = 1024,
-        tolerance: float = 1e-6,
     ) -> tuple[Equilibrium, ...]:
         """Privately settle responses to a supplied sequence of possible observations.
 
@@ -4641,7 +4622,9 @@ class Brain:
         the cortex of the moment before and the history follow the branch privately.
         Parameters, live activity, random generators and pending
         real outcomes are unchanged, and so are a learned code's step, work counts and
-        latest phase. Motor responses are at ``motor_index`` in
+        latest phase. Each phase settles to the learner's tolerance (``learning_tolerance``,
+        the one tolerance an answer is held to) within ``budget`` sweeps. Motor responses
+        are at ``motor_index`` in
         each returned state's activation. A refused phase ends the branch and
         remains in the result; inspect ``qualified`` before using a response.
 
@@ -4664,13 +4647,9 @@ class Brain:
             or budget < 0
         ):
             raise ValueError("budget must be a nonnegative integer")
-        if (
-            isinstance(tolerance, (bool, np.bool_))
-            or not isinstance(tolerance, (int, float, np.integer, np.floating))
-            or not np.isfinite(tolerance)
-            or tolerance < 0
-        ):
-            raise ValueError("tolerance must be finite and nonnegative")
+        tolerance = self.learner.config.tolerance
+        if tolerance is None:
+            raise ValueError("Brain answers require a finite residual tolerance")
         sequence = tuple(self._observations(value) for value in observations)
         if not sequence:
             return ()
@@ -4709,7 +4688,7 @@ class Brain:
                 place = self._placed(value)
                 drive = branch.stimulus(drive, self._read_moment(value, code, place))
                 phase = self._equilibrate(
-                    drive, current, budget=budget, tolerance=tolerance
+                    drive, current, budget=budget, tolerance=float(tolerance)
                 )
                 phases.append(phase)
                 if not np.all(phase.qualified):
@@ -5077,10 +5056,15 @@ class Brain:
         if not all(isinstance(name, str) for name in kept) or kept - {"slots", "arousal"}:
             raise ValueError("keep names 'slots' and 'arousal'")
         self.basal_ganglia.reset()
-        for memory in self.memories.values():
-            # the streams begin afresh; the stores' records stay, and kept, the recall
-            # memory's slots
-            memory.begin(keep="slots" in kept)
+        for name, memory in self.memories.items():
+            if name == "hippocampus":
+                # the records stay, and so does each stream's fast residual: a stream of
+                # another batch reads the baseline
+                continue
+            if name == "recall" and "slots" in kept:
+                memory.end(memory.streams)  # each stream ends an episode and keeps its slots
+            else:
+                memory.reset(0)  # the streams begin afresh
         self._moment = None
         self._moment_code = None
         self._coded_moment = None
@@ -5414,7 +5398,6 @@ class Brain:
                             if name in recalled
                         },
                         "recall_position": _saved_position(recalled, data),
-                        "recall_compete": _saved_compete(recalled),
                     }
                 ),
             )
@@ -5453,40 +5436,28 @@ class Brain:
             if recalled is not None:
                 recall = result.recall
                 assert recall is not None  # validated above: the populations are there
-                for name in ("keys", "values", "nexts", "previous", "w_x", "w_c", "b"):
+                for name in ("keys", "values", "nexts", "previous"):
                     setattr(recall, name, data["recall/" + name].astype(float))
-                recall.head_maps = [  # validated above: one map per further head
-                    tuple(data[f"recall/{name}_{h}"].astype(float) for name in ("w_x", "w_c", "b"))
-                    for h in range(1, recall.heads)
-                ]
-                recall.position_maps = [  # validated above: saved with a position term
-                    tuple(data["recall/" + name].astype(float) for name in Recall.position_names(h))
-                    for h in range(recall.heads if recall.position_maps else 0)
-                ]
-                if recall.slope:  # validated above: saved with slope
-                    recall.slope_maps = [
+
+                def saved_maps(kind: str) -> list[tuple[np.ndarray, ...]]:
+                    # every head's three maps of one kind (validated above)
+                    return [
                         tuple(
                             data["recall/" + name].astype(float)
-                            for name in Recall.slope_names(h)
+                            for name in Recall.map_names(kind, h)
                         )
                         for h in range(recall.heads)
                     ]
-                if recall.relative:  # validated above: saved with relative
-                    recall.relative_maps = [
-                        tuple(
-                            data["recall/" + name].astype(float)
-                            for name in Recall.relative_names(h)
-                        )
-                        for h in range(recall.heads)
-                    ]
-                if recall.anchor:  # validated above: saved with anchor
-                    recall.anchor_maps = [
-                        tuple(
-                            data["recall/" + name].astype(float)
-                            for name in Recall.anchor_names(h)
-                        )
-                        for h in range(recall.heads)
-                    ]
+
+                recall.head_maps = saved_maps("address")
+                if recall.position_maps:  # saved with a position term
+                    recall.position_maps = saved_maps("position")
+                if recall.slope:  # saved with slope
+                    recall.slope_maps = saved_maps("slope")
+                if recall.anchor:  # saved with anchor
+                    recall.anchor_maps = saved_maps("anchor")
+                if recall.relative:  # saved with relative
+                    recall.relative_maps = saved_maps("relative")
                 recall.held = data["recall/held"].astype(bool)
                 recall.ended = (
                     data["recall/ended"].astype(bool)

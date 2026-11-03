@@ -128,7 +128,7 @@ trace's (`scales["trace"]`) founder is 1.2. The arguments of 0.84.3 `sensory_sca
 | `lesson(observations, labels) -> dict` | The teaching part of `step` without the act; records the demonstration in an episodic memory and runs the recall address lesson. With a recall memory, teach a moment before acting on it, as `step` does: a lesson on the observations the brain just acted on reads the recall memory as that act left it (the moment itself, its successor still empty) and warns with `RuntimeWarning`. Refused with `RuntimeError` while a sampled action awaits its outcome; a refused phase raises `LearningPhaseError` and changes nothing. | [explicit learning](teach.md#explicit-learning-with-step) |
 | `act(observations, *, greedy=False, temperature=None) -> actions` | One qualified free settle and a sampled (or greedy) choice, one index per slot; advances the working trace. `temperature` is one value or one per slot. Exhaustion raises `RuntimeError` before any change. | [one experience step by hand](tune.md#one-experience-step-by-hand) |
 | `learn(reward, done, next_observations, *, bootstrap=None, salience=None) -> dict` | Feedback for the pending sampled action: hippocampal record, actor and critic update; `done` rows reset their traces. A refused feedback solve rolls everything back and keeps the action pending. | [reward](reward.md#decision-and-reset-contract) |
-| `imagine(observations, *, budget=1024, tolerance=1e-6) -> tuple[Equilibrium, ...]` | A private branch over a sequence of batches: memories read, nothing written, live state unchanged. A refused phase ends the branch and is the last entry. | [private imagination](start.md#private-imagination) |
+| `imagine(observations, *, budget=1024) -> tuple[Equilibrium, ...]` | A private branch over a sequence of batches: memories read, nothing written, live state unchanged; each phase settles to the learner's tolerance within `budget`. A refused phase ends the branch and is the last entry. | [private imagination](start.md#private-imagination) |
 | `fit(observations, labels, *, epochs=30, batch=32) -> list[float]`, `predict(observations)`, `accuracy(observations, labels)` | Independent samples, without traces or recall; `fit` resets the streams first, keeping the arousal, and returns training accuracy per epoch. Noninteger labels and mismatched batches raise before any update. | [independent-sample controls](evaluate.md#independent-sample-controls) |
 | `retune(**genes) -> Brain` | Changes mutable settings in the same life, atomically, and resets nothing (`brain.arousal.reset()` resets the arousal). Refuses construction settings, absent components, and `learning_beta` (or the recall address genes under `recall_address_reward`) while a sampled action awaits feedback. | [retune the same life](tune.md#retune-the-same-life) |
 | `grow(**parts) -> Brain` | A new brain: this trained brain with new parts (`recall=True` with any `recall_*` setting but `recall_tokens`, `recall_heads`, `history_decays`, `efference_amplitude` above zero, `slots` extending the brain's own), every learned parameter, optimizer history, memory record and setting, the actor and the arousal carried, the streams afresh as after `reset()`. New synapses onto trained neurons start at zero, so it settles as this brain does and makes its greedy choices until learning gives them weight; new slots draw random numbers of their own, so sampled choices follow other draws. Refuses a brain that records no construction (a custom anatomy), a part inside the loop (`modules`, `observers`, a code), arousal and the episodic memory, settings that `retune` changes, recall tokens, and slots where a memory is laid out per action or would join an apical pool. This brain is unchanged. | [grow a brain](grow.md#grow-a-trained-brain) |
@@ -163,7 +163,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `pending_feedback` | read-only: the issued action awaits its outcome (`wait` keeps it) |
 | `decision_id` | read-only: the `arousal.age` at which `live` issued the awaited action, or `None`; saved and restored |
 | `last_arousal` | immutable snapshot of the latest `live` moment; `None` after construction, reset or load ([fields](start.md#routine-and-repair-live)) |
-| `last_settlement` | immutable report of the latest free-answer solve, refused ones included: `operation`, `scope`, `qualified`, `row_qualified`, `residual`, `max_residual`, `steps`, `budget`, `tolerance`, `residual_checks`, `damping_halvings`, `stagnation_checks`, `rescue_steps` when a solve that did not qualify within `free_steps` continued once on the damping ladder before it qualified or was refused (`steps` and the checks then sum both solves), and with a learned code `code_steps`, `code_residual`, `code_halvings` and, for a brain with a place store, `context_free_steps` ([inspect the work](start.md#inspect-the-work-of-answering)) |
+| `last_settlement` | immutable report of the latest free-answer solve, refused ones included: `operation`, `qualified`, `row_qualified`, `residual`, `max_residual`, `steps`, `budget`, `tolerance`, `residual_checks`, `damping_halvings`, `stagnation_checks`, `rescue_steps` when a solve that did not qualify within `free_steps` continued once on the damping ladder before it qualified or was refused (`steps` and the checks then sum both solves), and with a learned code `code_steps` and `code_residual` and, for a brain with a place store, `context_free_steps` ([inspect the work](start.md#inspect-the-work-of-answering)) |
 | `last_learning` | the latest transition's learning report, teaching under `demonstration_*` keys and, with `learning_rehearsal`, the replayed lesson's report under `rehearsal_*` keys (`rehearsal_rows`; `rehearsal_refused` when its phase refused) |
 | `rng` | the brain's `numpy.random.Generator` |
 
@@ -184,10 +184,11 @@ their shape. Keep row identities fixed until `reset()`.
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
 `Brain.load` reads it and, through 0.85.x, the earlier formats: `cadence-generic/1` to `/9`,
-which 0.84.3 reads, and `/10`, which development builds of the learned code wrote. A setting of
-0.84.3 that this version removed loads at the value whose law this version keeps
-and is refused otherwise with a message naming 0.84.3; a file saved with a resting bias loads as
-it is, the biases it set being in the saved arrays. Record and recall key widths are checked
+which 0.84.3 reads, and `/10`, which development builds of the learned code wrote. A retired
+setting loads at the one value the release keeps for it and is refused otherwise with a
+sentence naming the release that retired it (the recall memory's are
+[listed on the recall page](memory.md#retired-settings)); a file saved with a resting bias
+loads as it is, the biases it set being in the saved arrays. Record and recall key widths are checked
 against the code; code tables that do not read every ON and OFF channel twice with positive
 weights are refused, as is a code whose metadata lacks the `cover` field; a recall window of
 another length is refused; learned-code tables that disagree with the saved synapses and
@@ -252,8 +253,7 @@ present ones only, in the order `working_memory`, `efference`, `history`, `recal
 | --- | --- |
 | `stimulus(drive, moment) -> drive` | the drive of a moment before the settle with what the memory adds: the trace or history read, the recall memory's address of `moment.code`, the store's read under `moment.place` (of the drive without one; nothing when `moment.stores` is false, as under an episodic vote) |
 | `branch()` | a private copy for an imagined branch, which reads the live state and writes none |
-| `begin(keep=False)` | the streams begin afresh as `Brain.reset` begins them: the stores keep their records, and with `keep` the recall memory its slots |
-| `reset(batch, rows=None)`, `keep(rows)` | fresh streams, all or `rows`; the state of `rows` kept |
+| `reset(batch, rows=None)`, `keep(rows)` | fresh streams, all or `rows`; the state of `rows` kept. `Brain.reset` begins every stream afresh so, the stores keeping their records and the recall memory its slots with `keep=("slots",)` (`Recall.end`) |
 | `to_dict()`, `arrays()` | the settings and counts, and the arrays a checkpoint keeps under `memories/<name>/` |
 
 `Memories.stimulus(drive, moment)` applies every member in order.
@@ -306,10 +306,10 @@ columns of a copy (another batch size reads silence). `reset(batch, rows=None)`,
 Recall(connectome, amplitude=3.0, temperature=0.25, heard=1.0, recency=0.25,
        capacity=64, next=True, address=0.01,
        address_temperature=0.1,
-       address_step="lms", null=None, address_reward=0.0, position_reward=0.0,
+       null=None, address_reward=0.0, position_reward=0.0,
        window=1, window_decay=1.0, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
-       boundary=False, copy=0.0, tokens=None, action=False, compete=True, anchor=False,
+       boundary=False, copy=0.0, tokens=None, action=False, anchor=False,
        relative=False, slope=0.0, when=False, actions=0)
 ```
 
@@ -318,25 +318,25 @@ brain's `recall_<name>` gene; their meanings, founders and retune rules are the
 [recall settings table](memory.md#recall-settings), the mechanism is
 [how a moment is addressed](memory.md#how-a-moment-is-addressed). `inputs` is the key width
 when it differs from the `source` population (a coded brain passes the code width), `actions`
-the motor width a slot's command covers with `action` (a brain passes its motor neurons). The
-settings of 0.84.3 that left in this version, each with its reading, are
-[listed on the recall page](memory.md#removed-in-this-version); release 0.84.3 takes them.
+the motor width a slot's command covers with `action` (a brain passes its motor neurons). A
+retired setting is refused by name with one sentence naming the release that retired it and
+what the memory does instead ([retired settings](memory.md#retired-settings)).
 
 | Member | Behaviour |
 | --- | --- |
-| `stimulate(drive, observations)` | Addresses the moment, fixes the softmax over the slots (`attended`) and writes the read into `recall` and, with `next`, `next`; with `heads` above one each head reads with its own address into its own port. |
+| `stimulate(drive, observations)` | Addresses the moment, fixes the softmax over the slots (`attended_heads`) and writes the read into `recall` and, with `next`, `next`; with `heads` above one each head reads with its own address into its own port. |
 | `witness(observations, state, command=None)` | Writes the moment as a slot after its settle; with `action` the `(batch, actions)` command executed at it joins the slot's key and value (zero when None). |
 | `copy_synapses()` | The copy pathway's synapses into the motor region, with the value coordinate and the motor neuron of each. |
 | `learn(graph, learned) -> dict` | The address lesson after a teaching step; returns `address_rows`, `address_error`, `address_refused`, and with a position term `position_rows` and `position_refused` (zero when nothing moved). A nonfinite step is refused per row (per head for the position maps). With several heads each head steps its own maps: rows and refusals are summed over the heads, the error averaged over the heads that moved. The position term learns whatever `address` is. |
 | `contrast_rows(graph, plus, minus)`, `propose(step)`, `accept(proposal)` | Reward training of the address map at `address_reward > 0` and of the position maps (and the anchored ones) at `position_reward > 0`, on the rows of the event heard; `ActorCritic` calls them. `contrast_rows` is `None` when neither trains the read; `reward_columns` is its width. |
 | `end(batch, rows=None)` | Ends episodes and keeps the slots, as `Brain.reset(keep=("slots",))` does; the latest slot learns no successor. With `boundary` an end of every stream opens one boundary slot. |
 | `weights(address, position=None)`, `position_term(head, event, cortex, rows=None)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
-| `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `imagined()` | Stream bookkeeping; `imagined()` is a copy that reads the live slots and writes none. |
-| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.null_logit(null, temperature)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.position_names(head)` | The always-described genes, the eighteen options saved only where they differ, validation of one gene, the null slot's logit, the refusal of a removed setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's position maps. |
+| `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `branch()` | Stream bookkeeping; `branch()` is a copy that reads the live slots and writes none. |
+| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.null_logit(null, temperature)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the sixteen options saved only where they differ, validation of one gene, the null slot's logit, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`; head 0's bare, head h's with `_h`). |
 | `told`, `focus`, `anchor_maps`, `relative_maps`, `slope_maps`, `anchored_buckets(rows=None)`, `relative_buckets(rows=None)`, `when_regions(heads)`, `when_features`, `when_width`, `RELATIVE`, `SLOPE` | The 0.93 options' state: each stream's moments told in its episode and the age of the slot its previous read attended most (`-1` before a read); one `(E_x, E_c, e)`, `(Q_x, Q_c, q)`, `(S_x, S_c, s)` map per head for the anchor, the relative read and the slope (empty lists without the option); each slot's anchored and relative bucket per stream; the when regions' names, the features a read delivers per slot (two of its age, with the anchor two more of its place) and their count; the relative offsets kept apart (8) and the slope's age scale (8). |
-| `attended_heads`, `head_map(head)`, `position_map(head)`, `position_maps`, `position_buckets` | Every head's attention of the latest read (head 0's is `attended`), one head's address map `(w_x, w_c, b)` (head 0's map is `w_x`, `w_c`, `b`), one head's position maps `(P_x, P_c, p)` (head 0's are `position_x`, `position_c`, `position_b`; refused at `position=0`), every head's (empty at `position=0`), and their number of age buckets. |
-| `RUNTIME`, `CONSTRUCTION`, `OPTIONS`, `CONSTRUCTION_OPTIONS`, `RETIRED`, `FORMAT`, `STEPS` | Class tuples: retunable genes, construction genes, the options and those fixed at construction, the settings this version removed, the keys the 0.84.3 format wrote for three of them with the one value at which such a file loads, and the allowed values of `address_step`. |
-| `keys`, `values`, `nexts`, `held`, `previous`, `ended`, `past`, `w_x`, `w_c`, `b`, `heads`, `head_maps`, `address_width`, `neurons`, `streams`, `slots`, `attended`, `to_dict()` | State arrays and sizes; `head_maps` holds the address maps of heads 1 and up. |
+| `attended_heads`, `head_map(head)`, `head_maps`, `position_map(head)`, `position_maps`, `position_buckets` | Every head's attention of the latest read, head 0's first (None before a read, when the read found no slots, and once the streams changed); one head's address map `(w_x, w_c, b)` and every head's; one head's position maps `(P_x, P_c, p)` (refused at `position=0`), every head's (empty at `position=0`), and their number of age buckets. |
+| `RUNTIME`, `CONSTRUCTION`, `OPTIONS`, `CONSTRUCTION_OPTIONS`, `RETIRED`, `FORMAT` | Class tables: retunable genes, construction genes, the options and those fixed at construction, the retired settings (each with the release that retired it, the one saved value a file loads at and what the memory does instead), and the keys the 0.84.3 format wrote for three of them with the one value at which such a file loads. |
+| `keys`, `values`, `nexts`, `held`, `previous`, `ended`, `past`, `heads`, `address_width`, `neurons`, `streams`, `slots`, `to_dict()` | State arrays and sizes. |
 
 Construction and `Brain.retune` refuse a `null` whose logit is not finite.
 

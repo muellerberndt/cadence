@@ -212,6 +212,43 @@ that added the position term, loads at its settings and reads as it did (a test 
   review's fixes; a ring life repeats on this release with every reading identical. The value
   lesson's readings (#216) come from a game outside the library.
 
+### Removed in this version
+
+A retired setting is refused at `compose`, `retune` and load with one sentence that names the
+release that retired it and what the brain does instead; a saved brain loads where it carries
+the one value the release keeps for the setting and is refused with the same sentence
+otherwise. The recall memory's table is `Recall.RETIRED` and `Recall.removed(name)` gives its
+sentence; the settings 0.85.0 retired keep naming 0.84.3 as the release that takes them
+(`recall_write was retired in 0.85.0: every accepted moment is written; cadence-net 0.84.3
+takes it`), and a 0.93.0 retirement names 0.93.0.
+
+- `recall_compete` (0.91.3, runtime): `False` read every head on its own, as before 0.91.3,
+  the read measured worse (two heads on one slot on 184 of 192 decisions). The competing read
+  is the only read; a memory of several heads still writes the key at `true`, and a file that
+  sets `false`, or one of several heads saved before 0.91.3 without the key, is refused on
+  load. The message: `recall_compete was retired in 0.93.0: the heads read competing, as they
+  did at True`.
+- `recall_address_step` (0.84.0, runtime): `"toward"` stepped the address by the named keys
+  less the mixture it attended to; described and never read in a chamber. The step toward the
+  named keys, the founder `"lms"`, is the step. The message: `recall_address_step was retired
+  in 0.93.0: the address lesson steps toward the named keys, as it did at 'lms'`.
+- `Recall`'s head-0 aliases `w_x`, `w_c`, `b`, `position_x`, `position_c`, `position_b` and
+  `attended` are gone: `head_map(0)`, `position_map(0)` and `attended_heads[0]` are the one
+  spelling, `head_maps` holds every head's address map (head 0's first), and
+  `Recall.map_names(kind, head)` replaces `position_names`, `anchor_names`, `relative_names`
+  and `slope_names`. An `AttributeError` names the missing alias; the checkpoint names are
+  unchanged.
+- `last_settlement["scope"]` (always `"free_answer"`) and `code_halvings` (a learned code's
+  step, read by nothing) leave the settlement report; the other keys stay.
+- `imagine` loses its `tolerance` argument: its phases settle to the learner's tolerance
+  (`learning_tolerance`, 3e-3), the one tolerance an answer is held to, where they settled to
+  1e-6 before. `imagine(..., tolerance=...)` raises `TypeError`.
+- One name per memory for fresh streams and for a private copy: `begin(keep=False)` leaves
+  the memory contract and every memory (`Brain.reset` calls `reset(0)`, or `Recall.end` for
+  the slots it keeps, and leaves the stores' records and fast residuals as before), and
+  `Recall.imagined()` is `branch()`, the contract's name. `AttributeError` names the missing
+  method.
+
 ### Project
 
 - How the project is planned (AGENTS.md, CONTRIBUTING.md): the roadmap (#109), the goal epics

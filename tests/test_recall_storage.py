@@ -175,7 +175,7 @@ def test_operations_leave_every_public_operation_bit_identical(monkeypatch):
                     decision_id=brain.decision_id,
                 ))
         monkeypatch.undo()
-        return np.array(acts), brain.recall.keys.copy(), brain.recall.w_x.copy()
+        return np.array(acts), brain.recall.keys.copy(), brain.recall.head_map(0)[0].copy()
 
     for bound, unbound in zip(life(True), life(False), strict=True):
         np.testing.assert_array_equal(bound, unbound)
@@ -257,7 +257,7 @@ def test_a_copy_taken_during_an_operation_reads_edits_after_it():
     with brain.recall._scope():
         brain.recall.weights(address)
         twin = deepcopy(brain)
-        branch = brain.recall.imagined()
+        branch = brain.recall.branch()
     for recall in (twin.recall, branch):
         recall.weights(address)
         recall.keys[:, 0] *= -1.0

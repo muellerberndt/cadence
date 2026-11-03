@@ -287,7 +287,7 @@ def test_private_imagination_checkpoint_transfer_and_actual_outcome_custody(exec
     action = brain.step(cue, teacher=np.array([0, 1]))
     saved = brain.save(tmp_path / "pending.npz")
     before = archive(saved)
-    imagined = brain.imagine([cue * 0.5, cue * 0.8], tolerance=3e-3)
+    imagined = brain.imagine([cue * 0.5, cue * 0.8])
     assert len(imagined) == 2 and all(p.qualified.all() for p in imagined)
     unchanged(brain, before, tmp_path / "after-private.npz")
     for bad in (np.array([np.nan, 0]), np.array([0])):

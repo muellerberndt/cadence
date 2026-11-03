@@ -11,10 +11,10 @@ writes them (``working_memory``, ``efference``, ``history``, ``recall``, ``hippo
   stores read into the drive at all.
 - ``branch()``: a private copy for an imagined branch: it reads the live state and writes
   none of it.
-- ``begin(keep=False)``: the streams begin afresh. What the memory keeps across streams
-  stays: the associative records, and with ``keep`` the recall memory's slots.
 - ``reset(batch, rows=None)`` and ``keep(rows)``: fresh streams, all of them or ``rows``;
-  the state of ``rows`` kept and the other streams dropped.
+  the state of ``rows`` kept and the other streams dropped. ``Brain.reset`` begins every
+  stream afresh so; the stores keep their records, and the recall memory keeps its slots
+  with ``keep=("slots",)``, each stream ending an episode there (``Recall.end``).
 - ``to_dict()`` and ``arrays()``: its settings and counts, and the arrays a checkpoint keeps
   of it (under ``memories/<name>/``).
 
@@ -60,8 +60,6 @@ class Memory(Protocol):
     def stimulus(self, drive: np.ndarray, moment: Moment) -> np.ndarray: ...
 
     def branch(self) -> Memory: ...
-
-    def begin(self, keep: bool = False) -> None: ...
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None: ...
 
@@ -245,20 +243,16 @@ class EpisodicRecords:
         out.paths = []
         return out
 
-    def begin(self, keep: bool = False) -> None:
-        """The streams begin afresh: no temporal context, no decision, no path; the records
-        stay."""
-        self.context = None
-        self.decision = None
-        self.before = None
-        self.seen = None
-        self.paths = []
-
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """The streams in ``rows`` begin their next attempt with no temporal context and no
-        path (all streams afresh without ``rows``); the records stay."""
+        path (all streams afresh without ``rows``: no temporal context, no decision, no
+        path); the records stay."""
         if rows is None:
-            self.begin()
+            self.context = None
+            self.decision = None
+            self.before = None
+            self.seen = None
+            self.paths = []
             return
         rows = _stream_rows(rows, batch)
         if self.context is not None and len(self.context) == batch:

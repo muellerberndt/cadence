@@ -116,14 +116,22 @@ def test_invalid_composition_is_refused(modules, observers):
         Brain.compose(2, 2, modules=modules, observers=observers)
 
 
-@pytest.mark.parametrize(
-    "controls",
-    [{"budget": -1}, {"budget": True}, {"tolerance": float("nan")}, {"tolerance": "small"}],
-)
+@pytest.mark.parametrize("controls", [{"budget": -1}, {"budget": True}])
 def test_empty_imagined_branch_still_validates_solver_controls(controls):
     brain = Brain.compose(2, 2, modules=(4,))
     with pytest.raises(ValueError):
         brain.imagine([], **controls)
+
+
+def test_imagine_settles_to_the_learners_tolerance():
+    """The one tolerance is the learner's: ``imagine`` takes none of its own (the argument of
+    0.92.1 is an unknown keyword), and its phases are held to ``learning_tolerance``."""
+    brain = Brain.compose(2, 2, modules=(4,), learning_tolerance=0.01)
+    with pytest.raises(TypeError, match="tolerance"):
+        brain.imagine([[[1.0, 0.0]]], tolerance=1e-6)
+    phases = brain.imagine([[[1.0, 0.0]], [[0.0, 1.0]]])
+    assert len(phases) == 2 and all(phase.tolerance == 0.01 for phase in phases)
+    assert all(phase.qualified.all() for phase in phases)
 
 
 @pytest.mark.parametrize("options", [{"seed": True}, {"seed": -1}, {"episodic": "yes"}])

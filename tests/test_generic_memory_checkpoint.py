@@ -235,8 +235,10 @@ def test_the_memories_are_one_ordered_family_under_one_contract():
     assert list(memories) == ["working_memory", "efference", "history", "recall", "hippocampus"]
     for name, memory in memories.items():
         assert memory is getattr(brain, name)
-        for method in ("stimulus", "branch", "begin", "reset", "keep", "to_dict", "arrays"):
+        for method in ("stimulus", "branch", "reset", "keep", "to_dict", "arrays"):
             assert callable(getattr(memory, method)), (name, method)
+        for alias in ("begin", "imagined"):  # one name per memory for fresh streams, a copy
+            assert not hasattr(memory, alias), (name, alias)
     assert list(cd.Brain.compose(4, 2, modules=(8,), episodic=False).memories) == [
         "working_memory"
     ]

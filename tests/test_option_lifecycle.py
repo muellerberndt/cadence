@@ -6,10 +6,13 @@ brain did and saves and loads as it chose (cadence#202, #210, #232, #234, #236, 
 
 from __future__ import annotations
 
+import json
+import re
 import warnings
 
 import numpy as np
 import pytest
+from checkpoints import earlier, metadata
 
 import cadence as cd
 
@@ -17,6 +20,11 @@ RNG = np.random.default_rng(0)
 X = [RNG.random((2, 6)) for _ in range(6)]
 POSITIONS = {"recall_anchor": True, "recall_slope": 0.1, "recall_relative": True,
              "recall_when": True}
+# the recall settings 0.93.0 retired: a value each took, and the brain that could take it
+RETIRED = {
+    "recall_compete": (False, {"recall_heads": 2}),
+    "recall_address_step": ("toward", {}),
+}
 
 
 def lived(**options) -> cd.Brain:
@@ -45,6 +53,41 @@ def test_retune_refuses_the_construction_settings(name, value):
                              memory_choice=True)
     with pytest.raises(ValueError, match=f"{name} is a construction setting"):
         brain.retune(**{name: value})
+
+
+@pytest.mark.parametrize("name", sorted(RETIRED))
+def test_a_setting_retired_in_this_release_is_refused_naming_the_release(tmp_path, name):
+    """A recall setting retired in 0.93.0 is refused at compose, retune and load with the one
+    sentence of ``Recall.removed``, which names 0.93.0 and what the memory does instead; a
+    founder checkpoint, and one that carries the setting at the value the memory keeps, load
+    unchanged."""
+    value, base = RETIRED[name]
+    setting = name[len("recall_"):]
+    release, kept, _ = cd.Recall.RETIRED[setting]
+    sentence = cd.Recall.removed(setting)
+    assert release == "0.93.0" and sentence.startswith(f"{name} was retired in 0.93.0: ")
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, **base)
+    with pytest.raises(ValueError, match=re.escape(sentence)):
+        cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, **base, **{name: value})
+    with pytest.raises(ValueError, match=re.escape(sentence)):
+        brain.retune(**{name: value})
+    brain.act(X[0], greedy=True)
+    path = brain.save(tmp_path / "founder.npz")
+    described = brain.describe()
+    assert name not in described["genes"]
+    with np.load(path, allow_pickle=False) as data:
+        arrays = earlier({member: data[member].copy() for member in data.files})
+    meta = metadata(arrays)
+    meta["recall"][setting] = value  # as a file of 0.92.1 with the option set carries it
+    arrays["generic"] = np.array(json.dumps(meta))
+    np.savez(tmp_path / "retired.npz", **arrays)
+    with pytest.raises(ValueError, match=re.escape(sentence)):
+        cd.Brain.load(tmp_path / "retired.npz")
+    assert cd.Brain.load(path).describe() == described
+    meta["recall"][setting] = kept
+    arrays["generic"] = np.array(json.dumps(meta))
+    np.savez(tmp_path / "kept.npz", **arrays)
+    assert cd.Brain.load(tmp_path / "kept.npz").describe() == described
 
 
 def test_the_withdrawn_chain_setting_is_unknown():

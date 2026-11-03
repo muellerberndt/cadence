@@ -543,8 +543,8 @@ equal shares at the full step and at successively halved steps (the learner's `d
 halvings, at least one), and only then is the answer refused; `last_settlement["rescue_steps"]`
 counts that continuation, and `steps`, `residual_checks` and `stagnation_checks` sum both
 solves. A solve that ended with a value that is not finite, and a budget of no sweeps, are
-refused without a rescue. `tolerance=None` is refused (`ValueError`).
-Other operations keep their own tolerances: `imagine` uses `1e-6`.
+refused without a rescue. `tolerance=None` is refused (`ValueError`). `imagine` settles its
+phases to the same tolerance.
 
 A refused answer raises `RuntimeError` before changing activity, memory, random state
 or pending feedback. The retry depends on what was accepted first:
@@ -566,7 +566,7 @@ assert answer_work["max_residual"] <= answer_work["tolerance"]
 
 `last_settlement` snapshots the latest completed free-answer solve, refused ones
 included: `operation` (`"act"`, `"wait"` or `"predict"`; `step` reports `act`,
-`accuracy` and `fit` their last `predict` batch), `scope` (`"free_answer"`), `qualified`,
+`accuracy` and `fit` their last `predict` batch), `qualified`,
 per-row `row_qualified` and `residual`, `max_residual`, `steps`, `budget`,
 `tolerance`, `residual_checks`, `damping_halvings` and `stagnation_checks`, and `rescue_steps`
 where the solve was rescued (`steps` then exceeds `budget`).
@@ -579,13 +579,14 @@ qualified teaching is opt-in ([budgets](settling.md#qualified-teaching-budgets))
 ### Private imagination
 
 ```python
-phases = brain.imagine([observation, following], budget=1024, tolerance=1e-6)
+phases = brain.imagine([observation, following], budget=1024)
 assert all(phase.qualified for phase in phases)
 ```
 
-`imagine(observations, *, budget=1024, tolerance=1e-6)` settles supplied
+`imagine(observations, *, budget=1024)` settles supplied
 observations (each a batch of the live streams) on a private trace and reads durable
-memory without writing it. The branch's efference copy takes in the act the brain
+memory without writing it, each phase to the learner's tolerance within `budget` sweeps.
+The branch's efference copy takes in the act the brain
 would issue at each phase. A refused phase ends the branch and is returned. Live state,
 parameters, records, random state and pending outcomes are untouched. The composed brain
 integrates no learned model of the world's consequences.

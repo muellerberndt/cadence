@@ -125,7 +125,7 @@ def test_a_moment_chooses_how_far_back_its_head_looks():
     for query, chosen in ((np.maximum(same, cue), old), (same, recent)):
         snapshot = recall.snapshot()
         brain.act(query, greedy=True)
-        attended = recall.attended[0]
+        attended = recall.attended_heads[0][0]
         assert int(np.argmax(attended)) == chosen
         recall.restore(snapshot)
 
@@ -230,14 +230,29 @@ def test_the_term_and_the_weights_give_the_attention_the_read_used():
         composed(recall_position=0).recall.position_map(0)
 
 
-def test_head_zeros_maps_go_by_their_checkpoint_names():
+def test_the_maps_go_by_their_checkpoint_names():
+    """``map_names(kind, head)`` gives the checkpoint names of one head's three maps of a kind,
+    head 0's bare and head h's with ``_h``; the head-0 aliases of 0.92.1 (``w_x``, ``w_c``,
+    ``b``, ``position_x``, ``position_c``, ``position_b``, ``attended``) are gone, the maps
+    being ``head_map(0)``, ``position_map(0)`` and ``attended_heads[0]``."""
     recall = composed().recall
-    assert recall.position_x is recall.position_maps[0][0]
-    assert recall.position_c is recall.position_maps[0][1]
-    assert recall.position_b is recall.position_maps[0][2]
-    assert set(cd.Recall.position_names(0)) <= set(recall.arrays())
-    with pytest.raises(ValueError):
-        _ = composed(recall_position=0).recall.position_x
+    assert cd.Recall.map_names("address", 0) == ("w_x", "w_c", "b")
+    assert cd.Recall.map_names("address", 2) == ("w_x_2", "w_c_2", "b_2")
+    assert cd.Recall.map_names("position", 0) == ("position_x", "position_c", "position_b")
+    assert cd.Recall.map_names("anchor", 1) == ("anchor_x_1", "anchor_c_1", "anchor_b_1")
+    assert cd.Recall.map_names("relative", 0)[2] == "relative_b"
+    assert cd.Recall.map_names("slope", 3)[0] == "slope_x_3"
+    with pytest.raises(ValueError, match="unknown map kind"):
+        cd.Recall.map_names("lean", 0)
+    saved = recall.arrays()
+    assert set(cd.Recall.map_names("address", 0)) | set(cd.Recall.map_names("position", 0)) <= set(saved)
+    for name, kept in zip(cd.Recall.map_names("address", 0), recall.head_map(0), strict=True):
+        assert saved[name] is kept
+    for name in ("w_x", "w_c", "b", "position_x", "position_c", "position_b", "attended"):
+        assert not hasattr(recall, name)
+    two = composed(recall_heads=2).recall
+    assert set(cd.Recall.map_names("address", 1)) <= set(two.arrays())
+    assert len(two.head_maps) == 2 and two.head_map(1) is two.head_maps[1]
 
 
 def continued_0890(brain, moments=8):
@@ -276,13 +291,13 @@ def test_a_brain_saved_by_0_89_0_loads_and_reads_as_it_did(tmp_path):
     assert {name: getattr(recall, name) for name in provenance["settings"]} == (
         provenance["settings"]
     )
-    assert recall.position_buckets == 33 and not recall.compete
+    assert recall.position_buckets == 33
     assert recall.slope_maps == [] and recall.anchor_maps == [] and recall.relative_maps == []
     assert (recall.slope, recall.when, recall.boundary, recall.position_reward) == (
         0.0, False, False, 0.0
     )
     genes = {k: v for k, v in brain.describe()["genes"].items() if k.startswith("recall")}
-    assert genes == {**provenance["genes"], "recall_compete": False}
+    assert genes == provenance["genes"]
     assert brain.parameters() == provenance["parameters"]
     again = cd.Brain.load(brain.save(tmp_path / "again.npz"))
     actions, attention, maps = continued_0890(brain)

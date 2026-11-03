@@ -189,7 +189,7 @@ def test_default_one_head_preserves_anatomy_actions_saved_teaching_and_parameter
         np.testing.assert_array_equal(getattr(original.brain, name), getattr(candidate.brain, name))
     assert candidate.brain.memory is memories[1]
     assert candidate.head_attended.shape == (1, 2, 2)
-    np.testing.assert_array_equal(candidate.head_attended[0], original.recall.attended)
+    np.testing.assert_array_equal(candidate.head_attended[0], original.recall.attended_heads[0])
 
 
 @pytest.mark.parametrize("heads_count, copies", [(2, 1), (1, 2), (2, 2)])
@@ -208,7 +208,7 @@ def test_head_anatomy_qualifies_joint_state_and_keeps_total_coupling(heads_count
     assert memory.memories[0].keys is memory.memories[-1].keys
     assert memory.weights(brain.basal_ganglia.state.activation).shape == (heads_count, 1, 1)
     assert brain.recall.slots == 2
-    assert brain.recall.attended.shape == (1, 1)
+    assert brain.recall.attended_heads[0].shape == (1, 1)
 
 
 def test_more_heads_and_wider_single_head_match_live_coordinate_budget() -> None:

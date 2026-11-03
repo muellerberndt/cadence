@@ -623,7 +623,7 @@ def test_storage_at_camera_width_stays_small():
             for memory in (brain.hippocampus, brain.context_memory)
         )
         recall = brain.recall
-        address = recall.w_x.nbytes + recall.w_c.nbytes + recall.b.nbytes
+        address = sum(a.nbytes for a in recall.head_map(0))
         tables = brain.sparse_code.index.nbytes + brain.sparse_code.weight.nbytes
         return {"separators": separators / MB, "address": address / MB, "tables": tables / MB}
 
@@ -643,7 +643,7 @@ def test_storage_at_camera_width_stays_small():
     assert not sparse.coded_cortex and sparse.sparse_code is None
     for memory in (sparse.hippocampus, sparse.context_memory):
         assert sum(v.nbytes for v in memory.separator.arrays().values()) / MB < 0.7
-    assert sparse.recall.w_x.nbytes / MB > 1000
+    assert sparse.recall.head_map(0)[0].nbytes / MB > 1000
     # the dense separators of the founder, for comparison: 12,824 x 1,024 floats
     assert 12_824 * 1024 * 8 / MB > 100
     assert np.isin(np.asarray(sparse.connectome.pre), sparse.sensory_index).sum() == 12_824 * 64

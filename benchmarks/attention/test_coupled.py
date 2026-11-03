@@ -182,7 +182,7 @@ def test_linear_control_does_not_report_an_unused_softmax_as_its_selection() -> 
     brain = AttentionBrain.compose(3, 2, mode="linear", modules=(4,), episodic=False)
     brain.act([[1, 0, 0]], greedy=True)
     brain.act([[0, 1, 0]], greedy=True)
-    assert brain.recall is not None and brain.recall.attended is None
+    assert brain.recall is not None and brain.recall.attended_heads is None
 
 
 def test_all_parameter_copies_preserve_the_same_witnessed_boundary() -> None:

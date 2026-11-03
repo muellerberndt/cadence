@@ -34,7 +34,7 @@ def test_the_focus_follows_the_slot_the_read_attended_most():
     brain.act(rng.random((2, 6)))
     np.testing.assert_array_equal(recall.focus, [1, 1])  # the one slot, one moment older
     brain.act(rng.random((2, 6)))
-    attended = recall.attended  # this act's read, over the two slots held before its write
+    attended = recall.attended_heads[0]  # this act's read, over the two slots held before its write
     expected = recall.ages()[: attended.shape[1]][np.argmax(attended, axis=1)]
     np.testing.assert_array_equal(recall.focus, expected)
     offsets = recall.ages()[None, :] - expected[:, None]

@@ -121,7 +121,7 @@ orders of some value pairs never taught. Its four-founder receipt with competing
 | Report two facts | 1.00 on every founder | 0.85, 0.77, 0.98, 0.82 | 0.21 to 0.24 | 0.03 |
 | One action from two facts | 1.00 on every founder | 0.98, 0.99, 0.98, 0.98 | 0.59 to 0.76 | 0.10 |
 
-The heads compete for the slots (0.91.3, `recall_compete`). Under 0.91.2, with the same
+The heads compete for the slots (0.91.3). Under 0.91.2, with the same
 settings (`CADENCE_FUSED=0`, one thread), the untaught pairs read 0.79, 0.77, 0.98, 0.82 and
 0.96, 0.96, 0.97, 0.98, the one-head arm identically to the row above, every taught pair 1.00.
 The heads prefer different role records on every trial, with no refusal. One head learns its

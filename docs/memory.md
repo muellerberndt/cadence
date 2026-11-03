@@ -94,9 +94,10 @@ a settle and writes them after it: `working_memory`, `efference`, `history`, `re
 the temporal context and the paths a reward is replayed along); `brain.memories["recall"]` is
 `brain.recall`. Every member keeps one contract
 (`cadence.memories`): `stimulus(drive, moment)` adds what it holds to the drive of a moment,
-`branch()` gives an imagined branch a private copy, `begin(keep=False)` starts its streams
-afresh as `reset` does, `reset(batch, rows=None)` and `keep(rows)` act on streams, and
-`to_dict()` and `arrays()` are what a checkpoint keeps of it, under `memories/<name>/`.
+`branch()` gives an imagined branch a private copy, `reset(batch, rows=None)` and
+`keep(rows)` act on streams (`Brain.reset` begins every stream afresh so, the stores keeping
+their records), and `to_dict()` and `arrays()` are what a checkpoint keeps of it, under
+`memories/<name>/`.
 
 Stores used directly, outside a composed brain (`FastSynapses`, `PatternSeparator`,
 `SynapticMemory`, the `Trace` family), are listed
@@ -296,8 +297,8 @@ and "where is Bob now?" can then read different slots of the same wording. See
 
 `reset()` empties the slots and keeps the learned address map;
 `reset(keep=("slots",))` keeps both. Every `recall_*` setting, its cost and its limits are in
-[the recall memory in full](#the-recall-memory-in-full). Settings removed after 0.84.3 and
-their replacements are listed under [removed in this version](#removed-in-this-version).
+[the recall memory in full](#the-recall-memory-in-full). Retired settings and what the memory
+does instead are listed under [retired settings](#retired-settings).
 
 ```python
 brain = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1, recall=True)
@@ -308,7 +309,7 @@ recalled = brain.stimulus(name)[0, brain.connectome.populations["recall"]]
 assert recalled[3] > recalled[1]                  # the moment that shares the name comes back
 assert brain.lesson(name, [1])["address_rows"] == 1.0   # the lesson steps the address map
 brain.reset()                                     # slots emptied, the address map kept
-assert brain.recall.slots == 0 and brain.recall.w_x.any()
+assert brain.recall.slots == 0 and brain.recall.head_map(0)[0].any()
 ```
 
 ## Single-head learned-code attention (opt-in)
@@ -390,8 +391,8 @@ assert len(heads_brain.recall.attended_heads) == 2
 
 Each head is a copy of the held read: a read port of its own (the regions `recall_h` and
 `next_h`, wired into the association like the first) and an address map of its own, which
-starts at zero. The heads compete for the slots (`recall_compete=True`, the founder): a slot
-can be read in full once per moment, so the heads read in turn and each takes of every slot
+starts at zero. The heads compete for the slots: a slot can be read in full once per
+moment, so the heads read in turn and each takes of every slot
 at most the share the heads before it left. A head keeps the shape of its own attention where
 the slots allow and gives what a taken slot cannot give to the slots it prefers next, with
 its whole mass while enough is left; a head whose slots the heads before took whole reads
@@ -412,9 +413,10 @@ what head 0 read, and the lesson's prior is the head's own attention: a sharp re
 the attention on one slot) gave it no other slot to move toward, and the heads stayed on the
 same moment, at `recall_address=0` for good. On the stream of
 [the heads' tests](../tests/test_recall_heads.py) two heads without competition read the
-slot they share 1.83 times in one moment; competing, no slot more than once.
-`recall_compete=False` keeps the earlier read, and a file of several heads saved before
-0.91.3 loads with it, continuing as it was saved; `retune` changes it in a living brain.
+slot they share 1.83 times in one moment; competing, no slot more than once. The earlier read
+was kept as `recall_compete=False` until 0.93.0 retired the setting
+([retired settings](#retired-settings)); a file of several heads saved before 0.91.3 is
+refused on load.
 
 In the [held-heads benchmark](../benchmarks/attention/held_heads.py) each trial witnesses
 four facts `role -> value` with values drawn fresh, and one question asks for two of them in
@@ -436,7 +438,7 @@ is a continuing-world result.
 The heads' addresses learn from teaching steps; reward trains them only at
 `recall_address_reward` above zero. In a life of rewards alone, with the founder 0, the address
 maps stay at zero: head 0 reads the best-matching moment and each later head the best of what
-the heads before it left (with `recall_compete=False`, what head 0 reads).
+the heads before it left.
 
 **A read that needs another read.** The address is fixed before the settle, so a read that
 depends on what another read found takes a second moment: a "think" moment chains the reads,
@@ -866,7 +868,7 @@ assert recalled[3] > recalled[1]                 # the moment that shares the na
 report = brain.lesson(name, [1])                 # a lesson also steps the address map
 assert report["address_rows"] == 1.0
 brain.reset()                                    # slots emptied, the learned address map kept
-assert brain.recall.slots == 0 and brain.recall.w_x.any()
+assert brain.recall.slots == 0 and brain.recall.head_map(0)[0].any()
 ```
 
 ### How a moment is addressed
@@ -883,7 +885,7 @@ the moment before, `K` the stored keys, and `W_x`,
 `W_c`, `b` a learned map that starts at zero, so before any lesson the address is the key
 and a name finds the moment it was stated in. `a` is the
 [position term](#position-how-long-ago-a-moment-happened), also zero until a lesson moves it.
-`p` is kept in `brain.recall.attended`. The
+`p` is kept in `brain.recall.attended_heads`, one array per head. The
 `recall` region is driven at
 `amplitude * sum p V` and the `next` region at `amplitude * sum p N`, held through the settle as a sensory drive is: the settle answers
 on the mixture the address chose and cannot revise the choice. Both regions reach the
@@ -905,9 +907,7 @@ the scores by `softmax(score / address_temperature + log p)` and steps the map t
 keys so weighted (`K*`) at the taught rows, each at the rate `min(recall_address, 1 / |z|^2)`
 on `z = [x, c, 1]`. The report gives `address_rows`, `address_error` and `address_refused`
 (rows whose non-finite step was refused), and with the position term `position_rows` and
-`position_refused`. The founder step `"lms"` takes the error `K* - q`;
-`recall_address_step="toward"` takes `K* - sum p K`, raising the named slots against the
-attended ones whatever the keys' norms.
+`position_refused`. The step takes the error `K* - q`.
 
 At the founder `recall_address_reward=0` rewards leave the map as it is. Above zero, each
 sampled act keeps the step the address lesson would take on the rows of the event heard, were
@@ -918,8 +918,8 @@ reward, where one question had learned to look carried another's read with it; s
 trace of its own (decaying by `gamma * lam`, see [reward](reward.md)), and each outcome steps
 the map by `recall_address_reward` times the dopamine times that trace; `learn` reports it as
 `address_reward_step`. At 1.0 a unit of dopamine moves the event's rows by one lesson's step.
-`retune` refuses a change of `recall_address_step`, `recall_address` or
-`recall_address_reward` while a sampled action's address contrast is pending.
+`retune` refuses a change of `recall_address` or `recall_address_reward` while a sampled
+action's address contrast is pending.
 
 ### Position: how long ago a moment happened
 
@@ -1222,8 +1222,8 @@ eligibility take that width; values, nexts and the two regions keep the value wi
 
 Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is
 refused. Retune genes change in a life through `brain.retune`; construction genes are fixed
-when the brain is built. The options from `recall_address_step` on are described and saved
-only where they differ from their founder. A saved brain keeps its genes, slots and address
+when the brain is built. The options from `recall_null` on are described and saved only
+where they differ from their founder. A saved brain keeps its genes, slots and address
 map.
 
 | Setting | Founder | When | What it sets |
@@ -1238,13 +1238,11 @@ map.
 | `recall_capacity` | `64` | construction | Slots per stream, oldest dropped first |
 | `recall_next` | `True` | construction | The `next` region and each slot's next |
 | `scales["recall"]` | `1.2` | construction | Initial magnitude of the two projections (a `compose` argument) |
-| `recall_address_step` | `"lms"` | retune | `"toward"`: the named keys less the attended mixture |
 | `recall_null` | `None` | retune | A number adds a null slot; a non-finite logit is refused |
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window`, `recall_window_decay` | `1`, `1.0` | construction | Window of the last k events, decay in (0, 1] |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
-| `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when](#position-how-long-ago-a-moment-happened)) |
@@ -1263,14 +1261,14 @@ The [API reference](api.md#recall-memory-genes) gives the `Recall` class signatu
 ```python
 optioned = Brain.compose(
     inputs=4, actions=2, modules=(16,), seed=1, recall=True,
-    recall_address_step="toward", recall_null=0.0, recall_address_reward=0.1,
+    recall_address_reward=0.1, recall_position_rate=0.05,
 )
 other = np.array([[0.0, 1.0, 0.0, 0.0]])
 optioned.act(fact)                               # every act writes a slot, sampled or greedy
 optioned.act(other, greedy=True)
 assert optioned.recall.slots == 2
 optioned.stimulus(np.array([[0.0, 0.0, 1.0, 0.0]]))  # matches no slot
-assert optioned.recall.attended.sum() < 1.0      # the null slot takes the rest
+assert np.isclose(optioned.recall.attended_heads[0].sum(), 1.0)  # the slots share the read
 optioned.act(name)                               # sampled: the map's eligibility is kept
 report = optioned.learn(np.array([1.0]), np.array([True]), fact)  # the outcome ends the episode
 assert report["address_reward_step"] > 0.0
@@ -1279,30 +1277,29 @@ windowed = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1, recall=True
 assert windowed.recall.address_width == 2 * 4
 ```
 
-### Removed in this version
+### Retired settings
 
-Settings of 0.84.3 that left in this version, each refused by name with a message naming
-0.84.3 as the release that takes it, with the reading that retired it:
+A retired setting is refused by name at `compose`, `retune` and load with one sentence that
+names the release that retired it and what the memory does instead (`Recall.RETIRED` holds
+the table, `Recall.removed(name)` gives the sentence). A saved brain loads where it carries
+the one value the memory keeps for the setting and is refused with the same sentence
+otherwise. The CHANGELOG entry of the retiring release gives each reading.
 
-- `recall_write="aroused"`, a moment written only when its act was sampled: neutral on every
-  chamber it was read on; every accepted moment is written.
-- `recall_key="predecessor"`, the previous event and the last command in every key: neutral
-  where it was read, and the window key and the efference copy carry the same information.
-- `recall_episodes="keep"`, slots kept across an ended episode: it lowered success by .108 on
-  a crafting chain whose observation names the stage; an ended episode empties the slots, and
-  `reset(keep=("slots",))` keeps them across a reset as before.
-- `recall_recency=None`, the power-law age charge `r * log(1 + age)`: it failed its
-  confirmation on the camera task's founders; a number keeps the linear charge
-  `recency * age`.
-- `recall_value="cortex"`, the settled association activity as a slot's value: it failed all
-  four binding tasks (token .06, succession .07, fresh bindings .55, camera .00); the values
-  are the events.
-- `recall_context` and `recall_context_decay`, a fading history of the earlier events added
-  to every key: never read above zero in a chamber.
+| Setting | Retired in | What the memory does instead |
+| --- | --- | --- |
+| `recall_write` | 0.85.0 | every accepted moment is written |
+| `recall_key` | 0.85.0 | the key is the event heard; the window key and the efference copy carry what came before |
+| `recall_episodes` | 0.85.0 | an ended episode empties the slots; `reset(keep=("slots",))` keeps them |
+| `recall_recency=None` | 0.85.0 | a number keeps the linear charge `recency * age` |
+| `recall_value` | 0.85.0 | the values are the events |
+| `recall_context`, `recall_context_decay` | 0.85.0 | no fading history of the earlier events joins the key |
+| `recall_compete` | 0.93.0 | the heads read competing, as they did at True; a file of several heads saved before 0.91.3, whose heads read alike, is refused |
+| `recall_address_step` | 0.93.0 | the address lesson steps toward the named keys, as it did at `"lms"` |
 
-A checkpoint of 0.84.3 carries `value="event"`, `context=0.0` and `context_decay=0.5`, the one
-value each had, with an empty history array; it loads, and neither `describe()` nor a
-checkpoint of this version carries them.
+Release 0.84.3 takes the settings 0.85.0 retired, and their sentences say so. A checkpoint of
+0.84.3 carries `value="event"`, `context=0.0` and `context_decay=0.5`, the one value each had,
+with an empty history array; it loads, and neither `describe()` nor a checkpoint of this
+version carries them.
 
 ### Recall cost
 

@@ -44,7 +44,7 @@ def test_continuing_brain_example():
         else:
             assert outcome["next_cue"] == 1 - cue
         free = outcome["free_answer"]
-        assert free["scope"] == "free_answer" and free["operation"] == "act"
+        assert free["operation"] == "act" and "scope" not in free
         assert free["qualified"] and free["max_residual"] <= free["tolerance"]
         assert free["steps"] <= free["budget"]
         work = outcome["step_settlement_work"]

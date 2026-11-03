@@ -869,7 +869,7 @@ def checkpoint_seam(journal, brain, witness, following, relative, context):
     charge(journal, "private_imagination", context,
            lambda: [{"qualified": phase.qualified, "steps": phase.steps,
                      "residual": phase.residual} for phase in branch.imagine(
-                         [following, witness["key"]], budget=1024, tolerance=0.003,
+                         [following, witness["key"]], budget=1024,
                      )])
     private = journal.save(branch, relative + "-after-private.npz")
     private_pure = checkpoints_equal(anchor, private)

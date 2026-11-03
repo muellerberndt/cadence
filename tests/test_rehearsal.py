@@ -246,7 +246,7 @@ def test_the_lessons_read_stays_readable_after_the_replay():
             brain.act(m, greedy=True)
         brain.lesson(x, answer)
     assert twins[0].rehearsal_draws > 0
-    np.testing.assert_array_equal(twins[0].recall.attended, twins[1].recall.attended)
+    np.testing.assert_array_equal(twins[0].recall.attended_heads[0], twins[1].recall.attended_heads[0])
 
 
 def test_a_live_stream_continues_exactly_as_without_the_replay():

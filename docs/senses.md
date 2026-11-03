@@ -153,8 +153,8 @@ and every memory keys on (reported as `context_free_steps`). The code is held: i
 settle its units are a source, their synapses in the whole graph carry nothing, and the
 moment's drive holds them at the phase's fixed point, so the rest of the brain integrates at
 the model's step with its budgets, its adaptation and its learning phases as a brain without
-the region has them. `last_settlement` reports the phase as `code_steps`, `code_residual` and
-`code_halvings` beside the whole graph's `steps`. `code_steps` and `context_free_steps`
+the region has them. `last_settlement` reports the phase as `code_steps` and `code_residual`
+beside the whole graph's `steps`. `code_steps` and `context_free_steps`
 include every attempt, including an initial phase that failed before its fallback; the
 reported residual describes the final attempt.
 

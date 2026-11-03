@@ -350,7 +350,7 @@ def test_imagination_restores_held_learned_code_state_without_learning():
     region = b.learned_code
     arrays = deepcopy(region.arrays())
     before = b._private_code_state()
-    b.imagine([[[0, 1, 0]]], budget=1024, tolerance=0.003)
+    b.imagine([[[0, 1, 0]]], budget=1024)
     assert region.halvings == before[2][0] and region.graph is before[2][1]
     assert region.last is before[2][2] and region.work == before[2][3]
     for name, array in arrays.items():
