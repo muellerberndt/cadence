@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### The same bits from a simpler implementation
+
+Where 0.93.0 wrote one rule out several times, the library states it once, and every array,
+answer, report, checkpoint and refusal is as it was: a battery of 13,076 recorded values over
+the kernels, the learner and the composed operations, one of 57,060 over lives with every 0.93
+option (saved, reloaded and continued, retuned, grown and grafted) and one over 2,802 altered
+checkpoints and every setting at 27 values read identical to 0.93.0, and the founder parity
+reads 0 of 24 lives differing. `src/cadence` holds 190 fewer lines.
+
+- The recall memory's maps of the moment (the address map, the position table and the
+  anchored, relative and slope maps) are built, read, stepped, saved, loaded and checked
+  through one helper per operation and one table of their kinds; a slot's place in its
+  episode, its bucket and its features of when are each computed once.
+- Each stream's state is named once, for the recall memory and for the episodic records,
+  across reset, end, keep, a new batch, save and load; a brain checkpoint names a settled
+  state's arrays once, and the traces held around a moment that is not the stream's own are
+  held in one place.
+- A recall setting is validated by one branch per kind of value, the recall genes carry every
+  option at its founder, the configurations' field kinds are read from their annotations, and
+  the scale arguments and the position reward's pairings are refused in one place each.
+- Gone: copies of head 0's port columns and synapses that nothing read, and two arguments of
+  the observation code that it never read.
+
 ## 0.93.0 — 2026-11-03
 
 Learning during a continuing life, positions at lengths no lesson reached, and wider brains
