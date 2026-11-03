@@ -1043,16 +1043,16 @@ class Brain:
                 used += phase.steps
                 checks += phase.residual_checks
                 stagnation_checks += phase.stagnation_checks
-                error = phase.residual
+                result = phase  # at the full step the attempt's report is the solve's
                 if halving:
                     error = self.residual(drive, phase.state, mask=mask, nudge=nudge)
                     checks += 1
-                result = Equilibrium(
-                    phase.state, error, used, tolerance,
-                    residual_checks=checks, damping_halvings=halving,
-                    stagnation_checks=stagnation_checks,
-                )
-                if np.all(result.qualified) or used >= budget:
+                    result = Equilibrium(
+                        phase.state, error, used, tolerance,
+                        residual_checks=checks, damping_halvings=halving,
+                        stagnation_checks=stagnation_checks,
+                    )
+                if result.qualified.all() or used >= budget:
                     return result
                 if not all(np.isfinite(value).all() for value in (
                     phase.state.v, phase.state.activation, phase.state.adaptation
@@ -1121,7 +1121,7 @@ class Brain:
         current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
         error = self.residual(drive, current, mask=mask, nudge=nudge)
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
-        while used < budget and not np.all(error <= tolerance):
+        while used < budget and not (error <= tolerance).all():
             if not np.isfinite(error).all() and any(
                 not np.isfinite(value).all()
                 for value in (current.v, current.activation, current.adaptation)
@@ -1136,7 +1136,7 @@ class Brain:
             used += current.steps
             error = self.residual(drive, current, mask=mask, nudge=nudge)
             checks += 1
-            if stop_if_stalled and used < budget and not np.all(error <= tolerance):
+            if stop_if_stalled and used < budget and not (error <= tolerance).all():
                 stagnation_checks += 1
                 repeats = repeats + 1 if self._repeated_state(previous, current) else 0
                 if repeats >= 2:
