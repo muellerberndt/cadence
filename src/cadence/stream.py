@@ -471,8 +471,8 @@ class _Moment(NamedTuple):
 _Maps = tuple[np.ndarray, np.ndarray, np.ndarray]
 
 
-def _read(maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
-    """A map of the moment read at the inputs ``x`` and the cortex ``c``."""
+def _term(maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """A map of the moment's term at the inputs ``x`` and the cortex ``c``."""
     m_x, m_c, m = maps
     return np.asarray(x @ m_x + c @ m_c + m)
 
@@ -1253,18 +1253,18 @@ class Recall:
         (every stream, in order, without)."""
         if not self.position_maps or not self.slots:
             return None
-        term = _read(self.position_maps[head], event, cortex)[:, self.buckets()]
+        term = _term(self.position_maps[head], event, cortex)[:, self.buckets()]
         # the terms over each stream's episode and previous read need the moments' streams; a
         # batch of other streams reads silence (``weights``) and gets the table and the slope
         if rows is not None or len(event) == self.streams:
             if self.anchor_maps:
-                anchored = _read(self.anchor_maps[head], event, cortex)
+                anchored = _term(self.anchor_maps[head], event, cortex)
                 term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
             if self.relative_maps:
-                relative = _read(self.relative_maps[head], event, cortex)
+                relative = _term(self.relative_maps[head], event, cortex)
                 term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
         if self.slope_maps:
-            lean = _read(self.slope_maps[head], event, cortex)
+            lean = _term(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
         return np.asarray(term)
 
