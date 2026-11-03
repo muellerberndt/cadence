@@ -55,7 +55,6 @@ from ._configuration import (
     configured,
     plain,
     real,
-    removed,
     removed_on_load,
     rescaled,
     scales_of,
@@ -1614,8 +1613,6 @@ def _layout(
         refusal = rescaled(name)
         if refusal is not None:
             raise ValueError(refusal)
-        if name in ("history_scale", "recall_scale"):  # constants since 0.93.0
-            raise ValueError(removed(name))
 
     def size(value: Any) -> int:
         if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
@@ -2934,8 +2931,6 @@ class Brain:
             refusal = rescaled(name)
             if refusal is not None:
                 raise ValueError(refusal)
-            if name in ("history_scale", "recall_scale"):  # constants since 0.93.0
-                raise ValueError(removed(name))
             if name in construction:
                 raise ValueError(f"{name} is a construction setting; retune preserves the brain")
         point = options.pop("teaching", None)

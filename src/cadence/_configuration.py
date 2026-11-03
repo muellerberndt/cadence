@@ -183,10 +183,14 @@ def teaching_point(config: LearnerConfig) -> str:
 
 
 def rescaled(name: str) -> str | None:
-    """The refusal of a projection scale argument of 0.84.3, or None for any other name."""
+    """The refusal of a projection scale argument: one of 0.84.3 that ``scales`` names, or one
+    whose projection starts at a constant since 0.93.0 (``CONSTANT_SCALES``); None for any
+    other name."""
     for key, (old, _) in SCALES.items():
         if name == old:
             return f"{old} is scales={{'{key}': ...}} in this version, a construction setting"
+    if name in {f"{key}_scale" for key in CONSTANT_SCALES}:
+        return removed(name)
     return None
 
 
