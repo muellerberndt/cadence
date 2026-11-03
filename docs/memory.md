@@ -910,11 +910,14 @@ on `z = [x, c, 1]`. The report gives `address_rows`, `address_error` and `addres
 attended ones whatever the keys' norms.
 
 At the founder `recall_address_reward=0` rewards leave the map as it is. Above zero, each
-sampled act keeps the step the address lesson would take, were its action a lesson's label,
-as the map's eligibility. The actor holds it in a trace of its own (decaying by
-`gamma * lam`, see [reward](reward.md)), and each outcome steps the map by
-`recall_address_reward` times the dopamine times that trace; `learn` reports it as
-`address_reward_step`. At 1.0 a unit of dopamine moves the map by one lesson's step.
+sampled act keeps the step the address lesson would take on the rows of the event heard, were
+its action a lesson's label, as the map's eligibility; the rows of the cortex of the moment
+before and the bias, which every moment's address shares, learn from lessons alone (stepped by
+reward, where one question had learned to look carried another's read with it; see
+[position](#position-how-long-ago-a-moment-happened)). The actor holds the eligibility in a
+trace of its own (decaying by `gamma * lam`, see [reward](reward.md)), and each outcome steps
+the map by `recall_address_reward` times the dopamine times that trace; `learn` reports it as
+`address_reward_step`. At 1.0 a unit of dopamine moves the event's rows by one lesson's step.
 `retune` refuses a change of `recall_address_step`, `recall_address` or
 `recall_address_reward` while a sampled action's address contrast is pending.
 
@@ -951,14 +954,51 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
   the lesson's label, joins the eligibility the actor traces, and dopamine steps the maps by
   `recall_position_reward` times one lesson's step (with the anchor, its maps too). Which slot
   a head reads by its age, the first told or the latest, is then reachable from reward alone
-  ([#236](https://github.com/muellerberndt/cadence/issues/236)). In the
-  [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy)
-  through `live` from reward alone (two values written, the first or the latest asked; five
-  development founders, 3,072 episodes) the founder answers at chance, 0.46 to 0.50 of its last
-  256 answers. With `recall_position_reward=4` the lives answer 0.73 to 1.00 of them, three of
-  the five every query (greedy reads 0.75 to 1.00, sampled acts 0.73 to 0.88). At 16 four lives
-  answer every query and one stays at chance; `recall_address_reward=1` beside 4 leaves one at
-  chance too. The 0.90 the issue asks for is reached by some founders, not by every one.
+  ([#236](https://github.com/muellerberndt/cadence/issues/236)).
+- **Reward steps the event's rows.** The term reads the cortex of the moment before and a
+  bias beside the event heard, as the address does, and every moment shares those rows
+  whatever it heard. A lesson names the right slots for every question, and the shared rows
+  settle with the event's. Under reward each step is the act's own guess, and with every row
+  stepped most of it landed on the shared rows, where the cortex holds most of `|z|^2`: two
+  questions asked after the same moment then read where either of them learned to look. The
+  reward step therefore moves only the rows of the event heard, in the position, anchored and
+  address maps alike, each row's rate bounded by the event's energy; the cortex and bias rows
+  learn from lessons alone.
+
+In the [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) through
+`live` from reward alone (two values written, the first or the latest asked; 3,072 episodes) the
+founder answers at chance, 0.46 to 0.50 of its last 256 answers. On the development founders
+(1001 to 1012) `recall_position_reward=4` answers .90 or more of them on 8 of 12; stepping every
+row, the form tried on the release branch and withdrawn before release, reached that on 5 of the
+11 read. Two more causes stand in the way. The first write is two or three moments old as a gap
+falls between the writes or not, and one question has one read; the
+[anchor](#position-how-long-ago-a-moment-happened) finds it at the same place in the episode,
+the first after the start, in either case. And the bank holds every payload twice, as the
+write's value and as the next of the slot before it, so the two cases of one question could
+settle on different ports; `recall_next=False` holds it once. With both, the position reward
+answers every query of the last 256 on all 12. That read costs the [recall
+world](../benchmarks/sequence/README.md#ordered-recall-orderpy), where the latest of one or two
+values is asked: its question learns the episode's first write, the older one where two are
+written. The address reward lets the question find the writes by what they hold and the recency
+the latest of them. The benchmark's `reward_recipe` (`recall_position_reward=4`,
+`recall_address_reward=1`, `recall_anchor=True`, `recall_next=False`) answers 11 of the 12
+development founders at .90 and more, and was confirmed on twelve fresh founders under gates
+declared before the run: the ordered recall world at 1.00 of the last 256 answers on 11 of 12
+(the twelfth at chance: its actor answers one action on nine queries in ten while it samples, so
+the read's eligibility, which names the slot holding the sampled action's value, has no
+direction), and the recall world at 0.848 against the founder's 0.864 (the gate: no lower than
+the founder by .05). In the recall world it answers the one-write conditions at 0.96 to 1.00 and
+the two-write ones below the founder (replacement 0.75 against 0.83, the latest of two adjacent
+writes 0.38 against 0.58). The third gate, the reward chambers of the [preservation
+panel](../benchmarks/credit/README.md#preservation) with the recipe and the memory it needs
+against the chambers as they are, fails: the odour nursery passes 9 lives of 12 against 11
+through `live` and 4 against 7 through `step` (its reversal at 1,000 trials takes 364 trials
+against 118), and the key-door nursery acquires its first rule in 5 lives of 16 against 8, while
+the contextual bandit reaches .90 on 6 seeds of 6 against 3. The memory alone, at its founder
+genes and read without reward, acquires the key-door rule in 3 of 16: that fall comes with the
+memory. The odour nursery keeps its lives with the memory alone (10 and 7) and with the reward
+read in the memory as composed (10 and 8), and loses them where the anchor and the missing next
+port meet the reward read.
 
 ```python
 brain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)

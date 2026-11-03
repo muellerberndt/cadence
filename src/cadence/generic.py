@@ -2746,10 +2746,12 @@ class Brain:
         ``"lms"`` step toward the named keys; a number ``recall_null`` adds a null slot of logit
         ``recall_null / recall_temperature`` that reads nothing; and
         ``recall_address_reward`` above zero lets reward train the address map, each sampled
-        act keeping the step its lesson would take as the map's eligibility and each outcome
-        stepping the map by that rate times the dopamine times the trace: the eligibility
-        carries the lesson's rate, so at 1.0 a unit of dopamine moves the map by one lesson's
-        step, and ``recall_address=0`` leaves the map as it is under reward too.
+        act keeping the step its lesson would take on the rows of the event heard as the map's
+        eligibility and each outcome stepping those rows by that rate times the dopamine times
+        the trace: the eligibility carries the lesson's rate, so at 1.0 a unit of dopamine
+        moves the rows by one lesson's step; ``recall_address=0`` leaves the map as it is under
+        reward too, and the rows of the cortex of the moment before and the bias, which every
+        moment shares, learn from lessons alone.
         When an episode ends the stream's slots are emptied with its working trace;
         ``Brain.reset(keep=("slots",))`` keeps the slots across a reset.
         ``recall_window`` k above 1 (construction, with ``recall_window_decay`` d in (0, 1])

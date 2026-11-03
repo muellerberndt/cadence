@@ -1507,8 +1507,9 @@ def _split(step, width):
 def test_a_sampled_act_keeps_the_step_its_lesson_would_take_as_the_maps_eligibility(form):
     """At a sampled act, before the moment is written, each row's eligibility of the address
     map is the step the address lesson would take at that row were the act's action the
-    lesson's label: the association's movement between the act's two nudged phases read back
-    through the recall and next synapses, scored against the slots the act read."""
+    lesson's label, on the rows of the event heard: the association's movement between the
+    act's two nudged phases read back through the recall and next synapses, scored against
+    the slots the act read. The cortex and bias rows keep none: they learn from lessons."""
     brain = composed(seed=6, recall_address_reward=0.5, recall_address_step=form)
     for x in (FACT, GO, CUE):
         brain.act(x, greedy=True)
@@ -1528,8 +1529,10 @@ def test_a_sampled_act_keeps_the_step_its_lesson_would_take_as_the_maps_eligibil
                           recall.readback(brain.learner.brain, "next", movement))
     assert report["address_rows"] == 1.0
     lesson = [a - b for a, b in zip(_map(recall), start, strict=True)]
-    for moved, part in zip(lesson, _split(contrast[0], 4), strict=True):
-        np.testing.assert_allclose(part, moved, rtol=1e-12, atol=1e-15)
+    event, cortex, bias = _split(contrast[0], 4)
+    np.testing.assert_allclose(event, lesson[0], rtol=1e-12, atol=1e-15)
+    assert lesson[1].any() and lesson[2].any()  # the lesson moves the shared rows
+    assert not cortex.any() and not bias.any()  # reward leaves them to the lesson
     recall.w_x, recall.w_c, recall.b = start
     recall.restore(after)
 

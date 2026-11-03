@@ -549,17 +549,23 @@ class Recall:
     the step the address lesson would take at each row, were the act's action the lesson's
     label, is that row's eligibility (``contrast_rows``), which the actor keeps in a trace
     of its own beside the synapses' and steps by ``address_reward`` times the dopamine
-    (``propose`` and ``accept``). The eligibility is a lesson's step at the lesson's bounded
-    rate ``min(address, 1 / |z|^2)``: at ``address_reward=1`` a unit of dopamine moves the
-    map by one lesson's step, and ``address=0`` leaves the map as it is under reward too.
+    (``propose`` and ``accept``). The eligibility holds the rows of the event heard alone,
+    ``W_x`` (with ``action`` the command's rows among them), at the lesson's rate bounded by
+    the event's energy, ``min(address, 1 / |x|^2)``: at ``address_reward=1`` a unit of
+    dopamine moves those rows by one lesson's step, and ``address=0`` leaves the map as it
+    is under reward too. The rows of the cortex of the moment before and the bias, which
+    every moment's address shares whatever it heard, learn from lessons alone: stepped by
+    reward, where one question had learned to look carried another's read with it.
 
     With ``position_reward`` above zero (an option, founder 0; runtime) reward trains the position
     maps as well, and with ``anchor`` the anchored maps: at each sampled act the step the
     position lesson would take at each row, were the act's action the lesson's label (the
-    cross-entropy gradient of the head's terms toward the slots the act's contrast names, at
-    the lesson's bounded rate ``position_rate``), joins the eligibility the actor traces, and a
-    unit of dopamine moves the maps by ``position_reward`` times one lesson's step. Which slot a
-    head reads by its age (the first told or the latest) is then reachable from reward alone.
+    cross-entropy gradient of the head's terms toward the slots the act's contrast names, on
+    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at
+    ``position_rate`` bounded by the event's energy), joins the eligibility the actor traces,
+    and a unit of dopamine moves the maps by ``position_reward`` times one lesson's step. Which
+    slot a head reads by its age (the first told or the latest) is then reachable from reward
+    alone.
 
     With ``heads`` H above 1 (a construction setting) the memory reads its one bank through
     H heads. Head h has a read port of its own, the regions ``recall_h`` and ``next_h``
@@ -2329,9 +2335,10 @@ class Recall:
         association's movement between the act's two nudged phases, ``plus`` less ``minus``,
         is read back through the recall and next synapses of ``graph`` and scored against the
         slots of the moment the act read (``last``, before its write); a row contributes
-        ``min(address, 1 / |z|^2)`` times the outer product of ``z = [x, c, 1]`` and its
-        error, of the form ``address_step`` names. A row that does not move, or whose
-        contribution is not finite, keeps none."""
+        ``min(address, 1 / |x|^2)`` times the outer product of ``[x, 0, 0]``, the event's rows
+        of ``z = [x, c, 1]``, and its error, of the form ``address_step`` names (the position
+        rows alike at ``position_rate``): the cortex and bias rows learn from lessons alone.
+        A row that does not move, or whose contribution is not finite, keeps none."""
         positions = bool(self.position_reward) and bool(self.position_maps)
         if not (self.address_reward or positions):
             return None
@@ -2350,21 +2357,25 @@ class Recall:
             found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
             if found is None:
                 continue
-            moving, x, c, _, _, step, target, prior = found
+            moving, x, c, _, error, _, target, prior = found
             index = np.flatnonzero(moving)
-            z = np.concatenate([x, c, np.ones((len(x), 1))], axis=1)
-            if self.address_reward:
-                with np.errstate(over="ignore", invalid="ignore"):
+            # the event's rows of ``z = [x, c, 1]`` step, each at a rate bounded by the
+            # event's energy; the cortex and bias rows, zero here, learn from lessons alone
+            z = np.concatenate([x, np.zeros((len(x), c.shape[1] + 1))], axis=1)
+            with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                energy = np.einsum("bi,bi->b", x, x)
+                if self.address_reward:
+                    step = error * np.minimum(1.0, 1.0 / (self.address * energy))[:, None]
                     rows = self.address * np.einsum("bi,bk->bik", z, step)
-                kept = np.isfinite(rows).all(axis=(1, 2))
-                out[index[kept], :, h * columns_:(h + 1) * columns_] = rows[kept]
+                    kept = np.isfinite(rows).all(axis=(1, 2))
+                    out[index[kept], :, h * columns_:(h + 1) * columns_] = rows[kept]
             if not positions:
                 continue
             with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-                # the position lesson's step at each row, as ``_position_step`` takes it
+                # the position lesson's step at each row, as ``_position_step`` takes it, on
+                # the event's rows
                 gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
                 rate = self.position_rate
-                energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
                 bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
                 blocks = [(self.buckets()[None, :].repeat(len(x), axis=0), count)]
                 if self.anchor_maps:

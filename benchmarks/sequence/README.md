@@ -79,15 +79,26 @@ every event a greedy act, and at the query a lesson naming the asked value befor
 brain is the instrument's: `Brain.compose(10, 2, modules=(32,), lateral=0.0, episodic=False,
 arousal=True, learning_qualified=True, learning_free_steps=1024, learning_nudged_steps=1024,
 learning_tolerance=0.003, working_memory_decay=0.0, working_memory_amplitude=0.3, recall=True)`
-with the arm's settings: `founder` (none), `position` (`recall_position_reward=4.0`), `address`
-(`recall_address_reward=1.0`), `position_address` (both), `position_address_anchor` (both, with
-`recall_anchor=True`), `slow` (`recall_position_rate=0.01`) and `recipe` (`recall_anchor=True,
-recall_slope=0.1, recall_position_rate=0.01, recall_recency=0.0, recall_boundary=True`).
+with the arm's settings: `founder` (none), `position` (`recall_position_reward=4.0`),
+`reward_recipe` (`recall_position_reward=4.0, recall_address_reward=1.0, recall_anchor=True,
+recall_next=False`), `address` (`recall_address_reward=1.0`), `position_address` (both),
+`position_address_anchor` (both, with `recall_anchor=True`), `slow`
+(`recall_position_rate=0.01`) and `recipe` (`recall_anchor=True, recall_slope=0.1,
+recall_position_rate=0.01, recall_recency=0.0, recall_boundary=True`).
 
 Readings at 1,536 and 3,072 episodes: under reward the share of the life's answers paid in the
 last 256 episodes (`live` answers greedily while calm and samples while aroused), and on forks
 (`copy.deepcopy`) that never change the life, 224 balanced episodes each on a fresh stream with
 every event an `act`, greedy on one fork and sampled on another.
+
+`--world recall` reads the instrument's recall world instead, where `QUERY` always asks the
+latest value written (nine inputs, no `QUERY_FIRST`), in seven conditions: one write followed
+by 0, 1 or 2 `NEUTRAL` events (`clean-0` to `clean-2`) or by 1 or 2 `DISTRACTOR` events whose
+payload is drawn from [-0.25, 0.25] (`distractor-1`, `distractor-2`); the other value, a
+`NEUTRAL`, the asked value and a `NEUTRAL` (`replacement`); the other value, the asked value
+and a `NEUTRAL` (`order-latest`). Its events and its schedule (balanced blocks of 14, each
+episode with a seed of its own for its distractors) are the Stone Age world's, checked equal on
+every condition; the brain, the arms, the life and the readings are the same as above.
 
 ## The width sweep (`width.py`)
 
@@ -248,20 +259,69 @@ where the read looks lost more with it than without it.
 
 ### Ordered recall (#236, #232)
 
-Five development founders (1001 to 1005), 3,072 episodes. Under reward the share of the life's
-answers paid over its last 256 episodes, with the forks' greedy and sampled readings:
+3,072 episodes under reward through `live`. The share of the life's answers paid over its last
+256 episodes, and the founders at .90 or above, with the forks' greedy and sampled readings.
+Development founders 1001 to 1012. The reward step moves the rows of the event heard; stepping
+every row, the form tried on the release branch and withdrawn before release, is kept here as
+the receipt of the withdrawn form (the rows marked "every row"; the `address` arms were read
+with it, on the first five founders):
 
-| Arm, taught by reward through `live` | The life's last 256 answers | Greedy | Sampled |
-| --- | --- | --- | --- |
-| `founder` | 0.46 to 0.50 | 0.50 on every founder | 0.47 to 0.51 |
-| `position` (`recall_position_reward=4`) | 0.73 to 1.00; three founders 1.00 | 0.75 to 1.00 | 0.73 to 0.88 |
-| `position` at 16 | 0.45 to 1.00; four founders 1.00, one at chance | 0.50 to 1.00 | 0.49 to 0.91 |
-| `address` (`recall_address_reward=1`) | 0.47 to 1.00 | 0.50 to 1.00 | 0.50 to 0.97 |
-| `position_address` | 0.48 to 1.00; one founder at chance | 0.50 to 1.00 | 0.50 to 0.79 |
-| `position_address_anchor` | 0.50 to 1.00 | 0.50 to 1.00 | 0.50 to 0.86 |
+| Arm | Founders | At .90 | The life's last 256 answers | Greedy | Sampled |
+| --- | --- | --- | --- | --- | --- |
+| `founder` | 1001 to 1005 | 0 of 5 | 0.46 to 0.50 | 0.50 | 0.47 to 0.51 |
+| `position` (`recall_position_reward=4`) | 1001 to 1012 | 8 of 12 | 0.46 to 1.00 | 0.50 to 1.00 | 0.50 to 0.92 |
+| `position`, every row (withdrawn) | 1001 to 1010, 1012 | 5 of 11 | 0.47 to 1.00 | 0.50 to 1.00 | 0.50 to 0.91 |
+| `address`, `position_address`, `position_address_anchor`, every row | 1001 to 1005 | 1, 3, 2 of 5 | 0.47 to 1.00 | 0.50 to 1.00 | 0.50 to 0.97 |
+| `position` with `recall_anchor=True` | 1001 to 1012 | 7 of 12 | 0.46 to 1.00 | 0.50 to 1.00 | 0.50 to 0.87 |
+| `position` with the anchor and `recall_next=False` | 1001 to 1012 | 12 of 12 | 1.00 | 1.00 | 0.50 to 0.92 |
+| `reward_recipe` | 1001 to 1012 | 11 of 12 | 0.48 to 1.00 | 0.50 to 1.00 | 0.50 to 0.89 |
 
-#236 asks for 0.90 under `live`. The position reward reaches it on three to four founders of
-five, not on every one, and adding the address reward does not lift it.
+Stepping every row, in the lives short of .90 one query kind answered every query with one
+value: the position term reads the cortex of the moment before and a bias, which both queries
+share (they follow the same `NEUTRAL`), and the step one query's reward took there moved the
+other's read with it. The event's rows alone end that; then one condition of four can stay
+unanswered, where the gap moves the first write from two moments old to three, or where the
+write is read through the next port of the slot before it in one condition and through its own
+value in the other. The anchor reads the first write at the same place in either condition, and
+without the next port each payload is held in one place. In the recall world (below) that read
+answers the latest of two writes at 0.21 (the founder 0.67): the query learns the episode's
+first write, the only one where one value is written. The address reward gives the read the
+writes by what they hold, and the recency the latest of them (`reward_recipe`).
+
+**Confirmation**, declared before any run on founders 936001 to 936012 (gates: G1
+`reward_recipe` at .90 or above on at least 10 of 12; G2 its recall world reading no lower than
+the founder's by .05; G3 the preservation panel):
+
+| Arm | At .90 | The life's last 256 answers | Greedy | Sampled |
+| --- | --- | --- | --- | --- |
+| `founder` | 0 of 12 | 0.45 to 0.52 | 0.50 | 0.47 to 0.55 |
+| `position`, every row (withdrawn) | 6 of 12 | 0.52 to 1.00 | 0.50 to 1.00 | 0.53 to 0.96 |
+| `reward_recipe` | 11 of 12 (G1 passes) | 1.00 on 11, 0.46 on one | 0.50 to 1.00 | 0.50 to 0.93 |
+
+The life at chance (as development founder 1012) answers action 0 on nine queries in ten while
+it samples, and every greedy answer is 0: the read's eligibility names the slot that holds the
+sampled action's value, the first write or the latest as the episode's values fall, so it has
+no direction.
+
+The recall world (`--world recall`) on the same founders, the life's last 256 answers (mean and
+range) and the greedy reading per condition, the mean over founders:
+
+| Arm | Last 256 | One write: clean 0, 1, 2 | Distractors 1, 2 | Replacement | Order-latest |
+| --- | --- | --- | --- | --- | --- |
+| `founder` | 0.864 (0.57 to 1.00) | 0.96, 1.00, 0.92 | 0.95, 0.90 | 0.83 | 0.58 |
+| `position`, every row (withdrawn) | 0.916 (0.82 to 1.00) | 0.92, 1.00, 0.83 | 1.00, 0.89 | 0.96 | 0.83 |
+| `reward_recipe` | 0.848 (0.66 to 1.00; G2 passes, paired -0.015) | 0.96, 1.00, 0.96 | 1.00, 0.96 | 0.75 | 0.38 |
+
+The reward recipe answers the ordered world and the recall world's single writes; of two writes
+in the recall world it answers the latest less often than the founder. G3 fails: in the reward
+chambers of [the preservation panel](../credit/README.md#preservation), with the recipe and the
+memory it needs against the chambers as they are on the same seeds, the odour nursery passes 9
+lives of 12 against 11 through `live` and 4 against 7 through `step`, and the key-door nursery
+acquires its first rule in 5 lives of 16 against 8 (the panel breaks a chamber at a fall of
+two). The memory alone, at its founder genes and read without reward, acquires that rule in 3
+of 16, so the key-door's fall comes with the memory; the odour nursery keeps its lives with the
+memory alone (10 and 7) and with the reward read in the memory as composed (10 and 8), and
+loses them where the anchor and the missing next port meet the reward read.
 
 Taught by a lesson at the query (1,536 episodes), the founder table answers every query
 greedily (sampled 0.97 to 0.99). The table at 0.01 alone (`slow`) answers 0.50 to 1.00 greedily

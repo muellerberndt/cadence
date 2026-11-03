@@ -80,13 +80,26 @@ to 0.99.
   (p = .039).
 - `recall_position_reward` (opt-in, #236; runtime): reward trains the recall read's position
   maps, and with the anchor the anchored maps, through the eligibility the actor traces beside
-  the address map's. In the ordered recall world through `live` from reward alone, where the
-  founder answers at chance (0.46 to 0.50 of its last 256 answers), `recall_position_reward=4`
-  answers 0.73 to 1.00, three of five development founders every query (greedy 0.75 to 1.00,
-  sampled 0.73 to 0.88); at 16 four answer every query and one stays at chance. #236's 0.90 is
-  reached by some founders, not by every one. It needs the position term and a position rate
-  above 0 (a frozen table would leave reward nothing to step), and a pending outcome holds its
-  settings as it holds the address map's.
+  the address map's. The reward step moves the rows of the event heard, for the address map as
+  well: stepping every row, the form tried on the release branch and withdrawn before release,
+  reached #236's .90 on 5 of 11 development founders against 8 of 12, and dragged one query's
+  read onto the other's through the cortex and bias rows they share. In the ordered recall
+  world through `live` from reward alone, where the founder answers at chance (0.46 to 0.50 of
+  its last 256 answers), `recall_position_reward=4` with `recall_address_reward=1`,
+  `recall_anchor=True` and `recall_next=False` (the ordered recall benchmark's `reward_recipe`)
+  was confirmed on 12 fresh founders under gates declared before the run: 1.00 of the last 256
+  answers on 11 of 12 (the twelfth at chance; 11 of 12 development founders), and the recall
+  world at 0.848 against the founder's 0.864 (within the declared .05), one write answered at
+  0.96 to 1.00 and two writes below the founder (replacement 0.75 against 0.83, order-latest
+  0.38 against 0.58). The anchor finds the first write wherever a gap puts it; without the next
+  port each payload is held in one port. The preservation panel, the third gate, fails with
+  the recipe and the memory it needs: the odour nursery passes 9 lives of 12 against 11
+  through `live` and 4 against 7 through `step`, and the key-door nursery acquires its first
+  rule in 5 of 16 against 8; the memory alone, read without reward, acquires it in 3 of 16,
+  and the nursery keeps its lives with the memory alone and with the reward read in the memory
+  as composed, losing them where the anchor and the missing next port meet the reward read.
+  It needs the position term and a position rate above 0 (a frozen table would leave reward
+  nothing to step), and a pending outcome holds its settings as it holds the address map's.
 - `learning_rehearsal` (opt-in, #238; `LearnerConfig.rehearsal`, founder 0): after each lesson,
   that many times the lesson's rows (at least one) are replayed, drawn from a reservoir of the
   lessons' rows kept over the life, a uniform sample (`learning_rehearsal_capacity`, 512 rows),
@@ -164,8 +177,9 @@ to 0.99.
 - `benchmarks/sequence`: the sequence battery (look back, copying, induction, n-back, periodic
   continuation, two hops, "how long ago" and "before" over stories; a reading with the anchored
   maps set to zero, and look back's cues taught one after another), ordered recall taught by
-  lessons or by reward through `live`, and the width sweep. They are the instruments of this
-  release's readings for #232, #234, #236, #237, #238 and #239.
+  lessons or by reward through `live` with the Stone Age instrument's recall world beside it
+  (`--world recall`), and the width sweep. They are the instruments of this release's readings
+  for #232, #234, #236, #237, #238 and #239.
 - `benchmarks/extinction`: the bandit of #210, failures paying 0 or -1.
 - The odour nursery charges a probe copy's refused answer to the life's work (`refused_sweeps`),
   as the key-door chamber does; the settle rescue exposed a strict life's refusal at a probe.

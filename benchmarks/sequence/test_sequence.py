@@ -103,6 +103,13 @@ def test_every_arm_reaches_the_brain(arm):
         assert (list(got) if isinstance(value, list) else got) == value, name
 
 
+@pytest.mark.parametrize("arm", list(od.ARMS))
+def test_every_ordered_recall_arm_reaches_the_brain(arm):
+    genes = od.make_brain(arm, 1001, {"modules": [8]}).describe()["genes"]
+    for name, value in od.ARMS[arm].items():
+        assert genes[name] == value, name
+
+
 def test_a_short_life_reads_every_reading():
     look = bt.run_life({"task": "lookback", "arm": "recipe", "founder": 0, "erase": True,
                         "task_args": {"lengths": [5, 6], "test_lengths": [9, 10]}, **SMALL})
@@ -170,7 +177,38 @@ def test_the_ordered_world_writes_two_values_and_asks_one():
 def test_the_schedule_is_balanced_in_blocks():
     plan = od.schedule(24, np.random.default_rng(4))
     cells = {(c, v) for c in od.CONDITIONS for v in (0, 1)}
-    assert all(set(plan[i:i + 8]) == cells for i in range(0, 24, 8))
+    assert all({(c, v) for c, v, _ in plan[i:i + 8]} == cells for i in range(0, 24, 8))
+    assert all(seed == 0 for *_, seed in plan)  # the ordered world draws no seed
+
+
+def test_the_recall_world_asks_the_latest_value_written():
+    lengths = {"clean-0": 3, "clean-1": 4, "clean-2": 5, "distractor-1": 4, "distractor-2": 5,
+               "replacement": 6, "order-latest": 5}
+    for condition in od.RECALL_CONDITIONS:
+        for value in (0, 1):
+            events = np.concatenate(od.events(condition, value, seed=7))
+            assert events.shape == (lengths[condition], od.WORLDS["recall"][0])
+            assert events[0, od.START] == 1.0 and events[-1, od.QUERY] == 1.0
+            writes = np.flatnonzero(events[:, od.WRITE])
+            assert np.array_equal(events[writes[-1], od.PAYLOAD], od.VALUES[value])
+            if len(writes) == 2:  # the other value, written first
+                assert np.array_equal(events[writes[0], od.PAYLOAD], od.VALUES[1 - value])
+            later = events[writes[-1] + 1:]
+            distractors = later[:, od.DISTRACTOR] == 1.0
+            assert distractors.sum() == (int(condition[-1]) if "distractor" in condition else 0)
+            assert np.all(np.abs(later[distractors][:, od.PAYLOAD]) <= 0.25)
+            assert not later[~distractors][:, od.PAYLOAD].any()
+    one, again = (np.concatenate(od.events("distractor-2", 0, seed)) for seed in (5, 5))
+    assert np.array_equal(one, again)
+    assert not np.array_equal(one, np.concatenate(od.events("distractor-2", 0, seed=6)))
+
+
+def test_the_recall_schedule_is_balanced_and_seeds_each_episode():
+    plan = od.schedule(42, np.random.default_rng(2), "recall")
+    cells = {(c, v) for c in od.RECALL_CONDITIONS for v in (0, 1)}
+    assert all({(c, v) for c, v, _ in plan[i:i + 14]} == cells for i in range(0, 42, 14))
+    assert len({seed for *_, seed in plan}) == 42
+    assert plan == od.schedule(42, np.random.default_rng(2), "recall")
 
 
 def test_a_life_through_live_and_its_readings_never_change_it(monkeypatch):
@@ -187,6 +225,19 @@ def test_a_life_through_live_and_its_readings_never_change_it(monkeypatch):
     od.read(brain, 1001, greedy=False)
     assert np.array_equal(np.asarray(brain.brain.efficacy), before[0])
     assert brain.decision_id == before[1]
+
+
+def test_a_life_in_the_recall_world_reads_its_conditions(monkeypatch):
+    monkeypatch.setattr(od, "EVALUATION", 14)
+    tiny = {"modules": [8]}
+    row = od.run_life({"arm": "position", "founder": 1001, "world": "recall",
+                       "settings": tiny, "budgets": [14]})
+    assert row["world"] == "recall" and row["ended"] is None and row["refused"] == 0
+    (reading,) = row["readings"]
+    assert set(reading["greedy"]["conditions"]) == set(od.RECALL_CONDITIONS)
+    assert od.make_brain("founder", 1001, tiny, "recall").recall is not None
+    (cell,) = [c for c in od.summarize([row]) if c["episodes"] == 14]
+    assert cell["world"] == "recall"
 
 
 def test_a_life_taught_by_lessons_learns_at_the_query(monkeypatch):
