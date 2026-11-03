@@ -30,7 +30,9 @@ with the arm's settings beside it (``ARMS``). At 256, 1,024 and 2,048 episodes t
 held-out panels are read on a fork of the life that never changes it: each panel episode on
 a fresh stream of the fork (``reset``, the records kept), every event a greedy act, the answer
 the greedy act at ``S2``. A setting learns a delay when held-out accuracy at 2,048 episodes is
-at least .90 on at least 5 of the 6 development founders (0 to 5).
+at least .90 on at least 5 of the 6 development founders (0 to 5). At the last budget the
+held-out panel is also read with carriers (``carriers``) emptied just before the answer
+(``erase``), or with a donor's in place of the stream's own (``transplant``).
 
     python benchmarks/credit/two_cue.py --condition reward --arms founder slow_episodic \\
         --delays 0 1 2 --out results/reward.jsonl --workers 3
@@ -204,6 +206,64 @@ def _relative(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.linalg.norm(a - b) / max(1e-12, 0.5 * (np.linalg.norm(a) + np.linalg.norm(b))))
 
 
+# ------------------------------------------------------------------------------- carriers
+
+
+ACTIVITY = "activity"  # the stream's settled activity, from which the next settle starts
+
+
+def carriers(name: str) -> tuple[str, ...]:
+    """The carriers a reading names, joined by ``+``: members of ``brain.memories``, and
+    ``activity``, the stream's settled state from which the answer's settle starts."""
+    return tuple(part for part in name.split("+") if part)
+
+
+def carries(brain: Any, name: str) -> bool:
+    """Whether the brain has every carrier ``name`` joins."""
+    return all(part == ACTIVITY or part in brain.memories for part in carriers(name))
+
+
+def empty(brain: Any, name: str) -> None:
+    """Empty the stream of every carrier ``name`` joins: a memory's stream (``reset``: the
+    trace, or the slots and the cortex of the moment before), and for ``activity`` the
+    settled state, so the next settle starts from rest."""
+    for part in carriers(name):
+        if part == ACTIVITY:
+            brain.basal_ganglia.reset()
+        else:
+            brain.memories[part].reset(1)
+
+
+def carried(brain: Any, name: str) -> dict[str, Any]:
+    """A copy of the stream state of every carrier ``name`` joins: a memory's ``snapshot``
+    where it keeps one (the recall memory's slots and cortex of the moment before), else its
+    ``arrays`` (the working trace), and for ``activity`` the settled state."""
+    out: dict[str, Any] = {}
+    for part in carriers(name):
+        if part == ACTIVITY:
+            out[part] = copy.deepcopy(brain.basal_ganglia.state)
+        else:
+            memory = brain.memories[part]
+            kept = memory.snapshot() if hasattr(memory, "snapshot") else memory.arrays()
+            out[part] = copy.deepcopy(kept)
+    return out
+
+
+def carry(brain: Any, state: dict[str, Any]) -> None:
+    """Put a ``carried`` state into the brain's stream, in place of its own."""
+    for part, value in state.items():
+        if part == ACTIVITY:
+            # the warm start of the next settle (``Brain.act`` settles from the actor's state)
+            brain.basal_ganglia._free = copy.deepcopy(value)
+            continue
+        memory = brain.memories[part]
+        if hasattr(memory, "restore"):
+            memory.restore(copy.deepcopy(value))
+        else:
+            for field, array in value.items():
+                setattr(memory, field, np.array(array, copy=True))
+
+
 def read_panel(
     brain: Any,
     founder: int,
@@ -215,12 +275,12 @@ def read_panel(
 ) -> dict[str, Any]:
     """Greedy answers on one fork of the life, each panel episode on a fresh stream of it.
 
-    ``erase`` names a member of ``brain.memories`` whose stream is emptied just before the
+    ``erase`` names carriers (``carriers``) whose streams are emptied just before the
     answer's act (``working_memory``: the trace; ``recall``: the slots; ``episodic``: the
-    temporal context). Reported: accuracy, the share answering action 1 and the readout's
-    probability of action 1 per cue, the episodic vote's preference for action 1 per cue, and
-    the relative separation of the two cues' association activity after every event, matched
-    by tuple."""
+    temporal context; ``working_memory+recall``: both). Reported: accuracy, the share
+    answering action 1 and the readout's probability of action 1 per cue, the episodic vote's
+    preference for action 1 per cue, and the relative separation of the two cues' association
+    activity after every event, matched by tuple."""
     fork = copy.deepcopy(brain)
     episodes, nothing = panel(founder, delay, kind, pair)
     association = np.asarray(fork.association_index, dtype=np.int64)
@@ -236,7 +296,7 @@ def read_panel(
             fork.act(x[None, :], greedy=True)
             trail.append(np.asarray(fork.basal_ganglia.state.activation)[0, association].copy())
         if erase is not None:
-            fork.memories[erase].reset(1)
+            empty(fork, erase)
         vote = _vote_one(fork, events[-1], before=True)
         answer = int(fork.act(events[-1][None, :], greedy=True)[0])
         trail.append(np.asarray(fork.basal_ganglia.state.activation)[0, association].copy())
@@ -263,6 +323,42 @@ def read_panel(
     }
 
 
+def read_transplant(
+    brain: Any, founder: int, delay: int, kind: str, name: str, *, pair: int = 0
+) -> dict[str, Any]:
+    """Greedy answers on one fork of the life with a donor's carriers: for every panel
+    episode (the recipient), a fresh stream of the fork lives the episode of the other cue
+    with the same distractors (the donor) up to the answer, and the stream state of the
+    carriers ``name`` joins is kept (``carried``); a fresh stream then lives the recipient's
+    episode up to the answer, the donor's state replaces its own (``carry``), and the answer
+    is the greedy act at ``S2``. Reported: the share of answers that follow the donor's cue
+    (its label) and the accuracy against the recipient's own."""
+    fork = copy.deepcopy(brain)
+    episodes, _ = panel(founder, delay, kind, pair)
+    first, second = PAIRS[pair]
+    follows, right = [], []
+    for cue, tuple_ in episodes:
+        donor = second if cue == first else first
+        state = None
+        for shown in (donor, cue):
+            events = events_of(shown, tuple_)
+            fork.reset()
+            for x in events[:-1]:
+                fork.act(x[None, :], greedy=True)
+            if shown == donor:
+                state = carried(fork, name)
+        assert state is not None
+        carry(fork, state)
+        answer = int(fork.act(events[-1][None, :], greedy=True)[0])
+        follows.append(answer == label_of(donor, founder))
+        right.append(answer == label_of(cue, founder))
+    return {
+        "follows_donor": float(np.mean(follows)),
+        "accuracy": float(np.mean(right)),
+        "episodes": len(follows),
+    }
+
+
 # ------------------------------------------------------------------------------------- life
 
 
@@ -276,8 +372,10 @@ def _windows(values: list[Any], window: int = WINDOW) -> list[float | None]:
 
 def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     """One life: ``spec`` names ``condition``, ``arm``, ``founder`` and ``delay``, with
-    ``budgets`` (default ``BUDGETS``), ``settings`` over the arm's and ``erase`` (members of
-    ``brain.memories`` erased, one reading each, on the held-out panel at the last budget)."""
+    ``budgets`` (default ``BUDGETS``), ``settings`` over the arm's, ``erase`` (carriers
+    erased, one reading each, on the held-out panel at the last budget) and ``transplant``
+    (carriers taken from a donor, one reading each, on the same panel); a name the brain has
+    no carrier for is skipped."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -341,10 +439,15 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
                     reading[kind] = read_panel(brain, founder, delay, kind)
                 if index + 1 == budgets[-1]:
                     for name in spec.get("erase", ()):
-                        if name in brain.memories:
+                        if carries(brain, name):
                             reading[f"{name}_erased"] = read_panel(
                                 brain, founder, delay, "held_out", erase=name
                             )["accuracy"]
+                    for name in spec.get("transplant", ()):
+                        if carries(brain, name):
+                            reading[f"{name}_transplant"] = read_transplant(
+                                brain, founder, delay, "held_out", name
+                            )
                 reading["seconds"] = round(time.monotonic() - started, 2)
                 readings.append(reading)
     except Exception as error:  # a refused act or lesson is a recorded failure of the life
@@ -411,7 +514,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--delays", nargs="*", type=int, default=[0])
     parser.add_argument("--founders", nargs="*", type=int, default=list(FOUNDERS))
     parser.add_argument("--budgets", nargs="*", type=int, default=list(BUDGETS))
-    parser.add_argument("--erase", nargs="*", default=[], help="memories erased at the end")
+    parser.add_argument(
+        "--erase", nargs="*", default=[], help="carriers erased at the end, joined by +"
+    )
+    parser.add_argument(
+        "--transplant", nargs="*", default=[], help="carriers taken from a donor at the end"
+    )
     parser.add_argument("--settings", type=json.loads, default={}, help="over the arms'")
     parser.add_argument("--plan", type=Path, help="a JSON list of life specs in place of the grid")
     parser.add_argument("--out", type=Path, help="JSON lines, one row per life, appended")
@@ -433,7 +541,8 @@ def main(argv: list[str] | None = None) -> int:
             parser.error("--condition or --plan is required")
         specs = [
             {"condition": args.condition, "arm": arm, "founder": founder, "delay": delay,
-             "budgets": args.budgets, "settings": args.settings, "erase": args.erase}
+             "budgets": args.budgets, "settings": args.settings, "erase": args.erase,
+             "transplant": args.transplant}
             for arm in args.arms for delay in args.delays for founder in args.founders
         ]
     _wait_for_load(args.load_gate)

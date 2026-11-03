@@ -69,12 +69,19 @@ reading at budget `n` of the reward condition has learned from `n - 1` outcomes.
 accuracy, the share answering action 1 per cue, the readout's probability of action 1 per cue,
 the episodic records' preference for action 1 per cue (arms with `memory_choice`), and the
 relative separation of the two cues' association activity after every event, matched by
-tuple. `--erase` adds held-out readings at the last budget with one memory's stream emptied
-just before the answer (`working_memory`: the trace; `recall`: the slots). The training log,
-per window of 64 episodes: the share right as acted (`reward`) or as the brain would have
-answered before the lesson (`lesson`, read on a fork), and under `reward` the share of answers
-sampled away from the complete greedy choice with the share right among greedy and among
-explored answers.
+tuple. `--erase` adds held-out readings at the last budget with carriers emptied just before
+the answer: a memory's stream (`working_memory`: the trace; `recall`: the slots and the cortex
+of the moment before), several joined by `+` (`working_memory+recall`: both), and `activity`,
+the stream's settled state, so the answer settles from rest. `--transplant` adds a held-out
+reading per name with a donor's carriers: for every panel episode a fresh stream of the fork
+lives the episode of the other cue with the same distractors up to the answer, the named
+carriers' stream state is kept, a fresh stream lives the episode itself up to the answer, the
+donor's state replaces its own, and the greedy answer at `S2` is read as following the
+donor's cue or its own (the two cues take the two actions, so the shares sum to one). The
+training log, per window of 64 episodes: the share right as acted (`reward`) or as the brain
+would have answered before the lesson (`lesson`, read on a fork), and under `reward` the share
+of answers sampled away from the complete greedy choice with the share right among greedy and
+among explored answers.
 
 **Gate.** A setting learns a delay when held-out accuracy at 2,048 episodes is at least .90 on
 at least 5 of the 6 development founders (0 to 5). Founders 500 to 511 are kept for a
@@ -100,7 +107,9 @@ From the repository root, with one BLAS thread per process:
 PYTHONPATH=src python benchmarks/credit/two_cue.py --condition reward \
     --arms founder slow_episodic --delays 0 1 2 --out DIR/reward.jsonl --workers 3
 PYTHONPATH=src python benchmarks/credit/two_cue.py --condition lesson \
-    --arms founder recall_recency0 --delays 2 4 8 --erase working_memory recall \
+    --arms founder recall_recency0 --delays 2 4 8 \
+    --erase working_memory recall working_memory+recall \
+    --transplant working_memory recall working_memory+recall \
     --out DIR/lesson.jsonl --workers 3
 python benchmarks/credit/two_cue.py --summary DIR/reward.jsonl
 PYTHONPATH=src python benchmarks/credit/preservation.py --chamber nursery --arm live \

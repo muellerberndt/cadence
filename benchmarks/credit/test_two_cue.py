@@ -181,6 +181,68 @@ def test_a_reading_never_changes_the_life(condition, arm, delay):
     assert (reading["vote_one"] is not None) == (arm == "slow_episodic")
 
 
+def _lived(brain, cue, tuple_=(1, 2)):
+    """A fresh stream of the brain up to the answer of one episode, every act greedy."""
+    brain.reset()
+    for x in tc.events_of(cue, tuple_)[:-1]:
+        brain.act(x[None, :], greedy=True)
+
+
+def test_an_erasure_empties_every_carrier_it_joins():
+    assert tc.carriers("working_memory+recall") == ("working_memory", "recall")
+    brain = tc.make_brain("recall_recency0", 0)
+    _lived(brain, 0)
+    trace, recall = brain.memories["working_memory"], brain.memories["recall"]
+    assert trace.trace.any() and recall.slots == 4 and brain.basal_ganglia.state is not None
+    tc.empty(brain, "working_memory+recall")
+    assert not trace.trace.any() and recall.slots == 0
+    assert brain.basal_ganglia.state is not None  # the settled activity is a carrier of its own
+    tc.empty(brain, "activity")
+    assert brain.basal_ganglia.state is None
+    assert tc.carries(brain, "working_memory+recall+activity")
+    assert not tc.carries(tc.make_brain("founder", 0), "working_memory+recall")
+
+
+def test_a_transplant_of_every_carrier_settles_the_answer_as_the_donor():
+    brain = tc.make_brain("recall_recency0", 0)
+    _lived(brain, 0)
+    donor = tc.carried(brain, "working_memory+recall+activity")
+    answer = brain.act(tc.events_of(0, (1, 2))[-1][None, :], greedy=True)
+    settled = np.array(brain.basal_ganglia.state.activation)
+    _lived(brain, 1)
+    own = np.array(brain.memories["working_memory"].trace)
+    tc.carry(brain, {"working_memory": donor["working_memory"]})
+    given = donor["working_memory"]["trace"]
+    np.testing.assert_array_equal(brain.memories["working_memory"].trace, given)
+    assert not np.array_equal(own, given)
+    tc.carry(brain, donor)
+    np.testing.assert_array_equal(
+        brain.act(tc.events_of(1, (1, 2))[-1][None, :], greedy=True), answer
+    )
+    np.testing.assert_array_equal(brain.basal_ganglia.state.activation, settled)
+
+
+def test_the_erasures_and_transplants_are_read_at_the_last_budget_and_change_nothing():
+    base = {"condition": "lesson", "arm": "recall_recency0", "founder": 0, "delay": 2,
+            "budgets": [4, 8]}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        plain = tc.run_life(base)
+        read = tc.run_life({**base, "erase": ["working_memory+recall", "history"],
+                            "transplant": ["recall", "working_memory+recall+activity"]})
+    assert "error" not in read
+    first, last = read["readings"]
+    assert 0.0 <= last["working_memory+recall_erased"] <= 1.0 and "history_erased" not in last
+    moved = last["working_memory+recall+activity_transplant"]
+    assert moved["episodes"] == last["held_out"]["episodes"]
+    # within a pair the cues take the two actions: an answer follows the donor or the recipient
+    assert moved["follows_donor"] + moved["accuracy"] == pytest.approx(1.0)
+    assert "recall_transplant" in last and not any(k.endswith(("_erased", "_transplant"))
+                                                   for k in first)
+    assert json.dumps(plain["readings"][-1]["held_out"]) == json.dumps(last["held_out"])
+    assert plain["log"] == read["log"]
+
+
 def test_every_arm_composes_and_the_hold_and_extinction_reach_the_episodic_memory():
     for arm in tc.ARMS:
         brain = tc.make_brain(arm, 0)
