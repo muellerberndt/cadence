@@ -1,14 +1,10 @@
 # Your own anatomy
 
-You want your own regions, a measured connectome or evolved wiring. A `Genome` lists regions
-and projections, `develop` lays them out into a `Connectome`, and
+Use this page for your own regions, a measured connectome or evolved wiring. A `Genome` lists
+regions and projections, `develop` lays them out into a `Connectome`, and
 `Brain.compose(inputs, actions, connectome=...)` gives the anatomy the composed founders.
-`Genome.composed(inputs, actions, ...)` is the layout `compose` develops, the starting point
-to edit or to evolve.
 
 ## Genome, development, brain
-
-Use a `Genome` for named regions, custom projections or evolved wiring:
 
 ```python
 import cadence as cd
@@ -25,28 +21,28 @@ network = cd.NeuralGraph(cd.develop(genome, seed=0), cd.learning_neuron_model())
 ```
 
 This graph has no motor competition (`motor_cortex` defaults to `lateral=0.0`) and no
-Brain loop. Two entry points give one:
+Brain loop. Wrap it in a brain in one of two ways:
 
-- `Brain.compose(inputs, actions, connectome=connectome, ...)` wraps a custom anatomy with
-  the composed founders ([defaults](tune.md#defaults-and-expert-overrides)), the episodic
-  founders filled in under `memory_choice=True`.
-  Its `sensory` (or `visual/input`) population holds the inputs (the code's units with
-  `code=units`), its `motor` population the actions, and it brings its own layout, so the
-  layout settings (`modules`, `observers`, `lateral`, `scales`, `features`, `field`) stay at
-  their founders. `Genome.composed(inputs, actions, ...)` returns the
-  layout `compose` develops, to edit or evolve ([evolution](#mutation)).
-- `Brain(connectome, ...)` wraps any connectome with `association`, `motor` and
-  `sensory` (or `visual/input`) populations and takes the same constructor options;
-  `inputs=` is the observation width when the sensory population is a `code=units` code.
-  It keeps the composed learning, actor, arousal and memory founders, and with
-  `memory_choice=True` starts the episodic context, replay, demonstrations and separation
-  at zero unless you pass them ([episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before)).
+- `Brain.compose(inputs, actions, connectome=connectome, ...)` adds the composed founders
+  ([defaults](tune.md#defaults-and-expert-overrides)), and the episodic founders under
+  `memory_choice=True`. Its `sensory` (or `visual/input`) population holds the inputs (the
+  code's units with `code=units`) and its `motor` population the actions. The anatomy brings
+  its own layout, so the layout settings (`modules`, `observers`, `lateral`, `scales`,
+  `features`, `field`) stay at their founders. To change the composed layout itself, edit or
+  evolve `Genome.composed(inputs, actions, ...)`, the layout `compose` develops
+  ([mutation](#mutation)).
+- `Brain(connectome, ...)` wraps any connectome with `association`, `motor` and `sensory`
+  (or `visual/input`) populations and takes the same constructor options; `inputs=` is the
+  observation width when the sensory population is a `code=units` code. It keeps the
+  composed learning, actor, arousal and memory founders. With `memory_choice=True` it starts
+  the episodic context, replay, demonstrations and separation at zero unless you pass them
+  ([episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before)).
 
 `Genome.observation_width(inputs, code=None, learned_code=None)` is the key width the
-memories will use, the size of a custom anatomy's `recall` and `next` regions.
+memories use, and so the size of a custom anatomy's `recall` and `next` regions.
 
 [Write a cortex](#write-a-cortex) covers regions, ports and projections;
-[evolution](#evolve-a-brain) covers genomes and selection.
+[evolve a brain](#evolve-a-brain) covers genomes and selection.
 
 ## Write a cortex
 
@@ -54,14 +50,14 @@ A cortex is a named group of neurons with declared projections to other cortices
 `Genome` it is a `Region`; `develop` lays every region into one connectome, where each
 becomes a named population, a port. A learning head is a `Learner` that owns the synapses
 between some ports and changes them from settled phases. All regions settle in one
-equilibrium. [Compose a brain](tune.md) builds a ready brain from these parts; this part
+equilibrium. [Compose a brain](tune.md) builds a ready brain from these parts; this section
 wires one by hand.
 
 ### Blank and designed regions
 
-`Region(name, size)` is a blank region: a group of neurons with no synapses of its own. The
+`Region(name, size)` is a blank region, a group of neurons with no synapses of its own. The
 genome's projections connect it, and `mutate` may change its size.
-`Region(name, circuit=connectome, inputs=None, outputs=None)` is a designed region: it
+`Region(name, circuit=connectome, inputs=None, outputs=None)` is a designed region. It
 carries its own synapses and named populations, takes its size from the circuit and keeps
 that size under mutation. `inputs` names the circuit population that receives projections
 and `outputs` the population that sends them; each defaults to the whole region. A region
@@ -130,53 +126,57 @@ checks every projection end when it is built and refuses an empty or duplicated 
 
 ### The apical compartment
 
-In a chain of reciprocally joined regions each region hears the region above it through the
-reverse half of the pair that carries its own output up. Summed with the region's bottom-up
-input, that top-down input closes a loop whose gain grows with the weights: the settle slows as
-the loop nears its critical gain, and the region comes to carry an echo of the answer instead of
-a representation of its input, so a second module adds little to the first.
+Set `Brain.compose(..., apical=fraction)` for a chain of several reciprocal processing
+regions. Without it, each region hears the region above through the reverse half of the pair
+that carries its own output up. Summed with the bottom-up input, that top-down input closes a
+loop whose gain grows with the weights. Near the critical gain the settle slows and the region
+carries an echo of the answer instead of a representation of its input, so a second module adds
+little to the first.
 
-`Brain.compose(..., apical=fraction)` lands the top-down half of every reciprocal pair between
-two regions on an apical compartment, as the areas above a cortical pyramidal cell reach its
-apical tuft. The regions are the populations named without a slash, in the order `develop` lays
-them out; a synapse lands apically when its reverse synapse exists and its presynaptic region
-comes after its postsynaptic one: a module's input from the module above, the association's from
-the motor region, any region's from an observer. One-way projections (the sensory input, the
-working trace, the efference copy, the history and the recall memory) stay basal. In every sweep
-each region that hears a region above it adds to every member's basal input `b` (its other
-synapses, the stimulus, the bias, a nudge) the drive
+The compartment lands the top-down half of every reciprocal pair between two regions apically,
+as the areas above a cortical pyramidal cell reach its apical tuft. The regions are the
+populations named without a slash, in the order `develop` lays them out. A synapse is apical
+when its reverse synapse exists and its presynaptic region comes after its postsynaptic one: a
+module's input from the module above, the association's from the motor region, any region's
+from an observer. One-way projections (the sensory input, the working trace, the efference
+copy, the history and the recall memory) stay basal. In every sweep, a region with apical input
+`u` adds to every member's basal input `b` (its other synapses, the stimulus, the bias, a
+nudge) the drive
 
 ```text
 fraction * rms(b) * u / sqrt(rms(u)^2 + rms(b)^2)
 ```
 
-of its apical input `u`, the root mean squares taken over the region, row by row. The top-down
-direction is kept and its magnitude never exceeds `fraction` times the region's bottom-up drive,
-however large the weights grow. A nudged settle holds the gain each pool had at the free phase's
-state, one per row and pool (`Brain.apical_gain`, carried as `Nudge.apical_gain`): where the drive
-sits at its bound the per-sweep normalization keeps only the direction of `u`, and would suppress a
-nudge's change along it, so the change arrives at the free phase's gain instead, undistorted. The
-free phase and its fixed point are the normalized ones. A brain with the compartment settles at
-half the founder's step, which damps the loop's fast mode and moves no fixed point. `NeuralGraph(..., apical=Apical(synapses, groups, fraction))` gives any
-graph the compartment: `synapses` a bool per synapse, `groups` a pool per neuron.
+with the root mean squares taken over the region, row by row. The top-down direction is kept,
+and its magnitude stays below `fraction` times the region's bottom-up drive however large the
+weights grow.
 
-Credit that reaches a region k levels below the motor region shrinks by about the fraction per
-level, below a coarse settle's error. A brain with the compartment therefore learns at the
-teaching point `"deep"`: the normalized point with the
-[projection-relative floor](teach.md#rates-under-normalization) at 0.1 and nudged phases of a
-whole 32 sweeps from a free phase at the founder's tolerance (the opposite phases' common drift
-cancels in the contrast). The founder of `benchmarks/depth` composes `apical=0.25` with
-`teaching="deep"`.
-There, on a task that takes two layers of thresholds, one to four processing regions order by
-depth, and four finish about 2.2 percentage points below a network of two hidden layers; see the
-[depth benchmark](../benchmarks/depth/README.md) and [deep brains](tune.md#deep-brains).
+- A nudged settle holds the gain each pool had at the free phase's state, one per row and pool
+  (`Brain.apical_gain`, carried as `Nudge.apical_gain`). Where the drive sits at its bound, the
+  per-sweep normalization would keep only the direction of `u` and suppress a nudge's change
+  along it; at the held gain the change arrives undistorted. The free phase and its fixed
+  point are the normalized ones.
+- A brain with the compartment settles at half the founder's step, which damps the loop's fast
+  mode and moves no fixed point.
+- `NeuralGraph(..., apical=Apical(synapses, groups, fraction))` gives any graph the
+  compartment: `synapses` a bool per synapse, `groups` a pool per neuron.
+
+Teach such a brain at `teaching="deep"`. Credit that reaches a region k levels below the motor
+region shrinks by about the fraction per level, below a coarse settle's error. The deep point is
+the normalized point with the [projection-relative floor](teach.md#rates-under-normalization)
+at 0.1 and nudged phases of a whole 32 sweeps from a free phase at the founder's tolerance (the
+opposite phases' common drift cancels in the contrast). The founder of the
+[depth benchmark](../benchmarks/depth/README.md) composes `apical=0.25` with
+`teaching="deep"`. On its task, which takes two layers of thresholds, one to four processing
+regions order by depth, and four finish about 2.2 percentage points below a network of two
+hidden layers ([deep brains](tune.md#deep-brains)).
 
 ### Ports after development
 
 `develop(genome, seed=0)` lays the regions out in order as contiguous populations named
 after them, adds each designed region's synapses and its populations as
 `region/population`, and draws every projection. The result is one `Connectome` for one
-`NeuralGraph`, the same for the same seed. A port is a named population of that connectome.
+`NeuralGraph`, identical for the same seed. A port is a named population of that connectome.
 
 ```python
 genome = cd.Genome(
@@ -296,30 +296,29 @@ assert moved[owned].any() and not moved[~owned].any()
 
 ### Settle or record
 
-A cortex needs settling when its answer depends on a joint state of many neurons: completing
-a missing part of the reading, carrying context across a delay through a recurrent state or a
+Use a settling cortex when the answer depends on a joint state of many neurons: completing a
+missing part of the reading, carrying context across a delay through a recurrent state or a
 `prefrontal_cortex`, or learning a policy under late reward through `ActorCritic`
-([reward](reward.md)). When the outcome follows the reading it belongs to and the reading
-holds what decides it, a delta-rule store outside the connectome (`FastSynapses`,
-`SynapticMemory`) is enough, read and written without a settling step and without touching
-any `NeuralGraph` parameter
-([a store or a settling learner](memory.md#a-store-or-a-settling-learner)). A store's key
-can include the activation of a port, so a store and a settled policy combine in one brain;
-[Compose a brain](tune.md) builds both.
+([reward](reward.md)). Use a delta-rule store outside the connectome (`FastSynapses`,
+`SynapticMemory`) when the outcome follows the reading it belongs to and the reading holds
+what decides it. A store is read and written without a settling step and touches no
+`NeuralGraph` parameter ([a store or a settling learner](memory.md#a-store-or-a-settling-learner)).
+A store's key can include the activation of a port, so a store and a settled policy combine in
+one brain; [Compose a brain](tune.md) builds both.
 
 ## Brains from a connectome
 
 A measured wiring diagram becomes one `NeuralGraph`: every neuron a unit of the graded rate
-model, every synapse class one entry with its contact count and sign, one global gain. This
-page is the import recipe. Biological dynamics and behaviour need their own validation
+model, every synapse class one entry with its contact count and sign, one global gain. The
+steps below are the import recipe. Biological dynamics and behaviour need their own validation
 ([numerical and learning contracts](contracts.md)). The
 [Connectome demo](https://github.com/muellerberndt/cadence-demos/tree/main/connectome) runs
 compiled fly wiring with plastic connections in the browser.
 
-A brain on a connectome takes new parts by grafting: build a larger anatomy with the connectome
-as one region (`Region(name, circuit=connectome)`) and the new regions wired to it, compose it,
-and graft the trained brain in with `into=`; the joints start at zero, so the larger brain
-settles on the trained weights as the trained brain does, its memories and settings its own,
+To add parts to a trained brain on a connectome, build a larger anatomy with the connectome as
+one region (`Region(name, circuit=connectome)`) and the new regions wired to it, compose it,
+and graft the trained brain in with `into=`. The joints start at zero, so the larger brain
+settles on the trained weights as the trained brain does, with its own memories and settings,
 until the joints learn
 ([a whole brain as one region](grow.md#a-whole-brain-as-one-region-of-a-larger-anatomy)).
 
@@ -437,12 +436,14 @@ brain = make(attenuation)
 `select_gain` keeps the candidates that are admissible (at most `sparsity_cap` of all neurons
 active under every training stimulus; the default cap is 0.05 and `None` turns it off), takes
 the one that passes the most training facts, and breaks ties by the smallest value. It raises
-`ValueError` on an empty grid or when no candidate is admissible. Here the unattenuated lobe
-activates 0.32 of all neurons, over the cap, and shares 0.8 of its Kenyon cell code between the
-odours; 0.7 and 1.4 pass all three facts and 0.7 is chosen. Select on the whole brain, because a
-sub-net's own stimulated receptors can exceed the cap, and declare the value in the dictionary
-next to the global gain. Measure the code at the learning site before designing a lesson: a code shared by every stimulus carries nothing
-a lesson can attach to.
+`ValueError` on an empty grid or when no candidate is admissible. In the example the
+unattenuated lobe activates 0.32 of all neurons, over the cap, and 0.7 is the smallest value
+that passes all three facts.
+
+Select on the whole brain, because a sub-net's own stimulated receptors can exceed the cap, and
+declare the value in the dictionary next to the global gain. Measure the code at the learning
+site before designing a lesson; a code shared by every stimulus carries nothing a lesson can
+attach to.
 
 ### 5. What a rate model cannot carry
 
@@ -464,12 +465,17 @@ browser engine to the library.
 
 The learning rule is the same actor-critic as on any brain ([learning from reward](reward.md)).
 Decide which neurons read the action and which synapses are plastic (the seam the animal is known
-to change, passed as the learner's `plastic_synapses` mask). Two operating points are not in the connectome, and both are declared: the readout's
-threshold (a readout cell on a rail gives a nudge little to act on;
-[`calibrate_bias`](settling.md#calibrating-the-operating-point) searches its bias into
-`NeuralGraph(bias=)`), and the seam's starting strength (`naive_efficacy` gives plastic classes
-equal magnitude into `NeuralGraph(efficacy=)`, a controlled initialization that changes the
-measured relative strengths and is reported as such). Run `preflight` before the first decision
+to change, passed as the learner's `plastic_synapses` mask). Declare the two operating points the
+connectome does not give:
+
+- The readout's threshold. A readout cell on a rail gives a nudge little to act on;
+  [`calibrate_bias`](settling.md#calibrating-the-operating-point) searches its bias into
+  `NeuralGraph(bias=)`.
+- The seam's starting strength. `naive_efficacy` gives plastic classes equal magnitude into
+  `NeuralGraph(efficacy=)`, a controlled initialization that changes the measured relative
+  strengths; report it as such.
+
+Run `preflight` before the first decision
 ([check before the first lesson](reward.md#check-before-the-first-lesson)); an empty warning list
 does not certify equilibrium or useful acquisition. The assay then gives every action an
 outcome, one decision per episode credited to that decision.
@@ -480,7 +486,7 @@ Evolution changes a genome between lives. `mutate` draws an offspring, and `evol
 the genomes whose lives score best under a fitness the application supplies. A `Genome`
 decides which regions a brain has, how large they are and how they project; any other
 genome (a dict of thresholds, a port topology, a patch's sizes) works the same way with its
-own mutation. Learning inside a life is separate and covered in [learning](settling.md#learning-the-freenudged-rule).
+own mutation. Learning inside a life is covered in [learning](settling.md#learning-the-freenudged-rule).
 
 ### Any genome
 
@@ -496,8 +502,8 @@ own mutation. Learning inside a life is separate and covered in [learning](settl
 Each named gene mutates independently with probability `rate`, which must lie in `(0, 1]`.
 Keys that `space` does not name are copied unchanged; a named gene the genome lacks is
 skipped. A malformed declaration (unknown kind, wrong length, `step <= 0`, `low > high`, no
-options) raises `ValueError`. Any hand-set constant becomes a gene this way: the hand-set
-value starts the lineage and stays as the control.
+options) raises `ValueError`. Any hand-set constant can become a gene; its hand-set value
+starts the lineage and is the control.
 
 ```python
 import numpy as np
@@ -529,10 +535,10 @@ that is not a region raises `KeyError`.
   its `sign` moves by `normal(0, 0.2)` within `[-1, 1]`, and its `scale` is multiplied by
   `exp(normal(0, 0.2))` within `[0.05, 20]`. `count` and `reciprocal` stay as declared.
 
-Fix the regions whose width the environment sets. In `Genome.composed`, the layout
-`Brain.compose` develops, the motor cortex is designed and keeps its size; the `sensory`
-region is blank and belongs in `fixed`, and the `prefrontal` region of the working trace
-keeps the size of the `association` region it holds through `tied`.
+Fix the regions whose width the environment sets. In `Genome.composed` the motor cortex is
+designed and keeps its size, the blank `sensory` region belongs in `fixed`, and the
+`prefrontal` region of the working trace follows the `association` region it holds through
+`tied`.
 
 ```python
 import cadence as cd
@@ -593,13 +599,11 @@ for record in lineage.generations:
 
 `Lineage` (`cadence.genome.Lineage`) records what selection did. `generations` holds one
 record per generation with `generation`, `best_fitness`, `mean_fitness` and `best`, that
-generation's best genome (as its `to_dict()` when it has one, so a `Genome` is recorded
-as a dict). `best` is the best genome
-over all generations, the earliest on a tie, and `best_fitness` its score.
-`report=callback` receives the lineage after every generation, so a long run writes its
-record as it goes. `Genome.from_dict(record, designed=...)` reads a record back; each
-designed region is supplied by name and must match the circuit digest in the record
-([genome records](#genome-records)).
+generation's best genome (as its `to_dict()` when it has one, so a `Genome` is recorded as a
+dict). `best` is the best genome over all generations, the earliest on a tie, and
+`best_fitness` its score. `report=callback` receives the lineage after every generation, so a
+long run writes its record as it goes. `Genome.from_dict(record, designed=...)` reads a record
+back ([genome records](#genome-records)).
 
 ```python
 import json
@@ -614,14 +618,16 @@ connectome = cd.develop(best, seed=0)
 
 #### The selection protocol
 
-Select every genome the same way. The hand-set genome is the lineage's first member, and
-the selected genome must beat it on held-out worlds, never on the worlds it was selected
-on. A random search over the same space at the same number of evaluations is the second
-control. On a small, smooth space like the one below, random search matches or beats
-selection; report both and claim only what the lineage gains over each. The fitness reads
-only what the genome cannot reweight, and prices both compute and surprise: a price on
-compute alone favours genomes that switch learning off. Keep every outcome, including
-genomes that prune what the designer put in.
+Select every genome the same way:
+
+- The hand-set genome is the lineage's first member, and the selected genome must beat it on
+  held-out worlds, never on the worlds it was selected on.
+- A random search over the same space at the same number of evaluations is the second control.
+  On a small, smooth space like the one below, random search can match or beat selection;
+  report both and claim only what the lineage gains over each.
+- The fitness reads only what the genome cannot reweight, and prices both compute and
+  surprise. A price on compute alone favours genomes that switch learning off.
+- Keep every outcome, including genomes that prune what the designer put in.
 
 ```python
 space = {"span": ("log", 0.3, 0.5, 8.0), "retain": ("linear", 0.1, 0.0, 1.0), "reads_probe": ("choice", 0, 1)}
@@ -652,11 +658,11 @@ assert score["selected"] > score["hand_set"]
 
 `mapper` runs the lives of one generation. It receives a callable and an iterable of
 `(genome, seed)` jobs, as `map` does, and returns their scores in order. A pool's `map`
-gives the same lineage whenever the fitness depends only on its arguments. A thread
-pool runs the lives in one process. A process pool (`multiprocessing.Pool.map`,
-`concurrent.futures.ProcessPoolExecutor.map`) runs them on separate cores; its workers
-import the fitness (and `grow`), so each is a module-level function of a file and the script
-creates the pool under `if __name__ == "__main__":`.
+gives the same lineage whenever the fitness depends only on its arguments. A thread pool runs
+the lives in one process. A process pool (`multiprocessing.Pool.map`,
+`concurrent.futures.ProcessPoolExecutor.map`) runs them on separate cores; its workers import
+the fitness (and `grow`), so define each as a module-level function in a file and create the
+pool under `if __name__ == "__main__":`.
 
 ```python
 from multiprocessing.pool import ThreadPool
@@ -675,24 +681,24 @@ assert parallel.best == lineage.best and parallel.best_fitness == lineage.best_f
 | Learning inside a life | Synapses (`Learner`, `ActorCritic`) and memory writes (`SynapticMemory.observe`) | The genome |
 | [Candidate sampling](settling.md#detuning-inside-a-life) | The drive of one decision, and so the equilibrium the brain reads | Parameters, records and genome |
 
-The mechanisms combine inside the fitness. A life that samples candidate actions scores the
-genome together with that sampling, so give every genome the same perturbation bound,
-candidate count and settling budget, and count every candidate's settling steps in the cost
-of the life.
+A life that samples candidate actions scores the genome together with that sampling. Give
+every genome the same perturbation bound, candidate count and settling budget, and count every
+candidate's settling steps in the cost of the life.
 
 ## Build your own brain
 
-A component recipe on your own data: a supervised neural graph. For a continuing brain, start with the [world-model lifecycle](start.md#one-continuing-equilibrium-brain) and the
-[Brain quickstart](start.md). The blocks of one section run together, in order, on
-NumPy after you [install](README.md#install) the package; [orientation](../README.md#for-machine-learning-readers)
+This recipe trains a supervised neural graph on your own data. For a continuing brain, start
+with the [world-model lifecycle](start.md#one-continuing-equilibrium-brain) and the
+[Brain quickstart](start.md). The blocks run together, in order, on NumPy after you
+[install](README.md#install) the package; [orientation](../README.md#for-machine-learning-readers)
 explains the terms.
 
 ### A supervised graph-learning control
 
-This independent-row classifier tests custom wiring and graph plasticity. A genome
-names regions and projections, `develop` creates one connectome, `NeuralGraph` settles
-it with reciprocal feedback, and `Learner` updates synapses from free and nudged phases.
-For continuing context, memory and recovery use [Brain.compose](tune.md).
+This independent-row classifier tests custom wiring and graph plasticity. A genome names
+regions and projections, `develop` creates one connectome, `NeuralGraph` settles it with
+reciprocal feedback, and `Learner` updates synapses from free and nudged phases. For
+continuing context, memory and recovery use [Brain.compose](tune.md).
 
 #### 1. Encode and wire
 
@@ -742,15 +748,12 @@ compete. [Write a cortex](#write-a-cortex) has the catalogue of regions, project
 
 #### 2. Calibrate, learn, evaluate
 
-`calibrate` picks the sampled gain whose free output operating point is nearest the
-target; the default target puts the mean of the highest output activation at 0.5, and
-the default grid tries the current gain, then its powers-of-two multiples from 1/256 to
-256. This example declares a small-gain `grid` for its densely connected motor region.
-`learner.last_calibration` keeps every candidate and its work; the chosen gain need not
-make every output responsive. Calibrate on training
-inputs before scoring held-out data
-([calibrating the operating point](settling.md#calibrating-the-operating-point)). Each
-`step` runs a free phase and two nudged phases and moves the synapses once.
+Calibrate on training inputs before scoring held-out data. `calibrate` picks the sampled gain
+whose free outputs sit nearest the target, by default a mean highest output activation of 0.5
+([calibrating the operating point](settling.md#calibrating-the-operating-point)). This example
+declares a small-gain `grid` for its densely connected motor region. `learner.last_calibration`
+keeps every candidate and its work; the chosen gain need not make every output responsive.
+Each `step` runs a free phase and two nudged phases and moves the synapses once.
 
 ```python
 learner.calibrate(drive(x_train[:32]), grid=[0.02 * 1.3**k for k in range(16)])
@@ -766,10 +769,10 @@ assert learner.accuracy(drive(x_test), y_test) >= 0.95
 
 #### 3. Check the settling
 
-A converged phase satisfies the neuron equations at its state, and the residual is the
-check. The [certificate](settling.md#the-settling-certificate) bounds the distance to the free equilibrium
-only while the largest incoming weight mass of any neuron (`row_mass`) is below
-`mass_limit` and the neurons have no adaptation; a learned brain often crosses it.
+The residual checks that a phase satisfies the neuron equations at its state. The
+[certificate](settling.md#the-settling-certificate) bounds the distance to the free equilibrium
+only while the largest incoming weight mass of any neuron (`row_mass`) is below `mass_limit`
+and the neurons have no adaptation; a learned brain often crosses that limit.
 
 ```python
 free = learner.free(drive(x_test[:8]))
@@ -805,4 +808,5 @@ To draw it, record the settlings of a solve and hand them to a page of your own
 
 Score on data the brain never saw, split before any tuning, against a stated control.
 Read every `reason` other than an update, and bind seed, version and data to a
-[receipt](evaluate.md#receipts). [Evaluate a brain](evaluate.md) has the rules and the [missteps](evaluate.md#common-missteps).
+[receipt](evaluate.md#receipts). [Evaluate a brain](evaluate.md) has the rules and the
+[missteps](evaluate.md#common-missteps).

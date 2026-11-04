@@ -37,14 +37,16 @@ and source identity stay attached to the action that was actually executed.
 ## Brain and Learner
 
 - A composed `Brain` answers only from a qualified settle (1024 sweeps, residual `3e-3`, with
-  a half-step fallback, or `damping` halvings under `qualified=True`); a refused `act` issues no action and changes no state ([qualification and refusal](start.md#qualification-and-refusal)).
-- `LearnerConfig` teaches with finite phases by default. `qualified=True` is the opt-in that
-  gates each phase on the full equations, with at most `damping=3` dt halvings by default. Give it a
-  `nudged_steps` budget comparable to `free_steps` ([qualified teaching budgets](settling.md#qualified-teaching-budgets)).
+  a half-step fallback, or `damping` halvings under `qualified=True`); a refused `act` issues no
+  action and changes no state ([qualification and refusal](start.md#qualification-and-refusal)).
+- `LearnerConfig` teaches with finite phases by default. `qualified=True` gates each phase on
+  the full equations, with at most `damping=3` dt halvings by default; give it a `nudged_steps`
+  budget comparable to `free_steps`
+  ([qualified teaching budgets](settling.md#qualified-teaching-budgets)).
 - RMS-normalized rates are covered in [rates under normalization](teach.md#rates-under-normalization).
 - Apical normalization has its own held-gain learning law. The ordinary symmetric
   plain-sum EP gradient argument does not cover it, and `ep_structure` refuses apical
-  graphs. Residual qualification still checks the actual declared equations.
+  graphs. Residual qualification checks the actual declared equations.
 
 ## State and production integration
 
@@ -59,7 +61,7 @@ advance on a refused update; report them as attempted work, never as accepted le
 `imagine` call does not teach or alter live activity, though it can count its work.
 With a learned code, a refused action, wait, lesson or outcome also restores the code
 region's numerical step and previous phase. Invalid feedback is checked before that
-region settles. An outcome already accepted before a later action refuses stays accepted.
+region settles. An outcome accepted before a later action refuses stays accepted.
 
 `Connectome` arrays and its population mapping are read-only. `NeuralGraph.efficacy`,
 `bias`, `log_gain` and the effective `weights` return read-only views. Replace parameters

@@ -56,10 +56,10 @@ generators. `grown.describe()` differs from `brain.describe()` in the new parts 
 ### A trained visual system
 
 A composed image brain sees through its `visual` region: the pixels and the feature maps that
-read them, its receptive fields the synapses inside it. What it learns to see lives in the
-synapses of the modules above the maps, and a module has no synapses inside it: a trained visual
-system is the `visual` region together with the modules a brain trained on images built over it.
-Graft them together, into a larger brain whose regions of the same sizes sit in the same places:
+read them, with its receptive fields as the synapses inside it. What it learns to see lives in
+the synapses into and between the modules above the maps (a module has no synapses inside it),
+so a trained visual system is the `visual` region together with those modules. Graft them together into a larger brain whose
+regions of the same sizes sit in the same places:
 
 ```python
 import numpy as np
@@ -165,10 +165,10 @@ reciprocal pair shares one efficacy, so both directions start at zero), every tr
 a grown brain receives exactly the drive it received before, settles to the same state and makes
 the same greedy choice: bit for bit where the larger graph sums in the same order, and within
 rounding where it sums in another (new slots inside the layout, another processor's kernel, an
-accelerator). Sampled choices draw random numbers:
-new slots draw their own, so the sampled choices of the brain's slots follow other draws, and an
-aroused brain in `live`, which explores one slot at a time, shares its exploration with the new
-slots. Without new slots the draws, and the sampled choices, are those of the trained brain.
+accelerator). Sampled choices differ once new slots exist: the new slots draw their own random
+numbers, so the brain's own slots follow other draws, and an aroused brain in `live`, which
+explores one slot at a time, shares its exploration with them. Without new slots the draws and
+the sampled choices are those of the trained brain.
 
 The [free/nudged rule](settling.md#learning-the-freenudged-rule) moves a synapse on what its two
 neurons do in the two phases, `s+[pre] s+[post] - s0[pre] s0[post]`, never on its own weight. A
@@ -195,7 +195,7 @@ feedback, as an association region does, settles in the larger brain without tha
 ## Teach and live after the change
 
 - **Teach every slot.** `step` and `lesson` take a label for every slot, and a lesson for a new
-  part also moves the synapses the old parts share. Teach the brain's own slots in the same
+  part also moves the synapses it shares with the existing parts. Teach the brain's own slots in the same
   lessons, with their correct answers or with the answers the brain gave before it grew.
 - **Mind the rates.** New synapses learn at the brain's current rates. A brain whose rates were
   lowered late in training teaches its new parts slowly; raise them with `retune` for a while,
@@ -250,10 +250,10 @@ new slot what the other brain knows.
 
 ## Compatibility
 
-- **Which brains grow.** Every brain `Brain.compose` built that records its construction: a new
-  one, or one loaded from a checkpoint that kept the record, as composed brains' checkpoints
-  do, those of earlier releases included. A custom anatomy (`compose(connectome=...)`) records
-  no construction to compose again; graft it into a larger anatomy instead.
+- **Which brains grow.** Every brain `Brain.compose` built from its own layout, new or loaded
+  from its checkpoint, which records the construction. A custom anatomy
+  (`compose(connectome=...)`) records no construction to compose again; graft it into a larger
+  anatomy instead.
 - **Which brains graft.** Any two brains, composed or custom, whose grafted populations match in
   size and wiring, with the same neuron model, apical compartment and apical roles.
 - **Devices.** The new brain lives on the backend, device and precision of the brain whose method

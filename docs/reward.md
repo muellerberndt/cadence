@@ -22,9 +22,9 @@ for _ in range(300):
 
 Use it when outcomes pay actions: bandits, reversing rules, rewards a few choices later
 ([reversal](../benchmarks/reversal/README.md), [key-door](../benchmarks/keydoor/README.md),
-[competing skills](../benchmarks/competing/README.md)). With signed, noisy outcomes and a
-cost per move, the composed actor rate of 1.0 on one stream walks the policy to one held
-action; a tenth of it, as above, lets the cue decide
+[competing skills](../benchmarks/competing/README.md)). On one stream with signed, noisy
+outcomes and a cost per move, set `actor_eta` to a tenth of the composed 1.0, as above: the
+composed rate walks the policy to one held action, the tenth lets the cue decide
 ([night-replay chamber](../benchmarks/replay/README.md)). Labelled lessons belong to
 [learning](settling.md#learning-the-freenudged-rule).
 
@@ -97,13 +97,13 @@ of lessons alone.
 
 ## Actor rates
 
-Every actor parameter steps by its rate times the dopamine times its own eligibility: there
-is no running average of the steps and no division by their size, so the rates are steps
-per unit dopamine per unit trace. A bias rate far above the synapse rate makes a policy whose
-greedy action ignores the observation. A named `actor_eta` in `Brain.compose` or `retune`
-keeps the current bias rate; pass `actor_eta_bias=None` to derive `eta / 10` again.
-Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias` exceeds a
-positive `eta`. `eta_critic` is outside it.
+Every actor parameter steps by its rate times the dopamine times its own eligibility, with no
+running average of the steps and no division by their size: the rates are steps per unit
+dopamine per unit trace. Keep the bias rate below the synapse rate; a bias rate far above it
+makes a policy whose greedy action ignores the observation. A named `actor_eta` in
+`Brain.compose` or `retune` keeps the current bias rate; pass `actor_eta_bias=None` to derive
+`eta / 10` again. Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias`
+exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
 ## Decision and reset contract
 
@@ -143,8 +143,8 @@ Each is a property of the rule or the readout, with its reading in the `learn` r
 
 - **Continued learning interferes with acquired behaviour.** Arousal gates updates and
   protects no earlier response. A smaller actor step reduces interference without retaining a
-  skill ([#169](https://github.com/muellerberndt/cadence/issues/169)); `consolidation`
-  governs record writes and leaves actor weights alone.
+  skill; `consolidation` governs record writes and leaves actor weights alone
+  ([prerequisite chains](#the-pattern-the-measurements-support), item 3).
 - **The temperature is relative to the activation range [0, 1].** At 0.05, outputs 0.3
   apart choose with probability 0.998 and the nudge `beta * (target - p)` vanishes. Outputs
   near rest take 0.05, outputs at 0.7 to 1.0 take 0.3.
@@ -165,84 +165,74 @@ Each is a property of the rule or the readout, with its reading in the `learn` r
 
 ## Sequential tasks and prerequisite chains
 
-A continuing brain that learns a single step well, food in one move, often fails a chain of
-steps: gather wood, gather stone, make fire, warm up. The usual sign is a policy that settles
-on the one action that pays most often. The measurements below come from the
+A brain that learns a single step well, food in one move, often fails a chain of steps: gather
+wood, gather stone, make fire, warm up. The usual sign is a policy that settles on the one
+action that pays most often. The readings below come from the
 [prerequisite-chain nursery](../benchmarks/chain/README.md), the
 [key-door nursery](../benchmarks/keydoor/README.md) and the
 [competing-skill ring](../benchmarks/competing/README.md).
 
 ### What breaks a chain
 
-**Hidden state.** If the observation does not show what the creature holds, the right action
-depends on history and the chain is a short-term memory task. In the chain nursery with the
-stage hidden, no learning arm beats the memoryless ceiling (62 completions per thousand
-moments, uniform over the chain's actions): stages with identical observations cannot be told
-apart, and the policy settles on one action or keeps sampling. The brain carries history in
-its working trace ([memory](memory.md#working-trace)); give the last module enough width
-when history has to carry the state.
-
-**Late pay.** Credit for an action across intervening choices travels through the actor's
-eligibility and the critic. With pay only at the completion of a four-step observed chain,
-the greedy policy completes at 42 per thousand moments, equal to uniform random, while the
-sampled policy reaches 77 and the greedy answer is right at 0.67 of the stages: the early
-steps are learned and the whole chain is not. The key-door nursery acquires at delays of two
-and five choices and fails at ten (4 of 10 lives acquired at delay 10); with the composed
-critic rate in place of its raised one it acquires rule A in 11 of 20 lives against 18 of 20
-(item 2 below).
-
-**Readout saturation.** Near saturation a finite update produces little contrast between
-actions, and exploration cannot escape the latch; the key-door chamber records it under
-punished exploration. Read the motor activations and the margin between the chosen and the
-next action before changing a rate ([reward traps](#traps-with-their-measurements)).
-
-**Loud carried context.** In a chain the next action depends on what the brain sees now. A
-carried interpretation fed back too strongly makes it depend on the moment before. The
-founder trace scale (`scales["trace"]`) of 1.2 lets the present decide at birth, and learning
-strengthens the carry where the past predicts the outcome ([memory](memory.md#working-trace)).
-
-**Continued learning.** A policy acquired at the nursery's actor step can erode under its own
-continued learning, most clearly when the later pay is signed and noisy
-([#169](https://github.com/muellerberndt/cadence/issues/169)). In the
-[competing ring](../benchmarks/competing/README.md), under signed noisy pay the loss reproduces
-at every actor step, because the noisy pay overwrites the associative store's one-shot record
-of the chosen action's reward (`memory_rate` 1.0; an averaged record at 0.2 takes about 0.10 off
-the loss over the ring, and a store frozen at the ring's door holds the skill there).
-More drilling past acquisition moves the policy instead of consolidating it.
+- **Hidden state.** If the observation does not show what the creature holds, the right action
+  depends on history and the chain is a short-term memory task. With the stage hidden, no
+  learning arm in the chain nursery beats the memoryless ceiling (62 completions per thousand
+  moments): stages with identical observations cannot be told apart. The working trace carries
+  history ([memory](memory.md#working-trace)); give the last module enough width when history
+  has to carry the state.
+- **Late pay.** Credit across intervening choices travels through the actor's eligibility and
+  the critic. With pay only at the completion of a four-step observed chain, the greedy policy
+  completes as often as uniform random (42 per thousand moments) while answering 0.67 of the
+  stages right: the early steps are learned and the whole chain is not. The key-door nursery
+  acquires at delays of two and five choices with a raised critic rate (item 2 below) and fails
+  at ten.
+- **Readout saturation.** Near saturation a finite update produces little contrast between
+  actions, and exploration cannot escape the latch. Read the motor activations and the margin
+  between the chosen and the next action before changing a rate
+  ([reward traps](#traps-with-their-measurements)).
+- **Loud carried context.** In a chain the next action depends on what the brain sees in the
+  present moment. A carried interpretation fed back too strongly makes it depend on the moment
+  before. The founder trace scale (`scales["trace"]`) of 1.2 lets the present decide at birth,
+  and learning strengthens the carry where the past predicts the outcome
+  ([memory](memory.md#working-trace)).
+- **Continued learning.** A policy acquired at the nursery's actor step can erode under its own
+  continued learning when the later pay is signed and noisy: the noisy pay overwrites the
+  associative store's one-shot record of the chosen action's reward (`memory_rate` 1.0). A
+  smaller actor step does not prevent it (item 3 below). More drilling past acquisition moves
+  the policy instead of consolidating it.
 
 ### The pattern the measurements support
 
-1. **Observe the chain's state and shape the pay.** Expose inventory as senses (has wood,
-   has stone, has fire) and keep a hidden-inventory condition as a separate memory test. Pay
-   executed actions through `Brain.live`; label teaching of a sequence is a separate contract
-   ([#121](https://github.com/muellerberndt/cadence/issues/121)). With the state observed and
-   pay at every correct step, the chamber's brain completes 204 per thousand moments against a
-   tabular learner's 250 and answers 0.92 of the stages right. Backward lessons (episodes that
-   start at a random stage with the prerequisites granted) reach 33: the granted completions
-   meet the need, the brain calms and learns less. Disclose supplied shaping and verify the
-   full chain from stage zero under end-only pay.
+1. **Observe the chain's state and shape the pay.** Expose inventory as senses (has wood, has
+   stone, has fire) and keep a hidden-inventory condition as a separate memory test. Pay
+   executed actions through `Brain.live`; teaching a sequence by labels is a separate
+   contract. With the state observed and pay at every correct step, the chain nursery's brain
+   completes 204 per thousand moments against a tabular learner's 250 and answers 0.92 of the
+   stages right. Backward lessons (episodes that start at a random stage with the
+   prerequisites granted) reach 33: the granted completions meet the need, so the brain calms
+   and learns less. Disclose supplied shaping and verify the full chain from stage zero under
+   end-only pay.
 2. **Raise the critic rate when credit spans about five choices.** The key-door nursery runs
-   `actor_eta_critic=5.0`; at 10 the values run high and the creature latches the opposite
-   way. Select the rate on the task with the composed 0.3 as control.
-3. **Average the associative record where noisy pay follows acquisition.** In the competing
-   ring, actor steps of 0.003 and 0.001 retain no more than the nursery's 0.03 and do not
-   prevent the loss under signed noisy pay; a brain composed with an averaged associative
-   record (`memory_rate=0.2`) acquires as before and takes about 0.10 off the loss over the ring,
-   and a store frozen where the noisy pay begins (`retune(memory_rate=0.0, consolidation=0.0)`)
-   holds the skill there at a cost to a competing one
-   ([the competing ring](../benchmarks/competing/README.md)).
+   `actor_eta_critic=5.0` and acquires rule A in 18 of 20 lives, against 11 of 20 at the
+   composed 0.3; at 10 the values run high and the creature latches the opposite way. Select
+   the rate on the task with the composed 0.3 as control.
+3. **Average or freeze the associative record where noisy pay follows acquisition.** In the
+   competing ring, actor steps of 0.003 and 0.001 retain no more than the nursery's 0.03. A
+   brain composed with an averaged record (`memory_rate=0.2`) acquires as well and takes about
+   0.10 off the loss over the ring. A store frozen where the noisy pay begins
+   (`retune(memory_rate=0.0, consolidation=0.0)`) holds the skill there at a cost to a
+   competing one.
 4. **Choose `live` or `step` after the caregiver leaves.** `live` learns only while aroused,
    by a surprising outcome or by pay below what life usually brings; `step` learns from every
    outcome ([routine and repair](start.md#routine-and-repair-live)). Which path erodes a taught
-   chain depends on the founder. Where most surprises are punishments, as in the melee,
-   `live` alone does not hold the skill; an averaged record holds a little more, a frozen store
-   holds it (item 3). Teaching by demonstration
-   and correction goes through the episodic memory ([episodic](memory.md#episodic-memory-what-happened-in-this-situation-before)).
-5. **Read the greedy policy stage by stage.** Whole-chain success hides a stalled stage.
-   Read the greedy answer, the right action's probability and its margin at every stage, and
-   the sampled policy's completion rate beside the greedy one: a frozen greedy copy can
-   answer one action in every situation while the sampled probabilities move with the
-   situation.
+   chain depends on the founder. Where most surprises are punishments, `live` alone does not
+   hold the skill, an averaged record holds a little more and a frozen store holds it (item 3).
+   Teach by demonstration and correction through the episodic memory
+   ([episodic](memory.md#episodic-memory-what-happened-in-this-situation-before)).
+5. **Read the greedy policy stage by stage.** Whole-chain success hides a stalled stage. Read
+   the greedy answer, the right action's probability and its margin at every stage, and the
+   sampled policy's completion rate beside the greedy one: a frozen greedy copy can answer one
+   action in every situation while the sampled probabilities move with the situation.
 6. **Declare the probe schedule and freeze the budget.** Longer training can degrade an
    acquired skill. Probe saved copies at a declared schedule (the chain nursery probes every
    2,000 of 20,000 moments), select the training budget in development, freeze it before
@@ -251,9 +241,9 @@ More drilling past acquisition moves the policy instead of consolidating it.
 ### Settings involved
 
 The composed founders ([brain](tune.md#defaults-and-expert-overrides)) are `actor_gamma`
-0.9, `actor_lam` 0.8, `actor_eta` 1.0 and `actor_eta_critic` 0.3; their meaning is in
-[reward](#eligibility-traces-and-dopamine). The instruments run their own operating
-points. These are chamber settings, not library defaults:
+0.9, `actor_lam` 0.8, `actor_eta` 1.0 and `actor_eta_critic` 0.3
+([their meaning](#eligibility-traces-and-dopamine)). The chambers run their own operating
+points, which are not library defaults:
 
 | Chamber | Operating point | Controls |
 | --- | --- | --- |
@@ -275,14 +265,7 @@ Set them through `Brain.compose(..., actor_eta=0.03, ...)` or retune a running l
 ## A cue the answer does not show
 
 When two situations end in the same observation and only an earlier cue tells which action
-pays, the composed brain does not learn the choice from the outcome. Its associative record is
-keyed on the observation, which both situations share at the answer, and every outcome writes
-it, so its vote there is the same for both cues; at the composed actor step the readout then
-walks to one action for both. In the [two-cue chamber](../benchmarks/credit/README.md) (a cue,
-then an identical two-event suffix, the answer paid +1 or -1 with the next episode's first
-event and `done`, every outcome learned through `step`) the composed founder reaches held-out
-.90 on 0 of 6 development founders and 2 of 12 fresh ones. The slower actor step with the
-episodic memory learns it:
+pays, compose the brain with a tenth of the actor step and the episodic memory:
 
 ```python
 cued = Brain.compose(12, 2, arousal=True, actor_eta=0.1, actor_eta_bias=0.01,
@@ -290,52 +273,46 @@ cued = Brain.compose(12, 2, arousal=True, actor_eta=0.1, actor_eta_bias=0.01,
 assert cued.memory_choice and cued.basal_ganglia.config.eta == 0.1
 ```
 
-The context records key on the stream's temporal context, so the two cues' records differ at
-the shared answer, and the slower step keeps the readout off a rail while the actions the
-records chose teach it. With the suffix right after the cue it reaches the gate (held-out .90)
-on 6 of 6 development founders and on 11 of 12 fresh ones (mean held-out 1.00 and .96). One
-event between the cue and the suffix gives
-4 of 6 and two give 0 of 6: the context keeps half of the cue per moment and the readout
-latches on one action. `memory_extinction` and `memory_context_hold` leave these readings as
-they are. Added to the other reward chambers, the same settings acquire the key-door chamber on
-16 of 16 lives (8 without), win 30 of 30 blocks of a bandit with reversals (27) and learn the
-contextual bandit on 6 of 6 seeds (3); in the odour nursery two of six lives at the short
-exposure reverse late (10 of 12 lives pass every check, 11 without; these chambers' readings
-are their `live` arms). The two-cue readings are measured through `step`; the chamber under
-`live` was not read.
+The composed founder does not learn this choice from the outcome. Its associative record is
+keyed on the observation, which both situations share at the answer, so its vote there is the
+same for both cues, and at the composed actor step the readout walks to one action for both.
+The context records of `memory_choice=True` key on the stream's temporal context, so the two
+cues' records differ at the shared answer; the slower step keeps the readout off a rail while
+the actions the records chose teach it.
 
-The founder's own updates show why the outcome does not reach its readout. Split into their
-parts in the chamber, their effect on the preference at the answer is about 40 times larger
-along the association activity both cues share there than along the cue, and four fifths of
-that shared part comes from the forward term's presynaptic activity, at the answer's act and
-through the eligibility at the two acts before it, with the motor bias adding most of the
-rest; each forward part is 24 to 301 times larger along the shared activity than along the cue
-(the median per founder), whatever the dopamine and the contrast. Right and wrong outcomes
-carry that shared part in equal halves that cancel, so the shared preference wanders with
-steps about 40 times the cue part's, and the two slopes of the motor activation let the
-outcomes sink the common motor drive onto the activation's flat branch, where the cue part
-barely moves the policy. An actor-critic with exact gradients on a small model of the same
-structure, trained on the same episodes with the same reward, learns the answer on 6 of 6
-development founders: the structure carries the cue, the local update does not deliver it.
+In the [two-cue chamber](../benchmarks/credit/README.md) (a cue, then an identical two-event
+suffix, the answer paid +1 or -1, every outcome learned through `step`) these settings reach
+held-out .90 on 11 of 12 fresh founders, against 2 of 12 for the composed founder. The context
+keeps half of the cue per moment: one event between the cue and the suffix gives 4 of 6
+development founders, two give 0 of 6. `memory_extinction` and `memory_context_hold` leave
+these readings as they are. The two-cue readings are measured through `step` only. In the other
+reward chambers, read under `live`, the same settings acquire the key-door chamber on 16 of 16
+lives (8 without), win 30 of 30 blocks of a bandit with reversals (27) and learn the contextual
+bandit on 6 of 6 seeds (3); in the odour nursery two of six lives at the short exposure reverse
+late (10 of 12 lives pass every check, 11 without).
+
+In the chamber, the founder's own updates move the preference at the answer about 40 times
+more along the association activity both cues share than along the cue, mostly through the
+forward term's presynaptic activity and the motor bias. Right and wrong outcomes carry that
+shared part in equal halves that cancel, so the shared preference wanders, and the outcomes
+sink the common motor drive onto the activation's flat branch, where the cue part barely moves
+the policy. An actor-critic with exact gradients on a small model of the same structure,
+trained on the same episodes, learns the answer on 6 of 6 development founders: the structure
+carries the cue, and the local update does not deliver it.
 
 Taught by a lesson at the answer instead, the cue has to reach the answer through the events
-in between. The working trace keeps about half of it per event and fails from two; the recall
-memory with no age charge, `recall=True, recall_recency=0.0`, carries it through eight (12 of
-12 fresh founders at 4 and at 8, where the founder recency of 0.25 reads 0 of 6 at 8). It keeps
-the binding chambers' continuing life, where its
+in between. The working trace keeps about half of it per event and fails from two events. The
+recall memory with no age charge, `recall=True, recall_recency=0.0`, carries it through eight
+(12 of 12 fresh founders at 4 and at 8; the founder recency of 0.25 reads 0 of 6 at 8). The
+binding chambers' continuing life holds under this setting, since its
 [position term](memory.md#position-how-long-ago-a-moment-happened) prefers the newer slots.
-The trace, the slots and the settled activity of the moment before carry the cue to the answer
-together. A donor episode's trace and slots, put in place of the recipient's own just before
-the answer, decide it on every development founder; emptying both leaves the answer at chance
-on three of six at 4 and at 8 distractors, and on the other three the answer's settle, which
-starts from the moment before, still finds the cue's basin. With that settled state cleared as
-well every founder answers at chance. A chain whose earlier decisions own their actions keeps
-them when taught by lessons along the teacher's path: the prerequisite chain's intermediate
-stages stay right on every founder with and without the setting. In the reward-learning chain
-chamber, one continuing stream through `live`, the recall memory changes how its stage answers
-read: on a fresh copy, with no slots, the intermediate stages are right less often (by .06 to
-.17 with this setting, by up to .22 at the recall memory's founder recency), while with this
-setting the chain is completed from its start as often as without it.
+The trace, the slots and the settled activity of the moment before carry the cue to the
+answer together; with all three cleared every founder answers at chance. In the prerequisite
+chain taught by lessons along the teacher's path, the intermediate stages stay right on every
+founder with and without the setting. In the reward-learning chain chamber (one continuing
+stream through `live`), a fresh copy with no slots answers the intermediate stages right less
+often (by .06 to .17 with this setting, by up to .22 at the recall memory's founder recency),
+and with this setting the chain is completed from its start as often as without it.
 
 ## Reward at the end of an episode
 
@@ -343,44 +320,18 @@ In a game that pays only when it ends, every move's dopamine is the outcome less
 value of the position the move was made in, so the critic decides how the moves of a game share
 its outcome. A critic whose values move together across positions gives every move the same
 baseline. What it can rank is set by what the association region it reads represents, by the
-experience it gets and by its rate.
-
-The readings below come from a light-cycle game outside the library, which no instrument in
-this repository holds: a 24 x 24 grid (260 egocentric inputs, three
-actions; +1 for a win, -1 for a loss, -0.5 for a double crash, 0 otherwise; games of 6 to 288
-moves, half of them under 75) and brains of one module of 256 (`teaching="normalized"`,
-`actor_gamma=0.97`, `actor_lam=0.9`, `actor_eta=0.03`) taught on 240,000 positions to copy a
-one-move look-ahead demonstrator. A value is scored by how well it ranks the eventual winner of
-600 held-out games of strong and weak riders at moves 10 and 20 (AUC, 0.5 is chance). The
-offline readouts are fitted on the positions of 1,200 other games, the ones a critic school
-replays. Ranges are over two or three development seeds per arm and, for the critic, the games
-it played; the critic runs at the composed `actor_eta_critic=0.3`:
-
-| Ranking of the eventual winner | Move 10 | Move 20 |
-| --- | --- | --- |
-| Territory difference (the cells each rider reaches first) | 0.77 | 0.72 |
-| Logistic readout of the 260 inputs | 0.73 | 0.70 |
-| A network of 256 hidden units trained by backpropagation on the 260 inputs | 0.81 | 0.74 |
-| Logistic readout of the association region, copy lessons | 0.72 to 0.76 | 0.67 to 0.70 |
-| The same with the [value lesson](#a-value-lesson) on varied outcomes | 0.79 to 0.80 | 0.71 to 0.73 |
-| The critic after 400 of the brain's own games, copy lessons | 0.50 to 0.63 | 0.54 to 0.64 |
-| The critic after a [critic school](#a-critic-school) and 400 own games, copy lessons | 0.58 to 0.71 | 0.55 to 0.64 |
-| The same with the value lesson on varied outcomes | 0.68 to 0.73 | 0.65 to 0.67 |
-
-A copying brain's association region holds what a linear readout of the raw inputs holds: less
-than the territory count, and less than a network trained on the same inputs reaches. The value
-lesson moves the region toward the outcome, and a critic school carries that into the critic.
+experience it gets and by its rate. Read the spread of its values, school it on demonstrated
+episodes before the brain's own outcome learning starts, and teach the region the outcome with
+a value lesson.
 
 ### Check the spread of the values
 
 The mean value settles near the average return whatever the critic ranks. Read the values of a
-fixed set of positions beside their mean, and where the positions' outcomes are known, how well
-the values rank them; `brain.basal_ganglia.value_of(brain.stimulus(positions, memory=False))`
-settles each position cold and leaves the streams as they are. After 400 of the brain's own
-games the values at move 20 had a mean of -0.12 to -0.27 and a standard deviation across
-positions of 0.03 to 0.08 at the composed rate. The rate sets the spread more than the
-ranking: at `actor_eta_critic=3` the spread was 0.06 to 0.10 and the ranking 0.54 to 0.73 at
-move 10 and 0.52 to 0.62 at move 20, against 0.50 to 0.72 and 0.54 to 0.65 at 0.3.
+fixed set of positions beside their mean and, where the positions' outcomes are known, how well
+the values rank them. `brain.basal_ganglia.value_of(brain.stimulus(positions, memory=False))`
+settles each position cold and leaves the streams as they are. `actor_eta_critic` sets the
+spread more than the ranking: a raised rate spreads the values wider and ranks the positions no
+better.
 
 ### A critic school
 
@@ -419,13 +370,9 @@ assert composed[-1] > composed[0] and raised[-1] > raised[0]  # both rank the tw
 assert raised.std() > 2 * composed.std()            # a raised rate spreads the values wider
 ```
 
-On the light-cycle brains a school of 1,200 replayed games of strong and weak riders brought the
-critic to 0.58 to 0.66 at move 10 and 0.60 to 0.63 at move 20 after copy lessons, and to 0.70
-to 0.73 and 0.67 to 0.69 after the value lesson. The school ranks the positions of the games it
-replays; the brain's own games then move the critic toward the outcomes of the brain's own
-play, and a raised rate lets them overwrite the school sooner: after the value lesson, the
-school and 400 own games the critic ranked at 0.68 to 0.73 and 0.65 to 0.67 at the composed
-rate, 0.61 to 0.68 and 0.62 to 0.63 at 3, and 0.56 to 0.65 and 0.57 to 0.61 at 10.
+The school ranks the positions of the games it replays. The brain's own games then move the
+critic toward the outcomes of its own play, and a raised critic rate lets them overwrite the
+school sooner; the composed rate kept the school's ranking best.
 
 ### A value lesson
 
@@ -441,45 +388,35 @@ judge.lesson(cells, np.stack([moves, won], axis=1))                # one label p
 assert judge.predict(cells).shape == (4, 2)                        # one choice per slot
 ```
 
-On the light-cycle game (`Brain.compose(260, 5, slots=(3, 2))`, the slot taught 1 for a moment
-of a game that was won and 0 for one lost or ended in a double crash):
+Teach the outcome slot 1 for a moment of a game that was won and 0 for one lost or drawn:
 
-- **The taught outcomes must vary.** Taught on the demonstrator's own games, three in four of
-  which it won, the slot ranked the riders' positions at 0.47 to 0.57 at move 10 and 0.54 to
-  0.60 at move 20, and the association's readout did not move (0.71 to 0.72 and 0.69 to 0.71,
-  against 0.72 to 0.75 and 0.67 to 0.69 without the slot); a critic school after it ranked as
-  after copy lessons alone.
+- **The taught outcomes must vary.** Taught on a demonstrator's own games, most of them won,
+  the slot ranked positions near chance and the association region did not move.
 - **On varied outcomes it shapes the region.** Taught at the positions of strong and weak
-  riders, each labelled with the demonstrator's move there and the rider's own outcome (31% of
-  the moments from won games), the readout rose by 0.036 at move 10 and 0.034 at move 20 (95%
-  intervals over games 0.018 to 0.057 and 0.011 to 0.057, paired on the same positions, three
-  seeds), and the slot itself ranked at 0.77 and 0.68 to 0.72. A slot taught outcomes shuffled
-  between games moved the readout by 0.008.
-- **The critic gains through a school.** From the brain's own games alone it ranked at 0.60 to
-  0.72 and 0.61 to 0.65 after 400 games, against 0.50 to 0.62 and 0.54 to 0.64 after the same
-  lessons without the slot. After a critic school it ranked 0.09 to 0.14 higher at move 10 and
-  0.06 to 0.10 higher at move 20 than without the slot, on every seed, at the end of the school
-  and after 400 own games that followed it.
-- **The move slot pays a little.** Agreement with the demonstrator on its turns fell by 0.02 to
-  0.05 in each of the five pairs of brains, and by 0 to 0.08 with outcomes shuffled between
-  games: the cost is the second slot's. On the varied outcomes frozen play against the assay
-  opponents scored 0.06 to 0.07 higher, with shuffled outcomes 0.02 lower to 0.03 higher.
+  players, each labelled with the demonstrator's move there and the player's own outcome, the
+  region's readout ranked the eventual winner better and the slot itself ranked well. Outcomes
+  shuffled between games barely moved the readout.
+- **The critic gains through a school.** After a critic school the critic ranked positions
+  better than without the slot, on every seed, at the end of the school and after the brain's
+  own games that followed it.
+- **The move slot pays a little.** Agreement with the demonstrator falls slightly, with
+  shuffled outcomes too, so the cost is the second slot's. On varied outcomes the brain played
+  slightly better against fixed opponents.
 
 The composed critic reads the association region, not the slot; `probabilities` reads the
-slot's choice among its two outcomes. A critic that ranks positions as the territory count
-does at move 20 is open ([#216](https://github.com/muellerberndt/cadence/issues/216)).
+slot's choice among its two outcomes.
 
 ## Replaying a life through `step`
 
 `step` cannot tell a replayed observation from a live one, so replaying a saved copy's day
 with the reward each choice earned is more experience at the same rates; a pass boundary is
 an ordinary transition unless `done` marks it. `Brain.compose` has no night of its own. In
-the [night-replay chamber](../benchmarks/replay/README.md) a night is worth
-about as many fresh decisions when the day's updates are sound and harms when they are not.
-Read `capped` (outcomes beyond the cap teach their sign alone), `saturation` and the
-[working trace](memory.md#memory-in-the-composed-brain) first; a smaller actor rate makes
-a long night safer. Gate a slept brain on a frozen copy's dependence on the observation; a
-constant greedy choice is right only where no observation pays:
+the [night-replay chamber](../benchmarks/replay/README.md) a night is worth about as many
+fresh decisions when the day's updates are sound and harms when they are not. Before a night,
+read `capped` (outcomes beyond the cap teach their sign alone), `saturation` and the
+[working trace](memory.md#memory-in-the-composed-brain); a smaller actor rate makes a long
+night safer. Gate a slept brain on a frozen copy's dependence on the observation; a constant
+greedy choice is right only where no observation pays:
 
 ```python
 copy = Brain.load(brain.save("slept.npz"))

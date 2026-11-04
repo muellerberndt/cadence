@@ -1,13 +1,14 @@
 # Wide inputs: images and codes
 
-You have wide inputs: an image, a long sensor vector, thousands of features. Pass an image
-shape as `inputs` and the sensory region is a visual cortex ([image inputs](#image-inputs)).
-Pass `code=units` and a fixed sparse code of the observation is what the cortex and the
-memories read ([the observation code](#the-observation-code)). Pass `learned_code=units`
-(opt-in) and a code region of the brain's own neurons learns that code while the brain lives
-([the learned code](#the-learned-code)). Add `attention=True` when Recall should use an
-ordered pair of those learned codes to select a recent event and its successor
-([single-head attention](memory.md#single-head-learned-code-attention-opt-in)).
+For wide inputs (an image, a long sensor vector, thousands of features), choose how the brain
+reads them:
+
+| Setting | What the brain reads | Section |
+| --- | --- | --- |
+| `inputs=(height, width)` | the image through a visual cortex | [image inputs](#image-inputs) |
+| `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
+| `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
+| `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
 
 ```python
 import numpy as np
@@ -20,7 +21,7 @@ from cadence import Brain
 `visual_cortex`: `features` maps (8) of `field` by `field` receptive fields (3) feed
 the first module. Observations may be flat `(1, height * width * channels)` or keep
 the image shape. The maps project one way into the first module, so no nudge reaches them and the
-contrast rule teaches them nothing: the receptive fields keep their initial draw, and
+contrast rule teaches them nothing. The receptive fields keep their initial draw, and
 learning shapes what the modules read from the maps. Phases that stop short of equilibrium,
 as a deep brain's founder phases can, move the fields by what they leave unsettled.
 
@@ -34,20 +35,23 @@ and the cortex reads the pixels ([the observation code](#the-observation-code)).
 
 ## The observation code
 
-`brain.observation_code(x)` returns the key every memory reads and writes: by default the
+Set `code=units` when wide observations make the episodic separators and the recall address
+map too large: at 12,824 inputs they take 1,532 MB uncoded with `memory_choice` and `recall`,
+and 8.9 MB with `code=1024`.
+
+`brain.observation_code(x)` returns the key every memory reads and writes, by default the
 observation itself. `code=units` (construction; at least 32 inputs and 24 units) replaces it
 with a fixed random sparse code of `units` width and unit length, one unit in ten active,
-saved with the brain as `brain.sparse_code`. In `compose` a vector brain's sensory region
-reads the code too; on an image brain and in `Brain(connectome, code=units)` only the
-memories use it. Set it when wide observations make the episodic separators and the recall
-address map too large: at 12,824 inputs they take 1,532 MB uncoded with `memory_choice` and
-`recall`, and 8.9 MB with `code=1024`. A brain with this code refuses `memory_expansion`
-and `memory_fan_in`, and keys stored under one code do not match another.
-`Genome.observation_width(inputs, code)` gives the key width before building, the size of a
-custom anatomy's `recall` and `next` regions. The code is fixed and learns nothing.
-`learned_code=units` (opt-in, without `code`) adds a code region of the brain's own neurons
-that settles to a learned sparse code of the observation; explicit acts and aroused `live`
-moments learn it. The cortex reads it and the memories key on it
+saved with the brain as `brain.sparse_code`. The code is fixed and learns nothing.
+
+- In `compose` a vector brain's sensory region reads the code too; on an image brain and in
+  `Brain(connectome, code=units)` only the memories use it.
+- A brain with this code refuses `memory_expansion` and `memory_fan_in`, and keys stored under
+  one code do not match another.
+- `Genome.observation_width(inputs, code)` gives the key width before building, the size of a
+  custom anatomy's `recall` and `next` regions.
+
+For a code the brain learns, use `learned_code=units` in place of `code`
 ([the learned code](#the-learned-code)).
 
 ```python
@@ -68,10 +72,10 @@ assert len(coded.connectome.populations["sensory"]) == 1024  # the cortex reads 
 `Brain.compose(..., learned_code=units)` adds a `code` region of that many neurons between the
 sensory region and the first module. The region learns a compressed code of the observation
 by local rules at accepted explicit acts and aroused `live` moments; the cortex computes on
-that code and every memory keys on it, joined to the observation's own identity.
-The founder `learned_code=None` builds
-the brain without it and keys the memories on [the observation code](#the-observation-code)
-as before; `code=units`, the fixed random code, is the control at matched width.
+that code and every memory keys on it, joined to the observation's own identity. The founder
+`learned_code=None` builds the brain without it and keys the memories on
+[the observation code](#the-observation-code); `code=units`, the fixed random code, is the
+control at matched width.
 
 ```python
 import numpy as np
@@ -102,23 +106,22 @@ their bindings: the key joins the code to the observation's own identity, so a b
 readable while the code moves, and the binding family (`benchmarks/binding/`) reads within
 .05 of a brain without the region on every task.
 
-The region has costs. A life computes the code's own phase at every moment, twice at a
-moment the region learns from (about 33 sweeps of the region's units per phase in the
-embedding chamber, 34 to 120 per moment in the small worlds of continuous interaction), and
-the code is dense, about 28 of 64 units active per observation in context. A cue held across
-a delay through the episodic memory takes about twice the experience to master.
+The region has costs. It settles its own phase at every moment, twice at a moment it learns
+from, and a life takes about three to six times the processor time
+([cost](#save-load-describe-cost)). The code is dense, about 28 of 64 units active per
+observation in context. A cue held across a delay through the episodic memory takes about
+twice the experience to master.
 
 Present wide images at unit length: the region reads a lit pixel as one full input, so a
 frame at pixel scale overwhelms its units. An observation wider than the code keys the
-memories on the code alone ([what the memories key on](#what-the-memories-key-on)). In the
-camera chamber (`benchmarks/learned_code/camera.py`), a separate `CodeRegion` prototype with
-128 units answers the held-out pairs at .970 against .927 for the fixed random code of 1,024
-units on the development founders, with a recall address map of 0.198 MB against 9.331 MB
-and a stored dictionary of 13.1 MB. That prototype imprints its dictionary on the first
-frames, receives 256 nursery rounds, omits the top-down boundary, and passes the body inputs
-beside its code into a brain without `learned_code`. Those scores establish that prototype's
-behavior; they do not establish camera performance for `Brain.compose(learned_code=...)`.
-The integrated region's camera behavior still needs a matched measurement.
+memories on the code alone ([what the memories key on](#what-the-memories-key-on)). The camera
+chamber (`benchmarks/learned_code/camera.py`) measures a separate `CodeRegion` prototype that
+imprints its dictionary on the first frames, receives 256 nursery rounds, omits the top-down
+boundary and passes the body inputs beside its code into a brain without `learned_code`. With
+128 units it answers the held-out pairs at .970 against .927 for the fixed random code of
+1,024 units on the development founders, with a recall address map of 0.198 MB against
+9.331 MB and a stored dictionary of 13.1 MB. Those scores describe the prototype; camera
+behavior of `Brain.compose(learned_code=...)` has no matched measurement.
 
 ### What the region is
 
@@ -154,19 +157,18 @@ settle its units are a source, their synapses in the whole graph carry nothing, 
 moment's drive holds them at the phase's fixed point, so the rest of the brain integrates at
 the model's step with its budgets, its adaptation and its learning phases as a brain without
 the region has them. `last_settlement` reports the phase as `code_steps` and `code_residual`
-beside the whole graph's `steps`. `code_steps` and `context_free_steps`
-include every attempt, including an initial phase that failed before its fallback; the
-reported residual describes the final attempt.
+beside the whole graph's `steps`. `code_steps` and `context_free_steps` count every attempt,
+an initial phase that failed before its fallback included; the reported residual describes the
+final attempt.
 
 At the founder standing gain of 2, the code's slope-weighted lateral coupling is nonpositive,
-but a synchronous sweep at the model's step can still oscillate when units with overlapping
+but a synchronous sweep at the model's step can oscillate when units with overlapping
 columns are active together. After each phase the region reports the step's halvings for
-those negative modes
-(`LearnedCode.stability`), and its next phase runs at that step with its budget scaled by the
-same power of two. A phase that does not qualify is settled once more at the step the
-dictionary's negative modes allow over every state (`LearnedCode.rest_stability`), and refuses the
-moment with `RuntimeError` before anything changes when it does not qualify there either, as a
-refused free solve does. A world of one input needs this from its first moment.
+those negative modes (`LearnedCode.stability`), and its next phase runs at that step with its
+budget scaled by the same power of two. A phase that does not qualify is settled once more at
+the step the dictionary's negative modes allow over every state (`LearnedCode.rest_stability`).
+If it does not qualify there either, the moment is refused with `RuntimeError` before anything
+changes, as a refused free solve is. A world of one input needs this from its first moment.
 Local contraction also requires the largest slope-weighted coupling eigenvalue below one.
 The expert `LearnedCode` constructor's step bounds include the neuron model's actual
 synaptic gain and the standing anchor separately; `Brain.compose` uses unit synaptic gain.
@@ -239,9 +241,9 @@ Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
 `learned_code`, an image brain, a backend other than `cpu`, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
-sensory neurons project anywhere but to the code region. The `learned_code_*` settings 0.85.0
-retired are refused by name with what the region does instead (`LearnedCode.REMOVED`; the
-CHANGELOG's 0.85.0 section holds their readings).
+sensory neurons project anywhere but to the code region. A retired `learned_code_*` setting is
+refused by name with a message saying what the region does instead
+([CHANGELOG](../CHANGELOG.md)).
 
 ### When to declare fields
 
@@ -256,8 +258,8 @@ channel: the coordinates of a sentence's word slots, of who acts, what is held a
 of a pouch beside the cell a creature stands in. Give `learned_code_fields` the channels'
 widths in the order of the observation's coordinates (they sum to `inputs`). Each unit then
 reads one channel, the units of a channel compete among themselves alone, and a moment's
-code is the union of its channels' codes. A combination never seen before is then read as
-channels already known, and a second input in another channel keeps its own code. With one
+code is the union of its channels' codes. A combination never seen before is read as
+channels the brain knows, and a second input in another channel keeps its own code. With one
 field the same combination arrives as an unfamiliar whole, and a second input is merged into
 the code of the first, distinguished only by the code's strength.
 
@@ -309,8 +311,8 @@ sensory synapses of the first module by `units * width`: `compose(53, 4, learned
 20,224 synapses against 8,000 without the region. Each moment costs the code phase's sweeps
 (about 33 per phase in the embedding chamber, twice at a moment the region learns from, and 34
 to 120 per moment in the small worlds of continuous interaction) and one learning step of
-`2 * inputs * units + units * width` multiply-adds. In the embedding chamber a life costs
-about three times the processor time of the brain without the region; in the small worlds of
-continuous interaction (the odour nursery, the key door, the cue task) a moment costs about
-four to six times the time of the brain without it. The dictionary is stored dense,
-`inputs * units` values, with fields as well.
+`2 * inputs * units + units * width` multiply-adds. In the embedding chamber a life costs about
+three times the processor time of the brain without the region; in the small worlds of
+continuous interaction (the odour nursery, the key door, the cue task) a moment costs about four
+to six times the time. The dictionary is stored dense, `inputs * units` values, with fields as
+well.
