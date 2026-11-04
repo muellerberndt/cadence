@@ -105,6 +105,35 @@ makes a policy whose greedy action ignores the observation. A named `actor_eta` 
 `eta / 10` again. Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias`
 exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
+## Maturity (opt-in)
+
+`Brain.compose(..., maturity=True)` gives the brain one slow variable, the use of its
+plasticity. Each actor update adds its applied magnitude in the brain's own step units per
+synapse, `use += sum |dw| / (eta N)`; every moment of life (`live`, `step`, or `learn` called on
+its own) keeps `1 - 1 / maturity_recovery` of it. The step factor
+
+```text
+m = 1 / (1 + (use / maturity_scale) ** 4)
+```
+
+multiplies the actor's synapse and bias steps, and engages the store's surprise-gated writes
+with strength `1 - m` ([memory](memory.md#maturity-and-surprise-gated-writes)). A young brain
+learns at the founder's steps; a busy one matures, its steps falling and its store keeping what
+it holds unless an outcome surprises it; an idle one returns toward its youth. No count of
+updates or of age is kept.
+
+| Setting | Founder | Changed by | What it does |
+| --- | --- | --- | --- |
+| `maturity` | `False` | construction | the maturity on the actor's steps and the store's writes |
+| `maturity_scale` | 7.5 | `retune` | the use at which the step factor is 0.5, in step units per synapse |
+| `maturity_recovery` | 200,000 moments | `retune` | how fast the use relaxes, a moment at a time |
+
+At the founder scale the chamber lives of the preservation panel keep `m` at 0.96 or above
+(the busiest uses about 3.4 step units per synapse), while an arena brain's 100,000-moment
+nursery uses far more and reaches its door at `m` 0.02 to 0.2. The variable is saved and loaded with the
+brain (`brain.basal_ganglia.maturity`), kept by `grow` and `graft` and counted by
+`parameters()`. Off, the brain is the founder's to the bit.
+
 ## Decision and reset contract
 
 Drives are nonempty finite `(batch, neurons)` arrays, rewards and bootstrap values

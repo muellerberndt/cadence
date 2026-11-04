@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Maturity: one slow variable on the actor's steps and the store's writes (#253, opt-in)
+
+`Brain.compose(..., maturity=True)` gives each brain a maturity: a leaky integral of its actor's
+update magnitudes (`maturity_scale`, the use at which the step factor is one half, 7.5 step
+units per synapse; `maturity_recovery`, 200,000 moments). The step factor `m = 1 / (1 + (use /
+maturity_scale) ** 4)` multiplies the actor's synapse and bias steps and engages the store's
+surprise-gated writes with strength `1 - m`: a write moves a record by the part of its error
+beyond two of the record's noise scales, so a mature brain's store keeps what an outcome
+confirms and moves on a surprise. No count is kept; an idle brain's use relaxes. The variable
+and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted by
+`parameters()`; the scale and the recovery are `retune` settings. Off, the brain is the
+founder's to the bit. See [reward](docs/reward.md#maturity-opt-in) and
+[memory](docs/memory.md#maturity-and-surprise-gated-writes).
+
 ## 0.93.1 — 2026-11-04
 
 The same answers in less time, from a simpler implementation (#249). Every array, answer,

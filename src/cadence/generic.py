@@ -79,7 +79,7 @@ from .learning import (
 )
 from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
-from .plasticity import ActorCritic, ActorCriticConfig
+from .plasticity import ActorCritic, ActorCriticConfig, Maturity
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
 from .stream import Efference, FastSynapses, History, PatternSeparator, Recall, Trace
 
@@ -163,6 +163,26 @@ def _operation(method: _Operation) -> _Operation:
             return method(self, *args, **kwargs)
 
     return cast(_Operation, operated)
+
+
+def _moment(method: _Operation) -> _Operation:
+    """A moment of life (``live``, ``step``, or ``learn`` called on its own): a mature brain's
+    use relaxes once when the outermost of them returns."""
+
+    @wraps(method)
+    def lived(self: Brain, *args: Any, **kwargs: Any) -> Any:
+        maturity = self.basal_ganglia.maturity
+        if maturity is None:
+            return method(self, *args, **kwargs)
+        self._moment_depth += 1
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            self._moment_depth -= 1
+            if self._moment_depth == 0:
+                maturity.relax()
+
+    return cast(_Operation, lived)
 
 
 def _learning() -> LearnerConfig:
@@ -488,6 +508,9 @@ _EPISODIC_SETTINGS = (
 # own.
 _MEMORY_DECAY = 0.9
 _MEMORY_WINNERS = 24
+# The brain's maturity (``maturity``, #253): the founders of the use scale (``U_c``, in the
+# actor's own step units per synapse) and of the recovery (moments).
+_MATURITY_FOUNDERS: dict[str, float] = {"maturity_scale": 7.5, "maturity_recovery": 200_000.0}
 # The initial magnitudes of the projections from the heard history and from the recall and
 # next regions, constants since 0.93.0 (``history_scale``, ``recall_scale``); the composition
 # records them as 0.92.1 did.
@@ -821,6 +844,10 @@ def _load_memory(
             raise ValueError("saved memory mass must be nonnegative")
         if isinstance(memory, SynapticMemory):
             memory.consolidated = array("consolidated", (memory.key_width, len(post)))
+            if metadata.get("surprise_gate", False):  # the records' noise scales (``maturity``)
+                memory.gate_noise = array("gate_noise", memory.consolidated.shape)
+            elif prefix + "gate_noise" in data:
+                raise ValueError("saved noise scales require the surprise gate's metadata")
             if (
                 metadata.get("persistent_parameters", memory.consolidated.size)
                 != memory.consolidated.size
@@ -1876,6 +1903,9 @@ class Brain:
         memory_fan_in: int | None = None,
         memory_extinction: float = 0.0,
         memory_context_hold: str | None = None,
+        maturity: bool = False,
+        maturity_scale: float = _MATURITY_FOUNDERS["maturity_scale"],
+        maturity_recovery: float = _MATURITY_FOUNDERS["maturity_recovery"],
         working_memory_decay: float = 0.0,
         working_memory_amplitude: float = 3.0,
         efference_decay: float = 0.2,
@@ -2010,6 +2040,11 @@ class Brain:
             raise ValueError('memory_context_hold is None, "unchanged" or "punished"')
         if memory_context_hold is not None and not (memory_choice and memory_context):
             raise ValueError("memory_context_hold needs memory_choice and memory_context")
+        if not isinstance(maturity, bool):
+            raise ValueError("maturity must be boolean")
+        if maturity:
+            maturity_scale = real("maturity_scale", maturity_scale, low=1e-12)
+            maturity_recovery = real("maturity_recovery", maturity_recovery, low=1)
         memory_expansion = _count("memory_expansion", memory_expansion)
         memory_fan_in = _count("memory_fan_in", 0 if memory_fan_in is None else memory_fan_in)
         if units and (memory_expansion or memory_fan_in):
@@ -2100,6 +2135,9 @@ class Brain:
         self.basal_ganglia = ActorCritic(
             self.learner, list(self.association_index), reward, seed=seed
         )
+        self._moment_depth = 0  # the operations of the moment under way (``_moment``)
+        if maturity:  # the brain's maturity (#253): it scales the actor's steps
+            self.basal_ganglia.maturity = Maturity(maturity_scale, maturity_recovery)
         self.working_memory: Trace | None = None
         if "prefrontal" in populations:
             self.working_memory = Trace(
@@ -2189,6 +2227,9 @@ class Brain:
             coded = self._coded_keys
             places = np.arange(self.code_width) if coded else self.sensory_index
             self.hippocampus = store(places, 0)
+            if maturity and isinstance(self.hippocampus, SynapticMemory):
+                # the store's surprise-gated writes, engaged by the same maturity
+                self._gate_store(self.hippocampus)
             paid = None
             if memory_extinction:
                 # where each action was paid directly: one lasting record every stream shares,
@@ -2925,7 +2966,7 @@ class Brain:
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
             "learned_code", *(f"learned_code_{name}" for name in LearnedCode.CONSTRUCTION),
-            "attention", "apical",
+            "attention", "apical", "maturity",
         }
         for name in options:
             refusal = rescaled(name)
@@ -2984,6 +3025,15 @@ class Brain:
             memory_changes.append((component, field, value))
             if component is self.hippocampus and self.context_memory is not None:
                 memory_changes.append((self.context_memory, field, value))
+        for name, field, low in (
+            ("maturity_scale", "scale", 1e-12), ("maturity_recovery", "recovery", 1.0)
+        ):
+            if name in options:  # the maturity's time constant and scale (``maturity``)
+                if self.basal_ganglia.maturity is None:
+                    raise ValueError(f"{name} requires a brain composed with maturity")
+                memory_changes.append(
+                    (self.basal_ganglia.maturity, field, real(name, options.pop(name), low=low))
+                )
         for name in [name for name in options if name.startswith("recall_")]:
             setting = name[len("recall_"):]
             if setting in Recall.RETIRED:
@@ -3150,6 +3200,12 @@ class Brain:
         """
         return _graft(self, donor, regions, into, joints, freeze)
 
+    def _gate_store(self, store: SynapticMemory) -> None:
+        """The store's surprise-gated writes, engaged by this brain's maturity: each record's
+        noise scale from zero."""
+        store.gate_noise = np.zeros(store.consolidated.shape)
+        store.maturity = self.basal_ganglia.maturity
+
     def describe(self) -> dict[str, Any]:
         """Describe the brain without changing live state: four sections.
 
@@ -3210,6 +3266,10 @@ class Brain:
                 genes.update({f"{prefix}_{field}": getattr(component, field) for field in fields})
         if isinstance(self.hippocampus, SynapticMemory):
             genes["consolidation"] = self.hippocampus.consolidation
+        maturity = self.basal_ganglia.maturity
+        if maturity is not None:
+            genes.update(maturity=True, maturity_scale=maturity.scale,
+                         maturity_recovery=maturity.recovery)
         if self.recall is not None:
             genes.update(
                 {
@@ -3719,6 +3779,7 @@ class Brain:
 
     # -- ongoing interaction
 
+    @_moment
     @_operation
     def step(
         self,
@@ -4096,6 +4157,7 @@ class Brain:
         """Cut the rehearsal's reservoir to ``rehearsal_capacity`` (``_trimmed_episodes``)."""
         self.rehearsal_moments, self.rehearsal_labels = self._trimmed_episodes()
 
+    @_moment
     @_operation
     def live(
         self, observations: Any, *, reward: Any = None, done: Any = None,
@@ -4730,6 +4792,7 @@ class Brain:
         """The ``(batch, motor)`` one-hot of an issued action: one per row, or one per slot."""
         return command(action, len(self.motor_index), self.learner.slot_offsets)
 
+    @_moment
     def learn(
         self,
         reward: Any,
@@ -4938,6 +5001,7 @@ class Brain:
             self.basal_ganglia.parameters()
             + (
                 self.hippocampus.consolidated.size
+                + (0 if self.hippocampus.gate_noise is None else self.hippocampus.gate_noise.size)
                 if isinstance(self.hippocampus, SynapticMemory)
                 else 0
             )
@@ -4996,6 +5060,8 @@ class Brain:
             metadata["composition"] = plain(self._composition)
         if self.attention:
             metadata["attention"] = True
+        if agent.maturity is not None:
+            metadata["maturity"] = agent.maturity.to_dict()
         if self.arousal is not None:
             metadata["arousal"] = self.arousal.to_dict()
             lived = self._lived
@@ -5320,6 +5386,17 @@ class Brain:
                         raise ValueError(f"nonfinite saved actor state: {name}")
                     setattr(agent, name, value)
             agent.updates, agent.b_critic = int(meta["updates"]), float(meta["b_critic"])
+            matured = meta.get("maturity")
+            if matured is not None:  # the brain's maturity, and the store's gate it engages
+                agent.maturity = Maturity(
+                    real("maturity scale", matured["scale"], low=1e-12),
+                    real("maturity recovery", matured["recovery"], low=1),
+                    real("maturity use", matured["use"], low=0),
+                )
+                if isinstance(memory, SynapticMemory) and memory.gate_noise is not None:
+                    memory.maturity = agent.maturity
+            elif isinstance(memory, SynapticMemory) and memory.gate_noise is not None:
+                raise ValueError("a saved surprise gate requires the brain's maturity")
             result.rng.bit_generator.state = meta["rng"]
             agent.rng.bit_generator.state = meta["actor_rng"]
             if meta["free_steps"] is not None:

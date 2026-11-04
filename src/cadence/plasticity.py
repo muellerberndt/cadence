@@ -28,7 +28,7 @@ from __future__ import annotations
 
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from types import MappingProxyType
 from typing import Any
 
@@ -41,6 +41,7 @@ from .learning import Learner
 __all__ = [
     "ActorCritic",
     "ActorCriticConfig",
+    "Maturity",
 ]
 
 
@@ -53,6 +54,33 @@ def _batch_of(state: BrainState) -> int:
 
 
 SATURATION_BAND = 0.02  # an output within this of 0 or 1 has no slope left for a nudge
+
+
+@dataclass(slots=True)
+class Maturity:
+    """A brain's maturity (#253): one slow variable, the use of its plasticity.
+
+    Each actor update adds its applied magnitude in the brain's own step units per synapse,
+    ``use += sum |dw| / (eta N)``; every moment of life keeps ``1 - 1 / recovery`` of ``use``.
+    The step factor ``m = 1 / (1 + (use / scale) ** ORDER)`` multiplies the actor's synapse and
+    bias steps and engages the store's surprise-gated writes with strength ``1 - m``. No count
+    is kept: a busy brain matures and an idle one returns toward its youth.
+    """
+
+    scale: float
+    recovery: float
+    use: float = 0.0
+
+    ORDER = 4.0
+
+    def factor(self) -> float:
+        return float(1.0 / (1.0 + (self.use / self.scale) ** self.ORDER))
+
+    def relax(self) -> None:
+        self.use *= 1.0 - 1.0 / self.recovery
+
+    def to_dict(self) -> dict[str, float]:
+        return {"scale": self.scale, "recovery": self.recovery, "use": self.use}
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +225,8 @@ class ActorCritic:
         # ("phases", plus, minus, value) as activations, or ("states", plus, minus, value) as states
         self._pending: tuple[str, Any, Any, np.ndarray] | None = None
         self.updates = 0
+        # the brain's maturity (``Maturity``), which scales the steps; None: the founder's steps
+        self.maturity: Maturity | None = None
 
     # -- readings
 
@@ -483,11 +513,35 @@ class ActorCritic:
                 for name in ("_trace_device", "updates")
             }
         )
+        maturity = self.maturity
+        if maturity is None:
+            try:
+                return self._learn(
+                    reward, done, next_drive, bootstrap, observed=observed, warm=warm
+                )
+            except Exception:
+                self.__dict__.update(saved)
+                raise
+        # a mature brain: the steps times its factor, its use grown by the step applied
+        config, use = self.config, maturity.use
+        m = maturity.factor()
+        before = np.array(self.learner.brain.efficacy, copy=True)
         try:
-            return self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
+            if m != 1.0:
+                bias = config.eta_bias
+                assert bias is not None  # derived at construction
+                self.config = replace(config, eta=m * config.eta, eta_bias=m * bias)
+            report = self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
         except Exception:
             self.__dict__.update(saved)
+            maturity.use = use
             raise
+        finally:
+            self.config = config
+        if config.eta > 0:
+            moved = float(np.abs(np.asarray(self.learner.brain.efficacy) - before).sum())
+            maturity.use += moved / (float(config.eta) * self.synapses)
+        return report
 
     def _learn(
         self,
@@ -883,7 +937,7 @@ class ActorCritic:
         self.salience = None
 
     def parameters(self) -> int:
-        return self.learner.parameters() + len(self.w_critic) + 1
+        return self.learner.parameters() + len(self.w_critic) + 1 + (self.maturity is not None)
 
     def to_dict(self) -> dict[str, Any]:
         return {

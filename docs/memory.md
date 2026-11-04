@@ -229,6 +229,24 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
   [competing ring](../benchmarks/competing/README.md) it acquires as fast and takes about 0.10
   off the loss, most of which remains.
 
+### Maturity and surprise-gated writes
+
+With `maturity=True` ([reward](reward.md#maturity-opt-in)) the store keeps a noise scale `R` per
+record (`brain.hippocampus.gate_noise`, the running mean of the squared error of its writes at
+rate 0.05, from zero at birth) and gates its writes by the brain's step factor `m`: a write's
+change of the record, the shared `C` and the stream's `F` alike, is multiplied by
+
+```text
+1 - (1 - m) (1 - g),    g = max(0, 1 - 2 sqrt(R) / |e|)
+```
+
+where `e` is the write's error on the action against the stream's read before the write. A
+young brain (`m` 1) writes as without the gate; a mature one (`m` near 0) moves a record only by
+the part of its error beyond two noise scales, so an outcome its records expect leaves them as
+they are and a surprise moves them. A record nobody writes keeps its value and its noise scale.
+The noise scales are saved and loaded with the store and counted by `parameters()`; `clear()`
+erases them with the records.
+
 ## Learned weights and eligibility
 
 The learned weights (synapse scales and biases, the actor's readout and the critic) are the
