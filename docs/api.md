@@ -186,9 +186,8 @@ their shape. Keep row identities fixed until `reset()`.
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
 `Brain.load` reads it and the earlier formats through 0.85.x (`cadence-generic/1` to `/10`). A
-setting 0.93.0 retired, folded or made a constant (the CHANGELOG's list, the recall memory's
-[on the memory page](memory.md#removed-in-this-version), the composed brain's
-[on the tune page](tune.md#removed-in-this-version)) loads at the one value the release keeps
+setting 0.93.0 retired, folded or made a constant (the [CHANGELOG](../CHANGELOG.md)'s list, the
+recall memory's [on the memory page](memory.md#removed-in-this-version)) loads at the one value the release keeps
 for it and is refused otherwise by name with the release; a setting an earlier release removed
 loads at the value whose law this version keeps and is refused otherwise with a message naming
 the release that takes it. Record and recall key widths are checked
