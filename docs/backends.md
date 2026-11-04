@@ -35,25 +35,21 @@ print(cd.available_backends())
 device. MPS refuses float64, `"mlx"` refuses a connectome whose blocks exceed `dense_limit`,
 and a float32 backend refuses a neuron rule whose constants float32 cannot represent.
 
-`available_backends()` asks MLX for its device in a child interpreter, once per process. An MLX
-whose discovery aborts the interpreter, as an unsupported Metal or system configuration can,
-ends that child: MLX is then absent from the list, and `backend="mlx"` raises `ImportError`
-with the child's reason instead of importing it into the running program (`ModuleNotFoundError`
-when MLX is not installed). The child imports from the program's import path, paths added at
-run time included, and from nothing else: not its working directory or environment. An MLX the
-program has already imported answers in the program, with its present default device, as MLX
-does in a frozen application, whose executable is the application itself. Only a found MLX's
-answer is kept, so an MLX installed later in the process is found.
-[`tests/test_mlx_discovery.py`](../tests/test_mlx_discovery.py) checks each case with stand-in
-packages. Where MLX imports, [`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py) runs a
-composed brain on it against the CPU: it settles and learns as the CPU does within float32
-rounding, lives, imagines, saves and continues a pending outcome, reads several recall heads and
-grows, and it refuses an apical compartment. These pass on Apple silicon (macOS 15, Python 3.13,
-MLX 0.32) together with the rest of the suite. On a float32 backend a brain reloaded from its
-checkpoint continues within that rounding, not bit for bit: on torch MPS, over 1,000 moments of a
-life with every 0.93 option on, the reloaded brain's efficacies stayed within 5e-4 of the living
-brain's and its acts were the same, and the difference was gone after 3,000; on the CPU the
-reloaded brain is exact.
+On MLX a composed brain settles and learns as on the CPU within float32 rounding, lives,
+imagines, saves and continues a pending outcome, reads several recall heads and grows; it
+refuses an apical compartment ([`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py)).
+On a float32 backend a brain reloaded from its checkpoint continues within that rounding, not
+bit for bit; on the CPU the reloaded brain is exact.
+
+`available_backends()` asks MLX for its device in a child interpreter, once per process, so an
+unsupported Metal or system configuration that aborts MLX's discovery ends only the child. MLX
+is then absent from the list, and `backend="mlx"` raises `ImportError` with the child's reason
+(`ModuleNotFoundError` when MLX is not installed). The child imports only from the program's
+import path, paths added at run time included. An MLX the program has imported, and any MLX in
+a frozen application (whose executable is the application itself), answers in the program with
+its present default device. Only a found MLX is
+remembered, so an MLX installed later in the process is found
+([`tests/test_mlx_discovery.py`](../tests/test_mlx_discovery.py)).
 
 ## What runs where
 
@@ -98,19 +94,20 @@ print(check["backend"], check["max_abs_deviation"])                             
 Use CPU with Numba for small continuing brains, and measure an accelerator on the actual
 changing-input workload before switching: small brains spend more time launching GPU
 operations than doing arithmetic, while deep brains and large batches gain from the device.
-[`benchmarks/torch_gpu/lessons.py`](../benchmarks/torch_gpu/README.md) times `Brain.lesson` on
-a deep apical visual brain (7,956 neurons, 903,520 synapses) and on the flat founder; on an
-NVIDIA A10G shared with other work, CUDA float64 runs a lesson of the deep brain about 14
-times faster than one CPU core at batch 64 and about 27 times faster at batch 4,096, while the
-flat founder (3,220 neurons, 203,264 synapses) gains at most four times over one core: its
-sweeps are elementwise work over the sensory neurons, which the device does in float64 at
-memory speed. `precision="float32"` runs the deep brain's lessons two to three times faster
-again (that GPU does float64 at a sixty-fourth of its float32 rate); check it against float64
-as below before relying on it. The [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md)
-compares CPU, CUDA float64 and CUDA float32 on complete decisions; on its small continuing
-nursery CPU with Numba is faster. Cap BLAS and Numba threads for parallel workers. To compare two
-implementations, use identical dtype, steps and tolerances over several seeds, warm up,
-alternate the order, synchronize around each timed call, and compare residuals and states too.
+On an NVIDIA A10G ([`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md)), CUDA float64
+runs a lesson of a deep apical visual brain (7,956 neurons, 903,520 synapses) about 14 times
+faster than one CPU core at batch 64 and about 27 times faster at batch 4,096. The flat founder
+(3,220 neurons, 203,264 synapses) gains at most four times, because its sweeps are elementwise
+work over the sensory neurons, which the device does in float64 at memory speed.
+`precision="float32"` runs the deep brain's lessons two to three times faster again (that GPU
+does float64 at a sixty-fourth of its float32 rate); check it against float64 as below before
+relying on it. On the small continuing nursery of the
+[System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
+than CUDA.
+
+Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
+dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize
+around each timed call, and compare residuals and states too.
 
 ## Precision matters
 
@@ -137,13 +134,13 @@ never stalls the device, and the reported state and step count are those of the 
 that met the tolerance. Fixed step counts and the inner chunks of `equilibrate` read nothing.
 CPU and MPS check before starting another sweep. For a direct CUDA movement-tolerance solve,
 `BrainState.steps` is the returned state's sweep index, `discarded_steps` counts lookahead,
-and `attempted_steps` counts both. Use the latter for executed-work comparisons; this is
-still a sweep count rather than a total resource or energy meter.
+and `attempted_steps` counts both. Use `attempted_steps` for executed-work comparisons; it counts
+sweeps and measures no total resource or energy.
 
-Torch workspaces reuse device temperature inputs when arousal changes the sampling heat.
-Captured graphs read those current values. Topology and arithmetic-branch changes use bounded
-caches whose eviction drops dependent configurations and captures together, so a continuing
-changing-temperature life does not retain a new set of nudge tensors at every moment.
+When arousal changes the sampling heat, torch workspaces reuse their device temperature inputs
+and captured graphs read the values in place. Topology and arithmetic-branch changes use
+bounded caches that evict dependent configurations and captures together, so a life with a
+changing temperature does not accumulate nudge tensors.
 
 Masks have shape `(n,)` or `(1, n)` for every row, or `(batch, n)` per row, with entries in
 [0, 1], on every backend. A mask scales potential and activation at each step; zero removes a
@@ -208,28 +205,27 @@ worker of a process pool should set `NUMBA_NUM_THREADS=1` (or its share of the c
 every process otherwise starts one thread per core. On some machines the compiled loop's last
 bits differ from the NumPy loop's, and thousands of lessons can grow that into different
 readings (see [the depth benchmark](../benchmarks/depth/README.md)). `CADENCE_FUSED=0` in the
-environment before `cadence` is imported forces the NumPy loop, on which the depth receipts
-and the look-back, contextual-choice, held-heads, copy-tokens and own-action receipts were
-recorded.
+environment before `cadence` is imported forces the NumPy loop; use it to reproduce the depth,
+look-back, contextual-choice, held-heads, copy-tokens and own-action receipts, which were
+recorded on that loop.
 
 A recall memory's reads, writes and address lessons run on the host under every backend: products
 of each stream's address or attention with its slots, and the copy of the slots a write makes.
 `CADENCE_RECALL_THREADS=N` shares those of at least 262,144 values over blocks of streams,
 using at most N workers and at most 32 workers in one reusable pool per process. Canonical
-contiguous operands keep the same summation per output; other layouts use the original NumPy
+contiguous operands keep the same summation per output; other layouts use the plain NumPy
 call. The default, 1, dispatches no threaded work. Changing N reuses the bounded pool, and a
 forked child starts its own pool. As with Numba's threads, a worker of a process pool should
 keep its share of the cores.
 
-Recall may reuse raw content dot products for unchanged addresses and keys. It applies the
-current temperature on every read, so retuning and save/load agree. Within one public operation
-of the brain (`act`, `lesson`, `step`, `live`, `wait`) the reuse is bound to the bank array
-itself: no caller runs between the operation's reads, and the memory replaces its bank rather
-than writing into it. Between operations expert key arrays remain writable, so a bitwise bank
-snapshot is checked before reuse; this validation costs host memory traffic of the bank's size,
-which inside an operation is no longer paid on every read. The cache holds one bank and at most
-four addresses per head; a slot write, a full reset and the end of an operation clear it. These
-implementation changes do not establish a new task score or a general training-speed ratio.
+Recall reuses raw content dot products for unchanged addresses and keys and applies the
+temperature on every read, so retuning and save/load agree. Within one public operation of the
+brain (`act`, `lesson`, `step`, `live`, `wait`) the reuse is bound to the bank array itself: no
+caller runs between the operation's reads, and the memory replaces its bank rather than writing
+into it. Between operations expert key arrays are writable, so a bitwise bank snapshot is
+checked before reuse, at a cost of host memory traffic of the bank's size. The cache holds one
+bank and at most four addresses per head; a slot write, a full reset and the end of an
+operation clear it.
 
 A device kernel implements five operations: the synaptic transport, the elementwise neuron
 update, the softmax over the nudged group, the apical normalization and the largest movement

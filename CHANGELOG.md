@@ -106,6 +106,15 @@ efficacies and maps to the bit.
   synchronization per step where it took two. A lesson takes 0.80 to 0.94 of its time, a reward
   step 0.89 to 0.97; acts settle without the tolerance and are unchanged.
 
+### Documentation
+
+- `docs/tune.md` describes the current settings only. The wide-brain recipe, the constants
+  and the override rules no longer narrate the releases that produced them; a retired name points
+  at this changelog's tables.
+- Every guide describes the current version only. Release history, retirement tables,
+  issue backstories, run narration and readings from outside this repository leave the guides;
+  headings and anchors are unchanged.
+
 ### Project
 
 - The recall memory's age charge stays at its founder, `recall_recency=0.25` (#250): a gate

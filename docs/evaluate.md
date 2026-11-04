@@ -54,17 +54,12 @@ budget (the [key-door benchmark](../benchmarks/keydoor/README.md) runs random,
 tabular and recurrent arms beside the brain). A copied target, a new decoder,
 an added intention input or a larger action vocabulary makes a different task.
 
-The [coupled-memory experiment](../benchmarks/attention/README.md) separates
-joint-equation and local-credit checks from learned relevance. Its first exposed-fact
-admissions fail, while a separately declared wrong-answer teaching control passes
-the unchanged acquisition gate on all 20 fresh confirmation founders. The retained
-failures do not diagnose a retrieval deficit. Supplied recall content also passes
-the separate two-founder development control under trace/warm-state erasure.
-The [two-binding protocol](../benchmarks/attention/HEADS_PROTOCOL.md) tests independent
-heads against width, port and actual-work controls, and separates contextual
-association-state transfer from a context-free observation code. The prototype
-adds no supported `Brain.compose` mode. Causal relevance, semantic addressing,
-retention and continuing-life integration still require their own evidence.
+For memory claims, the [coupled-memory experiment](../benchmarks/attention/README.md)
+separates joint-equation and local-credit checks from learned relevance, and the
+[two-binding protocol](../benchmarks/attention/HEADS_PROTOCOL.md) tests independent heads
+against width, port and actual-work controls and separates contextual association-state
+transfer from a context-free observation code. Causal relevance, semantic addressing,
+retention and continuing-life integration each need their own evidence.
 
 ## Report per-behaviour errors
 
@@ -147,8 +142,7 @@ keep outcome quality on held-out situations at lower work and respond to
 changed conditions. Keep every scheduled seed, including unattempted and
 time-capped cells, compare equal checkpoints only and add operation counts to
 wall-clock time. A residual and the model energy measure the equations, never
-joules. [Receipts](#the-cost-fields) hold the cost
-fields.
+joules. [Receipts](#the-cost-fields) hold the cost fields.
 
 ## Separate the causes of improvement
 
@@ -230,12 +224,10 @@ result together points to goal selection.
 
 `predict(observations)`, `accuracy(observations, labels)` and `fit(observations,
 labels, *, epochs=30, batch=32)` treat rows as independent samples: qualified cold
-solves that read no trace or associative memory. `fit` resets stream state and keeps
-the arousal state as it is (`reset()`, which keeps it): a control on independent samples
-does not change a life. `fit` returns training accuracy per epoch; a refused score keeps
-accepted lessons.
-Use them as controls on a separate instance; greedy `act` on a loaded copy measures the
-memory-aware response.
+solves that read no trace or associative memory. `fit` starts every stream afresh, keeps
+the arousal state as it is and returns training accuracy per epoch; a refused score keeps
+accepted lessons. Use them as controls on a separate instance; greedy `act` on a loaded copy
+measures the memory-aware response.
 
 ```python
 import numpy as np
@@ -317,23 +309,21 @@ manifest matches; (4) when `check` is supplied, `check(body)` returns no problem
 protocol receipt: every pass flag follows from the stored readings and every tally from the
 rows). The message lists what was checked, or names the disagreement or the check's text.
 This verifies the declared source inventory; it cannot discover omitted dependencies.
-The current attention and depth runners bind every library Python module, package metadata,
-the provenance helper and their protocol scripts, and record the effective numerical mode,
-dependency versions and thread environment. Current attention checkers also validate the
+The attention and depth runners bind every library Python module, package metadata, the
+provenance helper and their protocol scripts, and record the effective numerical mode,
+dependency versions and thread environment; the attention checkers also validate the
 declared configuration and founder/arm census before recomputing decisions.
 
-For the original attention/depth results, use the explicit historical reader:
+A receipt registered in `benchmarks/historical-receipts.json` verifies against its archived
+source bytes, at the evidence scope it was recorded with, and replays no training:
 
 ```sh
 python benchmarks/provenance.py --historical benchmarks/attention/results/held-heads.json
 python benchmarks/provenance.py --historical benchmarks/depth/results/and-count.json
 ```
 
-It checks the exact registered receipt and archived source bytes at their original evidence
-scope. It does not promote the old partial source inventory or conditional role-record head
-metric to a current measurement, and it does not replay training. New results keep separate
-receipts. Whole-bank head maxima, distinct relevant facts and answer accuracy are separate
-measurements; two globally different slots can still belong to the same fact.
+Whole-bank head maxima, distinct relevant facts and answer accuracy are separate
+measurements; two globally different slots can belong to the same fact.
 
 ### What belongs in the body
 

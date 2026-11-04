@@ -1,9 +1,10 @@
 # How the brain settles and learns
 
-The mechanics below [`Brain.compose`](tune.md), for building or debugging a `NeuralGraph`
-or `Learner` directly. Learning rules live in [learning](#learning-the-freenudged-rule) and
-[reward](reward.md); [orientation](../README.md#where-the-learning-signal-comes-from) says
-where each family's teaching signal comes from.
+This page covers the mechanics below [`Brain.compose`](tune.md), for building or debugging a
+`NeuralGraph` or `Learner` directly. Learning rules live in
+[learning](#learning-the-freenudged-rule) and [reward](reward.md);
+[orientation](../README.md#where-the-learning-signal-comes-from) says where each family's
+teaching signal comes from.
 
 ## Neurons and synapses
 
@@ -41,18 +42,22 @@ synaptic input, bias and adaptation move a stimulated neuron too.
 `NeuralGraph.settle(stimulus)` accepts a dense vector, a list of neurons (each driven at
 `stimulus_amplitude`) or a `{neuron: level}` map (`level * stimulus_amplitude`).
 
-A `Nudge` adds teaching drive `beta * mask * (target - s)`. With `softmax_temperature` set,
-the masked neurons compete and the drive is `beta * (target - softmax(s / T))`, a cross-entropy nudge; `groups` (one integer
-per neuron, `-1` for none) splits them into separate softmax groups, and a temperature
-vector must be constant within each group. `weight`, one number per batch row, scales the
-nudge per row; a negative weight pushes away from the target, which is how an advantage
-enters reward learning. `anchor` and `anchor_gain` add an independent boundary drive
-`anchor_gain * (anchor - s)` that `beta`, `mask` and `weight` do not scale, so positive and
-negative phases share the same boundary. They must be supplied together; `anchor_gain` is a
-nonnegative vector over neurons. In the graph update a neuron reads only its own state, its
-synaptic input and its drive. Two operations read a declared group: a softmax nudge reads its
-group, and key normalisation in `FastSynapses` (`normalize=True` or `rule="delta"`) reads the
-whole key vector (see [standalone memory stores](memory.md#reading-and-writing-directly)).
+A `Nudge` adds teaching drive `beta * mask * (target - s)`.
+
+- With `softmax_temperature` set, the masked neurons compete and the drive is
+  `beta * (target - softmax(s / T))`, a cross-entropy nudge. `groups` (one integer per neuron,
+  `-1` for none) splits them into separate softmax groups; a temperature vector must be
+  constant within each group.
+- `weight`, one number per batch row, scales the nudge per row. A negative weight pushes away
+  from the target, which is how an advantage enters reward learning.
+- `anchor` and `anchor_gain`, supplied together, add a boundary drive
+  `anchor_gain * (anchor - s)` that `beta`, `mask` and `weight` do not scale, so positive and
+  negative phases share the same boundary. `anchor_gain` is a nonnegative vector over neurons.
+
+In the graph update a neuron reads only its own state, its synaptic input and its drive. Two
+operations read a declared group: a softmax nudge reads its group, and key normalisation in
+`FastSynapses` (`normalize=True` or `rule="delta"`) reads the whole key vector
+([standalone memory stores](memory.md#reading-and-writing-directly)).
 
 ## Settling and equilibrium
 
@@ -66,17 +71,16 @@ returned `BrainState` holds `v`, `activation`, `adaptation`, `steps` taken,
 `activity_change` (total movement per row) and, with `trajectory=True`, the activation
 after every step. It can be a transient, a fixed point or part of an oscillation.
 
-`residual(drive, state)` returns the largest fixed-point equation error per row. Small
-movement does not imply a small residual: a saturated neuron moves little while its
-equation is far from satisfied. `equilibrate(drive, *, budget=512, chunk=32,
-tolerance=1e-5, state=None, mask=None, nudge=None, damping=0)` continues until every row's
-residual is below `tolerance` or the budget is spent, at one extra transport per chunk (on the
-compiled CPU path, the block products of the ranges the chunk's last sweep moved).
-All rows advance together. It returns an `Equilibrium` with `state`, per-row `residual`,
-`steps` (sweeps in this call) and `converged` (residual within tolerance), which
-`qualified` repeats. `damping=k` splits the budget over up to `k + 1`
-attempts, each at half the previous `dt`, all checked against the original equations. A
-spent budget is a result to report and act on.
+`residual(drive, state)` returns the largest fixed-point equation error per row. Check it
+instead of movement, since a saturated neuron moves little while its equation is far from
+satisfied. `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None,
+mask=None, nudge=None, damping=0)` continues until every row's residual is below `tolerance`
+or the budget is spent, at one extra transport per chunk (on the compiled CPU path, the block
+products of the ranges the chunk's last sweep moved). All rows advance together. It
+returns an `Equilibrium` with `state`, per-row `residual`, `steps` (sweeps in this call) and
+`converged` (residual within tolerance), which `qualified` repeats. `damping=k` splits the
+budget over up to `k + 1` attempts, each at half the previous `dt`, all checked against the
+original equations. Report a spent budget and act on it.
 
 Regions that share one connectome settle toward one joint fixed point under the current
 drive; independent solves merged afterwards do not couple them. An equilibrium need not be
@@ -100,16 +104,16 @@ time. `slope` and `gain` must be positive and `leak` lies in `[0, 1]`. With `lea
 zero a neuron below rest emits a small negative activation, no lower than `-leak`, so a
 learning rule can tell a silent neuron from a dead one.
 
-`learning_neuron_model(gain=1.0, *, slope=1.0, leak=0.1, dt=0.5, stimulus_amplitude=1.0)`
-sets threshold zero for nets that learn: unit slope keeps a fan-scaled layer responsive, a
+Use `learning_neuron_model(gain=1.0, *, slope=1.0, leak=0.1, dt=0.5, stimulus_amplitude=1.0)`
+for nets that learn. It sets threshold zero; unit slope keeps a fan-scaled layer responsive, a
 unit stimulus reads input levels roughly linearly, and the larger `dt` converges in tens of
 steps. Builders start with zero bias, so many hidden neurons can sit near rest under signed
 inputs; measure activation distributions on your stream and shift `bias` if needed.
 
 `Adaptation(tau_steps=50.0, strength=1.0)` adds one variable per neuron,
 `a <- a + (s - a) / tau_steps`, and subtracts `strength * a` from its drive. In mutually
-inhibitory circuits it produces rhythm instead of a fixed point. It is off by default;
-leave it off for equilibrium learning, and note that the certificate excludes it.
+inhibitory circuits it produces rhythm instead of a fixed point. It is off by default. Leave
+it off for equilibrium learning; the certificate excludes it.
 
 ## Three state lifetimes
 
@@ -132,29 +136,30 @@ composed brain; a custom composition owns its update calls. See
 | Inference iteration | The interpretation of the same evidence | Evidence, parameters and the memory snapshot |
 | Learning update | Parameters, memory contents or a learned address map | Which targets were observed, taught or imagined |
 
-An environment step has the duration its simulator or body declares; solver sweeps and
-`dt` have none, so measure wall time separately. An imagined future has its own step index
-inside a private branch; its steps simulate environment time and count neither as
-inference on the present nor as new observations. [Continuous interaction](start.md#defaults-and-the-thinking-clock)
-states which events advance trace, eligibility, arousal and learning in `Brain`.
+Assign every state update to one clock. An environment step has the duration its simulator
+or body declares; solver sweeps and `dt` have none, so measure wall time separately. An
+imagined future has its own step index inside a private branch; its steps simulate
+environment time and count neither as inference on the present nor as new observations.
+[Continuous interaction](start.md#defaults-and-the-thinking-clock) states which events
+advance trace, eligibility, arousal and learning in `Brain`.
 
-Assign every state update to one clock. A previous-state mixing term adds no inference
-depth to a one-step read from a zero initial state, because that term is zero; more
-internal steps or a deeper port are a separate computation with a separate cost.
+A previous-state mixing term adds no inference depth to a one-step read from a zero initial
+state, because that term is zero. More internal steps or a deeper port are a separate
+computation with a separate cost.
 
 ## Prediction error is not model error
 
-A correct probabilistic model cannot predict which random outcome occurs. A fair-coin
-model assigns one half to heads; observing heads resolves this toss and gives no reason to
-switch to an always-heads rule. An observation can change the current belief and the best
-action with the learned dynamics unchanged: state estimation and model learning are
-separate operations. The cross-entropy logit gradient `p - y` is nonzero on each toss and
-has zero expectation under a calibrated prediction, so sample updates average out;
-repeated systematic errors justify changing the model. Judge probabilistic predictions by
-mean log loss and calibration against the declared uncertainty, and do not widen
-uncertainty to make every error look acceptable.
+A correct probabilistic model cannot predict which random outcome occurs. A fair-coin model
+assigns one half to heads; observing heads resolves this toss and gives no reason to switch
+to an always-heads rule. An observation can change the current belief and the best action
+while the learned dynamics stay as they are, because state estimation and model learning are
+separate operations. The cross-entropy logit gradient `p - y` is nonzero on each toss and has
+zero expectation under a calibrated prediction, so sample updates average out. Change the
+model for repeated systematic errors. Judge probabilistic predictions by mean log loss and
+calibration against the declared uncertainty, and do not widen uncertainty to make every
+error look acceptable.
 
-An unexpected observation supplies evidence and possibly a teaching target; the `beta` of a
+An unexpected observation supplies evidence and possibly a teaching target. The `beta` of a
 learning contrast, inference damping and the random drive below are separate quantities.
 
 <a id="detuning-inside-a-life"></a>
@@ -164,10 +169,10 @@ learning contrast, inference damping and the random drive below are separate qua
 A settled graph gives one answer under one drive. To sample alternatives inside one
 decision, repeat the drive in a batch, add a bounded random drive to the latent neurons of
 each row, settle with `equilibrate`, keep the converged rows and rank their actions by a
-validated read such as a table of witnessed outcomes, a [delta-rule store](memory.md#standalone-memory-stores) or a
-critic. Parameters, memories and the genome stay as they are; only this decision's drive
-changes. Elsewhere in these docs "detuning" means the learning nudge (`beta`), which is a
-different operation.
+validated read such as a table of witnessed outcomes, a
+[delta-rule store](memory.md#standalone-memory-stores) or a critic. Only this decision's
+drive changes; parameters, memories and the genome stay as they are. This perturbation is
+separate from the learning nudge (`beta`).
 
 ```python
 import numpy as np
@@ -198,8 +203,8 @@ A uniform draw in `[-a, a]` keeps each added drive within `a`; a Gaussian draw h
 bound. In a composed brain build the repeated drive with `brain.stimulus([observation])`,
 settle with `brain.brain.equilibrate`, perturb `brain.association_index` and read actions
 at `brain.motor_index`; `brain.basal_ganglia.value(result.state)` ranks the same rows by the
-critic. Perturbation proposes; the ranking only helps as far as
-the table, store or critic has learned consequences.
+critic. The ranking helps only as far as the table, store or critic has learned
+consequences.
 
 ## Controls and when to add machinery
 
@@ -252,24 +257,19 @@ remaining = learner.brain.residual(drive, state.free)  # equation residual per r
 ### 1. What learning changes
 
 Learning moves `efficacy` (one signed number per synapse) and `bias` (one per neuron); the
-connectome and `log_gain` stay fixed. Synapse `e` drives `gain · count[e] · efficacy[e] ·
-exp(log_gain[pre[e]])` per unit of presynaptic activation, which is `efficacy[e]` in a `layered`
-graph with `learning_neuron_model()`. Call it `W[e]`.
+connectome and `log_gain` stay fixed. Call the effective weight of synapse `e`
+([above](#neurons-and-synapses)) `W[e]`; in a `layered` graph with `learning_neuron_model()`
+it equals `efficacy[e]`.
 
 ### 2. What settling computes
 
-One step of the neuron model, applied to every neuron at once:
-
-    total[i] = Σ_{e: post[e]=i} W[e] · s[pre[e]] + stimulus[i] + bias[i]   (+ nudge[i])
-    v[i]    <- v[i] + dt · (total[i] - v[i])
-    s[i]     = act(v[i])
-
-With `learning_neuron_model()`, `act(v) = tanh(v/2)` for `v >= 0` and `0.1 · tanh(v/2)` below:
-rest publishes 0, drive saturates near `v ≈ 4`, and the leak keeps a small negative response the
-rule can move. Settling repeats the step until no activation moves more than `tolerance` or the
-cap is reached ([how the neural graph settles](settling.md)). A small movement is no fixed-point
-certificate, since saturation or a tiny `dt` can stall a neuron far from rest;
-`brain.residual(drive, state)` (with the phase's `nudge` for a nudged state) checks the equations.
+Each phase repeats the neuron update ([above](#neurons-and-synapses)), with weights `W` and
+the phase's nudge added to the drive. With `learning_neuron_model()`,
+`act(v) = tanh(v/2)` for `v >= 0` and `0.1 · tanh(v/2)` below.
+Rest publishes 0, drive saturates near `v ≈ 4`, and the leak keeps a small negative response
+the rule can move. A phase stops when no activation moves more than `tolerance` or at its step
+cap. Check the equations with `brain.residual(drive, state)` (with the phase's `nudge` for a
+nudged state), since saturation or a tiny `dt` can stall a neuron far from its fixed point.
 
 ### 3. The two phases and the update
 
@@ -336,13 +336,15 @@ with an implicit-gradient learner on the same network, and the
 
 Teaching is finite by default: the contrast is read after at most `free_steps` and
 `nudged_steps` sweeps. `qualified=True` requires every phase to meet the full potential and
-adaptation residual within `tolerance`, with up to `damping` step halvings inside its budget; a
-failed phase raises `LearningPhaseError` (`phase`, `phases`, `report`, `hint`) and writes
-nothing. Both budgets are then settle budgets, and a nudged phase needs about as many sweeps as
-the free one: at the composed `free_steps=1024`, `nudged_steps=12` a qualified brain refuses
-lessons on realistic input. `qualified=True` with `nudged_steps < free_steps` therefore warns,
-and a refusal names the mismatch in its `hint`. Opt in with named overrides, which keep the
-composed rates:
+adaptation residual within `tolerance`, with up to `damping` step halvings inside its budget.
+A failed phase raises `LearningPhaseError` (`phase`, `phases`, `report`, `hint`) and writes
+nothing.
+
+Under `qualified=True` both budgets are settle budgets, and a nudged phase needs about as many
+sweeps as the free one. Raise `nudged_steps` to match `free_steps`: at the composed
+`free_steps=1024`, `nudged_steps=12` a qualified brain refuses lessons on realistic input.
+`qualified=True` with `nudged_steps < free_steps` warns, and a refusal names the mismatch in
+its `hint`. Opt in with named overrides, which keep the composed rates:
 
 ```python
 checked = cd.Brain.compose(
@@ -353,23 +355,21 @@ print(qualified_lesson["qualified"], qualified_lesson["total_steps"])
 ```
 
 Every qualified phase starts at the full step and takes the damping ladder from there
-(`learning_damping` halvings at most); ordinary acts, evaluation and reward eligibility keep
-their numerical routes. The starting index 0.86.0 to 0.92.1 offered
-(`learning_initial_damping`, checkpoint format `cadence-checkpoint/4`) was retired in 0.93.0
-and is refused by name.
+(`learning_damping` halvings at most). Ordinary acts and evaluation keep their own numerical
+routes, and reward eligibility keeps its finite phase. A retired setting
+is refused by name with a message saying what to use instead ([CHANGELOG](../CHANGELOG.md)).
 
 Qualification certifies the equations at those states; the gradient reading also needs the
-assumptions above. `contrast`, `update` and `apply` act on supplied states, and reward
-eligibility keeps its finite phase. Answers follow
+assumptions above. `contrast`, `update` and `apply` act on supplied states. Answers follow
 [qualification and refusal](start.md#qualification-and-refusal).
 
 #### Finite free phases that run out of budget
 
-Finite teaching updates from whatever state the budgets reached. A free phase that used all of
-`free_steps` usually never reached the movement stop. `Learner.step` then reports
+Finite teaching updates from whatever state the budgets reached. When a free phase uses all of
+`free_steps`, usually without reaching the movement stop, `Learner.step` reports
 `free_budget_exhausted` (`demonstration_free_budget_exhausted` through `Brain.step`) and warns;
-`free_residual` holds the equation residual. Fixed-length phases (`tolerance=None`) stay silent.
-Raise `free_steps`, lower the gain, or select `qualified=True` to refuse such lessons.
+`free_residual` holds the equation residual. Fixed-length phases (`tolerance=None`) stay silent. Raise `free_steps`,
+lower the gain, or select `qualified=True` to refuse such lessons.
 
 A lesson report holds `attempted_presentations`, `accepted_presentations`, `accepted`,
 `qualified`, `qualification_required`, the mean absolute steps `scale_step` and `bias_step`,
@@ -412,11 +412,11 @@ Fit scaling and encodings on training data. The `Learner` operations:
 | `apply(delta_scale, delta_bias)` | a precomputed step through masks, synapse rates, tying and the cap |
 | `predict(drive)`, `accuracy(drive, labels, batch=256)` | most active output per slot after a free phase; fraction correct over rows and slots |
 
-`LearnedState` holds the `free`, `nudged` and `opposite` states and `taught`. A `warm` state
-starts the free phase from an earlier state: within one basin this saves steps, across
-attractors it can change the answer. An update costs three settles. A finite warm phase that stops at its step cap keeps its transients and need not
-be an equilibrium; reset at independent episode boundaries and compare warm and cold settles on
-changing inputs.
+`LearnedState` holds the `free`, `nudged` and `opposite` states and `taught`. An update costs
+three settles. A `warm` state starts the free phase from an earlier state; within one basin
+this saves steps, across attractors it can change the answer. A finite warm phase that stops
+at its step cap keeps its transients and need not be an equilibrium. Reset at independent
+episode boundaries, and compare warm and cold settles on changing inputs.
 
 #### Pattern targets
 
@@ -460,26 +460,29 @@ it for every learner on the holder. Each learner keeps its own optimizer history
 
 #### Calibrating the operating point
 
-`learner.calibrate(drive, level=None, grid=None)` picks and installs the global synaptic gain
-whose free outputs sit nearest a target; it teaches nothing. The default target puts the mean,
-over rows and slots, of the highest output activation at 0.5. An explicit `level` targets the
-mean over every output, which pushes all choices up together and can saturate the readout. The
-default grid is the current gain, then its multiples `2**k` for `k = -8..8`, `k ≠ 0`; ties keep
-the first. Under `qualified=True` candidates must meet the equations. `last_calibration` holds
-every candidate's gap, residuals and work; with no usable candidate it raises `RuntimeError`.
-A refused candidate has `gap` `None`; its `admitted`, `finite`, `activation_consistent` and
-residuals give the reason. The sampled gains may never reach the target, and reaching it does
-not show that teaching will work.
+Calibrate on training inputs and freeze the result before evaluation. Two tools set the
+operating point without teaching anything.
 
-`calibrate_bias(brain, drives, targets)` bisects biases toward a mean activation in `[0, 1]`
-per population (a name or neuron indices in `targets`), or per member with `per_neuron=True`,
-and returns the bias array, leaving the graph unchanged. Each bias is bisected `iterations=16`
+`learner.calibrate(drive, level=None, grid=None)` picks and installs the global synaptic gain
+whose free outputs sit nearest a target. The default target puts the mean, over rows and
+slots, of the highest output activation at 0.5. An explicit `level` targets the mean over
+every output, which pushes all choices up together and can saturate the readout. The default
+grid is the current gain, then its multiples `2**k` for `k = -8..8`, `k ≠ 0`; ties keep the
+first. Under `qualified=True` candidates must meet the equations. `last_calibration` holds
+every candidate's gap, residuals and work; with no usable candidate `calibrate` raises
+`RuntimeError`. A refused candidate has `gap` `None`; its `admitted`, `finite`,
+`activation_consistent` and residuals give the reason. The sampled gains may never reach the
+target, and reaching it does not show that teaching will work.
+
+`calibrate_bias(brain, drives, targets)` moves one population where the gain would scale
+inhibitory synapses too. It bisects biases toward a mean activation in `[0, 1]` per
+population (a name or neuron indices in `targets`), or per member with `per_neuron=True`, and
+returns the bias array, leaving the graph unchanged. Each bias is bisected `iterations=16`
 times within `span=(-6.0, 6.0)`, every population in turn, for `rounds=3`; each solve settles
 for at most `steps=100` sweeps to `tolerance=1e-4`. An unreachable target ends at a span
 endpoint, so check `final_means` and `target_gaps` in the dict passed as `report`. With
 `qualified=True` (and up to `damping=3` halvings) every solve must meet the equations; a
-refused or nonfinite solve raises `RuntimeError`. Unlike the gain, which scales inhibitory
-synapses too, a bias moves one population.
+refused or nonfinite solve raises `RuntimeError`.
 
 ```python
 operating = cd.Brain.compose(4, 3, modules=(8,), lateral=0.0, seed=9)
@@ -495,19 +498,19 @@ operating.learner.brain = candidate
 print(calibration["final_means"], calibration["target_gaps"])
 ```
 
-Calibrate on training inputs and freeze the result before evaluation.
-
 ### 7. Every knob
 
-`LearnerConfig()` holds the standalone defaults below. Each field is the `learning_<field>`
-override of `compose` and `retune`, but `eta`, `eta_bias`, `normalize` and `normalize_floor`,
-which the teaching point sets (`teaching="founder"` or `"normalized"`), with the composed
-founders in
-[defaults and expert overrides](tune.md#defaults-and-expert-overrides);
-`learning=LearnerConfig(...)` replaces the composed config whole. A standalone learner's frozen
-config changes between updates with `learner.config = dataclasses.replace(learner.config,
-eta=...)`. `eta_bias=None` derives `eta / 10`; a resolved value is kept when `eta` changes
-unless set again or passed as `None`. Select rates on development data and freeze them.
+`LearnerConfig()` holds the standalone defaults below. In a composed brain each field is the
+`learning_<field>` override of `compose` and `retune`, except `eta`, `eta_bias`, `normalize`
+and `normalize_floor`, which the teaching point sets (`teaching="founder"`, `"normalized"` or
+`"deep"`); the composed founders are in
+[defaults and expert overrides](tune.md#defaults-and-expert-overrides).
+`learning=LearnerConfig(...)` replaces the composed config whole.
+
+A standalone learner's config is frozen; change it between updates with
+`learner.config = dataclasses.replace(learner.config, eta=...)`. `eta_bias=None` derives
+`eta / 10`; a resolved value is kept when `eta` changes unless set again or passed as `None`.
+Select rates on development data and freeze them.
 
 | knob | where | what it does | default |
 |---|---|---|---|
@@ -616,9 +619,9 @@ adds its own remaining error.
 
 The certificate covers the free phase without adaptation. A nudge adds a drive the argument
 omits, adaptation adds a slow variable, and records are read and written without settling. For
-those, and above the limit, `residual` and `equilibrate` qualify the equations at the measured
-state and say nothing about uniqueness or convergence. A failed certificate means only that
-this sufficient argument does not apply.
+those, and above the limit, use `residual` and `equilibrate`; they qualify the equations at the
+measured state and say nothing about uniqueness or convergence. A failed certificate means only
+that this sufficient argument does not apply.
 
 ### Using it
 
@@ -627,8 +630,8 @@ this sufficient argument does not apply.
 - Keep learned brains under the limit where you can: bound efficacies, scale the gain by the
   fan-in and watch `row_mass` over a life. `LearnerConfig.scale_cap` (default 8) clips each
   plastic efficacy separately, which does not bound a row sum.
-- Warm-start streams: the step bound is logarithmic in the change. A certified brain may need
-  more steps than a given finite budget allows.
+- On warm-start streams the step bound is logarithmic in the change. A certified brain may
+  need more steps than a given finite budget allows.
 - Lesions keep the certificate: ablation only removes synapses and lowers the row mass.
 
 ### Equilibrium-propagation scope
@@ -637,11 +640,10 @@ this sufficient argument does not apply.
 structural check that the graph admits the symmetric free-state argument of
 [equilibrium propagation](https://arxiv.org/abs/1602.05179). It is separate from the
 contraction certificate. Repeated or out-of-range `fixed_inputs` and a negative or nonfinite
-`tolerance` raise `ValueError`.
-An apical graph also raises `ValueError`: raw reciprocal symmetry does not remove its
-state-dependent normalization. Its held-gain learning rule remains an implemented local
-contrast, whose usefulness is measured by the depth benchmarks; neither its structural
-symmetry nor residual qualification gives it this plain-sum gradient theorem.
+`tolerance` raise `ValueError`. An apical graph also raises `ValueError`, because its
+state-dependent normalization falls outside the argument whatever its reciprocal symmetry. Its
+held-gain rule is a local contrast without this gradient theorem; the
+[depth benchmark](../benchmarks/depth/README.md) measures its usefulness.
 
 | Field | Meaning |
 | --- | --- |
@@ -654,19 +656,19 @@ symmetry nor residual qualification gives it this plain-sum gradient theorem.
 Source inputs settle to potentials set by their fixed drive and bias, and their projections act
 as external fields on the free neurons without reverse edges. Keep them unchanged and unnudged
 between phases. Efficacy tying alone does not give effective symmetry when contact counts or
-gains differ. A compatible structure alone does not make the contrast a gradient: phases must
-converge on a smooth stable branch, and finite beta keeps an estimation bias. Convert the raw
-contrast as in [learning](#5-why-the-contrast-is-a-gradient);
+gains differ. For the contrast to be a gradient, phases must also converge on a smooth stable
+branch, and finite beta keeps an estimation bias. Convert the raw contrast as in
+[learning](#5-why-the-contrast-is-a-gradient);
 [`tests/test_equilibrium.py`](../tests/test_equilibrium.py) checks it against finite differences
 and [`tests/test_runtime_checks.py`](../tests/test_runtime_checks.py) the refusals.
 
 ### Related results and their assumptions
 
-Keep five questions separate: does an equilibrium exist, is it unique, does this iteration reach
-it, does the continuing life preserve useful context, does its behaviour succeed. Neither the
-certificate nor residual qualification answers the last two. Agreement means satisfying
-the `F_c` relations; neurons need not share an activity. Check each result below against the
-executed update before reusing it.
+Keep five questions separate: whether an equilibrium exists, whether it is unique, whether
+this iteration reaches it, whether the continuing life preserves useful context, and whether
+its behaviour succeeds. Neither the certificate nor residual qualification answers the last
+two. Agreement means satisfying the `F_c` relations; neurons need not share an activity. Check
+each result below against the executed update before reusing it.
 
 [Dijkstra (1974)](https://www.cs.utexas.edu/~EWD/transcriptions/EWD04xx/EWD426.html) defines
 self-stabilization: legitimate states, moves that preserve them, and specific local algorithms

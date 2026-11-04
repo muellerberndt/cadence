@@ -9,17 +9,17 @@ Most applications need only one of these choices:
 
 | The task needs | Start with |
 | --- | --- |
-| The interpretation from the previous moment | Nothing extra. The working trace is already on. |
-| A remembered action and its measured outcome in the same situation | Nothing extra. The associative store is already on. |
+| The interpretation from the previous moment | Nothing extra. The working trace is on by default. |
+| A remembered action and its measured outcome in the same situation | Nothing extra. The associative store is on by default. |
 | One-shot situations, demonstrations or reward replay | `memory_choice=True` |
 | A relevant recent event and what followed it | `learned_code=units, attention=True` |
 | Several witnessed facts in one answer | `learned_code=units, attention=True, recall_heads=k` |
 | A recalled token as the answer, tokens never taught as answers included | `recall=True, recall_copy=2.0, recall_tokens=...` ([the copy pathway](#the-copy-pathway-opt-in)) |
 | What it did itself, where the observations are alike | `recall=True, recall_action=True` ([its own actions](#its-own-actions-in-the-slots-opt-in)) |
 | Both episodic voting and contextual retrieval | Use `memory_choice=True` and `attention=True` together. |
-| A memory for a brain already trained without it | `brain.grow(recall=True)` ([grow and combine brains](grow.md)) |
+| A memory for a brain trained without it | `brain.grow(recall=True)` ([grow and combine brains](grow.md)) |
 
-If the present observation already contains everything needed for the action, keep the
+If the present observation contains everything needed for the action, keep the
 opt-in memories off. Add one mechanism at a time and compare it with the same mechanism
 silenced or erased.
 
@@ -42,27 +42,29 @@ assert episodic.context_memory is not None
 assert both.recall is not None and both.context_memory is not None
 ```
 
-`attention=True` is not another name for episodic memory. It configures Recall: the learned
-code supplies a compact, meaning-sensitive part of the key, Recall selects a weighted past
-event and successor, and the neural equilibrium interprets that read. Episodic memory keeps
-action values for places and temporal contexts and adds their vote to the action choice. Use
-both when the task needs both kinds of evidence; compare each one alone to learn which memory
-did the work.
+`attention=True` configures Recall: the learned code supplies a compact, meaning-sensitive
+part of the key, Recall selects a weighted past event and successor, and the neural
+equilibrium interprets that read. Episodic memory keeps action values for places and temporal
+contexts and adds their vote to the action choice. Use both when the task needs both kinds of
+evidence, and compare each one alone to learn which memory did the work.
 
-Every memory ultimately changes the answer through the same composed brain. The working
-trace, efference copy, heard history and Recall drive neural regions read by the association
-region. The associative store drives motor neurons. Episodic memory adds a vote to the motor
-readout. The resulting answer still has to [qualify](start.md#qualification-and-refusal).
+Every memory changes the answer through the same composed brain. The working trace, efference
+copy, heard history and Recall drive neural regions read by the association region. The
+associative store drives motor neurons. Episodic memory adds a vote to the motor readout. The
+resulting answer has to [qualify](start.md#qualification-and-refusal).
 
-Memories have three lifetimes. Per stream, cleared by `reset()` and by an ended episode: the
-working trace, efference copy, heard history, recall slots and actor eligibility. Across
-resets: the associative and episodic records and the recall address map. Permanent until
-learning changes them: the learned weights. The per-stream traces advance at every moment;
-under [`live`](start.md#routine-and-repair-live) a calm brain reads its records and
-weights and changes neither, and an aroused one learns and writes. `reset()` keeps the
-arousal state as it is, the income and error references that decide when a `live` brain
-wakes among it, and `reset(keep=())` clears them
-([reset and save](start.md#reset-and-save)).
+Memories have three lifetimes:
+
+- **Per stream**, cleared by `reset()` and by an ended episode: the working trace, efference
+  copy, heard history, recall slots and actor eligibility.
+- **Across resets**: the associative and episodic records and the recall address map.
+- **Permanent until learning changes them**: the learned weights.
+
+The per-stream traces advance at every moment. Under
+[`live`](start.md#routine-and-repair-live) a calm brain reads its records and weights and
+changes neither; an aroused one learns and writes. `reset()` keeps the arousal state,
+including the income and error references that decide when a `live` brain wakes;
+`reset(keep=())` clears them ([reset and save](start.md#reset-and-save)).
 
 <a id="memory-in-the-composed-brain"></a>
 
@@ -90,18 +92,19 @@ stopped.
 a settle and writes them after it: `working_memory`, `efference`, `history`, `recall`,
 `hippocampus` and, with `memory_choice=True`, `episodic` (the episodic records: their vote,
 the temporal context and the paths a reward is replayed along); `brain.memories["recall"]` is
-`brain.recall`. Every member keeps one contract
-(`cadence.memories`): `stimulus(drive, moment)` adds what it holds to the drive of a moment,
-`branch()` gives an imagined branch a private copy, `reset(batch, rows=None)` and
-`keep(rows)` act on streams (`Brain.reset` begins every stream afresh so, the stores keeping
-their records), and `to_dict()` and `arrays()` are what a checkpoint keeps of it, under
-`memories/<name>/`.
+`brain.recall`. Every member keeps one contract (`cadence.memories`):
+
+- `stimulus(drive, moment)` adds what it holds to the drive of a moment;
+- `branch()` gives an imagined branch a private copy;
+- `reset(batch, rows=None)` and `keep(rows)` act on streams (`Brain.reset` begins every stream
+  afresh this way, and the stores keep their records);
+- `to_dict()` and `arrays()` are what a checkpoint keeps of it, under `memories/<name>/`.
 
 Stores used directly, outside a composed brain (`FastSynapses`, `PatternSeparator`,
 `SynapticMemory`, the `Trace` family), are listed
 [at the end](#standalone-memory-stores).
 
-Where a task's reading sits, each beside the mechanism it measures:
+Which memory serves a task, with the section that holds its reading:
 
 | The task | Memory | The reading |
 | --- | --- | --- |
@@ -152,19 +155,20 @@ teach with `learning_surprise=True` so lessons touch only the moments answered w
 ([learning](teach.md#lessons-only-where-the-answer-differs)). The synapses that read the
 trace learn only where the outcome or the lesson depends on something the brain saw earlier,
 so the task has to make the past matter; distinct cues, such as one marking new information
-and one marking noise, help. The trace costs 64 neurons
-and 4,096 synapses at the founder. Two pasts that settled alike are one context to it, and a
-distractor that looks like evidence can overwrite the context of a small brain.
+and one marking noise, help. The trace costs 64 neurons and 4,096 synapses at the founder. Two
+pasts that settled alike are one context to it, and a distractor that looks like evidence can
+overwrite the context of a small brain.
 
-In the delayed-response test ([`tests/test_context_defaults.py`](../tests/test_context_defaults.py))
-seeds 8 to 13 carry a cue across a short delay to its reward at 0.96 to 1.00. Where the history
-does not matter the founder answers from the present: the continuing contextual bandit of the
-same test with `actor_gamma=0.0, actor_lam=0.0`, seeds 0 to 5, reads 0.23 to 1.00, mean 0.60,
-against chance 0.25, and the actor has to learn the trace away; `working_memory_amplitude=0.0`
-is the control. Holding one cue and replacing it with a later one over a delay is not a measured
-memory: in the [recall benchmark](../benchmarks/recall/README.md) a tuned working-trace recipe
-without the associative store fails on fresh founders, a loop strong enough to hold a cue
-resisting the next write; the recall memory and the heard history are not measured there.
+What it serves, from [`tests/test_context_defaults.py`](../tests/test_context_defaults.py):
+
+- **A cue carried across a short delay to its reward.** The founder trace does it (0.96 to 1.00
+  in the delayed-response test).
+- **Answers from the present alone.** The actor has to learn the trace away (a continuing
+  contextual bandit with `actor_gamma=0.0, actor_lam=0.0` reads mean 0.60 against chance 0.25).
+  `working_memory_amplitude=0.0` is the control.
+- **One cue held and replaced by a later one over a delay.** The working trace alone does not
+  serve it: a loop strong enough to hold a cue resists the next write
+  ([recall benchmark](../benchmarks/recall/README.md)).
 
 ## Associative store (the hippocampus)
 
@@ -214,15 +218,16 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
 `memory_choice=True` the same names set both episodic stores, and `compose` starts
 `memory_rate` at 0.5.
 
-In the [reversal chamber](../benchmarks/reversal/README.md) (`modules=(32,)`,
-`working_memory_amplitude=0.3, scales={"trace": 12.0}, working_memory_decay=0.2,
-consolidation=0.25`, actor rate 0.1 with bias 0.01) the memory alone learns which action pays
-at 1.00 from 300 exposures against the graph alone at 0.60 to 0.80 under rule A; at the
-composed founders the chamber stays at chance (`defaults` 0.48 to 0.53). Noisy or signed pay
-overwrites a one-shot record: in the [competing ring](../benchmarks/competing/README.md)
-`memory_rate=0.2` acquires as at 1.0 and takes about 0.10 off the loss over the ring, most of
-the loss is left, and a store frozen at the ring's door holds the skill and holds the competing
-one less.
+- **Which action pays, with quick reversal.** The store learns it in one stream faster than the
+  graph: in the [reversal chamber](../benchmarks/reversal/README.md), at that chamber's operating
+  point (`modules=(32,)`, `working_memory_amplitude=0.3, scales={"trace": 12.0},
+  working_memory_decay=0.2, consolidation=0.25`, actor rate 0.1 with bias 0.01), the store
+  alone reads 1.00 after 300 exposures against 0.60 to 0.80 for the graph alone. At the composed
+  founders the chamber stays at chance.
+- **Noisy or signed pay.** `memory_rate=1.0` keeps only the last outcome, so one bad outcome
+  overwrites the record. Use `memory_rate=0.2`; in the
+  [competing ring](../benchmarks/competing/README.md) it acquires as fast and takes about 0.10
+  off the loss, most of which remains.
 
 ## Learned weights and eligibility
 
@@ -252,24 +257,25 @@ actor.reset()
 assert actor.basal_ganglia.trace is None               # a new stream begins without eligibility
 ```
 
-In the [key-door chamber](../benchmarks/keydoor/README.md) (`modules=(32,)` at the reversal
-chamber's operating point, scale 12.0, decay 0.2) the eligibility credits an action paid a few
-moments later: fed 0.92 at delays 2 and 5, and `actor_lam=0` falls to 0.53 at delay 5; at delay
-10 it reads 0.49 against a tabular learner's 0.83 to 0.90. A multi-step chain whose stage is
-observed is learned by the weights and the store together: in the
-[chain chamber](../benchmarks/chain/README.md), with pay at each correct step, 204 greedy
-completions per thousand moments against tabular 250, and with pay at the end only 42, uniform
-random's rate; one-stream reward learning is slow (the reversal chamber above). A state the
-observation does not show is held by no memory: in the hidden chain no arm beats the memoryless
-62 ([what breaks a chain](reward.md#what-breaks-a-chain)); supply the state as an observation.
+What the weights and eligibility serve:
+
+- **An action paid a few moments later.** The eligibility credits it: in the
+  [key-door chamber](../benchmarks/keydoor/README.md), at the reversal chamber's operating
+  point, the creature feeds at 0.92 at delays 2 and 5, and `actor_lam=0` falls to 0.53 at
+  delay 5. At delay 10 it reads 0.49 against a tabular learner's 0.83 to 0.90.
+- **A multi-step chain whose stage is observed.** The weights and the store learn it together
+  when each correct step pays: in the [chain chamber](../benchmarks/chain/README.md), 204
+  greedy completions per thousand moments against tabular 250. With pay at the end only it
+  reads 42, uniform random's rate; turn on [episodic memory](#when-to-turn-it-on) there.
+- **A state the observation does not show.** No memory holds it
+  ([what breaks a chain](reward.md#what-breaks-a-chain)); supply the state as an observation.
 
 ## Episodic memory: what happened in this situation before
 
 Synapses learn slowly; an animal also learns in one go, from a place where food was found once
 or a route a parent showed once. `Brain.compose(..., memory_choice=True)` adds an episodic
 memory: records of what happened in a situation, which vote in every choice beside the slow
-cortex. It is opt-in ([when to turn it on](#when-to-turn-it-on)); [the inventory](#complete-memory-inventory)
-places it among the brain's other memories.
+cortex ([when to turn it on](#when-to-turn-it-on)).
 
 ### How it works
 
@@ -295,12 +301,12 @@ observation now ─► settle ─► motor readout ─────────�
   punishment, the end of an attempt (`done`), a surprise that woke a calm `live` brain, or an
   outcome marked with a positive `salience=`. A zero outcome in the middle of an attempt
   writes nothing, unless `memory_extinction` extinguishes a record the action earned by its
-  own payments in this place (the settings below). A demonstration (`teacher=`) is recorded for its situation as if the shown
-  action had paid 1.0. `done=True` makes the last outcome known and starts
-  the next attempt with a fresh temporal context and path.
+  own payments in this place (the settings below). A demonstration (`teacher=`) is recorded
+  for its situation as if the shown action had paid 1.0. `done=True` makes the last outcome
+  known and starts the next attempt with a fresh temporal context and path.
 - **Replay.** A reward replays the stream's recent path backwards, up to 8 decisions, each
-  credited up to the reward discounted by the actor's `gamma` per step.
-  Replay only adds credit. Its rules:
+  credited up to the reward discounted by the actor's `gamma` per step. Replay only adds
+  credit. Its rules:
   - the path keeps one decision per situation, the one that left it; a decision whose own
     outcome was a reward or a punishment stays on the path even in an unchanged situation;
   - replay runs through decisions whose outcome was nothing and stops at the last known
@@ -316,9 +322,9 @@ observation now ─► settle ─► motor readout ─────────�
   what paid consolidates into its synapses over time.
 - **Two speeds.** Each store is a [`SynapticMemory`](#associative-store-the-hippocampus).
   A write corrects the stream's record halfway at once (`memory_rate` 0.5), a correction that
-  fades by 0.9 per later write. The record all streams share, which `reset` keeps,
-  moves by `consolidation`, faster with a supplied `salience=`. One outcome is remembered at
-  once, repetition makes it lasting, and one misleading outcome cannot erase it.
+  fades by 0.9 per later write. The record all streams share, which `reset` keeps, moves by
+  `consolidation`, faster with a supplied `salience=`. One outcome is remembered at once,
+  repetition makes it lasting, and one misleading outcome cannot erase it.
 
 ### Turning it on
 
@@ -340,15 +346,15 @@ same names, but its defaults are 0 (and `memory_rate` 1.0), so name every settin
 
 ### Episodic settings
 
-All of these are construction settings: pass them at construction; `retune` refuses them.
+All of these are construction settings; `retune` refuses them.
 
 | Setting | With `memory_choice=True` | Change it when |
 | --- | --- | --- |
 | `memory_choice` | `True` (founder `False`) | `False` keeps the [associative store](#associative-store-the-hippocampus), keyed by the senses and read into the motor drive |
 | `memory_context` | `0.5` | Raise toward 1 (exclusive) when the answer depends on what came long before; lower when history does not matter; 0 keeps the place records alone and builds no `context_memory` |
 | `memory_expansion` | `1024` (0 with a fixed code) | Raise when many situations must be told apart; 0 uses the key unseparated. With `code=units` it is set to 0 and a nonzero value is refused |
-| `memory_context_hold` | `None` | `"unchanged"` keys a decision taken on the observation of the stream's previous decision as if that decision had not been taken, whatever its outcome (the replay path drops such a decision only when its outcome was nothing); use it where a miss leaves the observation as it was and the stages look alike. It takes the wrong decision out of a decision that changes nothing visible as well, so it hides a right action that leaves the observation unchanged. `"punished"` takes a decision whose outcome was below zero, in the middle of an attempt, back out of the context; it needs a world that charges for misses. A moment sensed without a decision (`wait`) ends the run of decisions the hold keys out, and an imagined branch keys its decisions as the stream does ([readings](#stages-that-look-alike-the-context-hold)) |
-| `memory_extinction` | `0` (off) | Set it (0.5) when a paid action can stop paying without a punishment, a reversal whose failures pay 0. A zero outcome then writes a learned zero for the chosen action where the records' vote for it and its direct payment in this place both reach the setting. Only a known outcome with a reward is a direct payment: replayed and demonstrated credit is never extinguished. The rule is Sean McClane's ([#210](https://github.com/muellerberndt/cadence/issues/210); [readings](#a-paid-action-that-stops-paying-extinction)) |
+| `memory_context_hold` | `None` | `"unchanged"` for stages that look alike where a miss leaves the observation as it was; `"punished"` where the world charges for misses ([the context hold](#stages-that-look-alike-the-context-hold)) |
+| `memory_extinction` | `0` (off) | Set it (0.5) when a paid action can stop paying without a punishment, a reversal whose failures pay 0 ([extinction](#a-paid-action-that-stops-paying-extinction)). The rule is Sean McClane's |
 | `memory_fan_in` | `0` (dense) | Above 0 each separation cell reads that many random key values; use 32 for keys wider than 256 values. Needs `memory_expansion` and at most the key width; refused with `code=units` |
 
 A dense separation holds `width x 1,024` floats per store (105 MB at 12,824 inputs); with
@@ -357,9 +363,9 @@ A dense separation holds `width x 1,024` floats per store (105 MB at 12,824 inpu
 
 `memory_rate` (0.5 here, 1.0 without `memory_choice`), `memory_amplitude` and
 `consolidation` belong to the [associative store](#associative-store-the-hippocampus);
-`retune` changes them for both stores together. The constants of both stores since 0.93.0: a
-stream's record fades by 0.9 per later write, a reward replays up to 8 decisions, a
-demonstration is recorded at 1.0, and the separation keeps 24 active cells per key.
+`retune` changes them for both stores together. Constants of both stores: a stream's record
+fades by 0.9 per later write, a reward replays up to 8 decisions, a demonstration is recorded
+at 1.0, and the separation keeps 24 active cells per key.
 
 ### One choice for acting, teaching and imagining
 
@@ -395,51 +401,58 @@ temporal context recalling a cue that is gone) and
 
 ### A paid action that stops paying: extinction
 
-Without `memory_extinction`, a record that paid is not extinguished by failures that pay
-nothing: while already aroused, an unmarked intermediate zero outcome writes nothing, and replay
-only adds credit. In a continuing life where a once-paid action stops paying and its failures
-pay 0, its record keeps voting for it and the new action is often not learned: in a two-armed
-bandit through `live` whose paying arm moved ([extinction](../benchmarks/extinction/README.md)),
-5 of 12 lives learned the new arm on the development seeds and 3 of 12 on the confirmation
-seeds, against 12 of 12 when failures cost 1. That one-step result does not establish a remedy
-for chains learned from reward alone: any nonzero intermediate reward stops replay at that
-decision, and even tiny miss penalties harmed acquisition in the
-[reported chain comparison](https://github.com/muellerberndt/cadence/issues/210#issuecomment-6300283848).
-`step(..., salience=...)` and `live(..., salience=...)` can mark an actual zero outcome as known
-so the records write it, while leaving its reward at zero for replay. `live` keeps its arousal
-gate: a mark alone does not wake it or permit a calm write. The mark belongs to the preceding
-action's actual outcome, including after `wait`; it is checked before feedback changes anything.
-In the `step`-based
-[follow-up comparison](https://github.com/muellerberndt/cadence/issues/210#issuecomment-6320661291),
-marking misses recovered much of the penalty's harm but still lost against unmarked zero
-outcomes. Compare with `memory_choice=False` on the same task.
+Set `memory_extinction=0.5` when a once-paid action can stop paying and its failures pay 0.
+Without it such a record keeps voting for the old action: an unmarked zero outcome in the
+middle of an attempt writes nothing, and replay only adds credit.
 
-`memory_extinction=0.5` extinguishes such a record: in the same bandit
-([benchmarks/extinction](../benchmarks/extinction/README.md)), 11 of 12 lives learned the new arm
-against 5 of 12 without it on the development seeds and 11 against 3 on the confirmation seeds
-([#210](https://github.com/muellerberndt/cadence/issues/210)). It reads the place: where one
-observation stands for several situations, an action paid in one of them meets zeros in the
-others, and its record is extinguished there as well. A confirmation panel on fresh seeds found
-every reward chamber's gate where it stands without the rule (the odour nursery, delayed
-response, the contextual bandit and the key-door chamber of
-[`benchmarks/credit/preservation.py`](../benchmarks/credit/README.md), and the Stone Age
-crafting chain and V5, taught recall and the songs of the
-[Stone Age instrument](https://github.com/muellerberndt/cadence-stone-age)). Its costs: the
-return to the first arm after a second reversal is slower (median 15 trials against 6 on the
-confirmation seeds), and in the instrument's continuing chain the rule changes 7 of 10 seeds,
-its greedy chain passing on 10 of 10 against 7 with one seed losing it and the income 1.1
-lower.
+With the setting, a zero outcome writes a learned zero for the chosen action where the
+records' vote for it and its direct payment in this place both reach the setting. Only a known
+outcome with a reward is a direct payment; replayed and demonstrated credit is never
+extinguished. The rule reads the place: where one observation stands for several situations,
+an action paid in one of them meets zeros in the others and is extinguished there as well.
+
+In a two-armed bandit through `live` whose paying arm moves
+([extinction](../benchmarks/extinction/README.md)), 11 of 12 lives learn the new arm with the
+rule against 3 to 5 of 12 without it. It leaves the reward chambers of the
+[preservation panel](../benchmarks/credit/README.md) at their gates. Its cost: the return to
+the first arm after a second reversal is slower (median 15 trials against 6).
+
+Other remedies and their limits:
+
+- **A cost for misses.** Failures that cost 1 teach the bandit's new arm in 12 of 12 lives. In
+  a chain learned from reward alone a miss penalty harms acquisition, since any nonzero
+  intermediate reward stops replay at that decision.
+- **A salience mark.** `step(..., salience=...)` and `live(..., salience=...)` mark an actual
+  zero outcome as known, so the records write it while its reward stays zero for replay. The
+  mark belongs to the preceding action's actual outcome, including after `wait`, and is checked
+  before feedback changes anything. `live` keeps its arousal gate: a mark alone does not wake
+  it or permit a calm write.
+
+Compare with `memory_choice=False` on the same task.
 
 ### Stages that look alike: the context hold
 
-Will Glynn measured both holds on his Stone Age chains
-([#202](https://github.com/muellerberndt/cadence/issues/202);
-[`benchmarks/context_key`](../benchmarks/context_key/README.md)). On those chains, 48 fresh
-seeds per signal: `"unchanged"` passes the ambiguous chain cleanly in 35 of 96 lives against 6
-(sampled success .77 against .50) and keeps the fully observed chain (40 against 43 of 48,
-sampled .92 against .94); on the chain whose right action changes nothing visible it costs (0
-against 9 clean passes, sampled .32 against .44). `"punished"` with misses costing .05 passes
-the invisible-action chain in 20 of 48 lives against 13 for the cost alone.
+`memory_context_hold` changes which temporal context keys a decision:
+
+- **`"unchanged"`** keys a decision taken on the observation of the stream's previous decision
+  as if that decision had not been taken, whatever its outcome (the replay path drops such a
+  decision only when its outcome was nothing). Use it where a miss leaves the observation as it
+  was and the stages look alike. It also takes out a decision that changes nothing visible, so
+  it hides a right action that leaves the observation unchanged.
+- **`"punished"`** takes a decision whose outcome was below zero, in the middle of an attempt,
+  back out of the context. It needs a world that charges for misses.
+
+A moment sensed without a decision (`wait`) ends the run of decisions the hold keys out, and an
+imagined branch keys its decisions as the stream does.
+
+On Will Glynn's Stone Age chains ([`benchmarks/context_key`](../benchmarks/context_key/README.md)):
+
+| Chain | Arm | Clean greedy passes | Sampled success |
+| --- | --- | --- | --- |
+| stages look alike, a miss changes nothing | `"unchanged"` against none | 35 of 96 against 6 | .77 against .50 |
+| every stage observed | `"unchanged"` against none | 40 of 48 against 43 | .92 against .94 |
+| the right action changes nothing visible | `"unchanged"` against none | 0 of 48 against 9 | .32 against .44 |
+| the right action changes nothing visible, misses cost .05 | `"punished"` against the cost alone | 20 of 48 against 13 | |
 
 ### Episodic limits
 
@@ -462,10 +475,9 @@ the invisible-action chain in 20 of 48 lives against 13 for the cost alone.
 `Brain.compose(..., recall=True)` keeps each stream's recent moments as slots and gives one
 back when the present asks for it. Use it when a moment heard once has to return by its
 content (a name stated with a value, asked for later), or when the brain needs what followed
-an earlier moment that matches the present. [The inventory](#complete-memory-inventory) compares it
-with the other memories; the founder `recall=False` is the control. Each slot holds a key
-(the event as heard), a value (the event) and a next (the value of the moment that
-followed). Two source regions, `recall` and `next`, carry the recalled value and next into
+an earlier moment that matches the present. The founder `recall=False` is the control. Each
+slot holds a key (the event as heard), a value (the event) and a next (the value of the moment
+that followed). Two source regions, `recall` and `next`, carry the recalled value and next into
 the association region.
 
 Every head also reads how long ago each slot was written. This position term is on by default:
@@ -503,16 +515,15 @@ q = x + x W_x + c W_c + b
 p = softmax(q . K / temperature - recency * age + a(x, c)[bucket(age)])
 ```
 
-`x` is the observation as the memory hears it, `c` the settled association activity of
-the moment before, `K` the stored keys, and `W_x`,
-`W_c`, `b` a learned map that starts at zero, so before any lesson the address is the key
-and a name finds the moment it was stated in. `a` is the
-[position term](#position-how-long-ago-a-moment-happened), also zero until a lesson moves it.
-`p` is kept in `brain.recall.attended_heads`, one array per head. The
-`recall` region is driven at
-`amplitude * sum p V` and the `next` region at `amplitude * sum p N`, held through the settle as a sensory drive is: the settle answers
-on the mixture the address chose and cannot revise the choice. Both regions reach the
-association region through one-way plastic synapses of initial magnitude 1.2 (a constant).
+`x` is the observation as the memory hears it, `c` the settled association activity of the
+moment before, `K` the stored keys, and `W_x`, `W_c`, `b` a learned map that starts at zero, so
+before any lesson the address is the key and a name finds the moment it was stated in. `a` is
+the [position term](#position-how-long-ago-a-moment-happened), also zero until a lesson moves
+it. `p` is kept in `brain.recall.attended_heads`, one array per head. The `recall` region is
+driven at `amplitude * sum p V` and the `next` region at `amplitude * sum p N`, held through
+the settle as a sensory drive is: the settle answers on the mixture the address chose and
+cannot revise the choice. Both regions reach the association region through one-way plastic
+synapses of initial magnitude 1.2 (a constant).
 
 A number `recall_null` adds a slot of logit `null / temperature` that reads nothing, so a
 moment that matches no slot recalls little.
@@ -536,12 +547,11 @@ on `z = [x, c, 1]`. The report gives `address_rows`, `address_error` and `addres
 At the founder `recall_address_reward=0` rewards leave the map as it is. Above zero, each
 sampled act keeps the step the address lesson would take on the rows of the event heard, were
 its action a lesson's label, as the map's eligibility; the rows of the cortex of the moment
-before and the bias, which every moment's address shares, learn from lessons alone (stepped by
-reward, where one question had learned to look carried another's read with it; see
-[position](#position-how-long-ago-a-moment-happened)). The actor holds the eligibility in a
-trace of its own (decaying by `gamma * lam`, see [reward](reward.md)), and each outcome steps
-the map by `recall_address_reward` times the dopamine times that trace; `learn` reports it as
-`address_reward_step`. At 1.0 a unit of dopamine moves the event's rows by one lesson's step.
+before and the bias, which every moment's address shares, learn from lessons alone
+([position](#position-how-long-ago-a-moment-happened) gives the reason). The actor holds the
+eligibility in a trace of its own (decaying by `gamma * lam`, see [reward](reward.md)), and
+each outcome steps the map by `recall_address_reward` times the dopamine times that trace;
+`learn` reports it as `address_reward_step`. At 1.0 a unit of dopamine moves the event's rows by one lesson's step.
 `retune` refuses a change of `recall_address` or `recall_address_reward` while a sampled
 action's address contrast is pending.
 
@@ -562,11 +572,11 @@ the next port then has no route to the start of an episode. With the option each
 begins holds a boundary slot first, a silent moment of zero key and zero value whose next the
 first event teaches, so both routes exist for every position. A stream begins when the memory
 empties its streams, when some of them are reset (their boundary takes the latest slot, the
-moment the others wrote last) and when every stream ends an episode with its slots kept. A stream
-that ends its episode alone begins the next one without a boundary, and a memory of one slot
-(`recall_capacity=1`) holds none. The boundary is no written
-moment, and its logit is its age's alone: a cue finds it through the position term, or with an
-address that points away from every stored key.
+moment the others wrote last) and when every stream ends an episode with its slots kept. A
+stream that ends its episode alone begins the next one without a boundary, and a memory of one
+slot (`recall_capacity=1`) holds none. The boundary is no written moment, and its logit is its
+age's alone: a cue finds it through the position term, or with an address that points away from
+every stored key.
 
 The founder key is the present event alone, so where an event recurs with different
 continuations the read returns a mixture of every occurrence's successor. One construction
@@ -586,8 +596,7 @@ eligibility take that width; values, nexts and the two regions keep the value wi
 Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is
 refused. Retune genes change in a life through `brain.retune`; construction genes are fixed
 when the brain is built. The options from `recall_null` on are described and saved only
-where they differ from their founder. A saved brain keeps its genes, slots and address
-map.
+where they differ from their founder. A saved brain keeps its genes, slots and address map.
 
 | Setting | Founder | When | What it sets |
 | --- | --- | --- | --- |
@@ -604,7 +613,7 @@ map.
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window` | `1` | construction | Window of the last k events |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
-| `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own as before 0.91.3 (a file of several heads saved before 0.91.3 loads with it) |
+| `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
@@ -620,28 +629,14 @@ The [API reference](api.md#recall-memory-genes) gives the `Recall` class signatu
 
 ### Removed in this version
 
-A retired setting is refused by name at `compose`, `retune` and on load with one sentence that
-names the release that retired it and what the memory does instead (`Recall.RETIRED` holds the
-table, `Recall.removed(name)` gives the sentence). A saved brain loads where it carries the one
-value the memory keeps for the setting and is refused with the same sentence otherwise. 0.93.0
-retired four:
-
-| Setting | The sentence |
-| --- | --- |
-| `recall_address_step` | `recall_address_step was retired in 0.93.0: the address lesson steps toward the named keys, as it did at 'lms'` |
-| `recall_heard` | `recall_heard was retired in 0.93.0: the present event weighs 1.0 in its key and its address, the one weight ever read` (`Recall.heard`) |
-| `recall_address_temperature` | `recall_address_temperature was retired in 0.93.0: the address lesson weighs the slots' scores at the temperature 0.1, the one value ever read` (`Recall.address_temperature`) |
-| `recall_window_decay` | `recall_window_decay was retired in 0.93.0: the window's earlier events enter the key at their full weight (1.0), the one value ever read` (`Recall.window_decay`) |
-
-A checkpoint of 0.92.1 still carries `heard` at 1.0 and `address_temperature` at 0.1 and loads;
-another value, or a `window_decay` other than 1.0, is refused by name. The names 0.85.0
-retired are refused with a sentence naming 0.85.0 and cadence-net 0.84.3, the release that
-takes them; their readings are in the CHANGELOG's 0.85.0 section.
+A retired setting is refused by name at `compose`, `retune` and on load, with a sentence naming
+what the memory does instead (`Recall.RETIRED` lists them, `Recall.removed(name)` gives the
+sentence; the [CHANGELOG](../CHANGELOG.md) records each).
 
 ### Single-head learned-code attention (opt-in)
 
-`attention=True` is the shortest supported path from learned meanings to contextual recall.
-It combines two existing mechanisms rather than adding a separate attention network:
+`attention=True` is the shortest supported path from learned meanings to contextual recall. It
+combines the learned code and the recall memory:
 
 ```text
 observation -> learned meaning code -> two-moment Recall lookup
@@ -666,36 +661,26 @@ assert attention_brain.describe()["layout"]["composition"]["attention"]
 ```
 
 The preset supplies `recall=True`, `recall_window=2`, `recall_next=True`,
-`recall_address=0.0`, `recall_recency=0.0` and `recall_temperature=0.1` only where they were
-not explicit. A wider window and other `recall_*` genes remain available to experiments;
-the window must be at least two and the successor read must stay enabled. The learned-code
-width remains explicit: eight is the capacity tested by the small benchmark, not a general
-default for other observations or worlds.
+`recall_address=0.0`, `recall_recency=0.0` and `recall_temperature=0.1` where they are not
+given. Other `recall_*` genes can be set beside it; the window must be at least two and the
+successor read must stay on. Choose the learned-code width for the task: eight is the capacity
+the small benchmark tests.
 
-The zero address gain is deliberate. The **meaning code is learned**, but the extra map that
-would transform the Recall query is not used by this recipe. Selection comes from similarity
-between learned-code windows. This is the smallest mechanism that passed the contextual
-choice controls. The [position term](#position-how-long-ago-a-moment-happened) is built here as
-everywhere and learns whatever the address gain is, so after the first lesson the read also
-weighs each slot's age. The contextual-choice and held-heads receipts were measured with
-`recall_position=0`; at the founder position the same protocols passed every gate on the
-founders run (contextual choice: 0 and 1; held heads: report 0 and 2, flee 0 and 1).
+The address map is frozen (`recall_address=0.0`), so selection comes from similarity between
+learned-code windows. The [position term](#position-how-long-ago-a-moment-happened) is built
+and learns as everywhere, so after the first lesson the read also weighs each slot's age.
+`attention` neither enables nor disables the associative store or `memory_choice=True`.
 
-In the [contextual-choice benchmark](../benchmarks/attention/contextual_choice.py), every
-final observation is the same literal ASK. Two stored episodes differ only in their earlier
-context and successor. Four founders each answer 32/32 intact queries; present-only and
-memory-off controls answer 16/32, as does uniform random. Erasing the relevant ASK record
-breaks the answer, while erasing the other record leaves 32/32 correct, with no refusals.
-The assay disables `episodic` to isolate this reader. Applications may keep the default
-associative store or combine it with `memory_choice=True`; `attention` itself does not enable
-or disable either one.
+In the [contextual-choice benchmark](../benchmarks/attention/contextual_choice.py) every final
+observation is the same literal ASK, and two stored episodes differ only in their earlier
+context and successor. Four founders answer 32 of 32 queries; present-only and memory-off
+controls answer 16 of 32, as does uniform random. Erasing the relevant record breaks the
+answer; erasing the other leaves it intact.
 
-This is one held-read head. It selects once before the neural settle, then the shared
-equilibrium interprets the read. The current interpretation cannot revise the query while
-that settle forms. The benchmark therefore establishes a bounded contextual lookup, not
-within-settle relevance, a Stone Age advantage or a general continuing-world benefit. Keep it
-opt-in and compare it with attention off, episodic memory alone and uniform random on the task
-being claimed. Several facts in one answer take [several heads](#several-heads-opt-in).
+The head selects once before the neural settle, and the equilibrium interprets the read; the
+interpretation cannot revise the query while that settle forms. The benchmark establishes a
+bounded contextual lookup. Compare it on the task with attention off, episodic memory alone and
+uniform random. Several facts in one answer take [several heads](#several-heads-opt-in).
 
 ### Several heads (opt-in)
 
@@ -727,42 +712,33 @@ head 1 the best of what head 0 left.
 
 The address lesson after a teaching step reads the association's movement back through each
 head's own synapses, so each head's map moves toward the records whose values would have
-helped through that head, among the shares it reads with; the movement is what the lesson
-still asks for once the heads have read. Reward eligibility at `recall_address_reward > 0`
-keeps one block per head. One bank is written per moment, and the heads read it before the
-settle and hold their reads through it, as one head does. With several heads the recipe
+helped through that head, among the shares it reads with. Reward trains the maps only at
+`recall_address_reward` above zero, with one eligibility block per head; in a life of rewards
+alone at the founder 0 the maps stay at zero. One bank is written per moment, and the heads
+read it before the settle and hold their reads through it. With several heads the recipe
 learns the addresses (`recall_address=0.01`) at the Recall founder's
 `recall_temperature=0.25`.
 
-Without competition (`recall_compete=False`, which `retune` changes in a living brain) every
-head reads on its own. Their maps start at zero, so every head then reads exactly what head 0
-read, and the lesson's prior is the head's own attention: a sharp read (most of the attention
-on one slot) gives it no other slot to move toward, and the heads stay on the same moment, at
-`recall_address=0` for good. On the stream of
-[the heads' tests](../tests/test_recall_heads.py) two heads without competition read the
-slot they share 1.83 times in one moment; competing, no slot more than once.
+`recall_compete=False` (a retune setting) lets every head read on its own. With their maps at
+zero every head then reads what head 0 reads, and a sharp read gives the lesson no other slot
+to move toward, so the heads can stay on the same moment for good. Keep competition on.
 
-In the [held-heads benchmark](../benchmarks/attention/held_heads.py) each trial witnesses
-four facts `role -> value` with values drawn fresh, and one question asks for two of them in
-one settle; both orders of some value pairs are never taught. Reported in two motor slots (six
-values), two heads answer every taught pair on four founders, and on every trial each head
-attends most to a different fact; one head that learns its address the same way answers 21 to
-24% of the taught pairs, uniform random 3%. Combined into one action (go to the food unless the predator stands at an odd position,
-then to the position five steps from it; ten positions), two heads answer every taught pair
-and 98 to 99% of the food and predator pairs they were never taught; one head answers 59 to
-76% of the taught pairs, uniform random 10%. The two reporting slots answer 77 to 98% of the pairs never taught;
-every wrong slot on those pairs gave the other asked value, a binding the shared association
-never met. Without competition, at the same settings, the one action answered 96 to 98% of the
-untaught pairs and the reporting slots 77 to 98%.
-The [receipt](../benchmarks/attention/results/held-heads.json) is recomputed by the
-regression suite. This is component evidence for reading several facts in one settle; a
-decision in which one fact matters only together with another is not covered, and nothing here
-is a continuing-world result.
+In the [held-heads benchmark](../benchmarks/attention/held_heads.py) each trial witnesses four
+facts `role -> value` with fresh values, and one question asks for two of them in one settle;
+some value pairs are never taught.
 
-The heads' addresses learn from teaching steps; reward trains them only at
-`recall_address_reward` above zero. In a life of rewards alone, with the founder 0, the address
-maps stay at zero: head 0 reads the best-matching moment and each later head the best of what
-the heads before it left (with `recall_compete=False`, what head 0 reads).
+| Answer | Two heads | One head | Uniform random |
+| --- | --- | --- | --- |
+| two reporting slots, taught pairs | every pair, on four founders | 21 to 24% | 3% |
+| two reporting slots, untaught pairs | 77 to 98% | | |
+| one combined action, taught pairs | every pair | 59 to 76% | 10% |
+| one combined action, untaught pairs | 98 to 99% | | |
+
+The combined action goes to the food, or, when the predator stands at an odd position, to
+the position five steps from it. On every trial each head attends most to a different fact
+([receipt](../benchmarks/attention/results/held-heads.json)). This is component evidence for
+reading several facts in one settle; a decision in which one fact matters only together with
+another is not covered.
 
 **A read that needs another read.** The address is fixed before the settle, so a read that
 depends on what another read found takes a second moment: a "think" moment chains the reads,
@@ -773,19 +749,17 @@ two hops (`a -> b`, `b -> c`, ask `a`) two heads with a think moment answer the 
 Use several heads when one answer needs several witnessed facts at once, and compare them with
 one head and with the facts asked one per moment (one head reads one fact per moment through
 the working trace). Long lesson curricula drive the shared readout into saturation once the
-answers are right: teach with `learning_surprise=True` from the first lesson (or use `live`, whose
-arousal does it). The benchmark switches to it at a running wrong share of .02, which serves its
-1,024 lessons; over 4,096 lessons founders that never reached the threshold collapsed onto one
-action ([lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)).
+answers are right, and founders can collapse onto one action: teach with
+`learning_surprise=True` from the first lesson, or use `live`, whose arousal does it
+([lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs)).
 
 ### Position: how long ago a moment happened
 
 A key says what a moment was; nothing in it says when. Two moments with the same event and
 the same key differ to a read only by the recency charge, which always prefers the newer one,
 so a question that depends on order ("at the beginning", "now", "the same beat one bar back")
-cannot be answered from keys alone. A
-transformer gives its keys a position for this reason. Here every head reads each slot's age,
-the moments since the slot was written, and adds a term to that slot's logit:
+cannot be answered from keys alone. Every head therefore reads each slot's age, the moments
+since the slot was written, and adds a term to that slot's logit:
 
 ```text
 logit_i = q . K_i / temperature - recency * age_i + a(x, c)[bucket(age_i)]
@@ -806,56 +780,35 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
   events the lesson's movement names, gives each taught row the gradient of its terms toward
   that target, and each head's maps take a bounded least-mean-squares step at
   `recall_position_rate`. This happens whatever `recall_address` is: a frozen address map does
-  not freeze the position term. Rewards train it only at `recall_position_reward` above
-  zero: at each sampled act the step the position lesson would take, were the act's action
-  the lesson's label, joins the eligibility the actor traces, and dopamine steps the maps by
-  `recall_position_reward` times one lesson's step (with the anchor, its maps too). Which slot
-  a head reads by its age, the first told or the latest, is then reachable from reward alone
-  ([#236](https://github.com/muellerberndt/cadence/issues/236)).
-- **Reward steps the event's rows.** The term reads the cortex of the moment before and a
-  bias beside the event heard, as the address does, and every moment shares those rows
-  whatever it heard. A lesson names the right slots for every question, and the shared rows
-  settle with the event's. Under reward each step is the act's own guess, and with every row
-  stepped most of it landed on the shared rows, where the cortex holds most of `|z|^2`: two
-  questions asked after the same moment then read where either of them learned to look. The
-  reward step therefore moves only the rows of the event heard, in the position, anchored and
-  address maps alike, each row's rate bounded by the event's energy; the cortex and bias rows
-  learn from lessons alone.
+  not freeze the position term.
+- **Trained by reward on request.** At `recall_position_reward` above zero, each sampled act
+  keeps the step the position lesson would take, were the act's action the lesson's label, in
+  the eligibility the actor traces, and dopamine steps the maps by `recall_position_reward`
+  times one lesson's step (with the anchor, its maps too). The reward step moves only the rows
+  of the event heard, in the position, anchored and address maps alike, each row's rate bounded
+  by the event's energy; the rows of the cortex of the moment before and the bias, which every
+  moment shares, learn from lessons alone. Stepped by reward, those shared rows would carry one
+  question's learned look to every question asked after the same moment.
 
-In the [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) through
-`live` from reward alone (two values written, the first or the latest asked; 3,072 episodes) the
-founder answers at chance, 0.46 to 0.50 of its last 256 answers. On the development founders
-(1001 to 1012) `recall_position_reward=4` answers .90 or more of them on 8 of 12; stepping every
-row, the form tried on the release branch and withdrawn before release, reached that on 5 of the
-11 read. Two more causes stand in the way. The first write is two or three moments old as a gap
-falls between the writes or not, and one question has one read; the
-[anchor](#position-how-long-ago-a-moment-happened) finds it at the same place in the episode,
-the first after the start, in either case. And the bank holds every payload twice, as the
-write's value and as the next of the slot before it, so the two cases of one question could
-settle on different ports; `recall_next=False` holds it once. With both, the position reward
-answers every query of the last 256 on all 12. That read costs the [recall
-world](../benchmarks/sequence/README.md#ordered-recall-orderpy), where the latest of one or two
-values is asked: its question learns the episode's first write, the older one where two are
-written. The address reward lets the question find the writes by what they hold and the recency
-the latest of them. The benchmark's `reward_recipe` (`recall_position_reward=4`,
-`recall_address_reward=1`, `recall_anchor=True`, `recall_next=False`) answers 11 of the 12
-development founders at .90 and more, and was confirmed on twelve fresh founders under gates
-declared before the run: the ordered recall world at 1.00 of the last 256 answers on 11 of 12
-(the twelfth at chance: its actor answers one action on nine queries in ten while it samples, so
-the read's eligibility, which names the slot holding the sampled action's value, has no
-direction), and the recall world at 0.848 against the founder's 0.864 (the gate: no lower than
-the founder by .05). In the recall world it answers the one-write conditions at 0.96 to 1.00 and
-the two-write ones below the founder (replacement 0.75 against 0.83, the latest of two adjacent
-writes 0.38 against 0.58). The third gate, the reward chambers of the [preservation
-panel](../benchmarks/credit/README.md#preservation) with the recipe and the memory it needs
-against the chambers as they are, fails: the odour nursery passes 9 lives of 12 against 11
-through `live` and 4 against 7 through `step` (its reversal at 1,000 trials takes 364 trials
-against 118), and the key-door nursery acquires its first rule in 5 lives of 16 against 8, while
-the contextual bandit reaches .90 on 6 seeds of 6 against 3. The memory alone, at its founder
-genes and read without reward, acquires the key-door rule in 3 of 16: that fall comes with the
-memory. The odour nursery keeps its lives with the memory alone (10 and 7) and with the reward
-read in the memory as composed (10 and 8), and loses them where the anchor and the missing next
-port meet the reward read.
+**Order from reward alone.** In the
+[ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) (two values
+written, the first or the latest asked, reward through `live`) the founder answers at chance.
+The benchmark's `reward_recipe`:
+
+```text
+recall_position_reward=4, recall_address_reward=1, recall_anchor=True, recall_next=False
+```
+
+answers it at 1.00 of the last 256 answers on 11 of 12 fresh founders. The
+[anchor](#positions-at-lengths-no-lesson-reached) finds the first write at the same place in
+the episode whether a gap falls between the writes or not; `recall_next=False` holds each
+payload on one port, so the two cases of one question settle on the same port; the address
+reward finds the writes by what they hold. Its costs: in the recall world, where the latest of
+one or two values is asked, the two-write conditions fall below the founder (the latest of two
+adjacent writes 0.38 against 0.58), and it fails the
+[preservation panel](../benchmarks/credit/README.md#preservation): the odour nursery passes 9
+lives of 12 against 11 through `live` and 4 against 7 through `step`. Use it only where order
+must be learned from reward.
 
 ```python
 brain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)
@@ -865,16 +818,15 @@ plain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0,
                       recall_position=0)                 # the memory without it
 ```
 
-A checkpoint saved before 0.89.0 has no position term and loads without one, so a continuing
-brain keeps reading as it did. The maps are saved with the brain when the term is on.
+The maps are saved with the brain when the term is on.
 
 In the [look-back benchmark](../benchmarks/attention/look_back.py) a stream of five random
 symbols is followed by a cue, `first` or `last`, and the answer is the symbol at the cued place.
 Taught on the cue moment alone, the term learns to look back to the start of the episode on
-`first` and to the newest slot on `last`: with the episode's boundary every founder answers both
+`first` and to the newest slot on `last`. With `recall_boundary=True` every founder answers both
 cues at 1.00, against 0.29 to 0.80 per cue without the term and 0.25 for uniform random
-([receipt](../benchmarks/attention/results/look-back.json)). Without the boundary one founder
-answered `first` at 0.83.
+([receipt](../benchmarks/attention/results/look-back.json)); without the boundary `first` can
+fall short on some founders.
 
 ### Positions at lengths no lesson reached
 
@@ -891,13 +843,11 @@ logit_i += e(x, c)[anchored(place_i)]      e(x, c) = x E_x + c E_c + e   (one ma
 The anchored buckets follow the age buckets, and one more holds every slot written before the
 episode began. Each stream counts the moments written in its episode (`brain.recall.told`);
 `Recall.end`, a reset and `done` start it again. The maps start at zero, so a newborn reads as
-without the option, and the lesson steps them with the position maps, and rewards with
-`recall_position_reward` ([#237](https://github.com/muellerberndt/cadence/issues/237)). On stories of 24 to 60 events
-with the cues `first`, `second` and `last` mixed (the
-[sequence battery](../benchmarks/sequence/README.md), six confirmation founders, declared before
-the run), the anchor answers `first` at 0.998 to 1.000 and `second` at 0.990 to 1.000, against
-0.31 to 0.45 and 0.31 to 0.34 without it; induction, n-back, periodic continuation and copying
-read the same with and without it.
+without the option; lessons step them with the position maps, and rewards with
+`recall_position_reward`. On stories of 24 to 60 events with the cues `first`, `second` and
+`last` mixed ([sequence battery](../benchmarks/sequence/README.md)), the anchor answers `first`
+and `second` at 0.99 to 1.00, against 0.31 to 0.45 without it; induction, n-back, periodic
+continuation and copying read the same with and without it.
 
 **The relative read (opt-in, `recall_relative=True`; it needs the position term).** Some reads
 are placed where an earlier read pointed: copying a sequence, the token after the one just
@@ -906,15 +856,10 @@ option every head's term also reads each slot's age relative to the slot the str
 read attended most (`brain.recall.focus`, the age of that slot, which ages with every written
 moment): offset 0 for that slot, -1 for the one written after it, +1 for the one before,
 offsets beyond `Recall.RELATIVE` (8) sharing the outermost buckets, and one more bucket for a
-stream with no read before. The maps start at zero and the lesson steps them with the
-position maps ([#234](https://github.com/muellerberndt/cadence/issues/234)). Copying sequences
-with repeated tokens, taught at lengths 3 to 6 and tested at 8 to 12 (three development seeds,
-the anchor in both arms), the relative read answers 0.54 to 0.74 of the tokens in closed loop,
-against 0.10 to 0.14 without it; given the right token before (teacher-forced) it answers 0.87
-to 0.93. The first token after the cue reads 0.63 to 0.80: the age term, taught at the short
-lengths, pulls that read away from the episode's start. With the slope at 0.1 and the table at
-0.01 beside the anchor that read answers 0.97 to 0.99 (six confirmation founders; the whole copy
-is read under the recipe below).
+stream with no read before. The maps start at zero and the lesson steps them with the position
+maps. Copying sequences with repeated tokens, taught at lengths 3 to 6 and tested at 8 to 12,
+the relative read answers 0.54 to 0.74 of the tokens in closed loop against 0.10 to 0.14
+without it; with the recipe below it answers 0.92 to 0.94.
 
 **The slope (opt-in, `recall_slope` above 0; it needs the position term).** The table holds one
 term per age bucket, and an age no lesson reached keeps its zero: a head taught to look back to
@@ -928,12 +873,20 @@ logit_i += s(x, c) * age_i / 8      s(x, c) = x S_x + c S_c + s   (one map per h
 One number per moment says "lean old" (positive) or "lean recent" (negative), and the table
 keeps the exact offsets beside it. The maps start at zero, so a newborn reads as one without
 the option, and the lesson steps them by the table's gradient read along the ages, at the rate
-`recall_slope`; rewards do not train them
-([#232](https://github.com/muellerberndt/cadence/issues/232)).
+`recall_slope`; rewards do not train them.
 
-**The recipe.** The slope pays with the table taught slowly beside
-it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary; the
-[sequence battery](../benchmarks/sequence/README.md), three development seeds, 1,500 lessons):
+**The recipe for lengths no lesson reached.** Combine the anchor, the slope at 0.1 and the table
+taught slowly beside it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary;
+[sequence battery](../benchmarks/sequence/README.md), 1,500 lessons):
+
+```python
+long_stories = Brain.compose(
+    inputs=8, actions=3, modules=(16,), recall=True, seed=0,
+    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01,
+    recall_recency=0.0, recall_boundary=True,
+)
+assert long_stories.recall.position == 32
+```
 
 | Recall settings beside the position term | Copying unique tokens: taught 3 to 6, read at 8 to 12, closed loop | Look back: taught 5 to 12, read at 24 to 60, "first" |
 | --- | --- | --- |
@@ -944,61 +897,37 @@ it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary; the
 | the anchor | | 0.72 to 0.75 |
 | the anchor, the slope at 0.1, the table at 0.01 | | 1.00 (every cue 0.97 to 1.00) |
 
-With the anchor, the slope and the slower table every head reads "the first told", "the second"
-and "the latest" at two to five times the longest length it was taught. A declared confirmation
-on six fresh founders read the recipe as the development seeds did: look back taught at 5 to 12
-and read at 24 to 60 answers "first" at 0.986 to 1.000 and "second" at 0.988 to 1.000; copying
-unique tokens at unseen lengths 0.992 to 1.000; copying repeated tokens, with
-`recall_relative=True` as well, 0.918 to 0.941 in closed loop. Setting the anchored maps to zero
-after training drops "second" to 0.48 to 0.63, so the anchor carries it. On induction and
-n-back the recipe stays within 0.014 of the founder table.
+With the recipe every head reads "the first told", "the second" and "the latest" at two to five
+times the longest length it was taught. On six fresh founders, look back taught at 5 to 12 and
+read at 24 to 60 answers "first" and "second" at 0.99 to 1.00, and copying unique tokens at
+unseen lengths 0.99 to 1.00. On induction and n-back it stays within 0.014 of the founder
+table. A period longer than `recall_position` needs the table exact that far: for a period of
+40 add `recall_position=64` (the recipe continues it at 0.86 to 0.94 against 0.35 to 0.39 at
+32 exact ages).
 
-A period of 40 needs the table exact to 64 ages. At the founder's `recall_position` of 32 the
-ages from 32 share one bucket per doubling, no term singles out the slot one period back, and
-the recipe continues the period at 0.35 to 0.39. With `recall_position=64` as well, a
-confirmation declared before the run on six fresh founders continues it at 0.86 to 0.94 and
-still reads "first" at 0.98 to 1.00 and copies unique tokens at 0.99 to 1.00 at the unseen
-lengths above.
+**What the recipe costs.** On the
+[panel of position changes](../benchmarks/sequence/README.md#the-panel-of-position-changes-232)
+it keeps n-back, two hops with a think moment and ordered recall, and it costs:
 
-**What the recipe costs.** The 0.90 default search declared a panel for any change of the
-position term ([the sequence battery](../benchmarks/sequence/README.md#the-panel-of-position-changes-232),
-development founders, against the founder memory). With 32 or with 64 exact ages the recipe
-keeps n-back, two hops with a think moment and ordered recall within the panel's bars, and it
-costs three readings: periodic continuation at a period of 24 after 1,000 lessons (0.83 and 0.84
-against 0.92, means of four founders), the hidden route cue of the Stone Age sequence instrument
-after 480 guided episodes (frozen success 0.25 against 0.43), and a composer of C64 tunes (its
-read 0.79 and 0.80 against 0.82, its answer 1.61 and 1.56 against 1.47 nats). Taking one part
-away at a time locates two of them, and each part pays elsewhere:
+- **Periodic continuation at a period of 24.** 0.83 against 0.92 after 1,000 lessons; no single
+  part of the recipe causes it.
+- **Content shortcuts the slow table gives up.** The slower table makes the brain take the
+  position route where content would serve: a hidden route cue of the Stone Age sequence
+  instrument falls to 0.25 against 0.43, and in the
+  [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) taught by
+  lessons the recipe answers 0.875 to 1.00 where the founder table answers every query.
+- **Music.** The slope costs a composer of C64 tunes about 0.1 nats on its answer.
 
-- The route's cost is the slower table: taught at the founder rate beside the anchor and the
-  slope, the route reads 0.49. At that rate the content shortcut returns: copying unique tokens
-  at unseen lengths reads 0.47 to 0.88 with the slope beside the table, 0.99 to 1.00 with the
-  table at 0.01.
-- The composer's cost is the slope: without it the recipe reads 0.815 and answers 1.46 nats (two
-  seeds), and the founder memory with the slope alone answers 1.52. Without the slope, look back
-  taught at 5 to 12 reads "first" at 24 to 60 at 0.57 to 0.66.
-- The period of 24 has no single cause: without the anchor it falls further (0.44 and 0.79 on two
-  founders, against 0.80 and 0.88), the anchor with the table at 0.1 and no slope, or the recipe
-  with the founder's recency, each recover part of it on one founder (0.86 and 0.84 against 0.80;
-  the founder memory 0.92), and 3,000 lessons do not close it (0.89 and 0.85).
-
-In the
-[ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy)
-taught by lessons (five development founders, 1,536 episodes) the founder table answers every
-query greedily, the table at 0.01 alone 0.50 to 1.00 (mean 0.80), and with the anchor and the
-slope beside it 0.875 to 1.00 (mean 0.975). With the table at the founder rate the brain takes
-the position shortcut over the content route again. Use the recipe where the stories run longer
-than the lessons did; where they keep the taught lengths and few lessons must teach exact ages,
-the founder table serves.
+Use the recipe where the stories run longer than the lessons did. Where they keep the taught
+lengths and few lessons must teach exact ages, the founder table serves.
 
 ### When a read item happened (opt-in)
 
-**`recall_when=True`.** A read delivers what its slots hold
-and what followed them; the position term only chooses the slots. Nothing reaching the cortex
-says when a read item happened, so "was A told before B?" has nothing to compare. With the
-option every head's read also delivers when: a region of its own per head (`recall_when`,
-`recall_1_when`, ...), driven at the read's amplitude by the attention-weighted features of its
-slots' ages,
+**`recall_when=True`.** A read delivers what its slots hold and what followed them; the
+position term only chooses the slots. With the option every head's read also delivers when the
+read items happened, so a question such as "was A told before B?" has something to compare. Each
+head gets a region of its own (`recall_when`, `recall_1_when`, ...), driven at the read's
+amplitude by the attention-weighted features of its slots' ages,
 
 ```text
 when = sum_i p_i [log(1 + age_i) / log 9, exp(-age_i / 8)]
@@ -1007,41 +936,31 @@ when = sum_i p_i [log(1 + age_i) / log 9, exp(-age_i / 8)]
 and with the anchor the same two features of each slot's place in the episode (zero for a slot
 written before it began). The regions reach the association through synapses that start at
 zero, so a newborn settles as one without the option, and lessons give them weight. The address
-lesson names the slots to read by what they hold, and the region says when the slots read
-happened ([#237](https://github.com/muellerberndt/cadence/issues/237)).
+lesson names the slots to read by what they hold and does not read the movement back through the
+when regions; the region says when the slots read happened.
 
-On "how long ago was X told?" (the [sequence battery](../benchmarks/sequence/README.md):
-stories of 8 to 16 distinct tokens, X shown with a question mark, the answer one of four age
-buckets; three development seeds, 1,500 lessons) the option answers 0.81 to 0.91, and 0.91 to
-0.92 with the anchor, against 0.51 to 0.80 without it. "Was A told before B?", asked over two
-moments (A, then B), reads 0.59 to 0.80 with it, against 0.59 to 0.72 without it: the reads
-leave the items asked about (the read that stays on its items, below). A lesson that also named
-slots by when they happened taught the read to find slots whose age matched the answer instead
-of the item asked about, so the lesson does not read the movement back through the when regions.
+**Keep the read on its items.** "Was A told before B?" needs the read at A to land on A's slot
+and the read at B on B's. The position lesson, and less so the address lesson, take their target
+from the slots whose contents the lesson's movement points to; a yes or no answer is no slot's
+content, so the lessons pull the read off the items. Freeze the position term and sharpen the
+softmax:
 
-**The read that stays on its items.** "Was A told before B?" needs the read at A to land on A's
-slot and the read at B on B's. The position lesson, and to a lesser degree the address lesson,
-take their target from the slots whose stored contents the lesson's movement points to; the
-answer here, yes or no, is no slot's content, and the lessons pull the read off the items. With
-every row taught at the founder settings the read gives A's slot a median 0.008 of its attention
-at A and B's slot 0.0005 at B (development founder 0); with the address and position lessons
-off, 0.83 and 0.82. With the position term not taught and a sharp softmax, `recall_when=True,
-recall_position_rate=0.0, recall_temperature=0.1` (the battery's `when_sharp`), the read lands
-on the item's slot (median attention 0.999 on A's at A and on B's at B, the same founder) and
-the working trace carries A's report to B's moment: the question answers 0.942 to 0.958 on six
-development founders and 0.938 to 0.966 on six fresh founders declared before the run, and "how
-long ago" 0.861 to 0.951 (mean 0.898) on the development founders and 0.866 to 0.953 (mean
-0.912) on the fresh ones (the learning read with the anchor: 0.817 to 0.933, mean 0.891, and
-0.685 to 0.899, mean 0.794). A region per head carrying its previous read of when to the next
-moment was tried beside this read on the branch and withdrawn: it read "before" 0.969 to 0.983
-on the same fresh founders, 0.006 to 0.040 above the read without it, for a region per head and
-a per-stream state.
+```python
+when_sharp = Brain.compose(
+    inputs=8, actions=3, modules=(16,), recall=True, seed=0,
+    recall_when=True, recall_position_rate=0.0, recall_temperature=0.1,
+)
+assert when_sharp.recall.temperature == 0.1
+```
 
-A boundary of the when regions: their age features at ages no lesson reached (`log(1 + age) /
-log 9` reaches 1.87 at age 60 and 1.17 at age 12, the oldest a lesson taught) enter the
-association through synapses taught at short ages. Beside the recipe for unseen lengths, look
-back taught at 5 to 12 and read at 24 to 60 holds at 0.992 to 0.999 on five of six founders
-read and falls to 0.93 on one (`first` 0.998 to 0.899, `second` 0.988 to 0.899).
+With these settings (the [sequence battery](../benchmarks/sequence/README.md)'s `when_sharp`)
+the read lands on the item's slot, the working trace carries A's report to B's moment, and
+"before" answers 0.94 to 0.97 on fresh founders. "How long ago was X told?" (one of four age
+buckets) answers 0.87 to 0.95, against 0.51 to 0.80 without `recall_when`.
+
+The age features at ages no lesson reached enter the association through synapses taught at
+short ages: beside the recipe for unseen lengths, a look back read at 24 to 60 holds at 0.99 on
+five founders of six and falls to 0.93 on one.
 
 ### The copy pathway (opt-in)
 
@@ -1074,7 +993,7 @@ for token in range(TOKENS):                          # no lesson: every token is
   same token, declare it: `recall_tokens[j]` is the observation coordinate of action `j` (`-1`
   for none). The pathway then starts as that identity: from each recall port, the read's own
   value, at `recall_copy`; from each next port at zero; and from the present observation (the
-  sensory region) at `-recall_copy`, so a token the moment already holds is not copied back.
+  sensory region) at `-recall_copy`, so a token the moment holds is not copied back.
   Every other synapse of the pathway starts at zero. The tokens must be in the recall values: a
   brain without a code, or a learned code joined to an observation no wider than it; a fixed
   code is refused.
@@ -1084,17 +1003,12 @@ for token in range(TOKENS):                          # no lesson: every token is
 - **Why the echo.** A read addressed by the present moment holds that moment's own token in its
   value: in a succession task (a cue names a token, the answer is the token that followed it)
   the recall port holds the cue's token and the next port the answer. Copying the recall port
-  alone answers the cue with itself; the echo removes what the observation already holds.
-  On the benchmark's six founders with the echo synapses zeroed at birth (a development
-  reading, outside the receipt), succession fell to 0.79 to 0.95, mean 0.87, against 0.94 to
-  0.99 with the echo; untaught tokens were produced at 1.00 either way.
+  alone answers the cue with itself; the echo removes what the observation holds.
 - **Why the next port starts at zero.** Which port holds the answer depends on the task: the
   heard token is on the recall port in a copy-back question, the successor on the next port in
-  a succession. A newborn has to start from one; the recall port, the token the read delivers,
-  is the start, and the next port's gain is learned. Started equal, the two ports drive the
-  heard token and the distractor that followed it alike: a newborn produced the heard token on
-  0.53 to 0.67 of untaught questions, and 300 lessons took that to 0.13 at most (founder 0, a
-  development reading).
+  a succession. The pathway starts from the recall port, the token the read delivers, and the
+  next port's gain is learned. Started equal, the two ports would drive the heard token and the
+  distractor that followed it alike.
 
 In the [copy-tokens benchmark](../benchmarks/attention/copy_tokens.py) a token is heard, two
 other tokens follow, and a cue asks for the heard token back; tokens 0 to 4 are taught as
@@ -1110,19 +1024,16 @@ asks for the token that followed it. On six founders of one module
 | `recall_copy=0.5` without tokens | 0.00 | 0.57 to 0.99 | 0.93 to 1.00 | 0.58 to 1.00 |
 | `recall_copy=1.2` without tokens | 0.00 | 0.22 to 0.87 | 0.86 to 0.97 | 0.70 to 1.00 |
 
-Uniform random answers 0.125. With the pathway the answer follows its read: the read and the
-answer agree on every untaught and taught question, and on succession the answer trails the read
-(1.00) by 0.03 on average and 0.06 at most, as the founder's does (0.03, 0.05). Two founders of a deep apical brain (`modules=(32, 24,
-24)`, `apical=0.25`) read the same: untaught 1.00, succession 0.94 and 0.98 against 0.97 and
-0.99. A successor never taught stays at 0.00 in every arm: the next port's gain grew to about 0.1
-in 600 lessons. The weaker identity loses the untaught tokens on some founders, the association
-having learned the taught answers first; the random pathway at the recall projection's own
-scale, a plain direct projection, costs taught answers and succession, as the issue reported for
-the composer.
+Uniform random answers 0.125. Use `recall_copy=2.0` with tokens. With it the answer follows its
+read on every untaught and taught question, and a deep apical brain (`modules=(32, 24, 24)`,
+`apical=0.25`) reads the same. A weaker identity loses the untaught tokens on some founders, the
+association having learned the taught answers first; a pathway drawn without tokens costs taught
+answers and succession. A successor never taught as an answer stays at 0.00 in every arm, since
+the next port's gain grows slowly.
 
 Use it when the answer is a token the read can deliver, and compare it with the founder memory
 and with the pathway drawn without tokens on the task. The options are construction settings,
-described and saved only where they are on; a founder brain is unchanged.
+described and saved only where they are on.
 
 ### Its own actions in the slots (opt-in)
 
@@ -1139,9 +1050,9 @@ neuron (one-hot within each motor slot; zero for a moment `wait` senses):
   event and the command the stream executed at the moment before, so a lesson can teach a head
   to look for the slot where the brain did what it just did. The address's fixed part is zero on
   the command coordinates.
-- **A newborn reads as today.** Every new synapse and map entry starts at zero: a newborn with
-  the option settles, attends and acts as the same founder without it until learning gives them
-  weight.
+- **A newborn reads as one without it.** Every new synapse and map entry starts at zero: a
+  newborn with the option settles, attends and acts as the same founder without it until
+  learning gives them weight.
 
 ```python
 mover = Brain.compose(inputs=4, actions=2, modules=(16,), seed=0, recall=True,
@@ -1152,20 +1063,23 @@ assert (mover.recall.values[0, :, 4:] == np.eye(2)[done]).all()  # what it did, 
 assert (mover.recall.acted == np.eye(2)[done[-1:]]).all()        # the command of the moment before
 ```
 
-In the [own-action benchmark](../benchmarks/attention/own_action.py) every observation is the
-same one. Taught to alternate (the answer is the opposite of its own last action), six founders
-alternate at 1.00 with the commands in the slots, against 0.78 for the founder recall memory,
-0.47 without a recall memory and 0.48 for uniform random; erasing the commands before every
-test moment brings them to 0.26. Taught to press every third moment (press when its own last two
-actions were waits), they score 0.97, against 0.65, 0.36 and 0.46, and 0.33 with the commands
-erased. The efference copy (`efference_amplitude=3.0`, `efference_decay=0.5`) reads 1.00 on both
-([receipt](../benchmarks/attention/results/own-action.json)): for a brain that only needs its
-last command the copy is the simpler mechanism; the slots keep the commands with the moments,
-where a read can find them by content and position.
+For a brain that needs only its last command, the [efference copy](#efference-copy) is the
+simpler mechanism. Use the slots when a read has to find the commands with their moments, by
+content and position. In the [own-action benchmark](../benchmarks/attention/own_action.py),
+under one repeated observation:
 
-The [episodic memory](#episodic-memory-what-happened-in-this-situation-before) already keys its
-context records on the issued commands: each decision's command joins the stream's temporal
-context at the share `1 - memory_context`, so the option does not change the vote.
+| Task | Commands in the slots | Founder recall | No recall | Uniform random | Efference copy |
+| --- | --- | --- | --- | --- | --- |
+| alternate its own last action | 1.00 | 0.78 | 0.47 | 0.48 | 1.00 |
+| press every third moment | 0.97 | 0.65 | 0.36 | 0.46 | 1.00 |
+
+Erasing the commands before every test moment brings the slots to 0.26 and 0.33
+([receipt](../benchmarks/attention/results/own-action.json); the copy at
+`efference_amplitude=3.0, efference_decay=0.5`).
+
+The [episodic memory](#episodic-memory-what-happened-in-this-situation-before) keys its context
+records on the issued commands: each decision's command joins the stream's temporal context at
+the share `1 - memory_context`, so the option does not change the vote.
 
 ### All options in one example
 
@@ -1196,12 +1110,12 @@ neuron to every read port region, their synapses into the association, and as ma
 address and position maps and columns to the address; `recall_copy` adds the value width times
 the motor neurons per port region (and with tokens one synapse per sensory neuron and action):
 with two heads over a code of 128 and 323 actions the pathway adds 4 x 128 x 323 = 165,376
-synapses. Each further head adds its two regions, their
-projections and one more address map. The address map is `code` by `address_width`
-plus the association width by `address_width`; with compose's 64 association neurons it is
-0.66 MB at 256 inputs, 1,322 MB at 12,824 inputs on the uncoded observation and 8.9 MB with
-`code=1024`. One stream's slots hold `capacity` keys, values and nexts, 0.39 MB at 256
-inputs. The map is learned: a reset keeps it, `parameters()` counts it and a checkpoint saves it. The keys are the observation code, so
+synapses. Each further head adds its two regions, their projections and one more address map.
+The address map is `code` by `address_width` plus the association width by `address_width`;
+with compose's 64 association neurons it is 0.66 MB at 256 inputs, 1,322 MB at 12,824 inputs
+on the uncoded observation and 8.9 MB with `code=1024`. One stream's slots hold `capacity`
+keys, values and nexts, 0.39 MB at 256 inputs. The map is learned: a reset keeps it,
+`parameters()` counts it and a checkpoint saves it. The keys are the observation code, so
 changing the code makes the stored keys inconsistent with new addresses.
 
 ### In a custom anatomy
@@ -1213,13 +1127,11 @@ and `next_h` for h from 1 to k - 1 (`Recall.ports(k)` names them). With `recall_
 those regions has a `<region>_action` region of one neuron per motor neuron
 (`Recall.action_ports(k)`); with `recall_copy` synapses from every read port neuron into
 `motor`, and with `recall_tokens` from every token's sensory neuron into its action, which the
-brain starts as the declared identity. Without `recall=True` populations of those names
-are ordinary ones.
-`tests/test_recall_memory.py` checks that the library with `recall_position=0` reproduces the
-reference memory `benchmarks/binding/index_read.py`, which has no position term, moment for
-moment. To check that the memory does the work,
-erase a copy's slots with `brain.recall.reset(batch)` before the query
-([ablation](#check-that-a-memory-does-the-work)).
+brain starts as the declared identity. Without `recall=True` populations of those names are
+ordinary ones. `tests/test_recall_memory.py` checks that the library with `recall_position=0`
+reproduces the reference memory `benchmarks/binding/index_read.py` moment for moment. To check
+that the memory does the work, erase a copy's slots with `brain.recall.reset(batch)` before the
+query ([ablation](#check-that-a-memory-does-the-work)).
 
 ### Recall limits
 
@@ -1242,12 +1154,8 @@ erase a copy's slots with `brain.recall.reset(batch)` before the query
   moments of the stream, so a term learned at one moment rate does not transfer to another.
 
 The benchmark-only [direct-route attention candidate](../benchmarks/attention/DIRECT_ROUTE.md)
-tests the first limitation without changing this supported recall API. One live route reads
-from the already learned meaning, and one locally learned map turns that route into a new
-query inside the same equilibrium. Its development founder passes acquisition and causal
-record-use checks with 64 route coordinates, but it is not yet a `Brain.compose` option or
-default: independent founders, lifecycle preservation and continuing-world comparisons are
-still required.
+addresses the first limit: a live route reads the learned meaning, and a locally learned map
+turns it into a new query inside the same equilibrium. It is no `Brain.compose` option.
 
 ## Heard history
 
@@ -1269,8 +1177,9 @@ assert trace.shape == (1, 6) and trace[0, 3] > 0          # the slow block holds
 ```
 
 `history_decays` (`()`, each in [0, 1)) is a construction setting and the projection's initial
-magnitude 1.2 a constant (since 0.93.0); `history_amplitude` (3.0) can be retuned. On a coded vector brain the blocks hold the code. Three decays at 256 inputs and
-four actions add 768 neurons and 49,152 synapses to a founder of 20,992 synapses.
+magnitude 1.2 a constant; `history_amplitude` (3.0) can be retuned. On a coded vector brain the
+blocks hold the code. Three decays at 256 inputs and four actions add 768 neurons and 49,152
+synapses to a founder of 20,992 synapses.
 
 ## Efference copy
 
@@ -1292,12 +1201,13 @@ afterwards and refuses it on a brain built without the copy. `efference_decay` (
 [0, 1)) can be retuned. The copy costs one neuron per action and as many synapses into each
 association neuron.
 
-In the [rhythm chamber](../benchmarks/rhythm/README.md) (`modules=(32,)`, `episodic=False`,
+Use it to alternate or sequence the brain's own actions under identical input: in the
+[rhythm chamber](../benchmarks/rhythm/README.md) (`modules=(32,)`, `episodic=False`,
 `working_memory_decay=0.1, scales={"trace": 12.0}`, the copy at `efference_amplitude=3.0,
 efference_decay=0.0`) alternation reads 0.97 and 0.93 against 0.50 and 0.40 with the trace
-alone; uniform random alternates at 0.50. In delayed-credit foraging
-([key-door](../benchmarks/keydoor/README.md)) a copy at amplitude 0.3 feeds less at every delay,
-and at 3.0 the creature does not feed.
+alone and 0.50 for uniform random. Leave it off for delayed credit: in the
+[key-door chamber](../benchmarks/keydoor/README.md) a copy at amplitude 0.3 feeds less at every
+delay, and at 3.0 the creature does not feed.
 
 ## Check that a memory does the work
 

@@ -1,10 +1,9 @@
 # From a task to patch ports
 
 Cadence aims to reuse local overlap repair and equilibrium detuning across
-tasks. Scaling a network is useful only when its observations, actions and
-learning signal preserve the distinctions the task requires. The current
-library does not establish that arbitrary tasks become solvable by increasing
-width, data or compute.
+tasks. Scaling a network helps only when its observations, actions and learning
+signal preserve the distinctions the task requires; the library does not
+establish that arbitrary tasks become solvable with more width, data or compute.
 
 Design a [continuing life](world-model.md): bootstrap, ordinary use, witnessed
 disruption and local correction in the same acquired brain. Keep isolated
@@ -12,11 +11,10 @@ classification and calibration as mechanism controls. Measure retained and new
 behavior after repair, alongside stable-use work and repair work; do not replace
 the brain or bypass its memory between observations to stand in for this test.
 
-Every issue and plan declares whether it tests a bounded component, integrated
-continuing behavior, or infrastructure. State the applicable equilibrium
-boundaries, simpler control and preservation gates. Infrastructure can explain
-applicability without requiring an unrelated whole-brain demonstration. Use the
-[existing capability owners and canonical principle](../CONTRIBUTING.md#preserve-the-capable-foundation).
+Declare whether a test covers a bounded component, integrated continuing behavior or
+infrastructure, with its equilibrium boundaries, simpler control and preservation gates.
+Infrastructure can explain applicability without an unrelated whole-brain demonstration
+([capability owners](../CONTRIBUTING.md#preserve-the-capable-foundation)).
 
 ## Start at the boundary
 
@@ -27,9 +25,9 @@ observed zero, and correct actions supplied to the environment before the learne
 For a sampler, an event can expose sample identity, onset time, gain and
 duration. Those are playable controls. Spectral brightness and onset density
 are observations of sound; mapping them directly to pitch or repeated drum
-hits is an additional instrument design. It is not an acquired inverse model.
-Known action demonstrations are also not a transcription of those actions
-from a musical mix. That inference requires its own evidence.
+hits is an additional instrument design, and no acquired inverse model.
+Transcribing known actions from a musical mix is a separate inference that needs
+its own evidence.
 
 The same distinction applies to robots, games and interactive software: a
 forecast of an observation is not automatically an executable action.
@@ -41,8 +39,8 @@ recovers it ([evaluate a brain](evaluate.md#check-which-differences-survive-enco
 the timing counterexample).
 
 Use explicit signed event offsets when the task requires them. Quantized
-patterns can still have musical groove; preserving microtiming alone does
-not establish rhythmic quality, correct instrument choices or arrangement.
+patterns can have musical groove, and preserving microtiming alone establishes
+neither rhythmic quality nor correct instruments or arrangement.
 
 ## Match the update to the behavior
 
@@ -54,8 +52,8 @@ units and the information available before each action must match the task. Use 
 Check directly cued acquisition before interpreting a failure as missing context. If a
 relation is individually learnable but competing experience changes it, measure the
 surviving memory, read, free answer and update direction separately. A local numerical
-residual and a task prediction error have different meanings. Preserve the frozen task,
-capacity, exposure and original gates while diagnosing a failure.
+residual and a task prediction error have different meanings. Keep the frozen task,
+capacity, exposure and gates unchanged while diagnosing a failure.
 
 ## Test coherent behavior over time
 
@@ -76,7 +74,7 @@ when context changes, and experience improves that selection. Keep three
 questions separate: does information survive (retention), does the current query
 select what matters (read), and does an outcome update the appropriate earlier
 actions (credit)? A longer trace or a larger store alone does not establish
-learned selection. This capability is not yet demonstrated.
+learned selection. This capability is undemonstrated.
 
 First require acquisition on a directly cued control with the same answer
 relations. If that fails, diagnose encoding and learning before attributing the
@@ -109,11 +107,11 @@ Preserve existing capability gates and failed attempts. A passed component assay
 would support the next sequence test; it would not establish sentence formation
 or authorize a default change. These tests do not prescribe a new module.
 
-The initial [named-fact selection instrument](../benchmarks/relevance/README.md)
-implements the acquisition diagnostic on the existing graph: balanced facts,
+The [named-fact selection instrument](../benchmarks/relevance/README.md)
+implements the acquisition diagnostic on the composed graph: balanced facts,
 late queries from identical saved state, trace erasure and frozen/random
 controls. It covers finite acquisition with reset trials; the generalization,
-interference and continuing-life gates above remain separate work.
+interference and continuing-life gates above are separate tests.
 
 ## Close the action and consequence loop
 
@@ -130,7 +128,7 @@ the actual body before treating the desired consequence as acquired competence.
 
 A possible shared workspace is a bounded patch that reads proposals and
 mismatches from other patches and feeds back a common intention or constraint.
-Specialized patches can still use the same overlap and detuning operations.
+Specialized patches can use the same overlap and detuning operations.
 Recursively exposing summaries of this process is a research hypothesis about
 coordination, with no claim about consciousness.
 
