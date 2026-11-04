@@ -167,3 +167,46 @@ def test_a_qualified_row_does_not_hide_another_rows_orbit(backend):
     np.testing.assert_array_equal(answer.state.v[0], 0)
     np.testing.assert_array_equal(answer.state.activation[0], 0)
     assert graph.residual(drive, answer.state).max() <= 3e-3
+
+
+def test_the_ladders_rule_check_is_made_once_per_rule_and_refuses_at_every_call():
+    """The smallest step's rule is checked by value: a rule that passed is not checked again,
+    while one the backend cannot represent, or a step that rounds to zero, is refused at every
+    call, as it was when every call checked it."""
+    from cadence import brain as brain_module
+
+    graph = motor_graph()
+    drive = np.full((1, 36), 0.4)
+    brain_module._checked_ladder.cache_clear()
+    for _ in range(3):
+        graph.equilibrate(drive, budget=40, tolerance=1e-12, damping=2)
+    info = brain_module._checked_ladder.cache_info()
+    assert info.misses == 1 and info.hits == 2
+    saturated = graph.neuron_model.replace(slope=4.0, threshold=-5.0)  # rests at one in float32
+    for _ in range(2):
+        with pytest.raises(ValueError, match="not representable"):
+            brain_module._check_ladder(saturated, 1, "float32")
+    brain_module._check_ladder(saturated, 1, "float64")
+    for _ in range(2):
+        with pytest.raises(ValueError, match="dt must lie"):
+            graph.equilibrate(drive, budget=4000, tolerance=1e-12, damping=1200)
+    assert brain_module._checked_ladder.cache_info().currsize == 2
+
+
+def test_a_ladder_takes_a_rule_whose_fields_are_arrays():
+    """A neuron rule built from 0-d arrays (as ``np.load`` hands scalars back) cannot be a
+    cache key; its damping ladder is checked at every call and solves as the rule of floats
+    does."""
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=2)
+    graph = brain.brain
+    fields = {k: v for k, v in graph.neuron_model.to_dict().items() if k != "adaptation"}
+    arrays = cd.NeuronModel(**{k: np.asarray(v) for k, v in fields.items()})
+    floats = cd.NeuronModel(**fields)
+    drive = brain.stimulus(np.random.default_rng(0).random((2, 8)), memory=False)
+    solved = []
+    for model in (arrays, floats):
+        g = cd.NeuralGraph(graph.connectome, model, efficacy=graph.efficacy, bias=graph.bias,
+                           layout=graph.layout)
+        solved.append(g.equilibrate(drive, budget=96, chunk=16, tolerance=1e-6, damping=2))
+    assert solved[0].steps == solved[1].steps
+    assert np.array_equal(solved[0].state.activation, solved[1].state.activation)

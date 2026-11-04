@@ -109,16 +109,21 @@ class Memories(Mapping[str, Any]):
 Entry = tuple[np.ndarray | None, np.ndarray, np.ndarray, float, bool, float]
 
 
+def _chosen(action: np.ndarray, offsets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """The rows and the motor neurons of chosen actions, to index a ``(batch, motor)`` array:
+    one per row, or one per slot, the slots' motor neurons starting at ``offsets``."""
+    rows = np.arange(len(action))
+    if action.ndim == 2:
+        return rows[:, None], action + offsets[None, :]
+    return rows, action
+
+
 def command(action: np.ndarray, motor: int, offsets: np.ndarray) -> np.ndarray:
     """The ``(batch, motor)`` one-hot of an issued action: one per row, or one per slot, the
     slots' motor neurons starting at ``offsets``."""
     action = np.asarray(action, dtype=np.int64)
     out = np.zeros((len(action), motor))
-    rows = np.arange(len(action))
-    if action.ndim == 2:
-        out[rows[:, None], action + offsets[None, :]] = 1.0
-    else:
-        out[rows, action] = 1.0
+    out[_chosen(action, offsets)] = 1.0
     return out
 
 
@@ -139,12 +144,8 @@ def record_action(
     if write is not None and not write.any():
         return
     # The chosen motor neurons in motor order: one per row, or one per slot.
-    rows: np.ndarray = np.arange(len(action))
-    value: np.ndarray = reward
-    chosen: np.ndarray = action
-    if action.ndim == 2:
-        chosen = action + offsets[None, :]
-        rows, value = rows[:, None], reward[:, None]
+    rows, chosen = _chosen(action, offsets)
+    value = reward[:, None] if action.ndim == 2 else reward
     if isinstance(memory, SynapticMemory):
         target = np.zeros((len(action), len(memory.post)))
         target[rows, chosen] = value
@@ -192,6 +193,9 @@ class EpisodicRecords:
     # founders every reading used
     REPLAY = 8
     DEMONSTRATIONS = 1.0
+    # every stream's state beside its path, each None before its first decision: the temporal
+    # context, the decision's key, and with the hold the context before it and its code
+    _STATE = ("context", "decision", "before", "seen")
 
     def __init__(
         self,
@@ -240,10 +244,9 @@ class EpisodicRecords:
         """An imagined branch: the records are read and none is written; the temporal
         context is the branch's own copy, moved on by the branch's acts."""
         out = copy.copy(self)
-        out.context = None if self.context is None else self.context.copy()
-        out.decision = None if self.decision is None else self.decision.copy()
-        out.before = None if self.before is None else self.before.copy()
-        out.seen = None if self.seen is None else self.seen.copy()
+        for name in self._STATE:
+            state = getattr(self, name)
+            setattr(out, name, None if state is None else state.copy())
         out.paths = []
         return out
 
@@ -252,10 +255,8 @@ class EpisodicRecords:
         path (all streams afresh without ``rows``: no temporal context, no decision, no
         path); the records stay."""
         if rows is None:
-            self.context = None
-            self.decision = None
-            self.before = None
-            self.seen = None
+            for name in self._STATE:
+                setattr(self, name, None)
             self.paths = []
             return
         rows = _stream_rows(rows, batch)
@@ -275,14 +276,10 @@ class EpisodicRecords:
             else len(self.paths)
         )
         rows = _stream_rows(rows, batch)
-        if self.context is not None:
-            self.context = self.context[rows]
-        if self.decision is not None:
-            self.decision = self.decision[rows]
-        if self.before is not None:
-            self.before = self.before[rows]
-        if self.seen is not None:
-            self.seen = self.seen[rows]
+        for name in self._STATE:
+            state = getattr(self, name)
+            if state is not None:
+                setattr(self, name, state[rows])
         if self.paths:
             self.paths = [self.paths[row] for row in rows]
 
@@ -343,14 +340,9 @@ class EpisodicRecords:
             })
         if self.temporal is not None:
             out.update({"context_memory/" + k: v for k, v in self.temporal.arrays().items()})
-            if self.context is not None:
-                out["context"] = self.context
-            if self.decision is not None:
-                out["decision"] = self.decision
-            if self.before is not None:
-                out["before"] = self.before
-            if self.seen is not None:
-                out["seen"] = self.seen
+            for name in self._STATE:
+                if getattr(self, name) is not None:
+                    out[name] = getattr(self, name)
         if self.paths and any(self.paths):
             streams, longest = len(self.paths), max(len(path) for path in self.paths)
             slots = len(self.offsets)
@@ -591,11 +583,8 @@ class EpisodicRecords:
             assert keys is not None  # one store is read under the keys it is keyed by
             read = memory.recall(keys)
         vote = np.asarray(read) / scale
-        rows = np.arange(len(action))
-        if action.ndim == 2:
-            chosen = action + self.offsets[None, :]
-            return np.asarray(vote[rows[:, None], chosen].mean(axis=1))
-        return np.asarray(vote[rows, action])
+        chosen = vote[_chosen(action, self.offsets)]
+        return np.asarray(chosen.mean(axis=1) if action.ndim == 2 else chosen)
 
     def remember(
         self,

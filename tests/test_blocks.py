@@ -80,6 +80,27 @@ def test_block_contrast_matches_the_gram_matrix() -> None:
     assert np.allclose(block_contrast(lay, s_plus, s_minus), gram, atol=1e-12)
 
 
+def test_the_block_contrast_writes_each_product_in_place_to_the_bits_made_apart() -> None:
+    """Float64 products land in the flat array where they are made; another precision's are made
+    apart and copied: either way the bits of each block's products made apart."""
+    w = cd.layered(6, 5, 4, density=1.0, seed=4)
+    lay = layout(w)
+    rng = np.random.default_rng(6)
+    for plus, minus in ((np.float64, np.float64), (np.float32, np.float32), (np.float32, np.float64)):
+        s_plus = rng.random((3, w.n)).astype(plus)
+        s_minus = (s_plus + rng.normal(size=s_plus.shape) * 0.1).astype(minus)
+        s_minus[:, :6] = s_plus[:, :6]  # the inputs alike: one product for their blocks
+        g = np.empty(lay.size)
+        for k in range(lay.pairs):
+            a0, a1, b0, b1 = lay.bounds(k)
+            block = s_plus[:, a0:a1].T @ (s_plus[:, b0:b1] - s_minus[:, b0:b1])
+            if not np.array_equal(s_plus[:, a0:a1], s_minus[:, a0:a1]):
+                block = block + (s_plus[:, a0:a1] - s_minus[:, a0:a1]).T @ s_minus[:, b0:b1]
+            g[lay.offset[k] : lay.offset[k + 1]] = block.ravel()
+        np.testing.assert_array_equal(block_contrast(lay, s_plus, s_minus, 2.5),
+                                      g[lay.edge_index] / 2.5)
+
+
 def test_layout_survives_with_parameters_and_learning() -> None:
     w = cd.layered(8, 6, 3, density=1.0, seed=6)
     brain = cd.NeuralGraph(w, cd.learning_neuron_model(dt=1.0))
@@ -127,3 +148,22 @@ def test_the_flat_blocks_are_written_in_the_order_of_their_entries() -> None:
     in_order = layout(cd.Connectome.from_synapses(3, pre=[0, 0, 1], post=[1, 2, 2]))
     assert np.all(np.diff(in_order.edge_index) > 0) and in_order._flat_order is None
     np.testing.assert_array_equal(in_order.flat(np.array([1.0, 2.0, 3.0]))[[1, 2, 5]], [1.0, 2.0, 3.0])
+
+
+def test_a_synapse_at_every_entry_makes_the_gathered_weights_the_flat_array() -> None:
+    """Where every entry holds a synapse the weights gathered in entry order are the array, with
+    nothing more written; where entries stay empty the scatter writes the zeros between them."""
+    pytest.importorskip("numba")
+    rng = np.random.default_rng(4)
+    full = cd.Brain.compose(6, 3, modules=(24,), seed=2).brain.layout
+    sparse = layout(cd.layered(6, 5, 4, density=0.5, seed=1))
+    assert len(full.edge_index) == full.size and len(sparse.edge_index) < sparse.size
+    for lay in (full, sparse):
+        assert lay._flat_order is not None
+        weights = rng.normal(size=len(lay.edge_index))
+        expected = np.zeros(lay.size)
+        expected[lay.edge_index] = weights
+        flat = lay.flat(weights)
+        assert flat.dtype == np.float64 and flat.flags.c_contiguous
+        assert not np.shares_memory(flat, weights)
+        np.testing.assert_array_equal(flat, expected)

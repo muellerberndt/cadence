@@ -465,6 +465,59 @@ class _Moment(NamedTuple):
     inputs: np.ndarray
 
 
+# A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
+# inputs ``x`` and the cortex ``c`` of the moment before: the address map, the position table and
+# the maps beside it.
+_Maps = tuple[np.ndarray, np.ndarray, np.ndarray]
+
+
+def _term(maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """A map of the moment's term at the inputs ``x`` and the cortex ``c``."""
+    m_x, m_c, m = maps
+    return np.asarray(x @ m_x + c @ m_c + m)
+
+
+def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarray) -> _Maps:
+    """A map of the moment after the least-mean-squares ``step`` at ``rate``: each row's step on
+    its inputs ``z = [x, c, 1]``, averaged over the rows. Unchecked: a caller checks what it
+    keeps."""
+    m_x, m_c, m = maps
+    s_x = rate * x.T @ step
+    s_x /= len(x)
+    s_x += m_x
+    s_c = rate * c.T @ step
+    s_c /= len(x)
+    s_c += m_c
+    return s_x, s_c, m + rate * step.mean(axis=0)
+
+
+def _per_bucket(gradient: np.ndarray, buckets: np.ndarray, size: int) -> np.ndarray:
+    """Each row's ``gradient`` over the slots summed into ``size`` buckets, slot ``i`` into its
+    bucket ``buckets[..., i]`` (one row of buckets for every row, or a row each)."""
+    out = np.zeros((len(gradient), size))
+    np.add.at(out, (np.arange(len(gradient))[:, None], buckets), gradient)
+    return out
+
+
+def _added(maps: _Maps, step: np.ndarray, width: int) -> _Maps:
+    """A map of the moment with ``step`` added, a row of it per input of ``z = [x, c, 1]``, the
+    ``width`` inputs ``x`` first."""
+    m_x, m_c, m = maps
+    return m_x + step[:width], m_c + step[width:-1], m + step[-1]
+
+
+def _of(state: np.ndarray, streams: int) -> np.ndarray:
+    """A per-stream ``state`` where it holds a row for each of ``streams``, else zeros of its
+    rows' shape: streams of another batch begin afresh."""
+    return state if len(state) == streams else np.zeros((streams, *state.shape[1:]))
+
+
+def _with_head(maps: list[_Maps], head: int, new: _Maps) -> list[_Maps]:
+    """``maps`` with head ``head``'s replaced by ``new``, a new list: an imagined branch may hold
+    the old one."""
+    return [new if h == head else kept for h, kept in enumerate(maps)]
+
+
 @dataclass
 class Recall:
     """The index memory, a held-input recall: each stream's recent moments as slots, the
@@ -730,6 +783,16 @@ class Recall:
                             "action", "anchor", "relative", "slope", "when")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
+    # the kinds of a head's maps beside its address map (``map_names``), in the order a
+    # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
+    # kept before its maps: the reads' focus for the relative maps, the moments told for the
+    # anchored ones
+    _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"))
+    # every stream's state: its slots, the cortex of the moment before, whether its latest slot
+    # closed an episode, the window's events, the command executed at the moment before, the
+    # moments told in its episode and the age of the slot its previous read attended most
+    _STATE = ("keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told",
+              "focus")
     # the retired settings, by name: the release that retired each, the one value a saved
     # memory loads at (the founder's, or the value its law keeps) and what the memory does
     # instead; ``removed`` makes the one sentence that refuses the name wherever it is given
@@ -794,27 +857,35 @@ class Recall:
         retired setting is refused by name (``removed``)."""
         if name in Recall.RETIRED or (name == "recency" and value is None):
             raise ValueError(Recall.removed(name))
-        if name in ("amplitude", "recency", "address"):
+        if name in (
+            "amplitude", "recency", "address", "address_reward", "position_reward",
+            "position_rate", "copy", "slope",
+        ):
             return real(name, value, low=0)
         if name == "temperature":
             number = real(name, value, low=0)
             if number <= 0:
                 raise ValueError(f"{name} must be positive")
             return number
-        if name == "capacity":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 1
-            ):
-                raise ValueError("capacity must be an integer of at least 1")
-            return int(value)
+        if name == "null":
+            return None if value is None else real(name, value)
         if name in ("next", "boundary", "action", "compete", "anchor", "relative", "when"):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
-        if name in ("copy", "slope"):
-            return real(name, value, low=0)
+        if name in ("capacity", "window", "heads", "position"):
+            low = 0 if name == "position" else 1  # no position term at 0
+            if (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, np.integer))
+                or value < low
+            ):
+                raise ValueError(
+                    f"{name} must be an integer of at least 1" if low else
+                    "position must be a nonnegative integer: the ages with a bucket each, 0 for "
+                    "no position term"
+                )
+            return int(value)
         if name == "tokens":
             if value is None:
                 return None
@@ -840,39 +911,6 @@ class Recall:
             if not any(item >= 0 for item in out):
                 raise ValueError("tokens must name at least one observation coordinate")
             return tuple(out)
-        if name == "null":
-            return None if value is None else real(name, value)
-        if name in ("address_reward", "position_reward"):
-            return real(name, value, low=0)
-        if name == "window":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 1
-            ):
-                raise ValueError("window must be an integer of at least 1")
-            return int(value)
-        if name == "heads":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 1
-            ):
-                raise ValueError("heads must be an integer of at least 1")
-            return int(value)
-        if name == "position":
-            if (
-                isinstance(value, (bool, np.bool_))
-                or not isinstance(value, (int, np.integer))
-                or value < 0
-            ):
-                raise ValueError(
-                    "position must be a nonnegative integer: the ages with a bucket each, 0 for "
-                    "no position term"
-                )
-            return int(value)
-        if name == "position_rate":
-            return real(name, value, low=0)
         raise TypeError(f"unknown recall setting: {name!r}")
 
     @staticmethod
@@ -962,6 +1000,18 @@ class Recall:
                 )
 
     @staticmethod
+    def _rewarded(position_reward: float, position: int, position_rate: float) -> None:
+        """Reward trains the position maps (``position_reward`` above 0) only where they exist
+        and a lesson's step moves them: refused at construction and by ``Brain.retune``."""
+        if position_reward and not position:
+            raise ValueError("position_reward trains the position maps: it needs position")
+        if position_reward and not position_rate:
+            raise ValueError(
+                "position_reward steps the position maps by a lesson's step: it needs "
+                "position_rate above 0"
+            )
+
+    @staticmethod
     def null_logit(null: float | None, temperature: float) -> float | None:
         """The null slot's logit ``null / temperature``, or None without a null slot; a pair
         of settings whose logit is not finite is refused."""
@@ -1028,19 +1078,8 @@ class Recall:
         # the maps read the event, and with ``action`` the command of the moment before
         self.map_width = width + self.command_width
         # every head's address map ``(w_x, w_c, b)``, head 0's first
-        self.head_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, self.address_width)),
-                np.zeros((len(self.association), self.address_width)),
-                np.zeros(self.address_width),
-            )
-            for _ in range(self.heads)
-        ]
-        self._recall_columns = columns(self.recall_neurons)
-        self._next_columns = columns(self.next_neurons)
+        self.head_maps = self._zero_maps(self.heads, self.address_width)
         self._association_columns = columns(self.association)
-        self._recall_synapses = self._synapses(self.recall_neurons)
-        self._next_synapses = self._synapses(self.next_neurons)
         # every head's port: its recall and next neurons, their columns and their synapses into
         # the association; head 0's are the ones above
         self._heads: list[tuple[np.ndarray, np.ndarray]] = [
@@ -1062,54 +1101,22 @@ class Recall:
                     f"the {name} region needs one neuron per feature of when ({self.when_width})"
                 )
             self._whens.append((neurons, columns(neurons), self._synapses(neurons)))
-        if self.position_reward and not self.position:
-            raise ValueError("position_reward trains the position maps: it needs position")
-        if self.position_reward and not self.position_rate:
-            raise ValueError(
-                "position_reward steps the position maps by a lesson's step: it needs "
-                "position_rate above 0"
-            )
+        self._rewarded(self.position_reward, self.position, self.position_rate)
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
-        self.position_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, count)), np.zeros((len(self.association), count)),
-                np.zeros(count),
-            )
-            for _ in range(self.heads if count else 0)
-        ]
-        if self.anchor and not count:
-            raise ValueError("anchor reads beside the position term: it needs position")
+        self.position_maps = self._zero_maps(self.heads if count else 0, count)
+        for name, verb in (("anchor", "reads"), ("relative", "reads"), ("slope", "leans")):
+            if getattr(self, name) and not count:
+                raise ValueError(f"{name} {verb} beside the position term: it needs position")
         # every head's anchored maps ``(E_x, E_c, e)``, one column per anchored bucket and one
         # for the slots written before the episode began; none without ``anchor``
-        self.anchor_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, count + 1)),
-                np.zeros((len(self.association), count + 1)),
-                np.zeros(count + 1),
-            )
-            for _ in range(self.heads if self.anchor else 0)
-        ]
-        if self.relative and not count:
-            raise ValueError("relative reads beside the position term: it needs position")
+        self.anchor_maps = self._zero_maps(self.heads if self.anchor else 0, count + 1)
         # every head's relative maps ``(R_x, R_c, r)``, one column per offset and one for a
         # stream with no read before; none without ``relative``
         width_r = 2 * self.RELATIVE + 2
-        self.relative_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (
-                np.zeros((self.map_width, width_r)),
-                np.zeros((len(self.association), width_r)),
-                np.zeros(width_r),
-            )
-            for _ in range(self.heads if self.relative else 0)
-        ]
-        if self.slope and not count:
-            raise ValueError("slope leans beside the position term: it needs position")
-        # every head's slope maps ``(S_x, S_c, s)``; none without ``slope``
-        self.slope_maps: list[tuple[np.ndarray, np.ndarray, np.ndarray]] = [
-            (np.zeros(self.map_width), np.zeros(len(self.association)), np.zeros(1))
-            for _ in range(self.heads if self.slope else 0)
-        ]
+        self.relative_maps = self._zero_maps(self.heads if self.relative else 0, width_r)
+        # every head's slope maps ``(S_x, S_c, s)``, one number each; none without ``slope``
+        self.slope_maps = self._zero_maps(self.heads if self.slope else 0)
         self._check_copy()
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
@@ -1156,23 +1163,25 @@ class Recall:
         age``), zero for a slot written before the episode began."""
         streams = self.streams if rows is None else len(rows)
         ages = self.ages()
-        scale = np.log1p(self.SLOPE)
-        age = np.stack([np.log1p(ages) / scale, np.exp(-ages / self.SLOPE)], axis=1)
-        out = np.broadcast_to(age[None], (streams, len(ages), 2))
+        out = np.broadcast_to(self._when(ages)[None], (streams, len(ages), 2))
         if not self.anchor:
             return np.asarray(out)
-        told = self.told if rows is None else self.told[rows]
-        places = told[:, None] - 1.0 - ages[None, :]
-        inside = places >= 0
-        place = np.maximum(places, 0.0)
-        anchored = np.stack(
-            [
-                np.where(inside, np.log1p(place) / scale, 0.0),
-                np.where(inside, np.exp(-place / self.SLOPE), 0.0),
-            ],
-            axis=2,
-        )
+        places = self._places(rows)
+        anchored = np.where((places >= 0)[..., None], self._when(np.maximum(places, 0.0)), 0.0)
         return np.concatenate([out, anchored], axis=2)
+
+    def _when(self, ages: np.ndarray) -> np.ndarray:
+        """The two features of when of ``ages`` (or places in an episode), on a last axis:
+        ``log(1 + age) / log(1 + SLOPE)`` and ``exp(-age / SLOPE)``."""
+        return np.stack(
+            [np.log1p(ages) / np.log1p(self.SLOPE), np.exp(-ages / self.SLOPE)], axis=-1
+        )
+
+    def _places(self, rows: np.ndarray | None) -> np.ndarray:
+        """Each slot's place in its stream's current episode, ``told - 1 - age``, for each
+        stream or for the streams ``rows``; below zero for a slot written before it began."""
+        told = self.told if rows is None else self.told[rows]
+        return np.asarray(told[:, None] - 1.0 - self.ages()[None, :])
 
     @property
     def streams(self) -> int:
@@ -1206,24 +1215,22 @@ class Recall:
         ages = self.ages()
         if not self.position:
             return np.zeros(len(ages), dtype=np.int64)
+        return self._bucket(ages).astype(np.int64)
+
+    def _bucket(self, ages: np.ndarray) -> np.ndarray:
+        """``ages`` (or places in an episode) in the position term's buckets: below
+        ``position`` one each, then one per doubling, the last holding every older one."""
         exact = float(self.position)
         out = np.where(ages < exact, ages, exact + np.floor(np.log2(np.maximum(ages, 1.0) / exact)))
-        return np.minimum(out, self.position_buckets - 1).astype(np.int64)
+        return np.asarray(np.minimum(out, self.position_buckets - 1))
 
     def anchored_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Each slot's anchored bucket for each stream, or for the streams ``rows``, ``(rows,
         slots)``: its place in the stream's current episode (``told - 1 - age``) bucketed as
         an age is, and ``position_buckets`` for a slot written before the episode began."""
-        told = self.told if rows is None else self.told[rows]
-        places = told[:, None] - 1.0 - self.ages()[None, :]
-        count = self.position_buckets
-        exact = float(self.position)
-        place = np.maximum(places, 0.0)
-        out = np.where(
-            place < exact, place, exact + np.floor(np.log2(np.maximum(place, 1.0) / exact))
-        )
-        out = np.minimum(out, count - 1)
-        return np.where(places < 0, count, out).astype(np.int64)
+        places = self._places(rows)
+        out = self._bucket(np.maximum(places, 0.0))
+        return np.where(places < 0, self.position_buckets, out).astype(np.int64)
 
     def relative_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
         """Each slot's relative bucket for each stream, or for the streams ``rows``, ``(rows,
@@ -1246,29 +1253,18 @@ class Recall:
         (every stream, in order, without)."""
         if not self.position_maps or not self.slots:
             return None
-        p_x, p_c, p = self.position_maps[head]
-        term = (event @ p_x + cortex @ p_c + p)[:, self.buckets()]
+        term = _term(self.position_maps[head], event, cortex)[:, self.buckets()]
         # the terms over each stream's episode and previous read need the moments' streams; a
         # batch of other streams reads silence (``weights``) and gets the table and the slope
-        if rows is None and len(event) != self.streams:
-            return self._lean(head, event, cortex, term)
-        if self.anchor_maps:
-            e_x, e_c, e = self.anchor_maps[head]
-            anchored = event @ e_x + cortex @ e_c + e
-            term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
-        if self.relative_maps:
-            q_x, q_c, q = self.relative_maps[head]
-            relative = event @ q_x + cortex @ q_c + q
-            term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
-        return self._lean(head, event, cortex, term)
-
-    def _lean(
-        self, head: int, event: np.ndarray, cortex: np.ndarray, term: np.ndarray
-    ) -> np.ndarray:
-        """``term`` with head ``head``'s slope over age added (``slope``), or as it is."""
+        if rows is not None or len(event) == self.streams:
+            if self.anchor_maps:
+                anchored = _term(self.anchor_maps[head], event, cortex)
+                term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
+            if self.relative_maps:
+                relative = _term(self.relative_maps[head], event, cortex)
+                term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
         if self.slope_maps:
-            s_x, s_c, s = self.slope_maps[head]
-            lean = event @ s_x + cortex @ s_c + s
+            lean = _term(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
         return np.asarray(term)
 
@@ -1289,9 +1285,18 @@ class Recall:
         return self.head_maps[head]
 
     def _set_map(self, head: int, w_x: np.ndarray, w_c: np.ndarray, b: np.ndarray) -> None:
-        # a new list, never written in place: an imagined branch may hold the old one
-        self.head_maps = [
-            (w_x, w_c, b) if h == head else maps for h, maps in enumerate(self.head_maps)
+        self.head_maps = _with_head(self.head_maps, head, (w_x, w_c, b))
+
+    def _zero_maps(self, heads: int, *columns: int) -> list[_Maps]:
+        """``heads`` maps of the moment at zero, each onto ``columns`` outputs (one number
+        without)."""
+        return [
+            (
+                np.zeros((self.map_width, *columns)),
+                np.zeros((len(self.association), *columns)),
+                np.zeros(columns or (1,)),
+            )
+            for _ in range(heads)
         ]
 
     def _empty(self, batch: int) -> None:
@@ -1315,9 +1320,7 @@ class Recall:
         self.focus = np.full(batch, -1, dtype=np.int64)
         # the window's previous events per stream, the latest first; none: zeros
         self.past = np.zeros((0, self.window - 1, self.key_width))
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Empty every stream, or the streams of ``rows`` only (streams that begin again): their
@@ -1358,21 +1361,26 @@ class Recall:
         )
         self._fresh(keep)
         self.ended = self.ended & keep
-        self.told = np.where(keep, self.told, 0)
-        self.focus = np.where(keep, self.focus, -1)
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def _fresh(self, keep: np.ndarray) -> None:
         """The moment before begins afresh for the streams ``keep`` does not mark: the cortex
-        of the moment before, the window's events and the command executed at it."""
+        of the moment before, the window's events and the command executed at it; and so does
+        the episode: the next moment is its first and follows no read of it."""
         batch = len(keep)
         self.previous = np.where(keep[:, None], self.previous, 0.0)
         if len(self.acted) == batch:
             self.acted = np.where(keep[:, None], self.acted, 0.0)
         if len(self.past) == batch:
             self.past = np.where(keep[:, None, None], self.past, 0.0)
+        self.told = np.where(keep, self.told, 0)
+        self.focus = np.where(keep, self.focus, -1)
+
+    def _unread(self) -> None:
+        """No read is held: the next moment is addressed afresh."""
+        self.last = None
+        self._attended = None
+        self._head_reads = None
 
     def end(self, batch: int, rows: np.ndarray | None = None) -> None:
         """The streams of ``rows`` (every stream without) end an episode and keep their
@@ -1404,12 +1412,8 @@ class Recall:
             self.ended = np.zeros(batch, dtype=bool)
         else:
             self.ended = self.ended | chosen
-        self.told = np.where(chosen, 0, self.told)  # the next moment is the episode's first
-        self.focus = np.where(chosen, -1, self.focus)  # and follows no read of this episode
         self._fresh(~chosen)
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def _bounded(self) -> bool:
         """Whether streams that begin hold a boundary slot: ``boundary`` on, and room for the
@@ -1431,39 +1435,22 @@ class Recall:
     def keep(self, rows: np.ndarray) -> None:
         """Keep the memories of ``rows`` only (streams that ended are dropped)."""
         rows = _stream_rows(rows, self.streams)
-        self.keys, self.values, self.nexts, self.held = (
-            a[rows] for a in (self.keys, self.values, self.nexts, self.held)
-        )
-        self.previous = self.previous[rows]
-        if len(self.acted):
-            self.acted = self.acted[rows]
-        if len(self.past):
-            self.past = self.past[rows]
-        self.ended = self.ended[rows]
-        self.told = self.told[rows]
-        self.focus = self.focus[rows]
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        for name in self._STATE:
+            state = getattr(self, name)
+            if len(state):  # the window's events and the command may hold no stream
+                setattr(self, name, state[rows])
+        self._unread()
 
     def snapshot(self) -> dict[str, Any]:
         """The per-stream state, to restore after a refused operation; every write replaces
         these arrays rather than changing them."""
-        return {
-            name: getattr(self, name)
-            for name in (
-                "keys", "values", "nexts", "held", "previous", "ended", "past", "acted", "told",
-                "focus",
-            )
-        }
+        return {name: getattr(self, name) for name in self._STATE}
 
     def restore(self, snapshot: dict[str, Any]) -> None:
         """Return to a ``snapshot``; the next moment is addressed afresh."""
         for name, value in snapshot.items():
             setattr(self, name, value)
-        self.last = None
-        self._attended = None
-        self._head_reads = None
+        self._unread()
 
     def reading(self) -> tuple[Any, ...]:
         """The latest read as ``witness``, ``learn`` and ``contrast_rows`` take it: the moment
@@ -1496,9 +1483,7 @@ class Recall:
         branch.previous = self.previous.copy()
         branch.past = self.past.copy()
         branch.acted = self.acted.copy()
-        branch.last = None
-        branch._attended = None
-        branch._head_reads = None
+        branch._unread()
         branch._private = True
         branch._contents = []
         branch._content_keys = None
@@ -1512,25 +1497,19 @@ class Recall:
             name: getattr(self, name) for name in ("keys", "values", "nexts", "held", "previous")
         }
         for h, maps in enumerate(self.head_maps):  # every head's address map, head 0's first
-            out.update(dict(zip(self.map_names("address", h), maps, strict=True)))
+            out.update(zip(self.map_names("address", h), maps, strict=True))
         if self.ended.any():
             out["ended"] = self.ended
         if self.window > 1:
             out["past"] = self.past
         if self.action:  # the command each stream executed at the moment before
             out["acted"] = self.acted
-        for h, maps in enumerate(self.position_maps):  # saved only with a position term
-            out.update(dict(zip(self.map_names("position", h), maps, strict=True)))
-        for h, maps in enumerate(self.slope_maps):  # saved only with ``slope``
-            out.update(dict(zip(self.map_names("slope", h), maps, strict=True)))
-        if self.relative_maps:  # saved only with ``relative``
-            out["focus"] = self.focus
-            for h, maps in enumerate(self.relative_maps):
-                out.update(dict(zip(self.map_names("relative", h), maps, strict=True)))
-        if self.anchor_maps:  # saved only with ``anchor``
-            out["told"] = self.told
-            for h, maps in enumerate(self.anchor_maps):
-                out.update(dict(zip(self.map_names("anchor", h), maps, strict=True)))
+        for kind, state in self._KINDS:  # each kind saved only with its option
+            kept = getattr(self, f"{kind}_maps")
+            if kept and state:
+                out[state] = getattr(self, state)
+            for h, maps in enumerate(kept):
+                out.update(zip(self.map_names(kind, h), maps, strict=True))
         return out
 
     @staticmethod
@@ -1542,7 +1521,7 @@ class Recall:
         suffix = "" if head == 0 else f"_{head}"
         if kind == "address":
             return f"w_x{suffix}", f"w_c{suffix}", f"b{suffix}"
-        if kind not in ("position", "anchor", "relative", "slope"):
+        if kind not in dict(Recall._KINDS):
             raise ValueError(f"unknown map kind: {kind!r}")
         return f"{kind}_x{suffix}", f"{kind}_c{suffix}", f"{kind}_b{suffix}"
 
@@ -1561,19 +1540,11 @@ class Recall:
         before."""
         x = np.asarray(event, dtype=float)
         n = len(x)
-        c = (
-            self.previous
-            if len(self.previous) == n
-            else np.zeros((n, len(self.association)))
-        )
+        c = _of(self.previous, n)
         key = self.heard * x
         if self.window > 1:
             # the stream's previous events in order, each on coordinates of its own
-            past = (
-                self.past
-                if len(self.past) == n
-                else np.zeros((n, self.window - 1, self.key_width))
-            )
+            past = _of(self.past, n)
             scale = self.heard * self.window_decay ** np.arange(1, self.window)
             key = np.concatenate([key, (scale[None, :, None] * past).reshape(n, -1)], axis=1)
         inputs = x
@@ -1581,7 +1552,7 @@ class Recall:
             # the command coordinates of the key are the slot's own command, written after the
             # settle; before it the address holds zero there, and the maps read the command
             # the stream executed at the moment before
-            acted = self.acted if len(self.acted) == n else np.zeros((n, self.command_width))
+            acted = _of(self.acted, n)
             key = np.concatenate([key, np.zeros((n, self.command_width))], axis=1)
             inputs = np.concatenate([x, acted], axis=1)
         w_x, w_c, b = self.head_maps[0]
@@ -1754,9 +1725,7 @@ class Recall:
         if not (self.compete and self.heads > 1):
             return [None] * self.heads
         reads = self._head_reads
-        if reads is not None and len(reads) > 2 and reads[2] == self.writes and all(
-            r is not None for r in reads[1]
-        ):
+        if reads is not None and reads[2] == self.writes and all(r is not None for r in reads[1]):
             attended = list(reads[1])
         else:
             attended = self._reads(moment)[1]
@@ -1842,11 +1811,7 @@ class Recall:
             self.acted = done.copy()
         self.previous = cortex
         if self.window > 1:  # this moment enters the window, the oldest leaves it
-            past = (
-                self.past
-                if len(self.past) == len(x)
-                else np.zeros((len(x), self.window - 1, self.key_width))
-            )
+            past = _of(self.past, len(x))
             self.past = np.concatenate([moment.event[:, None, :], past[:, :-1]], axis=1)
         self.last = None
 
@@ -2008,137 +1973,68 @@ class Recall:
         for h in range(self.heads):
             d_value = self.readback(graph, "recall", movement, h)
             d_next = self.readback(graph, "next", movement, h) if self.next else None
-            # head 0 steps its map as a memory of one head does
-            head_moment = (
-                moment if h == 0 else moment._replace(address=self._head_address(moment, h))
-            )
+            head_moment = moment._replace(address=self._head_address(moment, h))
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
             found = self._row_steps(head_moment, rows, d_value, d_next, h, reads[h])
             if found is None:  # no row moves (a competing head may have had nothing to read)
                 continue
             if self.address:
-                reports.append(
-                    self._step(moment, rows, d_value, d_next, found=found) if h == 0
-                    else self._step(head_moment, rows, d_value, d_next, head=h, found=found)
-                )
+                reports.append(self._step(head_moment, rows, d_value, d_next, head=h, found=found))
             if positions:
-                rows_moved, rows_refused = self._position_step(
-                    head_moment, rows, d_value, d_next, h, found
-                )
+                rows_moved, rows_refused = self._position_step(rows, h, found)
                 moved_positions += rows_moved
                 refused_positions += rows_refused
-        if not reports:
-            report = dict(quiet)
-        elif len(reports) == 1:
-            report = reports[0]
-        else:
-            # every head's rows and refusals summed, the error averaged over the heads that moved
-            moved = [r["address_error"] for r in reports if r["address_rows"]]
-            report = {
-                "address_rows": float(sum(r["address_rows"] for r in reports)),
-                "address_error": float(np.mean(moved)) if moved else 0.0,
-                "address_refused": float(sum(r["address_refused"] for r in reports)),
-            }
+        # every head's rows and refusals summed, the error averaged over the heads that moved
+        moved = [r["address_error"] for r in reports if r["address_rows"]]
+        report = {
+            "address_rows": float(sum(r["address_rows"] for r in reports)),
+            "address_error": float(np.mean(moved)) if moved else 0.0,
+            "address_refused": float(sum(r["address_refused"] for r in reports)),
+        }
         if self.position_maps:
             report["position_rows"] = float(moved_positions)
             report["position_refused"] = float(refused_positions)
         return report
 
     def _position_step(
-        self,
-        moment: _Moment,
-        rows: np.ndarray,
-        d_value: np.ndarray,
-        d_next: np.ndarray | None,
-        head: int,
-        found: tuple[np.ndarray, ...] | None = None,
+        self, rows: np.ndarray, head: int, found: tuple[np.ndarray, ...]
     ) -> tuple[int, int]:
         """The step of head ``head``'s position maps toward the slots the lesson's movement
-        names (``p*`` of the address lesson): each moving row's terms take the cross-entropy
-        gradient ``g_b = sum_{i in b} (p*_i - p_i)``, and the maps the least-mean-squares step on
-        ``z = [x, c, 1]`` at ``position_rate``, each row's rate bounded by its own energy.
-        ``found`` is the rows' reading (``_row_steps``) when the caller has it. Returns the rows
-        that moved and the rows a refused step left as they were: a step that is not finite is
-        refused and moves none."""
-        if found is None:
-            # the shares a competing head read are its prior, as in ``learn``
-            found = self._row_steps(
-                moment, rows, d_value, d_next, head, self._lesson_reads(moment)[head]
-            )
-        if found is None:
-            return 0, 0
+        names (``p*`` of the address lesson; ``found`` is the reading of the streams ``rows``,
+        ``_row_steps``): each moving row's terms take the cross-entropy gradient ``g_b =
+        sum_{i in b} (p*_i - p_i)``, and the maps the least-mean-squares step on ``z = [x, c,
+        1]`` at ``position_rate``, each row's rate bounded by its own energy; the anchored and
+        relative maps take the same gradient over their buckets, and the slope maps along each
+        slot's age at ``slope``. Returns the rows that moved and the rows a refused step left
+        as they were: a step that is not finite is refused whole and moves none."""
         moving, x, c, _, _, _, target, prior = found
         rate = self.position_rate
         count = self.position_buckets
-        p_x, p_c, p = self.position_maps[head]
-        anchored = None
+        streams = np.asarray(rows)[moving]
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             # a slot its stream does not hold has neither attention nor a target
             gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
-            terms = np.zeros((len(gradient), count))
-            np.add.at(terms, (np.arange(len(gradient))[:, None], self.buckets()[None, :]), gradient)
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
             bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None]
-            step = terms * bound
-            maps = (
-                p_x + rate * x.T @ step / len(x),
-                p_c + rate * c.T @ step / len(x),
-                p + rate * step.mean(axis=0),
-            )
+            step = _per_bucket(gradient, self.buckets()[None, :], count) * bound
+            stepped = {"position_maps": _lms(self.position_maps[head], step, rate, x, c)}
             if self.anchor_maps:  # the same gradient over each slot's place in the episode
-                e_x, e_c, e = self.anchor_maps[head]
-                places = np.zeros((len(gradient), count + 1))
-                buckets = self.anchored_buckets(np.asarray(rows)[moving])
-                np.add.at(places, (np.arange(len(gradient))[:, None], buckets), gradient)
-                places *= bound
-                anchored = (
-                    e_x + rate * x.T @ places / len(x),
-                    e_c + rate * c.T @ places / len(x),
-                    e + rate * places.mean(axis=0),
-                )
-        relative = leaned = None
-        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+                step = _per_bucket(gradient, self.anchored_buckets(streams), count + 1) * bound
+                stepped["anchor_maps"] = _lms(self.anchor_maps[head], step, rate, x, c)
             if self.relative_maps:  # the same gradient over each slot's offset from the focus
-                q_x, q_c, q = self.relative_maps[head]
-                offsets = np.zeros((len(gradient), 2 * self.RELATIVE + 2))
-                buckets = self.relative_buckets(np.asarray(rows)[moving])
-                np.add.at(offsets, (np.arange(len(gradient))[:, None], buckets), gradient)
-                offsets *= bound
-                relative = (
-                    q_x + rate * x.T @ offsets / len(x),
-                    q_c + rate * c.T @ offsets / len(x),
-                    q + rate * offsets.mean(axis=0),
-                )
+                width = 2 * self.RELATIVE + 2
+                step = _per_bucket(gradient, self.relative_buckets(streams), width) * bound
+                stepped["relative_maps"] = _lms(self.relative_maps[head], step, rate, x, c)
             if self.slope_maps:  # the same gradient, read along each slot's age
-                s_x, s_c, s = self.slope_maps[head]
                 lean = gradient @ (self.ages() / self.SLOPE)
                 lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
-                leaned = (
-                    s_x + self.slope * x.T @ lean / len(x),
-                    s_c + self.slope * c.T @ lean / len(x),
-                    s + self.slope * lean.mean(keepdims=True),
-                )
+                stepped["slope_maps"] = _lms(self.slope_maps[head], lean, self.slope, x, c)
         # every map of the step or none: a step that is not finite is refused whole
-        checked = [*maps, *(a for found in (anchored, relative, leaned) if found for a in found)]
-        if not all(np.isfinite(a).all() for a in checked):
+        if not all(np.isfinite(a).all() for maps in stepped.values() for a in maps):
             return 0, int(len(x))
-        # new arrays, never written in place: an imagined branch may hold the old ones
-        self.position_maps = [
-            maps if h == head else kept for h, kept in enumerate(self.position_maps)
-        ]
-        if anchored is not None:
-            self.anchor_maps = [
-                anchored if h == head else kept for h, kept in enumerate(self.anchor_maps)
-            ]
-        if relative is not None:
-            self.relative_maps = [
-                relative if h == head else kept for h, kept in enumerate(self.relative_maps)
-            ]
-        if leaned is not None:
-            self.slope_maps = [
-                leaned if h == head else kept for h, kept in enumerate(self.slope_maps)
-            ]
+        for name, maps in stepped.items():
+            setattr(self, name, _with_head(getattr(self, name), head, maps))
         return int(len(x)), 0
 
     def _step(
@@ -2172,23 +2068,14 @@ class Recall:
         if found is None:
             return quiet
         _, x, c, key, error, step, _, _ = found
-        n = len(x)
-        rate = self.address
-        old_x, old_c, old_b = self.head_map(head)
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
-            w_x = rate * x.T @ step
-            w_x /= n
-            w_x += old_x
-            w_c = rate * c.T @ step
-            w_c /= n
-            w_c += old_c
-            b = old_b + rate * step.mean(axis=0)
+            w_x, w_c, b = _lms(self.head_map(head), step, self.address, x, c)
             address = key + x @ w_x + c @ w_c + b
         if not all(np.isfinite(a).all() for a in (w_x, w_c, b, address)):
-            return {**quiet, "address_refused": float(n)}
+            return {**quiet, "address_refused": float(len(x))}
         self._set_map(head, w_x, w_c, b)
         return {
-            "address_rows": float(n),
+            "address_rows": float(len(x)),
             "address_error": float(np.abs(error).mean()),
             "address_refused": 0.0,
         }
@@ -2334,13 +2221,12 @@ class Recall:
                 gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
                 rate = self.position_rate
                 bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
-                blocks = [(self.buckets()[None, :].repeat(len(x), axis=0), count)]
+                blocks = [(self.buckets()[None, :], count)]
                 if self.anchor_maps:
                     blocks.append((self.anchored_buckets(index), count + 1))
                 start = self.heads * columns_
                 for buckets, size in blocks:
-                    terms = np.zeros((len(x), size))
-                    np.add.at(terms, (np.arange(len(x))[:, None], buckets), gradient)
+                    terms = _per_bucket(gradient, buckets, size)
                     rows = rate * np.einsum("bi,bk->bik", z, terms * bound)
                     kept = np.isfinite(rows).all(axis=(1, 2))
                     out[index[kept], :, start + h * size:start + (h + 1) * size] = rows[kept]
@@ -2378,11 +2264,10 @@ class Recall:
         split = self.heads * columns_
         with np.errstate(over="ignore", invalid="ignore"):
             moved = self.address_reward * step[:, :split]
-            maps = []
-            for h in range(self.heads):
-                block = moved[:, h * columns_:(h + 1) * columns_]
-                w_x, w_c, b = self.head_map(h)
-                maps.append((w_x + block[:width], w_c + block[width:-1], b + block[-1]))
+            maps = [
+                _added(self.head_map(h), moved[:, h * columns_:(h + 1) * columns_], width)
+                for h in range(self.heads)
+            ]
             stepped: list[np.ndarray] = [moved]
             position_maps = anchor_maps = None
             if positions:
@@ -2395,12 +2280,8 @@ class Recall:
                     part = self.position_reward * step[:, start:start + self.heads * size]
                     stepped.append(part)
                     found_maps.append([
-                        (
-                            m_x + part[:width, h * size:(h + 1) * size],
-                            m_c + part[width:-1, h * size:(h + 1) * size],
-                            m + part[-1, h * size:(h + 1) * size],
-                        )
-                        for h, (m_x, m_c, m) in enumerate(kept_maps)
+                        _added(kept, part[:, h * size:(h + 1) * size], width)
+                        for h, kept in enumerate(kept_maps)
                     ])
                     start += self.heads * size
                 position_maps = found_maps[0]
@@ -2422,11 +2303,8 @@ class Recall:
     def accept(self, proposal: tuple[Any, ...]) -> None:
         """Install a step ``propose`` made: the address maps, and with ``position_reward`` the
         position maps (and the anchored ones)."""
-        if self.heads == 1:
-            self._set_map(0, proposal[0], proposal[1], proposal[2])
-        else:
-            for h in range(self.heads):
-                self._set_map(h, proposal[0][h], proposal[1][h], proposal[2][h])
+        heads = [proposal[:3]] if self.heads == 1 else zip(*proposal[:3], strict=True)
+        self.head_maps = [(w_x, w_c, b) for w_x, w_c, b in heads]
         if len(proposal) > 4 and proposal[4] is not None:
             self.position_maps = list(proposal[4])
         if len(proposal) > 5 and proposal[5] is not None:

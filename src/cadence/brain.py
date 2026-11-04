@@ -37,6 +37,7 @@ target activation, which is how the learning rule's second phase enters.
 from __future__ import annotations
 
 import copy
+import functools
 import os
 import sys
 import threading
@@ -475,6 +476,10 @@ class BrainState:
 
     From ``settle`` every array is ``(n,)`` and ``trajectory`` is ``(steps, n)``;
     from ``settle_batch`` they carry a leading batch axis.
+
+    A state the compiled CPU kernels settled or checked keeps the block products of its
+    activations, so a check of it or a settle from it computes only the products whose
+    activations differ (the same bits); ``copy`` and ``pickle`` leave them out.
     """
 
     v: np.ndarray
@@ -517,11 +522,36 @@ class BrainState:
     def active(self, level: float = 0.5, i: int = 0) -> int:
         return int((self.row(i) >= level).sum())
 
+    def __getstate__(self) -> dict[str, Any]:
+        held = dict(self.__dict__)
+        held.pop("_products", None)  # the kernels' products stay with this object
+        return held
+
+
+def _check_ladder(neuron_model: NeuronModel, halvings: int, dtype: str) -> None:
+    """Refuse a damping ladder whose smallest step's rule is not a valid rule representable at
+    the backend's precision. A rule that passes is remembered by value (the check is a function
+    of the rule's fields alone); one that fails is refused at every call, and so is one whose
+    fields are arrays, which cannot be remembered."""
+    try:
+        hash(neuron_model)
+    except TypeError:
+        _ladder_rule(neuron_model, halvings, dtype)
+    else:
+        _checked_ladder(neuron_model, halvings, dtype)
+
+
+def _ladder_rule(neuron_model: NeuronModel, halvings: int, dtype: str) -> None:
+    neuron_model.replace(dt=float(np.ldexp(neuron_model.dt, -halvings)))._validate_precision(dtype)
+
+
+_checked_ladder = functools.lru_cache(maxsize=64)(_ladder_rule)
+
 
 def _copy_state(state: BrainState | None) -> BrainState | None:
     if state is None:
         return None
-    return BrainState(
+    copied = BrainState(
         state.v.copy(),
         state.activation.copy(),
         state.adaptation.copy(),
@@ -529,6 +559,15 @@ def _copy_state(state: BrainState | None) -> BrainState | None:
         activity_change=None if state.activity_change is None else state.activity_change.copy(),
         discarded_steps=state.discarded_steps,
     )
+    _keep_products(copied, state.__dict__.get("_products"))  # the same activations
+    return copied
+
+
+def _keep_products(state: BrainState, products: Any) -> None:
+    """Keep the compiled kernels' block products with ``state`` (``fused.Products``); a check
+    of the state or a settle from it reads them where they hold for its activations."""
+    if products is not None:
+        state.__dict__["_products"] = products
 
 
 @dataclass(frozen=True)
@@ -544,7 +583,7 @@ class Equilibrium:
     residual: np.ndarray
     steps: int
     tolerance: float
-    residual_checks: int = 0  # additional transport evaluations, outside the local sweeps
+    residual_checks: int = 0  # equation checks, each a transport outside the local sweeps
     damping_halvings: int = 0  # final halving index of this bounded solve
     stagnation_checks: int = 0  # complete-state comparisons, with no synaptic transport
 
@@ -814,9 +853,10 @@ class Brain:
         """``with_parameters`` for a learner's compiled update: ``efficacy``, its effective
         ``weights`` (the product ``with_parameters`` makes, made by the update's pass) and
         ``bias`` are fresh arrays of the right shape that the update made; ``finite`` says
-        whether the efficacy and the weights are finite, as that pass found them. On the
-        ``"cpu"`` backend they are taken as they are; another backend's kernel holds its own
-        weights, so ``with_parameters`` builds the new brain. The same brain, and the same
+        whether the efficacy and the weights are finite, as that pass found them. They are taken
+        as they are; on the ``"mlx"`` backend the new brain gets a kernel of its own whose
+        blocks are made from these weights as construction makes them (``_MlxKernel``), and
+        on ``"torch"`` ``with_parameters`` builds the new brain. The same brain, and the same
         refusals, as ``with_parameters`` gives."""
         if not finite[0]:
             raise ValueError("efficacy must have one finite entry per synapse")
@@ -824,9 +864,11 @@ class Brain:
             raise ValueError("effective synaptic weights must be finite; reduce gain or efficacy")
         if not np.isfinite(bias).all():
             raise ValueError("bias must have one finite entry per neuron")
-        if self.backend != "cpu":
+        if self.backend == "torch":
             return self.with_parameters(efficacy=efficacy, bias=bias)
         new = copy.copy(self)
+        if self._mlx is not None:  # before anything is replaced: a refusal changes nothing
+            new._mlx = self._mlx.with_parameters(weights, bias)
         new._efficacy = efficacy
         new._weights_host = weights
         new._flat = None
@@ -930,7 +972,7 @@ class Brain:
             nudge=nudge,
             tolerance=tolerance,
         )
-        return BrainState(
+        single = BrainState(
             v=out.v[0],
             activation=out.activation[0],
             adaptation=out.adaptation[0],
@@ -939,6 +981,8 @@ class Brain:
             activity_change=None if out.activity_change is None else out.activity_change[0],
             discarded_steps=out.discarded_steps,
         )
+        _keep_products(single, out.__dict__.get("_products"))  # the same row
+        return single
 
     def _with_dt(self, dt: float) -> Brain:
         """A numerical copy on current parameters; boundary subclasses must override.
@@ -970,7 +1014,8 @@ class Brain:
 
         Unlike ``settle_batch(tolerance=...)``, this tests the potential and adaptation
         equations, including the same mask and nudge. Checks cost one extra transport
-        per chunk. Resident float64 Torch states are checked on their device. All rows
+        per chunk (on the compiled CPU path, the block products of the ranges the chunk's last
+        sweep moved). Resident float64 Torch states are checked on their device. All rows
         advance together; a row's small residual does not freeze it.
         ``drive`` is dense, with one column per neuron, as in ``settle_batch``.
         Optional ``damping`` reserves equal portions of the one sweep budget
@@ -995,13 +1040,10 @@ class Brain:
             raise ValueError("tolerance must be finite and nonnegative")
         if damping:
             attempts = min(damping + 1, max(1, budget))
-            minimum_rule = self.neuron_model.replace(
-                dt=float(np.ldexp(self.neuron_model.dt, -(attempts - 1)))
-            )
             dtype = "float32" if (self._mlx is not None or (
                 self._torch is not None and self._torch.dtype == self._torch.torch.float32
             )) else "float64"
-            minimum_rule._validate_precision(dtype)
+            _check_ladder(self.neuron_model, attempts - 1, dtype)
             used = checks = stagnation_checks = 0
             current_state = state
             for halving in range(attempts):
@@ -1016,16 +1058,16 @@ class Brain:
                 used += phase.steps
                 checks += phase.residual_checks
                 stagnation_checks += phase.stagnation_checks
-                error = phase.residual
+                result = phase  # at the full step the attempt's report is the solve's
                 if halving:
                     error = self.residual(drive, phase.state, mask=mask, nudge=nudge)
                     checks += 1
-                result = Equilibrium(
-                    phase.state, error, used, tolerance,
-                    residual_checks=checks, damping_halvings=halving,
-                    stagnation_checks=stagnation_checks,
-                )
-                if np.all(result.qualified) or used >= budget:
+                    result = Equilibrium(
+                        phase.state, error, used, tolerance,
+                        residual_checks=checks, damping_halvings=halving,
+                        stagnation_checks=stagnation_checks,
+                    )
+                if result.qualified.all() or used >= budget:
                     return result
                 if not all(np.isfinite(value).all() for value in (
                     phase.state.v, phase.state.activation, phase.state.adaptation
@@ -1094,7 +1136,7 @@ class Brain:
         current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
         error = self.residual(drive, current, mask=mask, nudge=nudge)
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
-        while used < budget and not np.all(error <= tolerance):
+        while used < budget and not (error <= tolerance).all():
             if not np.isfinite(error).all() and any(
                 not np.isfinite(value).all()
                 for value in (current.v, current.activation, current.adaptation)
@@ -1109,7 +1151,7 @@ class Brain:
             used += current.steps
             error = self.residual(drive, current, mask=mask, nudge=nudge)
             checks += 1
-            if stop_if_stalled and used < budget and not np.all(error <= tolerance):
+            if stop_if_stalled and used < budget and not (error <= tolerance).all():
                 stagnation_checks += 1
                 repeats = repeats + 1 if self._repeated_state(previous, current) else 0
                 if repeats >= 2:
@@ -1200,17 +1242,20 @@ class Brain:
         if v is not None and (not np.isfinite(v).all() or not np.isfinite(a).all()):
             raise ValueError("warm potentials and adaptation must be finite")
         capture = _capture()
-        handle = None
+        handle = products = None
         if self.backend in ("torch", "mlx"):
             kernel = self._torch if self.backend == "torch" else self._mlx
             v, a, s, traj, taken, activity_change, handle = kernel.run(
                 v, a, drive, keep, steps, trajectory, nudge, tolerance, state, capture
             )
-        elif not trajectory and capture is None and _FUSED and self._fused_blocks() is not None:
+        elif (
+            not trajectory and capture is None and _FUSED
+            and (compiled := self._fused_blocks()) is not None
+        ):
             from .fused import fused_settle
 
-            flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
-            s, taken, activity_change = fused_settle(
+            flat, apical = compiled
+            s, taken, activity_change, products = fused_settle(
                 v,
                 a,
                 drive,
@@ -1223,6 +1268,7 @@ class Brain:
                 steps,
                 tolerance,
                 apical=apical,
+                products=None if state is None else state.__dict__.get("_products"),
             )
             traj = None
         else:
@@ -1239,6 +1285,7 @@ class Brain:
             device=handle,
             discarded_steps=0 if handle is None else int(handle.get("discarded_steps", 0)),
         )
+        _keep_products(result, products)
         if capture is not None:
             capture.finish(self, drive, keep, nudge, result)
         return result
@@ -1280,11 +1327,13 @@ class Brain:
         A small residual certifies these equations at this state only; it says nothing
         about stability, uniqueness or convergence from another start. Activation-movement
         tolerance and reaching a step cap do not provide this certificate.
-        The calculation performs one transport. An unread resident Torch state is checked
-        on its device in float64, returning only one scalar per row (a float32 state by a
-        float64 copy of the kernel, the same float64 reference). Other states, MPS and MLX
-        states included, use the float64 CPU reference; ``on_device=False`` forces that
-        reference. No state or parameter is changed.
+        The calculation performs one transport; on the compiled CPU path it reads the block
+        products the state keeps where its activations are the ones they were made from, and
+        the state keeps the check's products for a settle from it. An unread resident Torch
+        state is checked on its device in float64, returning only one scalar per row (a
+        float32 state by a float64 copy of the kernel, the same float64 reference). Other
+        states, MPS and MLX states included, use the float64 CPU reference; ``on_device=False``
+        forces that reference. No state value or parameter is changed.
         A single state returns a length-one array; nonfinite errors return infinity.
         """
         d = np.asarray(drive, dtype=float)
@@ -1314,16 +1363,20 @@ class Brain:
         a = np.atleast_2d(state.adaptation)
         if v.shape != d.shape or a.shape != d.shape:
             raise ValueError("state batch does not match the drive batch")
-        if _FUSED and self._fused_blocks() is not None:
-            # the same equations in one compiled pass: a checked settle on the CPU then
-            # costs one transport per chunk, not one NumPy operation per term
+        if _FUSED and (compiled := self._fused_blocks()) is not None:
+            # the same equations in one compiled pass: a checked settle on the CPU then costs
+            # the products of the ranges that moved since the state's were made, not one NumPy
+            # operation per term
             from .fused import fused_residual
 
-            flat, apical = cast(tuple[np.ndarray, Any], self._fused_blocks())
-            return fused_residual(
+            flat, apical = compiled
+            error, products = fused_residual(
                 v, a, d, self.bias, self.layout, flat, None if mask is None else keep,
                 self.neuron_model, nudge, apical=apical,
+                products=state.__dict__.get("_products"),
             )
+            _keep_products(state, products)  # every one current, for a settle from it
+            return error
         s = self.neuron_model.activation(v) * keep
         adapt = self.neuron_model.adaptation
         if self.apical is None:
@@ -3214,6 +3267,11 @@ class _TorchKernel:
         }
 
 
+# The most sweeps one lazy MLX graph holds before it is evaluated: a settle without a movement
+# tolerance is evaluated once at its end, and a long one this often, which bounds its memory.
+_MLX_GRAPH_STEPS = 64
+
+
 class _MlxKernel:
     """Block settling on Apple silicon through MLX: float32, unified memory, lazy graphs."""
 
@@ -3237,6 +3295,16 @@ class _MlxKernel:
         self.neuron_model = neuron_model
         self.n = connectome.n
         self.layout = layout
+        self._take(weights, bias)
+        self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
+        for k in range(layout.pairs):
+            self.by_post[int(layout.pair_post[k])].append(k)
+        self.edge_index = mx.array(layout.edge_index)
+
+    def _take(self, weights: np.ndarray, bias: np.ndarray) -> None:
+        """The bias and the weight blocks on the device, made from the host ``weights`` and
+        ``bias``; refused where float32 cannot hold them."""
+        mx, layout = self.mx, self.layout
         with np.errstate(over="ignore", invalid="ignore"):
             live_bias = bias.astype(np.float32)
             flat = layout.flat(weights).astype(np.float32)
@@ -3248,11 +3316,14 @@ class _MlxKernel:
         self.blocks = [
             mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in layout.blocks(flat)
         ]
-        self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
-        for k in range(layout.pairs):
-            self.by_post[int(layout.pair_post[k])].append(k)
-        self.sources = layout.sources()
-        self.edge_index = mx.array(layout.edge_index)
+
+    def with_parameters(self, weights: np.ndarray, bias: np.ndarray) -> _MlxKernel:
+        """A kernel of its own on new parameters: its bias and blocks made from the host
+        ``weights`` and ``bias`` as construction makes them, the layout's tables shared. This
+        kernel keeps its own blocks, so a brain holding it still settles under its weights."""
+        new = copy.copy(self)
+        new._take(weights, bias)
+        return new
 
     def _activation(self, v: Any) -> Any:
         mx, neuron_model = self.mx, self.neuron_model
@@ -3263,13 +3334,10 @@ class _MlxKernel:
             s = s + neuron_model.leak * mx.minimum(r, 0.0) / rest
         return s
 
-    def _synaptic_input(self, s: Any, previous: Any, cache: list[Any]) -> Any:
+    def _synaptic_input(self, s: Any) -> Any:
+        """Every block's product at every step: the device makes a product in less time than a
+        host synchronization would take to find its range unchanged."""
         mx, lay = self.mx, self.layout
-        moved = [True] * lay.ranges
-        if previous is not None:
-            for r in self.sources:
-                a0, a1 = int(lay.starts[r]), int(lay.starts[r + 1])
-                moved[r] = not bool(mx.array_equal(s[:, a0:a1], previous[:, a0:a1]).item())
         parts = []
         batch = s.shape[0]
         for r in range(lay.ranges):
@@ -3277,9 +3345,8 @@ class _MlxKernel:
             total = None
             for k in self.by_post[r]:
                 a0, a1, _, _ = lay.bounds(k)
-                if cache[k] is None or moved[int(lay.pair_pre[k])]:
-                    cache[k] = s[:, a0:a1] @ self.blocks[k]
-                total = cache[k] if total is None else total + cache[k]
+                product = s[:, a0:a1] @ self.blocks[k]
+                total = product if total is None else total + product
             parts.append(mx.zeros((batch, b1 - b0), dtype=mx.float32) if total is None else total)
         return mx.concatenate(parts, axis=1)
 
@@ -3342,8 +3409,6 @@ class _MlxKernel:
         traj = []
         taken = 0
         activity_change = mx.zeros((batch,), dtype=mx.float32)
-        cache: list[Any] = [None] * self.layout.pairs
-        previous = None
         s = self._activation(v)
         if masked:
             s = s * k
@@ -3351,7 +3416,7 @@ class _MlxKernel:
         if capture is not None:
             capture.step(np.array(v), np.array(s), np.array(a))
         for t in range(steps):
-            synaptic_input = self._synaptic_input(s, previous, cache)
+            synaptic_input = self._synaptic_input(s)
             total = synaptic_input + standing
             if adapt is not None:
                 total = total - adapt.strength * a
@@ -3387,13 +3452,18 @@ class _MlxKernel:
                 a = a + (s - a) / adapt.tau_steps
             movement = mx.abs(s - previous)
             activity_change = activity_change + movement.sum(axis=1)
-            mx.eval(v, s, a, activity_change)  # one graph per step; the tolerance needs the number
+            peak = None
+            if tolerance is not None:  # the stop reads the step's largest movement, made with it
+                peak = movement.max()
+                mx.eval(v, s, a, activity_change, peak)
+            elif (t + 1) % _MLX_GRAPH_STEPS == 0:
+                mx.eval(v, s, a, activity_change)
             if capture is not None:
                 capture.step(np.array(v), np.array(s), np.array(a))
             if want:
                 traj.append(np.array(s, dtype=np.float64))
             taken = t + 1
-            if tolerance is not None and float(movement.max().item()) < tolerance:
+            if tolerance is not None and peak is not None and float(peak.item()) < tolerance:
                 break
         return (
             np.array(v, dtype=np.float64),

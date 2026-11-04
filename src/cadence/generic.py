@@ -55,7 +55,6 @@ from ._configuration import (
     configured,
     plain,
     real,
-    removed,
     removed_on_load,
     rescaled,
     scales_of,
@@ -252,10 +251,10 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 
 
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
-    """The recall memory's settings, validated: its founders with every ``recall_<setting>``
-    of ``genes`` over them (those names are removed from ``genes``), an option only where it
-    is given, or an empty mapping for a brain without it. A retired setting is refused by name
-    (``Recall.removed``)."""
+    """The recall memory's settings, validated: its founders and options at their founders
+    with every ``recall_<setting>`` of ``genes`` over them (those names are removed from
+    ``genes``), or an empty mapping for a brain without it. A retired setting is refused by
+    name (``Recall.removed``)."""
     if not isinstance(recall, bool):
         raise ValueError("recall must be boolean")
     founders = Recall.founders()
@@ -271,7 +270,7 @@ def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
         if settings:
             raise ValueError("recall settings need recall=True")
         return {}
-    return {**founders, **settings}
+    return {**founders, **Recall.options(), **settings}
 
 
 def _copy_identity(
@@ -291,12 +290,11 @@ def _copy_identity(
     populations = connectome.populations
     n = connectome.n
     value = np.full(n, -1, dtype=np.int64)  # each port neuron's value coordinate
-    names = [name for port in Recall.ports(recalled.get("heads", 1), recalled["next"])
-             for name in port]
+    names = [name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port]
     for name in names:
         neurons = np.asarray(populations[name], dtype=np.int64)
         value[neurons] = np.arange(len(neurons))
-        if recalled.get("action", False):  # the command's part: no token, starts at zero
+        if recalled["action"]:  # the command's part: no token, starts at zero
             value[np.asarray(populations[f"{name}_action"], dtype=np.int64)] = -2
     sensory = np.asarray(populations["sensory"], dtype=np.int64)
     heard = np.full(n, -1, dtype=np.int64)
@@ -444,6 +442,29 @@ def _unit_rows(code: np.ndarray) -> np.ndarray:
     """Each row scaled to unit length; a row without a positive unit stays zero."""
     norm = np.linalg.norm(code, axis=1, keepdims=True)
     return np.asarray(code / np.where(norm > 0.0, norm, 1.0))
+
+
+# The arrays of a settled state, as a checkpoint keeps each state it holds (the free phase, a
+# pending action's two nudged phases, the state sensed while an outcome is awaited).
+_STATE_ARRAYS = ("v", "activation", "adaptation")
+
+
+def _state_arrays(prefix: str, state: BrainState) -> dict[str, np.ndarray]:
+    """A settled state's arrays as a checkpoint keeps them, under ``prefix``."""
+    return {prefix + name: np.asarray(getattr(state, name)) for name in _STATE_ARRAYS}
+
+
+def _saved_state(data: Mapping[str, Any], prefix: str, steps: Any) -> BrainState:
+    """The settled state a checkpoint keeps under ``prefix``, settled in ``steps`` sweeps."""
+    v, activation, adaptation = (data[prefix + name].copy() for name in _STATE_ARRAYS)
+    return BrainState(v, activation, adaptation, int(steps))
+
+
+def _restore_traces(held: list[tuple[Trace | History, dict[str, np.ndarray]]]) -> None:
+    """Return the traces ``Brain._held_traces`` held to their arrays."""
+    for trace, values in held:
+        for name, value in values.items():
+            setattr(trace, name, value)
 
 
 # The episodic memory that ``Brain.compose(..., memory_choice=True)`` builds: place and context
@@ -920,6 +941,23 @@ def _validate_life_state(
             raise ValueError(f"invalid saved count: {name}")
         return value
 
+    def actions(name: str, rows: int, what: str) -> np.ndarray:
+        # each row's action, one per motor slot, within its slot's menu
+        slotted = learner.slot_count > 1
+        action = array(name, (rows, learner.slot_count) if slotted else (rows,))
+        limit = learner.slot_sizes[None, :] if slotted else len(learner.output_index)
+        if action.dtype.kind not in "iu" or (action < 0).any() or (action >= limit).any():
+            raise ValueError(f"invalid saved {what}action indices")
+        return action
+
+    def trace(prefix: str, width: int, what: str) -> None:
+        # a trace's arrays: its value and the latest source read per stream, and cold flags
+        array(prefix + "trace", (batch, width))
+        array(prefix + "last", (batch, width))
+        if array(prefix + "cold", (batch,)).dtype != np.bool_:
+            raise ValueError(f"invalid saved {what} cold flags")
+
+    level = int(meta["format"].rpartition("/")[2])  # cadence-generic/1 to /10 (Brain.load)
     count("updates")
     bias = meta.get("b_critic")
     if isinstance(bias, bool) or not isinstance(bias, (int, float)) or not np.isfinite(bias):
@@ -934,7 +972,7 @@ def _validate_life_state(
         if v.ndim != 2 or v.shape[1] != n or not len(v):
             raise ValueError("invalid saved free-state dimensions")
         batch = len(v)
-        for name in ("activation", "adaptation"):
+        for name in _STATE_ARRAYS[1:]:
             array("free/" + name, (batch, n))
     elif meta.get("pending", False) or meta.get("free_current", False):
         raise ValueError("saved pending action or cache needs a free state")
@@ -962,17 +1000,13 @@ def _validate_life_state(
         array("pending/value", (batch,))
         for phase in ("plus", "minus"):
             count("pending_" + phase + "_steps")
-            for name in ("v", "activation", "adaptation"):
+            for name in _STATE_ARRAYS:
                 array(f"pending/{phase}/{name}", (batch, n))
     if meta.get("pending", False) or "moment/observations" in data or "moment/action" in data:
         if not meta.get("pending", False):
             raise ValueError("saved action observations need pending credit")
         array("moment/observations", (batch, observed))
-        slotted = learner.slot_count > 1
-        action = array("moment/action", (batch, learner.slot_count) if slotted else (batch,))
-        limit = learner.slot_sizes[None, :] if slotted else len(learner.output_index)
-        if action.dtype.kind not in "iu" or (action < 0).any() or (action >= limit).any():
-            raise ValueError("invalid saved action indices")
+        actions("moment/action", batch, "")
         if learned:  # the code the decision was keyed on, settled at its moment
             array("moment/code", (batch, code_width))
     if "moment/code" in data and (not learned or "moment/observations" not in data):
@@ -1004,11 +1038,7 @@ def _validate_life_state(
         if was_sampled != bool(meta.get("pending", False)) or batch != 1:
             raise ValueError("a saved lived action must match the pending action of one stream")
         observations = array("lived/observations", (1, observed))
-        slotted = learner.slot_count > 1
-        action = array("lived/action", (1, learner.slot_count) if slotted else (1,))
-        limit = learner.slot_sizes[None, :] if slotted else len(learner.output_index)
-        if action.dtype.kind not in "iu" or (action < 0).any() or (action >= limit).any():
-            raise ValueError("invalid saved lived action indices")
+        action = actions("lived/action", 1, "lived ")
         if learned:
             array("lived/code", (1, code_width))
         if was_sampled:
@@ -1021,12 +1051,9 @@ def _validate_life_state(
     if "lived/code" in data and (not learned or "lived" not in meta):
         raise ValueError("a saved lived code belongs to a lived action of a learned code")
     awaiting = meta.get("awaiting")
-    if meta.get("format") == "cadence-generic/5" and "awaiting" not in meta:
+    if level == 5 and "awaiting" not in meta:
         raise ValueError("format cadence-generic/5 carries a sensed state awaiting an outcome")
-    if "awaiting" in meta and meta.get("format") not in (
-        "cadence-generic/5", "cadence-generic/6", "cadence-generic/7", "cadence-generic/8",
-        "cadence-generic/9", "cadence-generic/10",
-    ):
+    if "awaiting" in meta and level < 5:
         raise ValueError(
             "a sensed state awaiting an outcome belongs to formats cadence-generic/5 to /10"
         )
@@ -1041,7 +1068,7 @@ def _validate_life_state(
         steps = awaiting.get("steps")
         if isinstance(steps, bool) or not isinstance(steps, int) or steps < 0:
             raise ValueError("invalid saved count: awaiting steps")
-        for name in ("v", "activation", "adaptation"):
+        for name in _STATE_ARRAYS:
             array("awaiting/" + name, (1, n))
     working = meta["working_memory"]
     if working is not None:
@@ -1054,26 +1081,14 @@ def _validate_life_state(
             raise ValueError(
                 removed_on_load("working trace", "focus", working["focus"], "working_memory_focus")
             )
-        width = len(populations[source])
-        array("working/trace", (batch, width))
-        array("working/last", (batch, width))
-        if array("working/cold", (batch,)).dtype != np.bool_:
-            raise ValueError("invalid saved working-memory cold flags")
+        trace("working/", len(populations[source]), "working-memory")
     efference = meta.get("efference")
     if efference is None and (
         "efference" in populations or any(name.startswith("efference/") for name in data)
     ):
         raise ValueError("saved efference neurons and state require efference metadata")
     if efference is not None:
-        if meta.get("format") not in (
-            "cadence-generic/4",
-            "cadence-generic/5",
-            "cadence-generic/6",
-            "cadence-generic/7",
-            "cadence-generic/8",
-            "cadence-generic/9",
-            "cadence-generic/10",
-        ):
+        if level < 4:
             raise ValueError(
                 "an efference copy belongs to checkpoint formats cadence-generic/4 to /10"
             )
@@ -1086,11 +1101,7 @@ def _validate_life_state(
         ):
             raise ValueError("invalid saved efference ports")
         _validate_efference_amplitude(efference["amplitude"])
-        width = len(populations[source])
-        array("efference/trace", (batch, width))
-        array("efference/last", (batch, width))
-        if array("efference/cold", (batch,)).dtype != np.bool_:
-            raise ValueError("invalid saved efference cold flags")
+        trace("efference/", len(populations[source]), "efference")
     heard = meta.get("history")
     if heard is None and (
         "history" in populations or any(name.startswith("history/") for name in data)
@@ -1229,37 +1240,38 @@ def _validate_recall_state(
     history = data.get("recall/history")
     if history is not None:
         array("history", (0 if not len(history) else batch, key))
-    shapes = ((key + command, address), (association, address), (address,))
     maps: dict[str, tuple[int, ...]] = {}
-    for h in range(heads):  # every head's address map
-        maps.update(dict(zip(Recall.map_names("address", h), shapes, strict=True)))
+    states: set[str] = set()
+
+    def saved(kind: str, *outputs: int) -> None:
+        # every head's maps of one kind, each onto ``outputs`` (one number without)
+        shapes = ((key + command, *outputs), (association, *outputs), outputs or (1,))
+        for h in range(heads):
+            maps.update(zip(Recall.map_names(kind, h), shapes, strict=True))
+
+    saved("address", address)
     count = Recall.position_count(settings.get("position", 0), settings["capacity"])
-    for h in range(heads if count else 0):  # every head's position maps, with a position term
-        shapes_h = ((key + command, count), (association, count), (count,))
-        maps.update(dict(zip(Recall.map_names("position", h), shapes_h, strict=True)))
-    if settings.get("anchor", False):  # every head's anchored maps and the episodes' counts
-        for h in range(heads):
-            shapes_a = ((key + command, count + 1), (association, count + 1), (count + 1,))
-            maps.update(dict(zip(Recall.map_names("anchor", h), shapes_a, strict=True)))
-        if array("told", (batch,)).dtype.kind not in "iu" or (data["recall/told"] < 0).any():
-            raise ValueError("invalid saved recall state: told")
-    elif "recall/told" in data or any(name.startswith("recall/anchor_") for name in data):
-        raise ValueError("saved anchored maps belong to a recall memory with anchor")
-    if settings.get("relative", False):  # every head's relative maps and the reads' focus
-        width_r = 2 * Recall.RELATIVE + 2
-        for h in range(heads):
-            shapes_r = ((key + command, width_r), (association, width_r), (width_r,))
-            maps.update(dict(zip(Recall.map_names("relative", h), shapes_r, strict=True)))
-        if array("focus", (batch,)).dtype.kind not in "iu" or (data["recall/focus"] < -1).any():
-            raise ValueError("invalid saved recall state: focus")
-    elif "recall/focus" in data or any(name.startswith("recall/relative_") for name in data):
-        raise ValueError("saved relative maps belong to a recall memory with relative")
-    if settings.get("slope", 0.0):  # every head's slope maps
-        for h in range(heads):
-            shapes_s = ((key + command,), (association,), (1,))
-            maps.update(dict(zip(Recall.map_names("slope", h), shapes_s, strict=True)))
-    elif any(name.startswith("recall/slope_") for name in data):
-        raise ValueError("saved slope maps belong to a recall memory with slope")
+    if count:  # every head's position maps, with a position term
+        saved("position", count)
+    # the maps beside the table, each with its option, and the per-stream state each reads:
+    # the episodes' counts (at least 0) and the reads' focus (at least -1, before a read)
+    for kind, noun, outputs, state, low in (
+        ("anchor", "anchored", (count + 1,), "told", 0),
+        ("relative", "relative", (2 * Recall.RELATIVE + 2,), "focus", -1),
+        ("slope", "slope", (), None, 0),
+    ):
+        if settings.get(kind):
+            saved(kind, *outputs)
+            if state:
+                states.add(state)
+                if array(state, (batch,)).dtype.kind not in "iu" or (
+                    data["recall/" + state] < low
+                ).any():
+                    raise ValueError(f"invalid saved recall state: {state}")
+        elif (state and "recall/" + state in data) or any(
+            name.startswith(f"recall/{kind}_") for name in data
+        ):
+            raise ValueError(f"saved {noun} maps belong to a recall memory with {kind}")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1279,17 +1291,13 @@ def _validate_recall_state(
     # the streams whose latest slot closed an episode, saved while one does
     if "recall/ended" in data and array("ended", (batch,)).dtype != np.bool_:
         raise ValueError("invalid saved recall state: ended")
-    expected = {"keys", "values", "nexts", "held", "previous", *maps}
+    expected = {"keys", "values", "nexts", "held", "previous", *maps, *states}
     if command:
         expected |= {"acted"}
     if history is not None:
         expected |= {"history"}
     if window > 1:
         expected |= {"past"}
-    if settings.get("anchor", False):
-        expected |= {"told"}
-    if settings.get("relative", False):
-        expected |= {"focus"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
         "trace", "pending", "ended"
     } != expected:
@@ -1379,7 +1387,7 @@ def _earlier_layout(
             arrays["temporal/" + rest[len("context_memory/"):]] = data[name]
         elif rest.startswith("paid_memory/"):
             arrays["paid/" + rest[len("paid_memory/"):]] = data[name]
-        elif rest in ("context", "decision", "before", "seen") or rest.startswith("path/"):
+        elif rest in EpisodicRecords._STATE or rest.startswith("path/"):
             arrays["episode/" + rest] = data[name]
         else:
             raise ValueError("unexpected saved episodic array")
@@ -1605,8 +1613,6 @@ def _layout(
         refusal = rescaled(name)
         if refusal is not None:
             raise ValueError(refusal)
-        if name in ("history_scale", "recall_scale"):  # constants since 0.93.0
-            raise ValueError(removed(name))
 
     def size(value: Any) -> int:
         if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
@@ -1732,25 +1738,18 @@ def _layout(
     if recalled:
         # Appended last, after any history: the brain with the recall memory is the brain
         # without it plus the recall and next regions, one neuron per value coordinate
-        # (the values are the events, of the code's width), and one projection from each.
-        for name in ("recall", "next") if recalled["next"] else ("recall",):
+        # (the values are the events, of the code's width), and one projection from each;
+        # every further head's read port is wired as the first and appended after it, so the
+        # brain of H heads is the brain of H - 1 heads plus one port and its projections.
+        ports = [
+            name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port
+        ]
+        for name in ports:
             regions.append(Region(name, code_width))
             projections.append(
                 Projection(name, "association", scale=recall_scale, reciprocal=False)
             )
-        # every further head's read port, wired as the first and appended last: the brain of
-        # H heads is the brain of H - 1 heads plus one port and its projections
-        for port in Recall.ports(recalled.get("heads", 1), recalled["next"])[1:]:
-            for name in port:
-                regions.append(Region(name, code_width))
-                projections.append(
-                    Projection(name, "association", scale=recall_scale, reciprocal=False)
-                )
-        ports = [
-            name for port in Recall.ports(recalled.get("heads", 1), recalled["next"])
-            for name in port
-        ]
-        if recalled.get("action", False):
+        if recalled["action"]:
             # every port's read of the executed command, one neuron per motor neuron, appended
             # last: the brain that keeps the command is the brain without it plus these regions,
             # whose synapses into the association start at zero, so a newborn settles as one
@@ -1760,7 +1759,7 @@ def _layout(
                 projections.append(
                     Projection(f"{name}_action", "association", scale=0.0, reciprocal=False)
                 )
-        if recalled.get("copy", 0.0):
+        if recalled["copy"]:
             # the copy pathway from every read port into the motor region, appended last: the
             # brain with it is the brain without it plus these synapses, drawn at the initial
             # magnitude ``recall_copy`` (the command's part at zero); declared tokens start it
@@ -1769,24 +1768,24 @@ def _layout(
                 projections.append(
                     Projection(name, "motor", scale=recalled["copy"], reciprocal=False)
                 )
-            if recalled.get("action", False):
+            if recalled["action"]:
                 for name in ports:
                     projections.append(
                         Projection(f"{name}_action", "motor", scale=0.0, reciprocal=False)
                     )
-            if recalled.get("tokens") is not None:
+            if recalled["tokens"] is not None:
                 # the present observation's tokens into their actions, the copy's echo
                 # suppression, drawn at zero and started at ``-recall_copy`` once developed
                 projections.append(
                     Projection(regions[0].name, "motor", scale=0.0, reciprocal=False)
                 )
-        if recalled.get("when", False):
+        if recalled["when"]:
             # every head's read of when, two neurons of the age and with the anchor two of the
             # place, appended after everything else (the copy pathway's draws included): the
             # brain that delivers when is the brain without it plus these regions, whose
             # synapses into the association start at zero
-            for name in Recall.when_regions(recalled.get("heads", 1)):
-                regions.append(Region(name, 4 if recalled.get("anchor", False) else 2))
+            for name in Recall.when_regions(recalled["heads"]):
+                regions.append(Region(name, 4 if recalled["anchor"] else 2))
                 projections.append(Projection(name, "association", scale=0.0, reciprocal=False))
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
@@ -1959,7 +1958,7 @@ class Brain:
         self._coded_keys = bool(units) or bool(learned)
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
         # declared tokens start the copy pathway as their identity, the echo included
-        tokened = recalled.get("tokens") is not None and bool(recalled.get("copy", 0.0))
+        tokened = bool(recalled.get("copy")) and recalled.get("tokens") is not None
         if tokened:
             # the observation's own coordinates in the recall values: the observation itself,
             # or a learned code joined to it, after the code's units
@@ -1982,10 +1981,9 @@ class Brain:
                     f"recall_tokens name observation coordinates below {self.inputs}"
                 )
             ports = [
-                name for port in Recall.ports(recalled.get("heads", 1), recalled["next"])
-                for name in port
+                name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port
             ]
-            if recalled.get("action", False):
+            if recalled["action"]:
                 ports += [f"{name}_action" for name in ports]
             if all(name in populations for name in (*ports, "motor")):  # else the memory names it
                 connectome = _copy_identity(
@@ -2145,7 +2143,7 @@ class Brain:
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
         self.recall: Recall | None = None
         if recalled:
-            for port in Recall.ports(recalled.get("heads", 1), recalled["next"]):
+            for port in Recall.ports(recalled["heads"], recalled["next"]):
                 for name in port:
                     if name not in populations:
                         raise ValueError(
@@ -2933,8 +2931,6 @@ class Brain:
             refusal = rescaled(name)
             if refusal is not None:
                 raise ValueError(refusal)
-            if name in ("history_scale", "recall_scale"):  # constants since 0.93.0
-                raise ValueError(removed(name))
             if name in construction:
                 raise ValueError(f"{name} is a construction setting; retune preserves the brain")
         point = options.pop("teaching", None)
@@ -3020,18 +3016,11 @@ class Brain:
                 retuned.get("temperature", self.recall.temperature),
             )
             # the pairings construction refuses
-            if (
-                retuned.get("position_reward", self.recall.position_reward)
-                and not self.recall.position_maps
-            ):
-                raise ValueError("position_reward trains the position maps: it needs position")
-            if retuned.get("position_reward", self.recall.position_reward) and not retuned.get(
-                "position_rate", self.recall.position_rate
-            ):
-                raise ValueError(
-                    "position_reward steps the position maps by a lesson's step: it needs "
-                    "position_rate above 0"
-                )
+            Recall._rewarded(
+                retuned.get("position_reward", self.recall.position_reward),
+                self.recall.position,
+                retuned.get("position_rate", self.recall.position_rate),
+            )
 
         learning_genes, actor_genes, arousal_genes = split_genes(options)
         learning = configured(learning, {**pointed, **learning_genes}, "learning")
@@ -3295,18 +3284,15 @@ class Brain:
         unit in ten kept and the row scaled to unit length; with a learned code the
         rectified code the region settles to on the observations alone, without a context,
         at unit length, the key of every memory."""
-        return self._code(self._observations(observations), context=False)
+        return self._code(self._observations(observations))
 
-    def _code(
-        self, x: np.ndarray, *, context: bool = True, trace: Trace | None = None
-    ) -> np.ndarray:
+    def _code(self, x: np.ndarray) -> np.ndarray:
         """The observation code of validated observations; the observations themselves,
         the same array, without a code. A learned code settles here on the observations
-        alone, whatever ``context`` and ``trace`` say: the cortex and the memories read the
-        context-free code."""
+        alone: the cortex and the memories read the context-free code."""
         if self.learned_code is None:
             return x if self.sparse_code is None else _unit_rows(self.sparse_code.code(x))
-        phase = self._settle_code(x, context=False, trace=trace)
+        phase = self._settle_code(x, context=False)
         return self._moment_key(x, self.learned_code.code_of(phase.state.activation))
 
     def _prepare(
@@ -3507,13 +3493,13 @@ class Brain:
         hippocampal recall when ``memory`` is set. An episodic memory that votes in the
         choice (``memory_choice``) is not read into the drive. The recall memory addresses
         the moment here and keeps the address for the moment's write and lesson. Both
-        memories read the observation code; a learned code settles in the stream's context
-        with ``memory``, and on the observations alone without it."""
+        memories read the observation code; a learned code settles on the observations
+        alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
         if coded is not None and coded[0] is observations:
             return self._stimulus(coded[0], coded[1], memory=memory)
         x = self._observations(observations)
-        return self._stimulus(x, self._code(x, context=memory), memory=memory)
+        return self._stimulus(x, self._code(x), memory=memory)
 
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
@@ -4032,6 +4018,16 @@ class Brain:
             self._resume(held)
         return report
 
+    def _held_traces(self) -> list[tuple[Trace | History, dict[str, np.ndarray]]]:
+        """The working trace, the efference copy and the heard history with copies of their
+        arrays (``arrays()``), for ``_restore_traces`` after settling a moment that is not the
+        stream's own."""
+        return [
+            (trace, {name: value.copy() for name, value in trace.arrays().items()})
+            for trace in (self.working_memory, self.efference, self.history)
+            if trace is not None
+        ]
+
     def _streams(self) -> tuple[Any, ...]:
         """Every stream's state, for ``_resume`` after a replay: the actor's (its free phase,
         drive, pending action and eligibility), each memory's streams (the recall memory's
@@ -4047,20 +4043,10 @@ class Brain:
         records["_episode_moments"] = list(self._episode_moments)
         return (
             {name: getattr(agent, name) for name in _STREAM_ACTOR},
-            [
-                (trace, {name: getattr(trace, name).copy() for name in ("trace", "last", "cold")})
-                for trace in (self.working_memory, self.efference)
-                if trace is not None
-            ],
-            None if self.history is None else self.history.trace.copy(),
+            self._held_traces(),
             None if recall is None else (recall.snapshot(), recall.reading(), recall.writes),
             None if episodic is None else (
-                *(
-                    None if value is None else value.copy()
-                    for value in (
-                        episodic.context, episodic.decision, episodic.before, episodic.seen
-                    )
-                ),
+                {name: deepcopy(getattr(episodic, name)) for name in EpisodicRecords._STATE},
                 [list(path) for path in episodic.paths],
             ),
             None if region is None else (
@@ -4071,14 +4057,10 @@ class Brain:
 
     def _resume(self, held: tuple[Any, ...]) -> None:
         """Return every stream to the state ``_streams`` held."""
-        actor, traces, heard, recalled, episode, phase, records = held
+        actor, traces, recalled, episode, phase, records = held
         for name, value in actor.items():
             setattr(self.basal_ganglia, name, value)
-        for trace, values in traces:
-            for name, value in values.items():
-                setattr(trace, name, value)
-        if self.history is not None:
-            self.history.trace = heard
+        _restore_traces(traces)
         recall = self.recall
         if recall is not None:
             snapshot, reading, writes = recalled
@@ -4088,10 +4070,9 @@ class Brain:
             recall._contents, recall._content_keys = [], None
         episodic = self._episodic
         if episodic is not None:
-            (
-                episodic.context, episodic.decision, episodic.before, episodic.seen,
-                episodic.paths,
-            ) = episode
+            state, episodic.paths = episode
+            for name, value in state.items():
+                setattr(episodic, name, value)
         region = self.learned_code
         if region is not None:
             region.halvings, region.graph, region.last, work = phase
@@ -4457,13 +4438,7 @@ class Brain:
         if not ended:
             return self._settled(x)
         kept = (agent._free, agent._free_brain, agent._drive)
-        traces: list[tuple[Any, dict[str, np.ndarray]]] = [
-            (trace, {name: getattr(trace, name).copy() for name in ("trace", "last", "cold")})
-            for trace in (self.working_memory, self.efference)
-            if trace is not None
-        ]
-        if self.history is not None:
-            traces.append((self.history, {"trace": self.history.trace.copy()}))
+        traces = self._held_traces()
         recalled = None if self.recall is None else self.recall.snapshot()
         self._forecast_read = None
         try:
@@ -4480,9 +4455,7 @@ class Brain:
             return answer
         finally:
             agent._free, agent._free_brain, agent._drive = kept
-            for trace, values in traces:
-                for name, value in values.items():
-                    setattr(trace, name, value)
+            _restore_traces(traces)
             if self.recall is not None and recalled is not None:
                 self.recall.restore(recalled)
 
@@ -4656,9 +4629,6 @@ class Brain:
         coded = self._coded_moment
         if coded is not None and coded[0] is x:
             return coded[3]
-        code = self.learned_code
-        if code is not None:
-            return self._code(x, context=False)
         return self._code(x)
 
     def _choose(
@@ -5043,8 +5013,7 @@ class Brain:
         awaited = self._awaited()
         if awaited is not None:  # what the stream sensed while its outcome is awaited
             metadata["awaiting"] = {"steps": int(awaited.steps)}
-            for name in ("v", "activation", "adaptation"):
-                data["awaiting/" + name] = np.asarray(getattr(awaited, name))
+            data.update(_state_arrays("awaiting/", awaited))
         if self.sparse_code is not None:
             # the records have the code's width and the keys read its tables
             metadata["code"] = {**self.sparse_code.to_dict(), "cortex": self.coded_cortex}
@@ -5062,8 +5031,7 @@ class Brain:
             data["pending/value"] = value
             for name, phase in (("plus", plus), ("minus", minus)):
                 metadata["pending_" + name + "_steps"] = phase.steps
-                for field in ("v", "activation", "adaptation"):
-                    data[f"pending/{name}/{field}"] = np.asarray(getattr(phase, field))
+                data.update(_state_arrays(f"pending/{name}/", phase))
             if self._moment is not None:
                 data["moment/observations"], data["moment/action"] = self._moment
                 if self._moment_code is not None:  # the code the decision was keyed on
@@ -5076,8 +5044,7 @@ class Brain:
             for name, tensor in zip(("trace", "trace_bias"), agent._trace_device, strict=True):
                 data["actor/" + name] = tensor.detach().cpu().double().numpy()
         if agent.state is not None:
-            for name in ("v", "activation", "adaptation"):
-                data["free/" + name] = np.asarray(getattr(agent.state, name))
+            data.update(_state_arrays("free/", agent.state))
         if self._prepared is not None:
             data["prepared"] = self._prepared
         for name, (settings, arrays) in self._saved_memories().items():
@@ -5320,33 +5287,22 @@ class Brain:
                     return maps
 
                 recall.head_maps = saved_maps("address")
-                if recall.position_maps:  # saved with a position term
-                    recall.position_maps = saved_maps("position")
-                if recall.slope:  # saved with slope
-                    recall.slope_maps = saved_maps("slope")
-                if recall.anchor:  # saved with anchor
-                    recall.anchor_maps = saved_maps("anchor")
-                if recall.relative:  # saved with relative
-                    recall.relative_maps = saved_maps("relative")
                 recall.held = data["recall/held"].astype(bool)
+                streams = len(recall.keys)
                 recall.ended = (
                     data["recall/ended"].astype(bool)
                     if "recall/ended" in data
-                    else np.zeros(len(recall.keys), dtype=bool)
+                    else np.zeros(streams, dtype=bool)
                 )
-                # the episodes' counts and the reads' focus, saved with anchor and relative
-                # (validated above); without them each stream starts them afresh
-                streams = len(recall.keys)
-                recall.told = (
-                    data["recall/told"].astype(np.int64)
-                    if recall.anchor
-                    else np.zeros(streams, dtype=np.int64)
-                )
-                recall.focus = (
-                    data["recall/focus"].astype(np.int64)
-                    if recall.relative
-                    else np.full(streams, -1, dtype=np.int64)
-                )
+                # the episodes' counts and the reads' focus start afresh, and a kind of maps
+                # saved with its option (validated above) loads with the state it reads
+                recall.told = np.zeros(streams, dtype=np.int64)
+                recall.focus = np.full(streams, -1, dtype=np.int64)
+                for kind, read in Recall._KINDS:
+                    if getattr(recall, f"{kind}_maps"):
+                        setattr(recall, f"{kind}_maps", saved_maps(kind))
+                        if read:
+                            setattr(recall, read, data["recall/" + read].astype(np.int64))
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command
@@ -5367,26 +5323,15 @@ class Brain:
             result.rng.bit_generator.state = meta["rng"]
             agent.rng.bit_generator.state = meta["actor_rng"]
             if meta["free_steps"] is not None:
-                agent._free = BrainState(
-                    data["free/v"].copy(),
-                    data["free/activation"].copy(),
-                    data["free/adaptation"].copy(),
-                    int(meta["free_steps"]),
-                )
+                agent._free = _saved_state(data, "free/", meta["free_steps"])
                 agent._free_brain = learner.brain if meta.get("free_current", False) else None
             result._prepared = data["prepared"].copy() if "prepared" in data else None
             result.last_learning = meta.get("last_learning", {})
             if meta.get("pending", False):
-                phases = []
-                for name in ("plus", "minus"):
-                    phases.append(
-                        BrainState(
-                            data[f"pending/{name}/v"].copy(),
-                            data[f"pending/{name}/activation"].copy(),
-                            data[f"pending/{name}/adaptation"].copy(),
-                            int(meta["pending_" + name + "_steps"]),
-                        )
-                    )
+                phases = [
+                    _saved_state(data, f"pending/{name}/", meta["pending_" + name + "_steps"])
+                    for name in ("plus", "minus")
+                ]
                 agent._pending = ("states", phases[0], phases[1], data["pending/value"].copy())
                 if "recall/pending" in data:  # validated above: a pending action's contrast
                     agent._pending_memory = data["recall/pending"].astype(float)
@@ -5479,7 +5424,7 @@ class Brain:
                     hold=episodic.get("hold"),
                 )
                 result._episodic = records
-                for name in ("context", "decision", "before", "seen"):
+                for name in EpisodicRecords._STATE:
                     if "episode/" + name in data:
                         setattr(records, name, data["episode/" + name].astype(float))
                 if "episode/path/lengths" in data:
@@ -5519,15 +5464,8 @@ class Brain:
             if "awaiting" in meta:
                 acted = agent._free  # validated above: the awaited action has its free state
                 assert acted is not None
-                result._awaiting = (
-                    acted,
-                    BrainState(
-                        data["awaiting/v"].copy(),
-                        data["awaiting/activation"].copy(),
-                        data["awaiting/adaptation"].copy(),
-                        int(meta["awaiting"]["steps"]),
-                    ),
-                )
+                sensed = _saved_state(data, "awaiting/", meta["awaiting"]["steps"])
+                result._awaiting = (acted, sensed)
             if "rehearsal" in meta or any(name.startswith("rehearsal/") for name in data):
                 _load_episodes(result, meta, data)
         return result

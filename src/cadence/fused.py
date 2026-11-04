@@ -25,6 +25,7 @@ from __future__ import annotations
 import functools
 import os
 import types
+import weakref
 from collections.abc import Callable, Sequence
 from typing import TYPE_CHECKING, Any, TypeVar, cast
 
@@ -219,16 +220,28 @@ if njit is not None:
     @_compiled
     def _product_cache(
         batch: int, pairs: np.ndarray, pair_post: np.ndarray, starts: np.ndarray
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """Room for one cached product per block of ``pairs`` (``cache``, its offsets) and the
-        ranges a block lands on."""
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """The offsets of one cached product per block of ``pairs`` and the ranges a block
+        lands on."""
         cache_offset = np.zeros(pairs.shape[0] + 1, dtype=np.int64)
         receives = np.zeros(starts.shape[0] - 1, dtype=np.bool_)
         for q in range(pairs.shape[0]):
             b = pair_post[pairs[q]]
             cache_offset[q + 1] = cache_offset[q] + batch * (starts[b + 1] - starts[b])
             receives[b] = True
-        return np.zeros(cache_offset[pairs.shape[0]]), cache_offset, receives
+        return cache_offset, receives
+
+    @_compiled
+    def _kept_room(
+        columns: int, size: int, size_up: int, ranges: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+        """One array for what a state keeps, and its parts as views: the activations range by
+        range (``columns`` entries), the products of the basal blocks (``size``) and of the
+        apical blocks (``size_up``), and one flag per range, 1 where the products the range
+        feeds are stale."""
+        kept = np.empty(columns + size + size_up + ranges)
+        up, flags = columns + size, columns + size + size_up
+        return kept, kept[:columns], kept[columns:up], kept[up:flags], kept[flags:]
 
     @_compiled
     def _task_order(
@@ -258,7 +271,8 @@ if njit is not None:
         todo: np.ndarray,
     ) -> int:
         """The products this sweep recomputes into ``todo``, largest first: every block on the
-        first sweep, afterwards each block whose source range moved; returns their count."""
+        first sweep (``first``), otherwise each block whose source range moved; returns their
+        count."""
         count = pairs.shape[0]
         due = 0
         for j in range(order.shape[0]):
@@ -284,6 +298,33 @@ if njit is not None:
                 base = batch * a0 + b * na
                 for i in range(na):
                     columns[base + i] = s[b, a0 + i]
+
+    @_compiled
+    def _reusable(
+        columns: np.ndarray,
+        kept: np.ndarray,
+        given: np.ndarray,
+        starts: np.ndarray,
+        feeds: np.ndarray,
+        moved_range: np.ndarray,
+    ) -> None:
+        """Take the given products (``given``, laid out as ``kept``) that hold for ``columns``:
+        a range some block reads keeps the products it feeds where they are not stale and its
+        activations equal the given ones in every row (a NaN never does); every other range is
+        marked moved, so its products are made anew. Equal activations give the same products:
+        what a check or a sweep reads from them is the same to the bit."""
+        batch = columns.shape[0] // starts[starts.shape[0] - 1]
+        ranges = feeds.shape[0]
+        flags = given.shape[0] - ranges
+        for r in range(ranges):
+            held = feeds[r] and given[flags + r] == 0.0
+            i, stop = batch * starts[r], batch * starts[r + 1]
+            while held and i < stop:
+                held = columns[i] == given[i]
+                i += 1
+            moved_range[r] = not held
+        for i in range(columns.shape[0], flags):  # the products; those not held are remade
+            kept[i] = given[i]
 
     @_compiled
     def _block_product(
@@ -756,24 +797,34 @@ if njit is not None:
         steps: int,
         tolerance: float,
         use_tolerance: bool,
-    ) -> tuple[int, np.ndarray]:
+        given: np.ndarray,
+        has_given: bool,
+    ) -> tuple[int, np.ndarray, np.ndarray]:
         """The settle: per sweep the block products of the batch, then every row's step (the
-        rows in parallel in the parallel build), then the batch-wide reading and stop."""
+        rows in parallel in the parallel build), then the batch-wide reading and stop. The
+        first sweep takes the given products (``has_given``: what the starting state keeps,
+        laid out as ``_kept_room``) that hold for its activations. Returns the sweeps taken,
+        the activity change, and what the last state keeps: its activations, the cached
+        products, and the ranges whose products its last sweep left stale."""
         batch, n = v.shape
         ranges = starts.shape[0] - 1
         group = np.flatnonzero(nmask > 0.0)
         position = np.full(n, -1, dtype=np.int64)  # an output neuron's place in the softmax group
         for k in range(group.shape[0]):
             position[group[k]] = k
-        cache, cache_offset, receives = _product_cache(batch, pairs, pair_post, starts)
-        cache_up, cache_up_offset, receives_up = _product_cache(batch, apical_pairs, pair_post,
-                                                                starts)
+        cache_offset, receives = _product_cache(batch, pairs, pair_post, starts)
+        cache_up_offset, receives_up = _product_cache(batch, apical_pairs, pair_post, starts)
+        kept, columns, cache, cache_up, stale = _kept_room(
+            batch * n, int(cache_offset[-1]), int(cache_up_offset[-1]), ranges
+        )
         order, feeds = _task_order(pairs, apical_pairs, pair_pre, pair_post, starts)
         todo = np.empty(order.shape[0], dtype=np.int64)
         basal_count = pairs.shape[0]
-        columns = np.empty(batch * n)
         for b in prange(batch):
             _copy_columns(b, s, columns, starts, feeds)
+        moved_range = np.ones(ranges, dtype=np.bool_)  # activation changed in the last step
+        if has_given:  # the first sweep makes only the products the given ones do not hold for
+            _reusable(columns, kept, given, starts, feeds, moved_range)
         synaptic_input = np.zeros((batch, n))
         raw = np.zeros((batch, n if has_apical else 1))
         basal = np.empty((batch, n if has_apical else 1))
@@ -788,12 +839,12 @@ if njit is not None:
         row_moved = np.zeros(batch)
         row_range = np.zeros((batch, ranges), dtype=np.bool_)
         row_potential = np.zeros((batch, ranges), dtype=np.bool_)
-        moved_range = np.ones(ranges, dtype=np.bool_)  # activation changed in the last step
         frozen = np.zeros(ranges, dtype=np.bool_)  # a range that can never change again
         taken = 0
         for t in range(steps):
             # the block products of the batch, distinct blocks on distinct threads
-            due = _due(t == 0, order, pairs, apical_pairs, pair_pre, moved_range, todo)
+            due = _due(t == 0 and not has_given, order, pairs, apical_pairs, pair_pre,
+                       moved_range, todo)
             for j in prange(due):
                 q = todo[j]
                 if q < basal_count:
@@ -832,11 +883,13 @@ if njit is not None:
             taken = t + 1
             if use_tolerance and moved < tolerance:
                 break
-        return taken, activity_change
+        for r in range(ranges):
+            stale[r] = 1.0 if moved_range[r] else 0.0
+        return taken, activity_change, kept
 
     _kernel, _kernel_parallel = _rows_builds(_settle_rows)
 
-    # -- the residual: one transport, then the equations' error per row
+    # -- the residual: one transport (the products kept where they hold), then each row's error
 
     @_compiled
     def _residual_row(
@@ -1031,10 +1084,16 @@ if njit is not None:
         held: np.ndarray,
         has_held: bool,
         out: np.ndarray,
-    ) -> None:
+        given: np.ndarray,
+        has_given: bool,
+    ) -> np.ndarray:
         """The fixed-point equation error of every row, in one compiled call: the activations
-        of ``v`` under the mask, one block transport, then each row's error into ``out``."""
+        of ``v`` under the mask, one block transport, then each row's error into ``out``. The
+        transport takes the given products (``has_given``: what the state keeps, laid out as
+        ``_kept_room``) that hold for its activations and makes the rest. Returns what the
+        state keeps after the check: its activations and its products, every one current."""
         batch, n = v.shape
+        ranges = starts.shape[0] - 1
         s = np.empty((batch, n))
         for b in prange(batch):
             _activation(v[b], slope, threshold, rest, leak, s[b])
@@ -1045,20 +1104,26 @@ if njit is not None:
         position = np.full(n, -1, dtype=np.int64)
         for k in range(group.shape[0]):
             position[group[k]] = k
-        cache, cache_offset, receives = _product_cache(batch, pairs, pair_post, starts)
-        cache_up, cache_up_offset, receives_up = _product_cache(batch, apical_pairs, pair_post,
-                                                                starts)
+        cache_offset, receives = _product_cache(batch, pairs, pair_post, starts)
+        cache_up_offset, receives_up = _product_cache(batch, apical_pairs, pair_post, starts)
+        kept, columns, cache, cache_up, stale = _kept_room(
+            batch * n, int(cache_offset[-1]), int(cache_up_offset[-1]), ranges
+        )
         order, feeds = _task_order(pairs, apical_pairs, pair_pre, pair_post, starts)
         basal_count = pairs.shape[0]
-        columns = np.empty(batch * n)
         for b in prange(batch):
             _copy_columns(b, s, columns, starts, feeds)
+        moved_range = np.ones(ranges, dtype=np.bool_)
+        if has_given:
+            _reusable(columns, kept, given, starts, feeds, moved_range)
+        stale[:] = 0.0
         for j in prange(order.shape[0]):
             q = order[j]
             if q < basal_count:
-                _block_product(columns, flat, pairs[q], pair_pre, pair_post, starts, offset, cache,
-                               cache_offset[q])
-            else:
+                if moved_range[pair_pre[pairs[q]]]:
+                    _block_product(columns, flat, pairs[q], pair_pre, pair_post, starts, offset,
+                                   cache, cache_offset[q])
+            elif moved_range[pair_pre[apical_pairs[q - basal_count]]]:
                 _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                pair_post, starts, offset, cache_up,
                                cache_up_offset[q - basal_count])
@@ -1090,6 +1155,7 @@ if njit is not None:
                     adapt_strength, has_nudge, target, nmask, group, gid, ngroups, position,
                     beta, softmax_t, weight, anchor, anchor_gain, p[b], zmax[b], total[b],
                 )
+        return kept
 
     _residual_kernel, _residual_kernel_parallel = _rows_builds(_residual_rows)
 
@@ -1234,6 +1300,49 @@ def _compartment(
     )
 
 
+# What a settled or checked state keeps of its transport (``BrainState``), so a check of it or
+# a settle from it makes only the block products of the ranges whose activations differ from
+# the ones they were made from: ``(blocks, apical blocks, rows, kept)``, weak references to the
+# flat blocks the products were made with (they keep no blocks alive), the batch, and the
+# kernels' array of the activations range by range, the products and the stale ranges
+# (``_kept_room``)
+Products = tuple[Any, Any, int, np.ndarray]
+
+# the given products of a launch without any: the kernels read them only where ``has_given``
+# is set
+_NO_PRODUCTS = (np.zeros(1), False)
+
+
+def _given(
+    products: Products | None, flat: np.ndarray, flat_apical: np.ndarray, batch: int
+) -> tuple[np.ndarray, bool]:
+    """The kernels' given products: those kept, when made with these blocks for as many rows."""
+    if products is None:
+        return _NO_PRODUCTS
+    made, made_up, rows, kept = products
+    if rows != batch or made() is not flat:
+        return _NO_PRODUCTS
+    if (flat if made_up is made else made_up()) is not flat_apical:
+        return _NO_PRODUCTS
+    return kept, True
+
+
+def _rule(neuron_model: NeuronModel) -> tuple[Any, ...]:
+    """The neuron rule as the kernels read it, read once per call (the rest emission is an
+    exponential): ``(dt, slope, threshold, rest emission, leak, adaptation strength,
+    adaptation time constant)``."""
+    m, adapt = neuron_model, neuron_model.adaptation
+    return (
+        m.dt, m.slope, m.threshold, m.rest_emission, m.leak,
+        0.0 if adapt is None else adapt.strength, 1.0 if adapt is None else adapt.tau_steps,
+    )
+
+
+def _kept(flat: np.ndarray, flat_apical: np.ndarray, batch: int, kept: np.ndarray) -> Products:
+    made = weakref.ref(flat)
+    return made, made if flat_apical is flat else weakref.ref(flat_apical), batch, kept
+
+
 def fused_settle(
     v: np.ndarray,
     a: np.ndarray,
@@ -1248,15 +1357,19 @@ def fused_settle(
     tolerance: float | None,
     activation: np.ndarray | None = None,
     apical: ApicalBlocks | None = None,
-) -> tuple[np.ndarray, int, np.ndarray]:
-    """Run the fused kernel in place on ``v`` and ``a``; returns ``(s, taken, activity_change)``.
+    products: Products | None = None,
+) -> tuple[np.ndarray, int, np.ndarray, Products | None]:
+    """Run the fused kernel in place on ``v`` and ``a``; returns ``(s, taken, activity_change,
+    products)``.
 
     ``activation`` is accepted and ignored. Publication is recomputed
     from ``v`` under the current mask, since cached readback may use an old mask; ``keep`` is
     None without a mask. A settle of no sweeps publishes the activations and launches nothing.
     ``apical`` settles a graph with an apical compartment (``ApicalBlocks``); ``flat`` then
     holds its basal synapses. With more than one row and more than one Numba thread the rows
-    settle in parallel, to the same bits.
+    settle in parallel, to the same bits. ``products`` are those the starting state keeps:
+    the first sweep reads them where they hold; the products returned are the last state's
+    (at no sweeps, the given ones).
     """
     assert njit is not None
     batch, n = v.shape
@@ -1268,25 +1381,23 @@ def fused_settle(
         # one (batch, n) array of the kernel's type, a shared mask broadcast
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
+    dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
     if not v.any():  # from rest every neuron publishes the same thing
         row = np.empty(n)
-        m = neuron_model
-        _activation(np.zeros(n), m.slope, m.threshold, m.rest_emission, m.leak, row)
+        _activation(np.zeros(n), slope, threshold, rest, leak, row)
         s = np.empty((batch, n))
         s[:] = row
-    else:
+    else:  # row by row, in the state's own memory order
         s = np.empty_like(v)
         for b in range(batch):
-            m = neuron_model
-            _activation(v[b], m.slope, m.threshold, m.rest_emission, m.leak, s[b])
+            _activation(v[b], slope, threshold, rest, leak, s[b])
     if masked:
         s *= keep
     if steps == 0:  # no sweep: the activations are published and nothing else is read
         if apical is not None:  # a held gain's shape is checked at no sweeps too
             _compartment(apical, layout, flat, nudge, batch, n)
-        return s, 0, np.zeros(batch)
-    adapt = neuron_model.adaptation
-    has_adapt = adapt is not None
+        return s, 0, np.zeros(batch), products
+    has_adapt = neuron_model.adaptation is not None
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n
     )
@@ -1305,7 +1416,7 @@ def fused_settle(
     pairs, flat_apical, apical_pairs, *compartment = _compartment(
         apical, lay, flat, nudge, batch, n
     )
-    taken, activity_change = _launch(
+    taken, activity_change, kept = _launch(
         _kernel,
         _kernel_parallel,
         batch,
@@ -1325,14 +1436,14 @@ def fused_settle(
         freezable,
         keep,
         masked,
-        neuron_model.dt,
-        neuron_model.slope,
-        neuron_model.threshold,
-        neuron_model.rest_emission,
-        neuron_model.leak,
+        dt,
+        slope,
+        threshold,
+        rest,
+        leak,
         has_adapt,
-        0.0 if adapt is None else adapt.strength,
-        1.0 if adapt is None else adapt.tau_steps,
+        strength,
+        tau,
         nudge is not None,
         target,
         nmask,
@@ -1347,8 +1458,9 @@ def fused_settle(
         int(steps),
         float(tolerance) if tolerance is not None else 0.0,
         tolerance is not None,
+        *_given(products, flat, flat_apical, batch),
     )
-    return s, taken, activity_change
+    return s, taken, activity_change, _kept(flat, flat_apical, batch, kept)
 
 
 def fused_residual(
@@ -1362,25 +1474,27 @@ def fused_residual(
     neuron_model: NeuronModel,
     nudge: Nudge | None,
     apical: ApicalBlocks | None = None,
-) -> np.ndarray:
-    """``Brain.residual`` for a host state of a blocked connectome, in one compiled call.
+    products: Products | None = None,
+) -> tuple[np.ndarray, Products]:
+    """``Brain.residual`` for a host state of a blocked connectome, in one compiled call;
+    returns the error and the state's products.
 
     The same equations as the NumPy path: the activation of ``v`` under the mask (``keep``,
     None without one), one block transport, the potential equation with adaptation, nudge and
     apical compartment (``apical``, as in ``fused_settle``), the mask's projection, and the
     adaptation equation; the maximum absolute error per row, infinity where it is not finite.
-    Nothing is changed.
+    The transport reads the products the state keeps (``products``) where they hold and makes
+    the rest; the products returned are all current. Nothing is changed.
     """
     assert njit is not None
     batch, n = v.shape
-    m = neuron_model
+    dt, slope, threshold, rest, leak, strength, _ = _rule(neuron_model)
     if keep is None:
         masked = False
         keep = _NO_MASK
     else:
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
-    adapt = m.adaptation
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n
     )
@@ -1388,7 +1502,7 @@ def fused_residual(
         apical, layout, flat, nudge, batch, n
     )
     out = np.empty(batch)
-    _launch(
+    kept = _launch(
         _residual_kernel,
         _residual_kernel_parallel,
         batch,
@@ -1406,13 +1520,13 @@ def fused_residual(
         layout.offset,
         keep,
         masked,
-        m.dt,
-        m.slope,
-        m.threshold,
-        m.rest_emission,
-        m.leak,
-        adapt is not None,
-        0.0 if adapt is None else adapt.strength,
+        dt,
+        slope,
+        threshold,
+        rest,
+        leak,
+        neuron_model.adaptation is not None,
+        strength,
         nudge is not None,
         target,
         nmask,
@@ -1425,8 +1539,9 @@ def fused_residual(
         anchor_gain,
         *compartment,
         out,
+        *_given(products, flat, flat_apical, batch),
     )
-    return out
+    return out, _kept(flat, flat_apical, batch, kept)
 
 
 if njit is not None:
@@ -1645,7 +1760,7 @@ def relative_floor(
 
 if njit is not None:
 
-    def _moment_entries(
+    def _plain_entries(
         raw: np.ndarray,
         velocity: np.ndarray,
         second: np.ndarray,
@@ -1657,11 +1772,14 @@ if njit is not None:
         rho_correction: float,
         has_momentum: bool,
         has_normalize: bool,
+        eta: float,
+        floor: float,
         new_velocity: np.ndarray,
         new_second: np.ndarray,
-        term: np.ndarray,
-        root: np.ndarray,
+        out: np.ndarray,
     ) -> None:
+        """Each synapse's moments and step in one pass: the momentum, the second moment and the
+        absolute floor where they are set, then the rate."""
         for e in prange(raw.shape[0]):
             x = raw[e]
             t = x
@@ -1672,7 +1790,40 @@ if njit is not None:
             if has_normalize:
                 held = rho * second[e] + rho_rest * (x * x)
                 new_second[e] = held
-                root[e] = np.sqrt(held / rho_correction)
+                out[e] = eta * (t / (np.sqrt(held / rho_correction) + floor))
+            else:
+                out[e] = eta * t
+
+    _plain, _plain_parallel = _rows_builds(_plain_entries)
+
+    def _moment_entries(
+        raw: np.ndarray,
+        velocity: np.ndarray,
+        second: np.ndarray,
+        momentum: float,
+        momentum_rest: float,
+        momentum_correction: float,
+        rho: float,
+        rho_rest: float,
+        rho_correction: float,
+        has_momentum: bool,
+        new_velocity: np.ndarray,
+        new_second: np.ndarray,
+        term: np.ndarray,
+        root: np.ndarray,
+    ) -> None:
+        """The first pass of the projection-relative floor: each synapse's moments, the term
+        its step divides and the root of its second moment."""
+        for e in prange(raw.shape[0]):
+            x = raw[e]
+            t = x
+            if has_momentum:
+                moving = momentum * velocity[e] + momentum_rest * x
+                new_velocity[e] = moving
+                t = moving / momentum_correction
+            held = rho * second[e] + rho_rest * (x * x)
+            new_second[e] = held
+            root[e] = np.sqrt(held / rho_correction)
             term[e] = t
 
     _moments, _moments_parallel = _rows_builds(_moment_entries)
@@ -1683,19 +1834,13 @@ if njit is not None:
         group: np.ndarray,
         group_root: np.ndarray,
         eta: float,
-        mode: int,
-        floor: float,
         share: float,
         tiny: float,
         out: np.ndarray,
     ) -> None:
+        """The second pass: each step over its root plus its projection's share."""
         for e in prange(term.shape[0]):
-            if mode == 0:  # no normalization
-                out[e] = eta * term[e]
-            elif mode == 1:  # the absolute floor
-                out[e] = eta * (term[e] / (root[e] + floor))
-            else:  # the projection-relative floor
-                out[e] = eta * (term[e] / (root[e] + share * group_root[group[e]] + tiny))
+            out[e] = eta * (term[e] / (root[e] + share * group_root[group[e]] + tiny))
 
     _step, _step_parallel = _rows_builds(_step_entries)
 
@@ -1749,34 +1894,40 @@ def optimizer_step(
     group: np.ndarray,
     groups: int,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """``Learner._update``'s per-synapse arithmetic in two compiled passes, to the bit: the
+    """``Learner._update``'s per-synapse arithmetic in compiled passes, to the bit: the
     momentum (above zero), the second moment and its normalization (``rho`` above zero; the
     absolute ``floor``, or the projection-relative floor of share ``relative`` over ``group``),
     and the rate. Returns ``(velocity, second moment, step)``; the moments a setting leaves off
-    come back as given."""
+    come back as given. One pass without the relative floor; with it, a second after every
+    projection's mean square is summed."""
     assert njit is not None
     count = len(raw)
     raw = np.ascontiguousarray(raw, dtype=float)
     has_momentum, has_normalize = momentum > 0, rho > 0
     new_velocity = np.empty(count) if has_momentum else velocity
     new_second = np.empty(count) if has_normalize else second
-    term, root = np.empty(count), np.empty(count if has_normalize else 1)
     parallel = _elements_in_parallel(count)
+    if not (has_normalize and relative):
+        step = np.empty(count)
+        (_plain_parallel if parallel else _plain)(
+            raw, np.ascontiguousarray(velocity, dtype=float),
+            np.ascontiguousarray(second, dtype=float), float(momentum), float(1 - momentum),
+            float(momentum_correction), float(rho), float(1 - rho), float(rho_correction),
+            has_momentum, has_normalize, float(eta), float(floor), new_velocity, new_second,
+            step,
+        )
+        return new_velocity, new_second, step
+    term, root = np.empty(count), np.empty(count)
     (_moments_parallel if parallel else _moments)(
         raw, np.ascontiguousarray(velocity, dtype=float), np.ascontiguousarray(second, dtype=float),
         float(momentum), float(1 - momentum), float(momentum_correction), float(rho),
-        float(1 - rho), float(rho_correction), has_momentum, has_normalize, new_velocity,
-        new_second, term, root,
+        float(1 - rho), float(rho_correction), has_momentum, new_velocity, new_second, term, root,
     )
-    mode = 0 if not has_normalize else (2 if relative else 1)
-    group_root = np.zeros(1)
-    if mode == 2:
-        power, members = _group_power(root, group, int(groups))
-        group_root = np.sqrt(power / members)
+    power, members = _group_power(root, group, int(groups))
     step = np.empty(count)
     (_step_parallel if parallel else _step)(
-        term, root, group, group_root, float(eta), mode, float(floor), float(relative),
-        float(tiny), step,
+        term, root, group, np.sqrt(power / members), float(eta), float(relative), float(tiny),
+        step,
     )
     return new_velocity, new_second, step
 

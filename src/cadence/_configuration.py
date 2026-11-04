@@ -28,13 +28,12 @@ _KINDS = {
     "actor": ActorCriticConfig,
     "arousal": ArousalConfig,
 }
-_FIELDS = {prefix: {field.name for field in fields(kind)} for prefix, kind in _KINDS.items()}
-_BOOLEAN = {"qualified", "surprise", "nudged_fixed", "surprise_share"}
-_INTEGER = {
-    "free_steps", "nudged_steps", "damping", "eligibility_steps", "youth", "rehearsal_capacity",
+# every field of each configuration with the kind its annotation names: "bool", "int", "str" or
+# a real number, with " | None" where None is valid
+_FIELDS = {
+    prefix: {field.name: str(field.type) for field in fields(kind)}
+    for prefix, kind in _KINDS.items()
 }
-_STRING = {"nudge"}
-_OPTIONAL = {"eta_bias", "tolerance", "eligibility_steps"}
 # Public names this library no longer takes, each with the release that retired it, the one
 # value a checkpoint may still carry for it (None: never read) and what the brain does instead:
 # the retired fields of the three configurations under their public names, and the brain's
@@ -184,10 +183,14 @@ def teaching_point(config: LearnerConfig) -> str:
 
 
 def rescaled(name: str) -> str | None:
-    """The refusal of a projection scale argument of 0.84.3, or None for any other name."""
+    """The refusal of a projection scale argument: one of 0.84.3 that ``scales`` names, or one
+    whose projection starts at a constant since 0.93.0 (``CONSTANT_SCALES``); None for any
+    other name."""
     for key, (old, _) in SCALES.items():
         if name == old:
             return f"{old} is scales={{'{key}': ...}} in this version, a construction setting"
+    if name in {f"{key}_scale" for key in CONSTANT_SCALES}:
+        return removed(name)
     return None
 
 
@@ -256,7 +259,7 @@ def configured(base: Config, changes: Mapping[str, Any], prefix: str) -> Config:
     if not isinstance(base, expected):
         raise ValueError(f"{prefix} configuration must be {expected.__name__}")
     updates = dict(changes)
-    unknown = set(updates) - _FIELDS[prefix]
+    unknown = set(updates) - _FIELDS[prefix].keys()
     for name in sorted(unknown):
         if f"{prefix}_{name}" in RETIRED:
             raise ValueError(removed(f"{prefix}_{name}"))
@@ -264,20 +267,21 @@ def configured(base: Config, changes: Mapping[str, Any], prefix: str) -> Config:
         raise TypeError(f"unknown {prefix} setting: {sorted(unknown)[0]!r}")
     # Config constructors validate ranges and relationships. Validate scalar kinds
     # here too: several constructors accept bools as Python numbers.
-    for name in _FIELDS[prefix]:
+    for name, kind in _FIELDS[prefix].items():
         value = updates.get(name, getattr(base, name))
         qualified = f"{prefix}_{name}"
-        if value is None and name in _OPTIONAL and prefix != "arousal":
+        if value is None and kind.endswith(" | None"):
             continue
-        if name in _BOOLEAN:
+        kind = kind.removesuffix(" | None")
+        if kind == "bool":
             if not isinstance(value, bool):
                 raise ValueError(f"{qualified} must be boolean")
-        elif name in _INTEGER:
+        elif kind == "int":
             if isinstance(value, (bool, np.bool_)) or not isinstance(value, (int, np.integer)):
                 raise ValueError(f"{qualified} must be an integer")
             if name in updates:
                 updates[name] = int(value)
-        elif name in _STRING:
+        elif kind == "str":
             if not isinstance(value, str):
                 raise ValueError(f"{qualified} must be a string")
         else:

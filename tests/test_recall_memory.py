@@ -1796,7 +1796,7 @@ def test_a_window_reads_the_successor_of_the_matching_history():
         for x in history[:-1]:
             recall.witness(x[None], SimpleNamespace(activation=np.zeros((1, n))))
         drive = recall.stimulate(np.zeros((1, n)), history[-1][None])
-        return recall.attended_heads[0][0], drive[0, recall._next_columns]
+        return recall.attended_heads[0][0], drive[0, recall.next_neurons]
 
     weight = {k: read(k, (A, B), True) for k in (1, 2)}
     matching = [1, 4]  # the B slots, each after A

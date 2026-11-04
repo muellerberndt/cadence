@@ -6,7 +6,7 @@ Every graph brain runs on the `"cpu"` backend in NumPy float64 unless you pick a
 from the NumPy-only [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.93.0"
+python -m pip install "cadence-net[fast]==0.93.1"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX; from a checkout, use
@@ -158,8 +158,10 @@ reference transmission `ledger` and `final_active` (neurons at activation 0.5 or
 On the CPU backend transport is dense, block products between neuron ranges, when the block
 layout fits `NeuralGraph(dense_limit=2048)` (at most `dense_limit ** 2` entries); the CPU paths
 reuse the products of a source range (one that receives no synapses) whose activation did not
-change. MLX checks each source range for equality on the host at every step, one
-synchronization per range per step, and reuses the products of an unchanged one.
+change. MLX makes every block's products at every step, which costs the device less than the
+host synchronization that would find a range unchanged, and evaluates a settle's graph once at
+its end (at least every 64 steps of a long one), or at every step when a movement `tolerance`
+is read.
 
 Torch keeps a settle's state on its device neuron-major, `(neurons, batch)`, and sums each
 sweep's synaptic input by a transport plan made once per graph. The rows of the synapse matrix
@@ -189,7 +191,12 @@ With Numba installed, the CPU backend settles blocked connectomes in one compile
 transport, then each neuron's update, activation, adaptation and nudge in place) with the
 NumPy loop's float64 arithmetic whenever no trajectory or recording is requested, and computes
 `residual` the same way; a graph with an apical compartment is settled there too, its pool RMS
-summed in NumPy's order. The rows of a batch settle on Numba's threads, as many as
+summed in NumPy's order. A state these kernels settled or checked keeps the block products of
+its activations: a check of the state, or a settle from it, makes only the products of the
+ranges whose activations differ from the ones they were made from, to the same bits (a bounded
+solve's check makes those of the ranges the chunk's last sweep moved, and the next chunk's
+first sweep makes none). The products hold for the blocks they were made with; `copy` and
+`pickle` leave them out. The rows of a batch settle on Numba's threads, as many as
 `NUMBA_NUM_THREADS` or `numba.set_num_threads` allow, to the same bits at any count, once a
 sweep covers at least 65,536 neurons over its rows (an 8,000-neuron brain from a batch of 8);
 a smaller sweep, a single row, or `NUMBA_NUM_THREADS=1` never starts them. A sweep waits for

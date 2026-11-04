@@ -75,7 +75,8 @@ after every step. It can be a transient, a fixed point or part of an oscillation
 instead of movement, since a saturated neuron moves little while its equation is far from
 satisfied. `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None,
 mask=None, nudge=None, damping=0)` continues until every row's residual is below `tolerance`
-or the budget is spent, at one extra transport per chunk. All rows advance together. It
+or the budget is spent, at one extra transport per chunk (on the compiled CPU path, the block
+products of the ranges the chunk's last sweep moved). All rows advance together. It
 returns an `Equilibrium` with `state`, per-row `residual`, `steps` (sweeps in this call) and
 `converged` (residual within tolerance), which `qualified` repeats. `damping=k` splits the
 budget over up to `k + 1` attempts, each at half the previous `dt`, all checked against the

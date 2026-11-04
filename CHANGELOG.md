@@ -1,13 +1,126 @@
 # Changelog
 
-## Unreleased
+## 0.93.1 — 2026-11-04
 
-- Docs: `docs/tune.md` describes the current settings only. The wide-brain recipe, the constants
+The same answers in less time, from a simpler implementation (#249). Every array, answer,
+report, count, checkpoint and refusal is as on 0.93.0: four batteries (13,076 values over the
+kernels, the learner, the composed operations and checkpoints; 57,060 over lives with every
+0.93 option, saved, reloaded, retuned, grown and grafted; 4,802 refusals; 4,458 values of
+several-slot brains) read identical, the founder parity reads 0 of 24 lives differing, and an
+independent review compared the two versions on the CPU, torch and mlx. A wide brain learns and
+acts faster on the CPU; on mlx a taught life takes about a sixth of its 0.93.0 time.
+
+### The same bits from a simpler implementation
+
+Where 0.93.0 wrote one rule out several times, the library states it once, and every array,
+answer, report, checkpoint and refusal is as it was: a battery of 13,076 recorded values over
+the kernels, the learner and the composed operations, one of 57,060 over lives with every 0.93
+option (saved, reloaded and continued, retuned, grown and grafted), one of 4,458 over lives of
+several motor slots and one over 2,802 altered checkpoints and every setting at 27 values read
+identical to 0.93.0, and the founder parity reads 0 of 24 lives differing. These changes take
+192 lines out of `src/cadence`.
+
+- The recall memory's maps of the moment (the address map, the position table and the
+  anchored, relative and slope maps) are built, read, stepped, saved, loaded and checked
+  through one helper per operation and one table of their kinds; a slot's place in its
+  episode, its bucket and its features of when are each computed once.
+- Each stream's state is named once, for the recall memory and for the episodic records,
+  across reset, end, keep, a new batch, save and load; a brain checkpoint names a settled
+  state's arrays once, the traces held around a moment that is not the stream's own are held
+  in one place, and the rows and motor neurons of a chosen action are found in one place.
+- A recall setting is validated by one branch per kind of value, the recall genes carry every
+  option at its founder, the configurations' field kinds are read from their annotations, and
+  the scale arguments and the position reward's pairings are refused in one place each.
+- Gone: copies of head 0's port columns and synapses that nothing read, and two arguments of
+  the observation code that it never read.
+
+### Settling and learning: the same bits in less time
+
+Every change here leaves every array, every answer and every count as it was: the recall pins,
+the founder parity of 0.93.0 and a battery of 13,076 recorded values over the kernels, the
+learner, the composed operations and the checkpoints read identical. Timings are medians of
+calls alternated with the code before each change in one process on one thread, relative (the
+brains: `Brain.compose(8, 4)` with the founder's modules, a 256-neuron or a 1,024-neuron
+module, batch 2); each item's were read on a machine shared with other work, the totals below
+on a quiet one.
+
+Together, against 0.93.0 (four runs): on the 1,024-neuron module an act takes 0.70 to 0.73 of
+its time, a lesson 0.72 to 0.82, a reward step 0.90; with a 256-neuron module 0.94 to 0.95, 0.90
+to 0.92 and 0.91 to 0.95; a qualified learner's 0.92, 0.93 to 0.94 and 0.95 to 0.96; the
+founder, a recall brain and an apical brain take the time they took (0.99 to 1.01). On the
+mlx backend the 0.93.0 soak's taught life (lessons with rehearsal on four streams) takes 59 ms
+per moment where 371, its living life 15 where 57, over 1,500 moments with the same final
+efficacies and maps to the bit.
+
+- A state the compiled CPU kernels settled or checked keeps the block products of its
+  activations, as a private attribute about four fifths the size of the state's own arrays
+  (`copy` and `pickle` leave them out; `vars(state)` shows them): a residual check of the state, or a settle
+  from it, makes only the products of the ranges whose activations differ from the ones they
+  were made from. A bounded solve's check makes those of the ranges its chunk's last sweep
+  moved and the next chunk's first sweep makes none; a finite lesson's three diagnostic checks
+  read the products their settles left, and both nudged phases start on the free phase's.
+  The 1,024-module act takes 0.59 of its time, a lesson 0.91, a reward step 0.92; the
+  256-module brain's 0.97, 0.98 and 0.98. The founder's four small blocks cost less to remake
+  than to hand over: its act, lesson and reward step take 1.01 to 1.02, which the fourth item
+  below returns.
+- `Layout.flat` (the flat blocks remade after every update) returns the weights gathered in
+  entry order as the array where a synapse sits at every entry, as in the composed brains'
+  layouts, without zeroing the array and writing it a second time: the 1,024-module array in
+  2.0 ms where 2.8. Its lesson takes 0.91 of its time, a reward step 0.98; the 256-module
+  lesson 0.96.
+- The optimizer step of a lesson (`fused.optimizer_step`) makes each synapse's moments and step
+  in one pass where no projection-relative floor is set (the founder, `teaching="normalized"`),
+  without the array of terms between two passes; the relative floor keeps its two. Without
+  normalization (the founder) the step takes 0.65 to 0.80 of its time; with the absolute floor
+  0.83 to 0.93 on 69,632 synapses and 0.98 to 1.08 on 1,064,960, where the pass is bound by its
+  square root and divisions.
+- A compiled settle reads the neuron rule once per call, where it computed the rest emission
+  (an exponential) once per row and again for the kernel; `settle_batch` and `residual` find
+  the graph's blocks once per call.
+- The block contrast of a lesson (`block_contrast`) writes each block's float64 products into
+  their place in the flat array where it made them apart and copied them (8.5 MB per lesson
+  on the 1,024-neuron module); another precision's products are made apart as before. The
+  1,024-module contrast in 8.0 ms where 9.5 at batch 2 and 10.3 where 14.4 at batch 1; its
+  lesson takes 0.92 of its time, the 256-module lesson 0.98.
+- A damping ladder (`equilibrate(damping=k)`: every qualified phase and every rescue) checks
+  its smallest step's rule once per rule, where it rebuilt and checked the rule at every call;
+  a rule the backend cannot represent is still refused at every call. A qualified learner's act
+  takes 0.92 of its time, a lesson 0.95, a reward step 0.97.
+- A bounded solve reads its stopping test with the residual's own array methods, and a damping
+  ladder whose first attempt qualifies returns that attempt's report, which equals the one it
+  rebuilt field for field. A qualified learner's act takes 0.98 of its time, a lesson 0.98.
+- A compiled update on the mlx backend (every lesson and every reward step) gives the new brain
+  a kernel of its own whose bias and weight blocks are made from the update's host weights as
+  construction makes them, sharing the layout's tables, where it built a whole new brain and
+  kernel; the brain before the update keeps its kernel and its blocks. A 1,024-module lesson on
+  mlx takes 0.90 of its time, a reward step 0.92; a 256-module lesson 0.97.
+- The mlx backend makes every block's products at every step, where it read each source
+  range's equality back to the host at every step to reuse an unchanged range's products, and
+  evaluates a settle's graph once at its end (at least every 64 steps of a long one), where it
+  evaluated every step; a settle under a movement tolerance still evaluates every step, as its
+  stop reads the step's movement. The same states to the bit, in a fraction of the host
+  synchronizations: an act on mlx takes 0.32 to 0.36 of its time, a reward step 0.43 to 0.61, a
+  lesson 0.69 to 0.75 (0.97 on the 1,024-neuron module).
+- A settle on mlx under a movement tolerance (a finite lesson's phases, every reward step's
+  eligibility phases; a qualified learner's phases solve without one) evaluates each step's largest movement with the step's state, one host
+  synchronization per step where it took two. A lesson takes 0.80 to 0.94 of its time, a reward
+  step 0.89 to 0.97; acts settle without the tolerance and are unchanged.
+
+### Documentation
+
+- `docs/tune.md` describes the current settings only. The wide-brain recipe, the constants
   and the override rules no longer narrate the releases that produced them; a retired name points
   at this changelog's tables.
-- Docs: every guide describes the current version only. Release history, retirement tables,
+- Every guide describes the current version only. Release history, retirement tables,
   issue backstories, run narration and readings from outside this repository leave the guides;
   headings and anchors are unchanged.
+
+### Project
+
+- The recall memory's age charge stays at its founder, `recall_recency=0.25` (#250): a gate
+  for 0.0, declared before the run on fresh founders, failed on four of its eight parts. Under
+  `live` with reward alone nothing trains the founder's read, so the age charge is what orders
+  its slots; without it, ages no lesson reached outrank the ages lessons taught.
 
 ## 0.93.0 — 2026-11-03
 
