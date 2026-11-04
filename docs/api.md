@@ -87,7 +87,7 @@ brain](anatomy.md#genome-development-brain)).
 Brain(connectome, *, episodic=True, consolidation=0.05,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
       memory_context=0.0, memory_expansion=0, memory_fan_in=None, memory_extinction=0.0,
-      memory_context_hold=None, maturity=False, maturity_scale=7.5,
+      memory_context_hold=None, maturity=False, maturity_scale=10.0,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,

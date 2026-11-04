@@ -510,7 +510,7 @@ _MEMORY_DECAY = 0.9
 _MEMORY_WINNERS = 24
 # The brain's maturity (``maturity``, #253): the founders of the use scale (``U_c``, in the
 # actor's own step units per synapse) and of the recovery (moments).
-_MATURITY_FOUNDERS: dict[str, float] = {"maturity_scale": 7.5, "maturity_recovery": 200_000.0}
+_MATURITY_FOUNDERS: dict[str, float] = {"maturity_scale": 10.0, "maturity_recovery": 200_000.0}
 # The initial magnitudes of the projections from the heard history and from the recall and
 # next regions, constants since 0.93.0 (``history_scale``, ``recall_scale``); the composition
 # records them as 0.92.1 did.

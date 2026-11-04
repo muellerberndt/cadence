@@ -125,12 +125,12 @@ updates or of age is kept.
 | Setting | Founder | Changed by | What it does |
 | --- | --- | --- | --- |
 | `maturity` | `False` | construction | the maturity on the actor's steps and the store's writes |
-| `maturity_scale` | 7.5 | `retune` | the use at which the step factor is 0.5, in step units per synapse |
+| `maturity_scale` | 10.0 | `retune` | the use at which the step factor is 0.5, in step units per synapse |
 | `maturity_recovery` | 200,000 moments | `retune` | how fast the use relaxes, a moment at a time |
 
-At the founder scale the chamber lives of the preservation panel keep `m` at 0.96 or above
+At the founder scale the chamber lives of the preservation panel keep `m` at 0.98 or above
 (the busiest uses about 3.4 step units per synapse), while an arena brain's 100,000-moment
-nursery uses far more and reaches its door at `m` 0.02 to 0.2. The variable is saved and loaded with the
+nursery uses far more and reaches its door at `m` 0.07 to 0.7. The variable is saved and loaded with the
 brain (`brain.basal_ganglia.maturity`), kept by `grow` and `graft` and counted by
 `parameters()`. Off, the brain is the founder's to the bit.
 

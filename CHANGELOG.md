@@ -5,7 +5,7 @@
 ### Maturity: one slow variable on the actor's steps and the store's writes (#253, opt-in)
 
 `Brain.compose(..., maturity=True)` gives each brain a maturity: a leaky integral of its actor's
-update magnitudes (`maturity_scale`, the use at which the step factor is one half, 7.5 step
+update magnitudes (`maturity_scale`, the use at which the step factor is one half, 10 step
 units per synapse; `maturity_recovery`, 200,000 moments). The step factor `m = 1 / (1 + (use /
 maturity_scale) ** 4)` multiplies the actor's synapse and bias steps and engages the store's
 surprise-gated writes with strength `1 - m`: a write moves a record by the part of its error
