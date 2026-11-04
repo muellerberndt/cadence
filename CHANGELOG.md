@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- Docs: `docs/tune.md` describes the current settings only. The wide-brain recipe, the constants
+  and the override rules no longer narrate the releases that produced them; a retired name points
+  at this changelog's tables.
+
 ## 0.93.0 — 2026-11-03
 
 Learning during a continuing life, positions at lengths no lesson reached, and wider brains
