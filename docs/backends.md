@@ -6,7 +6,7 @@ Every graph brain runs on the `"cpu"` backend in NumPy float64 unless you pick a
 from the NumPy-only [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.93.0"
+python -m pip install "cadence-net[fast]==0.93.1"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX; from a checkout, use

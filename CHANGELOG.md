@@ -1,6 +1,14 @@
 # Changelog
 
-## Unreleased
+## 0.93.1 — 2026-11-04
+
+The same answers in less time, from a simpler implementation (#249). Every array, answer,
+report, count, checkpoint and refusal is as on 0.93.0: four batteries (13,076 values over the
+kernels, the learner, the composed operations and checkpoints; 57,060 over lives with every
+0.93 option, saved, reloaded, retuned, grown and grafted; 4,802 refusals; 4,458 values of
+several-slot brains) read identical, the founder parity reads 0 of 24 lives differing, and an
+independent review compared the two versions on the CPU, torch and mlx. A wide brain learns and
+acts faster on the CPU; on mlx a taught life takes about a sixth of its 0.93.0 time.
 
 ### The same bits from a simpler implementation
 
@@ -97,6 +105,13 @@ efficacies and maps to the bit.
   eligibility phases; a qualified learner's phases solve without one) evaluates each step's largest movement with the step's state, one host
   synchronization per step where it took two. A lesson takes 0.80 to 0.94 of its time, a reward
   step 0.89 to 0.97; acts settle without the tolerance and are unchanged.
+
+### Project
+
+- The recall memory's age charge stays at its founder, `recall_recency=0.25` (#250): a gate
+  for 0.0, declared before the run on fresh founders, failed on four of its eight parts. Under
+  `live` with reward alone nothing trains the founder's read, so the age charge is what orders
+  its slots; without it, ages no lesson reached outrank the ages lessons taught.
 
 ## 0.93.0 — 2026-11-03
 
