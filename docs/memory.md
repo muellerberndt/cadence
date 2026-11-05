@@ -232,28 +232,31 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
 ### Maturity and surprise-gated writes
 
 With `maturity=True` ([reward](reward.md#maturity-opt-in)) the store keeps a noise scale `R` per
-record (`brain.hippocampus.gate_noise`, the running mean of the squared error of its writes at
-rate 0.05, from zero at birth) and gates its writes by the brain's step factor `m`: the change
-the write would make without the gate, to the shared `C` and to each writing stream's `F` alike,
-is multiplied on each action's column by
+consolidated record (`brain.hippocampus.gate_noise`, zero at birth) and gates its writes by the
+brain's step factor `m`. The change a write makes without the gate, to the shared `C` and to
+each writing stream's `F` alike, is multiplied on each action's column by a gain, and each
+writing stream moves the noise of the records its key reads toward its squared error:
 
 ```text
-1 - (1 - m) (1 - g),    g = mean over the writing streams that observe the action of
-                            max(0, 1 - 2 sqrt(R) / |e|)
+gain = 1 - (1 - m) (1 - g)
+g    = mean over the writing streams that observe the action of max(0, 1 - 2 sqrt(k^2 @ R) / |e|)
+R   += 0.05 * outer(k^2 / max(k^2), e^2 - R)       # each writing stream, its observed actions
 ```
 
-where `e` is a stream's error on the action against its read before the write and `R` the
-record's noise along its cue. Every other stream keeps its residual `F` around the shared `C`, as
-without the gate; with one writing stream `g` is that stream's own. A young brain (`m` 1) writes
-as without the gate; a mature one (`m` near 0) moves a record only by the part of its error
-beyond two noise scales, so an outcome its records expect leaves them as they are and a surprise
-moves them. A record nobody writes keeps its value and its noise scale. A write whose squared
-error leaves the floating-point range (an outcome near `1e154`) is refused with `ValueError`, as
-an overflowing record is, before anything changes.
-The noise scales are saved and loaded with the store and counted by `parameters()`; `clear()`
-erases them with the records. The gate is the place records' alone: with `memory_choice` the
-context records (`brain.context_memory`) and the direct payments of `memory_extinction` write as
-without maturity.
+where `k` is a stream's key, `e = v - k @ (C + F)` its error on the action against its read
+before the write, and `sqrt(k^2 @ R)` the noise of the records along its key. Every other
+stream keeps its residual `F` around the shared `C`, as without the gate; with one writing
+stream `g` is that stream's own. A young brain (`m` 1) writes as without the gate, within
+rounding; a mature one (`m` near 0) moves a record only by the part of its error beyond two
+noise scales, so an outcome its records expect leaves them as they are and a surprise moves
+them. A record no stream writes keeps its value and its noise scale. A write whose squared
+error leaves the floating-point range (an outcome near `1e154`) is refused with `ValueError`
+before anything changes, as an overflowing record is.
+
+Every write into the place records is gated: outcomes and, with `memory_choice`, replayed
+credit and demonstrations. The context records (`brain.context_memory`) and the direct
+payments of `memory_extinction` write as without maturity. The noise scales are saved and
+loaded with the store and counted by `parameters()`; `clear()` erases them with the records.
 
 ## Learned weights and eligibility
 
