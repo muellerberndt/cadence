@@ -64,6 +64,10 @@ the same for every arm and control of a founder.
 | `*_removed` | each context twin with the earlier context removed: no meaning, `GO`, then the recent words |
 | `*_erased_recall`, `*_erased_trace` | each context twin with the earlier context erased at the continuation's start from the recall memory (the slots of the meaning, `GO` and the first given word set to zero) or from the working trace |
 
+An exact solver (`solve`) rebuilds every sentence of every panel, and of every training batch,
+from the heard moments alone (a test checks it): every panel is answerable from what the brain
+hears, except the removed contexts, which no speaker can answer.
+
 ## Scores
 
 Every panel is read on a fork of the brain that never changes the life, greedy, closed loop.

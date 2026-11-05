@@ -265,3 +265,18 @@ def test_the_erasures_reach_only_the_earlier_context():
     assert np.array_equal(after_trace, trace)
     (_, trace), (after, after_trace) = seen["trace"]
     assert trace.any() and not after_trace.any()
+
+
+def test_every_sentence_is_answerable_from_what_the_brain_hears():
+    for founder in (0, 7):
+        for name, batches in gr.panels(founder).items():
+            for rows in batches:
+                for r in rows:
+                    if r.meta.get("removed"):
+                        continue  # the context removed: answerable by no speaker
+                    assert gr.solve(r.pre) == r.target, name
+        rng = np.random.default_rng(founder)
+        for grammar in ("g1", "g2"):
+            for _ in range(100):
+                for r in gr.train_batch(rng, gr.Split.of(founder), grammar):
+                    assert gr.solve(r.pre) == r.target

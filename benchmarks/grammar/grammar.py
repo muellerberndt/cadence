@@ -251,6 +251,47 @@ def train_batch(rng: np.random.Generator, split: Split, grammar: str) -> list[Ro
     return [path(rng, hops) for _ in range(BATCH)]
 
 
+def solve(pre: list[np.ndarray]) -> list[int]:
+    """The sentence an exact solver says from the heard moments alone (the instrument's check
+    that every sentence is answerable from what the brain hears)."""
+    on = [{name for name, i in C.items() if x[i]} for x in pre]
+    words = [int(np.argmax(x[:ACTIONS])) if x[:ACTIONS].any() else -1 for x in pre]
+    if any("FROM" in o for o in on):
+        start = on[-1]
+        here = noun(CONCEPTS.index(next(n for n in start if n in CONCEPTS[:NOUNS])),
+                    "PLURAL" in start)
+        facts = {words[i]: words[i + 2] for i in range(0, len(pre) - 1, 4)}
+        said = [here]
+        while here in facts:
+            here = facts[here]
+            said += [NEAR, here]
+        return said + [END]
+    if any(o & {"OPEN_ROUND", "OPEN_SQUARE", "CLOSE"} for o in on):
+        said, stack = [], []
+        for o in on:
+            if "CLOSE" in o:
+                said.append(MATCH[stack.pop()])
+            else:
+                stack.append(OPEN_ROUND if "OPEN_ROUND" in o else OPEN_SQUARE)
+                said.append(stack[-1])
+        return said + [MATCH[o] for o in reversed(stack)] + [END]
+    v = 0 if "SEE" in on[0] else 1
+    nouns = {}
+    mods = []
+    for o in on[1:]:
+        word = noun(CONCEPTS.index(next(n for n in o if n in CONCEPTS[:NOUNS])), "PLURAL" in o)
+        if "MOD" in o:
+            mods.append(word)
+        else:
+            nouns["AGENT" if "AGENT" in o else "PATIENT"] = word
+    agent, patient = nouns["AGENT"], nouns["PATIENT"]
+    said = [agent]
+    for m in mods:
+        said += [NEAR, m]
+    form = verb(v, agent >= NOUNS)
+    return said + ([patient, form] if "DIALECT" in on[0] else [form, patient]) + [END]
+
+
 # --------------------------------------------------------------------------------- panels
 
 
