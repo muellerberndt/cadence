@@ -9,7 +9,7 @@ keyword.
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
 | [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator` |
-| [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig` |
+| [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
 | [Recording](#record-every-settling-step) | `record_settlements` |
@@ -87,7 +87,8 @@ brain](anatomy.md#genome-development-brain)).
 Brain(connectome, *, episodic=True, consolidation=0.05,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
       memory_context=0.0, memory_expansion=0, memory_fan_in=None, memory_extinction=0.0,
-      memory_context_hold=None,
+      memory_context_hold=None, maturity=False, maturity_scale=10.0,
+      maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
       history_decays=(), history_amplitude=3.0, recall=False, learning=None,
@@ -119,6 +120,8 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fan_in` needs `memory_expansion` (so `memory_choice` too) and at most the key width; a brain with a fixed `code` refuses both | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, a removed `learned_code_*` name (`LearnedCode.REMOVED`), `code` beside it, an image brain, a backend other than `cpu`, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
+| `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
+| `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
 | a missing population that a switched-on component needs | `ValueError` |
 
 The efference projection into `association` has the fixed initial scale 12.0; the working
@@ -139,13 +142,13 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `imagine(observations, *, budget=1024) -> tuple[Equilibrium, ...]` | A private branch over a sequence of batches: memories read, nothing written, live state unchanged; each phase settles to the learner's tolerance within `budget`. A refused phase ends the branch and is the last entry. | [private imagination](start.md#private-imagination) |
 | `fit(observations, labels, *, epochs=30, batch=32) -> list[float]`, `predict(observations)`, `accuracy(observations, labels)` | Independent samples, without traces or recall; `fit` resets the streams first, keeping the arousal, and returns training accuracy per epoch. Noninteger labels and mismatched batches raise before any update. | [independent-sample controls](evaluate.md#independent-sample-controls) |
 | `retune(**genes) -> Brain` | Changes mutable settings in the same life, atomically, and resets nothing (`brain.arousal.reset()` resets the arousal). Refuses construction settings, absent components, and the recall address genes under `recall_address_reward` while a sampled action awaits feedback. | [retune the same life](tune.md#retune-the-same-life) |
-| `grow(**parts) -> Brain` | A new brain: this trained brain with new parts (`recall=True` with any `recall_*` setting but `recall_tokens`, `recall_heads`, `history_decays`, `efference_amplitude` above zero, `slots` extending the brain's own), everything learned, recorded and set carried, the streams afresh; the new synapses start at zero, so it settles and chooses as this brain does until learning gives them weight. Refuses a brain that records no construction (a custom anatomy), a part inside the loop (`modules`, `observers`, a code), arousal and the episodic memory, settings that `retune` changes, recall tokens, and slots where a memory is laid out per action or would join an apical pool. This brain is unchanged. | [grow a brain](grow.md#grow-a-trained-brain) |
+| `grow(**parts) -> Brain` | A new brain: this trained brain with new parts (`recall=True` with any `recall_*` setting but `recall_tokens`, `recall_heads`, `history_decays`, `efference_amplitude` above zero, `slots` extending the brain's own), everything learned, recorded and set carried, the streams afresh; the new synapses start at zero, so it settles and chooses as this brain does until learning gives them weight. Refuses a brain that records no construction (a custom anatomy), a part inside the loop (`modules`, `observers`, a code), arousal, maturity and the episodic memory, settings that `retune` changes, recall tokens, and slots where a memory is laid out per action or would join an apical pool. This brain is unchanged. | [grow a brain](grow.md#grow-a-trained-brain) |
 | `graft(donor, regions=None, *, into=None, joints="zero", freeze=False) -> Brain` | A new brain: this brain with trained regions of `donor`; `regions` names or maps donor populations onto this brain's, `into` grafts the whole donor into one population. The grafted synapses keep the donor's weights, the joints start at zero (`joints="kept"` keeps this brain's), and `freeze=True` stops the graft learning. Refuses populations of other sizes or either brain lacks, regions that share no synapse, donor wiring this brain lacks among the grafted neurons or a one-way donor synapse on half of a reciprocal pair, another neuron model, apical compartment or apical role, a learned code's region or a joint landing on it, tied or rated synapses. Both brains are unchanged. | [graft trained regions](grow.md#graft-trained-regions-into-a-larger-brain) |
 | `reset(*, keep=("arousal",))` | Clears per-stream state and eligibility; keeps records and weights. `keep` names what carries over: `"arousal"` (the default) the whole arousal state, `"slots"` the recall slots, ending each stream's episode; a reset that does not keep `"arousal"` begins it calm with its references cleared and its age kept. Other names raise `ValueError`, checked before anything changes; an unknown keyword raises `TypeError`. | [reset and save](start.md#reset-and-save) |
 | `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`. | [defaults](tune.md#defaults-and-expert-overrides) |
 | `observation_code(observations) -> (batch, code_width)` | The unit-length key every memory reads and writes; with a learned code, the code the observations settle to without a context. | [the observation code](senses.md#the-observation-code), [the learned code](senses.md#the-learned-code) |
 | `stimulus(observations, *, memory=True) -> drive` | The drive of a batch; with `memory` the trace, copy, history, recall and hippocampal reads are added, and the recall address is fixed for the moment. | [memory](memory.md) |
-| `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps and its options' maps (anchor, relative, slope), and a learned code's tables. | |
+| `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps and its options' maps (anchor, relative, slope), a learned code's tables, and with `maturity` its use (one) and the place records' noise scales (`gate_noise`, one per consolidated entry). | |
 | `copy.deepcopy(brain)` | An independent copy: every array, store, state and random generator copied, the immutable connectomes shared. |
 | `save(path, *, compressed=True) -> Path`, `Brain.load(path, *, backend="cpu", device=None, precision=None)` | The whole continuation, written atomically ([the format](#checkpoint-format)); `compressed=False` writes a plain archive, faster for a large brain. `Brain.load` refuses a learner-only file; `Learner.load` reads either. | [reset and save](start.md#reset-and-save) |
 
@@ -177,7 +180,11 @@ their shape. Keep row identities fixed until `reset()`.
 
 ### Checkpoint format
 
-`Brain.save` writes `cadence-brain/1`, one format whatever the brain holds:
+`Brain.save` writes `cadence-brain/1`. A brain with maturity ([reward](reward.md#maturity-opt-in))
+writes `cadence-brain/2`, which 0.93.1 and earlier refuse: the same members, with the maturity
+(`scale`, `recovery`, `use`) under `maturity` in the metadata and the store's noise scales
+(`memories/hippocampus/gate_noise`). `Brain.load` refuses a `cadence-brain/1` file with a
+maturity and a `cadence-brain/2` file without one.
 
 | Members | What they hold |
 | --- | --- |
@@ -189,7 +196,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
 | `memories/history/` | the heard history's `trace` |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
-| `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator |
+| `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
 `Brain.load` also reads the earlier formats `cadence-generic/1` to `/10`; a retired setting
@@ -202,7 +209,10 @@ with positive weights, a code whose metadata lacks the `cover` field, a recall w
 another length, and learned-code tables that disagree with the saved synapses and biases of
 the code region. A pending sampled action needs its saved observation, action and, with a
 learned code, its decision-time code. The learner's output order must match the motor
-population, so action indices keep their meaning after loading.
+population, so action indices keep their meaning after loading. A saved maturity holds exactly
+`scale`, `recovery` and `use`, each a finite real in its range (`use` at most `Maturity.LIMIT`,
+1e64), with the store's noise scales as nonnegative finite numbers under a boolean
+`surprise_gate`; anything else is refused with `ValueError` naming the field.
 
 ## Arousal (`cadence.arousal`)
 
@@ -346,7 +356,7 @@ FastSynapses(pre, post, decay=1.0, rate=1.0, amplitude=1.0, normalize=False,
              replace=False, rule="hebb", separator=None, writes=0)
 SynapticMemory(pre, post, decay=0.9, rate=1.0, amplitude=1.0, normalize=False,
                replace=False, rule="delta", separator=None, writes=0,
-               consolidation=0.05)
+               consolidation=0.05, gate_noise=None, maturity=None)
 PatternSeparator(inputs, expansion, winners, seed=0, center=0.0, fan_in=0, cover=0)
 ```
 
@@ -358,7 +368,12 @@ write=None)`, `recall(key)`, `update(state, write=None, post=None)`, `read(drive
 shared across streams: `observe(..., *, salience=None, value_mask=None)`, `reset` keeps the
 consolidated synapses, `clear()` erases both, `salience_vector(salience, batch)` validates a
 salience; it refuses any `rule` but `"delta"`, a `consolidation` outside `[0, 1]` and a
-`separator` with nonzero `center`.
+`separator` with nonzero `center`. With both `gate_noise` (a nonnegative `(key_width, post)`
+array, each record's noise scale) and `maturity` (a `Maturity`) set, its writes are
+surprise-gated ([maturity](memory.md#maturity-and-surprise-gated-writes)); a composed brain
+with `maturity=True` sets them on its place records, shares its actor's `Maturity` with them and
+saves `gate_noise` with `arrays()`. `GATE_WIDTH` (2.0) and `GATE_RATE` (0.05) are the gate's
+constants.
 `PatternSeparator` codes keys by a fixed random projection keeping `winners` of `expansion`:
 `code(key, learn=False)`, `habituate(keys)`, `arrays()`, `channels`, `to_dict()`; it raises
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
@@ -492,6 +507,7 @@ or a learner at the projection-relative floor or fixed nudged phases. `/1` loads
 ActorCritic(learner, critic, config=None, seed=0)
 ActorCriticConfig(gamma=0.99, lam=0.9, eta=0.5, eta_bias=None, eta_critic=0.05,
                   dopamine_cap=1.0, eligibility_steps=None)
+Maturity(scale, recovery, use=0.0)
 ```
 
 The reward learner of a stream: a `Learner` whose outputs are the actions, a learned linear
@@ -509,6 +525,13 @@ given as `reward=` is the expert route and keeps them as given.
 | `probabilities(state, temperature=None, *, bias=None)`, `value(state)`, `value_of(drive)`, `settle(drive)` | Policy, critic value, a cold settle. |
 | `reset()`, `parameters()`, `to_dict()` | Clears cache, eligibility and salience; keeps learned parameters. |
 | `state`, `salience`, `memory`, `trace`, `trace_memory` | The latest free phase; per-sender salience weights; a memory with learned parameters (`Recall`) and its eligibility. |
+| `maturity` | The brain's `Maturity` with `maturity=True` ([reward](reward.md#maturity-opt-in)), else `None`: `learn` multiplies the synapse and bias steps by its `factor()` and adds the step applied to its `use`. |
+
+`Maturity` is the slow variable of a mature brain: `scale` and `recovery` (the `retune` settings
+`maturity_scale` and `maturity_recovery`) and `use`, at most `LIMIT` (1e64, where the factor's
+power stays finite at every scale); `factor()` is `1 / (1 + (use / scale) ** ORDER)` (`ORDER`
+4.0); `relax()` keeps `1 - 1 / recovery` of `use`; `to_dict()` is what a checkpoint saves. The
+class validates nothing itself: `compose`, `retune` and `Brain.load` validate its fields.
 
 Construction warns when `eta_bias` exceeds a positive `eta`.
 

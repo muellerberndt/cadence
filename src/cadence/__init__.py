@@ -40,7 +40,7 @@ from .learning import (
 )
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
-from .plasticity import ActorCritic, ActorCriticConfig
+from .plasticity import ActorCritic, ActorCriticConfig, Maturity
 from .receipts import Receipt, canonical_json
 from .recording import SettlementRecord, record_settlements
 from .reference import conformance
@@ -66,6 +66,7 @@ __all__ = [
     "PatternSeparator",
     "ActorCritic",
     "ActorCriticConfig",
+    "Maturity",
     "Adaptation",
     "Region",
     "Brain",
@@ -110,4 +111,4 @@ __all__ = [
     "save",
 ]
 
-__version__ = "0.93.1"
+__version__ = "0.94.0"

@@ -1,5 +1,57 @@
 # Changelog
 
+## 0.94.0 — 2026-11-05
+
+One opt-in, maturity, for a brain that goes on learning after it has acquired a skill (#169,
+#253). Off, every brain is 0.93.1's to the bit: the four identity batteries and the founder
+parity read no difference, and a brain without maturity saves the checkpoint it saved.
+
+On, maturity was read on fresh brains under a protocol declared before the run, in a continuing
+robot arena (leagues of six brains, each raised in a 100,000-moment nursery, then fighting;
+144 brain-runs per arm), against the founder at its own actor step and at step 0.003, the bar
+#169 sets. Seven of #169's eight core gates held:
+
+- Over twenty fights a mature brain loses its driving skill as little as the founder at step
+  0.003 does (0.105 against 0.099, standard error 0.011), where the founder at its own step
+  loses 0.170; over sixty fights the same (0.003 less than step 0.003's).
+- Acquisition is not slowed: the nursery's door test rises by 0.209 against a bar of 0.106.
+- The reward chambers of the preservation panel read as the founder's; no chamber life's step
+  factor falls below 0.996.
+- A route the arena reverses is unlearned as the founder unlearns it (a fall of 0.784 against a
+  bar of 0.361).
+- A skill practised for 100,000 moments loses 3.5 points while a competing skill is learned
+  (the limit is 5), and the competing skill reaches what the founder's reaches; in a short life
+  both read as the founder's.
+
+The eighth failed: two of the 24 mature runs fell into the arena's absorbing calm, where every
+brain settles into routine and none learns again, against one founder run, and the gate allowed
+no more than the founder's. #169 stays open. Whether maturity becomes the default is read by the
+defaults panel (#252); a displaced skill does not yet come back faster than it was first learned
+(#254).
+
+### Maturity: one slow variable on the actor's steps and the store's writes (#253, opt-in)
+
+`Brain.compose(..., maturity=True)` gives the brain a maturity, for a brain that goes on learning
+after it has acquired a skill (#169). Its one variable, the use, is a leaky integral of the
+actor's applied synapse steps in the brain's own step units per synapse: each accepted moment of
+life (`live`, `step`, or `learn` on its own) keeps `1 - 1 / maturity_recovery` of it (200,000
+moments), so no count is kept and the use of a brain that lives without learning relaxes. The
+step factor `m = 1 / (1 + (use / maturity_scale) ** 4)` (one half at `maturity_scale`, 10 step
+units per synapse) multiplies the actor's synapse and bias steps and engages the store's
+surprise-gated writes with strength `1 - m`: a mature brain's write moves a place record only by
+the part of its error beyond two of the record's noise scales, so the store keeps what an
+outcome confirms and moves on a surprise. Several writing streams share one gain per action,
+the mean of theirs, so every stream keeps its residual around the shared records. The critic,
+lessons and the recall memory's maps keep their steps.
+
+The use and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted
+by `parameters()`; `maturity_scale` and `maturity_recovery` are `retune` settings and `maturity`
+a construction setting. A brain with maturity saves the new checkpoint format `cadence-brain/2`,
+which 0.93.1 and earlier refuse; every other brain saves `cadence-brain/1` as before. `Maturity`
+is exported from `cadence`. Off, the brain is the founder's to the bit. See
+[reward](docs/reward.md#maturity-opt-in) and
+[memory](docs/memory.md#maturity-and-surprise-gated-writes).
+
 ## 0.93.1 — 2026-11-04
 
 The same answers in less time, from a simpler implementation (#249). Every array, answer,

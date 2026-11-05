@@ -9,13 +9,13 @@ and an MLP or classifier setup is a control to compare against. The
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.93.1
+python -m pip install cadence-net==0.94.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. From a checkout, run `python -m pip install -e .`
 at the repository root. The extras `[fast]` (Numba and SciPy), `[accel]` (PyTorch) and
 `[apple]` (MLX) add backends; [backends](backends.md) says which to choose. The
-[v0.93.1 documentation](https://github.com/muellerberndt/cadence/blob/v0.93.1/docs/README.md)
+[v0.94.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.94.0/docs/README.md)
 is pinned to the release tag.
 
 ## The composed brain
@@ -33,8 +33,8 @@ guide that owns it.
    does not.
 2. [Teach by demonstration](teach.md): `lesson`, `step(teacher=)`, surprise lessons, rehearsal,
    the normalized point for many lessons.
-3. [Learning from reward](reward.md): eligibility and dopamine, the actor's settings, delayed
-   credit and chains.
+3. [Learning from reward](reward.md): eligibility and dopamine, the actor's settings,
+   maturity, delayed credit and chains.
 4. [Memory](memory.md): which memory for which need, the episodic and recall memories, the
    standalone stores.
 5. [API reference](api.md): every public name with its signature and refusals.
@@ -46,6 +46,7 @@ guide that owns it.
 | Wide inputs: images, codes | image `inputs`, `code=units`, `learned_code=units` | [Wide inputs](senses.md) |
 | To read or change a living brain | `describe`, `retune`, `last_settlement`, the founders | [Tune and read a living brain](tune.md) |
 | A deep or wide brain, with every memory and attention feature | `modules=(64, 32, 32)`, `apical=0.25`, `teaching="deep"`, `attention=True`, `recall_heads=2` | [Larger brains](tune.md#larger-brains), [deep brains](tune.md#deep-brains) |
+| A brain whose actor's steps fall as it uses its plasticity and whose store moves on surprises | `maturity=True` | [Maturity](reward.md#maturity-opt-in) |
 | To give a trained brain a memory, more heads or more outputs, or to put trained regions into a larger brain | `grow(recall=True)`, `grow(slots=(4, 2))`, `graft(donor, regions)`, `graft(donor, into=...)` | [Grow and combine brains](grow.md) |
 | To show a result | baselines, controls, `fit` as a control, receipts | [Evaluate a brain](evaluate.md) |
 | To design a behavioral claim or a continuing application | observation/action boundaries, context interventions, acquisition and recovery | [Task design](task-design.md), [the design direction](world-model.md) |

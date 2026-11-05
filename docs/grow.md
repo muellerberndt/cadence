@@ -259,14 +259,16 @@ new slot what the other brain knows.
 - **Devices.** The new brain lives on the backend, device and precision of the brain whose method
   made it.
 - **Checkpoints.** A grown or grafted brain is an ordinary brain: it saves and loads like any
-  other, in the one format `cadence-brain/1` ([checkpoint format](api.md#checkpoint-format)).
+  other, in `cadence-brain/1` (with maturity `cadence-brain/2`; [checkpoint
+  format](api.md#checkpoint-format)).
 - **Determinism.** The same brain grows, and grafts, to the same brain every time.
 
 What does not grow or graft:
 
 - a part inside the brain's loop through `grow` (`modules`, `observers`, `code`, `learned_code`,
   `lateral`, `apical`, other `inputs`); compose the larger layout and graft instead;
-- `arousal` or the episodic memory (`memory_choice`), choices of the brain's construction;
+- `arousal`, `maturity` or the episodic memory (`memory_choice`), choices of the brain's
+  construction;
 - `recall_tokens`, which start the copy pathway as an identity onto the motor neurons: no recall
   memory with them, and no heads or slots for a brain with them;
 - new slots where a memory is laid out per action (`recall_action`, `memory_choice`), or where

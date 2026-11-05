@@ -105,6 +105,54 @@ makes a policy whose greedy action ignores the observation. A named `actor_eta` 
 `eta / 10` again. Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias`
 exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
+## Maturity (opt-in)
+
+Maturity ([#253](https://github.com/muellerberndt/cadence/issues/253)) is for a brain that goes
+on learning after it has acquired a skill that this learning should not erase
+([#169](https://github.com/muellerberndt/cadence/issues/169)).
+`Brain.compose(..., maturity=True)` gives the brain one slow variable, the use of its
+plasticity. Each actor update adds the synapse change it applied, in the brain's own step units
+per synapse: `use += sum |dw| / (eta N)`, with `eta` the actor's synapse rate and `N` its
+synapses. Every accepted moment of life (`live`, `step`, or `learn` called on its own) keeps
+`1 - 1 / maturity_recovery` of the use. The step factor
+
+```text
+m = 1 / (1 + (use / maturity_scale) ** 4)
+```
+
+multiplies the actor's synapse and bias steps, and engages the store's surprise-gated writes
+with strength `1 - m` ([memory](memory.md#maturity-and-surprise-gated-writes)). The critic,
+lessons, rehearsal, a learned code and the recall memory's maps keep their steps, and their
+changes add nothing to the use. A young brain learns at the founder's steps; a busy one
+matures, its steps falling and its store keeping what it holds unless an outcome surprises it;
+one that lives without learning returns toward its youth. No count of updates or of age is kept.
+
+A moment refused before it learns changes neither the use nor the store's records and noise
+scales. A `live` or `step` refused after its outcome was learned keeps that outcome, as each
+documents, with its step in the use and without the moment's relaxation.
+
+| Setting | Founder | Changed by | What it does |
+| --- | --- | --- | --- |
+| `maturity` | `False` | construction | the maturity on the actor's steps and the store's writes |
+| `maturity_scale` | 10.0 | `retune` | the use at which the step factor is 0.5, in step units per synapse |
+| `maturity_recovery` | 200,000 moments | `retune` | the use's time constant: each moment keeps `1 - 1 / maturity_recovery` of it |
+
+`maturity` is a construction setting: `retune` refuses it, and `grow` and `graft` keep the
+brain's maturity, its use and its store's noise scales. Without `maturity`, a
+`maturity_scale` or `maturity_recovery` other than its founder is refused. A larger scale keeps
+a brain young for longer. At the founder scale the reward chambers of the
+[preservation panel](../benchmarks/credit/README.md#preservation) keep `m` at 0.98 or above
+(the busiest use is about 3.4 step units per synapse), while an arena brain uses far more in its
+100,000-moment nursery and ends it at `m` 0.07 to 0.7.
+
+It costs one noise scale per consolidated record of the store (`brain.hippocampus.gate_noise`),
+counted by `parameters()` with the use, a pass over the synapses on each actor update to
+measure the step, and the gate's arithmetic on each write of the store. The variable
+(`brain.basal_ganglia.maturity`, a `Maturity`) and the noise scales are saved and loaded with
+the brain in checkpoint format `cadence-brain/2`, which 0.93.1 and earlier refuse
+([checkpoint format](api.md#checkpoint-format)). Off, the brain is the founder's to the bit and
+saves `cadence-brain/1`.
+
 ## Decision and reset contract
 
 Drives are nonempty finite `(batch, neurons)` arrays, rewards and bootstrap values

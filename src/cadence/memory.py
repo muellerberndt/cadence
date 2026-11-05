@@ -7,10 +7,14 @@ key-to-value synapses using the actual observed value's local prediction error.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .stream import FastSynapses
+
+if TYPE_CHECKING:
+    from .plasticity import Maturity
 
 
 @dataclass
@@ -25,12 +29,29 @@ class SynapticMemory(FastSynapses):
     Salience increases the slow write rate, capped at one. Unknown value components
     never become teaching targets. ``reset`` clears transient memory only; ``clear``
     explicitly erases persistent weights too.
+
+    With a surprise gate (``gate_noise``, each record's noise scale, and ``maturity``, the
+    brain's ``Maturity``; ``Brain.compose(maturity=True)`` sets both on its place records), a
+    write's change of the shared matrix and of each writing stream's residual is multiplied,
+    per action, by ``1 - (1 - m)(1 - g)``: ``m`` the maturity's factor, ``g`` the mean over the
+    writing rows that observe the action of ``max(0, 1 - GATE_WIDTH sqrt(R) / |e|)``, ``e`` the
+    row's error on the action against its stream's read before the write and ``R`` the noise
+    of the records along the row's cue. A mature store (``m`` near 0) moves a record only by
+    the part of its error beyond ``GATE_WIDTH`` noise scales; a young one (``m`` 1) writes as
+    without the gate. Every other stream keeps its residual. Each writing row moves the noise
+    of the records its cue reads toward its squared error, at ``GATE_RATE`` times the cue's
+    squared weight on the record relative to its largest.
     """
 
     decay: float = 0.9
     rule: str = "delta"
     consolidation: float = 0.05
     consolidated: np.ndarray = field(init=False)
+    gate_noise: np.ndarray | None = field(default=None, repr=False)
+    maturity: Maturity | None = field(default=None, repr=False, compare=False)
+
+    GATE_WIDTH = 2.0
+    GATE_RATE = 0.05
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -55,12 +76,16 @@ class SynapticMemory(FastSynapses):
             self.strength[rows] = self.consolidated
 
     def arrays(self) -> dict[str, np.ndarray]:
-        """The arrays a checkpoint keeps, the consolidated records among them."""
-        return {**super().arrays(), "consolidated": self.consolidated}
+        """The arrays a checkpoint keeps, the consolidated records among them (and the
+        records' noise scales, with a surprise gate)."""
+        kept = {} if self.gate_noise is None else {"gate_noise": self.gate_noise}
+        return {**super().arrays(), "consolidated": self.consolidated, **kept}
 
     def clear(self) -> None:
         """Explicitly erase both persistent and transient associations."""
         self.consolidated.fill(0)
+        if self.gate_noise is not None:
+            self.gate_noise.fill(0)
         self.reset(len(self.strength))
 
     def _baseline(self) -> np.ndarray:
@@ -124,21 +149,73 @@ class SynapticMemory(FastSynapses):
         rate = np.minimum(1.0, rate)
         error = (value[rows] - cue @ self.consolidated) * mask
         change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
-        consolidated = self.consolidated + change
+        gated = self.gate_noise is not None and self.maturity is not None
+        base = strength.copy() if gated else strength
         strength += change  # preserve each stream's residual around the shared matrix
         prediction = (cue[:, None, :] @ strength[rows])[:, 0, :]
         correction = (value[rows] - prediction) * mask
-        strength[rows] += self.rate * cue[:, :, None] * correction[:, None, :]
-        if not np.isfinite(strength).all() or not np.isfinite(consolidated).all():
+        fast = self.rate * cue[:, :, None] * correction[:, None, :]
+        noise = None
+        if not gated:
+            consolidated = self.consolidated + change
+            strength[rows] += fast
+        else:  # the write above, multiplied per action by the surprise gate's gain
+            gain, noise = self._gate(cue, value[rows], previous[rows], mask)
+            # one gain per action, the mean over the rows that observe it, on the shared matrix
+            # and on every writing stream's residual alike: each stream keeps its residual
+            # around the shared matrix
+            seen = mask.sum(axis=0)
+            shared = np.where(seen > 0, (gain * mask).sum(axis=0) / np.maximum(seen, 1), 1.0)
+            moved = np.broadcast_to(change, strength.shape).copy()
+            moved[rows] += fast
+            consolidated = self.consolidated + np.einsum(
+                "b,bi,bj->ij", rate, cue, error * shared
+            ) / len(rows)
+            strength = base + shared * moved
+        if (
+            not np.isfinite(strength).all()
+            or not np.isfinite(consolidated).all()
+            or (noise is not None and not np.isfinite(noise).all())
+        ):
             raise ValueError("synaptic update overflowed; scale the observed values")
         mass[rows] += self.rate
         self.consolidated, self.strength, self.mass = consolidated, strength, mass
+        if noise is not None:
+            self.gate_noise = noise
         self.writes += len(rows)
 
+    def _gate(
+        self, cue: np.ndarray, value: np.ndarray, previous: np.ndarray, mask: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Each writing row's gain per action (the surprise gate engaged by maturity), and
+        the records' noise scales moved toward the rows' squared errors: a new array, which
+        the write installs with the records it accepts."""
+        assert self.gate_noise is not None and self.maturity is not None
+        noise = self.gate_noise.copy()
+        engaged = 1.0 - self.maturity.factor()  # the gate's strength, 1 - m
+        error = value - np.einsum("bi,bij->bj", cue, previous)
+        square = cue * cue
+        spread = np.sqrt(square @ noise)
+        size = np.abs(error)
+        with np.errstate(over="ignore"):  # an error far within the noise: a ratio past the range
+            ratio = self.GATE_WIDTH * spread / np.where(size > 0, size, 1.0)
+        surprise = np.where(size > 0, np.maximum(0.0, 1.0 - ratio), 0.0)
+        gain = np.where(mask, 1.0 - engaged * (1.0 - surprise), 1.0)
+        weight = square / np.maximum(square.max(axis=1, keepdims=True), 1e-30)
+        with np.errstate(over="ignore", invalid="ignore"):  # an overflow is refused (observe)
+            for row in range(len(cue)):  # the noise scale of each observed action's record
+                seen = mask[row]
+                noise[:, seen] += self.GATE_RATE * weight[row][:, None] * (
+                    error[row, seen][None, :] ** 2 - noise[:, seen]
+                )
+        return gain, noise
+
     def to_dict(self) -> dict[str, float | int | str]:
+        gate = {} if self.gate_noise is None else {"surprise_gate": True}
         return {
             **super().to_dict(),
             "kind": "consolidating",
             "consolidation": self.consolidation,
             "persistent_parameters": int(self.consolidated.size),
+            **gate,
         }

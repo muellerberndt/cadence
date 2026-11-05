@@ -41,6 +41,7 @@ from .learning import Learner
 __all__ = [
     "ActorCritic",
     "ActorCriticConfig",
+    "Maturity",
 ]
 
 
@@ -53,6 +54,40 @@ def _batch_of(state: BrainState) -> int:
 
 
 SATURATION_BAND = 0.02  # an output within this of 0 or 1 has no slope left for a nudge
+
+
+@dataclass(slots=True)
+class Maturity:
+    """A brain's maturity (#253): one slow variable, the use of its plasticity.
+
+    Each actor update adds its applied magnitude in the brain's own step units per synapse,
+    ``use += sum |dw| / (eta N)``; every accepted moment of life keeps ``1 - 1 / recovery`` of
+    ``use``. The step factor ``m = 1 / (1 + (use / scale) ** ORDER)`` multiplies the actor's
+    synapse and bias steps and engages the store's surprise-gated writes with strength ``1 - m``.
+    No count is kept: a busy brain matures and one that lives without learning returns toward
+    its youth.
+    """
+
+    scale: float
+    recovery: float
+    use: float = 0.0
+
+    ORDER = 4.0
+    # the largest use a brain holds: at the smallest scale (1e-12) the factor's power stays
+    # finite, and no life comes near it
+    LIMIT = 1e64
+
+    def factor(self) -> float:
+        try:
+            return float(1.0 / (1.0 + (self.use / self.scale) ** self.ORDER))
+        except OverflowError:  # a use set beyond the limit: no step is left
+            return 0.0
+
+    def relax(self) -> None:
+        self.use *= 1.0 - 1.0 / self.recovery
+
+    def to_dict(self) -> dict[str, float]:
+        return {"scale": self.scale, "recovery": self.recovery, "use": self.use}
 
 
 @dataclass(frozen=True, slots=True)
@@ -197,6 +232,8 @@ class ActorCritic:
         # ("phases", plus, minus, value) as activations, or ("states", plus, minus, value) as states
         self._pending: tuple[str, Any, Any, np.ndarray] | None = None
         self.updates = 0
+        # the brain's maturity (``Maturity``), which scales the steps; None: the founder's steps
+        self.maturity: Maturity | None = None
 
     # -- readings
 
@@ -470,7 +507,9 @@ class ActorCritic:
         action was chosen in, which always carries the critic's eligibility. A ``memory``'s
         parameters step on their own trace by the same dopamine, checked before the graph's
         update and installed after it; a refused update leaves them and their trace as they
-        were, and the report names the step (``address_reward_step``).
+        were, and the report names the step (``address_reward_step``). With a ``maturity``
+        the synapse and bias steps are its ``factor()`` times the config's, and the synapse
+        step applied adds to its ``use``; the critic and the memory keep their steps.
         """
         arrays = ("trace", "trace_bias", "trace_critic", "trace_memory")
         saved = {
@@ -483,11 +522,33 @@ class ActorCritic:
                 for name in ("_trace_device", "updates")
             }
         )
+        # a mature brain's use grows by the synapse step applied, measured on the torch backend
+        # on the device (an update replaces the kernel's scale tensor): one number to the host
+        maturity, kernel, before = self.maturity, self.learner.brain._torch, None
+        if maturity is not None:
+            before = kernel.scale if kernel is not None else np.array(self.learner.brain.efficacy)
         try:
-            return self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
+            report = self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
         except Exception:
             self.__dict__.update(saved)
             raise
+        if maturity is not None and self.config.eta > 0:
+            after = self.learner.brain
+            if kernel is not None:
+                moved = float((after._torch.scale - before).abs().sum())
+            else:
+                moved = float(np.abs(after.efficacy - before).sum())
+            maturity.use = min(
+                maturity.use + moved / (float(self.config.eta) * self.synapses), Maturity.LIMIT
+            )
+        return report
+
+    def _rates(self) -> tuple[float, float]:
+        """The actor's synapse and bias steps: the config's, times the maturity's factor."""
+        cfg = self.config
+        assert cfg.eta_bias is not None  # derived at construction
+        factor = 1.0 if self.maturity is None else self.maturity.factor()
+        return factor * cfg.eta, factor * cfg.eta_bias
 
     def _learn(
         self,
@@ -605,8 +666,9 @@ class ActorCritic:
             step_scale = (delta[:, None] * self.trace).mean(axis=0)
             step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
         self.updates += 1
-        step_scale = cfg.eta * step_scale
-        step_bias = cfg.eta_bias * step_bias
+        eta, eta_bias = self._rates()
+        step_scale = eta * step_scale
+        step_bias = eta_bias * step_bias
         critic_weights, critic_bias = self._critic_candidate(delta)
         # the memory's parameters step on their trace by the same dopamine, checked before
         # anything is installed
@@ -796,8 +858,9 @@ class ActorCritic:
         d = d[:, None]
         proposal = self._memory_proposal(delta)  # checked before anything is installed
         next_brain = self.learner.brain
+        eta, eta_bias = self._rates()
         report = self.learner._apply_device(
-            kernel, cfg.eta * (d * trace).mean(dim=0), cfg.eta_bias * (d * trace_bias).mean(dim=0)
+            kernel, eta * (d * trace).mean(dim=0), eta_bias * (d * trace_bias).mean(dim=0)
         )
         self.w_critic, self.b_critic = critic_weights, critic_bias
         if proposal is not None:
@@ -883,7 +946,7 @@ class ActorCritic:
         self.salience = None
 
     def parameters(self) -> int:
-        return self.learner.parameters() + len(self.w_critic) + 1
+        return self.learner.parameters() + len(self.w_critic) + 1 + (self.maturity is not None)
 
     def to_dict(self) -> dict[str, Any]:
         return {
