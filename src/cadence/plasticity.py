@@ -532,7 +532,10 @@ class ActorCritic:
         # a mature brain: the steps times its factor, its use grown by the step applied
         config, use = self.config, maturity.use
         m = maturity.factor()
-        before = np.array(self.learner.brain.efficacy, copy=True)
+        # on the torch backend the step is measured on the device (an update replaces the
+        # kernel's scale tensor): one number comes to the host
+        kernel = self.learner.brain._torch
+        before = kernel.scale if kernel is not None else np.array(self.learner.brain.efficacy)
         try:
             if m != 1.0:
                 bias = config.eta_bias
@@ -550,7 +553,12 @@ class ActorCritic:
         finally:
             self.config = config
         if config.eta > 0:
-            moved = float(np.abs(np.asarray(self.learner.brain.efficacy) - before).sum())
+            after = self.learner.brain
+            if kernel is not None:
+                assert after._torch is not None
+                moved = float((after._torch.scale - before).abs().sum())
+            else:
+                moved = float(np.abs(np.asarray(after.efficacy) - before).sum())
             maturity.use += moved / (float(config.eta) * self.synapses)
         return report
 

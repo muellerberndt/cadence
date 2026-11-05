@@ -402,3 +402,24 @@ def test_the_factor_reads_any_use():
     assert Maturity(scale=1e-12, recovery=10.0, use=1e70).factor() == 0.0
     assert Maturity(scale=1.0, recovery=10.0, use=1e76).factor() == pytest.approx(1e-304)
     assert Maturity(scale=1.0, recovery=10.0, use=2.0).factor() == 1.0 / 17.0
+
+
+def test_the_torch_backend_measures_the_step_on_the_device(monkeypatch):
+    pytest.importorskip("torch")
+    settings = {"seed": 2, "arousal": True, "maturity": True, "maturity_scale": 0.05}
+    brain = cd.Brain.compose(6, 3, backend="torch", device="cpu", **settings)
+    kernel = type(brain.brain._torch)
+    reads = []
+    host_scale = kernel.host_scale
+
+    def counted(self):
+        reads.append(1)
+        return host_scale(self)
+
+    monkeypatch.setattr(kernel, "host_scale", counted)
+    life(brain, moments=60)
+    assert brain.basal_ganglia.updates > 0 and not reads  # no efficacy came to the host
+    monkeypatch.undo()
+    host = life(cd.Brain.compose(6, 3, **settings), moments=60)
+    assert brain.basal_ganglia.maturity.use == pytest.approx(host.basal_ganglia.maturity.use,
+                                                             rel=1e-9)
