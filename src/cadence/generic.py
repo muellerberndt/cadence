@@ -720,6 +720,7 @@ def _load_memory(
     prefix: str = "episodic/",
     keys: int | None = None,
     shared: PatternSeparator | None = None,
+    gate: bool = False,
 ) -> FastSynapses | None:
     """Validate and restore a detached memory before constructing the resumed composition.
 
@@ -728,7 +729,8 @@ def _load_memory(
     number from zero (the observation code, with the motor neurons after it for context
     records), which can exceed the graph. ``shared`` is the separator of the store this one
     is separated as (the direct payments read the place records'), saved once with that
-    store: such a memory saves no separator of its own."""
+    store: such a memory saves no separator of its own. ``gate`` admits the surprise gate's
+    noise scales, which only the place records carry (``maturity``)."""
 
     def array(name: str, shape: tuple[int, ...] | None = None) -> np.ndarray:
         key = prefix + name
@@ -851,6 +853,8 @@ def _load_memory(
             gated = metadata.get("surprise_gate", False)
             if not isinstance(gated, bool):
                 raise ValueError("saved memory surprise_gate must be boolean")
+            if gated and not gate:
+                raise ValueError("only the place records are surprise-gated")
             if gated:  # the records' noise scales (``maturity``)
                 noise = array("gate_noise", memory.consolidated.shape)
                 if (noise < 0).any():
@@ -5291,7 +5295,7 @@ class Brain:
                 coded = learned + len(populations["sensory"])
             else:
                 coded = None if code is None else code[1].expansion
-            memory = _load_memory(meta["hippocampus"], data, neurons, keys=coded)
+            memory = _load_memory(meta["hippocampus"], data, neurons, keys=coded, gate=True)
             heard = meta.get("history")
             recalled = meta.get("recall")
             attention = meta.get("attention", False)

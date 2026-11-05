@@ -436,6 +436,20 @@ def test_maturity_is_exported_and_gates_the_place_records_alone():
     assert brain.context_memory is episodic.temporal and episodic.paid is not None
     for store in (episodic.temporal, episodic.paid):
         assert store.gate_noise is None and store.maturity is None
+    # a checkpoint that gates the context records or the direct payments is refused
+    brain = life(brain, moments=30)
+
+    def gated(name):
+        def edit(meta, arrays):
+            meta["memories"]["episodic"][name]["surprise_gate"] = True
+            prefix = f"memories/episodic/{name}/"
+            arrays[prefix + "gate_noise"] = np.zeros_like(arrays[prefix + "consolidated"])
+        return edit
+
+    with tempfile.TemporaryDirectory() as folder:
+        for name in ("context_memory", "paid_memory"):
+            with pytest.raises(ValueError, match="only the place records are surprise-gated"):
+                cd.Brain.load(tampered(brain, folder, gated(name)))
     # a brain at the limit stays there, at any scale, and saves a checkpoint that loads
     brain = cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=1e-12)
     brain.basal_ganglia.maturity.use = Maturity.LIMIT
