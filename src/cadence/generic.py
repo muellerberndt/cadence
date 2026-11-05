@@ -168,7 +168,7 @@ def _operation(method: _Operation) -> _Operation:
     return cast(_Operation, operated)
 
 
-def _moment(method: _Operation) -> _Operation:
+def _moment_of_life(method: _Operation) -> _Operation:
     """A moment of life (``live``, ``step``, or ``learn`` called on its own): a mature brain's
     use relaxes once when the outermost of them returns; a refused moment leaves it."""
 
@@ -177,12 +177,12 @@ def _moment(method: _Operation) -> _Operation:
         maturity = self.basal_ganglia.maturity
         if maturity is None:
             return method(self, *args, **kwargs)
-        self._moment_depth += 1
+        self._life_depth += 1
         try:
             result = method(self, *args, **kwargs)
         finally:
-            self._moment_depth -= 1
-        if self._moment_depth == 0:
+            self._life_depth -= 1
+        if self._life_depth == 0:
             maturity.relax()
         return result
 
@@ -2168,7 +2168,7 @@ class Brain:
         self.basal_ganglia = ActorCritic(
             self.learner, list(self.association_index), reward, seed=seed
         )
-        self._moment_depth = 0  # the operations of the moment under way (``_moment``)
+        self._life_depth = 0  # the moments of life under way, nested (``_moment_of_life``)
         if maturity:  # the brain's maturity (#253): it scales the actor's steps
             self.basal_ganglia.maturity = Maturity(maturity_scale, maturity_recovery)
         self.working_memory: Trace | None = None
@@ -3806,7 +3806,7 @@ class Brain:
 
     # -- ongoing interaction
 
-    @_moment
+    @_moment_of_life
     @_operation
     def step(
         self,
@@ -4184,7 +4184,7 @@ class Brain:
         """Cut the rehearsal's reservoir to ``rehearsal_capacity`` (``_trimmed_episodes``)."""
         self.rehearsal_moments, self.rehearsal_labels = self._trimmed_episodes()
 
-    @_moment
+    @_moment_of_life
     @_operation
     def live(
         self, observations: Any, *, reward: Any = None, done: Any = None,
@@ -4819,7 +4819,7 @@ class Brain:
         """The ``(batch, motor)`` one-hot of an issued action: one per row, or one per slot."""
         return command(action, len(self.motor_index), self.learner.slot_offsets)
 
-    @_moment
+    @_moment_of_life
     def learn(
         self,
         reward: Any,
