@@ -882,7 +882,7 @@ def _load_maturity(saved: Any) -> Maturity:
             raise ValueError(f"unknown saved maturity field: {name!r}")
     scale = real("saved maturity scale", saved["scale"], low=1e-12)
     recovery = real("saved maturity recovery", saved["recovery"], low=1)
-    use = real("saved maturity use", saved["use"], low=0, high=scale * Maturity.LIMIT)
+    use = real("saved maturity use", saved["use"], low=0, high=Maturity.LIMIT)
     return Maturity(scale, recovery, use)
 
 

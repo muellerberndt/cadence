@@ -73,15 +73,15 @@ class Maturity:
     use: float = 0.0
 
     ORDER = 4.0
-    # the largest use per scale the factor reads: its power stays finite and ``m`` is 1e-304
-    # there, below every step; a larger use leaves no step (a checkpoint's is refused)
-    LIMIT = 1e76
+    # the largest use a brain holds: at the smallest scale (1e-12) the factor's power stays
+    # finite, and no life comes near it
+    LIMIT = 1e64
 
     def factor(self) -> float:
-        ratio = self.use / self.scale
-        if ratio > self.LIMIT:
+        try:
+            return float(1.0 / (1.0 + (self.use / self.scale) ** self.ORDER))
+        except OverflowError:  # a use set beyond the limit: no step is left
             return 0.0
-        return float(1.0 / (1.0 + ratio ** self.ORDER))
 
     def relax(self) -> None:
         self.use *= 1.0 - 1.0 / self.recovery
@@ -559,7 +559,9 @@ class ActorCritic:
                 moved = float((after._torch.scale - before).abs().sum())
             else:
                 moved = float(np.abs(np.asarray(after.efficacy) - before).sum())
-            maturity.use += moved / (float(config.eta) * self.synapses)
+            maturity.use = min(
+                maturity.use + moved / (float(config.eta) * self.synapses), Maturity.LIMIT
+            )
         return report
 
     def _learn(

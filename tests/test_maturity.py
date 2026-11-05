@@ -400,7 +400,9 @@ def test_load_refuses_a_malformed_maturity_by_name():
 
 def test_the_factor_reads_any_use():
     assert Maturity(scale=1e-12, recovery=10.0, use=1e70).factor() == 0.0
-    assert Maturity(scale=1.0, recovery=10.0, use=1e76).factor() == pytest.approx(1e-304)
+    assert Maturity(scale=1e-12, recovery=10.0, use=Maturity.LIMIT).factor() == pytest.approx(
+        1e-304
+    )
     assert Maturity(scale=1.0, recovery=10.0, use=2.0).factor() == 1.0 / 17.0
 
 
@@ -434,3 +436,11 @@ def test_maturity_is_exported_and_gates_the_place_records_alone():
     assert brain.context_memory is episodic.temporal and episodic.paid is not None
     for store in (episodic.temporal, episodic.paid):
         assert store.gate_noise is None and store.maturity is None
+    # a brain at the limit stays there, at any scale, and saves a checkpoint that loads
+    brain = cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=1e-12)
+    brain.basal_ganglia.maturity.use = Maturity.LIMIT
+    stepped(brain, moments=5)
+    assert brain.basal_ganglia.maturity.use <= Maturity.LIMIT
+    with tempfile.TemporaryDirectory() as folder:
+        loaded = cd.Brain.load(checkpoint(brain, folder))
+    assert loaded.basal_ganglia.maturity == brain.basal_ganglia.maturity

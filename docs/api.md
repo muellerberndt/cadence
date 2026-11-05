@@ -210,8 +210,8 @@ another length, and learned-code tables that disagree with the saved synapses an
 the code region. A pending sampled action needs its saved observation, action and, with a
 learned code, its decision-time code. The learner's output order must match the motor
 population, so action indices keep their meaning after loading. A saved maturity holds exactly
-`scale`, `recovery` and `use`, each a finite real in its range (`use` at most `scale * 1e76`,
-`Maturity.LIMIT`), with the store's noise scales as nonnegative finite numbers under a boolean
+`scale`, `recovery` and `use`, each a finite real in its range (`use` at most `Maturity.LIMIT`,
+1e64), with the store's noise scales as nonnegative finite numbers under a boolean
 `surprise_gate`; anything else is refused with `ValueError` naming the field.
 
 ## Arousal (`cadence.arousal`)
@@ -528,9 +528,9 @@ given as `reward=` is the expert route and keeps them as given.
 | `maturity` | The brain's `Maturity` with `maturity=True` ([reward](reward.md#maturity-opt-in)), else `None`: `learn` multiplies the synapse and bias steps by its `factor()` and adds the step applied to its `use`. |
 
 `Maturity` is the slow variable of a mature brain: `scale` and `recovery` (the `retune` settings
-`maturity_scale` and `maturity_recovery`) and `use`; `factor()` is `1 / (1 + (use / scale) **
-ORDER)` (`ORDER` 4.0), 0 beyond `use / scale` of `LIMIT` (1e76); `relax()` keeps `1 - 1 /
-recovery` of `use`; `to_dict()` is what a checkpoint saves.
+`maturity_scale` and `maturity_recovery`) and `use`, at most `LIMIT` (1e64, where the factor's
+power stays finite at every scale); `factor()` is `1 / (1 + (use / scale) ** ORDER)` (`ORDER`
+4.0); `relax()` keeps `1 - 1 / recovery` of `use`; `to_dict()` is what a checkpoint saves.
 
 Construction warns when `eta_bias` exceeds a positive `eta`.
 
