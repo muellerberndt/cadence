@@ -1147,6 +1147,59 @@ The [episodic memory](#episodic-memory-what-happened-in-this-situation-before) k
 records on the issued commands: each decision's command joins the stream's temporal context at
 the share `1 - memory_context`, so the option does not change the vote.
 
+### One composition for sequences
+
+A brain that meets look back, copying, induction, n-back, periodic continuation, two hops and "was
+A told before B?" in one life takes the recipe for lengths no lesson reached with the options
+that compose with it, and declares which of its answers are tokens:
+
+```python
+sequences = Brain.compose(
+    inputs=26, actions=16, modules=(64,), seed=0, teaching="normalized",
+    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
+    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_position=64,
+    recall_relative=True, recall_when=True, recall_address_reward=1.0,
+    recall_position_reward=4.0,
+    recall_tokens=list(range(14)) + [-1, -1],  # actions 14 and 15 are a yes and a no
+)
+assert sequences.recall.copy == 0.0  # the tokens declare; no pathway is added
+```
+
+- The positions recipe, `recall_position=64` and the relative read carry look back, copying
+  and a period of 40 at lengths no lesson reached; the when channel carries "before".
+- The tokens keep the yes and no lessons off the read and teach those rows at every lesson
+  ([answers that are no token](#the-copy-pathway-opt-in)); the token answers stay judged by
+  surprise.
+- The reward read finds the writes of ordered recall from reward alone; its step does not
+  shrink with the recipe's slow table.
+- The copy pathway is left out: beside the recipe it stops look back's read learning where to
+  look.
+
+Read on six fresh founders of the [sequence battery](../benchmarks/sequence/README.md) (1,500
+lessons, 16 streams), every task at its own life: look back taught 5 to 12 and read at 24 to 60
+0.92 to 1.00 for every cue, copying unique tokens taught 3 to 6 and read at 8 to 12 0.997 to
+1.000 in closed loop, repeated tokens 0.925 to 0.941, induction and n-back taught short and read
+at 24 to 60 0.970 to 0.998 and 0.933 to 0.994, a period of 40 0.900 to 0.939 on five founders
+and 0.825 on one, two hops with a think moment 0.995 to 1.000,
+"before" 0.962 to 0.978, look back's cues taught one after another with
+`learning_rehearsal=1.0` 0.969 to 1.000 (taught mixed 0.972 to 1.000), and ordered recall from
+reward 1.00 on 9 lives of 12 (two lives answer one action on every query, sampled or greedy;
+one leaves "the latest" without a gap unanswered, where the first write's next port holds the
+second write's value). Where it falls short:
+
+- **Answer tokens never taught** are not produced (0.00 on every task), though the read names
+  them (induction and periodic continuation 1.00, two hops 0.91 to 0.93). Lessons that teach
+  other actions push the association's synapses onto an action never taught down: with the copy
+  pathway beside this composition, on a development founder, the association drives the
+  never-taught answer at -1.2 to -5.1 (copying, two hops, n-back, look back) and the winner at
+  +1.1 to +7.0, against the copy's +0.3 to +1.5. The copy pathway produces them only where it
+  answers from the first lesson and the association stays untaught: induction with
+  `recall_copy_next`.
+- **N-back** costs 0.033 on the mean against the founder memory, which answers it at 0.998 to
+  1.000; two founders of six read 0.933.
+- **Ordered recall from reward** misses on three lives of twelve where `reward_recipe`, without
+  the next port that successor reads need, misses on two.
+
 ### All options in one example
 
 ```python
