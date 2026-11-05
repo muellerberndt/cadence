@@ -848,8 +848,14 @@ def _load_memory(
             raise ValueError("saved memory mass must be nonnegative")
         if isinstance(memory, SynapticMemory):
             memory.consolidated = array("consolidated", (memory.key_width, len(post)))
-            if metadata.get("surprise_gate", False):  # the records' noise scales (``maturity``)
-                memory.gate_noise = array("gate_noise", memory.consolidated.shape)
+            gated = metadata.get("surprise_gate", False)
+            if not isinstance(gated, bool):
+                raise ValueError("saved memory surprise_gate must be boolean")
+            if gated:  # the records' noise scales (``maturity``)
+                noise = array("gate_noise", memory.consolidated.shape)
+                if (noise < 0).any():
+                    raise ValueError("saved memory gate_noise must be nonnegative")
+                memory.gate_noise = noise.astype(float)
             elif prefix + "gate_noise" in data:
                 raise ValueError("saved noise scales require the surprise gate's metadata")
             if (
@@ -861,6 +867,23 @@ def _load_memory(
         return memory
     except (KeyError, TypeError, OverflowError) as exc:
         raise ValueError("invalid or incomplete saved memory metadata") from exc
+
+
+def _load_maturity(saved: Any) -> Maturity:
+    """The saved maturity (``cadence-brain/2``), every field validated by name."""
+    fields = ("scale", "recovery", "use")
+    if not isinstance(saved, dict):
+        raise ValueError("saved maturity must map scale, recovery and use")
+    for name in fields:
+        if name not in saved:
+            raise ValueError(f"saved maturity misses {name}")
+    for name in saved:
+        if name not in fields:
+            raise ValueError(f"unknown saved maturity field: {name!r}")
+    scale = real("saved maturity scale", saved["scale"], low=1e-12)
+    recovery = real("saved maturity recovery", saved["recovery"], low=1)
+    use = real("saved maturity use", saved["use"], low=0, high=scale * Maturity.LIMIT)
+    return Maturity(scale, recovery, use)
 
 
 def _validate_learned_code(meta: dict[str, Any], data: Mapping[str, Any], learner: Learner) -> int:
@@ -5405,14 +5428,11 @@ class Brain:
                         raise ValueError(f"nonfinite saved actor state: {name}")
                     setattr(agent, name, value)
             agent.updates, agent.b_critic = int(meta["updates"]), float(meta["b_critic"])
-            matured = meta.get("maturity")
-            if matured is not None:  # the brain's maturity, and the store's gate it engages
-                agent.maturity = Maturity(
-                    real("maturity scale", matured["scale"], low=1e-12),
-                    real("maturity recovery", matured["recovery"], low=1),
-                    real("maturity use", matured["use"], low=0),
-                )
-                if isinstance(memory, SynapticMemory) and memory.gate_noise is not None:
+            if "maturity" in meta:  # the brain's maturity, and the store's gate it engages
+                agent.maturity = _load_maturity(meta["maturity"])
+                if isinstance(memory, SynapticMemory):
+                    if memory.gate_noise is None:
+                        raise ValueError("a saved maturity requires the store's noise scales")
                     memory.maturity = agent.maturity
             elif isinstance(memory, SynapticMemory) and memory.gate_noise is not None:
                 raise ValueError("a saved surprise gate requires the brain's maturity")

@@ -336,3 +336,69 @@ def test_the_maturity_settings_need_maturity_and_valid_values():
     # the founders, named, are the founder
     founder = cd.Brain.compose(6, 3, seed=2, maturity_scale=10.0, maturity_recovery=200_000.0)
     assert founder.basal_ganglia.maturity is None
+
+
+NOISE = "memories/hippocampus/gate_noise"
+
+
+def tampered(brain, folder, edit):
+    """The brain's checkpoint with its metadata and arrays edited, written back."""
+    path = checkpoint(brain, folder)
+    arrays = dict(np.load(path))
+    meta = json.loads(str(arrays["brain"]))
+    edit(meta, arrays)
+    np.savez(path, **{**arrays, "brain": np.array(json.dumps(meta))})
+    return path
+
+
+def test_load_refuses_a_malformed_maturity_by_name():
+    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05),
+                 moments=30)
+
+    def drop(name):
+        return lambda meta, arrays: meta["maturity"].pop(name)
+
+    def setting(name, value):
+        return lambda meta, arrays: meta["maturity"].__setitem__(name, value)
+
+    def gate(value):
+        return lambda meta, arrays: meta["memories"]["hippocampus"].__setitem__(
+            "surprise_gate", value
+        )
+
+    def noise(value):
+        return lambda meta, arrays: arrays.__setitem__(NOISE, np.full_like(arrays[NOISE], value))
+
+    def ungated(meta, arrays):
+        meta["memories"]["hippocampus"].pop("surprise_gate")
+        arrays.pop(NOISE)
+
+    cases = [
+        (drop("use"), "misses use"), (drop("scale"), "misses scale"),
+        (drop("recovery"), "misses recovery"),
+        (lambda meta, arrays: meta.__setitem__("maturity", [1, 2, 3]), "must map"),
+        (lambda meta, arrays: meta.__setitem__("maturity", "on"), "must map"),
+        (lambda meta, arrays: meta.__setitem__("maturity", None), "must map"),
+        (setting("order", 2.0), "unknown saved maturity field: 'order'"),
+        (setting("use", 1e300), "saved maturity use"), (setting("use", -1.0), "saved maturity use"),
+        (setting("use", "1"), "saved maturity use"), (setting("scale", 0.0), "saved maturity scale"),
+        (setting("recovery", 0.5), "saved maturity recovery"),
+        (gate("yes"), "surprise_gate must be boolean"), (gate(1), "surprise_gate must be boolean"),
+        (noise(-1.0), "gate_noise must be nonnegative"),
+        (ungated, "requires the store's noise scales"),
+    ]
+    with tempfile.TemporaryDirectory() as folder:
+        for edit, refusal in cases:
+            with pytest.raises(ValueError, match=refusal):
+                cd.Brain.load(tampered(brain, folder, edit))
+        # noise scales saved as integers load as floating point and keep living
+        loaded = cd.Brain.load(tampered(brain, folder, lambda meta, arrays: arrays.__setitem__(
+            NOISE, np.zeros(arrays[NOISE].shape, dtype=np.int64))))
+        assert loaded.hippocampus.gate_noise.dtype == np.float64
+        life(loaded, moments=20)
+
+
+def test_the_factor_reads_any_use():
+    assert Maturity(scale=1e-12, recovery=10.0, use=1e70).factor() == 0.0
+    assert Maturity(scale=1.0, recovery=10.0, use=1e76).factor() == pytest.approx(1e-304)
+    assert Maturity(scale=1.0, recovery=10.0, use=2.0).factor() == 1.0 / 17.0

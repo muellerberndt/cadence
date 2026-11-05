@@ -209,7 +209,10 @@ with positive weights, a code whose metadata lacks the `cover` field, a recall w
 another length, and learned-code tables that disagree with the saved synapses and biases of
 the code region. A pending sampled action needs its saved observation, action and, with a
 learned code, its decision-time code. The learner's output order must match the motor
-population, so action indices keep their meaning after loading.
+population, so action indices keep their meaning after loading. A saved maturity holds exactly
+`scale`, `recovery` and `use`, each a finite real in its range (`use` at most `scale * 1e76`,
+`Maturity.LIMIT`), with the store's noise scales as nonnegative finite numbers under a boolean
+`surprise_gate`; anything else is refused with `ValueError` naming the field.
 
 ## Arousal (`cadence.arousal`)
 

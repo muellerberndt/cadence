@@ -73,9 +73,15 @@ class Maturity:
     use: float = 0.0
 
     ORDER = 4.0
+    # the largest use per scale the factor reads: its power stays finite and ``m`` is 1e-304
+    # there, below every step; a larger use leaves no step (a checkpoint's is refused)
+    LIMIT = 1e76
 
     def factor(self) -> float:
-        return float(1.0 / (1.0 + (self.use / self.scale) ** self.ORDER))
+        ratio = self.use / self.scale
+        if ratio > self.LIMIT:
+            return 0.0
+        return float(1.0 / (1.0 + ratio ** self.ORDER))
 
     def relax(self) -> None:
         self.use *= 1.0 - 1.0 / self.recovery
