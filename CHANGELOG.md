@@ -17,7 +17,11 @@
   recall read's address and position maps as they are: the read's lessons take their target
   from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no
   lesson pulled the read off the items asked about, and "was A told before B?" stayed at 0.51
-  to 0.65 on development founders. A token list may now declare no token at all
+  to 0.65 on development founders. Under surprise lessons such a row is taught at every lesson,
+  answered right or not: judged only where wrong, the lessons of a judgment between two classes
+  carry one class at a time ("before" stays at chance after 4,500 surprise lessons, 0.97 at every
+  row), and lessons at every row collapse the token answers of induction, copying and two hops,
+  which stay judged by surprise. A token list may now declare no token at all
   (`[-1] * actions`); the pathway then starts at zero. Brains without tokens are unchanged.
 - Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
   copy pathway's identity starts on the next ports at that magnitude as well, so a successor the

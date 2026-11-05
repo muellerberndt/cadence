@@ -3964,6 +3964,7 @@ class Brain:
         place = self._placed(x)
         key = self._decision_key(code)  # of the decision the lesson is shown for
         answer = None
+        tokens = self._token_rows(labels)
         if self.learner.config.surprise:
             # the brain's own answer, the act it would issue: its complete greedy choice on the
             # settle its act reads, warm from the stream, with the episodic vote under the
@@ -3971,6 +3972,14 @@ class Brain:
             answer = self._greedy(
                 self._qualified(drive, self._activity(), operation="act"), place, key
             )
+            if tokens is not None and not tokens.all():
+                # with declared tokens, a row whose answer is no token (a yes or a no, a
+                # count) is taught at every lesson: judged only where wrong, the lessons of a
+                # judgment between two classes carry one class at a time and never the
+                # comparison that separates them
+                answer = np.where(
+                    tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
+                )
         try:
             # the lesson's free phase starts from rest, with a learned code's phase in it
             lesson, teaching = self.learner.step(
@@ -3985,9 +3994,7 @@ class Brain:
         if self.recall is not None:
             # the address lesson: the slots scored against the lesson's movement step the map,
             # with declared tokens at the rows whose answer is one
-            teaching.update(
-                self.recall.learn(self.learner.brain, lesson, self._token_rows(labels))
-            )
+            teaching.update(self.recall.learn(self.learner.brain, lesson, tokens))
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )

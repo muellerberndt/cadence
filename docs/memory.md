@@ -1049,9 +1049,15 @@ for token in range(TOKENS):                          # no lesson: every token is
   contents. With tokens declared, a lesson whose answer is an action without a token (`-1`: a
   yes or a no, a count) leaves the address and position maps as they are; the cortex learns
   from it as from any lesson. "Was A told before B?" needs the read to stay on the items asked
-  about, and a yes or no lesson pulled it off them. An action list without any token
+  about, and a yes or no lesson pulled it off them. Under
+  [surprise lessons](teach.md#lessons-only-where-the-answer-differs) such a row is taught at every
+  lesson, answered right or not: judged only where wrong, the lessons of a judgment between two
+  classes carry one class at a time and never the comparison that separates them ("before"
+  stays at chance after 4,500 lessons, against 0.97 at every row). Lessons at every row collapse
+  the token answers of induction, copying and two hops (0.11 to 0.68 on development founders),
+  so those stay judged by surprise. An action list without any token
   (`recall_tokens=[-1] * actions`) declares that no answer is a slot's content: the pathway
-  starts at zero and no lesson moves the read.
+  starts at zero, no lesson moves the read and every row is taught.
 - **The read's lesson reads the pathway back.** The address and position lessons name the slots
   to read by the movement a lesson leaves on the read port's synapses. With the pathway those
   are the synapses into the association and those into the motor region, so the motor's

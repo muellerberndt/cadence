@@ -312,3 +312,21 @@ def test_a_lesson_whose_answer_is_no_token_leaves_the_read_as_it_was():
     plain = composed(recall_copy=2.0)
     plain.act(event(HEAR, 1), greedy=True)
     assert plain.lesson(event(HEAR, ASK), [5])["address_rows"] == 1.0
+
+
+def test_under_surprise_a_lesson_whose_answer_is_no_token_teaches_every_row():
+    tokens = [0, 1, 2, 3, -1, -1]
+    brain = composed(recall_copy=2.0, recall_tokens=tokens, learning_surprise=True)
+    x = np.concatenate([event(HEAR, 0), event(HEAR, 1)])
+    brain.act(x, greedy=True)
+    for _ in range(12):  # a yes and a no: taught at every lesson, answered right or not
+        brain.lesson(x, [4, 5])
+        report = brain.last_learning
+        assert report["demonstration_accepted_presentations"] == 2.0
+        assert report["demonstration_agreed_presentations"] == 0.0
+    assert list(brain.act(x, greedy=True)) == [4, 5]
+    for _ in range(12):  # tokens: judged by surprise as before, the rows answered right skipped
+        brain.lesson(x, [2, 3])
+    assert list(brain.act(x, greedy=True)) == [2, 3]
+    brain.lesson(x, [2, 3])
+    assert brain.last_learning["demonstration_agreed_presentations"] >= 1.0
