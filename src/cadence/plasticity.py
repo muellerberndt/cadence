@@ -64,7 +64,8 @@ class Maturity:
     ``use += sum |dw| / (eta N)``; every accepted moment of life keeps ``1 - 1 / recovery`` of
     ``use``. The step factor ``m = 1 / (1 + (use / scale) ** ORDER)`` multiplies the actor's
     synapse and bias steps and engages the store's surprise-gated writes with strength ``1 - m``.
-    No count is kept: a busy brain matures and an idle one returns toward its youth.
+    No count is kept: a busy brain matures and one that lives without learning returns toward
+    its youth.
     """
 
     scale: float

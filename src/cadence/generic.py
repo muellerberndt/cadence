@@ -2967,7 +2967,8 @@ class Brain:
         """Change named settings together, preserving the acquired continuing brain.
 
         Uses the same ``learning_``, ``actor_`` and ``arousal_`` names as
-        ``compose``, ``temperature`` and the existing memory/trace settings.
+        ``compose``, ``temperature``, the existing memory/trace settings and, for a brain
+        composed with ``maturity``, ``maturity_scale`` and ``maturity_recovery``.
         ``arousal={...}`` patches the current arousal config; config objects supplied as
         ``learning``, ``reward`` or ``arousal`` replace their whole config before named
         overrides. Unspecified settings are retained, including bias rates; pass a bias rate

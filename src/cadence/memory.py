@@ -28,15 +28,16 @@ class SynapticMemory(FastSynapses):
     explicitly erases persistent weights too.
 
     With a surprise gate (``gate_noise``, each record's noise scale, and ``maturity``, the
-    brain's ``Maturity``; ``Brain.compose(maturity=True)``) a write moves a record only by the
-    part of its error beyond ``GATE_WIDTH`` noise scales of the record, engaged by the brain's
-    maturity: the ungated write's change of the shared matrix and of each writing stream's
-    residual is multiplied, per action, by ``1 - (1 - m)(1 - g)``, ``g`` the mean over the
-    writing rows that observe the action of ``max(0, 1 - GATE_WIDTH sqrt(R) / |e|)``, ``e``
-    the row's error on the action against its stream's read before the write, ``R`` the
-    record's noise along the row's cue; every other stream keeps its residual. Each write moves
-    the noise scale toward the squared error at ``GATE_RATE``. A young brain (``m`` 1) writes
-    as without the gate.
+    brain's ``Maturity``; ``Brain.compose(maturity=True)`` sets both on its place records), a
+    write's change of the shared matrix and of each writing stream's residual is multiplied,
+    per action, by ``1 - (1 - m)(1 - g)``: ``m`` the maturity's factor, ``g`` the mean over the
+    writing rows that observe the action of ``max(0, 1 - GATE_WIDTH sqrt(R) / |e|)``, ``e`` the
+    row's error on the action against its stream's read before the write and ``R`` the noise
+    of the records along the row's cue. A mature store (``m`` near 0) moves a record only by
+    the part of its error beyond ``GATE_WIDTH`` noise scales; a young one (``m`` 1) writes as
+    without the gate. Every other stream keeps its residual. Each writing row moves the noise
+    of the records its cue reads toward its squared error, at ``GATE_RATE`` times the cue's
+    squared weight on the record relative to its largest.
     """
 
     decay: float = 0.9
