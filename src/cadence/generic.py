@@ -5779,6 +5779,13 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
                 f"{name}: arousal is a construction choice grow does not add; compose the brain "
                 "with arousal=True"
             )
+        if name == "maturity" or (
+            name.startswith("maturity_") and brain.basal_ganglia.maturity is None
+        ):
+            raise ValueError(
+                f"{name}: maturity is a construction choice grow does not add; compose the brain "
+                "with maturity=True"
+            )
         if name in _GROW_EPISODIC:
             raise ValueError(
                 f"{name}: the hippocampus and its episodic memory are a construction choice grow "

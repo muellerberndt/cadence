@@ -267,7 +267,8 @@ What does not grow or graft:
 
 - a part inside the brain's loop through `grow` (`modules`, `observers`, `code`, `learned_code`,
   `lateral`, `apical`, other `inputs`); compose the larger layout and graft instead;
-- `arousal` or the episodic memory (`memory_choice`), choices of the brain's construction;
+- `arousal`, `maturity` or the episodic memory (`memory_choice`), choices of the brain's
+  construction;
 - `recall_tokens`, which start the copy pathway as an identity onto the motor neurons: no recall
   memory with them, and no heads or slots for a brain with them;
 - new slots where a memory is laid out per action (`recall_action`, `memory_choice`), or where
