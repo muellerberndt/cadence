@@ -396,12 +396,15 @@ def new_work() -> dict[str, float]:
 
 
 def speak(brain: Any, rows: list[Row], *, teach: bool, closed: bool = True,
-          work: dict[str, float] | None = None, cap: int = 4) -> list[list[int]]:
+          work: dict[str, float] | None = None, cap: int = 4,
+          intervene: Any = None) -> list[list[int]]:
     """One batch on fresh streams. Heard moments are acted on greedily and never taught. From
     ``GO`` each moment hears the previous word: the target's while teaching, within a row's
     ``force`` and when ``closed`` is off; else the brain's own. With ``teach`` a lesson on the
-    target word comes before every act from ``GO`` on. Returns each row's words from its
-    ``force`` on, through its first ``end`` (or ``cap`` words past its target)."""
+    target word comes before every act from ``GO`` on. ``intervene(brain, rows)`` runs once,
+    before the act of the first word the brain says freely (the rows share their ``force``).
+    Returns each row's words from its ``force`` on, through its first ``end`` (or ``cap``
+    words past its target)."""
     work = work if work is not None else new_work()
     n = len(rows)
     lengths = {len(r.pre) for r in rows}
@@ -424,7 +427,9 @@ def speak(brain: Any, rows: list[Row], *, teach: bool, closed: bool = True,
                 given = teach or not closed or j <= r.force
                 words.append(r.target[j - 1] if given and j - 1 < len(r.target)
                              else said[i][j - 1])
-            x = np.stack([spoken(w) for w in words])
+            x = np.stack([spoken(w) if w >= 0 else concept("SPEAK") for w in words])
+        if intervene is not None and j == rows[0].force:
+            intervene(brain, rows)
         if teach:
             labels = np.array([r.target[j] for r in rows])
             try:
@@ -489,6 +494,29 @@ def practise(brain: Any, rows: list[Row], work: dict[str, float] | None = None) 
     brain.learn(reward, np.ones(n, dtype=bool), following)
     work["steps"] = work.get("steps", 0) + 1
     return float(np.mean(hits))
+
+
+def erase(where: str) -> Any:
+    """An intervention at the continuation's start. ``recall`` empties the slots of the earlier
+    context (keys, values and nexts set to zero): the meaning's moments, ``GO`` and the first
+    given word, the one the twins of ``ctx_agent`` and ``ctx_dyck`` differ in; the slots of the
+    recent words stay. ``trace`` sets the working trace to zero."""
+
+    def act(brain: Any, rows: list[Row]) -> None:
+        if where == "trace":
+            brain.working_memory.trace = np.zeros_like(brain.working_memory.trace)
+            return
+        recall = brain.recall
+        if recall is None:
+            return
+        written = len(rows[0].pre) + rows[0].force  # the meaning, GO and the given words
+        ages = np.asarray(recall.ages())
+        meaning = ages >= written - len(rows[0].pre) - 2  # moments 0 to len(pre) + 1
+        recall.keys = np.where(meaning[None, :, None], 0.0, recall.keys)
+        recall.values = np.where(meaning[None, :, None], 0.0, recall.values)
+        recall.nexts = np.where(meaning[None, :, None], 0.0, recall.nexts)
+
+    return act
 
 
 def forced(brain: Any, rows: list[Row]) -> list[float]:
@@ -661,10 +689,10 @@ def tally(rows: list[Row], said: list[list[int]]) -> dict[str, Any]:
 
 
 def read_panel(brain: Any, batches: list[list[Row]], *, twins: bool = False,
-               components: bool = True) -> dict[str, Any]:
+               components: bool = True, intervene: Any = None) -> dict[str, Any]:
     """Closed-loop sentences (and teacher-forced next words) on a fork of ``brain``."""
     fork = copy.deepcopy(brain)
-    return read_speaker(lambda rows: speak(fork, rows, teach=False),
+    return read_speaker(lambda rows: speak(fork, rows, teach=False, intervene=intervene),
                         (lambda rows: forced(fork, rows)) if components else None,
                         batches, twins=twins)
 
@@ -732,10 +760,21 @@ CONTEXT_PANELS = ("ctx_agent", "ctx_agent_removed", "ctx_verb", "ctx_verb_remove
                   "ctx_dyck_removed")
 
 
+ERASED = ("ctx_agent", "ctx_verb", "ctx_dyck")
+
+
 def reading(brain: Any, tests: dict[str, list[list[Row]]], names: tuple[str, ...],
             components: bool = True) -> dict[str, Any]:
-    return {name: read_panel(brain, tests[name], twins=name in TWINS, components=components)
-            for name in names}
+    """Each named panel; with the context panels, the same twins with the context erased from
+    the recall memory or from the working trace at the continuation's start."""
+    out = {name: read_panel(brain, tests[name], twins=name in TWINS, components=components)
+           for name in names}
+    for name in ERASED:
+        if name in names:
+            for where in ("recall", "trace"):
+                out[f"{name}_erased_{where}"] = read_panel(
+                    brain, tests[name], twins=True, components=False, intervene=erase(where))
+    return out
 
 
 EVERYTHING = G1_PANELS + CONTEXT_PANELS + ("g2", "g2_long")
@@ -744,9 +783,11 @@ LOCATE = ("clause", "clause_long", "g2", "dyck", "dyck_deep", "path", "path_long
 
 def live_phases(brain: Any, arm: str, rng: np.random.Generator, split: Split,
                 tests: dict[str, list[list[Row]]], phases: list[tuple[str, int]],
-                checkpoints: set[int], first: int = 0) -> list[dict[str, Any]]:
+                checkpoints: set[int], first: int = 0,
+                save: Path | None = None) -> list[dict[str, Any]]:
     """Teach ``phases`` in turn (``g1`` or ``g2`` by lessons, ``g1:reward`` or ``g2:reward`` by
-    paid practice), each followed by a full reading on forks."""
+    paid practice), each followed by a full reading on forks; with ``save`` the brain is saved
+    after each phase as ``<save>-ph<index>``."""
     readings = []
     for index, (grammar, count) in enumerate(phases, start=first):
         work = new_work()
@@ -777,6 +818,8 @@ def live_phases(brain: Any, arm: str, rng: np.random.Generator, split: Split,
         maturity = getattr(brain.basal_ganglia, "maturity", None)
         if maturity is not None:
             entry["maturity"] = {**maturity.to_dict(), "factor": float(maturity.factor())}
+        if save is not None:
+            entry["saved"] = str(brain.save(Path(f"{save}-ph{index}")))
         readings.append(entry)
     return readings
 
@@ -806,7 +849,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     a lean reading is taken), ``forks`` (each ``name``, ``after`` (the trunk phase it follows),
     ``retune`` (settings), ``scale_from_use`` (``maturity_scale`` set to the use at the fork)
     and ``phases``, lived on a copy of the brain and of the training stream), ``settings`` over
-    the arm's, ``module``, ``panel_batches``."""
+    the arm's, ``module``, ``panel_batches``, ``continuation`` (the saved-continuation check
+    after the first phase) and ``save`` (a folder: the brain saved after every phase)."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -829,9 +873,17 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         "branches": {},
     }
     checkpoints = set(int(c) for c in spec.get("checkpoints", []))
+    folder = Path(spec["save"]) if spec.get("save") else None
+    if folder is not None:
+        folder.mkdir(parents=True, exist_ok=True)
+
+    def saved(branch: str) -> Path | None:
+        return None if folder is None else folder / f"{arm}-f{founder}-{branch}"
+
     for index, phase in enumerate(phases):
         row["readings"] += live_phases(brain, arm, rng, split, tests, [phase],
-                                       checkpoints if index == 0 else set(), first=index)
+                                       checkpoints if index == 0 else set(), first=index,
+                                       save=saved("trunk"))
         if index == 0 and spec.get("continuation") and arm != "frozen":
             row["continuation"] = continuation(brain, rng, split, tests["clause"][0])
         for fork in forks:
@@ -847,7 +899,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
             row["branches"][fork["name"]] = {
                 "retune": retune,
                 "readings": live_phases(twin_brain, arm, twin_rng, split, tests, fork_phases,
-                                        set(), first=index + 1)}
+                                        set(), first=index + 1, save=saved(fork["name"]))}
     row["seconds"] = round(time.monotonic() - started, 1)
     return row
 
@@ -880,6 +932,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--checkpoints", nargs="*", type=int, default=[])
     parser.add_argument("--settings", type=json.loads, default={}, help="over the arms'")
     parser.add_argument("--panel-batches", type=int, default=4)
+    parser.add_argument("--save", type=Path, help="a folder for the brain after every phase")
     parser.add_argument("--plan", type=Path, help="a JSON list of life specs in place of the grid")
     parser.add_argument("--out", type=Path, help="JSON lines, one row per life, appended")
     parser.add_argument("--workers", type=int, default=1)
@@ -896,7 +949,7 @@ def main(argv: list[str] | None = None) -> int:
     else:
         specs = [{"arm": arm, "founder": f, "phases": args.phases, "settings": args.settings,
                   "checkpoints": args.checkpoints, "panel_batches": args.panel_batches,
-                  "continuation": True}
+                  "continuation": True, "save": str(args.save) if args.save else None}
                  for arm in args.arms for f in args.founders]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a") as sink:

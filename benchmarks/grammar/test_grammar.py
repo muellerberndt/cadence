@@ -236,3 +236,32 @@ def test_the_controls_hear_what_the_brain_hears():
     said = learner.speak(rows)
     assert len(said) == len(rows) and all(len(s) <= len(r.target) + 4 for s in said)
     assert learner.work["updates"] == 1 and learner.work["macs"] > 0
+
+
+def test_the_erasures_reach_only_the_earlier_context():
+    brain = gr.make_brain("recipe", 0, module=16)
+    rows = gr.panels(0, 1)["ctx_agent"][0]
+    seen = {}
+
+    def look(where):
+        act = gr.erase(where)
+
+        def wrapped(b, rs):
+            before = (b.recall.values.copy(), b.working_memory.trace.copy())
+            act(b, rs)
+            seen[where] = before, (b.recall.values.copy(), b.working_memory.trace.copy())
+
+        return wrapped
+
+    for where in ("recall", "trace"):
+        gr.speak(copy.deepcopy(brain), rows, teach=False, intervene=look(where))
+    (values, trace), (after, after_trace) = seen["recall"]
+    earlier = len(rows[0].pre) + 2  # the meaning, GO and the first given word
+    slots = values.shape[1]
+    recent = slots - (len(rows[0].pre) + rows[0].force)  # the boundary slot comes first
+    assert recent == 1 and values[:, recent:recent + earlier].any()
+    assert not after[:, : recent + earlier].any()
+    assert np.array_equal(after[:, recent + earlier:], values[:, recent + earlier:])
+    assert np.array_equal(after_trace, trace)
+    (_, trace), (after, after_trace) = seen["trace"]
+    assert trace.any() and not after_trace.any()
