@@ -1194,11 +1194,29 @@ second write's value). Where it falls short:
   never-taught answer at -1.2 to -5.1 (copying, two hops, n-back, look back) and the winner at
   +1.1 to +7.0, against the copy's +0.3 to +1.5. The copy pathway produces them only where it
   answers from the first lesson and the association stays untaught: induction with
-  `recall_copy_next`.
+  `recall_copy_next`. The shape that follows from this, a copy gain per port shared by every
+  token with outputs a lesson does not name keeping their inputs, was read as a development
+  emulation on two founders: induction 1.00, copying 0.995 to 0.999 and periodic continuation
+  0.96 to 0.98 of the never-taught answers, two hops 0.06 to 0.18 on the second hop, look back
+  0.00 to 0.15 and n-back below 0.02, at a cost to look back (`second` 0.90 on one founder) and
+  copying repeated tokens (0.91 to 0.92). It is not in the library.
 - **N-back** costs 0.033 on the mean against the founder memory, which answers it at 0.998 to
-  1.000; two founders of six read 0.933.
-- **Ordered recall from reward** misses on three lives of twelve where `reward_recipe`, without
-  the next port that successor reads need, misses on two.
+  1.000; two founders of six read 0.933. The cost is the recipe's slow table
+  (`recall_position_rate=0.01`): at the founder's rate those two founders read 0.997 and 0.972,
+  and copying unique tokens at lengths no lesson reached falls to 0.17 (the content shortcut of
+  the table at 0.1). The two gates ask opposite rates of the one table; the composition keeps
+  the slow one.
+- **Ordered recall from reward** misses on three lives of twelve, where `reward_recipe`,
+  without the next port that successor reads need, misses on two. Two of the three pin the
+  actor's readout on one action from their first 256 episodes
+  ([a readout pinned on one action](reward.md#a-readout-pinned-on-one-action-opt-in)):
+  `actor_relax=0.15` opens both locks (one life then answers every query, the other 0.81) and
+  moves another life to a miss, so the count stays 9 of 12. What then limits the world is the
+  next port: a write's value is on its own slot's recall port and on the slot before's next
+  port, so with no gap between the writes "the first" and "the latest" each have a slot whose
+  two ports disagree, and a life can learn either. `reward_recipe` answers both through the
+  write's own slot by leaving the next port out; this composition keeps the next port for its
+  successor reads.
 
 ### All options in one example
 
