@@ -11,6 +11,7 @@ from __future__ import annotations
 import copy
 import json
 import tempfile
+import warnings
 from pathlib import Path
 
 import numpy as np
@@ -307,3 +308,15 @@ def test_an_outcome_whose_noise_overflows_is_refused_and_the_brain_still_loads()
         with tempfile.TemporaryDirectory() as folder:
             loaded = cd.Brain.load(checkpoint(brain, folder))
         assert np.array_equal(loaded.hippocampus.gate_noise, brain.hippocampus.gate_noise)
+
+
+def test_the_scaled_steps_warn_only_at_construction():
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.01,
+                                 actor_eta=0.1, actor_eta_bias=0.5)
+        constructed = len(caught)
+        life(brain, moments=30)
+    assert constructed == 1 and len(caught) == 1  # eta_bias above eta, once
+    assert brain.basal_ganglia.maturity.factor() < 1.0
+    assert (brain.basal_ganglia.config.eta, brain.basal_ganglia.config.eta_bias) == (0.1, 0.5)

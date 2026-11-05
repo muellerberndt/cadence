@@ -26,9 +26,10 @@ steps the parameters on it.
 
 from __future__ import annotations
 
+import copy
 import warnings
 from collections.abc import Sequence
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from types import MappingProxyType
 from typing import Any
 
@@ -530,7 +531,11 @@ class ActorCritic:
             if m != 1.0:
                 bias = config.eta_bias
                 assert bias is not None  # derived at construction
-                self.config = replace(config, eta=m * config.eta, eta_bias=m * bias)
+                # the validated config at the factor's steps, not validated (or warned) again
+                scaled = copy.copy(config)
+                object.__setattr__(scaled, "eta", m * config.eta)
+                object.__setattr__(scaled, "eta_bias", m * bias)
+                self.config = scaled
             report = self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
         except Exception:
             self.__dict__.update(saved)
