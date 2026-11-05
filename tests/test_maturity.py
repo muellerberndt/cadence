@@ -320,3 +320,19 @@ def test_the_scaled_steps_warn_only_at_construction():
     assert constructed == 1 and len(caught) == 1  # eta_bias above eta, once
     assert brain.basal_ganglia.maturity.factor() < 1.0
     assert (brain.basal_ganglia.config.eta, brain.basal_ganglia.config.eta_bias) == (0.1, 0.5)
+
+
+def test_the_maturity_settings_need_maturity_and_valid_values():
+    for settings in ({"maturity_scale": -5.0}, {"maturity_recovery": float("nan")},
+                     {"maturity_scale": 3.0}, {"maturity_recovery": 5_000.0}):
+        with pytest.raises(ValueError, match="maturity"):
+            cd.Brain.compose(6, 3, seed=2, **settings)
+    with pytest.raises(ValueError, match="need maturity"):
+        cd.Brain.compose(6, 3, seed=2, maturity_scale=3.0)
+    for settings in ({"maturity_scale": 0.0}, {"maturity_scale": float("inf")},
+                     {"maturity_recovery": 0.5}, {"maturity_scale": True}):
+        with pytest.raises(ValueError, match="maturity_"):
+            cd.Brain.compose(6, 3, seed=2, maturity=True, **settings)
+    # the founders, named, are the founder
+    founder = cd.Brain.compose(6, 3, seed=2, maturity_scale=10.0, maturity_recovery=200_000.0)
+    assert founder.basal_ganglia.maturity is None

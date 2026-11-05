@@ -2046,9 +2046,11 @@ class Brain:
             raise ValueError("memory_context_hold needs memory_choice and memory_context")
         if not isinstance(maturity, bool):
             raise ValueError("maturity must be boolean")
-        if maturity:
-            maturity_scale = real("maturity_scale", maturity_scale, low=1e-12)
-            maturity_recovery = real("maturity_recovery", maturity_recovery, low=1)
+        maturity_scale = real("maturity_scale", maturity_scale, low=1e-12)
+        maturity_recovery = real("maturity_recovery", maturity_recovery, low=1)
+        if not maturity and {"maturity_scale": maturity_scale,
+                             "maturity_recovery": maturity_recovery} != _MATURITY_FOUNDERS:
+            raise ValueError("maturity_scale and maturity_recovery need maturity")
         memory_expansion = _count("memory_expansion", memory_expansion)
         memory_fan_in = _count("memory_fan_in", 0 if memory_fan_in is None else memory_fan_in)
         if units and (memory_expansion or memory_fan_in):
