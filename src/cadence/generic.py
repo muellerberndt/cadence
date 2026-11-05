@@ -2259,10 +2259,10 @@ class Brain:
             # keyed on the sensory neurons, or on the coordinates of the observation code
             coded = self._coded_keys
             places = np.arange(self.code_width) if coded else self.sensory_index
-            self.hippocampus = store(places, 0)
-            if maturity and isinstance(self.hippocampus, SynapticMemory):
-                # the store's surprise-gated writes, engaged by the same maturity
-                self._gate_store(self.hippocampus)
+            self.hippocampus = records = store(places, 0)
+            if maturity:  # surprise-gated writes engaged by the same maturity, noise from zero
+                records.gate_noise = np.zeros(records.consolidated.shape)
+                records.maturity = self.basal_ganglia.maturity
             paid = None
             if memory_extinction:
                 # where each action was paid directly: one lasting record every stream shares,
@@ -3232,12 +3232,6 @@ class Brain:
         a joint landing on it; tied or rated synapses. See ``docs/grow.md``.
         """
         return _graft(self, donor, regions, into, joints, freeze)
-
-    def _gate_store(self, store: SynapticMemory) -> None:
-        """The store's surprise-gated writes, engaged by this brain's maturity: each record's
-        noise scale from zero."""
-        store.gate_noise = np.zeros(store.consolidated.shape)
-        store.maturity = self.basal_ganglia.maturity
 
     def describe(self) -> dict[str, Any]:
         """Describe the brain without changing live state: four sections.
