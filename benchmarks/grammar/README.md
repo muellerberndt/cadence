@@ -90,8 +90,9 @@ Every panel is read on a fork of the brain that never changes the life, greedy, 
   nested or mixed, hops; exact and agreement per condition.
 - `located` (brains with a recall memory): for every word whose content a heard moment holds
   (a noun's concept, the verb's concept, the open bracket a close matches, the fact a hop
-  follows), the share where the recall read's first head attends most to that moment
-  (`delivered`), the share said right (`said`) and said right when delivered, teacher-forced.
+  follows), the share where the recall read's first head attends most to that moment or to the
+  moment before it, whose next it is (`delivered`: the read's value or next port holds it), the
+  share said right (`said`) and said right when delivered, teacher-forced.
   A word delivered and not said is lost at the readout, one not delivered at the read.
 
 ## The life

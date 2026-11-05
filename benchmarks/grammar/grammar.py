@@ -622,9 +622,10 @@ def sources(row: Row) -> list[int | None]:
 def locate(brain: Any, batches: list[list[Row]]) -> dict[str, Any]:
     """Where the read lands and what is said, teacher-forced, on a fork: for every target word
     whose content a heard moment holds, whether the recall memory's first head attends most to
-    that moment (``delivered``) and whether the brain says the word. Words are grouped by
-    family and kind (the clause's agent, distractor, verb and patient; the Dyck opens and
-    closes; the path's start and hops)."""
+    that moment or to the moment before it, whose next it is (``delivered``: the read's value
+    or next port holds it), and whether the brain says the word. Words are grouped by family
+    and kind (the clause's agent, distractor, verb and patient; the Dyck opens and closes; the
+    path's start and hops)."""
     fork = copy.deepcopy(brain)
     groups: dict[str, list[list[int]]] = {}
     for rows in batches:
@@ -653,9 +654,10 @@ def locate(brain: Any, batches: list[list[Row]]) -> dict[str, Any]:
                     landed = written - 1 - int(ages[int(np.argmax(p[i]))])
                 kind = _kind(r, j)
                 g = groups.setdefault(kind, [0, 0, 0, 0])  # delivered, said, said|delivered, n
-                g[0] += int(landed == source)
+                found = landed in (source, source - 1)  # its value, or the next of the one before
+                g[0] += int(found)
                 g[1] += int(action[i] == r.target[j])
-                g[2] += int(landed == source and action[i] == r.target[j])
+                g[2] += int(found and action[i] == r.target[j])
                 g[3] += 1
             written += 1
     return {k: {"n": v[3], "delivered": round(v[0] / v[3], 4), "said": round(v[1] / v[3], 4),
