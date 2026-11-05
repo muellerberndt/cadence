@@ -125,7 +125,7 @@ with strength `1 - m` ([memory](memory.md#maturity-and-surprise-gated-writes)). 
 lessons, rehearsal, a learned code and the recall memory's maps keep their steps, and their
 changes add nothing to the use. A young brain learns at the founder's steps; a busy one
 matures, its steps falling and its store keeping what it holds unless an outcome surprises it;
-an idle one returns toward its youth. No count of updates or of age is kept.
+one that lives without learning returns toward its youth. No count of updates or of age is kept.
 
 A moment refused before it learns changes neither the use nor the store's records and noise
 scales. A `live` or `step` refused after its outcome was learned keeps that outcome, as each

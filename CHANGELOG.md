@@ -4,19 +4,24 @@
 
 ### Maturity: one slow variable on the actor's steps and the store's writes (#253, opt-in)
 
-`Brain.compose(..., maturity=True)` gives each brain a maturity: a leaky integral of its actor's
-update magnitudes (`maturity_scale`, the use at which the step factor is one half, 10 step
-units per synapse; `maturity_recovery`, 200,000 moments). The step factor `m = 1 / (1 + (use /
-maturity_scale) ** 4)` multiplies the actor's synapse and bias steps and engages the store's
-surprise-gated writes with strength `1 - m`: a write moves a record by the part of its error
-beyond two of the record's noise scales (several writing streams by the mean of their gains on
-each action, so every stream keeps its residual around the shared records), so a mature brain's
-store keeps what an outcome confirms and moves on a surprise. No count is kept; an idle brain's use relaxes. The variable
-and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted by
-`parameters()`; the scale and the recovery are `retune` settings. Checkpoints: a brain with
-maturity saves in the new format `cadence-brain/2`, which 0.93.1 and earlier refuse; every other
-brain saves `cadence-brain/1` as before. `Maturity` is exported from `cadence`. Off, the brain
-is the founder's to the bit. See
+`Brain.compose(..., maturity=True)` gives the brain a maturity, for a brain that goes on learning
+after it has acquired a skill (#169). Its one variable, the use, is a leaky integral of the
+actor's applied synapse steps in the brain's own step units per synapse: each accepted moment of
+life (`live`, `step`, or `learn` on its own) keeps `1 - 1 / maturity_recovery` of it (200,000
+moments), so no count is kept and the use of a brain that lives without learning relaxes. The
+step factor `m = 1 / (1 + (use / maturity_scale) ** 4)` (one half at `maturity_scale`, 10 step
+units per synapse) multiplies the actor's synapse and bias steps and engages the store's
+surprise-gated writes with strength `1 - m`: a mature brain's write moves a place record only by
+the part of its error beyond two of the record's noise scales, so the store keeps what an
+outcome confirms and moves on a surprise. Several writing streams share one gain per action,
+the mean of theirs, so every stream keeps its residual around the shared records. The critic,
+lessons and the recall memory's maps keep their steps.
+
+The use and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted
+by `parameters()`; `maturity_scale` and `maturity_recovery` are `retune` settings and `maturity`
+a construction setting. A brain with maturity saves the new checkpoint format `cadence-brain/2`,
+which 0.93.1 and earlier refuse; every other brain saves `cadence-brain/1` as before. `Maturity`
+is exported from `cadence`. Off, the brain is the founder's to the bit. See
 [reward](docs/reward.md#maturity-opt-in) and
 [memory](docs/memory.md#maturity-and-surprise-gated-writes).
 
