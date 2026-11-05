@@ -169,7 +169,11 @@ class SynapticMemory(FastSynapses):
             prediction = (cue[:, None, :] @ strength[rows])[:, 0, :]
             correction = (value[rows] - prediction) * mask
             strength[rows] += self.rate * cue[:, :, None] * correction[:, None, :]
-        if not np.isfinite(strength).all() or not np.isfinite(consolidated).all():
+        if (
+            not np.isfinite(strength).all()
+            or not np.isfinite(consolidated).all()
+            or (noise is not None and not np.isfinite(noise).all())
+        ):
             raise ValueError("synaptic update overflowed; scale the observed values")
         mass[rows] += self.rate
         self.consolidated, self.strength, self.mass = consolidated, strength, mass
@@ -194,11 +198,12 @@ class SynapticMemory(FastSynapses):
         surprise = np.where(size > 0, np.maximum(0.0, 1.0 - self.GATE_WIDTH * spread / safe), 0.0)
         gain = np.where(mask, 1.0 - strength * (1.0 - surprise), 1.0)
         weight = square / np.maximum(square.max(axis=1, keepdims=True), 1e-30)
-        for row in range(len(cue)):  # the noise scale of each observed action's record
-            seen = mask[row]
-            noise[:, seen] += self.GATE_RATE * weight[row][:, None] * (
-                error[row, seen][None, :] ** 2 - noise[:, seen]
-            )
+        with np.errstate(over="ignore", invalid="ignore"):  # an overflow is refused (observe)
+            for row in range(len(cue)):  # the noise scale of each observed action's record
+                seen = mask[row]
+                noise[:, seen] += self.GATE_RATE * weight[row][:, None] * (
+                    error[row, seen][None, :] ** 2 - noise[:, seen]
+                )
         return gain, noise
 
     def to_dict(self) -> dict[str, float | int | str]:

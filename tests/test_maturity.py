@@ -291,3 +291,19 @@ def test_several_writing_streams_keep_every_residual_around_the_shared_records()
     np.testing.assert_allclose(gated_shared, gain * shared, rtol=0, atol=1e-12)
     np.testing.assert_allclose(gated_streams, gain * streams, rtol=0, atol=1e-12)
     assert np.abs(gated_streams[2]).max() < 1e-12  # the stream that did not write keeps its own
+
+
+def test_an_outcome_whose_noise_overflows_is_refused_and_the_brain_still_loads():
+    for arousal in (True, None):
+        brain = cd.Brain.compose(6, 3, seed=2, arousal=arousal, maturity=True)
+        run = brain.live if arousal else brain.step
+        run(np.ones((1, 6)))
+        before = held(brain)
+        # finite, but its square is not: refused before anything changes, no NaN written
+        with pytest.raises(ValueError, match="overflowed"):
+            run(np.ones((1, 6)), reward=np.array([1.3e155]))
+        assert_held(brain, before)
+        assert np.isfinite(brain.hippocampus.gate_noise).all()
+        with tempfile.TemporaryDirectory() as folder:
+            loaded = cd.Brain.load(checkpoint(brain, folder))
+        assert np.array_equal(loaded.hippocampus.gate_noise, brain.hippocampus.gate_noise)

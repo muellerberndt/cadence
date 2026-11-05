@@ -247,7 +247,9 @@ record's noise along its cue. Every other stream keeps its residual `F` around t
 without the gate; with one writing stream `g` is that stream's own. A young brain (`m` 1) writes
 as without the gate; a mature one (`m` near 0) moves a record only by the part of its error
 beyond two noise scales, so an outcome its records expect leaves them as they are and a surprise
-moves them. A record nobody writes keeps its value and its noise scale.
+moves them. A record nobody writes keeps its value and its noise scale. A write whose squared
+error leaves the floating-point range (an outcome near `1e154`) is refused with `ValueError`, as
+an overflowing record is, before anything changes.
 The noise scales are saved and loaded with the store and counted by `parameters()`; `clear()`
 erases them with the records.
 
