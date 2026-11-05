@@ -310,3 +310,38 @@ def test_located_reads_the_slots_as_the_read_saw_them():
     assert ((q >= -1) & (q < pre)).all()
     located = gr.locate(brain, [rows])
     assert all(0.0 <= v["delivered"] <= 1.0 for v in located.values())
+
+
+def test_a_window_of_one_is_the_chambers_life_and_wider_windows_say_k_words():
+    wn = _load("window")
+    assert wn.windows([0, 12, 5, 9, 2, 17], 4) == [[0, 12, 5, 9], [2, 17, 17, 17]]
+    assert wn.LONGEST == 8
+    split = gr.Split.of(0)
+    rng = np.random.default_rng(0)
+    batches = [gr.train_batch(rng, split, "g1") for _ in range(3)]
+    rows = gr.panels(0, 1)["clause"][0]
+    a, b = gr.make_brain("recipe", 0, module=16), wn.make_brain(1, 0, module=16)
+    wa, wb = gr.new_work(), gr.new_work()
+    for batch in batches:
+        gr.speak(a, batch, teach=True, work=wa)
+        wn.speak(b, batch, 1, teach=True, work=wb)
+    assert wa == wb
+    assert gr.speak(a, rows, teach=False) == wn.speak(b, rows, 1, teach=False)
+    assert gr.forced(a, rows) == wn.forced(b, rows, 1)
+    for k in (4, 8):
+        brain = wn.make_brain(k, 0, module=16)
+        assert brain.describe()["layout"]["slots"] == [gr.ACTIONS] * k
+        work = gr.new_work()
+        for batch in batches:
+            wn.speak(brain, batch, k, teach=True, work=work)
+        assert work["lessons"] == sum(len(wn.windows(batch[0].target, k)) for batch in batches)
+        said = wn.speak(brain, rows, k, teach=False)
+        assert all(len(s) % k == 0 or s[-1] == gr.END for s in said)
+        assert all(len(s) <= len(r.target) + 4 + k for s, r in zip(said, rows, strict=True))
+        located = wn.locate(brain, [rows], k)
+        assert all(0.0 <= v["mass"] <= 1.0 for v in located.values())
+        with pytest.raises(ValueError):
+            wn.speak(brain, gr.panels(0, 1)["ctx_agent"][0], k, teach=False)
+    row = wn.run_life({"k": 4, "founder": 0, "batches": 2, "panel_batches": 1, "module": 16})
+    assert set(row["panels"]) == set(wn.PANELS) and row["work"]["sentences"] == 32
+    assert row["panels"]["roles"]["both"] >= 0.0 and "clause_L0_verb" in row["located"]["clause"]
