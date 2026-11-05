@@ -258,3 +258,36 @@ def test_a_mature_brain_saves_a_format_of_its_own():
         np.savez(path, **earlier(arrays))
         with pytest.raises(ValueError, match="belongs to checkpoint format cadence-brain/2"):
             cd.Brain.load(path)
+
+
+def test_several_writing_streams_keep_every_residual_around_the_shared_records():
+    def store(gated):
+        memory = SynapticMemory(np.arange(2), np.arange(2), consolidation=0.5, rate=1.0,
+                                decay=1.0)
+        memory.reset(3)
+        if gated:
+            memory.gate_noise = np.full(memory.consolidated.shape, 0.01)  # noise scale 0.1
+            memory.maturity = Maturity(scale=1.0, recovery=1e9, use=1e6)  # m near 0
+        # the third stream first gets a residual of its own
+        memory.observe(np.array([[0, 0], [0, 0], [0.0, 1.0]]), np.array([[0, 0], [0, 0], [0.7, 0]]))
+        return memory
+
+    def residual(memory):
+        return memory.strength - memory.consolidated
+
+    key = np.array([[1.0, 0.0], [1.0, 0.0], [0, 0]])
+    value = np.array([[0.05, 0], [1.0, 0], [0, 0]])  # the first stream confirmed, one surprised
+    mask = np.array([[True, False], [True, False], [False, False]])
+    changes = []
+    for gated in (False, True):
+        memory = store(gated)
+        before = (memory.consolidated.copy(), residual(memory))
+        memory.observe(key, value, value_mask=mask)
+        changes.append((memory.consolidated - before[0], residual(memory) - before[1]))
+    (shared, streams), (gated_shared, gated_streams) = changes
+    # each row's gain: the confirmed stream's 0 (its error within two noise scales), the
+    # surprised one's 0.8; the write's gain on the action is their mean
+    gain = np.array([0.4, 1.0])
+    np.testing.assert_allclose(gated_shared, gain * shared, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(gated_streams, gain * streams, rtol=0, atol=1e-12)
+    assert np.abs(gated_streams[2]).max() < 1e-12  # the stream that did not write keeps its own

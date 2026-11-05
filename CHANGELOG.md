@@ -9,12 +9,14 @@ update magnitudes (`maturity_scale`, the use at which the step factor is one hal
 units per synapse; `maturity_recovery`, 200,000 moments). The step factor `m = 1 / (1 + (use /
 maturity_scale) ** 4)` multiplies the actor's synapse and bias steps and engages the store's
 surprise-gated writes with strength `1 - m`: a write moves a record by the part of its error
-beyond two of the record's noise scales, so a mature brain's store keeps what an outcome
-confirms and moves on a surprise. No count is kept; an idle brain's use relaxes. The variable
+beyond two of the record's noise scales (several writing streams by the mean of their gains on
+each action, so every stream keeps its residual around the shared records), so a mature brain's
+store keeps what an outcome confirms and moves on a surprise. No count is kept; an idle brain's use relaxes. The variable
 and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted by
 `parameters()`; the scale and the recovery are `retune` settings. Checkpoints: a brain with
 maturity saves in the new format `cadence-brain/2`, which 0.93.1 and earlier refuse; every other
-brain saves `cadence-brain/1` as before. Off, the brain is the founder's to the bit. See [reward](docs/reward.md#maturity-opt-in) and
+brain saves `cadence-brain/1` as before. Off, the brain is the founder's to the bit. See
+[reward](docs/reward.md#maturity-opt-in) and
 [memory](docs/memory.md#maturity-and-surprise-gated-writes).
 
 ## 0.93.1 — 2026-11-04

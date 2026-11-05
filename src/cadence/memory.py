@@ -30,11 +30,13 @@ class SynapticMemory(FastSynapses):
     With a surprise gate (``gate_noise``, each record's noise scale, and ``maturity``, the
     brain's ``Maturity``; ``Brain.compose(maturity=True)``) a write moves a record only by the
     part of its error beyond ``GATE_WIDTH`` noise scales of the record, engaged by the brain's
-    maturity: the write's change of the record, the shared matrix and the stream's residual
-    alike, is multiplied by ``1 - (1 - m)(1 - g)``, ``g = max(0, 1 - GATE_WIDTH sqrt(R) /
-    |e|)``, ``e`` the write's error on the action against the stream's read before the write,
-    ``R`` the record's noise along the cue. Each write moves the noise scale toward the squared
-    error at ``GATE_RATE``. A young brain (``m`` 1) writes as without the gate.
+    maturity: the ungated write's change of the shared matrix and of each writing stream's
+    residual is multiplied, per action, by ``1 - (1 - m)(1 - g)``, ``g`` the mean over the
+    writing rows that observe the action of ``max(0, 1 - GATE_WIDTH sqrt(R) / |e|)``, ``e``
+    the row's error on the action against its stream's read before the write, ``R`` the
+    record's noise along the row's cue; every other stream keeps its residual. Each write moves
+    the noise scale toward the squared error at ``GATE_RATE``. A young brain (``m`` 1) writes
+    as without the gate.
     """
 
     decay: float = 0.9
@@ -145,6 +147,11 @@ class SynapticMemory(FastSynapses):
         noise = None
         if self.gate_noise is not None and self.maturity is not None:
             gain, noise = self._gate(cue, value[rows], previous[rows], mask)
+            # one gain per action, the mean over the rows that observe it, on the shared matrix
+            # and on every writing stream's residual alike: each stream keeps its residual
+            # around the shared matrix
+            seen = mask.sum(axis=0)
+            shared = np.where(seen > 0, (gain * mask).sum(axis=0) / np.maximum(seen, 1), 1.0)
             base = strength
             change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
             strength = strength + change
@@ -152,12 +159,9 @@ class SynapticMemory(FastSynapses):
             correction = (value[rows] - prediction) * mask
             moved = np.broadcast_to(change, strength.shape).copy()
             moved[rows] += self.rate * cue[:, :, None] * correction[:, None, :]
-            shared = gain.mean(axis=0)  # the rows' gain on the shared matrix, per action
-            weight = np.broadcast_to(shared, (len(strength), len(shared))).copy()
-            weight[rows] = gain
-            gated = np.einsum("b,bi,bj->ij", rate, cue, error * gain) / len(rows)
+            gated = np.einsum("b,bi,bj->ij", rate, cue, error * shared) / len(rows)
             consolidated = self.consolidated + gated
-            strength = base + weight[:, None, :] * moved
+            strength = base + shared * moved
         else:
             change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
             consolidated = self.consolidated + change
