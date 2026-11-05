@@ -343,5 +343,27 @@ def test_a_window_of_one_is_the_chambers_life_and_wider_windows_say_k_words():
         with pytest.raises(ValueError):
             wn.speak(brain, gr.panels(0, 1)["ctx_agent"][0], k, teach=False)
     row = wn.run_life({"k": 4, "founder": 0, "batches": 2, "panel_batches": 1, "module": 16})
-    assert set(row["panels"]) == set(wn.PANELS) and row["work"]["sentences"] == 32
+    assert set(row["panels"]) == set(wn.PANELS) | {"win_agent", "win_verb"}
+    assert row["work"]["sentences"] == 32 and row["advance"] == "echo"
     assert row["panels"]["roles"]["both"] >= 0.0 and "clause_L0_verb" in row["located"]["clause"]
+    dyck = row["panels"]["dyck"]
+    assert dyck["fits_n"] + dyck["spills_n"] == 16
+    assert "mass" in row["located"]["clause"]["clause_L0_verb"]
+    panels = wn.context_panels(0, 4, 1)
+    for rows in panels["win_agent"]:  # the agent's number differs: the first word, then shared
+        for a, b in zip(rows[0::2], rows[1::2], strict=True):
+            assert a.force == b.force == 4 and a.target[1:4] == b.target[1:4]
+            assert a.target[4:] != b.target[4:] and a.meta["L"] == 2
+    for rows in panels["win_verb"]:  # the first window is the same; the message's verb differs
+        for a, b in zip(rows[0::2], rows[1::2], strict=True):
+            assert a.target[:4] == b.target[:4] and a.target[4:] != b.target[4:]
+    assert wn.context_panels(0, 6, 1) == {}
+    # the efference advance: the brain hears SPEAK alone, its copy holds the window it said
+    brain = wn.make_brain(4, 0, module=16, advance="efference")
+    assert brain.efference is not None
+    x = wn.heard_window([3, 12, 7, 17], "efference")
+    assert x[gr.C["SPEAK"]] == 1.0 and not x[:gr.ACTIONS].any()
+    said = wn.speak(brain, rows[:4], 4, teach=False, advance="efference")
+    assert len(said) == 4
+    with pytest.raises(ValueError):
+        wn.make_brain(4, 0, module=16, advance="hearsay")

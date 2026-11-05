@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### A planning window: the next k actions settled jointly (#257)
+
+A brain composed with `actions=k * menu, slots=k` settles its next `k` actions in one settle
+under the meaning it holds, a lesson teaches the `k` slots at once, and the window advances
+through the world's echo or the efference copy. No library code changes: the window is the
+documented use of `slots` ([a planning window](docs/tune.md#a-planning-window)), with tests of
+its contract under `tests/test_planning_window.py` and its readings in the grammar chamber
+(`benchmarks/grammar/window.py`). The founder, one slot, is unchanged to the bit.
+
 ## 0.94.0 — 2026-11-05
 
 One opt-in, maturity, for a brain that goes on learning after it has acquired a skill (#169,

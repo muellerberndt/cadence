@@ -188,10 +188,21 @@ class Learner:
 
 
 def reading(learner: Learner, tests: dict[str, list[list[gr.Row]]],
-            names: tuple[str, ...]) -> dict[str, Any]:
+            names: tuple[str, ...], window: int = 0) -> dict[str, Any]:
     learner.net.eval()
+    twins = gr.TWINS + ("win_agent", "win_verb")
     out = {name: gr.read_speaker(learner.speak, learner.forced, tests[name],
-                                 twins=name in gr.TWINS) for name in names}
+                                 twins=name in twins) for name in names}
+    if window:
+        for name in names:
+            rows = [r for batch in tests[name] for r in batch]
+            said = [s for batch in tests[name] for s in learner.speak(batch)]
+            for key, keep in (("fits", lambda r: len(r.target) <= window),
+                              ("spills", lambda r: len(r.target) > window)):
+                hits = [gr.score(r, s)["exact"] for r, s in zip(rows, said, strict=True)
+                        if keep(r)]
+                out[name][key] = round(float(np.mean(hits)), 4) if hits else None
+                out[name][key + "_n"] = len(hits)
     learner.net.train()
     return out
 
@@ -204,7 +215,9 @@ def brain_parameters(founder: int, arm: str = "recipe") -> int:
 
 
 def run_life(spec: dict[str, Any]) -> dict[str, Any]:
-    """One control life: ``model``, ``mode``, ``founder``, ``phases`` as the brain's."""
+    """One control life: ``model``, ``mode``, ``founder``, ``phases`` as the brain's; with
+    ``window`` (a ``k``) the window chamber's aligned context twins join the panels and every
+    panel reports the sentences that fit in a window of ``k`` apart from those that spill."""
     import torch
 
     torch.set_num_threads(1)
@@ -212,14 +225,20 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     phases = [(str(g), int(n)) for g, n in spec.get("phases", [["g1", 2000]])]
     target = int(spec.get("parameters") or brain_parameters(founder))
     width = int(spec.get("width") or matched_width(model, target))
+    window = int(spec.get("window", 0))
     started = time.monotonic()
     learner = Learner(model, width, founder, RATES[mode])
     split = gr.Split.of(founder)
     tests = gr.panels(founder, int(spec.get("panel_batches", 4)))
-    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
     everything = gr.G1_PANELS + gr.CONTEXT_PANELS + ("g2", "g2_long")
+    if window:
+        wn = gr._module("window", gr.HERE / "window.py")
+        extra = wn.context_panels(founder, window, int(spec.get("panel_batches", 4)))
+        tests.update(extra)
+        everything = everything + tuple(extra)
+    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
     row: dict[str, Any] = {
-        "model": model, "mode": mode, "founder": founder, "width": width,
+        "model": model, "mode": mode, "founder": founder, "width": width, "window": window,
         "parameters": count(learner.net), "brain_parameters": target,
         "phases": [list(p) for p in phases], "rate": RATES[mode], "readings": [],
         "torch": torch.__version__,
@@ -245,7 +264,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         row["readings"].append({
             "phase": index, "grammar": grammar, "batches": n, "epochs": epochs,
             "loss_last": float(np.mean(losses[-50:])) if mode == "online" else losses[-1],
-            "work": work, "panels": reading(learner, tests, everything)})
+            "work": work, "panels": reading(learner, tests, everything, window)})
     row["seconds"] = round(time.monotonic() - started, 1)
     return row
 
@@ -258,6 +277,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--phases", type=json.loads, default=[["g1", 2000]])
     parser.add_argument("--parameters", type=int, default=0,
                         help="the brain's parameter count (default: the recipe brain's)")
+    parser.add_argument("--window", type=int, default=0,
+                        help="read the window chamber's twins and the fit split at this k")
     parser.add_argument("--plan", type=Path)
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=1)
@@ -266,7 +287,7 @@ def main(argv: list[str] | None = None) -> int:
         specs = json.loads(args.plan.read_text())
     else:
         specs = [{"model": m, "mode": mode, "founder": f, "phases": args.phases,
-                  "parameters": args.parameters}
+                  "parameters": args.parameters, "window": args.window}
                  for m in args.models for mode in args.modes for f in args.founders]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a") as sink:

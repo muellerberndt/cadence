@@ -171,6 +171,39 @@ persistence schedule takes about 20 minutes on one core, a founder life about 12
 life with its four forks about an hour; an online control about 8 minutes, an offline one up to
 40.
 
+## A planning window
+
+[`window.py`](window.py) reads [#257](https://github.com/muellerberndt/cadence/issues/257): the
+chamber's sentences said `k` words at a time, the `k` words settled jointly. The brain is
+`Brain.compose(35, k * 18, modules=(64,), slots=k)` with the arm's settings: `k` motor slots of
+the eighteen words, one softmax each, in the one settle
+([a planning window](../../docs/tune.md#a-planning-window)). The message arrives as in the
+chamber (the concept moments, then `GO`); at each production step the brain settles the `k`
+slots at once, says their words and moves the window on until a window holds `end`; the target
+of a window past the sentence's end is `end` in every remaining slot. The window advances
+through the world's echo (`--advance echo`: the brain hears its previous window, each word at
+1.0 with `SPEAK`) or through the efference copy (`--advance efference`: the brain hears `SPEAK`
+alone and its copy holds the `k` commands it issued, in training the words it said). With
+`k = 1` and the echo this is the chamber's word-by-word life to the bit (a test checks the
+words, the work and the located reading). Each slot has motor neurons and synapses of its own:
+a position in the window is a coordinate, not a role shared across positions.
+
+Beside the chamber's panels, per `k`: the Dyck sentences that fit in one window (`end`
+included) apart from those that spill over it (`fits`, `spills`), and context twins aligned to
+the window (`win_agent`, `win_verb`: clauses of two distractors whose first window is given,
+the twins differing in the agent's number or the meaning's verb; for `k` above 5 the first
+window holds the verb and the chamber's panels serve). `located` reads the step whose window
+holds a word: whether the recall read lands on the word's meaning moment (`delivered`), the
+attention it gives it (`mass`), and whether the slot says the word. Work is counted per
+sentence: lessons, lesson row sweeps, acts and act sweeps, host time.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/window.py --ks 1 4 8 --founders 0 1 2 \
+    --out DIR/window.jsonl --workers 2
+PYTHONPATH=src python benchmarks/grammar/window.py --ks 4 --advance efference --founders 0 \
+    --out DIR/window.jsonl
+```
+
 ## Readings on 0.94.0 (development, founders 0 to 2)
 
 Development founders 0, 1 and 2, from frozen snapshots of this folder; the maturity readings
