@@ -89,6 +89,9 @@ __all__ = ["Brain"]
 # it and, through 0.85.x, the earlier formats: ``cadence-generic/1`` to ``/9``, which 0.84.3
 # reads, and ``/10``, which development builds of the learned code wrote.
 BRAIN_FORMAT = "cadence-brain/1"
+# A brain with maturity (#253) saves under its own format name, which 0.93.1 and earlier refuse;
+# every other brain keeps BRAIN_FORMAT.
+MATURITY_FORMAT = "cadence-brain/2"
 # A memory's group in BRAIN_FORMAT and the prefix its arrays had in the formats of 0.84.3; the
 # episodic memory's arrays are the context store's and the stream's (``_earlier_layout``).
 _MEMORY_PREFIXES = {
@@ -5027,7 +5030,8 @@ class Brain:
     def save(self, path: str | Path, *, compressed: bool = True) -> Path:
         """Save the complete composition, including an action awaiting its real outcome.
 
-        The file is ``cadence-brain/1``: the learner's checkpoint, the actor (its config,
+        The file is ``cadence-brain/1`` (with maturity ``cadence-brain/2``, which adds the
+        maturity and the store's noise scales): the learner's checkpoint, the actor (its config,
         critic, eligibility and random generator), the brain's random generator, the free
         phase, a pending action's nudged states, the state ``wait`` sensed since that action
         was chosen, the arousal, the observation code or the learned code, and one group
@@ -5046,7 +5050,7 @@ class Brain:
         data = _learner_data(self.learner)
         memories: dict[str, Any] = {}
         metadata: dict[str, Any] = {
-            "format": BRAIN_FORMAT,
+            "format": BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
             "actor": agent.config.to_dict(),
             "rng": self.rng.bit_generator.state,
             "actor_rng": agent.rng.bit_generator.state,
@@ -5164,7 +5168,8 @@ class Brain:
     ) -> Brain:
         """Resume a complete saved brain, defaulting to portable CPU inference and learning.
 
-        Reads ``cadence-brain/1`` and, through 0.85.x, the earlier formats:
+        Reads ``cadence-brain/1``, ``cadence-brain/2`` (a brain with maturity) and, through
+        0.85.x, the earlier formats:
         ``cadence-generic/1`` to ``/9``, which 0.84.3 reads, and ``/10``, which development
         builds of the learned code wrote. A setting of 0.84.3 that this version removed loads
         at the value whose law this version keeps and is refused otherwise, with a message
@@ -5177,11 +5182,21 @@ class Brain:
             data: Mapping[str, Any] = archive
             if "brain" in archive:
                 saved = json.loads(str(archive["brain"]))
-                if not isinstance(saved, dict) or saved.get("format") != BRAIN_FORMAT:
+                if not isinstance(saved, dict) or saved.get("format") not in (
+                    BRAIN_FORMAT, MATURITY_FORMAT
+                ):
                     raise ValueError("unsupported Brain checkpoint format")
+                if (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
+                    raise ValueError(
+                        f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
+                    )
                 meta, data = _earlier_layout(saved, archive)
             elif "generic" in archive:
                 meta = json.loads(str(archive["generic"]))
+                if isinstance(meta, dict) and "maturity" in meta:
+                    raise ValueError(
+                        f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
+                    )
             else:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             formats = tuple(f"cadence-generic/{level}" for level in range(1, 11))

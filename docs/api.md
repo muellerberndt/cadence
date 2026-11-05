@@ -178,7 +178,11 @@ their shape. Keep row identities fixed until `reset()`.
 
 ### Checkpoint format
 
-`Brain.save` writes `cadence-brain/1`, one format whatever the brain holds:
+`Brain.save` writes `cadence-brain/1`, one format whatever the brain holds, except that a brain
+with maturity ([reward](reward.md#maturity-opt-in)) writes `cadence-brain/2`, which 0.93.1 and
+earlier refuse: the same members with the maturity (`scale`, `recovery`, `use`) under `maturity`
+in the metadata and the store's noise scales (`memories/hippocampus/gate_noise`). A file of
+either format carrying the other's maturity is refused.
 
 | Members | What they hold |
 | --- | --- |

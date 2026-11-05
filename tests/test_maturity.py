@@ -9,11 +9,13 @@ Each actor update adds its applied magnitude to the brain's use; every moment of
 from __future__ import annotations
 
 import copy
+import json
 import tempfile
 from pathlib import Path
 
 import numpy as np
 import pytest
+from checkpoints import earlier
 
 import cadence as cd
 from cadence.memory import SynapticMemory
@@ -233,3 +235,26 @@ def test_a_refused_store_write_keeps_the_noise_scales():
         memory.observe(key, np.array([[-1.5e308, 0.0]]), value_mask=mask)
     for name, value in memory.arrays().items():
         assert np.array_equal(value, before[name]), name
+
+
+def test_a_mature_brain_saves_a_format_of_its_own():
+    mature = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True), moments=20)
+    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True), moments=20)
+    with tempfile.TemporaryDirectory() as folder:
+        path = checkpoint(founder, folder)
+        assert json.loads(str(np.load(path)["brain"]))["format"] == "cadence-brain/1"
+        path = checkpoint(mature, folder)
+        arrays = dict(np.load(path))
+        meta = json.loads(str(arrays["brain"]))
+        assert meta["format"] == "cadence-brain/2"  # which 0.93.1 and earlier refuse
+        for edit in ({"format": "cadence-brain/1"}, {"maturity": None}):
+            changed = {**meta, **edit}
+            if changed["maturity"] is None:
+                changed.pop("maturity")
+            np.savez(path, **{**arrays, "brain": np.array(json.dumps(changed))})
+            with pytest.raises(ValueError, match="belongs to checkpoint format cadence-brain/2"):
+                cd.Brain.load(path)
+        # the layout of the formats of 0.84.3 has no maturity either
+        np.savez(path, **earlier(arrays))
+        with pytest.raises(ValueError, match="belongs to checkpoint format cadence-brain/2"):
+            cd.Brain.load(path)

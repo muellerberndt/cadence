@@ -12,8 +12,9 @@ surprise-gated writes with strength `1 - m`: a write moves a record by the part 
 beyond two of the record's noise scales, so a mature brain's store keeps what an outcome
 confirms and moves on a surprise. No count is kept; an idle brain's use relaxes. The variable
 and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted by
-`parameters()`; the scale and the recovery are `retune` settings. Off, the brain is the
-founder's to the bit. See [reward](docs/reward.md#maturity-opt-in) and
+`parameters()`; the scale and the recovery are `retune` settings. Checkpoints: a brain with
+maturity saves in the new format `cadence-brain/2`, which 0.93.1 and earlier refuse; every other
+brain saves `cadence-brain/1` as before. Off, the brain is the founder's to the bit. See [reward](docs/reward.md#maturity-opt-in) and
 [memory](docs/memory.md#maturity-and-surprise-gated-writes).
 
 ## 0.93.1 — 2026-11-04
