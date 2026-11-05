@@ -7,11 +7,14 @@ key-to-value synapses using the actual observed value's local prediction error.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from .stream import FastSynapses
+
+if TYPE_CHECKING:
+    from .plasticity import Maturity
 
 
 @dataclass
@@ -45,7 +48,7 @@ class SynapticMemory(FastSynapses):
     consolidation: float = 0.05
     consolidated: np.ndarray = field(init=False)
     gate_noise: np.ndarray | None = field(default=None, repr=False)
-    maturity: Any = field(default=None, repr=False, compare=False)
+    maturity: Maturity | None = field(default=None, repr=False, compare=False)
 
     GATE_WIDTH = 2.0
     GATE_RATE = 0.05
@@ -187,7 +190,7 @@ class SynapticMemory(FastSynapses):
         """Each writing row's gain per action (the surprise gate engaged by maturity), and
         the records' noise scales moved toward the rows' squared errors: a new array, which
         the write installs with the records it accepts."""
-        assert self.gate_noise is not None
+        assert self.gate_noise is not None and self.maturity is not None
         noise = self.gate_noise.copy()
         engaged = 1.0 - self.maturity.factor()  # the gate's strength, 1 - m
         error = value - np.einsum("bi,bij->bj", cue, previous)
