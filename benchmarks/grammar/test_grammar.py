@@ -32,6 +32,14 @@ def _agrees(row) -> bool:
     return len(verbs) == 1 and (verbs[0] - 8) % 2 == row.meta["agent"][1]
 
 
+def test_the_recipe_is_the_sequence_batterys():
+    assert gr.ARMS["recipe"] == {
+        "episodic": False, "teaching": "normalized", "recall": True, "recall_recency": 0.0,
+        "learning_surprise": True, "recall_boundary": True, "recall_anchor": True,
+        "recall_slope": 0.1, "recall_position_rate": 0.01, "recall_relative": True}
+    assert gr.ARMS["maturity"] == {**gr.ARMS["recipe"], "maturity": True}
+
+
 def test_every_word_is_an_input_and_an_action():
     assert gr.ACTIONS == len(gr.WORDS) == 18
     assert gr.INPUTS == gr.ACTIONS + len(gr.CONCEPTS)

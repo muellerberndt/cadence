@@ -32,6 +32,7 @@ from __future__ import annotations
 
 import argparse
 import copy
+import importlib.util
 import json
 import sys
 import time
@@ -408,13 +409,26 @@ def panels(founder: int, batches: int = 4) -> dict[str, list[list[Row]]]:
 
 # ---------------------------------------------------------------------------------- arms
 
-TABLE = {"recall": True, "recall_recency": 0.0, "learning_surprise": True}
-RECIPE = {**TABLE, "recall_boundary": True, "recall_anchor": True, "recall_slope": 0.1,
-          "recall_position_rate": 0.01, "recall_relative": True}
-SEQUENCE = {"episodic": False, "teaching": "normalized"}
+HERE = Path(__file__).resolve().parent
+
+
+def _module(name: str, path: Path) -> Any:
+    if name in sys.modules:
+        return sys.modules[name]
+    spec = importlib.util.spec_from_file_location(name, path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+BATTERY = _module("sequence_battery", HERE.parent / "sequence" / "battery.py")
+RECIPE = BATTERY.ARMS["recipe_relative"]  # the recall guide's recipe for unseen lengths, copying
+SEQUENCE = {"episodic": False, "teaching": "normalized"}  # the battery's composition
 ARMS: dict[str, dict[str, Any]] = {
     "founder": {},  # Brain.compose at every founder setting
-    "recipe": {**SEQUENCE, **RECIPE},  # the recall guide's recipe for unseen lengths, copying
+    "recipe": {**SEQUENCE, **RECIPE},
     "maturity": {**SEQUENCE, **RECIPE, "maturity": True},
     "frozen": {**SEQUENCE, **RECIPE},  # the newborn, never taught
 }
