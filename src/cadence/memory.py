@@ -144,31 +144,30 @@ class SynapticMemory(FastSynapses):
         rate = self.consolidation + np.minimum(1.0, self.consolidation * salience[rows])
         rate = np.minimum(1.0, rate)
         error = (value[rows] - cue @ self.consolidated) * mask
+        change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
+        gated = self.gate_noise is not None and self.maturity is not None
+        base = strength.copy() if gated else strength
+        strength += change  # preserve each stream's residual around the shared matrix
+        prediction = (cue[:, None, :] @ strength[rows])[:, 0, :]
+        correction = (value[rows] - prediction) * mask
+        fast = self.rate * cue[:, :, None] * correction[:, None, :]
         noise = None
-        if self.gate_noise is not None and self.maturity is not None:
+        if not gated:
+            consolidated = self.consolidated + change
+            strength[rows] += fast
+        else:  # the write above, multiplied per action by the surprise gate's gain
             gain, noise = self._gate(cue, value[rows], previous[rows], mask)
             # one gain per action, the mean over the rows that observe it, on the shared matrix
             # and on every writing stream's residual alike: each stream keeps its residual
             # around the shared matrix
             seen = mask.sum(axis=0)
             shared = np.where(seen > 0, (gain * mask).sum(axis=0) / np.maximum(seen, 1), 1.0)
-            base = strength
-            change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
-            strength = strength + change
-            prediction = (cue[:, None, :] @ strength[rows])[:, 0, :]
-            correction = (value[rows] - prediction) * mask
             moved = np.broadcast_to(change, strength.shape).copy()
-            moved[rows] += self.rate * cue[:, :, None] * correction[:, None, :]
-            gated = np.einsum("b,bi,bj->ij", rate, cue, error * shared) / len(rows)
-            consolidated = self.consolidated + gated
+            moved[rows] += fast
+            consolidated = self.consolidated + np.einsum(
+                "b,bi,bj->ij", rate, cue, error * shared
+            ) / len(rows)
             strength = base + shared * moved
-        else:
-            change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
-            consolidated = self.consolidated + change
-            strength += change  # preserve each stream's residual around the shared matrix
-            prediction = (cue[:, None, :] @ strength[rows])[:, 0, :]
-            correction = (value[rows] - prediction) * mask
-            strength[rows] += self.rate * cue[:, :, None] * correction[:, None, :]
         if (
             not np.isfinite(strength).all()
             or not np.isfinite(consolidated).all()
