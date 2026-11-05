@@ -10,7 +10,7 @@ never part of the brain's answer path.
 - ``online``: one pass in the brain's order, one Adam step per batch the brain is taught
   (rate 0.003, gradient norm clipped at 1), the brain's exposure exactly.
 - ``offline``: the same batches stored and replayed in shuffled epochs (rate 0.001) until the
-  epoch's loss stops falling (patience 3, at most 60 epochs): an upper reference, reported
+  epoch's loss stops falling (patience 3, at most 30 epochs): an upper reference, reported
   apart.
 
 Each is read on the brain's panels by the same scorer, closed loop, greedy. Work is counted as
@@ -37,7 +37,7 @@ import numpy as np
 MODELS = ("lstm", "transformer")
 MODES = ("online", "offline")
 RATES = {"online": 0.003, "offline": 0.001}
-CLIP, PATIENCE, EPOCHS = 1.0, 3, 60
+CLIP, PATIENCE, EPOCHS = 1.0, 3, 30
 MAX_LENGTH = 64  # positions the transformer's encoding covers
 
 
