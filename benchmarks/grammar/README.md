@@ -307,12 +307,19 @@ Beside the gates, per window (mean over the six founders, least to greatest in b
 
 Work per sentence (W5): window 1: lessons 0.36, lesson row sweeps 41.69, acts 0.77, act sweeps 66.96, seconds 0.0025; window 3: lessons 0.14, lesson row sweeps 46.73, acts 0.55, act sweeps 58.91, seconds 0.0042; window 4: lessons 0.11, lesson row sweeps 46.16, acts 0.52, act sweeps 62.37, seconds 0.0026; window 10: lessons 0.06, lesson row sweeps 52.53, acts 0.47, act sweeps 44.21, seconds 0.0041.
 
-The controls on the same founders (window twins at 3; mean over founders):
+The controls on the same founders, word by word (the window twins at 3; mean over founders; a control's held-out-depth Dyck sentences are read whole, the window split has no meaning for it):
 
-| Control | `clause_held` agree | `win_agent` both / differ | `win_verb` both / differ | `dyck_deep` that fit | multiply-accumulates | seconds |
+| Control | `clause_held` agree | `win_agent` both / differ | `win_verb` both / differ | `dyck_deep` exact | multiply-accumulates | seconds |
 | --- | --- | --- | --- | --- | --- | --- |
-| lstm online | 1.00 | .90 (.81-1.00) / 1.00 | .91 (.81-.94) / 1.00 |  | 5.7e+10 | 6 |
-| transformer online | 1.00 (.98-1.00) | 1.00 / 1.00 | 1.00 / 1.00 |  | 5.6e+10 | 7 |
+| lstm offline | 1.00 | .98 (.91-1.00) / 1.00 | .99 (.94-1.00) / 1.00 | .09 (.00-.20) | 1.7e+12 | 211 |
+| lstm online | 1.00 | .90 (.81-1.00) / 1.00 | .91 (.81-.94) / 1.00 | .05 (.00-.14) | 5.7e+10 | 6 |
+| transformer offline | 1.00 | 1.00 / 1.00 | 1.00 / 1.00 | .01 (.00-.06) | 1.1e+12 | 171 |
+| transformer online | 1.00 (.98-1.00) | 1.00 / 1.00 | 1.00 / 1.00 | .00 | 5.7e+10 | 7 |
+
+Founder parity at the opt-out (W6), the harness on the snapshot against `v0930.json`: lives differing: 0 of 24.
+
+The full test suite from the branch (ruff, mypy and pytest as CI runs them): 4027 passed, 98 skipped, 1 xfailed, 109 warnings in 415.35s (0:06:55)
+
 
 - **W1 fails at the bar and reads the mechanism**: the phrase window raises held-out
   agreement over word by word on five founders of six (word by word .58 to .80; the phrase
@@ -328,6 +335,10 @@ The controls on the same founders (window twins at 3; mean over founders):
   the verb twins 4 of 6), and a window is both right at .90 on no founder.
 - **Lengths beyond the window** are lost at every window on every founder (W4, .00), as the
   first form predicts without weight sharing across positions.
+- **The controls** at the brain's parameter count say every panel the gates read at 0.90 or
+  above (held-out agreement 1.00, the window twins both right .90 to 1.00), online in 6 to 8
+  seconds at 5.7e10 multiply-accumulates, a sixteenth of the brain's work, and they fail the
+  held-out depths as the brain does (.00 to .09). Per #183 no reading here is for Cadence.
 
 A bounded negative at this size and life: the planning window's first form does what #257
 states, the verb settled with its agent inside one settle, and does not reach the bars on
