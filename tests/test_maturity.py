@@ -423,3 +423,14 @@ def test_the_torch_backend_measures_the_step_on_the_device(monkeypatch):
     host = life(cd.Brain.compose(6, 3, **settings), moments=60)
     assert brain.basal_ganglia.maturity.use == pytest.approx(host.basal_ganglia.maturity.use,
                                                              rel=1e-9)
+
+
+def test_maturity_is_exported_and_gates_the_place_records_alone():
+    assert cd.Maturity is Maturity and "Maturity" in cd.__all__
+    brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, memory_choice=True,
+                             memory_extinction=0.5)
+    assert brain.hippocampus.gate_noise is not None
+    episodic = brain._episodic
+    assert brain.context_memory is episodic.temporal and episodic.paid is not None
+    for store in (episodic.temporal, episodic.paid):
+        assert store.gate_noise is None and store.maturity is None

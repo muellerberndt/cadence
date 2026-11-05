@@ -9,7 +9,7 @@ keyword.
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
 | [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator` |
-| [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig` |
+| [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
 | [Recording](#record-every-settling-step) | `record_settlements` |
@@ -148,7 +148,7 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`. | [defaults](tune.md#defaults-and-expert-overrides) |
 | `observation_code(observations) -> (batch, code_width)` | The unit-length key every memory reads and writes; with a learned code, the code the observations settle to without a context. | [the observation code](senses.md#the-observation-code), [the learned code](senses.md#the-learned-code) |
 | `stimulus(observations, *, memory=True) -> drive` | The drive of a batch; with `memory` the trace, copy, history, recall and hippocampal reads are added, and the recall address is fixed for the moment. | [memory](memory.md) |
-| `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps and its options' maps (anchor, relative, slope), and a learned code's tables. | |
+| `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps and its options' maps (anchor, relative, slope), a learned code's tables, and with `maturity` its use (one) and the place records' noise scales (`gate_noise`, one per consolidated entry). | |
 | `copy.deepcopy(brain)` | An independent copy: every array, store, state and random generator copied, the immutable connectomes shared. |
 | `save(path, *, compressed=True) -> Path`, `Brain.load(path, *, backend="cpu", device=None, precision=None)` | The whole continuation, written atomically ([the format](#checkpoint-format)); `compressed=False` writes a plain archive, faster for a large brain. `Brain.load` refuses a learner-only file; `Learner.load` reads either. | [reset and save](start.md#reset-and-save) |
 
@@ -356,7 +356,7 @@ FastSynapses(pre, post, decay=1.0, rate=1.0, amplitude=1.0, normalize=False,
              replace=False, rule="hebb", separator=None, writes=0)
 SynapticMemory(pre, post, decay=0.9, rate=1.0, amplitude=1.0, normalize=False,
                replace=False, rule="delta", separator=None, writes=0,
-               consolidation=0.05)
+               consolidation=0.05, gate_noise=None, maturity=None)
 PatternSeparator(inputs, expansion, winners, seed=0, center=0.0, fan_in=0, cover=0)
 ```
 
@@ -368,7 +368,12 @@ write=None)`, `recall(key)`, `update(state, write=None, post=None)`, `read(drive
 shared across streams: `observe(..., *, salience=None, value_mask=None)`, `reset` keeps the
 consolidated synapses, `clear()` erases both, `salience_vector(salience, batch)` validates a
 salience; it refuses any `rule` but `"delta"`, a `consolidation` outside `[0, 1]` and a
-`separator` with nonzero `center`.
+`separator` with nonzero `center`. With both `gate_noise` (a nonnegative `(key_width, post)`
+array, each record's noise scale) and `maturity` (a `Maturity`) set, its writes are
+surprise-gated ([maturity](memory.md#maturity-and-surprise-gated-writes)); a composed brain
+with `maturity=True` sets them on its place records, shares its actor's `Maturity` with them and
+saves `gate_noise` with `arrays()`. `GATE_WIDTH` (2.0) and `GATE_RATE` (0.05) are the gate's
+constants.
 `PatternSeparator` codes keys by a fixed random projection keeping `winners` of `expansion`:
 `code(key, learn=False)`, `habituate(keys)`, `arrays()`, `channels`, `to_dict()`; it raises
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
@@ -502,6 +507,7 @@ or a learner at the projection-relative floor or fixed nudged phases. `/1` loads
 ActorCritic(learner, critic, config=None, seed=0)
 ActorCriticConfig(gamma=0.99, lam=0.9, eta=0.5, eta_bias=None, eta_critic=0.05,
                   dopamine_cap=1.0, eligibility_steps=None)
+Maturity(scale, recovery, use=0.0)
 ```
 
 The reward learner of a stream: a `Learner` whose outputs are the actions, a learned linear
@@ -519,6 +525,12 @@ given as `reward=` is the expert route and keeps them as given.
 | `probabilities(state, temperature=None, *, bias=None)`, `value(state)`, `value_of(drive)`, `settle(drive)` | Policy, critic value, a cold settle. |
 | `reset()`, `parameters()`, `to_dict()` | Clears cache, eligibility and salience; keeps learned parameters. |
 | `state`, `salience`, `memory`, `trace`, `trace_memory` | The latest free phase; per-sender salience weights; a memory with learned parameters (`Recall`) and its eligibility. |
+| `maturity` | The brain's `Maturity` with `maturity=True` ([reward](reward.md#maturity-opt-in)), else `None`: `learn` multiplies the synapse and bias steps by its `factor()` and adds the step applied to its `use`. |
+
+`Maturity` is the slow variable of a mature brain: `scale` and `recovery` (the `retune` settings
+`maturity_scale` and `maturity_recovery`) and `use`; `factor()` is `1 / (1 + (use / scale) **
+ORDER)` (`ORDER` 4.0), 0 beyond `use / scale` of `LIMIT` (1e76); `relax()` keeps `1 - 1 /
+recovery` of `use`; `to_dict()` is what a checkpoint saves.
 
 Construction warns when `eta_bias` exceeds a positive `eta`.
 

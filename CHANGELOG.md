@@ -15,7 +15,8 @@ store keeps what an outcome confirms and moves on a surprise. No count is kept; 
 and the store's noise scales are saved, loaded, kept by `grow` and `graft` and counted by
 `parameters()`; the scale and the recovery are `retune` settings. Checkpoints: a brain with
 maturity saves in the new format `cadence-brain/2`, which 0.93.1 and earlier refuse; every other
-brain saves `cadence-brain/1` as before. Off, the brain is the founder's to the bit. See
+brain saves `cadence-brain/1` as before. `Maturity` is exported from `cadence`. Off, the brain
+is the founder's to the bit. See
 [reward](docs/reward.md#maturity-opt-in) and
 [memory](docs/memory.md#maturity-and-surprise-gated-writes).
 

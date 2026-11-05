@@ -251,7 +251,9 @@ moves them. A record nobody writes keeps its value and its noise scale. A write 
 error leaves the floating-point range (an outcome near `1e154`) is refused with `ValueError`, as
 an overflowing record is, before anything changes.
 The noise scales are saved and loaded with the store and counted by `parameters()`; `clear()`
-erases them with the records.
+erases them with the records. The gate is the place records' alone: with `memory_choice` the
+context records (`brain.context_memory`) and the direct payments of `memory_extinction` write as
+without maturity.
 
 ## Learned weights and eligibility
 
