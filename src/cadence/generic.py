@@ -305,7 +305,8 @@ def _copy_identity(
     For motor neuron ``j`` of token ``tokens[j]``: the synapse from every head's ``recall``
     port at value coordinate ``offset + tokens[j]`` (the observation's own coordinates in the
     value) starts at ``recall_copy``, so the token the read delivers drives its own action; the
-    synapse from every ``next`` port at that coordinate starts at zero; and the synapse from
+    synapse from every ``next`` port at that coordinate starts at ``recall_copy_next`` (founder
+    zero), so a successor the read delivers drives its own action; and the synapse from
     sensory neuron ``tokens[j]`` starts at ``-recall_copy``, so a token the present
     observation already holds, the read's echo of the moment that addressed it, is not copied
     back. Every other synapse into the motor region from a read port, or from the sensory
@@ -345,6 +346,7 @@ def _copy_identity(
     copy = float(recalled["copy"])
     sign = np.where(pathway | ((heard[pre] >= 0) & (local_motor[post] >= 0)), 0.0, connectome.sign)
     sign[identity & reading] = copy
+    sign[identity & ~reading] = float(recalled.get("copy_next", 0.0))
     sign[echoes] = -copy
     if np.array_equal(sign, connectome.sign):
         return connectome
@@ -2798,9 +2800,9 @@ class Brain:
         founder None) declares per action the observation coordinate that is the same token
         (``-1`` for none; a brain without a code, or a learned code joined to the
         observation): the pathway then starts from each recall port as that identity at
-        ``recall_copy``, from each next port at zero, and from the sensory region as the
-        negative identity, so a token the read delivers drives its own action unless the
-        present observation already holds it.
+        ``recall_copy``, from each next port at ``recall_copy_next`` (construction, founder
+        0.0), and from the sensory region as the negative identity, so a token the read
+        delivers drives its own action unless the present observation already holds it.
         ``recall_action=True`` (construction, founder off) writes the executed command, one
         value per motor neuron, into every slot's key and value, read on ``<port>_action``
         regions whose synapses into the association start at zero; the address and position

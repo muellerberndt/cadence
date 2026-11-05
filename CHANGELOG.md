@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+- The recall memory's address and position lessons read a lesson's movement back through the
+  copy pathway as well (`recall_copy`; [#233](https://github.com/muellerberndt/cadence/issues/233),
+  [#173](https://github.com/muellerberndt/cadence/issues/173)). A lesson names the slots to read
+  by the movement it leaves on the read port's synapses; with the pathway those include the
+  synapses into the motor region, whose movement toward the taught answer names the slots that
+  hold it. Read back through the association alone, a brain whose read reaches the answer
+  directly named slots at random: with the pathway beside the positions recipe, look back taught
+  at 5 to 12 symbols and read at 24 to 60 answered 0.28 to 0.33 on three development founders
+  and 0.25 to 0.31 on five fresh founders of six, its position, anchored and slope maps at a
+  third, a quarter and a sixth of their norms without the pathway; with the readback it answers
+  0.99 to 1.00. A brain without the pathway is unchanged.
+- Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
+  copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
+  read delivers drives its own action, a successor never taught as an answer included. See
+  [memory](docs/memory.md#the-copy-pathway-opt-in).
+
 ## 0.94.0 — 2026-11-05
 
 One opt-in, maturity, for a brain that goes on learning after it has acquired a skill (#169,

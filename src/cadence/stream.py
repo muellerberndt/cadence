@@ -705,8 +705,10 @@ class Recall:
     a pathway the composition adds: plastic synapses from every head's read port into the
     motor region, ``copy`` their initial magnitude, learned by the settle's contrast as every
     synapse is. ``tokens`` declares, per motor neuron, the observation coordinate that is the
-    same token (``-1`` for none), and the pathway then starts as that identity. The memory
-    checks that the synapses are there; it reads and writes nothing of its own for them.
+    same token (``-1`` for none), and the pathway then starts as that identity from the recall
+    ports, and from the next ports at ``copy_next`` (an option, founder 0.0; a construction
+    setting). The memory checks that the synapses are there and reads the motor's movement back
+    through them in its lessons (``readback``); it writes nothing of its own for them.
 
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -739,6 +741,8 @@ class Recall:
     boundary: bool = False
     copy: float = 0.0
     tokens: tuple[int, ...] | None = None
+    # with ``tokens``: the identity's starting magnitude on the next ports (0.0: none)
+    copy_next: float = 0.0
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
     compete: bool = True
@@ -777,10 +781,10 @@ class Recall:
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when",
+        "relative", "slope", "when", "copy_next",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when")
+                            "action", "anchor", "relative", "slope", "when", "copy_next")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
     # the kinds of a head's maps beside its address map (``map_names``), in the order a
@@ -859,7 +863,7 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope",
+            "position_rate", "copy", "slope", "copy_next",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -979,6 +983,8 @@ class Recall:
         and names one coordinate per motor neuron within the event."""
         if self.tokens is not None and not self.copy:
             raise ValueError("tokens declare the copy pathway's identity and need copy above 0")
+        if self.copy_next and self.tokens is None:
+            raise ValueError("copy_next starts the next ports' identity and needs tokens")
         if not self.copy:
             return
         motor = self.connectome.populations.get("motor", ())
@@ -1118,6 +1124,23 @@ class Recall:
         # every head's slope maps ``(S_x, S_c, s)``, one number each; none without ``slope``
         self.slope_maps = self._zero_maps(self.heads if self.slope else 0)
         self._check_copy()
+        # with ``copy`` every head's copy synapses into the motor region, per port: their
+        # indices, and the value coordinate and the motor neuron of each; the address lesson
+        # reads the motor's movement back through them (``readback``)
+        self._copy_heads: list[tuple[Any, Any]] = []
+        self._motor_columns: Any = None
+        if self.copy:
+            synapses, value, motor = self.copy_synapses()
+            pre = np.asarray(self.connectome.pre)[synapses]
+            for recall, following in self._heads:
+                ports = []
+                for region in (recall, following):
+                    on = np.isin(pre, region)
+                    ports.append((synapses[on], value[on], motor[on]))
+                self._copy_heads.append((ports[0], ports[1]))
+            self._motor_columns = columns(
+                np.asarray(self.connectome.populations["motor"], dtype=np.int64)
+            )
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
         # every head's address and attention of the latest read (head 0's are ``last.address``
@@ -1749,13 +1772,14 @@ class Recall:
 
     # -- the write after the settle
 
-    def activity(self, state: BrainState) -> np.ndarray:
+    def activity(self, state: BrainState, cols: Any = None) -> np.ndarray:
         """The association region's settled activation as a host array, ``(batch,
-        association)``. A state on a torch device is sliced there, and only the slice comes
-        to the host."""
+        association)``, or that of the columns ``cols``. A state on a torch device is sliced
+        there, and only the slice comes to the host."""
         device = getattr(state, "device", None)
         s = device.get("s") if isinstance(device, dict) else None
-        cols = self._association_columns
+        if cols is None:
+            cols = self._association_columns
         if s is not None and hasattr(s, "device") and hasattr(s, "cpu"):
             if isinstance(cols, slice):
                 part = s[:, cols]
@@ -1915,18 +1939,31 @@ class Recall:
         return synapses, local_source[pre[synapses]], local_cortex[post[synapses]]
 
     def readback(
-        self, graph: NeuralGraph, region: str, movement: np.ndarray, head: int = 0
+        self,
+        graph: NeuralGraph,
+        region: str,
+        movement: np.ndarray,
+        head: int = 0,
+        motor: np.ndarray | None = None,
     ) -> np.ndarray:
         """``movement @ W.T`` for the one-way synapses of the ``"recall"`` or ``"next"``
         region of head ``head``'s port into the association region: per source neuron, the
         sum over its synapses of effective weight times the movement of its association
-        neuron."""
+        neuron. With the copy pathway and the motor region's movement ``motor`` the port's
+        synapses into the motor region are read back as well, so a read whose content
+        reaches the answer directly names the slots that hold it."""
         recall_synapses, next_synapses = self._head_synapses[head]
         synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
         width = len(self._heads[head][0 if region == "recall" else 1])
         w = np.zeros((width, len(self.association)))
         np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
-        return np.asarray(movement @ w.T)
+        out = np.asarray(movement @ w.T)
+        if motor is None or not self._copy_heads:
+            return out
+        synapses, rows, cols = self._copy_heads[head][0 if region == "recall" else 1]
+        w = np.zeros((width, motor.shape[1]))
+        np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+        return np.asarray(out + motor @ w.T)
 
     def learn(self, graph: NeuralGraph, learned: LearnedState) -> dict[str, float]:
         """The address lesson after a lesson whose phases are ``learned``, at its taught rows,
@@ -1966,13 +2003,14 @@ class Recall:
             learned.free.activation if learned.opposite is None else learned.opposite.activation
         )
         movement = (plus - minus)[:, self.association]
+        motor = (plus - minus)[:, self._motor_columns] if self._copy_heads else None
         reports = []
         moved_positions = refused_positions = 0
         # the attention every competing head read with, taken before any head's lesson steps
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
-            d_value = self.readback(graph, "recall", movement, h)
-            d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_value = self.readback(graph, "recall", movement, h, motor)
+            d_next = self.readback(graph, "next", movement, h, motor) if self.next else None
             head_moment = moment._replace(address=self._head_address(moment, h))
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
@@ -2187,6 +2225,11 @@ class Recall:
         if not (self.address_reward or positions):
             return None
         movement = self.activity(plus) - self.activity(minus)
+        motor = (
+            self.activity(plus, self._motor_columns) - self.activity(minus, self._motor_columns)
+            if self._copy_heads
+            else None
+        )
         batch, width, columns_ = len(movement), self.map_width, self.address_width
         count = self.position_buckets
         out = np.zeros((batch, width + len(self.association) + 1, self.reward_columns))
@@ -2195,8 +2238,8 @@ class Recall:
             return out
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
-            d_value = self.readback(graph, "recall", movement, h)
-            d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_value = self.readback(graph, "recall", movement, h, motor)
+            d_next = self.readback(graph, "next", movement, h, motor) if self.next else None
             head_moment = moment._replace(address=self._head_address(moment, h))
             found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
             if found is None:

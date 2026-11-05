@@ -167,3 +167,122 @@ def test_a_fixed_code_and_a_custom_anatomy_without_the_synapses_are_refused():
         cd.Brain(founder.connectome, recall=True, recall_copy=1.0, episodic=False)
     with pytest.raises(ValueError, match="construction setting"):
         composed(recall_copy=1.0).retune(recall_copy=2.0)
+
+
+def test_the_read_lesson_reads_the_motor_movement_back_through_the_pathway():
+    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_heads=2)
+    recall, graph = brain.recall, brain.learner.brain
+    rng = np.random.default_rng(0)
+    association = rng.normal(size=(1, len(recall.association)))
+    motor = rng.normal(size=(1, TOKENS))
+    synapses, value, post = recall.copy_synapses()
+    pre = np.asarray(brain.connectome.pre)[synapses]
+    weight = graph._gain_pre[synapses] * graph.efficacy[synapses]  # noqa: SLF001
+    for h, (recall_port, next_port) in enumerate(recall._heads):  # noqa: SLF001
+        for name, port in (("recall", recall_port), ("next", next_port)):
+            alone = recall.readback(graph, name, association, h)
+            both = recall.readback(graph, name, association, h, motor)
+            on = np.isin(pre, port)
+            expected = np.zeros((len(port), TOKENS))
+            np.add.at(expected, (value[on], post[on]), weight[on])
+            np.testing.assert_allclose(both, alone + motor @ expected.T)
+    founder = composed()  # no pathway: the motor's movement reads nothing back
+    association = rng.normal(size=(1, len(founder.recall.association)))
+    np.testing.assert_array_equal(
+        founder.recall.readback(founder.learner.brain, "recall", association, 0, motor),
+        founder.recall.readback(founder.learner.brain, "recall", association, 0),
+    )
+
+
+def test_the_read_lesson_steps_toward_the_slot_whose_token_the_answer_is():
+    # two tokens heard, a question whose answer is the second: the copy pathway carries the
+    # answer from the read to the motor, and the read's lesson reads that movement back, so
+    # the address map moves toward the key of the slot that holds the answer
+    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS))
+    brain.act(event(HEAR, 1), greedy=True)
+    brain.act(event(NOISE, 4), greedy=True)
+    before = [np.array(m, copy=True) for m in brain.recall.head_maps[0]]
+    brain.lesson(event(HEAR, ASK), [4])
+    bias = brain.recall.head_maps[0][2] - before[2]
+    assert bias[4] > 0.0 and bias[4] > bias[1]
+
+
+def test_copy_next_starts_the_next_ports_identity_and_is_described_where_on():
+    plain = composed(recall_copy=2.0, recall_tokens=range(TOKENS))
+    zero = composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_copy_next=0.0)
+    assert zero.connectome.digest() == plain.connectome.digest()  # at 0.0 the brain as before
+    np.testing.assert_array_equal(zero.brain.efficacy, plain.brain.efficacy)
+    assert zero.describe() == plain.describe()
+    assert "recall_copy_next" not in plain.describe()["genes"]
+    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_copy_next=1.5,
+                     recall_heads=2)
+    for (port, _h), value, motor, weight, _ in pathway(brain):
+        expected = (2.0 if port == "recall" else 1.5) if value == motor else 0.0
+        assert weight == expected, (port, value, motor)
+    assert brain.describe()["genes"]["recall_copy_next"] == 1.5
+    assert brain.recall.copy_next == 1.5
+    assert brain.parameters() == composed(
+        recall_copy=2.0, recall_tokens=range(TOKENS), recall_heads=2
+    ).parameters()  # no state of its own: the synapses were there
+
+
+def test_a_newborn_with_copy_next_answers_a_successor_it_was_never_taught():
+    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_copy_next=2.0)
+    without = composed(recall_copy=2.0, recall_tokens=range(TOKENS))
+    order = [3, 0, 5, 1, 4]
+    right = {"with": 0, "without": 0}
+    for name, b in (("with", brain), ("without", without)):
+        for k in range(len(order) - 1):
+            b.reset()
+            for token in order:
+                b.act(event(HEAR, token), greedy=True)
+            # asked for the token after ``order[k]``: the recall port holds the cue's own token,
+            # which the echo removes, and the next port the successor
+            right[name] += int(b.act(event(ASK, order[k]), greedy=True)[0] == order[k + 1])
+    assert right["with"] == len(order) - 1
+    assert right["without"] < right["with"]
+
+
+def test_copy_next_survives_a_checkpoint_and_is_a_construction_setting(tmp_path):
+    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_copy_next=1.0)
+    brain.act(event(HEAR, 2), greedy=True)
+    brain.lesson(event(ASK, 2), [5])
+    twin = cd.Brain.load(brain.save(tmp_path / "next.npz"))
+    assert twin.recall.copy_next == 1.0 and twin.describe() == brain.describe()
+    np.testing.assert_array_equal(twin.brain.efficacy, brain.brain.efficacy)
+    for b in (brain, twin):
+        b.lesson(event(ASK, 2), [1])
+    np.testing.assert_array_equal(twin.brain.efficacy, brain.brain.efficacy)
+    with pytest.raises(ValueError, match="construction setting"):
+        brain.retune(recall_copy_next=2.0)
+    with pytest.raises(ValueError, match="needs tokens"):
+        composed(recall_copy=2.0, recall_copy_next=1.0)
+    with pytest.raises(ValueError, match="copy_next"):
+        composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_copy_next=-1.0)
+
+
+def test_grow_and_graft_keep_copy_next():
+    settings = dict(recall=True, recall_copy=2.0, recall_tokens=[0, 1, 2, 3],
+                    recall_copy_next=2.0, episodic=False)
+    brain = cd.Brain.compose(6, 4, seed=1, modules=(16,), **settings)
+    rng = np.random.default_rng(0)
+    for _ in range(4):
+        brain.step(rng.random((3, 6)), teacher=rng.integers(0, 4, size=3))
+    grown = brain.grow(history_decays=(0.5,))
+    assert grown.describe()["genes"]["recall_copy_next"] == 2.0
+    synapses, value, motor = grown.recall.copy_synapses()
+    nexts = np.isin(np.asarray(grown.connectome.pre)[synapses],
+                    grown.connectome.populations["next"])
+    old = dict(zip(zip(value[nexts].tolist(), motor[nexts].tolist(), strict=True),
+                   grown.brain.efficacy[synapses[nexts]].tolist(), strict=True))
+    synapses0, value0, motor0 = brain.recall.copy_synapses()
+    nexts0 = np.isin(np.asarray(brain.connectome.pre)[synapses0],
+                     brain.connectome.populations["next"])
+    for v, m, w in zip(value0[nexts0], motor0[nexts0], brain.brain.efficacy[synapses0[nexts0]],
+                       strict=True):
+        assert old[(int(v), int(m))] == w  # the trained next-port synapses carried
+    donor = cd.Brain.compose(6, 4, seed=7, modules=(16,), recall=True, recall_copy=2.0,
+                             episodic=False)
+    grafted = brain.graft(donor, ["recall", "next", "motor", "association"])
+    assert grafted.describe()["genes"]["recall_copy_next"] == 2.0
+    np.testing.assert_array_equal(grafted.connectome.sign, brain.connectome.sign)

@@ -1038,6 +1038,22 @@ for token in range(TOKENS):                          # no lesson: every token is
   a succession. The pathway starts from the recall port, the token the read delivers, and the
   next port's gain is learned. Started equal, the two ports would drive the heard token and the
   distractor that followed it alike.
+- **Successors (`recall_copy_next`, opt-in, founder 0.0).** Where the answers are what followed
+  the moment the read finds (induction, a copied sequence, a periodic continuation), start the
+  next ports' identity at that magnitude as well: the successor the read delivers then drives
+  its own action, a successor never taught included, and the echo removes the recall port's
+  copy of the present token. It is a construction setting and needs `recall_tokens`. In the
+  [sequence battery](../benchmarks/sequence/README.md), induction whose successors 6 and 7 are
+  never taught answers them at 1.00 with `recall_copy_next=2.0`, against 0.00 without.
+- **The read's lesson reads the pathway back.** The address and position lessons name the slots
+  to read by the movement a lesson leaves on the read port's synapses. With the pathway those
+  are the synapses into the association and those into the motor region, so the motor's
+  movement toward the taught answer, read back through the pathway, names the slots that hold
+  that answer. Read back through the association alone, a read whose content reaches the answer
+  directly named slots at random and its position maps barely moved: in look back taught at 5
+  to 12 symbols the position, anchored and slope maps of a brain with the pathway reached a
+  third, a quarter and a sixth of their norms without it, and the cues were answered at 0.31 to
+  0.39 on two founders of three.
 
 In the [copy-tokens benchmark](../benchmarks/attention/copy_tokens.py) a token is heard, two
 other tokens follow, and a cue asks for the heard token back; tokens 0 to 4 are taught as
