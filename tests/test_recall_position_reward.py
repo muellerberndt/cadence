@@ -105,3 +105,16 @@ def test_the_eligibility_holds_the_event_rows_alone(options):
     contrast = first_contrast(**options)
     assert contrast.shape[1] == 4 + 8 + 1
     assert contrast[:, :4].any() and not contrast[:, 4:].any()
+
+
+def test_the_reward_step_does_not_follow_the_lessons_rate():
+    # the same life with the table taught by lessons at the founder's rate and at a tenth of
+    # it: no lesson is given, so reward alone moves the maps, and it moves them alike
+    founder_rate = life(1.0, anchor=True, recall_position_rate=0.1)
+    slow_table = life(1.0, anchor=True, recall_position_rate=0.01)
+    assert cd.Recall.REWARD_RATE == cd.Recall.options()["position_rate"] == 0.1
+    for a, b in zip(founder_rate.recall.position_maps, slow_table.recall.position_maps,
+                    strict=True):
+        for m, n in zip(a, b, strict=True):
+            np.testing.assert_array_equal(m, n)
+    assert moved(slow_table.recall.position_maps)

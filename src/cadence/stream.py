@@ -605,9 +605,10 @@ class Recall:
     maps as well, and with ``anchor`` the anchored maps: at each sampled act the step the
     position lesson would take at each row, were the act's action the lesson's label (the
     cross-entropy gradient of the head's terms toward the slots the act's contrast names, on
-    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at
-    ``position_rate`` bounded by the event's energy), joins the eligibility the actor traces,
-    and a unit of dopamine moves the maps by ``position_reward`` times one lesson's step. Which
+    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at the
+    founder's rate ``REWARD_RATE`` (0.1) bounded by the event's energy, whatever
+    ``position_rate`` the lessons take), joins the eligibility the actor traces, and a unit of
+    dopamine moves the maps by ``position_reward`` times that step. Which
     slot a head reads by its age (the first told or the latest) is then reachable from reward
     alone.
 
@@ -786,6 +787,9 @@ class Recall:
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
                             "action", "anchor", "relative", "slope", "when", "copy_next")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
+    # the position lesson's rate a unit of dopamine steps the position maps at, times
+    # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
+    REWARD_RATE = 0.1
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
     # the kinds of a head's maps beside its address map (``map_names``), in the order a
     # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
@@ -2267,8 +2271,10 @@ class Recall:
                 # the position lesson's step at each row, as ``_position_step`` takes it, on
                 # the event's rows
                 gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
-                rate = self.position_rate
-                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
+                # at the founder's lesson rate, whatever rate the lessons take: a slow table
+                # taught by lessons does not slow what reward teaches
+                rate = self.REWARD_RATE
+                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None]
                 blocks = [(self.buckets()[None, :], count)]
                 if self.anchor_maps:
                     blocks.append((self.anchored_buckets(index), count + 1))

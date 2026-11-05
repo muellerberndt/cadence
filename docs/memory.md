@@ -813,7 +813,10 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
 - **Trained by reward on request.** At `recall_position_reward` above zero, each sampled act
   keeps the step the position lesson would take, were the act's action the lesson's label, in
   the eligibility the actor traces, and dopamine steps the maps by `recall_position_reward`
-  times one lesson's step (with the anchor, its maps too). The reward step moves only the rows
+  times one lesson's step at the founder's rate of 0.1, whatever `recall_position_rate` the
+  lessons take (with the anchor, its maps too): the recipe's slow table (0.01) left the reward
+  step a tenth as large, and the read learned order from reward on 3 of 6 development founders
+  against 5 of 6 at the founder's step. The reward step moves only the rows
   of the event heard, in the position, anchored and address maps alike, each row's rate bounded
   by the event's energy; the rows of the cortex of the moment before and the bias, which every
   moment shares, learn from lessons alone. Stepped by reward, those shared rows would carry one

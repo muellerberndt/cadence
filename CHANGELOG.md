@@ -23,6 +23,13 @@
   row), and lessons at every row collapse the token answers of induction, copying and two hops,
   which stay judged by surprise. A token list may now declare no token at all
   (`[-1] * actions`); the pathway then starts at zero. Brains without tokens are unchanged.
+- Reward steps the recall read's position maps (`recall_position_reward`) by a lesson's step at
+  the founder's position rate, 0.1, whatever `recall_position_rate` the lessons take. Beside the
+  positions recipe's slow table (0.01) the reward step was a tenth as large: in the ordered recall
+  world under `live` the composed sequence brain learned order on 3 of 6 development founders,
+  and on 5 of 6 at the founder's step (12 of 12 fresh founders with the step restored by
+  setting). Brains at the founder's position rate, and brains without the reward read, are
+  unchanged.
 - Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
   copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
   read delivers drives its own action, a successor never taught as an answer included. See
