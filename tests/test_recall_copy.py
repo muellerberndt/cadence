@@ -148,7 +148,6 @@ def test_a_joined_learned_code_takes_tokens_after_its_units():
         (dict(recall_copy=-1.0), "copy"),
         (dict(recall_copy=1.0, recall_tokens=range(TOKENS - 1)), "one observation coordinate per"),
         (dict(recall_copy=1.0, recall_tokens=[INPUTS] * TOKENS), "below"),
-        (dict(recall_copy=1.0, recall_tokens=[-1] * TOKENS), "at least one"),
         (dict(recall_copy=1.0, recall_tokens=[0.5] * TOKENS), "integer"),
         (dict(recall_copy=1.0, recall_tokens="abc"), "sequence"),
     ],
@@ -286,3 +285,30 @@ def test_grow_and_graft_keep_copy_next():
     grafted = brain.graft(donor, ["recall", "next", "motor", "association"])
     assert grafted.describe()["genes"]["recall_copy_next"] == 2.0
     np.testing.assert_array_equal(grafted.connectome.sign, brain.connectome.sign)
+
+
+def test_a_lesson_whose_answer_is_no_token_leaves_the_read_as_it_was():
+    # actions 0 to 3 are tokens, 4 and 5 are not (a yes and a no): the read's lessons take
+    # their target from the slots' contents, which hold no yes or no
+    tokens = [0, 1, 2, 3, -1, -1]
+    brain = composed(recall_copy=2.0, recall_tokens=tokens)
+    brain.act(event(HEAR, 1), greedy=True)
+    brain.act(event(NOISE, 3), greedy=True)
+    before = [np.array(m, copy=True) for m in brain.recall.head_maps[0]]
+    report = brain.lesson(event(HEAR, ASK), [5])
+    assert report["address_rows"] == 0.0
+    for a, b in zip(before, brain.recall.head_maps[0], strict=True):
+        np.testing.assert_array_equal(a, b)
+    report = brain.lesson(event(HEAR, ASK), [3])  # a token: the read learns
+    assert report["address_rows"] == 1.0
+    assert any(not np.array_equal(a, b)
+               for a, b in zip(before, brain.recall.head_maps[0], strict=True))
+    # every action declared no token: the pathway starts at zero and no lesson moves the read
+    none = composed(recall_copy=2.0, recall_tokens=[-1] * TOKENS)
+    assert not any(weight for *_, weight, _ in pathway(none))
+    none.act(event(HEAR, 1), greedy=True)
+    assert none.lesson(event(HEAR, ASK), [2])["address_rows"] == 0.0
+    # without tokens every taught row teaches the read, as before
+    plain = composed(recall_copy=2.0)
+    plain.act(event(HEAR, 1), greedy=True)
+    assert plain.lesson(event(HEAR, ASK), [5])["address_rows"] == 1.0

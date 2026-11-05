@@ -13,6 +13,12 @@
   and 0.25 to 0.31 on five fresh founders of six, its position, anchored and slope maps at a
   third, a quarter and a sixth of their norms without the pathway; with the readback it answers
   0.99 to 1.00. A brain without the pathway is unchanged.
+- With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
+  recall read's address and position maps as they are: the read's lessons take their target
+  from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no
+  lesson pulled the read off the items asked about, and "was A told before B?" stayed at 0.51
+  to 0.65 on development founders. A token list may now declare no token at all
+  (`[-1] * actions`); the pathway then starts at zero. Brains without tokens are unchanged.
 - Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
   copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
   read delivers drives its own action, a successor never taught as an answer included. See

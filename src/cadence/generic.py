@@ -3935,6 +3935,19 @@ class Brain:
         with self._code_attempt():
             return self._teach(x, labels)
 
+    def _token_rows(self, labels: np.ndarray) -> np.ndarray | None:
+        """Per row, whether a label names an action that is a token (``recall_tokens``), or
+        None for a brain without declared tokens. With several output slots a row is a token
+        row where any slot's label is one."""
+        recall = self.recall
+        if recall is None or recall.tokens is None:
+            return None
+        tokens = np.asarray(recall.tokens) >= 0
+        sizes = np.asarray(self.learner.slot_sizes)
+        starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+        chosen = np.asarray(labels, dtype=np.int64).reshape(len(labels), -1) + starts[None, :]
+        return np.asarray(tokens[chosen].any(axis=1))
+
     def _teach(
         self, x: np.ndarray, labels: np.ndarray, *, replayed: bool = False
     ) -> dict[str, float]:
@@ -3970,8 +3983,11 @@ class Brain:
             self.last_learning["demonstrations"] = 0.0
             raise
         if self.recall is not None:
-            # the address lesson: the slots scored against the lesson's movement step the map
-            teaching.update(self.recall.learn(self.learner.brain, lesson))
+            # the address lesson: the slots scored against the lesson's movement step the map,
+            # with declared tokens at the rows whose answer is one
+            teaching.update(
+                self.recall.learn(self.learner.brain, lesson, self._token_rows(labels))
+            )
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )

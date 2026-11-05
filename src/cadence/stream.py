@@ -912,8 +912,6 @@ class Recall:
                         "has none"
                     )
                 out.append(int(item))
-            if not any(item >= 0 for item in out):
-                raise ValueError("tokens must name at least one observation coordinate")
             return tuple(out)
         raise TypeError(f"unknown recall setting: {name!r}")
 
@@ -1965,9 +1963,14 @@ class Recall:
         np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
         return np.asarray(out + motor @ w.T)
 
-    def learn(self, graph: NeuralGraph, learned: LearnedState) -> dict[str, float]:
+    def learn(
+        self, graph: NeuralGraph, learned: LearnedState, content: np.ndarray | None = None
+    ) -> dict[str, float]:
         """The address lesson after a lesson whose phases are ``learned``, at its taught rows,
         through the synapses of ``graph`` (the learner's brain after the lesson's update).
+        ``content`` (a boolean per row, from the brain with ``tokens``) keeps the rows whose
+        answer is a token a slot can hold: the lesson takes its target from the slots'
+        contents, and an answer that is no token (yes or no, a count) names none of them.
         Reads the moment the lesson's drive addressed (``stimulate``); returns how many rows
         moved, the mean absolute error the step corrects before it (``address_error``, the
         addresses' error ``K* - q``), and how many rows a refused step left as they were
@@ -1996,6 +1999,8 @@ class Recall:
             if taught is None
             else np.flatnonzero(np.asarray(taught, dtype=bool))
         )
+        if content is not None:
+            rows = rows[np.asarray(content, dtype=bool)[rows]]
         if not self.slots or not len(rows) or self.streams != len(moment.address):
             return quiet
         plus = np.atleast_2d(learned.nudged.activation)
