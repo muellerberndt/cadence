@@ -238,9 +238,9 @@ each writing stream's `F` alike, is multiplied on each action's column by a gain
 writing stream moves the noise of the records its key reads toward its squared error:
 
 ```text
-gain = 1 - (1 - m) (1 - g)
-g    = mean over the writing streams that observe the action of max(0, 1 - 2 sqrt(k^2 @ R) / |e|)
-R   += 0.05 * outer(k^2 / max(k^2), e^2 - R)       # each writing stream, its observed actions
+gain     = 1 - (1 - m) (1 - g)
+g        = mean over the writing streams that observe the action of max(0, 1 - 2 sqrt(k^2 @ R) / |e|)
+R[i, a] += 0.05 * k_i^2 / max(k^2) * (e_a^2 - R[i, a])   # each writing stream, its observed actions a
 ```
 
 where `k` is a stream's key, `e = v - k @ (C + F)` its error on the action against its read
