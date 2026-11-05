@@ -180,11 +180,11 @@ their shape. Keep row identities fixed until `reset()`.
 
 ### Checkpoint format
 
-`Brain.save` writes `cadence-brain/1`, one format whatever the brain holds, except that a brain
-with maturity ([reward](reward.md#maturity-opt-in)) writes `cadence-brain/2`, which 0.93.1 and
-earlier refuse: the same members with the maturity (`scale`, `recovery`, `use`) under `maturity`
-in the metadata and the store's noise scales (`memories/hippocampus/gate_noise`). A file of
-either format carrying the other's maturity is refused.
+`Brain.save` writes `cadence-brain/1`. A brain with maturity ([reward](reward.md#maturity-opt-in))
+writes `cadence-brain/2`, which 0.93.1 and earlier refuse: the same members, with the maturity
+(`scale`, `recovery`, `use`) under `maturity` in the metadata and the store's noise scales
+(`memories/hippocampus/gate_noise`). `Brain.load` refuses a `cadence-brain/1` file with a
+maturity and a `cadence-brain/2` file without one.
 
 | Members | What they hold |
 | --- | --- |
@@ -196,7 +196,7 @@ either format carrying the other's maturity is refused.
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
 | `memories/history/` | the heard history's `trace` |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
-| `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator |
+| `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
 `Brain.load` also reads the earlier formats `cadence-generic/1` to `/10`; a retired setting
@@ -530,7 +530,8 @@ given as `reward=` is the expert route and keeps them as given.
 `Maturity` is the slow variable of a mature brain: `scale` and `recovery` (the `retune` settings
 `maturity_scale` and `maturity_recovery`) and `use`, at most `LIMIT` (1e64, where the factor's
 power stays finite at every scale); `factor()` is `1 / (1 + (use / scale) ** ORDER)` (`ORDER`
-4.0); `relax()` keeps `1 - 1 / recovery` of `use`; `to_dict()` is what a checkpoint saves.
+4.0); `relax()` keeps `1 - 1 / recovery` of `use`; `to_dict()` is what a checkpoint saves. The
+class validates nothing itself: `compose`, `retune` and `Brain.load` validate its fields.
 
 Construction warns when `eta_bias` exceeds a positive `eta`.
 
