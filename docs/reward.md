@@ -109,8 +109,9 @@ exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
 `Brain.compose(..., maturity=True)` gives the brain one slow variable, the use of its
 plasticity. Each actor update adds its applied magnitude in the brain's own step units per
-synapse, `use += sum |dw| / (eta N)`; every moment of life (`live`, `step`, or `learn` called on
-its own) keeps `1 - 1 / maturity_recovery` of it. The step factor
+synapse, `use += sum |dw| / (eta N)`; every accepted moment of life (`live`, `step`, or `learn`
+called on its own) keeps `1 - 1 / maturity_recovery` of it. A refused moment changes neither the
+use nor the store's records and noise scales. The step factor
 
 ```text
 m = 1 / (1 + (use / maturity_scale) ** 4)

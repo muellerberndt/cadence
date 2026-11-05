@@ -165,3 +165,71 @@ def test_grow_and_graft_keep_the_maturity():
     grafted = brain.graft(donor, ["sensory", "association", "motor"])
     assert grafted.basal_ganglia.maturity == brain.basal_ganglia.maturity
     assert np.array_equal(grafted.hippocampus.gate_noise, brain.hippocampus.gate_noise)
+
+
+def stepped(brain, moments=40, seed=0):
+    """A short life through ``step``: random binary inputs, a reward on half the moments."""
+    rng = np.random.default_rng(seed)
+    brain.step(np.ones((1, 6)))
+    for _ in range(moments):
+        brain.step((rng.random((1, 6)) < 0.4).astype(float),
+                   reward=np.array([float(rng.random() < 0.5)]))
+    return brain
+
+
+def held(brain):
+    """Everything a moment of a mature brain can change: the store, the actor, the use."""
+    memory = brain.hippocampus
+    return {
+        **{name: np.array(getattr(memory, name), copy=True)
+           for name in ("consolidated", "strength", "mass", "gate_noise")},
+        "efficacy": np.array(brain.brain.efficacy, copy=True),
+        "use": brain.basal_ganglia.maturity.use,
+    }
+
+
+def assert_held(brain, before):
+    for name, value in held(brain).items():
+        assert np.array_equal(value, before[name]), name
+
+
+def test_a_refused_moment_changes_nothing(monkeypatch):
+    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05),
+                 moments=50)
+    before = held(brain)
+    with pytest.raises(ValueError, match="6 values per row"):
+        brain.live(np.zeros((1, 7)))
+    assert_held(brain, before)
+    brain = stepped(cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=0.05))
+    before = held(brain)
+    with pytest.raises(ValueError):
+        brain.step(np.full((1, 6), np.nan))
+    assert_held(brain, before)
+    # a learn the actor refuses after the store's write: the store and its noise restored
+    brain.step(np.ones((1, 6)))
+    before = held(brain)
+    twin = copy.deepcopy(brain)
+    twin.learn(np.array([1.0]), np.array([False]), np.ones((1, 6)))
+    assert not np.array_equal(twin.hippocampus.gate_noise, before["gate_noise"])
+
+    def refused(*args, **kwargs):
+        raise ValueError("refused update")
+
+    monkeypatch.setattr(brain.basal_ganglia, "_learn", refused)
+    with pytest.raises(ValueError, match="refused update"):
+        brain.learn(np.array([1.0]), np.array([False]), np.ones((1, 6)))
+    assert_held(brain, before)
+
+
+def test_a_refused_store_write_keeps_the_noise_scales():
+    memory = SynapticMemory(np.arange(2), np.arange(2), consolidation=1.0, rate=1.0)
+    memory.consolidated = np.full((2, 2), 1.5e308)
+    memory.reset(1)
+    memory.gate_noise = np.full(memory.consolidated.shape, 0.01)
+    memory.maturity = Maturity(scale=1.0, recovery=1e9, use=1e6)
+    key, mask = np.array([[1.0, 0.0]]), np.array([[True, False]])
+    before = {name: value.copy() for name, value in memory.arrays().items()}
+    with pytest.raises(ValueError, match="overflowed"):
+        memory.observe(key, np.array([[-1.5e308, 0.0]]), value_mask=mask)
+    for name, value in memory.arrays().items():
+        assert np.array_equal(value, before[name]), name

@@ -142,8 +142,9 @@ class SynapticMemory(FastSynapses):
         rate = self.consolidation + np.minimum(1.0, self.consolidation * salience[rows])
         rate = np.minimum(1.0, rate)
         error = (value[rows] - cue @ self.consolidated) * mask
+        noise = None
         if self.gate_noise is not None and self.maturity is not None:
-            gain = self._gate(cue, value[rows], previous[rows], mask)
+            gain, noise = self._gate(cue, value[rows], previous[rows], mask)
             base = strength
             change = np.einsum("b,bi,bj->ij", rate, cue, error) / len(rows)
             strength = strength + change
@@ -168,15 +169,18 @@ class SynapticMemory(FastSynapses):
             raise ValueError("synaptic update overflowed; scale the observed values")
         mass[rows] += self.rate
         self.consolidated, self.strength, self.mass = consolidated, strength, mass
+        if noise is not None:
+            self.gate_noise = noise
         self.writes += len(rows)
 
     def _gate(
         self, cue: np.ndarray, value: np.ndarray, previous: np.ndarray, mask: np.ndarray
-    ) -> np.ndarray:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """Each writing row's gain per action (the surprise gate engaged by maturity), and
-        the records' noise scales moved toward the rows' squared errors."""
-        noise = self.gate_noise
-        assert noise is not None
+        the records' noise scales moved toward the rows' squared errors: a new array, which
+        the write installs with the records it accepts."""
+        assert self.gate_noise is not None
+        noise = self.gate_noise.copy()
         strength = 1.0 - self.maturity.factor()
         error = value - np.einsum("bi,bij->bj", cue, previous)
         square = cue * cue
@@ -191,7 +195,7 @@ class SynapticMemory(FastSynapses):
             noise[:, seen] += self.GATE_RATE * weight[row][:, None] * (
                 error[row, seen][None, :] ** 2 - noise[:, seen]
             )
-        return gain
+        return gain, noise
 
     def to_dict(self) -> dict[str, float | int | str]:
         gate = {} if self.gate_noise is None else {"surprise_gate": True}

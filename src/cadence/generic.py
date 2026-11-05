@@ -167,7 +167,7 @@ def _operation(method: _Operation) -> _Operation:
 
 def _moment(method: _Operation) -> _Operation:
     """A moment of life (``live``, ``step``, or ``learn`` called on its own): a mature brain's
-    use relaxes once when the outermost of them returns."""
+    use relaxes once when the outermost of them returns; a refused moment leaves it."""
 
     @wraps(method)
     def lived(self: Brain, *args: Any, **kwargs: Any) -> Any:
@@ -176,11 +176,12 @@ def _moment(method: _Operation) -> _Operation:
             return method(self, *args, **kwargs)
         self._moment_depth += 1
         try:
-            return method(self, *args, **kwargs)
+            result = method(self, *args, **kwargs)
         finally:
             self._moment_depth -= 1
-            if self._moment_depth == 0:
-                maturity.relax()
+        if self._moment_depth == 0:
+            maturity.relax()
+        return result
 
     return cast(_Operation, lived)
 
@@ -4846,6 +4847,7 @@ class Brain:
         )
         if isinstance(memory, SynapticMemory):
             memory_values["consolidated"] = memory.consolidated
+            memory_values["gate_noise"] = memory.gate_noise  # with maturity, replaced as well
         separator_mean = (
             None if memory is None or memory.separator is None else memory.separator.mean
         )
