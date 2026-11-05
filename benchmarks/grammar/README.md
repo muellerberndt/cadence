@@ -171,88 +171,106 @@ persistence schedule takes about 20 minutes on one core, a founder life about 12
 life with its four forks about an hour; an online control about 8 minutes, an offline one up to
 40.
 
-## Readings on 0.94.0 (development, founder 0)
+## Readings on 0.94.0 (development, founders 0 to 2)
 
-Development founder 0, every arm and control, from frozen snapshots of this folder; these
-readings are to be taken again on the release that closes the Sequences stage of #173, with
-founders 1 and 2 beside them. Entries are whole sentences said exactly, closed loop (`roles`:
-both twins of a pair right).
+Development founders 0, 1 and 2, from frozen snapshots of this folder; the maturity readings
+are founder 0's. These readings are to be taken again on the release that closes the Sequences
+stage of #173. Entries are whole sentences said exactly, closed loop, as the mean over the
+founders with the least and greatest in brackets (`roles`: both twins of a pair right).
 
 **The first grammar after 4,000 lesson batches.**
 
 | Arm or control | `clause` | `clause_held` | `clause_long` | `roles` | `dyck` | `dyck_deep` | `path` | `path_long` | next word |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| `frozen` (the newborn) | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .05 |
-| `founder` | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .31 |
-| `recipe` (= `maturity`) | .78 | .66 | .00 | .50 | .28 | .00 | .31 | .00 | .95 |
-| LSTM, online | .97 | .94 | .11 | .81 | .89 | .00 | .22 | .00 | .99 |
-| transformer, online | 1.00 | 1.00 | .00 | 1.00 | .34 | .00 | .27 | .00 | 1.00 |
-| LSTM, offline (30 epochs) | 1.00 | .98 | .09 | 1.00 | 1.00 | .19 | .72 | .03 | 1.00 |
-| transformer, offline (17 epochs) | 1.00 | 1.00 | .00 | 1.00 | 1.00 | .00 | 1.00 | .00 | 1.00 |
+| the newborn | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .05 |
+| `founder` | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .00 | .23 |
+| `recipe` (= `maturity`) | .73 (.67-.78) | .61 (.50-.67) | .00 | .45 (.28-.56) | .27 (.12-.39) | .03 (.00-.09) | .27 (.20-.31) | .00 | .94 |
+| LSTM, online | .97 | .95 (.94-.97) | .07 (.03-.11) | .88 (.81-.91) | .74 (.55-.89) | .02 (.00-.06) | .27 (.22-.30) | .00 | .99 |
+| transformer, online | 1.00 | .99 (.98-1.00) | .00 | 1.00 | .35 (.25-.45) | .00 | .53 (.27-.95) | .00 | 1.00 |
+| LSTM, offline (30 epochs) | 1.00 | .99 (.98-1.00) | .11 (.09-.12) | .99 (.97-1.00) | 1.00 | .11 (.05-.19) | .75 (.72-.78) | .01 (.00-.03) | 1.00 |
+| transformer, offline (16 to 29 epochs) | 1.00 | 1.00 | .00 | 1.00 | 1.00 | .00 | 1.00 | .00 | 1.00 |
 
-- **The founder** says one fixed word sequence whatever the meaning (`[ ] [ ] ) end` after
-  the first grammar), as the composer's prime-independent collapse of
+- **The founder** says one fixed word sequence whatever the meaning (`[ ] [ ] ) end` on
+  founder 0 after the first grammar), the composer's prime-independent collapse of
   [#140](https://github.com/muellerberndt/cadence/issues/140).
-- **The recipe** says clauses at trained lengths (.91, .81 and .50 at zero, one and two
-  distractors), places the roles from the role flags in either order heard (.76 inverted, .80
-  canonical; roles right .95), and composes held-out combinations (.66; the subject is lost
-  first, .89 against .97). Its next-word accuracy (.95) is as high as the controls' while its
-  sentences are not: the component reading overstates the sentence.
-- **Agreement**: .84 (.95 without an attractor of the other number among the distractors, .65
-  with one); in a third of the verbs that follow a noun of the other number the verb agrees
-  with that noun (`attracted` .27 to .35). Every control agrees at 1.00 at trained lengths
-  (.61 to .98 at three and four distractors, the recipe .69).
+- **The recipe** says clauses at trained lengths (.89, .79 and .35 at zero, one and two
+  distractors), places the roles from the role flags in either order heard (.72 inverted, .75
+  canonical; roles right .96) and composes held-out combinations (.61). Its next-word accuracy
+  (.94) is near the controls' while its sentences are not: the component reading overstates
+  the sentence.
+- **Agreement**: .82 (.91 without an attractor of the other number among the distractors, .66
+  with one); of the verbs that follow a noun of the other number than the agent's, .19 to .44
+  agree with that noun (`attracted`). The controls agree at 1.00 at trained lengths and at .68
+  to .95 at three and four distractors (the recipe .49).
 - **Held-out lengths, depths and hops fail for every learner at this size**: three and four
-  distractors, Dyck depths four and five, three hops. The recipe says one or two distractor
-  phrases and then the verb (`owl near owl sees dogs end` for three).
-- **Two hops**: the recipe says one-hop paths .59 and two-hop .03; the converged transformer
+  distractors (means at most .11), Dyck depths four and five (at most .11), three hops (at
+  most .01).
+  The recipe says one or two distractor phrases and then the verb (`owl near owl sees dogs end`
+  for three).
+- **Two hops**: the recipe says one-hop paths .52 and two-hop .01; the converged transformer
   says both 1.00, so the information suffices at this size.
 
-**Where the sentence is lost** (`located`, the recall read's first head, teacher-forced).
-At trained lengths the read lands on the meaning's slot of every noun the clause says (the
-agent, the distractors and the patient, delivered .88 to 1.00, said .94 to 1.00). The verb at
-two distractors is delivered .94 and said .56: the read brings the verb's concept, the
-agent's number has to come from elsewhere, and agreement is lost at the readout. At three and
-four distractors the read loses its place among the distractor slots (the second distractor
-delivered .19, the third .06, the verb .03): the failure of held-out lengths is at the read.
+**Where the sentence is lost** (`located` on the saved brains after the first grammar, the
+recall read's first head, teacher-forced; delivered / said):
 
-**The context.** Twins that share their recent words and differ in an earlier part:
+| Word | Delivered | Said | Said when delivered |
+| --- | --- | --- | --- |
+| clause nouns (agent, distractors, patient), zero to two distractors | .92 to 1.00 | .75 to 1.00 | .78 to 1.00 |
+| the verb, zero / one / two distractors | .90 / 1.00 / .98 | .91 / .88 / .60 | .90 / .88 / .62 |
+| the second, third distractor at three distractors | .36, .35 | .22, .17 | .20, .23 |
+| the verb at three / four distractors | .01 / .19 | .23 / .07 | .00 / .13 |
+| a Dyck close, depth two / three | .47 / .33 | .97 / .91 | 1.00 / 1.00 |
+| a Dyck close, depth four / five | .12 / .09 | .54 / .44 | .89 / .94 |
+| a path's hop, one hop / two hops / three hops | .47 / .25 / .20 to .26 | .58 / .27 to .39 / .27 to .28 | .74 / .41 to .61 / .70 to .81 |
+
+At trained lengths the read lands on the meaning's slot of every noun the clause says and the
+brain says it. The verb at two distractors is delivered .98 and said .60: the read brings the
+verb's concept, the agent's number has to come from elsewhere, and agreement is lost at the
+readout. At three and four distractors the read loses its place among the distractor slots and
+the verb is no longer delivered: the failure of held-out lengths is at the read. A path's hop
+is mostly said when it is delivered and mostly not delivered: two-hop composition fails at the
+read's selection of the fact, the first failure of the 20 October facts world.
+
+**The context.** Twins that share their recent words and differ in an earlier part (both twins
+right / continuations differ):
 
 | Reading | Agent's number | The meaning's verb | The first bracket |
 | --- | --- | --- | --- |
-| both twins right, recipe | .44 | .56 | .28 |
-| continuations differ, recipe | .50 | 1.00 | 1.00 |
-| the earlier context erased from the recall memory | .00 (differ .47) | .00 (differ .06) | .00 |
-| the working trace erased | .56 | .69 | .03 |
-| the context removed | .00 (differ .00) | .00 (differ .00) | .00 |
-| both twins right, LSTM online | .94 | .94 | 1.00 |
+| recipe | .29 (.16-.44) / .41 | .52 (.50-.56) / 1.00 | .55 (.28-.72) / 1.00 |
+| the earlier context erased from the recall memory | .00 / .23 | .00 / .07 | .00 / .15 |
+| the working trace erased | .25 / .42 | .46 / 1.00 | .31 / .92 |
+| the context removed | .00 / .00 | .00 / .00 | .00 / .00 |
+| LSTM online | .95 / 1.00 | .98 / 1.00 | 1.00 / 1.00 |
+| transformer online | 1.00 / 1.00 | 1.00 / 1.00 | .54 / .95 |
 
 The meaning's verb is carried across the distractors by the recall memory: erased there, the
-continuations stop differing (.06) and the verb's identity is right at .14 (1.00 intact);
-erased from the trace, they read as intact. The closes of a Dyck sentence need both (the trace erased, .03).
+continuations stop differing (.07) and the verb's identity is lost (founder 0: .14, 1.00
+intact); erased from the trace, the continuations still differ (1.00). The Dyck closes lean on
+both.
 
 **Persistence and recovery** (lessons; the second grammar for 1,500 batches, then the first
 for 500):
 
 | Reading | `clause` | `dyck` | `path` | context, agent | `g2` |
 | --- | --- | --- | --- | --- | --- |
-| recipe, after the first grammar (a frozen copy reads this throughout) | .78 | .28 | .31 | .44 | .00 |
-| recipe, after the second | .00 | .00 | .08 | .00 | .72 |
-| recipe, after 500 batches of the first | .73 | .53 | .11 | .56 | .00 |
-| LSTM online, after the second / recovery | .00 / .98 | .89 / 1.00 | .22 / .22 | .00 / 1.00 | 1.00 / .00 |
-| transformer online, after the second / recovery | .00 / 1.00 | .00 / .62 | .03 / .25 | .00 / 1.00 | 1.00 / .00 |
+| recipe, after the first grammar (a frozen copy reads this throughout) | .73 | .27 | .27 | .29 | .00 |
+| recipe, after the second | .00 | .03 | .03 | .00 | .69 (.58-.77) |
+| recipe, after 500 batches of the first | .72 (.64-.80) | .43 | .17 | .51 | .00 |
+| LSTM online, after the second / recovery | .00 / .99 | .59 / .82 | .20 / .28 | .00 / .99 | .99 / .00 |
+| transformer online, after the second / recovery | .00 / 1.00 | .02 / .36 | .21 / .55 | .00 / 1.00 | 1.00 / .00 |
 
 The second grammar erases the first in the brain and in both controls although its meanings
 carry `DIALECT`: after it every meaning is said in the second grammar's order (`owl owls sees
-end`), and the brain also loses its Dyck closes. An eighth of the first grammar's lessons
-brings the clauses back to .73, as fast in the controls.
+end`), and the brain loses its Dyck closes and paths with it. An eighth of the first grammar's
+lessons brings the clauses back (.72 against .73), as in the controls.
 
-**Maturity.** Lessons never move maturity's use: the `maturity` life equals the `recipe` life
-in every reading and work count. Paid practice is where it acts, and paid practice through
-`Brain.step` (the actor at its founder rate 1.0, lessons at 0.003) unlearns the lesson-taught
-grammar: 300 paid batches of the first grammar take the clauses from .78 to .05, with the
-actor's steps off (critic only) they stay at .78, with credit to the last action only .13, at
-temperature 0.1 .11. On a maturity brain of the same lessons, 300 paid batches:
+**Maturity** (founder 0). Lessons never move maturity's use (lessons keep their steps by design),
+so at the founder scale maturity is the recipe under lessons: the `maturity` life equals the
+`recipe` life in every reading and work count. Paid practice is where it acts, and paid
+practice through `Brain.step` (the actor at its founder rate 1.0, lessons at 0.003) unlearns
+the lesson-taught grammar: 300 paid batches of the first grammar take the clauses from .78 to
+.05, with the actor's steps off (critic only) they stay at .78, with credit to the last action
+only .13, at temperature 0.1 .11. On a maturity brain of the same lessons, 300 paid batches:
 
 | `maturity_scale` | use at the end | step factor | `clause` | `dyck` | `path` |
 | --- | --- | --- | --- | --- | --- |
@@ -263,18 +281,25 @@ temperature 0.1 .11. On a maturity brain of the same lessons, 300 paid batches:
 
 At its founder scale maturity does not engage in this life. Engaged within the practice it
 keeps more of the clauses (.58 against .22), after the first paid batches have already cost
-them. The persistence schedule's forks that acquire the second grammar by paid practice
-began after 1,000 paid batches had already taken the first grammar to .06, so they read
-nothing about maturity; their receipts are kept with the development evidence.
+them. This is a finding for the retention work of
+[#169](https://github.com/muellerberndt/cadence/issues/169) and
+[#238](https://github.com/muellerberndt/cadence/issues/238) (paid practice unlearns what lessons
+taught), not a setting this chamber selects. The persistence schedule's forks that acquire the
+second grammar by paid practice began after 1,000 paid batches had already taken the first
+grammar to .06, so they read nothing about maturity; their receipts are kept with the
+development evidence.
 
-**Work** (the first grammar, recipe): 23,264 lessons (372,224 rows, 307,860 of them already
-answered right and not taught), 2.42 million row sweeps in lessons and 4.27 million batch
-sweeps in acts, 496 seconds on one core; at one multiply-accumulate per synapse (13,120) per
-row and sweep, about 9e11. The online controls: 4,000 Adam steps, 5.7e10 multiply-accumulates,
-22 to 28 seconds; the offline ones 1.0e12 to 1.7e12, 430 to 632 seconds. The second grammar:
-9,172 lessons, 222 seconds; the recovery: 2,878 lessons, 72 seconds. No act or lesson was
-refused; 32 lessons of the first grammar used their whole free budget. A saved and loaded
-copy continues exactly as the live one (`continuation`).
+**Work** (the first grammar, recipe, per founder): 23,264 to 23,345 lessons (about 373,000
+rows, 300,577 to 307,860 of them already answered right and not taught), 2.42 to 2.57 million
+row sweeps in lessons and 3.93 to 4.27 million batch sweeps in acts, 367 to 496 seconds on one
+shared core; at one multiply-accumulate per synapse (13,120) per row and sweep, about 9e11. The
+online controls: 4,000 Adam steps, 5.7e10 multiply-accumulates, 14 to 28 seconds; the offline
+ones 9.3e11 to 1.7e12, 6 to 11 minutes. At a sixteenth of the brain's work the online controls
+say as many sentences right as the brain or more on every trained-length panel; no learner
+generalizes to held-out lengths.
+The second grammar: about 9,200 lessons; the recovery: about 2,900. No act or lesson was
+refused; about 30 lessons of the first grammar used their whole free budget. A saved and
+loaded copy continues exactly as the live one (`continuation`, every life).
 
 ## What this does and does not establish
 
