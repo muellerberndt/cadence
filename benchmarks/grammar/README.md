@@ -74,7 +74,9 @@ Every panel is read on a fork of the brain that never changes the life, greedy, 
 
 - `exact`: the whole sentence said, from its first word through `end`, is the sentence asked.
 - `agree`: the sentence says one verb and its number is the meaning's agent's; `agree_own`: the
-  number of the noun the brain itself said first; `verb`: the verb's identity.
+  number of the noun the brain itself said first; `verb`: the verb's identity; `attracted`: of
+  the sentences whose verb follows a noun of the other number than the agent's, the share whose
+  verb agrees with that noun.
 - `roles`: the first word is the agent and the word after the verb (before it in `g2`) is the
   patient, noun and number; `mods`: the distractor phrases as asked.
 - `valid`: a balanced bracket sentence of the asked length, every close matching.
@@ -167,3 +169,15 @@ A plan is a JSON list of life specifications (`arm`, `founder`, `phases`, `forks
 persistence schedule takes about 20 minutes on one core, a founder life about 12, a maturity
 life with its four forks about an hour; an online control about 8 minutes, an offline one up to
 40.
+
+## What this does and does not establish
+
+The chamber measures one composition and its options on one finite language of eighteen words,
+with supplied meanings, supplied turn-taking and lessons on every word said. A sentence said
+right on a held-out panel shows that the life composes the parts it was taught into a sentence
+it was never taught, on this language; it shows nothing about open vocabularies, real
+sentences or meanings the brain forms itself (#173's Meaning and Sentences stages). The
+controls are trained next-word predictors at the brain's parameter count and exposure; a
+control that says a panel right shows the information suffices at that size, not that the
+brain must reach it by the same route. A failure names the structure, the length and, through
+`located` and the erasures, the part of the brain where the sentence was lost.

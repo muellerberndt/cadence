@@ -161,7 +161,8 @@ def test_the_scorer_reads_the_whole_sentence():
     attracted = right.copy()
     attracted[3] = gr.verb(1, 0)  # "chases": agrees with the distractor
     s = gr.score(row, attracted)
-    assert not s["exact"] and not s["agree"] and s["verb"] and s["roles"]
+    assert not s["exact"] and not s["agree"] and s["verb"] and s["roles"] and s["attracted"]
+    assert gr.score(row, right)["attracted"] is False
     swapped = [gr.noun(1, 0), gr.NEAR, gr.noun(2, 0), gr.verb(1, 0), gr.noun(0, 1), gr.END]
     s = gr.score(row, swapped)
     assert not s["roles"] and s["agree_own"] and not s["agree"]
@@ -288,3 +289,24 @@ def test_every_sentence_is_answerable_from_what_the_brain_hears():
             for _ in range(100):
                 for r in gr.train_batch(rng, gr.Split.of(founder), grammar):
                     assert gr.solve(r.pre) == r.target
+
+
+def test_located_reads_the_slots_as_the_read_saw_them():
+    """The read at ``GO`` saw the meaning's slots and the boundary, not ``GO``'s own slot, and
+    ``located`` maps its columns to moments by the ages from before the act."""
+    brain = gr.make_brain("recipe", 0, module=16)
+    rows = gr.panels(0, 1)["clause"][0]
+    pre = len(rows[0].pre)
+    assert gr.sources(rows[0])[0] == (2 if rows[0].meta["inverted"] else 1)  # the agent
+    brain.reset()
+    for t in range(pre):
+        brain.act(np.stack([r.pre[t] for r in rows]), greedy=True)
+    ages = np.asarray(brain.recall.ages())
+    brain.act(np.tile(gr.concept("GO"), (len(rows), 1)), greedy=True)
+    p = brain.recall.attended_heads[0]
+    assert p.shape[1] == len(ages) == pre + 1  # the boundary and the meaning
+    assert len(brain.recall.ages()) == pre + 2  # GO's slot written after the act
+    q = pre - 1 - ages[np.argmax(p, axis=1)]
+    assert ((q >= -1) & (q < pre)).all()
+    located = gr.locate(brain, [rows])
+    assert all(0.0 <= v["delivered"] <= 1.0 for v in located.values())

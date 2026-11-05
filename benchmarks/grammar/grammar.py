@@ -637,17 +637,20 @@ def locate(brain: Any, batches: list[list[Row]]) -> dict[str, Any]:
         for j in range(len(rows[0].target)):
             x = (np.tile(concept("GO"), (len(rows), 1)) if j == 0
                  else np.stack([spoken(r.target[j - 1]) for r in rows]))
+            # the slots' ages as the read sees them, before the act writes this moment's slot
+            ages = None if fork.recall is None else np.asarray(fork.recall.ages())
             action = np.asarray(fork.act(x, greedy=True)).reshape(len(x), -1)[:, 0]
             heads = fork.recall.attended_heads if fork.recall is not None else None
             p = heads[0] if heads else None
-            ages = fork.recall.ages() if p is not None else None
+            if p is not None and ages is not None and p.shape[1] != len(ages):
+                raise RuntimeError("the read's slots and their ages differ")
             for i, r in enumerate(rows):
                 source = expected[i][j]
                 if source is None:
                     continue
                 landed = -2
                 if p is not None and ages is not None:
-                    landed = written - 1 - int(np.asarray(ages)[int(np.argmax(p[i]))])
+                    landed = written - 1 - int(ages[int(np.argmax(p[i]))])
                 kind = _kind(r, j)
                 g = groups.setdefault(kind, [0, 0, 0, 0])  # delivered, said, said|delivered, n
                 g[0] += int(landed == source)
@@ -699,6 +702,10 @@ def score(row: Row, said: list[int]) -> dict[str, Any]:
         out["verb"] = one and (words[k] - 8) // 2 == m["verb"]
         subject = words[0] if words and words[0] < 8 else None
         out["agree_own"] = one and subject is not None and (words[k] - 8) % 2 == subject // NOUNS
+        # an attracted verb: it agrees with the noun said just before it, not with the agent
+        before = words[k - 1] if one and k > 0 and words[k - 1] < 8 else None
+        out["attracted"] = (None if before is None or before // NOUNS == m["agent"][1]
+                            else (words[k] - 8) % 2 == before // NOUNS)
         out["subject"] = subject == noun(*m["agent"])
         patient_at = (k - 1) if m["dialect"] else (k + 1)
         out["patient"] = one and 0 <= patient_at < len(words) and words[patient_at] == noun(
