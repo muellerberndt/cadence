@@ -121,6 +121,20 @@ relaxed = Brain.compose(4, 2, modules=(8,), seed=0, arousal=True, actor_relax=0.
 assert relaxed.basal_ganglia.config.relax == 0.05
 ```
 
+In the [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) under
+`live`, with the recall composition of the [Sequences gate](memory.md#one-composition-for-sequences),
+two lives of twelve pin one action from their first 256 episodes (aroused on 92 to 99% of
+moments, learning on as many, the query's outputs at 0.95 to 0.99 and -0.03 to -0.09, answering
+at 0.47 to 0.50 for all 3,072 episodes). At `actor_relax=0.15` one answers every query (1.00)
+and the other leaves its lock (0.81, then missing only the condition the next port makes
+ambiguous); at 0.05 the bias falls (-1.9 by 400 episodes) and the synaptic drive keeps the
+output at 0.93 to 0.95, and both stay locked. Both rates move other lives of the twelve: at 0.05
+one more misses "the first" without a gap, at 0.15 another, so the count at .90 stays at 9 of 12.
+The reward chambers of the [preservation panel](../benchmarks/credit/README.md#preservation)
+with `actor_relax=0.05` keep their counts (odour nursery `live` 11 of 12 and `step` 2 of 12 as
+without it, key-door 12 of 16 as without it, bandit with reversal 30 of 30 blocks against 27,
+contextual bandit 3 of 6 as without it, delayed response 5 of 6 against 6).
+
 ## Maturity (opt-in)
 
 Maturity ([#253](https://github.com/muellerberndt/cadence/issues/253)) is for a brain that goes
