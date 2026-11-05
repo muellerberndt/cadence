@@ -105,6 +105,22 @@ makes a policy whose greedy action ignores the observation. A named `actor_eta` 
 `eta / 10` again. Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias`
 exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
+## A readout pinned on one action (opt-in)
+
+Under reward alone a readout can settle with one action's output at the top of its range and the
+other's near zero from the first episodes on. There the activation has no slope: neither the
+dopamine nor the recall read's eligibility can move the choice, the brain stays aroused, samples
+the other action about one time in ten and learns nothing from it. `actor_relax` (runtime,
+founder 0.0) relaxes such an output: at every actor update an output whose activation at the
+scored act sits past `1 - RELAX_BAND` (0.9) lowers its bias by the rate times how far past it
+sits. An output below that keeps its bias, so a readout off the flat branch learns as without the
+option.
+
+```python
+relaxed = Brain.compose(4, 2, modules=(8,), seed=0, arousal=True, actor_relax=0.05)
+assert relaxed.basal_ganglia.config.relax == 0.05
+```
+
 ## Maturity (opt-in)
 
 Maturity ([#253](https://github.com/muellerberndt/cadence/issues/253)) is for a brain that goes
