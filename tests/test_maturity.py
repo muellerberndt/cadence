@@ -238,6 +238,18 @@ def test_a_refused_store_write_keeps_the_noise_scales():
         assert np.array_equal(value, before[name]), name
 
 
+def test_a_vanishing_error_is_no_surprise_and_warns_nothing():
+    memory = SynapticMemory(np.arange(2), np.arange(2), consolidation=1.0, rate=1.0)
+    memory.reset(1)
+    memory.gate_noise = np.ones(memory.consolidated.shape)  # noise scale 1
+    memory.maturity = Maturity(scale=1.0, recovery=1e9, use=1e6)  # m near 0
+    key, mask = np.array([[1.0, 0.0]]), np.array([[True, False]])
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # the error's ratio to the noise leaves the float range
+        memory.observe(key, np.array([[1e-310, 0.0]]), value_mask=mask)
+    assert memory.consolidated[0, 0] == 0.0
+
+
 def test_a_mature_brain_saves_a_format_of_its_own():
     mature = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True), moments=20)
     founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True), moments=20)

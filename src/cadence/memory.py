@@ -189,14 +189,15 @@ class SynapticMemory(FastSynapses):
         the write installs with the records it accepts."""
         assert self.gate_noise is not None
         noise = self.gate_noise.copy()
-        strength = 1.0 - self.maturity.factor()
+        engaged = 1.0 - self.maturity.factor()  # the gate's strength, 1 - m
         error = value - np.einsum("bi,bij->bj", cue, previous)
         square = cue * cue
         spread = np.sqrt(square @ noise)
         size = np.abs(error)
-        safe = np.where(size > 0, size, 1.0)
-        surprise = np.where(size > 0, np.maximum(0.0, 1.0 - self.GATE_WIDTH * spread / safe), 0.0)
-        gain = np.where(mask, 1.0 - strength * (1.0 - surprise), 1.0)
+        with np.errstate(over="ignore"):  # an error far within the noise: a ratio past the range
+            ratio = self.GATE_WIDTH * spread / np.where(size > 0, size, 1.0)
+        surprise = np.where(size > 0, np.maximum(0.0, 1.0 - ratio), 0.0)
+        gain = np.where(mask, 1.0 - engaged * (1.0 - surprise), 1.0)
         weight = square / np.maximum(square.max(axis=1, keepdims=True), 1e-30)
         with np.errstate(over="ignore", invalid="ignore"):  # an overflow is refused (observe)
             for row in range(len(cue)):  # the noise scale of each observed action's record
