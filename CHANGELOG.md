@@ -2,17 +2,6 @@
 
 ## Unreleased
 
-- The recall memory's address and position lessons read a lesson's movement back through the
-  copy pathway as well (`recall_copy`; [#233](https://github.com/muellerberndt/cadence/issues/233),
-  [#173](https://github.com/muellerberndt/cadence/issues/173)). A lesson names the slots to read
-  by the movement it leaves on the read port's synapses; with the pathway those include the
-  synapses into the motor region, whose movement toward the taught answer names the slots that
-  hold it. Read back through the association alone, a brain whose read reaches the answer
-  directly named slots at random: with the pathway beside the positions recipe, look back taught
-  at 5 to 12 symbols and read at 24 to 60 answered 0.28 to 0.33 on three development founders
-  and 0.25 to 0.31 on five fresh founders of six, its position, anchored and slope maps at a
-  third, a quarter and a sixth of their norms without the pathway; with the readback it answers
-  0.99 to 1.00. A brain without the pathway is unchanged.
 - With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
   recall read's address and position maps as they are: the read's lessons take their target
   from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no
@@ -21,8 +10,9 @@
   answered right or not: judged only where wrong, the lessons of a judgment between two classes
   carry one class at a time ("before" stays at chance after 4,500 surprise lessons, 0.97 at every
   row), and lessons at every row collapse the token answers of induction, copying and two hops,
-  which stay judged by surprise. A token list may now declare no token at all
-  (`[-1] * actions`); the pathway then starts at zero. Brains without tokens are unchanged.
+  which stay judged by surprise. `recall_tokens` may now be given without `recall_copy`, as a
+  declaration of which answers are tokens (no synapse is added), and may declare no token at
+  all (`[-1] * actions`). Brains without tokens are unchanged.
 - Reward steps the recall read's position maps (`recall_position_reward`) by a lesson's step at
   the founder's position rate, 0.1, whatever `recall_position_rate` the lessons take. Beside the
   positions recipe's slow table (0.01) the reward step was a tenth as large: in the ordered recall
@@ -32,8 +22,11 @@
   unchanged.
 - Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
   copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
-  read delivers drives its own action, a successor never taught as an answer included. See
-  [memory](docs/memory.md#the-copy-pathway-opt-in).
+  read delivers drives its own action, a successor never taught as an answer included
+  (induction whose successors 6 and 7 are never taught: 1.00 against 0.00 on development
+  founders). A read that position finds then drives the symbol after the answer as well, and
+  successors never taught stay unanswered wherever the association has learned the taught
+  answers (two hops, periodic continuation). See [memory](docs/memory.md#the-copy-pathway-opt-in).
 
 ## 0.94.0 — 2026-11-05
 

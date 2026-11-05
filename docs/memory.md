@@ -1047,7 +1047,10 @@ for token in range(TOKENS):                          # no lesson: every token is
   its own action, a successor never taught included, and the echo removes the recall port's
   copy of the present token. It is a construction setting and needs `recall_tokens`. In the
   [sequence battery](../benchmarks/sequence/README.md), induction whose successors 6 and 7 are
-  never taught answers them at 1.00 with `recall_copy_next=2.0`, against 0.00 without.
+  never taught answers them at 1.00 with `recall_copy_next=2.0`, against 0.00 without. A read
+  that position finds (look back, n-back) then drives the symbol after the answer as well, and
+  where lessons have taught the association the taught answers (two hops, periodic
+  continuation) its drive against an action never taught outvotes the copy.
 - **Answers that are no token.** The read's lessons take their target from the slots'
   contents. With tokens declared, a lesson whose answer is an action without a token (`-1`: a
   yes or a no, a count) leaves the address and position maps as they are; the cortex learns
@@ -1058,18 +1061,20 @@ for token in range(TOKENS):                          # no lesson: every token is
   classes carry one class at a time and never the comparison that separates them ("before"
   stays at chance after 4,500 lessons, against 0.97 at every row). Lessons at every row collapse
   the token answers of induction, copying and two hops (0.11 to 0.68 on development founders),
-  so those stay judged by surprise. An action list without any token
-  (`recall_tokens=[-1] * actions`) declares that no answer is a slot's content: the pathway
-  starts at zero, no lesson moves the read and every row is taught.
-- **The read's lesson reads the pathway back.** The address and position lessons name the slots
-  to read by the movement a lesson leaves on the read port's synapses. With the pathway those
-  are the synapses into the association and those into the motor region, so the motor's
-  movement toward the taught answer, read back through the pathway, names the slots that hold
-  that answer. Read back through the association alone, a read whose content reaches the answer
-  directly named slots at random and its position maps barely moved: in look back taught at 5
-  to 12 symbols the position, anchored and slope maps of a brain with the pathway reached a
-  third, a quarter and a sixth of their norms without it, and the cues were answered at 0.31 to
-  0.39 on two founders of three.
+  so those stay judged by surprise. The tokens declare this without the pathway as well
+  (`recall_tokens` without `recall_copy`: no synapse is added), and an action list without any
+  token (`recall_tokens=[-1] * actions`) declares that no answer is a slot's content: no lesson
+  moves the read and every row is taught.
+- **Beside the positions recipe.** The address and position lessons name the slots to read by
+  the association's movement read back through the read port. With the pathway the answer
+  reaches the motor region directly, the association moves little toward it, and a read that
+  only position finds (look back) stops learning where to look: taught at 5 to 12 symbols and
+  read at 24 to 60, the recipe with the pathway answers 0.25 to 0.33 on five fresh founders of
+  six (the recipe alone 0.99 to 1.00), its position, anchored and slope maps at a third, a
+  quarter and a sixth of their norms. Reading the motor's movement back through the pathway
+  restores look back (0.99) and misdirects reads whose answer is a successor (two hops 0.27 to
+  0.28): the recall port's identity names the slot holding the answer itself, not the slot it
+  follows. Leave the pathway out of a brain that relies on the recipe.
 
 In the [copy-tokens benchmark](../benchmarks/attention/copy_tokens.py) a token is heard, two
 other tokens follow, and a cue asks for the heard token back; tokens 0 to 4 are taught as

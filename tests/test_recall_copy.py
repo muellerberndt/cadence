@@ -144,7 +144,7 @@ def test_a_joined_learned_code_takes_tokens_after_its_units():
 @pytest.mark.parametrize(
     ("options", "message"),
     [
-        (dict(recall_tokens=range(TOKENS)), "need copy above 0"),
+        (dict(recall_tokens=range(TOKENS - 1)), "one observation coordinate per"),
         (dict(recall_copy=-1.0), "copy"),
         (dict(recall_copy=1.0, recall_tokens=range(TOKENS - 1)), "one observation coordinate per"),
         (dict(recall_copy=1.0, recall_tokens=[INPUTS] * TOKENS), "below"),
@@ -166,44 +166,6 @@ def test_a_fixed_code_and_a_custom_anatomy_without_the_synapses_are_refused():
         cd.Brain(founder.connectome, recall=True, recall_copy=1.0, episodic=False)
     with pytest.raises(ValueError, match="construction setting"):
         composed(recall_copy=1.0).retune(recall_copy=2.0)
-
-
-def test_the_read_lesson_reads_the_motor_movement_back_through_the_pathway():
-    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_heads=2)
-    recall, graph = brain.recall, brain.learner.brain
-    rng = np.random.default_rng(0)
-    association = rng.normal(size=(1, len(recall.association)))
-    motor = rng.normal(size=(1, TOKENS))
-    synapses, value, post = recall.copy_synapses()
-    pre = np.asarray(brain.connectome.pre)[synapses]
-    weight = graph._gain_pre[synapses] * graph.efficacy[synapses]  # noqa: SLF001
-    for h, (recall_port, next_port) in enumerate(recall._heads):  # noqa: SLF001
-        for name, port in (("recall", recall_port), ("next", next_port)):
-            alone = recall.readback(graph, name, association, h)
-            both = recall.readback(graph, name, association, h, motor)
-            on = np.isin(pre, port)
-            expected = np.zeros((len(port), TOKENS))
-            np.add.at(expected, (value[on], post[on]), weight[on])
-            np.testing.assert_allclose(both, alone + motor @ expected.T)
-    founder = composed()  # no pathway: the motor's movement reads nothing back
-    association = rng.normal(size=(1, len(founder.recall.association)))
-    np.testing.assert_array_equal(
-        founder.recall.readback(founder.learner.brain, "recall", association, 0, motor),
-        founder.recall.readback(founder.learner.brain, "recall", association, 0),
-    )
-
-
-def test_the_read_lesson_steps_toward_the_slot_whose_token_the_answer_is():
-    # two tokens heard, a question whose answer is the second: the copy pathway carries the
-    # answer from the read to the motor, and the read's lesson reads that movement back, so
-    # the address map moves toward the key of the slot that holds the answer
-    brain = composed(recall_copy=2.0, recall_tokens=range(TOKENS))
-    brain.act(event(HEAR, 1), greedy=True)
-    brain.act(event(NOISE, 4), greedy=True)
-    before = [np.array(m, copy=True) for m in brain.recall.head_maps[0]]
-    brain.lesson(event(HEAR, ASK), [4])
-    bias = brain.recall.head_maps[0][2] - before[2]
-    assert bias[4] > 0.0 and bias[4] > bias[1]
 
 
 def test_copy_next_starts_the_next_ports_identity_and_is_described_where_on():
@@ -254,8 +216,10 @@ def test_copy_next_survives_a_checkpoint_and_is_a_construction_setting(tmp_path)
     np.testing.assert_array_equal(twin.brain.efficacy, brain.brain.efficacy)
     with pytest.raises(ValueError, match="construction setting"):
         brain.retune(recall_copy_next=2.0)
-    with pytest.raises(ValueError, match="needs tokens"):
+    with pytest.raises(ValueError, match="needs copy and tokens"):
         composed(recall_copy=2.0, recall_copy_next=1.0)
+    with pytest.raises(ValueError, match="needs copy and tokens"):
+        composed(recall_tokens=range(TOKENS), recall_copy_next=1.0)
     with pytest.raises(ValueError, match="copy_next"):
         composed(recall_copy=2.0, recall_tokens=range(TOKENS), recall_copy_next=-1.0)
 
@@ -315,18 +279,31 @@ def test_a_lesson_whose_answer_is_no_token_leaves_the_read_as_it_was():
 
 
 def test_under_surprise_a_lesson_whose_answer_is_no_token_teaches_every_row():
-    tokens = [0, 1, 2, 3, -1, -1]
-    brain = composed(recall_copy=2.0, recall_tokens=tokens, learning_surprise=True)
     x = np.concatenate([event(HEAR, 0), event(HEAR, 1)])
-    brain.act(x, greedy=True)
-    for _ in range(12):  # a yes and a no: taught at every lesson, answered right or not
-        brain.lesson(x, [4, 5])
-        report = brain.last_learning
-        assert report["demonstration_accepted_presentations"] == 2.0
-        assert report["demonstration_agreed_presentations"] == 0.0
-    assert list(brain.act(x, greedy=True)) == [4, 5]
-    for _ in range(12):  # tokens: judged by surprise as before, the rows answered right skipped
-        brain.lesson(x, [2, 3])
-    assert list(brain.act(x, greedy=True)) == [2, 3]
-    brain.lesson(x, [2, 3])
-    assert brain.last_learning["demonstration_agreed_presentations"] >= 1.0
+    taught = {}
+    for name, tokens in (("tokens", list(range(TOKENS))), ("none", [-1] * TOKENS)):
+        brain = composed(recall_tokens=tokens, learning_surprise=True)
+        brain.act(x, greedy=True)
+        answer = np.asarray(brain._greedy(  # noqa: SLF001  the act the lesson judges by
+            brain._qualified(brain.stimulus(x), brain._activity(), operation="act"),  # noqa: SLF001
+            brain._placed(x), brain._decision_key(brain._coded(x)),  # noqa: SLF001
+        ))
+        brain.lesson(x, answer)  # the label is the brain's own answer on both rows
+        taught[name] = brain.last_learning["demonstration_accepted_presentations"]
+    assert taught["tokens"] == 0.0  # answered as shown: no surprise, no lesson
+    assert taught["none"] == 2.0  # no token answers: taught at every lesson, right or not
+
+
+def test_tokens_without_the_pathway_declare_which_answers_are_tokens():
+    # no copy pathway: the tokens only tell the read's lessons which answers a slot can hold
+    brain = composed(recall_tokens=[0, 1, 2, 3, -1, -1], learning_surprise=True)
+    assert not len(brain.recall.copy_synapses()[0])
+    assert brain.describe()["genes"]["recall_tokens"] == [0, 1, 2, 3, -1, -1]
+    plain = composed(learning_surprise=True)
+    np.testing.assert_array_equal(brain.brain.efficacy, plain.brain.efficacy)
+    brain.act(event(HEAR, 1), greedy=True)
+    before = [np.array(m, copy=True) for m in brain.recall.head_maps[0]]
+    assert brain.lesson(event(HEAR, ASK), [5])["address_rows"] == 0.0
+    for a, b in zip(before, brain.recall.head_maps[0], strict=True):
+        np.testing.assert_array_equal(a, b)
+    assert brain.last_learning["demonstration_accepted_presentations"] == 1.0
