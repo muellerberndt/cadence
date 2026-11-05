@@ -249,6 +249,38 @@ meaning moment), the clause at two distractors: window 1 .98 / .60 / .71; window
   one settle can hold (the agent and its verb), and the sentence window pays for every
   position it must learn as its own coordinate.
 
+### The window on 0.94.0, every reading of #257 (development founders 0 to 2)
+
+The implemented reading on the same founders and lessons, at the windows the confirmation
+declares (1, 3, 4 and 10; 10 is the longest sentence training shows, a Dyck sentence), by the
+echo advance, and at 4 by the efference advance. The shared panels of the windows 1, 3 and 4
+equal the design input's above to the score. Twins: both right / continuations differ.
+
+| Window | `clause` | `clause_held` | held-out agreement | `clause_long` | `roles` both | `win_agent` | `win_verb` | `dyck` | `dyck_deep` that fit (n) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 (word by word) | .73 (.67-.78) | .61 (.50-.67) | .72 (.59-.84) | .00 | .45 (.28-.56) | .26 (.12-.41) / .32 (.22-.44) | .46 (.25-.62) / 1.00 | .27 (.12-.39) |  (0) |
+| 3 (the phrase) | .87 (.81-.94) | .68 (.64-.70) | .94 (.84-1.00) | .00 | .52 (.41-.66) | .55 (.38-.72) / .99 (.97-1.00) | .59 (.44-.72) / .81 (.62-.97) | .28 (.12-.38) |  (0) |
+| 4 | .81 (.70-.88) | .52 (.47-.56) | .74 (.64-.92) | .03 (.02-.03) | .51 (.41-.72) | .57 (.50-.66) / .94 (.88-.97) | .65 (.47-.81) / .96 (.94-.97) | .10 (.00-.25) |  (0) |
+| 10 (the sentence) | .32 (.25-.38) | .10 (.05-.12) | .72 (.70-.73) | .00 | .03 (.00-.06) | no twins / no twins | no twins / no twins | .11 (.05-.19) | .00 (16) |
+| 4, efference | .63 (.58-.69) | .36 (.27-.42) | .67 (.64-.72) | .00 | .31 (.28-.34) | .41 (.31-.56) / .95 (.88-1.00) | .32 (.25-.38) / .93 (.91-.94) | .12 (.00-.25) |  (0) |
+
+- **Agreement on held-out combinations** (#257's first bar): the phrase window reads .94 (.84-1.00)
+  against word by word .72 (.59-.84); the held-out verb is delivered 0.22 / 0.83 at the phrase
+  window and 0.94 / 0.70 word by word (delivered / said), so the phrase window says the verb
+  without a read of its own.
+- **Brackets within the whole-sentence window** (the second bar): no Dyck sentence of a
+  held-out depth that fits the window of ten is said right on any founder, and the trained
+  Dyck sentences fall to .11 (.05-.19) at that window: the whole-sentence window pays for each
+  position as its own coordinate.
+- **Context** (the third bar): the window-aligned twins differ in their continuations at the
+  phrase window (.99 (.97-1.00) and .81 (.62-.97)) and are both right less often (.55 (.38-.72) and .59 (.44-.72)); at window 4 the
+  agent is inside the echoed window, so `win_agent` there reads the echo, not the memory.
+- **The efference advance** carries the window less well than the world's echo at window 4
+  (clauses .63 (.58-.69) against .81 (.70-.88)): the copy holds the brain's own words, in
+  training the words it said rather than the target's, and the lessons reach the readout
+  through a context that drifts with its errors.
+- **Work per sentence**: window 1: 0.36 lessons, 39 lesson row sweeps, 0.78 acts, 65 act batch sweeps; window 3: 0.14 lessons, 49 lesson row sweeps, 0.56 acts, 61 act batch sweeps; window 4: 0.11 lessons, 48 lesson row sweeps, 0.53 acts, 65 act batch sweeps; window 10: 0.06 lessons, 54 lesson row sweeps, 0.48 acts, 43 act batch sweeps.
+
 ## Readings on 0.94.0 (development, founders 0 to 2)
 
 Development founders 0, 1 and 2, from frozen snapshots of this folder; the maturity readings
