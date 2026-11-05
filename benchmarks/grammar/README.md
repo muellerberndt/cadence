@@ -204,6 +204,51 @@ PYTHONPATH=src python benchmarks/grammar/window.py --ks 4 --advance efference --
     --out DIR/window.jsonl
 ```
 
+### The window on 0.94.0 (design input, development founders 0 to 2)
+
+The chamber's sentences said through windows of 1, 3, 4 and 8 words (8 is the longest trained
+clause), the same 4,000 batches of the first grammar as above, `recipe_relative`, the echo
+advance; mean over the three founders (least to greatest in brackets); every entry a whole
+sentence said exactly unless named.
+
+| Window | Parameters | `clause` | `clause_held` | `clause_long` | `roles` both | Agreement | With an attractor | Without | Next word |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 (word by word) | 24,384 | .73 (.67-.78) | .61 (.50-.67) | .00 | .45 (.28-.56) | .82 (.78-.84) | .66 (.57-.75) | .91 (.80-.98) | .94 |
+| 3 | 26,724 | .87 (.81-.94) | .68 (.64-.70) | .00 | .52 (.41-.66) | .97 (.95-1.00) | .97 (.92-1.00) | .98 (.95-1.00) | .97 (.96-.99) |
+| 4 (a phrase) | 27,894 | .81 (.70-.88) | .52 (.47-.56) | .03 (.02-.03) | .51 (.41-.72) | .92 (.88-.95) | .90 (.87-.92) | .93 (.85-1.00) | .96 |
+| 8 (the sentence) | 32,574 | .32 (.17-.53) | .10 (.00-.27) | .00 | .17 (.00-.47) | .86 (.78-.95) | .90 (.83-.96) | .84 (.75-.98) | .74 |
+
+Trained clauses per length, exact: window 1 .89 / .79 / .35; window 3 .92 / .94 / .71; window 4 .92 / .79 / .60 at
+zero, one and two distractors; window 8 .56 / .17 / .00.
+
+**The verb** (`located`, teacher-forced; delivered / said / attention mass on the verb's
+meaning moment), the clause at two distractors: window 1 .98 / .60 / .71; window 3
+.00 / .81 / .20; window 4 .46 / .96 / .39; window 8 .04 / .69 / .15. On the held-out combinations
+(the verb over zero to two distractors): window 1 .94 / .70; window 3 .22 / .83; window 4 .21 / .71; window 8
+.25 / .60.
+
+**Work per sentence** (the first grammar): window 1 0.36 lessons, 39 lesson row sweeps, 0.78 acts, 65 act batch sweeps, 13,120 synapses; window 3 0.14 lessons, 49 lesson row sweeps, 0.56 acts, 61 act batch sweeps, 17,728 synapses; window 4
+0.11 lessons, 48 lesson row sweeps, 0.53 acts, 65 act batch sweeps, 20,032 synapses; window
+8 0.07 lessons, 57 row sweeps, 0.49 acts, 48 act sweeps, 29,248 synapses.
+
+- **A phrase window settles the verb with its agent.** At window 4 agreement with an
+  attractor among the distractors rises from .66 to .90 and the trained clauses from .73 to
+  .81, while the read delivers the verb's meaning moment less often (.46 against .98) and the
+  verb is said more often (.96 against .60): the verb no longer waits on a read of its own; it
+  is settled in the same settle as the agent's number. The held-out combinations do not rise
+  (.52 against .61): what the window composes within a settle it does not generalize across
+  the sealed pairs any better than word by word.
+- **The whole sentence in one window loses the trained sentences.** At window 8 a position is
+  a coordinate: the verb's slot is the second at no distractor, the fourth at one and the
+  sixth at two, each learned apart, and the clauses of one and two distractors fall to .17
+  and .00. Where a verb is said it agrees (.86), so the loss is of the positions, not of
+  agreement.
+- **Lengths beyond the window stay lost at every window** (.00 to .03): the first form
+  shares no weight across positions, as #257 states.
+- **The window's limit sits between a phrase and a sentence**: the phrase window gains what
+  one settle can hold (the agent and its verb), and the sentence window pays for every
+  position it must learn as its own coordinate.
+
 ## Readings on 0.94.0 (development, founders 0 to 2)
 
 Development founders 0, 1 and 2, from frozen snapshots of this folder; the maturity readings
