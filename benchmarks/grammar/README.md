@@ -281,6 +281,59 @@ equal the design input's above to the score. Twins: both right / continuations d
   through a context that drifts with its errors.
 - **Work per sentence**: window 1: 0.36 lessons, 39 lesson row sweeps, 0.78 acts, 65 act batch sweeps; window 3: 0.14 lessons, 49 lesson row sweeps, 0.56 acts, 61 act batch sweeps; window 4: 0.11 lessons, 48 lesson row sweeps, 0.53 acts, 65 act batch sweeps; window 10: 0.06 lessons, 54 lesson row sweeps, 0.48 acts, 43 act batch sweeps.
 
+### The confirmation on fresh founders (declared, 257000 to 257005)
+
+Declared on 5 November 2026 at 20:02 before any run on the founders (the protocol and its sha256 are kept with the evidence), six fresh founders, the same lessons and panels, `recipe_relative` at windows 3 (the phrase, the gated window), 10 (the sentence) and 1 and 4 beside. Each gate at 0.90 on at least 5 of 6 founders.
+
+| Gate | Founder: 257000 | 257001 | 257002 | 257003 | 257004 | 257005 | Verdict |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| W1 held-out agreement, window 3 | .83 | .98 | .86 | .62 | .97 | .97 | 3 of 6, fail |
+| W2 held-out-depth Dyck within the window of 10 | .00 | .00 | .00 | .00 | .00 | .00 | 0 of 6, fail |
+| W3 agent twins both right, window 3 | .50 | .78 | .69 | .16 | .78 | .62 | 0 of 6, fail |
+| W3 agent twins differ, window 3 | 1.00 | 1.00 | .97 | 1.00 | 1.00 | 1.00 | 6 of 6, pass |
+| W3 verb twins both right, window 3 | .53 | .78 | .78 | .19 | .78 | .50 | 0 of 6, fail |
+| W3 verb twins differ, window 3 | .94 | .97 | .91 | .88 | .94 | .84 | 4 of 6, fail |
+
+W2 reads 16 held-out-depth sentences per founder that fit the window.
+
+Beside the gates, per window (mean over the six founders, least to greatest in brackets):
+
+| Window | `clause` | `clause_held` | held-out agreement | `clause_long` | `roles` both | `win_agent` both / differ | `win_verb` both / differ | `dyck` | `dyck_deep` that fit | verb delivered / said (held out) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 1 | .72 (.41-.88) | .49 (.14-.70) | .71 (.58-.80) | .00 | .49 (.03-.75) | .42 (.31-.59) / .52 (.31-.84) | .54 (.28-.66) / 1.00 | .49 (.12-.81) |  | 0.85 / 0.70 |
+| 3 | .82 (.59-.91) | .53 (.30-.70) | .87 (.62-.98) | .00 | .48 (.12-.59) | .59 (.16-.78) / .99 (.97-1.00) | .59 (.19-.78) / .91 (.84-.97) | .31 (.05-.45) |  | 0.31 / 0.78 |
+| 4 | .75 (.70-.81) | .53 (.47-.69) | .85 (.80-.92) | .01 (.00-.03) | .49 (.31-.66) | .55 (.38-.66) / .99 (.97-1.00) | .55 (.41-.75) / .87 (.72-1.00) | .25 (.00-.52) |  | 0.21 / 0.73 |
+| 10 | .39 (.23-.48) | .14 (.03-.27) | .84 (.80-.89) | .00 | .14 (.00-.31) | no twins / no twins | no twins / no twins | .30 (.20-.52) | .00 | 0.12 / 0.60 |
+
+Work per sentence (W5): window 1: lessons 0.36, lesson row sweeps 41.69, acts 0.77, act sweeps 66.96, seconds 0.0025; window 3: lessons 0.14, lesson row sweeps 46.73, acts 0.55, act sweeps 58.91, seconds 0.0042; window 4: lessons 0.11, lesson row sweeps 46.16, acts 0.52, act sweeps 62.37, seconds 0.0026; window 10: lessons 0.06, lesson row sweeps 52.53, acts 0.47, act sweeps 44.21, seconds 0.0041.
+
+The controls on the same founders (window twins at 3; mean over founders):
+
+| Control | `clause_held` agree | `win_agent` both / differ | `win_verb` both / differ | `dyck_deep` that fit | multiply-accumulates | seconds |
+| --- | --- | --- | --- | --- | --- | --- |
+| lstm online | 1.00 | .90 (.81-1.00) / 1.00 | .91 (.81-.94) / 1.00 |  | 5.7e+10 | 6 |
+| transformer online | 1.00 (.98-1.00) | 1.00 / 1.00 | 1.00 / 1.00 |  | 5.6e+10 | 7 |
+
+- **W1 fails at the bar and reads the mechanism**: the phrase window raises held-out
+  agreement over word by word on five founders of six (word by word .58 to .80; the phrase
+  window .83 to .98) and lowers it on one (.72 to .62), the founder whose phrase life is the
+  weak one throughout (clauses .59, twins .16 and .19). The held-out verb is delivered by the
+  read .83 to 1.00 and said .58 to .77 word by word, delivered .16 to .46 and said .59 to .89
+  at the phrase window: with the window the verb is settled with its agent and no longer waits
+  on a read of its own.
+- **W2 fails**: no Dyck sentence of a held-out depth that fits the whole-sentence window is
+  said right on any founder; at that window every position is a coordinate the brain has to
+  learn apart, and the trained Dyck sentences read .31 there.
+- **W3**: the continuations of the twins differ (the message is heard: the agent twins 6 of 6,
+  the verb twins 4 of 6), and a window is both right at .90 on no founder.
+- **Lengths beyond the window** are lost at every window on every founder (W4, .00), as the
+  first form predicts without weight sharing across positions.
+
+A bounded negative at this size and life: the planning window's first form does what #257
+states, the verb settled with its agent inside one settle, and does not reach the bars on
+fresh founders. Weight sharing across positions, which lets a window generalize to lengths
+beyond it, is the second form #257 names.
+
 ## Readings on 0.94.0 (development, founders 0 to 2)
 
 Development founders 0, 1 and 2, from frozen snapshots of this folder; the maturity readings
