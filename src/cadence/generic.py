@@ -5022,8 +5022,9 @@ class Brain:
     def parameters(self) -> int:
         """Actor/critic and consolidated weights (the episodic records' paid store with
         ``memory_extinction``), the recall memory's address and position maps and the maps of
-        its options (anchor, relative, slope), and a learned code's tables; per-stream
-        transient storage is additional."""
+        its options (anchor, relative, slope), a learned code's tables, and with ``maturity``
+        its use and the place records' noise scales; per-stream transient storage is
+        additional."""
         recall = self.recall
         paid = None if self._episodic is None else self._episodic.paid
         return (
