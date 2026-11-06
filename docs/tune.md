@@ -290,7 +290,7 @@ A pass of the [grammar chamber](../benchmarks/grammar/README.md) is 4,000 batche
 
 | Learner | Parameters | Seconds | Multiply-adds | Against the transformer: seconds, multiply-adds |
 | --- | ---: | ---: | ---: | ---: |
-| The chamber's recipe with `teaching="deep"` and `recall_address_contrast=True` | 24,384 | 131 | 1.6e11 | 8.0, 2.8 |
+| The chamber's recipe with `teaching="deep"` | 24,384 | 131 | 1.6e11 | 8.0, 2.8 |
 | The same with `learning_fast_settle=True` | 24,384 | 74 | 1.3e11 | 4.5, 2.3 |
 | The recipe with `history_decays=(0.5, 0.9)` and no prefrontal region | 24,774 | 162 | 2.2e11 | 10, 3.8 |
 | The same with `learning_fast_settle=True` | 24,774 | 73 | 1.6e11 | 4.5, 2.7 |
