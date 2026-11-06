@@ -395,11 +395,13 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
     seed, rounds, extra, continuing
 ):
     """The library brain reproduces the instrument's ``IndexBrain`` exactly: the same connectome,
-    the same acts, settled states, lessons, address map and slots, round after round, on the
-    token-binding task. Only the genes that differ from the founders are passed to the
-    library."""
+    the same acts, settled states, lessons and slots, round after round, on the token-binding
+    task, at no address lesson (the instrument's steps on the distance to the named keys, the
+    library's on the named keys less the attended ones). Only the genes that differ from the
+    founders are passed to the library."""
     ir = instrument("index_read")
     tb = ir.tb
+    extra = {"address": 0.0, **extra}
     read = dict(_declared(ir), **extra)
     inst = ir.IndexBrain.build(seed, read=read, learning_surprise=True)
     lib = cd.Brain.compose(  # the instrument reads no position term (``recall_position=0``)
@@ -417,7 +419,7 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
     np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
     held = tb.holdout(seed)
     rng = np.random.default_rng(np.random.SeedSequence([tb.SCHEDULE_SEED, seed]))
-    work, moved = tb.new_work(), 0.0
+    work = tb.new_work()
     for r in range(rounds):
         trials = tb.draw(rng, tb.BATCH, held)
         seq, answer = tb.events(trials), tb.answers(trials)
@@ -430,7 +432,7 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
                 inst.basal_ganglia.state.activation, lib.basal_ganglia.state.activation
             )
         ir.lesson(inst, seq[-1], answer, work)
-        moved += lib.lesson(seq[-1], answer)["address_rows"]
+        lib.lesson(seq[-1], answer)
         np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
         for name, kept in zip(MAP, lib.recall.head_map(0), strict=True):
             np.testing.assert_array_equal(getattr(inst.index, name), kept, err_msg=name)
@@ -440,35 +442,7 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
                 getattr(inst.index.slots, name), getattr(lib.recall, name), err_msg=name
             )
         np.testing.assert_array_equal(inst.index.previous, lib.recall.previous)
-    assert moved == work["address_rows"] > 0
     assert lib.recall.slots <= lib.recall.capacity
-
-
-def test_the_bounded_address_step_is_the_instruments_bit_for_bit():
-    """Beyond the bound as within it: on the same slots, moment and movement, rows of either
-    side of the bound, the library's address step and the instrument's report the same and
-    leave the same map."""
-    ir = instrument("index_read")
-    lib = composed(seed=4, recall_address=0.5).recall
-    inst = ir.IndexMemory(4, 8, 4, dict(_declared(ir), address=0.5))
-    rng = np.random.default_rng(14)
-    for _ in range(3):
-        stored = (rng.random((2, 4)) < 0.6).astype(float)
-        lib._observe(stored, stored)
-        inst.slots.observe(stored, stored)
-    cortex = 0.3 * rng.random((2, 8))
-    lib.previous, inst.previous = cortex.copy(), cortex.copy()
-    events = np.array([[1.0, 1, 1, 1], [0.5, 0, 0, 0]])
-    moment = lib._moment(events)
-    np.testing.assert_array_equal(inst.address(events), moment.address)
-    gains = 0.5 * ((events**2).sum(axis=1) + (cortex**2).sum(axis=1) + 1.0)
-    assert gains[0] > 1 > gains[1]
-    d_value, d_next = rng.normal(size=(2, 4)), rng.normal(size=(2, 4))
-    report = lib._step(moment, np.arange(2), d_value, d_next)
-    assert report == inst.learn(np.arange(2), d_value, d_next, 0.5, lib.address_temperature)
-    assert report["address_rows"] == 2.0
-    for name, kept in zip(MAP, lib.head_map(0), strict=True):
-        np.testing.assert_array_equal(kept, getattr(inst, name), err_msg=name)
 
 
 # -- addressing and reading
@@ -622,12 +596,12 @@ def test_the_answers_address_is_named_among_the_moments_attended_to():
     recall._step(before, np.array([0]), np.array([[0.0, 1.0]]), None)
     after = recall._moment(np.array([[1.0, 0]]))
     toward_second = float((after.address - before.address)[0] @ recall.keys[0, 1])
-    # rate 1 on |z|^2 = 2 is bounded to a gain of one: the address lands on the named moments'
-    # key. The attention is the prior: at the lesson's temperature (``address_temperature``,
-    # the constant 0.1) the answer's score weighs its slot e^10 against the prior's e^4 for
-    # the moment found, so the step stops 0.0025 short of the answer's key, where a step
-    # without the prior would land on it
-    assert 0.99 < toward_second < 1.0
+    # rate 1 on |z|^2 = 2 is bounded to a gain of one: the address moves by the keys named less
+    # the keys attended. The attention is the prior: at the lesson's temperature
+    # (``address_temperature``, the constant 0.1) the answer's score weighs its slot e^10 against
+    # the prior's e^4 for the moment found, so the lesson names it at 0.9975, and the read gave
+    # it 0.0180
+    assert 0.97 < toward_second < 0.99
 
 
 def test_the_address_lesson_reads_the_lessons_phases_at_the_taught_rows():
@@ -659,13 +633,14 @@ def _gain(recall, moment, rows):
 
 
 @pytest.mark.parametrize("width", [256, 512, 2_000])
-def test_a_repeated_dense_query_does_not_grow_the_address_error(width):
-    """One stored one-hot moment, then the same lesson on a dense observation of ones, the
-    target key fixed. The founder rate on |z|^2 above two would scale the error by
-    ``1 - address * |z|^2`` at every lesson; each row's rate is bounded by its own energy,
-    so the first step lands the address on its target and none grows the error."""
+def test_a_repeated_dense_query_keeps_the_address_error_bounded(width):
+    """Two stored one-hot moments, then the same lesson on a dense observation of ones. The
+    founder rate on |z|^2 above two would scale a step by ``address * |z|^2`` at every lesson;
+    each row's rate is bounded by its own energy, so no step is refused and the error, a
+    difference of two attentions over unit keys, stays within two."""
     brain = cd.Brain.compose(width, 2, modules=(8,), episodic=False, recall=True, seed=2)
     brain.act(np.eye(width)[[0]], greedy=True)
+    brain.act(np.eye(width)[[1]], greedy=True)
     x = np.ones((1, width))
     brain.stimulus(x)
     assert _gain(brain.recall, brain.recall.last, [0])[0] > 2.0  # beyond the unbounded range
@@ -675,12 +650,8 @@ def test_a_repeated_dense_query_does_not_grow_the_address_error(width):
         assert report["address_refused"] == 0.0
         if report["address_rows"]:
             errors.append(report["address_error"])
-    assert errors and errors[0] > 0.9  # the graph's own lessons can stop the movement after
-    assert all(
-        later <= earlier + 1e-12 for earlier, later in zip(errors, errors[1:], strict=False)
-    )
-    recall = brain.recall
-    np.testing.assert_allclose(recall._moment(x).address, recall.keys[:, 0], atol=1e-9)
+    assert errors and all(error <= 2.0 + 1e-12 for error in errors)
+    assert all(np.isfinite(a).all() for a in brain.recall.head_map(0))
 
 
 def test_two_thousand_dense_lessons_keep_the_map_finite_and_the_brain_acting():
@@ -701,7 +672,6 @@ def test_two_thousand_dense_lessons_keep_the_map_finite_and_the_brain_acting():
     np.testing.assert_array_equal(brain.brain.efficacy, efficacy)  # the graph stood still
     recall = brain.recall
     assert all(np.isfinite(a).all() for a in recall.head_map(0))
-    np.testing.assert_allclose(recall._moment(x).address, recall.keys[:, 0], atol=1e-9)
     assert brain.act(x, greedy=True).shape == (1,)
     report = brain.lesson(x, [0])
     assert report["address_rows"] == 1.0 and report["address_refused"] == 0.0
@@ -780,51 +750,6 @@ def test_a_rows_step_is_its_own_whatever_the_batch():
     batch, _, _, _ = step([0, 1, 2, 3])
     for part, single in zip(batch, zip(*alone, strict=True), strict=True):
         np.testing.assert_allclose(part, np.mean(single, axis=0), rtol=1e-12, atol=1e-15)
-
-
-def test_in_a_batch_a_row_can_pass_its_target_and_the_batch_error_does_not_grow():
-    """A row taught alone lands on its target at most; the rows' steps are averaged, so in a
-    batch a row can pass its target. Two streams hear the same event ``u`` (512 coordinates,
-    ``|u|^2 = 100``) with one slot each, keys ``2u`` and ``6u``: alone, the first lands on
-    ``2u``; together both move from ``u`` to ``4u``, the first past its target. Over random
-    batches, rows within the bound and beyond it, the rows' squared errors weighted by their
-    rates ``min(address, 1 / |z|^2)`` sum to no more after the step than before."""
-
-    def stepped(keys, events, cortex=None, rate=0.01):
-        """One step of a memory whose streams hold one slot each, ``keys``: the target of
-        each row is its stream's key. Returns the addresses before and after the step."""
-        brain = cd.Brain.compose(events.shape[1], 2, modules=(8,), episodic=False, recall=True,
-                                 seed=2, recall_address=rate)
-        recall = brain.recall
-        recall._observe(keys, keys)
-        recall.previous = np.zeros((len(events), 8)) if cortex is None else cortex
-        moment = recall._moment(events)
-        report = recall._step(moment, np.arange(len(events)), np.ones_like(keys), None)
-        assert report["address_rows"] == len(events) and report["address_refused"] == 0.0
-        return moment.address, recall._moment(events).address
-
-    u = np.zeros(512)
-    u[:100] = 1.0
-    before, alone = stepped(2 * u[None], u[None])
-    np.testing.assert_allclose(before, u[None])
-    np.testing.assert_allclose(alone, 2 * u[None])  # rate * |z|^2 = 1.01: onto the target
-    _, together = stepped(np.stack([2 * u, 6 * u]), np.stack([u, u]))
-    np.testing.assert_allclose(together, np.stack([4 * u, 4 * u]))  # the first past 2u
-    rng = np.random.default_rng(17)
-    grew = 0
-    for _ in range(60):
-        n = int(rng.integers(2, 7))
-        rate = float(rng.choice([0.01, 0.5, 2.0]))
-        keys = rng.normal(size=(n, 16)) * rng.choice([0.1, 1.0, 5.0], size=(n, 1))
-        events = rng.normal(size=(n, 16)) * rng.choice([0.05, 0.5, 3.0], size=(n, 1))
-        events[1] = events[0]  # two rows of the same inputs
-        cortex = 0.5 * rng.normal(size=(n, 8))
-        before, after = stepped(keys, events, cortex, rate)
-        weight = np.minimum(rate, 1.0 / ((events**2).sum(axis=1) + (cortex**2).sum(axis=1) + 1))
-        error, later = ((keys - before) ** 2).sum(axis=1), ((keys - after) ** 2).sum(axis=1)
-        assert weight @ later <= weight @ error * (1.0 + 1e-12)
-        grew += int((later > error + 1e-12).any())
-    assert grew > 0  # a row's own error grew in some batches; the batch error in none
 
 
 def test_the_bound_leaves_the_token_task_as_it_was(monkeypatch):
@@ -1182,7 +1107,7 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
         "heads": 1, "position": 32, "position_rate": 0.1,
         "boundary": False, "copy": 0.0, "tokens": None, "action": False,
         "anchor": False, "relative": False, "slope": 0.0, "when": False,
-        "address_contrast": False, "gain": 0.0,
+        "gain": 0.0,
     }
     founder = composed(seed=5, arousal=True, learning_surprise=True)
     explicit = composed(
@@ -1199,10 +1124,11 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
 def _option_lives(extra, seed=2, rounds=8):
     """The library brain with ``extra`` beside the founders and the instrument's
     ``IndexBrain`` with the same genes, compared moment for moment on the token-binding task:
-    acts, settled states, the attention each read used, lessons, the address map and the
-    slots. Returns the rows the address lessons moved."""
+    acts, settled states, the attention each read used, lessons and the slots, at no address
+    lesson (the instrument's steps on the distance to the named keys)."""
     ir = instrument("index_read")
     tb = ir.tb
+    extra = {"address": 0.0, **extra}
     inst = ir.IndexBrain.build(seed, read=dict(_declared(ir), **extra), learning_surprise=True)
     lib = cd.Brain.compose(  # the instrument reads no position term (``recall_position=0``)
         tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL, seed=seed,
@@ -1211,7 +1137,7 @@ def _option_lives(extra, seed=2, rounds=8):
     )
     held = tb.holdout(seed)
     rng = np.random.default_rng(np.random.SeedSequence([tb.SCHEDULE_SEED, seed]))
-    work, moved = tb.new_work(), 0.0
+    work = tb.new_work()
     for _ in range(rounds):
         trials = tb.draw(rng, tb.BATCH, held)
         seq, answer = tb.events(trials), tb.answers(trials)
@@ -1223,7 +1149,7 @@ def _option_lives(extra, seed=2, rounds=8):
                 inst.basal_ganglia.state.activation, lib.basal_ganglia.state.activation
             )
         ir.lesson(inst, seq[-1], answer, work)
-        moved += lib.lesson(seq[-1], answer)["address_rows"]
+        lib.lesson(seq[-1], answer)
         np.testing.assert_array_equal(inst.index.attended, lib.recall.attended_heads[0])
         np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
         for name, kept in zip(MAP, lib.recall.head_map(0), strict=True):
@@ -1233,20 +1159,16 @@ def _option_lives(extra, seed=2, rounds=8):
             np.testing.assert_array_equal(
                 getattr(inst.index.slots, name), getattr(lib.recall, name), err_msg=name
             )
-    assert moved == work["address_rows"]
-    return moved
 
 
 # -- the address step
 
 
-def test_a_movement_that_names_a_short_key_moves_the_address_onto_it():
+def test_a_movement_that_names_a_short_key_raises_its_weight():
     """Two slots with the short keys [.25, 0] and [0, .25], the heard key [1, 0], no recency
     charge: the address attends to the first slot, and a movement that names it (its value)
-    gives a target near its short key. The step moves the address toward that target,
-    shortening it, and the first slot's weight falls (the step on the named keys less the
-    attended mixture, ``recall_address_step="toward"``, which raised it, was retired in
-    0.93.0)."""
+    steps the address on the named keys less the attended mixture, which raises the first
+    slot's weight, however short its key."""
     recall = bare(recency=0.0, next=False)
     for key in 0.25 * np.eye(2):
         recall._observe(key[None], key[None])
@@ -1256,7 +1178,7 @@ def test_a_movement_that_names_a_short_key_moves_the_address_onto_it():
     report = recall._step(before, np.array([0]), recall.values[:, 0].copy(), None)
     assert report["address_rows"] == 1.0 and report["address_refused"] == 0.0
     after = recall.weights(recall._moment(x).address)[0, 0]
-    assert after < weight
+    assert after > weight
 
 
 # -- a null slot
@@ -1699,7 +1621,7 @@ def test_waited_moments_enter_the_window_and_imagination_keeps_its_own_copy():
 
 @pytest.mark.parametrize("window", [2, 4], ids=["w2", "w4"])
 def test_the_window_is_the_instruments_moment_for_moment(window):
-    assert _option_lives({"window": window}) > 0
+    _option_lives({"window": window})
 
 
 def test_a_window_reads_the_successor_of_the_matching_history():

@@ -2819,7 +2819,7 @@ class Brain:
             # held with sampled feedback alone: the pending address contrast belongs to the
             # lesson's form and rates
             # the position rate shapes the contrast only where reward trains the position maps
-            held = ["address", "address_reward", "position_reward", "address_contrast"]
+            held = ["address", "address_reward", "position_reward"]
             recall = self.recall
             if recall is not None and recall.position_reward and recall.position_maps:
                 held.append("position_rate")

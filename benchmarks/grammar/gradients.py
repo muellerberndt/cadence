@@ -48,11 +48,12 @@ cross-entropy of the motor activity at the temperature ``T`` of the lesson's nud
   is the descent of the cost through the read (a test reads the cosine).
 - ``Fn``, ``Fn2``, ``Fd`` (no gradient anywhere): the learned-keys lane's rule on the address map,
   the lesson's own sharp target ``p*`` with the error ``sum_i (p*_i - p_i) K_i`` in place of
-  ``K* - q``: one head, two heads, and one head at the deep teaching point alone. ``FdL`` is
-  ``Fd`` through the library's ``recall_address_contrast``, to the bit (a test holds it). ``Ln``
-  is its first order for a soft target, and ``Fn3``, ``Fn10``, ``Fn100`` and ``Lf`` lie between
-  them: the rule at the lesson's temperature 0.3, 1 and 10, its step scaled so that the first
-  order stays the same, and that first order on the lesson's own scores (``Ln`` holds each
+  ``K* - q``: one head, two heads, and one head at the deep teaching point alone. ``FdL`` is ``Fd``
+  through the library, whose address lesson is this rule since 0.95.0, to the bit (a test holds it),
+  so these arms and the recipe's live alike; ``Ln`` is its first order for a soft target, and
+  ``Fn3``, ``Fn10``, ``Fn100`` and ``Lf`` lie between them: the rule at the lesson's temperature
+  0.3, 1 and 10, its step scaled so that the first order stays the same, and that first order on the
+  lesson's own scores (``Ln`` holds each
   source's slope).
   ``Lf3``, ``Lf1`` and ``Fcap`` are that first order at a gain of 3 and 1 and with its target kept
   a distribution, and ``Fu3``, ``Fu10`` the soft targets unscaled: they separate the target's
@@ -125,7 +126,7 @@ ARMS: dict[str, dict[str, Any]] = {
     "Fn2": {"named_credit": 0.1, "brain": {"recall_heads": 2}},
     "Fd": {"named_credit": 0.1, "brain": {"teaching": "deep"}},
     "Fd2": {"named_credit": 0.1, "brain": {"teaching": "deep", "recall_heads": 2}},
-    "FdL": {"brain": {"teaching": "deep", "recall_address_contrast": True}},
+    "FdL": {"brain": {"teaching": "deep"}},
     "Fn3": {"named_credit": 0.3},
     "Fn10": {"named_credit": 1.0},
     "Fn100": {"named_credit": 10.0},
@@ -1662,8 +1663,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     work["seconds"] = round(time.monotonic() - started, 1)
     names = tuple(spec.get("panels") or gr.G1_PANELS)
     panels = _read(brain, tests, names)
-    contrast = (settings.get("brain") or {}).get("recall_address_contrast")
-    if (settings.get("named_credit") or settings.get("read_credit") or contrast or arm == "recipe"
+    if (settings.get("named_credit") or settings.get("read_credit") or arm in ("recipe", "FdL")
             or spec.get("locate")) and "path" in tests and "path" in names:
         located = {name: gr.locate(brain, tests[name]) for name in ("path", "clause")}
         notes["located"] = {name: {key: located[name][key] for key in sorted(located[name])

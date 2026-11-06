@@ -9,12 +9,13 @@
   0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
   tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
   without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
-- Add `recall_address_contrast` (opt-in, runtime, founder off): the recall read's address lesson
-  steps on the keys it names less the keys the read attended, the gradient of the content logits
-  and zero where the read is right, in place of the distance to the named keys, which keeps
-  regressing the address onto the mean named key. It adds no parameter. See
-  [the contrast](docs/memory.md#the-address-lesson-as-a-contrast-opt-in). Brains without the
-  option are unchanged.
+- **The recall read's address lesson changes.** It steps on the keys it names less the keys the read
+  attended, the gradient of the content logits and zero where the read is right, in place of the
+  distance to the named keys, which keeps regressing the address onto the mean named key. There is
+  no setting: every memory learns its addresses this way, and it adds no parameter. A brain at
+  `recall=False` is bit-identical. A memory's lessons do not reproduce the bits of 0.94.0. A saved
+  memory of 0.85.0 on loads with its map and continues under this lesson. See
+  [how the address learns](docs/memory.md#how-it-writes-and-how-the-address-learns).
 - With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
   recall read's address and position maps as they are: the read's lessons take their target
   from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no

@@ -320,7 +320,7 @@ Recall(connectome, amplitude=3.0, temperature=0.25, recency=0.25,
        window=1, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
        boundary=False, copy=0.0, tokens=None, action=False, anchor=False,
-       relative=False, slope=0.0, when=False, address_contrast=False, gain=0.0, actions=0)
+       relative=False, slope=0.0, when=False, gain=0.0, actions=0)
 ```
 
 The held-input index memory of each stream's recent moments. Each constructor argument is the

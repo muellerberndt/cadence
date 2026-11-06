@@ -551,8 +551,7 @@ class Recall:
     its age relative to the previous read's focus), ``slope`` (a lean by age at every length),
     ``when`` (the read also delivers when its slots happened), ``action`` (each slot carries the
     command executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
-    the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``address_contrast``
-    (the address lesson's error is the keys named less the keys attended), ``tokens`` (which
+    the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
     actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
     ``copy`` (plastic synapses from the read ports into the motor region).
 
@@ -595,9 +594,6 @@ class Recall:
     slope: float = 0.0
     # every head's read also delivers its slots' age features on a region of its own
     when: bool = False
-    # the address lesson's error is the contrast of the named keys against the keys the read
-    # attended, zero where the read is right, in place of the distance to the named keys
-    address_contrast: bool = False
     # above 0, with ``tokens``: one learned scalar per read port on the tokens' identity into the
     # motor region's drive (``gains``), taught at this rate by the motor's movement
     gain: float = 0.0
@@ -628,7 +624,7 @@ class Recall:
     OPTIONS = (
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "anchor",
-        "relative", "slope", "when", "address_contrast", "gain",
+        "relative", "slope", "when", "gain",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
                             "action", "anchor", "relative", "slope", "when", "gain")
@@ -668,8 +664,8 @@ class Recall:
                     "cadence-net 0.84.3 takes it"),
         "context_decay": ("0.85.0", 0.5, "no fading history of the earlier events joins the "
                           "key; cadence-net 0.84.3 takes it"),
-        "address_step": ("0.93.0", "lms", "the address lesson steps toward the named keys, "
-                         "as it did at 'lms'"),
+        "address_step": ("0.93.0", "toward", "the address lesson steps on the named keys less "
+                         "the attended ones, what a file at 'toward' saved"),
         "heard": ("0.93.0", heard, "the present event weighs 1.0 in its key and its address, "
                   "the one weight ever read"),
         "address_temperature": ("0.93.0", address_temperature, "the address lesson weighs "
@@ -725,7 +721,6 @@ class Recall:
             return number
         if name in (
             "next", "boundary", "action", "anchor", "relative", "when",
-            "address_contrast",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
@@ -2085,13 +2080,13 @@ class Recall:
     ) -> tuple[np.ndarray, ...] | None:
         """Each row's step of the address lesson before the average over rows: the rows of
         ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
-        the cortex ``c``, the key, the error toward the named keys, the error bounded by
-        the row's own energy, ``error * min(1, 1 / (address |z|^2))``, the attention ``p*``
-        the lesson names and the log of the prior attention the address gave (head ``head``'s
-        position term in it). Among competing heads ``read`` is the attention the head read
-        with over every stream's slots (``_lesson_reads``), and it is the prior; a row it read
-        nothing at does not move. None when no row moves. The arithmetic is unchecked: a
-        caller checks what it keeps."""
+        the cortex ``c``, the key, the error (the named keys less the attended ones, zero where the
+        attention is what the lesson names), the error bounded by the row's own energy, ``error *
+        min(1, 1 / (address |z|^2))``, the attention ``p*`` the lesson names and the log of the
+        prior attention the address gave (head ``head``'s position term in it). Among competing
+        heads ``read`` is the attention the head read with over every stream's slots
+        (``_lesson_reads``), and it is the prior; a row it read nothing at does not move. None when
+        no row moves. The arithmetic is unchecked: a caller checks what it keeps."""
         if len(rows) == len(self.keys):  # every stream, in order: the slots themselves
             values, nexts, keys, held = self.values, self.nexts, self.keys, self.held
         else:
@@ -2146,19 +2141,13 @@ class Recall:
             logits = logits + attention
             p = np.exp(logits - logits.max(axis=1, keepdims=True))
             p /= p.sum(axis=1, keepdims=True)
-            if self.address_contrast:
-                # the gradient of the content logits toward the named slots: the named keys
-                # less the attended ones, zero where the attention is what the lesson names
-                gradient = p - np.where(np.isfinite(attention), np.exp(attention), 0.0)
-                error = _einsum("bm,bmk->bk", gradient, keys)
-            else:
-                error = _einsum("bm,bmk->bk", p, keys) - q
+            # the gradient of the content logits toward the named slots: the named keys less
+            # the attended ones, zero where the attention is what the lesson names
+            gradient = p - np.where(np.isfinite(attention), np.exp(attention), 0.0)
+            error = _einsum("bm,bmk->bk", gradient, keys)
             # each row's gain on its own address, rate * |z|^2, is at most one: a row taught
-            # alone lands on its target at most, and a row within the bound keeps the rate as
-            # it is. Over a batch the step maps the errors E to (I - M) E, M = rate / n * G D
-            # with G the rows' Gram matrix of z and D their bounds; D^(1/2) M D^(-1/2) is
-            # symmetric with its eigenvalues in [0, 1] (its trace is the mean of the rows'
-            # gains), so sum_i D_i |e_i|^2 does not grow, though one row can pass its target.
+            # alone moves its address by its error at most, and a row within the bound keeps the
+            # rate as it is
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
             step = error * np.minimum(1.0, 1.0 / (rate * energy))[:, None]
         return moving, x, c, key, error, step, p, attention
