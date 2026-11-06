@@ -364,7 +364,7 @@ if njit is not None:
             feeds[a] = True
         return np.argsort(size, kind="mergesort"), feeds
 
-    @_compiled
+    @_inlined
     def _due(
         first: bool,
         order: np.ndarray,
@@ -430,7 +430,7 @@ if njit is not None:
         for i in range(columns.shape[0], flags):  # the products; those not held are remade
             kept[i] = given[i]
 
-    @_compiled
+    @_inlined
     def _block_product(
         columns: np.ndarray,
         flat: np.ndarray,
@@ -877,7 +877,7 @@ if njit is not None:
         activity_change[b] = change
         return moved
 
-    @_compiled
+    @_inlined
     def _close_sweep(
         t: int,
         row_moved: np.ndarray,
