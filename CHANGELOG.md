@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`): one learned scalar
+  per read port on the tokens' identity into the motor region's drive, starting at zero and taught
+  by the motor region's movement in each lesson and by the act's eligibility under reward, so what
+  lessons on some tokens teach holds for a token no lesson used. Answers with such tokens read above
+  0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
+  tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
+  without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
 - Add `recall_address_contrast` (opt-in, runtime, founder off): the recall read's address lesson
   steps on the keys it names less the keys the read attended, the gradient of the content logits
   and zero where the read is right, in place of the distance to the named keys, which keeps

@@ -672,6 +672,7 @@ where they differ from their founder. A saved brain keeps its genes, slots and a
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
 | `recall_address_contrast` | `False` | retune | The address lesson steps on the keys it names less the keys the read attended, zero where the read is right ([the contrast](#the-address-lesson-as-a-contrast-opt-in)) |
+| `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#a-learned-gain-on-the-reads-tokens-opt-in)) |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
@@ -1127,6 +1128,63 @@ Use it when the answer is a token the read can deliver, and compare it with the 
 and with the pathway drawn without tokens on the task. The options are construction settings,
 described and saved only where they are on.
 
+### A learned gain on the read's tokens (opt-in)
+
+The read's value reaches the motor region through the association, which learns from lessons, and
+an action no lesson named keeps losing: lessons on other actions push the association's synapses
+onto it down, so a read that names a token never taught leaves the brain saying something else. A
+learned map per token cannot produce that token either, since from zero it has no positive entry
+for what no lesson named. `recall_gain` above 0 holds one scalar per read port (`recall`, `next`,
+per head), `brain.recall.gains`, starting at zero. Each port's read of a declared token drives the
+token's motor neuron through the port's gain,
+
+```text
+drive[motor_j] += g r[tokens[j]]
+```
+
+so what a gain learns on the tokens lessons used holds for the tokens no lesson used. A lesson steps
+each gain by the mean over its taught rows of the row's rate times the sum over the tokens of the
+port's read of the token times its motor neuron's movement between the nudged phases, the contrast
+every synapse learns by. A row's rate is `min(recall_gain, 5 / E)`, `E` the energy of the row's reads
+over every port. Under reward a sampled act keeps that step and a unit of dopamine moves each gain by
+one such step. The address lesson reads nothing back through the gains. A newborn settles and acts as
+one without them.
+
+It is a construction setting and needs `recall_tokens`, within the observation's own coordinates in
+the value. `parameters()` counts one per port, the report gives `gain_rows` and `gain_refused`, a
+checkpoint keeps the array `gains`, and `grow` and `graft` carry it. `grow` refuses to add a memory
+with tokens, with the gain or without it.
+
+```python
+gained = Brain.compose(inputs=8, actions=4, modules=(16,), seed=0, recall=True,
+                       recall_gain=30.0, recall_tokens=[0, 1, 2, 3])
+assert gained.recall.gains.tolist() == [0.0, 0.0]  # a recall port and a next port
+assert gained.parameters() == Brain.compose(
+    inputs=8, actions=4, modules=(16,), seed=0, recall=True, recall_tokens=[0, 1, 2, 3]
+).parameters() + 2
+```
+
+Read on two development founders at `recall_gain=30.0`, in the composition of
+[the section below](#one-composition-for-sequences) with `recall_address_contrast` at
+`teaching="deep"`, 1,500 lessons, one life per founder and cell:
+
+| Reading | Without the gain | With the gain |
+| --- | --- | --- |
+| Induction, answers no lesson used | 0.00, 0.00 | 1.00, 0.93 |
+| Periodic continuation, answers no lesson used | | 0.97, 0.98 |
+| Copying, answers no lesson used | 0.00, 0.00 | 0.76, 0.98 |
+| Two hops, answers no lesson used | 0.00, 0.00 | 0.74, 0.68 |
+| N-back, answers no lesson used | 0.00, 0.00 | 0.01, 0.02 |
+| Look back, answers no lesson used | 0.00, 0.00 | 0.01, 0.00 |
+| Copying repeated tokens | 0.96, 0.96 | 0.86, 0.83 |
+| Two hops, second hop | 1.00, 0.99 | 0.94, 0.94 |
+| N-back | 1.00, 0.98 | 0.90, 0.97 |
+| Look back | 0.99, 0.99 | 0.98, 0.98 |
+
+The cost on copying repeated tokens is the read's lesson: where the gain answers early, surprise
+leaves the read untaught. On look back and n-back the read of a token no lesson used stays at 0.51
+to 0.67 and the answer near zero.
+
 ### Its own actions in the slots (opt-in)
 
 The recall slots hold what the stream sensed. What the brain did is in the working trace only
@@ -1225,7 +1283,8 @@ second write's value). Where it falls short:
   emulation on two founders: induction 1.00, copying 0.995 to 0.999 and periodic continuation
   0.96 to 0.98 of the never-taught answers, two hops 0.06 to 0.18 on the second hop, look back
   0.00 to 0.15 and n-back below 0.02, at a cost to look back (`second` 0.90 on one founder) and
-  copying repeated tokens (0.91 to 0.92). It is not in the library.
+  copying repeated tokens (0.91 to 0.92). That form is not in the library; the
+  [learned gain](#a-learned-gain-on-the-reads-tokens-opt-in) is the form that is.
 - **N-back** costs 0.033 on the mean against the founder memory, which answers it at 0.998 to
   1.000; two founders of six read 0.933. The cost is the recipe's slow table
   (`recall_position_rate=0.01`): at the founder's rate those two founders read 0.997 and 0.972,

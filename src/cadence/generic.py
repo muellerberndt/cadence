@@ -1332,6 +1332,10 @@ def _validate_recall_state(
             name.startswith(f"recall/{kind}_") for name in data
         ):
             raise ValueError(f"saved {noun} maps belong to a recall memory with {kind}")
+    if settings.get("gain", 0.0):  # the gains, one per read port, with the option
+        maps["gains"] = (len(regions),)
+    elif "recall/gains" in data:
+        raise ValueError("saved recall gains belong to a recall memory with gain")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1341,6 +1345,8 @@ def _validate_recall_state(
     columns = heads * address  # with position_reward the position and anchored buckets follow
     if settings.get("position_reward", 0.0) and count:
         columns += heads * count + (heads * (count + 1) if settings.get("anchor", False) else 0)
+    if settings.get("gain", 0.0):  # and one column per read port for the gains
+        columns += len(regions)
     eligibility = (batch, key + command + association + 1, columns)
     if "recall/trace" in data:
         array("trace", eligibility)
@@ -2020,9 +2026,10 @@ class Brain:
         # than on the observation itself
         self._coded_keys = bool(units) or bool(learned)
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
-        # declared tokens start the copy pathway as their identity, the echo included
+        # declared tokens start the copy pathway as their identity, the echo included, and the
+        # gains read them (``recall_gain``)
         tokened = bool(recalled.get("copy")) and recalled.get("tokens") is not None
-        if tokened:
+        if recalled.get("tokens") is not None and (tokened or recalled.get("gain")):
             # the observation's own coordinates in the recall values: the observation itself,
             # or a learned code joined to it, after the code's units
             joined = bool(learned) and LearnedCode.joins(self.inputs, learned["units"])
@@ -2048,7 +2055,8 @@ class Brain:
             ]
             if recalled["action"]:
                 ports += [f"{name}_action" for name in ports]
-            if all(name in populations for name in (*ports, "motor")):  # else the memory names it
+            # the pathway's identity needs its synapses (else the memory names them)
+            if tokened and all(name in populations for name in (*ports, "motor")):
                 connectome = _copy_identity(
                     connectome, recalled, learned["units"] if learned else 0
                 )
@@ -2797,6 +2805,10 @@ class Brain:
         ``recall_address_contrast=True`` (runtime, founder off) steps the address map on the
         named keys less the attended ones, zero where the read is right, in place of the distance
         to the named keys.
+        ``recall_gain`` above 0 (construction, founder 0.0; it needs ``recall_tokens``) adds one
+        learned scalar per read port on the tokens' identity into the motor region's drive,
+        starting at zero and taught at that rate by the motor region's movement, so what lessons
+        on some tokens teach holds for the tokens no lesson used.
         ``recall_copy`` above 0 (construction, founder 0.0) adds the copy pathway: plastic
         synapses from every head's read ports into the motor region, appended last and drawn
         at that magnitude, learned by the settle's contrast. ``recall_tokens`` (construction,
@@ -2816,8 +2828,8 @@ class Brain:
         each with its own port and address map; ``recall_compete``, a runtime option with
         founder True, makes them read in turn, each taking of a slot at most the share the
         heads before it left), ``recall_position``, ``recall_copy``,
-        ``recall_tokens`` and ``recall_action`` are construction settings; the keys, the
-        values and the address map follow the observation code's width, a brain's ``code``
+        ``recall_tokens``, ``recall_gain`` and ``recall_action`` are construction settings; the
+        keys, the values and the address map follow the observation code's width, a brain's ``code``
         among the ways to bound it. A retired recall setting (``Recall.RETIRED``, and
         ``recall_recency=None``) is refused by name with one sentence naming the release that
         retired it and what the memory does instead; the CHANGELOG gives each one's reading.
@@ -3161,6 +3173,7 @@ class Brain:
         if self.recall is not None and not (
             self.recall.address_reward
             or (self.recall.position_reward and self.recall.position_maps)
+            or self.recall.gain
         ):
             # reward leaves the read as it is: the actor keeps no eligibility of it, and the
             # brain reports and saves as one composed without it
@@ -3998,6 +4011,8 @@ class Brain:
             # the address lesson: the slots scored against the lesson's movement step the map,
             # with declared tokens at the rows whose answer is one
             teaching.update(self.recall.learn(self.learner.brain, lesson, tokens))
+            # the gains' lesson (``recall_gain``): the motor's movement steps them
+            teaching.update(self.recall.learn_gain(lesson))
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )
@@ -5050,7 +5065,7 @@ class Brain:
     def parameters(self) -> int:
         """Actor/critic and consolidated weights (the episodic records' paid store with
         ``memory_extinction``), the recall memory's address and position maps and the maps of
-        its options (anchor, relative, slope), a learned code's tables, and with ``maturity``
+        its options (anchor, relative, slope, gain), a learned code's tables, and with ``maturity``
         its use and the place records' noise scales; per-stream transient storage is
         additional."""
         recall = self.recall
@@ -5076,6 +5091,7 @@ class Brain:
                     )
                     for a in maps
                 )
+                + recall.gains.size
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
         )
@@ -5439,6 +5455,8 @@ class Brain:
                         setattr(recall, f"{kind}_maps", saved_maps(kind))
                         if read:
                             setattr(recall, read, data["recall/" + read].astype(np.int64))
+                if recall.gain:  # the gains (validated above)
+                    recall.gains = data["recall/gains"].astype(float)
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command

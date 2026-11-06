@@ -720,6 +720,21 @@ class Recall:
     the read is what the lesson names, so a read that is right stops moving the map; the distance
     keeps regressing the address onto the mean named key whatever the read.
 
+    With ``gain`` above zero (an option, founder 0.0; a construction setting; it needs ``tokens``)
+    the memory holds one learned scalar per read port, ``gains``, in ``ports`` order, starting at
+    zero: ``stimulate`` adds each port's read of a token through that port's gain to the token's
+    motor neuron, ``drive[motor_j] += g r[offset + tokens[j]]``, with ``r`` the read as the port
+    holds it and ``offset`` where the observation's own coordinates lie in the value, so what a
+    gain learns on the tokens lessons used holds for a token no lesson used. ``learn_gain`` is its
+    lesson, which the brain runs after each teacher lesson beside the address lesson: each gain
+    takes the mean over the taught rows of the row's rate, ``min(gain, GAIN_BOUND / E)``, ``E`` the
+    energy of the row's reads over every port, times the sum over the tokens of the port's read of
+    the token times its motor neuron's movement between the nudged phases. Under reward each
+    sampled act keeps that step in one column per port after the address and position columns of
+    ``contrast_rows``, and a unit of dopamine moves each gain by one such step (``propose``,
+    ``accept``). The address lesson reads nothing back through the gains, and a newborn settles and
+    acts as one without them.
+
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
     the memory does instead (``removed``); a saved memory loads where it carries the one value
@@ -767,6 +782,9 @@ class Recall:
     # the address lesson's error is the contrast of the named keys against the keys the read
     # attended, zero where the read is right, in place of the distance to the named keys
     address_contrast: bool = False
+    # above 0, with ``tokens``: one learned scalar per read port on the tokens' identity into the
+    # motor region's drive (``gains``), taught at this rate by the motor's movement
+    gain: float = 0.0
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -794,15 +812,19 @@ class Recall:
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when", "copy_next", "address_contrast",
+        "relative", "slope", "when", "copy_next", "address_contrast", "gain",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when", "copy_next")
+                            "action", "anchor", "relative", "slope", "when", "copy_next", "gain")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the position lesson's rate a unit of dopamine steps the position maps at, times
     # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
     REWARD_RATE = 0.1
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
+    # the gains' step (``gain``): a row's rate is bounded by this over the energy of its reads, so
+    # a row taught alone moves its own drive on a motor neuron by at most this many times the
+    # neuron's movement between the nudged phases
+    GAIN_BOUND = 5.0
     # the kinds of a head's maps beside its address map (``map_names``), in the order a
     # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
     # kept before its maps: the reads' focus for the relative maps, the moments told for the
@@ -879,7 +901,7 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope", "copy_next",
+            "position_rate", "copy", "slope", "copy_next", "gain",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -1022,6 +1044,22 @@ class Recall:
                         "Brain.compose adds them"
                     )
 
+    def _check_gain(self) -> None:
+        """With ``gain`` every read port reaches the motor region through its gain on the declared
+        tokens, whose coordinates lie in the value."""
+        if not self.gain:
+            return
+        if self.tokens is None:
+            raise ValueError("gain multiplies the declared tokens' identity: it needs tokens")
+        if not len(self.motor):
+            raise ValueError("gain needs a population named 'motor'")
+        offset = self.key_width - len(self.observed)
+        if offset < 0 or max(self.tokens) + offset >= self.key_width:
+            raise ValueError(
+                "gain needs the observation's own coordinates in the recall values: a brain "
+                "without a code, or a learned code joined to an observation no wider than it"
+            )
+
     @staticmethod
     def _rewarded(position_reward: float, position: int, position_rate: float) -> None:
         """Reward trains the position maps (``position_reward`` above 0) only where they exist
@@ -1141,6 +1179,19 @@ class Recall:
         # every head's slope maps ``(S_x, S_c, s)``, one number each; none without ``slope``
         self.slope_maps = self._zero_maps(self.heads if self.slope else 0)
         self._check_copy()
+        # the motor region, which the gains drive (``gain``); empty where the anatomy has none
+        self.motor: np.ndarray = np.asarray(populations.get("motor", ()), dtype=np.int64)
+        self._motor_columns = columns(self.motor)
+        self._check_gain()
+        # with ``gain`` one scalar per read port in ``ports`` order, and the token coordinates in
+        # the value and the motor neurons they drive
+        self.gains: np.ndarray = np.zeros(
+            self.heads * (2 if self.next else 1) if self.gain else 0
+        )
+        pairs = [(token, j) for j, token in enumerate(self.tokens or ()) if token >= 0]
+        offset = self.key_width - len(self.observed)
+        self._token_values = np.array([offset + t for t, _ in pairs], dtype=np.int64)
+        self._token_motors = np.array([j for _, j in pairs], dtype=np.int64)
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
         # every head's address and attention of the latest read (head 0's are ``last.address``
@@ -1533,6 +1584,8 @@ class Recall:
                 out[state] = getattr(self, state)
             for h, maps in enumerate(kept):
                 out.update(zip(self.map_names(kind, h), maps, strict=True))
+        if self.gain:  # the gains, one per read port, saved only with the option
+            out["gains"] = self.gains
         return out
 
     @staticmethod
@@ -1708,6 +1761,8 @@ class Recall:
                     out[:, next_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.nexts)
                 if whens is not None:
                     out[:, self._whens[h][1]] = self.amplitude * _einsum("bm,bmw->bw", p, whens)
+        if self.gain:  # every port's read of a token, through the port's gain, into the motor
+            out[:, self._motor_columns] += self._gain_drive(out)
         self._attended = attended[0]  # the attention this read uses, kept past the write
         # with several heads, every head's address and attention, and the writes the bank had
         self._head_reads = (
@@ -1719,6 +1774,133 @@ class Recall:
         """Every head's address and attention at ``moment``."""
         addresses = [moment.address] + [self._address(moment, h) for h in range(1, self.heads)]
         return addresses, self._read(addresses, moment)
+
+    # -- the gains (``gain``)
+
+    def _gain_drive(self, drive: np.ndarray) -> np.ndarray:
+        """The gains' drive on the motor region, ``(batch, motor)``: every port's read of a token
+        as ``drive`` holds it on the port's columns, through the port's gain, summed over the
+        ports."""
+        total = np.zeros((len(drive), len(self.motor)))
+        ports = [
+            part for recall_columns, next_columns in self._head_columns
+            for part in ((recall_columns, next_columns) if self.next else (recall_columns,))
+        ]
+        for k, port in enumerate(ports):
+            total[:, self._token_motors] += self.gains[k] * drive[:, port][:, self._token_values]
+        return total
+
+    def _held_attention(self, moment: _Moment) -> list[np.ndarray | None]:
+        """Every head's attention over the slots held now, as the latest read used it
+        (``stimulate``, head 0's ``_attended`` and the other heads' kept reads while the bank
+        holds what they read), else computed now."""
+        if self.heads == 1:
+            return [self._attended]
+        reads = self._head_reads
+        if reads is not None and reads[2] == self.writes and len(reads[1]) == self.heads:
+            return list(reads[1])
+        return self._reads(moment)[1]
+
+    def _port_reads(self, attended: Sequence[np.ndarray | None]) -> list[np.ndarray | None]:
+        """Every port's read in ``ports`` order, ``(batch, value)`` each: head ``h``'s
+        attention ``attended[h]`` over the slots' values and, with ``next``, their nexts, at
+        ``amplitude``, as ``stimulate`` holds it on the port; None where the head read
+        nothing."""
+        reads: list[np.ndarray | None] = []
+        for p in attended:
+            if p is None or p.shape[1] != self.slots:
+                reads.extend([None] * (2 if self.next else 1))
+                continue
+            reads.append(self.amplitude * _einsum("bm,bmc->bc", p, self.values))
+            if self.next:
+                reads.append(self.amplitude * _einsum("bm,bmc->bc", p, self.nexts))
+        return reads
+
+    def _motor_movement(self, plus: BrainState, minus: BrainState) -> np.ndarray:
+        """The motor region's movement between two phases, ``(batch, motor)``."""
+        s_plus = np.atleast_2d(np.asarray(plus.activation, dtype=float))
+        s_minus = np.atleast_2d(np.asarray(minus.activation, dtype=float))
+        return np.asarray((s_plus - s_minus)[:, self.motor], dtype=float)
+
+    def _gain_rates(self, reads: Sequence[np.ndarray | None]) -> np.ndarray:
+        """Each row's rate of the gains' step, ``min(gain, GAIN_BOUND / E)``, ``E`` the energy of
+        the row's reads over every port: the drive on a motor neuron reads them all together, so a
+        row taught alone moves its own drive by at most ``GAIN_BOUND`` times the neuron's
+        movement. A row that read nothing keeps the rate; its step is zero."""
+        energy = np.zeros(self.streams)
+        for r in reads:
+            if r is not None:
+                energy = energy + np.einsum("bi,bi->b", r, r)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return np.minimum(self.gain, self.GAIN_BOUND / energy)
+
+    def _gain_step(self, read: np.ndarray, movement: np.ndarray) -> np.ndarray:
+        """Per row, the sum over the tokens of a port's read of the token times its motor
+        neuron's movement: the contrast of the gain that multiplies every token's identity."""
+        return np.asarray(np.einsum(
+            "bt,bt->b", read[:, self._token_values], movement[:, self._token_motors]
+        ))
+
+    def learn_gain(self, learned: LearnedState) -> dict[str, float]:
+        """The gains' lesson after a teacher lesson whose phases are ``learned``, at its taught
+        rows: each port's gain takes the mean over the rows of the row's rate (``_gain_rates``)
+        times ``_gain_step`` on the port's read (``_port_reads``, what the port held at the moment
+        the lesson's drive addressed) and the motor region's movement between the nudged phases. A
+        step that is not finite is refused whole. Returns ``gain_rows``, the rows that moved, and
+        ``gain_refused``, the rows a refused step left as they were; nothing without the option,
+        and both zero for a lesson without a nudged phase or a moment."""
+        if not self.gain:
+            return {}
+        quiet = {"gain_rows": 0.0, "gain_refused": 0.0}
+        moment = self.last
+        if (
+            moment is None
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return quiet
+        taught = learned.taught
+        rows = (
+            np.arange(len(moment.address))
+            if taught is None
+            else np.flatnonzero(np.asarray(taught, dtype=bool))
+        )
+        if not self.slots or not len(rows) or self.streams != len(moment.address):
+            return quiet
+        movement = self._motor_movement(
+            learned.nudged, learned.free if learned.opposite is None else learned.opposite
+        )
+        reads = self._port_reads(self._held_attention(moment))
+        with np.errstate(over="ignore", invalid="ignore"):
+            rates = self._gain_rates(reads)[rows]
+            gains = self.gains + np.array([
+                0.0 if r is None else np.mean(rates * self._gain_step(r[rows], movement))
+                for r in reads
+            ])
+        if not np.isfinite(gains).all():
+            return {"gain_rows": 0.0, "gain_refused": float(len(rows))}
+        self.gains = gains
+        return {"gain_rows": float(len(rows)), "gain_refused": 0.0}
+
+    def _gain_rows(
+        self, out: np.ndarray, moment: _Moment, plus: BrainState, minus: BrainState
+    ) -> None:
+        """The gains' eligibility of a sampled act, written into the last columns of ``out``
+        (``contrast_rows``' array) on the array's first row: per row and port, the row's rate
+        (``_gain_rates``) times ``_gain_step`` on the act's two nudged phases, the step the lesson
+        would take were the act's action the label; a row whose step is not finite keeps none."""
+        start = self.reward_columns - len(self.gains)
+        movement = self._motor_movement(plus, minus)
+        reads = self._port_reads(self._held_attention(moment))
+        rate = self._gain_rates(reads)
+        for k, r in enumerate(reads):
+            if r is None:
+                continue
+            with np.errstate(over="ignore", invalid="ignore"):
+                step = rate * self._gain_step(r, movement)
+            kept = np.isfinite(step)
+            out[kept, 0, start + k] = step[kept]
 
     def _read(self, addresses: Sequence[np.ndarray], moment: _Moment) -> list[np.ndarray | None]:
         """Every head's attention over the slots held now, head ``h`` at ``addresses[h]`` with
@@ -2207,9 +2389,10 @@ class Recall:
         """The read's eligibility from a sampled act, one ``(inputs + association + 1,
         reward_columns)`` array per row (the rows of ``w_x``, ``w_c`` and ``b`` in that order;
         with several heads one block of ``address`` columns per head, head 0's first, then
-        with ``position_reward`` the position and anchored buckets), or None when neither
-        ``address_reward`` nor ``position_reward`` trains the read: the step the address and
-        position lessons would take at each row,
+        with ``position_reward`` the position and anchored buckets, and with ``gain`` one column
+        per port, ``_gain_rows``), or None when neither ``address_reward`` nor ``position_reward``
+        nor ``gain`` trains the read: the step the address and position lessons would take at each
+        row,
         were the act's action a lesson's label, before the average over rows. The
         association's movement between the act's two nudged phases, ``plus`` less ``minus``,
         is read back through the recall and next synapses of ``graph`` and scored against the
@@ -2219,7 +2402,7 @@ class Recall:
         ``position_rate``): the cortex and bias rows learn from lessons alone.
         A row that does not move, or whose contribution is not finite, keeps none."""
         positions = bool(self.position_reward) and bool(self.position_maps)
-        if not (self.address_reward or positions):
+        if not (self.address_reward or positions or self.gain):
             return None
         movement = self.activity(plus) - self.activity(minus)
         batch, width, columns_ = len(movement), self.map_width, self.address_width
@@ -2227,6 +2410,10 @@ class Recall:
         out = np.zeros((batch, width + len(self.association) + 1, self.reward_columns))
         moment = self.last
         if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
+            return out
+        if self.gain:  # the gains' step, in their own columns
+            self._gain_rows(out, moment, plus, minus)
+        if not (self.address_reward or positions):
             return out
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
@@ -2274,13 +2461,14 @@ class Recall:
     def reward_columns(self) -> int:
         """The columns of the reward eligibility (``contrast_rows``): every head's address
         columns, and with ``position_reward`` every head's position buckets, then with
-        ``anchor`` every head's anchored buckets."""
+        ``anchor`` every head's anchored buckets, and last with ``gain`` one column per read
+        port."""
         columns_ = self.heads * self.address_width
         if self.position_reward and self.position_maps:
             columns_ += self.heads * self.position_buckets
             if self.anchor_maps:
                 columns_ += self.heads * (self.position_buckets + 1)
-        return columns_
+        return columns_ + len(self.gains)
 
     def propose(self, step: np.ndarray) -> tuple[Any, ...] | None:
         """The address map after a reward's step, not installed: ``step`` is the rows'
@@ -2288,16 +2476,23 @@ class Recall:
         ``address_reward``. Returns ``w_x``, ``w_c``, ``b`` and the norm of the step (with
         several heads, each of the three a tuple of every head's, head 0's first), then with
         ``position_reward`` every head's position maps and, with ``anchor``, its anchored maps
-        (None without), or None when neither reward trains the read; a step whose map is not
-        finite is refused (``ValueError``)."""
+        (None without), with ``gain`` last the gains (a further item, none without), or None when
+        nothing reward trains is there; a step whose map is not finite is refused
+        (``ValueError``)."""
         positions = bool(self.position_reward) and bool(self.position_maps)
-        if not (self.address_reward or positions):
+        if not (self.address_reward or positions or self.gain):
             return None
         step = np.asarray(step, dtype=float)
         width, columns_ = self.map_width, self.address_width
         shape = (width + len(self.association) + 1, self.reward_columns)
         if step.shape != shape:
             raise ValueError(f"an address map's step is a {shape} array")
+        gains: np.ndarray | None = None
+        moved_gains: list[np.ndarray] = []
+        if self.gain:  # the gains, stepped on their own columns of the first row
+            moved_gains = [step[0, step.shape[1] - len(self.gains):]]
+            with np.errstate(over="ignore", invalid="ignore"):
+                gains = self.gains + moved_gains[0]
         split = self.heads * columns_
         with np.errstate(over="ignore", invalid="ignore"):
             moved = self.address_reward * step[:, :split]
@@ -2323,29 +2518,37 @@ class Recall:
                     start += self.heads * size
                 position_maps = found_maps[0]
                 anchor_maps = found_maps[1] if len(found_maps) > 1 else None
+        stepped += moved_gains
         every = [*(a for head in maps for a in head), *stepped]
+        if gains is not None:
+            every.append(gains)
         for found in (position_maps, anchor_maps):
             every += [a for head in found or () for a in head]
         if not all(np.isfinite(a).all() for a in every):
             raise ValueError("the address map's reward step must be finite")
         # one norm over every part stepped: with the address map alone, 0.92.1's own
         norm = float(np.linalg.norm(np.concatenate([part.ravel() for part in stepped])))
-        if self.heads == 1:
-            return maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps
-        return (
-            tuple(m[0] for m in maps), tuple(m[1] for m in maps), tuple(m[2] for m in maps), norm,
-            position_maps, anchor_maps,
+        proposal: tuple[Any, ...] = (
+            (maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps)
+            if self.heads == 1
+            else (
+                tuple(m[0] for m in maps), tuple(m[1] for m in maps), tuple(m[2] for m in maps),
+                norm, position_maps, anchor_maps,
+            )
         )
+        return proposal if gains is None else (*proposal, gains)
 
     def accept(self, proposal: tuple[Any, ...]) -> None:
-        """Install a step ``propose`` made: the address maps, and with ``position_reward`` the
-        position maps (and the anchored ones)."""
+        """Install a step ``propose`` made: the address maps, with ``position_reward`` the
+        position maps (and the anchored ones), and with ``gain`` the gains."""
         heads = [proposal[:3]] if self.heads == 1 else zip(*proposal[:3], strict=True)
         self.head_maps = [(w_x, w_c, b) for w_x, w_c, b in heads]
         if len(proposal) > 4 and proposal[4] is not None:
             self.position_maps = list(proposal[4])
         if len(proposal) > 5 and proposal[5] is not None:
             self.anchor_maps = list(proposal[5])
+        if len(proposal) > 6:
+            self.gains = proposal[6]
 
     def to_dict(self) -> dict[str, Any]:
         """The memory's settings and counts: the keys always written (``SAVED``), the ports,
