@@ -588,8 +588,8 @@ action's address contrast is pending.
 
 The step's error `K* - q` is the distance to the named keys. It keeps moving the address while the
 read is right, so over a life it regresses the address onto the mean key the lessons named: a
-query learns a preference among contents, and two reads that need different slots from one address
-pull it between them. `recall_address_contrast=True` takes the error as a contrast,
+query learns a preference among contents. `recall_address_contrast=True` takes the error as a
+contrast,
 
 ```text
 error = sum_i (p*_i - p_i) K_i
