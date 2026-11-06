@@ -3818,6 +3818,9 @@ class _MlxKernel:
         self.n = connectome.n
         self.layout = layout
         self.root = self  # with_parameters' kernels share it: a state continues on any of them
+        self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
+        self.sweeps: dict[bool, Any] = {}  # the compiled sweeps, shared with those kernels too
+        self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n)
         self._take(weights, bias)
         self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
@@ -3867,7 +3870,7 @@ class _MlxKernel:
             s = s + neuron_model.leak * mx.minimum(r, 0.0) / rest
         return s
 
-    def _synaptic_input(self, s: Any) -> Any:
+    def _synaptic_input(self, s: Any, blocks: Sequence[Any]) -> Any:
         """Every block's product at every step: the device makes a product in less time than a
         host synchronization would take to find its range unchanged."""
         mx, lay = self.mx, self.layout
@@ -3878,10 +3881,58 @@ class _MlxKernel:
             total = None
             for k in self.by_post[r]:
                 a0, a1, _, _ = lay.bounds(k)
-                product = s[:, a0:a1] @ self.blocks[k]
+                product = s[:, a0:a1] @ blocks[k]
                 total = product if total is None else total + product
             parts.append(mx.zeros((batch, b1 - b0), dtype=mx.float32) if total is None else total)
         return mx.concatenate(parts, axis=1)
+
+    def _sweep(
+        self, peak: bool, v: Any, s: Any, a: Any, change: Any, standing: Any, blocks: Sequence[Any],
+        k: Any, beta: Any, target: Any, mask: Any, weight: Any, anchor: Any, anchor_gain: Any,
+        groups: Sequence[tuple[Any, Any]] | None,
+    ) -> tuple[Any, ...]:
+        """One sweep of every neuron, the neuron rule's own order: ``target`` is None without a
+        nudge, ``groups`` the softmax groups of a nudge that has them (members and temperature),
+        ``k`` None without a mask. With ``peak`` the step's largest movement comes with it."""
+        mx, neuron_model = self.mx, self.neuron_model
+        adapt = neuron_model.adaptation
+        total = self._synaptic_input(s, blocks) + standing
+        if adapt is not None:
+            total = total - adapt.strength * a
+        if target is not None:
+            if groups is None:
+                push = beta * (target - s) * mask
+            else:  # one softmax per group of competing neurons
+                push = mx.zeros_like(s)
+                for members, temperature in groups:
+                    logits = s[:, members]
+                    tiny = float(np.finfo(np.float32).tiny)
+                    if isinstance(temperature, float) and temperature < tiny:
+                        logits = logits - mx.max(logits, axis=1, keepdims=True)
+                        while temperature < tiny:
+                            logits = logits / tiny
+                            temperature /= tiny
+                    p = mx.softmax(logits / temperature, axis=1)
+                    push[:, members] = beta * (target[:, members] - p) * mask[members]
+            if weight is not None:
+                push = push * weight
+            if anchor is not None:
+                push = push + anchor_gain * (anchor - s)
+            total = total + push
+        v = v + neuron_model.dt * (-v + total)
+        if k is not None:
+            v = v * k
+        previous = s
+        s = self._activation(v)
+        if k is not None:
+            s = s * k
+        if adapt is not None:
+            a = a + (s - a) / adapt.tau_steps
+        movement = mx.abs(s - previous)
+        change = change + movement.sum(axis=1)
+        if peak:  # the stop reads the step's largest movement, made with it
+            return v, s, a, change, movement.max()
+        return v, s, a, change
 
     def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
         """The block Gram contrast on the device; the per-synapse and per-neuron sums come back."""
@@ -3911,7 +3962,7 @@ class _MlxKernel:
         state: BrainState | None = None,
         capture: _Capture | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
-        mx, neuron_model = self.mx, self.neuron_model
+        mx = self.mx
         plan = self.plan
         if plan is not None and not want and capture is None and (keep == 1.0).all():
             tables = None if nudge is None else plan.nudge_tables(nudge)
@@ -3929,14 +3980,13 @@ class _MlxKernel:
         d, k = to(drive), to(keep)
         batch = v.shape[0]
         masked = bool((keep != 1.0).any())
-        adapt = neuron_model.adaptation
         target = mask = weight = anchor = anchor_gain = None
         groups: list[Any] = []
         if nudge is not None:
             target = to(np.broadcast_to(nudge.target, (batch, self.n)))
             mask = to(nudge.mask)
             groups = [
-                (mx.array(members), _group_temperature(nudge, members))
+                (mx.array(members), self._heat(_group_temperature(nudge, members)))
                 for members in _softmax_groups(nudge)
             ] if nudge.softmax_temperature is not None else []
             if nudge.weight is not None:
@@ -3947,53 +3997,24 @@ class _MlxKernel:
         traj = []
         taken = 0
         activity_change = mx.zeros((batch,), dtype=mx.float32)
-        s = self._activation(v)
+        s = self._activate(v)
         if masked:
             s = s * k
         standing = d + self.bias
         if capture is not None:
             capture.step(np.array(v), np.array(s), np.array(a))
+        bounded = tolerance is not None
+        sweep = self._sweep_of(bounded, groups)
+        beta = None if nudge is None else mx.array(float(nudge.beta), dtype=mx.float32)
         for t in range(steps):
-            synaptic_input = self._synaptic_input(s)
-            total = synaptic_input + standing
-            if adapt is not None:
-                total = total - adapt.strength * a
-            if nudge is not None:
-                assert target is not None and mask is not None
-                if nudge.softmax_temperature is None:
-                    push = nudge.beta * (target - s) * mask
-                else:  # one softmax per group of competing neurons
-                    push = mx.zeros_like(s)
-                    for members, temperature in groups:
-                        logits = s[:, members]
-                        tiny = float(np.finfo(np.float32).tiny)
-                        if temperature < tiny:
-                            logits = logits - mx.max(logits, axis=1, keepdims=True)
-                            while temperature < tiny:
-                                logits = logits / tiny
-                                temperature /= tiny
-                        p = mx.softmax(logits / temperature, axis=1)
-                        push[:, members] = nudge.beta * (target[:, members] - p) * mask[members]
-                if weight is not None:
-                    push = push * weight
-                if anchor is not None:
-                    push = push + anchor_gain * (anchor - s)
-                total = total + push
-            v = v + neuron_model.dt * (-v + total)
-            if masked:
-                v = v * k
-            previous = s
-            s = self._activation(v)
-            if masked:
-                s = s * k
-            if adapt is not None:
-                a = a + (s - a) / adapt.tau_steps
-            movement = mx.abs(s - previous)
-            activity_change = activity_change + movement.sum(axis=1)
-            peak = None
-            if tolerance is not None:  # the stop reads the step's largest movement, made with it
-                peak = movement.max()
-                mx.eval(v, s, a, activity_change, peak)
+            out = sweep(
+                v, s, a, activity_change, standing, self.blocks, k if masked else None, beta,
+                target, mask, weight, anchor, anchor_gain,
+                groups if nudge is not None and nudge.softmax_temperature is not None else None,
+            )
+            v, s, a, activity_change = out[:4]
+            if bounded:
+                mx.eval(*out)
             elif (t + 1) % _MLX_GRAPH_STEPS == 0:
                 mx.eval(v, s, a, activity_change)
             if capture is not None:
@@ -4001,7 +4022,7 @@ class _MlxKernel:
             if want:
                 traj.append(np.array(s, dtype=np.float64))
             taken = t + 1
-            if tolerance is not None and peak is not None and float(peak.item()) < tolerance:
+            if bounded and tolerance is not None and float(out[4].item()) < tolerance:
                 break
         return (
             np.array(v, dtype=np.float64),
@@ -4012,6 +4033,28 @@ class _MlxKernel:
             np.array(activity_change, dtype=np.float64),
             {"kernel": "mlx", "holder": self.root, "v": v, "a": a, "s": s},
         )
+
+    def _heat(self, temperature: float) -> Any:
+        """A softmax's temperature as a compiled sweep reads it, an input a new value does not
+        trace again; a temperature below float32's least normal stays a number, for its ladder."""
+        if temperature < float(np.finfo(np.float32).tiny):
+            return float(temperature)
+        return self.mx.array(float(temperature), dtype=self.mx.float32)
+
+    def _sweep_of(self, peak: bool, groups: Sequence[tuple[Any, Any]]) -> Any:
+        """The sweep, compiled once per kind and shape: the neuron update fuses into one operation
+        and a replay costs a fraction of building its graph. ``CADENCE_MLX_LAUNCH=0``, and a
+        temperature below float32's least normal, keep one operation at a time."""
+        def sweep(*inputs: Any) -> tuple[Any, ...]:
+            return self._sweep(peak, *inputs)
+
+        if self.plain or any(isinstance(temperature, float) for _, temperature in groups):
+            return sweep
+        held = self.sweeps.get(peak)
+        if held is None:
+            held = self.mx.compile(sweep)
+            self.sweeps[peak] = held
+        return held
 
     # -- the launch: a chunk of sweeps in one Metal dispatch
 

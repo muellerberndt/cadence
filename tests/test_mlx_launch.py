@@ -278,3 +278,33 @@ def test_a_composed_brain_lives_in_launches_as_on_the_cpu(tmp_path):
     again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
     x = rng.random((ROWS, 8))
     np.testing.assert_array_equal(mlx.act(x, greedy=True), again.act(x, greedy=True))
+
+
+def test_a_compiled_sweep_takes_every_feature_and_a_new_temperature_traces_nothing():
+    connectome = cd.layered(8, 12, 4, density=1.0, seed=2)
+    model = cd.learning_neuron_model(dt=0.5, leak=0.2).replace(
+        adaptation=cd.Adaptation(tau_steps=15, strength=0.1)
+    )
+    cpu = cd.NeuralGraph(connectome, model)
+    mlx = cd.NeuralGraph(connectome, model, backend="mlx")
+    assert mlx._mlx.plan is None
+    rng = np.random.default_rng(3)
+    drive = cpu.stimulus_levels(rng.random((ROWS, connectome.n)) * 0.5)
+    out = list(connectome.populations["output"])
+    mask = np.zeros(connectome.n)
+    mask[out] = 1.0
+    target = np.zeros((ROWS, connectome.n))
+    target[np.arange(ROWS), [out[i % len(out)] for i in range(ROWS)]] = 1.0
+    for temperature in (0.2, 0.3, 0.5):
+        nudge = cd.Nudge(target, mask, 0.1, softmax_temperature=temperature)
+        a = cpu.settle_batch(drive, steps=12, nudge=nudge)
+        b = mlx.settle_batch(drive, steps=12, nudge=nudge)
+        np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+        assert mlx._mlx.sweeps  # compiled, and one sweep for all three temperatures
+    assert len(mlx._mlx.sweeps) == 1
+    # a temperature below float32's least normal reads the host's ladder, one operation at a time
+    cold = cd.Nudge(target, mask, 0.1, softmax_temperature=1e-39)
+    np.testing.assert_allclose(
+        mlx.settle_batch(drive, steps=4, nudge=cold).activation,
+        cpu.settle_batch(drive, steps=4, nudge=cold).activation, rtol=0, atol=1e-4,
+    )
