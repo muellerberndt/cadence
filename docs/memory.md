@@ -960,9 +960,10 @@ synapses. Each further head adds its two regions, their projections and one more
 The address map is `code` by `address_width` plus the association width by `address_width`;
 with compose's 64 association neurons it is 0.66 MB at 256 inputs, 1,322 MB at 12,824 inputs
 on the uncoded observation and 8.9 MB with `code=1024`. One stream's slots hold `capacity`
-keys, values and nexts, 0.39 MB at 256 inputs. The map is learned: a reset keeps it,
-`parameters()` counts it and a checkpoint saves it. The keys are the observation code, so
-changing the code makes the stored keys inconsistent with new addresses.
+keys, values and nexts, 0.39 MB at 256 inputs, in arrays of up to twice the capacity: a write adds a
+slot in the room behind the others and moves them when the room runs out. The map is learned: a
+reset keeps it, `parameters()` counts it and a checkpoint saves it. The keys are the observation
+code, so changing the code makes the stored keys inconsistent with new addresses.
 
 ### In a custom anatomy
 

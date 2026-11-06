@@ -12,7 +12,7 @@
 - Add `learning_fast_settle` (opt-in, runtime, founder off): a composed brain's free solves take
   `equilibrate(..., fast=True)` on the compiled CPU path. The regions take their step in turn, a row
   stops at the check it is within 1e-5, and the activation is made in arithmetic that vectorizes.
-  The same equations and tolerance in about a third of the row-sweeps, with other bits. A settle's
+  The same equations and tolerance in less than half of the row-sweeps, with other bits. A settle's
   report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without
   the option are unchanged.
 - Add `dense_limit` to `Brain.compose` (opt-in, construction, founder 2048): a brain whose blocks

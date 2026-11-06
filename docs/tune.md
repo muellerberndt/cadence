@@ -296,15 +296,15 @@ seconds on an Apple M4, and load from Numba's cache after that.
 | Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
 
 On the chamber's recipe the free solves take more than half of a pass, and the exponential in the
-activation most of that. The memory's read takes about a tenth, and the rest is spread over many
-small steps of Python and NumPy. At the speech size the read's address map, 3,920 by 3,920 entries,
+activation about a third of that. The memory's read takes about a tenth, and the rest is spread over
+many small steps of Python and NumPy. At the speech size the read's address map, 3,920 by 3,920 entries,
 is most of an act, and with thousands of slots the read is: at 4,096 slots it is 20 of the act's 21
 ms, and the write 0.3 ms. A realtime loop's limit is the act: at the speech size a lesson that
 teaches costs about twenty times an act, and only the act has to keep up with the stream.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations: about a third of the row-sweeps and half of a chamber pass. The bits change, so read your own panels. |
+| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations: less than half of the row-sweeps and about half of a chamber pass. The bits change, so read your own panels. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Blocks | `dense_limit` at construction | A brain over the limit settles on the sparse transport in Python, about 30 times slower at the speech size. |

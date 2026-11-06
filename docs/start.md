@@ -253,6 +253,7 @@ assert answer_work["max_residual"] <= answer_work["tolerance"]
 - `qualified`, per-row `row_qualified` and `residual`, `max_residual`;
 - `steps`, `budget`, `tolerance`, `residual_checks`, `damping_halvings` and `stagnation_checks`;
 - `rescue_steps` where the solve was continued (`steps` then exceeds `budget`).
+- `row_sweeps` under `learning_fast_settle`, the sweeps summed over rows that stop apart.
 
 Validation errors, `learn` and `imagine` leave it as it was; reset and load clear it. It counts
 answer work only. Teaching and feedback work, refused teaching included, is in `last_learning`,
