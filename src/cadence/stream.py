@@ -1986,7 +1986,10 @@ class Recall:
         synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
         width = len(self._heads[head][0 if region == "recall" else 1])
         w = np.zeros((width, len(self.association)))
-        np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+        if graph.layout.parallel_synapses:
+            np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+        else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
+            w[rows, cols] = graph._gain_pre[synapses] * graph.efficacy[synapses] + 0.0
         return np.asarray(movement @ w.T)
 
     def learn(
