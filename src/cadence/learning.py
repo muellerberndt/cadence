@@ -132,10 +132,9 @@ class LearnerConfig:
     rehearsal: float = 0.0
     # the lesson rows the reservoir keeps, each with its episode: a uniform sample of every row
     rehearsal_capacity: int = 512
-    # opt-in, a composed brain's free solves on the compiled CPU path: the regions take their
-    # step in turn, a row stops at the check it qualifies and the activation is made in
-    # arithmetic that vectorizes (``Brain.equilibrate``); the same equations and tolerance, other
-    # bits
+    # opt-in, a composed brain's free solves on the compiled CPU path: a row stops at the check
+    # it qualifies and the activation is made in arithmetic that vectorizes
+    # (``Brain.equilibrate``); the same equations, order and tolerance, other bits
     fast_settle: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one

@@ -1036,9 +1036,8 @@ class Brain:
         Every attempt checks the original equations; a halved step changes only the
         numerical method. Repetition never qualifies an answer. Results report the final
         halving index (``damping_halvings``). ``fast``, for a free solve on the compiled CPU path
-        at ``dt`` 1: the regions take their step in turn, each reading the activations the ones
-        before it just published, a row stops at the check it qualifies, ``chunk`` is at most 16
-        and the activation is made in arithmetic that vectorizes, within about 1e-14 of the rule's.
+        at ``dt`` 1: a row stops at the check it qualifies, ``chunk`` is at most 16 and the
+        activation is made in arithmetic that vectorizes, within about 1e-14 of the rule's.
         The same equations and tolerance; the bits are another solve's. ``row_sweeps`` reports
         the sweeps over the rows, and ``steps`` those of the slowest row.
         """

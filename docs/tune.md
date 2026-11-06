@@ -304,7 +304,7 @@ teaches costs about twenty times an act, and only the act has to keep up with th
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations: less than half of the row-sweeps and about half of a chamber pass. The bits change, so read your own panels. |
+| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass. The bits change, so read your own panels. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |

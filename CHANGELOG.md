@@ -10,10 +10,9 @@
   tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
   without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
 - Add `learning_fast_settle` (opt-in, runtime, founder off): a composed brain's free solves take
-  `equilibrate(..., fast=True)` on the compiled CPU path. The regions take their step in turn, a row
-  stops at the check it is within 1e-5, and the activation is made in arithmetic that vectorizes.
-  The same equations and tolerance in less than half of the row-sweeps, with other bits. A settle's
-  report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without
+  `equilibrate(..., fast=True)` on the compiled CPU path. A row stops at the check it is within
+  1e-5, and the activation is made in arithmetic that vectorizes. The same equations, order and
+  tolerance in about half of a chamber pass, with other bits. A settle's report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without
   the option are unchanged.
 - Add `dense_limit` to `Brain.compose` (opt-in, construction, founder 2048): a brain whose blocks
   exceed it settles on the sparse transport in Python, about 30 times slower at a speech

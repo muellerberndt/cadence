@@ -84,10 +84,10 @@ original equations. Report a spent budget and act on it.
 
 `equilibrate(..., fast=True)`, which a composed brain's free solves take under
 `learning_fast_settle=True`, reaches the same equations in fewer neuron updates on the compiled CPU
-path. The regions take their step in turn, each reading the activations the regions before it just
-published, where a plain sweep has every neuron read the sweep before. A row stops at the check it
-is within 1e-5, or within `tolerance` once 96 sweeps are spent; `chunk` is at most 16. The
-activation is made in arithmetic that vectorizes, within about 1e-14 of the rule's. The result
+path. Its sweeps are in the same order as a plain sweep. A row stops at the check it is within 1e-5,
+or within `tolerance` once 96 sweeps are spent, and leaves the arrays the others settle in; `chunk`
+is at most 16. The activation is made in arithmetic that vectorizes, within about 1e-14 of the
+rule's. The result
 reports `row_sweeps`, the sweeps summed over the rows; `steps` counts those of the slowest row, and
 the state has no `activity_change`. The fixed point is the same to the tolerance and the bits are
 another solve's. A mask, a nudge, an apical compartment, adaptation or a `dt` other than 1 takes the
@@ -539,7 +539,7 @@ Select rates on development data and freeze them.
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
 | `surprise_share` | `LearnerConfig` | with `surprise`, scale a lesson's step by the share of its rows it taught ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)) | `False` |
-| `fast_settle` | `LearnerConfig` | a composed brain's free solves on the compiled CPU path: the regions in turn, rows that stop apart, the activation in vectorizing arithmetic ([settling](#settling-and-equilibrium)) |
+| `fast_settle` | `LearnerConfig` | a composed brain's free solves on the compiled CPU path: rows that stop apart, the activation in vectorizing arithmetic ([settling](#settling-and-equilibrium)) |
 | `rehearsal`, `rehearsal_capacity` | `LearnerConfig` | in a composed brain, after each lesson replay that many times its rows again, each with its episode, drawn from a reservoir of that many lesson rows ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) | 0.0 (off), 512 |
 | `outputs`, `config` | `Learner` | output neuron indices; the `LearnerConfig` | required, `LearnerConfig()` |
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |

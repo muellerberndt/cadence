@@ -1,6 +1,6 @@
-"""``learning_fast_settle`` (opt-in): a free solve in which the regions take their step in turn, a
-row stops at the check it qualifies and the activation is made in arithmetic that vectorizes: the
-same equations and tolerance in fewer neuron updates, with other bits."""
+"""``learning_fast_settle`` (opt-in): a free solve in which a row stops at the check it qualifies
+and the activation is made in arithmetic that vectorizes: the same equations, order and tolerance
+in fewer neuron updates, with other bits."""
 
 from __future__ import annotations
 

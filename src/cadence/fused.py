@@ -27,8 +27,8 @@ free solve runs its checks and its chunks in one compiled call (``fused_solve``)
 what it published (``_keep_published``), so a launch from it makes no activation it already holds.
 
 Every kernel above keeps the NumPy loop's bits. ``_fast_solve``, under ``learning_fast_settle``, is
-another solve of the same equations and does not: the regions in turn, rows that stop apart and an
-activation that vectorizes.
+another solve of the same equations and does not: rows that stop apart and an activation that
+vectorizes.
 """
 
 from __future__ import annotations
@@ -1629,9 +1629,9 @@ if njit is not None:
         settled: float,
         out: np.ndarray,
     ) -> tuple[int, int, int, int, np.ndarray]:
-        """A free solve at dt = 1 and no mask: the ranges in turn within a sweep, sources first,
-        each reading the latest activations; a row stops at the check it is within ``settled``,
-        or within ``tolerance`` once ``_FAST_PATIENCE`` sweeps are spent. Rows that stop leave
+        """A free solve at dt = 1 and no mask, in the ordinary order: every range reads the sweep
+        before. A row stops at the check it is within ``settled``, or within ``tolerance`` once
+        ``_FAST_PATIENCE`` sweeps are spent. Rows that stop leave
         the working arrays, so the block products cover the rows still settling. ``v``, ``s``
         and ``out`` end on every row's state and error. Returns the sweeps, the checks, the last
         chunk's sweeps, the sweeps over the rows and what the state keeps: its publication,
@@ -1773,6 +1773,12 @@ if njit is not None:
                             for b in range(m):
                                 for i in range(unb):
                                     work_v[b, ub0 + i] += product[b, i]
+                for r in range(ranges):  # the next potentials are in; now the activations
+                    if not fed[r]:
+                        continue
+                    b0, b1 = starts[r], starts[r + 1]
+                    nb = b1 - b0
+                    ub0, unb = _index(b0), _index(nb)
                     base = _index(batch) * ub0
                     for b in range(m):
                         at = base + _index(b) * unb
