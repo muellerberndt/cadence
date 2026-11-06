@@ -307,6 +307,7 @@ teaches costs about twenty times an act, and only the act has to keep up with th
 | Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations: less than half of the row-sweeps and about half of a chamber pass. The bits change, so read your own panels. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
+| Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |
 | Blocks | `dense_limit` at construction | A brain over the limit settles on the sparse transport in Python, about 30 times slower at the speech size. |
 | Device | `backend="cpu"` | At the chamber's size, 16 rows over 82 settling neurons, MLX on the same M4 takes 16 times as long per batch. [Which hardware](backends.md#which-hardware) gives the sizes where a device pays. |
 
