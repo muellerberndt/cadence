@@ -1,5 +1,42 @@
 # Changelog
 
+## Unreleased
+
+- With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
+  recall read's address and position maps as they are: the read's lessons take their target
+  from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no
+  lesson pulled the read off the items asked about, and "was A told before B?" stayed at 0.51
+  to 0.65 on development founders. Under surprise lessons such a row is taught at every lesson,
+  answered right or not: judged only where wrong, the lessons of a judgment between two classes
+  carry one class at a time ("before" stays at chance after 4,500 surprise lessons, 0.97 at every
+  row), and lessons at every row collapse the token answers of induction, copying and two hops,
+  which stay judged by surprise. `recall_tokens` may now be given without `recall_copy`, as a
+  declaration of which answers are tokens (no synapse is added), and may declare no token at
+  all (`[-1] * actions`). Brains without tokens are unchanged.
+- Reward steps the recall read's position maps (`recall_position_reward`) by a lesson's step at
+  the founder's position rate, 0.1, whatever `recall_position_rate` the lessons take. Beside the
+  positions recipe's slow table (0.01) the reward step was a tenth as large: in the ordered recall
+  world under `live` the composed sequence brain learned order on 3 of 6 development founders,
+  and on 5 of 6 at the founder's step (12 of 12 fresh founders with the step restored by
+  setting). Brains at the founder's position rate, and brains without the reward read, are
+  unchanged.
+- Add `actor_relax` (opt-in, runtime, founder 0.0): at every actor update an output whose
+  activation at the scored act sits past 0.9, on the flat top of its range, lowers its bias by
+  the rate times how far past it sits. Under reward alone a readout can pin one action at 0.95 to
+  0.99 and the other near zero from its first episodes; it stays aroused and learns at every
+  moment without moving, and the recall read's eligibility, always naming the same sampled
+  action, has no direction. At 0.15 one such life of the ordered recall world answers every
+  query (0.48 to 1.00) and the other leaves its lock (0.49 to 0.81); the reward chambers of the
+  preservation panel keep their counts at 0.05. See
+  [reward](docs/reward.md#a-readout-pinned-on-one-action-opt-in).
+- Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
+  copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
+  read delivers drives its own action, a successor never taught as an answer included
+  (induction whose successors 6 and 7 are never taught: 1.00 against 0.00 on development
+  founders). A read that position finds then drives the symbol after the answer as well, and
+  successors never taught stay unanswered wherever the association has learned the taught
+  answers (two hops, periodic continuation). See [memory](docs/memory.md#the-copy-pathway-opt-in).
+
 ## 0.94.0 — 2026-11-05
 
 One opt-in, maturity, for a brain that goes on learning after it has acquired a skill (#169,

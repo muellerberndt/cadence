@@ -813,7 +813,10 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
 - **Trained by reward on request.** At `recall_position_reward` above zero, each sampled act
   keeps the step the position lesson would take, were the act's action the lesson's label, in
   the eligibility the actor traces, and dopamine steps the maps by `recall_position_reward`
-  times one lesson's step (with the anchor, its maps too). The reward step moves only the rows
+  times one lesson's step at the founder's rate of 0.1, whatever `recall_position_rate` the
+  lessons take (with the anchor, its maps too): the recipe's slow table (0.01) left the reward
+  step a tenth as large, and the read learned order from reward on 3 of 6 development founders
+  against 5 of 6 at the founder's step. The reward step moves only the rows
   of the event heard, in the position, anchored and address maps alike, each row's rate bounded
   by the event's energy; the rows of the cortex of the moment before and the bias, which every
   moment shares, learn from lessons alone. Stepped by reward, those shared rows would carry one
@@ -1038,6 +1041,40 @@ for token in range(TOKENS):                          # no lesson: every token is
   a succession. The pathway starts from the recall port, the token the read delivers, and the
   next port's gain is learned. Started equal, the two ports would drive the heard token and the
   distractor that followed it alike.
+- **Successors (`recall_copy_next`, opt-in, founder 0.0).** Where the answers are what followed
+  the moment the read finds (induction, a copied sequence, a periodic continuation), start the
+  next ports' identity at that magnitude as well: the successor the read delivers then drives
+  its own action, a successor never taught included, and the echo removes the recall port's
+  copy of the present token. It is a construction setting and needs `recall_tokens`. In the
+  [sequence battery](../benchmarks/sequence/README.md), induction whose successors 6 and 7 are
+  never taught answers them at 1.00 with `recall_copy_next=2.0`, against 0.00 without. A read
+  that position finds (look back, n-back) then drives the symbol after the answer as well, and
+  where lessons have taught the association the taught answers (two hops, periodic
+  continuation) its drive against an action never taught outvotes the copy.
+- **Answers that are no token.** The read's lessons take their target from the slots'
+  contents. With tokens declared, a lesson whose answer is an action without a token (`-1`: a
+  yes or a no, a count) leaves the address and position maps as they are; the cortex learns
+  from it as from any lesson. "Was A told before B?" needs the read to stay on the items asked
+  about, and a yes or no lesson pulled it off them. Under
+  [surprise lessons](teach.md#lessons-only-where-the-answer-differs) such a row is taught at every
+  lesson, answered right or not: judged only where wrong, the lessons of a judgment between two
+  classes carry one class at a time and never the comparison that separates them ("before"
+  stays at chance after 4,500 lessons, against 0.97 at every row). Lessons at every row collapse
+  the token answers of induction, copying and two hops (0.11 to 0.68 on development founders),
+  so those stay judged by surprise. The tokens declare this without the pathway as well
+  (`recall_tokens` without `recall_copy`: no synapse is added), and an action list without any
+  token (`recall_tokens=[-1] * actions`) declares that no answer is a slot's content: no lesson
+  moves the read and every row is taught.
+- **Beside the positions recipe.** The address and position lessons name the slots to read by
+  the association's movement read back through the read port. With the pathway the answer
+  reaches the motor region directly, the association moves little toward it, and a read that
+  only position finds (look back) stops learning where to look: taught at 5 to 12 symbols and
+  read at 24 to 60, the recipe with the pathway answers 0.25 to 0.33 on five fresh founders of
+  six (the recipe alone 0.99 to 1.00), its position, anchored and slope maps at a third, a
+  quarter and a sixth of their norms. Reading the motor's movement back through the pathway
+  restores look back (0.99) and misdirects reads whose answer is a successor (two hops 0.27 to
+  0.28): the recall port's identity names the slot holding the answer itself, not the slot it
+  follows. Leave the pathway out of a brain that relies on the recipe.
 
 In the [copy-tokens benchmark](../benchmarks/attention/copy_tokens.py) a token is heard, two
 other tokens follow, and a cue asks for the heard token back; tokens 0 to 4 are taught as
@@ -1109,6 +1146,77 @@ Erasing the commands before every test moment brings the slots to 0.26 and 0.33
 The [episodic memory](#episodic-memory-what-happened-in-this-situation-before) keys its context
 records on the issued commands: each decision's command joins the stream's temporal context at
 the share `1 - memory_context`, so the option does not change the vote.
+
+### One composition for sequences
+
+A brain that meets look back, copying, induction, n-back, periodic continuation, two hops and "was
+A told before B?" in one life takes the recipe for lengths no lesson reached with the options
+that compose with it, and declares which of its answers are tokens:
+
+```python
+sequences = Brain.compose(
+    inputs=26, actions=16, modules=(64,), seed=0, teaching="normalized",
+    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
+    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_position=64,
+    recall_relative=True, recall_when=True, recall_address_reward=1.0,
+    recall_position_reward=4.0,
+    recall_tokens=list(range(14)) + [-1, -1],  # actions 14 and 15 are a yes and a no
+)
+assert sequences.recall.copy == 0.0  # the tokens declare; no pathway is added
+```
+
+- The positions recipe, `recall_position=64` and the relative read carry look back, copying
+  and a period of 40 at lengths no lesson reached; the when channel carries "before".
+- The tokens keep the yes and no lessons off the read and teach those rows at every lesson
+  ([answers that are no token](#the-copy-pathway-opt-in)); the token answers stay judged by
+  surprise.
+- The reward read finds the writes of ordered recall from reward alone; its step does not
+  shrink with the recipe's slow table.
+- The copy pathway is left out: beside the recipe it stops look back's read learning where to
+  look.
+
+Read on six fresh founders of the [sequence battery](../benchmarks/sequence/README.md) (1,500
+lessons, 16 streams), every task at its own life: look back taught 5 to 12 and read at 24 to 60
+0.92 to 1.00 for every cue, copying unique tokens taught 3 to 6 and read at 8 to 12 0.997 to
+1.000 in closed loop, repeated tokens 0.925 to 0.941, induction and n-back taught short and read
+at 24 to 60 0.970 to 0.998 and 0.933 to 0.994, a period of 40 0.900 to 0.939 on five founders
+and 0.825 on one, two hops with a think moment 0.995 to 1.000,
+"before" 0.962 to 0.978, look back's cues taught one after another with
+`learning_rehearsal=1.0` 0.969 to 1.000 (taught mixed 0.972 to 1.000), and ordered recall from
+reward 1.00 on 9 lives of 12 (two lives answer one action on every query, sampled or greedy;
+one leaves "the latest" without a gap unanswered, where the first write's next port holds the
+second write's value). Where it falls short:
+
+- **Answer tokens never taught** are not produced (0.00 on every task), though the read names
+  them (induction and periodic continuation 1.00, two hops 0.91 to 0.93). Lessons that teach
+  other actions push the association's synapses onto an action never taught down: with the copy
+  pathway beside this composition, on a development founder, the association drives the
+  never-taught answer at -1.2 to -5.1 (copying, two hops, n-back, look back) and the winner at
+  +1.1 to +7.0, against the copy's +0.3 to +1.5. The copy pathway produces them only where it
+  answers from the first lesson and the association stays untaught: induction with
+  `recall_copy_next`. The shape that follows from this, a copy gain per port shared by every
+  token with outputs a lesson does not name keeping their inputs, was read as a development
+  emulation on two founders: induction 1.00, copying 0.995 to 0.999 and periodic continuation
+  0.96 to 0.98 of the never-taught answers, two hops 0.06 to 0.18 on the second hop, look back
+  0.00 to 0.15 and n-back below 0.02, at a cost to look back (`second` 0.90 on one founder) and
+  copying repeated tokens (0.91 to 0.92). It is not in the library.
+- **N-back** costs 0.033 on the mean against the founder memory, which answers it at 0.998 to
+  1.000; two founders of six read 0.933. The cost is the recipe's slow table
+  (`recall_position_rate=0.01`): at the founder's rate those two founders read 0.997 and 0.972,
+  and copying unique tokens at lengths no lesson reached falls to 0.17 (the content shortcut of
+  the table at 0.1). The two gates ask opposite rates of the one table; the composition keeps
+  the slow one.
+- **Ordered recall from reward** misses on three lives of twelve, where `reward_recipe`,
+  without the next port that successor reads need, misses on two. Two of the three pin the
+  actor's readout on one action from their first 256 episodes
+  ([a readout pinned on one action](reward.md#a-readout-pinned-on-one-action-opt-in)):
+  `actor_relax=0.15` opens both locks (one life then answers every query, the other 0.81) and
+  moves another life to a miss, so the count stays 9 of 12. What then limits the world is the
+  next port: a write's value is on its own slot's recall port and on the slot before's next
+  port, so with no gap between the writes "the first" and "the latest" each have a slot whose
+  two ports disagree, and a life can learn either. `reward_recipe` answers both through the
+  write's own slot by leaving the next port out; this composition keeps the next port for its
+  successor reads.
 
 ### All options in one example
 

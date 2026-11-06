@@ -105,6 +105,36 @@ makes a policy whose greedy action ignores the observation. A named `actor_eta` 
 `eta / 10` again. Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias`
 exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
+## A readout pinned on one action (opt-in)
+
+Under reward alone a readout can settle with one action's output at the top of its range and the
+other's near zero from the first episodes on. There the activation has no slope: neither the
+dopamine nor the recall read's eligibility can move the choice, the brain stays aroused, samples
+the other action about one time in ten and learns nothing from it. `actor_relax` (runtime,
+founder 0.0) relaxes such an output: at every actor update an output whose activation at the
+scored act sits past `1 - RELAX_BAND` (0.9) lowers its bias by the rate times how far past it
+sits. An output below that keeps its bias, so a readout off the flat branch learns as without the
+option.
+
+```python
+relaxed = Brain.compose(4, 2, modules=(8,), seed=0, arousal=True, actor_relax=0.05)
+assert relaxed.basal_ganglia.config.relax == 0.05
+```
+
+In the [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) under
+`live`, with the recall composition of the [Sequences gate](memory.md#one-composition-for-sequences),
+two lives of twelve pin one action from their first 256 episodes (aroused on 92 to 99% of
+moments, learning on as many, the query's outputs at 0.95 to 0.99 and -0.03 to -0.09, answering
+at 0.47 to 0.50 for all 3,072 episodes). At `actor_relax=0.15` one answers every query (1.00)
+and the other leaves its lock (0.81, then missing only the condition the next port makes
+ambiguous); at 0.05 the bias falls (-1.9 by 400 episodes) and the synaptic drive keeps the
+output at 0.93 to 0.95, and both stay locked. Both rates move other lives of the twelve: at 0.05
+one more misses "the first" without a gap, at 0.15 another, so the count at .90 stays at 9 of 12.
+The reward chambers of the [preservation panel](../benchmarks/credit/README.md#preservation)
+with `actor_relax=0.05` keep their counts (odour nursery `live` 11 of 12 and `step` 2 of 12 as
+without it, key-door 12 of 16 as without it, bandit with reversal 30 of 30 blocks against 27,
+contextual bandit 3 of 6 as without it, delayed response 5 of 6 against 6).
+
 ## Maturity (opt-in)
 
 Maturity ([#253](https://github.com/muellerberndt/cadence/issues/253)) is for a brain that goes

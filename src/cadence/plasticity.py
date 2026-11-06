@@ -54,6 +54,8 @@ def _batch_of(state: BrainState) -> int:
 
 
 SATURATION_BAND = 0.02  # an output within this of 0 or 1 has no slope left for a nudge
+# ``ActorCriticConfig.relax``: an output above ``1 - RELAX_BAND`` at the scored act relaxes
+RELAX_BAND = 0.1
 
 
 @dataclass(slots=True)
@@ -101,6 +103,12 @@ class ActorCriticConfig:
     # settle steps of the two nudged phases that score a sampled action; None uses the
     # learner's nudged_steps
     eligibility_steps: int | None = None
+    # opt-in, founder 0.0: at every actor update an output whose activation at the scored act
+    # sits within ``RELAX_BAND`` of the top of its range, on the activation's flat branch,
+    # lowers its bias by this rate times how far past ``1 - RELAX_BAND`` it sits, so a readout
+    # pinned on one action relaxes back to where reward and the read's eligibility have a
+    # slope; an output below that leaves its bias as it is
+    relax: float = 0.0
 
     # Genes this library no longer takes, each with the release that retired it, the value(s)
     # at which a saved config still loads (the law of this version; None where the law never
@@ -148,7 +156,7 @@ class ActorCriticConfig:
         for name in ("gamma", "lam"):
             if not 0 <= getattr(self, name) <= 1:
                 raise ValueError(f"{name} must lie in [0, 1]")
-        for name in ("eta", "eta_bias", "eta_critic", "dopamine_cap"):
+        for name in ("eta", "eta_bias", "eta_critic", "dopamine_cap", "relax"):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0:
                 raise ValueError(f"{name} must be finite and nonnegative")
@@ -167,6 +175,8 @@ class ActorCriticConfig:
         values = {k: getattr(self, k) for k in self.__slots__}
         if self.eligibility_steps is not None:
             values["eligibility_steps"] = int(self.eligibility_steps)
+        if not self.relax:  # left out at its founder, so a record reads as before it existed
+            del values["relax"]
         return values
 
 
@@ -669,6 +679,9 @@ class ActorCritic:
         eta, eta_bias = self._rates()
         step_scale = eta * step_scale
         step_bias = eta_bias * step_bias
+        relaxed = self._relaxation(free)
+        if relaxed is not None:
+            step_bias = step_bias + relaxed
         critic_weights, critic_bias = self._critic_candidate(delta)
         # the memory's parameters step on their trace by the same dopamine, checked before
         # anything is installed
@@ -728,6 +741,19 @@ class ActorCritic:
         if cap <= 0:
             return 0.0
         return float(np.mean(np.abs(np.asarray(delta)[observed]) > cap))
+
+    def _relaxation(self, free: BrainState) -> np.ndarray | None:
+        """With ``relax``, the bias step of the outputs whose activation at the scored act sits
+        past ``1 - RELAX_BAND``: minus ``relax`` times how far past it, the mean over the rows;
+        None without it."""
+        if not self.config.relax:
+            return None
+        out = np.asarray(self.learner.output_index)
+        s = np.atleast_2d(np.asarray(free.activation, dtype=float))[:, out]
+        past = np.maximum(s - (1.0 - RELAX_BAND), 0.0).mean(axis=0)
+        step = np.zeros(self.n)
+        step[out] = -self.config.relax * past
+        return step
 
     def _saturation(self, free: BrainState) -> float:
         """The fraction of output activations within ``SATURATION_BAND`` of 0 or 1, where the
@@ -859,9 +885,13 @@ class ActorCritic:
         proposal = self._memory_proposal(delta)  # checked before anything is installed
         next_brain = self.learner.brain
         eta, eta_bias = self._rates()
-        report = self.learner._apply_device(
-            kernel, eta * (d * trace).mean(dim=0), eta_bias * (d * trace_bias).mean(dim=0)
-        )
+        step_bias = eta_bias * (d * trace_bias).mean(dim=0)
+        relaxed = self._relaxation(free)
+        if relaxed is not None:
+            step_bias = step_bias + torch.as_tensor(
+                relaxed, dtype=step_bias.dtype, device=step_bias.device
+            )
+        report = self.learner._apply_device(kernel, eta * (d * trace).mean(dim=0), step_bias)
         self.w_critic, self.b_critic = critic_weights, critic_bias
         if proposal is not None:
             self.memory.accept(proposal)

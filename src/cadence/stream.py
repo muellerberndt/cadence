@@ -605,9 +605,10 @@ class Recall:
     maps as well, and with ``anchor`` the anchored maps: at each sampled act the step the
     position lesson would take at each row, were the act's action the lesson's label (the
     cross-entropy gradient of the head's terms toward the slots the act's contrast names, on
-    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at
-    ``position_rate`` bounded by the event's energy), joins the eligibility the actor traces,
-    and a unit of dopamine moves the maps by ``position_reward`` times one lesson's step. Which
+    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at the
+    founder's rate ``REWARD_RATE`` (0.1) bounded by the event's energy, whatever
+    ``position_rate`` the lessons take), joins the eligibility the actor traces, and a unit of
+    dopamine moves the maps by ``position_reward`` times that step. Which
     slot a head reads by its age (the first told or the latest) is then reachable from reward
     alone.
 
@@ -705,8 +706,11 @@ class Recall:
     a pathway the composition adds: plastic synapses from every head's read port into the
     motor region, ``copy`` their initial magnitude, learned by the settle's contrast as every
     synapse is. ``tokens`` declares, per motor neuron, the observation coordinate that is the
-    same token (``-1`` for none), and the pathway then starts as that identity. The memory
-    checks that the synapses are there; it reads and writes nothing of its own for them.
+    same token (``-1`` for none), and the pathway then starts as that identity from the recall
+    ports, and from the next ports at ``copy_next`` (an option, founder 0.0; a construction
+    setting). The memory checks that the synapses are there; it reads and writes nothing of its
+    own for them. Without ``copy`` the tokens only declare which answers are tokens a slot can
+    hold, for the read's lessons (``learn``).
 
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -739,6 +743,8 @@ class Recall:
     boundary: bool = False
     copy: float = 0.0
     tokens: tuple[int, ...] | None = None
+    # with ``tokens``: the identity's starting magnitude on the next ports (0.0: none)
+    copy_next: float = 0.0
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
     compete: bool = True
@@ -777,11 +783,14 @@ class Recall:
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when",
+        "relative", "slope", "when", "copy_next",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when")
+                            "action", "anchor", "relative", "slope", "when", "copy_next")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
+    # the position lesson's rate a unit of dopamine steps the position maps at, times
+    # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
+    REWARD_RATE = 0.1
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
     # the kinds of a head's maps beside its address map (``map_names``), in the order a
     # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
@@ -859,7 +868,7 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope",
+            "position_rate", "copy", "slope", "copy_next",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -908,8 +917,6 @@ class Recall:
                         "has none"
                     )
                 out.append(int(item))
-            if not any(item >= 0 for item in out):
-                raise ValueError("tokens must name at least one observation coordinate")
             return tuple(out)
         raise TypeError(f"unknown recall setting: {name!r}")
 
@@ -975,13 +982,20 @@ class Recall:
         return synapses, value[pre[synapses]], local_motor[post[synapses]]
 
     def _check_copy(self) -> None:
-        """With ``copy`` every read port reaches the motor region; ``tokens`` needs ``copy``
-        and names one coordinate per motor neuron within the event."""
-        if self.tokens is not None and not self.copy:
-            raise ValueError("tokens declare the copy pathway's identity and need copy above 0")
+        """With ``copy`` every read port reaches the motor region; ``tokens`` names one
+        coordinate per motor neuron within the event, and ``copy_next`` needs them and the
+        pathway."""
+        motor = self.connectome.populations.get("motor", ())
+        if self.copy_next and (self.tokens is None or not self.copy):
+            raise ValueError(
+                "copy_next starts the next ports' identity: it needs copy and tokens"
+            )
+        if self.tokens is not None and len(motor) and len(self.tokens) != len(motor):
+            raise ValueError(
+                f"tokens name one observation coordinate per motor neuron ({len(motor)})"
+            )
         if not self.copy:
             return
-        motor = self.connectome.populations.get("motor", ())
         if not len(motor):
             raise ValueError("a copy pathway needs a population named 'motor'")
         synapses, _, _ = self.copy_synapses()
@@ -993,11 +1007,6 @@ class Recall:
                         "copy needs synapses from every read port into the motor region; "
                         "Brain.compose adds them"
                     )
-        if self.tokens is not None:
-            if len(self.tokens) != len(motor):
-                raise ValueError(
-                    f"tokens name one observation coordinate per motor neuron ({len(motor)})"
-                )
 
     @staticmethod
     def _rewarded(position_reward: float, position: int, position_rate: float) -> None:
@@ -1928,9 +1937,14 @@ class Recall:
         np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
         return np.asarray(movement @ w.T)
 
-    def learn(self, graph: NeuralGraph, learned: LearnedState) -> dict[str, float]:
+    def learn(
+        self, graph: NeuralGraph, learned: LearnedState, content: np.ndarray | None = None
+    ) -> dict[str, float]:
         """The address lesson after a lesson whose phases are ``learned``, at its taught rows,
         through the synapses of ``graph`` (the learner's brain after the lesson's update).
+        ``content`` (a boolean per row, from the brain with ``tokens``) keeps the rows whose
+        answer is a token a slot can hold: the lesson takes its target from the slots'
+        contents, and an answer that is no token (yes or no, a count) names none of them.
         Reads the moment the lesson's drive addressed (``stimulate``); returns how many rows
         moved, the mean absolute error the step corrects before it (``address_error``, the
         addresses' error ``K* - q``), and how many rows a refused step left as they were
@@ -1959,6 +1973,8 @@ class Recall:
             if taught is None
             else np.flatnonzero(np.asarray(taught, dtype=bool))
         )
+        if content is not None:
+            rows = rows[np.asarray(content, dtype=bool)[rows]]
         if not self.slots or not len(rows) or self.streams != len(moment.address):
             return quiet
         plus = np.atleast_2d(learned.nudged.activation)
@@ -2219,8 +2235,10 @@ class Recall:
                 # the position lesson's step at each row, as ``_position_step`` takes it, on
                 # the event's rows
                 gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
-                rate = self.position_rate
-                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
+                # at the founder's lesson rate, whatever rate the lessons take: a slow table
+                # taught by lessons does not slow what reward teaches
+                rate = self.REWARD_RATE
+                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None]
                 blocks = [(self.buckets()[None, :], count)]
                 if self.anchor_maps:
                     blocks.append((self.anchored_buckets(index), count + 1))

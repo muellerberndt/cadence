@@ -305,7 +305,8 @@ def _copy_identity(
     For motor neuron ``j`` of token ``tokens[j]``: the synapse from every head's ``recall``
     port at value coordinate ``offset + tokens[j]`` (the observation's own coordinates in the
     value) starts at ``recall_copy``, so the token the read delivers drives its own action; the
-    synapse from every ``next`` port at that coordinate starts at zero; and the synapse from
+    synapse from every ``next`` port at that coordinate starts at ``recall_copy_next`` (founder
+    zero), so a successor the read delivers drives its own action; and the synapse from
     sensory neuron ``tokens[j]`` starts at ``-recall_copy``, so a token the present
     observation already holds, the read's echo of the moment that addressed it, is not copied
     back. Every other synapse into the motor region from a read port, or from the sensory
@@ -345,6 +346,7 @@ def _copy_identity(
     copy = float(recalled["copy"])
     sign = np.where(pathway | ((heard[pre] >= 0) & (local_motor[post] >= 0)), 0.0, connectome.sign)
     sign[identity & reading] = copy
+    sign[identity & ~reading] = float(recalled.get("copy_next", 0.0))
     sign[echoes] = -copy
     if np.array_equal(sign, connectome.sign):
         return connectome
@@ -2798,9 +2800,9 @@ class Brain:
         founder None) declares per action the observation coordinate that is the same token
         (``-1`` for none; a brain without a code, or a learned code joined to the
         observation): the pathway then starts from each recall port as that identity at
-        ``recall_copy``, from each next port at zero, and from the sensory region as the
-        negative identity, so a token the read delivers drives its own action unless the
-        present observation already holds it.
+        ``recall_copy``, from each next port at ``recall_copy_next`` (construction, founder
+        0.0), and from the sensory region as the negative identity, so a token the read
+        delivers drives its own action unless the present observation already holds it.
         ``recall_action=True`` (construction, founder off) writes the executed command, one
         value per motor neuron, into every slot's key and value, read on ``<port>_action``
         regions whose synapses into the association start at zero; the address and position
@@ -3933,6 +3935,19 @@ class Brain:
         with self._code_attempt():
             return self._teach(x, labels)
 
+    def _token_rows(self, labels: np.ndarray) -> np.ndarray | None:
+        """Per row, whether a label names an action that is a token (``recall_tokens``), or
+        None for a brain without declared tokens. With several output slots a row is a token
+        row where any slot's label is one."""
+        recall = self.recall
+        if recall is None or recall.tokens is None:
+            return None
+        tokens = np.asarray(recall.tokens) >= 0
+        sizes = np.asarray(self.learner.slot_sizes)
+        starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+        chosen = np.asarray(labels, dtype=np.int64).reshape(len(labels), -1) + starts[None, :]
+        return np.asarray(tokens[chosen].any(axis=1))
+
     def _teach(
         self, x: np.ndarray, labels: np.ndarray, *, replayed: bool = False
     ) -> dict[str, float]:
@@ -3949,6 +3964,7 @@ class Brain:
         place = self._placed(x)
         key = self._decision_key(code)  # of the decision the lesson is shown for
         answer = None
+        tokens = self._token_rows(labels)
         if self.learner.config.surprise:
             # the brain's own answer, the act it would issue: its complete greedy choice on the
             # settle its act reads, warm from the stream, with the episodic vote under the
@@ -3956,6 +3972,14 @@ class Brain:
             answer = self._greedy(
                 self._qualified(drive, self._activity(), operation="act"), place, key
             )
+            if tokens is not None and not tokens.all():
+                # with declared tokens, a row whose answer is no token (a yes or a no, a
+                # count) is taught at every lesson: judged only where wrong, the lessons of a
+                # judgment between two classes carry one class at a time and never the
+                # comparison that separates them
+                answer = np.where(
+                    tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
+                )
         try:
             # the lesson's free phase starts from rest, with a learned code's phase in it
             lesson, teaching = self.learner.step(
@@ -3968,8 +3992,9 @@ class Brain:
             self.last_learning["demonstrations"] = 0.0
             raise
         if self.recall is not None:
-            # the address lesson: the slots scored against the lesson's movement step the map
-            teaching.update(self.recall.learn(self.learner.brain, lesson))
+            # the address lesson: the slots scored against the lesson's movement step the map,
+            # with declared tokens at the rows whose answer is one
+            teaching.update(self.recall.learn(self.learner.brain, lesson, tokens))
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )
