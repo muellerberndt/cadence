@@ -279,8 +279,8 @@ def test_successors_and_eviction_match_independent_stream_histories(capacity):
         # Not every stream holds every slot; episode endings can also differ per stream.
         closed = rng.random(3) < 0.3
         recall.ended = closed.copy()
-        before = {name: getattr(recall, name) for name in ("keys", "values", "nexts", "held")}
-        saved = {name: array.copy() for name, array in before.items()}
+        before = recall.snapshot()  # what a caller that holds the slots to restore them takes
+        saved = {name: before[name].copy() for name in ("keys", "values", "nexts", "held")}
         keys, values = rng.normal(size=(2, 3, 4))
         if tick % 4 == 1:
             holds = rng.random(3) < 0.5
