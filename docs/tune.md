@@ -285,26 +285,43 @@ a lesson that taught no row reads instead of settling again, and at the rows it 
 phases and the update. The kernels compile at their first use under a source version, about 10
 seconds on an Apple M4, and load from Numba's cache after that.
 
+A pass of the [grammar chamber](../benchmarks/grammar/README.md) is 4,000 batches of 16 rows, about
+50,000 acts and 23,000 lessons. On one core of a Xeon 8488C kept apart from other work:
+
+| Learner | Parameters | Seconds | Multiply-adds | Against the transformer: seconds, multiply-adds |
+| --- | ---: | ---: | ---: | ---: |
+| The chamber's recipe with `teaching="deep"` and `recall_address_contrast=True` | 24,384 | 131 | 1.6e11 | 8.0, 2.8 |
+| The same with `learning_fast_settle=True` | 24,384 | 74 | 1.3e11 | 4.5, 2.3 |
+| The recipe with `history_decays=(0.5, 0.9)` and no prefrontal region | 24,774 | 162 | 2.2e11 | 10, 3.8 |
+| The same with `learning_fast_settle=True` | 24,774 | 73 | 1.6e11 | 4.5, 2.7 |
+| The chamber's transformer | 23,490 | 16 | 5.7e10 | 1, 1 |
+| The chamber's LSTM | 24,378 | 8 | 5.7e10 | 0.5, 1 |
+
+Two things remain between the brain and these networks at equal compute. The first is arithmetic: a
+moment settles, 65 to 90 sweeps between the association and the motor regions, where a network runs
+each word once forward and once back, so a pass costs 2.3 to 3.8 times their multiply-adds. The
+second is rate: at equal multiply-adds the brain takes 1.7 to 2.9 times the transformer's seconds
+and 3.5 to 6 times the LSTM's. In the recipe's pass the free solves take more than half of the time
+and the exponential in the activation about a third of that. Under `learning_fast_settle` the solves
+take about three tenths and the memory's read a sixth, and most of the rest is Python and NumPy,
+many small steps around the kernels that a network's compiled batch does not make. What a pass reads
+at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
+
 | Work | Brain | One thread, Apple M4 |
 | --- | --- | ---: |
-| A pass of the [grammar chamber](../benchmarks/grammar/README.md): 4,000 batches of 16 rows, about 50,000 acts and 23,000 lessons | the chamber's recipe with `teaching="deep"` and `recall_address_contrast=True`: 251 neurons, 24,384 parameters | 51 s |
-| The same | with `history_decays=(0.5, 0.9)` and no prefrontal region: 257 neurons, 24,774 parameters | 64 s |
-| The same | those two with `learning_fast_settle=True` | 28 s, 32 s |
 | One stream of speech: 3,920 inputs, association 512, `dense_limit=8192`, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
 | The same | the recipe | 10 ms, 190 ms |
 | The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
 | Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
 
-On the chamber's recipe the free solves take more than half of a pass, and the exponential in the
-activation about a third of that. The memory's read takes about a tenth, and the rest is spread over
-many small steps of Python and NumPy. At the speech size the read's address map, 3,920 by 3,920 entries,
-is most of an act, and with thousands of slots the read is: at 4,096 slots it is 20 of the act's 21
-ms, and the write 0.3 ms. A realtime loop's limit is the act: at the speech size a lesson that
-teaches costs about twenty times an act, and only the act has to keep up with the stream.
+At the speech size the read's address map, 3,920 by 3,920 entries, is most of an act, and with
+thousands of slots the read is: at 4,096 slots it is 20 of the act's 21 ms, and the write 0.3 ms. A
+realtime loop's limit is the act: at the speech size a lesson that teaches costs about twenty times
+an act, and only the act has to keep up with the stream.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass. The bits change, so read your own panels. |
+| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and less of a gain on an Apple M4, whose exponential costs less. The bits change, so read your own panels. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |

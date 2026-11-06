@@ -19,7 +19,7 @@
   instrument's 3,920 inputs; a larger limit keeps it on the blocks and the compiled kernels. See
   [backends](docs/backends.md).
 - A brain costs less per moment, with the same bits and the same reports (#271): a chamber pass
-  takes 0.44 of its time. The settle's rows pay no atomic reference counts and run on vector loops,
+  takes about 0.4 of its time. The settle's rows pay no atomic reference counts and run on vector loops,
   a launch reads the activations a state keeps instead of computing them again, a free solve runs in
   one compiled call, the act after a surprise lesson that taught no row reads that lesson's settle,
   a greedy choice with one motor reads the neurons where one stands clear, and the recall read's
