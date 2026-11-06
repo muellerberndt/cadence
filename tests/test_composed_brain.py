@@ -192,7 +192,8 @@ def test_compose_wraps_a_custom_anatomy_with_the_composed_founders():
     np.testing.assert_array_equal(wrapped.brain.bias, composed.brain.bias)
     assert wrapped.describe()["memories"].get("episodic") == composed.describe()["memories"].get("episodic")
     plain = Brain(develop(genome, seed=3), memory_choice=True, recall=True, seed=3)
-    assert plain.memory_context == 0.0 < wrapped.memory_context  # only compose fills them in
+    # only compose fills them in
+    assert plain.memories["episodic"].share == 0.0 < wrapped.memories["episodic"].share
     x = np.eye(6)[[1]]
     for _ in range(3):
         np.testing.assert_array_equal(wrapped.step(x), composed.step(x))

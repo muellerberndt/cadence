@@ -272,7 +272,6 @@ def test_the_episodic_records_are_the_last_member_and_save_as_their_group(tmp_pa
     records = brain.memories["episodic"]
     assert isinstance(records, EpisodicRecords) and list(brain.memories)[-1] == "episodic"
     assert records.place is brain.hippocampus and records.temporal is brain.context_memory
-    assert brain.memory_context == records.share
     assert (records.steps, records.demonstrations) == (8, 1.0)  # constants since 0.93.0
     assert "episodic" not in cd.Brain.compose(4, 2, modules=(8,), seed=3).memories
     x = np.eye(4)[[0]]

@@ -167,7 +167,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
 | `attention` | whether `compose` applied the opt-in learned-code contextual-memory recipe; its effective mechanism is recorded by the learned-code and Recall settings |
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |
-| `memory_choice`, `memory_context`, `memory_extinction`, `memory_context_hold` | the resolved construction settings |
+| `memory_choice` | whether the episodic records vote; `memories["episodic"]` holds their settings (`share`, `extinction`, `hold`) |
 | `arousal` | the stream's `Arousal`, or `None` |
 | `pending_feedback` | read-only: the issued action awaits its outcome (`wait` keeps it) |
 | `decision_id` | read-only: the `arousal.age` at which `live` issued the awaited action, or `None`; saved and restored |

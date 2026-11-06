@@ -41,10 +41,12 @@ def outcome(brain: cd.Brain, x: np.ndarray, action: int, reward: float, after: n
 
 def test_extinction_is_an_opt_in_threshold_of_the_episodic_choice():
     founder = episodic(3, 2, seed=0)
-    assert founder.memory_extinction == 0.0 and founder.memories["episodic"].paid is None
+    assert founder.memories["episodic"].extinction == 0.0
+    assert founder.memories["episodic"].paid is None
     assert "extinction" not in founder.describe()["memories"]["episodic"]
     brain = episodic(3, 2, seed=0, memory_extinction=0.5)
-    assert brain.memory_extinction == 0.5 and brain.memories["episodic"].paid is not None
+    assert brain.memories["episodic"].extinction == 0.5
+    assert brain.memories["episodic"].paid is not None
     assert brain.describe()["memories"]["episodic"]["extinction"] == 0.5
     with pytest.raises(ValueError, match="need memory_choice"):
         cd.Brain.compose(3, 2, memory_extinction=0.5)
@@ -130,7 +132,7 @@ def test_an_extinguishing_brain_saves_and_continues_exactly(tmp_path):
         outcome(brain, x, 2, 1.0, after)
     brain.step(after)  # an issued action owns the next outcome
     copy = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
-    assert copy.memory_extinction == 0.5
+    assert copy.memories["episodic"].extinction == 0.5
     for name in ("strength", "consolidated"):
         np.testing.assert_array_equal(
             getattr(copy.memories["episodic"].paid, name),
@@ -153,7 +155,7 @@ def test_grow_keeps_the_extinction_and_the_direct_payments():
     x, after = one_hot(0, 3), one_hot(1, 3)
     outcome(brain, x, 2, 1.0, after)
     grown = brain.grow(efference_amplitude=1.0)
-    assert grown.memory_extinction == 0.5
+    assert grown.memories["episodic"].extinction == 0.5
     np.testing.assert_array_equal(
         grown.memories["episodic"].paid.consolidated,
         brain.memories["episodic"].paid.consolidated,

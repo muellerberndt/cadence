@@ -32,11 +32,11 @@ def key(brain: cd.Brain, x: np.ndarray) -> np.ndarray:
 
 def test_the_hold_is_an_opt_in_setting_of_the_temporal_context():
     founder = episodic(3, 2, seed=0)
-    assert founder.memory_context_hold is None
+    assert founder.memories["episodic"].hold is None
     assert "hold" not in founder.describe()["memories"]["episodic"]
     for hold in ("unchanged", "punished"):
         brain = episodic(3, 2, seed=0, memory_context_hold=hold)
-        assert brain.memory_context_hold == hold
+        assert brain.memories["episodic"].hold == hold
         assert brain.describe()["memories"]["episodic"]["hold"] == hold
     with pytest.raises(ValueError, match="memory_context_hold"):
         episodic(3, 2, memory_context_hold="never")
@@ -96,7 +96,7 @@ def test_a_holding_brain_saves_and_continues_exactly(tmp_path, hold):
     for t in range(4):
         brain.step(one_hot(t % 2, 3), reward=None if t == 0 else [-1.0 if t % 2 else 0.0])
     copy = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
-    assert copy.memory_context_hold == hold
+    assert copy.memories["episodic"].hold == hold
     for name in ("context", "before", "seen"):
         np.testing.assert_array_equal(
             getattr(copy.memories["episodic"], name), getattr(brain.memories["episodic"], name)
@@ -112,7 +112,7 @@ def test_grow_keeps_the_hold():
     brain = episodic(3, 3, seed=4, memory_context_hold="unchanged")
     brain.act(one_hot(0, 3))
     grown = brain.grow(efference_amplitude=1.0)
-    assert grown.memory_context_hold == "unchanged"
+    assert grown.memories["episodic"].hold == "unchanged"
 
 
 def test_an_imagined_branch_keys_its_decisions_as_the_stream_keys_its_own():

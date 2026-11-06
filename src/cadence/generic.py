@@ -2354,24 +2354,6 @@ class Brain:
         """Whether the episodic records vote in the choice."""
         return self._episodic is not None
 
-    @property
-    def memory_context(self) -> float:
-        """The share of the temporal context the past keeps per moment; 0.0 without
-        ``memory_choice``."""
-        return 0.0 if self._episodic is None else self._episodic.share
-
-    @property
-    def memory_context_hold(self) -> str | None:
-        """The decisions kept out of the temporal context: ``"unchanged"``, ``"punished"``,
-        or None."""
-        return None if self._episodic is None else self._episodic.hold
-
-    @property
-    def memory_extinction(self) -> float:
-        """The vote and direct payment at which a zero outcome extinguishes a record; 0.0
-        when off or without ``memory_choice``."""
-        return 0.0 if self._episodic is None else self._episodic.extinction
-
     def _read_moment(self, x: np.ndarray, code: np.ndarray, place: Any = None) -> Moment:
         """What the memories read of a moment: the store reads under the place key with a
         code (computed here unless given, only where the store reads into the drive), the
@@ -5875,7 +5857,7 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
         settings["recall"] = True
     if brain.hippocampus is None:
         settings["episodic"] = False
-    if brain.memory_choice:
+    if brain._episodic is not None:
         hippocampus = brain.hippocampus
         assert hippocampus is not None  # memory_choice makes the hippocampus episodic
         separator = hippocampus.separator
@@ -5889,9 +5871,9 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             )
         settings.update(
             memory_choice=True,
-            memory_context=brain.memory_context,
-            memory_extinction=brain.memory_extinction,
-            memory_context_hold=brain.memory_context_hold,
+            memory_context=brain._episodic.share,
+            memory_extinction=brain._episodic.extinction,
+            memory_context_hold=brain._episodic.hold,
         )
     inputs: Any = composition["inputs"]
     if "image" in composition:
