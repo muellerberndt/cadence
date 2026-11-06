@@ -21,9 +21,10 @@ input per row and pool, in the order and summation the NumPy loop uses.
 
 The helpers of a row's sweep are inlined into the kernels: a compiled call pays atomic reference
 counts per array argument, and at this rate a call per row costs as much as the row's arithmetic.
-Index arithmetic is unsigned, which lets the loops vectorize (``_index``). A free solve runs its
-checks and its chunks in one compiled call (``fused_solve``), and a state keeps what it published
-(``_keep_published``), so a launch from it makes no activation it already holds.
+Inlined helpers still count their arrays, so the rows of a free sweep run in a kernel that counts
+none (``_free_rows``). Index arithmetic is unsigned, which lets the loops vectorize (``_index``). A
+free solve runs its checks and its chunks in one compiled call (``fused_solve``), and a state keeps
+what it published (``_keep_published``), so a launch from it makes no activation it already holds.
 
 Every kernel above keeps the NumPy loop's bits. ``_fast_solve``, under ``learning_fast_settle``, is
 another solve of the same equations and does not: the regions in turn, rows that stop apart and an
@@ -82,8 +83,9 @@ def _rows_builds(kernel: _Kernel) -> tuple[_Kernel, _Kernel]:
     parallel flag."""
     assert njit is not None
     name = kernel.__name__ + "_parallel"
+    on_threads = (True,) if kernel.__defaults__ else None  # a kernel's last parameter says which
     copy = types.FunctionType(
-        kernel.__code__, kernel.__globals__, name, kernel.__defaults__, kernel.__closure__
+        kernel.__code__, kernel.__globals__, name, on_threads, kernel.__closure__
     )
     copy.__qualname__ = kernel.__qualname__ + "_parallel"
     serial = njit(cache=True)(kernel)
@@ -92,11 +94,20 @@ def _rows_builds(kernel: _Kernel) -> tuple[_Kernel, _Kernel]:
 
 
 def _inlined(kernel: _Kernel) -> _Kernel:
-    """``numba.njit(inline="always")``: a per-neuron or per-row helper merged into its caller,
-    so no call and no array reference counting is paid per neuron or per row: each array of a
-    compiled call costs two atomic operations."""
+    """``numba.njit(inline="always")``: a per-neuron or per-row helper merged into its caller, so
+    no call is paid per neuron or per row. Each array of a compiled call costs two atomic
+    operations, and an inlined helper's arrays cost them too where the compiler cannot drop the
+    pair (``_unreferenced``)."""
     assert njit is not None
     return cast(_Kernel, njit(inline="always")(kernel))
+
+
+def _unreferenced(kernel: _Kernel) -> _Kernel:
+    """``numba.njit(cache=True, _nrt=False)``: a kernel that allocates nothing and counts no
+    references, whatever is inlined into it. A helper inlined under the runtime still costs atomic
+    operations per array, and at a row's rate they cost about as much as its exponentials."""
+    assert njit is not None
+    return cast(_Kernel, njit(cache=True, _nrt=False)(kernel))
 
 
 def available() -> bool:
@@ -972,6 +983,44 @@ if njit is not None:
                 frozen[r] = True
         return moved
 
+    @_unreferenced
+    def _free_rows(
+        first: int,
+        stop: int,
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        synaptic_input: np.ndarray,
+        ahead: np.ndarray,
+        cache: np.ndarray,
+        cache_offset: np.ndarray,
+        pairs: np.ndarray,
+        pair_post: np.ndarray,
+        starts: np.ndarray,
+        receives: np.ndarray,
+        frozen: np.ndarray,
+        moving: np.ndarray,
+        columns: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        row_moved: np.ndarray,
+        row_range: np.ndarray,
+        row_potential: np.ndarray,
+        activity_change: np.ndarray,
+    ) -> None:
+        """The rows ``first`` to ``stop`` of a free sweep: no nudge, adaptation, mask or
+        compartment. Each row's input, its step and its activations into ``columns``."""
+        for b in range(first, stop):
+            _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts, receives)
+            row_moved[b] = _sweep_row_plain(
+                b, v, s, standing, synaptic_input, ahead, starts, frozen, dt, slope, threshold,
+                rest, leak, row_range, row_potential, activity_change,
+            )
+            _copy_columns(b, s, columns, starts, moving)
+
     def _settle_rows(
         v: np.ndarray,
         a: np.ndarray,
@@ -1021,11 +1070,12 @@ if njit is not None:
         use_tolerance: bool,
         given: np.ndarray,
         has_given: bool,
+        on_threads: bool = False,
     ) -> tuple[int, np.ndarray, np.ndarray]:
         """The settle: per sweep the block products of the batch, then every row's step (the
-        rows in parallel in the parallel build), then the batch-wide reading and stop. The
-        first sweep takes the given products (``has_given``: what the starting state keeps,
-        laid out as ``_kept_room``) that hold for its activations. Returns the sweeps taken,
+        rows in parallel in the parallel build, ``on_threads``), then the batch-wide reading and
+        stop. The first sweep takes the given products (``has_given``: what the starting state
+        keeps, laid out as ``_kept_room``) that hold for its activations. Returns the sweeps taken,
         the activity change, and what the last state keeps: its activations, the cached
         products, and the ranges whose products its last sweep left stale."""
         batch, n = v.shape
@@ -1093,33 +1143,44 @@ if njit is not None:
             for r in range(ranges):
                 moving[r] = feeds[r] and not frozen[r]
             # every row's step, the rows on distinct threads
-            for b in prange(batch):
-                _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts, receives)
-                if plain:
-                    row_moved[b] = _sweep_row_plain(
-                        b, v, s, standing, synaptic_input, ahead, starts, frozen, dt, slope,
-                        threshold, rest, leak, row_range, row_potential, activity_change,
+            if plain and not on_threads:
+                _free_rows(
+                    0, batch, v, s, standing, synaptic_input, ahead, cache, cache_offset, pairs,
+                    pair_post, starts, receives, frozen, moving, columns, dt, slope, threshold,
+                    rest, leak, row_moved, row_range, row_potential, activity_change,
+                )
+            elif plain:
+                for b in prange(batch):
+                    _free_rows(
+                        b, b + 1, v, s, standing, synaptic_input, ahead, cache, cache_offset,
+                        pairs, pair_post, starts, receives, frozen, moving, columns, dt, slope,
+                        threshold, rest, leak, row_moved, row_range, row_potential,
+                        activity_change,
                     )
-                elif has_apical:
-                    _gather(b, raw, cache_up, cache_up_offset, apical_pairs, pair_post, starts,
-                            receives_up)
-                    row_moved[b] = _sweep_row_apical(
-                        b, v, a, s, standing, synaptic_input, raw, starts, frozen, keep, masked,
-                        dt, slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau,
-                        has_nudge, target, nmask, group, gid, ngroups, position, beta, softmax_t,
-                        weight, anchor, anchor_gain, p[b], zmax[b], total[b], pool_of,
-                        pool_index, pool_starts, pool_run, fraction, floor2, tiny, held, has_held,
-                        basal[b], gain[b], values[b], frames[b], left[b], row_range[b],
-                        row_potential[b], activity_change,
-                    )
-                else:
-                    row_moved[b] = _sweep_row(
-                        b, v, a, s, standing, synaptic_input, starts, frozen, keep, masked, rule,
-                        has_adapt, adapt, has_nudge, target, nmask, group, gid, ngroups, position,
-                        beta, softmax_t, weight, anchor, anchor_gain, scratch, row_range,
-                        row_potential, activity_change,
-                    )
-                _copy_columns(b, s, columns, starts, moving)  # what the next products read
+            else:
+                for b in prange(batch):
+                    _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts,
+                            receives)
+                    if has_apical:
+                        _gather(b, raw, cache_up, cache_up_offset, apical_pairs, pair_post, starts,
+                                receives_up)
+                        row_moved[b] = _sweep_row_apical(
+                            b, v, a, s, standing, synaptic_input, raw, starts, frozen, keep, masked,
+                            dt, slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau,
+                            has_nudge, target, nmask, group, gid, ngroups, position, beta,
+                            softmax_t, weight, anchor, anchor_gain, p[b], zmax[b], total[b],
+                            pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
+                            held, has_held, basal[b], gain[b], values[b], frames[b], left[b],
+                            row_range[b], row_potential[b], activity_change,
+                        )
+                    else:
+                        row_moved[b] = _sweep_row(
+                            b, v, a, s, standing, synaptic_input, starts, frozen, keep, masked,
+                            rule, has_adapt, adapt, has_nudge, target, nmask, group, gid, ngroups,
+                            position, beta, softmax_t, weight, anchor, anchor_gain, scratch,
+                            row_range, row_potential, activity_change,
+                        )
+                    _copy_columns(b, s, columns, starts, moving)  # what the next products read
             moved = _close_sweep(t, row_moved, row_range, row_potential, moved_range, freezable,
                                  frozen)
             taken = t + 1
