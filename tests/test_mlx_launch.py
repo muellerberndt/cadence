@@ -574,3 +574,28 @@ def test_a_deep_copy_lives_apart_on_the_device(on_device):
         np.testing.assert_array_equal(twin.act(x2, greedy=True).shape, (ROWS,))
         mlx.lesson(x2, labels2)
         np.testing.assert_allclose(mlx.brain.efficacy, twin.brain.efficacy, rtol=0, atol=1e-6)
+
+
+def test_a_launchs_check_holds_for_the_parameters_it_read(on_device):
+    cpu, mlx = pair(**RECIPE)
+    drive = drive_of(cpu)
+    settled = mlx.brain.equilibrate(drive, budget=512, tolerance=3e-3)
+    held = mlx.brain.residual(drive, settled.state)
+    np.testing.assert_array_equal(held, settled.residual)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mlx.lesson(np.random.default_rng(1).random((ROWS, 8)), np.arange(ROWS) % 4)
+    # under new parameters the state's equations are read anew, by the float64 reference
+    np.testing.assert_array_equal(
+        mlx.brain.residual(drive, settled.state),
+        mlx.brain.residual(drive, settled.state, on_device=False),
+    )
+
+
+def test_a_long_chunk_is_solved_one_launch_at_a_time_elsewhere():
+    cpu, mlx = pair()
+    drive = drive_of(cpu)
+    a = cpu.brain.equilibrate(drive, budget=512, chunk=128, tolerance=3e-3)
+    b = mlx.brain.equilibrate(drive, budget=512, chunk=128, tolerance=3e-3)
+    assert (b.steps, b.residual_checks) == (a.steps, a.residual_checks)
+    np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-4)

@@ -1488,7 +1488,10 @@ class Brain:
         handle, kernel = state.device, self._torch
         if on_device and keep is None and isinstance(handle, _MlxState):
             checked = handle.get("checked")  # the launch that made the state read its equations
-            if checked is not None and checked[0] is d and checked[1] is nudge:
+            if (
+                checked is not None and checked[0] is d and checked[1] is nudge
+                and self._mlx is not None and handle.get("version") == self._mlx.version
+            ):
                 return np.array(checked[2])
         if (
             on_device
@@ -3590,6 +3593,7 @@ class _MlxMatrix:
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
         if self._host is None:
             self._host = np.array(self.array, dtype=np.float64)
+            self._host.setflags(write=False)
         return np.array(self._host, dtype=dtype) if dtype is not None or copy else self._host
 
     def _kept(self) -> list[Any]:
@@ -3692,7 +3696,6 @@ class _MlxPlan:
         self.post = [int(r) for r in layout.pair_post]
         self.inner = [k for k, r in enumerate(self.pre) if r in self.place]
         self.outer = [k for k, r in enumerate(self.pre) if r not in self.place]
-        self.bounds = [layout.bounds(k) for k in range(layout.pairs)]
         self.columns = np.concatenate(
             [np.arange(*self.spans[r]) for r in self.settling]
         ) if self.settling else np.zeros(0, np.int64)
@@ -3703,12 +3706,10 @@ class _MlxPlan:
         table = [self.m, len(self.inner), self.threads, 0]  # a fourth entry keeps the offsets even
         entries = 0
         for k in self.inner:
-            a0, a1, b0, b1 = self.bounds[k]
+            a0, a1, b0, b1 = layout.bounds(k)
             p, q = self.place[self.pre[k]], self.place[self.post[k]]
             table += [p, p + a1 - a0, q, q + b1 - b0, entries]
             entries += (a1 - a0) * (b1 - b0)
-        self.table = table
-        self.entries = entries
         rest = neuron_model.rest_emission
         self.constants = (
             neuron_model.slope, neuron_model.threshold, rest, 1.0 / (1.0 - rest),
@@ -3941,6 +3942,7 @@ class _MlxKernel:
         self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
         self.sweeps: dict[bool, Any] = {}  # the compiled sweeps, shared with those kernels too
         self.read_blocks: dict[int, tuple[np.ndarray, int]] = {}  # a read's synapses, their block
+        self.lesson_steps: dict[tuple[bool, bool, bool], Any] = {}  # the optimizer's, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n)
         self._take(weights, bias)
@@ -4258,33 +4260,40 @@ class _MlxKernel:
         starts = self.layout.starts
         return lambda r: s[:, int(starts[r]) : int(starts[r + 1])]
 
-    def _lesson_step(
-        self, raw: Any, velocity: Any, second: Any, numbers: Any, count: Any,
-        momentum: bool, normalize: bool, relative: bool,
-    ) -> tuple[Any, Any, Any]:
-        """One block's step of the optimizer: ``fused.optimizer_step`` per entry, and its moments.
-        ``numbers`` holds ``m, 1 - m, m's correction, rho, 1 - rho, rho's correction, eta, floor,
-        share, tiny`` for the block's ``count`` synapses."""
+    def _lesson_step_of(self, momentum: bool, normalize: bool, relative: bool) -> Any:
+        """One block's step of the optimizer, compiled once per kind and shape: the arithmetic of
+        ``fused.optimizer_step`` per entry, fused into few passes over the block. Its numbers are
+        ``norm, m, 1 - m, m's correction, rho, 1 - rho, rho's correction, eta, floor, share, tiny,
+        entries``."""
+        held = self.root.lesson_steps.get((momentum, normalize, relative))
+        if held is not None:
+            return held
         mx = self.mx
-        term = raw
-        if momentum:
-            velocity = numbers[0] * velocity + numbers[1] * raw
-            term = velocity / numbers[2]
-        if normalize:
-            second = numbers[3] * second + numbers[4] * (raw * raw)
-            root = mx.sqrt(second / numbers[5])
-            if relative:
-                floor = mx.sqrt(mx.sum(root * root) / count)
-                term = term / (root + numbers[8] * floor + numbers[9])
-            else:
-                term = term / (root + numbers[7])
-        return numbers[6] * term, velocity, second
+
+        def lesson_step(raw: Any, velocity: Any, second: Any, numbers: Sequence[Any]) -> Any:
+            norm, m, keep_m, m_c, rho, keep_rho, rho_c, eta, floor, share, tiny, entries = numbers
+            raw = raw / norm
+            term = raw
+            if momentum:
+                velocity = m * velocity + keep_m * raw
+                term = velocity / m_c
+            if normalize:
+                second = rho * second + keep_rho * (raw * raw)
+                root = mx.sqrt(second / rho_c)
+                if relative:
+                    term = term / (root + share * mx.sqrt(mx.sum(root * root) / entries) + tiny)
+                else:
+                    term = term / (root + floor)
+            return eta * term, velocity, second
+
+        held = mx.compile(lesson_step)
+        self.root.lesson_steps[(momentum, normalize, relative)] = held
+        return held
 
     def taught(
         self, plus: Mapping[str, Any], minus: Mapping[str, Any], norm: float,
         moments: dict[str, Any], tables: dict[str, Any], numbers: Sequence[float], cap: float,
-        momentum: bool,
-        normalize: bool, relative: bool,
+        momentum: bool, normalize: bool, relative: bool,
     ) -> tuple[_MlxKernel, dict[str, Any], Any, float]:
         """A lesson's update of the synapses, all of it on the device: the block Gram contrast of
         the two phases over ``norm``, the optimizer, the ties, the bound and the new blocks. One
@@ -4296,38 +4305,34 @@ class _MlxKernel:
         plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
         shared = plus.get("sources") if plus.get("sources") is minus.get("sources") else None
         plan = self.plan
-        constants = mx.array(np.array(numbers, dtype=np.float32))
+        constants = [mx.array(float(x), dtype=mx.float32) for x in (norm, *numbers)]
+        lesson_step = self._lesson_step_of(momentum, normalize, relative)
         steps: list[Any] = []
         velocity, second = list(moments["velocity"]), list(moments["second_moment"])
-        moved: dict[int, Any] = {}
-        for r in {int(x) for x in lay.pair_post}:  # the postsynaptic movement of each range, once
-            moved[r] = plus_of(r) - minus_of(r)
+        # each range's movement and each postsynaptic Gram factor, once a range
+        moved = {r: plus_of(r) - minus_of(r) for r in {int(x) for x in lay.pair_post}}
         for k in range(lay.pairs):
             pre, post = int(lay.pair_pre[k]), int(lay.pair_post[k])
             a_plus, b_minus = plus_of(pre), minus_of(post)
             raw = a_plus.T @ moved[post]
             if shared is None or plan is None or pre in plan.place:
                 raw = raw + (a_plus - minus_of(pre)).T @ b_minus
-            step, velocity[k], second[k] = self._lesson_step(
-                raw / norm, velocity[k], second[k], constants, tables["entries"][k],
-                momentum, normalize, relative,
+            entries = mx.array(float(tables["entries"][k]), dtype=mx.float32)
+            step, velocity[k], second[k] = lesson_step(
+                raw, velocity[k], second[k], [*constants, entries]
             )
             steps.append(step)
         for k, other in tables["ties"].items():  # one synapse, one weight: the mean of the two
             if k <= other:
                 mean = 0.5 * (steps[k] + steps[other].T)
                 steps[k], steps[other] = mean, mean.T if k != other else mean
-        checks = [mx.sum(mx.abs(step)) for step in steps]
         new_scale = [mx.clip(e + step, -cap, cap) for e, step in zip(scale, steps, strict=True)]
         new_blocks = [
             e if tables["gains"][k] == 1.0 else tables["gains"][k] * e
             for k, e in enumerate(new_scale)
         ]
-        total = mx.sum(mx.stack(checks))
-        moments_finite = [
-            mx.isfinite(mx.sum(x)) for x in (*velocity, *second) if x is not None
-        ]
-        ok = mx.all(mx.stack(moments_finite)) if moments_finite else mx.array(True)
+        total = mx.sum(mx.stack([mx.sum(mx.abs(step)) for step in steps]))
+        ok = mx.all(mx.stack([mx.isfinite(mx.sum(x)) for x in (*velocity, *second)]))
         neurons = self._movement_of_neurons(plus, minus, plus_of, minus_of)
         new = copy.copy(self)
         new.blocks = new_blocks
@@ -4629,6 +4634,8 @@ class _MlxKernel:
         rows = len(drive)
         nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
         driven = self._driven(start, drive)
+        if chunk > _MLX_GRAPH_STEPS:  # one launch holds a bounded time of the device
+            return None
         sweeps = min(chunk, budget)
         out = self._launch(
             start["vm"], start["sm"], driven["first"], driven["fixed"], sweeps, nudged, None
