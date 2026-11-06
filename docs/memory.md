@@ -446,9 +446,10 @@ With the recipe every head reads "the first told", "the second" and "the latest"
 times the longest length it was taught. On six fresh founders, look back taught at 5 to 12 and
 read at 24 to 60 answers "first" and "second" at 0.99 to 1.00, and copying unique tokens at
 unseen lengths 0.99 to 1.00. On induction and n-back it stays within 0.014 of the founder
-table. A period longer than `recall_position` needs the table exact that far: for a period of
-40 add `recall_position=64` (the recipe continues it at 0.86 to 0.94 against 0.35 to 0.39 at
-32 exact ages).
+table. A period longer than `recall_position` needs a code past the table: for a period of 40 add
+`recall_grid=(7, 8, 9, 11), recall_capacity=128` (the recipe continues it at .999 on six fresh
+founders, [reads over long context](#reads-over-long-context)), or a table exact that far with
+`recall_position=64` (0.86 to 0.94 against 0.35 to 0.39 at 32 exact ages).
 
 **What the recipe costs.** On the
 [panel of position changes](../benchmarks/sequence/README.md#the-panel-of-position-changes-232)
