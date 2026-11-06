@@ -118,6 +118,8 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False`, `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
+| `learning_fast_settle` | `False` | retune | [settling](settling.md#settling-and-equilibrium) |
+| `learning_rehearsal`, `learning_rehearsal_capacity` | `0.0` (off), `512` lesson rows, each with its episode | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
@@ -274,6 +276,37 @@ Reward and termination describe the preceding executed action; a demonstration l
 current observation. Keep batch-row identities fixed until `reset()`. The
 [continuing brain example](../examples/continuing_brain.py) runs the full reward, teacher and
 checkpoint loop.
+
+## What a moment costs
+
+One thread of the CPU backend with Numba does a moment's work: the memory's read, the free solve,
+the choice and the memory's write. A lesson adds a solve that judges the answer, which the act after
+a lesson that taught no row reads instead of settling again, and at the rows it teaches two nudged
+phases and the update. The kernels compile at their first use under a source version, about 10
+seconds on an Apple M4, and load from Numba's cache after that.
+
+| Work | Brain | One thread, Apple M4 |
+| --- | --- | ---: |
+| A pass of the [grammar chamber](../benchmarks/grammar/README.md): 4,000 batches of 16 rows, about 50,000 acts and 23,000 lessons | the chamber's recipe with `teaching="deep"` and `recall_address_contrast=True`: 251 neurons, 24,384 parameters | 56 s |
+| The same | with `history_decays=(0.5, 0.9)` and no prefrontal region: 257 neurons, 24,774 parameters | 77 s |
+| The same | either, with `learning_fast_settle=True` | 34 s, 36 s |
+| One stream of speech: 3,920 inputs, association 512, `dense_limit=8192`, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
+| The same | the recipe | 10 ms, 190 ms |
+| The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
+
+On the chamber's recipe the free solves take about half of a pass, and the exponential in the
+activation most of that. The memory's read takes about a tenth, and the rest is spread over many
+small steps of Python and NumPy. At the speech size the read's address map, 3,920 by 3,920 entries,
+is most of an act. A realtime loop's limit is the act: a lesson that teaches costs twenty times an
+act at the speech size, and only the act has to keep up with the stream.
+
+| To spend less | Setting | What changes |
+| --- | --- | --- |
+| Sweeps per solve | `learning_fast_settle=True` | Another solve of the same equations: about a third of the row-sweeps and half of a chamber pass. The bits change, so read your own panels. |
+| Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
+| Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
+| Blocks | `dense_limit` at construction | A brain over the limit settles on the sparse transport in Python, about 30 times slower at the speech size. |
+| Device | `backend="cpu"` | At the chamber's size, 16 rows over 82 settling neurons, MLX on the same M4 takes 16 times as long per batch. [Which hardware](backends.md#which-hardware) gives the sizes where a device pays. |
 
 ## Larger brains
 

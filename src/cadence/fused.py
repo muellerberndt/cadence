@@ -24,6 +24,10 @@ counts per array argument, and at this rate a call per row costs as much as the 
 Index arithmetic is unsigned, which lets the loops vectorize (``_index``). A free solve runs its
 checks and its chunks in one compiled call (``fused_solve``), and a state keeps what it published
 (``_keep_published``), so a launch from it makes no activation it already holds.
+
+Every kernel above keeps the NumPy loop's bits. ``_fast_solve``, under ``learning_fast_settle``, is
+another solve of the same equations and does not: the regions in turn, rows that stop apart and an
+activation that vectorizes.
 """
 
 from __future__ import annotations
@@ -62,6 +66,13 @@ def _compiled(kernel: _Kernel) -> _Kernel:
     """``numba.njit(cache=True)``, keeping the kernel's annotated signature for the checker."""
     assert njit is not None
     return cast(_Kernel, njit(cache=True)(kernel))
+
+
+def _vectorized(kernel: _Kernel) -> _Kernel:
+    """``numba.njit(cache=True, error_model="numpy")``: Python's error model branches on every
+    divisor, which keeps a loop with a division from vectorizing."""
+    assert njit is not None
+    return cast(_Kernel, njit(cache=True, error_model="numpy")(kernel))
 
 
 def _rows_builds(kernel: _Kernel) -> tuple[_Kernel, _Kernel]:
@@ -118,6 +129,12 @@ def _after_fork() -> None:  # pragma: no cover - runs in a forked child
 if njit is not None and hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=_after_fork)
 
+
+# A fast solve settles its rows past the tolerance that qualifies them, as a solve that checks
+# every 32 sweeps does: a row stops within this, and a row that does not get there stops at the
+# tolerance once this many sweeps are spent.
+_FAST_SETTLED = 1e-5
+_FAST_PATIENCE = 96
 
 # The entries of the record at the end of a state's kept array (``_keep_published``)
 _RECORD = 6
@@ -1489,6 +1506,238 @@ if njit is not None:
         return used, checks, taken, change, kept
 
 
+if njit is not None:
+
+    @_inlined
+    def _act_plain(
+        x: float, slope: float, threshold: float, rest: float, up: float, down: float
+    ) -> float:
+        """The activation in plain arithmetic a loop can vectorize: the exponential as a power
+        series at 1/256 of the argument, squared eight times, the argument held within +-36,
+        where the sigmoid has saturated. Within about 1e-14 of the rule's."""
+        z = -slope * (x - threshold)
+        z = 36.0 if z > 36.0 else (-36.0 if z < -36.0 else z)
+        y = z * 0.00390625
+        e = 1.0 + y * (1.0 + y * (0.5 + y * (0.16666666666666666 + y * (
+            0.041666666666666664 + y * (0.008333333333333333 + y * (
+                0.001388888888888889 + y * 0.0001984126984126984))))))
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        q = 1.0 / (1.0 + e) - rest
+        return q * up if q > 0.0 else q * down
+
+    @_inlined
+    def _row_home(
+        home: int, b: int, batch: int, work_v: np.ndarray, v: np.ndarray, s: np.ndarray,
+        columns: np.ndarray, starts: np.ndarray,
+    ) -> None:
+        """Working row ``b`` of ``_fast_solve`` into row ``home`` of the state."""
+        width = _index(starts[starts.shape[0] - 1])
+        for i in range(width):
+            v[home, i] = work_v[b, i]
+        for r in range(starts.shape[0] - 1):
+            a0 = _index(starts[r])
+            wr = _index(starts[r + 1]) - a0
+            at = _index(batch) * a0 + _index(b) * wr
+            for i in range(wr):
+                s[home, a0 + i] = columns[at + i]
+
+    @_vectorized
+    def _fast_solve(
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        flat: np.ndarray,
+        starts: np.ndarray,
+        pair_pre: np.ndarray,
+        pair_post: np.ndarray,
+        offset: np.ndarray,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        budget: int,
+        chunk: int,
+        tolerance: float,
+        settled: float,
+        out: np.ndarray,
+    ) -> tuple[int, int, int, int, np.ndarray]:
+        """A free solve at dt = 1 and no mask: the ranges in turn within a sweep, sources first,
+        each reading the latest activations; a row stops at the check it is within ``settled``,
+        or within ``tolerance`` once ``_FAST_PATIENCE`` sweeps are spent. Rows that stop leave
+        the working arrays, so the block products cover the rows still settling. ``v``, ``s``
+        and ``out`` end on every row's state and error. Returns the sweeps, the checks, the last
+        chunk's sweeps, the sweeps over the rows and what the state keeps: its publication,
+        every product stale."""
+        batch, n = v.shape
+        ranges = starts.shape[0] - 1
+        pairs = pair_pre.shape[0]
+        up = 1.0 / (1.0 - rest)
+        down = leak / rest if rest > 0.0 else 0.0
+        fed = np.zeros(ranges, dtype=np.bool_)
+        widest = 1
+        for q in range(pairs):
+            fed[pair_post[q]] = True
+            widest = max(widest, starts[pair_post[q] + 1] - starts[pair_post[q]])
+        total = np.empty((batch, n))
+        work_v = np.empty((batch, n))
+        work_standing = np.empty((batch, n))
+        columns = np.empty(batch * n)
+        scratch = np.empty(batch * widest)
+        rows = np.arange(batch)
+        m = batch
+        un = _index(n)
+        for b in range(batch):
+            for i in range(un):
+                work_v[b, i] = v[b, i]
+                work_standing[b, i] = standing[b, i]
+                total[b, i] = 0.0
+            for r in range(ranges):
+                a0 = _index(starts[r])
+                a1 = _index(starts[r + 1])
+                at = _index(batch) * a0 + _index(b) * (a1 - a0)
+                if fed[r]:
+                    for i in range(a1 - a0):
+                        columns[at + i] = s[b, a0 + i]
+                else:
+                    for i in range(a1 - a0):
+                        x = work_standing[b, a0 + i]
+                        work_v[b, a0 + i] = x
+                        columns[at + i] = _act_plain(x, slope, threshold, rest, up, down)
+        for q in range(pairs):
+            a, c = pair_pre[q], pair_post[q]
+            if not fed[a]:
+                a0, a1, b0, b1 = starts[a], starts[a + 1], starts[c], starts[c + 1]
+                nb = b1 - b0
+                product = scratch[: batch * nb].reshape(batch, nb)
+                np.dot(columns[batch * a0 : batch * a1].reshape(batch, a1 - a0),
+                       flat[offset[q] : offset[q + 1]].reshape(a1 - a0, nb), product)
+                ub0, unb = _index(b0), _index(nb)
+                for b in range(batch):
+                    for i in range(unb):
+                        total[b, ub0 + i] += product[b, i]
+        used, checks, taken, row_sweeps = 0, 0, 0, 0
+        while True:
+            # the check at the rows still settling: the rows' errors, each row that meets the
+            # tolerance leaves
+            for b in range(m):
+                out[rows[b]] = 0.0
+            for r in range(ranges):
+                if not fed[r]:
+                    continue
+                b0, b1 = starts[r], starts[r + 1]
+                nb = b1 - b0
+                ub0, unb = _index(b0), _index(nb)
+                check = np.empty((m, nb))
+                for b in range(m):
+                    for i in range(unb):
+                        check[b, i] = (
+                            total[b, ub0 + i] + work_standing[b, ub0 + i] - work_v[b, ub0 + i]
+                        )
+                for q in range(pairs):
+                    a = pair_pre[q]
+                    if pair_post[q] == r and fed[a]:
+                        a0, a1 = starts[a], starts[a + 1]
+                        product = scratch[: m * nb].reshape(m, nb)
+                        source = columns[batch * a0 : batch * a0 + m * (a1 - a0)]
+                        np.dot(source.reshape(m, a1 - a0),
+                               flat[offset[q] : offset[q + 1]].reshape(a1 - a0, nb), product)
+                        for b in range(m):
+                            for i in range(unb):
+                                check[b, i] += product[b, i]
+                for b in range(m):
+                    worst = out[rows[b]]
+                    for i in range(unb):
+                        d = abs(check[b, i])
+                        if d > worst or d != d:
+                            worst = d
+                    out[rows[b]] = worst
+            checks += 1
+            b = 0
+            while b < m:
+                error = out[rows[b]]
+                if (
+                    error <= settled
+                    or (error <= tolerance and used >= _FAST_PATIENCE)
+                    or not (error <= 1e300)
+                ):
+                    # this row is done: its state goes home, the last active row takes its place
+                    home = rows[b]
+                    if not (out[home] <= 1e300):
+                        out[home] = np.inf
+                    _row_home(home, b, batch, work_v, v, s, columns, starts)
+                    m -= 1
+                    if b != m:
+                        for r in range(ranges):
+                            a0 = _index(starts[r])
+                            wr = _index(starts[r + 1]) - a0
+                            at = _index(batch) * a0 + _index(b) * wr
+                            at2 = _index(batch) * a0 + _index(m) * wr
+                            for i in range(wr):
+                                columns[at + i] = columns[at2 + i]
+                        for i in range(un):
+                            work_v[b, i] = work_v[m, i]
+                            work_standing[b, i] = work_standing[m, i]
+                            total[b, i] = total[m, i]
+                        rows[b] = rows[m]
+                else:
+                    b += 1
+            if m == 0 or used >= budget:
+                break
+            taken = min(chunk, budget - used)
+            for _ in range(taken):
+                for r in range(ranges):
+                    if not fed[r]:
+                        continue
+                    b0, b1 = starts[r], starts[r + 1]
+                    nb = b1 - b0
+                    ub0, unb = _index(b0), _index(nb)
+                    for b in range(m):
+                        for i in range(unb):
+                            work_v[b, ub0 + i] = total[b, ub0 + i] + work_standing[b, ub0 + i]
+                    for q in range(pairs):
+                        a = pair_pre[q]
+                        if pair_post[q] == r and fed[a]:
+                            a0, a1 = starts[a], starts[a + 1]
+                            product = scratch[: m * nb].reshape(m, nb)
+                            source = columns[batch * a0 : batch * a0 + m * (a1 - a0)]
+                            np.dot(source.reshape(m, a1 - a0),
+                                   flat[offset[q] : offset[q + 1]].reshape(a1 - a0, nb), product)
+                            for b in range(m):
+                                for i in range(unb):
+                                    work_v[b, ub0 + i] += product[b, i]
+                    base = _index(batch) * ub0
+                    for b in range(m):
+                        at = base + _index(b) * unb
+                        for i in range(unb):
+                            columns[at + i] = _act_plain(
+                                work_v[b, ub0 + i], slope, threshold, rest, up, down
+                            )
+            used += taken
+            row_sweeps += taken * m
+        for b in range(m):  # the budget ran out: the rows still settling go home as they are
+            _row_home(rows[b], b, batch, work_v, v, s, columns, starts)
+        # what the state keeps: its publication, every product stale
+        feeds = np.zeros(ranges, dtype=np.bool_)
+        size = 0
+        for q in range(pairs):
+            feeds[pair_pre[q]] = True
+            size += batch * (starts[pair_post[q] + 1] - starts[pair_post[q]])
+        kept, kept_columns, _, _, stale = _kept_room(batch * n, size, 0, ranges)
+        for b in range(batch):
+            _copy_columns(b, s, kept_columns, starts, feeds)
+        for r in range(ranges):
+            stale[r] = 1.0
+        _keep_published(v, s, kept, False, slope, threshold, rest, leak)
+        return used, checks, taken, row_sweeps, kept
+
+
 @functools.lru_cache(maxsize=32)
 def _no_nudge(
     batch: int, n: int
@@ -1840,6 +2089,41 @@ def fused_solve(
         held, budget, chunk, float(tolerance), out, given, has_given, in_place,
     )
     return out, used, checks, taken, change, _kept(flat, flat_apical, batch, kept)
+
+
+def fused_fast_solve(
+    v: np.ndarray,
+    a: np.ndarray,
+    s: np.ndarray,
+    drive: np.ndarray,
+    bias: np.ndarray,
+    layout: Layout,
+    flat: np.ndarray,
+    neuron_model: NeuronModel,
+    budget: int,
+    chunk: int,
+    tolerance: float,
+) -> tuple[np.ndarray, int, int, int, int, Products] | None:
+    """``Brain.equilibrate``'s ``fast`` solve in place on a C-ordered state of published activations
+    (``_fast_solve``). Returns each row's error, the sweeps, the checks, the last chunk's sweeps,
+    the sweeps over the rows and what the state keeps; None under adaptation or another ``dt``,
+    which take the ordinary solve."""
+    assert njit is not None
+    batch, n = v.shape
+    if (
+        neuron_model.adaptation is not None
+        or neuron_model.dt != 1.0
+        or not (v.flags.c_contiguous and s.flags.c_contiguous)
+    ):
+        return None
+    _, slope, threshold, rest, leak, _, _ = _rule(neuron_model)
+    out = np.empty(batch)
+    used, checks, taken, row_sweeps, kept = _fast_solve(
+        v, s, _standing(np.ascontiguousarray(drive), bias), flat, layout.starts, layout.pair_pre,
+        layout.pair_post, layout.offset, slope, threshold, rest, leak, budget, chunk,
+        float(tolerance), min(float(tolerance), _FAST_SETTLED), out,
+    )
+    return out, used, checks, taken, row_sweeps, _kept(flat, flat, batch, kept)
 
 
 def fused_residual(

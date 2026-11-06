@@ -595,6 +595,7 @@ class Equilibrium:
     residual_checks: int = 0  # equation checks, each a transport outside the local sweeps
     damping_halvings: int = 0  # final halving index of this bounded solve
     stagnation_checks: int = 0  # complete-state comparisons, with no synaptic transport
+    row_sweeps: int | None = None  # with ``fast``: the sweeps summed over rows, which stop apart
 
     @property
     def converged(self) -> np.ndarray:
@@ -1018,6 +1019,7 @@ class Brain:
         mask: np.ndarray | None = None,
         nudge: Nudge | None = None,
         damping: int = 0,
+        fast: bool = False,
     ) -> Equilibrium:
         """Continue a joint state until its equations hold or the exact step budget expires.
 
@@ -1033,7 +1035,12 @@ class Brain:
         attempt early, leaving its unused sweeps for the remaining attempts.
         Every attempt checks the original equations; a halved step changes only the
         numerical method. Repetition never qualifies an answer. Results report the final
-        halving index (``damping_halvings``).
+        halving index (``damping_halvings``). ``fast``, for a free solve on the compiled CPU path
+        at ``dt`` 1: the regions take their step in turn, each reading the activations the ones
+        before it just published, a row stops at the check it qualifies, ``chunk`` is at most 16
+        and the activation is made in arithmetic that vectorizes, within about 1e-14 of the rule's.
+        The same equations and tolerance; the bits are another solve's. ``row_sweeps`` reports
+        the sweeps over the rows, and ``steps`` those of the slowest row.
         """
         for name, value, minimum in (
             ("budget", budget, 0), ("chunk", chunk, 1), ("damping", damping, 0),
@@ -1086,7 +1093,7 @@ class Brain:
             return result
         return self._equilibrate_local(
             drive, budget=budget, chunk=chunk, tolerance=tolerance,
-            state=state, mask=mask, nudge=nudge,
+            state=state, mask=mask, nudge=nudge, fast=fast,
         )
 
     def _repeated_state(self, previous: BrainState, current: BrainState) -> bool:
@@ -1140,11 +1147,12 @@ class Brain:
         mask: np.ndarray | None,
         nudge: Nudge | None,
         stop_if_stalled: bool = False,
+        fast: bool = False,
     ) -> Equilibrium:
         """Run a validated local attempt; only a subsequent damping attempt may skip a stall."""
         current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
         if mask is None and nudge is None and not stop_if_stalled and self._solves_compiled():
-            solved = self._solve_compiled(drive, current, budget, chunk, tolerance)
+            solved = self._solve_compiled(drive, current, budget, chunk, tolerance, fast)
             if solved is not None:
                 return solved
         error = self.residual(drive, current, mask=mask, nudge=nudge)
@@ -1191,15 +1199,30 @@ class Brain:
         )
 
     def _solve_compiled(
-        self, drive: np.ndarray, current: BrainState, budget: int, chunk: int, tolerance: float
+        self, drive: np.ndarray, current: BrainState, budget: int, chunk: int, tolerance: float,
+        fast: bool = False,
     ) -> Equilibrium | None:
         """``_equilibrate_local``'s solve from the published state ``current`` in one compiled
         call (``fused.fused_solve``): the same sweeps and checks, their counts and every bit;
-        None where only the launches serve."""
-        from .fused import fused_solve
+        None where only the launches serve. ``fast`` (``equilibrate``) where it applies."""
+        from .fused import fused_fast_solve, fused_solve
 
         compiled = self._fused_blocks()
         assert compiled is not None
+        if fast:
+            quick = fused_fast_solve(
+                current.v, current.adaptation, current.activation, np.atleast_2d(drive), self.bias,
+                self.layout, compiled[0], self.neuron_model, budget, min(chunk, 16), tolerance,
+            )
+            if quick is not None:
+                error, used, checks, taken, row_sweeps, products = quick
+                result = BrainState(
+                    v=current.v, activation=current.activation, adaptation=current.adaptation,
+                    steps=taken, activity_change=np.zeros(len(error)),
+                )
+                _keep_products(result, products)
+                return Equilibrium(result, error, used, tolerance, residual_checks=checks,
+                                   row_sweeps=row_sweeps)
         solved = fused_solve(
             current.v, current.adaptation, current.activation, np.atleast_2d(drive), self.bias,
             self.layout, compiled[0], self.neuron_model, budget, chunk, tolerance,

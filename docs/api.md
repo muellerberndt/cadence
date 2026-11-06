@@ -430,7 +430,7 @@ LearnerConfig(beta=0.1, eta=0.2, eta_bias=None, free_steps=100, nudged_steps=50,
               normalize_floor=1e-3, momentum=0.0, scale_cap=8.0, qualified=False,
               damping=3, surprise=False, normalize_relative=0.0,
               nudged_fixed=False, rehearsal=0.0, rehearsal_capacity=512,
-              surprise_share=False)
+              surprise_share=False, fast_settle=False)
 Learner(brain, outputs, config=LearnerConfig(), plastic_synapses=None,
         plastic_neurons=None, reciprocal=True, tie_groups=None,
         synapse_rate=None, slots=1, updates=0, contrast_updates=0)
@@ -554,7 +554,7 @@ before any change.
 | --- | --- |
 | `settle(stimulus=None, *, steps=60, state=None, mask=None, trajectory=False, nudge=None, tolerance=None) -> BrainState` | A list of neurons at full amplitude, a `{neuron: level}` map or a dense drive vector. A positive `tolerance` stops once no activation moves more. |
 | `settle_batch(drive, ...) -> BrainState` | The same for `(batch, n)` drives. `mask` is `(n,)`, `(1, n)` or `(batch, n)` in `[0, 1]`. |
-| `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0) -> Equilibrium` | Settles until the equation residual is below `tolerance`, checked per chunk; up to `damping` halvings of the step share the budget. |
+| `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0, fast=False) -> Equilibrium` | Settles until the equation residual is below `tolerance`, checked per chunk; up to `damping` halvings of the step share the budget. |
 | `residual(drive, state, *, nudge=None, mask=None, on_device=True) -> ndarray` | Per-row fixed-point discrepancy; no state change. |
 | `apical_gain(drive, state) -> ndarray or None` | The apical compartment's gain per row and pool at `state`, what a nudged settle from it holds; `None` without the compartment. |
 | `stimulus_vector(stimulus)`, `stimulus_levels(levels)`, `readings(state, names, i=0, level=0.5)` | Drive construction ([pattern targets](settling.md#pattern-targets)); population readings. |
