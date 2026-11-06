@@ -33,13 +33,6 @@
   and on 5 of 6 at the founder's step (12 of 12 fresh founders with the step restored by
   setting). Brains at the founder's position rate, and brains without the reward read, are
   unchanged.
-- Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
-  copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
-  read delivers drives its own action, a successor never taught as an answer included
-  (induction whose successors 6 and 7 are never taught: 1.00 against 0.00 on development
-  founders). A read that position finds then drives the symbol after the answer as well, and
-  successors never taught stay unanswered wherever the association has learned the taught
-  answers (two hops, periodic continuation). See [memory](docs/memory.md#the-copy-pathway-opt-in).
 
 ### A planning window: the next k actions settled jointly (#257)
 

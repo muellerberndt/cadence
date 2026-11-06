@@ -1068,16 +1068,6 @@ for token in range(TOKENS):                          # no lesson: every token is
   a succession. The pathway starts from the recall port, the token the read delivers, and the
   next port's gain is learned. Started equal, the two ports would drive the heard token and the
   distractor that followed it alike.
-- **Successors (`recall_copy_next`, opt-in, founder 0.0).** Where the answers are what followed
-  the moment the read finds (induction, a copied sequence, a periodic continuation), start the
-  next ports' identity at that magnitude as well: the successor the read delivers then drives
-  its own action, a successor never taught included, and the echo removes the recall port's
-  copy of the present token. It is a construction setting and needs `recall_tokens`. In the
-  [sequence battery](../benchmarks/sequence/README.md), induction whose successors 6 and 7 are
-  never taught answers them at 1.00 with `recall_copy_next=2.0`, against 0.00 without. A read
-  that position finds (look back, n-back) then drives the symbol after the answer as well, and
-  where lessons have taught the association the taught answers (two hops, periodic
-  continuation) its drive against an action never taught outvotes the copy.
 - **Answers that are no token.** The read's lessons take their target from the slots'
   contents. With tokens declared, a lesson whose answer is an action without a token (`-1`: a
   yes or a no, a count) leaves the address and position maps as they are; the cortex learns
@@ -1277,8 +1267,7 @@ second write's value). Where it falls short:
   pathway beside this composition, on a development founder, the association drives the
   never-taught answer at -1.2 to -5.1 (copying, two hops, n-back, look back) and the winner at
   +1.1 to +7.0, against the copy's +0.3 to +1.5. The copy pathway produces them only where it
-  answers from the first lesson and the association stays untaught: induction with
-  `recall_copy_next`. The shape that follows from this, a copy gain per port shared by every
+  answers from the first lesson and the association stays untaught. The shape that follows from this, a copy gain per port shared by every
   token with outputs a lesson does not name keeping their inputs, was read as a development
   emulation on two founders: induction 1.00, copying 0.995 to 0.999 and periodic continuation
   0.96 to 0.98 of the never-taught answers, two hops 0.06 to 0.18 on the second hop, look back

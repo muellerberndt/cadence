@@ -707,8 +707,7 @@ class Recall:
     motor region, ``copy`` their initial magnitude, learned by the settle's contrast as every
     synapse is. ``tokens`` declares, per motor neuron, the observation coordinate that is the
     same token (``-1`` for none), and the pathway then starts as that identity from the recall
-    ports, and from the next ports at ``copy_next`` (an option, founder 0.0; a construction
-    setting). The memory checks that the synapses are there; it reads and writes nothing of its
+    ports. The memory checks that the synapses are there; it reads and writes nothing of its
     own for them. Without ``copy`` the tokens only declare which answers are tokens a slot can
     hold, for the read's lessons (``learn``).
 
@@ -766,8 +765,6 @@ class Recall:
     boundary: bool = False
     copy: float = 0.0
     tokens: tuple[int, ...] | None = None
-    # with ``tokens``: the identity's starting magnitude on the next ports (0.0: none)
-    copy_next: float = 0.0
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
     compete: bool = True
@@ -812,10 +809,10 @@ class Recall:
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when", "copy_next", "address_contrast", "gain",
+        "relative", "slope", "when", "address_contrast", "gain",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when", "copy_next", "gain")
+                            "action", "anchor", "relative", "slope", "when", "gain")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the position lesson's rate a unit of dopamine steps the position maps at, times
     # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
@@ -901,7 +898,7 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope", "copy_next", "gain",
+            "position_rate", "copy", "slope", "gain",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -1019,13 +1016,8 @@ class Recall:
 
     def _check_copy(self) -> None:
         """With ``copy`` every read port reaches the motor region; ``tokens`` names one
-        coordinate per motor neuron within the event, and ``copy_next`` needs them and the
-        pathway."""
+        coordinate per motor neuron within the event."""
         motor = self.connectome.populations.get("motor", ())
-        if self.copy_next and (self.tokens is None or not self.copy):
-            raise ValueError(
-                "copy_next starts the next ports' identity: it needs copy and tokens"
-            )
         if self.tokens is not None and len(motor) and len(self.tokens) != len(motor):
             raise ValueError(
                 f"tokens name one observation coordinate per motor neuron ({len(motor)})"
