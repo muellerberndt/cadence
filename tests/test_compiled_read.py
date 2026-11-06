@@ -86,3 +86,17 @@ def test_a_greedy_act_reads_as_it_did_at_a_tie() -> None:
     expected = np.argmax(agent.probabilities(state), axis=-1)
     agent._free, agent._free_brain, agent._drive = state, brain.brain, drive.copy()
     np.testing.assert_array_equal(agent.act(drive, greedy=True), expected)
+
+
+def test_the_readback_is_the_one_a_sum_over_the_synapses_makes() -> None:
+    brain = composed()
+    recall = brain.recall
+    graph = brain.brain
+    movement = np.random.default_rng(3).normal(size=(3, 16))
+    for region in ("recall", "next"):
+        read = recall.readback(graph, region, movement)
+        synapses, rows, cols = recall._head_synapses[0][0 if region == "recall" else 1]
+        width = len(recall._heads[0][0 if region == "recall" else 1])
+        w = np.zeros((width, 16))
+        np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+        assert read.tobytes() == (movement @ w.T).tobytes()

@@ -622,6 +622,50 @@ if njit is not None:
     # -- one sweep of one row
 
     @_inlined
+    def _sweep_range(
+        b: int,
+        r: int,
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        synaptic_input: np.ndarray,
+        ahead: np.ndarray,
+        starts: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        change: float,
+        moved: float,
+    ) -> tuple[float, float, bool, bool]:
+        """Range ``r`` of row ``b`` takes a step with no nudge, adaptation or mask on it: the next
+        potentials into ``ahead`` in one loop that vectorizes, then each neuron that moved
+        publishes its activation. The same arithmetic as ``_sweep_row``'s per-neuron loop.
+        Returns the row's running movement, its largest, and whether the range's activation and
+        potential moved."""
+        range_moved = False
+        potential_moved = False
+        first, stop = _index(starts[r]), _index(starts[r + 1])
+        for i in range(first, stop):
+            x = v[b, i]
+            ahead[b, i] = x + dt * (synaptic_input[b, i] + standing[b, i] - x)
+        for i in range(first, stop):
+            vn = ahead[b, i]
+            if vn != v[b, i]:  # a neuron whose potential did not move publishes what it did
+                potential_moved = True
+                v[b, i] = vn
+                sn = _act_scalar(vn, slope, threshold, rest, leak)
+                d = abs(sn - s[b, i])
+                change += d
+                if d > 0.0:
+                    range_moved = True
+                    if d > moved:
+                        moved = d
+                s[b, i] = sn
+        return change, moved, range_moved, potential_moved
+
+    @_inlined
     def _sweep_row_plain(
         b: int,
         v: np.ndarray,
@@ -640,9 +684,7 @@ if njit is not None:
         row_potential: np.ndarray,
         activity_change: np.ndarray,
     ) -> float:
-        """``_sweep_row`` with no nudge, no adaptation and no mask, the free settle: the row's
-        next potentials into ``ahead`` in one loop that vectorizes, then each neuron that moved
-        publishes its activation. The same arithmetic as ``_sweep_row``."""
+        """``_sweep_row`` with no nudge, no adaptation and no mask, the free settle."""
         ranges = starts.shape[0] - 1
         moved = 0.0
         change = activity_change[b]
@@ -650,23 +692,10 @@ if njit is not None:
             range_moved = False
             potential_moved = False
             if not frozen[r]:
-                first, stop = _index(starts[r]), _index(starts[r + 1])
-                for i in range(first, stop):
-                    x = v[b, i]
-                    ahead[b, i] = x + dt * (synaptic_input[b, i] + standing[b, i] - x)
-                for i in range(first, stop):
-                    vn = ahead[b, i]
-                    if vn != v[b, i]:  # a neuron whose potential did not move publishes what it did
-                        potential_moved = True
-                        v[b, i] = vn
-                        sn = _act_scalar(vn, slope, threshold, rest, leak)
-                        d = abs(sn - s[b, i])
-                        change += d
-                        if d > 0.0:
-                            range_moved = True
-                            if d > moved:
-                                moved = d
-                        s[b, i] = sn
+                change, moved, range_moved, potential_moved = _sweep_range(
+                    b, r, v, s, standing, synaptic_input, ahead, starts, dt, slope, threshold,
+                    rest, leak, change, moved,
+                )
             row_range[b, r] = range_moved
             row_potential[b, r] = potential_moved
         activity_change[b] = change
@@ -699,7 +728,7 @@ if njit is not None:
         weight: np.ndarray,
         anchor: np.ndarray,
         anchor_gain: np.ndarray,
-        scratch: tuple[np.ndarray, np.ndarray, np.ndarray],
+        scratch: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
         row_range: np.ndarray,
         row_potential: np.ndarray,
         activity_change: np.ndarray,
@@ -707,11 +736,12 @@ if njit is not None:
         """Every neuron of row ``b`` takes one step; returns the row's largest movement and
         marks the ranges whose potential (``row_potential``) and activation (``row_range``)
         moved. ``rule`` is ``(dt, slope, threshold, rest, leak)``, ``adapt`` ``(strength, time
-        constant)`` and ``scratch`` every row's softmax arrays ``(p, zmax, total)``: tuples keep
-        the call within what Numba can inline."""
+        constant)`` and ``scratch`` every row's softmax arrays ``(p, zmax, total)``, the next
+        potentials ``ahead`` and ``quiet``, the ranges nothing but synapses and the drive reach
+        (``_sweep_range``): tuples keep the call within what Numba can inline."""
         dt, slope, threshold, rest, leak = rule
         adapt_strength, adapt_tau = adapt
-        p, zmax, total = scratch
+        p, zmax, total, ahead, quiet = scratch
         ranges = starts.shape[0] - 1
         moved = 0.0
         # the row's running total and range flags live in registers and are written once: rows
@@ -723,7 +753,12 @@ if njit is not None:
         for r in range(ranges):
             range_moved = False
             potential_moved = False
-            for i in range(starts[r], starts[r] if frozen[r] else starts[r + 1]):
+            if quiet[r] and not frozen[r]:
+                change, moved, range_moved, potential_moved = _sweep_range(
+                    b, r, v, s, standing, synaptic_input, ahead, starts, dt, slope, threshold,
+                    rest, leak, change, moved,
+                )
+            for i in range(starts[r], starts[r] if frozen[r] or quiet[r] else starts[r + 1]):
                 tot = synaptic_input[b, i] + standing[b, i]
                 if has_adapt:
                     tot -= adapt_strength * a[b, i]
@@ -999,9 +1034,17 @@ if njit is not None:
         frozen = np.zeros(ranges, dtype=np.bool_)  # a range that can never change again
         moving = np.empty(ranges, dtype=np.bool_)  # a range some block reads that can still change
         plain = not (has_nudge or has_adapt or masked or has_apical)
+        # the ranges with no neuron a nudge or an anchor reaches, under no adaptation and no mask
+        quiet = np.zeros(ranges, dtype=np.bool_)
+        if not (has_adapt or masked or plain):
+            for r in range(ranges):
+                quiet[r] = True
+                for i in range(starts[r], starts[r + 1]):
+                    if nmask[i] > 0.0 or anchor_gain[i] > 0.0:
+                        quiet[r] = False
         rule = (dt, slope, threshold, rest, leak)
         adapt = (adapt_strength, adapt_tau)
-        scratch = (p, zmax, total)
+        scratch = (p, zmax, total, ahead, quiet)
         taken = 0
         for t in range(steps):
             # the block products of the batch, distinct blocks on distinct threads
