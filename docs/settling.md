@@ -83,16 +83,16 @@ budget over up to `k + 1` attempts, each at half the previous `dt`, all checked 
 original equations. Report a spent budget and act on it.
 
 `equilibrate(..., fast=True)`, which a composed brain's free solves take under
-`learning_fast_settle=True`, reaches the same equations in fewer neuron updates on the compiled
-CPU path. The regions take their step in turn, each reading the activations the regions before
-it just published, where a plain sweep has every neuron read the sweep before. A row stops at
-the check it is within 1e-5, or within `tolerance` once 96 sweeps are spent; `chunk` is at most 16.
-The activation is made in arithmetic that vectorizes, within about 1e-14 of the rule's. The result
-reports `row_sweeps`, the sweeps summed over the rows; `steps` counts those of the slowest row. The
-fixed point is the same to the tolerance and the bits are another solve's. A mask, a nudge, an
-apical compartment, adaptation or a `dt` other than 1 takes the ordinary solve, and so do a wrapped
-`settle_batch` or `residual`, a graph subclass with its own `equilibrate`, and the solves of a
-learner under `learning_qualified`.
+`learning_fast_settle=True`, reaches the same equations in fewer neuron updates on the compiled CPU
+path. The regions take their step in turn, each reading the activations the regions before it just
+published, where a plain sweep has every neuron read the sweep before. A row stops at the check it
+is within 1e-5, or within `tolerance` once 96 sweeps are spent; `chunk` is at most 16. The
+activation is made in arithmetic that vectorizes, within about 1e-14 of the rule's. The result
+reports `row_sweeps`, the sweeps summed over the rows; `steps` counts those of the slowest row, and
+the state has no `activity_change`. The fixed point is the same to the tolerance and the bits are
+another solve's. A mask, a nudge, an apical compartment, adaptation or a `dt` other than 1 takes the
+ordinary solve, and so do a wrapped `settle_batch` or `residual`, a graph subclass with its own
+`equilibrate`, and the solves of a learner under `learning_qualified`.
 
 Regions that share one connectome settle toward one joint fixed point under the current
 drive; independent solves merged afterwards do not couple them. An equilibrium need not be

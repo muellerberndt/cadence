@@ -1218,7 +1218,7 @@ class Brain:
                 error, used, checks, taken, row_sweeps, products = quick
                 result = BrainState(
                     v=current.v, activation=current.activation, adaptation=current.adaptation,
-                    steps=taken, activity_change=np.zeros(len(error)),
+                    steps=taken,  # the fast solve keeps no running movement
                 )
                 _keep_products(result, products)
                 return Equilibrium(result, error, used, tolerance, residual_checks=checks,

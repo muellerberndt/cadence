@@ -50,6 +50,7 @@ def test_the_solve_meets_the_tolerance_in_fewer_row_sweeps() -> None:
     assert fast.row_sweeps is not None and fast.row_sweeps <= fast.steps * 4
     assert fast.row_sweeps < plain.steps * 4
     assert plain.row_sweeps is None
+    assert fast.state.activity_change is None and plain.state.activity_change is not None
     # what it publishes is the rule's, and its report is what a check of the state reads
     np.testing.assert_allclose(fast.state.activation, graph.neuron_model.activation(fast.state.v),
                                atol=1e-11)
