@@ -17,7 +17,7 @@ works, its settings, its readings and its limits.
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
 | "How long ago?", "was A told before B?" | `recall_when=True, recall_position_rate=0.0, recall_temperature=0.1` | [when a read item happened](#when-a-read-item-happened-opt-in) |
-| The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=30.0` | [a learned gain](#a-learned-gain-on-the-reads-tokens-opt-in) |
+| The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
 | What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
 | A cue carried across a short delay, with no recall memory | nothing: the working trace is on | [working trace](#working-trace) |
 | One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
@@ -281,7 +281,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
-| `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#a-learned-gain-on-the-reads-tokens-opt-in)) |
+| `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#the-learned-value-path-opt-in)) |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
@@ -541,7 +541,7 @@ second write's value). Where it falls short:
   0.96 to 0.98 of the never-taught answers, two hops 0.06 to 0.18 on the second hop, look back
   0.00 to 0.15 and n-back below 0.02, at a cost to look back (`second` 0.90 on one founder) and
   copying repeated tokens (0.91 to 0.92). That form is not in the library; the
-  [learned gain](#a-learned-gain-on-the-reads-tokens-opt-in) is the form that is.
+  [learned value path](#the-learned-value-path-opt-in) is the form that is.
 - **N-back** costs 0.033 on the mean against the founder memory, which answers it at 0.998 to
   1.000; two founders of six read 0.933. The cost is the recipe's slow table
   (`recall_position_rate=0.01`): at the founder's rate those two founders read 0.997 and 0.972,
@@ -668,61 +668,103 @@ The age features at ages no lesson reached enter the association through synapse
 short ages: beside the recipe for unseen lengths, a look back read at 24 to 60 holds at 0.99 on
 five founders of six and falls to 0.93 on one.
 
-### A learned gain on the read's tokens (opt-in)
+### The learned value path (opt-in)
 
-The read's value reaches the motor region through the association, which learns from lessons, and
-an action no lesson named keeps losing: lessons on other actions push the association's synapses
-onto it down, so a read that names a token never taught leaves the brain saying something else. A
-learned map per token cannot produce that token either, since from zero it has no positive entry
-for what no lesson named. `recall_gain` above 0 holds one scalar per read port (`recall`, `next`,
-per head), `brain.recall.gains`, starting at zero. Each port's read of a declared token drives the
-token's motor neuron through the port's gain,
+A held read reaches the motor region only through the association region, which learns which
+answer each read deserves. A token taught as an answer is then produced from its read; a token
+never taught as an answer is read as well as any and never produced, because no lesson ever
+raised its action. `recall_gain` gives the read a path of its own to the motor region: one learned
+scalar per read port of every head (`recall`, and `next` where it is on), on the identity that
+`recall_tokens` declares. At every moment the memory adds to each token's motor neuron
 
 ```text
-drive[motor_j] += g r[tokens[j]]
+drive[motor_j] += sum over the ports of  g r[token_j],    r = amplitude * sum_i p_i V_i  (a next port: N_i)
 ```
 
-so what a gain learns on the tokens lessons used holds for the tokens no lesson used. A lesson steps
-each gain by the mean over its taught rows of the row's rate times the sum over the tokens of the
-port's read of the token times its motor neuron's movement between the nudged phases, the contrast
-every synapse learns by. A row's rate is `min(recall_gain, 5 / E)`, `E` the energy of the row's reads
-over every port. Under reward a sampled act keeps that step and a unit of dopamine moves each gain by
-one such step. The address lesson reads nothing back through the gains. A newborn settles and acts as
-one without them.
-
-It is a construction setting and needs `recall_tokens`, within the observation's own coordinates in
-the value. `parameters()` counts one per port, the report gives `gain_rows` and `gain_refused`, a
-checkpoint keeps the array `gains`, and `grow` and `graft` carry it. `grow` refuses to add a memory
-with tokens, with the gain or without it.
+`r` the read as the port holds it, held through the settle as the port's own drive is. Lessons on
+some tokens teach the gains, and the gains hold for every token, so a token no lesson used drives
+its own action.
 
 ```python
-gained = Brain.compose(inputs=8, actions=4, modules=(16,), seed=0, recall=True,
-                       recall_gain=30.0, recall_tokens=[0, 1, 2, 3])
-assert gained.recall.gains.tolist() == [0.0, 0.0]  # a recall port and a next port
-assert gained.parameters() == Brain.compose(
-    inputs=8, actions=4, modules=(16,), seed=0, recall=True, recall_tokens=[0, 1, 2, 3]
-).parameters() + 2
+TOKENS, HEAR, ASK, NOISE = 6, 6, 7, 8
+speaker = Brain.compose(
+    inputs=9, actions=TOKENS, modules=(16,), seed=3, episodic=False, recall=True,
+    recall_gain=1.0, recall_tokens=range(TOKENS),   # observation i and action i: one token
+)
+assert (speaker.recall.gains == 0.0).all()          # a newborn acts as one without the path
+speaker.recall.gains = np.array([1.0, 0.0])         # as lessons would leave a copy-back task
+for token in range(TOKENS):                          # no lesson used any of these tokens
+    speaker.reset()
+    speaker.act(np.eye(9)[[token]] + np.eye(9)[[HEAR]], greedy=True)  # a token is heard
+    speaker.act(np.eye(9)[[NOISE]], greedy=True)                       # something else
+    assert speaker.act(np.eye(9)[[HEAR]] + np.eye(9)[[ASK]], greedy=True)[0] == token
 ```
 
-Read on two development founders at `recall_gain=30.0`, in the composition of
-[the section below](#one-composition-for-sequences) at `teaching="deep"`, 1,500 lessons, one life per founder and cell:
+- **Its lesson.** After each teacher lesson, beside the address lesson, each gain takes the mean
+  over the taught rows of the row's rate times the sum over the tokens of the port's read of the
+  token times its motor neuron's movement between the lesson's two nudged phases: the contrast
+  every synapse learns by, with the source held. A row's rate is `min(recall_gain, 5 / E)`, `E` the
+  energy of the row's reads over every port (`Recall.GAIN_BOUND`, a constant of the memory), so a
+  row taught alone moves its own drive by at most five times the neuron's movement. Above the bound
+  the rate no longer matters, and without the bound a large rate collapses the read. A step that
+  is not finite is refused whole; the report gives `gain_rows` and `gain_refused`.
+- **The gains learn which port holds the answer.** Nothing assigns a port. On six fresh founders the
+  next port's gain ends at 1.5 to 1.9 on a period of 8 and the recall port's near zero; on two hops
+  the recall port's falls to -1.6 to -1.8 while the next port's rises to 3.3 to 3.5, which removes
+  the echo of the cue's own token.
+- **The address lesson is untouched.** The address and position maps step on the association's
+  movement read back through the port synapses; nothing is read back through the gains.
+- **Under reward.** Each sampled act keeps the step the lesson would take were the act's action the
+  lesson's label, in one column per port of the read's eligibility (`reward_columns`); the actor
+  traces it and a unit of dopamine moves each gain by one such step. `learn` reports the whole
+  read's step as `address_reward_step`.
+- **A newborn is the founder.** The gains start at zero, so a newborn settles, acts and saves as one
+  without the path: the motor drive gains exactly nothing. They are saved as the array `gains`,
+  counted by `parameters()`, kept by `graft` and `grow`; `retune` refuses the setting. `grow` adds no
+  recall memory with tokens, as for the copy pathway.
+- **Limit.** The drive is a term held through the settle, which is sound for a held read. A read
+  revised by the live association inside the settle would have to carry it in the reciprocal force,
+  or the settle is no longer the descent of one energy; the two are not composed.
 
-| Reading | Without the gain | With the gain |
+Read on six fresh founders beside [one composition for sequences](#one-composition-for-sequences), at
+`recall_gain=1.0`, in the [sequence battery](../benchmarks/sequence/README.md) (1,500 lessons, 16 streams)
+and the [grammar chamber](../benchmarks/grammar/README.md) (4,000 batches, the means of the founders, its
+recipe in the place of the composition):
+
+| Reading | Without the path | With the path |
 | --- | --- | --- |
-| Induction, answers no lesson used | 0.00, 0.00 | 1.00, 0.93 |
-| Periodic continuation, answers no lesson used | | 0.97, 0.98 |
-| Copying, answers no lesson used | 0.00, 0.00 | 0.76, 0.98 |
-| Two hops, answers no lesson used | 0.00, 0.00 | 0.74, 0.68 |
-| N-back, answers no lesson used | 0.00, 0.00 | 0.01, 0.02 |
-| Look back, answers no lesson used | 0.00, 0.00 | 0.01, 0.00 |
-| Copying repeated tokens | 0.96, 0.96 | 0.86, 0.83 |
-| Two hops, second hop | 1.00, 0.99 | 0.94, 0.94 |
-| N-back | 1.00, 0.98 | 0.90, 0.97 |
-| Look back | 0.99, 0.99 | 0.98, 0.98 |
+| Answers on tokens no lesson used: induction | 0.00 | 0.92 to 1.00 |
+| a period of 8 | 0.00 | 0.93 to 0.97 |
+| copying | 0.00 | 0.76 to 0.97 |
+| two hops | 0.00 | 0.70 to 0.82 |
+| n-back | 0.00 | 0.08 to 0.50 |
+| look back | 0.00 | 0.00 |
+| Look back, `first` and `second` at lengths no lesson reached | 0.98 to 1.00 | 0.98 to 1.00 |
+| Copying unique tokens, closed loop | 1.00 | 0.99 to 1.00 |
+| Copying repeated tokens, closed loop | 0.91 to 0.95 | 0.82 to 0.85 |
+| Two hops, the second hop | 0.99 to 1.00 | 0.94 to 0.96 |
+| Induction | 0.97 to 1.00 | 1.00 |
+| N-back | 0.86 to 0.99 | 0.83 to 0.99 |
+| Chamber: clauses | 0.70 | 0.75 |
+| held-out combinations | 0.56 | 0.64 |
+| agreement | 0.83 | 0.89 |
+| the verb said at two distractors | 0.64 to 0.82 | 0.74 to 0.90 |
+| Dyck sentences | 0.45 | 0.36 |
+| paths | 0.30 | 0.21 |
 
-The cost on copying repeated tokens is the read's lesson: where the gain answers early, surprise
-leaves the read untaught. On look back and n-back the read of a token no lesson used stays at 0.51
-to 0.67 and the answer near zero.
+- **The read stops being taught.** A surprise lesson teaches a row only where the answer is wrong, and
+  the path answers early. On copying repeated tokens the read's lesson takes 406 rows against 971 on a
+  development founder, and each moves the association a third as far or less. The read then falls at
+  positions no lesson reached, and the answer follows it. On a path's hop the read's delivery falls the
+  same way. This is the copy pathway's failure beside the recipe, smaller.
+- **An action no lesson taught still loses the vote.** On look back the read names the held token
+  (0.46 to 0.98) and the answer is 0.00. Lessons on other actions push the association's drive on that
+  action down, and the read is spread over the slots it holds, so the path's edge for the right token
+  is smaller than the association's for the taught one.
+
+Use it for a brain that has to say tokens no lesson used where the answer is what the read holds:
+continuing, copying and inducing from what was heard. Leave it out of a brain that relies on repeated
+tokens at lengths no lesson reached, on Dyck sentences or on chained facts.
 
 ### The copy pathway (opt-in)
 

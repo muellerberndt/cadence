@@ -1,5 +1,7 @@
 # Grammar chamber: whole sentences from a meaning
 
+Readings on this page taken before 0.95 took the address lesson as the distance, which left the library in 0.95, so a memory now reads with the contrast and those tables are historical.
+
 This bounded instrument reads the Grammar stage of the language goal
 ([#173](https://github.com/muellerberndt/cadence/issues/173)): agreement across distractors,
 roles, nested structure (Dyck) and two-hop composition, on held-out combinations of words and

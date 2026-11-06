@@ -1,5 +1,7 @@
 # Two-cue chamber: credit at an identical answer
 
+Readings on this page taken before 0.95 took the address lesson as the distance, which left the library in 0.95, so a memory now reads with the contrast and those tables are historical.
+
 This chamber asks whether a composed brain learns a choice that depends on a cue it saw
 earlier, when the moments in between and the answer's own observation are the same for both
 cues. It is the instrument of [issue 208](https://github.com/muellerberndt/cadence/issues/208)

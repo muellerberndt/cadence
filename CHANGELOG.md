@@ -2,13 +2,21 @@
 
 ## Unreleased
 
-- Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`): one learned scalar
-  per read port on the tokens' identity into the motor region's drive, starting at zero and taught
-  by the motor region's movement in each lesson and by the act's eligibility under reward, so what
-  lessons on some tokens teach holds for a token no lesson used. Answers with such tokens read above
-  0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
-  tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
-  without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
+- Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`), the learned value
+  path (#262, a delivery of #260): one scalar per read port on the declared tokens' identity into the
+  motor region's drive, starting at zero, so what lessons on some tokens teach holds for a token no
+  lesson used, and which port holds the answer is learned. Lessons step each gain by the sum over the
+  tokens of the port's read of the token times its motor neuron's movement between the nudged phases,
+  at `min(rate, 5 / E)`, `E` the energy of the row's reads, refused whole when not finite (`gain_rows`,
+  `gain_refused`); under reward a sampled act keeps that step in one column per port of the read's
+  eligibility. The address lesson's readback is untouched. A newborn acts as one without the path.
+  Saved as the array `gains`, counted by `parameters`, kept by `grow` and `graft`, refused by `retune`;
+  a read revised inside the settle is not composed with it. The copy pathway (`recall_copy`) stays as
+  the fixed form. On six fresh founders the answers on tokens no lesson used rise from 0.00 to
+  0.92-1.00 on induction, 0.93-0.97 on a period of 8, 0.76-0.97 on copying and 0.70-0.82 on two hops;
+  n-back reads 0.08-0.50 and look back 0.00. The cost is the read: a brain that answers early stops
+  teaching it, copying repeated tokens falls from 0.91-0.95 to 0.82-0.85, the second hop from 0.99-1.00
+  to 0.94-0.96, the grammar chamber's Dyck sentences from 0.45 to 0.36 and its paths from 0.30 to 0.21. See [memory](docs/memory.md#the-learned-value-path-opt-in).
 - **The recall read's address lesson changes.** It steps on the keys it names less the keys the read
   attended, the gradient of the content logits and zero where the read is right, in place of the
   distance to the named keys, which keeps regressing the address onto the mean named key. There is

@@ -1,5 +1,7 @@
 # Sequence battery: reads at lengths no lesson reached
 
+Readings on this page taken before 0.95 took the address lesson as the distance, which left the library in 0.95, so a memory now reads with the contrast and those tables are historical.
+
 These instruments measure the recall read's 0.93 options: where a read looks in a story longer
 than any it was taught ([#232](https://github.com/muellerberndt/cadence/issues/232),
 [#237](https://github.com/muellerberndt/cadence/issues/237)), a read placed where an earlier
