@@ -602,3 +602,12 @@ def test_a_long_chunk_is_solved_one_launch_at_a_time_elsewhere():
     b = mlx.brain.equilibrate(drive, budget=512, chunk=128, tolerance=3e-3)
     assert (b.steps, b.residual_checks) == (a.steps, a.residual_checks)
     np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-4)
+
+
+def test_the_environment_keeps_the_update_and_the_map_on_the_host(on_device, monkeypatch):
+    monkeypatch.setenv("CADENCE_MLX_LAUNCH", "0")
+    cpu, mlx = pair(**RECIPE)
+    lives(cpu, mlx, lessons=2)
+    assert mlx.brain._mlx.plan is None and mlx.brain._mlx.scale is None
+    assert mlx.brain._efficacy is not None
+    assert isinstance(mlx.recall.head_map(0)[0], np.ndarray)

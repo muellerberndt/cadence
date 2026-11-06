@@ -131,8 +131,8 @@ against one CPU core with Numba (float32 against float64, the same sweeps):
 | The same | 1,024 | 2,111, 5,623 | 639, 1,435 |
 | The same | 4,096 | 9,366, 25,157 | 2,594, 7,845 |
 
-MLX wins from the speech size at every batch, and on the deep anatomy from about 32 rows. At the
-chamber's size one synchronization with the GPU costs about 180 microseconds whatever the work, and
+MLX wins on the recipe at the speech size at every batch, and on the deep anatomy from about 32 rows.
+At the chamber's size one synchronization with the GPU costs about 180 microseconds whatever the work, and
 a solve of three chunks takes three: a pass of the [grammar chamber](../benchmarks/grammar/README.md),
 4,000 batches of 16 rows, takes 51 s on one CPU core and 75 s on MLX. One core stays the choice at
 that size.

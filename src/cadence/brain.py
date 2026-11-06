@@ -3770,12 +3770,11 @@ class _MlxPlan:
         return activate
 
     def _under_drive(
-        self, potentials: list[Any], blocks: list[Any], standing: Any, kept: Any,
+        self, potentials: list[Any], blocks: list[Any], standing: Any,
     ) -> tuple[Any, ...]:
         """A new drive's work before its sweeps, compiled: the source ranges' activations, their
-        products summed per settling neuron (``blocks``, the source blocks), and ``fixed`` and
-        ``first``, the standing input at every later sweep and at the first, which reads the
-        products ``kept`` of the sources the settle starts from (None: the products of silence)."""
+        products summed per settling neuron (``blocks``, the source blocks), and ``fixed``, the
+        standing input at every sweep after the first."""
         mx = self.mx
         sources = [self.activate(p) for p in potentials]
         of = dict(zip(self.sources, sources, strict=True))
@@ -3791,7 +3790,7 @@ class _MlxPlan:
             for r in self.settling
         ]
         outer = parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
-        return sources, outer, standing + outer, standing if kept is None else standing + kept
+        return sources, outer, standing + outer
 
     def controls(
         self, sweeps: int, nudging: bool, shares: bool, bounded: bool, weighted: bool,
@@ -3945,7 +3944,7 @@ class _MlxKernel:
         self.layout = layout
         self.root = self  # with_parameters' kernels share it: a state continues on any of them
         self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
-        self.sweeps: dict[bool, Any] = {}  # the compiled sweeps, shared with those kernels too
+        self.sweeps: dict[tuple[Any, ...], Any] = {}  # the compiled sweeps, shared with those too
         self.read_blocks: dict[int, tuple[np.ndarray, int]] = {}  # a read's synapses, their block
         self.lesson_steps: dict[tuple[bool, bool, bool], Any] = {}  # the optimizer's, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
@@ -4017,18 +4016,20 @@ class _MlxKernel:
 
     def _sweep(
         self, peak: bool, v: Any, s: Any, a: Any, change: Any, standing: Any, blocks: Sequence[Any],
-        k: Any, beta: Any, target: Any, mask: Any, weight: Any, anchor: Any, anchor_gain: Any,
-        groups: Sequence[tuple[Any, Any]] | None,
+        kept: Mapping[str, Any],
     ) -> tuple[Any, ...]:
-        """One sweep of every neuron, the neuron rule's own order: ``target`` is None without a
-        nudge, ``groups`` the softmax groups of a nudge that has them (members and temperature),
-        ``k`` None without a mask. With ``peak`` the step's largest movement comes with it."""
+        """One sweep of every neuron, the neuron rule's own order. ``kept`` holds what this sweep's
+        kind reads: ``k`` with a mask; ``beta``, ``target`` and ``mask`` with a nudge, ``groups``
+        with its softmax (members and temperature), ``weight`` and ``anchor`` with ``anchor_gain``
+        where it has them. With ``peak`` the step's largest movement comes with it."""
         mx, neuron_model = self.mx, self.neuron_model
         adapt = neuron_model.adaptation
         total = self._synaptic_input(s, blocks) + standing
         if adapt is not None:
             total = total - adapt.strength * a
+        k, target, groups = kept.get("k"), kept.get("target"), kept.get("groups")
         if target is not None:
+            beta, mask = kept["beta"], kept["mask"]
             if groups is None:
                 push = beta * (target - s) * mask
             else:  # one softmax per group of competing neurons
@@ -4043,10 +4044,10 @@ class _MlxKernel:
                             temperature /= tiny
                     p = mx.softmax(logits / temperature, axis=1)
                     push[:, members] = beta * (target[:, members] - p) * mask[members]
-            if weight is not None:
-                push = push * weight
-            if anchor is not None:
-                push = push + anchor_gain * (anchor - s)
+            if "weight" in kept:
+                push = push * kept["weight"]
+            if "anchor" in kept:
+                push = push + kept["anchor_gain"] * (kept["anchor"] - s)
             total = total + push
         v = v + neuron_model.dt * (-v + total)
         if k is not None:
@@ -4133,14 +4134,20 @@ class _MlxKernel:
         if capture is not None:
             capture.step(np.array(v), np.array(s), np.array(a))
         bounded = tolerance is not None
-        sweep = self._sweep_of(bounded, groups)
-        beta = None if nudge is None else mx.array(float(nudge.beta), dtype=mx.float32)
-        for t in range(steps):
-            out = sweep(
-                v, s, a, activity_change, standing, self.blocks, k if masked else None, beta,
-                target, mask, weight, anchor, anchor_gain,
-                groups if nudge is not None and nudge.softmax_temperature is not None else None,
+        kept: dict[str, Any] = {"k": k} if masked else {}
+        if nudge is not None:
+            kept.update(
+                beta=mx.array(float(nudge.beta), dtype=mx.float32), target=target, mask=mask,
             )
+            if nudge.softmax_temperature is not None:
+                kept["groups"] = groups
+            if weight is not None:
+                kept["weight"] = weight
+            if anchor is not None:
+                kept.update(anchor=anchor, anchor_gain=anchor_gain)
+        sweep = self._sweep_of(bounded, kept)
+        for t in range(steps):
+            out = sweep(v, s, a, activity_change, standing, self.blocks, kept)
             v, s, a, activity_change = out[:4]
             if bounded:
                 mx.eval(*out)
@@ -4372,19 +4379,21 @@ class _MlxKernel:
             return float(temperature)
         return self.mx.array(float(temperature), dtype=self.mx.float32)
 
-    def _sweep_of(self, peak: bool, groups: Sequence[tuple[Any, Any]]) -> Any:
+    def _sweep_of(self, peak: bool, kept: Mapping[str, Any]) -> Any:
         """The sweep, compiled once per kind and shape: the neuron update fuses into one operation
         and a replay costs a fraction of building its graph. ``CADENCE_MLX_LAUNCH=0``, and a
         temperature below float32's least normal, keep one operation at a time."""
         def sweep(*inputs: Any) -> tuple[Any, ...]:
             return self._sweep(peak, *inputs)
 
+        groups = kept.get("groups", ())
         if self.plain or any(isinstance(temperature, float) for _, temperature in groups):
             return sweep
-        held = self.sweeps.get(peak)
+        kind = (peak, *sorted(kept))
+        held = self.sweeps.get(kind)
         if held is None:
             held = self.mx.compile(sweep)
-            self.sweeps[peak] = held
+            self.sweeps[kind] = held
         return held
 
     # -- the launch: a chunk of sweeps in one Metal dispatch
@@ -4492,10 +4501,11 @@ class _MlxKernel:
             sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
             return {"first": standing, "fixed": standing, "sources": sources,
                     "potentials": potentials, "outer": None, "before": start["sources"]}
-        activated, outer, fixed, first = plan.under_drive(
+        activated, outer, fixed = plan.under_drive(
             [mx.array(potentials[r]) for r in plan.sources],
-            [self.blocks[k] for k in plan.outer], standing, kept,
+            [self.blocks[k] for k in plan.outer], standing,
         )
+        first = standing if kept is None else standing + kept  # None: the products of silence
         return {"first": first, "fixed": fixed, "potentials": potentials, "outer": outer,
                 "sources": dict(zip(plan.sources, activated, strict=True)),
                 "before": start["sources"]}
