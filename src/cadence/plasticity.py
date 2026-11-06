@@ -283,6 +283,19 @@ class ActorCritic:
             temperature = float(temperature[0])
         return self._softmax(s, temperature)
 
+    def _clear_greedy(self, state: BrainState) -> np.ndarray | None:
+        """The greedy action of one output slot without its softmax, where every row's most active
+        motor neuron stands clear of the others (``fused.clear_choice``); None otherwise."""
+        try:
+            from .fused import clear_choice, compiled
+        except ImportError:  # pragma: no cover
+            return None
+        if not compiled():
+            return None
+        return clear_choice(
+            state.activation[:, self.learner.output_index], float(self.learner.config.temperature)
+        )
+
     @staticmethod
     def _softmax(s: np.ndarray, temperature: float | np.ndarray) -> np.ndarray:
         with np.errstate(over="ignore", divide="ignore", invalid="ignore"):
@@ -390,6 +403,10 @@ class ActorCritic:
         )
         self._pending = None  # eligibility always belongs to this decision, including greedy reads
         self._pending_memory = None
+        if greedy and bias is None and self.learner.slot_count == 1:
+            action = self._clear_greedy(free)
+            if action is not None:
+                return np.asarray(action, dtype=np.int64)
         p = self.probabilities(free, None if greedy else temperature, bias=bias)
         if greedy:
             action = np.argmax(p, axis=-1)
