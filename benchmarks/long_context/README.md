@@ -229,7 +229,7 @@ and `working_memory_amplitude=0.3`. The arms read alike to the digit on every ro
 The protocol's rule asked the grid's arm to pass every gate, so by its letter table 64 stays: S5 fails on both arms, to the
 same digits. S5's fall is the amplitude's and not the grid's: the same founders at the amplitude's default read .940 to .964.
 The row that separates the arms is S6. The grid at 128 slots has fewer parameters (15,044 against 16,819 at 6 inputs, 28,084
-against 30,584 on the chamber's brain) and an act costs .06 ms more at 12 inputs on one stream (.53 against .47), with twice the
+against 30,584 on the chamber's brain) and an act costs .13 ms more at 12 inputs on one stream (.67 against .54), with twice the
 slots' memory. What it costs is the place in a long story: lessons past the table stop the slope, as the look back table shows.
 
 ### Beside the matched networks
@@ -252,19 +252,18 @@ Independently scored, each at the brain's parameter count with the window to mat
 ### Cost
 
 Newborn brains, one thread, 12 inputs and 64 association units, 32 sweeps per act at every slot count; trained n-back lives
-read 49 to 59. Seconds grow with the slots through the read and through the write, which copies the slot arrays; at 4,096 slots
-and 16 streams the two are 3.5 ms each against a settle of 1.7. The grid adds a little to the read and nothing to the write.
+read 49 to 59. Seconds grow with the slots through the read: a write adds one slot in place, so at 4,096 slots and 16 streams the
+read takes 4.2 ms, the write .2 and the settle 1.3. The grid adds to the read and nothing to the write.
 
 | Slots | Parameters: table 32, exact, grid | One stream, ms per act: table 32, exact, grid | 16 streams, ms per act: table 32, exact, grid | Lesson moment, 16 streams, ms | Memory per stream |
 | --- | --- | --- | --- | --- | --- |
-| 64 | 14,695, 19,469, 17,390 | .48, .47, .52 | 1.72, 1.69, 1.75 | 7.6 | 18 kB |
-| 128 | 14,849, 29,325, 17,544 | .48, .48, .53 | 1.77, 1.80, 1.85 | 7.6 | 37 kB |
-| 512 | 15,157, 88,461, 17,852 | .51, .56, .59 | 2.27, 2.39, 2.31 | 9.3 | 148 kB |
-| 1,280 | 15,465, 206,733, 18,160 | .58, .66, .68 | 3.84, 3.94, 3.60 | 12.5 | 370 kB |
-| 4,096 | 15,619, 640,397, 18,314 | .81, .92, .98 | 8.60, 9.26, 8.69 | 26.6 | 1.18 MB |
+| 64 | 14,695, 19,469, 17,390 | .53, .54, .64 | 1.49, 1.49, 1.57 | 9.8 | 18 kB |
+| 128 | 14,849, 29,325, 17,544 | .55, .56, .67 | 1.57, 1.60, 1.69 | 9.9 | 37 kB |
+| 512 | 15,157, 88,461, 17,852 | .59, .61, .71 | 1.91, 2.21, 2.07 | 12.6 | 148 kB |
+| 1,280 | 15,465, 206,733, 18,160 | .66, .78, .80 | 2.58, 3.11, 2.93 | 18.1 | 370 kB |
+| 4,096 | 15,619, 640,397, 18,314 | .84, 1.00, 1.07 | 5.68, 7.14, 6.70 | 35.8 | 1.18 MB |
 
-At 64 inputs and 16 streams an act takes 2.1 ms at 64 slots, 2.6 at 128, 4.3 at 512, 10.1 at 1,280 and 39 at 4,096. At 256 inputs,
-16 streams and 4,096 slots it takes 140 ms.
+At 64 inputs and 16 streams an act takes 1.9 ms at 64 slots, 2.0 at 128, 2.8 at 512, 6.4 at 1,280 and 13 at 4,096.
 
 ### What these readings do not establish
 

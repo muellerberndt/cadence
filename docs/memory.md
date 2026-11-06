@@ -611,8 +611,8 @@ back meets a noisy copy; with about 2.5 times the period the slots still hold th
 read lands on it, on about 2 slots at a period of 40: the sequence composition reads that period at
 .999 with the grid at 128 slots and at .821 to .925 with table 64 at 64. The grid's parameters stay fixed as the slots
 grow, at `35 (width + association + 1)` per head; an exact table's grow with them, to 206,733 at 1,280
-slots and 12 inputs against 18,160 with the grid. An act at 12 inputs takes .53 ms at 128 slots and
-.68 ms at 1,280, on one stream.
+slots and 12 inputs against 18,160 with the grid. An act at 12 inputs takes .67 ms at 128 slots and
+.80 ms at 1,280, on one stream.
 
 **What it reads and what it costs.** On three lives n-back reads 1.00 at 400 by 6,000 answers and .96
 to 1.00 at 1,000 by 12,000, where an exact table stays at chance past 100. A period of 100 at 256 slots holds its
