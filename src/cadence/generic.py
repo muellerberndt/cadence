@@ -2613,218 +2613,40 @@ class Brain:
         slots: int | Sequence[int] = 1,
         **options: Any,
     ) -> Brain:
-        """Compose a modular brain with working memory and consolidation.
+        """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
+        its memories, settling together.
 
-        ``inputs`` is a vector length, or an image shape ``(height, width)`` or ``(height,
-        width, channels)``: the sensory region is then a ``visual_cortex``
-        of the image (``features`` maps of ``field`` by ``field`` receptive fields), whose
-        feature maps project to the first module as the sensory region does.
-        The memories key on the observation code
-        (``observation_code``): the observation itself, or with ``code=units`` the brain's
-        sparse code of it (each input read through an ON and an OFF channel, every channel by
-        two units at least, with positive weights, 32 channels per unit or more, one unit in
-        ten active, unit length).
-        ``code=units`` makes a vector brain's sensory region that code: every observation is
-        coded before the drive, so 12,824 inputs reach the cortex as 1,024 units through
-        1,024 x 64 sensory synapses in place of 12,824 x 64, and the memories key on the same
-        code; the founder leaves the cortex and the memories on the observation. The code is
-        fixed and random and learns nothing. For an image brain
-        ``code`` names the memories' code alone, the cortex reading the pixels through the
-        visual cortex.
-        ``learned_code=units`` (opt-in; a vector brain, without ``code``) places a ``code``
-        region of that many neurons between the sensory region and the first module: a
-        learned sparse code of the observation, settled in the region's own phase before
-        the rest of the brain, under lateral competition through its dictionary and drawn
-        toward the prediction the working trace makes of it, then held as a source through
-        the whole settle; explicit acts and aroused ``live`` moments learn it by local rules
-        (``LearnedCode``). The cortex reads the context-free code, the observation settled
-        alone, the heard history holds it, and every memory keys on it at unit length,
-        joined to the observation's own identity. ``learned_code_fields`` declares the
-        observation's fields; every other part of the region is a constant of it; the
-        founder ``learned_code=None`` builds the brain without the region.
+        ``inputs`` is a vector length or an image shape ``(height, width[, channels])``, whose
+        sensory region is a ``visual_cortex`` of ``features`` maps of ``field`` by ``field``
+        receptive fields. ``actions`` counts the motor neurons, grouped by ``slots`` into readouts
+        that settle together, one softmax each: a count of equal groups, or one size per group.
+        ``modules`` is a chain of reciprocal regions, the last the association cortex.
+        ``observers`` adds regions with reciprocal access to all of them, which settle with the
+        rest and never override an answer. ``lateral`` is the weight between the motor neurons
+        of a slot (unset: 0.0, no such synapses). ``scales`` names the initial magnitudes of the
+        ``"sensory"`` and ``"trace"`` projections.
 
-        ``attention=True`` is the opt-in single-head contextual-memory recipe for a learned
-        code. It requires ``learned_code=units`` and enables Recall with a two-moment ordered
-        key, successor values, no age preference and temperature 0.1. The resulting address
-        is selected from learned meaning codes before the neural settle and its recalled
-        value is held as a source through that same settle. Explicit ``recall_*`` settings
-        may tune the recipe, but its window must remain at least two and its successor read
-        must remain enabled. This option does not enable episodic action voting and does not
-        change the default brain.
+        ``code=units`` keys the memories on a fixed sparse code of the observation and, on a
+        vector brain, makes the sensory region that code. ``learned_code=units`` places a region
+        between the senses and the first module that settles to a learned sparse code, which the
+        cortex reads and the memories key on; ``attention=True`` is the recall recipe for it.
+        ``teaching`` is the teaching point of the lesson's learner (``"founder"``,
+        ``"normalized"`` or ``"deep"``); ``learning=LearnerConfig(...)`` replaces the whole
+        configuration instead. ``connectome`` wraps a custom anatomy with these founders;
+        ``Genome.composed`` returns the layout developed here, to edit or evolve.
 
-        ``modules`` specifies a chain of reciprocally connected processing
-        regions. The final region is the association cortex. ``observers``
-        optionally adds regions with reciprocal access to all processing and
-        motor regions, including earlier observers. Every region participates
-        in the same neural settlement; observer regions never run as a separate
-        critic or override an already completed answer.
+        ``options`` takes the constructor's memory settings (``recall`` and its
+        ``recall_<setting>``, ``episodic``, ``memory_choice`` and its settings,
+        ``efference_amplitude``, ``history_decays``, ``working_memory_*``) and every configuration
+        field as ``learning_<field>``, ``actor_<field>`` or ``arousal_<field>``; ``temperature``
+        is the learner's softmax temperature. ``arousal=True`` enables the founder arousal, a
+        mapping patches it, a configuration replaces it. A name the library retired is refused
+        with one sentence saying what the brain does instead, and an unknown name with
+        ``TypeError``.
 
-        ``lateral`` is the signed weight between each pair of motor neurons in a
-        slot. Left unset it is 0.0 at every menu size: no synapses between the
-        motor neurons, the motor and association feedback kept. A negative weight
-        makes the actions compete; at -0.5 the undamped free solve oscillates from
-        4 actions on, so an act may settle only under the damping fallback and a
-        teaching free phase may run out its budget. Select a nonzero weight against
-        0.0 on development tasks.
-
-        ``slots`` groups the motor neurons into several readouts that settle
-        together, one softmax each: a count of equal groups, or one size per group
-        covering ``actions``. ``act`` and ``step`` then return one index per slot,
-        and a nonzero ``lateral`` is wired within a slot. One slot is one choice
-        over every action.
-
-        Observer wiring is experimental.
-        Inputs are fixed external drives; their neural representations can vary.
-        ``scales`` maps ``"sensory"``, ``"trace"``, ``"history"`` and ``"recall"`` to the
-        initial magnitudes of the projections from the sensory region (founder 1.0), from the
-        prefrontal region that feeds the carried interpretation back to the association
-        region (1.2: the prefrontal region holds the copy at ``working_memory_amplitude``
-        3.0, and learning strengthens the projection where the past predicts the outcome),
-        from the heard history (1.2) and from the recall and next regions (1.2); a name left
-        out keeps its founder. It is a construction setting; ``retune`` refuses it.
-        ``teaching`` is the teaching point of the lesson's learner: ``"founder"`` (steps 0.5
-        and 0.05 on the raw contrast, momentum 0.9), ``"normalized"`` (steps 0.003 and
-        0.0003 under a running RMS of forgetting 0.99 and floor 1e-4, momentum 0.9), the
-        point for many lessons, as in imitation, or ``"deep"``, the normalized point for a
-        brain with an apical compartment (the projection-relative floor at 0.1 in place of
-        the constant floor, and nudged phases of a whole 32 sweeps); ``retune(teaching=...)``
-        moves a living brain between them. ``learning=LearnerConfig(...)`` replaces the
-        whole configuration instead, the expert's way to other steps.
-        ``options`` accepts the constructor's memory settings and every other
-        configuration field as ``learning_<field>``, ``actor_<field>`` or
-        ``arousal_<field>``; ``temperature`` is the learner's softmax temperature.
-        ``arousal=True`` enables the founder arousal config; a mapping patches
-        those founders. Supplied config objects remain full replacements.
-        A positive ``efference_amplitude`` adds the efference copy: one ``efference``
-        neuron per motor neuron, driven by the fading one-hot of the command the
-        stream issued (``efference_decay``) and read by the association region
-        through a plastic projection of founder scale 12. The founder
-        value zero builds the brain without it, the control to select the copy against.
-        A nonempty ``history_decays`` adds the heard history: a ``history`` region of one
-        block of ``inputs`` neurons per decay, each block a fading trace of the observations
-        as heard (the values the sensory neurons were stimulated with, before settling) at
-        its own decay, held at ``history_amplitude`` (3.0) and read by the association
-        region through a plastic projection of initial magnitude ``scales["history"]``
-        (1.2), initialized like the working trace's. After each act the blocks take in the
-        observation the brain acted on, so at a decision the history holds the past and the
-        sensory drive the present. The founder ``history_decays=()`` builds the brain
-        without it.
-        ``recall=True`` adds the recall memory, an index of the stream's own recent moments:
-        a ``recall`` and a ``next`` region (one neuron per value coordinate each), read by
-        the association region through plastic projections of initial magnitude
-        ``scales["recall"]`` (1.2), appended after any history. After each act, and after each
-        moment ``wait`` senses, the moment is written as one slot per stream (``Recall``):
-        its key the event heard (the observation code, the observation itself or the brain's
-        sparse code of it, at the memory's constant weight ``Recall.heard`` 1.0), its value
-        the event, and the
-        slot before learns it as its next.
-        Before each settle the moment's address, the key plus a learned map of the event and
-        of the association activity of the moment before, weighs the slots by a softmax
-        (``recall_temperature`` 0.25, ``recall_recency`` 0.25 per moment of age), and the
-        recalled value and next drive the two regions at ``recall_amplitude`` (3.0), a drive
-        held through the settle, which answers on it and does not revise the choice. After
-        each teacher lesson the address lesson scores each slot's value and next against the
-        association's movement under the nudge, read back through the recall and next
-        projections, weighs the scores with the address's own attention (at the memory's
-        constant temperature ``Recall.address_temperature`` 0.1), and steps the map toward
-        the weighted keys
-        (``recall_address`` 0.01, each row's rate bounded by its own input energy).
-        ``recall_capacity`` (64) bounds the slots per stream. Options beside the founder
-        memory, each a gene described and saved only where it differs from its founder and a
-        runtime one but the key and the window: a number ``recall_null`` adds a null slot of
-        logit ``recall_null / recall_temperature`` that reads nothing; and
-        ``recall_address_reward`` above zero lets reward train the address map, each sampled
-        act keeping the step its lesson would take on the rows of the event heard as the map's
-        eligibility and each outcome stepping those rows by that rate times the dopamine times
-        the trace: the eligibility carries the lesson's rate, so at 1.0 a unit of dopamine
-        moves the rows by one lesson's step; ``recall_address=0`` leaves the map as it is under
-        reward too, and the rows of the cortex of the moment before and the bias, which every
-        moment shares, learn from lessons alone.
-        When an episode ends the stream's slots are emptied with its working trace;
-        ``Brain.reset(keep=("slots",))`` keeps the slots across a reset.
-        ``recall_window`` k above 1 (construction) makes every key an ordered window of the
-        stream's last k events, ``[x_t, x_(t-1), ..., x_(t-k+1)]`` (each at the memory's
-        constant weight, ``Recall.window_decay`` 1.0 per position back), each position on
-        coordinates of its own, zeros before a stream's first moment and after an episode
-        ends: a key of ``k * code`` values, the address and the map's outputs as wide.
-        The founder ``recall=False`` builds the brain without it.
-        Every head of a composed recall memory also reads each slot's age: ``recall_position``
-        P (founder 32, construction) gives ages below P a bucket each and older ones one
-        bucket per doubling, and each head adds a term per bucket read from the moment as its
-        address is, so what a moment hears can choose how far back the head looks. The terms
-        start at zero and lessons teach them at ``recall_position_rate`` (runtime, founder
-        0.1), whatever ``recall_address`` is; ``recall_position=0`` builds none. A brain
-        saved without a position term loads without one.
-        ``recall_boundary=True`` (runtime, founder off) gives each stream that begins a
-        boundary slot first, a silent moment whose next the stream's first event teaches, so
-        the start of an episode has a predecessor as every later event has.
-        ``recall_address_contrast=True`` (runtime, founder off) steps the address map on the
-        named keys less the attended ones, zero where the read is right, in place of the distance
-        to the named keys.
-        ``recall_gain`` above 0 (construction, founder 0.0; it needs ``recall_tokens``) adds one
-        learned scalar per read port on the tokens' identity into the motor region's drive,
-        starting at zero and taught at that rate by the motor region's movement, so what lessons
-        on some tokens teach holds for the tokens no lesson used.
-        ``recall_copy`` above 0 (construction, founder 0.0) adds the copy pathway: plastic
-        synapses from every head's read ports into the motor region, appended last and drawn
-        at that magnitude, learned by the settle's contrast. ``recall_tokens`` (construction,
-        founder None) declares per action the observation coordinate that is the same token
-        (``-1`` for none; a brain without a code, or a learned code joined to the
-        observation): the pathway then starts from each recall port as that identity at
-        ``recall_copy``, and from the sensory region as the negative identity, so a token the read
-        delivers drives its own action unless the present observation already holds it.
-        ``recall_action=True`` (construction, founder off) writes the executed command, one
-        value per motor neuron, into every slot's key and value, read on ``<port>_action``
-        regions whose synapses into the association start at zero; the address and position
-        maps also read the command of the moment before, so a newborn reads and settles as
-        one without it.
-        ``recall_capacity``, ``recall_next``, ``recall_window``,
-        ``recall_heads`` (several held heads over the one bank,
-        each with its own port and address map; ``recall_compete``, a runtime option with
-        founder True, makes them read in turn, each taking of a slot at most the share the
-        heads before it left), ``recall_position``, ``recall_copy``,
-        ``recall_tokens``, ``recall_gain`` and ``recall_action`` are construction settings; the
-        keys, the values and the address map follow the observation code's width, a brain's ``code``
-        among the ways to bound it. A retired recall setting (``Recall.RETIRED``, and
-        ``recall_recency=None``) is refused by name with one sentence naming the release that
-        retired it and what the memory does instead; the CHANGELOG gives each one's reading.
-        ``memory_choice=True`` makes the hippocampus an episodic memory: its records vote
-        in every choice, greedy or sampled, added to the motor readout before the softmax.
-        Each record is kept twice: keyed by the observation (place), and keyed by the
-        stream's temporal context, the observation with the fading trace of what the stream
-        saw and did before it (``memory_context``, the share the past keeps per moment, 0.5;
-        zero keeps the place records alone). The vote is the mean of the two reads: the
-        place records answer a known situation reached along a new path, the context records
-        tell apart situations that look the same. It records the outcome of the chosen action
-        when the outcome is known: a reward or a punishment, the end of an attempt
-        (``done``), or a surprise that woke a calm ``live`` brain; a zero outcome in the
-        middle of an attempt leaves the record as it was. A demonstrated action is recorded
-        at 1.0 for the situation it was shown in. A write corrects
-        the stream's record halfway at once (``memory_rate`` 0.5), a trace that fades by
-        0.9 per later write, and consolidates into the record every stream
-        shares and resets keep at ``consolidation`` (0.05). A reward is replayed backwards
-        along the stream's recent path (8 steps; one decision per
-        situation, the one that left it, while a decision whose own outcome was known stays
-        on the path), through the decisions whose own outcome was nothing, back to the last
-        known outcome, discounted per step and up to the discounted reward. A reward that
-        ends an attempt (``done``) is replayed whole into both kinds of record. In a
-        continuing life a reward is replayed in proportion to its surprise, the reward less
-        what the memory expected of the paid decision: into each decision's context record,
-        and into its place record as far as it was an exploration rather than the brain's
-        best guess. Nothing has to mark the end of an attempt. Keys are separated by a fixed
-        random projection (1,024 cells, 24 active per key; a brain with a fixed code keys on
-        that code as it is, with no separation, and a learned code's keys are separated as an
-        observation's are). Each setting can be passed beside ``memory_choice=True``. The founder
-        ``memory_choice=False`` keeps the consolidating hippocampus, keyed by the observation
-        code and read into the motor drive; ``episodic=False`` builds none. Where the history
-        does not matter, compare the episodic memory against the founder on the task.
-        ``connectome`` wraps a custom anatomy with these founders, the episodic founders
-        filled under ``memory_choice=True`` as here: its ``sensory`` (or ``visual/input``)
-        population holds the inputs (the code's units with ``code=units``), its ``motor``
-        population the actions, and it brings its own layout, so ``modules``, ``observers``,
-        ``lateral``, the projection scales, ``features`` and ``field`` stay at their founders.
-        ``Genome.composed`` returns the layout developed here, to edit or evolve;
-        ``Genome``, ``Region`` and ``Projection`` give custom ports, sparsity and named wiring.
+        The guides own each part: docs/tune.md the founders and the layout, docs/memory.md the
+        memories, docs/senses.md the codes, docs/teach.md the teaching points, docs/api.md every
+        refusal.
         """
 
         if not isinstance(attention, bool):

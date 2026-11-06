@@ -523,222 +523,45 @@ class Recall:
     """The index memory, a held-input recall: each stream's recent moments as slots, the
     address of a moment computed before its settle and the recalled drive held through it.
 
-    Each moment the brain accepts (an act, a moment ``wait`` senses) is written after its
-    settle as one slot per stream (``witness``). The slot's key is ``heard * x`` (``heard`` a
-    constant of the memory, 1.0): ``x`` is
-    the observation as given (a brain gives its observation code). The slot's value is the
-    event ``x``, and the slot before it learns its next: the value of the moment that
-    followed it, zero until that moment comes. Before each settle the present moment's
-    address
+    Each moment the brain accepts (an act, a moment ``wait`` senses) is written after its settle
+    as one slot per stream (``witness``): its key the event ``x`` as given (a brain gives its
+    observation code), its value the event, and the slot before learns it as its next. Before each
+    settle the moment's address ``q = x + x W_x + c W_c + b`` (``c`` the settled association
+    activity of the moment before) weighs the slots once,
 
-        q = heard * x + x W_x + c W_c + b
+        p_i = softmax_i(q . K_i / temperature - recency * age_i + position terms)
 
-    (``c`` the settled association activity of the moment before) weighs the stream's slots
-    once, ``p_i = softmax_i(q . K_i / temperature - recency * age_i)`` (kept as
-    ``attended_heads``; with a ``null`` slot of logit ``null / temperature`` in the softmax,
-    which reads nothing, the slots' shares sum to one less the null slot's), and
-    ``stimulate`` sets the drive of the ``target`` region to ``amplitude * sum_i p_i V_i``
-    and, with ``next``, of the ``next`` region to ``amplitude * sum_i p_i N_i``. Both
-    regions are sources: their drive is held through the settle as a sensory drive is, so
-    the settle answers on the mixture the address chose and does not revise the choice, and
-    the address of a moment cannot depend on what that moment recalls (a second recall takes
-    a second moment). Their one-way plastic synapses into the association region learn by
-    the settle's own contrast, as the sensory ones do. With ``W_x``, ``W_c`` and ``b`` at
-    zero the address is the event heard: a moment that shares an event with a stored one
-    finds it before any lesson.
+    and ``stimulate`` holds ``amplitude * sum_i p_i V_i`` on the ``target`` region and, with
+    ``next``, ``amplitude * sum_i p_i N_i`` on the ``next`` region through the settle, as a
+    sensory drive is held: the settle answers on the mixture and does not revise it, so a second
+    recall takes a second moment. Their one-way synapses into the association region learn by the
+    settle's own contrast. ``learn`` is the address lesson, a rule beside the graph's contrast the
+    brain runs after teacher lessons: it reads the association's movement between the nudged
+    phases back through the read ports, scores each slot's value and next against it, weighs the
+    scores with the read's attention and steps the maps toward the slots the lesson names.
+    ``capacity`` bounds the slots per stream, the oldest dropped first; ``reset`` empties streams;
+    ``end`` ends their episodes and keeps their slots.
 
-    ``learn`` is the address lesson, a rule of its own beside the graph's contrast, which the
-    brain runs after teacher lessons (at the founder ``address_reward=0`` rewards leave the
-    map as it is). After a lesson it reads the association's movement between the nudged
-    phases back through the recall and next synapses, ``d``, scores each slot's value and
-    next against it,
-    ``(d_r . V_i + d_n . N_i) / |d|`` (the stored values themselves, not their effect
-    through the source neurons), weighs the scores with the attention the address gave the
-    slots, ``p* = softmax(score / address_temperature + log p)`` (``address_temperature`` a
-    constant of the memory, 0.1), and takes the
-    least-mean-squares step of the map toward ``K* = sum_i p*_i K_i`` on ``z = [x, c, 1]``
-    at the taught rows, each row at the rate ``min(address, 1 / |z|^2)``, on the error
-    ``K* - q``; a step whose result is not finite is refused.
-    ``capacity`` bounds the slots per stream, the oldest dropped first. ``reset`` empties
-    streams, and an empty stream reads silence. ``end`` ends their episodes and keeps their
-    slots: the latest slot of each learns no successor from the next episode's first moment,
-    and the moment before begins afresh; the brain ends an episode so under
-    ``Brain.reset(keep=("slots",))`` and empties the stream when an episode ends in a life.
-
-    With ``boundary`` (an option, founder off) a stream that begins holds a boundary slot
-    first: a silent moment, zero key and zero value, whose next the stream's first event
-    teaches as every written moment's next is taught. The first event then has a predecessor
-    as every later event has, so the start of an episode can be read through either port:
-    the first slot's value or the boundary's next. A stream begins when the memory empties
-    its streams, when ``reset`` empties some of them (their boundary takes the latest slot,
-    the moment the other streams wrote last) and when ``end`` ends the episodes of every
-    stream (one new slot for all of them, which a stream whose latest slot is silent and has
-    no successor yet takes in place of that slot; when every stream's latest slot is so, it
-    serves as the boundary and none is added). A stream that ends its episode alone (``end``
-    of some rows) begins the next one without a boundary, as the founder memory does, and a
-    memory of one slot (``capacity=1``) holds none. The boundary is no written moment
-    (``writes`` leaves it out), and its key is zero: its logit is its age's alone, so a cue
-    finds it by age through the position term, or by an address that points away from every
-    stored key.
-
-    With ``window`` k above 1 (a construction setting; ``window_decay`` d is a constant of the
-    memory, 1.0) the key's
-    fixed part is an ordered window of the stream's last k events, ``[heard * x_t, d * heard
-    * x_{t-1}, ..., d^(k-1) * heard * x_{t-k+1}]``, each position on coordinates of its own:
-    ``x_{t-j}`` the events of the stream's previous moments, acts and moments ``wait`` senses,
-    written or not, zeros before its first moment and after an episode ends. The address
-    takes the key's width, ``k * inputs``; the map reads ``[x_t, c, 1]`` as before.
-
-    With ``address_reward`` above zero reward trains the map as well: at each sampled act
-    the step the address lesson would take at each row, were the act's action the lesson's
-    label, is that row's eligibility (``contrast_rows``), which the actor keeps in a trace
-    of its own beside the synapses' and steps by ``address_reward`` times the dopamine
-    (``propose`` and ``accept``). The eligibility holds the rows of the event heard alone,
-    ``W_x`` (with ``action`` the command's rows among them), at the lesson's rate bounded by
-    the event's energy, ``min(address, 1 / |x|^2)``: at ``address_reward=1`` a unit of
-    dopamine moves those rows by one lesson's step, and ``address=0`` leaves the map as it
-    is under reward too. The rows of the cortex of the moment before and the bias, which
-    every moment's address shares whatever it heard, learn from lessons alone: stepped by
-    reward, where one question had learned to look carried another's read with it.
-
-    With ``position_reward`` above zero (an option, founder 0; runtime) reward trains the position
-    maps as well, and with ``anchor`` the anchored maps: at each sampled act the step the
-    position lesson would take at each row, were the act's action the lesson's label (the
-    cross-entropy gradient of the head's terms toward the slots the act's contrast names, on
-    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at the
-    founder's rate ``REWARD_RATE`` (0.1) bounded by the event's energy, whatever
-    ``position_rate`` the lessons take), joins the eligibility the actor traces, and a unit of
-    dopamine moves the maps by ``position_reward`` times that step. Which
-    slot a head reads by its age (the first told or the latest) is then reachable from reward
-    alone.
-
-    With ``heads`` H above 1 (a construction setting) the memory reads its one bank through
-    H heads. Head h has a read port of its own, the regions ``recall_h`` and ``next_h``
-    (``recall`` and ``next`` for head 0), wired one way into the association as the first,
-    and an address map of its own, ``q_h = heard * x + x W_x^h + c W_c^h + b^h``, starting
-    at zero: the heads differ at birth only in their ports' synapses, and no head is
-    assigned what to read. Each head weighs the slots with its own address, and its port
-    holds its own mixture through the settle. The heads compete for the slots (``compete``,
-    the founder): a slot can be read in full once per moment, so the heads read in turn and
-    each after the first takes of every slot at most the share the heads before it left
-    (``_share``), and its lessons take that read as the prior. The address lesson steps each
-    head's map through that head's own synapses, and reward eligibility (``contrast_rows``)
-    keeps one block of columns per head. One bank is written per moment, whatever the heads.
-    Without competition (``compete=False``, the read before 0.91.3), with the address map
-    frozen (``address=0``) and no position term (``position=0``) every head reads what head 0
-    reads.
-
-    With ``position`` P above 0 (a construction setting, founder 32; 0 builds none) every head also
-    reads each slot's age,
-    the moments since it was written: the logit of slot ``i`` gains ``a_h(x, c)[bucket(age_i)]``,
-    a term per age bucket read from the moment as the address is, ``a_h = x P_x^h + c P_c^h +
-    p^h``, so what a moment hears can choose how far back its head looks ("at the beginning"
-    against "now", "one bar back"). Ages below P have a bucket each, older ones one bucket per
-    doubling up to ``capacity`` (``position_buckets``). The maps start at zero, so the memory reads
-    as one without them until a lesson moves them. ``learn`` steps them after each lesson, whatever
-    ``address`` is: the slots the lesson's movement names, ``p*`` (as the address lesson takes it,
-    position included in the prior ``p``), give each taught row the cross-entropy gradient
-    ``g_b = sum_{i in b} (p*_i - p_i)`` of its terms, and each head's maps take the
-    least-mean-squares step on ``z = [x, c, 1]`` at the rate ``position_rate``, each row's rate
-    bounded by its own energy as the address map's is; a step that is not finite is refused.
-    Reward trains the address map with ``address_reward`` and the position maps (with
-    ``anchor`` the anchored maps) with ``position_reward``; the relative and slope maps learn
-    from lessons alone.
-    ``position_map(h)`` gives head h's maps and ``position_term(h, x, c)`` its term at every
-    slot; ``weights(address, position)`` with that term gives the attention the read used.
-
-    With ``action`` (an option, founder off; a construction setting) every written slot also
-    carries the command the stream executed at that moment, one coordinate per motor neuron
-    (``actions`` of them, one-hot within each motor slot; zero for a moment ``wait`` senses),
-    in its key and in its value: the key gains ``actions`` coordinates after the window's
-    events, and the value, so the next as well, holds the event and the command. Each head's
-    read port holds the command part on regions of its own, ``<port>_action``, whose
-    synapses into the association start at zero (the composition develops them so). The
-    address and position maps also read the command the stream executed at the moment
-    before, ``u = [x, a_prev]`` in place of ``x``; the address's fixed part holds zero on the
-    command coordinates. With every new map entry and synapse at zero a newborn reads and
-    settles as one without the option, and the address lesson can teach the maps to look for
-    a slot by what was done there.
-
-    With ``anchor`` (an option, founder off; a construction setting; it needs ``position``) every
-    head's position term also reads each slot's place in its stream's current episode, the
-    moments from the episode's first to the slot: the logit of slot ``i`` gains ``e_h(x,
-    c)[anchored(i)]``, a term per anchored bucket read from the moment as the position term is,
-    ``e_h = x E_x^h + c E_c^h + e^h``. The anchored buckets follow the age buckets (exact below
-    ``position``, then one per doubling) and one more holds every slot written before the
-    episode began. Ages count back from the present, so "the first told" moves with the length
-    of what was told; its place in the episode does not. Each stream counts the moments written
-    in its episode (``told``; ``end`` and ``reset`` start it again). The maps start at zero and
-    the lesson steps them as it steps the position maps, and with ``position_reward`` reward
-    does as well.
-
-    With ``relative`` (an option, founder off; a construction setting; it needs ``position``)
-    every head's position term also reads each slot's age relative to the slot the stream's
-    previous read gave the most attention (head 0's, ``focus``): ``0`` for that slot, ``-1``
-    for the one written after it, ``+1`` for the one before, offsets beyond ``RELATIVE`` sharing
-    the outermost buckets and one more bucket for a stream with no read before. A read can
-    then be placed where an earlier read pointed, "the token after the one I just said",
-    whatever the length of what was told. The maps start at zero and the lesson steps them
-    as it steps the position maps.
-
-    With ``slope`` above zero (an option, founder 0; a construction setting; it needs
-    ``position``) every head's position term also leans by age at every length: the logit of
-    slot ``i`` gains ``s_h(x, c) * age_i / SLOPE``, one number per moment and head read from
-    the moment as the position term is, ``s_h = x S_x^h + c S_c^h + s^h``. Positive leans to
-    old slots, negative to recent ones, and the lean holds at ages no lesson reached, where
-    the table's terms stay at zero. The maps start at zero and the lesson steps them at the
-    rate ``slope`` by the same gradient as the table, ``g = sum_i (p*_i - p_i) age_i /
-    SLOPE``, each row's rate bounded by its own energy; reward does not train them.
-
-    With ``when`` (an option, founder off; a construction setting; it reads into the recall
-    regions) every head's read also delivers when what it read happened: a region of its own
-    per head, ``<recall region>_when`` (``when_regions``), driven at ``amplitude * sum_i p_i
-    F_i`` with ``F_i`` the slot's age features ``log(1 + age_i) / log(1 + SLOPE)`` and
-    ``exp(-age_i / SLOPE)``, and with ``anchor`` the same two of its place in the episode
-    (zero for a slot written before the episode began). The regions reach the association
-    through synapses that start at zero, so a newborn settles as one without the option, and
-    the lessons give them weight. The address lesson does not read the movement back through
-    them: a lesson names the slots to read by what they hold, and the region says when the
-    slots read happened (a lesson that named slots by when they happened as well taught the
-    read to find slots whose age matched the answer instead of the item asked about).
-
-    ``copy`` and ``tokens`` (options, founders ``0.0`` and None; construction settings) record
-    a pathway the composition adds: plastic synapses from every head's read port into the
-    motor region, ``copy`` their initial magnitude, learned by the settle's contrast as every
-    synapse is. ``tokens`` declares, per motor neuron, the observation coordinate that is the
-    same token (``-1`` for none), and the pathway then starts as that identity from the recall
-    ports. The memory checks that the synapses are there; it reads and writes nothing of its
-    own for them. Without ``copy`` the tokens only declare which answers are tokens a slot can
-    hold, for the read's lessons (``learn``).
-
-    With ``address_contrast`` (an option, founder off; runtime) the address lesson steps the map
-    on a contrast: its error is ``sum_i (p*_i - p_i) K_i``, the keys the lesson names less the
-    keys the read attended, the gradient of the content logits, in place of ``K* - q``, the
-    distance to the named keys. The rate, the bound by the row's energy and the rows' average are
-    as they were, and so is the reward's eligibility, which takes the same error. It is zero where
-    the read is what the lesson names, so a read that is right stops moving the map; the distance
-    keeps regressing the address onto the mean named key whatever the read.
-
-    With ``gain`` above zero (an option, founder 0.0; a construction setting; it needs ``tokens``)
-    the memory holds one learned scalar per read port, ``gains``, in ``ports`` order, starting at
-    zero: ``stimulate`` adds each port's read of a token through that port's gain to the token's
-    motor neuron, ``drive[motor_j] += g r[offset + tokens[j]]``, with ``r`` the read as the port
-    holds it and ``offset`` where the observation's own coordinates lie in the value, so what a
-    gain learns on the tokens lessons used holds for a token no lesson used. ``learn_gain`` is its
-    lesson, which the brain runs after each teacher lesson beside the address lesson: each gain
-    takes the mean over the taught rows of the row's rate, ``min(gain, GAIN_BOUND / E)``, ``E`` the
-    energy of the row's reads over every port, times the sum over the tokens of the port's read of
-    the token times its motor neuron's movement between the nudged phases. Under reward each
-    sampled act keeps that step in one column per port after the address and position columns of
-    ``contrast_rows``, and a unit of dopamine moves each gain by one such step (``propose``,
-    ``accept``). The address lesson reads nothing back through the gains, and a newborn settles and
-    acts as one without them.
+    The options, each a field below, zero at birth where it adds a map, so a newborn reads as
+    without it, and described and saved only where it differs from its founder (``OPTIONS``;
+    ``CONSTRUCTION_OPTIONS`` shape the memory): ``boundary`` (a silent slot a stream begins
+    with), ``window`` (an ordered key of the last k events), ``heads`` (several read ports over
+    the one bank, reading in turn), ``position`` (a learned term per age bucket, ``position_rate``
+    its lesson's rate), ``anchor`` (the same by a slot's place in its episode), ``relative`` (by
+    its age relative to the previous read's focus), ``slope`` (a lean by age at every length),
+    ``when`` (the read also delivers when its slots happened), ``action`` (each slot carries the
+    command executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
+    the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``address_contrast``
+    (the address lesson's error is the keys named less the keys attended), ``tokens`` (which
+    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
+    ``copy`` (plastic synapses from the read ports into the motor region) and ``null`` (a slot
+    that reads nothing).
 
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
-    the memory does instead (``removed``); a saved memory loads where it carries the one value
-    the table keeps for it. A checkpoint of 0.84.3 carries the keys its format always wrote
-    for three of them (``FORMAT``).
+    the memory does instead (``removed``); a saved memory loads where it carries the one value the
+    table keeps for it. A checkpoint of 0.84.3 carries the keys its format always wrote for three
+    of them (``FORMAT``). docs/memory.md holds each option's law and its readings.
     """
 
     connectome: Connectome
