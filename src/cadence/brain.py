@@ -3555,6 +3555,9 @@ class _MlxMatrix:
 
     __slots__ = ("mx", "array", "flag", "_host")
 
+    def __deepcopy__(self, memo: dict[int, Any]) -> _MlxMatrix:
+        return self  # never written: a copy shares it
+
     def __init__(self, mx: Any, array: Any, flag: Any = None) -> None:
         self.mx = mx
         self.array = array
@@ -3638,6 +3641,9 @@ class _MlxState(dict):  # type: ignore[type-arg]
     all of them nor any of them twice."""
 
     __slots__ = ()
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> _MlxState:
+        return self  # never written: a copy shares it
 
     def __missing__(self, key: str) -> Any:
         if key == "fetch":  # not kept: the handle holds no reference to itself
@@ -3788,17 +3794,21 @@ class _MlxPlan:
         hold without the host's ladder."""
         if nudge.anchor is not None or nudge.apical_gain is not None:
             return None
-        temperature = nudge.softmax_temperature
-        for held_mask, held_groups, held_temperature, tables in self._nudges:
-            if held_mask is nudge.mask and held_groups is nudge.groups and (
-                held_temperature is temperature or (
-                    isinstance(temperature, float) and held_temperature == temperature
-                )
+        heat = np.asarray(nudge.softmax_temperature, dtype=float)
+        whole = np.asarray(nudge.mask, dtype=float)
+        groups = None if nudge.groups is None else np.asarray(nudge.groups)
+        for held_mask, held_groups, held_heat, tables in self._nudges:
+            if (
+                np.array_equal(held_heat, heat, equal_nan=True) and np.array_equal(held_mask, whole)
+                and (held_groups is None) == (groups is None)
+                and (groups is None or np.array_equal(held_groups, groups))
             ):
                 return cast("tuple[Any, Any, Any, Any] | None", tables)
         tables = self._nudge_arrays(nudge)
         del self._nudges[:-3]
-        self._nudges.append((nudge.mask, nudge.groups, temperature, tables))
+        self._nudges.append((
+            whole.copy(), None if groups is None else groups.copy(), heat.copy(), tables,
+        ))
         return tables
 
     def _nudge_arrays(self, nudge: Nudge) -> tuple[Any, Any, Any, Any] | None:
@@ -3936,6 +3946,9 @@ class _MlxKernel:
                 [hosted[k].T.ravel() for k in plan.inner] + [np.zeros(8, dtype=np.float32)]
             ))
             self.bias_host = live_bias
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> _MlxKernel:
+        return self  # a kernel's arrays are never written: a new set of parameters is a new kernel
 
     def with_parameters(self, weights: np.ndarray, bias: np.ndarray) -> _MlxKernel:
         """A kernel of its own on new parameters: its bias and blocks made from the host

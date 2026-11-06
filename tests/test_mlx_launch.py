@@ -517,3 +517,60 @@ def test_a_checkpoint_of_a_large_map_reads_the_device(on_device, tmp_path):
     )
     x = np.random.default_rng(4).random((ROWS, 8))
     np.testing.assert_array_equal(mlx.act(x, greedy=True), again.act(x, greedy=True))
+
+
+def test_more_settling_neurons_than_threads_share_a_thread():
+    connectome = cd.layered(8, 1400, 6, density=1.0, seed=2)
+    model = cd.learning_neuron_model(dt=1.0)
+    cpu, mlx = cd.NeuralGraph(connectome, model), cd.NeuralGraph(connectome, model, backend="mlx")
+    plan = mlx._mlx.plan
+    assert plan is not None and plan.per == 2 and plan.threads * plan.per >= plan.m
+    drive = cpu.stimulus_levels(np.random.default_rng(1).random((3, connectome.n)) * 0.5)
+    out = list(connectome.populations["output"])
+    mask = np.zeros(connectome.n)
+    mask[out] = 1.0
+    target = np.zeros((3, connectome.n))
+    target[np.arange(3), out[:3]] = 1.0
+    nudge = cd.Nudge(target, mask, 0.1, softmax_temperature=0.2)
+    a = cpu.settle_batch(drive, steps=20, nudge=nudge)
+    b = mlx.settle_batch(drive, steps=20, nudge=nudge)
+    assert launched(b)
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-4)
+
+
+def test_a_mask_changed_in_place_is_read_anew():
+    cpu, mlx = pair()
+    drive = drive_of(cpu)
+    mask = np.array(mlx.learner.output_mask, dtype=float)
+    target = target_of(cpu)
+    plan = mlx.brain._mlx.plan
+    first = plan.nudge_tables(cd.Nudge(target, mask, 0.1, softmax_temperature=0.2))
+    mask[np.flatnonzero(mask)[0]] = 0.5
+    second = plan.nudge_tables(cd.Nudge(target, mask, 0.1, softmax_temperature=0.2))
+    assert first is not second
+    nudge = cd.Nudge(target, mask, 0.1, softmax_temperature=0.2)
+    a = cpu.brain.settle_batch(drive, steps=20, nudge=nudge)
+    b = mlx.brain.settle_batch(drive, steps=20, nudge=nudge)
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+
+
+def test_a_deep_copy_lives_apart_on_the_device(on_device):
+    import copy
+
+    _, mlx = pair(**RECIPE)
+    rng = np.random.default_rng(6)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        x = rng.random((ROWS, 8))
+        labels = rng.integers(4, size=ROWS)
+        mlx.lesson(x, labels)
+        mlx.act(x, greedy=True)
+        twin = copy.deepcopy(mlx)
+        x2 = rng.random((ROWS, 8))
+        labels2 = rng.integers(4, size=ROWS)
+        before = mlx.brain._mlx.version
+        twin.lesson(x2, labels2)
+        assert mlx.brain._mlx.version == before  # the copy's lesson leaves the original's kernel
+        np.testing.assert_array_equal(twin.act(x2, greedy=True).shape, (ROWS,))
+        mlx.lesson(x2, labels2)
+        np.testing.assert_allclose(mlx.brain.efficacy, twin.brain.efficacy, rtol=0, atol=1e-6)
