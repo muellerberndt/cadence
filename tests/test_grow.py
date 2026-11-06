@@ -433,7 +433,6 @@ def test_the_grown_brain_describes_the_trained_brain_and_its_new_parts():
     assert {name: after["genes"][name] for name in before["genes"]} == before["genes"]
     assert set(after["genes"]) - set(before["genes"]) == {
         "recall_heads",
-        "recall_compete",
         "history_decays",
         "history_amplitude",
     }

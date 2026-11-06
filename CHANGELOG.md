@@ -67,6 +67,11 @@ does instead.
   `/2`, every file of 0.85.0 on. It refuses `cadence-generic/1` to `/10`, `cadence-arousal/1` to
   `/3` and `cadence-checkpoint/1` by name: load such a file once under cadence 0.94.0 and save it,
   and this version reads the result.
+- `recall_compete`. Several heads read in turn, each taking of a slot at most the share the heads
+  before it left, which is what they did at the founder. With `False` two heads read one slot on
+  184 of 192 decisions, and on the grammar chamber's held heads the two settings read alike. Write
+  nothing. A file saved at `False`, and a file of several heads saved by 0.88.0 to 0.91.2, whose
+  heads read alike, are refused by name; cadence 0.94.0 runs them.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.

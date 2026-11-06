@@ -85,7 +85,7 @@ def test_the_attention_recipe_learns_addresses_with_several_heads():
 def test_competing_heads_read_what_the_heads_before_them_left():
     brain = witnessed(composed(heads=2))
     recall = brain.recall
-    assert recall.compete and recall.to_dict()["compete"] is True
+    assert recall.to_dict()["compete"] is True
     drive = recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
     first, second = recall.attended_heads
     # at birth both addresses are the key: head 1 takes of each slot at most what head 0 left,
@@ -149,10 +149,6 @@ def test_a_competing_head_learns_from_the_shares_it_read():
     brain.stimulus(STREAM[1])
     read = recall.attended_heads[1]
     assert recall._lesson_reads(recall.last)[1] is read  # noqa: SLF001
-    # without competition a head's prior is its own attention, recomputed in its lesson
-    alike = witnessed(composed(heads=2, seed=10, recall_compete=False))
-    alike.stimulus(STREAM[1])
-    assert alike.recall._lesson_reads(alike.recall.last) == [None, None]  # noqa: SLF001
 
 
 def test_a_null_slot_keeps_its_share_of_every_competing_head():
@@ -168,85 +164,44 @@ def test_a_null_slot_keeps_its_share_of_every_competing_head():
 
 
 def test_competing_heads_never_read_a_moment_twice_through_lessons():
-    most, overlap = {}, {}
-    for compete in (True, False):
-        brain = witnessed(composed(heads=2, seed=5, recall_compete=compete))
-        reads, shared = [], []
-        for x, label in zip(STREAM * 6, [0, 1, 1, 0] * 6, strict=True):
-            brain.lesson(x, np.array([label]))
-            brain.act(x, greedy=True)
-            first, second = brain.recall.attended_heads
-            reads.append(float((first + second).max()))
-            shared.append(float(np.minimum(first, second).sum()))
-        most[compete], overlap[compete] = max(reads), float(np.mean(shared))
-    # the heads together read each slot at most once; without competition the slot they share
-    # is read nearly twice (1.83 on this stream)
-    assert most[True] <= 1.0 + 1e-12 and most[False] > 1.5
-    assert overlap[True] < overlap[False] - 0.1
+    brain = witnessed(composed(heads=2, seed=5))
+    reads = []
+    for x, label in zip(STREAM * 6, [0, 1, 1, 0] * 6, strict=True):
+        brain.lesson(x, np.array([label]))
+        brain.act(x, greedy=True)
+        first, second = brain.recall.attended_heads
+        reads.append(float((first + second).max()))
+    # the heads together read each slot at most once
+    assert max(reads) <= 1.0 + 1e-12
 
 
-def test_competition_is_a_runtime_option_of_a_living_brain():
-    brain = witnessed(composed(heads=2))
-    brain.retune(recall_compete=False)
-    assert not brain.recall.compete and brain.recall.to_dict()["compete"] is False
-    brain.recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    first, second = brain.recall.attended_heads
-    np.testing.assert_allclose(first, second)
-    with pytest.raises(ValueError, match="compete"):
-        brain.retune(recall_compete=1)
+def test_the_option_is_refused_by_name_at_every_value():
+    for value in (True, False):
+        with pytest.raises(ValueError, match="recall_compete was retired in 0.95.0"):
+            composed(heads=2, recall_compete=value)
+        with pytest.raises(ValueError, match="recall_compete was retired in 0.95.0"):
+            witnessed(composed(heads=2)).retune(recall_compete=value)
+    assert "recall_compete" not in witnessed(composed(heads=2)).describe()["genes"]
 
 
-def test_a_file_saved_before_heads_competed_loads_with_heads_that_read_alike(tmp_path):
+def test_a_file_whose_heads_read_alike_is_refused_by_name(tmp_path):
+    """A file of several heads with no ``compete``, as 0.91.2 and earlier wrote it, and a file
+    saved at ``recall_compete=False``: cadence 0.94.0 runs them."""
     brain = witnessed(composed(heads=2, seed=6))
     path = brain.save(tmp_path / "heads")
-    assert cd.Brain.load(path).recall.compete
+    assert cd.Brain.load(path).recall.to_dict()["compete"] is True
     with np.load(path, allow_pickle=False) as data:
         arrays = {name: data[name] for name in data.files}
     saved = json.loads(str(arrays["brain"]))
-
-    def drop(node):  # the file as 0.91.2 wrote it: no ``compete`` beside ``heads``
-        if isinstance(node, dict):
-            if "heads" in node:
-                node.pop("compete", None)
-            for value in node.values():
-                drop(value)
-        elif isinstance(node, list):
-            for value in node:
-                drop(value)
-
-    drop(saved)
-    arrays["brain"] = np.array(json.dumps(saved))
     earlier = tmp_path / "earlier.npz"
-    np.savez(earlier, **arrays)
-    loaded = cd.Brain.load(earlier)
-    assert not loaded.recall.compete
-    loaded.recall.stimulate(np.zeros((1, loaded.connectome.n)), STREAM[0])
-    first, second = loaded.recall.attended_heads
-    np.testing.assert_allclose(first, second)
-    assert not cd.Brain.load(loaded.save(tmp_path / "again")).recall.compete
-
-
-def test_heads_read_alike_without_competition():
-    brain = witnessed(composed(heads=2, recall_compete=False))
-    recall = brain.recall
-    drive = recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    (r0, n0), (r1, n1) = recall._head_columns  # noqa: SLF001
-    np.testing.assert_allclose(drive[:, r0], drive[:, r1])
-    np.testing.assert_allclose(drive[:, n0], drive[:, n1])
-    first, second = recall.attended_heads
-    np.testing.assert_allclose(first, second)
-    head0 = drive[:, r0].copy()
-    # head 1's address pointed at the oldest slot's key reads that slot; head 0 reads as before
-    w_x, w_c, b = recall.head_map(1)
-    recall._set_map(1, w_x, w_c, b + 20.0 * recall.keys[0, 0])  # noqa: SLF001
-    drive = recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    unchanged, second = recall.attended_heads
-    np.testing.assert_allclose(unchanged, first)
-    np.testing.assert_allclose(drive[:, r0], head0)
-    assert np.argmax(second[0]) == 0 and second[0, 0] > 0.99
-    np.testing.assert_allclose(drive[:, r1], recall.amplitude * recall.values[0, 0][None, :],
-                               atol=0.05 * recall.amplitude)
-    assert not np.allclose(drive[:, r0], drive[:, r1])
+    saved["memories"]["recall"]["compete"] = False
+    np.savez(earlier, **{**arrays, "brain": np.array(json.dumps(saved))})
+    with pytest.raises(ValueError, match="recall_compete was retired in 0.95.0"):
+        cd.Brain.load(earlier)
+    del saved["memories"]["recall"]["compete"]
+    np.savez(earlier, **{**arrays, "brain": np.array(json.dumps(saved))})
+    with pytest.raises(ValueError, match="heads read alike.*cadence 0.94.0 takes it"):
+        cd.Brain.load(earlier)
 
 
 def test_the_address_lesson_reads_each_head_back_through_its_own_synapses():

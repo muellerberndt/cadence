@@ -589,7 +589,6 @@ class Recall:
     tokens: tuple[int, ...] | None = None
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
-    compete: bool = True
     # every head's position term also reads a slot's place in its episode (``anchor_maps``)
     anchor: bool = False
     # every head's position term also reads a slot's age relative to the previous read's focus
@@ -630,7 +629,7 @@ class Recall:
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
+        "position_rate", "boundary", "copy", "tokens", "action", "anchor",
         "relative", "slope", "when", "address_contrast", "gain",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
@@ -680,6 +679,8 @@ class Recall:
                                 "ever read"),
         "window_decay": ("0.93.0", window_decay, "the window's earlier events enter the key "
                          "at their full weight (1.0), the one value ever read"),
+        "compete": ("0.95.0", True, "several heads read in turn, each taking of a slot at most "
+                    "the share the heads before it left; cadence 0.94.0 takes it"),
     })
 
     @classmethod
@@ -725,7 +726,7 @@ class Recall:
         if name == "null":
             return None if value is None else real(name, value)
         if name in (
-            "next", "boundary", "action", "compete", "anchor", "relative", "when",
+            "next", "boundary", "action", "anchor", "relative", "when",
             "address_contrast",
         ):
             if not isinstance(value, bool):
@@ -1712,16 +1713,14 @@ class Recall:
 
     def _read(self, addresses: Sequence[np.ndarray], moment: _Moment) -> list[np.ndarray | None]:
         """Every head's attention over the slots held now, head ``h`` at ``addresses[h]`` with
-        its position term at ``moment``: its own (``weights``), or among competing heads, each
-        after the first taking of every slot at most the share the heads before it left
-        (``_share``)."""
+        its position term at ``moment``: the first head's own (``weights``), and each after it
+        taking of every slot at most the share the heads before it left (``_share``)."""
         attended: list[np.ndarray | None] = []
         left: np.ndarray | None = None  # each slot's share the heads before have left
-        competing = self.compete and self.heads > 1
         for h, address in enumerate(addresses):
             position = self.position_term(h, moment.inputs, moment.cortex)
             p = self.weights(address, position)
-            if p is not None and competing:
+            if p is not None and self.heads > 1:
                 if left is not None:
                     held = None if self.held.all() else self.held
                     logits = self._attention(address, self.keys, held, position)
@@ -1731,12 +1730,11 @@ class Recall:
         return attended
 
     def _lesson_reads(self, moment: _Moment) -> list[np.ndarray | None]:
-        """For each head's lesson, the attention it read the moment with where heads compete
-        (None for head 0, whose prior is its own attention, and without competition): the reads
-        ``stimulate`` kept while the bank holds what they read, else the read computed now,
-        before any lesson steps a map."""
-        if not (self.compete and self.heads > 1):
-            return [None] * self.heads
+        """For each head's lesson, the attention it read the moment with (None for head 0, whose
+        prior is its own attention): the reads ``stimulate`` kept while the bank holds what they
+        read, else the read computed now, before any lesson steps a map."""
+        if self.heads == 1:
+            return [None]
         reads = self._head_reads
         if reads is not None and reads[2] == self.writes and all(r is not None for r in reads[1]):
             attended = list(reads[1])
@@ -2377,9 +2375,9 @@ class Recall:
              if getattr(self, name) != founders[name]}
         )
         if self.heads > 1:
-            # always kept with several heads: a file saved before heads competed holds none,
-            # and loads with heads that read alike as they did
-            out["compete"] = self.compete
+            # always written with several heads: a file saved before heads competed holds none,
+            # and its heads read alike, a law this version refuses
+            out["compete"] = True
         if "tokens" in out:  # JSON-safe: a list, as a checkpoint keeps it
             out["tokens"] = list(out["tokens"])
         return out

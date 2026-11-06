@@ -301,7 +301,6 @@ where they differ from their founder. A saved brain keeps its genes, slots and a
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window` | `1` | construction | Window of the last k events |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
-| `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
@@ -607,7 +606,7 @@ assert len(heads_brain.recall.attended_heads) == 2
 
 Each head is a copy of the held read: a read port of its own (the regions `recall_h` and
 `next_h`, wired into the association like the first) and an address map of its own, which
-starts at zero. The heads compete for the slots (`recall_compete=True`, the founder): a slot
+starts at zero. The heads compete for the slots: a slot
 can be read in full once per moment, so the heads read in turn and each takes of every slot
 at most the share the heads before it left. A head keeps the shape of its own attention where
 the slots allow and gives what a taken slot cannot give to the slots it prefers next, with
@@ -623,10 +622,6 @@ alone at the founder 0 the maps stay at zero. One bank is written per moment, an
 read it before the settle and hold their reads through it. With several heads the recipe
 learns the addresses (`recall_address=0.01`) at the Recall founder's
 `recall_temperature=0.25`.
-
-`recall_compete=False` (a retune setting) lets every head read on its own. With their maps at
-zero every head then reads what head 0 reads, and a sharp read gives the lesson no other slot
-to move toward, so the heads can stay on the same moment for good. Keep competition on.
 
 In the [held-heads benchmark](../benchmarks/attention/held_heads.py) each trial witnesses four
 facts `role -> value` with fresh values, and one question asks for two of them in one settle;

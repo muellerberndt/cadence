@@ -1173,12 +1173,16 @@ def _validate_recall_state(
             raise ValueError(Recall.removed(name))
     if recalled["recency"] is None:
         raise ValueError(Recall.removed("recency"))
+    if recalled.get("heads", 1) != 1 and "compete" not in recalled:
+        raise ValueError(
+            f"this memory's heads read alike, as 0.91.2 and earlier saved them: "
+            f"{Recall.removed('compete')}"
+        )
     settings = {name: Recall.setting(name, recalled[name]) for name in names}
     # an option is saved where it differs from its founder, and takes its founder where absent
     settings.update({name: Recall.setting(name, recalled[name]) for name in Recall.OPTIONS
                      if name in recalled})
     settings["position"] = _saved_position(recalled, data)
-    settings["compete"] = _saved_compete(recalled)
     writes = recalled["writes"]
     if isinstance(writes, bool) or not isinstance(writes, int) or writes < 0:
         raise ValueError("invalid saved recall write count")
@@ -1317,15 +1321,6 @@ def _saved_position(recalled: dict[str, Any], data: Any) -> int:
     if any(name.startswith("recall/position_") for name in data):
         return int(Recall.options()["position"])
     return 0
-
-
-def _saved_compete(recalled: dict[str, Any]) -> bool:
-    """A saved memory's competing heads: the option as saved (a memory of several heads always
-    keeps it); a file of several heads saved before heads competed holds none and loads with
-    heads that read alike, as it was saved."""
-    if "compete" in recalled:
-        return bool(Recall.setting("compete", recalled["compete"]))
-    return bool(int(recalled.get("heads", 1)) == 1)
 
 
 def _actor_config(values: Any) -> ActorCriticConfig:
@@ -5032,7 +5027,6 @@ class Brain:
                             if name in recalled
                         },
                         "recall_position": _saved_position(recalled, data),
-                        "recall_compete": _saved_compete(recalled),
                     }
                 ),
             )
