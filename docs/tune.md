@@ -26,6 +26,25 @@ assert action.shape == (1,)
 `live` takes one stream's observation of shape `(1, inputs)` and returns one action index
 ([continuous interaction](start.md#continuous-interaction) covers `live`, `step` and saving).
 
+## What to use
+
+| You want | Use | Section |
+| --- | --- | --- |
+| To know what a brain is | `describe()`: its layout, its genes, its memories, the pending outcome | [defaults](#defaults-and-expert-overrides) |
+| To know what the last moment did and cost | `last_settlement`, `last_arousal`, `last_learning` | [the API](api.md#attributes) |
+| Another value from a brain's first moment | the setting's name at `compose` | [defaults](#defaults-and-expert-overrides) |
+| Another value in a life under way | `retune(...)` | [retune the same life](#retune-the-same-life) |
+| A new part on a trained brain | `grow(...)`, `graft(...)` | [grow and combine brains](grow.md) |
+| An action with parts (kind, pitch, octave) | `slots=(3, 2, ...)` | [motor competition](#operating-point-and-motor-competition) |
+| The next `k` actions settled together | `actions=k * menu, slots=k` | [a planning window](#a-planning-window) |
+| Vector senses and several motors, a brain in a body | one motor slot per motor, `live` and `retune` across stages, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) | [one experience step by hand](#one-experience-step-by-hand) |
+| Pixels and a teacher | image `inputs`, teaching through `step`, as in the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade) | [wide inputs](senses.md#image-inputs) |
+| Features of features | several `modules`, `apical`, `teaching="deep"` | [deep brains](#deep-brains) |
+| Modules of several hundred neurons | surprise lessons with `learning_surprise_share=True`, fan-in rates | [wide brains](#wide-brains) |
+| To time a body's own moments | `act` and `learn` | [one experience step by hand](#one-experience-step-by-hand) |
+| To draw what a brain does | `record_settlements` | [the brain in a browser page](#the-brain-in-a-browser-page) |
+| Which memory to use | the table of the memory guide | [memory](memory.md#start-with-the-need) |
+
 ## Brain
 
 The composed graph, in the order its regions are developed:
@@ -231,6 +250,12 @@ loading restores them. To start the processing neurons at a bias of your own, se
 A signed neuron below rest responds to input and contributes to teaching, so the share of
 nonpositive emissions is an activity diagnostic (`tests/test_operating_range_function.py`).
 
+Gain, bias and solver steps are distinct levers: gain scales synaptic drive in the whole graph,
+a population bias moves selected neurons' operating points, and steps and damping change only
+how the equations are solved. Check candidate biases with the
+[calibration guide](settling.md#calibrating-the-operating-point), choose on development inputs
+and compare against the founders on your own task ([evaluation](evaluate.md)).
+
 ## One experience step by hand
 
 `step` learns from the previous outcome and chooses the next action. Use `act` and `learn` when
@@ -352,19 +377,6 @@ assert wide.learner.synapse_rate.max() <= 1.0
 ```
 
 `grow` refuses a brain with per-synapse rates; set the rates on the grown brain.
-
-## Choose settings for the application
-
-| Application | Interface |
-| --- | --- |
-| Vector senses, several motors | One motor slot per motor, `live` and `retune`, each real action paired with its outcome across stage changes, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena). |
-| Pixels and a teacher | Image `inputs`, teaching through `step`; teaching rates are `learning_*`, reward rates `actor_*`. See the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade). |
-
-Gain, bias and solver steps are distinct levers: gain scales synaptic drive in the whole graph,
-a population bias moves selected neurons' operating points, and steps and damping change only
-how the equations are solved. Check candidate biases with the
-[calibration guide](settling.md#calibrating-the-operating-point), choose on development inputs
-and compare against the founders on your own task ([evaluation](evaluate.md)).
 
 ## The brain in a browser page
 
