@@ -323,8 +323,8 @@ observation now ─► settle ─► motor readout ─────────�
   different histories get different context keys, so a cue that is gone can decide the vote.
   The place records keep a situation together when a new path reaches it.
 - **Records** hold one value per action in reward units. An uncoded key passes a fixed random
-  separation first (`memory_expansion` cells, the 24 most active kept), so
-  different situations write different synapses. A brain with a fixed code keys on its code
+  separation first (1,024 cells, the 24 most active kept), so different situations write
+  different synapses. A brain with a fixed code keys on its code
   as it is; a learned code's keys pass the separation as an observation's do.
 - **What is written.** The outcome of the chosen action, once it is known: a reward or a
   punishment, the end of an attempt (`done`), a surprise that woke a calm `live` brain, or an
@@ -381,20 +381,18 @@ All of these are construction settings; `retune` refuses them.
 | --- | --- | --- |
 | `memory_choice` | `True` (founder `False`) | `False` keeps the [associative store](#associative-store-the-hippocampus), keyed by the senses and read into the motor drive |
 | `memory_context` | `0.5` | Raise toward 1 (exclusive) when the answer depends on what came long before; lower when history does not matter; 0 keeps the place records alone and builds no `context_memory` |
-| `memory_expansion` | `1024` (0 with a fixed code) | Raise when many situations must be told apart; 0 uses the key unseparated. With `code=units` it is set to 0 and a nonzero value is refused |
 | `memory_context_hold` | `None` | `"unchanged"` for stages that look alike where a miss leaves the observation as it was; `"punished"` where the world charges for misses ([the context hold](#stages-that-look-alike-the-context-hold)) |
 | `memory_extinction` | `0` (off) | Set it (0.5) when a paid action can stop paying without a punishment, a reversal whose failures pay 0 ([extinction](#a-paid-action-that-stops-paying-extinction)). The rule is Sean McClane's |
-| `memory_fan_in` | `0` (dense) | Above 0 each separation cell reads that many random key values; use 32 for keys wider than 256 values. Needs `memory_expansion` and at most the key width; refused with `code=units` |
 
-A dense separation holds `width x 1,024` floats per store (105 MB at 12,824 inputs); with
-`memory_fan_in=32` it holds `1,024 x 32` indices and weights at any width. A brain with
-[`code=units`](senses.md#the-observation-code) has no separation of its own.
+The separation holds `width x 1,024` floats per store (105 MB at 12,824 inputs). A brain with
+[`code=units`](senses.md#the-observation-code) has no separation of its own, so name a code for
+a wide observation.
 
 `memory_rate` (0.5 here, 1.0 without `memory_choice`), `memory_amplitude` and
 `consolidation` belong to the [associative store](#associative-store-the-hippocampus);
 `retune` changes them for both stores together. Constants of both stores: a stream's record
 fades by 0.9 per later write, a reward replays up to 8 decisions, a demonstration is recorded
-at 1.0, and the separation keeps 24 active cells per key.
+at 1.0, and the separation holds 1,024 cells, 24 active per key.
 
 ### One choice for acting, teaching and imagining
 

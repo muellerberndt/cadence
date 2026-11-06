@@ -2602,9 +2602,8 @@ class PatternSeparator:
     the signed sparse weights over the inputs independently, as above.
 
     The projection is drawn once from the seed and never learns. A brain's ``code=units``
-    observation code and its episodic ``memory_expansion`` separators (sparse when
-    ``memory_fan_in`` is set) are such fixed random codes; a brain's learned code is the
-    region ``learned_code=units`` adds (``cadence.code.LearnedCode``).
+    observation code and its episodic separators are such fixed random codes; a brain's learned
+    code is the region ``learned_code=units`` adds (``cadence.code.LearnedCode``).
     """
 
     inputs: int

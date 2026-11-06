@@ -91,6 +91,11 @@ RETIRED: Mapping[str, tuple[str, Any, str]] = MappingProxyType({
                               "constant; cadence 0.92.1 takes it"),
     "memory_winners": ("0.93.0", 24, "the episodic separation keeps its 24 most active cells "
                        "per key, a constant; cadence 0.92.1 takes it"),
+    "memory_expansion": ("0.95.0", 1024, "the episodic separation holds 1,024 cells, a constant, "
+                         "and a brain with a fixed code keys on the code as it is; code=units "
+                         "bounds a wide key; cadence 0.94.0 takes it"),
+    "memory_fan_in": ("0.95.0", 0, "the episodic separation is dense; code=units bounds a wide "
+                      "key, and a saved sparse separation loads; cadence 0.94.0 takes it"),
     "history_scale": ("0.93.0", 1.2, "the heard history's projection starts at magnitude 1.2, "
                       "a constant (scales={'history': 1.2} alone is taken); cadence 0.92.1 "
                       "takes scales={'history': ...}"),

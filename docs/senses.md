@@ -46,8 +46,7 @@ saved with the brain as `brain.sparse_code`. The code is fixed and learns nothin
 
 - In `compose` a vector brain's sensory region reads the code too; on an image brain and in
   `Brain(connectome, code=units)` only the memories use it.
-- A brain with this code refuses `memory_expansion` and `memory_fan_in`, and keys stored under
-  one code do not match another.
+- Keys stored under one code do not match another.
 - `Genome.observation_width(inputs, code)` gives the key width before building, the size of a
   custom anatomy's `recall` and `next` regions.
 
@@ -289,7 +288,7 @@ found again along a new path. An observation wider than the code (more inputs th
 camera's frame) is keyed on the code alone, at the observation's norm, so that the key keeps
 the code's width (`LearnedCode.joins`), and `brain.code_width` is then `units`. With
 `memory_choice=True` the episodic stores separate these keys as an observation's
-(`memory_expansion` 1,024 cells, 24 active). A decision
+(1,024 cells, 24 active). A decision
 keeps the key it was taken under until its outcome is recorded. `stimulus(..., memory=False)`,
 `fit`, `predict` and `accuracy` settle the context-free code alone. The heard history holds
 the code, in blocks of `units` per decay.

@@ -426,7 +426,6 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     assert episodic.hippocampus.separator is not None
     assert episodic.hippocampus.separator.expansion == 1024
     assert episodic.context_memory.separator.expansion == 1024
-    assert composed(memory_choice=True, memory_expansion=512).hippocampus.separator.expansion == 512
     brain = composed()
     with pytest.raises(ValueError, match="construction setting"):
         brain.retune(learned_code=32)

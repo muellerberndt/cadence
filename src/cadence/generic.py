@@ -497,19 +497,16 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
     "memory_context": 0.5,
     # a known outcome moves a record halfway: remembered at once, revised by repetition
     "memory_rate": 0.5,
-    "memory_expansion": 1024,
 }
-_EPISODIC_SETTINGS = (
-    "memory_choice", "memory_context", "memory_expansion", "memory_fan_in",
-    "memory_extinction", "memory_context_hold",
-)
-# The constants of the stores the brain builds since 0.93.0, the founders every reading used
-# (``RETIRED``): the share of a stream's record each later write keeps (``memory_decay``) and
-# the active cells of the episodic separation per key (``memory_winners``). A saved memory
-# loads with its own (an instrument's memory attached to a brain keeps its decay and
-# separation); ``EpisodicRecords.REPLAY`` and ``.DEMONSTRATIONS`` are the episodic records'
+_EPISODIC_SETTINGS = ("memory_choice", "memory_context", "memory_extinction", "memory_context_hold")
+# The constants of the stores the brain builds, the founders every reading used (``RETIRED``):
+# the share of a stream's record each later write keeps (``memory_decay``) and the cells of the
+# episodic separation and those active per key (``memory_expansion``, ``memory_winners``). A
+# saved memory loads with its own (an instrument's memory attached to a brain keeps its decay
+# and separation); ``EpisodicRecords.REPLAY`` and ``.DEMONSTRATIONS`` are the episodic records'
 # own.
 _MEMORY_DECAY = 0.9
+_MEMORY_EXPANSION = 1024
 _MEMORY_WINNERS = 24
 # The brain's maturity (``maturity``, #253): the founders of the use scale (``U_c``, in the
 # actor's own step units per synapse) and of the recovery (moments).
@@ -1898,10 +1895,9 @@ class Brain:
     channels silent. The code's seed is drawn from ``seed`` on a stream of its own
     (``SeedSequence([seed, 7103])``). Left unset, the memories key on the observation
     whatever its width. The code is a fixed random sparse code and learns nothing; it bounds
-    the size of keys on wide observations, and ``memory_fan_in`` bounds an uncoded episodic
-    separation the same way. ``learned_code=units`` (opt-in, without ``code``) learns the
-    code instead: a region of the brain's own neurons (``LearnedCode``) whose code the cortex
-    reads and every memory keys on. With
+    the size of keys on wide observations. ``learned_code=units`` (opt-in, without ``code``)
+    learns the code instead: a region of the brain's own neurons (``LearnedCode``) whose code the
+    cortex reads and every memory keys on. With
     ``inputs`` (the width of the observations) the sensory region is the code: every
     observation is coded before the drive, and ``inputs`` must then be named beside a
     ``code`` of the region's width.
@@ -1935,8 +1931,6 @@ class Brain:
         memory_amplitude: float = 1.0,
         memory_choice: bool = False,
         memory_context: float = 0.0,
-        memory_expansion: int = 0,
-        memory_fan_in: int | None = None,
         memory_extinction: float = 0.0,
         memory_context_hold: str | None = None,
         maturity: bool = False,
@@ -2085,24 +2079,13 @@ class Brain:
         if not maturity and {"maturity_scale": maturity_scale,
                              "maturity_recovery": maturity_recovery} != _MATURITY_FOUNDERS:
             raise ValueError("maturity_scale and maturity_recovery need maturity")
-        memory_expansion = _count("memory_expansion", memory_expansion)
-        memory_fan_in = _count("memory_fan_in", 0 if memory_fan_in is None else memory_fan_in)
-        if units and (memory_expansion or memory_fan_in):
-            # a brain with a fixed code keys its memories on that code as it is: the code is
-            # their separation; the learned code's stores separate their keys as without it
-            raise ValueError(
-                "a fixed code's memories key on the code as it is; memory_expansion and "
-                "memory_fan_in need a brain without a fixed code"
-            )
-        separated = bool(memory_expansion)
+        # a brain with a fixed code keys its memories on that code as it is: the code is their
+        # separation; the learned code's stores separate their keys as without it
+        separated = memory_choice and not units
         if memory_choice and not episodic:
             raise ValueError("memory_choice needs the episodic memory")
-        if not memory_choice and (memory_context or memory_expansion or memory_extinction):
-            raise ValueError(
-                "memory_context, memory_expansion and memory_extinction need memory_choice"
-            )
-        if memory_fan_in and not memory_expansion:
-            raise ValueError("memory_fan_in needs memory_expansion")
+        if not memory_choice and (memory_context or memory_extinction):
+            raise ValueError("memory_context and memory_extinction need memory_choice")
         working_memory_decay = real("working_memory_decay", working_memory_decay, low=0)
         efference_decay = real("efference_decay", efference_decay, low=0)
         if working_memory_decay >= 1 or efference_decay >= 1:
@@ -2244,11 +2227,6 @@ class Brain:
         # records and, with a temporal context, the same records keyed by the stream's
         # temporal context, the fading code of what it sensed and did
         self._episodic: EpisodicRecords | None = None
-        if memory_fan_in > self.code_width:
-            raise ValueError(
-                f"memory_fan_in must not exceed the {self.code_width} coordinates of the "
-                "place key"
-            )
         if episodic:
 
             def store(keys: np.ndarray, offset: int) -> SynapticMemory:
@@ -2256,8 +2234,7 @@ class Brain:
                     keys, self.motor_index, consolidation=consolidation,
                     decay=_MEMORY_DECAY, rate=memory_rate, amplitude=memory_amplitude,
                     separator=PatternSeparator(
-                        len(keys), memory_expansion, _MEMORY_WINNERS, seed=seed + offset,
-                        fan_in=memory_fan_in,
+                        len(keys), _MEMORY_EXPANSION, _MEMORY_WINNERS, seed=seed + offset
                     )
                     if separated
                     else None,
@@ -2852,14 +2829,10 @@ class Brain:
         continuing life a reward is replayed in proportion to its surprise, the reward less
         what the memory expected of the paid decision: into each decision's context record,
         and into its place record as far as it was an exploration rather than the brain's
-        best guess. Nothing has to mark the end of an attempt. Keys are separated
-        (``memory_expansion`` 1,024 cells, 24 active per key; a brain with a fixed code keys
-        on that code as it is, with no separation, and a learned code's keys are separated
-        as an observation's are). ``memory_fan_in`` above zero makes the separation
-        sparse: each of its cells reads that many of the key's values, chosen at random, so
-        its size follows the cells and the fan-in alone; the founder 0 keeps it dense, one
-        weight per cell and key value. Dense or sparse, the separation is a fixed random
-        projection. Each setting can be passed beside ``memory_choice=True``. The founder
+        best guess. Nothing has to mark the end of an attempt. Keys are separated by a fixed
+        random projection (1,024 cells, 24 active per key; a brain with a fixed code keys on
+        that code as it is, with no separation, and a learned code's keys are separated as an
+        observation's are). Each setting can be passed beside ``memory_choice=True``. The founder
         ``memory_choice=False`` keeps the consolidating hippocampus, keyed by the observation
         code and read into the motor drive; ``episodic=False`` builds none. Where the history
         does not matter, compare the episodic memory against the founder on the task.
@@ -2912,9 +2885,7 @@ class Brain:
             raise ValueError("episodic must be boolean")
         if options.get("episodic", True) and options.get("memory_choice") is True:
             for name, value in _EPISODIC_FOUNDERS.items():
-                # a fixed code's memories key on the code as it is: no separation of their own;
-                # the hippocampus separates the patterns of a learned code as of an observation
-                options.setdefault(name, 0 if units and name == "memory_expansion" else value)
+                options.setdefault(name, value)
         custom = connectome is not None
         if connectome is None:
             connectome = develop(genome, seed=seed)
@@ -5908,16 +5879,20 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
         hippocampus = brain.hippocampus
         assert hippocampus is not None  # memory_choice makes the hippocampus episodic
         separator = hippocampus.separator
+        if brain.sparse_code is None and (
+            separator is None or separator.expansion != _MEMORY_EXPANSION or separator.fan_in
+        ):
+            raise ValueError(
+                "grow lays an episodic brain out again with the separation of 1,024 dense cells "
+                "every such brain holds; this one was saved with another: cadence 0.94.0 "
+                "grows it"
+            )
         settings.update(
             memory_choice=True,
             memory_context=brain.memory_context,
             memory_extinction=brain.memory_extinction,
             memory_context_hold=brain.memory_context_hold,
         )
-        if separator is not None:
-            settings.update(memory_expansion=separator.expansion, memory_fan_in=separator.fan_in)
-        elif brain.sparse_code is None:  # keys without separation; a fixed code's are founders
-            settings["memory_expansion"] = 0
     inputs: Any = composition["inputs"]
     if "image" in composition:
         inputs = tuple(composition["image"])

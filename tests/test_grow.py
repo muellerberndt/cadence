@@ -79,7 +79,7 @@ LAYOUTS = {
     "founder": dict(),
     "recall heads": dict(recall=True, recall_heads=2, recall_temperature=0.4),
     "recall action": dict(recall=True, recall_action=True, recall_copy=0.5, recall_capacity=16),
-    "episodic": dict(memory_choice=True, memory_expansion=256, memory_fan_in=4),
+    "episodic": dict(memory_choice=True),
     "history": dict(history_decays=(0.5, 0.9), history_amplitude=2.0),
     "efference": dict(efference_amplitude=1.0, efference_decay=0.3),
     "arousal": dict(arousal=True, arousal_heat=1.5),
@@ -138,7 +138,7 @@ GROWTHS = {
         dict(recall=True, history_decays=(0.5,), efference_amplitude=1.0, slots=(4, 3)),
     ),
     "recall in a deep brain": (dict(modules=(16, 16), apical=0.5), dict(recall=True)),
-    "recall beside episodes": (dict(memory_choice=True, memory_expansion=256), dict(recall=True)),
+    "recall beside episodes": (dict(memory_choice=True), dict(recall=True)),
     "recall in an aroused brain": (dict(arousal=True), dict(recall=True)),
     "recall in a normalized brain": (dict(teaching="normalized"), dict(recall=True)),
 }
@@ -490,13 +490,17 @@ def test_two_brains_combine_by_teaching():
     assert np.mean(answers[:, 0] == first.predict(test)) > 0.85
 
 
-@pytest.mark.parametrize(
-    "inputs, settings",
-    [(40, dict(code=64, memory_choice=True)), (6, dict(memory_choice=True, memory_expansion=0))],
-)
-def test_episodic_brains_without_a_separation_grow(inputs, settings):
-    trained = taught(inputs=inputs, seed=2, **settings)
-    check_identical(trained, trained.grow(recall=True), inputs=inputs)
+def test_an_episodic_brain_on_a_fixed_code_grows():
+    trained = taught(inputs=40, seed=2, code=64, memory_choice=True)
+    check_identical(trained, trained.grow(recall=True), inputs=40)
+
+
+def test_a_saved_separation_of_another_size_is_not_grown():
+    # a checkpoint of an earlier release may hold one; the brain itself loads and lives on
+    trained = taught(memory_choice=True)
+    trained.hippocampus.separator = None
+    with pytest.raises(ValueError, match="cadence 0.94.0 grows it"):
+        trained.grow(recall=True)
 
 
 def test_sampled_choices_follow_the_trained_brain_without_new_slots():

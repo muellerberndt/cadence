@@ -86,7 +86,7 @@ brain](anatomy.md#genome-development-brain)).
 ```text
 Brain(connectome, *, episodic=True, consolidation=0.05,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
-      memory_context=0.0, memory_expansion=0, memory_fan_in=None, memory_extinction=0.0,
+      memory_context=0.0, memory_extinction=0.0,
       memory_context_hold=None, maturity=False, maturity_scale=10.0,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
@@ -107,17 +107,15 @@ synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
 `genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
-`ArousalConfig`. With `memory_choice=True`, `compose` fills in `memory_context=0.5`,
-`memory_rate=0.5` and `memory_expansion=1024` (0 with a fixed `code`); the constructor keeps
-its own defaults above, so pass these here or use `compose` ([episodic
-settings](memory.md#episodic-settings)). The stores' constants (a record's decay 0.9, a replay
+`ArousalConfig`. With `memory_choice=True`, `compose` fills in `memory_context=0.5` and
+`memory_rate=0.5`; the constructor keeps its own defaults above, so pass these here or use
+`compose` ([episodic settings](memory.md#episodic-settings)). The stores' constants (a record's decay 0.9, a replay
 of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are no arguments.
 
 | Rule | Raised |
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
-| `memory_context`, `memory_expansion`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
-| `memory_fan_in` needs `memory_expansion` (so `memory_choice` too) and at most the key width; a brain with a fixed `code` refuses both | `ValueError` |
+| `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, a removed `learned_code_*` name (`LearnedCode.REMOVED`), `code` beside it, an image brain, a backend other than `cpu`, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |

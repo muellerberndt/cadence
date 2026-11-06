@@ -321,18 +321,12 @@ def test_the_code_and_the_sparse_separation_are_opt_in():
     assert keyed(256) == ("observation", 256, "observation", "dense", 0, 256)
     assert keyed(1025) == ("observation", 1025, "observation", "dense", 0, 1025)
     assert keyed(1025, code=0) == ("observation", 1025, "observation", "dense", 0, 1025)
-    # the recommended settings above 256 key values and above 1,024 inputs
-    assert keyed(1025, memory_fan_in=32) == ("observation", 1025, "observation", "sparse", 32, 1025)
+    # the recommended setting above 1,024 inputs
     assert keyed(1025, code=1024) == ("code", 1024, "code", None, False, 1024)
     assert keyed(300, code=64) == ("code", 64, "code", None, False, 64)
     assert cd.Genome.observation_width(12_824) == 12_824
     assert cd.Genome.observation_width(300) == 300 and cd.Genome.observation_width(300, 64) == 64
     assert cd.Genome.observation_width((40, 40)) == 1600 and cd.Genome.observation_width((8, 8), 256) == 256
-    # a coded brain's memories key on the code as it is: a separation of their own is refused
-    with pytest.raises(ValueError, match="memory_expansion and memory_fan_in need"):
-        cd.Brain.compose(300, 2, modules=(8,), memory_choice=True, code=64, memory_expansion=512)
-    with pytest.raises(ValueError, match="memory_expansion and memory_fan_in need"):
-        cd.Brain.compose(300, 2, modules=(8,), memory_choice=True, code=64, memory_fan_in=8)
     with pytest.raises(ValueError, match="reads observations of at least 32 values"):
         cd.Brain.compose(20, 2, modules=(8,), code=16)
     with pytest.raises(ValueError, match="at least 24 units"):
@@ -640,17 +634,8 @@ def test_storage_at_camera_width_stays_small():
     # the sensory synapses of the coded cortex against the observation's
     pre = np.asarray(camera.connectome.pre)
     assert np.isin(pre, camera.sensory_index).sum() == 1024 * 64
-    # the recommended sparse separation on the observation itself: the address map stays
-    # inputs by inputs
-    sparse = cd.Brain.compose(12_824, 3, modules=(64,), seed=1, memory_choice=True, recall=True,
-                              memory_fan_in=32)
-    assert not sparse.coded_cortex and sparse.sparse_code is None
-    for memory in (sparse.hippocampus, sparse.context_memory):
-        assert sum(v.nbytes for v in memory.separator.arrays().values()) / MB < 0.7
-    assert sparse.recall.head_map(0)[0].nbytes / MB > 1000
-    # the dense separators of the founder, for comparison: 12,824 x 1,024 floats
+    # on the observation itself the separators alone would be 12,824 x 1,024 floats
     assert 12_824 * 1024 * 8 / MB > 100
-    assert np.isin(np.asarray(sparse.connectome.pre), sparse.sensory_index).sum() == 12_824 * 64
 
 
 def test_a_coded_checkpoint_carries_its_code_and_a_mismatch_is_refused(tmp_path):

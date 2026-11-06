@@ -82,8 +82,9 @@ def test_the_episodic_settings_are_validated_construction_settings():
         episodic(3, 2, memory_choice=1)
     with pytest.raises(ValueError, match="need memory_choice"):
         cd.Brain.compose(3, 2, memory_context=0.5)
-    with pytest.raises(ValueError, match="need memory_choice"):
-        cd.Brain.compose(3, 2, memory_expansion=1024)
+    for name, value in (("memory_expansion", 1024), ("memory_fan_in", 16)):
+        with pytest.raises(ValueError, match=f"{name} was retired in 0.95.0"):
+            cd.Brain.compose(3, 2, memory_choice=True, **{name: value})
     connectome = episodic(3, 2, seed=2).connectome
     with pytest.raises(ValueError, match="needs the episodic memory"):
         cd.Brain(connectome, episodic=False, memory_choice=True)

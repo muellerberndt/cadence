@@ -43,6 +43,18 @@ documented use of `slots` ([a planning window](docs/tune.md#a-planning-window)),
 its contract under `tests/test_planning_window.py` and its readings in the grammar chamber
 (`benchmarks/grammar/window.py`). The founder, one slot, is unchanged to the bit.
 
+### What left (#273)
+
+Each name below is refused at `compose` and `retune` with one sentence that says what the brain
+does instead.
+
+- `memory_expansion` and `memory_fan_in`. The episodic separation holds 1,024 dense cells, a
+  constant, and a brain with a fixed code keys on the code as it is. The two names sized a store:
+  no chamber or application read a value of either. Write `code=units` for a wide observation. A
+  checkpoint with a sparse separation loads and continues, and `grow` refuses a brain saved with
+  a separation of another size. `Brain(connectome, memory_choice=True)` separates its keys as a
+  composed brain does.
+
 ## 0.94.0 — 2026-11-05
 
 One opt-in, maturity, for a brain that goes on learning after it has acquired a skill (#169,
