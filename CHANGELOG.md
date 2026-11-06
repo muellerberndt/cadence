@@ -70,8 +70,8 @@ does instead.
   and this version reads the result.
 - `recall_compete`. Several heads read in turn, each taking of a slot at most the share the heads
   before it left, which is what they did at the founder. With `False` two heads read one slot on
-  184 of 192 decisions, and on the grammar chamber's held heads the two settings read alike. Write
-  nothing. A file saved at `False`, and a file of several heads saved by 0.88.0 to 0.91.2, whose
+  184 of 192 decisions, and on the held-heads benchmark under this release's address lesson the two
+  settings read alike (development). Write nothing. A file saved at `False`, and a file of several heads saved by 0.88.0 to 0.91.2, whose
   heads read alike, are refused by name; cadence 0.94.0 runs them.
 - `recall_null`, a slot that reads nothing. It had no reading of its own, and a null slot fails the
   fresh-bindings gate. Write nothing: a read takes its whole mass from the slots held. A file saved

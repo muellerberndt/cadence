@@ -1688,7 +1688,7 @@ class Recall:
     def _lesson_reads(self, moment: _Moment) -> list[np.ndarray | None]:
         """For each head's lesson, the attention it read the moment with (None for head 0, whose
         prior is its own attention): the reads ``stimulate`` kept while the bank holds what they
-        read, else the read computed now, before any lesson steps a map."""
+        read, else the read computed here, before any lesson steps a map."""
         if self.heads == 1:
             return [None]
         reads = self._head_reads

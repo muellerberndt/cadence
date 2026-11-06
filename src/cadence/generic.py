@@ -306,7 +306,7 @@ def _copy_identity(
     port at value coordinate ``offset + tokens[j]`` (the observation's own coordinates in the
     value) starts at ``recall_copy``, so the token the read delivers drives its own action; and
     the synapse from sensory neuron ``tokens[j]`` starts at ``-recall_copy``, so a token the
-    present observation already holds, the read's echo of the moment that addressed it, is not
+    present observation holds, the read's echo of the moment that addressed it, is not
     copied back. Every other synapse into the motor region from a read port, or from the sensory
     region, starts at zero. The same connectome when it already starts so (a saved brain).
     Every one of these synapses learns on its own, as every synapse does."""
