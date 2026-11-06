@@ -9,6 +9,13 @@
   0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
   tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
   without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
+- A brain costs less per moment, with the same bits and the same reports (#271): the settle's rows
+  pay no atomic reference counts and run on vector loops, a launch reads the activations a state
+  keeps instead of computing them again, a free solve runs in one compiled call, the act after a
+  surprise lesson that taught no row reads that lesson's settle, and the recall read's position
+  buckets are table lookups. The recall bank is now a view into a wider array and a write adds one
+  slot in place of copying every slot, so a write no longer grows with `recall_capacity`; a caller
+  that holds `recall.nexts` or the other slot arrays across a write takes `recall.snapshot()`.
 - Add `recall_address_contrast` (opt-in, runtime, founder off): the recall read's address lesson
   steps on the keys it names less the keys the read attended, the gradient of the content logits
   and zero where the read is right, in place of the distance to the named keys, which keeps
