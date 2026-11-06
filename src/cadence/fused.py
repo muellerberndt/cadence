@@ -113,6 +113,9 @@ if njit is not None and hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=_after_fork)
 
 
+# The entries of the record at the end of a state's kept array (``_keep_published``)
+_RECORD = 6
+
 # A sweep of at least this many neurons over all rows runs its rows on Numba's threads; a
 # smaller one runs serially, since handing a sweep to the threads costs tens of microseconds.
 _PARALLEL_WORK = 1 << 16
@@ -243,11 +246,82 @@ if njit is not None:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """One array for what a state keeps, and its parts as views: the activations range by
         range (``columns`` entries), the products of the basal blocks (``size``) and of the
-        apical blocks (``size_up``), and one flag per range, 1 where the products the range
-        feeds are stale."""
-        kept = np.empty(columns + size + size_up + ranges)
+        apical blocks (``size_up``), one flag per range, 1 where the products the range feeds
+        are stale, then what ``_keep_published`` writes."""
+        kept = np.empty(columns + size + size_up + ranges + 2 * columns + _RECORD)
         up, flags = columns + size, columns + size + size_up
-        return kept, kept[:columns], kept[columns:up], kept[up:flags], kept[flags:]
+        return kept, kept[:columns], kept[columns:up], kept[up:flags], kept[flags:flags + ranges]
+
+    @_compiled
+    def _keep_published(
+        v: np.ndarray, s: np.ndarray, kept: np.ndarray, masked: bool, slope: float,
+        threshold: float, rest: float, leak: float,
+    ) -> None:
+        """The potentials and the activations a launch ends on at the end of ``kept``, then
+        the record ``_publish`` reads them by: whether they hold (a mask's activations are not
+        the rule's), their count, and the activation rule."""
+        batch, n = v.shape
+        count = _index(batch) * _index(n)
+        head = _index(kept.shape[0]) - _index(_RECORD)
+        kept[head] = 0.0 if masked else 1.0
+        kept[head + _index(1)] = float(batch * n)
+        kept[head + _index(2)] = slope
+        kept[head + _index(3)] = threshold
+        kept[head + _index(4)] = rest
+        kept[head + _index(5)] = leak
+        if masked:
+            return
+        at = head - _index(2) * count
+        width = _index(n)
+        for b in range(batch):
+            for i in range(width):
+                kept[at + i] = v[b, i]
+            for i in range(width):
+                kept[at + count + i] = s[b, i]
+            at += width
+
+    @_compiled
+    def _publish(
+        v: np.ndarray, s: np.ndarray, kept: np.ndarray, has_kept: bool, slope: float,
+        threshold: float, rest: float, leak: float,
+    ) -> bool:
+        """The activations of the potentials ``v`` into ``s``: read from ``kept``
+        (``_keep_published``) where they are the ones it holds under the same rule, which
+        returns True, else each neuron's. Equal potentials have equal activations; a NaN never
+        equals. From rest every neuron publishes the same thing."""
+        batch, n = v.shape
+        head = kept.shape[0] - _RECORD
+        same = (
+            has_kept and kept[head] == 1.0 and kept[head + 1] == float(batch * n)
+            and kept[head + 2] == slope and kept[head + 3] == threshold
+            and kept[head + 4] == rest and kept[head + 5] == leak
+        )
+        count = _index(batch) * _index(n)
+        width = _index(n)
+        if same:
+            at = _index(head) - _index(2) * count
+            b = 0
+            while same and b < batch:
+                for i in range(width):
+                    same = same and v[b, i] == kept[at + i]
+                at += width
+                b += 1
+        if same:
+            at = _index(head) - count
+            for b in range(batch):
+                for i in range(width):
+                    s[b, i] = kept[at + i]
+                at += width
+            return True
+        if not v.any():
+            row = np.empty(n)
+            _activation(np.zeros(n), slope, threshold, rest, leak, row)
+            for b in range(batch):
+                s[b] = row
+        else:
+            for b in range(batch):
+                _activation(v[b], slope, threshold, rest, leak, s[b])
+        return False
 
     @_compiled
     def _task_order(
@@ -321,7 +395,7 @@ if njit is not None:
         what a check or a sweep reads from them is the same to the bit."""
         batch = columns.shape[0] // starts[starts.shape[0] - 1]
         ranges = feeds.shape[0]
-        flags = given.shape[0] - ranges
+        flags = given.shape[0] - _RECORD - 2 * columns.shape[0] - ranges
         for r in range(ranges):
             held = feeds[r] and given[flags + r] == 0.0
             i, stop = batch * starts[r], batch * starts[r + 1]
@@ -955,6 +1029,7 @@ if njit is not None:
                 break
         for r in range(ranges):
             stale[r] = 1.0 if moved_range[r] else 0.0
+        _keep_published(v, s, kept, masked, slope, threshold, rest, leak)
         return taken, activity_change, kept
 
     _kernel, _kernel_parallel = _rows_builds(_settle_rows)
@@ -1116,6 +1191,7 @@ if njit is not None:
     def _residual_rows(
         v: np.ndarray,
         a: np.ndarray,
+        s: np.ndarray,
         standing: np.ndarray,
         flat: np.ndarray,
         pairs: np.ndarray,
@@ -1157,36 +1233,44 @@ if njit is not None:
         out: np.ndarray,
         given: np.ndarray,
         has_given: bool,
+        in_place: bool,
     ) -> np.ndarray:
-        """The fixed-point equation error of every row, in one compiled call: the activations
-        of ``v`` under the mask, one block transport, then each row's error into ``out``. The
-        transport takes the given products (``has_given``: what the state keeps, laid out as
-        ``_kept_room``) that hold for its activations and makes the rest. Returns what the
-        state keeps after the check: its activations and its products, every one current."""
+        """The fixed-point equation error of every row, in one compiled call: one block
+        transport at the activations ``s`` of ``v`` under the mask, then each row's error into
+        ``out``. The transport takes the given products (``has_given``: what the state keeps,
+        laid out as ``_kept_room``) that hold for its activations and makes the rest; with
+        ``in_place`` the given array holds these very activations, and its stale products are
+        made in it, which leaves it true for every state that holds it. Returns what the state
+        keeps after the check: its activations and its products, every one current."""
         batch, n = v.shape
         ranges = starts.shape[0] - 1
-        s = np.empty((batch, n))
-        for b in prange(batch):
-            _activation(v[b], slope, threshold, rest, leak, s[b])
-            if masked:
-                for i in range(n):
-                    s[b, i] *= keep[b, i]
         group = np.flatnonzero(nmask > 0.0)
         position = np.full(n, -1, dtype=np.int64)
         for k in range(group.shape[0]):
             position[group[k]] = k
         cache_offset, receives = _product_cache(batch, pairs, pair_post, starts)
         cache_up_offset, receives_up = _product_cache(batch, apical_pairs, pair_post, starts)
-        kept, columns, cache, cache_up, stale = _kept_room(
-            batch * n, int(cache_offset[-1]), int(cache_up_offset[-1]), ranges
-        )
         order, feeds = _task_order(pairs, apical_pairs, pair_pre, pair_post, starts)
         basal_count = pairs.shape[0]
-        for b in prange(batch):
-            _copy_columns(b, s, columns, starts, feeds)
         moved_range = np.ones(ranges, dtype=np.bool_)
-        if has_given:
-            _reusable(columns, kept, given, starts, feeds, moved_range)
+        if in_place:
+            size = int(cache_offset[-1])
+            kept = given
+            up, flags = batch * n + size, batch * n + size + int(cache_up_offset[-1])
+            cache, cache_up = kept[batch * n:up], kept[up:flags]
+            stale = kept[flags:flags + ranges]
+            columns = kept[:batch * n]
+            for r in range(ranges):
+                moved_range[r] = not (feeds[r] and stale[r] == 0.0)
+        else:
+            kept, columns, cache, cache_up, stale = _kept_room(
+                batch * n, int(cache_offset[-1]), int(cache_up_offset[-1]), ranges
+            )
+            for b in prange(batch):
+                _copy_columns(b, s, columns, starts, feeds)
+            if has_given:
+                _reusable(columns, kept, given, starts, feeds, moved_range)
+            _keep_published(v, s, kept, masked, slope, threshold, rest, leak)
         stale[:] = 0.0
         for j in prange(order.shape[0]):
             q = order[j]
@@ -1373,9 +1457,10 @@ def _compartment(
 
 # What a settled or checked state keeps of its transport (``BrainState``), so a check of it or
 # a settle from it makes only the block products of the ranges whose activations differ from
-# the ones they were made from: ``(blocks, apical blocks, rows, kept)``, weak references to the
-# flat blocks the products were made with (they keep no blocks alive), the batch, and the
-# kernels' array of the activations range by range, the products and the stale ranges
+# the ones they were made from, and publishes its potentials' activations by reading them:
+# ``(blocks, apical blocks, rows, kept)``, weak references to the flat blocks the products were
+# made with (they keep no blocks alive), the batch, and the kernels' array of the activations
+# range by range, the products, the stale ranges, the potentials and activations it ended on
 # (``_kept_room``)
 Products = tuple[Any, Any, int, np.ndarray]
 
@@ -1396,6 +1481,11 @@ def _given(
     if (flat if made_up is made else made_up()) is not flat_apical:
         return _NO_PRODUCTS
     return kept, True
+
+
+def _held(products: Products | None) -> tuple[np.ndarray, bool]:
+    """What a state keeps of its publication, whichever blocks its products were made with."""
+    return _NO_PRODUCTS if products is None else (products[3], True)
 
 
 def _rule(neuron_model: NeuronModel) -> tuple[Any, ...]:
@@ -1453,15 +1543,8 @@ def fused_settle(
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
     dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
-    if not v.any():  # from rest every neuron publishes the same thing
-        row = np.empty(n)
-        _activation(np.zeros(n), slope, threshold, rest, leak, row)
-        s = np.empty((batch, n))
-        s[:] = row
-    else:  # row by row, in the state's own memory order
-        s = np.empty_like(v)
-        for b in range(batch):
-            _activation(v[b], slope, threshold, rest, leak, s[b])
+    s = np.empty_like(v)  # the state's own memory order
+    _publish(v, s, *_held(products), slope, threshold, rest, leak)
     if masked:
         s *= keep
     if steps == 0:  # no sweep: the activations are published and nothing else is read
@@ -1573,13 +1656,20 @@ def fused_residual(
         apical, layout, flat, nudge, batch, n
     )
     out = np.empty(batch)
+    v = np.ascontiguousarray(v, dtype=float)
+    s = np.empty_like(v)
+    held = _publish(v, s, *_held(products), slope, threshold, rest, leak)
+    if masked:
+        s *= keep
+    given, has_given = _given(products, flat, flat_apical, batch)
     kept = _launch(
         _residual_kernel,
         _residual_kernel_parallel,
         batch,
         n,
-        np.ascontiguousarray(v, dtype=float),
+        v,
         np.ascontiguousarray(a, dtype=float),
+        s,
         np.ascontiguousarray(drive + bias),
         flat,
         pairs,
@@ -1610,7 +1700,9 @@ def fused_residual(
         anchor_gain,
         *compartment,
         out,
-        *_given(products, flat, flat_apical, batch),
+        given,
+        has_given,
+        held and has_given and not masked,
     )
     return out, _kept(flat, flat_apical, batch, kept)
 
