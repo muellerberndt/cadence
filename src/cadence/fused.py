@@ -75,8 +75,9 @@ def _rows_builds(kernel: _Kernel) -> tuple[_Kernel, _Kernel]:
 
 
 def _inlined(kernel: _Kernel) -> _Kernel:
-    """``numba.njit(inline="always")``: a per-neuron helper merged into its caller, so no call
-    and no array reference counting is paid per neuron."""
+    """``numba.njit(inline="always")``: a per-neuron or per-row helper merged into its caller,
+    so no call and no array reference counting is paid per neuron or per row: each array of a
+    compiled call costs two atomic operations."""
     assert njit is not None
     return cast(_Kernel, njit(inline="always")(kernel))
 
@@ -140,6 +141,11 @@ def _launch(
 
 
 if njit is not None:
+
+    @_inlined
+    def _index(x: int) -> Any:
+        """A count or an offset as the unsigned index it is."""
+        return np.uint64(x)
 
     @_compiled
     def _activation(
@@ -283,19 +289,19 @@ if njit is not None:
                 due += 1
         return due
 
-    @_compiled
+    @_inlined
     def _copy_columns(
         b: int, s: np.ndarray, columns: np.ndarray, starts: np.ndarray, feeds: np.ndarray
     ) -> None:
         """Row ``b``'s activations into ``columns``, the batch's activations range by range:
-        each range a block reads as one contiguous ``(batch, width)`` matrix at ``batch *
+        each range ``feeds`` names as one contiguous ``(batch, width)`` matrix at ``batch *
         starts[r]``, the operand of its products."""
         batch = s.shape[0]
         for r in range(feeds.shape[0]):
             if feeds[r]:
-                a0 = starts[r]
-                na = starts[r + 1] - a0
-                base = batch * a0 + b * na
+                a0 = _index(starts[r])
+                na = _index(starts[r + 1]) - a0
+                base = _index(batch) * a0 + _index(b) * na
                 for i in range(na):
                     columns[base + i] = s[b, a0 + i]
 
@@ -348,7 +354,7 @@ if njit is not None:
         block = flat[offset[k] : offset[k + 1]].reshape(na, nb)
         np.dot(source, block, cache[c0 : c0 + batch * nb].reshape(batch, nb))
 
-    @_compiled
+    @_inlined
     def _gather(
         b: int,
         out: np.ndarray,
@@ -360,16 +366,18 @@ if njit is not None:
         receives: np.ndarray,
     ) -> None:
         """Row ``b`` of the synaptic input of ``pairs``: zero where a block lands, then every
-        block's cached product added in block order."""
+        block's cached product added in block order. Indices that cannot be negative are
+        unsigned here and in ``_copy_columns``: no wraparound is computed per entry, so the
+        loops vectorize, with the same sums."""
         for r in range(receives.shape[0]):
             if receives[r]:
-                for i in range(starts[r], starts[r + 1]):
+                for i in range(_index(starts[r]), _index(starts[r + 1])):
                     out[b, i] = 0.0
         for q in range(pairs.shape[0]):
             k = pairs[q]
-            b0 = starts[pair_post[k]]
-            nb = starts[pair_post[k] + 1] - b0
-            c0 = cache_offset[q] + b * nb
+            b0 = _index(starts[pair_post[k]])
+            nb = _index(starts[pair_post[k] + 1]) - b0
+            c0 = _index(cache_offset[q]) + _index(b) * nb
             for j in range(nb):
                 out[b, b0 + j] += cache[c0 + j]
 
@@ -515,7 +523,58 @@ if njit is not None:
 
     # -- one sweep of one row
 
-    @_compiled
+    @_inlined
+    def _sweep_row_plain(
+        b: int,
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        synaptic_input: np.ndarray,
+        ahead: np.ndarray,
+        starts: np.ndarray,
+        frozen: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        row_range: np.ndarray,
+        row_potential: np.ndarray,
+        activity_change: np.ndarray,
+    ) -> float:
+        """``_sweep_row`` with no nudge, no adaptation and no mask, the free settle: the row's
+        next potentials into ``ahead`` in one loop that vectorizes, then each neuron that moved
+        publishes its activation. The same arithmetic as ``_sweep_row``."""
+        ranges = starts.shape[0] - 1
+        moved = 0.0
+        change = activity_change[b]
+        for r in range(ranges):
+            range_moved = False
+            potential_moved = False
+            if not frozen[r]:
+                first, stop = _index(starts[r]), _index(starts[r + 1])
+                for i in range(first, stop):
+                    x = v[b, i]
+                    ahead[b, i] = x + dt * (synaptic_input[b, i] + standing[b, i] - x)
+                for i in range(first, stop):
+                    vn = ahead[b, i]
+                    if vn != v[b, i]:  # a neuron whose potential did not move publishes what it did
+                        potential_moved = True
+                        v[b, i] = vn
+                        sn = _act_scalar(vn, slope, threshold, rest, leak)
+                        d = abs(sn - s[b, i])
+                        change += d
+                        if d > 0.0:
+                            range_moved = True
+                            if d > moved:
+                                moved = d
+                        s[b, i] = sn
+            row_range[b, r] = range_moved
+            row_potential[b, r] = potential_moved
+        activity_change[b] = change
+        return moved
+
+    @_inlined
     def _sweep_row(
         b: int,
         v: np.ndarray,
@@ -527,14 +586,9 @@ if njit is not None:
         frozen: np.ndarray,
         keep: np.ndarray,
         masked: bool,
-        dt: float,
-        slope: float,
-        threshold: float,
-        rest: float,
-        leak: float,
+        rule: tuple[float, float, float, float, float],
         has_adapt: bool,
-        adapt_strength: float,
-        adapt_tau: float,
+        adapt: tuple[float, float],
         has_nudge: bool,
         target: np.ndarray,
         nmask: np.ndarray,
@@ -547,15 +601,19 @@ if njit is not None:
         weight: np.ndarray,
         anchor: np.ndarray,
         anchor_gain: np.ndarray,
-        p: np.ndarray,
-        zmax: np.ndarray,
-        total: np.ndarray,
-        moved_range: np.ndarray,
-        moved_potential: np.ndarray,
+        scratch: tuple[np.ndarray, np.ndarray, np.ndarray],
+        row_range: np.ndarray,
+        row_potential: np.ndarray,
         activity_change: np.ndarray,
     ) -> float:
         """Every neuron of row ``b`` takes one step; returns the row's largest movement and
-        marks the ranges whose potential (``moved_potential``) and activation moved."""
+        marks the ranges whose potential (``row_potential``) and activation (``row_range``)
+        moved. ``rule`` is ``(dt, slope, threshold, rest, leak)``, ``adapt`` ``(strength, time
+        constant)`` and ``scratch`` every row's softmax arrays ``(p, zmax, total)``: tuples keep
+        the call within what Numba can inline."""
+        dt, slope, threshold, rest, leak = rule
+        adapt_strength, adapt_tau = adapt
+        p, zmax, total = scratch
         ranges = starts.shape[0] - 1
         moved = 0.0
         # the row's running total and range flags live in registers and are written once: rows
@@ -563,7 +621,7 @@ if njit is not None:
         change = activity_change[b]
         # the nudge on this row, from the activations before the step: one softmax per group
         if has_nudge and softmax_t[0] > 0.0:
-            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p, zmax, total)
+            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p[b], zmax[b], total[b])
         for r in range(ranges):
             range_moved = False
             potential_moved = False
@@ -578,7 +636,7 @@ if njit is not None:
                 tot -= v[b, i]
                 vn = v[b, i] + dt * tot
                 if has_nudge and softmax_t[0] > 0.0 and nmask[i] > 0.0:
-                    vn += dt * beta * weight[b] * (target[b, i] - p[position[i]]) * nmask[i]
+                    vn += dt * beta * weight[b] * (target[b, i] - p[b, position[i]]) * nmask[i]
                 if masked:
                     vn *= keep[b, i]
                 if vn != v[b, i]:  # a neuron whose potential did not move publishes what it did
@@ -596,8 +654,8 @@ if njit is not None:
                     s[b, i] = sn
                 if has_adapt:
                     a[b, i] = a[b, i] + (s[b, i] - a[b, i]) / adapt_tau
-            moved_range[r] = range_moved
-            moved_potential[r] = potential_moved
+            row_range[b, r] = range_moved
+            row_potential[b, r] = potential_moved
         activity_change[b] = change
         return moved
 
@@ -826,6 +884,7 @@ if njit is not None:
         if has_given:  # the first sweep makes only the products the given ones do not hold for
             _reusable(columns, kept, given, starts, feeds, moved_range)
         synaptic_input = np.zeros((batch, n))
+        ahead = np.empty((batch, n))
         raw = np.zeros((batch, n if has_apical else 1))
         basal = np.empty((batch, n if has_apical else 1))
         gain = np.empty((batch, max(pool_starts.shape[0] - 1, 1)))
@@ -840,6 +899,11 @@ if njit is not None:
         row_range = np.zeros((batch, ranges), dtype=np.bool_)
         row_potential = np.zeros((batch, ranges), dtype=np.bool_)
         frozen = np.zeros(ranges, dtype=np.bool_)  # a range that can never change again
+        moving = np.empty(ranges, dtype=np.bool_)  # a range some block reads that can still change
+        plain = not (has_nudge or has_adapt or masked or has_apical)
+        rule = (dt, slope, threshold, rest, leak)
+        adapt = (adapt_strength, adapt_tau)
+        scratch = (p, zmax, total)
         taken = 0
         for t in range(steps):
             # the block products of the batch, distinct blocks on distinct threads
@@ -854,10 +918,17 @@ if njit is not None:
                     _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                    pair_post, starts, offset, cache_up,
                                    cache_up_offset[q - basal_count])
+            for r in range(ranges):
+                moving[r] = feeds[r] and not frozen[r]
             # every row's step, the rows on distinct threads
             for b in prange(batch):
                 _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts, receives)
-                if has_apical:
+                if plain:
+                    row_moved[b] = _sweep_row_plain(
+                        b, v, s, standing, synaptic_input, ahead, starts, frozen, dt, slope,
+                        threshold, rest, leak, row_range, row_potential, activity_change,
+                    )
+                elif has_apical:
                     _gather(b, raw, cache_up, cache_up_offset, apical_pairs, pair_post, starts,
                             receives_up)
                     row_moved[b] = _sweep_row_apical(
@@ -871,13 +942,12 @@ if njit is not None:
                     )
                 else:
                     row_moved[b] = _sweep_row(
-                        b, v, a, s, standing, synaptic_input, starts, frozen, keep, masked, dt,
-                        slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau,
-                        has_nudge, target, nmask, group, gid, ngroups, position, beta, softmax_t,
-                        weight, anchor, anchor_gain, p[b], zmax[b], total[b], row_range[b],
-                        row_potential[b], activity_change,
+                        b, v, a, s, standing, synaptic_input, starts, frozen, keep, masked, rule,
+                        has_adapt, adapt, has_nudge, target, nmask, group, gid, ngroups, position,
+                        beta, softmax_t, weight, anchor, anchor_gain, scratch, row_range,
+                        row_potential, activity_change,
                     )
-                _copy_columns(b, s, columns, starts, feeds)  # what the next products read
+                _copy_columns(b, s, columns, starts, moving)  # what the next products read
             moved = _close_sweep(t, row_moved, row_range, row_potential, moved_range, freezable,
                                  frozen)
             taken = t + 1
@@ -891,7 +961,7 @@ if njit is not None:
 
     # -- the residual: one transport (the products kept where they hold), then each row's error
 
-    @_compiled
+    @_inlined
     def _residual_row(
         b: int,
         v: np.ndarray,
@@ -921,10 +991,11 @@ if njit is not None:
         total: np.ndarray,
     ) -> float:
         """Row ``b``'s largest equation error at the published activations ``s``: the terms the
-        settle adds, without a step; infinity where it is not finite."""
+        settle adds, without a step; infinity where it is not finite. ``p``, ``zmax`` and
+        ``total`` are every row's softmax scratch."""
         n = v.shape[1]
         if has_nudge and softmax_t[0] > 0.0:
-            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p, zmax, total)
+            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p[b], zmax[b], total[b])
         worst = 0.0
         finite = True
         for i in range(n):
@@ -935,7 +1006,7 @@ if njit is not None:
                 tot += anchor_gain[i] * (anchor[b, i] - s[b, i])
             if has_nudge and nmask[i] > 0.0:
                 if softmax_t[0] > 0.0:
-                    tot += beta * weight[b] * (target[b, i] - p[position[i]]) * nmask[i]
+                    tot += beta * weight[b] * (target[b, i] - p[b, position[i]]) * nmask[i]
                 else:
                     tot += beta * weight[b] * nmask[i] * (target[b, i] - s[b, i])
             k_ = keep[b, i] if masked else 1.0
@@ -1153,7 +1224,7 @@ if njit is not None:
                 out[b] = _residual_row(
                     b, v, a, s, standing, synaptic_input, keep, masked, dt, has_adapt,
                     adapt_strength, has_nudge, target, nmask, group, gid, ngroups, position,
-                    beta, softmax_t, weight, anchor, anchor_gain, p[b], zmax[b], total[b],
+                    beta, softmax_t, weight, anchor, anchor_gain, p, zmax, total,
                 )
         return kept
 
