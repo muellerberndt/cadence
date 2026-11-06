@@ -76,6 +76,12 @@ does instead.
 - `recall_null`, a slot that reads nothing. It had no reading of its own, and a null slot fails the
   fresh-bindings gate. Write nothing: a read takes its whole mass from the slots held. A file saved
   with one is refused by name; cadence 0.94.0 runs it.
+- The refusal sentences of the names 0.85.0 retired: the seven `actor_` names of the centred
+  dopamine and the critic's signal, `arousal_record_surprise`, `working_memory_focus`, `resting_bias`
+  and the recall memory's `write`, `key`, `episodes`, `value`, `context`, `context_decay` and
+  `recency=None`. They are unknown settings (`TypeError`), and no file of 0.85.0 on carries them;
+  cadence 0.94.0 names each with what the brain does instead. `learning_nudge`, `learning_centered`
+  and `learning_decay` keep their sentences, because `Learner.load` reads a learner's file of 0.84.3.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.

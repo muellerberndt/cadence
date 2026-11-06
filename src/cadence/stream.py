@@ -555,7 +555,7 @@ class Recall:
     actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
     ``copy`` (plastic synapses from the read ports into the motor region).
 
-    A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
+    A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
     the memory does instead (``removed``); a saved memory loads where it carries the one value the
     table keeps for it. docs/memory.md holds each option's law and its readings.
@@ -651,19 +651,6 @@ class Recall:
     # memory loads at (the founder's, or the value its law keeps) and what the memory does
     # instead; ``removed`` makes the one sentence that refuses the name wherever it is given
     RETIRED = MappingProxyType({
-        "write": ("0.85.0", "always", "every accepted moment is written; cadence-net 0.84.3 "
-                  "takes it"),
-        "key": ("0.85.0", "event", "the key is the event heard, the window key and the "
-                "efference copy carrying what came before; cadence-net 0.84.3 takes it"),
-        "episodes": ("0.85.0", "forget", "an ended episode empties the slots and "
-                     "Brain.reset(keep=('slots',)) keeps them; cadence-net 0.84.3 takes it"),
-        "recency=None": ("0.85.0", None, "the power-law age charge is gone and a number keeps "
-                         "the linear charge recency * age; cadence-net 0.84.3 takes it"),
-        "value": ("0.85.0", "event", "the values are the events; cadence-net 0.84.3 takes it"),
-        "context": ("0.85.0", 0.0, "no fading history of the earlier events joins the key; "
-                    "cadence-net 0.84.3 takes it"),
-        "context_decay": ("0.85.0", 0.5, "no fading history of the earlier events joins the "
-                          "key; cadence-net 0.84.3 takes it"),
         "address_step": ("0.93.0", "toward", "the address lesson steps on the named keys less "
                          "the attended ones, what a file at 'toward' saved"),
         "heard": ("0.93.0", heard, "the present event weighs 1.0 in its key and its address, "
@@ -696,18 +683,16 @@ class Recall:
 
     @staticmethod
     def removed(name: str) -> str:
-        """The one sentence that refuses a retired setting, ``recall_<name>`` of ``RETIRED``
-        or ``recall_recency=None``: the release that retired it and what the memory does
-        instead."""
-        key = "recency=None" if name == "recency" else name
-        release, _, instead = Recall.RETIRED[key]
-        return f"recall_{key} was retired in {release}: {instead}"
+        """The one sentence that refuses a retired setting, ``recall_<name>`` of ``RETIRED``:
+        the release that retired it and what the memory does instead."""
+        release, _, instead = Recall.RETIRED[name]
+        return f"recall_{name} was retired in {release}: {instead}"
 
     @staticmethod
     def setting(name: str, value: Any) -> Any:
         """One setting, validated and converted; ``name`` is a field of the memory. A
         retired setting is refused by name (``removed``)."""
-        if name in Recall.RETIRED or (name == "recency" and value is None):
+        if name in Recall.RETIRED:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",

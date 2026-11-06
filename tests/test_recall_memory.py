@@ -1698,81 +1698,14 @@ def test_the_window_survives_a_checkpoint_and_a_window_of_another_length_is_refu
             cd.Brain.load(tmp_path / "bad.npz")
 
 
-# -- the settings retired in 0.85.0
+# -- the settings of 0.84.3
 
 
-# each at a value 0.84.3 took, and its founder there
-REMOVED = {
-    "recall_write": ("aroused", "always"),
-    "recall_key": ("predecessor", "event"),
-    "recall_episodes": ("keep", "forget"),
-    "recall_recency": (None, 0.25),
-    "recall_value": ("cortex", "event"),
-    "recall_context": (0.5, 0.0),
-    "recall_context_decay": (0.9, 0.5),
-}
-
-
-@pytest.mark.parametrize("name", sorted(REMOVED))
-def test_a_removed_setting_is_refused_at_compose_and_retune_naming_the_release(name):
-    """Each setting 0.84.3 took and 0.85.0 retired is refused with the one sentence of
-    ``Recall.removed``, naming the release that retired it, what the memory does instead and
-    0.84.3 as the release that takes it: a retired name at any value, and
-    ``recall_recency=None``, the power-law charge, at that value alone (a number stays the
-    linear charge). The description carries a retired name only where the 0.84.3 format
-    always wrote it, at its one value."""
-    value, founder = REMOVED[name]
-    message = rf"{name}.*was retired in 0\.85\.0: .*cadence-net 0\.84\.3 takes it"
-    brain = composed()
-    with pytest.raises(ValueError, match=message):
-        composed(**{name: value})
-    with pytest.raises(ValueError, match=message):
-        brain.retune(**{name: value})
-    if name == "recall_recency":
-        assert composed(recall_recency=founder).recall.recency == founder
-        brain.retune(recall_recency=0.5)
-        assert brain.recall.recency == 0.5 and brain.describe()["genes"]["recall_recency"] == 0.5
-        with pytest.raises(ValueError, match="power-law"):
-            bare(width=4, recency=None)
-    else:
-        with pytest.raises(ValueError, match=message):
-            composed(**{name: founder})
-        with pytest.raises(ValueError, match=message):
-            brain.retune(**{name: founder})
-        setting = name[len("recall_"):]
-        assert cd.Recall.RETIRED[setting][0] == "0.85.0"
-        assert cd.Recall.removed(setting) == message_of(setting)
-        assert name not in brain.describe()["genes"]
-
-
-def message_of(setting):
-    """The sentence ``Recall.removed`` gives, built from the table's row."""
-    key = "recency=None" if setting == "recency" else setting
-    release, _, instead = cd.Recall.RETIRED[key]
-    return f"recall_{key} was retired in {release}: {instead}"
-
-
-@pytest.mark.parametrize("name", sorted(REMOVED))
-def test_a_saved_brain_under_a_removed_setting_is_refused_naming_the_release(tmp_path, name):
-    """A checkpoint carrying a retired setting at a value other than the one the memory keeps
-    for it is refused on load with the same sentence, naming the release that retired it; one
-    carrying the kept value loads (``recall_recency=None`` has none)."""
-    brain = composed()
-    for x in (CUE, GO):
-        brain.act(x, greedy=True)
-    arrays = saved_arrays(brain.save(tmp_path / "founder"))
-    meta = metadata(arrays)
-    setting = name[len("recall_"):]
-    meta["recall"][setting] = REMOVED[name][0]
-    arrays["generic"] = np.array(json.dumps(meta))
-    write(tmp_path / "removed.npz", arrays)
-    with pytest.raises(ValueError, match=r"was retired in 0\.85\.0: .*cadence-net 0\.84\.3"):
-        cd.Brain.load(tmp_path / "removed.npz")
-    if setting != "recency":
-        meta["recall"][setting] = cd.Recall.RETIRED[setting][1]
-        arrays["generic"] = np.array(json.dumps(meta))
-        write(tmp_path / "kept.npz", arrays)
-        assert cd.Brain.load(tmp_path / "kept.npz").describe() == brain.describe()
+def test_a_recency_of_none_is_refused():
+    with pytest.raises(ValueError):
+        bare(width=4, recency=None)
+    with pytest.raises(ValueError):
+        composed().retune(recall_recency=None)
 
 
 def test_the_keys_of_0843_leave_the_description_and_the_checkpoint(tmp_path):

@@ -119,8 +119,6 @@ class ArousalConfig:
     # instead. ``from_dict`` refuses another saved value by name, and a composed brain refuses
     # the public name ``arousal_<gene>`` (``cadence._configuration.RETIRED``).
     RETIRED = MappingProxyType({
-        "record_surprise": ("0.85.0", 0.0, "the surprise reads the critic's forecast alone; "
-                            "cadence-net 0.84.3 takes it"),
         "hindsight": ("0.93.0", 0, "a calm moment keeps no eligibility, so the outcome that "
                       "wakes the brain credits no earlier action; cadence 0.92.1 takes it"),
     })

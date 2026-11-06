@@ -1171,8 +1171,6 @@ def _validate_recall_state(
     for name, (_, kept, _) in Recall.RETIRED.items():
         if name in recalled and recalled[name] != kept:
             raise ValueError(Recall.removed(name))
-    if recalled["recency"] is None:
-        raise ValueError(Recall.removed("recency"))
     if recalled.get("heads", 1) != 1 and "compete" not in recalled:
         raise ValueError(
             f"this memory's heads read alike, as 0.91.2 and earlier saved them: "
@@ -1324,24 +1322,13 @@ def _saved_position(recalled: dict[str, Any], data: Any) -> int:
 
 
 def _actor_config(values: Any) -> ActorCriticConfig:
-    """A saved actor's config. A gene the actor retired (``ActorCriticConfig.RETIRED``) loads
-    at the value at which the law is this version's and is refused otherwise, with the
-    release that retired it; a gene the law never reads loads at any value. The running level
-    of the centred dopamine and the optimizer moments that 0.84.3 saved beside it are not
-    read."""
+    """A saved actor's config."""
     if not isinstance(values, dict):
         raise ValueError("invalid saved actor config")
-    values = dict(values)
-    for name, (_, kept, _) in ActorCriticConfig.RETIRED.items():
-        if name not in values:
-            continue
-        value = values.pop(name)
-        if kept is None:
-            continue
-        accepted = kept if isinstance(kept, tuple) else (kept,)
-        if isinstance(value, bool) != isinstance(accepted[0], bool) or value not in accepted:
-            raise ValueError(removed_on_load("actor", name, value, f"actor_{name}"))
-    return ActorCriticConfig(**values)
+    try:
+        return ActorCriticConfig(**values)
+    except TypeError as exc:
+        raise ValueError("invalid saved actor config") from exc
 
 
 def _flat_layout(

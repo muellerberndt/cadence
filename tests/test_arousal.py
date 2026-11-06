@@ -229,26 +229,6 @@ def test_equal_rates_remove_the_want_and_a_wide_tolerance_removes_surprise():
     assert no_surprise.outcome(1.5, 1.0)[0] == 0.0
 
 
-def test_the_record_channel_of_0843_is_refused_by_name():
-    """The record channel, a second surprise at the outcome the action's record forecast, is
-    removed: its gene is refused by name at compose, retune and in an arousal mapping, each
-    refusal naming 0.84.3, and a saved state carries none of its readings."""
-    with pytest.raises(TypeError):
-        cd.ArousalConfig(record_surprise=0.0)
-    for genes in ({"arousal": True, "arousal_record_surprise": 0.0},
-                  {"arousal": {"record_surprise": 0.0}}):
-        with pytest.raises(ValueError, match="record_surprise was retired.*0.84.3"):
-            cd.Brain.compose(4, 2, modules=(8,), **genes)
-    brain = calm_brain()
-    with pytest.raises(ValueError, match="arousal_record_surprise was retired.*0.84.3"):
-        brain.retune(arousal_record_surprise=1.0)
-    assert "arousal_record_surprise" not in brain.describe()["genes"]
-    assert "record_surprise" not in cd.ArousalConfig.space()
-    state = cd.Arousal(cd.ArousalConfig(youth=2)).to_dict()
-    assert state["format"] == "cadence-arousal/4"
-    assert "records" not in state and "usual_record" not in state
-
-
 def test_arousal_state_round_trips_and_rejects_corruption():
     arousal = cd.Arousal(cd.ArousalConfig(youth=2))
     for value in (0.5, 1.0, 0.2):
