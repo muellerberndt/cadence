@@ -85,8 +85,10 @@ def _by_rows(task: Callable[[int, int], Any], rows: int, size: int) -> list[Any]
     Changing the requested count reuses one bounded process pool. A forked child creates
     its own pool; it never waits for its parent's vanished workers or inherited lock.
     """
+    if size < _THREADED:
+        return None
     threads = min(_recall_threads(), rows, _RECALL_WORKERS)
-    if threads <= 1 or size < _THREADED:
+    if threads <= 1:
         return None
     bounds = np.linspace(0, rows, threads + 1).astype(int)
     return list(_recall_pool().map(
@@ -1085,6 +1087,20 @@ class Recall:
         """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest."""
         return np.arange(self.slots - 1, -1, -1, dtype=float)
 
+    def _whole_ages(self) -> np.ndarray:
+        """``ages`` as whole numbers."""
+        return np.arange(self.slots - 1, -1, -1, dtype=np.int64)
+
+    def _age_buckets(self) -> np.ndarray:
+        """Every whole age's bucket up to ``capacity - 1``, ``_bucket`` of each, made once for
+        the memory's position and capacity; an older age lies in the last bucket with it."""
+        held = self.__dict__.get("_age_bucket_table")
+        if held is None or held[0] != (self.position, self.capacity):
+            table = self._bucket(np.arange(self.capacity, dtype=float)).astype(np.int64)
+            held = ((self.position, self.capacity), table)
+            self.__dict__["_age_bucket_table"] = held
+        return np.asarray(held[1])
+
     def position_map(self, head: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Head ``head``'s position maps ``(P_x, P_c, p)``; refused without a position term."""
         if not self.position_maps:
@@ -1101,10 +1117,9 @@ class Recall:
     def buckets(self) -> np.ndarray:
         """Each slot's age bucket: its age below ``position``, then ``position`` plus the
         doublings of its age over ``position``, the last bucket holding every older age."""
-        ages = self.ages()
         if not self.position:
-            return np.zeros(len(ages), dtype=np.int64)
-        return self._bucket(ages).astype(np.int64)
+            return np.zeros(self.slots, dtype=np.int64)
+        return np.asarray(self._age_buckets()[self._whole_ages()])
 
     def _bucket(self, ages: np.ndarray) -> np.ndarray:
         """``ages`` (or places in an episode) in the position term's buckets: below
@@ -1117,8 +1132,10 @@ class Recall:
         """Each slot's anchored bucket for each stream, or for the streams ``rows``, ``(rows,
         slots)``: its place in the stream's current episode (``told - 1 - age``) bucketed as
         an age is, and ``position_buckets`` for a slot written before the episode began."""
-        places = self._places(rows)
-        out = self._bucket(np.maximum(places, 0.0))
+        told = self.told if rows is None else self.told[rows]
+        places = told[:, None] - 1 - self._whole_ages()[None, :]
+        table = self._age_buckets()
+        out = table[np.minimum(np.maximum(places, 0), len(table) - 1)]
         return np.where(places < 0, self.position_buckets, out).astype(np.int64)
 
     def relative_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
@@ -1127,8 +1144,8 @@ class Recall:
         ``[-RELATIVE, RELATIVE]`` and shifted to start at zero; ``2 * RELATIVE + 1`` for a
         stream with no read before."""
         focus = self.focus if rows is None else self.focus[rows]
-        offsets = self.ages()[None, :] - focus[:, None].astype(float)
-        out = np.clip(offsets, -self.RELATIVE, self.RELATIVE) + self.RELATIVE
+        offsets = self._whole_ages()[None, :] - focus[:, None]
+        out = np.minimum(np.maximum(offsets, -self.RELATIVE), self.RELATIVE) + self.RELATIVE
         return np.where(focus[:, None] < 0, 2 * self.RELATIVE + 1, out).astype(np.int64)
 
     def position_term(
@@ -1146,12 +1163,13 @@ class Recall:
         # the terms over each stream's episode and previous read need the moments' streams; a
         # batch of other streams reads silence (``weights``) and gets the table and the slope
         if rows is not None or len(event) == self.streams:
+            each = np.arange(len(event))[:, None]
             if self.anchor_maps:
                 anchored = _term(self.anchor_maps[head], event, cortex)
-                term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
+                term = term + anchored[each, self.anchored_buckets(rows)]
             if self.relative_maps:
                 relative = _term(self.relative_maps[head], event, cortex)
-                term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
+                term = term + relative[each, self.relative_buckets(rows)]
         if self.slope_maps:
             lean = _term(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
