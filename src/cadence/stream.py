@@ -1022,6 +1022,8 @@ class Recall:
         self._content_keys: np.ndarray | None = None
         self._scope_token: object | None = None  # the token of the operation in progress
         self._device_columns: Any = None  # the association's columns on a torch device
+        # per slot array: the wider array it is a view of, the view, its first slot and its end
+        self._rooms: dict[str, tuple[np.ndarray, np.ndarray, int, int]] = {}
         self.reset(0)
 
     # -- layout and per-stream state
@@ -1349,8 +1351,9 @@ class Recall:
         self._unread()
 
     def snapshot(self) -> dict[str, Any]:
-        """The per-stream state, to restore after a refused operation; every write replaces
-        these arrays rather than changing them."""
+        """The per-stream state, to restore after a refused operation. The next write starts
+        new arrays and changes none of these."""
+        self._rooms = {}
         return {name: getattr(self, name) for name in self._STATE}
 
     def restore(self, snapshot: dict[str, Any]) -> None:
@@ -1392,6 +1395,7 @@ class Recall:
         branch.acted = self.acted.copy()
         branch._unread()
         branch._private = True
+        branch._rooms = {}
         branch._contents = []
         branch._content_keys = None
         branch._scope_token = None
@@ -1518,8 +1522,7 @@ class Recall:
         and one bank snapshot are retained.
         """
         if (keys is not self.keys or address.dtype != np.float64
-                or keys.dtype != np.float64 or not address.flags.c_contiguous
-                or not keys.flags.c_contiguous):
+                or keys.dtype != np.float64 or not address.flags.c_contiguous):
             return np.asarray(_einsum("bk,bmk->bm", address, keys) / self.temperature)
         if self._scope_token is not None and self._scope_token in _OPERATIONS:
             if self._content_keys is not keys:
@@ -1892,6 +1895,39 @@ class Recall:
         self.told = self.told + 1
         self.focus = focus
 
+    def _longer(
+        self, name: str, old: np.ndarray, drop: int, new: np.ndarray | None
+    ) -> np.ndarray:
+        """The slots ``old`` less the ``drop`` oldest, with a new latest slot of ``new`` (zero
+        without one). The slots are a view into a wider array, in the order every read sums
+        them, and the new slot is written in the room behind them, so a write costs one slot
+        and not the bank; when the room runs out the slots move into a new array of twice their
+        number, at most twice the capacity. An array the memory did not make itself starts one."""
+        held = self._rooms.get(name)
+        if (
+            held is not None and held[1] is old and old.base is held[0]
+            and held[3] < held[0].shape[1]
+        ):
+            room, first, stop = held[0], held[2] + drop, held[3]
+        else:
+            kept = old.shape[1] - drop
+            size = min(2 * self.capacity, max(16, 2 * kept + 2))
+            room = np.empty((old.shape[0], size, *old.shape[2:]), dtype=old.dtype)
+
+            def move(start: int, end: int) -> None:
+                room[start:end, :kept] = old[start:end, drop:]
+
+            if _by_rows(move, len(old), old.size) is None:
+                move(0, len(old))
+            first, stop = 0, kept
+        if new is None:
+            room[:, stop] = 0
+        else:
+            room[:, stop] = new
+        out = room[:, first : stop + 1]
+        self._rooms[name] = (room, out, first, stop + 1)
+        return out
+
     def _append(
         self,
         key: np.ndarray,
@@ -1903,27 +1939,13 @@ class Recall:
         no successor yet, held by the streams ``held`` marks; beyond ``capacity`` the oldest
         slot is dropped. ``successor`` is what the slots before learn as their next
         (``_observe``): ``(slice(None), value)`` for every stream's latest slot, or ``(rows,
-        slots, values)``. Every array is new, written once: a caller may hold the old ones."""
+        slots, values)``. The arrays are new views of the slots (``_longer``): a caller that holds
+        the old ones to restore them says so (``snapshot``)."""
         if value is None:
             value = np.zeros((len(key), self.value_width))
         kept = self.keys.shape[1]
         drop = max(kept + 1 - self.capacity, 0)
-
-        def grown(old: np.ndarray, new: np.ndarray | None) -> np.ndarray:
-            out = np.empty((old.shape[0], kept + 1 - drop, *old.shape[2:]), dtype=old.dtype)
-
-            def move(start: int, stop: int) -> None:
-                out[start:stop, : kept - drop] = old[start:stop, drop:]
-
-            if _by_rows(move, len(old), old.size) is None:
-                move(0, len(old))
-            if new is None:
-                out[:, -1] = 0
-            else:
-                out[:, -1] = new
-            return out
-
-        nexts = grown(self.nexts, None)
+        nexts = self._longer("nexts", self.nexts, drop, None)
         if successor is not None and kept:
             if len(successor) == 2:
                 if kept - drop:  # the latest slot survives the drop
@@ -1932,9 +1954,10 @@ class Recall:
                 rows, slots, values = successor
                 keep = slots >= drop
                 nexts[rows[keep], slots[keep] - drop] = values[keep]
-        self.keys, self.values, self.nexts, self.held = (
-            grown(self.keys, key), grown(self.values, value), nexts, grown(self.held, held)
-        )
+        self.keys = self._longer("keys", self.keys, drop, key)
+        self.values = self._longer("values", self.values, drop, value)
+        self.nexts = nexts
+        self.held = self._longer("held", self.held, drop, held)
         self._contents = []
         self._content_keys = None
 
