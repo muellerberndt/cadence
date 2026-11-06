@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- Add `recall_grid` (opt-in, construction, founder none; needs `recall_position`): past the exact
+  table every head's position term also reads each slot's age modulo each of these coprime numbers,
+  one term per residue, so a few dozen terms separate the ages up to the moduli's product, where the
+  table's buckets double. Once the slots pass the table the slope takes no step. A brain with the
+  option reads and learns as without it until a slot passes `recall_position`; the maps are saved
+  with the brain, counted by `parameters()` and carried by `grow` and `graft`. `recall_position=32,
+  recall_grid=(7, 8, 9, 11), recall_capacity=128` reads a period of 40 at .999 on six fresh founders
+  where a table of 64 at 64 slots reads .870, the other sequence gates to the digit. See [reads over
+  long context](docs/memory.md#reads-over-long-context). Brains without the option are unchanged.
 - Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`), the learned value
   path (#262, a delivery of #260): one scalar per read port on the declared tokens' identity into the
   motor region's drive, starting at zero, so what lessons on some tokens teach holds for a token no

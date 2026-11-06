@@ -1261,6 +1261,7 @@ def _validate_recall_state(
         ("anchor", "anchored", (count + 1,), "told", 0),
         ("relative", "relative", (2 * Recall.RELATIVE + 2,), "focus", -1),
         ("slope", "slope", (), None, 0),
+        ("grid", "grid", (sum(settings.get("grid", ())),), None, 0),
     ):
         if settings.get(kind):
             saved(kind, *outputs)
@@ -4802,7 +4803,7 @@ class Brain:
                     a.size
                     for maps in (
                         *recall.position_maps, *recall.anchor_maps, *recall.relative_maps,
-                        *recall.slope_maps,
+                        *recall.slope_maps, *recall.grid_maps,
                     )
                     for a in maps
                 )

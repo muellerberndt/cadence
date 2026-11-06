@@ -14,6 +14,7 @@ works, its settings, its readings and its limits.
 | The present observation holds the answer | `recall=False, episodic=False, working_memory_amplitude=0.0` is the control to compare against; add one memory at a time | [check that a memory does the work](#check-that-a-memory-does-the-work) |
 | A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | `recall=True` | [recall memory](#the-recall-memory-in-full) |
 | Whole sentences or stories, read at lengths no lesson reached | `recall=True, learning_surprise=True, teaching="deep", recall_recency=0.0, recall_boundary=True, recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True` | [one composition for sequences](#one-composition-for-sequences) |
+| A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_grid=(7, 8, 9, 11)`, `recall_capacity` about 2.5 times the distance | [reads over long context](#reads-over-long-context) |
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
 | "How long ago?", "was A told before B?" | `recall_when=True, recall_position_rate=0.0, recall_temperature=0.1` | [when a read item happened](#when-a-read-item-happened-opt-in) |
@@ -283,6 +284,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
 | `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#the-learned-value-path-opt-in)) |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
+| `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
@@ -559,6 +561,70 @@ second write's value). Where it falls short:
   two ports disagree, and a life can learn either. `reward_recipe` answers both through the
   write's own slot by leaving the next port out; this composition keeps the next port for its
   successor reads.
+
+### Reads over long context
+
+A read reaches what the slots hold, so `recall_capacity` bounds it: past the capacity the oldest
+slot is gone. Inside the capacity three things decide how far a read holds as the context grows.
+
+- **The position code.** Past `recall_position` the table's buckets double, so neighbouring ages
+  share a term and no term singles out one slot: at distances past the table the read falls to
+  chance. A table exact to the distance separates them at `width + association + 1` numbers per age
+  and per table.
+- **The slope's step.** The slope's feature is `age / 8`, and its step is bounded by the row's energy
+  alone, so past a few hundred slots one lesson moves a logit further than every other term holds.
+  A lean any function of age could hold can also drift against the tables while the read stays where
+  it is.
+- **The lesson's size.** A lesson names the slots by what they hold. Over a spread read it names
+  every slot that holds the answer, and the gradient at the right slot is about `(tokens - 1) /
+  slots`, so the lessons a distance takes grow with it.
+
+**The grid (opt-in, `recall_grid`; it needs the position term).** Every head's term also reads each
+slot past the table by its age modulo each of a few coprime numbers:
+
+```text
+logit_i += sum_m g(x, c)[m, age_i mod m]      for age_i >= recall_position
+g(x, c) = x G_x + c G_c + g                   (one map per head)
+```
+
+Two ages share every residue only at the moduli's product apart, so `(7, 8, 9, 11)`, 35 terms,
+separates every age to 5,544. The slots below the table's exact range read the table alone, so a
+brain reads and learns as without the option until a slot passes it. The maps start at zero. The
+lesson steps them at `recall_position_rate` with the table's gradient at those slots, each row's
+gradient over the larger of the target's peak and the attention's, so the right slot's terms move by
+the same step at every length; rewards do not train them. Once the slots pass the table the slope
+takes no step and keeps what stories within the table taught it.
+
+```python
+far = Brain.compose(
+    inputs=12, actions=8, modules=(64,), seed=0, episodic=False, teaching="deep",
+    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
+    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True,
+    recall_capacity=1280, recall_grid=(7, 8, 9, 11),
+)
+assert far.recall.position == 32 and far.recall.grid_maps[0][2].shape == (35,)
+```
+
+**How many slots.** The slots hold the distance and more. On a stream that repeats, a read one period
+back meets a noisy copy; with about 2.5 times the period the slots still hold the first period and the
+read lands on it, on about 2 slots at a period of 40: the sequence composition reads that period at
+.999 with the grid at 128 slots and at .821 to .925 with table 64 at 64. The grid's parameters stay fixed as the slots
+grow, at `35 (width + association + 1)` per head; an exact table's grow with them, to 206,733 at 1,280
+slots and 12 inputs against 18,160 with the grid. An act at 12 inputs takes .53 ms at 128 slots and
+.68 ms at 1,280, on one stream.
+
+**What it reads and what it costs.** On three lives n-back reads 1.00 at 400 by 6,000 answers and .96
+to 1.00 at 1,000 by 12,000, where an exact table stays at chance past 100. A period of 100 at 256 slots holds its
+bar on six fresh founders at .937 to .968, where an exact table at 128 slots reads .585 to .936 and
+fails it. Periods of 400 and 1,000 do not hold: they read .247 .961 .180 and .947 .200 .911 at 90,000
+answers and pass through chance on the way, with the relative term holding the read near its last
+focus. Lessons on short stories never pass the table and leave the grid at zero, so a brain taught there
+reads as without it. Lessons on long stories move the place in the episode from the slope to the grid:
+dense look back at 400 reads `first` 1.00 in the form taught and .16 to .36 on stories with one cue,
+where the slope's own reading stays .95 to 1.00.
+
+The readings, the cost against the slots and the matched networks are in the
+[long-context benchmark](../benchmarks/long_context/README.md).
 
 ### Several heads (opt-in)
 

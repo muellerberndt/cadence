@@ -24,6 +24,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, fields
+from math import gcd
 from threading import Lock
 from types import MappingProxyType
 from typing import Any, NamedTuple
@@ -560,8 +561,9 @@ class Recall:
     the one bank, reading in turn), ``position`` (a learned term per age bucket, ``position_rate``
     its lesson's rate), ``anchor`` (the same by a slot's place in its episode), ``relative`` (by
     its age relative to the previous read's focus), ``slope`` (a lean by age at every length),
-    ``when`` (the read also delivers when its slots happened), ``action`` (each slot carries the
-    command executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
+    ``grid`` (past the table a term per residue of each of a few coprime numbers), ``when`` (the
+    read also delivers when its slots happened), ``action`` (each slot carries the command
+    executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
     the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
     actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
     ``copy`` (plastic synapses from the read ports into the motor region).
@@ -608,6 +610,9 @@ class Recall:
     # above 0, with ``tokens``: one learned scalar per read port on the tokens' identity into the
     # motor region's drive (``gains``), taught at this rate by the motor's movement
     gain: float = 0.0
+    # past the exact table every head's position term also reads each slot's age modulo each of
+    # these coprime numbers (``grid_maps``), and the slope takes no step
+    grid: tuple[int, ...] = ()
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -635,10 +640,10 @@ class Recall:
     OPTIONS = (
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "anchor",
-        "relative", "slope", "when", "gain",
+        "relative", "slope", "when", "gain", "grid",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when", "gain")
+                            "action", "anchor", "relative", "slope", "when", "gain", "grid")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the position lesson's rate a unit of dopamine steps the position maps at, times
     # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
@@ -652,7 +657,8 @@ class Recall:
     # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
     # kept before its maps: the reads' focus for the relative maps, the moments told for the
     # anchored ones
-    _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"))
+    _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"),
+              ("grid", None))
     # every stream's state: its slots, the cortex of the moment before, whether its latest slot
     # closed an episode, the window's events, the command executed at the moment before, the
     # moments told in its episode and the age of the slot its previous read attended most
@@ -734,6 +740,23 @@ class Recall:
                     "no position term"
                 )
             return int(value)
+        if name == "grid":
+            if isinstance(value, (str, bytes, Mapping)) or not isinstance(
+                value, (Sequence, np.ndarray)
+            ):
+                raise ValueError("grid is a sequence of coprime integers of at least 2")
+            moduli = []
+            for item in value:
+                if (
+                    isinstance(item, (bool, np.bool_))
+                    or not isinstance(item, (int, np.integer))
+                    or item < 2
+                ):
+                    raise ValueError("grid is a sequence of coprime integers of at least 2")
+                moduli.append(int(item))
+            if any(gcd(a, b) > 1 for i, a in enumerate(moduli) for b in moduli[i + 1:]):
+                raise ValueError("grid is a sequence of coprime integers of at least 2")
+            return tuple(moduli)
         if name == "tokens":
             if value is None:
                 return None
@@ -952,7 +975,8 @@ class Recall:
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
         self.position_maps = self._zero_maps(self.heads if count else 0, count)
-        for name, verb in (("anchor", "reads"), ("relative", "reads"), ("slope", "leans")):
+        for name, verb in (("anchor", "reads"), ("relative", "reads"), ("slope", "leans"),
+                           ("grid", "reads")):
             if getattr(self, name) and not count:
                 raise ValueError(f"{name} {verb} beside the position term: it needs position")
         # every head's anchored maps ``(E_x, E_c, e)``, one column per anchored bucket and one
@@ -964,6 +988,9 @@ class Recall:
         self.relative_maps = self._zero_maps(self.heads if self.relative else 0, width_r)
         # every head's slope maps ``(S_x, S_c, s)``, one number each; none without ``slope``
         self.slope_maps = self._zero_maps(self.heads if self.slope else 0)
+        # every head's grid maps ``(G_x, G_c, g)``, one column per residue of each modulus; none
+        # without ``grid``
+        self.grid_maps = self._zero_maps(self.heads if self.grid else 0, sum(self.grid))
         self._check_copy()
         # the motor region, which the gains drive (``gain``); empty where the anatomy has none
         self.motor: np.ndarray = np.asarray(populations.get("motor", ()), dtype=np.int64)
@@ -1119,6 +1146,15 @@ class Recall:
         out = np.minimum(np.maximum(offsets, -self.RELATIVE), self.RELATIVE) + self.RELATIVE
         return np.where(focus[:, None] < 0, 2 * self.RELATIVE + 1, out).astype(np.int64)
 
+    def grid_buckets(self) -> np.ndarray:
+        """Each slot's residue under each modulus of ``grid`` as a column of the grid maps,
+        ``(moduli, slots)``: the columns of a modulus follow those of the moduli before it."""
+        ages = self.ages().astype(np.int64)
+        starts = np.cumsum([0, *self.grid[:-1]])
+        return np.stack([
+            start + ages % modulus for start, modulus in zip(starts, self.grid, strict=True)
+        ])
+
     def position_term(
         self, head: int, event: np.ndarray, cortex: np.ndarray, rows: np.ndarray | None = None
     ) -> np.ndarray | None:
@@ -1157,6 +1193,9 @@ class Recall:
         if self.slope_maps:
             lean = _term(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
+        if self.grid_maps:
+            grid = _term(self.grid_maps[head], event, cortex)[:, self.grid_buckets()].sum(axis=1)
+            term = term + grid * (self.ages() >= self.position)
         return np.asarray(term)
 
     @property
@@ -1411,7 +1450,8 @@ class Recall:
     def map_names(kind: str, head: int) -> tuple[str, str, str]:
         """The checkpoint names of head ``head``'s three maps of one ``kind``: ``"address"``
         for ``(w_x, w_c, b)``, ``"position"`` for ``(P_x, P_c, p)``, ``"anchor"`` for ``(E_x,
-        E_c, e)``, ``"relative"`` for ``(R_x, R_c, r)`` and ``"slope"`` for ``(S_x, S_c, s)``;
+        E_c, e)``, ``"relative"`` for ``(R_x, R_c, r)``, ``"slope"`` for ``(S_x, S_c, s)`` and
+        ``"grid"`` for ``(G_x, G_c, g)``;
         head 0's names are bare and head ``h``'s carry ``_h``."""
         suffix = "" if head == 0 else f"_{head}"
         if kind == "address":
@@ -2066,10 +2106,23 @@ class Recall:
                 width = 2 * self.RELATIVE + 2
                 step = _per_bucket(gradient, self.relative_buckets(streams), width) * bound
                 stepped["relative_maps"] = _lms(self.relative_maps[head], step, rate, x, c)
-            if self.slope_maps:  # the same gradient, read along each slot's age
+            # the same gradient, read along each slot's age; with ``grid`` only within the table
+            if self.slope_maps and not (self.grid_maps and self.slots > self.position):
                 lean = gradient @ (self.ages() / self.SLOPE)
                 lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
                 stepped["slope_maps"] = _lms(self.slope_maps[head], lean, self.slope, x, c)
+            if self.grid_maps:  # past the table, the gradient over its peak, on the residues
+                attended = np.where(np.isfinite(prior), np.exp(prior), 0.0)
+                peak = np.maximum(
+                    target.max(axis=1, keepdims=True), attended.max(axis=1, keepdims=True)
+                )
+                far = np.where(peak > 0, gradient / peak, gradient)
+                far = far * (self.ages() >= self.position)
+                width = sum(self.grid)
+                step = sum(
+                    _per_bucket(far, residues[None, :], width) for residues in self.grid_buckets()
+                ) * bound
+                stepped["grid_maps"] = _lms(self.grid_maps[head], step, rate, x, c)
         # every map of the step or none: a step that is not finite is refused whole
         if not all(np.isfinite(a).all() for maps in stepped.values() for a in maps):
             return 0, int(len(x))
@@ -2394,8 +2447,9 @@ class Recall:
             # always written with several heads: a file saved before heads competed holds none,
             # and its heads read alike, a law this version refuses
             out["compete"] = True
-        if "tokens" in out:  # JSON-safe: a list, as a checkpoint keeps it
-            out["tokens"] = list(out["tokens"])
+        for name in ("tokens", "grid"):  # JSON-safe: a list, as a checkpoint keeps it
+            if name in out:
+                out[name] = list(out[name])
         return out
 
 
