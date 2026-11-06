@@ -1171,15 +1171,15 @@ def _validate_recall_state(
     for name, (_, kept, _) in Recall.RETIRED.items():
         if name in recalled and recalled[name] != kept:
             raise ValueError(Recall.removed(name))
-    if recalled.get("heads", 1) != 1 and "compete" not in recalled:
-        raise ValueError(
-            f"this memory's heads read alike, as 0.91.2 and earlier saved them: "
-            f"{Recall.removed('compete')}"
-        )
     settings = {name: Recall.setting(name, recalled[name]) for name in names}
     # an option is saved where it differs from its founder, and takes its founder where absent
     settings.update({name: Recall.setting(name, recalled[name]) for name in Recall.OPTIONS
                      if name in recalled})
+    if settings.get("heads", 1) > 1 and "compete" not in recalled:
+        raise ValueError(
+            f"this memory's heads read alike, as 0.91.2 and earlier saved them: "
+            f"{Recall.removed('compete')}"
+        )
     settings["position"] = _saved_position(recalled, data)
     writes = recalled["writes"]
     if isinstance(writes, bool) or not isinstance(writes, int) or writes < 0:
