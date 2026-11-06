@@ -1186,6 +1186,7 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
         "heads": 1, "position": 32, "position_rate": 0.1,
         "boundary": False, "copy": 0.0, "tokens": None, "action": False, "compete": True,
         "anchor": False, "relative": False, "slope": 0.0, "when": False, "copy_next": 0.0,
+        "address_contrast": False,
     }
     founder = composed(seed=5, arousal=True, learning_surprise=True)
     explicit = composed(

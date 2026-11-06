@@ -712,6 +712,14 @@ class Recall:
     own for them. Without ``copy`` the tokens only declare which answers are tokens a slot can
     hold, for the read's lessons (``learn``).
 
+    With ``address_contrast`` (an option, founder off; runtime) the address lesson steps the map
+    on a contrast: its error is ``sum_i (p*_i - p_i) K_i``, the keys the lesson names less the
+    keys the read attended, the gradient of the content logits, in place of ``K* - q``, the
+    distance to the named keys. The rate, the bound by the row's energy and the rows' average are
+    as they were, and so is the reward's eligibility, which takes the same error. It is zero where
+    the read is what the lesson names, so a read that is right stops moving the map; the distance
+    keeps regressing the address onto the mean named key whatever the read.
+
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
     the memory does instead (``removed``); a saved memory loads where it carries the one value
@@ -756,6 +764,9 @@ class Recall:
     slope: float = 0.0
     # every head's read also delivers its slots' age features on a region of its own
     when: bool = False
+    # the address lesson's error is the contrast of the named keys against the keys the read
+    # attended, zero where the read is right, in place of the distance to the named keys
+    address_contrast: bool = False
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
     keys: np.ndarray = field(init=False, repr=False)
@@ -783,7 +794,7 @@ class Recall:
     OPTIONS = (
         "null", "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when", "copy_next",
+        "relative", "slope", "when", "copy_next", "address_contrast",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
                             "action", "anchor", "relative", "slope", "when", "copy_next")
@@ -878,7 +889,10 @@ class Recall:
             return number
         if name == "null":
             return None if value is None else real(name, value)
-        if name in ("next", "boundary", "action", "compete", "anchor", "relative", "when"):
+        if name in (
+            "next", "boundary", "action", "compete", "anchor", "relative", "when",
+            "address_contrast",
+        ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -2168,8 +2182,13 @@ class Recall:
             logits = logits + attention
             p = np.exp(logits - logits.max(axis=1, keepdims=True))
             p /= p.sum(axis=1, keepdims=True)
-            target = _einsum("bm,bmk->bk", p, keys)
-            error = target - q
+            if self.address_contrast:
+                # the gradient of the content logits toward the named slots: the named keys
+                # less the attended ones, zero where the attention is what the lesson names
+                gradient = p - np.where(np.isfinite(attention), np.exp(attention), 0.0)
+                error = _einsum("bm,bmk->bk", gradient, keys)
+            else:
+                error = _einsum("bm,bmk->bk", p, keys) - q
             # each row's gain on its own address, rate * |z|^2, is at most one: a row taught
             # alone lands on its target at most, and a row within the bound keeps the rate as
             # it is. Over a batch the step maps the errors E to (I - M) E, M = rate / n * G D

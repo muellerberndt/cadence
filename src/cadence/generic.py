@@ -2794,6 +2794,9 @@ class Brain:
         ``recall_boundary=True`` (runtime, founder off) gives each stream that begins a
         boundary slot first, a silent moment whose next the stream's first event teaches, so
         the start of an episode has a predecessor as every later event has.
+        ``recall_address_contrast=True`` (runtime, founder off) steps the address map on the
+        named keys less the attended ones, zero where the read is right, in place of the distance
+        to the named keys.
         ``recall_copy`` above 0 (construction, founder 0.0) adds the copy pathway: plastic
         synapses from every head's read ports into the motor region, appended last and drawn
         at that magnitude, learned by the settle's contrast. ``recall_tokens`` (construction,
@@ -3118,7 +3121,7 @@ class Brain:
             # held with sampled feedback alone: the pending address contrast belongs to the
             # lesson's form and rates
             # the position rate shapes the contrast only where reward trains the position maps
-            held = ["address", "address_reward", "position_reward"]
+            held = ["address", "address_reward", "position_reward", "address_contrast"]
             recall = self.recall
             if recall is not None and recall.position_reward and recall.position_maps:
                 held.append("position_rate")

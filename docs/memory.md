@@ -584,6 +584,31 @@ each outcome steps the map by `recall_address_reward` times the dopamine times t
 `retune` refuses a change of `recall_address` or `recall_address_reward` while a sampled
 action's address contrast is pending.
 
+### The address lesson as a contrast (opt-in)
+
+The step's error `K* - q` is the distance to the named keys. It keeps moving the address while the
+read is right, so over a life it regresses the address onto the mean key the lessons named: a
+query learns a preference among contents, and two reads that need different slots from one address
+pull it between them. `recall_address_contrast=True` takes the error as a contrast,
+
+```text
+error = sum_i (p*_i - p_i) K_i
+```
+
+the keys the lesson names less the keys the read attended, the gradient of the content logits. It
+is zero where the read already is what the lesson names, as the position maps' step is. The rate
+`recall_address`, the bound by the row's energy, the rows' average and the reward's eligibility
+stay as they are, and it adds no parameter. It is a retune setting, held while a sampled action's
+address contrast is pending, and a newborn reads as without it until its first lesson.
+
+```python
+contrast = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0,
+                         recall_address_contrast=True)
+assert contrast.parameters() == Brain.compose(
+    inputs=8, actions=3, modules=(16,), recall=True, seed=0
+).parameters()
+```
+
 ### Episodes, keys and windows
 
 Each stream has its own slots. A plain `reset()` empties them and keeps the address map. When
@@ -646,6 +671,7 @@ where they differ from their founder. A saved brain keeps its genes, slots and a
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
+| `recall_address_contrast` | `False` | retune | The address lesson steps on the keys it names less the keys the read attended, zero where the read is right ([the contrast](#the-address-lesson-as-a-contrast-opt-in)) |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
