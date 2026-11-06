@@ -287,18 +287,20 @@ seconds on an Apple M4, and load from Numba's cache after that.
 
 | Work | Brain | One thread, Apple M4 |
 | --- | --- | ---: |
-| A pass of the [grammar chamber](../benchmarks/grammar/README.md): 4,000 batches of 16 rows, about 50,000 acts and 23,000 lessons | the chamber's recipe with `teaching="deep"` and `recall_address_contrast=True`: 251 neurons, 24,384 parameters | 56 s |
-| The same | with `history_decays=(0.5, 0.9)` and no prefrontal region: 257 neurons, 24,774 parameters | 77 s |
-| The same | either, with `learning_fast_settle=True` | 34 s, 36 s |
+| A pass of the [grammar chamber](../benchmarks/grammar/README.md): 4,000 batches of 16 rows, about 50,000 acts and 23,000 lessons | the chamber's recipe with `teaching="deep"` and `recall_address_contrast=True`: 251 neurons, 24,384 parameters | 51 s |
+| The same | with `history_decays=(0.5, 0.9)` and no prefrontal region: 257 neurons, 24,774 parameters | 64 s |
+| The same | those two with `learning_fast_settle=True` | 28 s, 32 s |
 | One stream of speech: 3,920 inputs, association 512, `dense_limit=8192`, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
 | The same | the recipe | 10 ms, 190 ms |
 | The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
+| Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
 
-On the chamber's recipe the free solves take about half of a pass, and the exponential in the
+On the chamber's recipe the free solves take more than half of a pass, and the exponential in the
 activation most of that. The memory's read takes about a tenth, and the rest is spread over many
 small steps of Python and NumPy. At the speech size the read's address map, 3,920 by 3,920 entries,
-is most of an act. A realtime loop's limit is the act: a lesson that teaches costs twenty times an
-act at the speech size, and only the act has to keep up with the stream.
+is most of an act, and with thousands of slots the read is: at 4,096 slots it is 20 of the act's 21
+ms, and the write 0.3 ms. A realtime loop's limit is the act: at the speech size a lesson that
+teaches costs about twenty times an act, and only the act has to keep up with the stream.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |

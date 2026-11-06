@@ -19,13 +19,16 @@
   exceed it settles on the sparse transport in Python, about 30 times slower at a speech
   instrument's 3,920 inputs; a larger limit keeps it on the blocks and the compiled kernels. See
   [backends](docs/backends.md).
-- A brain costs less per moment, with the same bits and the same reports (#271): the settle's rows
-  pay no atomic reference counts and run on vector loops, a launch reads the activations a state
-  keeps instead of computing them again, a free solve runs in one compiled call, the act after a
-  surprise lesson that taught no row reads that lesson's settle, and the recall read's position
-  buckets are table lookups. The recall bank is now a view into a wider array and a write adds one
-  slot in place of copying every slot, so a write no longer grows with `recall_capacity`; a caller
-  that holds `recall.nexts` or the other slot arrays across a write takes `recall.snapshot()`.
+- A brain costs less per moment, with the same bits and the same reports (#271): a chamber pass
+  takes 0.44 of its time. The settle's rows pay no atomic reference counts and run on vector loops,
+  a launch reads the activations a state keeps instead of computing them again, a free solve runs in
+  one compiled call, the act after a surprise lesson that taught no row reads that lesson's settle,
+  a greedy choice with one motor reads the neurons where one stands clear, and the recall read's
+  position buckets are table lookups and its episode terms one compiled pass. The recall bank is now
+  a view into a wider array and a write adds one slot in place of copying every slot, so a write no
+  longer grows with `recall_capacity`; a caller that holds `recall.nexts` or the other slot arrays
+  across a write takes `recall.snapshot()`. The kernels' first use compiles in about 10 seconds on
+  an Apple M4. See [what a moment costs](docs/tune.md#what-a-moment-costs).
 - Add `recall_address_contrast` (opt-in, runtime, founder off): the recall read's address lesson
   steps on the keys it names less the keys the read attended, the gradient of the content logits
   and zero where the read is right, in place of the distance to the named keys, which keeps
