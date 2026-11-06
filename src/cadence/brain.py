@@ -3730,6 +3730,7 @@ class _MlxPlan:
             ensure_row_contiguous=True,
         )
         self.activate = mx.compile(self._activation_of(mx, neuron_model))
+        self.under_drive = mx.compile(self._under_drive)
         self.none = mx.zeros((8,), dtype=mx.float32)  # an input the launch does not read
         self.none_int = mx.zeros((8,), dtype=mx.int32)
         self.plan_array = mx.array(np.array(table + [0] * max(0, 8 - len(table)), dtype=np.int32))
@@ -3761,6 +3762,30 @@ class _MlxPlan:
             return mx.where(r > 0.0, r * up, r * down)
 
         return activate
+
+    def _under_drive(
+        self, potentials: list[Any], blocks: list[Any], standing: Any, kept: Any,
+    ) -> tuple[Any, ...]:
+        """A new drive's work before its sweeps, compiled: the source ranges' activations, their
+        products summed per settling neuron (``blocks``, the source blocks), and ``fixed`` and
+        ``first``, the standing input at every later sweep and at the first, which reads the
+        products ``kept`` of the sources the settle starts from (None: the products of silence)."""
+        mx = self.mx
+        sources = [self.activate(p) for p in potentials]
+        of = dict(zip(self.sources, sources, strict=True))
+        totals: dict[int, Any] = {}
+        for block, k in zip(blocks, self.outer, strict=True):
+            product = of[self.pre[k]] @ block
+            post = self.post[k]
+            totals[post] = product + totals[post] if post in totals else product
+        rows = standing.shape[0]
+        parts = [
+            totals[r] if r in totals
+            else mx.zeros((rows, self.spans[r][1] - self.spans[r][0]), dtype=mx.float32)
+            for r in self.settling
+        ]
+        outer = parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
+        return sources, outer, standing + outer, standing if kept is None else standing + kept
 
     def controls(
         self, sweeps: int, nudging: bool, shares: bool, bounded: bool, weighted: bool,
@@ -4448,18 +4473,22 @@ class _MlxKernel:
             + bias[slice(*plan.spans[r])]
             for r in plan.sources
         }
-        sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
-        outer = self._products(sources, rows)
-        fixed = standing if outer is None else standing + outer
-        if start.get("rest") and plan.at_rest == 0.0:
-            first = standing  # the products of silence
-        else:
+        kept = None
+        if not (start.get("rest") and plan.at_rest == 0.0):
             kept = start.get("outer") if start.get("version") == self.version else None
             if kept is None:
                 kept = self._products(start["sources"], rows)
-            first = standing if kept is None else standing + kept
-        return {"first": first, "fixed": fixed, "sources": sources, "potentials": potentials,
-                "outer": outer, "before": start["sources"]}
+        if not plan.outer:  # nothing the sources reach: their activations and no product
+            sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
+            return {"first": standing, "fixed": standing, "sources": sources,
+                    "potentials": potentials, "outer": None, "before": start["sources"]}
+        activated, outer, fixed, first = plan.under_drive(
+            [mx.array(potentials[r]) for r in plan.sources],
+            [self.blocks[k] for k in plan.outer], standing, kept,
+        )
+        return {"first": first, "fixed": fixed, "potentials": potentials, "outer": outer,
+                "sources": dict(zip(plan.sources, activated, strict=True)),
+                "before": start["sources"]}
 
     def _nudged_inputs(self, nudge: Nudge, tables: Any, rows: int) -> dict[str, Any]:
         mx, plan = self.mx, self.plan
