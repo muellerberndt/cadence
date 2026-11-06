@@ -91,7 +91,7 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
-      history_decays=(), history_amplitude=3.0, recall=False, learning=None,
+      history_decays=(), history_amplitude=3.0, carried_gain=0.0, recall=False, learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, inputs=None, code=None, learned_code=None, apical=0.0,
       **genes)
@@ -161,6 +161,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `basal_ganglia` | the `ActorCritic` reading the association region |
 | `memories` | the present memories by name, in the order the brain reads them ([`Memories`](#the-memories-cadencememories)) |
 | `working_memory`, `efference`, `history`, `recall` | the `Trace`, `Efference`, `History` and `Recall`, each `None` when absent |
+| `hearing`, `carried_gains` | the `Hearing` of `carried_gain`, or `None`; every carried route's learned gain by name, empty without it ([carried gain](memory.md#how-strongly-a-carried-region-is-heard-opt-in)) |
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
@@ -192,6 +193,7 @@ maturity and a `cadence-brain/2` file without one.
 | `actor/`, `free/`, `pending/`, `moment/`, `prepared`, `lived/`, `awaiting/` | the critic and eligibility, the free phase, a pending action's phases and decision, the action `live` issued, the sensed state |
 | `code/`, `learned_code/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds` |
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
+| `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata |
 | `memories/history/` | the heard history's `trace` |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |

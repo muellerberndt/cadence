@@ -634,6 +634,55 @@ The second grammar: about 9,200 lessons; the recovery: about 2,900. No act or le
 refused; about 30 lessons of the first grammar used their whole free budget. A saved and
 loaded copy continues exactly as the live one (`continuation`, every life).
 
+## State across moments
+
+Which state carried from one moment to the next lifts the brain, read on the base composition of
+#263: the [recipe](../../docs/memory.md#one-composition-for-sequences) at `teaching="deep"`, 64
+association neurons, 4,000 batches of the first grammar. Development. Twenty-four lives per arm where
+marked (founders 0 to 2 by their own seed, seeds 1000 to 1002 and 2000 to 2003), twelve otherwise,
+noise floor about .07. A trace at 3.0 is the founder's, at 0.3 `working_memory_amplitude=0.3`, silent at
+0 with its synapses. A learned gain is `carried_gain=0.01`.
+
+| Trace | Added | Lives | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Second hop | Three hops | Parameters | Sweeps per act |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 3.0 | | 24 | .95 | .91 | .90 | .87 | .72 | .88 | .82 | .18 | 24,384 | 68 |
+| 0.3 | | 24 | .98 | .94 | .95 | .95 | .87 | .96 | .94 | .46 | 24,384 | 84 |
+| 0.3 | learned gain | 24 | .98 | .95 | .93 | .94 | .83 | .95 | .92 | .44 | 24,385 | 80 |
+| 3.0 | learned gain | 12 | 1.00 | .99 | .95 | .97 | .85 | .98 | .96 | .42 | 24,385 | 77 |
+| silent | | 12 | .94 | .86 | .90 | .87 | .86 | .94 | .89 | .34 | 24,384 | 93 |
+
+Width, three lives each, composed steps (clauses, held-out, roles, brackets, paths, three hops):
+
+| Arm | 128 | 256 |
+| --- | --- | --- |
+| Trace 3.0 | .92 .88 .82 .42 .54 .06 | .62 .58 .41 .15 .25 .00 |
+| Trace 3.0, learned gain | 1.00 .98 1.00 .87 .79 .32 | 1.00 .99 .99 .86 .97 .47 |
+| Trace 0.3 | .98 .96 .98 .89 .97 .16 | .97 .96 .95 .95 .94 .31 |
+| Trace silent | .97 .96 .93 .76 .93 .35 | .97 .96 .92 .63 .93 .60 |
+
+Parameters at 128 and 256: 52,480 and 133,248, and one more with the learned gain. At 128 with the
+[fan-in steps](../../docs/tune.md#wide-brains) the trace at 0.3 reads .99 .69 .79 .68 .89 .34, below the
+composed steps. The matched controls online at about 52,000 parameters, the same exposure: the transformer
+.99 .99 1.00 .21 .34 .00 in 33 seconds, the LSTM .91 .92 .83 .74 .30 .00 in 17, where a brain's life takes
+450 to 860 seconds; offline the transformer reads 1.00 on the trained panels.
+
+Passes of the same lessons, six lives (founders 0 to 2 on their own seed and on 1001; clauses, two
+distractors, held-out, roles, brackets, paths, second hop, three hops):
+
+| Arm | Rate | Pass 2 | Pass 4 |
+| --- | --- | --- | --- |
+| Trace 3.0 | full | .99 .97 .97 .98 .73 .82 .72 .13 | .99 1.00 .96 .97 .87 .72 .64 .03 |
+| Trace 0.3 | full | .99 .97 .93 .96 .80 .92 .84 .36 | 1.00 .99 .97 .98 .92 .87 .79 .22 |
+| Trace 0.3, learned gain | full | .98 .95 .97 .98 .82 .96 .94 .38 | |
+| Trace 0.3 | a third | .98 .95 .94 .92 .41 .90 .81 .29 | .99 .97 .93 .96 .77 .94 .89 .54 |
+
+What carries the answer, with the trace emptied before every act on the taught life (clauses, held-out,
+roles, brackets, paths): the trace at 3.0 .38 .29 .20 .40 .72, at 0.3 .75 .69 .64 .59 .95.
+
+These lives say which state lifts this chamber, and none of this is read on fresh founders. Two forms
+read beside them stay out of the library because nothing chosen uses them: a brain built with no trace,
+and the read carried to the next moment on a region of its own.
+
 ## What this does and does not establish
 
 The chamber measures one composition and its options on one finite language of eighteen words,

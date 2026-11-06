@@ -81,7 +81,7 @@ from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
-from .stream import Efference, FastSynapses, History, PatternSeparator, Recall, Trace
+from .stream import Efference, FastSynapses, Hearing, History, PatternSeparator, Recall, Trace
 
 __all__ = ["Brain"]
 
@@ -1860,6 +1860,7 @@ class Brain:
         efference_amplitude: float = 0.0,
         history_decays: Sequence[float] = (),
         history_amplitude: float = 3.0,
+        carried_gain: float = 0.0,
         recall: bool = False,
         learning: LearnerConfig | None = None,
         reward: ActorCriticConfig | None = None,
@@ -2142,6 +2143,10 @@ class Brain:
             )
             # with ``recall_address_reward`` the actor keeps the address map's eligibility
             self.basal_ganglia.memory = self.recall
+        self.hearing: Hearing | None = None
+        self._carried_rate = real("carried_gain", carried_gain, low=0)
+        if self._carried_rate:
+            self._wire_hearing()
         self.hippocampus: FastSynapses | None = None
         # ``memory_choice``: the episodic records that vote in the choice, the store's place
         # records and, with a temporal context, the same records keyed by the stream's
@@ -2707,6 +2712,7 @@ class Brain:
         construction = {
             "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
             "episodic", "backend", "device", "dense_limit", "connectome", "history_decays",
+            "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
             "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
@@ -2949,6 +2955,8 @@ class Brain:
         # the nudge is a standalone Learner's choice, a composed brain's the cross-entropy; the
         # steps, their normalization and the floor are the teaching point's
         genes: dict[str, Any] = {"teaching": teaching}
+        if self.hearing is not None:
+            genes["carried_gain"] = self._carried_rate
         if teaching == "custom":
             genes["learning"] = steps
         # a constant of the composed brain (``CONSTANTS``) is no gene: it is described, by its
@@ -3154,7 +3162,7 @@ class Brain:
             held = self.working_memory if trace is None else trace
             drive = np.zeros((len(x), len(self.prefrontal_index)))
             if held is not None and len(held.trace) == len(x):
-                drive = held.amplitude * held.trace
+                drive = held.amplitude * held.hearing * held.trace
             z = model.activation(drive + bias[self.prefrontal_index])
         warm = None
         current = self._activity()
@@ -3729,6 +3737,8 @@ class Brain:
             teaching.update(self.recall.learn(self.learner.brain, lesson, tokens))
             # the gains' lesson (``recall_gain``): the motor's movement steps them
             teaching.update(self.recall.learn_gain(lesson))
+        if self.hearing is not None:
+            self.hearing.learn(self.learner.brain, lesson, self.learner.config.beta)
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )
@@ -3754,6 +3764,42 @@ class Brain:
                 )
         self.last_learning["demonstrations"] = float(batch)
         return teaching
+
+    def _wire_hearing(self) -> None:
+        """One learned gain per carried route (``carried_gain``): the working trace, the
+        efference copy and every block of the heard history, each at its working value."""
+        hearing = Hearing(
+            self._carried_rate, self.connectome, self.association_index, self.brain.neuron_model
+        )
+        for name, trace in (("trace", self.working_memory), ("efference", self.efference)):
+            if trace is not None:
+                hearing.add(name, trace, None, 0, len(trace.glow), trace.glow)
+        if self.history is not None:
+            self.history.hearing = np.ones(len(self.history.decays))
+            width = self.history.width
+            for k in range(len(self.history.decays)):
+                hearing.add(
+                    f"history_{k}", self.history, k, k * width, (k + 1) * width,
+                    self.history.glow[k * width:(k + 1) * width],
+                )
+        self.hearing = hearing
+        self.basal_ganglia.hearing = hearing
+
+    def _take_gains(self, saved: Mapping[str, Any]) -> None:
+        """The learned gains a checkpoint holds, by route; a route it does not name starts at
+        its working value (a part ``grow`` added)."""
+        hearing = self.hearing
+        assert hearing is not None
+        for k, route in enumerate(hearing.routes):
+            if route["name"] in saved["gains"]:
+                hearing.set(route, float(saved["gains"][route["name"]]))
+                hearing.second[k] = float(saved["second"][route["name"]])
+        hearing.count = int(saved["count"])
+
+    @property
+    def carried_gains(self) -> dict[str, float]:
+        """Every carried route's learned gain by name (``carried_gain``); empty without it."""
+        return {} if self.hearing is None else self.hearing.gains()
 
     # -- rehearsal: the lessons' episodes replayed (``learning_rehearsal``, #238)
 
@@ -4810,6 +4856,7 @@ class Brain:
                 + recall.gains.size
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
+            + (0 if self.hearing is None else len(self.hearing.routes))
         )
 
     def save(self, path: str | Path, *, compressed: bool = True) -> Path:
@@ -4853,6 +4900,19 @@ class Brain:
             metadata["attention"] = True
         if agent.maturity is not None:
             metadata["maturity"] = agent.maturity.to_dict()
+        hearing = self.hearing
+        if hearing is not None:  # the carried routes' learned gains, and only with them
+            metadata["carried_gain"] = {
+                "rate": hearing.rate,
+                "gains": hearing.gains(),
+                "second": {r["name"]: float(s) for r, s in zip(hearing.routes, hearing.second,
+                                                                strict=True)},
+                "count": hearing.count,
+            }
+            if agent.trace_hearing is not None:
+                data["hearing/trace"] = agent.trace_hearing
+            if agent._pending is not None and agent._pending_hearing is not None:
+                data["hearing/pending"] = agent._pending_hearing
         if self.arousal is not None:
             metadata["arousal"] = self.arousal.to_dict()
             lived = self._lived
@@ -5214,6 +5274,15 @@ class Brain:
                         f"brain's {result.code_width}: a coded brain numbers them from zero "
                         "and an uncoded one keys on its sensory neurons"
                     )
+            saved_gains = meta.get("carried_gain")
+            if saved_gains is not None:
+                result._carried_rate = real("saved carried_gain", saved_gains["rate"], low=0)
+                result._wire_hearing()
+                result._take_gains(saved_gains)
+                if "hearing/trace" in data:
+                    agent.trace_hearing = data["hearing/trace"].astype(float)
+                if "hearing/pending" in data:
+                    agent._pending_hearing = data["hearing/pending"].astype(float)
             result.hippocampus = memory
             episodic = meta.get("episodic")
             if episodic is not None:
@@ -5371,6 +5440,13 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
     inputs, actions, composed = _composed_again(brain)
     grown = int(sum(changes["slots"])) if "slots" in changes else actions
     template = type(brain).compose(inputs, grown, **{**composed, **changes})
+    gains = None
+    if brain.hearing is not None:
+        gains = {
+            "gains": brain.hearing.gains(), "count": brain.hearing.count,
+            "second": {r["name"]: float(s) for r, s in zip(brain.hearing.routes,
+                                                           brain.hearing.second, strict=True)},
+        }
     graph = brain.brain
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-grow-") as folder:
@@ -5393,9 +5469,12 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
                 (actions, grown),
             )
         _write(data, root / "grown.npz", compressed=False)
-        return type(brain).load(
+        result = type(brain).load(
             root / "grown.npz", backend=graph.backend, device=device, precision=graph.precision
         )
+        if gains is not None:
+            result._take_gains(gains)
+        return result
 
 
 def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:

@@ -198,6 +198,11 @@ class ActorCritic:
         self.memory: Any = None
         self.trace_memory: np.ndarray | None = None
         self._pending_memory: np.ndarray | None = None
+        # the carried routes' learned gains (``Hearing``), stepped by the dopamine on their own
+        # eligibility; the owner sets them
+        self.hearing: Any = None
+        self.trace_hearing: np.ndarray | None = None
+        self._pending_hearing: np.ndarray | None = None
         # one stream's traces on the torch device, when it settles there
         self._trace_device: Any = None
         # (batch, neurons): when set before ``learn``, each synapse's eligibility is weighted by
@@ -380,6 +385,7 @@ class ActorCritic:
         )
         self._pending = None  # eligibility always belongs to this decision, including greedy reads
         self._pending_memory = None
+        self._pending_hearing = None
         if greedy and bias is None and self.learner.slot_count == 1:
             action = self._clear_greedy(free)
             if action is not None:
@@ -402,6 +408,10 @@ class ActorCritic:
             minus = self._nudged_groups(drive, free, target, -beta, temperature)
             self._pending = ("states", plus, minus, self.value(free))
             self._pending_memory = self._memory_contrast(plus, minus)
+            if self.hearing is not None:
+                self._pending_hearing = self.hearing.contrast_rows(
+                    self.learner.brain, plus, minus, beta
+                )
         return np.asarray(action, dtype=np.int64)
 
     def _memory_contrast(self, plus: BrainState, minus: BrainState) -> np.ndarray | None:
@@ -427,6 +437,23 @@ class ActorCritic:
         trace *= decay
         trace += contrast
         self.trace_memory = trace
+
+    def _hearing_eligibility(self, batch: int, decay: float) -> None:
+        """The carried routes' gains' trace after an outcome, as every synapse's."""
+        contrast, trace = self._pending_hearing, self.trace_hearing
+        if contrast is None or len(contrast) != batch:
+            self.trace_hearing = None
+            return
+        if trace is None or trace.shape != contrast.shape:
+            trace = np.zeros_like(contrast)
+        trace *= decay
+        trace += contrast
+        self.trace_hearing = trace
+
+    def _hearing_step(self, delta: np.ndarray) -> None:
+        """The carried routes' gains stepped on their trace by the dopamine."""
+        if self.trace_hearing is not None and self.hearing is not None:
+            self.hearing.step((delta[:, None] * self.trace_hearing).mean(axis=0))
 
     def _memory_proposal(self, delta: np.ndarray) -> Any:
         """The memory's parameters stepped on their trace by the dopamine, as every synapse
@@ -505,7 +532,7 @@ class ActorCritic:
         the synapse and bias steps are its ``factor()`` times the config's, and the synapse
         step applied adds to its ``use``; the critic and the memory keep their steps.
         """
-        arrays = ("trace", "trace_bias", "trace_critic", "trace_memory")
+        arrays = ("trace", "trace_bias", "trace_critic", "trace_memory", "trace_hearing")
         saved = {
             name: None if getattr(self, name) is None else getattr(self, name).copy()
             for name in arrays
@@ -625,6 +652,7 @@ class ActorCritic:
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
         self._memory_eligibility(batch, decay)
+        self._hearing_eligibility(batch, decay)
         # the next state, warm from this one; a finished row starts its next life from rest
         next_state = self._next_state(next_drive, done, warm)
         next_value_raw = self.value(next_state)
@@ -673,6 +701,7 @@ class ActorCritic:
         if proposal is not None:
             self.memory.accept(proposal)
             report["address_reward_step"] = float(proposal[3])
+        self._hearing_step(delta)
         # a finished row forgets its traces
         if done.any():
             self.trace[done] = 0.0
@@ -680,11 +709,14 @@ class ActorCritic:
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
                 self.trace_memory[done] = 0.0
+            if self.trace_hearing is not None:
+                self.trace_hearing[done] = 0.0
         self._free = next_state
         self._free_brain = next_brain
         self._drive = next_drive.copy()
         self._pending = None
         self._pending_memory = None
+        self._pending_hearing = None
         report["delta"] = float(np.abs(delta).mean())
         report["dopamine"] = float(delta.mean())
         report["td_error"] = float(np.abs(td_error[observed]).mean())
@@ -832,6 +864,7 @@ class ActorCritic:
         self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
         self.trace_critic[:, -1] += 1.0
         self._memory_eligibility(batch, decay)
+        self._hearing_eligibility(batch, decay)
         next_state = self._next_state(next_drive, done, warm)
         next_value_raw = self.value(next_state)
         next_value = np.where(
@@ -859,6 +892,7 @@ class ActorCritic:
         if proposal is not None:
             self.memory.accept(proposal)
             report["address_reward_step"] = float(proposal[3])
+        self._hearing_step(delta)
         if done.any():  # a finished stream forgets its traces
             keep = torch.as_tensor(~done, dtype=trace.dtype, device=trace.device)[:, None]
             trace = trace * keep
@@ -866,6 +900,8 @@ class ActorCritic:
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
                 self.trace_memory[done] = 0.0
+            if self.trace_hearing is not None:
+                self.trace_hearing[done] = 0.0
         self._trace_device = (trace, trace_bias)
         self._free = next_state
         self._free_brain = next_brain
@@ -906,7 +942,7 @@ class ActorCritic:
             raise ValueError("done must be a boolean vector")
         present = [
             name
-            for name in ("trace", "trace_bias", "trace_critic", "trace_memory")
+            for name in ("trace", "trace_bias", "trace_critic", "trace_memory", "trace_hearing")
             if getattr(self, name) is not None
         ]
         rows = {len(getattr(self, name)) for name in present}
@@ -933,8 +969,10 @@ class ActorCritic:
         self._drive = None
         self._pending = None
         self._pending_memory = None
+        self._pending_hearing = None
         self.trace = self.trace_bias = self.trace_critic = None
         self.trace_memory = None
+        self.trace_hearing = None
         self._trace_device = None
         self.salience = None
 

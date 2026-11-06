@@ -126,6 +126,7 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor`, `arousal_fast`, `arousal_slow` | `0.2`, `0.9`, `2.0`, `0.1`, `0.05`, `0.005` | retune | [continuous](start.md#routine-and-repair-live) |
 | `arousal_heat`, `arousal_youth`, `arousal_value_surprise`, `arousal_need` | `2.0`, `100`, `1.0`, `0.0` | retune | [continuous](start.md#routine-and-repair-live) |
 | `working_memory_*` | amplitude `3.0`, decay `0.0` | retune | [memory](memory.md#working-trace) |
+| `carried_gain` | `0.0` (off) | construction | [memory](memory.md#how-strongly-a-carried-region-is-heard-opt-in) |
 | `efference_*` | amplitude `0.0` (absent), decay `0.2` | a positive amplitude at construction adds it | [memory](memory.md#efference-copy) |
 | `history_*` | decays `()` (absent), amplitude `3.0` | decays at construction | [memory](memory.md#heard-history) |
 | `episodic`, `memory_rate`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.5` with `memory_choice`), `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |
@@ -401,6 +402,9 @@ For modules of several hundred neurons and more
   step scales with the share of rows it taught
   ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)); otherwise one wrong
   row takes a whole lesson's step and a wide brain's answers swing.
+- **The trace's amplitude.** Beside a recall memory at `teaching="deep"` the founder's 3.0 falls
+  with width, and `working_memory_amplitude=0.3` or `carried_gain=0.01` holds at the composed steps
+  ([the amplitude beside a read](memory.md#the-amplitude-beside-a-read)).
 - **Fan-in rates.** A neuron's drive sums over its fan-in, so on the composed steps a wide
   module's motor neurons saturate and associative recall collapses. Scaling each synapse's step
   to its neuron's fan-in in the same brain composed narrow keeps recall at 1.00 at every width,

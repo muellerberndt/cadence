@@ -20,6 +20,7 @@ works, its settings, its readings and its limits.
 | "How long ago?", "was A told before B?" | `recall_when=True, recall_position_rate=0.0, recall_temperature=0.1` | [when a read item happened](#when-a-read-item-happened-opt-in) |
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
 | What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
+| How strongly each carried region is heard, per task | `carried_gain=0.01` | [carried gain](#how-strongly-a-carried-region-is-heard-opt-in) |
 | A cue carried across a short delay, with no recall memory | nothing: the working trace is on | [working trace](#working-trace) |
 | One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
 | Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
@@ -1105,7 +1106,7 @@ assert not brain.working_memory.trace.any()
 
 | Setting | Founder | Changed by | Raise it when | Lower it when |
 | --- | --- | --- | --- | --- |
-| `working_memory_amplitude` | 3.0 | `retune` | the copy should weigh more in the settle and in learning | the carried context should fade (0 silences it) |
+| `working_memory_amplitude` | 3.0 | `retune` | the copy should weigh more in the settle and in learning | the carried context should fade (0 silences it); beside a recall memory at `teaching="deep"`, 0.3 ([the amplitude beside a read](#the-amplitude-beside-a-read)) |
 | `working_memory_decay` | 0.0, in [0, 1) | `retune` | the context changes slowly and should be averaged over moments | 0 carries the last interpretation only |
 | `scales["trace"]` | 1.2 | construction (`compose` argument) | the past must matter from the first moment, before learning | the brain repeats itself and ignores what it sees |
 | `modules` | `(64,)` | construction | more items or distractors: `modules=(128,)` | a narrow last module such as `(48, 24)` carries little |
@@ -1130,6 +1131,32 @@ What it serves, from [`tests/test_context_defaults.py`](../tests/test_context_de
 - **One cue held and replaced by a later one over a delay.** The working trace alone does not
   serve it: a loop strong enough to hold a cue resists the next write
   ([recall benchmark](../benchmarks/recall/README.md)).
+
+### The amplitude beside a read
+
+The founder's 3.0 is the amplitude at which the trace alone carries a cue across a delay. Beside
+a recall memory at `teaching="deep"` the read carries the cue, and at 3.0 the taught brain answers
+through the trace: on the [grammar chamber](../benchmarks/grammar/README.md#state-across-moments),
+emptying the trace before every act takes clauses from 0.96 to 0.38. It also falls with width. A
+tenth of the amplitude removes both, on the synapses already there. Twenty-four lives on
+development founders, widths three lives each at the composed steps:
+
+| Width, amplitude | Clauses | Held-out | Roles | Brackets | Paths | Three hops |
+| --- | --- | --- | --- | --- | --- | --- |
+| 64, 3.0 | .95 | .90 | .87 | .72 | .88 | .18 |
+| 64, 0.3 | .98 | .95 | .95 | .87 | .96 | .46 |
+| 128, 3.0 | .92 | .88 | .82 | .42 | .54 | .06 |
+| 128, 0.3 | .98 | .96 | .98 | .89 | .97 | .16 |
+| 256, 3.0 | .62 | .58 | .41 | .15 | .25 | .00 |
+| 256, 0.3 | .97 | .96 | .95 | .95 | .94 | .31 |
+
+The optimum is broad: 0.1 reads .99 .95 .93 .86 .96 .44 and 1.0 reads .95 .89 .93 .75 .96 .33 at
+64. The contextual bandit passes on 30 lives of 30 against 26, and the bandit on 26 against 18. It
+costs "before" (0.82 to 0.875 on six founders against 0.84 to 0.93, bar 0.90), copying repeated
+tokens (about 0.91 against 0.95) and n-back on one founder of six (0.886 against 0.974). With no
+recall memory the trace has to hold the cue itself: a delayed response at 0.75 passes on 0 lives of
+3, so the founder keeps 3.0. A
+[learned gain](#how-strongly-a-carried-region-is-heard-opt-in) finds the strength per task instead.
 
 ## Efference copy
 
@@ -1182,6 +1209,62 @@ assert trace.shape == (1, 6) and trace[0, 3] > 0          # the slow block holds
 magnitude 1.2 a constant; `history_amplitude` (3.0) can be retuned. On a coded vector brain the
 blocks hold the code. Three decays at 256 inputs and four actions add 768 neurons and 49,152
 synapses to a founder of 20,992 synapses.
+
+## How strongly a carried region is heard (opt-in)
+
+The trace, the copy and the history each drive the settle at a fixed amplitude, and no one
+amplitude serves every task: a delayed response needs the trace loud, and a
+grammar lesson needs it quiet. `carried_gain=rate` gives every carried route one learned gain,
+which multiplies the route's stimulus. A route is a held region and its synapses into the
+association region: `trace`, `efference`, `history_0`, `history_1`, ... one per block. Every gain
+starts at 1, so a newborn settles as one without the option.
+
+```python
+heard = Brain.compose(inputs=3, actions=2, seed=0, carried_gain=0.01, history_decays=(0.5, 0.9))
+assert heard.carried_gains == {"trace": 1.0, "history_0": 1.0, "history_1": 1.0}
+heard.step(np.array([[1.0, 0.0, 0.0]]), teacher=[1])
+```
+
+A gain learns from the settle that teaches the synapses. Its derivative of the energy is local to
+the route:
+
+```text
+c = sum_j f'(v_j) a t_j sum_i W_ij m_i
+```
+
+with `t_j` what the region holds, `v_j` its neuron's clamped potential at gain times `a t_j`, `a`
+the route's amplitude, `W_ij` the synapse's efficacy and `m_i` the association's movement between
+the nudged phases over their span. A lesson steps each gain on the mean of `c` over its taught
+rows. A sampled act keeps `c` per stream in an eligibility of its own, which the dopamine steps as
+it steps every synapse's. The step is `carried_gain` over the root of the gain's own running
+second moment, the normalized teaching point's rule for one number, and a gain stays within
+`[0, 8]`.
+
+`carried_gain` (`0.0`, off) is a construction setting. It costs one parameter per route, which
+`parameters()` counts. A checkpoint keeps the gains, their second moments and the actor's
+eligibility. `grow` carries the gains by route, and a route it adds starts at 1; `graft` keeps this
+brain's. `brain.carried_gains` reads them by name, and `brain.hearing` is the learner (`None`
+without the option).
+
+Under the deep teaching point with the recall memory the gain on the trace settles by task
+(development founders): delayed response 5.1 to 7.9, the two-cue chamber about 0.95, a bandit 0.55
+to 1.14, "before" about 0.5, induction 0.52 to 0.66, copying 0.38 to 0.47, a contextual bandit 0.39
+to 0.49, look back 0.22 to 0.3, how long ago 0.21 to 0.27, two hops 0.21, n-back 0.17 to 0.21,
+periodic continuation 0.01 to 0.18 and the grammar chamber 0.09 to 0.17. So from the founder's 3.0
+the gain finds [the amplitude beside a read](#the-amplitude-beside-a-read) on the grammar chamber
+by itself.
+
+From the founder's 3.0 it reads the grammar chamber at clauses 1.00, brackets .85, paths .98 and three
+hops .42 on twelve lives, against .95, .72, .88 and .18 with the amplitude fixed at 3.0, and it holds at
+width: clauses 1.00, paths .79 and three hops .32 at 128, 1.00, .97 and .47 at 256, three lives each,
+where the fixed amplitude reads .92, .54 and .06, and .62, .25 and .00. The
+[chamber's README](../benchmarks/grammar/README.md#state-across-moments) holds the rows.
+
+Beside a trace already at 0.3 it reads the grammar chamber as the fixed amplitude does (twenty-four
+lives: clauses .98, brackets .83, paths .95, three hops .44 against .98, .87, .96, .46), passes
+n-back on all six founders (0.955 at the lowest against 0.886), induction at 0.924 or above against
+0.906, and holds paths over a second pass of the same lessons (0.96 against 0.92). The nursery's
+teacher steps at 1,000 pass on 18 lives of 30 against 25.
 
 ## Associative store (the hippocampus)
 

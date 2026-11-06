@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add `carried_gain` (opt-in, construction, founder off): one learned gain per carried route, the
+  working trace, the efference copy and every block of the heard history, starting at the working
+  value and multiplying the route's stimulus. A lesson steps it on the settle's contrast at the taught
+  rows and a sampled act's eligibility on the dopamine, over the gain's own second moment, within
+  `[0, 8]`. One parameter per route. `brain.carried_gains` reads them by name. Saved with the brain,
+  carried by `grow` by route and by `graft`. A newborn settles as one without the option, and brains
+  without it are unchanged. See [carried gain](docs/memory.md#how-strongly-a-carried-region-is-heard-opt-in).
 - Add `recall_grid` (opt-in, construction, founder none; needs `recall_position`): past the exact
   table every head's position term also reads each slot's age modulo each of these coprime numbers,
   one term per residue, so a few dozen terms separate the ages up to the moduli's product, where the

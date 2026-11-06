@@ -37,7 +37,7 @@ from .brain import BrainState
 from .connectome import Connectome
 from .learning import LearnedState
 
-__all__ = ["Trace", "FastSynapses", "History", "Recall", "columns"]
+__all__ = ["Hearing", "Trace", "FastSynapses", "History", "Recall", "columns"]
 
 
 # Large products and copies may share at most 32 workers in one pool per process.
@@ -217,6 +217,8 @@ class Trace:
     source: str = "hidden"  # the range traced
     # the range the trace enters as a stimulus, one neuron per source neuron
     target: str = "context"
+    # the learned multiplier on the amplitude (``Hearing``), 1 the working value
+    hearing: float = 1.0
     trace: np.ndarray = field(init=False)
     last: np.ndarray = field(init=False)
     cold: np.ndarray = field(init=False)
@@ -253,7 +255,7 @@ class Trace:
         """Read the trace into a drive copy; another batch size reads zero context."""
         out = np.array(drive, dtype=float)
         out[:, self._glow_columns] = (
-            self.amplitude * self.trace if len(self.trace) == len(out) else 0.0
+            self.amplitude * self.hearing * self.trace if len(self.trace) == len(out) else 0.0
         )
         return out
 
@@ -378,6 +380,8 @@ class History:
     amplitude: float = 3.0
     source: str = "sensory"  # the range heard
     target: str = "history"  # one block of source width per decay
+    # the learned multiplier per block (``Hearing``); None holds the working amplitude
+    hearing: np.ndarray | None = None
     trace: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -421,9 +425,10 @@ class History:
     def stimulate(self, drive: np.ndarray) -> np.ndarray:
         """Read the history into a drive copy; another batch size reads silence."""
         out = np.array(drive, dtype=float)
-        out[:, self._glow_columns] = (
-            self.amplitude * self.trace if len(self.trace) == len(out) else 0.0
-        )
+        amplitude: Any = self.amplitude
+        if self.hearing is not None:
+            amplitude = amplitude * np.repeat(self.hearing, self.width)
+        out[:, self._glow_columns] = amplitude * self.trace if len(self.trace) == len(out) else 0.0
         return out
 
     def hear(self, observations: np.ndarray) -> None:
@@ -528,6 +533,131 @@ def _with_head(maps: list[_Maps], head: int, new: _Maps) -> list[_Maps]:
     """``maps`` with head ``head``'s replaced by ``new``, a new list: an imagined branch may hold
     the old one."""
     return [new if h == head else kept for h, kept in enumerate(maps)]
+
+
+class Hearing:
+    """How strongly the association hears each carried region: one learned gain per route,
+    starting at the working value and taught by the settle's contrast.
+
+    A route is a held region and its one-way synapses into the association: the working trace,
+    the efference copy, every block of the heard history. Its
+    stimulus is the gain times what it holds, so the energy's derivative for the gain is local
+    to the route: ``c = sum_j f'(v_j) a t_j sum_i W_ij m_i``, ``v_j`` the region's held
+    potential, ``a`` the route's amplitude, ``t_j`` what it holds and ``m_i`` the association's
+    movement between the nudged phases over their span. A lesson steps each gain on the mean of
+    ``c`` over its taught rows; a sampled act keeps ``c`` per row in an eligibility of its own,
+    stepped by the dopamine as every synapse is (``ActorCritic``). The step is normalized by the
+    gain's own running second moment, as a synapse's is at the normalized teaching point, at
+    ``rate``. A gain stays within ``[0, BOUND]``.
+    """
+
+    RHO = 0.99
+    FLOOR = 1e-9
+    BOUND = 8.0
+
+    def __init__(self, rate: float, connectome: Connectome, association: np.ndarray,
+                 model: Any) -> None:
+        self.rate = float(rate)
+        self.connectome = connectome
+        self.association = np.asarray(association, dtype=np.int64)
+        self.model = model
+        self.routes: list[dict[str, Any]] = []
+        self.second = np.zeros(0)
+        self.count = 0
+
+    def add(self, name: str, memory: Any, slot: int | None, start: int, stop: int,
+            neurons: np.ndarray) -> None:
+        """A route: ``memory.trace[:, start:stop]`` held on ``neurons`` at the memory's
+        amplitude; its gain is ``memory.hearing``, at ``slot`` when the memory holds one per
+        block."""
+        pre, post = np.asarray(self.connectome.pre), np.asarray(self.connectome.post)
+        local_source = -np.ones(self.connectome.n, dtype=np.int64)
+        local_source[neurons] = np.arange(len(neurons))
+        local_cortex = -np.ones(self.connectome.n, dtype=np.int64)
+        local_cortex[self.association] = np.arange(len(self.association))
+        synapses = np.flatnonzero((local_source[pre] >= 0) & (local_cortex[post] >= 0))
+        self.routes.append({
+            "name": name, "memory": memory, "slot": slot, "start": start, "stop": stop,
+            "width": len(neurons), "synapses": synapses,
+            "rows": local_source[pre[synapses]], "cols": local_cortex[post[synapses]],
+        })
+        self.second = np.zeros(len(self.routes))
+
+    def gain(self, route: dict[str, Any]) -> float:
+        memory, slot = route["memory"], route["slot"]
+        return float(memory.hearing if slot is None else memory.hearing[slot])
+
+    def gains(self) -> dict[str, float]:
+        """Every route's gain, by name."""
+        return {route["name"]: self.gain(route) for route in self.routes}
+
+    def set(self, route: dict[str, Any], value: float) -> None:
+        memory, slot = route["memory"], route["slot"]
+        if slot is None:
+            memory.hearing = value
+        else:
+            memory.hearing[slot] = value
+
+    def _contrast(
+        self, graph: Any, movement: np.ndarray, rows: np.ndarray | None, batch: int
+    ) -> np.ndarray:
+        """``c`` per row and route: ``movement`` is the association's over the phases' span, at
+        ``rows`` of ``batch`` streams; a memory of another batch reads silence."""
+        out = np.zeros((len(movement), len(self.routes)))
+        for k, route in enumerate(self.routes):
+            memory = route["memory"]
+            if len(memory.trace) != batch:
+                continue
+            trace = memory.trace if rows is None else memory.trace[rows]
+            held = trace[:, route["start"]:route["stop"]]
+            amplitude = float(memory.amplitude)
+            v = amplitude * self.gain(route) * held
+            w = np.zeros((route["width"], len(self.association)))
+            w[route["rows"], route["cols"]] = (
+                graph._gain_pre[route["synapses"]] * graph.efficacy[route["synapses"]]
+            )
+            out[:, k] = np.einsum(
+                "bj,bj->b", self.model.slope_at(v) * amplitude * held, movement @ w.T
+            )
+        return out
+
+    def step(self, contrast: np.ndarray) -> None:
+        """Every route's gain on its own contrast, over the root of its own second moment."""
+        self.count += 1
+        self.second = self.RHO * self.second + (1.0 - self.RHO) * contrast**2
+        correction = 1.0 - self.RHO**self.count
+        moved = self.rate * contrast / (np.sqrt(self.second / correction) + self.FLOOR)
+        for route, change in zip(self.routes, moved, strict=True):
+            self.set(route, float(np.clip(self.gain(route) + change, 0.0, self.BOUND)))
+
+    def learn(self, graph: Any, learned: Any, beta: float) -> None:
+        """A lesson's step, at its taught rows."""
+        if (
+            not self.routes
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return
+        taught = learned.taught
+        rows = None if taught is None else np.flatnonzero(np.asarray(taught, dtype=bool))
+        if rows is not None and not len(rows):
+            return
+        plus = np.atleast_2d(learned.nudged.activation)
+        one_sided = learned.opposite is None
+        minus = np.atleast_2d(learned.free.activation if one_sided else learned.opposite.activation)
+        span = beta if one_sided else 2.0 * beta
+        movement = (plus - minus)[:, self.association] / span
+        batch = len(movement) if rows is None else len(np.asarray(taught))
+        self.step(self._contrast(graph, movement, rows, batch).mean(axis=0))
+
+    def contrast_rows(self, graph: Any, plus: BrainState, minus: BrainState,
+                      beta: float) -> np.ndarray:
+        """A sampled act's ``c`` per row and route, for its eligibility."""
+        movement = (
+            np.atleast_2d(plus.activation) - np.atleast_2d(minus.activation)
+        )[:, self.association] / (2.0 * beta)
+        return self._contrast(graph, movement, None, len(movement))
 
 
 @dataclass
