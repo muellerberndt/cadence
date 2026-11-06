@@ -80,6 +80,15 @@ _FUSED = (
 )  # the compiled dense kernel, identical arithmetic; CADENCE_FUSED=0 forces the NumPy loop
 
 
+def _rows_finite(x: np.ndarray) -> bool:
+    """Whether a settle's ``(batch, neurons)`` float64 array is finite."""
+    if _FUSED:
+        from .fused import rows_finite
+
+        return bool(rows_finite(x))
+    return bool(np.isfinite(x).all())
+
+
 def available_backends() -> dict[str, str]:
     """Backends importable here, with the device each would use."""
     out = {"cpu": "numpy float64"}
@@ -1193,10 +1202,10 @@ class Brain:
         batch, n = drive.shape
         if n != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not np.isfinite(drive).all():
+        if n == 0 or not _rows_finite(drive):
             raise ValueError("drive must be finite and the brain must contain neurons")
-        keep = np.ones(n) if mask is None else np.asarray(mask, float)
         if mask is not None:
+            keep = np.asarray(mask, float)
             if keep.shape not in ((n,), (1, n), (batch, n)):
                 raise ValueError("mask must have one entry per neuron, optionally per batch row")
             if not np.isfinite(keep).all() or ((keep < 0) | (keep > 1)).any():
@@ -1239,14 +1248,18 @@ class Brain:
             a = np.array(state.adaptation, dtype=np.float64, copy=True, ndmin=2)
         if v is not None and (v.shape != (batch, n) or a.shape != (batch, n)):
             raise ValueError("state batch does not match the drive batch")
-        if v is not None and (not np.isfinite(v).all() or not np.isfinite(a).all()):
+        if v is not None and not (
+            (_rows_finite(v) and _rows_finite(a)) if self.backend == "cpu"
+            else (np.isfinite(v).all() and np.isfinite(a).all())
+        ):
             raise ValueError("warm potentials and adaptation must be finite")
         capture = _capture()
         handle = products = None
         if self.backend in ("torch", "mlx"):
             kernel = self._torch if self.backend == "torch" else self._mlx
             v, a, s, traj, taken, activity_change, handle = kernel.run(
-                v, a, drive, keep, steps, trajectory, nudge, tolerance, state, capture
+                v, a, drive, np.ones(n) if mask is None else keep, steps, trajectory, nudge,
+                tolerance, state, capture
             )
         elif (
             not trajectory and capture is None and _FUSED
@@ -1273,7 +1286,8 @@ class Brain:
             traj = None
         else:
             v, a, s, traj, taken, activity_change = self._run_numpy(
-                v, a, drive, keep, steps, trajectory, nudge, tolerance, capture
+                v, a, drive, np.ones(n) if mask is None else keep, steps, trajectory, nudge,
+                tolerance, capture
             )
         result = BrainState(
             v=v,
@@ -1287,7 +1301,7 @@ class Brain:
         )
         _keep_products(result, products)
         if capture is not None:
-            capture.finish(self, drive, keep, nudge, result)
+            capture.finish(self, drive, np.ones(n) if mask is None else keep, nudge, result)
         return result
 
     def contrast_on_device(
@@ -1341,8 +1355,8 @@ class Brain:
             d = d[None, :]
         if d.ndim != 2 or d.shape[1] != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        keep = np.ones(self.connectome.n) if mask is None else np.asarray(mask, dtype=float)
-        if mask is not None and keep.shape not in (
+        keep = None if mask is None else np.asarray(mask, dtype=float)
+        if keep is not None and keep.shape not in (
             (self.connectome.n,), (1, self.connectome.n), d.shape
         ):
             raise ValueError("mask must have one entry per neuron, optionally per batch row")
@@ -1358,7 +1372,9 @@ class Brain:
         ):
             if tuple(handle["v"].shape) != d.shape or tuple(handle["a"].shape) != d.shape:
                 raise ValueError("state batch does not match the drive batch")
-            return np.asarray(kernel.residual(d, keep, nudge, handle))
+            return np.asarray(kernel.residual(
+                d, np.ones(self.connectome.n) if keep is None else keep, nudge, handle
+            ))
         v = np.atleast_2d(state.v)
         a = np.atleast_2d(state.adaptation)
         if v.shape != d.shape or a.shape != d.shape:
@@ -1371,12 +1387,14 @@ class Brain:
 
             flat, apical = compiled
             error, products = fused_residual(
-                v, a, d, self.bias, self.layout, flat, None if mask is None else keep,
+                v, a, d, self.bias, self.layout, flat, keep,
                 self.neuron_model, nudge, apical=apical,
                 products=state.__dict__.get("_products"),
             )
             _keep_products(state, products)  # every one current, for a settle from it
             return error
+        if keep is None:
+            keep = np.ones(self.connectome.n)
         s = self.neuron_model.activation(v) * keep
         adapt = self.neuron_model.adaptation
         if self.apical is None:

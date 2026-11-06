@@ -151,6 +151,30 @@ if njit is not None:
         return np.uint64(x)
 
     @_compiled
+    def rows_finite(x: np.ndarray) -> bool:
+        """Whether every entry of the ``(rows, columns)`` array ``x`` is finite: a finite number
+        less itself is zero, anything else NaN. A loop that vectorizes, without the array of
+        flags ``np.isfinite(x).all()`` makes."""
+        finite = True
+        width = _index(x.shape[1])
+        for b in range(x.shape[0]):
+            for i in range(width):
+                d = x[b, i]
+                finite = finite & (d - d == 0.0)
+        return finite
+
+    @_compiled
+    def _standing(drive: np.ndarray, bias: np.ndarray) -> np.ndarray:
+        """``drive + bias``, a new C-ordered array."""
+        batch, n = drive.shape
+        out = np.empty((batch, n))
+        width = _index(n)
+        for b in range(batch):
+            for i in range(width):
+                out[b, i] = drive[b, i] + bias[i]
+        return out
+
+    @_compiled
     def _activation(
         v: np.ndarray,
         slope: float,
@@ -1534,7 +1558,7 @@ def fused_settle(
     """
     assert njit is not None
     batch, n = v.shape
-    standing = np.ascontiguousarray(drive + bias)
+    standing = _standing(np.ascontiguousarray(drive), bias)
     if keep is None:
         masked = False
         keep = _NO_MASK
@@ -1670,7 +1694,7 @@ def fused_residual(
         v,
         np.ascontiguousarray(a, dtype=float),
         s,
-        np.ascontiguousarray(drive + bias),
+        _standing(np.ascontiguousarray(drive), bias),
         flat,
         pairs,
         flat_apical,
