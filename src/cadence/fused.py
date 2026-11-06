@@ -18,6 +18,12 @@ row's update reads only that row, so with more than one row the rows run on Numb
 serial build, and the batch-wide stopping rule is read after the sweep. A graph with an
 apical compartment sums its basal and its apical blocks apart and normalizes the apical
 input per row and pool, in the order and summation the NumPy loop uses.
+
+The helpers of a row's sweep are inlined into the kernels: a compiled call pays atomic reference
+counts per array argument, and at this rate a call per row costs as much as the row's arithmetic.
+Index arithmetic is unsigned, which lets the loops vectorize (``_index``). A free solve runs its
+checks and its chunks in one compiled call (``fused_solve``), and a state keeps what it published
+(``_keep_published``), so a launch from it makes no activation it already holds.
 """
 
 from __future__ import annotations
@@ -341,7 +347,8 @@ if njit is not None:
             row = np.empty(n)
             _activation(np.zeros(n), slope, threshold, rest, leak, row)
             for b in range(batch):
-                s[b] = row
+                for i in range(width):
+                    s[b, i] = row[i]
         else:
             for b in range(batch):
                 _activation(v[b], slope, threshold, rest, leak, s[b])
@@ -362,7 +369,14 @@ if njit is not None:
             a, b = pair_pre[k], pair_post[k]
             size[q] = -float((starts[a + 1] - starts[a]) * (starts[b + 1] - starts[b]))
             feeds[a] = True
-        return np.argsort(size, kind="mergesort"), feeds
+        order = np.arange(size.shape[0])
+        for q in range(1, size.shape[0]):  # stable; a sort of NumPy's costs a second to compile
+            task, at = order[q], q
+            while at > 0 and size[order[at - 1]] > size[task]:
+                order[at] = order[at - 1]
+                at -= 1
+            order[at] = task
+        return order, feeds
 
     @_inlined
     def _due(
@@ -1434,11 +1448,14 @@ if njit is not None:
         on ``v``, ``a`` and ``s``. ``out`` ends on each row's error. Returns the sweeps, the
         checks, the last chunk's sweeps and activity change, and what the state keeps."""
         batch = v.shape[0]
+        # variables and not the constants: to the compiler a constant argument is a type of its
+        # own, and the kernels would compile again for the calls a launch makes
+        off, on = batch < 0, batch >= 0
         kept = _check(
             v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
-            pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False, strength,
-            False, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
-            False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, False, out,
+            pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
+            off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
+            off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off, out,
             given, has_given, in_place,
         )
         used, checks, taken = 0, 1, 0
@@ -1455,18 +1472,18 @@ if njit is not None:
                 break  # a divergent state is no warm start for another chunk
             taken, change, kept = _sweeps(
                 v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
-                pair_post, offset, freezable, keep, False, dt, slope, threshold, rest, leak,
-                False, strength, tau, False, target, nmask, gid, ngroups, beta, softmax_t,
-                weight, anchor, anchor_gain, False, pool_of, pool_index, pool_starts, pool_run,
-                1.0, 1.0, 0.0, held, False, min(chunk, budget - used), 0.0, False, kept, True,
+                pair_post, offset, freezable, keep, off, dt, slope, threshold, rest, leak,
+                off, strength, tau, off, target, nmask, gid, ngroups, beta, softmax_t,
+                weight, anchor, anchor_gain, off, pool_of, pool_index, pool_starts, pool_run,
+                1.0, 1.0, 0.0, held, off, min(chunk, budget - used), 0.0, off, kept, on,
             )
             used += taken
             kept = _check(
                 v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
-                pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False, strength,
-                False, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
-                False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, False,
-                out, kept, True, True,
+                pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
+                off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
+                off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off,
+                out, kept, on, on,
             )
             checks += 1
         return used, checks, taken, change, kept
