@@ -118,3 +118,60 @@ def test_a_grown_head_and_a_graft_keep_it():
         brain.step(x, teacher=rng.integers(0, 4, size=2))
     assert brain.grow(recall_heads=2).recall.address_contrast
     assert brain.graft(brain_of(), ["association", "motor"]).recall.address_contrast
+
+
+def _lessons(brain: cd.Brain, count: int = 6) -> list[dict]:
+    rng = np.random.default_rng(7)
+    streams = X[0].shape[0]
+    return [brain.lesson(x, rng.integers(0, 4, size=streams)) for x in X[:count]]
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{"recall_heads": 2}, {"recall_heads": 2, "recall_compete": False}, {"recall_null": 0.0},
+     {"recall_window": 2}, {"recall_action": True}, {"recall_boundary": True},
+     {"recall_anchor": True, "recall_relative": True, "recall_slope": 0.1}],
+    ids=["competing", "alone", "null", "window", "action", "boundary", "positions"],
+)
+def test_the_contrast_steps_beside_every_option_of_the_read(options):
+    brain = brain_of(**ON, **options)
+    for x in X[:3]:
+        brain.act(x, greedy=True)
+    reports = _lessons(brain)
+    assert any(r["address_rows"] for r in reports)
+    assert all(r["address_refused"] == 0.0 for r in reports)
+    for h in range(brain.recall.heads):
+        assert all(np.isfinite(a).all() for a in brain.recall.head_map(h))
+
+
+def test_a_stream_that_began_since_holds_fewer_slots_and_the_contrast_stays_finite():
+    brain = brain_of(**ON)
+    for x in X[:4]:
+        brain.act(x, greedy=True)
+    brain.recall.reset(2, rows=np.array([1]))  # the second stream holds nothing now
+    brain.act(X[4], greedy=True)
+    assert not brain.recall.held.all()
+    report = brain.lesson(X[5], np.array([1, 2]))
+    assert report["address_refused"] == 0.0
+    assert all(np.isfinite(a).all() for a in brain.recall.head_map(0))
+
+
+def test_the_first_lesson_steps_the_position_maps_as_without_it():
+    """The contrast is the address map's: the position maps read the same target and prior until
+    the address differs."""
+    plain, brain = brain_of(), brain_of(**ON)
+    for b in (plain, brain):
+        for x in X[:3]:
+            b.act(x, greedy=True)
+        b.lesson(X[3], np.array([1, 2]))
+    for a, b in zip(plain.recall.position_map(0), brain.recall.position_map(0), strict=True):
+        np.testing.assert_array_equal(a, b)
+    assert not np.array_equal(plain.recall.head_map(0)[0], brain.recall.head_map(0)[0])
+
+
+def test_the_report_gives_the_contrast_as_the_error():
+    brain = brain_of(**ON, recall_recency=0.0, recall_position=0, recall_temperature=0.001)
+    recall = stored(brain, np.eye(6)[[1]])
+    found = recall._row_steps(recall.last, np.arange(1), np.eye(6)[[1]], None, 0, None)
+    report = recall._step(recall.last, np.arange(1), np.eye(6)[[1]], None, found=found)
+    assert report["address_rows"] == 1.0 and report["address_error"] < 1e-9
