@@ -174,8 +174,8 @@ Lessons on a new type move the same synapses the earlier types' answers rest on,
 types one after another can erase the earlier ones. `learning_rehearsal=r` (opt-in, founder 0)
 replays earlier lessons alongside the new ones.
 
-- **The reservoir.** A uniform sample of every lesson row (`learning_rehearsal_capacity`, 512
-  rows), each row with its episode: the moments its stream heard since the episode began (at a
+- **The reservoir.** A uniform sample of every lesson row (512 rows, a constant), each row with
+  its episode: the moments its stream heard since the episode began (at a
   `reset`, or where a `done` ended the stream's attempt), at most as many as the recall memory
   keeps slots (its `capacity`, 64 at the founder; 64 without a recall memory), then the moment it
   was taught on. At 512, the reservoir holds up to 512 episodes of up to 64 moments each.
@@ -195,8 +195,7 @@ replays earlier lessons alongside the new ones.
 The reservoir (`Brain.rehearsal_moments` and `rehearsal_labels`, with `rehearsal_seen` and
 `rehearsal_draws`) and the streams' episodes are saved with the brain, the reservoir also while
 rehearsal is retuned off. A rate retuned above zero keeps the streams' moments from then on, so an
-episode in progress is replayed from the moments heard after the retune. A lowered
-`learning_rehearsal_capacity` cuts the reservoir at once. A grown brain starts the reservoir
+episode in progress is replayed from the moments heard after the retune. A grown brain starts the reservoir
 afresh, a grafted one keeps this brain's.
 
 ```python

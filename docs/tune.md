@@ -98,7 +98,7 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False`, `False` | retune | [learning](settling.md#7-every-knob) |
-| `learning_rehearsal`, `learning_rehearsal_capacity` | `0.0` (off), `512` lesson rows, each with its episode | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
+| `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
@@ -114,7 +114,8 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `backend`, `device` | `"cpu"`, `None` | construction | [backends](backends.md) |
 
 Constants of the composed brain, not settings: the nudge `beta` 0.1, the learner's `momentum`
-0.9, the dopamine cap 1.0, reward eligibility phases of 12 sweeps, the arousal `need_scale` 0.1,
+0.9, the rehearsal's reservoir of 512 lesson rows, the dopamine cap 1.0, reward eligibility phases
+of 12 sweeps, the arousal `need_scale` 0.1,
 the episodic memory's decay 0.9, replay of 8 decisions, demonstration strength 1.0 and 24
 winners per key, and the `history` and `recall` projection scales 1.2. Only an expert
 configuration passed whole moves them.

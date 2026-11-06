@@ -2954,8 +2954,8 @@ class Brain:
 
         Wiring, initialization and enabling/disabling components are construction
         choices. A ``learning_rehearsal`` retuned above zero keeps the streams' moments from then
-        on, so an episode in progress is replayed from the moments heard after the retune; a
-        lowered ``learning_rehearsal_capacity`` cuts the rehearsal's reservoir at once.
+        on, so an episode in progress is replayed from the moments heard after the retune; an
+        expert configuration of a lower ``rehearsal_capacity`` cuts the reservoir at once.
         ``retune`` resets nothing; ``brain.arousal.reset()`` resets the arousal level
         and reward references and keeps its age and work counters. Returns this same brain.
         """

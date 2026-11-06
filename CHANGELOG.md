@@ -54,6 +54,8 @@ does instead.
   checkpoint with a sparse separation loads and continues, and `grow` refuses a brain saved with
   a separation of another size. `Brain(connectome, memory_choice=True)` separates its keys as a
   composed brain does.
+- `learning_rehearsal_capacity`. The rehearsal's reservoir keeps 512 lesson rows, a constant no
+  reading moved. `learning=LearnerConfig(rehearsal_capacity=...)` moves it as an expert.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.

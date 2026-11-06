@@ -72,6 +72,10 @@ RETIRED: Mapping[str, tuple[str, Any, str]] = MappingProxyType({
                           "average of its contrast at 0.9, a constant; "
                           "learning=LearnerConfig(momentum=...) moves it as an expert; cadence "
                           "0.92.1 takes it"),
+    "learning_rehearsal_capacity": ("0.95.0", 512, "the rehearsal's reservoir keeps 512 lesson "
+                                    "rows, a constant; "
+                                    "learning=LearnerConfig(rehearsal_capacity=...) moves it as "
+                                    "an expert; cadence 0.94.0 takes it"),
     "actor_dopamine_cap": ("0.93.0", 1.0, "a composed brain's dopamine saturates at 1.0, a "
                            "constant; reward=ActorCriticConfig(dopamine_cap=...) moves it as "
                            "an expert; cadence 0.92.1 takes it"),
@@ -103,15 +107,15 @@ RETIRED: Mapping[str, tuple[str, Any, str]] = MappingProxyType({
                      "a constant (scales={'recall': 1.2} alone is taken); cadence 0.92.1 "
                      "takes scales={'recall': ...}"),
 })
-# Fields of the three configurations that are constants of the composed brain since 0.93.0,
-# the founders every reading by name used: the public names are retired (``RETIRED``), in a
+# Fields of the three configurations that are constants of the composed brain, the founders
+# every reading by name used: the public names are retired (``RETIRED``), in a
 # mapping as well, and ``describe`` leaves a constant out at its value. A configuration passed
 # whole (``learning=``, ``reward=``, ``arousal=``) is the expert route and keeps its fields, as
 # the chambers' frozen recipes compose (``LearnerConfig(**recipe)`` at momentum 0): ``describe``
 # then names a moved constant by its old name, which ``compose`` and ``retune`` do not take, and
 # a checkpoint carries and loads the expert's value as it does every field.
 CONSTANTS: Mapping[str, Mapping[str, Any]] = MappingProxyType({
-    "learning": MappingProxyType({"beta": 0.1, "momentum": 0.9}),
+    "learning": MappingProxyType({"beta": 0.1, "momentum": 0.9, "rehearsal_capacity": 512}),
     "actor": MappingProxyType({"dopamine_cap": 1.0, "eligibility_steps": 12}),
     "arousal": MappingProxyType({"need_scale": 0.1}),
 })
