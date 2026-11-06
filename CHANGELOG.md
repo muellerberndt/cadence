@@ -59,12 +59,6 @@
   longer grows with `recall_capacity`; a caller that holds `recall.nexts` or the other slot arrays
   across a write takes `recall.snapshot()`. The kernels' first use compiles in about 10 seconds on
   an Apple M4. See [what a moment costs](docs/tune.md#what-a-moment-costs).
-- Add `recall_address_contrast` (opt-in, runtime, founder off): the recall read's address lesson
-  steps on the keys it names less the keys the read attended, the gradient of the content logits
-  and zero where the read is right, in place of the distance to the named keys, which keeps
-  regressing the address onto the mean named key. It adds no parameter. See
-  [the contrast](docs/memory.md#the-address-lesson-as-a-contrast-opt-in). Brains without the
-  option are unchanged.
 - With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
   recall read's address and position maps as they are: the read's lessons take their target
   from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no
