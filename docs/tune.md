@@ -188,6 +188,42 @@ chosen = chord.act(observation, temperature=[0.5, 0.1])
 assert chosen.shape == (1, 2)
 ```
 
+### A planning window
+
+A brain that speaks, plays or moves one action per moment also plans one action per moment:
+whatever the next action must agree with has to survive in the trace or be read back from
+memory. A planning window ([#257](https://github.com/muellerberndt/cadence/issues/257)) settles
+the next `k` actions jointly under the meaning the brain holds, emits them and moves on. It is
+`slots` with the same menu in every slot: compose with `actions=k * menu, slots=k`. One settle
+answers the `k` slots together, so a constraint between two of them (a verb and its agent, a
+bracket and its closing) is met inside that settle; a lesson teaches the `k` slots at once with
+labels shaped `(batch, k)`; `act`, `step` and `live` return `k` indices. The window advances
+when the emitted actions join the next moment's context: the world echoes them (the caller
+hears the window back, each action at 1.0 with a turn flag), or the
+[efference copy](memory.md#efference-copy) holds the `k` commands issued. What lies beyond the
+window is the memories' to carry.
+
+```python
+import numpy as np
+from cadence import Brain
+
+k, menu = 4, 18
+speaker = Brain.compose(inputs=35, actions=k * menu, slots=k, seed=0, efference_amplitude=1.0)
+message = np.eye(35)[[20]]                              # a meaning, as the chamber cues one
+window = speaker.act(message, greedy=True)              # (1, 4): four words in one settle
+assert window.shape == (1, k)
+speaker.lesson(message, np.array([[3, 12, 7, 17]]))     # the four words taught together
+copied = speaker.efference.trace[0].reshape(k, menu).argmax(axis=1)
+assert copied.tolist() == window[0].tolist()            # the window issued, in the copy
+```
+
+Each slot has motor neurons and synapses of its own: a position in the window is a coordinate
+the brain learns word by word, not a role the same synapses fill at every place, so a window
+taught on sentences of up to `k` words says nothing about the words after the `k`th. Weight
+sharing across positions is a second form, read only if this one holds. The founder is one slot
+and is unchanged. The [grammar chamber](../benchmarks/grammar/README.md#a-planning-window)
+reads the window on its sentences at `k` of 1, 3, 4 and 8.
+
 Every bias starts at zero and is plastic: `brain.brain.bias` holds the learned values, and
 loading restores them. To start the processing neurons at a bias of your own, set
 `brain.learner.brain = brain.learner.brain.with_parameters(bias=bias)` before the first lesson.

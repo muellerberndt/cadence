@@ -68,6 +68,7 @@ testpaths = [
     "benchmarks/credit",
     "benchmarks/sequence",
     "benchmarks/extinction",
+    "benchmarks/grammar",
 ]
 
 [tool.ruff]
