@@ -108,16 +108,6 @@ def edge_contrast(s_plus: np.ndarray, s_minus: np.ndarray, pre: np.ndarray, post
     return a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
 
 
-def test_contrast_mean_matches_numpy() -> None:
-    n, batch, span = 9, 6, 0.4
-    rng = np.random.default_rng(3)
-    pre, post = rng.integers(0, n, 20), rng.integers(0, n, 20)
-    s_plus, s_minus = phases(3, batch, n)
-    edges, neurons = fused.contrast_mean(s_plus, s_minus, pre, post, span)
-    np.testing.assert_allclose(edges, edge_contrast(s_plus, s_minus, pre, post).mean(0) / span)
-    np.testing.assert_allclose(neurons, (s_plus - s_minus).mean(0) / span)
-
-
 def test_trace_step_decays_accumulates_and_weights_by_dopamine() -> None:
     n, batch, edges, span, decay = 7, 3, 12, 0.5, 0.8
     rng = np.random.default_rng(5)

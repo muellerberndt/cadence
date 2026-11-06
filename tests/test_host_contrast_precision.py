@@ -69,8 +69,6 @@ def test_saved_host_rows_keep_opposite_change_products(tmp_path, path):
     from cadence import fused
 
     if fused.available():
-        compiled_mean, _ = fused.contrast_mean(plus, minus, graph.pre, graph.post, 1.0)
-        np.testing.assert_allclose(compiled_mean, expected, rtol=1e-14, atol=1e-45)
         trace, trace_bias = np.zeros_like(rows), np.zeros_like(neurons)
         compiled_step, _ = fused.trace_step(
             trace, trace_bias, 0.0, plus, minus, graph.pre, graph.post, 1.0, np.ones(2)
@@ -82,7 +80,7 @@ def test_saved_host_rows_keep_opposite_change_products(tmp_path, path):
 def test_saved_device_phase_values_match_host_and_numba_traces_exactly(tmp_path):
     pytest.importorskip("torch")
     pytest.importorskip("numba")
-    from cadence.fused import contrast_mean, trace_step
+    from cadence.fused import trace_step
 
     graph = cd.layered(3, 4, 2, density=1, seed=9)
     config = cd.LearnerConfig(free_steps=20, nudged_steps=12, tolerance=None)
@@ -115,6 +113,3 @@ def test_saved_device_phase_values_match_host_and_numba_traces_exactly(tmp_path)
     np.testing.assert_array_equal(trace_bias, expected_neurons)
     np.testing.assert_array_equal(step_edges, (delta[:, None] * expected_edges).mean(axis=0))
     np.testing.assert_array_equal(step_neurons, (delta[:, None] * expected_neurons).mean(axis=0))
-    mean_edges, mean_neurons = contrast_mean(saved_plus, saved_minus, graph.pre, graph.post, span)
-    np.testing.assert_allclose(mean_edges, expected_edges.mean(axis=0), rtol=1e-14, atol=1e-17)
-    np.testing.assert_allclose(mean_neurons, expected_neurons.mean(axis=0), rtol=1e-14, atol=1e-17)

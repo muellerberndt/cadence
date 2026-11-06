@@ -1616,58 +1616,6 @@ def trace_step(
     return step_scale, step_bias
 
 
-if njit is not None:
-
-    @_compiled
-    def _contrast_mean(
-        s_plus: np.ndarray,
-        s_minus: np.ndarray,
-        pre: np.ndarray,
-        post: np.ndarray,
-        span: float,
-        out_edges: np.ndarray,
-        out_neurons: np.ndarray,
-    ) -> None:
-        """Batch-mean contrast per synapse and per neuron, one pass, no (batch, edges) temporary."""
-        batch, n = s_plus.shape
-        edges = pre.shape[0]
-        for e in range(edges):
-            out_edges[e] = 0.0
-        for i in range(n):
-            out_neurons[i] = 0.0
-        for b in range(batch):
-            for e in range(edges):
-                a_plus, a_minus = s_plus[b, pre[e]], s_minus[b, pre[e]]
-                b_plus, b_minus = s_plus[b, post[e]], s_minus[b, post[e]]
-                out_edges[e] += a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
-            for i in range(n):
-                out_neurons[i] += s_plus[b, i] - s_minus[b, i]
-        scale = 1.0 / (batch * span)
-        for e in range(edges):
-            out_edges[e] *= scale
-        for i in range(n):
-            out_neurons[i] *= scale
-
-
-def contrast_mean(
-    s_plus: np.ndarray, s_minus: np.ndarray, pre: np.ndarray, post: np.ndarray, span: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """Fused ``Learner.contrast``: ``(per_synapse, per_neuron)`` batch means divided by ``span``."""
-    assert njit is not None
-    out_edges = np.empty(pre.shape[0])
-    out_neurons = np.empty(s_plus.shape[1])
-    _contrast_mean(
-        np.ascontiguousarray(s_plus),
-        np.ascontiguousarray(s_minus),
-        pre,
-        post,
-        float(span),
-        out_edges,
-        out_neurons,
-    )
-    return out_edges, out_neurons
-
-
 # -- per-synapse passes of a lesson: the same element arithmetic as NumPy, one compiled pass
 
 # A pass this long runs on Numba's threads (when it runs more than one); a shorter one serially.
