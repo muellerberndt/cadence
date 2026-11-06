@@ -908,8 +908,13 @@ class Learner:
         """Materialise optimizer history only when a host caller reads or edits it."""
         held = self.__dict__.get("_device_moments")
         if held is not None:
-            for name in _MOMENTS:
-                self.__dict__["_" + name] = held[name].detach().cpu().double().numpy().copy()
+            kernel = self.brain._mlx
+            if kernel is not None:  # by block, the neurons' moments on the host
+                for name in ("velocity", "second_moment"):
+                    self.__dict__["_" + name] = kernel.to_edges(held[name])
+            else:
+                for name in _MOMENTS:
+                    self.__dict__["_" + name] = held[name].detach().cpu().double().numpy().copy()
             self.__dict__["_device_moments"] = None
 
     def _moments_on_device(self, kernel: Any) -> dict[str, Any]:
@@ -1149,6 +1154,89 @@ class Learner:
         assert cfg.eta_bias is not None  # resolved at construction
         return delta_scale, cfg.eta_bias * neuron_term
 
+    def _mlx_update_tables(self, plus: BrainState, minus: BrainState) -> dict[str, Any] | None:
+        """What a lesson's update reads on the MLX device, where both phases rest there and the
+        update takes this learner: every synapse plastic at one rate, no group but ties."""
+        kernel = self.brain._mlx
+        if (
+            kernel is None or kernel.plain or plus.device is None or minus.device is None
+            or plus.device.get("holder") is not kernel.root
+            or minus.device.get("holder") is not kernel.root
+            or self.synapse_rate is not None or len(self._members)
+            or not bool(np.all(self.plastic_synapses))
+        ):
+            return None
+        held = self.__dict__.get("_mlx_tables")
+        if held is None or held[0] is not kernel.root or held[1] is not self._paired:
+            held = (
+                kernel.root, self._paired,
+                kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse),
+            )
+            self.__dict__["_mlx_tables"] = held
+        return cast("dict[str, Any] | None", held[2])
+
+    def _update_on_mlx(
+        self, plus: BrainState, minus: BrainState, span: float, share: float,
+        tables: dict[str, Any],
+    ) -> dict[str, float]:
+        """``_update`` with the synapses on the MLX device, in float32: the contrast, the moments,
+        the ties, the bound and the blocks, in one launch; the neurons' arithmetic stays the
+        host's, in float64."""
+        kernel = self.brain._mlx
+        assert kernel is not None and plus.device is not None and minus.device is not None
+        cfg = self.config
+        assert cfg.eta_bias is not None  # resolved at construction
+        count = self.contrast_updates + 1
+        m, rho = cfg.momentum, cfg.normalize
+        held = self.__dict__.get("_device_moments")
+        if held is None or held["holder"] is not kernel.root:
+            self._host_moments()
+            held = {
+                "holder": kernel.root,
+                "velocity": kernel.to_blocks(self.__dict__["_velocity"]),
+                "second_moment": kernel.to_blocks(self.__dict__["_second_moment"]),
+            }
+        if kernel.scale is None:
+            held = {**held, "scale": kernel.to_blocks(self.brain.efficacy)}
+        rows = int(plus.device["vm"].shape[0] if "vm" in plus.device else plus.device["s"].shape[0])
+        new, moments, neurons, size = kernel.taught(
+            plus.device, minus.device, rows * span, held, tables,
+            (
+                m, 1 - m, 1.0 - m**count if m > 0 else 1.0, rho, 1 - rho,
+                1.0 - rho**count if rho > 0 else 1.0, share * cfg.eta, cfg.normalize_floor,
+                cfg.normalize_relative, _RELATIVE_TINY,
+            ),
+            cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
+        )
+        raw_neuron = neurons / (rows * span)
+        if not np.isfinite(raw_neuron).all():
+            raise ValueError("phase contrasts must be finite")
+        neuron_term = raw_neuron
+        if m > 0:
+            velocity = m * self.__dict__["_velocity_bias"] + (1 - m) * raw_neuron
+            self.__dict__["_velocity_bias"] = velocity
+            neuron_term = velocity / (1.0 - m**count)
+        if rho > 0:
+            second = rho * self.__dict__["_second_moment_bias"] + (1 - rho) * raw_neuron**2
+            self.__dict__["_second_moment_bias"] = second
+            root = np.sqrt(second / (1.0 - rho**count))
+            if cfg.normalize_relative:
+                rms_bias = self._relative_divisor(root, self._projections()[1])
+            else:
+                rms_bias = root + cfg.normalize_floor
+            neuron_term = neuron_term / rms_bias
+        assert self.plastic_neurons is not None
+        delta_bias = np.where(self.plastic_neurons, share * cfg.eta_bias * neuron_term, 0.0)
+        bias = self.brain.bias + delta_bias
+        if not np.isfinite(bias).all():
+            raise ValueError("bias must have one finite entry per neuron")
+        new.with_bias(bias)
+        self.__dict__["_device_moments"] = moments
+        self.brain = self.brain._with_mlx_parameters(new, np.array(bias))
+        self.updates += 1
+        self.contrast_updates += 1
+        return {"scale_step": size, "bias_step": float(np.abs(delta_bias).mean())}
+
     def update(
         self,
         free: BrainState,
@@ -1182,6 +1270,10 @@ class Learner:
         cfg = self.config
         assert cfg.eta_bias is not None  # resolved at construction
         minus_state, span = (free, cfg.beta) if opposite is None else (opposite, 2.0 * cfg.beta)
+        tables = self._mlx_update_tables(nudged, minus_state)
+        if tables is not None:
+            report = self._update_on_mlx(nudged, minus_state, span, share, tables)
+            return report
         kernel = self._device_kernel(nudged, minus_state)
         if kernel is not None:  # both phases rest on the torch device: the whole update stays there
             edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])

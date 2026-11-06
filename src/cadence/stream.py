@@ -27,13 +27,13 @@ from dataclasses import dataclass, field, fields
 from math import gcd
 from threading import Lock
 from types import MappingProxyType
-from typing import Any, ClassVar, NamedTuple
+from typing import Any, ClassVar, NamedTuple, cast
 
 import numpy as np
 
 from ._configuration import real
+from .brain import _MLX_MAP_ENTRIES, BrainState, _MlxMatrix
 from .brain import Brain as NeuralGraph
-from .brain import BrainState
 from .connectome import Connectome
 from .learning import LearnedState
 
@@ -488,6 +488,19 @@ class _Moment(NamedTuple):
 _Maps = tuple[np.ndarray, np.ndarray, np.ndarray]
 
 
+def _addressed(key: np.ndarray, maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """The address ``key + x M_x + c M_c + m``, on the device where the map rests there."""
+    m_x, m_c, m = maps
+    if isinstance(m_x, _MlxMatrix):
+        return np.asarray(key + m_x.term(x, cast(_MlxMatrix, m_c), c) + m)
+    return np.asarray(key + x @ m_x + c @ m_c + m)
+
+
+def _finite(a: Any) -> bool:
+    """Whether every entry of a map or an array is finite, without fetching a map on the device."""
+    return a.finite() if isinstance(a, _MlxMatrix) else bool(np.isfinite(a).all())
+
+
 def _term(maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
     """A map of the moment's term at the inputs ``x`` and the cortex ``c``."""
     m_x, m_c, m = maps
@@ -499,6 +512,9 @@ def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarra
     its inputs ``z = [x, c, 1]``, averaged over the rows. Unchecked: a caller checks what it
     keeps."""
     m_x, m_c, m = maps
+    if isinstance(m_x, _MlxMatrix):
+        on_x, on_c = m_x.stepped(cast(_MlxMatrix, m_c), x, c, step, rate)
+        return cast(np.ndarray, on_x), cast(np.ndarray, on_c), m + rate * step.mean(axis=0)
     s_x = rate * x.T @ step
     s_x /= len(x)
     s_x += m_x
@@ -1573,6 +1589,27 @@ class Recall:
         self.last, self._attended = reading[0], reading[1]
         self._head_reads = reading[2] if len(reading) > 2 else None
 
+    # -- the MLX device
+
+    def place(self, kernel: Any) -> None:
+        """A brain on the MLX device keeps a large address map there (``_MLX_MAP_ENTRIES``): its
+        product is most of a moment's read and its step most of a lesson's address lesson. The
+        slots and the smaller maps stay on the host."""
+        if kernel is None or kernel.plain:
+            return
+        first = self.head_maps[0][0]
+        if isinstance(first, _MlxMatrix) or first.size < _MLX_MAP_ENTRIES:
+            return
+        of = _MlxMatrix.of
+        self.head_maps = [
+            (
+                cast(np.ndarray, of(kernel.mx, w_x)),
+                cast(np.ndarray, of(kernel.mx, w_c)),
+                b,
+            )
+            for w_x, w_c, b in self.head_maps
+        ]
+
     # -- the memory contract (``cadence.memories``)
 
     def stimulus(self, drive: np.ndarray, moment: Any) -> np.ndarray:
@@ -1601,7 +1638,8 @@ class Recall:
             name: getattr(self, name) for name in ("keys", "values", "nexts", "held", "previous")
         }
         for h, maps in enumerate(self.head_maps):  # every head's address map, head 0's first
-            out.update(zip(self.map_names("address", h), maps, strict=True))
+            held = (np.asarray(maps[0]), np.asarray(maps[1]), maps[2])  # the host's, once read
+            out.update(zip(self.map_names("address", h), held, strict=True))
         if self.ended.any():
             out["ended"] = self.ended
         if self.window > 1:
@@ -1662,8 +1700,7 @@ class Recall:
             acted = _of(self.acted, n)
             key = np.concatenate([key, np.zeros((n, self.command_width))], axis=1)
             inputs = np.concatenate([x, acted], axis=1)
-        w_x, w_c, b = self.head_maps[0]
-        q = key + inputs @ w_x + c @ w_c + b
+        q = _addressed(key, self.head_maps[0], inputs, c)
         return _Moment(x, c, q, key, inputs)
 
     def _attention(
@@ -1963,8 +2000,7 @@ class Recall:
         own map."""
         if head == 0:
             return moment.address
-        w_x, w_c, b = self.head_maps[head]
-        return np.asarray(moment.key + moment.inputs @ w_x + moment.cortex @ w_c + b)
+        return _addressed(moment.key, self.head_maps[head], moment.inputs, moment.cortex)
 
     def _head_address(self, moment: _Moment, head: int) -> np.ndarray:
         """Head ``head``'s address of the moment the latest read addressed: the one it read
@@ -2178,6 +2214,21 @@ class Recall:
             w[rows, cols] = graph._gain_pre[synapses] * graph.efficacy[synapses] + 0.0
         return np.asarray(movement @ w.T)
 
+    def _read_backs(
+        self, graph: NeuralGraph, movement: np.ndarray, head: int
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        """Head ``head``'s two ``readback`` reads: on the blocks where the synapses rest on the
+        MLX device, in one launch."""
+        kernel = graph._mlx
+        if kernel is not None and graph._efficacy is None:
+            ports = self._head_synapses[head]
+            read = kernel.read_back(ports if self.next else ports[:1], movement)
+            if read is not None:
+                return read[0], read[1] if self.next else None
+        d_value = self.readback(graph, "recall", movement, head)
+        d_next = self.readback(graph, "next", movement, head) if self.next else None
+        return d_value, d_next
+
     def learn(
         self, graph: NeuralGraph, learned: LearnedState, content: np.ndarray | None = None
     ) -> dict[str, float]:
@@ -2228,8 +2279,7 @@ class Recall:
         # the attention every competing head read with, taken before any head's lesson steps
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
-            d_value = self.readback(graph, "recall", movement, h)
-            d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_value, d_next = self._read_backs(graph, movement, h)
             head_moment = moment._replace(address=self._head_address(moment, h))
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
@@ -2340,8 +2390,8 @@ class Recall:
         _, x, c, key, error, step, _, _ = found
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             w_x, w_c, b = _lms(self.head_map(head), step, self.address, x, c)
-            address = key + x @ w_x + c @ w_c + b
-        if not all(np.isfinite(a).all() for a in (w_x, w_c, b, address)):
+            address = _addressed(key, (w_x, w_c, b), x, c)
+        if not all(_finite(a) for a in (w_x, w_c, b, address)):
             return {**quiet, "address_refused": float(len(x))}
         self._set_map(head, w_x, w_c, b)
         return {
@@ -2469,8 +2519,7 @@ class Recall:
             return out
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
-            d_value = self.readback(graph, "recall", movement, h)
-            d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_value, d_next = self._read_backs(graph, movement, h)
             head_moment = moment._replace(address=self._head_address(moment, h))
             found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
             if found is None:

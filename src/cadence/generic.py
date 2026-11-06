@@ -3358,6 +3358,8 @@ class Brain:
         if region is not None:
             drive = self._unit_read(x, drive, memory=memory)
         if memory:
+            if self.recall is not None:
+                self.recall.place(self.brain._mlx)
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))

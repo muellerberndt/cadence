@@ -763,8 +763,9 @@ class Brain:
     def efficacy(self) -> np.ndarray:
         """Read-only parameters; replace via the setter or ``with_parameters``."""
         if self._efficacy is None:
-            assert self._torch is not None
-            self._efficacy = self._torch.host_scale()
+            kernel = self._torch if self._mlx is None else self._mlx
+            assert kernel is not None
+            self._efficacy = kernel.host_scale()
         result = self._efficacy.view()
         result.setflags(write=False)
         return result
@@ -806,6 +807,18 @@ class Brain:
         if self._weights_host is None:
             self._weights_host = self._gain_pre * self.efficacy
         return self._weights_host
+
+    def _with_mlx_parameters(self, kernel: _MlxKernel, bias: np.ndarray) -> Brain:
+        """The brain under a lesson's parameters on the MLX device: ``kernel`` holds them, with
+        ``bias``, the host's array of its biases; the host reads the efficacies when it asks."""
+        new = copy.copy(self)
+        new._mlx = kernel
+        new._efficacy = None
+        new._bias = bias
+        new._weights_host = None
+        new._flat = None
+        new._csr = None
+        return new
 
     def _with_device_parameters(self, scale: Any, bias: Any) -> Brain:
         """The brain with new parameters that stay on the torch device.
@@ -3420,6 +3433,12 @@ _MLX_CHECK_FLOOR = 1e-4
 # The smallest temperature of a launch's softmax: an activation is at most one, so its exponential
 # stays within float32 for any sum of neurons.
 _MLX_LEAST_TEMPERATURE = 0.02
+# Block entries from which a lesson's update costs the device less than the host: below it the
+# update stays on the host, in float64.
+_MLX_UPDATE_ENTRIES = 1 << 17
+# Entries of a recall memory's address map from which its product and its step cost the device
+# less than the host. Smaller maps stay on the host, in float64.
+_MLX_MAP_ENTRIES = 1 << 18
 # Rows times block entries from which the device's contrast costs less than the host's.
 _MLX_CONTRAST_ENTRIES = 1 << 20
 
@@ -3528,6 +3547,83 @@ _MLX_LAUNCH = """
 """
 
 
+class _MlxMatrix:
+    """A large matrix of a memory on the MLX device, in float32, that reads as a host array in
+    float64: ``np.asarray`` and the array operations it serves read it whole, once. What a moment
+    does to it (``term``, ``stepped``) stays on the device. The array is never written; a step
+    makes another."""
+
+    __slots__ = ("mx", "array", "flag", "_host")
+
+    def __init__(self, mx: Any, array: Any, flag: Any = None) -> None:
+        self.mx = mx
+        self.array = array
+        self.flag = flag  # with a stepped matrix: whether it is finite, read with its first use
+        self._host: np.ndarray | None = None
+
+    @classmethod
+    def of(cls, mx: Any, host: np.ndarray) -> _MlxMatrix:
+        return cls(mx, mx.array(np.ascontiguousarray(host, dtype=np.float32)))
+
+    @property
+    def shape(self) -> tuple[int, ...]:
+        return tuple(self.array.shape)
+
+    @property
+    def size(self) -> int:
+        return int(self.array.size)
+
+    @property
+    def ndim(self) -> int:
+        return int(self.array.ndim)
+
+    @property
+    def dtype(self) -> np.dtype[Any]:
+        return np.dtype(np.float64)
+
+    def __len__(self) -> int:
+        return int(self.array.shape[0])
+
+    def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
+        if self._host is None:
+            self._host = np.array(self.array, dtype=np.float64)
+        return np.array(self._host, dtype=dtype) if dtype is not None or copy else self._host
+
+    def _kept(self) -> list[Any]:
+        return [] if self.flag is None else [self.flag]
+
+    def term(self, x: np.ndarray, other: _MlxMatrix, c: np.ndarray) -> np.ndarray:
+        """``x @ self + c @ other`` as a host array, in one launch with the two matrices' checks."""
+        mx = self.mx
+        out = (
+            mx.array(np.asarray(x, dtype=np.float32)) @ self.array
+            + mx.array(np.asarray(c, dtype=np.float32)) @ other.array
+        )
+        mx.eval(out, self.array, other.array, self._kept(), other._kept())
+        return np.asarray(np.array(out, copy=False), dtype=np.float64)
+
+    def stepped(
+        self, other: _MlxMatrix, x: np.ndarray, c: np.ndarray, step: np.ndarray, rate: float,
+    ) -> tuple[_MlxMatrix, _MlxMatrix]:
+        """The two matrices after a least-mean-squares ``step``: ``x.T @ step`` and ``c.T @ step``
+        at ``rate`` over the rows, added. Not launched: the term that reads them launches them."""
+        mx = self.mx
+        s = mx.array(np.asarray(step, dtype=np.float32))
+        share = rate / len(x)
+        ours = self.array + share * (mx.array(np.asarray(x, dtype=np.float32)).T @ s)
+        theirs = other.array + share * (mx.array(np.asarray(c, dtype=np.float32)).T @ s)
+        return (
+            _MlxMatrix(mx, ours, mx.isfinite(mx.sum(ours))),
+            _MlxMatrix(mx, theirs, mx.isfinite(mx.sum(theirs))),
+        )
+
+    def finite(self) -> bool:
+        """Whether every entry is finite: a sum over them is, or overflows and is refused too."""
+        if self.flag is None:
+            self.flag = self.mx.isfinite(self.mx.sum(self.array))
+        return bool(self.flag.item())
+
+
 def _launch_error(errors: Any, which: int) -> np.ndarray:
     """Each row's largest residual at a launch's first (0) or last (1) state, from every thread's;
     infinity where one is not finite."""
@@ -3630,7 +3726,6 @@ class _MlxPlan:
         self.activate = mx.compile(self._activation_of(mx, neuron_model))
         self.none = mx.zeros((8,), dtype=mx.float32)  # an input the launch does not read
         self.none_int = mx.zeros((8,), dtype=mx.int32)
-        self.activate_driven = mx.compile(self._driven_activation_of(mx, neuron_model))
         self.plan_array = mx.array(np.array(table + [0] * max(0, 8 - len(table)), dtype=np.int32))
         self._controls: dict[tuple[int, ...], Any] = {}
         self._scales: dict[tuple[float, float], Any] = {}
@@ -3660,16 +3755,6 @@ class _MlxPlan:
             return mx.where(r > 0.0, r * up, r * down)
 
         return activate
-
-    @staticmethod
-    def _driven_activation_of(mx: Any, neuron_model: NeuronModel) -> Any:
-        """A source range's activation under its drive and bias, in one fused operation."""
-        activate = _MlxPlan._activation_of(mx, neuron_model)
-
-        def driven(drive: Any, bias: Any) -> Any:
-            return activate(drive + bias)
-
-        return driven
 
     def controls(
         self, sweeps: int, nudging: bool, shares: bool, bounded: bool, weighted: bool,
@@ -3754,7 +3839,7 @@ class _MlxPlan:
                 n0, n1 = self.spans[r]
                 pieces.append(part[:, self.place[r] : self.place[r] + n1 - n0])
             else:
-                pieces.append(sources[r])
+                pieces.append(mx.array(sources[r]) if key == "v" else sources[r])
         return mx.concatenate(pieces, axis=1).reshape(rows, self.n)
 
     def fetch(self, handle: _MlxState, key: str) -> np.ndarray:
@@ -3820,6 +3905,7 @@ class _MlxKernel:
         self.root = self  # with_parameters' kernels share it: a state continues on any of them
         self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
         self.sweeps: dict[bool, Any] = {}  # the compiled sweeps, shared with those kernels too
+        self.read_blocks: dict[int, tuple[np.ndarray, int]] = {}  # a read's synapses, their block
         self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n)
         self._take(weights, bias)
@@ -3832,6 +3918,7 @@ class _MlxKernel:
         """The bias and the weight blocks on the device, made from the host ``weights`` and
         ``bias``; refused where float32 cannot hold them."""
         mx, layout = self.mx, self.layout
+        self.scale: list[Any] | None = None  # the efficacies by block, once a lesson moved them
         with np.errstate(over="ignore", invalid="ignore"):
             live_bias = bias.astype(np.float32)
             flat = layout.flat(weights).astype(np.float32)
@@ -3848,10 +3935,7 @@ class _MlxKernel:
             self.w = mx.array(np.concatenate(
                 [hosted[k].T.ravel() for k in plan.inner] + [np.zeros(8, dtype=np.float32)]
             ))
-            self.bias_settling = mx.array(live_bias[plan.columns])
-            self.bias_sources = {
-                r: mx.array(live_bias[slice(*plan.spans[r])]) for r in plan.sources
-            }
+            self.bias_host = live_bias
 
     def with_parameters(self, weights: np.ndarray, bias: np.ndarray) -> _MlxKernel:
         """A kernel of its own on new parameters: its bias and blocks made from the host
@@ -4034,6 +4118,205 @@ class _MlxKernel:
             {"kernel": "mlx", "holder": self.root, "v": v, "a": a, "s": s},
         )
 
+    # -- a lesson's update on the device: the same arithmetic per block entry, in float32
+
+    def update_tables(
+        self, gain_pre: np.ndarray, paired: np.ndarray, reverse: np.ndarray,
+    ) -> dict[str, Any] | None:
+        """What the update on the device reads of the synapses, or None where it does not apply:
+        too few entries, an entry without one synapse, a gain that varies within a block, or a tie
+        that is not one block's entries with another's, transposed. Each block's gain and the
+        block it is tied to."""
+        lay = self.layout
+        if lay.size < _MLX_UPDATE_ENTRIES or lay.parallel_synapses:
+            return None
+        block = np.asarray(lay.block_of_edge)
+        entries = np.diff(lay.offset)
+        if len(block) != lay.size or (np.bincount(block, minlength=lay.pairs) != entries).any():
+            return None
+        low, high = np.full(lay.pairs, np.inf), np.full(lay.pairs, -np.inf)
+        np.minimum.at(low, block, gain_pre)
+        np.maximum.at(high, block, gain_pre)
+        if (low != high).any():
+            return None
+        ties: dict[int, int] = {}
+        if len(paired):
+            at = np.asarray(lay.edge_index)
+            k, back = block[paired], block[reverse]
+            widths = np.array([lay.bounds(j)[3] - lay.bounds(j)[2] for j in range(lay.pairs)])
+            i, j = np.divmod(at[paired] - lay.offset[k], widths[k])
+            i2, j2 = np.divmod(at[reverse] - lay.offset[back], widths[back])
+            whole = np.bincount(k, minlength=lay.pairs)
+            if (i != j2).any() or (j != i2).any() or ((whole != 0) & (whole != entries)).any():
+                return None
+            for one, other in zip(*np.unique(np.stack([k, back]), axis=1), strict=True):
+                if ties.setdefault(int(one), int(other)) != int(other):
+                    return None
+        return {
+            "gains": [float(g) for g in low], "entries": [int(e) for e in entries], "ties": ties,
+            "synapses": len(block),
+        }
+
+    def to_blocks(self, edges: np.ndarray) -> list[Any]:
+        """Per-synapse host values as device arrays by block; an entry without a synapse reads 0."""
+        flat = self.layout.flat(np.asarray(edges, dtype=float)).astype(np.float32)
+        return [self.mx.array(np.ascontiguousarray(part)) for part in self.layout.blocks(flat)]
+
+    def to_edges(self, blocks: Sequence[Any]) -> np.ndarray:
+        """Device arrays by block as the host's per-synapse values, in float64."""
+        flat = np.concatenate([np.array(b, copy=False).ravel() for b in blocks])
+        return np.asarray(flat[self.layout.edge_index], dtype=np.float64)
+
+    def host_scale(self) -> np.ndarray:
+        """The efficacies a lesson on the device left, as the host's per-synapse array."""
+        assert self.scale is not None
+        return self.to_edges(self.scale)
+
+    def read_back(
+        self, groups: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray]], movement: np.ndarray,
+    ) -> list[np.ndarray] | None:
+        """``movement @ W.T`` per group of synapses ``(synapses, rows, cols)`` read as ``W[rows,
+        cols]``, on the blocks, one launch for all; None where a group is not one whole block, in
+        its order."""
+        mx, lay = self.mx, self.layout
+        root = self.root
+        blocks = []
+        for synapses, rows, cols in groups:
+            known = root.read_blocks.get(id(synapses))
+            if known is None:
+                k = int(lay.block_of_edge[synapses[0]]) if len(synapses) else -1
+                a0, a1, b0, b1 = lay.bounds(k) if k >= 0 else (0, 0, 0, 0)
+                whole = (
+                    len(synapses) == (a1 - a0) * (b1 - b0) > 0
+                    and bool(np.all(
+                        np.asarray(lay.edge_index)[synapses] - lay.offset[k]
+                        == np.asarray(rows) * (b1 - b0) + np.asarray(cols)
+                    ))
+                )
+                known = (synapses, k if whole else -1)
+                root.read_blocks[id(synapses)] = known
+            if known[1] < 0:
+                return None
+            blocks.append(self.blocks[known[1]])
+        m = mx.array(np.asarray(movement, dtype=np.float32)).T
+        out = [block @ m for block in blocks]
+        mx.eval(out)
+        return [np.array(part, dtype=np.float64).T for part in out]
+
+    def _ranges_of(self, handle: Mapping[str, Any]) -> Any:
+        """A state's activations of a neuron range, ``(rows, width)``, wherever it keeps them."""
+        plan = self.plan
+        if plan is not None and isinstance(handle, _MlxState):
+            sm, sources = handle["sm"], handle["sources"]
+
+            def part(r: int) -> Any:
+                if r in plan.place:
+                    n0, n1 = plan.spans[r]
+                    return sm[:, plan.place[r] : plan.place[r] + n1 - n0]
+                return sources[r]
+
+            return part
+        s = handle["s"]
+        starts = self.layout.starts
+        return lambda r: s[:, int(starts[r]) : int(starts[r + 1])]
+
+    def _lesson_step(
+        self, raw: Any, velocity: Any, second: Any, numbers: Any, count: Any,
+        momentum: bool, normalize: bool, relative: bool,
+    ) -> tuple[Any, Any, Any]:
+        """One block's step of the optimizer: ``fused.optimizer_step`` per entry, and its moments.
+        ``numbers`` holds ``m, 1 - m, m's correction, rho, 1 - rho, rho's correction, eta, floor,
+        share, tiny`` for the block's ``count`` synapses."""
+        mx = self.mx
+        term = raw
+        if momentum:
+            velocity = numbers[0] * velocity + numbers[1] * raw
+            term = velocity / numbers[2]
+        if normalize:
+            second = numbers[3] * second + numbers[4] * (raw * raw)
+            root = mx.sqrt(second / numbers[5])
+            if relative:
+                floor = mx.sqrt(mx.sum(root * root) / count)
+                term = term / (root + numbers[8] * floor + numbers[9])
+            else:
+                term = term / (root + numbers[7])
+        return numbers[6] * term, velocity, second
+
+    def taught(
+        self, plus: Mapping[str, Any], minus: Mapping[str, Any], norm: float,
+        moments: dict[str, Any], tables: dict[str, Any], numbers: Sequence[float], cap: float,
+        momentum: bool,
+        normalize: bool, relative: bool,
+    ) -> tuple[_MlxKernel, dict[str, Any], Any, float]:
+        """A lesson's update of the synapses, all of it on the device: the block Gram contrast of
+        the two phases over ``norm``, the optimizer, the ties, the bound and the new blocks. One
+        launch at its end. Returns the new kernel (without its bias, the host's business), the
+        moments, the neurons' raw contrast as a host array and the mean step's size; a value that
+        is not finite raises ``ValueError`` with nothing changed."""
+        mx, lay = self.mx, self.layout
+        scale = self.scale if self.scale is not None else moments["scale"]
+        plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
+        shared = plus.get("sources") if plus.get("sources") is minus.get("sources") else None
+        plan = self.plan
+        constants = mx.array(np.array(numbers, dtype=np.float32))
+        steps: list[Any] = []
+        velocity, second = list(moments["velocity"]), list(moments["second_moment"])
+        moved: dict[int, Any] = {}
+        for r in {int(x) for x in lay.pair_post}:  # the postsynaptic movement of each range, once
+            moved[r] = plus_of(r) - minus_of(r)
+        for k in range(lay.pairs):
+            pre, post = int(lay.pair_pre[k]), int(lay.pair_post[k])
+            a_plus, b_minus = plus_of(pre), minus_of(post)
+            raw = a_plus.T @ moved[post]
+            if shared is None or plan is None or pre in plan.place:
+                raw = raw + (a_plus - minus_of(pre)).T @ b_minus
+            step, velocity[k], second[k] = self._lesson_step(
+                raw / norm, velocity[k], second[k], constants, tables["entries"][k],
+                momentum, normalize, relative,
+            )
+            steps.append(step)
+        for k, other in tables["ties"].items():  # one synapse, one weight: the mean of the two
+            if k <= other:
+                mean = 0.5 * (steps[k] + steps[other].T)
+                steps[k], steps[other] = mean, mean.T if k != other else mean
+        checks = [mx.sum(mx.abs(step)) for step in steps]
+        new_scale = [mx.clip(e + step, -cap, cap) for e, step in zip(scale, steps, strict=True)]
+        new_blocks = [
+            e if tables["gains"][k] == 1.0 else tables["gains"][k] * e
+            for k, e in enumerate(new_scale)
+        ]
+        total = mx.sum(mx.stack(checks))
+        moments_finite = [
+            mx.isfinite(mx.sum(x)) for x in (*velocity, *second) if x is not None
+        ]
+        ok = mx.all(mx.stack(moments_finite)) if moments_finite else mx.array(True)
+        neurons = self._movement_of_neurons(plus, minus, plus_of, minus_of)
+        new = copy.copy(self)
+        new.blocks = new_blocks
+        new.scale = new_scale
+        if plan is not None:
+            pieces = [new_blocks[k].T.reshape(-1) for k in plan.inner]
+            new.w = mx.concatenate([*pieces, mx.zeros((8,), dtype=mx.float32)])
+            new.version = next(_MLX_VERSIONS)
+        mx.eval(new_blocks, new_scale, velocity, second, total, ok, neurons, new.w if plan else [])
+        if not bool(ok.item()) or not np.isfinite(float(total.item())):
+            raise ValueError("phase contrasts and optimizer steps must remain finite")
+        size = float(total.item()) / max(tables["synapses"], 1)
+        kept = {"holder": self.root, "velocity": velocity, "second_moment": second}
+        return new, kept, np.array(neurons, dtype=np.float64), size
+
+    def _movement_of_neurons(self, plus: Any, minus: Any, plus_of: Any, minus_of: Any) -> Any:
+        """Each neuron's activation movement between two phases, summed over the rows, ``(n,)``."""
+        mx, lay = self.mx, self.layout
+        pieces = [(plus_of(r) - minus_of(r)).sum(axis=0) for r in range(lay.ranges)]
+        return mx.concatenate(pieces)
+
+    def with_bias(self, bias: np.ndarray) -> None:
+        """This kernel's bias, from the host's array."""
+        live = bias.astype(np.float32)
+        self.bias = self.mx.array(live)
+        self.bias_host = live
+
     def _heat(self, temperature: float) -> Any:
         """A softmax's temperature as a compiled sweep reads it, an input a new value does not
         trace again; a temperature below float32's least normal stays a number, for its ladder."""
@@ -4074,7 +4357,8 @@ class _MlxKernel:
             parts = [(v[:, slice(*spans[r])], s[:, slice(*spans[r])]) for r in plan.settling]
             vm = mx.concatenate([p[0] for p in parts], axis=1)
             sm = mx.concatenate([p[1] for p in parts], axis=1)
-            potentials = {r: v[:, slice(*spans[r])] for r in plan.sources}
+            whole = np.array(v, copy=False)
+            potentials = {r: whole[:, slice(*spans[r])] for r in plan.sources}
             sources = {r: s[:, slice(*spans[r])] for r in plan.sources}
             a_host = np.array(handle["a"], dtype=np.float64)
             rest = False
@@ -4083,8 +4367,7 @@ class _MlxKernel:
             rest = state is None
             vm = mx.array(np.asarray(v0[:, plan.columns], dtype=np.float32))
             potentials = {
-                r: mx.array(np.asarray(v0[:, slice(*spans[r])], dtype=np.float32))
-                for r in plan.sources
+                r: np.asarray(v0[:, slice(*spans[r])], dtype=np.float32) for r in plan.sources
             }
             if rest:
                 sm = mx.array(np.full((rows, plan.m), plan.at_rest, dtype=np.float32))
@@ -4096,7 +4379,7 @@ class _MlxKernel:
                 }
             else:
                 sm = plan.activate(vm)
-                sources = {r: plan.activate(p) for r, p in potentials.items()}
+                sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
             a_host = a0
         return _MlxState(
             kernel="mlx", holder=self.root, plan=plan, vm=vm, sm=sm, sources=sources,
@@ -4138,21 +4421,21 @@ class _MlxKernel:
             fixed = start["fixed"]
             return {"first": fixed, "fixed": fixed, "sources": start["sources"],
                     "potentials": start["potentials"], "outer": start.get("outer"), "before": None}
-        settling = np.asarray(drive[:, plan.columns], dtype=np.float32)
-        standing = mx.array(settling) + self.bias_settling
+        bias = self.bias_host
+        settling = np.asarray(drive[:, plan.columns], dtype=np.float32) + bias[plan.columns]
+        standing = mx.array(settling)
         if same:  # the sources stand where they were, under new parameters
             potentials, sources, before = start["potentials"], start["sources"], None
             outer = self._products(sources, rows)
             fixed = standing if outer is None else standing + outer
             return {"first": fixed, "fixed": fixed, "sources": sources, "potentials": potentials,
                     "outer": outer, "before": before}
-        driving = {
-            r: mx.array(np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32))
+        potentials = {
+            r: np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32)
+            + bias[slice(*plan.spans[r])]
             for r in plan.sources
         }
-        sources = {r: plan.activate_driven(d, self.bias_sources[r]) for r, d in driving.items()}
-        # made if something reads them: nothing that follows from the sources depends on them
-        potentials = {r: d + self.bias_sources[r] for r, d in driving.items()}
+        sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
         outer = self._products(sources, rows)
         fixed = standing if outer is None else standing + outer
         if start.get("rest") and plan.at_rest == 0.0:
@@ -4337,8 +4620,7 @@ class _MlxKernel:
         plan = self.plan
         assert plan is not None
         worst = np.zeros(int(start["vm"].shape[0]))
-        for r in plan.sources:  # both stand evaluated: no launch
-            after = np.array(driven["potentials"][r], copy=False)
-            step = np.abs(after - np.array(start["potentials"][r], copy=False))
+        for r in plan.sources:  # both on the host: no launch
+            step = np.abs(driven["potentials"][r] - start["potentials"][r])
             worst = np.maximum(worst, step.max(axis=1, initial=0.0))
         return worst

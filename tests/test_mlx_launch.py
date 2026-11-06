@@ -308,3 +308,212 @@ def test_a_compiled_sweep_takes_every_feature_and_a_new_temperature_traces_nothi
         mlx.settle_batch(drive, steps=4, nudge=cold).activation,
         cpu.settle_batch(drive, steps=4, nudge=cold).activation, rtol=0, atol=1e-4,
     )
+
+
+# -- a lesson's update and a large address map on the device
+
+
+@pytest.fixture
+def on_device(monkeypatch):
+    """The sizes from which the device takes a lesson's update and the address map, lowered to the
+    test's brain."""
+    from cadence import brain as brain_module
+    from cadence import stream as stream_module
+
+    monkeypatch.setattr(brain_module, "_MLX_UPDATE_ENTRIES", 1)
+    monkeypatch.setattr(stream_module, "_MLX_MAP_ENTRIES", 1)
+
+
+RECIPE = dict(
+    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
+    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True,
+    teaching="deep", recall_address_contrast=True, episodic=False,
+)
+# float32 contrasts near a synapse's noise, through RMS normalization: the backend's own bound
+SYNAPSES, MAPS = 2e-2, 2e-2
+
+
+def lives(cpu, mlx, lessons=6, seed=9):
+    """The same moments and labels on both brains: lessons before acts, as a chamber teaches."""
+    rng = np.random.default_rng(seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(lessons):
+            x = rng.random((ROWS, 8))
+            labels = rng.integers(4, size=ROWS)
+            a, b = cpu.lesson(x, labels), mlx.lesson(x, labels)
+            np.testing.assert_allclose(b["scale_step"], a["scale_step"], rtol=2e-2)
+            np.testing.assert_allclose(b["bias_step"], a["bias_step"], rtol=2e-2)
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+
+
+def test_a_lessons_update_on_the_device_moves_as_on_the_host(on_device):
+    cpu, mlx = pair(**RECIPE)
+    lives(cpu, mlx)
+    graph = mlx.brain
+    assert graph._efficacy is None and graph._mlx.scale is not None  # nothing read it yet
+    np.testing.assert_allclose(graph.bias, cpu.brain.bias, rtol=0, atol=1e-4)
+    np.testing.assert_allclose(graph.efficacy, cpu.brain.efficacy, rtol=0, atol=SYNAPSES)
+    for name in ("velocity", "second_moment", "velocity_bias", "second_moment_bias"):
+        np.testing.assert_allclose(
+            getattr(mlx.learner, name), getattr(cpu.learner, name), rtol=0, atol=SYNAPSES,
+        )
+    assert graph.efficacy.dtype == np.float64 and graph.efficacy.shape == cpu.brain.efficacy.shape
+    # read on the host, the moments go on from where the device left them
+    lives(cpu, mlx, lessons=2, seed=10)
+    assert mlx.learner.contrast_updates == cpu.learner.contrast_updates
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=SYNAPSES)
+
+
+def test_ties_move_one_synapse_and_the_bound_holds(on_device):
+    settings = dict(RECIPE)
+    _, mlx = pair(**settings)
+    assert len(mlx.learner._paired)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mlx.lesson(np.random.default_rng(0).random((ROWS, 8)), np.arange(ROWS) % 4)
+    assert mlx.brain._mlx.scale is not None
+    efficacy = mlx.brain.efficacy
+    np.testing.assert_array_equal(
+        efficacy[mlx.learner._paired], efficacy[mlx.learner._paired_reverse]
+    )
+    assert np.abs(efficacy).max() <= mlx.learner.config.scale_cap
+
+
+def test_a_refused_update_on_the_device_changes_nothing(on_device):
+    _, mlx = pair(**RECIPE)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mlx.lesson(np.random.default_rng(0).random((ROWS, 8)), np.arange(ROWS) % 4)
+        graph, moments = mlx.brain, mlx.learner.__dict__["_device_moments"]
+        count = mlx.learner.contrast_updates
+        kernel = graph._mlx
+        kernel.mx.eval(kernel.blocks)
+        real = kernel.mx.isfinite
+
+        def broken(x):
+            return kernel.mx.array(False)
+
+        kernel.mx.isfinite = broken
+        try:
+            with pytest.raises(ValueError, match="finite"):
+                mlx.lesson(np.random.default_rng(1).random((ROWS, 8)), np.arange(ROWS) % 4)
+        finally:
+            kernel.mx.isfinite = real
+    assert mlx.brain is graph and mlx.learner.__dict__["_device_moments"] is moments
+    assert mlx.learner.contrast_updates == count
+
+
+def test_a_brain_saves_and_continues_from_the_device(on_device, tmp_path):
+    cpu, mlx = pair(**RECIPE)
+    lives(cpu, mlx, lessons=3)
+    mlx.save(tmp_path / "brain.npz")
+    again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
+    np.testing.assert_allclose(again.brain.efficacy, mlx.brain.efficacy, rtol=0, atol=1e-7)
+    rng = np.random.default_rng(12)
+    x = rng.random((ROWS, 8))
+    labels = rng.integers(4, size=ROWS)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mlx.lesson(x, labels)
+        again.lesson(x, labels)
+    np.testing.assert_array_equal(mlx.act(x, greedy=True), again.act(x, greedy=True))
+    np.testing.assert_allclose(again.brain.efficacy, mlx.brain.efficacy, rtol=0, atol=SYNAPSES)
+    # brought back to the CPU from a checkpoint the device wrote, it reads there
+    host = cd.Brain.load(tmp_path / "brain.npz")
+    assert host.brain.backend == "cpu"
+    np.testing.assert_allclose(host.brain.efficacy, again.brain.efficacy, rtol=0, atol=SYNAPSES)
+
+
+def test_a_host_update_after_a_device_update_starts_from_what_the_device_left(on_device):
+    cpu, mlx = pair(**RECIPE)
+    lives(cpu, mlx, lessons=2)
+    assert mlx.brain._efficacy is None
+    step_a = np.full(cpu.connectome.synapses, 1e-3)
+    step_b = np.zeros(cpu.connectome.n)
+    cpu.learner.apply(step_a, step_b)
+    mlx.learner.apply(step_a, step_b)
+    assert mlx.brain._mlx.scale is None  # on the host now, its blocks made from there
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=SYNAPSES)
+    lives(cpu, mlx, lessons=2, seed=11)
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=SYNAPSES)
+
+
+def test_what_the_update_on_the_device_does_not_take_stays_on_the_host(on_device):
+    cpu, mlx = pair(**RECIPE)
+    assert mlx.learner._mlx_update_tables(*states(mlx)) is not None
+    # an entry without a synapse: a sparse graph's update stays on the host
+    connectome = cd.layered(8, 12, 4, density=0.5, seed=2)
+    sparse = cd.Learner(
+        cd.NeuralGraph(connectome, cd.learning_neuron_model(dt=1.0), backend="mlx"),
+        connectome.populations["output"],
+    )
+    assert sparse.brain._mlx.update_tables(
+        sparse.brain._gain_pre, sparse._paired, sparse._paired_reverse
+    ) is None
+    # a frozen synapse, or a rate of its own, likewise
+    mlx.learner.plastic_synapses = np.array(mlx.learner.plastic_synapses)
+    mlx.learner.plastic_synapses[0] = False
+    assert mlx.learner._mlx_update_tables(*states(mlx)) is None
+
+
+def states(brain):
+    drive = drive_of(brain)
+    free = brain.brain.settle_batch(drive, steps=2)
+    return free, free
+
+
+def test_a_large_address_map_rests_on_the_device_and_moves_as_on_the_host(on_device):
+    from cadence.brain import _MlxMatrix
+
+    cpu, mlx = pair(**RECIPE)
+    lives(cpu, mlx)
+    w_x, w_c, b = mlx.recall.head_map(0)
+    assert isinstance(w_x, _MlxMatrix) and isinstance(w_c, _MlxMatrix)
+    host_x, host_c, host_b = cpu.recall.head_map(0)
+    assert w_x.shape == host_x.shape and w_x.size == host_x.size and w_x.ndim == 2
+    np.testing.assert_allclose(np.asarray(w_x), host_x, rtol=0, atol=MAPS)
+    np.testing.assert_allclose(np.asarray(w_c), host_c, rtol=0, atol=MAPS)
+    np.testing.assert_allclose(b, host_b, rtol=0, atol=MAPS)
+    assert np.abs(host_x).max() > 0  # the lessons moved it
+    assert np.asarray(w_x).dtype == np.float64 and w_x.finite() and w_c.finite()
+    # the slots and the attention read the same moments
+    assert mlx.parameters() == cpu.parameters()
+    np.testing.assert_allclose(mlx.recall.keys, cpu.recall.keys, rtol=0, atol=1e-12)
+
+
+def test_a_step_that_is_not_finite_is_refused_and_the_map_stays(on_device, monkeypatch):
+    from cadence.brain import _MlxMatrix
+
+    _, mlx = pair(**RECIPE)
+    rng = np.random.default_rng(3)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(2):
+            x = rng.random((ROWS, 8))
+            mlx.lesson(x, rng.integers(4, size=ROWS))
+            mlx.act(x, greedy=True)
+        kept = mlx.recall.head_map(0)
+
+        def overflowing(self, other, x, c, step, rate):
+            mx = self.mx
+            return _MlxMatrix(mx, mx.full(self.array.shape, mx.inf, dtype=mx.float32)), other
+
+        monkeypatch.setattr(_MlxMatrix, "stepped", overflowing)
+        x = rng.random((ROWS, 8))
+        report = mlx.lesson(x, rng.integers(4, size=ROWS))
+    assert report["address_refused"] > 0 and report["address_rows"] == 0
+    assert mlx.recall.head_map(0)[0] is kept[0] and mlx.recall.head_map(0)[1] is kept[1]
+
+
+def test_a_checkpoint_of_a_large_map_reads_the_device(on_device, tmp_path):
+    cpu, mlx = pair(**RECIPE)
+    lives(cpu, mlx, lessons=3)
+    mlx.save(tmp_path / "brain.npz")
+    again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
+    np.testing.assert_allclose(
+        np.asarray(again.recall.head_map(0)[0]), np.asarray(mlx.recall.head_map(0)[0]),
+        rtol=0, atol=1e-6,
+    )
+    x = np.random.default_rng(4).random((ROWS, 8))
+    np.testing.assert_array_equal(mlx.act(x, greedy=True), again.act(x, greedy=True))
