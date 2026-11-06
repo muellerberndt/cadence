@@ -119,7 +119,7 @@ against one CPU core with Numba (float32 against float64, the same sweeps):
 | The chamber's recipe: 251 neurons, 13,120 synapses | 16 | 0.43, 2.2 | 0.56, 2.6 |
 | The founder at the speech size: 3,920 inputs, 2.3 million synapses | 1 | 0.75, 24 | 0.93, 4.8 |
 | The recipe at the speech size: 6.3 million synapses, 24 million parameters | 1 | 9.2, 184 | 2.4, 21 |
-| The same | 16 | 13, 185 | 7.1, 37 |
+| The same | 16 | 13, 185 | 5.2, 31 |
 | The same | 64 | 38, 265 | 16, 67 |
 | The same | 256 | 129, 605 | 54, 167 |
 | The same | 1,024 | 535, 2,009 | 229, 693 |
