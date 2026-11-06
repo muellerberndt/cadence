@@ -40,7 +40,7 @@ It does not change the boundary actually used by a successful solve.
 
 ## Acquisition comparison
 
-The [frozen declaration](empty-boundary-protocol.json) compares both settings
+The frozen declaration compares both settings
 on founders 0 and 1, using the existing supplied-address H2 control. It keeps
 512 rounds, batch 16, the same training draws, alpha 1.5 per head, step `.1`,
 tolerance `.003`, and the 2,048-sweep cap. The teacher still supplies both final

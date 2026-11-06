@@ -9,6 +9,13 @@
   0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
   tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
   without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
+- **The recall read's address lesson changes.** It steps on the keys it names less the keys the read
+  attended, the gradient of the content logits and zero where the read is right, in place of the
+  distance to the named keys, which keeps regressing the address onto the mean named key. There is
+  no setting: every memory learns its addresses this way, and it adds no parameter. A brain at
+  `recall=False` is bit-identical. A memory's lessons do not reproduce the bits of 0.94.0. A saved
+  memory of 0.85.0 on loads with its map and continues under this lesson. See
+  [how the address learns](docs/memory.md#how-it-writes-and-how-the-address-learns).
 - Add `learning_fast_settle` (opt-in, runtime, founder off): a composed brain's free solves take
   `equilibrate(..., fast=True)` on the compiled CPU path. A row stops at the check it is within
   1e-5, and the activation is made in arithmetic that vectorizes. The same equations, order and
@@ -77,6 +84,29 @@ does instead.
   reading moved. `learning=LearnerConfig(rehearsal_capacity=...)` moves it as an expert.
 - The refusal sentences of `LearnedCode.REMOVED`, seventeen names no release took. They are unknown
   settings (`TypeError`), and the retune branch that could never run went with them.
+- The live checks of the attention chambers (`benchmarks/attention`): 84 scripts, tests and protocols,
+  about 850 test cases. Their receipts stay and verify on archived bytes alone
+  (`benchmarks/attention/test_retained_receipts.py`); release 0.94.0 holds the campaigns. Five
+  instruments stay: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
+  `contextual_choice.py`.
+- The readers of the checkpoints of 0.84.3 and earlier. `Brain.load` reads `cadence-brain/1` and
+  `/2`, every file of 0.85.0 on. It refuses `cadence-generic/1` to `/10`, `cadence-arousal/1` to
+  `/3` and `cadence-checkpoint/1` by name: load such a file once under cadence 0.94.0 and save it,
+  and this version reads the result.
+- `recall_compete`. Several heads read in turn, each taking of a slot at most the share the heads
+  before it left, which is what they did at the founder. With `False` two heads read one slot on
+  184 of 192 decisions, and on the held-heads benchmark under this release's address lesson the two
+  settings read alike (development). Write nothing. A file saved at `False`, and a file of several heads saved by 0.88.0 to 0.91.2, whose
+  heads read alike, are refused by name; cadence 0.94.0 runs them.
+- `recall_null`, a slot that reads nothing. It had no reading of its own, and a null slot fails the
+  fresh-bindings gate. Write nothing: a read takes its whole mass from the slots held. A file saved
+  with one is refused by name; cadence 0.94.0 runs it.
+- The refusal sentences of the names 0.85.0 retired: the seven `actor_` names of the centred
+  dopamine and the critic's signal, `arousal_record_surprise`, `working_memory_focus`, `resting_bias`
+  and the recall memory's `write`, `key`, `episodes`, `value`, `context`, `context_decay` and
+  `recency=None`. They are unknown settings (`TypeError`), and no file of 0.85.0 on carries them;
+  cadence 0.94.0 names each with what the brain does instead. `learning_nudge`, `learning_centered`
+  and `learning_decay` keep their sentences, because `Learner.load` reads a learner's file of 0.84.3.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.

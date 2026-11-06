@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from checkpoints import earlier
+from checkpoints import flat, write
 
 import cadence as cd
 
@@ -29,8 +29,8 @@ def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path
     path = brain.save(tmp_path / "pending.npz")
     saved = arrays(path)
     if legacy:
-        saved = earlier(saved)
-        np.savez(path, **saved)
+        saved = flat(saved)
+        write(path, saved)
     # An intact pending checkpoint keeps the actual action's associative write.
     twin = cd.Brain.load(path)
     brain.learn([1.0], [False], observations[[1]])
@@ -39,7 +39,7 @@ def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path
     np.testing.assert_array_equal(brain.hippocampus.consolidated, twin.hippocampus.consolidated)
     for name in ("moment/observations", "moment/action", "moment/code"):
         saved.pop(name, None)
-    np.savez(path, **saved)
+    write(path, saved)
     before = path.read_bytes()
     with pytest.raises(ValueError, match="missing saved state: moment/observations"):
         cd.Brain.load(path)
@@ -55,7 +55,7 @@ def test_composed_checkpoint_readout_must_keep_the_motor_action_mapping(tmp_path
     saved["outputs"] = (
         brain.motor_index[::-1] if defect == "reordered" else brain.association_index[:2]
     )
-    np.savez(path, **saved)
+    write(path, saved)
     with pytest.raises(ValueError, match="motor population"):
         cd.Brain.load(path)
 

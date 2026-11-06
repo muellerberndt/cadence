@@ -13,7 +13,7 @@ works, its settings, its readings and its limits.
 | --- | --- | --- |
 | The present observation holds the answer | `recall=False, episodic=False, working_memory_amplitude=0.0` is the control to compare against; add one memory at a time | [check that a memory does the work](#check-that-a-memory-does-the-work) |
 | A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | `recall=True` | [recall memory](#the-recall-memory-in-full) |
-| Whole sentences or stories, read at lengths no lesson reached | `recall=True, learning_surprise=True, teaching="deep", recall_recency=0.0, recall_boundary=True, recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True, recall_address_contrast=True` | [one composition for sequences](#one-composition-for-sequences) |
+| Whole sentences or stories, read at lengths no lesson reached | `recall=True, learning_surprise=True, teaching="deep", recall_recency=0.0, recall_boundary=True, recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True` | [one composition for sequences](#one-composition-for-sequences) |
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
 | "How long ago?", "was A told before B?" | `recall_when=True, recall_position_rate=0.0, recall_temperature=0.1` | [when a read item happened](#when-a-read-item-happened-opt-in) |
@@ -188,9 +188,6 @@ the settle as a sensory drive is: the settle answers on the mixture the address 
 cannot revise the choice. Both regions reach the association region through one-way plastic
 synapses of initial magnitude 1.2 (a constant).
 
-A number `recall_null` adds a slot of logit `null / temperature` that reads nothing, so a
-moment that matches no slot recalls little.
-
 ### How it writes and how the address learns
 
 After each act, and after each moment `wait` senses, every stream writes one slot and the
@@ -201,11 +198,17 @@ The address lesson runs after each teacher lesson (`step(..., teacher=...)` or
 `brain.lesson`). It reads the association region's movement between the nudged phases back
 through the recall and next synapses, scores each slot's value and next against it, weighs
 the scores by `softmax(score / T + log p)` at the temperature `T = 0.1`
-(`Recall.address_temperature`, a constant of the memory) and steps the map toward the
-keys so weighted (`K*`) at the taught rows, each at the rate `min(recall_address, 1 / |z|^2)`
-on `z = [x, c, 1]`. The report gives `address_rows`, `address_error` and `address_refused`
-(rows whose non-finite step was refused), and with the position term `position_rows` and
-`position_refused`. The step takes the error `K* - q`.
+(`Recall.address_temperature`, a constant of the memory) and steps the map on the keys so
+weighted less the keys the read attended,
+
+```text
+error = sum_i (p*_i - p_i) K_i
+```
+
+at the taught rows, each at the rate `min(recall_address, 1 / |z|^2)` on `z = [x, c, 1]`. The error
+is the gradient of the content logits, zero where the read is what the lesson names, as the position
+maps' step is. The report gives `address_rows`, `address_error` and `address_refused` (rows whose
+non-finite step was refused), and with the position term `position_rows` and `position_refused`.
 
 At the founder `recall_address_reward=0` rewards leave the map as it is. Above zero, each
 sampled act keeps the step the address lesson would take on the rows of the event heard, were
@@ -217,31 +220,6 @@ each outcome steps the map by `recall_address_reward` times the dopamine times t
 `learn` reports it as `address_reward_step`. At 1.0 a unit of dopamine moves the event's rows by one lesson's step.
 `retune` refuses a change of `recall_address` or `recall_address_reward` while a sampled
 action's address contrast is pending.
-
-### The address lesson as a contrast (opt-in)
-
-The step's error `K* - q` is the distance to the named keys. It keeps moving the address while the
-read is right, so over a life it regresses the address onto the mean key the lessons named: a
-query learns a preference among contents. `recall_address_contrast=True` takes the error as a
-contrast,
-
-```text
-error = sum_i (p*_i - p_i) K_i
-```
-
-the keys the lesson names less the keys the read attended, the gradient of the content logits. It
-is zero where the read is what the lesson names, as the position maps' step is. The rate
-`recall_address`, the bound by the row's energy, the rows' average and the reward's eligibility
-stay as they are, and it adds no parameter. It is a retune setting, held while a sampled action's
-address contrast is pending, and a newborn reads as without it until its first lesson.
-
-```python
-contrast = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0,
-                         recall_address_contrast=True)
-assert contrast.parameters() == Brain.compose(
-    inputs=8, actions=3, modules=(16,), recall=True, seed=0
-).parameters()
-```
 
 ### Episodes, keys and windows
 
@@ -283,8 +261,8 @@ eligibility take that width; values, nexts and the two regions keep the value wi
 
 Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is
 refused. Retune genes change in a life through `brain.retune`; construction genes are fixed
-when the brain is built. The options from `recall_null` on are described and saved only
-where they differ from their founder. A saved brain keeps its genes, slots and address map.
+when the brain is built. The options from `recall_address_reward` on are described and saved
+only where they differ from their founder. A saved brain keeps its genes, slots and address map.
 
 | Setting | Founder | When | What it sets |
 | --- | --- | --- | --- |
@@ -296,16 +274,13 @@ where they differ from their founder. A saved brain keeps its genes, slots and a
 | `recall_capacity` | `64` | construction | Slots per stream, oldest dropped first |
 | `recall_next` | `True` | construction | The `next` region and each slot's next |
 | `scales["recall"]` | `1.2` | construction | Initial magnitude of the two projections (a `compose` argument) |
-| `recall_null` | `None` | retune | A number adds a null slot; a non-finite logit is refused |
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window` | `1` | construction | Window of the last k events |
 | `recall_heads` | `1` | construction | Heads reading the one bank, each with its own port and address map ([several heads](#several-heads-opt-in)) |
-| `recall_compete` | `True` | retune | Several heads read in turn, each taking of a slot at most the share the heads before it left; `False` reads every head on its own |
 | `recall_position` | `32` | construction | Ages below it get a bucket each, older ones one per doubling; every head learns a term per bucket ([position](#position-how-long-ago-a-moment-happened)); `0` builds none |
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
-| `recall_address_contrast` | `False` | retune | The address lesson steps on the keys it names less the keys the read attended, zero where the read is right ([the contrast](#the-address-lesson-as-a-contrast-opt-in)) |
 | `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#a-learned-gain-on-the-reads-tokens-opt-in)) |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
@@ -490,8 +465,7 @@ lengths and few lessons must teach exact ages, the founder table serves.
 
 ### One composition for sequences
 
-A brain that says whole sentences takes the positions recipe below at `teaching="deep"`, with the
-address lesson as a contrast (`Fd` in the
+A brain that says whole sentences takes the positions recipe below at `teaching="deep"` (`Fd` in the
 [grammar chamber](../benchmarks/grammar/README.md#readings-at-the-base-composition-development)):
 
 ```python
@@ -499,9 +473,8 @@ speaker = Brain.compose(
     inputs=35, actions=18, modules=(64,), seed=0, episodic=False, teaching="deep",
     recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
     recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True,
-    recall_address_contrast=True,
 )
-assert speaker.recall.address_contrast and speaker.learner.config.nudged_fixed
+assert speaker.learner.config.nudged_fixed
 ```
 
 | One online pass, development | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Two hops | Three hops |
@@ -607,7 +580,7 @@ assert len(heads_brain.recall.attended_heads) == 2
 
 Each head is a copy of the held read: a read port of its own (the regions `recall_h` and
 `next_h`, wired into the association like the first) and an address map of its own, which
-starts at zero. The heads compete for the slots (`recall_compete=True`, the founder): a slot
+starts at zero. The heads compete for the slots: a slot
 can be read in full once per moment, so the heads read in turn and each takes of every slot
 at most the share the heads before it left. A head keeps the shape of its own attention where
 the slots allow and gives what a taken slot cannot give to the slots it prefers next, with
@@ -623,10 +596,6 @@ alone at the founder 0 the maps stay at zero. One bank is written per moment, an
 read it before the settle and hold their reads through it. With several heads the recipe
 learns the addresses (`recall_address=0.01`) at the Recall founder's
 `recall_temperature=0.25`.
-
-`recall_compete=False` (a retune setting) lets every head read on its own. With their maps at
-zero every head then reads what head 0 reads, and a sharp read gives the lesson no other slot
-to move toward, so the heads can stay on the same moment for good. Keep competition on.
 
 In the [held-heads benchmark](../benchmarks/attention/held_heads.py) each trial witnesses four
 facts `role -> value` with fresh values, and one question asks for two of them in one settle;
@@ -736,8 +705,7 @@ assert gained.parameters() == Brain.compose(
 ```
 
 Read on two development founders at `recall_gain=30.0`, in the composition of
-[the section below](#one-composition-for-sequences) with `recall_address_contrast` at
-`teaching="deep"`, 1,500 lessons, one life per founder and cell:
+[the section below](#one-composition-for-sequences) at `teaching="deep"`, 1,500 lessons, one life per founder and cell:
 
 | Reading | Without the gain | With the gain |
 | --- | --- | --- |

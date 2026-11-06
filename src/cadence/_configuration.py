@@ -39,19 +39,13 @@ _FIELDS = {
 # the retired fields of the three configurations under their public names, and the brain's
 # own. Refused with one sentence (``removed``) at ``compose`` and ``retune`` and in an arousal
 # mapping; a checkpoint that carries one at another value is refused by the component that
-# saved it (``removed_on_load``). The names of 0.84.3 left in 0.85.0, which cadence-net 0.84.3
-# takes.
+# saved it (``removed_on_load``).
 RETIRED: Mapping[str, tuple[str, Any, str]] = MappingProxyType({
     **{f"learning_{name}": entry for name, entry in LearnerConfig.RETIRED.items()},
-    **{f"actor_{name}": entry for name, entry in ActorCriticConfig.RETIRED.items()},
     **{f"arousal_{name}": entry for name, entry in ArousalConfig.RETIRED.items()},
     "learning_nudge": ("0.85.0", "cross_entropy", "a composed brain learns with the "
                        "cross-entropy nudge, and the quadratic nudge is a standalone "
                        "Learner's; cadence-net 0.84.3 takes it"),
-    "working_memory_focus": ("0.85.0", 0.0, "every trace decays toward its source; "
-                             "cadence-net 0.84.3 takes it"),
-    "resting_bias": ("0.85.0", None, "every bias starts at zero, and a checkpoint's biases "
-                     "are in its arrays; cadence-net 0.84.3 takes it"),
     "learning_normalize_relative": ("0.93.0", 0.0, "teaching='deep' sets the "
                                     "projection-relative floor at 0.1 with nudged phases of "
                                     "a whole 32 sweeps, the one point ever read; "

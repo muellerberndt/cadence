@@ -336,12 +336,6 @@ def test_a_reward_step_that_is_not_finite_is_refused_and_a_contrast_keeps_none(m
     assert pending is not None and np.isfinite(pending).all() and not pending.any()
 
 
-def test_it_composes_with_the_address_contrast():
-    plain, both = taught(), taught(recall_address_contrast=True)
-    assert both.recall.gains.any()
-    assert not np.array_equal(plain.recall.head_map(0)[0], both.recall.head_map(0)[0])
-
-
 @pytest.mark.parametrize(
     ("backend", "device", "precision", "atol"),
     [("torch", "cpu", "float64", 1e-9), ("mlx", None, None, 1e-4)],

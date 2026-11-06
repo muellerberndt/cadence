@@ -161,9 +161,9 @@ def _share(logits: np.ndarray, left: np.ndarray, mass: np.ndarray) -> np.ndarray
     moment, so the head takes of each slot at most the share ``left`` the heads before it left.
     Its own attention (the softmax of ``logits`` over the slots something is left of) keeps its
     shape where the share allows, ``w = min(left, lam p)``, and ``lam`` gives the head its
-    ``mass`` over the slots (with a null slot, its share stays the head's), or every share left
-    where that is less: what a taken slot cannot give goes to the slots the head prefers next. A
-    row whose slots the heads before took whole reads nothing.
+    ``mass`` over the slots, or every share left where that is less: what a taken slot cannot
+    give goes to the slots the head prefers next. A row whose slots the heads before took whole
+    reads nothing.
 
     The slots taken whole leave before the shares are taken, and the arithmetic is in logits:
     the slots are capped in the order of ``log(left) - logit``, and a slot past the capped ones
@@ -562,17 +562,14 @@ class Recall:
     its age relative to the previous read's focus), ``slope`` (a lean by age at every length),
     ``when`` (the read also delivers when its slots happened), ``action`` (each slot carries the
     command executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
-    the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``address_contrast``
-    (the address lesson's error is the keys named less the keys attended), ``tokens`` (which
-    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
-    ``copy`` (plastic synapses from the read ports into the motor region) and ``null`` (a slot
-    that reads nothing).
+    the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
+    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
+    ``copy`` (plastic synapses from the read ports into the motor region).
 
-    A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
+    A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
     the memory does instead (``removed``); a saved memory loads where it carries the one value the
-    table keeps for it. A checkpoint of 0.84.3 carries the keys its format always wrote for three
-    of them (``FORMAT``). docs/memory.md holds each option's law and its readings.
+    table keeps for it. docs/memory.md holds each option's law and its readings.
     """
 
     connectome: Connectome
@@ -583,7 +580,6 @@ class Recall:
     next: bool = True
     address: float = 0.01
     # the options beside the founder memory (``OPTIONS``)
-    null: float | None = None  # a number: a null slot of this logit (over the temperature)
     address_reward: float = 0.0
     position_reward: float = 0.0
     window: int = 1
@@ -601,7 +597,6 @@ class Recall:
     tokens: tuple[int, ...] | None = None
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
-    compete: bool = True
     # every head's position term also reads a slot's place in its episode (``anchor_maps``)
     anchor: bool = False
     # every head's position term also reads a slot's age relative to the previous read's focus
@@ -610,9 +605,6 @@ class Recall:
     slope: float = 0.0
     # every head's read also delivers its slots' age features on a region of its own
     when: bool = False
-    # the address lesson's error is the contrast of the named keys against the keys the read
-    # attended, zero where the read is right, in place of the distance to the named keys
-    address_contrast: bool = False
     # above 0, with ``tokens``: one learned scalar per read port on the tokens' identity into the
     # motor region's drive (``gains``), taught at this rate by the motor's movement
     gain: float = 0.0
@@ -641,9 +633,9 @@ class Recall:
     # runtime except the window, the heads, the position term, the copy pathway and the
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
-        "null", "address_reward", "position_reward", "window", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when", "address_contrast", "gain",
+        "address_reward", "position_reward", "window", "heads", "position",
+        "position_rate", "boundary", "copy", "tokens", "action", "anchor",
+        "relative", "slope", "when", "gain",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
                             "action", "anchor", "relative", "slope", "when", "gain")
@@ -670,21 +662,8 @@ class Recall:
     # memory loads at (the founder's, or the value its law keeps) and what the memory does
     # instead; ``removed`` makes the one sentence that refuses the name wherever it is given
     RETIRED = MappingProxyType({
-        "write": ("0.85.0", "always", "every accepted moment is written; cadence-net 0.84.3 "
-                  "takes it"),
-        "key": ("0.85.0", "event", "the key is the event heard, the window key and the "
-                "efference copy carrying what came before; cadence-net 0.84.3 takes it"),
-        "episodes": ("0.85.0", "forget", "an ended episode empties the slots and "
-                     "Brain.reset(keep=('slots',)) keeps them; cadence-net 0.84.3 takes it"),
-        "recency=None": ("0.85.0", None, "the power-law age charge is gone and a number keeps "
-                         "the linear charge recency * age; cadence-net 0.84.3 takes it"),
-        "value": ("0.85.0", "event", "the values are the events; cadence-net 0.84.3 takes it"),
-        "context": ("0.85.0", 0.0, "no fading history of the earlier events joins the key; "
-                    "cadence-net 0.84.3 takes it"),
-        "context_decay": ("0.85.0", 0.5, "no fading history of the earlier events joins the "
-                          "key; cadence-net 0.84.3 takes it"),
-        "address_step": ("0.93.0", "lms", "the address lesson steps toward the named keys, "
-                         "as it did at 'lms'"),
+        "address_step": ("0.93.0", "toward", "the address lesson steps on the named keys less "
+                         "the attended ones, what a file at 'toward' saved"),
         "heard": ("0.93.0", heard, "the present event weighs 1.0 in its key and its address, "
                   "the one weight ever read"),
         "address_temperature": ("0.93.0", address_temperature, "the address lesson weighs "
@@ -692,13 +671,11 @@ class Recall:
                                 "ever read"),
         "window_decay": ("0.93.0", window_decay, "the window's earlier events enter the key "
                          "at their full weight (1.0), the one value ever read"),
+        "compete": ("0.95.0", True, "several heads read in turn, each taking of a slot at most "
+                    "the share the heads before it left; cadence 0.94.0 takes it"),
+        "null": ("0.95.0", None, "every moment's read takes its whole mass from the slots held; "
+                 "cadence 0.94.0 takes it"),
     })
-    # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
-    # for retired settings, at the one value at which such a file loads
-    FORMAT = MappingProxyType(
-        dict(value=RETIRED["value"][1], context=RETIRED["context"][1],
-             context_decay=RETIRED["context_decay"][1])
-    )
 
     @classmethod
     def founders(cls) -> dict[str, Any]:
@@ -717,18 +694,16 @@ class Recall:
 
     @staticmethod
     def removed(name: str) -> str:
-        """The one sentence that refuses a retired setting, ``recall_<name>`` of ``RETIRED``
-        or ``recall_recency=None``: the release that retired it and what the memory does
-        instead."""
-        key = "recency=None" if name == "recency" else name
-        release, _, instead = Recall.RETIRED[key]
-        return f"recall_{key} was retired in {release}: {instead}"
+        """The one sentence that refuses a retired setting, ``recall_<name>`` of ``RETIRED``:
+        the release that retired it and what the memory does instead."""
+        release, _, instead = Recall.RETIRED[name]
+        return f"recall_{name} was retired in {release}: {instead}"
 
     @staticmethod
     def setting(name: str, value: Any) -> Any:
         """One setting, validated and converted; ``name`` is a field of the memory. A
         retired setting is refused by name (``removed``)."""
-        if name in Recall.RETIRED or (name == "recency" and value is None):
+        if name in Recall.RETIRED:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
@@ -740,11 +715,8 @@ class Recall:
             if number <= 0:
                 raise ValueError(f"{name} must be positive")
             return number
-        if name == "null":
-            return None if value is None else real(name, value)
         if name in (
-            "next", "boundary", "action", "compete", "anchor", "relative", "when",
-            "address_contrast",
+            "next", "boundary", "action", "anchor", "relative", "when",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
@@ -898,21 +870,9 @@ class Recall:
                 "position_rate above 0"
             )
 
-    @staticmethod
-    def null_logit(null: float | None, temperature: float) -> float | None:
-        """The null slot's logit ``null / temperature``, or None without a null slot; a pair
-        of settings whose logit is not finite is refused."""
-        if null is None:
-            return None
-        logit = float(null) / float(temperature)
-        if not np.isfinite(logit):
-            raise ValueError("null / temperature must be finite")
-        return logit
-
     def __post_init__(self) -> None:
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
-        self.null_logit(self.null, self.temperature)
         populations = self.connectome.populations
         if self.target != "recall" and self.heads > 1:
             raise ValueError("a recall memory of several heads reads into the recall regions")
@@ -1572,19 +1532,9 @@ class Recall:
         streams hold no slot or are another batch. ``position`` is a head's position term at
         every slot (``position_term``); without it the attention is the content's and the
         recency's alone, which is what the read used only where the memory has no position
-        term. With a ``null`` slot, whose logit ``null / temperature`` joins the softmax and
-        which reads nothing, the slots' shares sum to one less the null slot's."""
+        term."""
         if not self.slots or self.streams != len(address):
             return None
-        if self.null is not None:
-            logits = self._attention(
-                address, self.keys, None if self.held.all() else self.held, position
-            )
-            null = self.null / self.temperature
-            top = np.maximum(logits.max(axis=1), null)  # a stream that holds no slot: the null
-            p = np.exp(logits - top[:, None])
-            total = p.sum(axis=1) + np.exp(null - top)
-            return np.asarray(p / total[:, None])
         if self.held.all():
             logits = self._attention(address, self.keys, None, position)
             p = np.exp(logits - logits.max(axis=1, keepdims=True))
@@ -1762,16 +1712,14 @@ class Recall:
 
     def _read(self, addresses: Sequence[np.ndarray], moment: _Moment) -> list[np.ndarray | None]:
         """Every head's attention over the slots held now, head ``h`` at ``addresses[h]`` with
-        its position term at ``moment``: its own (``weights``), or among competing heads, each
-        after the first taking of every slot at most the share the heads before it left
-        (``_share``)."""
+        its position term at ``moment``: the first head's own (``weights``), and each after it
+        taking of every slot at most the share the heads before it left (``_share``)."""
         attended: list[np.ndarray | None] = []
         left: np.ndarray | None = None  # each slot's share the heads before have left
-        competing = self.compete and self.heads > 1
         for h, address in enumerate(addresses):
             position = self.position_term(h, moment.inputs, moment.cortex)
             p = self.weights(address, position)
-            if p is not None and competing:
+            if p is not None and self.heads > 1:
                 if left is not None:
                     held = None if self.held.all() else self.held
                     logits = self._attention(address, self.keys, held, position)
@@ -1781,12 +1729,11 @@ class Recall:
         return attended
 
     def _lesson_reads(self, moment: _Moment) -> list[np.ndarray | None]:
-        """For each head's lesson, the attention it read the moment with where heads compete
-        (None for head 0, whose prior is its own attention, and without competition): the reads
-        ``stimulate`` kept while the bank holds what they read, else the read computed now,
-        before any lesson steps a map."""
-        if not (self.compete and self.heads > 1):
-            return [None] * self.heads
+        """For each head's lesson, the attention it read the moment with (None for head 0, whose
+        prior is its own attention): the reads ``stimulate`` kept while the bank holds what they
+        read, else the read computed here, before any lesson steps a map."""
+        if self.heads == 1:
+            return [None]
         reads = self._head_reads
         if reads is not None and reads[2] == self.writes and all(r is not None for r in reads[1]):
             attended = list(reads[1])
@@ -2184,13 +2131,13 @@ class Recall:
     ) -> tuple[np.ndarray, ...] | None:
         """Each row's step of the address lesson before the average over rows: the rows of
         ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
-        the cortex ``c``, the key, the error toward the named keys, the error bounded by
-        the row's own energy, ``error * min(1, 1 / (address |z|^2))``, the attention ``p*``
-        the lesson names and the log of the prior attention the address gave (head ``head``'s
-        position term in it). Among competing heads ``read`` is the attention the head read
-        with over every stream's slots (``_lesson_reads``), and it is the prior; a row it read
-        nothing at does not move. None when no row moves. The arithmetic is unchecked: a
-        caller checks what it keeps."""
+        the cortex ``c``, the key, the error (the named keys less the attended ones, zero where the
+        attention is what the lesson names), the error bounded by the row's own energy, ``error *
+        min(1, 1 / (address |z|^2))``, the attention ``p*`` the lesson names and the log of the
+        prior attention the address gave (head ``head``'s position term in it). Among competing
+        heads ``read`` is the attention the head read with over every stream's slots
+        (``_lesson_reads``), and it is the prior; a row it read nothing at does not move. None when
+        no row moves. The arithmetic is unchecked: a caller checks what it keeps."""
         if len(rows) == len(self.keys):  # every stream, in order: the slots themselves
             values, nexts, keys, held = self.values, self.nexts, self.keys, self.held
         else:
@@ -2245,19 +2192,13 @@ class Recall:
             logits = logits + attention
             p = np.exp(logits - logits.max(axis=1, keepdims=True))
             p /= p.sum(axis=1, keepdims=True)
-            if self.address_contrast:
-                # the gradient of the content logits toward the named slots: the named keys
-                # less the attended ones, zero where the attention is what the lesson names
-                gradient = p - np.where(np.isfinite(attention), np.exp(attention), 0.0)
-                error = _einsum("bm,bmk->bk", gradient, keys)
-            else:
-                error = _einsum("bm,bmk->bk", p, keys) - q
+            # the gradient of the content logits toward the named slots: the named keys less
+            # the attended ones, zero where the attention is what the lesson names
+            gradient = p - np.where(np.isfinite(attention), np.exp(attention), 0.0)
+            error = _einsum("bm,bmk->bk", gradient, keys)
             # each row's gain on its own address, rate * |z|^2, is at most one: a row taught
-            # alone lands on its target at most, and a row within the bound keeps the rate as
-            # it is. Over a batch the step maps the errors E to (I - M) E, M = rate / n * G D
-            # with G the rows' Gram matrix of z and D their bounds; D^(1/2) M D^(-1/2) is
-            # symmetric with its eigenvalues in [0, 1] (its trace is the mean of the rows'
-            # gains), so sum_i D_i |e_i|^2 does not grow, though one row can pass its target.
+            # alone moves its address by its error at most, and a row within the bound keeps the
+            # rate as it is
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
             step = error * np.minimum(1.0, 1.0 / (rate * energy))[:, None]
         return moving, x, c, key, error, step, p, attention
@@ -2450,9 +2391,9 @@ class Recall:
              if getattr(self, name) != founders[name]}
         )
         if self.heads > 1:
-            # always kept with several heads: a file saved before heads competed holds none,
-            # and loads with heads that read alike as they did
-            out["compete"] = self.compete
+            # always written with several heads: a file saved before heads competed holds none,
+            # and its heads read alike, a law this version refuses
+            out["compete"] = True
         if "tokens" in out:  # JSON-safe: a list, as a checkpoint keeps it
             out["tokens"] = list(out["tokens"])
         return out

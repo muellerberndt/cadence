@@ -8,7 +8,7 @@ import json
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -172,7 +172,7 @@ def test_a_corrupt_sparse_separator_is_refused(tmp_path, tamper):
     brain.step(one_hot(0, 20))
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path) as saved:
-        data = earlier({name: saved[name].copy() for name in saved.files})
+        data = flat({name: saved[name].copy() for name in saved.files})
     meta = metadata(data)
     if tamper == "outside":
         data["episodic/separator/index"][0, -1] = 64
@@ -184,6 +184,6 @@ def test_a_corrupt_sparse_separator_is_refused(tmp_path, tamper):
         del meta["hippocampus"]["separator"]["fan_in"]  # the arrays of a sparse separator alone
     data["generic"] = np.array(json.dumps(meta))
     corrupt = tmp_path / "corrupt.npz"
-    np.savez(corrupt, **data)
+    write(corrupt, data)
     with pytest.raises(ValueError):
         cd.Brain.load(corrupt)

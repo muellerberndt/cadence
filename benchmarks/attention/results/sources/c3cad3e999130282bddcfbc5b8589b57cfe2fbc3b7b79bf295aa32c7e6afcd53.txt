@@ -1,0 +1,86 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "cadence-net"
+version = "0.91.3"
+description = "Research toward general intelligence through local repair, equilibrium detuning and self-reflection."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE" }
+license-files = ["LICENSE"]
+authors = [{ name = "Bernhard Mueller" }]
+keywords = ["brain", "neurons", "synapses", "connectome", "equilibrium propagation", "local learning", "dopamine"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "License :: OSI Approved :: GNU General Public License v3 (GPLv3)",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = ["numpy>=1.26"]
+
+[project.optional-dependencies]
+accel = ["torch>=2.2"]
+apple = ["mlx>=0.20"]
+fast = ["numba>=0.60", "scipy>=1.10"]
+dev = ["pytest>=8", "pytest-cov>=5", "ruff>=0.5", "mypy>=1.10", "torch>=2.2", "numba>=0.60", "scipy>=1.10"]
+
+
+[project.urls]
+Homepage = "https://github.com/muellerberndt/cadence"
+Paper = "https://philpapers.org/rec/MUECAP-2"
+Documentation = "https://github.com/muellerberndt/cadence/blob/main/docs/README.md"
+Examples = "https://github.com/muellerberndt/cadence-demos"
+Issues = "https://github.com/muellerberndt/cadence/issues"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/cadence"]
+
+[tool.hatch.build.targets.sdist]
+only-include = ["src", "tests", "docs", "examples", "benchmarks", "README.md", "MANIFESTO.md", "AGENTS.md", "CONTRIBUTING.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+exclude = ["**/.lake/**", "*.olean", "*.ilean", "*.olean.private", "*.olean.server",
+  # Receipts that no test reads stay in the repository and the release assets, not in the sdist.
+  "benchmarks/competing/results/**", "benchmarks/chain/results/**",
+  "benchmarks/rhythm/results/native-history-*", "benchmarks/recall/results/**",
+  "!benchmarks/recall/results/finite-3-2026-10-08.json.gz"]
+
+[tool.pytest.ini_options]
+addopts = "-ra --import-mode=importlib"
+testpaths = [
+    "tests",
+    "benchmarks/acquisition",
+    "benchmarks/rhythm",
+    "benchmarks/reversal",
+    "benchmarks/keydoor",
+    "benchmarks/recall",
+    "benchmarks/competing", "benchmarks/chain",
+    "benchmarks/stream_words", "benchmarks/binding",
+    "benchmarks/instruments",
+    "benchmarks/learned_code",
+    "benchmarks/attention",
+    "benchmarks/depth",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["E501"]
+
+[tool.mypy]
+strict = true
+packages = ["cadence"]
+mypy_path = "src"
+
+[[tool.mypy.overrides]]
+module = ["torch", "torch.*", "numba", "numba.*", "mlx", "mlx.*", "triton", "triton.*"]
+ignore_missing_imports = true

@@ -6,7 +6,7 @@ import json
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -143,21 +143,16 @@ def test_a_saved_brain_keeps_the_trace_it_was_built_with(tmp_path):
     assert np.array_equal(again.working_memory.trace, earlier.working_memory.trace)
 
 
-def test_provenance_saved_before_0_82_reads_as_the_fixed_scale_12(tmp_path):
+def test_a_saved_scale_out_of_range_is_refused(tmp_path):
     brain = cd.Brain.compose(inputs=3, actions=2, seed=7, scales={"trace": 12.0})
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name] for name in data.files})
+        arrays = flat({name: data[name] for name in data.files})
     meta = metadata(arrays)
-    del meta["composition"]["working_memory_scale"]
-    arrays["generic"] = np.array(json.dumps(meta))
-    older = tmp_path / "older.npz"
-    np.savez(older, **arrays)
-    loaded = cd.Brain.load(older)
-    assert loaded.describe()["layout"]["composition"]["working_memory_scale"] == 12.0
     meta["composition"]["working_memory_scale"] = -1.0
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(older, **arrays)
+    older = tmp_path / "older.npz"
+    write(older, arrays)
     with pytest.raises(ValueError):
         cd.Brain.load(older)
 
@@ -189,7 +184,7 @@ def test_a_checkpoint_saved_at_the_genes_founder_still_loads(tmp_path):
     brain.act(np.array([[1.0, 0.0, 0.0]]))
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name] for name in data.files})
+        arrays = flat({name: data[name] for name in data.files})
     written = 0
     for name in [n for n in arrays if n.endswith("meta") and arrays[n].dtype.kind == "U"]:
         meta = json.loads(str(arrays[name]))
@@ -199,7 +194,7 @@ def test_a_checkpoint_saved_at_the_genes_founder_still_loads(tmp_path):
             written += 1
     assert written
     founder = tmp_path / "founder.npz"
-    np.savez(founder, **arrays)
+    write(founder, arrays)
     loaded = cd.Brain.load(founder)
     assert loaded.learner.config == brain.learner.config
     np.testing.assert_array_equal(loaded.working_memory.trace, brain.working_memory.trace)
@@ -209,7 +204,7 @@ def test_a_checkpoint_saved_with_the_gene_on_is_refused(tmp_path):
     brain = cd.Brain.compose(inputs=3, actions=2, seed=5)
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name] for name in data.files})
+        arrays = flat({name: data[name] for name in data.files})
     meta_names = [name for name in arrays if name.endswith("meta") and arrays[name].dtype.kind == "U"]
     assert meta_names, "the checkpoint stores its learner metadata as a JSON string"
     for name in meta_names:
@@ -219,6 +214,6 @@ def test_a_checkpoint_saved_with_the_gene_on_is_refused(tmp_path):
             meta.setdefault("config", {})["homeostasis_rate"] = 0.1
             arrays[name] = np.array(json.dumps(meta))
     forged = tmp_path / "gene.npz"
-    np.savez(forged, **arrays)
-    with pytest.raises(ValueError, match="0.82.0 removed"):
+    write(forged, arrays)
+    with pytest.raises(ValueError, match="not a checkpoint this version reads.*checkpoint/3"):
         cd.Brain.load(forged)

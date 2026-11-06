@@ -282,7 +282,7 @@ cross-entropy of the motor activity at the temperature of the lesson's nudge.
 | `G1n`, `G1d` | the recipe; the `deep` brain | each lesson's contrast replaced by the exact implicit gradient at that moment's free fixed point, at the brain's normalized step; the held read, the trace, the surprise rule and the address map's lesson as they are |
 | `G1a` | the recipe | the same gradient, with Adam at the online control's rate and the gradient norm clipped at 1 |
 | `G2a`, `G2s`, `G2n` | the recipe | the gradient carried across a sentence's moments, through the working trace and the read's address, into the address map and the position maps; one step per batch; over every word (`G2a`, `G2n`) or the words said wrong (`G2s`); Adam (`G2a`, `G2s`) or the normalized step (`G2n`) |
-| `Fn`, `Fd`, `FdL` | the recipe; the recipe at `teaching="deep"` with no apical | the local contrast with the address lesson's step on `sum_i (p*_i - p_i) K_i`; `Fn` and `Fd` patch it in, `FdL` reads it through the library's `recall_address_contrast`, and a test holds `Fd` and `FdL` to the bit |
+| `Fn`, `Fd`, `FdL` | the recipe; the recipe at `teaching="deep"` with no apical | the local contrast with the address lesson's step on `sum_i (p*_i - p_i) K_i`; `Fn` and `Fd` patch it in, `FdL` reads it through the library, whose lesson it is since 0.95.0, and a test holds `Fd` and `FdL` to the bit |
 | `FdT`, `FdC`, `FdR`, `FdX` | `Fd` | what crosses moments cut from birth, at every lesson and act: the working trace, the cortex the address reads, the previous read's focus, and the three |
 
 G2 runs its forward in float64 torch on the act's own path (the settle's synchronous sweeps from

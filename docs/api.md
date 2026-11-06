@@ -197,9 +197,10 @@ maturity and a `cadence-brain/2` file without one.
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
-`Brain.load` also reads the earlier formats `cadence-generic/1` to `/10`; a retired setting
-loads at the one value this version keeps for it and is refused by name at any other
-([CHANGELOG](../CHANGELOG.md)).
+`Brain.load` reads `cadence-brain/1` and `/2`, the formats of 0.85.0 on. It refuses the earlier
+`cadence-generic/1` to `/10` by name: cadence 0.94.0 loads those and saves `cadence-brain/1`. A
+retired setting loads at the one value this version keeps for it and is refused by name at any
+other ([CHANGELOG](../CHANGELOG.md)).
 
 Loading refuses a file that does not match the brain it describes: record and recall key
 widths that differ from the code, code tables that do not read every ON and OFF channel twice
@@ -242,9 +243,9 @@ meaning of each gene are in [routine and repair](start.md#routine-and-repair-liv
 | `level`, `age`, `moments`, `sweeps`, `learning_sweeps`, `outcomes`, `rewards`, `spreads`, `config` | State and counters: `outcomes` counts own outcomes, `rewards` all outcomes. |
 | `aroused`, `mode`, `want`, `heat`, `usual`, `recent`, `longrun`, `scale` | Read-only: `aroused` while `level >= threshold` or within `youth`; `heat` is `1 + config.heat * want`. |
 
-`from_dict` also reads the states saved by earlier releases; a retired gene loads at the one
-value this version keeps for it and is refused by name at any other
-([CHANGELOG](../CHANGELOG.md)).
+`from_dict` reads `cadence-arousal/4` and refuses the earlier formats by name: cadence 0.94.0
+loads those. A retired gene loads at the one value this version keeps for it and is refused by
+name at any other ([CHANGELOG](../CHANGELOG.md)).
 
 ## The memories (`cadence.memories`)
 
@@ -315,11 +316,11 @@ columns of a copy (another batch size reads silence). `reset(batch, rows=None)`,
 ```text
 Recall(connectome, amplitude=3.0, temperature=0.25, recency=0.25,
        capacity=64, next=True, address=0.01,
-       null=None, address_reward=0.0, position_reward=0.0,
+       address_reward=0.0, position_reward=0.0,
        window=1, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
-       boundary=False, copy=0.0, tokens=None, action=False, compete=True, anchor=False,
-       relative=False, slope=0.0, when=False, address_contrast=False, gain=0.0, actions=0)
+       boundary=False, copy=0.0, tokens=None, action=False, anchor=False,
+       relative=False, slope=0.0, when=False, gain=0.0, actions=0)
 ```
 
 The held-input index memory of each stream's recent moments. Each constructor argument is the
@@ -341,13 +342,11 @@ retired setting is refused by name with a sentence saying what the memory does i
 | `end(batch, rows=None)` | Ends episodes and keeps the slots, as `Brain.reset(keep=("slots",))` does; the latest slot learns no successor. With `boundary` an end of every stream opens one boundary slot. |
 | `weights(address, position=None)`, `position_term(head, event, cortex, rows=None)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
 | `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `branch()` | Stream bookkeeping; `branch()` is a copy that reads the live slots and writes none. |
-| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.null_logit(null, temperature)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the sixteen options saved only where they differ, validation of one gene, the null slot's logit, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`; head 0's bare, head h's with `_h`). |
+| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the sixteen options saved only where they differ, validation of one gene, the null slot's logit, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`; head 0's bare, head h's with `_h`). |
 | `told`, `focus`, `anchor_maps`, `relative_maps`, `slope_maps`, `anchored_buckets(rows=None)`, `relative_buckets(rows=None)`, `when_regions(heads)`, `when_features`, `when_width`, `RELATIVE`, `SLOPE` | The options' state: each stream's moments told in its episode and the age of the slot its previous read attended most (`-1` before a read); one `(E_x, E_c, e)`, `(Q_x, Q_c, q)`, `(S_x, S_c, s)` map per head for the anchor, the relative read and the slope (empty lists without the option); each slot's anchored and relative bucket per stream; the when regions' names, the features a read delivers per slot (two of its age, with the anchor two more of its place) and their count; the relative offsets kept apart (8) and the slope's age scale (8). |
 | `attended_heads`, `head_map(head)`, `head_maps`, `position_map(head)`, `position_maps`, `position_buckets` | Every head's attention of the latest read, head 0's first (None before a read, when the read found no slots, and once the streams changed); one head's address map `(w_x, w_c, b)` and every head's; one head's position maps `(P_x, P_c, p)` (refused at `position=0`), every head's (empty at `position=0`), and their number of age buckets. |
-| `RUNTIME`, `CONSTRUCTION`, `OPTIONS`, `CONSTRUCTION_OPTIONS`, `SAVED`, `RETIRED`, `FORMAT` | Class tables: retunable genes, construction genes, the options and those fixed at construction, the keys a memory always describes and saves (the founders and the constants `heard` 1.0 and `address_temperature` 0.1; the third constant, `window_decay` 1.0, is not saved), the retired settings (each with the release that retired it, the one saved value a file loads at and what the memory does instead), and the keys an earlier checkpoint format wrote for three of them with the one value each loads at. |
+| `RUNTIME`, `CONSTRUCTION`, `OPTIONS`, `CONSTRUCTION_OPTIONS`, `SAVED`, `RETIRED` | Class tables: retunable genes, construction genes, the options and those fixed at construction, the keys a memory always describes and saves (the founders and the constants `heard` 1.0 and `address_temperature` 0.1; the third constant, `window_decay` 1.0, is not saved) and the retired settings (each with the release that retired it, the one saved value a file loads at and what the memory does instead). |
 | `keys`, `values`, `nexts`, `held`, `previous`, `ended`, `past`, `heads`, `address_width`, `neurons`, `streams`, `slots`, `to_dict()` | State arrays and sizes. |
-
-Construction and `Brain.retune` refuse a `null` whose logit is not finite.
 
 ```text
 FastSynapses(pre, post, decay=1.0, rate=1.0, amplitude=1.0, normalize=False,
@@ -494,9 +493,9 @@ configuration; `backend`, `device` and `precision` may differ from the saved one
 `FastSynapses`, `Trace` and `ActorCritic` objects are not saved; use `Brain.save` for a
 composed brain. The format is `cadence-checkpoint/2`, and `cadence-checkpoint/5` for a graph
 with an apical compartment (which adds the compartment's synapses, pools, fraction and floor)
-or a learner at the projection-relative floor or fixed nudged phases. `/1` loads; the formats
-`/3` and `/4` of earlier releases are refused with a message naming the release
-([CHANGELOG](../CHANGELOG.md)).
+or a learner at the projection-relative floor or fixed nudged phases. Every other format is
+refused: the message for `/1` and `/3` names cadence 0.94.0, which loads `/1`, and the one for `/4`
+names the release that retired its setting ([CHANGELOG](../CHANGELOG.md)).
 
 ## The agent (`cadence.plasticity`)
 

@@ -5,7 +5,6 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
 
 import cadence as cd
 
@@ -452,51 +451,6 @@ def test_pending_feedback_covers_sampled_routine_and_consumed_outcomes():
     assert not brain.pending_feedback
     brain.reset()
     assert not brain.pending_feedback
-
-
-def test_the_trace_focus_of_0843_is_refused_by_name_and_read_at_zero(tmp_path):
-    """The working trace's focus, a weighting of each neuron by its movement, is removed: the
-    name is refused at compose and retune, and a checkpoint of 0.84.3 loads at the founder
-    focus of zero and is refused above it, each refusal naming 0.84.3."""
-    with pytest.raises(ValueError, match="working_memory_focus was retired.*0.84.3"):
-        small(working_memory_focus=0.5)
-    brain = small()
-    with pytest.raises(ValueError, match="working_memory_focus was retired.*0.84.3"):
-        brain.retune(working_memory_focus=0.0)
-    assert "working_memory_focus" not in brain.describe()["genes"]
-    path = brain.save(tmp_path / "trace.npz")
-    with np.load(path, allow_pickle=False) as saved:
-        arrays = earlier({name: saved[name].copy() for name in saved.files})
-    meta = metadata(arrays)
-    for focus, loads in ((0.0, True), (0.5, False)):
-        meta["working_memory"]["focus"] = focus
-        arrays["generic"] = np.array(json.dumps(meta))
-        np.savez(path, **arrays)
-        if loads:
-            assert cd.Brain.load(path).working_memory.to_dict() == brain.working_memory.to_dict()
-        else:
-            with pytest.raises(ValueError, match="focus=0.5.*retired in 0.85.0.*0.84.3"):
-                cd.Brain.load(path)
-
-
-def test_the_resting_bias_of_0843_is_refused_by_name_and_its_record_loads(tmp_path):
-    """The composed brain's resting bias, an initial bias of the processing regions, is
-    removed: the name is refused at compose and retune with a message naming 0.84.3, and the
-    value a checkpoint of 0.84.3 recorded is provenance its saved biases already hold."""
-    with pytest.raises(ValueError, match="resting_bias was retired.*0.84.3"):
-        small(resting_bias=0.5)
-    brain = small()
-    with pytest.raises(ValueError, match="resting_bias was retired.*0.84.3"):
-        brain.retune(resting_bias=0.5)
-    assert "resting_bias" not in brain.describe()["layout"]["composition"]
-    path = brain.save(tmp_path / "recorded.npz")
-    with np.load(path, allow_pickle=False) as saved:
-        arrays = earlier({name: saved[name].copy() for name in saved.files})
-    meta = metadata(arrays)
-    meta["resting_bias"] = 0.5
-    arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(path, **arrays)
-    np.testing.assert_array_equal(cd.Brain.load(path).brain.bias, brain.brain.bias)
 
 
 def test_the_teaching_point_sets_the_lessons_steps_and_normalization_alone():

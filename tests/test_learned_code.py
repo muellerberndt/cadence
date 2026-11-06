@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 from cadence import brain as cadence_brain
@@ -692,9 +692,9 @@ def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path)
     brain.wait(x[1])
     path = brain.save(tmp_path / "learned.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     meta = metadata(arrays)
-    assert meta["format"] == "cadence-generic/10"
+    assert meta["format"] == "cadence-brain/1"
     assert meta["learned_code"]["units"] == UNITS and meta["composition"]["learned_code"] == UNITS
     assert meta["history"]["source"] == "code" and meta["recall"]["inputs"] == UNITS + INPUTS
     assert arrays["learned_code/dictionary"].shape == (INPUTS, UNITS)
@@ -731,14 +731,11 @@ def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path)
         meta = metadata(copy)
         mutate(meta, copy)
         copy["generic"] = np.array(json.dumps(meta))
-        np.savez(tmp_path / f"{name}.npz", **copy)
+        write(tmp_path / f"{name}.npz", copy)
         return tmp_path / f"{name}.npz"
 
     def no_region(meta, _):
         del meta["learned_code"]
-
-    def earlier_format(meta, _):
-        meta["format"] = "cadence-generic/9"
 
     def other_units(meta, _):
         meta["learned_code"]["units"] = 32
@@ -770,8 +767,7 @@ def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path)
         del copy["lived/action"]
 
     for name, mutate, message in (
-        ("no_region", no_region, "belongs to checkpoint format cadence-generic/10"),
-        ("earlier_format", earlier_format, "belongs to checkpoint format cadence-generic/10"),
+        ("no_region", no_region, "learned code"),
         ("other_units", other_units, "is not the saved learned code of 32 units"),
         ("unknown_field", unknown_field, "invalid saved learned code metadata"),
         ("bad_gene", bad_gene, "invalid saved learned code metadata"),
@@ -994,7 +990,7 @@ def test_a_long_stream_leaves_the_code_alive(tmp_path):
     with np.load(path, allow_pickle=False) as data:
         arrays = {name: data[name].copy() for name in data.files}
     arrays["learned_code/thresholds"][0] = -0.1
-    np.savez(tmp_path / "below.npz", **arrays)
+    write(tmp_path / "below.npz", arrays)
     with pytest.raises(ValueError, match="thresholds are nonnegative"):
         cd.Brain.load(tmp_path / "below.npz")
 
@@ -1317,7 +1313,7 @@ def test_fields_give_each_unit_one_field_of_the_observation(tmp_path):
     arrays["learned_code/dictionary"][0, 20] = 0.1  # unit 20 (field 1) reading input 0 (field 0)
     column = arrays["learned_code/dictionary"][:, 20]
     arrays["learned_code/dictionary"][:, 20] = column / np.linalg.norm(column)
-    np.savez(tmp_path / "other.npz", **arrays)
+    write(tmp_path / "other.npz", arrays)
     with pytest.raises(ValueError, match="reads its own fields only"):
         cd.Brain.load(tmp_path / "other.npz")
     one = composed(seed=3, learned_code_fields=(INPUTS,))

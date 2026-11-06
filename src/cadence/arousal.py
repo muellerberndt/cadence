@@ -75,9 +75,6 @@ _TINY = 1e-12  # keeps the unit of surprise positive in a world that has paid no
 _FORMAT = "cadence-arousal/4"  # every gene of the law and the state it reads
 # The format of 0.88.1 to 0.92.1 with a positive hindsight, which 0.93.0 retired: refused.
 _HINDSIGHT = "cadence-arousal/5"
-# The formats of 0.84.3, read through ``_earlier``: /2 at the founder need scale of zero, /3
-# with a positive one, /1 and the unversioned save before the reward count.
-_EARLIER = ("cadence-arousal/1", "cadence-arousal/2", "cadence-arousal/3")
 
 
 def _log_ratio(error: float, unit: float) -> float:
@@ -122,8 +119,6 @@ class ArousalConfig:
     # instead. ``from_dict`` refuses another saved value by name, and a composed brain refuses
     # the public name ``arousal_<gene>`` (``cadence._configuration.RETIRED``).
     RETIRED = MappingProxyType({
-        "record_surprise": ("0.85.0", 0.0, "the surprise reads the critic's forecast alone; "
-                            "cadence-net 0.84.3 takes it"),
         "hindsight": ("0.93.0", 0, "a calm moment keeps no eligibility, so the outcome that "
                       "wakes the brain credits no earlier action; cadence 0.92.1 takes it"),
     })
@@ -374,9 +369,9 @@ class Arousal:
 
     @classmethod
     def from_dict(cls, values: Any) -> Arousal:
-        """Restore a saved arousal, rejecting incomplete or invalid state. A save of 0.84.3
-        (``cadence-arousal/1`` to ``/3``, or unversioned) loads as its state in this format. A
-        gene the law retired (``ArousalConfig.RETIRED``) loads at the one value at which the
+        """Restore a saved arousal, rejecting incomplete or invalid state; a save of another
+        format is refused: cadence 0.94.0 loads those of 0.84.3 and earlier. A gene the law
+        retired (``ArousalConfig.RETIRED``) loads at the one value at which the
         law is this version's and is refused otherwise, with the release that retired it:
         ``cadence-arousal/5``, the format of a positive hindsight, is refused by name."""
         if not isinstance(values, dict) or not isinstance(values.get("config"), dict):
@@ -394,8 +389,10 @@ class Arousal:
                 raise ValueError(_retired_on_load("hindsight", hindsight))
             values = {**values, "config": config}
             if values.get("format") != _FORMAT:
-                values = _earlier(values)
-            config = values["config"]
+                raise ValueError(
+                    f"this arousal was saved under {values.get('format')!r}, which 0.84.3 and "
+                    "earlier wrote: cadence 0.94.0 loads it and saves the format this version reads"
+                )
             if set(config) != set(ArousalConfig.__slots__):
                 raise ValueError("invalid or incomplete saved arousal config")
             arousal = cls(ArousalConfig(**config))
@@ -440,48 +437,3 @@ def _retired_on_load(gene: str, value: Any) -> str:
         f"this arousal was saved with {gene}={value!r}, which was retired in {release}: "
         f"{instead}"
     )
-
-
-def _earlier(values: dict[str, Any]) -> dict[str, Any]:
-    """A save of 0.84.3 as its state in ``cadence-arousal/4``. Format /2 left out the founder
-    need scale of zero and /3 carried a positive one; /1 and the unversioned save counted
-    only own outcomes in their income, so their reward count defaults to their outcome count
-    and further outcomes enter by the current law; an unversioned save without ``need`` holds
-    the zero-need law. Every one of them carried the record channel, a second surprise at
-    the error of the outcome forecast by the action's record, which this version removed: at
-    its founder weight of zero it never entered the level, and its readings are dropped; a
-    save that weighed it otherwise is refused with a message naming 0.84.3."""
-    if "format" in values and values["format"] not in _EARLIER:
-        raise ValueError("invalid saved arousal format")
-    config = dict(values["config"])
-    genes = set(ArousalConfig.__slots__) | {"record_surprise"}
-    if "format" not in values and set(config) == genes - {"need", "need_scale"}:
-        # the format marker distinguishes that schema from a save missing a gene
-        config["need"] = 0.0
-    if values.get("format") != "cadence-arousal/3":
-        if config.get("need_scale", 0.0) != 0.0:
-            raise ValueError("a scaled need belongs to saved arousal format cadence-arousal/3")
-        if "need_scale" not in config and set(config) == genes - {"need_scale"}:
-            config["need_scale"] = 0.0
-    if set(config) != genes:
-        raise ValueError("invalid or incomplete saved arousal config")
-    weight = config.pop("record_surprise")
-    if isinstance(weight, bool) or weight != ArousalConfig.RETIRED["record_surprise"][1]:
-        raise ValueError(_retired_on_load("record_surprise", weight))
-    records, usual = values["records"], values["usual_record"]
-    if isinstance(records, bool) or not isinstance(records, int) or records < 0:
-        raise ValueError("invalid saved arousal count: records")
-    if (
-        isinstance(usual, bool)
-        or not isinstance(usual, (int, float))
-        or not np.isfinite(usual)
-        or usual < 0
-    ):
-        raise ValueError("invalid saved arousal value: usual_record")
-    rewards = (
-        values["rewards"]
-        if values.get("format") in ("cadence-arousal/2", "cadence-arousal/3")
-        else values.get("rewards", values["outcomes"])
-    )
-    state = {k: v for k, v in values.items() if k not in ("records", "usual_record")}
-    return {**state, "format": _FORMAT, "config": config, "rewards": rewards}

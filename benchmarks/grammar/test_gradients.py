@@ -406,9 +406,9 @@ def test_the_reads_local_credit_is_the_descent_as_the_nudge_shrinks(taught, test
 
 
 def test_the_named_rule_is_the_lanes_and_tends_to_the_first_order(taught, tests):
-    """At the lesson's temperature the rule's error is ``K* - sum p K``: the library's target with
-    the mean key in place of the address. As its temperature rises, scaled to hold the first order,
-    the rule's direction tends to the first-order form on the same scores."""
+    """At the lesson's temperature the rule's error is ``K* - sum p K``, the library's own. As its
+    temperature rises, scaled to hold the first order, the rule's direction tends to the first-order
+    form on the same scores."""
     rows = tests["clause"][0][:8]
     brain = copy.deepcopy(taught)
     drive, labels = gx._settled_drive(brain, rows)
@@ -423,9 +423,8 @@ def test_the_named_rule_is_the_lanes_and_tends_to_the_first_order(taught, tests)
     _, _, _, _, error_plain, _, named, attention = plain
     keys = brain.recall.keys
     mean_key = np.einsum("bm,bmk->bk", np.exp(attention), keys)
-    q = moment.address
-    # the library's error K* - q, and the rule's K* - sum p K
-    assert np.allclose(error_plain, np.einsum("bm,bmk->bk", named, keys) - q)
+    # the library's error and the rule's are K* - sum p K
+    assert np.allclose(error_plain, np.einsum("bm,bmk->bk", named, keys) - mean_key)
 
     def error_at(temperature: float, install) -> np.ndarray:
         fork = copy.deepcopy(brain)
@@ -444,8 +443,8 @@ def test_the_named_rule_is_the_lanes_and_tends_to_the_first_order(taught, tests)
                                                                     first_order.ravel())
 
 
-def test_the_named_arm_is_the_librarys_option():
-    """``Fd``'s patch and ``recall_address_contrast`` live alike, to the bit."""
+def test_the_named_arm_is_the_librarys_lesson():
+    """``Fd``'s patch and the library's address lesson live alike, to the bit."""
 
     def life(arm: str):
         brain = gx.newborn(gx.ARMS[arm], 0, {"module": 16})
@@ -457,7 +456,6 @@ def test_the_named_arm_is_the_librarys_option():
         return brain
 
     patched, option = life("Fd"), life("FdL")
-    assert option.recall.address_contrast and not patched.recall.address_contrast
     assert np.array_equal(patched.learner.brain.efficacy, option.learner.brain.efficacy)
     assert np.array_equal(patched.learner.brain.bias, option.learner.brain.bias)
     for name in ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps"):

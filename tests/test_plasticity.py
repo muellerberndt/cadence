@@ -329,13 +329,6 @@ def test_the_critic_learns_the_actors_capped_dopamine() -> None:
     step = 0.5 * trace / (1.0 + (trace**2).sum())
     np.testing.assert_allclose(ac.w_critic, step[:-1], rtol=1e-12)
     assert ac.b_critic == pytest.approx(step[-1], rel=1e-12)
-    for name, value in (("dopamine_center", 0.5), ("dopamine_floor", 1.0),
-                        ("center_scale", False), ("critic_normalize", False),
-                        ("critic_signal", "td")):
-        with pytest.raises(TypeError):
-            cd.ActorCriticConfig(**{name: value})
-        with pytest.raises(ValueError, match=f"actor_{name} was retired.*0.84.3"):
-            cd.Brain.compose(4, 2, modules=(8,), **{f"actor_{name}": value})
     assert not hasattr(cd, "Valence")
 
 

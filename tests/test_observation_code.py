@@ -11,7 +11,7 @@ from pathlib import Path
 import numpy as np
 import pytest
 from anatomy import single_region
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 from cadence import brain as cadence_brain
@@ -257,11 +257,10 @@ def test_the_founders_acts_and_checkpoint_bytes_are_the_recorded_ones(tmp_path, 
 
 
 def test_the_saved_recall_brain_loads_continues_and_saves_the_same(tmp_path):
-    """The fixture, the recall founder after its life saved by 0.84.3: it loads, and saved
-    again in this version's format it reloads and saves the same; it continues, and the
-    continued life's checkpoint reloads and saves the same; on the NumPy solver the
-    continuation is the recorded one and the same life lived again saves what the loaded
-    fixture saves."""
+    """The fixture, the recall founder after its life saved by 0.94.0: it loads, and saved
+    again it reloads and saves the same; it continues, and the continued life's checkpoint
+    reloads and saves the same; on the NumPy solver the continuation is the recorded one and
+    the same life lived again saves what the loaded fixture saves."""
     fixture = FIXTURES / "recalled.npz"
     provenance = json.loads((FIXTURES / "provenance.json").read_text())
     brain = cd.Brain.load(fixture)
@@ -279,8 +278,8 @@ def test_the_saved_recall_brain_loads_continues_and_saves_the_same(tmp_path):
     if NUMPY_SOLVER:
         assert acts == provenance["continuation"]["recalled"]["acts"]
         inputs, actions, options = FOUNDERS["recalled"]["build"]
-        # the fixture's genes: a save of 0.84.3 carries the need scale of zero, the expert
-        # route's value since the constant of 0.93.0 (the founder's arousal law otherwise)
+        # the fixture's genes: its life began under 0.84.3, whose need scale of zero is the
+        # expert route's value since the constant of 0.93.0 (the founder's arousal law otherwise)
         founder = cd.Brain.compose(inputs, actions, **options).arousal.config
         relived = cd.Brain.compose(
             inputs, actions, **{**options, "arousal": replace(founder, need_scale=0.0)}
@@ -294,9 +293,9 @@ def test_the_saved_recall_brain_loads_continues_and_saves_the_same(tmp_path):
     assert "seed" not in meta["recall"] and "address_prior" not in meta["recall"]
     meta["recall"]["address_prior"] = 1.0  # a retired gene is refused
     with np.load(fixture, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "prior.npz", **arrays)
+    write(tmp_path / "prior.npz", arrays)
     with pytest.raises(ValueError, match="invalid saved recall ports"):
         cd.Brain.load(tmp_path / "prior.npz")
 
@@ -646,9 +645,9 @@ def test_a_coded_checkpoint_carries_its_code_and_a_mismatch_is_refused(tmp_path)
         brain.live(x[t % 3], reward=None if t == 0 else [float(t % 2)])
     path = brain.save(tmp_path / "coded.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     meta = metadata(arrays)
-    assert meta["format"] == "cadence-generic/9"
+    assert meta["format"] == "cadence-brain/1"
     assert meta["code"] == {**brain.sparse_code.to_dict(), "cortex": True}
     assert arrays["code/index"].shape == arrays["code/weight"].shape == (1024, 32)
     assert meta["hippocampus"]["pre"] == 1024 and meta["episodic"]["context_memory"]["pre"] == 1027
@@ -677,20 +676,11 @@ def test_a_coded_checkpoint_carries_its_code_and_a_mismatch_is_refused(tmp_path)
         meta = metadata(copy)
         mutate(meta, copy)
         copy["generic"] = np.array(json.dumps(meta))
-        np.savez(tmp_path / f"{name}.npz", **copy)
+        write(tmp_path / f"{name}.npz", copy)
         return tmp_path / f"{name}.npz"
 
     def no_code(meta, _):
         del meta["code"]
-
-    def earlier_format(meta, _):
-        meta["format"] = "cadence-generic/8"
-
-    def before_the_cover(meta, copy):  # a code saved before the covering construction
-        del meta["code"]["cover"]
-        meta["code"]["fan_in"] = 32
-        signed = cd.PatternSeparator(2_000, 1024, 102, seed=meta["code"]["seed"], fan_in=32)
-        copy["code/index"], copy["code/weight"] = signed.index, signed.weight
 
     def unknown_field(meta, _):
         meta["code"]["channels"] = 4_000
@@ -737,11 +727,7 @@ def test_a_coded_checkpoint_carries_its_code_and_a_mismatch_is_refused(tmp_path)
         copy["code/weight"] = copy["code/weight"][:512]
 
     for name, mutate, message in (
-        ("no_code", no_code, "belongs to checkpoint format cadence-generic/9"),
-        ("earlier_format", earlier_format, "belongs to checkpoint format cadence-generic/9"),
-        ("before_the_cover", before_the_cover, "lacks the covering construction's field, "
-                                               "cover: it was saved before the covering code "
-                                               "and cannot be loaded by this version"),
+        ("no_code", no_code, "code"),
         ("unknown_field", unknown_field, "invalid saved code metadata"),
         ("other_fan_in", other_fan_in, "32 channels per unit, and keeps one unit in 10"),
         ("other_winners", other_winners, "32 channels per unit, and keeps one unit in 10"),
@@ -818,13 +804,13 @@ def test_the_loader_bounds_the_keys_by_the_code_and_the_outputs_by_the_graph(tmp
     brain.step(frames(32, 1, 9, density=0.3))
     path = brain.save(tmp_path / "wide.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     n = brain.connectome.n
 
     def refused(name, mutate, message):
         copy = {k: v.copy() for k, v in arrays.items()}
         mutate(copy)
-        np.savez(tmp_path / f"{name}.npz", **copy)
+        write(tmp_path / f"{name}.npz", copy)
         with pytest.raises(ValueError, match=message):
             cd.Brain.load(tmp_path / f"{name}.npz")
 
@@ -849,7 +835,7 @@ def test_the_loader_bounds_the_keys_by_the_code_and_the_outputs_by_the_graph(tmp
 def parsed(path: Path) -> tuple[dict, dict]:
     """A checkpoint's metadata entries, parsed, and its other arrays by name."""
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     meta = {name: json.loads(str(arrays.pop(name))) for name in ("generic", "meta")
             if name in arrays}
     return meta, arrays
@@ -894,7 +880,7 @@ def test_place_records_of_another_width_are_refused_by_the_loader(tmp_path):
     brain.step(x, reward=[1.0])
     path = brain.save(tmp_path / "coded.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     meta = metadata(arrays)
     meta["hippocampus"]["pre"] = 512
     meta["hippocampus"]["persistent_parameters"] = 512 * 3
@@ -902,7 +888,7 @@ def test_place_records_of_another_width_are_refused_by_the_loader(tmp_path):
     arrays["episodic/strength"] = np.zeros((1, 512, 3))
     arrays["episodic/consolidated"] = np.zeros((512, 3))
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "narrow.npz", **arrays)
+    write(tmp_path / "narrow.npz", arrays)
     with pytest.raises(ValueError, match="keyed on 512 coordinates where the brain's "
                                          "observation code has 1024"):
         cd.Brain.load(tmp_path / "narrow.npz")
@@ -918,7 +904,7 @@ def test_a_wide_brain_keyed_on_its_observation_saves_and_loads_as_before(tmp_pat
     path = brain.save(tmp_path / "raw.npz")
     with np.load(path, allow_pickle=False) as data:
         meta = metadata(data)
-    assert meta["format"] == "cadence-generic/8" and "code" not in meta
+    assert meta["format"] == "cadence-brain/1" and "code" not in meta
     assert meta["hippocampus"]["pre"] == 1_500
     twin = cd.Brain.load(path)
     assert twin.sparse_code is None and twin.code_width == 1_500

@@ -16,7 +16,6 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from checkpoints import earlier
 
 import cadence as cd
 from cadence.memory import SynapticMemory
@@ -267,10 +266,6 @@ def test_a_mature_brain_saves_a_format_of_its_own():
             np.savez(path, **{**arrays, "brain": np.array(json.dumps(changed))})
             with pytest.raises(ValueError, match="belongs to checkpoint format cadence-brain/2"):
                 cd.Brain.load(path)
-        # the layout of the formats of 0.84.3 has no maturity either
-        np.savez(path, **earlier(arrays))
-        with pytest.raises(ValueError, match="belongs to checkpoint format cadence-brain/2"):
-            cd.Brain.load(path)
 
 
 def test_several_writing_streams_keep_every_residual_around_the_shared_records():
