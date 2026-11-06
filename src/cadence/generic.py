@@ -2275,6 +2275,8 @@ class Brain:
         self._prepared: np.ndarray | None = None  # the observations ``learn`` settled
         self.last_learning: dict[str, float] = {}
         self._last_settlement: Mapping[str, Any] | None = None
+        # the settle a surprise lesson judged by, for an act on the same moment (``_read_judged``)
+        self._judged: tuple[Any, ...] | None = None
         # ``live``: the arousal of the stream, and the action it issued that awaits an outcome
         # (observations, action, the value forecast made before the outcome, sampled?, its
         # free state, the brain's own best guess?, the code it was keyed on with a learned
@@ -3460,8 +3462,35 @@ class Brain:
             damping_halvings=1,
         )
 
+    def _read_judged(
+        self, drive: np.ndarray, state: BrainState | None, operation: str
+    ) -> BrainState | None:
+        """The settle a surprise lesson judged by, when this solve is the same one: its drive
+        and its warm state to the bit, under the same parameters and settings. A solve is a
+        function of these, so its state and its report are the ones a second solve makes: a
+        lesson that taught no row costs the act that follows no settle of its own. The report
+        states the sweeps the state took. It is read once."""
+        held, self._judged = self._judged, None
+        if held is None:
+            return None
+        graph = self.brain
+        if (
+            held[0] is graph
+            and held[1] is graph._efficacy
+            and held[2] is graph._bias
+            and held[3] is self.learner.config
+            and held[4] == operation
+            and held[5] is state
+            and held[6] == drive.tobytes()
+            and (state is None or held[7] == (state.v.tobytes(), state.adaptation.tobytes()))
+        ):
+            self._last_settlement = MappingProxyType(held[9])
+            return cast(BrainState, held[8])
+        return None
+
     def _qualified(
-        self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer"
+        self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer",
+        judges: bool = False,
     ) -> BrainState:
         """Check the complete current graph before publishing an answer. A solve that does not
         qualify within ``free_steps`` continues once from where it stopped on the damping
@@ -3470,12 +3499,16 @@ class Brain:
         is the answer refused. A solve that ended with a value that is not finite, or a budget
         of no sweeps, is refused without one. The rescue changes nothing where the first solve
         qualifies; the report counts its sweeps (``rescue_steps``) and sums both solves' sweeps
-        and checks."""
+        and checks. A solve that ``judges`` a lesson is kept for the same solve next
+        (``_read_judged``)."""
         from .brain import _copy_state
 
         cfg = self.learner.config
         if cfg.tolerance is None:
             raise ValueError("Brain answers require a finite residual tolerance")
+        read = self._read_judged(drive, state, operation)
+        if read is not None:
+            return read
         phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
         rescue, rescued = 0, False
         # a budget of no sweeps has no rescue of as many
@@ -3525,6 +3558,13 @@ class Brain:
                 + (" and a rescue of as many" if rescued else "")
                 + f": residual={float(np.max(phase.residual)):.6g}, "
                 f"tolerance={cfg.tolerance:g}; no action issued"
+            )
+        graph = self.brain
+        if judges and graph.backend == "cpu" and self.learned_code is None:
+            self._judged = (
+                graph, graph._efficacy, graph._bias, cfg, operation, state, drive.tobytes(),
+                None if state is None else (state.v.tobytes(), state.adaptation.tobytes()),
+                phase.state, report,
             )
         return phase.state
 
@@ -3727,7 +3767,7 @@ class Brain:
             # settle its act reads, warm from the stream, with the episodic vote under the
             # decision's own key; a row that answer already gives as shown is no surprise
             answer = self._greedy(
-                self._qualified(drive, self._activity(), operation="act"), place, key
+                self._qualified(drive, self._activity(), operation="act", judges=True), place, key
             )
             if tokens is not None and not tokens.all():
                 # with declared tokens, a row whose answer is no token (a yes or a no, a
