@@ -184,10 +184,11 @@ points and step counts, activations within 1e-10 (`tests/test_torch_settle_parit
 Above `dense_limit` the CPU transport is sparse: a SciPy CSR multiply when SciPy is installed,
 a NumPy segmented sum otherwise; `"mlx"` needs the blocks. CSR indices are cached on the connectome (about `4 * (E + N + 1)` bytes for E synapses
 and N neurons), and each brain's matrix shares its weights. Summation order differs slightly
-between kernels. A composed brain whose regions are dense pays for this: at 3,920 inputs a recall
-brain's blocks exceed 2048 squared entries and an act takes about 30 times as long as on the blocks.
-`Brain.compose(..., dense_limit=8192)` keeps such a brain on the blocks and the compiled kernels, at
-8 bytes per block entry; the founder composes at 2048. `graph.to_dict()["transport"]` is `"dense"` or `"segmented"`; `"sparse_kernel"`
+between kernels. A brain whose regions are dense pays for this: at 3,920 inputs a recall
+brain's blocks exceed 2048 squared entries, and on the sparse transport an act takes about 30 times
+as long. `Brain.compose` with `recall=True` therefore takes a limit as wide as the blocks wherever at
+least half of their entries are synapses, which costs 8 bytes per block entry, no more than the
+sparse form; `dense_limit=` names another. A brain without the memory composes at 2048. `graph.to_dict()["transport"]` is `"dense"` or `"segmented"`; `"sparse_kernel"`
 is `None` until a sparse CPU multiply runs, then `"scipy_csr"` or `"numpy_segmented"`.
 
 With Numba installed, the CPU backend settles blocked connectomes in one compiled loop (block

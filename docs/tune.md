@@ -134,7 +134,7 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `code` | unset: the observation itself | construction | [memory](senses.md#the-observation-code) |
 | `memory_choice` and the other `memory_*` episodic settings | `False` | construction | [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) |
 | `recall` and every `recall_*` | `False` | see the page | [recall memory](memory.md#the-recall-memory-in-full) |
-| `backend`, `device`, `dense_limit` | `"cpu"`, `None`, `2048` | construction | [backends](backends.md) |
+| `backend`, `device`, `dense_limit` | `"cpu"`, `None`, `2048` (with `recall=True` as wide as dense blocks) | construction | [backends](backends.md) |
 
 Constants of the composed brain, not settings: the nudge `beta` 0.1, the learner's `momentum`
 0.9, the rehearsal's reservoir of 512 lesson rows, the dopamine cap 1.0, reward eligibility phases
@@ -311,7 +311,7 @@ at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 
 | Work | Brain | One thread, Apple M4 |
 | --- | --- | ---: |
-| One stream of speech: 3,920 inputs, association 512, `dense_limit=8192`, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
+| One stream of speech: 3,920 inputs, association 512, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
 | The same | the recipe | 10 ms, 190 ms |
 | The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
 | Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
@@ -327,7 +327,7 @@ an act, and only the act has to keep up with the stream.
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |
-| Blocks | `dense_limit` at construction | A brain over the limit settles on the sparse transport in Python, about 30 times slower at the speech size. |
+| Blocks | `dense_limit` at construction | A brain over the limit settles on the sparse transport in Python, about 30 times slower at the speech size. A brain with the memory takes a limit as wide as its blocks unless it names one. |
 | Device | `backend="cpu"` | At the chamber's size, 16 rows over 82 settling neurons, MLX on the same M4 takes 16 times as long per batch. [Which hardware](backends.md#which-hardware) gives the sizes where a device pays. |
 
 ## Larger brains

@@ -36,6 +36,7 @@ designed region can replace any of them.
 
 from __future__ import annotations
 
+import math
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -64,6 +65,8 @@ from ._configuration import (
     teaching_point,
 )
 from .arousal import Arousal, ArousalConfig
+from .blocks import Layout
+from .blocks import layout as make_layout
 from .brain import Apical, Backend, BrainState, Equilibrium
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
@@ -1787,6 +1790,19 @@ def _layout(
     }
 
 
+def _composed_limit(layout: Layout, synapses: int, asked: int | None, recall: bool) -> int:
+    """The dense limit a composed brain takes: the one asked for, else the graph's 2048, and with
+    the recall memory as wide as its blocks wherever at least half of their entries are synapses.
+    The memory's regions are dense: over 2048 squared entries a sparse settle runs in Python, about
+    30 times the cost of the compiled one, and the blocks hold no more than the sparse form does."""
+    if asked is not None:
+        return asked
+    size = layout.size
+    if recall and size > 2048 * 2048 and 2 * synapses >= size:
+        return math.isqrt(size - 1) + 1
+    return 2048
+
+
 class Brain:
     """Senses, an association cortex, a motor cortex, basal ganglia and consolidating memory.
 
@@ -1875,7 +1891,7 @@ class Brain:
         code: int | None = None,
         learned_code: int | None = None,
         apical: float = 0.0,
-        dense_limit: int = 2048,
+        dense_limit: int | None = None,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2022,12 +2038,14 @@ class Brain:
         compartment = _apical(connectome, fraction) if fraction else None
         if compartment is not None and not compartment.synapses.any():
             raise ValueError("apical needs reciprocal pairs between regions; this anatomy has none")
+        layout = make_layout(connectome)
         brain = NeuralGraph(
             connectome,
             learning_neuron_model(dt=1.0 if compartment is None else _APICAL_STEP),
             backend=backend,
             device=device,
-            dense_limit=dense_limit,
+            dense_limit=_composed_limit(layout, connectome.synapses, dense_limit, recall),
+            layout=layout,
             apical=compartment,
         )
         self._composition: dict[str, Any] | None = None  # construction provenance, not parameters

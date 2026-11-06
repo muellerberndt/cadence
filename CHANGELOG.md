@@ -52,10 +52,13 @@
   1e-5, and the activation is made in arithmetic that vectorizes. The same equations, order and
   tolerance in about half of a chamber pass, with other bits. A settle's report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without
   the option are unchanged.
-- Add `dense_limit` to `Brain.compose` (opt-in, construction, founder 2048): a brain whose blocks
-  exceed it settles on the sparse transport in Python, about 30 times slower at a speech
-  instrument's 3,920 inputs; a larger limit keeps it on the blocks and the compiled kernels. See
-  [backends](docs/backends.md).
+- Add `dense_limit` to `Brain.compose` (construction, founder 2048): a brain whose blocks exceed it
+  settles on the sparse transport in Python, about 30 times slower at a speech instrument's 3,920
+  inputs; a larger limit keeps it on the blocks and the compiled kernels. With `recall=True` a brain
+  that names no limit takes one as wide as its blocks wherever at least half of their entries are
+  synapses, so a new memory brain over 2048 squared entries settles on the blocks and its last bits
+  differ from what the sparse transport gave. A saved brain keeps its limit, and a brain without the
+  memory is unchanged. See [backends](docs/backends.md).
 - A brain costs less per moment, with the same bits and the same reports (#271): a chamber pass
   takes about 0.4 of its time. The settle's rows pay no atomic reference counts and run on vector loops,
   a launch reads the activations a state keeps instead of computing them again, a free solve runs in
