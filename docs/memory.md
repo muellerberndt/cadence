@@ -1293,11 +1293,11 @@ second write's value). Where it falls short:
   the slow one.
 - **Ordered recall from reward** misses on three lives of twelve, where `reward_recipe`,
   without the next port that successor reads need, misses on two. Two of the three pin the
-  actor's readout on one action from their first 256 episodes
-  ([a readout pinned on one action](reward.md#a-readout-pinned-on-one-action-opt-in)):
-  `actor_relax=0.15` opens both locks (one life then answers every query, the other 0.81) and
-  moves another life to a miss, so the count stays 9 of 12. What then limits the world is the
-  next port: a write's value is on its own slot's recall port and on the slot before's next
+  actor's readout on one action from their first 256 episodes: the query's outputs sit at 0.95 to
+  0.99 and near zero, where the activation has no slope and neither the dopamine nor the read's
+  eligibility can move the choice. A relaxation of the pinned output's bias opened both locks and
+  moved another life to a miss, and the count stayed 9 of 12, so the library carries none. What
+  limits the other lives is the next port: a write's value is on its own slot's recall port and on the slot before's next
   port, so with no gap between the writes "the first" and "the latest" each have a slot whose
   two ports disagree, and a life can learn either. `reward_recipe` answers both through the
   write's own slot by leaving the next port out; this composition keeps the next port for its

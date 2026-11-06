@@ -33,15 +33,6 @@
   and on 5 of 6 at the founder's step (12 of 12 fresh founders with the step restored by
   setting). Brains at the founder's position rate, and brains without the reward read, are
   unchanged.
-- Add `actor_relax` (opt-in, runtime, founder 0.0): at every actor update an output whose
-  activation at the scored act sits past 0.9, on the flat top of its range, lowers its bias by
-  the rate times how far past it sits. Under reward alone a readout can pin one action at 0.95 to
-  0.99 and the other near zero from its first episodes; it stays aroused and learns at every
-  moment without moving, and the recall read's eligibility, always naming the same sampled
-  action, has no direction. At 0.15 one such life of the ordered recall world answers every
-  query (0.48 to 1.00) and the other leaves its lock (0.49 to 0.81); the reward chambers of the
-  preservation panel keep their counts at 0.05. See
-  [reward](docs/reward.md#a-readout-pinned-on-one-action-opt-in).
 - Add `recall_copy_next` (opt-in, construction, founder 0.0; it needs `recall_tokens`): the
   copy pathway's identity starts on the next ports at that magnitude as well, so a successor the
   read delivers drives its own action, a successor never taught as an answer included
