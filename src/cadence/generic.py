@@ -3426,8 +3426,10 @@ class Brain:
                 damping=cfg.damping,
             )
         first_budget = budget if budget < 2 else (budget + 1) // 2
+        # on the host a solve copies what it continues from; a device state stays apart
         phase = brain.equilibrate(
-            drive, state=_copy_state(state), budget=first_budget, tolerance=tolerance
+            drive, state=state if brain.backend == "cpu" else _copy_state(state),
+            budget=first_budget, tolerance=tolerance,
         )
         if np.all(phase.qualified) or phase.steps >= budget:
             return phase
@@ -3512,7 +3514,7 @@ class Brain:
         phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
         rescue, rescued = 0, False
         # a budget of no sweeps has no rescue of as many
-        if cfg.free_steps > 0 and not all(bool(value) for value in phase.qualified) and all(
+        if cfg.free_steps > 0 and not phase.qualified.all() and all(
             np.isfinite(np.asarray(value)).all()
             for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
         ):
@@ -3532,8 +3534,8 @@ class Brain:
                 residual_checks=int(before.residual_checks) + int(phase.residual_checks),
                 stagnation_checks=int(before.stagnation_checks) + int(phase.stagnation_checks),
             )
-        rows = tuple(bool(value) for value in phase.qualified)
-        residual = tuple(float(value) for value in phase.residual)
+        rows = tuple(phase.qualified.tolist())
+        residual = tuple(phase.residual.tolist())
         report: dict[str, Any] = {
             "operation": operation,
             "qualified": all(rows),
