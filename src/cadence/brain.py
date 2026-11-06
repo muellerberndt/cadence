@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import copy
 import functools
+import itertools
 import os
 import sys
 import threading
@@ -635,6 +636,24 @@ for _name, _key in (("v", "v"), ("activation", "s"), ("adaptation", "a")):
     setattr(BrainState, _name, _lazy(_name, _key))
 
 
+def _lazy_change(self: BrainState) -> np.ndarray | None:
+    """``activity_change``, summed from what the launches made on first use on MLX."""
+    value: np.ndarray | None = self.__dict__.get("activity_change")
+    if value is None:
+        handle = self.__dict__.get("device")
+        if isinstance(handle, _MlxState):
+            value = handle._fetch("change")
+            self.__dict__["activity_change"] = value
+    return value
+
+
+def _put_change(self: BrainState, value: np.ndarray | None) -> None:
+    self.__dict__["activity_change"] = value
+
+
+BrainState.activity_change = property(_lazy_change, _put_change)  # type: ignore[assignment]
+
+
 class Brain:
     def __init__(
         self,
@@ -1112,7 +1131,7 @@ class Brain:
             ]
             return bool(torch.stack(unchanged).all().item())
         if self._mlx is not None and old is not None and new is not None and (
-            old.get("holder") is self._mlx and new.get("holder") is self._mlx
+            old.get("holder") is self._mlx.root and new.get("holder") is self._mlx.root
         ):
             mx = self._mlx.mx
             rounding = 8 * np.finfo(np.float32).eps
@@ -1154,7 +1173,17 @@ class Brain:
             solved = self._solve_compiled(drive, current, budget, chunk, tolerance, fast)
             if solved is not None:
                 return solved
-        error = self.residual(drive, current, mask=mask, nudge=nudge)
+        if mask is None and not stop_if_stalled and self._mlx is not None and self._solves_alone():
+            kernel: _MlxKernel = self._mlx
+            solved = kernel.solve(np.atleast_2d(drive), current, nudge, budget, chunk, tolerance)
+            if solved is not None:
+                return solved
+        # below the launch's floor the float64 reference decides, also of a launched state
+        reference: dict[str, bool] = (
+            {"on_device": False}
+            if self._mlx is not None and tolerance < _MLX_CHECK_FLOOR else {}
+        )
+        error = self.residual(drive, current, mask=mask, nudge=nudge, **reference)
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
         while used < budget and not (error <= tolerance).all():
             if not np.isfinite(error).all() and any(
@@ -1169,7 +1198,7 @@ class Brain:
                 drive, steps=min(chunk, budget - used), state=current, mask=mask, nudge=nudge
             )
             used += current.steps
-            error = self.residual(drive, current, mask=mask, nudge=nudge)
+            error = self.residual(drive, current, mask=mask, nudge=nudge, **reference)
             checks += 1
             if stop_if_stalled and used < budget and not (error <= tolerance).all():
                 stagnation_checks += 1
@@ -1189,12 +1218,19 @@ class Brain:
             _FUSED
             and self.backend == "cpu"
             and self.apical is None
-            and type(self).settle_batch is _SETTLE_BATCH
+            and self._solves_alone()
+            and self._fused_blocks() is not None
+        )
+
+    def _solves_alone(self) -> bool:
+        """Whether nothing has to see a solve's every settle and check: no wrapped ``settle_batch``
+        or ``residual``, no recording."""
+        return (
+            type(self).settle_batch is _SETTLE_BATCH
             and type(self).residual is _RESIDUAL
             and "settle_batch" not in self.__dict__
             and "residual" not in self.__dict__
             and _capture() is None
-            and self._fused_blocks() is not None
         )
 
     def _solve_compiled(
@@ -1295,7 +1331,7 @@ class Brain:
             and state.device is not None
             and self.backend in ("torch", "mlx")
             and state.device.get("holder")
-            is (self._torch if self.backend == "torch" else self._mlx)
+            is (self._torch if self.backend == "torch" else self._mlx.root)
         )
         v: Any
         a: Any
@@ -1382,10 +1418,19 @@ class Brain:
         kernel = self._torch if self.backend == "torch" else self._mlx
         if kernel is None or plus.device is None or minus.device is None:
             return None
-        if plus.device.get("holder") is not kernel or minus.device.get("holder") is not kernel:
+        holder = kernel if self._mlx is None else kernel.root
+        if plus.device.get("holder") is not holder or minus.device.get("holder") is not holder:
             return None
         out: tuple[np.ndarray, np.ndarray] = kernel.contrast(plus.device["s"], minus.device["s"])
         return out
+
+    def _small_contrast(self, plus: BrainState) -> bool:
+        """Whether a contrast costs the host less than the synchronization its launch takes: on
+        MLX, few rows of small blocks whose activations the host reads anyway."""
+        if self._mlx is None or self._mlx.plan is None or not isinstance(plus.device, _MlxState):
+            return False
+        rows = int(plus.device["vm"].shape[0])
+        return rows * self.layout.size < _MLX_CONTRAST_ENTRIES
 
     def residual(
         self,
@@ -1428,6 +1473,10 @@ class Brain:
         ):
             raise ValueError("mask must have one entry per neuron, optionally per batch row")
         handle, kernel = state.device, self._torch
+        if on_device and keep is None and isinstance(handle, _MlxState):
+            checked = handle.get("checked")  # the launch that made the state read its equations
+            if checked is not None and checked[0] is d and checked[1] is nudge:
+                return np.array(checked[2])
         if (
             on_device
             and kernel is not None
@@ -3359,6 +3408,390 @@ class _TorchKernel:
 # The most sweeps one lazy MLX graph holds before it is evaluated: a settle without a movement
 # tolerance is evaluated once at its end, and a long one this often, which bounds its memory.
 _MLX_GRAPH_STEPS = 64
+# The most sweeps one launch runs under a movement tolerance: a bit per sweep of a 32-bit word.
+_MLX_BOUNDED_STEPS = 32
+# The most settling neurons one launch holds in threadgroup memory (four arrays, 32 KB in all).
+_MLX_LAUNCH_NEURONS = 2048
+# Threads in a row's threadgroup: Metal's limit on Apple GPUs.
+_MLX_LAUNCH_THREADS = 1024
+# Inside a solve the launch's check reads float32: its rounding is about 1e-6 at potentials near
+# ten. A tolerance below this floor is checked by the float64 reference on the host.
+_MLX_CHECK_FLOOR = 1e-4
+# The smallest temperature of a launch's softmax: an activation is at most one, so its exponential
+# stays within float32 for any sum of neurons.
+_MLX_LEAST_TEMPERATURE = 0.02
+# Rows times block entries from which the device's contrast costs less than the host's.
+_MLX_CONTRAST_ENTRIES = 1 << 20
+
+# A chunk of sweeps of the settling neurons in one Metal launch, with the equations' residual of
+# its first and last state. One threadgroup per row, one thread per settling neuron (or PER of
+# them), so the rows and neurons run in parallel with no host synchronization between sweeps. The
+# activations live in threadgroup memory, read four at a time: a GPU thread is many times slower
+# per load from device memory than the SIMD group it runs in. A source range's products reach the
+# launch summed in ``first`` (the first sweep's) and ``fixed`` (every later sweep's).
+_MLX_LAUNCH = """
+    constexpr int CAP = {cap}, PER = {per};
+    threadgroup float tg_a[CAP];
+    threadgroup float tg_b[CAP];
+    threadgroup float tg_p[CAP];
+    threadgroup float tg_q[CAP];
+    int row = (int)threadgroup_position_in_grid.x, me = (int)thread_index_in_threadgroup;
+    int m = plan[0], blocks = plan[1], threads = plan[2];
+    int sweeps = control[0];
+    bool nudging = control[1] != 0, shares = control[2] != 0, bounded = control[3] != 0;
+    float row_weight = control[4] != 0 ? weight[row] : 1.0f;
+    float slope = scales[0], threshold = scales[1], rest = scales[2], up = scales[3];
+    float down = scales[4], beta = scales[5], tolerance = scales[6];
+    int low = me * PER, high = min(m, low + PER), at = row * m;
+    float held[PER];
+    threadgroup float* now = tg_a;
+    threadgroup float* next = tg_b;
+    threadgroup float* heat = tg_p;
+    threadgroup float* next_heat = tg_q;
+    for (int j = low; j < high; j++) {{
+        held[j - low] = v0[at + j];
+        now[j] = s0[at + j];
+        if (shares && mask[j] != 0.0f) heat[j] = exp(now[j] * over[j]);
+    }}
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float moved = 0.0f, worst_first = 0.0f;
+    uint moving = 0u;
+    for (int t = 0;; t++) {{
+        float worst = 0.0f;
+        bool broken = false;
+        for (int j = low; j < high; j++) {{
+            float total = t == 0 ? first[at + j] : fixed[at + j];
+            for (int k = 0; k < blocks; k++) {{
+                int e = 4 + 5 * k;
+                int a0 = plan[e], a1 = plan[e + 1], b0 = plan[e + 2];
+                if (j < b0 || j >= plan[e + 3]) continue;
+                int offset = plan[e + 4] + (j - b0) * (a1 - a0) - a0;
+                int i = a0;
+                float4 sum = 0.0f;
+                for (; i + 4 <= a1; i += 4) {{
+                    int c = offset + i;
+                    sum += float4(now[i], now[i + 1], now[i + 2], now[i + 3])
+                        * float4(w[c], w[c + 1], w[c + 2], w[c + 3]);
+                }}
+                total += sum.x + sum.y + sum.z + sum.w;
+                for (; i < a1; i++) total += now[i] * w[offset + i];
+            }}
+            if (nudging && mask[j] != 0.0f) {{
+                float share = now[j];
+                if (shares) {{  // the softmax of the neuron's group, a range of settling neurons
+                    int i = group_low[j], g1 = group_high[j];
+                    float4 sum = 0.0f;
+                    for (; i + 4 <= g1; i += 4) {{
+                        sum += float4(heat[i], heat[i + 1], heat[i + 2], heat[i + 3]);
+                    }}
+                    float all = sum.x + sum.y + sum.z + sum.w;
+                    for (; i < g1; i++) all += heat[i];
+                    share = heat[j] / all;
+                }}
+                total += beta * (target[at + j] - share) * mask[j] * row_weight;
+            }}
+            float error = abs(total - held[j - low]);
+            worst = max(worst, error);
+            broken = broken || !(error < INFINITY);
+            if (t < sweeps) {{
+                held[j - low] = total;
+                float r = 1.0f / (1.0f + exp(-slope * (total - threshold))) - rest;
+                float a = r > 0.0f ? r * up : r * down;
+                float step = abs(a - now[j]);
+                moved += step;
+                if (bounded && !(step < tolerance)) moving |= 1u << t;
+                next[j] = a;
+                if (shares && mask[j] != 0.0f) next_heat[j] = exp(a * over[j]);
+            }}
+        }}
+        if (broken) worst = INFINITY;
+        if (t == 0) worst_first = worst;
+        if (t == sweeps) {{
+            out_e[(row * threads + me) * 2] = worst_first;
+            out_e[(row * threads + me) * 2 + 1] = worst;
+            break;
+        }}
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+        threadgroup float* swap = now;
+        now = next;
+        next = swap;
+        swap = heat;
+        heat = next_heat;
+        next_heat = swap;
+    }}
+    for (int j = low; j < high; j++) {{
+        out_v[at + j] = held[j - low];
+        out_s[at + j] = now[j];
+    }}
+    out_c[row * threads + me] = moved;
+    out_m[row * threads + me] = moving;
+"""
+
+
+def _launch_error(errors: Any, which: int) -> np.ndarray:
+    """Each row's largest residual at a launch's first (0) or last (1) state, from every thread's;
+    infinity where one is not finite."""
+    held = np.array(errors, copy=False)[:, which::2]
+    return np.asarray(held.max(axis=1), dtype=np.float64)
+
+
+class _MlxState(dict):  # type: ignore[type-arg]
+    """The handle of a settle launched on MLX: the settling neurons' arrays and each source
+    range's. The whole ``(batch, n)`` arrays (``"v"``, ``"s"``, ``"a"``) are made when first read
+    on the device, and the host's (``"fetch"``) without another launch: most moments read neither
+    all of them nor any of them twice."""
+
+    __slots__ = ()
+
+    def __missing__(self, key: str) -> Any:
+        if key == "fetch":  # not kept: the handle holds no reference to itself
+            return self._fetch
+        if key in ("v", "s", "a"):
+            value = self["plan"].whole(self, key)
+            self[key] = value
+            return value
+        raise KeyError(key)
+
+    def __contains__(self, key: object) -> bool:
+        return key in ("fetch", "v", "s", "a") or dict.__contains__(self, key)
+
+    def get(self, key: str, default: Any = None) -> Any:
+        try:
+            return self[key]
+        except KeyError:
+            return default
+
+    def _fetch(self, key: str) -> np.ndarray:
+        result: np.ndarray = self["plan"].fetch(self, key)
+        return result
+
+
+class _MlxPlan:
+    """What a launch reads of a layout and a neuron rule, made once per kernel family: the settling
+    ranges (those that receive synapses) and the source ranges. A source range's potential is its
+    drive from its first sweep on under ``dt = 1`` without adaptation, so its products are made
+    once a settle; only the settling neurons sweep."""
+
+    def __init__(self, mx: Any, layout: Layout, neuron_model: NeuronModel, n: int) -> None:
+        self.mx = mx
+        self.n = n
+        self.settling = sorted({int(r) for r in layout.pair_post})
+        self.sources = [r for r in range(layout.ranges) if r not in self.settling]
+        self.spans = {
+            r: (int(layout.starts[r]), int(layout.starts[r + 1])) for r in range(layout.ranges)
+        }
+        self.place: dict[int, int] = {}
+        at = 0
+        for r in self.settling:
+            self.place[r] = at
+            at += self.spans[r][1] - self.spans[r][0]
+        self.m = at
+        self.pre = [int(r) for r in layout.pair_pre]
+        self.post = [int(r) for r in layout.pair_post]
+        self.inner = [k for k, r in enumerate(self.pre) if r in self.place]
+        self.outer = [k for k, r in enumerate(self.pre) if r not in self.place]
+        self.bounds = [layout.bounds(k) for k in range(layout.pairs)]
+        self.columns = np.concatenate(
+            [np.arange(*self.spans[r]) for r in self.settling]
+        ) if self.settling else np.zeros(0, np.int64)
+        self.where = np.full(n, -1, dtype=np.int64)
+        self.where[self.columns] = np.arange(self.m)
+        self.per = max(1, -(-self.m // _MLX_LAUNCH_THREADS))
+        self.threads = -(-self.m // self.per) if self.m else 0
+        table = [self.m, len(self.inner), self.threads, 0]  # a fourth entry keeps the offsets even
+        entries = 0
+        for k in self.inner:
+            a0, a1, b0, b1 = self.bounds[k]
+            p, q = self.place[self.pre[k]], self.place[self.post[k]]
+            table += [p, p + a1 - a0, q, q + b1 - b0, entries]
+            entries += (a1 - a0) * (b1 - b0)
+        self.table = table
+        self.entries = entries
+        rest = neuron_model.rest_emission
+        self.constants = (
+            neuron_model.slope, neuron_model.threshold, rest, 1.0 / (1.0 - rest),
+            neuron_model.leak / rest,
+        )
+        self.at_rest = float(neuron_model.activation(np.zeros(1))[0])
+        cap = 64  # a power of two at least m: one pipeline per size in a process
+        while cap < self.m:
+            cap *= 2
+        self.launch = mx.fast.metal_kernel(
+            name=f"cadence_settle_{cap}_{self.per}",
+            input_names=[
+                "v0", "s0", "first", "fixed", "w", "plan", "scales", "control", "target", "mask",
+                "weight", "group_low", "group_high", "over",
+            ],
+            output_names=["out_v", "out_s", "out_e", "out_c", "out_m"],
+            source=_MLX_LAUNCH.format(cap=cap, per=self.per),
+            atomic_outputs=False,
+            ensure_row_contiguous=True,
+        )
+        self.activate = mx.compile(self._activation_of(mx, neuron_model))
+        self.none = mx.zeros((8,), dtype=mx.float32)  # an input the launch does not read
+        self.none_int = mx.zeros((8,), dtype=mx.int32)
+        self.activate_driven = mx.compile(self._driven_activation_of(mx, neuron_model))
+        self.plan_array = mx.array(np.array(table + [0] * max(0, 8 - len(table)), dtype=np.int32))
+        self._controls: dict[tuple[int, ...], Any] = {}
+        self._scales: dict[tuple[float, float], Any] = {}
+        self._nudges: list[tuple[Any, Any, Any, Any]] = []
+
+    @staticmethod
+    def of(mx: Any, layout: Layout, neuron_model: NeuronModel, n: int) -> _MlxPlan | None:
+        """The plan of a layout, or None where the launch does not apply: another step than
+        ``dt = 1``, adaptation, or a settling set beyond threadgroup memory or below the inputs'
+        least size (MLX declares an input of fewer than eight values in another address space).
+        ``CADENCE_MLX_LAUNCH=0`` keeps one MLX operation at a time."""
+        if os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0":
+            return None
+        if neuron_model.adaptation is not None or neuron_model.dt != 1.0 or not layout.pairs:
+            return None
+        plan = _MlxPlan(mx, layout, neuron_model, n)
+        return plan if 8 <= plan.m <= _MLX_LAUNCH_NEURONS else None
+
+    @staticmethod
+    def _activation_of(mx: Any, neuron_model: NeuronModel) -> Any:
+        rest = neuron_model.rest_emission
+        slope, threshold = neuron_model.slope, neuron_model.threshold
+        up, down = 1.0 / (1.0 - rest), neuron_model.leak / rest
+
+        def activate(v: Any) -> Any:
+            r = mx.sigmoid(slope * (v - threshold)) - rest
+            return mx.where(r > 0.0, r * up, r * down)
+
+        return activate
+
+    @staticmethod
+    def _driven_activation_of(mx: Any, neuron_model: NeuronModel) -> Any:
+        """A source range's activation under its drive and bias, in one fused operation."""
+        activate = _MlxPlan._activation_of(mx, neuron_model)
+
+        def driven(drive: Any, bias: Any) -> Any:
+            return activate(drive + bias)
+
+        return driven
+
+    def controls(
+        self, sweeps: int, nudging: bool, shares: bool, bounded: bool, weighted: bool,
+    ) -> Any:
+        key = (sweeps, int(nudging), int(shares), int(bounded), int(weighted))
+        held = self._controls.get(key)
+        if held is None:
+            held = self.mx.array(np.array([*key, 0, 0, 0], dtype=np.int32))
+            if len(self._controls) >= 256:
+                self._controls.clear()
+            self._controls[key] = held
+        return held
+
+    def scales(self, beta: float, tolerance: float) -> Any:
+        key = (beta, tolerance)
+        held = self._scales.get(key)
+        if held is None:
+            held = self.mx.array(
+                np.array([*self.constants, beta, tolerance, 0.0], dtype=np.float32)
+            )
+            if len(self._scales) >= 16:
+                self._scales.clear()
+            self._scales[key] = held
+        return held
+
+    def nudge_tables(self, nudge: Nudge) -> tuple[Any, Any, Any, Any] | None:
+        """The launch's arrays of ``nudge``, kept for the nudges that share its mask, groups and
+        temperature: ``(mask, group_low, group_high, over)``. None where the launch does not apply:
+        an anchor, a compartment's gain, a neuron under the mask that does not settle, a group that
+        is not a range of the settling neurons, or a temperature whose exponentials float32 cannot
+        hold without the host's ladder."""
+        if nudge.anchor is not None or nudge.apical_gain is not None:
+            return None
+        temperature = nudge.softmax_temperature
+        for held_mask, held_groups, held_temperature, tables in self._nudges:
+            if held_mask is nudge.mask and held_groups is nudge.groups and (
+                held_temperature is temperature or (
+                    isinstance(temperature, float) and held_temperature == temperature
+                )
+            ):
+                return cast("tuple[Any, Any, Any, Any] | None", tables)
+        tables = self._nudge_arrays(nudge)
+        del self._nudges[:-3]
+        self._nudges.append((nudge.mask, nudge.groups, temperature, tables))
+        return tables
+
+    def _nudge_arrays(self, nudge: Nudge) -> tuple[Any, Any, Any, Any] | None:
+        mx = self.mx
+        whole = np.asarray(nudge.mask, dtype=float)
+        if (self.where[np.flatnonzero(whole)] < 0).any():
+            return None
+        mask = np.zeros(self.m, dtype=np.float32)
+        if nudge.softmax_temperature is None:
+            mask[self.where[np.flatnonzero(whole)]] = whole[whole != 0]
+            return mx.array(mask), self.none_int, self.none_int, self.none
+        low, high = np.zeros(self.m, dtype=np.int32), np.zeros(self.m, dtype=np.int32)
+        over = np.zeros(self.m, dtype=np.float32)
+        for group in _softmax_groups(nudge):
+            temperature = _group_temperature(nudge, group)
+            places = self.where[group]
+            if not temperature >= _MLX_LEAST_TEMPERATURE or (
+                np.diff(places) != 1
+            ).any():
+                return None
+            mask[places] = whole[group]
+            low[places], high[places] = places[0], places[-1] + 1
+            over[places] = 1.0 / temperature
+        return mx.array(mask), mx.array(low), mx.array(high), mx.array(over)
+
+    def whole(self, handle: _MlxState, key: str) -> Any:
+        """The ``(batch, n)`` array of a handle on the device, in neuron order."""
+        mx = self.mx
+        rows = int(handle["vm"].shape[0])
+        if key == "a":
+            return mx.array(np.asarray(handle["a_host"], dtype=np.float32))
+        part, sources = (handle["sm"], handle["sources"]) if key == "s" else (
+            handle["vm"], handle["potentials"],
+        )
+        pieces = []
+        for r in range(len(self.spans)):
+            if r in self.place:
+                n0, n1 = self.spans[r]
+                pieces.append(part[:, self.place[r] : self.place[r] + n1 - n0])
+            else:
+                pieces.append(sources[r])
+        return mx.concatenate(pieces, axis=1).reshape(rows, self.n)
+
+    def fetch(self, handle: _MlxState, key: str) -> np.ndarray:
+        """A host array of a handle, in float64, read from the arrays the launch made."""
+        if key == "a":
+            return np.array(handle["a_host"], dtype=np.float64)
+        if key == "change":
+            return self._change(handle)
+        part, sources = (handle["sm"], handle["sources"]) if key == "s" else (
+            handle["vm"], handle["potentials"],
+        )
+        whole = np.array(part, copy=False)
+        out = np.empty((len(whole), self.n))
+        for r, (n0, n1) in self.spans.items():
+            if r in self.place:
+                p = self.place[r]
+                out[:, n0:n1] = whole[:, p : p + n1 - n0]
+            else:
+                out[:, n0:n1] = np.array(sources[r], copy=False)
+        return out
+
+    def _change(self, handle: _MlxState) -> np.ndarray:
+        """The settle's total movement per row: the launches' sums, and with a first sweep the
+        movement of the source ranges onto their drive."""
+        rows = int(handle["vm"].shape[0])
+        total = np.zeros(rows)
+        for moved in handle["moved"]:
+            total += np.array(moved, copy=False).sum(axis=1)
+        before = handle.get("sources_before")
+        if before is not None:
+            for r, after in handle["sources"].items():
+                step = np.array(after, copy=False) - np.array(before[r], copy=False)
+                total += np.abs(step).sum(axis=1)
+        return total
+
+
+_MLX_VERSIONS = itertools.count()  # each set of a kernel's parameters: the products a state keeps
 
 
 class _MlxKernel:
@@ -3384,6 +3817,8 @@ class _MlxKernel:
         self.neuron_model = neuron_model
         self.n = connectome.n
         self.layout = layout
+        self.root = self  # with_parameters' kernels share it: a state continues on any of them
+        self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n)
         self._take(weights, bias)
         self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
         for k in range(layout.pairs):
@@ -3402,9 +3837,18 @@ class _MlxKernel:
                 "device parameters and effective weights must be finite at runtime precision"
             )
         self.bias = mx.array(live_bias)
-        self.blocks = [
-            mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in layout.blocks(flat)
-        ]
+        hosted = layout.blocks(flat)
+        self.blocks = [mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in hosted]
+        plan = self.plan
+        if plan is not None:  # the launch reads a column per settling neuron
+            self.version = next(_MLX_VERSIONS)
+            self.w = mx.array(np.concatenate(
+                [hosted[k].T.ravel() for k in plan.inner] + [np.zeros(8, dtype=np.float32)]
+            ))
+            self.bias_settling = mx.array(live_bias[plan.columns])
+            self.bias_sources = {
+                r: mx.array(live_bias[slice(*plan.spans[r])]) for r in plan.sources
+            }
 
     def with_parameters(self, weights: np.ndarray, bias: np.ndarray) -> _MlxKernel:
         """A kernel of its own on new parameters: its bias and blocks made from the host
@@ -3468,12 +3912,17 @@ class _MlxKernel:
         capture: _Capture | None = None,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray | None, int, np.ndarray, Any]:
         mx, neuron_model = self.mx, self.neuron_model
+        plan = self.plan
+        if plan is not None and not want and capture is None and (keep == 1.0).all():
+            tables = None if nudge is None else plan.nudge_tables(nudge)
+            if nudge is None or tables is not None:
+                return self._launched(v0, a0, drive, steps, nudge, tables, tolerance, state)
 
         def to(x: np.ndarray) -> Any:
             return mx.array(np.asarray(x, dtype=np.float32))
 
         handle = state.device if state is not None and state.device is not None else None
-        if handle is not None and handle.get("holder") is self:
+        if handle is not None and handle.get("holder") is self.root:
             v, a = handle["v"], handle["a"]
         else:
             v, a = to(v0), to(a0)
@@ -3561,5 +4010,292 @@ class _MlxKernel:
             (np.stack(traj) if traj else np.empty((0, batch, self.n))) if want else None,
             taken,
             np.array(activity_change, dtype=np.float64),
-            {"kernel": "mlx", "holder": self, "v": v, "a": a, "s": s},
+            {"kernel": "mlx", "holder": self.root, "v": v, "a": a, "s": s},
         )
+
+    # -- the launch: a chunk of sweeps in one Metal dispatch
+
+    def _start(
+        self, v0: np.ndarray | None, a0: np.ndarray | None, state: BrainState | None, rows: int,
+    ) -> _MlxState:
+        """A settle's start on the device: the state's own handle where it rests here; else its
+        arrays cut by range, uploaded where they stand on the host."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        handle = None if state is None else state.device
+        if isinstance(handle, _MlxState) and handle.get("holder") is self.root:
+            return handle
+        spans = plan.spans
+        if handle is not None and handle.get("holder") is self.root:  # the operations' whole arrays
+            v, s = handle["v"], handle["s"]
+            parts = [(v[:, slice(*spans[r])], s[:, slice(*spans[r])]) for r in plan.settling]
+            vm = mx.concatenate([p[0] for p in parts], axis=1)
+            sm = mx.concatenate([p[1] for p in parts], axis=1)
+            potentials = {r: v[:, slice(*spans[r])] for r in plan.sources}
+            sources = {r: s[:, slice(*spans[r])] for r in plan.sources}
+            a_host = np.array(handle["a"], dtype=np.float64)
+            rest = False
+        else:
+            assert v0 is not None and a0 is not None
+            rest = state is None
+            vm = mx.array(np.asarray(v0[:, plan.columns], dtype=np.float32))
+            potentials = {
+                r: mx.array(np.asarray(v0[:, slice(*spans[r])], dtype=np.float32))
+                for r in plan.sources
+            }
+            if rest:
+                sm = mx.array(np.full((rows, plan.m), plan.at_rest, dtype=np.float32))
+                sources = {
+                    r: mx.array(np.full(
+                        (rows, spans[r][1] - spans[r][0]), plan.at_rest, dtype=np.float32
+                    ))
+                    for r in plan.sources
+                }
+            else:
+                sm = plan.activate(vm)
+                sources = {r: plan.activate(p) for r, p in potentials.items()}
+            a_host = a0
+        return _MlxState(
+            kernel="mlx", holder=self.root, plan=plan, vm=vm, sm=sm, sources=sources,
+            potentials=potentials, a_host=a_host, moved=[], rest=rest,
+        )
+
+    def _products(self, sources: Mapping[int, Any], rows: int) -> Any:
+        """Every source range's products, summed per settling neuron, ``(rows, m)``; None without
+        a source block."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        if not plan.outer:
+            return None
+        totals: dict[int, Any] = {}
+        for k in plan.outer:
+            product = sources[plan.pre[k]] @ self.blocks[k]
+            post = plan.post[k]
+            totals[post] = product + totals[post] if post in totals else product
+        parts = []
+        for r in plan.settling:
+            part = totals.get(r)
+            if part is None:
+                width = plan.spans[r][1] - plan.spans[r][0]
+                part = mx.array(np.zeros((rows, width), dtype=np.float32))
+            parts.append(part)
+        return parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
+
+    def _driven(self, start: _MlxState, drive: np.ndarray) -> dict[str, Any]:
+        """What the sweeps of a settle from ``start`` under ``drive`` read: ``first``, the settling
+        neurons' standing input at the first sweep, ``fixed``, at every later one, and the source
+        ranges' potentials, activations and products under the drive. A state that settled under
+        this drive and these parameters already holds them."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        held = start.get("drive")
+        rows = len(drive)
+        same = held is not None and np.array_equal(held, drive)
+        if same and start.get("version") == self.version:
+            fixed = start["fixed"]
+            return {"first": fixed, "fixed": fixed, "sources": start["sources"],
+                    "potentials": start["potentials"], "outer": start.get("outer"), "before": None}
+        settling = np.asarray(drive[:, plan.columns], dtype=np.float32)
+        standing = mx.array(settling) + self.bias_settling
+        if same:  # the sources stand where they were, under new parameters
+            potentials, sources, before = start["potentials"], start["sources"], None
+            outer = self._products(sources, rows)
+            fixed = standing if outer is None else standing + outer
+            return {"first": fixed, "fixed": fixed, "sources": sources, "potentials": potentials,
+                    "outer": outer, "before": before}
+        driving = {
+            r: mx.array(np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32))
+            for r in plan.sources
+        }
+        sources = {r: plan.activate_driven(d, self.bias_sources[r]) for r, d in driving.items()}
+        # made if something reads them: nothing that follows from the sources depends on them
+        potentials = {r: d + self.bias_sources[r] for r, d in driving.items()}
+        outer = self._products(sources, rows)
+        fixed = standing if outer is None else standing + outer
+        if start.get("rest") and plan.at_rest == 0.0:
+            first = standing  # the products of silence
+        else:
+            kept = start.get("outer") if start.get("version") == self.version else None
+            if kept is None:
+                kept = self._products(start["sources"], rows)
+            first = standing if kept is None else standing + kept
+        return {"first": first, "fixed": fixed, "sources": sources, "potentials": potentials,
+                "outer": outer, "before": start["sources"]}
+
+    def _nudged_inputs(self, nudge: Nudge, tables: Any, rows: int) -> dict[str, Any]:
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        mask, group_low, group_high, over = tables
+        target = np.broadcast_to(nudge.target, (rows, self.n))[:, plan.columns]
+        weight = plan.none
+        if nudge.weight is not None:
+            values = np.asarray(nudge.weight, dtype=np.float32)
+            weight = mx.array(np.pad(values, (0, max(0, 8 - len(values)))))
+        return {
+            "target": mx.array(np.asarray(target, dtype=np.float32)), "mask": mask,
+            "weight": weight,
+            "group_low": group_low, "group_high": group_high, "over": over,
+            "beta": float(nudge.beta), "shares": nudge.softmax_temperature is not None,
+            "weighted": nudge.weight is not None,
+        }
+
+    def _launch(
+        self, vm: Any, sm: Any, first: Any, fixed: Any, sweeps: int, nudged: dict[str, Any] | None,
+        tolerance: float | None,
+    ) -> Any:
+        """One launch of ``sweeps`` sweeps: ``(v, s, errors, moved, moving)``; ``errors`` holds
+        each thread's largest residual at the launch's first and last state, ``moving`` a bit per
+        sweep at which one of a thread's neurons moved at least ``tolerance``."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        rows, m, threads = int(vm.shape[0]), plan.m, plan.threads
+        bounded = tolerance is not None
+        limit = 0.0 if tolerance is None else float(tolerance)
+        if nudged is None:
+            scales = plan.scales(0.0, limit)
+            control = plan.controls(sweeps, False, False, bounded, False)
+            target = mask = weight = over = plan.none
+            group_low = group_high = plan.none_int
+        else:
+            scales = plan.scales(nudged["beta"], limit)
+            control = plan.controls(sweeps, True, nudged["shares"], bounded, nudged["weighted"])
+            target, mask, weight = nudged["target"], nudged["mask"], nudged["weight"]
+            group_low, group_high, over = nudged["group_low"], nudged["group_high"], nudged["over"]
+        return plan.launch(
+            inputs=[vm, sm, first, fixed, self.w, plan.plan_array, scales, control, target, mask,
+                    weight, group_low, group_high, over],
+            grid=(rows * threads, 1, 1),
+            threadgroup=(threads, 1, 1),
+            output_shapes=[
+                (rows, m), (rows, m), (rows, threads * 2), (rows, threads), (rows, threads),
+            ],
+            output_dtypes=[mx.float32, mx.float32, mx.float32, mx.float32, mx.uint32],
+        )
+
+    def _settled_state(
+        self, start: _MlxState, driven: dict[str, Any], drive: np.ndarray, out: Any,
+        moved: list[Any], nudge: Nudge | None, error: np.ndarray, discarded: int = 0,
+    ) -> _MlxState:
+        return _MlxState(
+            kernel="mlx", holder=self.root, plan=self.plan, vm=out[0], sm=out[1],
+            sources=driven["sources"], potentials=driven["potentials"], a_host=start["a_host"],
+            moved=moved, sources_before=driven["before"], drive=np.array(drive, copy=True),
+            version=self.version, fixed=driven["fixed"], outer=driven["outer"],
+            checked=(drive, nudge, error), discarded_steps=discarded,
+        )
+
+    def _launched(
+        self, v0: np.ndarray | None, a0: np.ndarray | None, drive: np.ndarray, steps: int,
+        nudge: Nudge | None, tables: Any, tolerance: float | None, state: BrainState | None,
+    ) -> tuple[Any, Any, Any, Any, int, Any, Any]:
+        """``run`` in launches: the same sweeps with one synchronization per launch. Under a
+        movement tolerance a launch reads which sweeps moved a neuron; a state that stops inside
+        the launch is made again from the launch's start, the sweeps it stops at and no more, so
+        the steps and the state are those of the tolerance read at every sweep."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        rows = len(drive)
+        start = self._start(v0, a0, state, rows)
+        if steps == 0:
+            return None, None, None, None, 0, None, _MlxState(start, moved=[], sources_before=None)
+        driven = self._driven(start, drive)
+        nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
+        limit = _MLX_GRAPH_STEPS if tolerance is None else _MLX_BOUNDED_STEPS
+        vm, sm, first, fixed = start["vm"], start["sm"], driven["first"], driven["fixed"]
+        taken, discarded = 0, 0
+        moved: list[Any] = []
+        out = None
+        while taken < steps:
+            sweeps = min(limit, steps - taken)
+            out = self._launch(vm, sm, first, fixed, sweeps, nudged, tolerance)
+            mx.eval(out, driven["sources"])
+            if tolerance is not None:
+                word = int(np.bitwise_or.reduce(np.array(out[4], copy=False), axis=None))
+                if taken == 0 and self._sources_moved(driven, tolerance):
+                    word |= 1
+                stop = next((t for t in range(sweeps) if not word >> t & 1), None)
+                if stop is not None:
+                    if stop + 1 < sweeps:  # it went past its stop: to the stop, from its start
+                        discarded += sweeps
+                        sweeps = stop + 1
+                        out = self._launch(vm, sm, first, fixed, sweeps, nudged, None)
+                        mx.eval(out)
+                    moved.append(out[3])
+                    taken += sweeps
+                    break
+            moved.append(out[3])
+            vm, sm, first = out[0], out[1], fixed
+            taken += sweeps
+        assert out is not None
+        error = _launch_error(out[2], 1)
+        handle = self._settled_state(start, driven, drive, out, moved, nudge, error, discarded)
+        return None, None, None, None, taken, None, handle
+
+    def _sources_moved(self, driven: dict[str, Any], tolerance: float) -> bool:
+        """Whether a source range moved at least ``tolerance`` at a settle's first sweep."""
+        before = driven["before"]
+        if before is None:
+            return False
+        return any(
+            not np.abs(
+                np.array(after, copy=False) - np.array(before[r], copy=False)
+            ).max(initial=0.0) < tolerance
+            for r, after in driven["sources"].items()
+        )
+
+    def solve(
+        self, drive: np.ndarray, current: BrainState, nudge: Nudge | None, budget: int, chunk: int,
+        tolerance: float,
+    ) -> Equilibrium | None:
+        """``_equilibrate_local``'s solve from the published state ``current``: a launch per chunk,
+        each ending with the equations' residual on the device, in float32, within rounding of the
+        float64 reference at tolerances from ``_MLX_CHECK_FLOOR``. The first launch checks the
+        start too, so a solve that needs one chunk synchronizes once; a start within tolerance
+        keeps it, with the sources' equations read after all. None where the launch does not
+        apply."""
+        mx, plan = self.mx, self.plan
+        start = current.device
+        if plan is None or not isinstance(start, _MlxState) or not tolerance >= _MLX_CHECK_FLOOR:
+            return None
+        tables = None if nudge is None else plan.nudge_tables(nudge)
+        rows = len(drive)
+        nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
+        driven = self._driven(start, drive)
+        sweeps = min(chunk, budget)
+        out = self._launch(
+            start["vm"], start["sm"], driven["first"], driven["fixed"], sweeps, nudged, None
+        )
+        mx.eval(out, driven["sources"])
+        first = _launch_error(out[2], 0)
+        if sweeps == 0 or (first <= tolerance).all():
+            first = np.maximum(first, self._source_error(start, driven))
+            if sweeps == 0 or (first <= tolerance).all():
+                return Equilibrium(current, first, 0, tolerance, residual_checks=1)
+        used, checks, error = sweeps, 2, _launch_error(out[2], 1)
+        moved = [out[3]]
+        while used < budget and not (error <= tolerance).all() and np.isfinite(error).all():
+            sweeps = min(chunk, budget - used)
+            fixed = driven["fixed"]
+            out = self._launch(out[0], out[1], fixed, fixed, sweeps, nudged, None)
+            mx.eval(out)
+            used, checks, error = used + sweeps, checks + 1, _launch_error(out[2], 1)
+            moved = [out[3]]
+            driven["before"] = None  # the chunk that reports has no first sweep
+        handle = self._settled_state(start, driven, drive, out, moved, nudge, error)
+        unread: Any = None
+        return Equilibrium(
+            BrainState(unread, unread, unread, sweeps, device=handle), error, used, tolerance,
+            residual_checks=checks,
+        )
+
+    def _source_error(self, start: _MlxState, driven: dict[str, Any]) -> np.ndarray:
+        """Each row's largest residual at the start among the source neurons: ``drive + bias - v``,
+        from the arrays the first launch left, with no launch of its own."""
+        plan = self.plan
+        assert plan is not None
+        worst = np.zeros(int(start["vm"].shape[0]))
+        for r in plan.sources:  # both stand evaluated: no launch
+            after = np.array(driven["potentials"][r], copy=False)
+            step = np.abs(after - np.array(start["potentials"][r], copy=False))
+            worst = np.maximum(worst, step.max(axis=1, initial=0.0))
+        return worst

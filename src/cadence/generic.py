@@ -3424,11 +3424,12 @@ class Brain:
                 damping=cfg.damping,
             )
         first_budget = budget if budget < 2 else (budget + 1) // 2
-        # on the host a solve copies what it continues from; a device state stays apart
+        # on the host a solve copies what it continues from, and MLX never writes an array; a
+        # torch state stays apart
         own = type(brain).equilibrate is not NeuralGraph.equilibrate  # a subclass's own solve
         options: dict[str, Any] = {"fast": True} if cfg.fast_settle and not own else {}
         phase = brain.equilibrate(
-            drive, state=state if brain.backend == "cpu" else _copy_state(state),
+            drive, state=state if brain.backend != "torch" else _copy_state(state),
             budget=first_budget, tolerance=tolerance, **options,
         )
         if np.all(phase.qualified) or phase.steps >= budget:

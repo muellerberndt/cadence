@@ -755,7 +755,9 @@ class Learner:
         w = self.brain.connectome
         beta = self.config.beta
         minus_state, span = (free, beta) if opposite is None else (opposite, 2.0 * beta)
-        on_device = self.brain.contrast_on_device(nudged, minus_state)
+        on_device = None if self.brain._small_contrast(nudged) else self.brain.contrast_on_device(
+            nudged, minus_state
+        )
         if on_device is not None:  # both phases still on the accelerator: read the contrast there
             edges, neurons = on_device
             assert nudged.device is not None
