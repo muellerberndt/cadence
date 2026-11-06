@@ -9,6 +9,10 @@
   0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
   tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
   without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
+- Add `dense_limit` to `Brain.compose` (opt-in, construction, founder 2048): a brain whose blocks
+  exceed it settles on the sparse transport in Python, about 30 times slower at a speech
+  instrument's 3,920 inputs; a larger limit keeps it on the blocks and the compiled kernels. See
+  [backends](docs/backends.md).
 - A brain costs less per moment, with the same bits and the same reports (#271): the settle's rows
   pay no atomic reference counts and run on vector loops, a launch reads the activations a state
   keeps instead of computing them again, a free solve runs in one compiled call, the act after a

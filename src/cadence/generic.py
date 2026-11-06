@@ -1940,6 +1940,7 @@ class Brain:
         code: int | None = None,
         learned_code: int | None = None,
         apical: float = 0.0,
+        dense_limit: int = 2048,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2091,6 +2092,7 @@ class Brain:
             learning_neuron_model(dt=1.0 if compartment is None else _APICAL_STEP),
             backend=backend,
             device=device,
+            dense_limit=dense_limit,
             apical=compartment,
         )
         self._composition: dict[str, Any] | None = None  # construction provenance, not parameters
@@ -2772,7 +2774,7 @@ class Brain:
         options = dict(genes)
         construction = {
             "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
-            "episodic", "backend", "device", "connectome", "history_decays",
+            "episodic", "backend", "device", "dense_limit", "connectome", "history_decays",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
             "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
