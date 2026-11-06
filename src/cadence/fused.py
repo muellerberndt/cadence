@@ -2155,6 +2155,111 @@ if njit is not None:
     _tied, _tied_parallel = _rows_builds(_tied_entries)
 
 
+if njit is not None:
+
+    @_compiled
+    def _add_episode_terms(
+        term: np.ndarray,
+        anchored: np.ndarray,
+        relative: np.ndarray,
+        has_anchored: bool,
+        has_relative: bool,
+        told: np.ndarray,
+        focus: np.ndarray,
+        table: np.ndarray,
+        last_bucket: int,
+        outside: int,
+        reach: int,
+        none: int,
+    ) -> None:
+        """The anchored and relative terms of a read added to ``term`` ``(rows, slots)`` in place,
+        anchored first: each slot's place in its stream's episode through ``table``, ``last_bucket``
+        for an older place and ``outside`` for a place before the episode; each slot's age less
+        the stream's focus, within ``reach``, ``none`` for a stream with no read before."""
+        rows, slots = term.shape
+        for b in range(rows):
+            if has_anchored:
+                t = told[b]
+                for m in range(slots):
+                    place = t - 1 - (slots - 1 - m)
+                    if place < 0:
+                        bucket = outside
+                    else:
+                        bucket = table[place] if place <= last_bucket else table[last_bucket]
+                    term[b, m] += anchored[b, bucket]
+            if has_relative:
+                f = focus[b]
+                for m in range(slots):
+                    if f < 0:
+                        bucket = none
+                    else:
+                        offset = slots - 1 - m - f
+                        offset = min(offset, reach)
+                        bucket = max(offset, -reach) + reach
+                    term[b, m] += relative[b, bucket]
+
+
+def add_episode_terms(
+    term: np.ndarray,
+    anchored: np.ndarray | None,
+    relative: np.ndarray | None,
+    told: np.ndarray,
+    focus: np.ndarray,
+    table: np.ndarray,
+    outside: int,
+    reach: int,
+) -> None:
+    """The recall read's anchored and relative position terms added to ``term``, a new array
+    (``_add_episode_terms``)."""
+    assert njit is not None
+    _add_episode_terms(
+        term, _NO_TERM if anchored is None else anchored,
+        _NO_TERM if relative is None else relative, anchored is not None, relative is not None,
+        told, focus, table, len(table) - 1, outside, reach, 2 * reach + 1,
+    )
+
+
+# the term of a read without it: the kernel reads it only where told to
+_NO_TERM = np.zeros((1, 1))
+
+
+if njit is not None:
+
+    @_compiled
+    def _clear_choice(s: np.ndarray, temperature: float) -> tuple[np.ndarray, bool]:
+        """Each row's largest ``s / temperature`` and whether it stands clear of the others in
+        every row, finite and by more than 1e-9: its softmax is then strictly the largest too."""
+        rows, width = s.shape
+        choice = np.empty(rows, dtype=np.int64)
+        clear = True
+        for b in range(rows):
+            best = -np.inf
+            second = -np.inf
+            at = 0
+            for i in range(width):
+                z = s[b, i] / temperature
+                if not abs(z) < np.inf:
+                    clear = False
+                if z > best:
+                    second = best
+                    best = z
+                    at = i
+                elif z > second:
+                    second = z
+            choice[b] = at
+            if not best - second > 1e-9:
+                clear = False
+        return choice, clear
+
+
+def clear_choice(s: np.ndarray, temperature: float) -> np.ndarray | None:
+    """The greedy choice of one slot's activations ``(rows, width)`` where every row's largest
+    stands clear of the rest, which is ``np.argmax`` of their softmax; None where one does not."""
+    assert njit is not None
+    choice, clear = _clear_choice(np.ascontiguousarray(s, dtype=float), float(temperature))
+    return choice if clear else None
+
+
 def optimizer_step(
     raw: np.ndarray,
     velocity: np.ndarray,

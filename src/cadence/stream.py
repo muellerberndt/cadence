@@ -110,6 +110,15 @@ def _einsum(spec: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.einsum(spec, a, b) if parts is None else np.concatenate(parts)
 
 
+def _compiled_terms() -> bool:
+    """Whether the compiled passes of ``cadence.fused`` are in use (the same bits either way)."""
+    try:
+        from .fused import compiled
+    except ImportError:  # pragma: no cover
+        return False
+    return compiled()
+
+
 def _stream_rows(rows: np.ndarray, batch: int) -> np.ndarray:
     """Validate stream indices or a boolean mask before changing any stream state."""
     selected = np.asarray(rows)
@@ -1165,13 +1174,26 @@ class Recall:
         # the terms over each stream's episode and previous read need the moments' streams; a
         # batch of other streams reads silence (``weights``) and gets the table and the slope
         if rows is not None or len(event) == self.streams:
-            each = np.arange(len(event))[:, None]
+            anchored = relative = None
             if self.anchor_maps:
                 anchored = _term(self.anchor_maps[head], event, cortex)
-                term = term + anchored[each, self.anchored_buckets(rows)]
             if self.relative_maps:
                 relative = _term(self.relative_maps[head], event, cortex)
-                term = term + relative[each, self.relative_buckets(rows)]
+            if _compiled_terms():
+                from .fused import add_episode_terms
+
+                add_episode_terms(
+                    term, anchored, relative,
+                    self.told if rows is None else self.told[rows],
+                    self.focus if rows is None else self.focus[rows],
+                    self._age_buckets(), self.position_buckets, self.RELATIVE,
+                )
+            else:
+                each = np.arange(len(event))[:, None]
+                if anchored is not None:
+                    term = term + anchored[each, self.anchored_buckets(rows)]
+                if relative is not None:
+                    term = term + relative[each, self.relative_buckets(rows)]
         if self.slope_maps:
             lean = _term(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
