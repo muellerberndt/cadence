@@ -287,24 +287,13 @@ def test_a_founder_with_the_region_lives_its_recorded_life(tmp_path, name):
     assert region_digest(brain, acts, path) == spec["digest"]
 
 
-# the settings the readings retired, each with a value it once took
-REMOVED = {"cortex": "code", "output": "unit", "floor": 0.0, "scale": "observation",
-           "place": "free", "reads": "free", "held": True, "top_down": 2.0, "rate": 0.125,
-           "predictor": 0.0625, "threshold": 0.1, "threshold_rate": 0.000625,
-           "target": 0.1, "repair": 1.0, "silence": 10.0, "identity": 0.9, "active": 0.05}
-
-
-def test_the_settings_the_readings_retired_are_refused_by_name():
-    """A removed setting is refused at construction and in a retune with what the region
-    does instead, whatever value it is given."""
-    assert set(REMOVED) == set(cd.LearnedCode.REMOVED)
+def test_the_learned_code_takes_its_one_setting_and_refuses_every_other_name():
     brain = cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8)
-    for name, value in REMOVED.items():
-        with pytest.raises(ValueError, match=f"learned_code_{name} was removed"):
-            cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8,
-                             **{f"learned_code_{name}": value})
-        with pytest.raises(ValueError, match=f"learned_code_{name} was removed"):
-            brain.retune(**{f"learned_code_{name}": value})
+    for name, value in (("learned_code_rate", 0.125), ("learned_code_cortex", "code")):
+        with pytest.raises(TypeError, match="unknown brain setting"):
+            cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8, **{name: value})
+        with pytest.raises(TypeError, match="unknown brain setting"):
+            brain.retune(**{name: value})
 
 
 def test_learned_code_none_is_the_founder_and_the_width_is_as_before():
@@ -396,7 +385,7 @@ def test_the_region_joins_the_connectome_with_its_three_synapse_groups():
 
 def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     assert cd.LearnedCode.founders() == {"fields": None}
-    assert cd.LearnedCode.GENES == ("fields",) and not cd.LearnedCode.RUNTIME
+    assert cd.LearnedCode.GENES == ("fields",)
     code = composed().learned_code
     for name, value in (("top_down", 2.0), ("rate", 0.125), ("predictor", 0.0625),
                         ("threshold", 0.1), ("threshold_rate", 0.000625), ("target", 0.1),

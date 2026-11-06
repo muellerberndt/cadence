@@ -240,9 +240,7 @@ Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
 `learned_code`, an image brain, a backend other than `cpu`, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
-sensory neurons project anywhere but to the code region. A retired `learned_code_*` setting is
-refused by name with a message saying what the region does instead
-([CHANGELOG](../CHANGELOG.md)).
+sensory neurons project anywhere but to the code region.
 
 ### When to declare fields
 

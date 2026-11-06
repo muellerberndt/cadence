@@ -116,7 +116,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
-| `learned_code` at least 2; `learned_code_fields` without it, a removed `learned_code_*` name (`LearnedCode.REMOVED`), `code` beside it, an image brain, a backend other than `cpu`, or a connectome without the region's populations and complete synapses | `ValueError` |
+| `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, a backend other than `cpu`, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -419,8 +419,7 @@ Both step bounds include the supplied neuron model's synaptic `gain`; the standi
 needs its largest slope-weighted coupling eigenvalue below one. A refused enclosing
 action or outcome restores the previous code step; attempted-work diagnostics may advance.
 `LearnedCode.founders()` and `LearnedCode.setting(name, value)` give and validate the one
-setting, `fields`; `GENES`, `RUNTIME` and `CONSTRUCTION` name it, and `REMOVED` the
-retired settings with what the region does instead. Guide:
+setting, `fields`, which `GENES` names. Guide:
 [the learned code](senses.md#the-learned-code).
 
 ## Learning (`cadence.learning`)

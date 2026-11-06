@@ -371,7 +371,7 @@ def _learned_code_genes(learned_code: Any, genes: dict[str, Any]) -> dict[str, A
     settings: dict[str, Any] = {}
     for name in [name for name in genes if name.startswith("learned_code_")]:
         setting = name[len("learned_code_"):]
-        if setting not in LearnedCode.GENES and setting not in LearnedCode.REMOVED:
+        if setting not in LearnedCode.GENES:
             raise TypeError(f"unknown brain setting: {name!r}")
         settings[setting] = LearnedCode.setting(setting, genes.pop(name))
     if not units:
@@ -2965,7 +2965,7 @@ class Brain:
             "episodic", "backend", "device", "connectome", "history_decays",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
-            "learned_code", *(f"learned_code_{name}" for name in LearnedCode.CONSTRUCTION),
+            "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
             "attention", "apical", "maturity",
         }
         for name in options:
@@ -3045,16 +3045,6 @@ class Brain:
             memory_changes.append(
                 (self.recall, setting, Recall.setting(setting, options.pop(name)))
             )
-        for name in [name for name in options if name.startswith("learned_code_")]:
-            setting = name[len("learned_code_"):]
-            if setting in LearnedCode.REMOVED:
-                LearnedCode.setting(setting, options[name])  # refused by name
-            if setting not in LearnedCode.RUNTIME:
-                raise TypeError(f"unknown brain setting: {name!r}")
-            if self.learned_code is None:
-                raise ValueError(f"{name} requires its existing learned code")
-            value = LearnedCode.setting(setting, options.pop(name))
-            memory_changes.append((self.learned_code, setting, value))
         if self.recall is not None:
             # the null slot's logit, null / temperature, must stay finite under the change
             retuned = {
@@ -3113,12 +3103,6 @@ class Brain:
         if self.recall is not None and self.recall.reward_columns != columns:
             # a trace of the old columns cannot continue (no contrast is pending: refused above)
             agent.trace_memory = None
-        if self.learned_code is not None and any(
-            component is self.learned_code for component, _, _ in memory_changes
-        ):
-            # the region's sub-network and the graph take the tables again
-            self.learned_code.install()
-            self.learner.brain = self._installed(self.brain)
         if self.recall is not None and not (
             self.recall.address_reward
             or (self.recall.position_reward and self.recall.position_maps)

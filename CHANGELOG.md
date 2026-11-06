@@ -56,6 +56,8 @@ does instead.
   composed brain does.
 - `learning_rehearsal_capacity`. The rehearsal's reservoir keeps 512 lesson rows, a constant no
   reading moved. `learning=LearnerConfig(rehearsal_capacity=...)` moves it as an expert.
+- The refusal sentences of `LearnedCode.REMOVED`, seventeen names no release took. They are unknown
+  settings (`TypeError`), and the retune branch that could never run went with them.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.
