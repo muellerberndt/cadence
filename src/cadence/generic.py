@@ -770,24 +770,10 @@ def _load_memory(
         separator = None
         spec = metadata.get("separator")  # An unseparated memory may omit this field.
         if shared is not None:
-            saved = {
-                key[len(prefix + "separator/"):]: data[key]
-                for key in data
-                if key.startswith(prefix + "separator/")
-            }
-            if spec is not None or saved:
-                # a checkpoint of the 0.93 development line saved its own copy of the shared
-                # separator: the same separator is read as the shared one, another is refused
-                arrays = shared.arrays()
-                if (
-                    spec != shared.to_dict()
-                    or set(saved) != set(arrays)
-                    or any(not np.array_equal(saved[name], value) for name, value in arrays.items())
-                ):
-                    raise ValueError(
-                        "the saved direct payments carry a separator other than the place "
-                        "records'"
-                    )
+            if spec is not None or any(key.startswith(prefix + "separator/") for key in data):
+                raise ValueError(
+                    "the saved direct payments carry a separator; they read the place records'"
+                )
             separator = shared
         elif spec is None:
             if any(key.startswith(prefix + "separator/") for key in data):
