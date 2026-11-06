@@ -151,18 +151,6 @@ def test_a_competing_head_learns_from_the_shares_it_read():
     assert recall._lesson_reads(recall.last)[1] is read  # noqa: SLF001
 
 
-def test_a_null_slot_keeps_its_share_of_every_competing_head():
-    brain = witnessed(composed(heads=2, recall_null=0.0))
-    recall = brain.recall
-    recall.stimulate(np.zeros((1, brain.connectome.n)), STREAM[0])
-    first, second = recall.attended_heads
-    own = recall.weights(recall._head_address(recall.last, 1),  # noqa: SLF001
-                         recall.position_term(1, recall.last.inputs, recall.last.cortex))
-    assert first.sum() < 1.0
-    np.testing.assert_allclose(second.sum(), own.sum())
-    assert np.all(first + second <= 1.0 + 1e-12)
-
-
 def test_competing_heads_never_read_a_moment_twice_through_lessons():
     brain = witnessed(composed(heads=2, seed=5))
     reads = []

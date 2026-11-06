@@ -188,9 +188,6 @@ the settle as a sensory drive is: the settle answers on the mixture the address 
 cannot revise the choice. Both regions reach the association region through one-way plastic
 synapses of initial magnitude 1.2 (a constant).
 
-A number `recall_null` adds a slot of logit `null / temperature` that reads nothing, so a
-moment that matches no slot recalls little.
-
 ### How it writes and how the address learns
 
 After each act, and after each moment `wait` senses, every stream writes one slot and the
@@ -283,8 +280,8 @@ eligibility take that width; values, nexts and the two regions keep the value wi
 
 Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is
 refused. Retune genes change in a life through `brain.retune`; construction genes are fixed
-when the brain is built. The options from `recall_null` on are described and saved only
-where they differ from their founder. A saved brain keeps its genes, slots and address map.
+when the brain is built. The options from `recall_address_reward` on are described and saved
+only where they differ from their founder. A saved brain keeps its genes, slots and address map.
 
 | Setting | Founder | When | What it sets |
 | --- | --- | --- | --- |
@@ -296,7 +293,6 @@ where they differ from their founder. A saved brain keeps its genes, slots and a
 | `recall_capacity` | `64` | construction | Slots per stream, oldest dropped first |
 | `recall_next` | `True` | construction | The `next` region and each slot's next |
 | `scales["recall"]` | `1.2` | construction | Initial magnitude of the two projections (a `compose` argument) |
-| `recall_null` | `None` | retune | A number adds a null slot; a non-finite logit is refused |
 | `recall_address_reward` | `0.0` | retune | Rate at which reward trains the address map |
 | `recall_position_reward` | `0.0` | retune | Rate at which reward trains the position maps, and with the anchor its maps ([position](#position-how-long-ago-a-moment-happened)); it needs the position term and `recall_position_rate` above 0 |
 | `recall_window` | `1` | construction | Window of the last k events |

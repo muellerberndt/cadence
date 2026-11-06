@@ -72,6 +72,9 @@ does instead.
   184 of 192 decisions, and on the grammar chamber's held heads the two settings read alike. Write
   nothing. A file saved at `False`, and a file of several heads saved by 0.88.0 to 0.91.2, whose
   heads read alike, are refused by name; cadence 0.94.0 runs them.
+- `recall_null`, a slot that reads nothing. It had no reading of its own, and a null slot fails the
+  fresh-bindings gate. Write nothing: a read takes its whole mass from the slots held. A file saved
+  with one is refused by name; cadence 0.94.0 runs it.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.

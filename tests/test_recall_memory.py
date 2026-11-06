@@ -1177,7 +1177,7 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
     """Each option passed at its founder builds the founder memory: the same life, the same
     checkpoint bytes and the same description, which leaves the options out."""
     assert cd.Recall.options() == {
-        "null": None, "address_reward": 0.0, "position_reward": 0.0,
+        "address_reward": 0.0, "position_reward": 0.0,
         "window": 1,
         "heads": 1, "position": 32, "position_rate": 0.1,
         "boundary": False, "copy": 0.0, "tokens": None, "action": False,
@@ -1262,89 +1262,21 @@ def test_a_movement_that_names_a_short_key_moves_the_address_onto_it():
 # -- a null slot
 
 
-def test_a_null_slot_takes_its_share_of_an_unrelated_read_and_reads_nothing():
-    """A null slot of logit ``null / temperature`` joins the read's softmax and reads
-    nothing: for a query that matches no slot it takes ``exp(null / T) / (exp(null / T) +
-    sum_i exp(l_i))``, the slots' shares sum to one less it, ``attended_heads`` records them
-    and the drive reads them; a full match leaves it little. Without one the shares sum to
-    one."""
-    brain = composed(recall_null=0.0)
-    for x in np.eye(4)[:3]:
-        brain.act(x[None], greedy=True)
-    recall = brain.recall
-    drive = brain.stimulus(np.eye(4)[[3]])  # shares nothing with a stored moment
-    logits = -0.25 * recall.ages()
-    null = 1.0 / (1.0 + np.exp(logits).sum())
-    attended = recall.attended_heads[0]
-    np.testing.assert_allclose(attended[0], np.exp(logits) * null, rtol=1e-12)
-    np.testing.assert_allclose(attended.sum(), 1.0 - null, rtol=1e-12)
-    np.testing.assert_array_equal(recall.weights(recall.last.address), attended)
-    first, following = regions(brain)
-    np.testing.assert_allclose(drive[:, first],
-                               3.0 * np.einsum("bm,bmc->bc", attended, recall.values))
-    np.testing.assert_allclose(drive[:, following],
-                               3.0 * np.einsum("bm,bmc->bc", attended, recall.nexts))
-    brain.stimulus(np.eye(4)[[0]])  # the oldest moment's own event
-    assert 1.0 - recall.attended_heads[0].sum() < 0.05
-    founder = composed()
-    for x in np.eye(4)[:3]:
-        founder.act(x[None], greedy=True)
-    founder.stimulus(np.eye(4)[[3]])
-    np.testing.assert_allclose(founder.recall.attended_heads[0].sum(), 1.0)
-    held = composed(recall_null=0.0)  # a stream that holds no slot reads the null slot alone
-    held.act(np.eye(4)[:2], greedy=True)
-    held.recall.reset(2, rows=np.array([0]))
-    shares = held.recall.weights(np.ones((2, 4)))
-    assert not shares[0].any() and 0.0 < shares[1].sum() < 1.0
-
-
-def test_the_address_lesson_reads_the_slots_alone_beside_a_null_slot():
-    """The lesson's prior is the attention over the slots alone: a null slot leaves the
-    address lesson's step as it is, bit for bit."""
-    rng = np.random.default_rng(9)
-    keys = [rng.normal(size=(2, 3)) for _ in range(3)]
-    cortex, movement = rng.normal(size=(2, 2)), rng.normal(size=(2, 3))
-    maps = []
-    for null in (None, 2.0):
-        recall = bare(width=3, null=null, address=0.5)
-        for key in keys:
-            recall._observe(key, key)
-        recall.previous = cortex.copy()
-        moment = recall._moment(np.ones((2, 3)))
-        report = recall._step(moment, np.arange(2), movement, None)
-        assert report["address_rows"] == 2.0
-        maps.append(recall.head_map(0))
-    for first, second in zip(*maps, strict=True):
-        np.testing.assert_array_equal(first, second)
-
-
-def test_the_null_slot_is_the_instruments_moment_for_moment():
-    assert _option_lives({"null": 0.5}) > 0
-
-
-def test_a_null_slot_whose_logit_is_not_finite_is_refused(tmp_path):
-    """The null slot's logit ``null / temperature`` must be finite: at composition, under
-    retune of either setting (nothing changes then) and in a saved memory."""
-    with pytest.raises(ValueError, match="null / temperature"):
-        composed(recall_null=1e300, recall_temperature=1e-10)
-    brain = composed(recall_null=1e10)
-    for change in ({"recall_temperature": 1e-300},
-                   {"recall_null": 1e308, "recall_temperature": 0.01}):
-        with pytest.raises(ValueError, match="null / temperature"):
-            brain.retune(**change)
-        assert (brain.recall.null, brain.recall.temperature) == (1e10, 0.25)
-    brain.retune(recall_null=1e300)  # a finite logit, 4e300
-    assert cd.Recall.null_logit(brain.recall.null, brain.recall.temperature) == 4e300
-    brain.act(CUE, greedy=True)
-    arrays = saved_arrays(brain.save(tmp_path / "null"))
+def test_the_null_slot_is_refused_by_name_and_a_file_with_one_too(tmp_path):
+    """``recall_null`` leaves at every value, at composition, under retune and in a saved memory:
+    cadence 0.94.0 runs a file with a null slot."""
+    for value in (None, 0.0):
+        with pytest.raises(ValueError, match="recall_null was retired in 0.95.0"):
+            composed(recall_null=value)
+        with pytest.raises(ValueError, match="recall_null was retired in 0.95.0"):
+            composed().retune(recall_null=value)
+    arrays = saved_arrays(composed().save(tmp_path / "founder"))
     meta = metadata(arrays)
-    meta["recall"]["temperature"] = 1e-10
+    meta["recall"]["null"] = 0.0
     arrays["generic"] = np.array(json.dumps(meta))
-    write(tmp_path / "bad.npz", arrays)
-    with pytest.raises(ValueError, match="null / temperature"):
-        cd.Brain.load(tmp_path / "bad.npz")
-    brain.retune(recall_null=None)
-    assert "null" not in brain.recall.to_dict()
+    write(tmp_path / "null.npz", arrays)
+    with pytest.raises(ValueError, match="recall_null was retired in 0.95.0"):
+        cd.Brain.load(tmp_path / "null.npz")
 
 
 # -- the options in a checkpoint

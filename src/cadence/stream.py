@@ -150,9 +150,9 @@ def _share(logits: np.ndarray, left: np.ndarray, mass: np.ndarray) -> np.ndarray
     moment, so the head takes of each slot at most the share ``left`` the heads before it left.
     Its own attention (the softmax of ``logits`` over the slots something is left of) keeps its
     shape where the share allows, ``w = min(left, lam p)``, and ``lam`` gives the head its
-    ``mass`` over the slots (with a null slot, its share stays the head's), or every share left
-    where that is less: what a taken slot cannot give goes to the slots the head prefers next. A
-    row whose slots the heads before took whole reads nothing.
+    ``mass`` over the slots, or every share left where that is less: what a taken slot cannot
+    give goes to the slots the head prefers next. A row whose slots the heads before took whole
+    reads nothing.
 
     The slots taken whole leave before the shares are taken, and the arithmetic is in logits:
     the slots are capped in the order of ``log(left) - logit``, and a slot past the capped ones
@@ -553,9 +553,8 @@ class Recall:
     command executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
     the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``address_contrast``
     (the address lesson's error is the keys named less the keys attended), ``tokens`` (which
-    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
-    ``copy`` (plastic synapses from the read ports into the motor region) and ``null`` (a slot
-    that reads nothing).
+    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
+    ``copy`` (plastic synapses from the read ports into the motor region).
 
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -571,7 +570,6 @@ class Recall:
     next: bool = True
     address: float = 0.01
     # the options beside the founder memory (``OPTIONS``)
-    null: float | None = None  # a number: a null slot of this logit (over the temperature)
     address_reward: float = 0.0
     position_reward: float = 0.0
     window: int = 1
@@ -628,7 +626,7 @@ class Recall:
     # runtime except the window, the heads, the position term, the copy pathway and the
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
-        "null", "address_reward", "position_reward", "window", "heads", "position",
+        "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "anchor",
         "relative", "slope", "when", "address_contrast", "gain",
     )
@@ -681,6 +679,8 @@ class Recall:
                          "at their full weight (1.0), the one value ever read"),
         "compete": ("0.95.0", True, "several heads read in turn, each taking of a slot at most "
                     "the share the heads before it left; cadence 0.94.0 takes it"),
+        "null": ("0.95.0", None, "every moment's read takes its whole mass from the slots held; "
+                 "cadence 0.94.0 takes it"),
     })
 
     @classmethod
@@ -723,8 +723,6 @@ class Recall:
             if number <= 0:
                 raise ValueError(f"{name} must be positive")
             return number
-        if name == "null":
-            return None if value is None else real(name, value)
         if name in (
             "next", "boundary", "action", "anchor", "relative", "when",
             "address_contrast",
@@ -881,21 +879,9 @@ class Recall:
                 "position_rate above 0"
             )
 
-    @staticmethod
-    def null_logit(null: float | None, temperature: float) -> float | None:
-        """The null slot's logit ``null / temperature``, or None without a null slot; a pair
-        of settings whose logit is not finite is refused."""
-        if null is None:
-            return None
-        logit = float(null) / float(temperature)
-        if not np.isfinite(logit):
-            raise ValueError("null / temperature must be finite")
-        return logit
-
     def __post_init__(self) -> None:
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
-        self.null_logit(self.null, self.temperature)
         populations = self.connectome.populations
         if self.target != "recall" and self.heads > 1:
             raise ValueError("a recall memory of several heads reads into the recall regions")
@@ -1523,19 +1509,9 @@ class Recall:
         streams hold no slot or are another batch. ``position`` is a head's position term at
         every slot (``position_term``); without it the attention is the content's and the
         recency's alone, which is what the read used only where the memory has no position
-        term. With a ``null`` slot, whose logit ``null / temperature`` joins the softmax and
-        which reads nothing, the slots' shares sum to one less the null slot's."""
+        term."""
         if not self.slots or self.streams != len(address):
             return None
-        if self.null is not None:
-            logits = self._attention(
-                address, self.keys, None if self.held.all() else self.held, position
-            )
-            null = self.null / self.temperature
-            top = np.maximum(logits.max(axis=1), null)  # a stream that holds no slot: the null
-            p = np.exp(logits - top[:, None])
-            total = p.sum(axis=1) + np.exp(null - top)
-            return np.asarray(p / total[:, None])
         if self.held.all():
             logits = self._attention(address, self.keys, None, position)
             p = np.exp(logits - logits.max(axis=1, keepdims=True))

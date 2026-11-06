@@ -854,8 +854,8 @@ class Unrolled:
         self.brain = brain
         self.carry_trace, self.carry_address = carry_trace, carry_address
         graph, recall = brain.connectome, brain.recall
-        if recall.heads != 1 or recall.window != 1 or recall.action or recall.null is not None:
-            raise ValueError("the unrolled graph is the recipe's: one head, window 1, no null")
+        if recall.heads != 1 or recall.window != 1 or recall.action:
+            raise ValueError("the unrolled graph is the recipe's: one head, window 1")
         model = brain.learner.brain.neuron_model
         self.leak = float(model.leak)
         self.temperature = float(brain.learner.config.temperature)

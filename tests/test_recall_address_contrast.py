@@ -128,10 +128,10 @@ def _lessons(brain: cd.Brain, count: int = 6) -> list[dict]:
 
 @pytest.mark.parametrize(
     "options",
-    [{"recall_heads": 2}, {"recall_null": 0.0},
+    [{"recall_heads": 2},
      {"recall_window": 2}, {"recall_action": True}, {"recall_boundary": True},
      {"recall_anchor": True, "recall_relative": True, "recall_slope": 0.1}],
-    ids=["competing", "null", "window", "action", "boundary", "positions"],
+    ids=["competing", "window", "action", "boundary", "positions"],
 )
 def test_the_contrast_steps_beside_every_option_of_the_read(options):
     brain = brain_of(**ON, **options)
