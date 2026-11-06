@@ -106,3 +106,17 @@ def test_masks_nudges_compartments_and_adaptation_take_the_launches() -> None:
     drive[:, :4] = 1.0
     assert_same(adapting.equilibrate(drive, budget=64, tolerance=3e-3),
                 launches(adapting, drive, budget=64, tolerance=3e-3))
+
+
+def test_a_subclass_that_withholds_its_blocks_settles_its_own_way() -> None:
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False)
+    graph = brain.brain
+
+    class Withheld(NeuralGraph):
+        def _fused_blocks(self):
+            return None
+
+    withheld = Withheld(graph.connectome, graph.neuron_model, efficacy=graph.efficacy, bias=graph.bias)
+    assert not withheld._solves_compiled()
+    drive = brain.stimulus(np.random.default_rng(4).random((2, 8)))
+    assert withheld.equilibrate(drive, budget=64, tolerance=3e-3).qualified.all()

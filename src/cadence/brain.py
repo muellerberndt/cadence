@@ -1176,17 +1176,18 @@ class Brain:
 
     def _solves_compiled(self) -> bool:
         """Whether a free solve can run in one compiled call: no compartment, no recording, on
-        the compiled CPU path. A wrapped ``settle_batch`` or ``residual`` sees every launch."""
+        the compiled CPU path. A wrapped ``settle_batch`` or ``residual`` sees every launch, and
+        a subclass that withholds its blocks settles its own way."""
         return (
             _FUSED
             and self.backend == "cpu"
-            and self._blocked
             and self.apical is None
             and type(self).settle_batch is _SETTLE_BATCH
             and type(self).residual is _RESIDUAL
             and "settle_batch" not in self.__dict__
             and "residual" not in self.__dict__
             and _capture() is None
+            and self._fused_blocks() is not None
         )
 
     def _solve_compiled(
@@ -1197,11 +1198,11 @@ class Brain:
         None where only the launches serve."""
         from .fused import fused_solve
 
-        flat = self._blocks
-        assert flat is not None
+        compiled = self._fused_blocks()
+        assert compiled is not None
         solved = fused_solve(
             current.v, current.adaptation, current.activation, np.atleast_2d(drive), self.bias,
-            self.layout, flat, self.neuron_model, budget, chunk, tolerance,
+            self.layout, compiled[0], self.neuron_model, budget, chunk, tolerance,
             current.__dict__.get("_products"),
         )
         if solved is None:
