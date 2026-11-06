@@ -1471,9 +1471,11 @@ class Brain:
         the state keeps the check's products for a settle from it. An unread resident Torch
         state is checked on its device in float64, returning only one scalar per row (a
         float32 state by a float64 copy of the kernel, the same float64 reference). Other
-        states, MPS and MLX states included, use the float64 CPU reference; ``on_device=False``
-        forces that reference. No state value or parameter is changed.
-        A single state returns a length-one array; nonfinite errors return infinity.
+        states, MPS and other MLX states included, use the float64 CPU reference;
+        ``on_device=False`` forces that reference. No state value or parameter is changed.
+        A state an MLX launch made under this drive, nudge and these parameters reads the launch's
+        own check, in float32, with no launch of its own. A single state returns a length-one array;
+        nonfinite errors return infinity.
         """
         d = np.asarray(drive, dtype=float)
         if d.ndim == 1:
@@ -3589,6 +3591,9 @@ class _MlxMatrix:
 
     def __len__(self) -> int:
         return int(self.array.shape[0])
+
+    def __getitem__(self, index: Any) -> Any:
+        return np.asarray(self)[index]
 
     def __array__(self, dtype: Any = None, copy: Any = None) -> np.ndarray:
         if self._host is None:

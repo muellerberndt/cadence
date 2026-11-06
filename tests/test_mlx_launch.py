@@ -477,6 +477,9 @@ def test_a_large_address_map_rests_on_the_device_and_moves_as_on_the_host(on_dev
     np.testing.assert_allclose(b, host_b, rtol=0, atol=MAPS)
     assert np.abs(host_x).max() > 0  # the lessons moved it
     assert np.asarray(w_x).dtype == np.float64 and w_x.finite() and w_c.finite()
+    np.testing.assert_array_equal(w_x[0], np.asarray(w_x)[0])  # it reads as a host array
+    assert len(w_x) == len(host_x) and w_x.dtype == host_x.dtype
+    assert not np.asarray(w_x).flags.writeable
     # the slots and the attention read the same moments
     assert mlx.parameters() == cpu.parameters()
     np.testing.assert_allclose(mlx.recall.keys, cpu.recall.keys, rtol=0, atol=1e-12)

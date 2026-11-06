@@ -28,7 +28,7 @@ print(cd.available_backends())
 | `"cpu"` | NumPy, with Numba and SciPy when installed | float64 | none; `[fast]` to accelerate | first examples, receipts, numerical checks, sparse graphs, small continuing brains |
 | `"torch"` on CUDA | NVIDIA GPU | float64, or float32 with `precision="float32"` | `[accel]` | deep brains, large batches, long lives |
 | `"torch"` on MPS | Apple silicon GPU through Metal | float32 only | `[accel]` | a Mac when torch is what you have |
-| `"mlx"` | Apple silicon GPU through MLX, unified memory | float32 | `[apple]` | an alternative Apple path for blocked connectomes |
+| `"mlx"` | Apple silicon GPU through MLX, unified memory | float32 | `[apple]` | a Mac's wide brains and large batches, on blocked connectomes |
 | `"torch"` on CPU | torch on the host | float64, or float32 with `precision="float32"` | `[accel]` | one code path on a machine without a GPU |
 
 `backend="torch"` picks CUDA, then MPS, then CPU; `device=` overrides it. One brain uses one
@@ -62,14 +62,19 @@ precision; `Brain.load` defaults to `backend="cpu"`, `Learner.load` to the saved
 `Learner.load(path, backend="cpu")` brings a checkpoint learned on any device back to the
 float64 receipt backend.
 
-The composed brain's memory stores are read on the host inside a device brain too.
+The composed brain's memory stores are read on the host inside a device brain too, except a large
+recall address map on MLX ([implementation notes](#implementation-notes)).
 
 On a device backend `settle_batch` returns a state that stays resident (`BrainState.device`;
 `None` on the CPU and from the one-stimulus `settle`), so a continuing phase starts there.
 The learning contrast is computed there too (`NeuralGraph.contrast_on_device`, `None` unless
 both states are resident; MLX needs a blocked graph). Torch `Learner` updates, momentum and RMS
 normalization stay on the device, and so does the apical gain a nudged phase holds
-(`NeuralGraph.apical_gain`); MLX hands the contrast to a host optimizer. `ActorCritic` updates on the device when both of its
+(`NeuralGraph.apical_gain`). On MLX a lesson's update stays on the device from 131,072 block entries,
+where every entry holds one synapse, each block has one gain, every tie is one block's entries with
+another's, transposed, and every synapse is plastic at one rate: the contrast, the moments and the
+normalization by block in float32, the ties, the bound and the new blocks in one launch, the neurons'
+arithmetic on the host in float64. Below that, MLX hands the contrast to a host optimizer. `ActorCritic` updates on the device when both of its
 phases settled there; its critic and dopamine use host arrays. Reading
 parameters or saving a checkpoint copies arrays back. Parameter edits and the `learner.brain`
 rule are in [contracts](contracts.md).
@@ -92,8 +97,8 @@ print(check["backend"], check["max_abs_deviation"])                             
 ## Which hardware
 
 Use CPU with Numba for small continuing brains, and measure an accelerator on the actual
-changing-input workload before switching: small brains spend more time launching GPU
-operations than doing arithmetic, while deep brains and large batches gain from the device.
+changing-input workload before switching: small brains spend more time synchronizing with the GPU
+than doing arithmetic, while wide and deep brains and large batches gain from the device.
 On an NVIDIA A10G ([`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md)), CUDA float64
 runs a lesson of a deep apical visual brain (7,956 neurons, 903,520 synapses) about 14 times
 faster than one CPU core at batch 64 and about 27 times faster at batch 4,096. The flat founder
@@ -104,6 +109,33 @@ does float64 at a sixty-fourth of its float32 rate); check it against float64 as
 relying on it. On the small continuing nursery of the
 [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
 than CUDA.
+
+On an Apple M4, one process, milliseconds per act and per taught lesson of a newborn, MLX
+against one CPU core with Numba (float32 against float64, the same sweeps):
+
+| Brain | Rows | One CPU core, act and lesson | MLX, act and lesson |
+| --- | ---: | ---: | ---: |
+| A small founder: 12 inputs, association 32 | 1 | 0.07, 0.26 | 0.39, 1.8 |
+| The chamber's recipe: 251 neurons, 13,120 synapses | 16 | 0.43, 2.2 | 0.56, 2.6 |
+| The founder at the speech size: 3,920 inputs, 2.3 million synapses | 1 | 0.75, 24 | 0.93, 4.8 |
+| The recipe at the speech size: 6.3 million synapses, 24 million parameters | 1 | 9.2, 184 | 2.4, 21 |
+| The same | 16 | 13, 185 | 7.1, 37 |
+| The same | 64 | 38, 265 | 16, 67 |
+| The same | 256 | 129, 605 | 54, 167 |
+| The same | 1,024 | 535, 2,009 | 229, 693 |
+| The same | 4,096 | 2,582, 12,243 | 990, 2,775 |
+| The deep anatomy above, without its apical compartment: 7,956 neurons, 903,520 synapses | 1 | 17, 58 | 52, 173 |
+| The same | 16 | 43, 122 | 48, 167 |
+| The same | 64 | 146, 363 | 65, 195 |
+| The same | 256 | 518, 1,402 | 151, 372 |
+| The same | 1,024 | 2,111, 5,623 | 639, 1,435 |
+| The same | 4,096 | 9,366, 25,157 | 2,594, 7,845 |
+
+MLX wins from the speech size at every batch, and on the deep anatomy from about 32 rows. At the
+chamber's size one synchronization with the GPU costs about 180 microseconds whatever the work, and
+a solve of three chunks takes three: a pass of the [grammar chamber](../benchmarks/grammar/README.md),
+4,000 batches of 16 rows, takes 51 s on one CPU core and 75 s on MLX. One core stays the choice at
+that size.
 
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
 dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize
@@ -126,12 +158,18 @@ residual: a warm state within tolerance takes zero steps and one residual check.
 check frequency against overshoot at the same final tolerance. Step count measures numerical
 settling work, never surprise or task quality. `residual(drive, state, on_device=True)` checks
 an unread torch state on its device in float64, one scalar per row back (a float32 state
-through a float64 copy of the kernel, the same float64 reference); MPS and MLX states, a state
-read on the host and `on_device=False` use the float64 host reference. A positive movement
+through a float64 copy of the kernel, the same float64 reference); a state an MLX launch made reads
+that launch's own check, in float32, under the same drive, nudge and parameters; other MLX states,
+MPS states, a state read on the host and `on_device=False` use the float64 host reference. A solve
+on MLX decides by the launch's check from a tolerance of 1e-4, where its rounding is about a
+hundredth of the tolerance, and by the reference below that. A positive movement
 `tolerance` in `settle_batch` tests every step; on CUDA the test is read one sweep behind (the
 next sweep is queued before the host reads the flag, into the other state slot), so the host
 never stalls the device, and the reported state and step count are those of the first sweep
-that met the tolerance. Fixed step counts and the inner chunks of `equilibrate` read nothing.
+that met the tolerance. An MLX launch reads which of its sweeps moved a neuron and, where it went
+past the stop, makes the state again from its start: the same steps and state, the extra sweeps in
+`discarded_steps` and `attempted_steps`. Fixed step counts and the inner chunks of `equilibrate`
+read nothing.
 CPU and MPS check before starting another sweep. For a direct CUDA movement-tolerance solve,
 `BrainState.steps` is the returned state's sweep index, `discarded_steps` counts lookahead,
 and `attempted_steps` counts both. Use `attempted_steps` for executed-work comparisons; it counts
@@ -158,10 +196,21 @@ reference transmission `ledger` and `final_active` (neurons at activation 0.5 or
 On the CPU backend transport is dense, block products between neuron ranges, when the block
 layout fits `NeuralGraph(dense_limit=2048)` (at most `dense_limit ** 2` entries); the CPU paths
 reuse the products of a source range (one that receives no synapses) whose activation did not
-change. MLX makes every block's products at every step, which costs the device less than the
-host synchronization that would find a range unchanged, and evaluates a settle's graph once at
-its end (at least every 64 steps of a long one), or at every step when a movement `tolerance`
-is read.
+change.
+
+MLX runs a chunk of sweeps in one Metal launch (`mx.fast.metal_kernel`): one threadgroup per row,
+one thread per settling neuron (a neuron of a range that receives synapses), the activations in
+threadgroup memory, a barrier per sweep, and the equations' residual of the launch's first and
+last state read at its end, so a solve that needs one chunk synchronizes with the device once.
+Under `dt = 1` without adaptation a source range's potential is its drive from its first sweep on,
+so its products are made once a settle, one MLX operation each, and reach the launch summed. The
+state stays on the device; the host's arrays are made from it without another launch when read.
+A launch holds up to 2,048 settling neurons, and takes no mask, anchor, trajectory or recording,
+no softmax group that is not a range of settling neurons and no temperature below 0.02. Those
+settles, and other rules, run a sweep through `mx.compile`, the blocks as inputs, with every block's
+product at every step, and evaluate a settle's graph once at its end (at least every 64 steps of a
+long one), or at every step when a movement `tolerance` is read. `CADENCE_MLX_LAUNCH=0` keeps one MLX
+operation at a time and the update and the maps on the host.
 
 Torch keeps a settle's state on its device neuron-major, `(neurons, batch)`, and sums each
 sweep's synaptic input by a transport plan made once per graph. The rows of the synapse matrix
@@ -219,7 +268,10 @@ environment before `cadence` is imported forces the NumPy loop; use it to reprod
 look-back, contextual-choice, held-heads, copy-tokens and own-action receipts, which were
 recorded on that loop.
 
-A recall memory's reads, writes and address lessons run on the host under every backend: products
+On MLX a recall address map of at least 1,048,576 entries rests on the device: its product with a
+moment and its step are launched there, in float32, and it reads as a float64 array wherever an array
+is asked for. The read back of a lesson's movement uses the blocks when the synapses rest there.
+A recall memory's other reads, writes and address lessons run on the host under every backend: products
 of each stream's address or attention with its slots, and the copy of the slots a write makes.
 `CADENCE_RECALL_THREADS=N` shares those of at least 262,144 values over blocks of streams,
 using at most N workers and at most 32 workers in one reusable pool per process. Canonical

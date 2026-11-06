@@ -2,6 +2,25 @@
 
 ## Unreleased
 
+- The `"mlx"` backend costs 8 to 14 times less per act and 3 to 13 times less per taught lesson on a
+  brain a launch takes, and about 1.6 times less on one it does not take, with the same equations and
+  tolerance within float32 rounding; its bits change, and every CPU path keeps its own. A chunk of
+  sweeps runs in one Metal launch that ends with the equations' residual, a state stays on the device
+  until read, a lesson's update from 131,072 block entries and a recall address map from 1,048,576
+  entries stay on the device, and a sweep no launch takes is compiled. On an Apple M4 at the speech
+  size (3,920 inputs, 6.3 million synapses) an act takes 2.4 ms against 9.2 on one CPU core, and a
+  taught lesson 21 against 184; a chamber batch of 16 rows takes about 1.5 times one CPU core's.
+  `Brain.residual` reads a launch's check of a state under its own drive, nudge and
+  parameters, in float32; `on_device=False` keeps the float64 reference, which also decides a solve
+  below a tolerance of 1e-4. `copy.deepcopy` of an MLX brain works. `CADENCE_MLX_LAUNCH=0` keeps one
+  MLX operation at a time. See [which hardware](docs/backends.md#which-hardware).
+- Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`): one learned scalar
+  per read port on the tokens' identity into the motor region's drive, starting at zero and taught
+  by the motor region's movement in each lesson and by the act's eligibility under reward, so what
+  lessons on some tokens teach holds for a token no lesson used. Answers with such tokens read above
+  0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
+  tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
+  without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
 - **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
   [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
   `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only
