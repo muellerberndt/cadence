@@ -202,7 +202,9 @@ first sweep makes none). The state keeps its potentials and activations too, so 
 potentials are the kept ones reads their activations without computing them. The products hold
 for the blocks they were made with; `copy` and `pickle` leave them out. A free solve without a
 mask, a nudge or a compartment runs its check and its chunks in one compiled call, unless
-`settle_batch` or `residual` is wrapped, which then sees every launch. The rows of a batch settle
+`settle_batch` or `residual` is wrapped, which then sees every launch. The kernels compile at their
+first use under a source version, about 10 seconds on an Apple M4, and later processes load them
+from Numba's cache (`NUMBA_CACHE_DIR` where the package's folder is read-only). The rows of a batch settle
 on Numba's threads, as many as
 `NUMBA_NUM_THREADS` or `numba.set_num_threads` allow, to the same bits at any count, once a
 sweep covers at least 65,536 neurons over its rows (an 8,000-neuron brain from a batch of 8);
