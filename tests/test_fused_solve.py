@@ -3,6 +3,9 @@ counts and every bit of the launches it stands in for, which a wrapped method st
 
 from __future__ import annotations
 
+import subprocess
+import sys
+
 import numpy as np
 import pytest
 
@@ -120,3 +123,22 @@ def test_a_subclass_that_withholds_its_blocks_settles_its_own_way() -> None:
     assert not withheld._solves_compiled()
     drive = brain.stimulus(np.random.default_rng(4).random((2, 8)))
     assert withheld.equilibrate(drive, budget=64, tolerance=3e-3).qualified.all()
+
+
+def test_a_brain_compiles_each_kernel_once() -> None:
+    """A constant argument of a compiled call is a type of its own to Numba: a solve that passed
+    constants would compile the settle and the check again beside the ones a launch takes."""
+    code = """
+import numpy as np
+import cadence as cd
+from cadence import fused
+brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=True, episodic=False,
+                         learning_surprise=True, teaching="deep")
+rng = np.random.default_rng(0)
+for _ in range(3):
+    brain.act(rng.random((4, 8)), greedy=True)
+    brain.lesson(rng.random((4, 8)), rng.integers(0, 4, 4))
+print(len(fused._kernel.signatures), len(fused._residual_kernel.signatures))
+"""
+    done = subprocess.run([sys.executable, "-c", code], capture_output=True, text=True, check=True)
+    assert done.stdout.split() == ["1", "1"]
