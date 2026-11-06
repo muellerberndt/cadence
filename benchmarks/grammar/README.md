@@ -245,7 +245,26 @@ PYTHONPATH=src python benchmarks/grammar/ablations.py --table DIR/ablations.json
 
 ### Readings on 0.94.0 (development founders 0 to 2)
 
-Pending: the table is filled from the lane's evidence when the rows exist.
+One online pass, the mean of three lives per row, whole sentences said exactly:
+
+| Row | Parameters | Clauses | Held-out | Brackets | Paths |
+| --- | --- | --- | --- | --- | --- |
+| `none` | 23,490 | 1.00 | 1.00 | .18 | .36 |
+| `A` | 24,210 | 1.00 | .99 | .43 | .31 |
+| `B` | 24,126 | .99 | .90 | .18 | .29 |
+| `Bp` | 23,618 | 1.00 | .81 | .54 | .29 |
+| `C` | 24,978 | 1.00 | 1.00 | .48 | .29 |
+| `Cs` | 24,210 | .01 | .00 | .03 | .11 |
+| `D1` | 23,490 | 1.00 | .98 | .23 | .32 |
+| `D2` | 23,490 | 1.00 | .96 | .31 | .37 |
+| `E` | 24,210 | .98 | .96 | .19 | .18 |
+| `allrn` | 23,910 | 1.00 | .93 | .36 | .38 |
+| `lstmA` | 23,846 | .36 | .10 | .06 | .07 |
+
+Online brackets span .06 to .58 and paths .14 to .95 across nine founders of the one control, so
+no online brackets or paths difference in this table separates from initialization. `allrn` keeps
+clauses at 1.00 with the read silenced at 0.00, so the transformer's clauses rest on the read.
+Offline, `none` reads 1.00, .89, 1.00, 1.00 (two lives) and `allrn` 1.00, .96, .99, .63 (six lives).
 
 ## The brain's own graph on exact gradients
 
@@ -263,6 +282,8 @@ cross-entropy of the motor activity at the temperature of the lesson's nudge.
 | `G1n`, `G1d` | the recipe; the `deep` brain | each lesson's contrast replaced by the exact implicit gradient at that moment's free fixed point, at the brain's normalized step; the held read, the trace, the surprise rule and the address map's lesson as they are |
 | `G1a` | the recipe | the same gradient, with Adam at the online control's rate and the gradient norm clipped at 1 |
 | `G2a`, `G2s`, `G2n` | the recipe | the gradient carried across a sentence's moments, through the working trace and the read's address, into the address map and the position maps; one step per batch; over every word (`G2a`, `G2n`) or the words said wrong (`G2s`); Adam (`G2a`, `G2s`) or the normalized step (`G2n`) |
+| `Fn`, `Fd`, `FdL` | the recipe; the recipe at `teaching="deep"` with no apical | the local contrast with the address lesson's step on `sum_i (p*_i - p_i) K_i`; `Fn` and `Fd` patch it in, `FdL` reads it through the library's `recall_address_contrast`, and a test holds `Fd` and `FdL` to the bit |
+| `FdT`, `FdC`, `FdR`, `FdX` | `Fd` | what crosses moments cut from birth, at every lesson and act: the working trace, the cortex the address reads, the previous read's focus, and the three |
 
 G2 runs its forward in float64 torch on the act's own path (the settle's synchronous sweeps from
 the stream's last state, since the settle has several attractors in places and the path selects
@@ -287,9 +308,25 @@ PYTHONPATH=src python benchmarks/grammar/ablations.py --table DIR/gradients.json
 PYTHONPATH=src python benchmarks/grammar/ablations.py --spread DIR/gradients.jsonl
 ```
 
-### Readings on 0.94.0 (development founders 0 to 2)
+### Readings at the base composition (development)
 
-Pending: the table is filled from the lane's evidence when the rows exist.
+One online pass, founders 0 to 2 on their own newborns and on three further seeds each, twelve lives:
+
+| Arm | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Two hops | Three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `recipe` | .57 | .24 | .52 | .31 | .33 | .27 | .03 | .00 |
+| `Fd` | .96 | .95 | .91 | .91 | .78 | .87 | .80 | .22 |
+| `FdT` | .94 | .86 | .90 | .87 | .86 | .94 | .89 | .34 |
+| `G2n`, exact gradients on the same graph (three lives) | .98 | .94 | .94 | .93 | .93 | .89 | .80 | .04 |
+| Matched transformer, one pass (three lives) | 1.00 | | 1.00 | 1.00 | .18 | .36 | | .00 |
+| Matched transformer, 14 epochs (two lives) | 1.00 | | .88 | .99 | 1.00 | 1.00 | | .00 |
+
+The 24,384 parameters and the sweeps per life (6.3 million) of `Fd` equal the recipe's. A life on a
+shared box takes about 495 seconds, the transformer's pass 34 and its 14 epochs 513. Paths are
+bimodal under `Fd`: 9 of 12 lives at .95 or above, two at .33 and .41, and those two read .95 under
+`FdT`. Lengths beyond training read .00 for every arm. A last-bit replica moves one founder by a
+mean of .087 and at most .297 on these panels, so a difference under about .07 on a six-life mean
+does not separate.
 
 ## A planning window
 

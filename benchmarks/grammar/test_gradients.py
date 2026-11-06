@@ -237,7 +237,7 @@ def test_the_moments_rung_replaces_the_step_and_nothing_else(step):
                                  "Ln", "Ld", "Lda", "Lb", "whole", "Fn", "Fn2", "Fd", "Fn3",
                                  "Fn100", "Lf", "FnT", "FnC", "FnR", "FnX", "Lf3", "Lf1", "Fu3",
                                  "Fu10", "Fcap", "FdT", "FdC", "FdR", "FdX", "Fd128", "FdT128f",
-                                 "FdT256s", "FdA64", "FdA80f", "Fd2"])
+                                 "FdT256s", "FdA64", "FdA80f", "Fd2", "FdL"])
 def test_a_short_life_of_every_arm(arm):
     life = gx.run_life({"arm": arm, "founder": 0, "batches": 3, "module": 16, "panel_batches": 1,
                         "panels": ["clause", "path"]})
@@ -442,6 +442,28 @@ def test_the_named_rule_is_the_lanes_and_tends_to_the_first_order(taught, tests)
     assert np.allclose(far, first_order, atol=1e-2)
     assert gx.cosine(rule.ravel(), first_order.ravel()) < gx.cosine(far.ravel(),
                                                                     first_order.ravel())
+
+
+def test_the_named_arm_is_the_librarys_option():
+    """``Fd``'s patch and ``recall_address_contrast`` live alike, to the bit."""
+
+    def life(arm: str):
+        brain = gx.newborn(gx.ARMS[arm], 0, {"module": 16})
+        gx.install_arm(brain, gx.ARMS[arm])
+        rng = np.random.default_rng(np.random.SeedSequence([0, gr.SEEDS["train"]]))
+        split = gr.Split.of(0)
+        for _ in range(20):
+            gr.speak(brain, gr.train_batch(rng, split, "g1"), teach=True)
+        return brain
+
+    patched, option = life("Fd"), life("FdL")
+    assert option.recall.address_contrast and not patched.recall.address_contrast
+    assert np.array_equal(patched.learner.brain.efficacy, option.learner.brain.efficacy)
+    assert np.array_equal(patched.learner.brain.bias, option.learner.brain.bias)
+    for name in ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps"):
+        for a, b in zip(getattr(patched.recall, name)[0], getattr(option.recall, name)[0],
+                        strict=True):
+            assert np.array_equal(a, b)
 
 
 @pytest.mark.parametrize("part, read", [("trace", lambda b: b.working_memory.trace),
