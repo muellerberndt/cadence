@@ -12,7 +12,7 @@ import warnings
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -78,17 +78,17 @@ def test_a_setting_retired_in_this_release_is_refused_naming_the_release(tmp_pat
     described = brain.describe()
     assert name not in described["genes"]
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({member: data[member].copy() for member in data.files})
+        arrays = flat({member: data[member].copy() for member in data.files})
     meta = metadata(arrays)
     meta["recall"][setting] = value  # as a file of 0.92.1 with the option set carries it
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "retired.npz", **arrays)
+    write(tmp_path / "retired.npz", arrays)
     with pytest.raises(ValueError, match=re.escape(sentence)):
         cd.Brain.load(tmp_path / "retired.npz")
     assert cd.Brain.load(path).describe() == described
     meta["recall"][setting] = kept
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "kept.npz", **arrays)
+    write(tmp_path / "kept.npz", arrays)
     assert cd.Brain.load(tmp_path / "kept.npz").describe() == described
 
 

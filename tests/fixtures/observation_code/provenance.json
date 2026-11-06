@@ -1,6 +1,6 @@
 {
-  "written_by": "tests/test_observation_code.py FOUNDERS['recalled'] after its life, saved at checkpoint format cadence-generic/8",
-  "format": "cadence-generic/8",
+  "written_by": "tests/test_observation_code.py FOUNDERS['recalled'] after its life, saved by 0.84.3 at checkpoint format cadence-generic/8, then loaded and saved by 0.94.0",
+  "format": "cadence-brain/1",
   "founders": {
     "recalled": [
       4,

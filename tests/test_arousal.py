@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -21,16 +21,6 @@ def calm_brain(seed: int = 0, **genes) -> cd.Brain:
         working_memory_amplitude=0.0,
         arousal=cd.ArousalConfig(**{"youth": 0, **genes}),
     )
-
-
-def as_saved_by_0843(state: dict, *, records: int = 0, usual_record: float = 0.0) -> dict:
-    """An arousal state as 0.84.3 saved it: the record channel at its founder weight of zero
-    with its readings, and the need scale at zero left out (``cadence-arousal/2``)."""
-    config = {k: v for k, v in state["config"].items() if k != "need_scale"}
-    assert state["config"]["need_scale"] == 0.0
-    config["record_surprise"] = 0.0
-    return {**state, "format": "cadence-arousal/2", "config": config, "records": records,
-            "usual_record": usual_record}
 
 
 def snapshot(brain: cd.Brain) -> dict[str, np.ndarray]:
@@ -239,11 +229,10 @@ def test_equal_rates_remove_the_want_and_a_wide_tolerance_removes_surprise():
     assert no_surprise.outcome(1.5, 1.0)[0] == 0.0
 
 
-def test_the_record_channel_of_0843_is_refused_by_name_and_its_founder_saves_load():
+def test_the_record_channel_of_0843_is_refused_by_name():
     """The record channel, a second surprise at the outcome the action's record forecast, is
-    removed: its gene is refused by name at compose, retune and in an arousal mapping, and a
-    state saved by 0.84.3 loads as the same state without the channel's readings at the
-    founder weight of zero, while a positive weight is refused; each refusal names 0.84.3."""
+    removed: its gene is refused by name at compose, retune and in an arousal mapping, each
+    refusal naming 0.84.3, and a saved state carries none of its readings."""
     with pytest.raises(TypeError):
         cd.ArousalConfig(record_surprise=0.0)
     for genes in ({"arousal": True, "arousal_record_surprise": 0.0},
@@ -255,23 +244,9 @@ def test_the_record_channel_of_0843_is_refused_by_name_and_its_founder_saves_loa
         brain.retune(arousal_record_surprise=1.0)
     assert "arousal_record_surprise" not in brain.describe()["genes"]
     assert "record_surprise" not in cd.ArousalConfig.space()
-    arousal = cd.Arousal(cd.ArousalConfig(youth=2, need_scale=0.0))  # a state 0.84.3 could save
-    for value in (0.5, 1.0, 0.2):
-        arousal.outcome(value, value)
-        arousal.lived(7, 3)
-    state = arousal.to_dict()
-    assert state["format"] == "cadence-arousal/4" and state["config"]["need_scale"] == 0.0
+    state = cd.Arousal(cd.ArousalConfig(youth=2)).to_dict()
+    assert state["format"] == "cadence-arousal/4"
     assert "records" not in state and "usual_record" not in state
-    saved = as_saved_by_0843(state, records=2, usual_record=0.3)
-    assert cd.Arousal.from_dict(saved).to_dict() == state
-    weighed = {**saved, "config": {**saved["config"], "record_surprise": 0.5}}
-    with pytest.raises(ValueError, match="record_surprise=0.5.*retired in 0.85.0.*0.84.3"):
-        cd.Arousal.from_dict(weighed)
-    for key, bad in (("records", -1), ("usual_record", float("nan"))):
-        with pytest.raises(ValueError, match=key):
-            cd.Arousal.from_dict({**saved, key: bad})
-    with pytest.raises(ValueError, match="incomplete saved arousal"):
-        cd.Arousal.from_dict({k: v for k, v in saved.items() if k != "records"})
 
 
 def test_arousal_state_round_trips_and_rejects_corruption():
@@ -290,28 +265,29 @@ def test_arousal_state_round_trips_and_rejects_corruption():
         arousal.outcome(float("inf"), 0.0)
 
 
-def test_legacy_arousal_without_need_migrates_without_changing_its_saved_state():
-    arousal = cd.Arousal(cd.ArousalConfig(youth=2, need_scale=0.0))  # a state 0.84.3 could save
+def test_an_arousal_of_another_format_is_refused_naming_the_release_that_loads_it():
+    """The formats of 0.84.3 and earlier leave: cadence 0.94.0 loads them and saves the one this
+    version reads. The format of a positive hindsight keeps its own sentence, and a save of the
+    format this version reads needs every gene."""
+    arousal = cd.Arousal(cd.ArousalConfig(youth=2, need_scale=0.0))
     for value in (0.5, 1.0, 0.2):
         arousal.outcome(value, value)
         arousal.lived(7, 3)
-    legacy = as_saved_by_0843(arousal.to_dict())
-    del legacy["format"]
-    del legacy["config"]["need"]
-    restored = cd.Arousal.from_dict(legacy)
-    assert restored.config.need == 0.0
-    assert restored.to_dict() == arousal.to_dict()
-    assert "need" not in legacy["config"] and "format" not in legacy
-    for gene in legacy["config"]:
-        corrupt = {**legacy, "config": {k: v for k, v in legacy["config"].items() if k != gene}}
-        with pytest.raises(ValueError, match="incomplete saved arousal config"):
-            cd.Arousal.from_dict(corrupt)
-    for format in (None, "cadence-arousal/0"):
-        with pytest.raises(ValueError, match="arousal format"):
-            cd.Arousal.from_dict({**legacy, "format": format})
+    state = arousal.to_dict()
+    assert cd.Arousal.from_dict(state).to_dict() == state
+    for format in (None, "cadence-arousal/0", "cadence-arousal/1", "cadence-arousal/2",
+                   "cadence-arousal/3"):
+        with pytest.raises(ValueError, match="0.84.3 and earlier wrote: cadence 0.94.0 loads it"):
+            cd.Arousal.from_dict({**state, "format": format})
+    with pytest.raises(ValueError, match="0.84.3 and earlier wrote: cadence 0.94.0 loads it"):
+        cd.Arousal.from_dict({k: v for k, v in state.items() if k != "format"})
     # the format of a positive hindsight (0.88.1 to 0.92.1), retired in 0.93.0
     with pytest.raises(ValueError, match="cadence-arousal/5.*retired in 0.93.0"):
-        cd.Arousal.from_dict({**legacy, "format": "cadence-arousal/5"})
+        cd.Arousal.from_dict({**state, "format": "cadence-arousal/5"})
+    for gene in state["config"]:
+        corrupt = {**state, "config": {k: v for k, v in state["config"].items() if k != gene}}
+        with pytest.raises(ValueError, match="incomplete saved arousal config"):
+            cd.Arousal.from_dict(corrupt)
 
 
 # -- the behaviour temperature
@@ -508,24 +484,16 @@ def test_a_saved_life_continues_identically(tmp_path, wake, need):
     }
 
 
-def test_a_legacy_saved_brain_continues_with_zero_need(tmp_path):
-    """A brain saved by 0.84.3 carries the law without the scaled need (``need_scale`` 0, left
-    out of its formats): the expert route's value, which loads as saved and continues."""
-    brain = calm_brain(seed=5, youth=8, need_scale=0.0)  # a brain 0.84.3 could save
+def test_a_brain_of_zero_need_continues_and_an_earlier_arousal_is_refused(tmp_path):
+    """The need scale of zero, the expert route's value, loads as saved and continues; a brain
+    file holding an arousal of an earlier format is refused, naming the release that loads it."""
+    brain = calm_brain(seed=5, youth=8, need_scale=0.0)
     eye = np.eye(4)
     brain.live(eye[[0]])
     for moment in range(5):
         brain.live(eye[[moment % 4]], reward=[float(moment % 2)])
     assert brain.basal_ganglia._pending is not None
-    path = brain.save(tmp_path / "legacy.npz")
-    with np.load(path) as archive:
-        arrays = earlier({key: archive[key] for key in archive.files})
-    meta = metadata(arrays)
-    meta["arousal"] = as_saved_by_0843(meta["arousal"])  # an unversioned save before ``need``
-    del meta["arousal"]["format"]
-    del meta["arousal"]["config"]["need"]
-    arrays["generic"] = np.array(json.dumps(meta))
-    np.savez_compressed(path, **arrays)
+    path = brain.save(tmp_path / "zero.npz")
     twin = cd.Brain.load(path)
     assert twin.arousal.to_dict() == brain.arousal.to_dict()
     for moment in range(40):
@@ -533,6 +501,14 @@ def test_a_legacy_saved_brain_continues_with_zero_need(tmp_path):
         np.testing.assert_array_equal(brain.live(x, reward=reward), twin.live(x, reward=reward))
         assert brain.last_arousal == twin.last_arousal
     assert brain.arousal.to_dict() == twin.arousal.to_dict()
+    with np.load(path) as archive:
+        arrays = flat({key: archive[key] for key in archive.files})
+    meta = metadata(arrays)
+    meta["arousal"]["format"] = "cadence-arousal/3"
+    arrays["generic"] = np.array(json.dumps(meta))
+    write(path, arrays)
+    with pytest.raises(ValueError, match="cadence 0.94.0 loads it"):
+        cd.Brain.load(path)
 
 
 def test_a_refused_forecast_changes_nothing_and_the_same_call_can_be_retried():
@@ -664,14 +640,14 @@ def test_brains_without_arousal_keep_their_checkpoint_format(tmp_path):
     plain.step(np.eye(4)[[0]])
     with np.load(plain.save(tmp_path / "plain.npz")) as data:
         meta = metadata(data)
-        assert meta["format"] == "cadence-generic/2" and "arousal" not in meta
+        assert meta["format"] == "cadence-brain/1" and "arousal" not in meta
         assert not any(key.startswith("lived/") for key in data.files)
     roused = calm_brain()
     roused.live(np.eye(4)[[0]])
     path = roused.save(tmp_path / "roused.npz")
     with np.load(path) as data:
         meta = metadata(data)
-        assert meta["format"] == "cadence-generic/3" and meta["lived"]["sampled"] is False
+        assert meta["format"] == "cadence-brain/1" and meta["lived"]["sampled"] is False
     loaded = cd.Brain.load(path)
     assert loaded.arousal is not None and loaded._lived is not None
     assert loaded._lived[4] is loaded.basal_ganglia.state

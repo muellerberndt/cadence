@@ -13,7 +13,7 @@ import warnings
 
 import numpy as np
 import pytest
-from checkpoints import metadata
+from checkpoints import metadata, write
 
 import cadence as cd
 
@@ -146,13 +146,13 @@ def test_a_calm_answer_taught_before_its_outcome_resumes(tmp_path):
 
 def test_a_lesson_while_an_outcome_is_awaited_resumes(tmp_path):
     """A lesson after ``wait``: the checkpoint carries the sensed state awaiting the outcome
-    (format ``cadence-generic/5``) and no drive, and the outcome is credited as before."""
+    and no drive, and the outcome is credited as before."""
     brain = calm()
     owner = brain.decision_id
     brain.wait(EYE[[2]])
     brain.lesson(EYE[[2]], np.array([1]))
     path = brain.save(tmp_path / "waiting")
-    assert saved_meta(path)["format"] == "cadence-generic/5"
+    assert "awaiting" in saved_meta(path)
     assert "actor/_drive" not in saved_arrays(path)
     copy = cd.Brain.load(path)
     assert copy.basal_ganglia._drive is None and copy.decision_id == owner
@@ -227,7 +227,7 @@ def test_a_saved_drive_is_still_checked(tmp_path):
     arrays = saved_arrays(path)
     assert arrays["actor/_drive"].shape == (1, brain.connectome.n)
     arrays["actor/_drive"] = np.zeros((2, brain.connectome.n))
-    np.savez(path, **arrays)
+    write(path, arrays)
     with pytest.raises(ValueError, match="invalid saved state: actor/_drive"):
         cd.Brain.load(path)
 
@@ -241,6 +241,6 @@ def test_a_pending_action_needs_its_saved_drive(tmp_path):
     path = brain.save(tmp_path / "pending")
     arrays = saved_arrays(path)
     del arrays["actor/_drive"]
-    np.savez(path, **arrays)
+    write(path, arrays)
     with pytest.raises(ValueError, match="missing saved state: actor/_drive"):
         cd.Brain.load(path)

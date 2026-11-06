@@ -5,7 +5,7 @@ populations), the brain's parameters (every synapse's efficacy, every neuron's g
 the neuron model, the learner's configuration, plasticity masks, tie groups, momentum and
 normalisation state, and the update count, plus the library version that wrote it. ``load``
 rebuilds a ``Learner`` on any backend, so a brain trained on an accelerator runs on a CPU in a
-body and keeps learning where it left off. Checkpoints in the first format load as well.
+body and keeps learning where it left off.
 These are learner checkpoints; a complete composed life uses ``Brain.save/load`` instead.
 When changing machine, backend or precision, check numerical and behavioural parity on the
 intended workload. Checkpoint portability does not guarantee identical cross-machine results.
@@ -30,10 +30,6 @@ from .neuron import Adaptation, NeuronModel
 from .receipts import canonical_json
 
 FORMAT = "cadence-checkpoint/2"
-FIRST_FORMAT = "cadence-checkpoint/1"
-# A learner saved with the readout's intrinsic plasticity on (homeostasis_rate above 0).
-# This version has no such setting, so such a file is refused instead of loaded without it.
-HOMEOSTASIS_FORMAT = "cadence-checkpoint/3"
 # A learner saved by 0.86.0 to 0.92.1 with the numerical policy ``initial_damping`` above 0,
 # which 0.93.0 retired: refused by name.
 INITIAL_DAMPING_FORMAT = "cadence-checkpoint/4"
@@ -43,16 +39,6 @@ INITIAL_DAMPING_FORMAT = "cadence-checkpoint/4"
 APICAL_FORMAT = "cadence-checkpoint/5"
 
 __all__ = ["FORMAT", "load", "save"]
-
-# The first format's names for the entries that the second format renamed.
-_FIRST_META = {"populations": "sets", "neuron_model": "rule", "reciprocal": "symmetric"}
-_FIRST_ARRAYS = {
-    "efficacy": "edge_scale",
-    "plastic_synapses": "trainable_overlaps",
-    "plastic_neurons": "trainable_owners",
-}
-_FIRST_MODEL: dict[str, str] = {"clamp_amplitude": "stimulus_amplitude"}
-
 
 def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
     from . import __version__
@@ -167,12 +153,6 @@ def load(
     with np.load(Path(path), allow_pickle=False) as data:
         meta: dict[str, Any] = json.loads(str(data["meta"]))
         saved = meta.get("format")
-        first = saved == FIRST_FORMAT
-        if saved == HOMEOSTASIS_FORMAT:
-            raise ValueError(
-                "this checkpoint was saved by cadence-net 0.81 with the readout's intrinsic "
-                "plasticity (homeostasis_rate above 0), which 0.82.0 removed; load it with 0.81"
-            )
         apical_format = saved == APICAL_FORMAT
         if saved == INITIAL_DAMPING_FORMAT or "numerical_policy" in meta:
             policy = meta.get("numerical_policy")
@@ -182,8 +162,11 @@ def load(
                 f"this checkpoint was saved under {INITIAL_DAMPING_FORMAT} with the learner's "
                 f"initial_damping={value!r}, which was retired in {release}: {instead}"
             )
-        if not first and saved not in (FORMAT, APICAL_FORMAT):
-            raise ValueError(f"not a cadence checkpoint: {saved!r}")
+        if saved not in (FORMAT, APICAL_FORMAT):
+            raise ValueError(
+                f"not a checkpoint this version reads: {saved!r}; it reads {FORMAT} and "
+                f"{APICAL_FORMAT}, and cadence 0.94.0 loads cadence-checkpoint/1"
+            )
         compartment_arrays = {"apical_synapses", "apical_groups"} & set(data.files)
         if (
             ("apical" in meta and compartment_arrays != {"apical_synapses", "apical_groups"})
@@ -212,23 +195,16 @@ def load(
         target_backend = backend or meta["backend"]
         target_precision = precision if precision is not None else meta.get("precision")
 
-        def entry(name: str) -> Any:
-            return meta[_FIRST_META[name] if first else name]
-
-        def array(name: str) -> np.ndarray:
-            return np.asarray(data[_FIRST_ARRAYS[name] if first else name])
-
         connectome = Connectome(
             n=int(meta["n"]),
             pre=data["pre"],
             post=data["post"],
             count=data["count"],
             sign=data["sign"],
-            populations={k: tuple(v) for k, v in entry("populations").items()},
+            populations={k: tuple(v) for k, v in meta["populations"].items()},
             label=str(meta["label"]),
         )
-        saved_model: dict[str, Any] = dict(entry("neuron_model"))
-        model = {(_FIRST_MODEL[k] if k in _FIRST_MODEL else k): v for k, v in saved_model.items()}
+        model: dict[str, Any] = dict(meta["neuron_model"])
         adaptation = model.pop("adaptation", None)
         neuron_model = NeuronModel(
             **model, adaptation=Adaptation(**adaptation) if adaptation else None
@@ -248,7 +224,7 @@ def load(
             connectome,
             neuron_model,
             backend=target_backend,
-            efficacy=array("efficacy"),
+            efficacy=np.asarray(data["efficacy"]),
             log_gain=data["log_gain"],
             bias=data["bias"],
             device=device,
@@ -262,9 +238,9 @@ def load(
             brain,
             data["outputs"].tolist(),
             effective_config,
-            plastic_synapses=array("plastic_synapses"),
-            plastic_neurons=array("plastic_neurons"),
-            reciprocal=bool(entry("reciprocal")),
+            plastic_synapses=np.asarray(data["plastic_synapses"]),
+            plastic_neurons=np.asarray(data["plastic_neurons"]),
+            reciprocal=bool(meta["reciprocal"]),
             tie_groups=tie if len(tie) else None,
             synapse_rate=rate.astype(float) if len(rate) else None,
             slots=meta.get("slots", 1),

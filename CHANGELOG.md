@@ -63,6 +63,10 @@ does instead.
   (`benchmarks/attention/test_retained_receipts.py`); release 0.94.0 holds the campaigns. Five
   instruments stay: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
   `contextual_choice.py`.
+- The readers of the checkpoints of 0.84.3 and earlier. `Brain.load` reads `cadence-brain/1` and
+  `/2`, every file of 0.85.0 on. It refuses `cadence-generic/1` to `/10`, `cadence-arousal/1` to
+  `/3` and `cadence-checkpoint/1` by name: load such a file once under cadence 0.94.0 and save it,
+  and this version reads the result.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.

@@ -560,8 +560,7 @@ class Recall:
     A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
     the memory does instead (``removed``); a saved memory loads where it carries the one value the
-    table keeps for it. A checkpoint of 0.84.3 carries the keys its format always wrote for three
-    of them (``FORMAT``). docs/memory.md holds each option's law and its readings.
+    table keeps for it. docs/memory.md holds each option's law and its readings.
     """
 
     connectome: Connectome
@@ -682,12 +681,6 @@ class Recall:
         "window_decay": ("0.93.0", window_decay, "the window's earlier events enter the key "
                          "at their full weight (1.0), the one value ever read"),
     })
-    # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
-    # for retired settings, at the one value at which such a file loads
-    FORMAT = MappingProxyType(
-        dict(value=RETIRED["value"][1], context=RETIRED["context"][1],
-             context_decay=RETIRED["context_decay"][1])
-    )
 
     @classmethod
     def founders(cls) -> dict[str, Any]:

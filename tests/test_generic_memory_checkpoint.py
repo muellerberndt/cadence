@@ -5,7 +5,7 @@ import json
 import checkpoints
 import numpy as np
 import pytest
-from checkpoints import earlier
+from checkpoints import flat, write
 
 import cadence as cd
 
@@ -88,41 +88,33 @@ def test_expanded_memory_resumes_pending_action_and_future_learning(tmp_path, ki
 
 def rewrite_checkpoint(path, mutate):
     with np.load(path, allow_pickle=False) as saved:
-        arrays = earlier({key: saved[key].copy() for key in saved})
+        arrays = flat({key: saved[key].copy() for key in saved})
     metadata = checkpoints.metadata(arrays)
     mutate(metadata, arrays)
     arrays["generic"] = np.array(json.dumps(metadata))
-    np.savez(path, **arrays)
+    write(path, arrays)
 
 
-@pytest.mark.parametrize("version", [1, 2])
-@pytest.mark.parametrize("kind", ["consolidating", "fast", "none"])
-def test_legacy_unseparated_memory_keeps_its_original_rule(tmp_path, version, kind):
-    original = cd.Brain.compose(3, 3, modules=(5,))
-    if kind == "fast":
-        original.hippocampus = cd.FastSynapses(original.sensory_index, original.motor_index)
-    elif kind == "none":
-        original.hippocampus = None
-    original.step(np.eye(3)[:2])
-    original.step(np.eye(3)[:2], reward=np.array([0.7, -0.2]))
-    path = original.save(tmp_path / "legacy.npz")
-
-    def make_legacy(metadata, arrays):
-        metadata["format"] = f"cadence-generic/{version}"
-        if metadata["hippocampus"] is not None:
-            metadata["hippocampus"].pop("separator")
-
-    rewrite_checkpoint(path, make_legacy)
-    restored = cd.Brain.load(path)
-    np.testing.assert_array_equal(
-        original.step(np.eye(3)[:2], reward=np.array([0.1, 0.5])),
-        restored.step(np.eye(3)[:2], reward=np.array([0.1, 0.5])),
-    )
-    np.testing.assert_array_equal(original.brain.efficacy, restored.brain.efficacy)
-    if kind == "none":
-        assert restored.hippocampus is None
-    else:
-        assert_memory_equal(original.hippocampus, restored.hippocampus)
+def test_a_file_of_the_formats_before_0_85_is_refused_naming_the_release_that_loads_it(tmp_path):
+    """``cadence-generic/1`` to ``/10``, what 0.84.3 and earlier wrote, are refused by name:
+    cadence 0.94.0 loads them and saves the format this version reads. A learner's file and a
+    format no release wrote are refused as well."""
+    path = cd.Brain.compose(3, 3, modules=(5,)).save(tmp_path / "brain.npz")
+    with np.load(path, allow_pickle=False) as saved:
+        arrays = {key: saved[key].copy() for key in saved}
+    meta = json.loads(str(arrays.pop("brain")))
+    earlier = tmp_path / "earlier.npz"
+    np.savez(earlier, generic=np.array(json.dumps({"format": "cadence-generic/8"})), **arrays)
+    with pytest.raises(ValueError, match="cadence-generic file.*cadence 0.94.0 loads it"):
+        cd.Brain.load(earlier)
+    learner = tmp_path / "learner.npz"
+    np.savez(learner, **arrays)
+    with pytest.raises(ValueError, match="use Learner.load"):
+        cd.Brain.load(learner)
+    other = tmp_path / "other.npz"
+    np.savez(other, brain=np.array(json.dumps({**meta, "format": "cadence-brain/9"})), **arrays)
+    with pytest.raises(ValueError, match="unsupported Brain checkpoint format"):
+        cd.Brain.load(other)
 
 
 @pytest.mark.parametrize(
@@ -310,8 +302,8 @@ def test_retained_recall_slots_resume_when_saved_immediately_after_reset(tmp_pat
     path = original.save(tmp_path / "between-streams.npz")
     if legacy:
         with np.load(path, allow_pickle=False) as saved:
-            arrays = earlier({name: saved[name].copy() for name in saved.files})
-        np.savez(path, **arrays)
+            arrays = flat({name: saved[name].copy() for name in saved.files})
+        write(path, arrays)
     restored = cd.Brain.load(path)
     for name, value in original.recall.arrays().items():
         np.testing.assert_array_equal(value, restored.recall.arrays()[name], err_msg=name)

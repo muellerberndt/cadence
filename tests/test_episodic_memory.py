@@ -6,7 +6,7 @@ import json
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -329,7 +329,7 @@ def test_a_saved_episodic_brain_continues_exactly(tmp_path):
             getattr(copy, name).consolidated, getattr(brain, name).consolidated
         )
     meta = metadata(np.load(path))
-    assert meta["format"] == "cadence-generic/6"
+    assert meta["format"] == "cadence-brain/1"
     places = episodic(3, 2, seed=10, memory_context=0.0)
     places.step(one_hot(0, 3))
     resumed = cd.Brain.load(places.save(tmp_path / "places.npz"))
@@ -337,7 +337,7 @@ def test_a_saved_episodic_brain_continues_exactly(tmp_path):
     released = cd.Brain.compose(3, 2, seed=10)
     released.act(one_hot(0, 3))
     meta = metadata(np.load(released.save(tmp_path / "released.npz")))
-    assert meta["format"] == "cadence-generic/2" and "episodic" not in meta
+    assert meta["format"] == "cadence-brain/1" and "episodic" not in meta
 
 
 def test_a_calm_brain_records_the_outcome_that_woke_it():
@@ -395,7 +395,7 @@ def test_a_corrupt_episodic_checkpoint_is_refused(tmp_path, tamper):
         brain.step(one_hot(t, 3), reward=None if t == 0 else [0.0])
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path) as saved:
-        data = earlier({name: saved[name].copy() for name in saved.files})
+        data = flat({name: saved[name].copy() for name in saved.files})
     meta = metadata(data)
     if tamper == "no_context_store":
         meta["episodic"]["context_memory"] = None
@@ -409,7 +409,7 @@ def test_a_corrupt_episodic_checkpoint_is_refused(tmp_path, tamper):
         data["episode/path/lengths"] = data["episode/path/lengths"] + 20
     data["generic"] = np.array(json.dumps(meta))
     corrupt = tmp_path / "corrupt.npz"
-    np.savez(corrupt, **data)
+    write(corrupt, data)
     with pytest.raises(ValueError):
         cd.Brain.load(corrupt)
 

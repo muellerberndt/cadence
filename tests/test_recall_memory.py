@@ -13,7 +13,7 @@ from types import MappingProxyType, SimpleNamespace
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 from cadence import brain as cadence_brain
@@ -46,7 +46,7 @@ def composed(seed=3, recall=True, **options):
 
 def saved_arrays(path):
     with np.load(path, allow_pickle=False) as data:
-        return earlier({name: data[name].copy() for name in data.files})
+        return flat({name: data[name].copy() for name in data.files})
 
 
 def assert_same_checkpoint(first, second):
@@ -286,7 +286,7 @@ def test_recall_false_builds_the_brain_without_the_option_byte_identically(tmp_p
     assert_same_checkpoint(control.save(tmp_path / "control"), founder.save(tmp_path / "founder"))
     with np.load(tmp_path / "founder.npz", allow_pickle=False) as data:
         meta = metadata(data)
-    assert meta["format"] != "cadence-generic/8" and "recall" not in meta
+    assert "recall" not in meta
     assert "recall_scale" not in meta["composition"]
     described = founder.describe()
     assert "recall" not in described["memories"]
@@ -1022,7 +1022,7 @@ def test_a_fork_carries_its_own_memory():
         {"memory_choice": True},
     ],
 )
-def test_a_saved_memory_continues_identically_and_marks_its_format(tmp_path, options):
+def test_a_saved_memory_continues_identically(tmp_path, options):
     brain = cd.Brain.compose(
         4, 2, modules=(8,), seed=5, recall=True, recall_address=0.2, arousal=True,
         history_decays=(0.5,), efference_amplitude=1.0, learning_surprise=True, **options,
@@ -1035,7 +1035,6 @@ def test_a_saved_memory_continues_identically_and_marks_its_format(tmp_path, opt
     path = brain.save(tmp_path / "life")
     with np.load(path, allow_pickle=False) as data:
         meta = metadata(data)
-        assert meta["format"] == "cadence-generic/8"
         assert meta["recall"] == brain.recall.to_dict()
         assert "history" in meta and "efference" in meta and "arousal" in meta
         assert ("episodic" in meta) == ("memory_choice" in options)
@@ -1059,7 +1058,6 @@ def test_a_saved_memory_continues_identically_and_marks_its_format(tmp_path, opt
     "tamper",
     [
         "format_without_recall",
-        "recall_without_format",
         "missing_keys",
         "wrong_key_width",
         "beyond_capacity",
@@ -1077,8 +1075,6 @@ def test_corrupt_saved_memories_are_refused(tmp_path, tamper):
     meta = metadata(arrays)
     if tamper == "format_without_recall":
         del meta["recall"]
-    elif tamper == "recall_without_format":
-        meta["format"] = "cadence-generic/7"
     elif tamper == "missing_keys":
         del arrays["recall/keys"]
     elif tamper == "wrong_key_width":
@@ -1094,7 +1090,7 @@ def test_corrupt_saved_memories_are_refused(tmp_path, tamper):
     elif tamper == "composition_without_scale":
         del meta["composition"]["recall_scale"]
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "bad.npz", **arrays)
+    write(tmp_path / "bad.npz", arrays)
     with pytest.raises(ValueError):
         cd.Brain.load(tmp_path / "bad.npz")
 
@@ -1344,7 +1340,7 @@ def test_a_null_slot_whose_logit_is_not_finite_is_refused(tmp_path):
     meta = metadata(arrays)
     meta["recall"]["temperature"] = 1e-10
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "bad.npz", **arrays)
+    write(tmp_path / "bad.npz", arrays)
     with pytest.raises(ValueError, match="null / temperature"):
         cd.Brain.load(tmp_path / "bad.npz")
     brain.retune(recall_null=None)
@@ -1369,7 +1365,7 @@ def test_the_options_survive_a_checkpoint_and_a_saved_memory_without_one_takes_i
     path = brain.save(tmp_path / "options")
     with np.load(path, allow_pickle=False) as data:
         meta = metadata(data)
-    assert meta["format"] == "cadence-generic/8" and meta["recall"] == brain.recall.to_dict()
+    assert meta["recall"] == brain.recall.to_dict()
     assert {k: meta["recall"][k] for k in ("boundary", "position_rate", "recency")} == {
         "boundary": True, "position_rate": 0.05, "recency": 0.25,
     }
@@ -1389,7 +1385,7 @@ def test_the_options_survive_a_checkpoint_and_a_saved_memory_without_one_takes_i
     for name in cd.Recall.OPTIONS:
         meta["recall"].pop(name, None)
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "founders.npz", **arrays)
+    write(tmp_path / "founders.npz", arrays)
     plain = cd.Brain.load(tmp_path / "founders.npz")
     assert {name: getattr(plain.recall, name) for name in cd.Recall.OPTIONS} == (
         cd.Recall.options()
@@ -1399,7 +1395,7 @@ def test_the_options_survive_a_checkpoint_and_a_saved_memory_without_one_takes_i
     ):
         meta["recall"][name] = value
         arrays["generic"] = np.array(json.dumps(meta))
-        np.savez(tmp_path / "bad.npz", **arrays)
+        write(tmp_path / "bad.npz", arrays)
         with pytest.raises(ValueError):
             cd.Brain.load(tmp_path / "bad.npz")
         meta["recall"].pop(name)
@@ -1555,13 +1551,13 @@ def test_the_maps_trace_survives_a_checkpoint_and_the_life_continues_identically
     assert_same_checkpoint(brain.save(tmp_path / "later"), twin.save(tmp_path / "twin"))
     bad = saved_arrays(path)
     bad["recall/trace"] = bad["recall/trace"][:, :-1]
-    np.savez(tmp_path / "shape.npz", **bad)
+    write(tmp_path / "shape.npz", bad)
     with pytest.raises(ValueError, match="trace"):
         cd.Brain.load(tmp_path / "shape.npz")
     later = saved_arrays(tmp_path / "later.npz")  # a calm answer: nothing pending
     assert "recall/trace" in later and "recall/pending" not in later
     later["recall/pending"] = np.zeros_like(later["recall/trace"])
-    np.savez(tmp_path / "stray.npz", **later)
+    write(tmp_path / "stray.npz", later)
     with pytest.raises(ValueError, match="pending action"):
         cd.Brain.load(tmp_path / "stray.npz")
 
@@ -1697,7 +1693,7 @@ def test_ended_marks_in_a_checkpoint_are_read_back_and_a_float_mark_is_refused(t
     arrays = saved_arrays(brain.save(tmp_path / "plain"))
     assert "recall/ended" not in arrays
     arrays["recall/ended"] = np.array([True, False])
-    np.savez(tmp_path / "ended.npz", **arrays)
+    write(tmp_path / "ended.npz", arrays)
     twin = cd.Brain.load(tmp_path / "ended.npz")
     np.testing.assert_array_equal(twin.recall.ended, [True, False])
     brain.recall.end(2, np.array([0]))  # the same end on the live memory
@@ -1707,7 +1703,7 @@ def test_ended_marks_in_a_checkpoint_are_read_back_and_a_float_mark_is_refused(t
     assert not twin.recall.nexts[0, 1].any() and twin.recall.nexts[1, 1].any()
     assert not twin.recall.ended.any()
     arrays["recall/ended"] = arrays["recall/ended"].astype(float)
-    np.savez(tmp_path / "bad.npz", **arrays)
+    write(tmp_path / "bad.npz", arrays)
     with pytest.raises(ValueError, match="ended"):
         cd.Brain.load(tmp_path / "bad.npz")
 
@@ -1843,7 +1839,7 @@ def test_the_window_survives_a_checkpoint_and_a_window_of_another_length_is_refu
         else:
             del arrays["recall/past"]
         arrays["generic"] = np.array(json.dumps(meta))
-        np.savez(tmp_path / "bad.npz", **arrays)
+        write(tmp_path / "bad.npz", arrays)
         with pytest.raises(ValueError):
             cd.Brain.load(tmp_path / "bad.npz")
 
@@ -1915,35 +1911,28 @@ def test_a_saved_brain_under_a_removed_setting_is_refused_naming_the_release(tmp
     setting = name[len("recall_"):]
     meta["recall"][setting] = REMOVED[name][0]
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "removed.npz", **arrays)
+    write(tmp_path / "removed.npz", arrays)
     with pytest.raises(ValueError, match=r"was retired in 0\.85\.0: .*cadence-net 0\.84\.3"):
         cd.Brain.load(tmp_path / "removed.npz")
     if setting != "recency":
         meta["recall"][setting] = cd.Recall.RETIRED[setting][1]
         arrays["generic"] = np.array(json.dumps(meta))
-        np.savez(tmp_path / "kept.npz", **arrays)
+        write(tmp_path / "kept.npz", arrays)
         assert cd.Brain.load(tmp_path / "kept.npz").describe() == brain.describe()
 
 
-def test_the_keys_the_last_release_wrote_load_at_their_one_value(tmp_path):
-    """The keys the format of 0.84.3 always wrote for retired settings (``Recall.FORMAT``)
-    and its empty context history leave the description and the checkpoint; a file of
-    0.84.3 that carries them at their one value loads to the same brain."""
+def test_the_keys_of_0843_leave_the_description_and_the_checkpoint(tmp_path):
+    """The keys the format of 0.84.3 always wrote for retired settings and its empty context
+    history leave the description and the checkpoint."""
+    retired = {"value", "context", "context_decay"}
     brain = composed()
     for x in (CUE, GO):
         brain.act(x, greedy=True)
     path = brain.save(tmp_path / "founder")
     with np.load(path, allow_pickle=False) as data:
         saved = json.loads(str(data["brain"]))
-        assert not set(cd.Recall.FORMAT) & set(saved["memories"]["recall"])
+        assert not retired & set(saved["memories"]["recall"])
         assert "memories/recall/history" not in data.files
     described = brain.describe()
-    assert not set(cd.Recall.FORMAT) & set(described["memories"]["recall"])
-    assert not {f"recall_{k}" for k in cd.Recall.FORMAT} & set(described["genes"])
-    arrays = saved_arrays(path)
-    meta = metadata(arrays)
-    meta["recall"].update(cd.Recall.FORMAT)
-    arrays["generic"] = np.array(json.dumps(meta))
-    arrays["recall/history"] = np.zeros((0, 4))
-    np.savez(tmp_path / "released.npz", **arrays)
-    assert cd.Brain.load(tmp_path / "released.npz").describe() == described
+    assert not retired & set(described["memories"]["recall"])
+    assert not {f"recall_{k}" for k in retired} & set(described["genes"])

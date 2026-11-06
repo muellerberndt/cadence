@@ -207,47 +207,21 @@ def test_a_need_and_a_need_scale_together_want_the_larger() -> None:
         assert both.want == max(fixed.want, scaled.want)
 
 
-def test_saves_under_earlier_formats_load_at_the_founder_and_a_scaled_save_needs_its_gene() -> None:
-    """The saves of 0.84.3: ``cadence-arousal/2`` leaves out the need scale of zero (0.84.3's
-    founder), ``/3`` carries a positive one, and every one carries the record channel, removed
-    since, at its founder weight of zero with its readings."""
-    arousal = cd.Arousal(cd.ArousalConfig(youth=2, need_scale=0.0))  # a state 0.84.3 could save
+def test_a_save_needs_its_need_scale_and_its_readings() -> None:
+    """A save of ``cadence-arousal/4`` needs every gene, the need scale among them, and every
+    reading."""
+    arousal = cd.Arousal(cd.ArousalConfig(youth=2, need_scale=0.0))
     for error, reward, own, learned, _ in outcomes(12, seed=9):
         arousal.outcome(error, reward, own=own, learned=learned)
         arousal.lived(5, 2)
     current = arousal.to_dict()
     assert current["format"] == "cadence-arousal/4" and current["config"]["need_scale"] == 0.0
-    founder = {k: v for k, v in current.items() if k != "config"}
-    founder["config"] = {k: v for k, v in current["config"].items() if k != "need_scale"}
-    founder["config"]["record_surprise"] = 0.0
-    founder.update(format="cadence-arousal/2", records=4, usual_record=0.25)
-    loaded = cd.Arousal.from_dict(founder)
-    assert loaded.config.need_scale == 0.0 and loaded.to_dict() == current
-    legacy = {k: v for k, v in founder.items() if k != "format"}
-    legacy["config"] = {k: v for k, v in founder["config"].items() if k != "need"}
-    restored = cd.Arousal.from_dict(legacy)
-    assert restored.config.need == 0.0 and restored.config.need_scale == 0.0
-    assert restored.to_dict() == current
-    for earlier in (founder, {**founder, "format": "cadence-arousal/1"}, legacy):
-        with pytest.raises(ValueError, match="cadence-arousal/3"):
-            cd.Arousal.from_dict({**earlier, "config": {**earlier["config"], "need_scale": 0.1}})
-    # a zero written under an earlier format, as ``ArousalConfig.to_dict()`` writes it, is the
-    # founder and loads
-    written = cd.Arousal.from_dict({**founder, "config": {**founder["config"], "need_scale": 0.0}})
-    assert written.config.need_scale == 0.0 and written.to_dict() == current
-    scaled = cd.Arousal.from_dict({**founder, "format": "cadence-arousal/3",
-                                   "config": {**founder["config"], "need_scale": 0.1}})
-    assert scaled.config.need_scale == 0.1
-    assert scaled.to_dict()["format"] == "cadence-arousal/4"
-    assert state_without_config(scaled.to_dict()) == state_without_config(current)
+    assert cd.Arousal.from_dict(current).to_dict() == current
+    genes = {k: v for k, v in current["config"].items() if k != "need_scale"}
     with pytest.raises(ValueError, match="incomplete saved arousal config"):
-        cd.Arousal.from_dict({**founder, "format": "cadence-arousal/3"})
+        cd.Arousal.from_dict({**current, "config": genes})
     with pytest.raises(ValueError, match="incomplete saved arousal"):
-        cd.Arousal.from_dict({k: v for k, v in scaled.to_dict().items() if k != "rewards"})
-    # a scaled save that names the founder zero loads and saves as the founder
-    zero = cd.Arousal.from_dict({**founder, "format": "cadence-arousal/3",
-                                 "config": {**founder["config"], "need_scale": 0.0}})
-    assert zero.to_dict() == current
+        cd.Arousal.from_dict({k: v for k, v in current.items() if k != "rewards"})
 
 
 def digest(value: Any) -> str:

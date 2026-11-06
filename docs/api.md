@@ -197,9 +197,10 @@ maturity and a `cadence-brain/2` file without one.
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
-`Brain.load` also reads the earlier formats `cadence-generic/1` to `/10`; a retired setting
-loads at the one value this version keeps for it and is refused by name at any other
-([CHANGELOG](../CHANGELOG.md)).
+`Brain.load` reads `cadence-brain/1` and `/2`, the formats of 0.85.0 on. It refuses the earlier
+`cadence-generic/1` to `/10` by name: cadence 0.94.0 loads those and saves `cadence-brain/1`. A
+retired setting loads at the one value this version keeps for it and is refused by name at any
+other ([CHANGELOG](../CHANGELOG.md)).
 
 Loading refuses a file that does not match the brain it describes: record and recall key
 widths that differ from the code, code tables that do not read every ON and OFF channel twice
@@ -242,9 +243,9 @@ meaning of each gene are in [routine and repair](start.md#routine-and-repair-liv
 | `level`, `age`, `moments`, `sweeps`, `learning_sweeps`, `outcomes`, `rewards`, `spreads`, `config` | State and counters: `outcomes` counts own outcomes, `rewards` all outcomes. |
 | `aroused`, `mode`, `want`, `heat`, `usual`, `recent`, `longrun`, `scale` | Read-only: `aroused` while `level >= threshold` or within `youth`; `heat` is `1 + config.heat * want`. |
 
-`from_dict` also reads the states saved by earlier releases; a retired gene loads at the one
-value this version keeps for it and is refused by name at any other
-([CHANGELOG](../CHANGELOG.md)).
+`from_dict` reads `cadence-arousal/4` and refuses the earlier formats by name: cadence 0.94.0
+loads those. A retired gene loads at the one value this version keeps for it and is refused by
+name at any other ([CHANGELOG](../CHANGELOG.md)).
 
 ## The memories (`cadence.memories`)
 
@@ -494,9 +495,9 @@ configuration; `backend`, `device` and `precision` may differ from the saved one
 `FastSynapses`, `Trace` and `ActorCritic` objects are not saved; use `Brain.save` for a
 composed brain. The format is `cadence-checkpoint/2`, and `cadence-checkpoint/5` for a graph
 with an apical compartment (which adds the compartment's synapses, pools, fraction and floor)
-or a learner at the projection-relative floor or fixed nudged phases. `/1` loads; the formats
-`/3` and `/4` of earlier releases are refused with a message naming the release
-([CHANGELOG](../CHANGELOG.md)).
+or a learner at the projection-relative floor or fixed nudged phases. Every other format is
+refused: the message for `/1` and `/3` names cadence 0.94.0, which loads `/1`, and the one for `/4`
+names the release that retired its setting ([CHANGELOG](../CHANGELOG.md)).
 
 ## The agent (`cadence.plasticity`)
 

@@ -5,7 +5,7 @@ import json
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 from cadence.genome import Genome, Projection, develop
@@ -22,7 +22,7 @@ def composed(seed=3, decays=(0.2, 0.8), **options):
 
 def saved_arrays(path):
     with np.load(path, allow_pickle=False) as data:
-        return earlier({name: data[name].copy() for name in data.files})
+        return flat({name: data[name].copy() for name in data.files})
 
 
 def assert_same_checkpoint(first, second):
@@ -63,7 +63,7 @@ def test_the_founder_builds_the_composition_without_a_history_byte_identically(t
     assert_same_checkpoint(control.save(tmp_path / "control"), founder.save(tmp_path / "founder"))
     with np.load(tmp_path / "founder.npz", allow_pickle=False) as data:
         meta = metadata(data)
-    assert meta["format"] != "cadence-generic/7" and "history" not in meta
+    assert "history" not in meta
     assert "history_scale" not in meta["composition"]
     described = founder.describe()
     assert "history" not in described["memories"] and "history_decays" not in described["genes"]
@@ -206,7 +206,7 @@ def test_imagination_hears_privately_and_leaves_the_live_history(tmp_path):
 
 
 @pytest.mark.parametrize("episodic", [False, True])
-def test_a_saved_history_continues_identically_and_marks_its_format(tmp_path, episodic):
+def test_a_saved_history_continues_identically(tmp_path, episodic):
     options = {"memory_choice": True} if episodic else {}
     brain = cd.Brain.compose(
         4, 2, modules=(8,), seed=5, history_decays=(0.2, 0.9), arousal=True,
@@ -217,7 +217,6 @@ def test_a_saved_history_continues_identically_and_marks_its_format(tmp_path, ep
     path = brain.save(tmp_path / "life")
     with np.load(path, allow_pickle=False) as data:
         meta = metadata(data)
-        assert meta["format"] == "cadence-generic/7"
         assert meta["history"] == brain.history.to_dict()
         assert ("episodic" in meta) == episodic and "efference" in meta and "arousal" in meta
         assert "memories/history/trace" in data.files
@@ -235,7 +234,6 @@ def test_a_saved_history_continues_identically_and_marks_its_format(tmp_path, ep
     "tamper",
     [
         "format_without_history",
-        "history_without_format",
         "missing_trace",
         "wrong_width",
         "wrong_blocks",
@@ -250,8 +248,6 @@ def test_corrupt_saved_histories_are_refused(tmp_path, tamper):
     meta = metadata(arrays)
     if tamper == "format_without_history":
         del meta["history"]
-    elif tamper == "history_without_format":
-        meta["format"] = "cadence-generic/2"
     elif tamper == "missing_trace":
         del arrays["history/trace"]
     elif tamper == "wrong_width":
@@ -263,7 +259,7 @@ def test_corrupt_saved_histories_are_refused(tmp_path, tamper):
     elif tamper == "composition_without_scale":
         del meta["composition"]["history_scale"]
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "bad.npz", **arrays)
+    write(tmp_path / "bad.npz", arrays)
     with pytest.raises(ValueError):
         cd.Brain.load(tmp_path / "bad.npz")
 

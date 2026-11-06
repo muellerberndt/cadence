@@ -402,8 +402,8 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def test_a_brain_saved_by_an_earlier_version_grows():
-    """A brain of checkpoint format cadence-generic/8 (0.84) with arousal, recall, a history, an
-    efference copy and episodic records grows heads and decays."""
+    """A brain saved by 0.94.0 with arousal, recall, a history, an efference copy and episodic
+    records grows heads and decays."""
     trained = cd.Brain.load(FIXTURES / "observation_code" / "recalled.npz")
     grown = trained.grow(recall_heads=2, history_decays=(0.2, 0.9, 0.99))
     assert grown.recall.heads == 2 and tuple(grown.history.decays) == (0.2, 0.9, 0.99)

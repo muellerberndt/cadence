@@ -86,14 +86,14 @@ from .stream import Efference, FastSynapses, History, PatternSeparator, Recall, 
 __all__ = ["Brain"]
 
 # The checkpoint format of a brain: one group per memory (``Brain.save``). ``Brain.load`` reads
-# it and, through 0.85.x, the earlier formats: ``cadence-generic/1`` to ``/9``, which 0.84.3
-# reads, and ``/10``, which development builds of the learned code wrote.
+# it alone: the formats before it, ``cadence-generic/1`` to ``/10``, are refused by name, and
+# cadence 0.94.0 loads them and saves this one.
 BRAIN_FORMAT = "cadence-brain/1"
 # A brain with maturity (#253) saves under its own format name, which 0.93.1 and earlier refuse;
 # every other brain keeps BRAIN_FORMAT.
 MATURITY_FORMAT = "cadence-brain/2"
-# A memory's group in BRAIN_FORMAT and the prefix its arrays had in the formats of 0.84.3; the
-# episodic memory's arrays are the context store's and the stream's (``_earlier_layout``).
+# A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
+# episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
     "working_memory": "working/",
     "efference": "efference/",
@@ -529,13 +529,6 @@ def _load_code(
             raise ValueError("saved code tables require code metadata")
         return None
     fields = {"inputs", "expansion", "winners", "seed", "center", "fan_in", "cover", "cortex"}
-    if isinstance(spec, dict) and set(spec) == fields - {"cover"}:
-        # a code saved before the covering construction drew signed weights independently;
-        # this version neither builds such a code nor reads one
-        raise ValueError(
-            "the saved code lacks the covering construction's field, cover: it was saved "
-            "before the covering code and cannot be loaded by this version"
-        )
     if not isinstance(spec, dict) or set(spec) != fields or not isinstance(spec["cortex"], bool):
         raise ValueError("invalid saved code metadata")
     for name in ("inputs", "expansion", "winners", "seed", "fan_in", "cover"):
@@ -614,13 +607,10 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
     if value is None:
         return None
     expected = {"inputs", "actions", "modules", "observers", "slots", "lateral",
-                "sensory_scale", "seed"}
-    if isinstance(value, dict) and set(value) == expected:
-        # provenance without a working_memory_scale was composed at the fixed scale 12
-        value = {**value, "working_memory_scale": 12.0}
+                "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical"
-    } != (expected | {"working_memory_scale"}):
+    } != expected:
         raise ValueError("invalid saved composition provenance")
     compartment = learner.brain.apical
     if ("apical" in value) != (compartment is not None) or (
@@ -997,7 +987,6 @@ def _validate_life_state(
         if array(prefix + "cold", (batch,)).dtype != np.bool_:
             raise ValueError(f"invalid saved {what} cold flags")
 
-    level = int(meta["format"].rpartition("/")[2])  # cadence-generic/1 to /10 (Brain.load)
     count("updates")
     bias = meta.get("b_critic")
     if isinstance(bias, bool) or not isinstance(bias, (int, float)) or not np.isfinite(bias):
@@ -1067,14 +1056,6 @@ def _validate_life_state(
             or not isinstance(lived.get("own"), bool)
         ):
             raise ValueError("invalid saved lived forecast")
-        recorded = lived.get("recorded")  # the record channel's forecast, which 0.84.3 saved
-        if recorded is not None and (
-            isinstance(recorded, bool)
-            or not isinstance(recorded, (int, float))
-            or not np.isfinite(recorded)
-            or meta["hippocampus"] is None
-        ):
-            raise ValueError("invalid saved lived record forecast")
         if was_sampled != bool(meta.get("pending", False)) or batch != 1:
             raise ValueError("a saved lived action must match the pending action of one stream")
         observations = array("lived/observations", (1, observed))
@@ -1091,12 +1072,6 @@ def _validate_life_state(
     if "lived/code" in data and (not learned or "lived" not in meta):
         raise ValueError("a saved lived code belongs to a lived action of a learned code")
     awaiting = meta.get("awaiting")
-    if level == 5 and "awaiting" not in meta:
-        raise ValueError("format cadence-generic/5 carries a sensed state awaiting an outcome")
-    if "awaiting" in meta and level < 5:
-        raise ValueError(
-            "a sensed state awaiting an outcome belongs to formats cadence-generic/5 to /10"
-        )
     if "awaiting" not in meta:
         if any(name.startswith("awaiting/") for name in data):
             raise ValueError("saved awaiting arrays require awaiting metadata")
@@ -1115,12 +1090,6 @@ def _validate_life_state(
         source, target = working["source"], working["target"]
         if source not in populations or target not in populations:
             raise ValueError("invalid saved working-memory ports")
-        # the trace's focus of 0.84.3, a weighting of each neuron by its movement, is read
-        # at its founder zero
-        if working.get("focus", 0.0) != 0.0:
-            raise ValueError(
-                removed_on_load("working trace", "focus", working["focus"], "working_memory_focus")
-            )
         trace("working/", len(populations[source]), "working-memory")
     efference = meta.get("efference")
     if efference is None and (
@@ -1128,10 +1097,6 @@ def _validate_life_state(
     ):
         raise ValueError("saved efference neurons and state require efference metadata")
     if efference is not None:
-        if level < 4:
-            raise ValueError(
-                "an efference copy belongs to checkpoint formats cadence-generic/4 to /10"
-            )
         source, target = efference["source"], efference["target"]
         if (
             source != "motor"
@@ -1179,8 +1144,8 @@ def _validate_recall_state(
     sensory: int,
     width: int,
 ) -> None:
-    """The settings, slots and address map of a recall memory (formats /8 to /10); ``width``
-    is the observation code's, the observations the memory is given. A file saved under a
+    """The settings, slots and address map of a recall memory; ``width`` is the observation
+    code's, the observations the memory is given. A file saved under a
     retired setting at a value other than the one the memory keeps for it is refused with the
     sentence ``Recall.removed`` gives, naming the release that retired it."""
     populations = learner.brain.connectome.populations
@@ -1190,9 +1155,8 @@ def _validate_recall_state(
             raise ValueError("saved recall state requires recall metadata")
         return
     names = {*Recall.RUNTIME, *Recall.CONSTRUCTION}
-    # a retired setting is saved where the format of its release wrote it: the keys of
-    # ``FORMAT`` always, the others, like the options, only where they differed from their
-    # founders
+    # a retired setting is saved where the format of its release wrote it: like the options,
+    # only where it differed from its founder
     optional = {"inputs", *Recall.OPTIONS, *Recall.RETIRED}
     if (
         not isinstance(recalled, dict)
@@ -1276,10 +1240,6 @@ def _validate_recall_state(
     array("previous", (batch, association))
     if command:
         array("acted", (batch, command))
-    # the format of 0.84.3 wrote the context history, empty at the one value of ``FORMAT``
-    history = data.get("recall/history")
-    if history is not None:
-        array("history", (0 if not len(history) else batch, key))
     maps: dict[str, tuple[int, ...]] = {}
     states: set[str] = set()
 
@@ -1340,8 +1300,6 @@ def _validate_recall_state(
     expected = {"keys", "values", "nexts", "held", "previous", *maps, *states}
     if command:
         expected |= {"acted"}
-    if history is not None:
-        expected |= {"history"}
     if window > 1:
         expected |= {"past"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
@@ -1391,12 +1349,11 @@ def _actor_config(values: Any) -> ActorCriticConfig:
     return ActorCriticConfig(**values)
 
 
-def _earlier_layout(
+def _flat_layout(
     saved: dict[str, Any], data: Mapping[str, Any]
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """A ``cadence-brain/1`` file in the layout of the formats of 0.84.3, which the reader
-    validates: each memory's settings and arrays under the names those formats gave them,
-    and the format number of the latest component the file carries."""
+    """A checkpoint in the layout the reader validates: each memory's settings at the top of the
+    metadata and its arrays under a prefix of its own."""
     memories = saved.get("memories")
     if not isinstance(memories, dict) or set(memories) - {*_MEMORY_PREFIXES, "episodic"}:
         raise ValueError("invalid saved memories")
@@ -1409,14 +1366,6 @@ def _earlier_layout(
     for name in ("efference", "history", "recall", "episodic"):
         if name in memories:
             meta[name] = memories[name]
-    level = max(
-        (number for number, present in (
-            (2, True), (3, "arousal" in meta), (4, "efference" in meta),
-            (5, "awaiting" in meta), (6, "episodic" in meta), (7, "history" in meta),
-            (8, "recall" in meta), (9, "code" in meta), (10, "learned_code" in meta),
-        ) if present),
-    )
-    meta["format"] = f"cadence-generic/{level}"
     arrays: dict[str, Any] = {}
     for name in data:
         if name == "brain":
@@ -1443,8 +1392,8 @@ def _earlier_layout(
 def _validate_episodic_state(
     meta: dict[str, Any], data: Mapping[str, Any], learner: Learner, sensory: int
 ) -> None:
-    """The settings and stream state of an episodic memory's choice (formats /6 to /10);
-    ``sensory`` is the width of the observation code the records are keyed on."""
+    """The settings and stream state of an episodic memory's choice; ``sensory`` is the width of
+    the observation code the records are keyed on."""
     names = ("episode/context", "episode/decision") + tuple(
         "episode/path/" + name
         for name in (
@@ -4978,79 +4927,34 @@ class Brain:
     ) -> Brain:
         """Resume a complete saved brain, defaulting to portable CPU inference and learning.
 
-        Reads ``cadence-brain/1``, ``cadence-brain/2`` (a brain with maturity) and, through
-        0.85.x, the earlier formats:
-        ``cadence-generic/1`` to ``/9``, which 0.84.3 reads, and ``/10``, which development
-        builds of the learned code wrote. A setting of 0.84.3 that this version removed loads
-        at the value whose law this version keeps and is refused otherwise, with a message
-        naming 0.84.3. Keep the saved batch row identities, or call ``reset`` for new
-        episodes. Cross-backend results are subject to floating-point differences.
+        Reads ``cadence-brain/1`` and ``cadence-brain/2`` (a brain with maturity), the formats
+        of 0.85.0 on, and refuses the earlier ``cadence-generic/1`` to ``/10`` by name: cadence
+        0.94.0 loads those and saves ``cadence-brain/1``. Keep the saved batch row identities, or
+        call ``reset`` for new episodes. Cross-backend results are subject to floating-point
+        differences.
         """
         import json
 
         with np.load(path, allow_pickle=False) as archive:
             data: Mapping[str, Any] = archive
-            if "brain" in archive:
-                saved = json.loads(str(archive["brain"]))
-                if not isinstance(saved, dict) or saved.get("format") not in (
-                    BRAIN_FORMAT, MATURITY_FORMAT
-                ):
-                    raise ValueError("unsupported Brain checkpoint format")
-                if (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
-                    raise ValueError(
-                        f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
-                    )
-                meta, data = _earlier_layout(saved, archive)
-            elif "generic" in archive:
-                meta = json.loads(str(archive["generic"]))
-                if isinstance(meta, dict) and "maturity" in meta:
-                    raise ValueError(
-                        f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
-                    )
-            else:
+            if "generic" in archive:
+                raise ValueError(
+                    "this checkpoint is a cadence-generic file, which 0.84.3 and earlier wrote: "
+                    "cadence 0.94.0 loads it and saves the format this version reads"
+                )
+            if "brain" not in archive:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
-            formats = tuple(f"cadence-generic/{level}" for level in range(1, 11))
-            if not isinstance(meta, dict) or meta.get("format") not in formats:
+            saved = json.loads(str(archive["brain"]))
+            if not isinstance(saved, dict) or saved.get("format") not in (
+                BRAIN_FORMAT, MATURITY_FORMAT
+            ):
                 raise ValueError("unsupported Brain checkpoint format")
-            # each format carries the component it was introduced for, and may carry those
-            # of the earlier formats; a component under an earlier format name is refused
-            level = formats.index(meta["format"]) + 1
-            if (level == 10) != ("learned_code" in meta):
+            if (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
                 raise ValueError(
-                    "a brain's learned code belongs to checkpoint format cadence-generic/10"
+                    f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
                 )
-            if (level == 9) != ("code" in meta):
-                raise ValueError("a brain's code belongs to checkpoint format cadence-generic/9")
-            if level == 8 and meta.get("recall") is None:
-                raise ValueError("format cadence-generic/8 carries a recall memory")
-            if meta.get("recall") is not None and level < 8:
-                raise ValueError(
-                    "a recall memory belongs to checkpoint formats cadence-generic/8 to /10"
-                )
-            if level == 7 and meta.get("history") is None:
-                raise ValueError("format cadence-generic/7 carries a heard history")
-            if meta.get("history") is not None and level < 7:
-                raise ValueError(
-                    "a heard history belongs to checkpoint formats cadence-generic/7 to /10"
-                )
-            if level == 6 and "episodic" not in meta:
-                raise ValueError("format cadence-generic/6 carries an episodic memory's choice")
-            if "episodic" in meta and level < 6:
-                raise ValueError(
-                    "an episodic memory's choice belongs to checkpoint formats cadence-generic/6 "
-                    "to /10"
-                )
-            if level == 5 and "arousal" not in meta:
-                raise ValueError("format cadence-generic/5 carries a live stream's arousal")
-            if level == 4 and meta.get("efference") is None:
-                raise ValueError("format cadence-generic/4 carries an efference copy")
-            if level < 4 and ("arousal" in meta) != (level == 3):
-                raise ValueError("arousal state belongs to checkpoint format cadence-generic/3")
+            meta, data = _flat_layout(saved, archive)
             arousal = Arousal.from_dict(meta["arousal"]) if "arousal" in meta else None
-            if "hippocampus" not in meta:
-                raise ValueError("missing hippocampus metadata")
-            # the resting bias 0.84.3 recorded was the initial bias of the processing regions,
-            # provenance only: the saved biases hold whatever it and learning made of them
             learner = Learner.load(path, backend=backend, device=device, precision=precision)
             if learner.config.nudge != "cross_entropy":
                 raise ValueError(

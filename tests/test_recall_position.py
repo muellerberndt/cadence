@@ -15,7 +15,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from checkpoints import earlier
+from checkpoints import flat, write
 
 import cadence as cd
 from cadence import brain as cadence_brain
@@ -159,12 +159,12 @@ def test_a_checkpoint_saved_before_the_term_loads_without_one(tmp_path):
         brain.act(x, greedy=True)
     path = brain.save(tmp_path / "saved.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     meta = json.loads(str(arrays["generic"]))
     assert meta["recall"].pop("position") == 0  # as an earlier version wrote it: no option
     assert not any("position" in name for name in arrays)
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "earlier.npz", **arrays)
+    write(tmp_path / "earlier.npz", arrays)
     loaded = cd.Brain.load(tmp_path / "earlier.npz")
     assert loaded.recall.position == 0 and loaded.recall.position_maps == []
     x = stream(1, seed=9)[0]
