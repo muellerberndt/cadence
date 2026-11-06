@@ -171,6 +171,126 @@ persistence schedule takes about 20 minutes on one core, a founder life about 12
 life with its four forks about an hour; an online control about 8 minutes, an offline one up to
 40.
 
+## Attention ablations: which restriction of the transformer reproduces the brain's gap
+
+[`ablations.py`](ablations.py) reads [#260](https://github.com/muellerberndt/cadence/issues/260):
+the recall memory differs from transformer attention in five ways (the
+[memory guide](../../docs/memory.md#the-recall-memory-in-full)), and each is put on the
+chamber's transformer control, one at a time and in combinations, on the same sentences,
+lessons and scorer, the control's width re-matched after each change so that its learned
+parameter count is the nearest to the recipe brain's 24,384. The control is rebuilt with
+explicit query, key, value and output maps (the same count as [`controls.py`](controls.py)'s at
+the same width; a test checks it). The rows:
+
+| Row | Restriction | The memory's property |
+| --- | --- | --- |
+| `none` | the control | |
+| `A` | key and value maps frozen at their random initialization, credit flows through them to the layer below | keys and values are the observation code, never learned |
+| `B` | attention in the first layer only, the query from the token's embedding; the second layer keeps its MLP | one held read per moment, nothing stacked on a read |
+| `Bp` | `B` with the query also reading the previous position's layer output through a learned map, the positions computed in turn | the address `x W_x + c W_c`, `c` the cortex of the moment before |
+| `C` | the values are the raw moments; the read enters the residual through a learned map from the moment's code and the logits through a fixed identity on the word rows; no value or output map | the value reaches the motor through the association's learned synapses, the copy pathway a fixed identity |
+| `D1`, `D2` | one head; two heads with values at full width summed without an output map | heads are not learned subspaces mixed by a projection |
+| `E` | no gradient into keys or values (detached: their maps never move and nothing below learns through them) | no credit reaches keys or values |
+| `H1b`, `H2b` | one or two heads sharing one key and one value map, each with an address map of its own, competing for the slots (a head takes of every slot at most what the heads before left, its own attention scaled up where slots allow), summed, no output map | heads as copies of the held read; against the subspace heads `D1` and `none` |
+| `AB`, `BC`, `all` | combinations; `all` is `A`, `Bp`, `C`, `D1` and `E` at once (`AE` is `E` by construction) | the memory's structure in the transformer |
+| `lstmA` | the LSTM control with its input-to-hidden weights frozen random | the LSTM's analogue of `A` |
+| `ctl`, `lstm` | `controls.py`'s transformer and LSTM themselves, so that they take the rows' initializations on the rows' machine | |
+
+`none` is `controls.py`'s function at the same weights (a test copies them across) and another
+initialization, so it is the baseline of the rows and not the control's life. `C` keeps a learned
+map from the read into the residual: the read is linear in the values, so that map is a learned
+value map of the raw moment. `Cs` has no learned path from the read at all.
+
+`A` and `E` still read their keys from a learned embedding and, in the second layer, from what
+the first attention found, and `B` bundles the query from the raw token, no stacking and keys
+with no context. These rows separate them, with `code = R x + position`, `R` a fixed random map
+scaled so that a one-hot moment's code has the position's norm, `e` the learned embedding and
+`h` the layer's input:
+
+| Row | First layer: query, keys and values | Second layer: query | Second layer: keys and values |
+| --- | --- | --- | --- |
+| `none` | `e`, `e` | `h` | `h` |
+| `Ar` | `e`, `code` | `h` | `code` |
+| `S1` | `e`, `e` | `h` | `code` |
+| `S2` | `e`, `e` | `e` | `h` |
+| `S3` | `e`, `e` | `e` | `e` |
+| `S3r` | `e`, `code` | `e` | `code` |
+
+Keys and values of `code` are frozen maps of a frozen code, so these rows also hold `E`'s
+restriction wherever they hold `code`. `allr` is `all` with its keys from `code`; its values stay
+the raw moment, which the identity needs. `allrn` is `allr` without the identity: the recipe brain
+has no copy pathway. Neither carries the brain's next port or its working trace.
+
+**The crossing** (`--crossing`): #228's non-additive addressing in the chamber's words. A context
+(an open bracket), two facts (`A near V end`), a question (a close bracket); at `GO` the answer is
+the value of the fact `c xor k`, then `end`. A separate panel, read after 3,000 online batches, on
+the rows and on the recipe brain's life. A reader that ignores the crossing says 9/16 right.
+Episodes are drawn from 3,072, so the lessons cover them: the panel reads whether the crossing can
+be learned, not whether it generalizes.
+
+**Initializations.** The held-out panel is bimodal: a life keeps every held-out verb or loses one
+(`controls.py`'s own transformer offline reads .77 on founder 257005 and 1.00 on eight others).
+`--init-seeds` draws further initializations on a founder's split, lessons and panels, and
+`--spread` reads a row as the share of its lives at .95 or above.
+
+Each row is read on the chamber's first-grammar panels after the 4,000 batches, `online` (one
+pass, the brain's exposure) and `offline` (shuffled epochs to convergence), on founders 0 to 2,
+with its learned (and total) parameter count, epochs and wall time.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/ablations.py --rows none A B Bp C D1 D2 E lstmA \
+    --modes online offline --founders 0 1 2 --out DIR/ablations.jsonl
+PYTHONPATH=src python benchmarks/grammar/ablations.py --table DIR/ablations.jsonl
+```
+
+### Readings on 0.94.0 (development founders 0 to 2)
+
+Pending: the table is filled from the lane's evidence when the rows exist.
+
+## The brain's own graph on exact gradients
+
+[`gradients.py`](gradients.py) is the other side of the ablations and
+[#183](https://github.com/muellerberndt/cadence/issues/183)'s same-graph reference: the recipe
+brain's graph on the transformer's training, the same sentences and the same exposure. The
+association and motor regions settle on fixed sources; the cost is the temperature times the
+cross-entropy of the motor activity at the temperature of the lesson's nudge.
+
+| Arm | The brain | The learning |
+| --- | --- | --- |
+| `recipe` | the chamber's recipe | the local contrast |
+| `deep`, `deepna` | the recipe at `apical=0.25, teaching="deep"`, the documented point for the compartment; the teaching point alone | the local contrast |
+| `observed`, `obsdeep`, `obsdeepna` | those brains | the local contrast, with the exact gradient read beside it and never applied (a test holds them to the bit) |
+| `G1n`, `G1d` | the recipe; the `deep` brain | each lesson's contrast replaced by the exact implicit gradient at that moment's free fixed point, at the brain's normalized step; the held read, the trace, the surprise rule and the address map's lesson as they are |
+| `G1a` | the recipe | the same gradient, with Adam at the online control's rate and the gradient norm clipped at 1 |
+| `G2a`, `G2s`, `G2n` | the recipe | the gradient carried across a sentence's moments, through the working trace and the read's address, into the address map and the position maps; one step per batch; over every word (`G2a`, `G2n`) or the words said wrong (`G2s`); Adam (`G2a`, `G2s`) or the normalized step (`G2n`) |
+
+G2 runs its forward in float64 torch on the act's own path (the settle's synchronous sweeps from
+the stream's last state, since the settle has several attractors in places and the path selects
+among them), differentiates each fixed point implicitly and writes its parameters back into a
+`Brain`, so every panel is the library's own settle and scorer. The source neurons' biases stay
+at zero, as the local contrast leaves them. `--init-seeds` draws other newborns on a founder's
+split and lessons, and `--replicas` changes a newborn at its last bits, since the panels are
+bimodal and last-bit arithmetic moves them.
+
+**The checks** (`--check`, and the tests). Each gradient against central finite differences of the
+fixed points: at a moment by the library's own settle, across a sentence by the unrolled forward,
+each family of parameters on clauses, Dyck sentences and paths, on the newborn and after 300
+lessons. The moment's gradient also against the local contrast as its nudge shrinks. A coordinate
+whose perturbation moves a read's most attended slot crosses a real discontinuity of the relative
+position term and is reported apart.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/gradients.py --check --founders 0 1 2 --out DIR/check.json
+PYTHONPATH=src python benchmarks/grammar/gradients.py --arms recipe observed G1n G1a \
+    --founders 0 1 2 --init-seeds -1 1000 1001 --out DIR/gradients.jsonl --workers 12
+PYTHONPATH=src python benchmarks/grammar/ablations.py --table DIR/gradients.jsonl
+PYTHONPATH=src python benchmarks/grammar/ablations.py --spread DIR/gradients.jsonl
+```
+
+### Readings on 0.94.0 (development founders 0 to 2)
+
+Pending: the table is filled from the lane's evidence when the rows exist.
+
 ## A planning window
 
 [`window.py`](window.py) reads [#257](https://github.com/muellerberndt/cadence/issues/257): the
