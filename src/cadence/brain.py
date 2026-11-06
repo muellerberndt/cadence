@@ -3438,7 +3438,7 @@ _MLX_LEAST_TEMPERATURE = 0.02
 _MLX_UPDATE_ENTRIES = 1 << 17
 # Entries of a recall memory's address map from which its product and its step cost the device
 # less than the host. Smaller maps stay on the host, in float64.
-_MLX_MAP_ENTRIES = 1 << 18
+_MLX_MAP_ENTRIES = 1 << 20
 # Rows times block entries from which the device's contrast costs less than the host's.
 _MLX_CONTRAST_ENTRIES = 1 << 20
 
