@@ -58,6 +58,11 @@ does instead.
   reading moved. `learning=LearnerConfig(rehearsal_capacity=...)` moves it as an expert.
 - The refusal sentences of `LearnedCode.REMOVED`, seventeen names no release took. They are unknown
   settings (`TypeError`), and the retune branch that could never run went with them.
+- The live checks of the attention chambers (`benchmarks/attention`): 84 scripts, tests and protocols,
+  about 850 test cases. Their receipts stay and verify on archived bytes alone
+  (`benchmarks/attention/test_retained_receipts.py`); release 0.94.0 holds the campaigns. Five
+  instruments stay: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
+  `contextual_choice.py`.
 - The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
   `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
   them too.
