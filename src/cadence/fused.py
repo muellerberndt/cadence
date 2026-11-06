@@ -1337,6 +1337,96 @@ if njit is not None:
         return kept
 
     _residual_kernel, _residual_kernel_parallel = _rows_builds(_residual_rows)
+    # the serial builds as a solve calls them
+    _sweeps, _check = _kernel, _residual_kernel
+
+    @_compiled
+    def _solve_rows(
+        v: np.ndarray,
+        a: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        flat: np.ndarray,
+        pairs: np.ndarray,
+        flat_apical: np.ndarray,
+        apical_pairs: np.ndarray,
+        starts: np.ndarray,
+        pair_pre: np.ndarray,
+        pair_post: np.ndarray,
+        offset: np.ndarray,
+        freezable: np.ndarray,
+        keep: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        strength: float,
+        tau: float,
+        target: np.ndarray,
+        nmask: np.ndarray,
+        gid: np.ndarray,
+        ngroups: int,
+        beta: float,
+        softmax_t: np.ndarray,
+        weight: np.ndarray,
+        anchor: np.ndarray,
+        anchor_gain: np.ndarray,
+        pool_of: np.ndarray,
+        pool_index: np.ndarray,
+        pool_starts: np.ndarray,
+        pool_run: np.ndarray,
+        held: np.ndarray,
+        budget: int,
+        chunk: int,
+        tolerance: float,
+        out: np.ndarray,
+        given: np.ndarray,
+        has_given: bool,
+        in_place: bool,
+    ) -> tuple[int, int, int, np.ndarray, np.ndarray]:
+        """A free solve of a state whose activations ``s`` are published, in one compiled call:
+        the check, then chunks of sweeps and their checks while a row is over ``tolerance``
+        and sweeps are left, as ``Brain._equilibrate_local`` makes them one launch each, in place
+        on ``v``, ``a`` and ``s``. ``out`` ends on each row's error. Returns the sweeps, the
+        checks, the last chunk's sweeps and activity change, and what the state keeps."""
+        batch = v.shape[0]
+        kept = _check(
+            v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
+            pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False, strength,
+            False, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
+            False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, False, out,
+            given, has_given, in_place,
+        )
+        used, checks, taken = 0, 1, 0
+        change = np.zeros(batch)
+        while used < budget:
+            qualified = True
+            finite = True
+            for b in range(batch):
+                qualified = qualified and out[b] <= tolerance
+                finite = finite and out[b] <= 1.7976931348623157e308
+            if qualified:
+                break
+            if not finite and not (rows_finite(v) and rows_finite(s) and rows_finite(a)):
+                break  # a divergent state is no warm start for another chunk
+            taken, change, kept = _sweeps(
+                v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
+                pair_post, offset, freezable, keep, False, dt, slope, threshold, rest, leak,
+                False, strength, tau, False, target, nmask, gid, ngroups, beta, softmax_t,
+                weight, anchor, anchor_gain, False, pool_of, pool_index, pool_starts, pool_run,
+                1.0, 1.0, 0.0, held, False, min(chunk, budget - used), 0.0, False, kept, True,
+            )
+            used += taken
+            kept = _check(
+                v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
+                pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False, strength,
+                False, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
+                False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, False,
+                out, kept, True, True,
+            )
+            checks += 1
+        return used, checks, taken, change, kept
 
 
 @functools.lru_cache(maxsize=32)
@@ -1639,6 +1729,57 @@ def fused_settle(
         *_given(products, flat, flat_apical, batch),
     )
     return s, taken, activity_change, _kept(flat, flat_apical, batch, kept)
+
+
+def fused_solve(
+    v: np.ndarray,
+    a: np.ndarray,
+    s: np.ndarray,
+    drive: np.ndarray,
+    bias: np.ndarray,
+    layout: Layout,
+    flat: np.ndarray,
+    neuron_model: NeuronModel,
+    budget: int,
+    chunk: int,
+    tolerance: float,
+    products: Products | None,
+) -> tuple[np.ndarray, int, int, int, np.ndarray, Products] | None:
+    """A free solve without a mask, a nudge or a compartment in one compiled call, in place on a
+    C-ordered state of published activations ``s``: what ``Brain._equilibrate_local`` makes of the
+    state in launches of one settle or one check. Returns each row's error, the sweeps, the
+    checks, the last chunk's sweeps and activity change and the products; None for adaptation,
+    rows that settle on Numba's threads, or a state in another memory order, which the launches
+    serve."""
+    assert njit is not None
+    batch, n = v.shape
+    if (
+        neuron_model.adaptation is not None
+        or _in_parallel(batch, n)
+        or not (v.flags.c_contiguous and a.flags.c_contiguous)
+    ):
+        return None
+    dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
+    target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
+        None, batch, n
+    )
+    compartment = _compartment(None, layout, flat, None, batch, n)
+    pairs, flat_apical, apical_pairs = compartment[:3]
+    pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
+    held = compartment[11]
+    freezable = ~_fed_ranges(layout)
+    # the check's activations are the state's own: published under no mask, they are the rule's
+    given, has_given = _given(products, flat, flat_apical, batch)
+    in_place = has_given and _publish(v, s, *_held(products), slope, threshold, rest, leak)
+    out = np.empty(batch)
+    used, checks, taken, change, kept = _solve_rows(
+        v, a, s, _standing(np.ascontiguousarray(drive), bias), flat, pairs, flat_apical,
+        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
+        _NO_MASK, dt, slope, threshold, rest, leak, strength, tau, target, nmask, gid, ngroups,
+        beta, softmax_t, weight, anchor, anchor_gain, pool_of, pool_index, pool_starts, pool_run,
+        held, budget, chunk, float(tolerance), out, given, has_given, in_place,
+    )
+    return out, used, checks, taken, change, _kept(flat, flat_apical, batch, kept)
 
 
 def fused_residual(

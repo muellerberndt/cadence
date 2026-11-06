@@ -1143,6 +1143,10 @@ class Brain:
     ) -> Equilibrium:
         """Run a validated local attempt; only a subsequent damping attempt may skip a stall."""
         current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        if mask is None and nudge is None and not stop_if_stalled and self._solves_compiled():
+            solved = self._solve_compiled(drive, current, budget, chunk, tolerance)
+            if solved is not None:
+                return solved
         error = self.residual(drive, current, mask=mask, nudge=nudge)
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
         while used < budget and not (error <= tolerance).all():
@@ -1169,6 +1173,46 @@ class Brain:
             current, error, used, tolerance, residual_checks=checks,
             stagnation_checks=stagnation_checks,
         )
+
+    def _solves_compiled(self) -> bool:
+        """Whether a free solve can run in one compiled call: no compartment, no recording, on
+        the compiled CPU path. A wrapped ``settle_batch`` or ``residual`` sees every launch."""
+        return (
+            _FUSED
+            and self.backend == "cpu"
+            and self._blocked
+            and self.apical is None
+            and type(self).settle_batch is _SETTLE_BATCH
+            and type(self).residual is _RESIDUAL
+            and "settle_batch" not in self.__dict__
+            and "residual" not in self.__dict__
+            and _capture() is None
+        )
+
+    def _solve_compiled(
+        self, drive: np.ndarray, current: BrainState, budget: int, chunk: int, tolerance: float
+    ) -> Equilibrium | None:
+        """``_equilibrate_local``'s solve from the published state ``current`` in one compiled
+        call (``fused.fused_solve``): the same sweeps and checks, their counts and every bit;
+        None where only the launches serve."""
+        from .fused import fused_solve
+
+        flat = self._blocks
+        assert flat is not None
+        solved = fused_solve(
+            current.v, current.adaptation, current.activation, np.atleast_2d(drive), self.bias,
+            self.layout, flat, self.neuron_model, budget, chunk, tolerance,
+            current.__dict__.get("_products"),
+        )
+        if solved is None:
+            return None
+        error, used, checks, taken, change, products = solved
+        result = BrainState(
+            v=current.v, activation=current.activation, adaptation=current.adaptation,
+            steps=taken, activity_change=change,
+        )
+        _keep_products(result, products)
+        return Equilibrium(result, error, used, tolerance, residual_checks=checks)
 
     def settle_batch(
         self,
@@ -1673,6 +1717,10 @@ _SMALL_GATHER = 4096  # a gather this small costs less than a sparse product's s
 _CHUNK = 1 << 25
 # Pinned staging pays for copies at least this large; smaller ones go straight from NumPy.
 _PINNED_BYTES = 1 << 20
+
+
+# The launches as the class defines them: a solve in one call stands in for these and no other.
+_SETTLE_BATCH, _RESIDUAL = Brain.settle_batch, Brain.residual
 
 
 def _graphs_enabled() -> bool:
