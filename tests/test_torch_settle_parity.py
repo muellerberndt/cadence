@@ -496,6 +496,40 @@ def test_the_apical_launch_matches_the_products(monkeypatch):
     same(expected, products.settle_batch(drive, steps=40, tolerance=1e-7))
 
 
+@cuda
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("batch", [1, 7, 70])
+@pytest.mark.parametrize("weighted", [False, True])
+def test_the_nudge_launch_matches_the_host(precision, batch, weighted):
+    pytest.importorskip("triton")
+    brain = composed(apical=False, seed=5)
+    host = brain.learner.brain
+    dev = on(host, "cuda:0", precision=precision)
+    n = host.connectome.n
+    rng = np.random.default_rng(batch)
+    drive = rng.uniform(-0.4, 0.9, (batch, n))
+    outputs = brain.learner.output_index
+    mask = np.zeros(n)
+    mask[outputs] = 1.0
+    mask[outputs[1]] = 0.5
+    target = np.zeros((batch, n))
+    target[:, outputs[0]] = 1.0
+    options: dict[str, object] = {"weight": rng.uniform(-1.0, 2.0, batch)} if weighted else {}
+    groups = np.full(n, -1)
+    groups[outputs[:3]], groups[outputs[3:]] = 0, 1
+    nudge = cd.Nudge(target, mask, 0.2, softmax_temperature=0.3, groups=groups, **options)  # type: ignore[arg-type]
+    a, b = host.settle_batch(drive, steps=20), dev.settle_batch(drive, steps=20)
+    ap, bp = host.settle_batch(drive, steps=20, state=a, nudge=nudge), dev.settle_batch(
+        drive, steps=20, state=b, nudge=nudge)
+    launched = dev._torch._workspace(batch).nudges
+    assert all(buffers.launch is not None for buffers in launched.values())
+    tolerance = 1e-10 if precision == "float64" else 2e-3
+    np.testing.assert_allclose(bp.activation, ap.activation, rtol=0, atol=tolerance)
+    if precision == "float64":
+        np.testing.assert_allclose(dev.residual(drive, bp, nudge=nudge),
+                                   host.residual(drive, ap, nudge=nudge), rtol=0, atol=1e-12)
+
+
 @pytest.mark.parametrize("device_name", devices())
 def test_float32_settles_stay_near_the_host_and_check_in_float64(device_name):
     brain = composed(apical=True)

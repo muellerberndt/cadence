@@ -2845,6 +2845,48 @@ def _triton_update() -> Any:
     return _UPDATE_KERNEL
 
 
+_PUSH_KERNEL: Any = None
+_PUSH_GROUP = 256  # the largest softmax group one program of the nudge's launch holds
+
+
+def _push_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
+    total_ptr, s_ptr, target_ptr, mask_ptr, temp_ptr, beta_ptr, weight_ptr, u0, start, size, batch,
+    ROWS: tl.constexpr, BATCH: tl.constexpr, WEIGHT: tl.constexpr,
+):
+    # the softmax nudge over equal groups side by side, as ``_TorchKernel._push`` does it one
+    # operation at a time: one program per group and tile of the batch
+    g = tl.program_id(0)
+    offs_b = tl.program_id(1) * BATCH + tl.arange(0, BATCH)
+    inside = offs_b < batch
+    offs_r = tl.arange(0, ROWS)
+    in_group = offs_r < size
+    here = start + g * size + offs_r
+    both = in_group[:, None] & inside[None, :]
+    at_u = here[:, None] * batch + offs_b[None, :]
+    at_n = (u0 + here)[:, None] * batch + offs_b[None, :]
+    x = tl.load(s_ptr + at_n, mask=both, other=0.0) / tl.load(temp_ptr + g)
+    top = tl.max(tl.where(in_group[:, None], x, float("-inf")), axis=0)
+    e = tl.where(in_group[:, None], tl.exp(x - top[None, :]), 0.0)
+    p = e / tl.sum(e, axis=0)[None, :]
+    value = (tl.load(target_ptr + at_u, mask=both, other=0.0) - p) * tl.load(beta_ptr)
+    value = value * tl.load(mask_ptr + here, mask=in_group, other=0.0)[:, None]
+    if WEIGHT:
+        value = value * tl.load(weight_ptr + offs_b, mask=inside, other=0.0)[None, :]
+    tl.store(total_ptr + at_n, tl.load(total_ptr + at_n, mask=both, other=0.0) + value, mask=both)
+
+
+def _triton_push() -> Any:
+    """The compiled nudge, or None without Triton or under ``CADENCE_TRITON=0``."""
+    global _PUSH_KERNEL
+    if _triton_transport() is None:  # binds ``tl``
+        return None
+    if _PUSH_KERNEL is None:
+        import triton
+
+        _PUSH_KERNEL = triton.jit(_push_tiles)
+    return _PUSH_KERNEL
+
+
 _APICAL_KERNELS: Any = None
 _POOL_ROWS = 32  # a pool's members per program of the normalization
 
@@ -3035,6 +3077,15 @@ class _NudgeBuffers:
         self.weight = torch.zeros(1, batch, dtype=dtype, device=device) if weight else None
         self.anchor = torch.zeros(m, batch, dtype=dtype, device=device) if anchor else None
         self.gain = torch.zeros(m, 1, dtype=dtype, device=device) if anchor else None
+        # equal groups side by side over a contiguous reach: one Triton launch on CUDA
+        self.launch: Any = None
+        if (
+            device.type == "cuda" and self.tiled is not None and u_range is not None and not anchor
+            and self.tiled[2] <= _PUSH_GROUP and _triton_push() is not None
+        ):
+            size = self.tiled[2]
+            self.launch = (u_range[0], self.tiled[0], self.tiled[1], size,
+                           1 << max(0, size - 1).bit_length())
 
 
 class _TorchKernel:
@@ -3331,6 +3382,18 @@ class _TorchKernel:
     def _push(self, total: Any, s: Any, buffers: _NudgeBuffers) -> None:
         """Add ``Nudge.drive`` at neuron-major ``s`` into ``total``, on the neurons it reaches."""
         torch = self.torch
+        if buffers.launch is not None:
+            u0, start, count, size, height = buffers.launch
+            batch = s.shape[1]
+            block = _tile_batch(batch, s.element_size() == 8)
+            weighted = buffers.weight is not None
+            with torch.cuda.device(self.device):
+                _PUSH_KERNEL[count, -(-batch // block)](
+                    total, s, buffers.target, buffers.mask, buffers.temperatures, buffers.beta,
+                    buffers.weight if weighted else total, u0, start, size, batch,
+                    ROWS=height, BATCH=block, WEIGHT=weighted,
+                )
+            return
         s_u = _take(s, buffers.u_range, buffers.u_index)
         push = buffers.push
         if buffers.groups is None:
