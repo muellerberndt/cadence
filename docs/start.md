@@ -30,8 +30,9 @@ continues the life later. [Teach](teach.md), [reward](reward.md), [memory](memor
 [tune](tune.md) take each part further.
 
 The composed brain has one association region (`modules=(64,)`) between the sensory and motor
-neurons, a working trace that carries the last interpretation into the next settle, and an
-associative memory that consolidates what it writes. Every region settles together into one
+neurons, a working trace that carries the last interpretation into the next settle, a recall
+memory that gives back an earlier moment when the present asks for it, and an associative memory
+that consolidates what it writes. Every region settles together into one
 equilibrium, and that equilibrium is the answer
 ([one continuing equilibrium brain](#one-continuing-equilibrium-brain)).
 
@@ -308,8 +309,8 @@ from reward):
 | A reversal whose failures pay nothing: the paid arm's record keeps voting after the pay moves | `memory_choice=True, memory_extinction=0.5` | [extinction](../benchmarks/extinction/README.md); [a paid action that stops paying](memory.md#a-paid-action-that-stops-paying-extinction) |
 | A chain whose stages look alike and whose misses leave the observation as it was | `memory_choice=True, memory_context_hold="unchanged"` | [context key](../benchmarks/context_key/README.md); [stages that look alike](memory.md#stages-that-look-alike-the-context-hold) |
 | A choice that depends on a cue the answer does not show, from the terminal reward alone | `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True` | [credit](../benchmarks/credit/README.md); [a cue the answer does not show](reward.md#a-cue-the-answer-does-not-show) |
-| The same cue carried through distractors, taught by a lesson at the answer | `recall=True, recall_recency=0.0` | the same chamber and section |
-| Which of two writes a read finds, from reward alone | `recall=True, recall_position_reward=4.0, recall_address_reward=1.0, recall_anchor=True, recall_next=False` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
+| The same cue carried through distractors, taught by a lesson at the answer | nothing: a new brain's memory has no age charge (`recall_recency=0.0`) | the same chamber and section |
+| Which of two writes a read finds, from reward alone | nothing: a new brain holds `recall_position_reward=4.0` and the anchor; the chamber's recipe adds `recall_address_reward=1.0, recall_next=False` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
 
 The chambers' READMEs give each setting's readings and costs.
 
@@ -361,7 +362,7 @@ and associative records; recall slots survive only with `"slots"` in `keep`
 
 Keep the arousal when the new stream continues the same life. In a two-armed bandit with one
 constant observation whose paying arm moved after 300 moments
-(`Brain.compose(1, 2, modules=(16,), arousal=True)`, seeds 0 to 4):
+(`Brain.compose(1, 2, modules=(16,), arousal=True, recall=False)`, seeds 0 to 4):
 
 - Reset with `keep=()`, adults chose the newly paying arm at none of the next 120 moments.
 - Reset keeping the arousal, they fell short of the income they were used to, woke and chose as
@@ -426,7 +427,7 @@ covers modules and observers.
 | Mechanism | Default in `Brain.compose` | Advances on |
 | --- | --- | --- |
 | Neural activity | retained | each accepted action and each `wait` |
-| Memories | working trace and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
+| Memories | working trace, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
 | Reward plasticity and demonstrations | `step`, `learn`, `lesson`, aroused `live` | actual outcomes and supplied labels |
 | Arousal | off unless `arousal=True` | each outcome `live` receives |
 | Observers | none unless requested | the same neural solve |

@@ -8,7 +8,7 @@ choice exposes that state; a separately trained decoder that produces the answer
 another model.
 
 Start with `Brain.compose`. The default **System 1** has reciprocal processing regions, local
-plasticity, a working trace and fast and persistent associative memory, and it can be deep.
+plasticity, a working trace, a recall memory and fast and persistent associative memory, and it can be deep.
 Optional **System 2** adds observing regions with returning feedback inside the same neural
 settlement. Biological names describe software roles.
 
@@ -33,7 +33,7 @@ life.
 | Have an external trained readout or language model supply the answer. | Let reciprocal regions constrain the answer read from the brain's declared motor population. |
 | Call any small residual a correct, cheap interpretation of the world. | Check the numerical equations, actual task outcomes, retention and measured work separately. |
 
-Isolated classifiers and calibration remain useful unit controls. What matters is the capability
+Isolated classifiers and calibration are useful unit controls. What matters is the capability
 an application demonstrates.
 
 ![A feed-forward network passes activity one way; a patch net's neurons hold local

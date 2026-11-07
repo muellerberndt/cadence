@@ -87,7 +87,7 @@ relevant recent context and its successor, and `recall_heads=k` when one answer 
 witnessed facts at once. The options can be used together.
 [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
 starts with these common cases before giving the complete reference.
-A brain trained without one of them gets it later: `brain.grow(recall=True)`, or new output
+A brain trained without a recall memory gets one later: `brain.grow(recall=True)`, or new output
 slots with `brain.grow(slots=...)`, returns a new brain, the trained one with the part added,
 settling as the trained one did until learning gives the part weight. `brain.graft(donor, ...)` puts trained
 regions of another brain into a larger one, such as a trained visual system, or a whole

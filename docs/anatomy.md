@@ -797,7 +797,7 @@ To draw it, record the settlings of a solve and hand them to a page of your own
 #### 5. Grow it
 
 - Reward instead of labels: `ActorCritic` over the same learner ([reward](reward.md));
-  `Brain` is the ready composition with a critic, a working trace and associative
+  `Brain` is the ready composition with a critic, a working trace, a recall memory and associative
   memory ([compose a brain](tune.md#brain)).
 - Selection sizes the regions: `evolve` over the genome across lives
   ([evolve a brain](#evolve-a-brain)); any hand-set constant can be a gene.

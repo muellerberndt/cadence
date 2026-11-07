@@ -9,7 +9,7 @@ from the NumPy-only [installation](../README.md#get-started) and add an extra:
 python -m pip install "cadence-net[fast]==0.94.0"
 ```
 
-`[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX; from a checkout, use
+`[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
 `python -m pip install -e ".[fast]"`. Installing a library never selects it: pass
 `backend="torch"` or `backend="mlx"`. `available_backends()` lists the importable backends
 with the device and default precision each would use.
@@ -112,7 +112,7 @@ brings them back, and the next moment places them again; nothing else about a br
 but MPS, which is how the tests read this path on a machine without a GPU. `CADENCE_MLX_MEMORY` does the
 same on MLX.
 
-Each moment still crosses: to the device the observations, a sampled action's target, the outcome's
+Each moment crosses: to the device the observations, a sampled action's target, the outcome's
 reward, key and dopamine; to the host the motor columns, a value per stream, one number per stream and
 carried route, one small read per residual check and per settle, and one read of the lesson's or
 update's report and finite checks. The memories, the eligibility and the optimizer's state do not
@@ -175,8 +175,8 @@ A settle of 32 sweeps from a warm state under a new drive on that device, in mil
 | The deep anatomy | 16 | 6.13 | 2.39 |
 | The same | 1,024 | 209 | 49.6 |
 
-A settle is a small part of an act of a brain with the memory, whose reads run on the host. The
-device's float64 runs at a sixty-fourth of its float32 rate; check float32 against float64 as below
+A settle is a small part of an act of a brain whose memories run on the host, as they do below
+[their size](#memories-on-the-device). The device's float64 runs at a sixty-fourth of its float32 rate; check float32 against float64 as below
 before relying on it. On the small continuing nursery of the
 [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
 than CUDA.
@@ -214,7 +214,14 @@ MLX wins at the speech size at every batch, on four regions under a compartment 
 deep anatomy, which takes the compiled sweep, from about 32 rows. At the chamber's size one synchronization with the
 GPU costs about 180 microseconds whatever the work, and a solve of three chunks takes three: a pass of the
 [grammar chamber](../benchmarks/grammar/README.md), 4,000 batches of 16 rows, takes 51 s on one CPU core and
-75 s on MLX. One core stays the choice at that size. The load moves these readings: above a load of 4 an MLX act
+75 s on MLX. One core stays the choice at that size.
+
+So a device costs a small brain time. At one row a new brain of 12 inputs and an association of 32 takes about 4
+times one CPU core's time per act and per lesson on MLX, and the chamber's brain about 5 times per act and 4 per lesson on
+CUDA; at 16 rows the chamber's brain takes about 1.2 times on MLX and 1.8 times on CUDA. Keep a brain on the CPU under the
+sizes where a device passes one core.
+
+The load moves these readings: above a load of 4 an MLX act
 at the speech size has read twice its quiet time.
 
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical

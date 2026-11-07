@@ -39,7 +39,7 @@ bigger.step(x, teacher=labels)
 
 | Setting | Adds | Starts at zero |
 | --- | --- | --- |
-| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory): its read ports, empty slots, address and position maps at their founders | The ports' synapses into the association region (and a copy pathway's into the motor region) |
+| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory) at [what a new brain's memory holds](memory.md#what-recalltrue-gives-a-new-brain) (`recall_founder=True` for its founders): its read ports, empty slots, and address and position maps at zero. The brain keeps its teaching point and its lesson settings, and the read's route comes only with the brain's own `carried_gain` | The ports' synapses into the association region (and a copy pathway's into the motor region) |
 | `recall_heads=k` | More read heads of the brain's recall memory, over its bank | The new ports' synapses |
 | `history_decays=(...)` | A heard history (with `history_amplitude`), or the brain's decays followed by new ones | The history's synapses into the association region |
 | `efference_amplitude=a` (above zero) | An efference copy (with `efference_decay`) | The copy's synapses into the association region |

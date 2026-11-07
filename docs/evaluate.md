@@ -352,4 +352,4 @@ library version, because one version string can cover several source revisions. 
 is evidence for its own source snapshot: keep its bytes and verify against that snapshot
 instead of re-signing an old result against later code. A run records data generation,
 seeds, every scheduled condition, predictions and targets, and its verifier rejects missing
-outcomes instead of averaging whichever rows remain.
+outcomes instead of averaging whichever rows are left.

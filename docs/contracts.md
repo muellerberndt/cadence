@@ -16,7 +16,7 @@ learning rule.
 
 | Component | Implemented operation | Limit |
 | --- | --- | --- |
-| `Brain` (composed) | Qualified settles for every answer, local contrast and reward learning, working trace, synaptic and opt-in episodic and recall memory | A qualified answer covers the present settle. Memory enters as held input and is written after the settle, outside the equations; behaviour across ticks needs [persistence tests](evaluate.md#test-coherent-behavior-over-time). |
+| `Brain` (composed) | Qualified settles for every answer, local contrast and reward learning, working trace, recall and synaptic memory and opt-in episodic memory | A qualified answer covers the present settle. Memory enters as held input and is written after the settle, outside the equations; behaviour across ticks needs [persistence tests](evaluate.md#test-coherent-behavior-over-time). |
 
 A private `imagine` call is a component operation. The application defines what its inputs
 and outputs mean and which future variables it generates or supplies; a learned simulator

@@ -7,8 +7,8 @@ arousal law that decides when a `live` brain learns is in
 [routine and repair](start.md#routine-and-repair-live).
 
 `Brain.compose` builds **System 1**: one continuing neural graph with senses, reciprocal
-processing regions, a motor choice, a working trace and an associative memory, all settling
-together. Optional observer regions add **System 2** feedback inside the same graph. Keep one
+processing regions, a motor choice, a working trace, a recall memory and an associative memory, all
+settling together. Optional observer regions add **System 2** feedback inside the same graph. Keep one
 composed brain through acquisition, use and correction
 ([one continuing equilibrium brain](start.md#one-continuing-equilibrium-brain)).
 
@@ -113,13 +113,12 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `scales`: `"sensory"`, `"trace"` | `1.0`, `1.2` | construction | [image inputs](senses.md#image-inputs), [memory](memory.md#working-trace) |
 | `features`, `field`, `seed` | `8`, `3`, `0` | construction | [image inputs](senses.md#image-inputs) |
 | `attention` | `False`; `True` requires `learned_code=units` and supplies the contextual Recall recipe | construction | [single-head learned-code attention](memory.md#single-head-learned-code-attention-opt-in) |
-| `teaching` | `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
+| `teaching` | `"deep"` in a new brain with the memory, else `"founder"`. `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
 | `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
-| `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False`, `False` | retune | [learning](settling.md#7-every-knob) |
+| `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False` (`True` in a new brain with the memory), `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |
-| `learning_rehearsal`, `learning_rehearsal_capacity` | `0.0` (off), `512` lesson rows, each with its episode | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
@@ -299,7 +298,7 @@ A pass of the [grammar chamber](../benchmarks/grammar/README.md) is 4,000 batche
 | The chamber's transformer | 23,490 | 16 | 5.7e10 | 1, 1 |
 | The chamber's LSTM | 24,378 | 8 | 5.7e10 | 0.5, 1 |
 
-Two things remain between the brain and these networks at equal compute. The first is arithmetic: a
+Two things stand between the brain and these networks at equal compute. The first is arithmetic: a
 moment settles, 65 to 90 sweeps between the association and the motor regions, where a network runs
 each word once forward and once back, so a pass costs 2.3 to 3.8 times their multiply-adds. The
 second is rate: at equal multiply-adds the brain takes 1.7 to 2.9 times the transformer's seconds
@@ -314,6 +313,7 @@ at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 | One stream of speech: 3,920 inputs, association 512, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
 | The same | the recipe | 10 ms, 190 ms |
 | The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
+| The same | a new brain | 14 ms, 291 ms |
 | Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
 
 At the speech size the read's address map, 3,920 by 3,920 entries, is most of an act, and with

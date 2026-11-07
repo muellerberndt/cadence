@@ -313,15 +313,18 @@ Set them through `Brain.compose(..., actor_eta=0.03, ...)` or retune a running l
 ## A cue the answer does not show
 
 When two situations end in the same observation and only an earlier cue tells which action
-pays, compose the brain with a tenth of the actor step and the episodic memory:
+pays, a new brain's memory carries the cue: in the [two-cue chamber](../benchmarks/credit/README.md), every
+outcome learned through `step`, six development founders reach held-out .90 on 6, 5 and 2 of 6 at delays of
+0, 1 and 2 events, against 0 of 6 at each delay for `recall=False` and 5, 2 and 0 of 6 for the founder memory.
+Without the memory, compose the brain with a tenth of the actor step and the episodic memory:
 
 ```python
 cued = Brain.compose(12, 2, arousal=True, actor_eta=0.1, actor_eta_bias=0.01,
-                     memory_choice=True)
+                     memory_choice=True, recall=False)
 assert cued.memory_choice and cued.basal_ganglia.config.eta == 0.1
 ```
 
-The composed founder does not learn this choice from the outcome. Its associative record is
+The brain without a memory does not learn this choice from the outcome. Its associative record is
 keyed on the observation, which both situations share at the answer, so its vote there is the
 same for both cues, and at the composed actor step the readout walks to one action for both.
 The context records of `memory_choice=True` key on the stream's temporal context, so the two
@@ -330,7 +333,7 @@ the actions the records chose teach it.
 
 In the [two-cue chamber](../benchmarks/credit/README.md) (a cue, then an identical two-event
 suffix, the answer paid +1 or -1, every outcome learned through `step`) these settings reach
-held-out .90 on 11 of 12 fresh founders, against 2 of 12 for the composed founder. The context
+held-out .90 on 11 of 12 fresh founders, against 2 of 12 at `recall=False` and the composed actor. The context
 keeps half of the cue per moment: one event between the cue and the suffix gives 4 of 6
 development founders, two give 0 of 6. `memory_extinction` and `memory_context_hold` leave
 these readings as they are. The two-cue readings are measured through `step` only. In the other
@@ -339,7 +342,7 @@ lives (8 without), win 30 of 30 blocks of a bandit with reversals (27) and learn
 bandit on 6 of 6 seeds (3); in the odour nursery two of six lives at the short exposure reverse
 late (10 of 12 lives pass every check, 11 without).
 
-In the chamber, the founder's own updates move the preference at the answer about 40 times
+In the chamber, that brain's own updates move the preference at the answer about 40 times
 more along the association activity both cues share than along the cue, mostly through the
 forward term's presynaptic activity and the motor bias. Right and wrong outcomes carry that
 shared part in equal halves that cancel, so the shared preference wanders, and the outcomes
@@ -350,7 +353,7 @@ carries the cue, and the local update does not deliver it.
 
 Taught by a lesson at the answer instead, the cue has to reach the answer through the events
 in between. The working trace keeps about half of it per event and fails from two events. The
-recall memory with no age charge, `recall=True, recall_recency=0.0`, carries it through eight
+recall memory with no age charge, `recall_recency=0.0` as in a new brain, carries it through eight
 (12 of 12 fresh founders at 4 and at 8; the founder recency of 0.25 reads 0 of 6 at 8). The
 binding chambers' continuing life holds under this setting, since its
 [position term](memory.md#position-how-long-ago-a-moment-happened) prefers the newer slots.
