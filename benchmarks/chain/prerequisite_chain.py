@@ -140,7 +140,7 @@ def make_brain(point: dict[str, Any], seed: int, world: dict[str, Any], need: fl
     arousal["need"] = need
     return cd.Brain.compose(
         INPUTS,
-        world["actions"],
+        world["actions"], backend="cpu",
         modules=tuple(int(w) for w in point["modules"]),
         # frozen protocols ran the composition of releases before 0.82.0: the carried
         # interpretation read back at scale 12

@@ -69,7 +69,7 @@ def test_arms_differ_only_as_declared(protocol):
     assert live.arousal is not None and step.arousal is None and frozen.arousal is None
     assert live.basal_ganglia.config.eta == declared["operating_point"]["eta"]
     assert live.basal_ganglia.config.eta_critic == declared["operating_point"]["eta_critic"]
-    composed = chamber.Brain.compose(inputs.INPUTS, inputs.ACTIONS, modules=(32,), seed=0,
+    composed = chamber.Brain.compose(inputs.INPUTS, inputs.ACTIONS, backend="cpu", modules=(32,), seed=0,
                                      recall=False)
     assert defaults.basal_ganglia.config == composed.basal_ganglia.config
     assert lam0.basal_ganglia.config.lam == declared["operating_point"].get("lam_control", 0.0)

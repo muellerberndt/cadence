@@ -73,8 +73,9 @@ def make_brain(k: int, founder: int, arm: str = "recipe", module: int = 64,
     if advance not in ADVANCES:
         raise ValueError("advance is 'echo' or 'efference'")
     extra = {"efference_amplitude": 1.0} if advance == "efference" else {}
-    return cd.Brain.compose(gr.INPUTS, k * gr.ACTIONS, modules=(module,), seed=int(founder),
-                            slots=int(k), **{"recall": False, **gr.ARMS[arm], **extra})
+    return cd.Brain.compose(gr.INPUTS, k * gr.ACTIONS, backend="cpu", modules=(module,),
+                            seed=int(founder), slots=int(k),
+                            **{"recall": False, **gr.ARMS[arm], **extra})
 
 
 def heard_window(words: list[int], advance: str = "echo") -> np.ndarray:

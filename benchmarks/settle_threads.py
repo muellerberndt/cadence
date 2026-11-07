@@ -56,9 +56,9 @@ PARTS = {
 
 def compose(kind: str, inputs: int, modules: tuple[int, ...], classes: int) -> cd.Brain:
     if kind == "deep":
-        return cd.Brain.compose(inputs, classes, modules=modules, seed=0, **{"recall": False,
+        return cd.Brain.compose(inputs, classes, backend="cpu", modules=modules, seed=0, **{"recall": False,
                                 **DEEP})
-    return cd.Brain.compose(inputs, classes, modules=modules[:1], seed=0, **{"recall": False,
+    return cd.Brain.compose(inputs, classes, backend="cpu", modules=modules[:1], seed=0, **{"recall": False,
                             **FLAT})
 
 

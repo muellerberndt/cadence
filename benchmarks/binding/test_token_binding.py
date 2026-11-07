@@ -64,7 +64,7 @@ def test_the_query_repeats_the_name_token_of_its_fact() -> None:
 
 def test_without_the_recall_region_the_brain_is_the_composed_one() -> None:
     built = tb.ContentBrain.build(4)
-    composed = Brain.compose(tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL,
+    composed = Brain.compose(tb.INPUTS, tb.VALUES, backend="cpu", modules=(tb.WIDTH,), lateral=tb.LATERAL,
                              seed=4, recall=False)
     a, b = built.connectome, composed.connectome
     assert a.n == b.n and a.populations.keys() == b.populations.keys()

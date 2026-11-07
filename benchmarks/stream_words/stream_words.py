@@ -291,7 +291,7 @@ def controls(stream: dict[str, Any], lexicon: dict[str, Any], seed: int) -> dict
 def compose(arm: str, inputs: int, seed: int, protocol: dict[str, Any]) -> cd.Brain:
     """The composed founder for an arm: the protocol's shared genes and the arm's own."""
     genes = {**protocol["brain"]["genes"], **protocol["arms"][arm].get("genes", {})}
-    return cd.Brain.compose(inputs, len(protocol_words(protocol)) + 1, seed=seed,
+    return cd.Brain.compose(inputs, len(protocol_words(protocol)) + 1, backend="cpu", seed=seed,
     **{"recall": False, **genes})
 
 

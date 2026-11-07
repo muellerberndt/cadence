@@ -147,7 +147,7 @@ def make_brain(
 ) -> Any:
     import cadence as cd
 
-    return cd.Brain.compose(WORLDS[world][0], ACTIONS, seed=int(founder),
+    return cd.Brain.compose(WORLDS[world][0], ACTIONS, backend="cpu", seed=int(founder),
                             **{"recall": False, **{**BRAIN, **ARMS[arm], **(settings or {})}})
 
 

@@ -191,7 +191,7 @@ def test_history_control_is_competent(protocol: dict) -> None:
 def test_evaluation_is_seeded_and_leaves_the_checkpoint_unchanged(
     tmp_path: Path, protocol: dict, gated: bool
 ) -> None:
-    brain = rr.compose({"compose": {"modules": [8], "lateral": 0.0}}, 5, gated)
+    brain = rr.compose({"compose": {"modules": [8], "lateral": 0.0}}, 5, gated, backend="cpu")
     path = brain.save(tmp_path / "b.npz")
     before = rr.sha256(path)
     first = rr.evaluate(path, protocol, gated, 5)

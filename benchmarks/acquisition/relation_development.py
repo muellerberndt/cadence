@@ -140,7 +140,7 @@ def make_brain(name, seed, args, *, lateral=-0.5):
     # motor circuit is part of each frozen gene, rather than a library default.
     # A different lateral gene must be selected explicitly by its own capsule.
     model = Brain.compose(
-        650, 36, modules=(32, 16), observers=(), lateral=lateral, seed=seed, learning=cfg,
+        650, 36, backend="cpu", modules=(32, 16), observers=(), lateral=lateral, seed=seed, learning=cfg,
             recall=False
     )
     graph = model.brain

@@ -163,7 +163,7 @@ def run_arm(
         return {"arm": arm, "seed": seed, "curve": curve, "rate": MLP_RATE,
                 "parameters": int(sum(p.size for p in network.weights + network.biases)),
                 "seconds": round(time.time() - started, 1)}
-    brain = cd.Brain.compose(2 * PAIRS, CLASSES, modules=CADENCE[arm], seed=seed,
+    brain = cd.Brain.compose(2 * PAIRS, CLASSES, backend="cpu", modules=CADENCE[arm], seed=seed,
     **{"recall": False, **COMPOSE})
     work = {"free_steps": 0.0, "exhausted": 0.0, "lessons": 0}
     for lesson in range(1, lessons + 1):

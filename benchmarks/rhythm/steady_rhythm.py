@@ -151,7 +151,7 @@ def make_brain(seed: int, protocol: dict, recipe: str = "selected") -> Brain:
     learning = learner_config(spec["learning"])
     return Brain.compose(
         inputs.INPUTS,
-        inputs.ACTIONS,
+        inputs.ACTIONS, backend="cpu",
         modules=tuple(spec["modules"]),
         lateral=spec["lateral"],
         seed=seed,

@@ -50,7 +50,7 @@ def _uncoupled(seed: int):
 
 def test_without_read_regions_the_brain_is_the_composed_one() -> None:
     built = lr.ReadBrain.build(3)
-    composed = Brain.compose(tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL,
+    composed = Brain.compose(tb.INPUTS, tb.VALUES, backend="cpu", modules=(tb.WIDTH,), lateral=tb.LATERAL,
                              seed=3, recall=False)
     np.testing.assert_array_equal(built.brain.efficacy, composed.brain.efficacy)
     assert built.coupling is None

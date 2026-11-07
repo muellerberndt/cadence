@@ -70,7 +70,7 @@ def main():
                     torch.cuda.empty_cache()
                     torch.cuda.reset_peak_memory_stats()
                 tick = time.perf_counter()
-                body = cd.Brain.compose(8, 2, modules=modules, observers=(8,), seed=11,
+                body = cd.Brain.compose(8, 2, backend="cpu", modules=modules, observers=(8,), seed=11,
                                         recall=False)
                 original = body.brain
                 graph = cd.NeuralGraph(

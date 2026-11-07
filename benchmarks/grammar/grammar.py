@@ -438,7 +438,7 @@ def make_brain(arm: str, founder: int, settings: dict[str, Any] | None = None,
                module: int = 64) -> Any:
     import cadence as cd
 
-    return cd.Brain.compose(INPUTS, ACTIONS, modules=(module,), seed=int(founder),
+    return cd.Brain.compose(INPUTS, ACTIONS, backend="cpu", modules=(module,), seed=int(founder),
                             **{"recall": False, **{**ARMS[arm], **(settings or {})}})
 
 

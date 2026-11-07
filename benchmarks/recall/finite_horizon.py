@@ -142,7 +142,7 @@ def make_brain(
     history = genes.get("history") if heard else None
     return Brain.compose(
         inputs.INPUTS,
-        2,
+        2, backend="cpu",
         modules=tuple(genes["modules"]),
         lateral=genes["lateral"],
         seed=seed,

@@ -60,7 +60,7 @@ def run_cell(spec: dict[str, Any]) -> dict[str, Any]:
     options = {**FD, **(spec.get("options") or {})}
     if spec.get("trace") is False:
         options["working_memory_amplitude"] = 0.0
-    brain = cd.Brain.compose(inputs, actions, modules=(64,), seed=int(spec.get("founder", 0)),
+    brain = cd.Brain.compose(inputs, actions, backend="cpu", modules=(64,), seed=int(spec.get("founder", 0)),
                              recall_capacity=capacity, recall_position=position,
                              **{"recall": False, **options})
     rng = np.random.default_rng(np.random.SeedSequence([int(spec.get("founder", 0)), 268]))

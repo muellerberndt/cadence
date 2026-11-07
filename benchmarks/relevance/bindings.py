@@ -283,7 +283,7 @@ def compose(brain_name: str, rule: str, seed: int, bits: int) -> Any:
     genes = {"learning_surprise": True} if rule == "act" else {}
     return Brain.compose(
         width(bits),
-        2 * bits,
+        2 * bits, backend="cpu",
         seed=seed,
         modules=BRAINS[brain_name],
         episodic=False,

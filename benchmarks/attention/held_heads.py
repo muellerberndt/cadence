@@ -90,7 +90,7 @@ class Task:
         """The opt-in recipe; one head learns its address at the heads' settings. The protocol
         predates the recall position term (0.89.0), which it leaves out."""
         return cd.Brain.compose(
-            INPUTS, self.actions, learned_code=CODE, attention=True, recall_heads=heads,
+            INPUTS, self.actions, backend="cpu", learned_code=CODE, attention=True, recall_heads=heads,
             recall_address=0.01, recall_temperature=self.temperature,
             recall_position=0, modules=(MODULE,),
             slots=self.slots, seed=seed, episodic=False, teaching="normalized",
@@ -240,7 +240,7 @@ def run_founder(
     task = Task(rule, temperature)
     arms: dict[str, Any] = {}
     for heads in (2, 1):
-        brain = task.compose(seed, heads)
+        brain = task.compose(seed, heads, backend="cpu")
         task.warm(brain)
         banks = task.banks(brain)
         training = train(task, brain, banks, lessons, seed)

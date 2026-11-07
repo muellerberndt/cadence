@@ -27,7 +27,7 @@ def test_final_question_is_literal_and_context_free() -> None:
 
 
 def test_constructor_uses_the_public_opt_in_without_an_episodic_vote() -> None:
-    brain = subject.compose(101, solve=64, module=8)
+    brain = subject.compose(101, backend="cpu", solve=64, module=8)
     assert brain.attention is True
     assert brain.recall is not None and brain.recall.window == 2
     assert brain.hippocampus is None and brain._episodic is None  # noqa: SLF001
@@ -36,7 +36,7 @@ def test_constructor_uses_the_public_opt_in_without_an_episodic_vote() -> None:
 
 
 def test_cold_policy_preserves_only_the_recall_window_context() -> None:
-    brain = subject.compose(102, solve=256, module=8)
+    brain = subject.compose(102, backend="cpu", solve=256, module=8)
     brain.act(subject.observation("context", 0), greedy=True)
     before = brain.recall.past.copy()
     subject.cold_policy(brain)

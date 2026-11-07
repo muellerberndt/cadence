@@ -18,7 +18,7 @@ def test_reused_worker_does_not_multiply_depth_between_jobs(monkeypatch):
     depths = []
 
     def founder(seed):
-        brain = cd.Brain.compose(2, 2, modules=(4,), seed=seed, episodic=False, recall=False)
+        brain = cd.Brain.compose(2, 2, backend="cpu", modules=(4,), seed=seed, episodic=False, recall=False)
         populations = brain.connectome.populations
         depths.append(1 + sum(name.startswith("module_") and "/" not in name
                               for name in populations))

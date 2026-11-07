@@ -146,7 +146,7 @@ def bandit_life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
 
     b = BANDIT
     with composed_with(settings):
-        brain = cd.Brain.compose(1, 2, seed=int(seed), recall=False)
+        brain = cd.Brain.compose(1, 2, backend="cpu", seed=int(seed), recall=False)
     x = np.ones((1, 1))
     actions: list[int] = []
     action = brain.step(x)
@@ -179,7 +179,7 @@ def contextual_life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
     import cadence as cd
 
     with composed_with(settings):
-        brain = cd.Brain.compose(4, 4, seed=int(seed), actor_gamma=0.0, actor_lam=0.0, recall=False)
+        brain = cd.Brain.compose(4, 4, backend="cpu", seed=int(seed), actor_gamma=0.0, actor_lam=0.0, recall=False)
     score = _worlds().contextual_bandit(brain, int(seed))
     return {"score": score, "passed": score >= 0.9}
 
@@ -188,7 +188,7 @@ def delayed_life(seed: int, settings: dict[str, Any]) -> dict[str, Any]:
     import cadence as cd
 
     with composed_with(settings):
-        brain = cd.Brain.compose(3, 2, seed=int(seed), recall=False)
+        brain = cd.Brain.compose(3, 2, backend="cpu", seed=int(seed), recall=False)
     score = _worlds().delayed_response(brain, 1500, int(seed))
     return {"score": score, "passed": score >= 0.9}
 

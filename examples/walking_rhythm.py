@@ -46,7 +46,7 @@ def founder(efference: float) -> Brain:
     genes = {"efference_amplitude": efference, "efference_decay": 0.0} if efference else {}
     return Brain.compose(
         INPUTS,
-        2,
+        2, backend="cpu",
         modules=(32,),
         seed=SEED,
         episodic=False,

@@ -88,7 +88,7 @@ def compose(task: Any, width: int, founder: int, memory: bool,
     import cadence as cd
 
     options = {"recall": True, "recall_founder": True, "learning_surprise": True} if memory else {}
-    return cd.Brain.compose(task.inputs, task.actions, modules=(width,), seed=int(founder),
+    return cd.Brain.compose(task.inputs, task.actions, backend="cpu", modules=(width,), seed=int(founder),
                             episodic=False, teaching="normalized",
                             **{"recall": False, **{**options, **(settings or {})}})
 

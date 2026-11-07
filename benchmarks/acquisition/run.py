@@ -224,7 +224,7 @@ def make_brain(recipe, seed, args):
     effective = recipe_configuration(recipe, args)
     cfg = LearnerConfig(**effective["learning"])
     brain = Brain.compose(
-        inputs=650, actions=36, modules=(32, 16), observers=(), seed=seed, learning=cfg,
+        backend="cpu", inputs=650, actions=36, modules=(32, 16), observers=(), seed=seed, learning=cfg,
         lateral=effective["lateral"], recall=False,
     )
     if effective["resting_bias"]:

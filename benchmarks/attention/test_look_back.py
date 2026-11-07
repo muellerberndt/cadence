@@ -29,7 +29,7 @@ def test_the_answer_depends_only_on_the_cued_place() -> None:
 
 
 def test_the_arms_differ_only_in_the_position_term() -> None:
-    with_term, without = subject.compose(0, 32), subject.compose(0, 0)
+    with_term, without = subject.compose(0, 32, backend="cpu"), subject.compose(0, 0, backend="cpu")
     assert with_term.recall.position == 32 and with_term.recall.position_maps
     assert without.recall.position == 0 and not without.recall.position_maps
     assert with_term.recall.recency == without.recall.recency == 0.0

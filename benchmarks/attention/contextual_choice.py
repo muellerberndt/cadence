@@ -87,7 +87,7 @@ def compose(seed: int, *, solve: int = 1024, module: int = 24) -> ContextChoiceB
     predates the recall position term (0.89.0), which it leaves out."""
     brain = ContextChoiceBrain.compose(
         INPUTS,
-        ACTIONS,
+        ACTIONS, backend="cpu",
         learned_code=CODE,
         attention=True,
         recall_position=0,

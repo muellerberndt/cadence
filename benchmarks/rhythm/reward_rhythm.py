@@ -122,7 +122,7 @@ def make_brain(seed: int, protocol: dict, arm: str) -> Brain:
             raise ValueError("record_surprise above zero needs cadence-net 0.84.3")
         options["arousal"] = cd.ArousalConfig(**genes)
     brain = Brain.compose(
-        inputs.INPUTS, inputs.ACTIONS, modules=tuple(point["modules"]), seed=seed,
+        inputs.INPUTS, inputs.ACTIONS, backend="cpu", modules=tuple(point["modules"]), seed=seed,
         **{"recall": False, **options}
     )
     if arm != "defaults":

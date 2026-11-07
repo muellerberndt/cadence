@@ -211,7 +211,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     task = R.build_task(spec["task"], spec.get("task_args", {}))
     brain_spec = {"arm": "Fd", "founder": founder, "capacity": spec["capacity"],
                   "position": spec["position"], "settings": spec.get("brain_settings")}
-    target = int(spec.get("parameters") or R.compose(task, brain_spec).parameters())
+    target = int(spec.get("parameters") or R.compose(task, brain_spec, backend="cpu").parameters())
     width = int(spec.get("width") or matched_width(model, task.inputs, task.actions, target))
     reads = [(r, R.build_task(r["task"], r.get("task_args", {}))) for r in spec["reads"]]
     context = int(spec["context"])
