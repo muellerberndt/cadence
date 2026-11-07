@@ -2318,6 +2318,8 @@ class _Workspace:
         self.held: Any = None  # (n, batch): a nudge's held apical gain spread over its pools
         self.part: Any = None  # the fused update's movement sums per row tile, and its peaks
         self.peak: Any = None
+        self.pool_part: Any = None  # the normalization's sums per tile of members, and gains
+        self.pool_gain: Any = None
         self.part_settling: Any = None  # the same over the neurons synapses reach
         self.peak_settling: Any = None
         self.still: Any = None  # a split plan's still products, and the standing input with them
@@ -2432,6 +2434,7 @@ def _triton_transport() -> Any:
 
 _UPDATE_KERNEL: Any = None
 _UPDATE_ROWS = 32  # neurons per program of the fused update
+_UPDATE_BATCH = 16  # rows of the batch per program of the normalization
 
 
 def _update_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
@@ -2501,54 +2504,88 @@ def _triton_update() -> Any:
     return _UPDATE_KERNEL
 
 
-_APICAL_KERNEL: Any = None
+_APICAL_KERNELS: Any = None
+_POOL_ROWS = 32  # a pool's members per program of the normalization
 
 
-def _apical_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
-    total_ptr, raw_ptr, member_ptr, span_ptr, count_ptr, c_ptr, batch,
+def _pool_sums(  # type: ignore[no-untyped-def]  # Triton reads the annotations
+    total_ptr, raw_ptr, member_ptr, span_ptr, part_ptr, batch,
+    ROWS: tl.constexpr, BATCH: tl.constexpr,
+):
+    # the normalization's first launch: each tile of a pool's members sums its squares
+    t = tl.program_id(0)
+    offs_b = tl.program_id(1) * BATCH + tl.arange(0, BATCH)
+    inside = offs_b < batch
+    offs_r = tl.arange(0, ROWS)
+    in_rows = offs_r < tl.load(span_ptr + t * 3 + 1)
+    rows = tl.load(member_ptr + tl.load(span_ptr + t * 3) + offs_r, mask=in_rows, other=0)
+    at = rows[:, None] * batch + offs_b[None, :]
+    both = in_rows[:, None] & inside[None, :]
+    b = tl.load(total_ptr + at, mask=both, other=0.0)
+    u = tl.load(raw_ptr + at, mask=both, other=0.0)
+    tl.store(part_ptr + t * 2 * batch + offs_b, tl.sum(b * b, axis=0), mask=inside)
+    tl.store(part_ptr + (t * 2 + 1) * batch + offs_b, tl.sum(u * u, axis=0), mask=inside)
+
+
+def _pool_gains(  # type: ignore[no-untyped-def]  # Triton reads the annotations
+    part_ptr, pool_ptr, count_ptr, c_ptr, gain_ptr, batch,
     BATCH: tl.constexpr, DOUBLE: tl.constexpr,
 ):
-    # the apical compartment's drive added to ``total``, one program per pool and tile of the
-    # batch: the pool's two sums of squares over its members in order, ``Apical.gain``, the drive
+    # the second: each pool adds its tiles' sums in order and makes ``Apical.gain``
     p = tl.program_id(0)
-    offs = tl.program_id(1) * BATCH + tl.arange(0, BATCH)
-    inside = offs < batch
-    first = tl.load(span_ptr + p * 2)
-    last = first + tl.load(span_ptr + p * 2 + 1)
+    offs_b = tl.program_id(1) * BATCH + tl.arange(0, BATCH)
+    inside = offs_b < batch
+    first = tl.load(pool_ptr + p * 2)
     if DOUBLE:
         basal2 = tl.zeros((BATCH,), dtype=tl.float64)
         raw2 = tl.zeros((BATCH,), dtype=tl.float64)
     else:
         basal2 = tl.zeros((BATCH,), dtype=tl.float32)
         raw2 = tl.zeros((BATCH,), dtype=tl.float32)
-    for k in range(first, last):
-        at = tl.load(member_ptr + k) * batch + offs
-        b = tl.load(total_ptr + at, mask=inside, other=0.0)
-        u = tl.load(raw_ptr + at, mask=inside, other=0.0)
-        basal2 += b * b
-        raw2 += u * u
+    for t in range(first, first + tl.load(pool_ptr + p * 2 + 1)):
+        basal2 += tl.load(part_ptr + t * 2 * batch + offs_b, mask=inside, other=0.0)
+        raw2 += tl.load(part_ptr + (t * 2 + 1) * batch + offs_b, mask=inside, other=0.0)
     count = tl.load(count_ptr + p)
     basal2 = basal2 / count
     raw2 = raw2 / count
-    spread = tl.sqrt(raw2 + tl.load(c_ptr + 1) * basal2 + tl.load(c_ptr + 2))
-    gain = tl.load(c_ptr) * tl.sqrt(basal2) / spread
-    for k in range(first, last):
-        at = tl.load(member_ptr + k) * batch + offs
-        b = tl.load(total_ptr + at, mask=inside, other=0.0)
-        u = tl.load(raw_ptr + at, mask=inside, other=0.0)
-        tl.store(total_ptr + at, b + gain * u, mask=inside)
+    gain = tl.load(c_ptr) * tl.sqrt(basal2) / tl.sqrt(
+        raw2 + tl.load(c_ptr + 1) * basal2 + tl.load(c_ptr + 2)
+    )
+    tl.store(gain_ptr + p * batch + offs_b, gain, mask=inside)
+
+
+def _pool_drive(  # type: ignore[no-untyped-def]  # Triton reads the annotations
+    total_ptr, raw_ptr, member_ptr, span_ptr, gain_ptr, batch,
+    ROWS: tl.constexpr, BATCH: tl.constexpr,
+):
+    # the third: each tile of members adds its pool's gain times the apical input to its drive
+    t = tl.program_id(0)
+    offs_b = tl.program_id(1) * BATCH + tl.arange(0, BATCH)
+    inside = offs_b < batch
+    offs_r = tl.arange(0, ROWS)
+    in_rows = offs_r < tl.load(span_ptr + t * 3 + 1)
+    rows = tl.load(member_ptr + tl.load(span_ptr + t * 3) + offs_r, mask=in_rows, other=0)
+    at = rows[:, None] * batch + offs_b[None, :]
+    both = in_rows[:, None] & inside[None, :]
+    pool = tl.load(span_ptr + t * 3 + 2)
+    gain = tl.load(gain_ptr + pool * batch + offs_b, mask=inside, other=0.0)
+    b = tl.load(total_ptr + at, mask=both, other=0.0)
+    u = tl.load(raw_ptr + at, mask=both, other=0.0)
+    tl.store(total_ptr + at, b + gain[None, :] * u, mask=both)
 
 
 def _triton_apical() -> Any:
-    """The compiled normalization, or None without Triton or under ``CADENCE_TRITON=0``."""
-    global _APICAL_KERNEL
+    """The normalization's three kernels, or None without Triton or under ``CADENCE_TRITON=0``."""
+    global _APICAL_KERNELS
     if _triton_transport() is None:  # binds ``tl``
         return None
-    if _APICAL_KERNEL is None:
+    if _APICAL_KERNELS is None:
         import triton
 
-        _APICAL_KERNEL = triton.jit(_apical_tiles)
-    return _APICAL_KERNEL
+        _APICAL_KERNELS = (
+            triton.jit(_pool_sums), triton.jit(_pool_gains), triton.jit(_pool_drive),
+        )
+    return _APICAL_KERNELS
 
 
 class _SmallGroups:
@@ -2716,13 +2753,20 @@ class _TorchKernel:
             ).to(self.device, self.dtype)
             self._pools: Any = None
             if self.device.type == "cuda" and not reference and _triton_apical() is not None:
-                # per pool its members in order and, as a launch reads them, where they lie
+                # the members of every pool in order; per tile of them where it starts, its
+                # count and its pool; per pool its first tile and tile count
                 ordered = [np.arange(connectome.n)[m] for m in apical.members]
-                sizes = np.array([len(m) for m in ordered], dtype=np.int64)
-                starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int64)
+                spans: list[tuple[int, int, int]] = []
+                tiles, at = [], 0
+                for k, members in enumerate(ordered):
+                    tiles.append((len(spans), -(-len(members) // _POOL_ROWS)))
+                    spans += [(at + r, min(_POOL_ROWS, len(members) - r), k)
+                              for r in range(0, len(members), _POOL_ROWS)]
+                    at += len(members)
                 self._pools = (
                     torch.from_numpy(np.concatenate(ordered).astype(np.int64)).to(self.device),
-                    torch.from_numpy(np.stack([starts, sizes], axis=1).reshape(-1)).to(self.device),
+                    torch.tensor(spans, dtype=torch.int64, device=self.device).reshape(-1),
+                    torch.tensor(tiles, dtype=torch.int64, device=self.device).reshape(-1),
                     torch.tensor(
                         [apical.fraction, apical.floor * apical.floor, _APICAL_TINY],
                         dtype=self.dtype, device=self.device,
@@ -2869,15 +2913,29 @@ class _TorchKernel:
         spread = (raw2 + (apical.floor * apical.floor) * basal2 + _APICAL_TINY).sqrt()
         return apical.fraction * basal2.sqrt() / spread
 
-    def _apical_launch(self, total: Any, raw: Any, batch: int) -> None:
-        """``total += gain * raw`` per pool in one Triton launch (CUDA)."""
-        members, spans, constants = self._pools
-        block = 64 if batch >= 64 else max(16, 1 << max(0, batch - 1).bit_length())
-        grid = (spans.shape[0] // 2, -(-batch // block))
-        with self.torch.cuda.device(self.device):
-            _APICAL_KERNEL[grid](
-                total, raw, members, spans, self.pool_count, constants, batch,
-                BATCH=block, DOUBLE=total.element_size() == 8,
+    def _apical_launch(self, ws: Any, total: Any, raw: Any) -> None:
+        """``total += gain * raw`` per pool in three Triton launches (CUDA): the sums of squares
+        over tiles of a pool's members, each pool's gain, the drive."""
+        torch, batch = self.torch, ws.batch
+        members, spans, tiles, constants = self._pools
+        tile_count, pools = spans.shape[0] // 3, tiles.shape[0] // 2
+        if ws.pool_part is None:
+            ws.pool_part = torch.zeros(2 * tile_count, batch, dtype=self.dtype, device=self.device)
+            ws.pool_gain = torch.zeros(pools, batch, dtype=self.dtype, device=self.device)
+        columns = -(-batch // _UPDATE_BATCH)
+        sums, gains, drive = _APICAL_KERNELS
+        with torch.cuda.device(self.device):
+            sums[tile_count, columns](
+                total, raw, members, spans, ws.pool_part, batch,
+                ROWS=_POOL_ROWS, BATCH=_UPDATE_BATCH,
+            )
+            gains[pools, columns](
+                ws.pool_part, tiles, self.pool_count, constants, ws.pool_gain, batch,
+                BATCH=_UPDATE_BATCH, DOUBLE=total.element_size() == 8,
+            )
+            drive[tile_count, columns](
+                total, raw, members, spans, ws.pool_gain, batch,
+                ROWS=_POOL_ROWS, BATCH=_UPDATE_BATCH,
             )
 
     def _push(self, total: Any, s: Any, buffers: _NudgeBuffers) -> None:
@@ -3043,7 +3101,7 @@ class _TorchKernel:
             if cfg.held:
                 total.addcmul_(ws.held, raw)
             elif self._pools is not None:
-                self._apical_launch(total, raw, ws.batch)
+                self._apical_launch(ws, total, raw)
             else:
                 total.addcmul_(self._apical_spread(total, raw), raw)
         if self._fused is not None:
