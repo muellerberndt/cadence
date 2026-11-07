@@ -2,17 +2,19 @@
 
 <!-- requires: torch -->
 
-Every graph brain runs on the `"cpu"` backend in NumPy float64 unless you pick another. Start
-from the NumPy-only [installation](../README.md#get-started) and add an extra:
+`Brain.compose` takes the fastest backend the machine has for the brain's size and rows
+([the default backend](#the-default-backend)); every other graph brain runs on the `"cpu"` backend in
+NumPy float64 unless you pick another. Start from the NumPy-only
+[installation](../README.md#get-started) and add an extra:
 
 ```bash
 python -m pip install "cadence-net[fast]==0.94.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX; from a checkout, use
-`python -m pip install -e ".[fast]"`. Installing a library never selects it: pass
-`backend="torch"` or `backend="mlx"`. `available_backends()` lists the importable backends
-with the device and default precision each would use.
+`python -m pip install -e ".[fast]"`. `Brain.compose` uses what is installed where it is the fastest, and
+everything else takes `backend="torch"` or `backend="mlx"` by name. `available_backends()` lists the
+importable backends with the device and default precision each would use.
 
 ```python
 import cadence as cd
@@ -54,11 +56,12 @@ remembered, so an MLX installed later in the process is found
 
 ## What runs where
 
-`backend=` (default `"cpu"`) and `device=` (default `None`, the best device) are construction
-arguments of `NeuralGraph` and `Brain.compose`; `Brain.retune` refuses them. `precision=`
-(`"float64"` or `"float32"`, read by torch: float32 on a device, float64 on the CPU device, unless
-named) is an argument of `NeuralGraph`, `Brain.compose`, `Brain.load` and `Learner.load`. Loads default
-to the saved precision; `Brain.load` defaults to `backend="cpu"`, `Learner.load` to the saved backend.
+`backend=` (`Brain.compose`: default `"auto"`; `NeuralGraph`: default `"cpu"`) and `device=` (default
+`None`, the best device) are construction arguments of `NeuralGraph` and `Brain.compose`; `Brain.retune`
+refuses them. `precision=` (`"float64"` or `"float32"`, read by torch: float32 on a device, float64 on the
+CPU device, unless named) is an argument of `NeuralGraph`, `Brain.compose`, `Brain.load` and `Learner.load`.
+Loads default to the saved precision. `Brain.load` with no backend takes the rule's choice again for a
+brain the rule placed, and the CPU for any other; `Learner.load` defaults to the saved backend.
 `Learner.load(path, backend="cpu")` brings a checkpoint learned on any device back to the
 float64 receipt backend.
 
@@ -117,6 +120,58 @@ carried route, one small read per residual check and per settle, and one read of
 update's report and finite checks. The memories, the eligibility and the optimizer's state do not
 cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
 
+
+## The default backend
+
+With no backend named, `Brain.compose` uses `backend="auto"`: the fastest backend this machine has for
+the brain's size and rows, in float32 on a device. Rows are known at a brain's first moment, so it composes
+on the host and places itself there, with nothing learned yet to move. A brain a device passes at one row
+takes the device at compose. Reading `brain.recall` or `brain.brain` before a first moment that moves the
+brain holds the host's object; read them after it, or name the backend.
+
+| Device | A brain takes it from | Read on |
+| --- | --- | --- |
+| CUDA, float32 | `rows * synapses >= 700,000`, under an apical compartment 150,000 | an NVIDIA A10G against one core of its EPYC 7R32, `step` and `lesson` |
+| MLX, float32 | `rows * synapses >= 500,000`; a brain no launch takes, past 2,048 settling neurons or 1,360 under a compartment, from 32 rows | an Apple M4 against one of its cores |
+| The compiled CPU path | every other brain | |
+
+On that A10G, in milliseconds of `step` per moment, one CPU core then the device:
+
+| Brain | Synapses | Rows | One core | A10G, float32 |
+| --- | ---: | ---: | ---: | ---: |
+| The chamber's default brain, 35 inputs | 13,120 | 1 | 3.1 | 10.5 |
+| The same | | 16 | 11.0 | 12.0 |
+| The same | | 64 | 30.6 | 18.3 |
+| The same | | 256 | 97.1 | 26.9 |
+| 128 inputs, `modules=(64,)` | 30,976 | 16 | 18.2 | 18.0 |
+| 512 inputs, `modules=(128,)` | 222,464 | 4 | 31.7 | 27.7 |
+| 1,024 inputs, `modules=(256,)` | 870,912 | 1 | 39.4 | 24.6 |
+| The speech size, 3,920 inputs, `modules=(512,)` | 6,321,152 | 1 | 313 | 26.3 |
+| The same | | 16 | 1,393 | 41.6 |
+| `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`, 48 inputs | 50,048 | 1 | 6.4 | 11.7 |
+| The same | | 4 | 17.8 | 12.7 |
+| The same | | 64 | 164 | 22.7 |
+
+An `act` crosses later than `step` and `lesson`: the chamber at 16 rows reads 1.5 ms on one core and 3.2 on
+that device, and the speech size at one row 10.2 and 5.1.
+
+MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
+have no reading; name them to use them. A CUDA card this table has not read takes the device from twice the
+work, a stated margin with no calibration in this version. Options that keep the moment's memories on the
+host take a device from four times the work, and `precision="float64"` named on CUDA from four times, both
+reasoned from the readings above and not read at that size. A learned code stays off torch.
+
+A choice is made once, at the first moment: rows that grow later do not move the brain. `brain.placement` and
+`brain.describe()["placement"]` state the `backend`, `device`, `precision`, `chosen_by` (`"auto"`, `"named"` or
+`"environment"`), `why`, `refused` and `pending`, and a checkpoint states what it ran on (`saved_on` after
+a load). A device that refuses the brain falls to the next fastest, and `refused` names it with its reason:
+detection never fails a compose. Without the optional packages nothing is imported, and below a device's
+work neither torch nor MLX is imported where they are installed.
+
+Results differ between backends within rounding per moment, so a run that must repeat names its backend.
+`backend="cpu"` keeps its bits, with `recall=False` or `recall_founder=True` as well.
+`CADENCE_BACKEND` names one for a whole run where none is named: `cpu`, `mlx`, `torch`, `torch:cuda` or
+`torch:cuda:float64`. This library's tests, benchmarks and examples name theirs.
 
 ## Choosing a device
 

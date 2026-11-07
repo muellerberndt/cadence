@@ -25,6 +25,20 @@
   441. On `benchmarks/depth/and_count.py`'s four regions the mean of the ten readings from lesson 3,100
   over six seeds is .802 on the CPU and .786 on MLX, a difference of .016 with a standard error of .015.
   See [precision matters](docs/backends.md#precision-matters).
+- **Default change: the fastest backend, with nothing named.** `Brain.compose` takes `backend="auto"`:
+  at its first moment, when its rows are known, a brain takes the fastest backend the machine has for its
+  size and rows, by the measured rule in [the default backend](docs/backends.md#the-default-backend), and a
+  brain a device passes at one row takes it at compose. On an A10G the speech size's `step` reads 26 ms against
+  313 on one CPU core at one row, and 42 against 1,393 at 16; the chamber at 16 rows stays on the core.
+  `brain.placement` and `describe()["placement"]` state what it took and why, and a checkpoint states what it
+  ran on. A device that refuses a brain falls to the next fastest and the report names it. Nothing is imported
+  below a device's work. `backend="cpu"` keeps its bits; `CADENCE_BACKEND` names a backend for a whole run; tests,
+  benchmarks and examples name theirs. MPS leaves the list, and a card the table has not read takes a device from
+  twice the work.
+- **Default change: float32 on a device.** A device named with no precision, and `backend="auto"`, take
+  float32, efficacies, biases and the optimizer's history with it; `precision="float64"` stays by name, and
+  `Brain.compose` takes `precision`. A float32 lesson at the speech size and 256 rows reads 81 ms against 1,025
+  in float64 on an A10G.
 - **A moment on CUDA.** From a moment of `streams * width * (width + 1024) >= 3,000,000` the recall
   memory, the working trace, the consolidating store, the carried routes' contrast, the critic's weights
   and eligibility and the moment's drive run on the device, by the same equations, within rounding of

@@ -46,7 +46,7 @@ from dataclasses import replace
 from functools import wraps
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, TypeVar, cast
+from typing import Any, Literal, TypeVar, cast
 
 import numpy as np
 
@@ -85,7 +85,13 @@ from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
-from .resident import _memory_on_device, arrays_of
+from .resident import (
+    _backend_of_the_run,
+    _Candidate,
+    _fastest_backends,
+    _memory_on_device,
+    arrays_of,
+)
 from .stream import (
     Efference,
     FastSynapses,
@@ -167,6 +173,19 @@ _CODE_STREAM = 7103
 _Operation = TypeVar("_Operation", bound=Callable[..., Any])
 
 
+_PLACED_LATER = "it takes its backend at its first moment, when its rows are known"
+
+
+def _place_of(candidate: _Candidate, precision: str | None) -> dict[str, Any]:
+    """The constructor's settings of a place a brain can run."""
+    place: dict[str, Any] = {"backend": candidate.backend}
+    if candidate.device is not None:
+        place["device"] = candidate.device
+    if candidate.precision is not None or precision is not None:
+        place["precision"] = candidate.precision or precision
+    return place
+
+
 def _operation(method: _Operation) -> _Operation:
     """A public operation: the recall memory binds the content products it reuses to its
     bank for the operation's length (``Recall._scope``). A warning the method issues for its
@@ -174,6 +193,8 @@ def _operation(method: _Operation) -> _Operation:
 
     @wraps(method)
     def operated(self: Brain, *args: Any, **kwargs: Any) -> Any:
+        if self._unplaced:
+            self._place_for(args[0] if args else kwargs.get("observations"))
         if self.recall is None:
             return method(self, *args, **kwargs)
         with self.recall._scope():
@@ -2081,6 +2102,10 @@ class Brain:
             apical=compartment,
         )
         self._composition: dict[str, Any] | None = None  # construction provenance, not parameters
+        # a composed brain's backend, when the rule chose it (``placement``); ``_unplaced``: it
+        # takes it at its first moment, when its rows are known
+        self._placement: dict[str, Any] | None = None
+        self._unplaced = False
         # ``attention`` is a compose-only recipe marker. Its behavior is fully represented by
         # the learned-code and Recall settings, but the marker keeps the user's construction
         # choice inspectable and round-trippable.
@@ -2633,6 +2658,9 @@ class Brain:
 
         A new brain holds the recall memory, up to 4,096 observation-code coordinates;
         ``recall=False`` builds it without one, and a custom anatomy holds one only by name.
+        With no ``backend`` named a brain takes the fastest this machine has for its size and rows,
+        in float32 on a device, at its first moment (``placement``, docs/backends.md). ``device``
+        and ``precision`` name a place on torch; a run that must repeat names its backend.
         ``options`` takes the constructor's memory settings (``recall`` and its
         ``recall_<setting>``, ``episodic``, ``memory_choice`` and its settings,
         ``efference_amplitude``, ``history_decays``, ``working_memory_*``) and every configuration
@@ -2736,11 +2764,46 @@ class Brain:
                     f"{motor} neurons, where these inputs need {needed} and these actions "
                     f"{layout['actions']}"
                 )
-        result = cls(
-            connectome, seed=seed, slots=slots, code=units,
-            inputs=layout["inputs"] if layout["coded_cortex"] else None,
-            learned_code=learned or None, **options,
-        )
+        where = {name: options.pop(name) for name in ("backend", "device", "precision")
+                 if name in options}
+
+        def built(**place: Any) -> Brain:
+            return cls(
+                connectome, seed=seed, slots=slots, code=units,
+                inputs=layout["inputs"] if layout["coded_cortex"] else None,
+                learned_code=learned or None, **options, **place,
+            )
+
+        if where.get("backend", "auto") != "auto":
+            result = built(**where)
+        elif where.get("device") is not None:  # a device named names torch
+            result = built(**{**where, "backend": "torch"})
+        elif (run := _backend_of_the_run()) is not None:
+            result = built(**_place_of(run, where.get("precision")))
+            result._placement = {"chosen_by": "environment", "why": run.why, "refused": []}
+        else:
+            result = built()
+            held: dict[str, Any] = {
+                "chosen_by": "auto", "why": _PLACED_LATER, "refused": [],
+                "precision_named": where.get("precision"),
+            }
+            result._placement = held
+            result._unplaced = True
+            # where a device is the fastest at one row it is at any rows: no second move
+            for candidate in result._backends_at(1):
+                if candidate.backend == "cpu":
+                    if held["refused"]:  # the devices the rule asks of have refused it
+                        held["why"] = candidate.why
+                        result._unplaced = False
+                    break
+                try:
+                    placed = built(**_place_of(candidate, None))
+                except Exception as error:  # detection never fails a compose
+                    held["refused"].append(f"{candidate.backend}: {error}")
+                    continue
+                placed._placement = {**held, "why": candidate.why}
+                result = placed
+                break
         result.attention = attention
         if custom:
             return result  # a custom anatomy records no composition
@@ -3032,7 +3095,7 @@ class Brain:
         return _graft(self, donor, regions, into, joints, freeze)
 
     def describe(self) -> dict[str, Any]:
-        """Describe the brain without changing live state: four sections.
+        """Describe the brain without changing live state: five sections.
 
         - ``layout``: the inputs, actions, regions, slots, neurons, synapses and populations;
           ``code``, what the memories key on; ``learned_code``, a learned code's settings and
@@ -3041,6 +3104,7 @@ class Brain:
         - ``genes``: every setting by the name ``compose`` and ``retune`` take, the teaching
           point as ``teaching`` (``"custom"`` for steps that ``learning=LearnerConfig(...)``
           set outside every point, whose six effective settings are then under ``learning``).
+        - ``placement``: where it runs and why (``placement``).
         - ``memories``: one entry per member of ``brain.memories``, its ``to_dict()``.
         - ``pending``: whether an issued action owns the next real outcome.
 
@@ -3147,6 +3211,7 @@ class Brain:
                 "composition": self._composition,
             },
             "genes": genes,
+            "placement": self.placement,
             "memories": {name: memory.to_dict() for name, memory in self.memories.items()},
             "pending": self.pending_feedback,
         }
@@ -3431,6 +3496,89 @@ class Brain:
             drive = self.memories.stimulus(drive, self._read_moment(x, code))
         return cast(np.ndarray, drive)
 
+    # -- where the brain runs
+
+    @property
+    def placement(self) -> dict[str, Any]:
+        """Where this brain runs, and why: ``backend``, ``device`` and ``precision``; ``chosen_by``,
+        ``"named"`` for a backend the caller named, ``"environment"`` for ``CADENCE_BACKEND`` and
+        ``"auto"`` for the rule's choice; ``why``; ``refused``, the devices that refused it on the
+        way; ``pending`` while it has not taken its backend (its first moment decides)."""
+        graph, held = self.brain, self._placement or {}
+        kernel = graph._torch
+        precision = "float64" if graph.backend == "cpu" else "float32"
+        if kernel is not None:
+            precision = str(kernel.dtype).replace("torch.", "")
+        out = {
+            "backend": graph.backend,
+            "device": None if kernel is None else str(kernel.device),
+            "precision": precision,
+            "chosen_by": held.get("chosen_by", "named"),
+            "why": held.get("why", "the backend was named"),
+            "refused": list(held.get("refused", ())),
+            "pending": self._unplaced,
+        }
+        if "saved_on" in held:
+            out["saved_on"] = held["saved_on"]
+        return out
+
+    def _memories_stay_on_host(self) -> bool:
+        """Whether an option keeps the moment's memories on the host at every size: several heads,
+        a window, the read of the command or of when, the gains, tokens, a separator, a surprise
+        gate, an episodic vote or a learned code."""
+        recall, store = self.recall, self.hippocampus
+        return bool(
+            self._episodic is not None or self.learned_code is not None
+            or (recall is not None and not recall.resides)
+            or (store is not None and (store.separator is not None
+                                       or getattr(store, "gate_noise", None) is not None))
+        )
+
+    def _backends_at(self, rows: int) -> list[_Candidate]:
+        connectome = self.connectome
+        return _fastest_backends(
+            rows, connectome.synapses,
+            settling=int(np.unique(connectome.post).size),
+            apical=self.brain.apical is not None,
+            precision=(self._placement or {}).get("precision_named"),
+            host_memory=self._memories_stay_on_host(),
+            learned_code=self.learned_code is not None,
+        )
+
+    def _place_for(self, observations: Any) -> None:
+        """Take the backend the rule chooses at the rows of a brain's first moment. Invalid
+        observations are the operation's to refuse, and the next moment decides."""
+        try:
+            rows = len(self._observations(observations))
+        except (TypeError, ValueError):
+            return
+        self._place_at(rows)
+
+    def _place_at(self, rows: int) -> None:
+        """The first candidate that takes this brain, in place of its host parts; nothing has been
+        learned yet that a move could lose, and what a caller changed goes with the checkpoint. A
+        device that refuses it is reported, and the CPU path takes every brain."""
+        import tempfile
+
+        self._unplaced = False
+        held = self._placement = {**(self._placement or {}), "chosen_by": "auto"}
+        refused = list(held.get("refused", ()))
+        for candidate in self._backends_at(rows):
+            if candidate.backend == "cpu":
+                held.update(why=candidate.why, refused=refused)
+                return
+            try:
+                with tempfile.TemporaryDirectory(prefix="cadence-place-") as folder:
+                    path = self.save(Path(folder) / "brain.npz", compressed=False)
+                    placed = type(self).load(path, **_place_of(candidate, None))
+            except Exception as error:  # a device that refuses the brain is not its failure
+                refused.append(f"{candidate.backend}: {error}")
+                continue
+            self.__dict__.clear()
+            self.__dict__.update(placed.__dict__)
+            self._placement = {**held, "why": candidate.why, "refused": refused}
+            return
+
     def _memories_kernel(self, rows: int) -> Any:
         """The kernel whose device holds this brain's memories, its critic and its moments' drives
         at ``rows`` streams, where each of them has a device path and the moment's size pays for it
@@ -3438,15 +3586,9 @@ class Brain:
         or of when, the gains, tokens, a separator, a surprise gate or an episodic vote keep the
         whole moment's memory on the host."""
         kernel = self.brain._torch if self.brain._torch is not None else self.brain._mlx
-        if kernel is None:
-            return None
-        recall, store = self.recall, self.hippocampus
         if (
-            not _memory_on_device(kernel, rows, self.code_width)
-            or self._episodic is not None or self.learned_code is not None
-            or (recall is not None and not recall.resides)
-            or (store is not None and (store.separator is not None
-                                       or getattr(store, "gate_noise", None) is not None))
+            kernel is None or not _memory_on_device(kernel, rows, self.code_width)
+            or self._memories_stay_on_host()
         ):
             return None
         return kernel
@@ -5052,6 +5194,7 @@ class Brain:
             "pending": agent._pending is not None,
             "last_learning": self.last_learning,
             "memories": memories,
+            "placement": self.placement,
         }
         if self._composition is not None:
             metadata["composition"] = plain(self._composition)
@@ -5169,11 +5312,13 @@ class Brain:
         cls,
         path: str | Path,
         *,
-        backend: Backend = "cpu",
+        backend: Backend | Literal["auto"] | None = None,
         device: str | None = None,
         precision: str | None = None,
     ) -> Brain:
-        """Resume a complete saved brain, defaulting to portable CPU inference and learning.
+        """Resume a complete saved brain. With no ``backend`` named, a brain whose backend the rule
+        chose takes it again at its first moment (``backend="auto"``), and any other runs on the
+        CPU, portable inference and learning.
 
         Reads ``cadence-brain/1`` and ``cadence-brain/2`` (a brain with maturity), the formats
         of 0.85.0 on, and refuses the earlier ``cadence-generic/1`` to ``/10`` by name: cadence
@@ -5203,7 +5348,18 @@ class Brain:
                 )
             meta, data = _flat_layout(saved, archive)
             arousal = Arousal.from_dict(meta["arousal"]) if "arousal" in meta else None
-            learner = Learner.load(path, backend=backend, device=device, precision=precision)
+            ran_on = meta.get("placement")
+            chosen = isinstance(ran_on, dict) and ran_on.get("chosen_by") == "auto"
+            asked: str = backend if backend is not None else ("auto" if chosen else "cpu")
+            place_later = asked == "auto"
+            if place_later:
+                run = _backend_of_the_run()
+                asked = "cpu" if run is None else run.backend
+                device = None if run is None else run.device
+                place_later = run is None
+            learner = Learner.load(
+                path, backend=cast(Backend, asked), device=device, precision=precision
+            )
             if learner.config.nudge != "cross_entropy":
                 raise ValueError(
                     removed_on_load("learner", "nudge", learner.config.nudge, "learning_nudge")
@@ -5387,6 +5543,22 @@ class Brain:
                 agent._free_brain = learner.brain if meta.get("free_current", False) else None
             result._prepared = data["prepared"].copy() if "prepared" in data else None
             result.last_learning = meta.get("last_learning", {})
+            if isinstance(ran_on, dict):
+                here = result.placement
+                moved = any(ran_on.get(name) != here[name] for name in ("backend", "device", "precision"))
+                result._placement = (
+                    {"chosen_by": "named", "why": "the backend was named at load", "refused": [],
+                     "saved_on": ran_on}
+                    if moved else
+                    {"chosen_by": ran_on.get("chosen_by", "named"), "why": ran_on.get("why", ""),
+                     "refused": list(ran_on.get("refused", ()))}
+                )
+            if place_later:
+                result._placement = {
+                    **(result._placement or {}), "chosen_by": "auto",
+                    "precision_named": precision, "why": _PLACED_LATER, "refused": [],
+                }
+                result._unplaced = True
             recalled_memory = result.recall
             if recalled_memory is not None:
                 recalled_memory.took_eligibility(*(
@@ -5626,7 +5798,7 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
     changes = _grow_parts(brain, settings)
     inputs, actions, composed = _composed_again(brain)
     grown = int(sum(changes["slots"])) if "slots" in changes else actions
-    template = type(brain).compose(inputs, grown, **{**composed, **changes})
+    template = type(brain).compose(inputs, grown, backend="cpu", **{**composed, **changes})
     gains = None
     if brain.hearing is not None:
         gains = {
@@ -5641,7 +5813,7 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
         # the trained brain through its checkpoint, on the CPU, whatever device it lives on;
         # the grown brain starts its streams afresh, as after reset()
         brain.save(root / "living.npz", compressed=False)
-        trained = type(brain).load(root / "living.npz")
+        trained = type(brain).load(root / "living.npz", backend="cpu")
         trained.reset()
         trained.save(root / "trained.npz", compressed=False)
         template.save(root / "template.npz", compressed=False)
@@ -6102,7 +6274,7 @@ def _graft(
     with tempfile.TemporaryDirectory(prefix="cadence-graft-") as folder:
         root = Path(folder)
         host.save(root / "living.npz", compressed=False)
-        fresh = type(host).load(root / "living.npz")
+        fresh = type(host).load(root / "living.npz", backend="cpu")
         fresh.reset()  # the grafted brain starts its streams afresh, as after reset()
         fresh.save(root / "host.npz", compressed=False)
         donor.save(root / "donor.npz", compressed=False)

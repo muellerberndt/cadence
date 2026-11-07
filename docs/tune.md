@@ -134,7 +134,7 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `code` | unset: the observation itself | construction | [memory](senses.md#the-observation-code) |
 | `memory_choice` and the other `memory_*` episodic settings | `False` | construction | [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) |
 | `recall` and every `recall_*` | `True` up to 4,096 code coordinates; `recall=False` builds no memory | see the page | [recall memory](memory.md#the-recall-memory-in-full) |
-| `backend`, `device`, `dense_limit` | `"cpu"`, `None`, `2048` (with `recall=True` as wide as dense blocks) | construction | [backends](backends.md) |
+| `backend`, `device`, `precision`, `dense_limit` | `"auto"`, `None`, `None`, `2048` (with `recall=True` as wide as dense blocks) | construction | [backends](backends.md) |
 
 Constants of the composed brain, not settings: the nudge `beta` 0.1, the learner's `momentum`
 0.9, the rehearsal's reservoir of 512 lesson rows, the dopamine cap 1.0, reward eligibility phases

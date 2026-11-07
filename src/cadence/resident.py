@@ -14,13 +14,15 @@ slot's cost where a functional update would copy the bank. Torch runs as it is w
 
 from __future__ import annotations
 
+import importlib.util
 import os
+import sys
 from collections.abc import Mapping, Sequence
 from typing import Any, NamedTuple, cast
 
 import numpy as np
 
-from .brain import BrainState, _host_copy, _MlxState, _resident
+from .brain import BrainState, _host_copy, _mlx_probe, _MlxState, _resident
 
 __all__: list[str] = []
 
@@ -56,6 +58,103 @@ def _memory_on_device(kernel: Any, streams: int, width: int) -> bool:
         kernel.device.type == "cuda"
         and streams * width * (width + _RESIDENT_ROW) >= _RESIDENT_WORK
     )
+
+
+# -- the backend a composed brain takes when none is named (docs/backends.md, the default backend)
+
+# ``rows * synapses`` from which a device passes one CPU core on a composed brain, on the moments of
+# a learning life (``step``, ``lesson``): in float32 on an A10G, under a compartment, whose settle
+# costs a CPU core more, and on an Apple M4.
+_AUTO_CUDA_WORK = 700_000
+_AUTO_CUDA_APICAL = 150_000
+_AUTO_MLX_WORK = 500_000
+# A launch on MLX takes this many settling neurons, and past them a brain runs its compiled sweep,
+# which passes one CPU core from about this many rows (one deep anatomy, between 16 and 64).
+_MLX_LAUNCH_NEURONS = (8, 2048)
+_MLX_LAUNCH_APICAL = 1360
+_MLX_SWEEP_ROWS = 32
+# Reasoned, not read at the rule's size. Float64 named on CUDA: that device does float64 at a small
+# part of its float32 rate. Memories that stay on the host (``Brain._memories_stay_on_host``): a
+# moment crosses. A card the table has not read: a stated, conservative margin.
+_AUTO_CUDA_FLOAT64 = 4
+_AUTO_HOST_MEMORY = 4
+_AUTO_UNSEEN = 2
+_AUTO_READ_CARDS = ("A10G",)
+
+
+class _Candidate(NamedTuple):
+    """A place a brain can run, and the rule's reason."""
+
+    backend: str
+    device: str | None
+    precision: str | None
+    why: str
+
+
+def _cuda_card() -> str | None:
+    """The CUDA card here, None without one. Torch is imported only when the rule asks."""
+    if importlib.util.find_spec("torch") is None:
+        return None
+    try:
+        import torch
+
+        return str(torch.cuda.get_device_name(0)) if torch.cuda.is_available() else None
+    except Exception:  # a broken install is a machine without the device
+        return None
+
+
+def _mlx_present() -> bool:
+    if sys.platform != "darwin" or importlib.util.find_spec("mlx") is None:
+        return False
+    return _mlx_probe()[0] is not None
+
+
+def _fastest_backends(
+    rows: int, synapses: int, *, settling: int | None = None, apical: bool = False,
+    precision: str | None = None, host_memory: bool = False, learned_code: bool = False,
+) -> list[_Candidate]:
+    """Where a brain of ``synapses`` runs fastest at ``rows``, the fastest first; the compiled CPU
+    path ends the list. MPS and other torch devices are not on it: MPS reads slower than MLX and
+    the CPU, and the others have no reading. No package is imported below a device's work."""
+    work = rows * synapses
+    margin = _AUTO_HOST_MEMORY if host_memory else 1
+    said = f"{rows} rows of {synapses} synapses"
+    out: list[_Candidate] = []
+    low, high = _MLX_LAUNCH_NEURONS
+    launched = settling is None or low <= settling <= (_MLX_LAUNCH_APICAL if apical else high)
+    if (
+        precision != "float64"
+        and (work >= _AUTO_MLX_WORK * margin if launched else rows >= _MLX_SWEEP_ROWS)
+        and _mlx_present()
+    ):
+        out.append(_Candidate("mlx", None, None, f"{said} are past where MLX passes one CPU core"))
+    floats = precision or "float32"
+    needed = (_AUTO_CUDA_APICAL if apical else _AUTO_CUDA_WORK) * margin
+    if floats == "float64":
+        needed *= _AUTO_CUDA_FLOAT64
+    if not learned_code and work >= needed:
+        card = _cuda_card()
+        if card is not None and not any(name in card for name in _AUTO_READ_CARDS):
+            needed *= _AUTO_UNSEEN
+        if card is not None and work >= needed:
+            out.append(_Candidate(
+                "torch", "cuda", floats, f"{said} are past where {card} passes one CPU core"
+            ))
+    why = "the next fastest" if out else f"{said} are below where a device here passes one CPU core"
+    out.append(_Candidate("cpu", None, None, why))
+    return out
+
+
+def _backend_of_the_run() -> _Candidate | None:
+    """``CADENCE_BACKEND`` names a backend for a whole run: ``cpu``, ``mlx``, ``torch`` or
+    ``torch:<device>``, and with ``:float32`` or ``:float64`` after a device its precision."""
+    named = os.environ.get("CADENCE_BACKEND", "")
+    if not named:
+        return None
+    backend, device, precision = (*named.split(":"), None, None)[:3]
+    if backend not in ("cpu", "torch", "mlx"):
+        raise ValueError(f"CADENCE_BACKEND names {named!r}: cpu, torch[:device[:precision]] or mlx")
+    return _Candidate(backend, device, precision, "CADENCE_BACKEND names it for the run")
 
 
 def _host_array(array: Any) -> np.ndarray:
