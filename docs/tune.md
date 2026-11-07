@@ -466,6 +466,10 @@ takes 24 and 43 percent fewer multiply-accumulates. This block holds paths at wh
 256 whole steps read paths .84, nine under .80, and the rates .94, three under .80. On that form at 512, six development lives
 read clauses .88 and paths .66 at the rates and clauses .90 and paths .56 at whole steps.
 
+These lives took the ordinary solve. With the fast solve, on a further block of six fresh founders, twelve lives per width, a new
+brain reads clauses .99 and .99, brackets .89 and .93, paths .96 (least .91) and .97 (least .88), no life under .80, at 128 and 256,
+in 111 and 147 seconds a life ([one composition](memory.md#one-composition-for-sequences)).
+
 ## The brain in a browser page
 
 The library ships no browser page, environment or body. For an application display,
