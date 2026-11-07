@@ -77,9 +77,9 @@ where every entry holds one synapse, each block has one gain, every tie is one b
 another's, transposed, and every synapse is plastic at one rate: the contrast, the moments and the
 normalization by block and over the neurons in float32, the ties, the bound, the new blocks and the
 biases in one launch. Below that, MLX hands the contrast to a host optimizer. `ActorCritic` updates on the
-device when both of its phases settled there, by the same sizes on MLX; its critic and dopamine use host
-arrays, which read the critic's columns of a state and nothing else of it. Reading
-parameters or saving a checkpoint copies arrays back. Parameter edits and the `learner.brain`
+device when both of its phases settled there, by the same sizes on MLX. Its dopamine is the host's, and below
+the [memories' size](#memories-on-the-device) so is its critic, which reads the critic's columns of a state and
+nothing else of it. Reading parameters or saving a checkpoint copies arrays back. Parameter edits and the `learner.brain`
 rule are in [contracts](contracts.md).
 
 ### Memories on the device

@@ -256,6 +256,30 @@ def test_a_moment_reads_nothing_wider_than_its_action(monkeypatch):
     assert 0 < widest <= max(SPEECH[1], len(mlx.hearing.routes))
 
 
+def test_a_large_block_is_made_alone(monkeypatch):
+    """A block past the size is made in a launch alone and its size read a part of the rows at a
+    time: the same eligibility and the same report, and the next step goes on from them."""
+    twins = [cd.Brain.compose(*SPEECH, seed=2, modules=(256,), backend="mlx") for _ in range(2)]
+    rng = np.random.default_rng(5)
+    moments = [(rows_of(rng, 3), rng.random(3) - 0.5) for _ in range(4)]
+
+    def lived(brain):
+        brain.step(moments[0][0])
+        for x, reward in moments[1:]:
+            brain.step(x, reward=reward)
+        return brain.basal_ganglia, brain.last_learning["trace"]
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        whole, whole_trace = lived(twins[0])
+        monkeypatch.setattr(brain_module, "_MLX_ELIGIBLE_ALONE", 1 << 12)
+        alone, alone_trace = lived(twins[1])
+    assert whole._trace_mlx is not None and alone._trace_mlx is not None
+    assert alone_trace == pytest.approx(whole_trace, rel=1e-5)
+    for one, other in zip(whole._trace_mlx[0], alone._trace_mlx[0], strict=True):
+        np.testing.assert_allclose(np.array(one), np.array(other), rtol=0, atol=1e-6)
+
+
 def test_the_size_decides_on_mlx(monkeypatch):
     class Kernel:
         mx = None

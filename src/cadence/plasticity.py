@@ -1095,9 +1095,9 @@ class ActorCritic:
         warm: BrainState | None = None,
     ) -> dict[str, float]:
         """``learn`` for streams whose phases rest on the MLX device, in float32: each stream's
-        contrast, eligibility and the mean steps never come to the host; the critic and the
-        dopamine stay there, in float64. A moment that adds no eligibility changes a factor per row
-        on the host (``fade``)."""
+        contrast, eligibility and the mean steps never come to the host. The dopamine is the host's,
+        in float64, and the critic rests on whichever side the memories do. A moment that adds no
+        eligibility changes a factor per row on the host (``fade``)."""
         cfg = self.config
         learner = self.learner
         span = 2.0 * learner.config.beta
