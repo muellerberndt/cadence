@@ -266,25 +266,30 @@ class Trace:
         if self._device is not None:
             if "trace" not in self.__dict__ and "last" not in self.__dict__:
                 return
-            written: dict[str, Any] = {
-                name: self.__dict__.pop(name) for name in ("trace", "last")
-                if name in self.__dict__
-            }
             self.leave_device()
-            self.__dict__.update(written)
         self._device = _TraceOnDevice(self, kernel)
 
     def leave_device(self) -> None:
+        """Back on the host; what was written there since (``_restore_traces``) stays."""
         held = self.__dict__.get("_device")
         if held is not None:
-            self.__dict__["trace"] = _host_array(held.trace)
-            self.__dict__["last"] = _host_array(held.last)
+            for name in ("trace", "last"):
+                if name not in self.__dict__:
+                    self.__dict__[name] = _host_array(getattr(held, name))
             self._device = None
+
+    def _resident_path(self) -> _TraceOnDevice | None:
+        """What rests on the device, None once an array was written on the host: that brings the
+        other back first, and the host's path reads them."""
+        if self._device is not None and ("trace" in self.__dict__ or "last" in self.__dict__):
+            self.leave_device()
+        return self._device
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Fresh for every stream, or for ``rows`` only (streams that begin again)."""
-        if self._device is not None:
-            self._device.reset(batch, rows)
+        held = self._resident_path()
+        if held is not None:
+            held.reset(batch, rows)
             return
         if rows is None or len(self.trace) != batch:
             self.trace = np.zeros((batch, len(self.hidden)))
@@ -319,8 +324,9 @@ class Trace:
 
     def update(self, state: BrainState) -> None:
         """After the free phase: the trace decays toward the source neurons' activation."""
-        if self._device is not None:
-            self._device.update(state)
+        held = self._resident_path()
+        if held is not None:
+            held.update(state)
             return
         h = self._source_activation(state)
         if len(self.trace) != len(h):
@@ -1376,24 +1382,34 @@ class Recall:
         held = self._device
         if held is not None:
             if any(name in self.__dict__ for name in _RecallOnDevice.OWNED):
-                written = {
-                    name: self.__dict__.pop(name) for name in _RecallOnDevice.OWNED
-                    if name in self.__dict__
-                }
                 self.leave_device()
-                self.__dict__.update(written)
             else:
                 held.kernel = kernel
                 return
         if self.resides and not self._private:
             self._device = _RecallOnDevice(self, kernel)
 
+    def _resident_path(self) -> _RecallOnDevice | None:
+        """What rests on the device, None once an array was written on the host: that brings the
+        others back first, and the host's path reads them."""
+        held = self._device
+        if held is not None and any(name in self.__dict__ for name in _RecallOnDevice.OWNED):
+            self.leave_device()
+            return None
+        return held
+
     def leave_device(self) -> None:
-        """Every array back on the host, the actor's eligibility of the read with them."""
+        """Every array back on the host, the actor's eligibility of the read with them; what was
+        written on the host since stays."""
         held = self.__dict__.get("_device")
         if held is None:
             return
+        written = {
+            name: self.__dict__.pop(name) for name in _RecallOnDevice.OWNED
+            if name in self.__dict__
+        }
         held.give_back()
+        self.__dict__.update(written)
         self._device = None
         actor = self._actor
         if actor is not None:
@@ -1653,8 +1669,9 @@ class Recall:
         """Empty every stream, or the streams of ``rows`` only (streams that begin again): their
         slots, the cortex of the moment before and the window's events. The address map is
         learned and stays."""
-        if self._device is not None:
-            self._device.reset(batch, rows)
+        held_device = self._resident_path()
+        if held_device is not None:
+            held_device.reset(batch, rows)
             return
         if rows is not None:
             rows = _stream_rows(rows, batch)
@@ -1774,16 +1791,20 @@ class Recall:
     def snapshot(self) -> dict[str, Any]:
         """The per-stream state, to restore after a refused operation. The next write starts
         new arrays and changes none of these."""
-        if self._device is not None:
-            return self._device.snapshot()
+        held = self._resident_path()
+        if held is not None:
+            return held.snapshot()
         self._rooms = {}
         return {name: getattr(self, name) for name in self._STATE}
 
     def restore(self, snapshot: dict[str, Any]) -> None:
-        """Return to a ``snapshot``; the next moment is addressed afresh."""
-        if self._device is not None:
-            self._device.restore(snapshot)
+        """Return to a ``snapshot``; the next moment is addressed afresh. A snapshot of the host's
+        arrays stays on the host, whatever the operation since placed on the device."""
+        held = self._resident_path()
+        if held is not None and not isinstance(snapshot["keys"], np.ndarray):
+            held.restore(snapshot)
             return
+        self.leave_device()
         for name, value in snapshot.items():
             setattr(self, name, value if isinstance(value, np.ndarray) else _host_array(value))
         self._unread()
@@ -1803,7 +1824,13 @@ class Recall:
         A forecast at an episode's end reads the streams as the end leaves them before the
         end is committed; once it is, that read is the moment's, so the act it decides keeps
         the read's eligibility and ``attended_heads`` describes it."""
-        self.last, self._attended = reading[0], reading[1]
+        last, attended = reading[0], reading[1]
+        if self._device is None and attended is not None and not isinstance(attended, np.ndarray):
+            attended = _host_array(attended)  # a read on the device of arrays that have left it
+            attended.flags.writeable = False
+            if last is not None:
+                last = _Moment(last.event, *(_host_array(a) for a in last[1:]))
+        self.last, self._attended = last, attended
         self._head_reads = reading[2] if len(reading) > 2 else None
 
     # -- the MLX device
@@ -3308,7 +3335,7 @@ class FastSynapses:
         held = self._device
         for name, value in values.items():
             if held is not None and name in _StoreOnDevice.OWNED:
-                setattr(held, name, value)
+                setattr(held, name, value if _resident(value) else held.xp.here(value))
             else:
                 setattr(self, name, _on_host(value))
 
