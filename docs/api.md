@@ -559,8 +559,8 @@ before any change.
 | `settle(stimulus=None, *, steps=60, state=None, mask=None, trajectory=False, nudge=None, tolerance=None) -> BrainState` | A list of neurons at full amplitude, a `{neuron: level}` map or a dense drive vector. A positive `tolerance` stops once no activation moves more. |
 | `settle_batch(drive, ...) -> BrainState` | The same for `(batch, n)` drives. `mask` is `(n,)`, `(1, n)` or `(batch, n)` in `[0, 1]`. |
 | `equilibrate(drive, *, budget=512, chunk=32, tolerance=1e-5, state=None, mask=None, nudge=None, damping=0, fast=False) -> Equilibrium` | Settles until the equation residual is below `tolerance`, checked per chunk; up to `damping` halvings of the step share the budget. |
-| `residual(drive, state, *, nudge=None, mask=None, on_device=True) -> ndarray` | Per-row fixed-point discrepancy; no state change. |
-| `apical_gain(drive, state) -> ndarray or None` | The apical compartment's gain per row and pool at `state`, what a nudged settle from it holds; `None` without the compartment. |
+| `residual(drive, state, *, nudge=None, mask=None, on_device=True, own_precision=False) -> ndarray` | Per-row fixed-point discrepancy; no state change. `own_precision` checks an unread float32 torch state in float32. |
+| `apical_gain(drive, state, *, own_precision=False) -> ndarray or None` | The apical compartment's gain per row and pool at `state`, what a nudged settle from it holds; `None` without the compartment. |
 | `stimulus_vector(stimulus)`, `stimulus_levels(levels)`, `readings(state, names, i=0, level=0.5)` | Drive construction ([pattern targets](settling.md#pattern-targets)); population readings. |
 | `with_parameters(*, efficacy=None, log_gain=None, bias=None)`, `weights`, `dense()`, `to_dict()` | A new graph; effective drive per synapse; the `W[pre, post]` matrix. |
 | `contrast_on_device(plus, minus)` | The learning contrast on the accelerator, or `None`. |

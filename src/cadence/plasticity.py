@@ -570,7 +570,7 @@ class ActorCritic:
             softmax_temperature=actual,
             groups=self.group_id,
             # an apical compartment passes the nudge's change at the gain the free phase set
-            apical_gain=self.learner.brain.apical_gain(drive, free),
+            apical_gain=self.learner.brain.apical_gain(drive, free, own_precision=True),
         )
         return self.learner.brain.settle_batch(
             drive,

@@ -49,7 +49,7 @@ def on(graph: cd.NeuralGraph, device: str, **changes: object) -> cd.NeuralGraph:
     return cd.NeuralGraph(
         graph.connectome, graph.neuron_model, efficacy=graph.efficacy, bias=graph.bias,
         log_gain=graph.log_gain, backend="torch", device=device, apical=graph.apical,
-        **changes,  # type: ignore[arg-type]
+        **{"precision": "float64", **changes},  # type: ignore[arg-type]
     )
 
 
@@ -310,6 +310,35 @@ def test_held_still_products_serve_only_their_own_source_neurons(device, transpo
     np.testing.assert_allclose(held, host2.residual(first, a), rtol=0, atol=1e-12)
 
 
+def test_a_settle_of_no_sweeps_rests_where_the_state_is_unless_a_mask_moves_it(device):
+    brain = composed(apical=False)
+    host = brain.learner.brain
+    dev = on(host, device)
+    n = host.connectome.n
+    rng = np.random.default_rng(23)
+    drive = rng.uniform(-0.5, 1.0, (3, n))
+    a, b = host.settle_batch(drive, steps=9), dev.settle_batch(drive, steps=9)
+    rests = dev.settle_batch(drive, steps=0, state=b)
+    assert rests.steps == 0 and rests.device["s"] is b.device["s"]
+    np.testing.assert_array_equal(rests.activity_change, np.zeros(3))
+    same(host.settle_batch(drive, steps=0, state=a), rests)
+    # a mask republishes the activation; a settle under it does not rest for the next
+    keep = np.ones(n)
+    keep[3] = 0.0
+    a2, b2 = host.settle_batch(drive, steps=0, state=a, mask=keep), dev.settle_batch(
+        drive, steps=0, state=b, mask=keep)
+    same(a2, b2)
+    a3, b3 = host.settle_batch(drive, steps=5, state=a, mask=keep), dev.settle_batch(
+        drive, steps=5, state=b, mask=keep)
+    assert not b3.device["unmasked"]
+    a4, b4 = host.settle_batch(drive, steps=0, state=a3), dev.settle_batch(drive, steps=0, state=b3)
+    assert b4.device["s"] is not b3.device["s"]
+    same(a4, b4)
+    # a reset row returns to rest
+    kept = dev._torch.keep_rows(b.device, np.array([True, False, True]))
+    assert "unmasked" not in kept
+
+
 def test_still_products_can_be_turned_off(device, monkeypatch):
     brain = composed(apical=False)
     host = brain.learner.brain
@@ -337,6 +366,51 @@ def test_learning_steps_match_the_host(device):
     host, dev = brains[0].learner.brain, brains[1].learner.brain
     np.testing.assert_allclose(dev.efficacy, host.efficacy, rtol=0, atol=ATOL)
     np.testing.assert_allclose(dev.bias, host.bias, rtol=0, atol=ATOL)
+
+
+def test_learning_steps_match_the_host_with_a_projections_sums(device):
+    brains = [
+        cd.Brain.compose(12, 6, modules=(10, 8), slots=(3, 3), seed=6, recall=False, teaching="deep")
+        for _ in range(2)
+    ]
+    brains[1].learner.brain = on(brains[1].learner.brain, device)
+    rng = np.random.default_rng(12)
+    n = brains[0].learner.brain.connectome.n
+    assert brains[0].learner.config.normalize_relative
+    for _ in range(4):
+        drive = rng.uniform(-0.3, 1.0, (6, n))
+        labels = rng.integers(0, 3, (6, 2))
+        for brain in brains:
+            brain.learner.step(drive, labels)
+    host, dev = brains[0].learner.brain, brains[1].learner.brain
+    np.testing.assert_allclose(dev.efficacy, host.efficacy, rtol=0, atol=ATOL)
+    np.testing.assert_allclose(dev.bias, host.bias, rtol=0, atol=ATOL)
+
+
+def test_a_float32_brain_learns_and_solves_without_a_float64_copy(device):
+    brain = composed(apical=True, seed=7)
+    brain.learner.brain = on(brain.learner.brain, device, precision="float32")
+    rng = np.random.default_rng(13)
+    n = brain.learner.brain.connectome.n
+    state = None
+    for _ in range(3):
+        drive = rng.uniform(-0.3, 1.0, (4, n))
+        solved = brain.learner.brain.equilibrate(drive, budget=64, tolerance=1e-3, state=state)
+        state = solved.state
+        brain.learner.step(drive, rng.integers(0, 3, (4, 2)))
+        state = None
+    kernel = brain.learner.brain._torch
+    assert kernel._reference is None
+    # asked plainly, the float64 copy answers; asked below the floor, it decides
+    drive = rng.uniform(-0.3, 1.0, (4, n))
+    free = brain.learner.brain.settle_batch(drive, steps=20)
+    own = brain.learner.brain.residual(drive, free, own_precision=True)
+    assert kernel._reference is None
+    plain = brain.learner.brain.residual(drive, free)
+    assert kernel._reference is not None
+    np.testing.assert_allclose(own, plain, rtol=0, atol=1e-3)
+    gain = brain.learner.brain.apical_gain(drive, free, own_precision=True)
+    np.testing.assert_allclose(gain, brain.learner.brain.apical_gain(drive, free), rtol=0, atol=1e-3)
 
 
 def test_trajectory_and_recording_paths_match_the_plain_settle(device):
@@ -411,6 +485,20 @@ def test_graphs_are_captured_again_after_every_capture_was_dropped():
 
 
 @cuda
+def test_a_device_life_is_deterministic():
+    runs = []
+    for _ in range(2):
+        brain = cd.Brain.compose(12, 6, modules=(10, 8), seed=8, teaching="deep", backend="torch",
+                                 device="cuda:0", precision="float64")
+        rng = np.random.default_rng(15)
+        for _ in range(6):
+            x = rng.random((16, 12)) * 0.5
+            brain.lesson(x, np.asarray(brain.act(x, greedy=True)).reshape(-1) % 6)
+        runs.append(np.array(brain.learner.brain.efficacy))
+    np.testing.assert_array_equal(runs[0], runs[1])
+
+
+@cuda
 def test_the_device_settle_is_deterministic():
     brain = composed(apical=True)
     rng = np.random.default_rng(6)
@@ -466,6 +554,40 @@ def test_the_apical_launch_matches_the_products(monkeypatch):
     products = on(host, "cuda:0")
     assert products._torch._pools is None
     same(expected, products.settle_batch(drive, steps=40, tolerance=1e-7))
+
+
+@cuda
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("batch", [1, 7, 70])
+@pytest.mark.parametrize("weighted", [False, True])
+def test_the_nudge_launch_matches_the_host(precision, batch, weighted):
+    pytest.importorskip("triton")
+    brain = composed(apical=False, seed=5)
+    host = brain.learner.brain
+    dev = on(host, "cuda:0", precision=precision)
+    n = host.connectome.n
+    rng = np.random.default_rng(batch)
+    drive = rng.uniform(-0.4, 0.9, (batch, n))
+    outputs = brain.learner.output_index
+    mask = np.zeros(n)
+    mask[outputs] = 1.0
+    mask[outputs[1]] = 0.5
+    target = np.zeros((batch, n))
+    target[:, outputs[0]] = 1.0
+    options: dict[str, object] = {"weight": rng.uniform(-1.0, 2.0, batch)} if weighted else {}
+    groups = np.full(n, -1)
+    groups[outputs[:3]], groups[outputs[3:]] = 0, 1
+    nudge = cd.Nudge(target, mask, 0.2, softmax_temperature=0.3, groups=groups, **options)  # type: ignore[arg-type]
+    a, b = host.settle_batch(drive, steps=20), dev.settle_batch(drive, steps=20)
+    ap, bp = host.settle_batch(drive, steps=20, state=a, nudge=nudge), dev.settle_batch(
+        drive, steps=20, state=b, nudge=nudge)
+    launched = dev._torch._workspace(batch).nudges
+    assert all(buffers.launch is not None for buffers in launched.values())
+    tolerance = 1e-10 if precision == "float64" else 2e-3
+    np.testing.assert_allclose(bp.activation, ap.activation, rtol=0, atol=tolerance)
+    if precision == "float64":
+        np.testing.assert_allclose(dev.residual(drive, bp, nudge=nudge),
+                                   host.residual(drive, ap, nudge=nudge), rtol=0, atol=1e-12)
 
 
 @pytest.mark.parametrize("device_name", devices())

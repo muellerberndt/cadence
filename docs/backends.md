@@ -318,7 +318,10 @@ through a float64 copy of the kernel, the same float64 reference); a state an ML
 that launch's own check, in float32, under the same drive, nudge and parameters; other MLX states,
 MPS states, a state read on the host and `on_device=False` use the float64 host reference. A solve
 on MLX decides by the launch's check from a tolerance of 1e-4, where its rounding is about a
-hundredth of the tolerance, and by the reference below that. A positive movement
+hundredth of the tolerance, and by the reference below that. So does a solve on a float32 torch state,
+by that state's check in float32 (`own_precision=True`); a finite lesson's diagnostics and the gain
+its nudged phases hold are read the same way, so a float32 brain learns without a float64 copy of its
+kernel. A positive movement
 `tolerance` in `settle_batch` tests every step; on CUDA the test is read one sweep behind (the
 next sweep is queued before the host reads the flag, into the other state slot), so the host
 never stalls the device, and the reported state and step count are those of the first sweep
@@ -407,11 +410,13 @@ others. A program computes a tile of output rows over a tile of the batch, 16 pr
 time at float64 and 32 at float32, and accumulates each output in a fixed order; a group takes the
 tile height its rows fill, and a batch the tile it fills, since a program's mask does not spare its
 arithmetic. The neuron update of a sweep (potential, activation, adaptation, movement) is one fused
-launch, and the apical normalization three: the sums of squares over tiles of a pool's members, each
-pool's gain, the drive. `CADENCE_TRITON=0` keeps cuBLAS products and one torch operation at a time.
-The sweeps of a settle are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs
-them eagerly; a replay is bitwise the eager sweep), drives and masks reach the device through pinned
-host buffers, and a sweep allocates nothing.
+launch, a softmax nudge over equal groups side by side another, and the apical normalization three:
+the sums of squares over tiles of a pool's members, each pool's gain, the drive. `CADENCE_TRITON=0`
+keeps cuBLAS products and one torch operation at a time. The sweeps of a settle and a residual check
+are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs them eagerly; a replay is
+bitwise the eager run), drives and masks reach the device through pinned host buffers, and a sweep
+allocates nothing. A settle of no sweeps from a resident state published under no mask returns that
+state.
 
 Above `dense_limit` the CPU transport is sparse: a SciPy CSR multiply when SciPy is installed,
 a NumPy segmented sum otherwise; `"mlx"` needs the blocks. CSR indices are cached on the connectome (about `4 * (E + N + 1)` bytes for E synapses

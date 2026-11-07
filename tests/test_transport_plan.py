@@ -37,7 +37,7 @@ def graph(device: str, seed: int = 1, apical: bool = False, **options: object) -
     return cd.NeuralGraph(
         host.connectome, host.neuron_model, efficacy=host.efficacy, bias=host.bias,
         log_gain=host.log_gain, backend="torch", device=device, apical=host.apical,
-        **options,  # type: ignore[arg-type]
+        **{"precision": "float64", **options},  # type: ignore[arg-type]
     )
 
 
@@ -145,7 +145,8 @@ def test_a_plan_for_another_shape_or_precision_is_refused(device):
     with pytest.raises(ValueError, match="no stored transport plan"):
         graph(device).calibrate_transport(name="nothing of that name")
     anatomy = cd.layered(3, 12, 3, seed=2)
-    other = cd.NeuralGraph(anatomy, cd.learning_neuron_model(), backend="torch", device=device)
+    other = cd.NeuralGraph(anatomy, cd.learning_neuron_model(), backend="torch", device=device,
+                           precision="float64")
     with pytest.raises(ValueError, match="another graph or device"):
         other.calibrate_transport(name=plan["name"])
     with pytest.raises(ValueError, match="another graph or device"):
