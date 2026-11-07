@@ -2654,22 +2654,27 @@ class _Workspace:
 
 
 class _Workspaces:
-    """A few workspaces, least recently used dropped first, with the graphs captured on them."""
+    """Workspaces, least recently used dropped first, with the graphs captured on them: up to 32
+    while they hold at most 2 GiB, and at least 4 whatever they hold. A lesson's rows vary with the
+    rows it teaches, and a batch size met again replays where a new one runs eagerly and captures.
+    """
 
-    def __init__(self, limit: int = 4) -> None:
-        self.limit = limit
+    def __init__(self, limit: int = 32, room: int = 1 << 31) -> None:
+        self.limit, self.room = limit, room
         self.held: OrderedDict[int, _Workspace] = OrderedDict()
 
-    def get(self, batch: int, make: Any) -> _Workspace:
+    def get(self, batch: int, make: Any, row_bytes: int = 0) -> _Workspace:
         ws = self.held.get(batch)
         if ws is None:
-            while len(self.held) >= self.limit:
-                self.held.popitem(last=False)
+            total = sum(self.held) * row_bytes + batch * row_bytes
+            while len(self.held) >= self.limit or (len(self.held) >= 4 and total > self.room):
+                total -= self.held.popitem(last=False)[0] * row_bytes
             ws = cast(_Workspace, make())
             self.held[batch] = ws
         else:
             self.held.move_to_end(batch)
         return ws
+
 
 # -- the small row groups on CUDA: one Triton launch
 #
@@ -3634,6 +3639,7 @@ class _TorchKernel:
                 self.torch, self.device, self.dtype, self.n, rows, batch,
                 self.neuron_model.adaptation is not None, self._reference_only,
             ),
+            12 * self.n * (8 if self.dtype == self.torch.float64 else 4),
         )
 
     def _upload(self, x: np.ndarray) -> Any:
