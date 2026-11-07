@@ -1221,7 +1221,8 @@ class Brain:
                 return solved
         if mask is None and not stop_if_stalled and self._mlx is not None and self._solves_alone():
             kernel: _MlxKernel = self._mlx
-            solved = kernel.solve(np.atleast_2d(drive), current, nudge, budget, chunk, tolerance)
+            held = drive if _resident(drive) else np.atleast_2d(drive)
+            solved = kernel.solve(held, current, nudge, budget, chunk, tolerance)
             if solved is not None:
                 return solved
         # below the launch's floor the float64 reference decides, also of a launched state
