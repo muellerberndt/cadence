@@ -3720,6 +3720,8 @@ class Brain:
                 or value < minimum
             ):
                 raise ValueError(f"{name} must be an integer >= {minimum}")
+        if self._unplaced:
+            self._place_at(min(batch, len(labels)))
         # Supervision changes the parameters under any previously cached decision.
         self.reset(keep=("arousal",))
         history = []

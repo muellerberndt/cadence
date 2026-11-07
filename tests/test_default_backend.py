@@ -301,3 +301,15 @@ def test_a_deep_copy_before_its_first_moment_takes_its_own(monkeypatch):
     a_life(twin)
     assert twin.placement["pending"] is False
     np.testing.assert_array_equal(brain.brain.efficacy, twin.brain.efficacy)
+
+
+def test_a_first_fit_places_the_brain_at_its_batch(monkeypatch):
+    pytest.importorskip("torch")
+    monkeypatch.setattr(generic, "_fastest_backends", to_the_torch_cpu(from_rows=4))
+    brain = small(recall=False)
+    rng = np.random.default_rng(0)
+    brain.fit(np.eye(12)[rng.integers(12, size=8)], rng.integers(5, size=8), epochs=1, batch=4)
+    assert brain.brain._torch is not None and brain.placement["pending"] is False
+    other = small(recall=False)
+    other.fit(np.eye(12)[rng.integers(12, size=8)], rng.integers(5, size=8), epochs=1, batch=2)
+    assert other.brain._torch is None and other.placement["pending"] is False
