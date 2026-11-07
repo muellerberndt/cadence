@@ -251,10 +251,10 @@ class ActorCritic:
         return self.__dict__
 
     def reside(self, kernel: Any) -> None:
-        """The critic's weights and eligibility on the device of a brain's torch ``kernel``, read
-        and written there each moment. An array written on the host since brings the other back
+        """The critic's weights and eligibility on the device of a brain's ``kernel``, read and
+        written there each moment. An array written on the host since brings the other back
         first."""
-        if kernel is None or hasattr(kernel, "mx"):
+        if kernel is None:
             self.leave_device()
             return
         if self._critic_device is not None:
@@ -1111,14 +1111,9 @@ class ActorCritic:
                 kernel.mx.array(np.asarray(self.trace_bias, dtype=np.float32)), np.ones(batch),
             )
         self.trace = self.trace_bias = None
-        if self.trace_critic is None or self.trace_critic.shape[0] != batch:
-            self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
-        assert self.trace_critic is not None
         free = self._free
         assert free is not None
-        self.trace_critic *= cfg.gamma * cfg.lam
-        self.trace_critic[:, :-1] += free.part(self.critic_index)
-        self.trace_critic[:, -1] += 1.0
+        self._critic_eligibility(free, batch)
         self._memory_eligibility(batch, decay)
         self._hearing_eligibility(batch, decay)
         next_state = self._next_state(next_drive, done, warm)
@@ -1136,7 +1131,7 @@ class ActorCritic:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         delta = np.where(observed, delta / observed.mean(), 0.0)
         self.updates += 1
-        critic_weights, critic_bias = self._critic_candidate(delta)
+        critic = self._critic_candidate(delta)
         proposal = self._memory_proposal(delta)  # checked before anything is installed
         next_brain = learner.brain
         eta, eta_bias = self._rates()
@@ -1150,14 +1145,14 @@ class ActorCritic:
         learner.brain = next_brain._with_mlx_parameters(new)
         learner.updates += 1
         report: dict[str, float] = {"scale_step": size, "bias_step": bias_size}
-        self.w_critic, self.b_critic = critic_weights, critic_bias
+        self._accept_critic(critic)
         if proposal is not None:
             self.memory.accept(proposal)
             report["address_reward_step"] = float(proposal[3])
         self._hearing_step(delta)
         factor = np.where(done, 0.0, 1.0)  # a finished stream forgets its traces
         if done.any():
-            self.trace_critic[done] = 0.0
+            self._forget_critic(done)
             if self.trace_memory is not None:
                 self.trace_memory = _forgotten(self.trace_memory, done)
             if self.trace_hearing is not None:

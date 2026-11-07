@@ -155,7 +155,7 @@ def test_a_refused_outcome_leaves_the_streams_eligibility_as_it_was(monkeypatch)
     np.testing.assert_array_equal(brain.brain.efficacy, efficacy)
 
 
-def _twins(monkeypatch, device: str, **options) -> tuple[cd.Brain, cd.Brain]:
+def _twins(monkeypatch, device: str = "cpu", **options) -> tuple[cd.Brain, cd.Brain]:
     monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
     monkeypatch.setenv("CADENCE_MLX_MEMORY", "1")
     options.setdefault("modules", (16,))

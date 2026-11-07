@@ -206,6 +206,56 @@ def test_a_moment_takes_no_arrays_back_and_forth(monkeypatch):
     on_the_device(mlx)
 
 
+def test_a_moment_reads_nothing_wider_than_its_action(monkeypatch):
+    """Past a brain's first moments the host reads a value per stream, the motor columns, a number
+    per stream and route, and no state, map, slot or eligibility."""
+    mlx = cd.Brain.compose(*SPEECH, seed=2, modules=(256, 128), apical=0.25, teaching="deep",
+                           backend="mlx")
+    rng = np.random.default_rng(9)
+    rows = 3
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mlx.step(rows_of(rng, rows))
+        mlx.step(rows_of(rng, rows), reward=rng.random(rows))
+        mlx.learn(rng.random(rows), np.zeros(rows, dtype=bool), rows_of(rng, rows))
+        mlx.lesson(rows_of(rng, rows), rng.integers(SPEECH[1], size=rows))
+        kernel = mlx.brain._mlx
+        plan = kernel.plan
+        widest = 0
+        host, part = resident.MlxArrays.host, plan.part
+
+        def read(self, array):
+            nonlocal widest
+            widest = max(widest, int(np.prod(array.shape[1:], dtype=int)))
+            return host(self, array)
+
+        def read_part(handle, index):
+            nonlocal widest
+            widest = max(widest, len(index))
+            return part(handle, index)
+
+        def forbidden(*_, **__):
+            raise AssertionError("a whole array came to the host")
+
+        monkeypatch.setattr(resident.MlxArrays, "host", read)
+        monkeypatch.setattr(resident.MlxArrays, "host_long", forbidden)
+        monkeypatch.setattr(plan, "part", read_part)
+        monkeypatch.setattr(plan, "fetch", forbidden)
+        monkeypatch.setattr(kernel, "to_edges", forbidden)
+        monkeypatch.setattr(kernel, "rows_to_edges", forbidden)
+        monkeypatch.setattr(kernel, "host_scale", forbidden)
+        mlx.step(rows_of(rng, rows))
+        for _ in range(3):
+            mlx.step(rows_of(rng, rows), reward=rng.random(rows))
+        mlx.learn(rng.random(rows), np.zeros(rows, dtype=bool), rows_of(rng, rows))
+        for _ in range(2):
+            x = rows_of(rng, rows)
+            mlx.lesson(x, rng.integers(SPEECH[1], size=rows))
+            mlx.act(x, greedy=True)
+    # the motor columns, the routes' numbers and the critic's neurons at most
+    assert 0 < widest <= max(SPEECH[1], len(mlx.hearing.routes))
+
+
 def test_the_size_decides_on_mlx(monkeypatch):
     class Kernel:
         mx = None

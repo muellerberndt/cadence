@@ -228,6 +228,10 @@ class TorchArrays:
     def stack(self, parts: Sequence[Any], axis: int = 0) -> Any:
         return self.torch.stack(list(parts), dim=axis)
 
+    def values(self, activity: Any, weights: Any, bias: float) -> np.ndarray:
+        """``activity @ weights + bias`` on the host, one number per row."""
+        return self.host(activity @ weights + bias)
+
     def all_finite(self, *arrays: Any) -> Any:
         torch = self.torch
         return torch.stack([torch.isfinite(a).all() for a in arrays]).all()
@@ -430,6 +434,12 @@ class MlxArrays:
 
     def stack(self, parts: Sequence[Any], axis: int = 0) -> Any:
         return self.mx.stack(list(parts), axis=axis)
+
+    def values(self, activity: Any, weights: Any, bias: float) -> np.ndarray:
+        """``activity @ weights + bias`` on the host, one number per row: a short product of
+        what a launch made, read in unified memory, costs less than one synchronization."""
+        product = np.array(activity, copy=False) @ np.array(weights, copy=False)
+        return np.asarray(product + bias, dtype=np.float64)
 
     def all_finite(self, *arrays: Any) -> Any:
         """Whether every entry is finite, read off each array's sum: a fifth of the cost of a
@@ -1460,6 +1470,7 @@ class _CriticOnDevice:
         trace = held.pop("trace_critic")
         self.trace = None if trace is None else xp.here(trace)
         self.source = xp.neurons(owner.critic_index, kernel.index_of(owner.critic_index))
+        self.faded = 0  # the moments since an outcome made the eligibility
 
     def give_back(self) -> None:
         held = self.owner.__dict__
@@ -1469,7 +1480,7 @@ class _CriticOnDevice:
     def value(self, state: BrainState) -> np.ndarray:
         """``ActorCritic.value``."""
         xp = self.xp
-        return xp.host(xp.part(state, self.source) @ self.weights + self.owner.b_critic)
+        return xp.values(xp.part(state, self.source), self.weights, self.owner.b_critic)
 
     def add(self, state: BrainState, batch: int, decay: float) -> None:
         """``e <- decay e + (activity, 1)``."""
@@ -1480,8 +1491,7 @@ class _CriticOnDevice:
         trace = decay * trace
         trace[:, :-1] = trace[:, :-1] + xp.part(state, self.source)
         trace[:, -1] = trace[:, -1] + 1.0
-        xp.settle(trace)
-        self.trace = trace
+        self.trace = trace  # made by the outcome's candidate, which reads it
 
     def candidate(self, delta: np.ndarray) -> tuple[Any, float]:
         """``ActorCritic._critic_candidate``: one read, of the checks and the bias's step."""
@@ -1502,12 +1512,17 @@ class _CriticOnDevice:
             self.trace = _forgotten(self.trace, done)
 
     def fade(self, decay: float, ended: np.ndarray | None) -> None:
-        """``ActorCritic.fade``: ``ended`` rows forget."""
+        """``ActorCritic.fade``: ``ended`` rows forget. What no outcome reads is made now and then,
+        so no graph grows without end."""
         if self.trace is None:
             return
         self.trace = decay * self.trace
         if ended is not None and ended.any():
             self.forget(ended)
+        self.faded += 1
+        if self.faded >= 64:
+            self.xp.settle(self.trace)
+            self.faded = 0
 
 
 # -- the carried routes' contrast
