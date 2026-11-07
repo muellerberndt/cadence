@@ -315,3 +315,14 @@ def test_a_first_fit_places_the_brain_at_its_batch(monkeypatch):
     other = small(recall=False)
     other.fit(np.eye(12)[rng.integers(12, size=8)], rng.integers(5, size=8), epochs=1, batch=2)
     assert other.brain._torch is None and other.placement["pending"] is False
+
+
+def test_what_a_caller_changed_before_the_first_moment_moves_with_the_brain(monkeypatch):
+    pytest.importorskip("torch")
+    monkeypatch.setattr(generic, "_fastest_backends", to_the_torch_cpu(from_rows=2))
+    brain = small(learning_fast_settle=False)
+    brain.retune(temperature=0.25, recall_amplitude=2.5)
+    genes = brain.describe()["genes"]
+    brain.act(np.eye(12)[[1, 2, 3]], greedy=True)
+    assert brain.brain._torch is not None
+    assert brain.describe()["genes"] == genes
