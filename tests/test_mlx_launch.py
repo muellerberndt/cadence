@@ -1155,3 +1155,19 @@ def test_a_reward_below_the_device_size_stays_on_the_host():
     outcomes(cpu, mlx)
     assert mlx.basal_ganglia._trace_mlx is None and mlx.basal_ganglia.trace is not None
     np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-4)
+
+
+def test_the_launchs_check_reads_the_drive_it_ran_under():
+    """A drive written in place since the settle is another drive: the float64 reference reads it."""
+    mlx = cd.Brain.compose(8, 4, modules=(64, 32), seed=3, recall=False, backend="mlx")
+    graph = mlx.brain
+    drive = np.zeros((2, graph.connectome.n))
+    drive[:, mlx.sensory_index[:4]] = 1.0
+    state = graph.settle_batch(drive, steps=64)
+    assert graph.residual(drive, state).max() < 1e-4
+    assert graph.residual(drive.copy(), state).max() < 1e-4  # the same contents
+    drive[:, mlx.sensory_index[:4]] = 50.0
+    np.testing.assert_allclose(
+        graph.residual(drive, state), graph.residual(drive, state, on_device=False)
+    )
+    assert graph.residual(drive, state).min() > 1.0
