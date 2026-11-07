@@ -171,15 +171,35 @@ of one shape are one batched product over a gather of their presynaptic rows. No
 padded, every row is written by one product in a fixed order, so the device sum is
 deterministic. A graph whose rows share few presynaptic neurons uses the dense blocks above
 when they fit, one product per block, and a CSR product otherwise (cuSPARSE on CUDA, whose sums
-are not deterministic). On CUDA with Triton (bundled with the CUDA builds of PyTorch on Linux)
-every group of fewer rows is one Triton launch that accumulates each output in a fixed order,
-and the neuron update of a sweep (potential, activation, adaptation, movement) is one fused
-launch; `CADENCE_TRITON=0` keeps cuBLAS products and one torch operation at a time. The sweeps
-of a settle are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs them
-eagerly; a replay is bitwise the eager sweep), drives and masks reach the device through pinned
-host buffers, and a sweep allocates nothing. `CADENCE_TORCH_TRANSPORT=grouped`, `blocks` or
-`sparse` forces a plan. Every plan matches the float64 host path to rounding: the same fixed
-points and step counts, activations within 1e-10 (`tests/test_torch_settle_parity.py`).
+are not deterministic). `CADENCE_TORCH_TRANSPORT=grouped`, `blocks` or `sparse` forces a plan.
+Every plan matches the float64 host path to rounding: the same fixed points and step counts,
+activations within 1e-10 (`tests/test_torch_settle_parity.py`).
+
+Under a step of one, without adaptation or an apical compartment, on CUDA or the torch CPU device,
+the products of source neurons (those no synapse reaches: the sensory, prefrontal and recall ranges
+of a composed brain) are a part of the plan of their own, 99.4% of the entries of the speech-size
+brain below and 82% of the chamber's. Such a neuron stands at its drive from the second sweep of a
+settle. Sweeps 0 and 1 make those products, later sweeps read them, and from sweep 3 the fused update
+covers only the neurons synapses reach. A mask, or a nudge that reaches a source neuron, makes every
+product at every sweep. From 4,194,304 entries times rows the workspace keeps them with the source
+potentials they were made from, so a settle that starts from those potentials, or under a drive that
+holds them, and a residual check of such a state make none, under the same parameters.
+`CADENCE_STILL_PRODUCTS=0` makes every product at every sweep.
+
+On CUDA with Triton (bundled with the CUDA builds of PyTorch on Linux) the rest are launches where
+a measurement favours them. Several groups of one shape always are, and a group of up to 128
+presynaptic neurons at float64 or 256 at float32: a launch costs about 5 microseconds there and a
+cuBLAS product about 25 at float64 and 5 at float32. At float64 from a batch of 8 a group of up to
+4,096 presynaptic neurons is too, and a larger one once it fills about 64 programs. cuBLAS keeps the
+others. A program computes a tile of output rows over a tile of the batch, 16 presynaptic neurons at a
+time at float64 and 32 at float32, and accumulates each output in a fixed order; a group takes the
+tile height its rows fill, and a batch the tile it fills, since a program's mask does not spare its
+arithmetic. The neuron update of a sweep (potential, activation, adaptation, movement) is one fused
+launch, and the apical normalization three: the sums of squares over tiles of a pool's members, each
+pool's gain, the drive. `CADENCE_TRITON=0` keeps cuBLAS products and one torch operation at a time.
+The sweeps of a settle are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs
+them eagerly; a replay is bitwise the eager sweep), drives and masks reach the device through pinned
+host buffers, and a sweep allocates nothing.
 
 Above `dense_limit` the CPU transport is sparse: a SciPy CSR multiply when SciPy is installed,
 a NumPy segmented sum otherwise; `"mlx"` needs the blocks. CSR indices are cached on the connectome (about `4 * (E + N + 1)` bytes for E synapses
@@ -242,3 +262,23 @@ update, the softmax over the nudged group, the apical normalization and the larg
 for the tolerance. Check a new one against the
 neuron-by-neuron reference through `conformance`; `tests/test_brain.py` holds the tests every
 kernel passes.
+
+### Choosing kernels by measurement
+
+`graph.to_dict()["torch_transport"]` reports what a torch graph runs: its kind, its products and
+launches at a batch of 16, how many of them are still products, and the plan it follows, `"rules"`
+until something asks otherwise. `graph.calibrate_transport(batches=(16, 64))` times, at each batch and
+on this device, every bucket in a launch and on cuBLAS, then each part of a sweep under that choice,
+under every bucket in the launch, under none and under the rules, and keeps what reads fastest; a
+choice replaces the rules only when it reads at least 2% faster. The plan names a launch per bucket
+and batch, and a batch it does not name takes the nearest it names. It is a stored object: no later
+timing moves it, nothing changes it in the middle of a life, and it is kept per graph shape, device
+and precision, in the process and in `CADENCE_PLAN_CACHE` (by default
+`~/.cache/cadence/transport_plans.json`), so a second brain of one shape pays nothing. It is repeated
+by name with `graph.calibrate_transport(name=plan["name"])`, which refuses a plan made for another
+shape, device or precision, and `name="rules"` returns to the rules. A graph on new parameters keeps
+its plan; a checkpoint does not carry one. On an A10G a calibration costs 10 to 950 milliseconds per
+batch size on the brains below. On the composed brains the rules stand within 1.1 of its plan. On
+graphs read after the rules were set the rules' transport stands within 1.86 of the best of every
+bucket in a launch or none, and the plan within 1.06. A device without Triton has no launch to choose,
+and its plan names none.

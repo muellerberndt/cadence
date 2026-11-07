@@ -1742,12 +1742,15 @@ class Brain:
 #   matrix (one per postsynaptic neuron, a second copy for the apical compartment) that read the
 #   same presynaptic neurons, such as the feature maps of one receptive field, form a group; the
 #   groups of one shape are one batched product over a gather of their presynaptic rows (on CUDA
-#   the shapes of several small groups are one Triton launch, below). Nothing is padded and every
-#   output row is written by one product, so the sum is deterministic and every operation can be
-#   captured in a CUDA graph. A graph whose rows share few presynaptic neurons falls back to the
-#   dense blocks of ``cadence.blocks`` (one product per block, also deterministic) when they fit,
-#   and to a CSR sparse product otherwise (cuSPARSE on CUDA: fast, but neither deterministic nor
-#   capturable, so such a settle runs eagerly).
+#   groups the rule ``_launch_rule`` names are Triton launches instead, below). Nothing is padded
+#   and every output row is written by one product, so the sum is deterministic and every
+#   operation can be captured in a CUDA graph. A graph whose rows share few presynaptic neurons
+#   falls back to the dense blocks of ``cadence.blocks`` (one product per block, also
+#   deterministic) when they fit, and to a CSR sparse product otherwise (cuSPARSE on CUDA: fast,
+#   but neither deterministic nor capturable, so such a settle runs eagerly). Under a step of one
+#   without adaptation or a compartment the products of source neurons (no synapse reaches them)
+#   are a part of their own: such a neuron stands at its drive from the second sweep of a settle,
+#   so those products are made twice and later sweeps read them (``_TorchKernel._stage``).
 # * ``_Staging``: pinned host buffers for the host-to-device copies of drives and masks, so an
 #   upload never waits for the sweeps already queued on the device.
 # * ``_Workspace``: the buffers of one batch size, two state slots, the flags of the movement
@@ -2900,10 +2903,10 @@ class _TorchKernel:
     a tolerance is read one sweep behind, so the host never waits on the device between sweeps;
     the reported state and step count are those of the first sweep that met the tolerance.
 
-    On CUDA with Triton the products of the small row groups and the neuron update of a sweep
-    are one launch each (``CADENCE_TRITON=0`` keeps cuBLAS products and one torch operation at a
-    time). The default precision is float32 on MPS and float64 elsewhere; ``precision``
-    overrides it.
+    On CUDA with Triton the products ``_launch_rule`` names, the neuron update of a sweep and
+    the apical normalization are launches (``CADENCE_TRITON=0`` keeps cuBLAS products and one
+    torch operation at a time). The default precision is float32 on MPS and float64 elsewhere;
+    ``precision`` overrides it.
     """
 
     def __init__(
