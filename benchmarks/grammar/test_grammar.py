@@ -368,3 +368,7 @@ def test_a_window_of_one_is_the_chambers_life_and_wider_windows_say_k_words():
     assert len(said) == 4
     with pytest.raises(ValueError):
         wn.make_brain(4, 0, module=16, advance="hearsay")
+
+
+def test_settings_name_a_lifes_backend():
+    assert gr.make_brain("recipe", 0, {"backend": "cpu"}, module=16).brain.backend == "cpu"

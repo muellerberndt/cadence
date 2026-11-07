@@ -390,9 +390,10 @@ def make_brain(task: Task, arm: str, founder: int, settings: dict[str, Any] | No
     """``Brain.compose`` for ``task`` with the arm's settings, and any ``settings`` over them."""
     import cadence as cd
 
-    return cd.Brain.compose(task.inputs, task.actions, backend="cpu", modules=(module,), seed=int(founder),
+    return cd.Brain.compose(task.inputs, task.actions, modules=(module,), seed=int(founder),
                             episodic=False, teaching="normalized",
-                            **{"recall": False, **{**ARMS[arm], **(settings or {})}})
+                            **{"backend": "cpu", "recall": False,
+                               **{**ARMS[arm], **(settings or {})}})
 
 
 def new_stats() -> dict[str, Any]:
