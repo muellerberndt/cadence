@@ -276,7 +276,7 @@ configuration.
 | --- | --- | --- | --- |
 | `teaching` | `"founder"` | `"deep"`, no apical | Whole nudged phases ([the deep point](tune.md#deep-brains)) |
 | `learning_surprise` | `False` | `True` | [Lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs) |
-| `recall_recency` | `0.25` | `0.0` | No age charge: position is learned, not assumed ([positions at lengths no lesson reached](#positions-at-lengths-no-lesson-reached)) |
+| `recall_recency` | `0.25` | `0.0` | No age charge: position is learned ([positions at lengths no lesson reached](#positions-at-lengths-no-lesson-reached)) |
 | `recall_boundary` | `False` | `True` | A silent first slot, so a stream's first event has a predecessor |
 | `recall_anchor` | `False` | `True` | Each slot's place in its episode |
 | `recall_slope` | `0.0` | `0.1` | A lean by age |
