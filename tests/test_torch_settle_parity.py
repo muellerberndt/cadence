@@ -248,6 +248,67 @@ def test_still_products_stay_out_of_a_compartment_adaptation_and_a_smaller_step(
     assert halved._torch.plan.still is None
 
 
+@pytest.mark.parametrize("transport", ["grouped", "blocks"])
+def test_held_still_products_serve_only_their_own_source_neurons(device, transport, monkeypatch):
+    from cadence import brain as module
+
+    monkeypatch.setenv("CADENCE_TORCH_TRANSPORT", transport)
+    monkeypatch.setattr(module, "_STILL_KEPT", 0)
+    brain = composed(apical=False, seed=2)
+    host = brain.learner.brain
+    dev = on(host, device)
+    kernel = dev._torch
+    n = host.connectome.n
+    rng = np.random.default_rng(14)
+    first, second = rng.uniform(-0.5, 1.0, (2, 4, n))
+    ws_of = lambda: kernel._workspace(4)  # noqa: E731
+    a, b = host.settle_batch(first, steps=9), dev.settle_batch(first, steps=9)
+    same(a, b)
+    assert ws_of().reuse == 0
+    # the same drive from where it ended: no product of a source neuron is made
+    a, b = host.settle_batch(first, steps=9, state=a), dev.settle_batch(first, steps=9, state=b)
+    held = dev.residual(first, b)  # on the device, before anything reads the state on the host
+    same(a, b)
+    assert ws_of().reuse == 2
+    np.testing.assert_allclose(held, host.residual(first, a), rtol=0, atol=1e-12)
+    # a new drive: sweep 0 reads the held products, sweep 1 makes its own
+    a, b = host.settle_batch(second, steps=9, state=a), dev.settle_batch(second, steps=9, state=b)
+    assert ws_of().reuse == 1
+    held = dev.residual(second, b)
+    same(a, b)
+    np.testing.assert_allclose(held, host.residual(second, a), rtol=0, atol=1e-12)
+    # a check of another state, then a settle from a state nothing held
+    other = rng.uniform(-0.5, 1.0, (4, n))
+    start = host.settle_batch(other, steps=9)
+    fetched = cd.BrainState(np.array(start.v), np.array(start.activation),
+                            np.array(start.adaptation), start.steps)
+    a, b = host.settle_batch(second, steps=2, state=start), dev.settle_batch(
+        second, steps=2, state=fetched)
+    same(a, b)
+    # a mask and a nudge on a source neuron leave nothing held
+    keep = np.ones(n)
+    keep[np.flatnonzero(kernel.plan.structure.source)[0]] = 0.5
+    a, b = host.settle_batch(second, steps=9, state=a, mask=keep), dev.settle_batch(
+        second, steps=9, state=b, mask=keep)
+    same(a, b)
+    assert ws_of().still_version == -1
+    a, b = host.settle_batch(first, steps=1, state=a), dev.settle_batch(first, steps=1, state=b)
+    same(a, b)
+    assert ws_of().still_version == -1
+    # new parameters: what was held is not read
+    a, b = host.settle_batch(first, steps=9, state=a), dev.settle_batch(first, steps=9, state=b)
+    same(a, b)
+    host2 = host.with_parameters(efficacy=np.asarray(host.efficacy) * 0.9)
+    dev = dev._with_device_parameters(
+        torch.from_numpy(np.asarray(host2.efficacy).copy()).to(kernel.device, kernel.param_dtype),
+        kernel.bias_param,
+    )
+    a, b = host2.settle_batch(first, steps=9, state=a), dev.settle_batch(first, steps=9, state=b)
+    held = dev.residual(first, b)  # on the device, before anything reads the state on the host
+    same(a, b)
+    np.testing.assert_allclose(held, host2.residual(first, a), rtol=0, atol=1e-12)
+
+
 def test_still_products_can_be_turned_off(device, monkeypatch):
     brain = composed(apical=False)
     host = brain.learner.brain

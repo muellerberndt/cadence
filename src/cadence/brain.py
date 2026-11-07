@@ -1741,6 +1741,9 @@ _SMALL_GATHER = 4096  # a gather this small costs less than a sparse product's s
 _CHUNK = 1 << 25
 # Pinned staging pays for copies at least this large; smaller ones go straight from NumPy.
 _PINNED_BYTES = 1 << 20
+# Still products of at least this many entries times rows are kept for the next settle or check
+# that reads the same source neurons: below it, making them costs less than finding that out.
+_STILL_KEPT = 1 << 22
 
 
 # The launches as the class defines them: a solve in one call stands in for these and no other.
@@ -1942,6 +1945,7 @@ class _PlanStructure:
         ]
         from_source = self.source[entry_col]
         self.split = bool(still and kind != "sparse" and from_source.any())
+        self.still_size = int(from_source.sum()) if self.split else 0
         members_of: list[list[int]] = []  # the buckets of each part
         if kind == "grouped":
             positions = []
@@ -2078,6 +2082,7 @@ class _TransportPlan:
         self.parts = structure.parts
         self.moving = structure.parts[0]
         self.still: _Part | None = structure.parts[1] if structure.split else None
+        self.still_size = structure.still_size
         self.position = structure.position
         self.values = torch.zeros(structure.size, dtype=dtype, device=device)
         if self.kind == "sparse":
@@ -2317,6 +2322,9 @@ class _Workspace:
         self.peak_settling: Any = None
         self.still: Any = None  # a split plan's still products, and the standing input with them
         self.input: Any = None
+        self.still_goal: Any = None  # the source potentials ``still`` holds the products of
+        self.still_version = -1  # the parameters it was made under; -1 holds nothing
+        self.reuse = 0  # this settle's sweeps that read ``still`` without making it (``_stage``)
         self.flag = [torch.zeros((), dtype=torch.bool, device=device) for _ in range(2)]
         self.cuda = device.type == "cuda"
         self.flag_host = (
@@ -2746,6 +2754,7 @@ class _TorchKernel:
         # keeps the operation-by-operation update); its constants in the state's dtype
         self._fused: Any = None
         self._update_tables: dict[Any, Any] = {}
+        self._source_rows: Any = None
         if self.device.type == "cuda" and not reference:
             self._fused = _triton_update()
         adapt = neuron_model.adaptation
@@ -2919,14 +2928,80 @@ class _TorchKernel:
         else:
             total.index_add_(0, buffers.u_index, push)
 
-    def _stage(self, cfg: _SweepConfig, t: int) -> int:
+    def _stage(self, ws: Any, cfg: _SweepConfig, t: int) -> int:
         """What sweep ``t`` of a settle makes: 0 every product and every neuron; 1 the moving
-        products (the still ones are those of sweep 1) and every neuron; 2 the moving products
-        and the neurons synapses reach, once both state slots hold the source neurons at their
-        drive."""
-        if not cfg.quiet or t < 2:
+        products and every neuron; 2 the moving products and the neurons synapses reach. Sweep
+        0 reads the state's source neurons and sweep 1 those at their drive, where they stay;
+        once both state slots hold them there, only the neurons synapses reach are updated.
+        ``ws.reuse`` is 1 where the products of sweep 0 are held, 2 where those of sweep 1 are
+        too and the state's source neurons already stand at their drive."""
+        if not cfg.quiet:
             return 0
-        return 1 if t == 2 or self._fused is None else 2
+        if ws.reuse == 2:
+            last_full = 0
+        else:
+            if t == 0:
+                return 1 if ws.reuse else 0
+            if t == 1:
+                return 0
+            last_full = 2
+        if t <= last_full or self._fused is None:
+            return 1
+        return 2
+
+    def _hold_still(self, ws: Any, cfg: _SweepConfig, batch: int) -> None:
+        """How far the products ``ws.still`` holds serve this settle (``_stage``)."""
+        ws.reuse = 0
+        plan = self.plan
+        if not cfg.quiet or plan.still_size * batch < _STILL_KEPT:
+            return
+        if ws.still_version == self._version:
+            start, drive = self._differ_from_goal(ws, ws.v[0], ws.standing)
+            if not start:
+                ws.reuse = 1 if drive else 2
+                self.torch.add(ws.standing, ws.still, out=ws.input)
+
+    def _differ_from_goal(self, ws: Any, *potentials: Any) -> list[bool]:
+        """Per array of potentials whether a source neuron's differs from ``ws.still_goal``."""
+        torch = self.torch
+        if self._source_rows is None:
+            source = self.plan.structure.source
+            self._source_rows = torch.from_numpy(source).to(self.device)[:, None]
+        return cast("list[bool]", torch.stack([
+            ((p != ws.still_goal) & self._source_rows).any() for p in potentials
+        ]).tolist())
+
+    def _keep_still(self, ws: Any, cfg: _SweepConfig, batch: int) -> None:
+        """Note what ``ws.still`` holds after a settle's sweeps."""
+        plan = self.plan
+        if plan.still is None or ws.still is None:
+            return
+        if not cfg.quiet or ws.executed_steps < 2 or plan.still_size * batch < _STILL_KEPT:
+            ws.still_version = -1
+            return
+        if ws.reuse != 2:
+            if ws.still_goal is None:
+                ws.still_goal = self.torch.empty_like(ws.standing)
+            ws.still_goal.copy_(ws.standing)
+            ws.still_version = self._version
+
+    def _checked_input(self, ws: Any, s: Any, v: Any, masked: bool) -> Any:
+        """The synaptic input a residual check reads: every product, the still ones held in the
+        workspace when they are those of these source neurons."""
+        plan = self.plan
+        batch = ws.batch
+        if (plan.still is None or masked or "_synaptic_input" in self.__dict__
+                or plan.still_size * batch < _STILL_KEPT):
+            return self._synaptic_input(s, ws.out)
+        if ws.still is None:
+            ws.still = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
+        if ws.still_goal is None:
+            ws.still_goal = self.torch.empty_like(ws.still)
+        if ws.still_version != self._version or self._differ_from_goal(ws, v)[0]:
+            plan.products(plan.still, s, ws.still)
+            ws.still_goal.copy_(v)
+            ws.still_version = self._version
+        return plan.products(plan.moving, s, ws.out) + ws.still
 
     def _sweep(self, ws: Any, cfg: _SweepConfig, i: int, j: int, stage: int = 0) -> None:
         """One sweep from slot ``i`` into slot ``j``: no host synchronization, no new buffer."""
@@ -3195,9 +3270,10 @@ class _TorchKernel:
         d = self._upload(drive)
         ws.standing.copy_(d.T)
         ws.standing.add_(self.bias[:, None])  # the part of every neuron's drive that never moves
-        if self.plan.still is not None and ws.still is None:
-            ws.still = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
+        if self.plan.still is not None and ws.input is None:
             ws.input = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
+            if ws.still is None:
+                ws.still = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
         kind, keep_buffer = self._keep(ws, keep, batch)
         buffers = self._nudge_buffers(ws, nudge, batch)
         held = False
@@ -3280,7 +3356,7 @@ class _TorchKernel:
     def _advance(self, ws: Any, cfg: _SweepConfig, t: int, length: int, graphs: bool) -> None:
         """Sweeps ``t`` to ``t + length - 1``: a graph replay or eager sweeps; on CUDA the
         event of the last one's slot is recorded for the movement test."""
-        stage = self._stage(cfg, t)
+        stage = self._stage(ws, cfg, t)
         graph = self._graph(ws, cfg, t % 2, length, stage) if graphs else None
         ws.executed_steps += length
         if graph is not None:
@@ -3330,8 +3406,12 @@ class _TorchKernel:
             t = 0
             while t < steps:
                 length = min(8, steps - t) if graphs else steps - t
-                if cfg.quiet and t < 3:  # the stages turn at sweeps 2 and 3
-                    length = min(length, 2 - t if t < 2 else 1)
+                if cfg.quiet and t < 3:  # the stages turn at sweeps 1 to 3
+                    stage = self._stage(ws, cfg, t)
+                    length = next(
+                        (k for k in range(1, length) if self._stage(ws, cfg, t + k) != stage),
+                        length,
+                    )
                 self._advance(ws, cfg, t, length, graphs)
                 t += length
             return steps
@@ -3392,7 +3472,7 @@ class _TorchKernel:
             if adapt is not None:
                 at = scratch(ws.v[1])
                 at.copy_(a.T)
-            synaptic = self._synaptic_input(s, ws.out)
+            synaptic = self._checked_input(ws, s, vt, bool((k != 1.0).any()))
             buffers = self._nudge_buffers(ws, nudge, batch)
             error = scratch(ws.total)
             if self.apical is None:
@@ -3553,7 +3633,12 @@ class _TorchKernel:
                     _host_copy(a_in if ws.a is None else ws.a[0].T),
                 )
             ws.executed_steps = 0
-            taken = self._loop(ws, cfg, steps, traj, capture, a_in) if steps else 0
+            if steps:
+                self._hold_still(ws, cfg, batch)
+                taken = self._loop(ws, cfg, steps, traj, capture, a_in)
+                self._keep_still(ws, cfg, batch)
+            else:
+                taken = 0
             j = taken % 2
             contiguous = torch.contiguous_format
             tensors = {
