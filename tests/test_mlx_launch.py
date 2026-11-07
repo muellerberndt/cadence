@@ -1124,6 +1124,7 @@ def test_a_refused_reward_on_the_device_changes_nothing(on_device):
                 mlx.step(rng.random((ROWS, 8)), reward=np.ones(ROWS))
         finally:
             kernel.rewarded = original
+    assert "_outcome" not in agent.__dict__
     assert agent._trace_mlx is before[0]
     np.testing.assert_array_equal(agent.w_critic, before[1])
     np.testing.assert_array_equal(mlx.brain.efficacy, before[2])

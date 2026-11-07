@@ -631,6 +631,7 @@ class ActorCritic:
         maturity, kernel, before = self.maturity, self.learner.brain._torch, None
         if maturity is not None:
             before = kernel.scale if kernel is not None else np.array(self.learner.brain.efficacy)
+        self.__dict__["_outcome"] = saved  # what a refusal restores, held for as long as it can
         try:
             report = self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
         except Exception:
@@ -640,6 +641,8 @@ class ActorCritic:
                 critic.trace = critic_trace
             self.__dict__.update(saved)
             raise
+        finally:
+            self.__dict__.pop("_outcome", None)
         if maturity is not None and self.config.eta > 0:
             after = self.learner.brain
             if kernel is not None:
@@ -1136,11 +1139,18 @@ class ActorCritic:
         next_brain = learner.brain
         eta, eta_bias = self._rates()
         scale = kernel.scale if kernel.scale is not None else kernel.to_blocks(next_brain.efficacy)
-        new, blocks, bias_trace, sizes, size, bias_size = kernel.rewarded(
+        decays = decay * (np.ones(batch) if held is None else held[2])
+        new, bias_trace, size, bias_size = kernel.rewarded(
             plus.device, minus.device, None if held is None else held[0],
-            None if held is None else held[1],
-            decay * (np.ones(batch) if held is None else held[2]), span, delta, eta, eta_bias,
-            scale, tables, learner.config.scale_cap,
+            None if held is None else held[1], decays, span, delta, eta, eta_bias, scale, tables,
+            learner.config.scale_cap,
+        )
+        # nothing refuses from here: what alone holds the eligibility lets it be written over
+        old = None if held is None else list(held[0])
+        held = self._trace_mlx = None
+        self.__dict__["_outcome"]["_trace_mlx"] = None
+        blocks, sizes = kernel.eligible(
+            plus.device, minus.device, old, decays, span, tables["synapses"]
         )
         learner.brain = next_brain._with_mlx_parameters(new)
         learner.updates += 1

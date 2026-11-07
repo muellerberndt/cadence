@@ -4328,6 +4328,8 @@ _MLX_UPDATE_ENTRIES = 1 << 17
 _MLX_MAP_ENTRIES = 1 << 20
 # Rows times block entries from which the device's contrast costs less than the host's.
 _MLX_CONTRAST_ENTRIES = 1 << 20
+# Rows times block entries of a stream's eligibility from which a block is made in a launch alone.
+_MLX_ELIGIBLE_ALONE = 1 << 28
 
 # A chunk of sweeps of the settling neurons in one Metal launch, with the equations' residual of
 # its first and last state. One threadgroup per row, one thread per settling neuron (or PER of
@@ -5012,7 +5014,7 @@ class _MlxKernel:
         self.sweeps: dict[tuple[Any, ...], Any] = {}  # the compiled sweeps, shared with those too
         self.read_blocks: dict[int, tuple[np.ndarray, Any]] = {}  # a read's synapses, their blocks
         self.lesson_steps: dict[tuple[Any, ...], Any] = {}  # the optimizer's, compiled
-        self.reward_steps: dict[bool, Any] = {}  # a reward's eligibility and step, compiled
+        self.reward_steps: dict[tuple[bool, bool], Any] = {}  # a reward's eligibility, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n, apical)
         # the blocks of each postsynaptic range, basal and apical apart
@@ -5583,94 +5585,136 @@ class _MlxKernel:
 
     # -- a reward's update on the device: every stream's eligibility, by block
 
-    def _reward_step_of(self, moves_pre: bool) -> Any:
+    def _reward_step_of(self, moves_pre: bool, sized: bool) -> Any:
         """One block's eligibility, compiled once per kind and shape: ``e <- decay e + contrast /
-        span`` per row, the contrast a row's own ``a+ (b+ - b-) + (a+ - a-) b-``, and its size
-        with it, one pass of the block. A block whose presynaptic range stands in both phases has
-        no second term."""
-        held = self.root.reward_steps.get(moves_pre)
+        span`` per row, the contrast a row's own ``a+ (b+ - b-) + (a+ - a-) b-``, and with ``sized``
+        its size with it, one pass of the block. A block whose presynaptic range stands in both
+        phases has no second term."""
+        held = self.root.reward_steps.get((moves_pre, sized))
         if held is not None:
             return held
         mx = self.mx
 
         def step(trace: Any, a_plus: Any, a_minus: Any, moved: Any, b_minus: Any,
-                 decay: Any, span: Any) -> tuple[Any, Any]:
+                 decay: Any, span: Any) -> tuple[Any, ...]:
             contrast = a_plus[:, :, None] * moved[:, None, :]
             if moves_pre:
                 contrast = contrast + (a_plus - a_minus)[:, :, None] * b_minus[:, None, :]
             new = decay * trace + contrast / span
-            return new, mx.abs(new)
+            return (new, mx.abs(new)) if sized else (new,)
 
         held = self.mx.compile(step)
-        self.root.reward_steps[moves_pre] = held
+        self.root.reward_steps[(moves_pre, sized)] = held
         return held
 
     def rewarded(
         self, plus: Mapping[str, Any], minus: Mapping[str, Any], trace: Sequence[Any] | None,
         trace_bias: Any, decay: np.ndarray, span: float, delta: np.ndarray, eta: float,
         eta_bias: float, scale: Sequence[Any], tables: dict[str, Any], cap: float,
-    ) -> tuple[_MlxKernel, list[Any], Any, np.ndarray, float, float]:
-        """A reward's update, all of it on the device: each row's eligibility by block and over
-        the neurons, ``decay`` its own factor, the dopamine ``delta``'s mean steps at ``eta`` and
-        ``eta_bias``, the ties, the bound, the new blocks and the biases. One launch at its end.
-        Returns the new kernel, the two eligibilities, each row's mean size of the synapses' and
-        the mean steps' sizes; a value that is not finite raises ``ValueError`` with nothing
-        changed."""
+    ) -> tuple[_MlxKernel, Any, float, float]:
+        """A reward's step, all of it on the device: the dopamine ``delta``'s mean over the rows of
+        each row's eligibility after this moment's contrast (``decay`` its own factor), at ``eta``
+        and ``eta_bias``, the ties, the bound, the new blocks and the biases, in one launch. The
+        synapses' eligibility itself moves after it, with nothing left to refuse (``eligible``): a
+        row's contrast is an outer product, so the step needs no array of them. Returns the new
+        kernel, the neurons' eligibility and the mean steps' sizes; a value that is not finite
+        raises ``ValueError`` with nothing changed."""
         mx, lay = self.mx, self.layout
         rows = len(delta)
         plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
         shared = plus.get("sources") if plus.get("sources") is minus.get("sources") else None
         plan = self.plan
-        each_decay = mx.array(np.asarray(decay, dtype=np.float32))[:, None, None]
+        each_decay = mx.array(np.asarray(decay, dtype=np.float32))[:, None]
         each_span = mx.array(float(span), dtype=mx.float32)
-        dopamine = mx.array(np.asarray(delta, dtype=np.float32))
+        dopamine = mx.array(np.asarray(delta, dtype=np.float32))[:, None]
+        faded = (dopamine * each_decay).T
         over_rows = float(eta) / rows
         moved = {r: plus_of(r) - minus_of(r) for r in {int(x) for x in lay.pair_post}}
-        new_trace, steps, sizes = [], [], []
+        steps = []
         for k in range(lay.pairs):
             pre, post = int(lay.pair_pre[k]), int(lay.pair_post[k])
             a0, a1, b0, b1 = lay.bounds(k)
-            held = (
-                mx.zeros((rows, a1 - a0, b1 - b0), dtype=mx.float32) if trace is None else trace[k]
-            )
-            moves_pre = shared is None or plan is None or pre in plan.place
-            one, size = self._reward_step_of(moves_pre)(
-                held, plus_of(pre), minus_of(pre), moved[post], minus_of(post), each_decay,
-                each_span,
-            )
-            new_trace.append(one)
-            # the mean over the rows of the dopamine on the block, a product of the flat rows
-            steps.append(
-                over_rows * (dopamine[None, :] @ one.reshape(rows, -1)).reshape(a1 - a0, b1 - b0)
-            )
-            sizes.append(size.sum(axis=(1, 2)))
+            a_plus = plus_of(pre)
+            step = (a_plus * dopamine).T @ moved[post]
+            if shared is None or plan is None or pre in plan.place:
+                step = step + ((a_plus - minus_of(pre)) * dopamine).T @ minus_of(post)
+            step = step / each_span
+            if trace is not None:
+                step = step + (faded @ trace[k].reshape(rows, -1)).reshape(a1 - a0, b1 - b0)
+            steps.append(over_rows * step)
         new, total = self._moved_by(steps, scale, tables, cap)
-        each = mx.sum(mx.stack(sizes), axis=0)
         movement = mx.concatenate(
             [plus_of(r) - minus_of(r) for r in range(lay.ranges)], axis=1
         )
-        new_bias_trace = each_decay[:, :, 0] * (
+        new_bias_trace = each_decay * (
             mx.zeros_like(movement) if trace_bias is None else trace_bias
         ) + movement / each_span
         bias_step = (
-            float(eta_bias) * (dopamine[:, None] * new_bias_trace).mean(axis=0)
-            * tables["plastic_neurons"]
+            float(eta_bias) * (dopamine * new_bias_trace).mean(axis=0) * tables["plastic_neurons"]
         )
         new.bias = self.bias + bias_step
         new.bias_columns = None
         bias_size = mx.mean(mx.abs(bias_step))
         ok = mx.isfinite(total) & mx.isfinite(mx.sum(bias_step))
         mx.eval(
-            new.blocks, new.scale, new_trace, each, total, ok, new_bias_trace, new.bias, bias_size,
+            new.blocks, new.scale, total, ok, new_bias_trace, new.bias, bias_size,
             new.w if plan else [],
         )
         if not bool(ok.item()):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
         return (
-            new, new_trace, new_bias_trace,
-            np.array(each, dtype=np.float64) / max(tables["synapses"], 1),
-            float(total.item()) / max(tables["synapses"], 1), float(bias_size.item()),
+            new, new_bias_trace, float(total.item()) / max(tables["synapses"], 1),
+            float(bias_size.item()),
         )
+
+    def eligible(
+        self, plus: Mapping[str, Any], minus: Mapping[str, Any], trace: list[Any] | None,
+        decay: np.ndarray, span: float, synapses: int,
+    ) -> tuple[list[Any], np.ndarray]:
+        """Each row's eligibility after a moment's contrast, by block, and each row's mean size of
+        it. A block ``trace`` alone holds is written over, so a large batch holds it once; a large
+        block is made alone, and the sizes it passes through are gone before the next."""
+        mx, lay = self.mx, self.layout
+        rows = len(decay)
+        plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
+        shared = plus.get("sources") if plus.get("sources") is minus.get("sources") else None
+        plan = self.plan
+        each_decay = mx.array(np.asarray(decay, dtype=np.float32))[:, None, None]
+        each_span = mx.array(float(span), dtype=mx.float32)
+        moved = {r: plus_of(r) - minus_of(r) for r in {int(x) for x in lay.pair_post}}
+        new_trace, sizes = [], []
+        for k in range(lay.pairs):
+            pre, post = int(lay.pair_pre[k]), int(lay.pair_post[k])
+            a0, a1, b0, b1 = lay.bounds(k)
+            if trace is None:
+                held = mx.zeros((rows, a1 - a0, b1 - b0), dtype=mx.float32)
+            else:
+                held, trace[k] = trace[k], None
+            moves_pre = shared is None or plan is None or pre in plan.place
+            entries = (a1 - a0) * (b1 - b0)
+            alone = rows * entries >= _MLX_ELIGIBLE_ALONE
+            made = self._reward_step_of(moves_pre, not alone)(
+                held, plus_of(pre), minus_of(pre), moved[post], minus_of(post), each_decay,
+                each_span,
+            )
+            del held
+            one = made[0]
+            if alone:  # made alone, and its size a part of the rows at a time
+                mx.eval(one)
+                parts = []
+                each = max(1, _MLX_ELIGIBLE_ALONE // entries)
+                for first in range(0, rows, each):
+                    part = mx.abs(one[first : first + each]).sum(axis=(1, 2))
+                    mx.eval(part)
+                    parts.append(part)
+                sizes.append(mx.concatenate(parts))
+            else:
+                sizes.append(made[1].sum(axis=(1, 2)))
+            del made
+            new_trace.append(one)
+        each = mx.sum(mx.stack(sizes), axis=0)
+        mx.eval(new_trace, each)
+        return new_trace, np.array(each, dtype=np.float64) / max(synapses, 1)
 
     def rows_to_blocks(self, edges: np.ndarray) -> list[Any]:
         """A per-row, per-synapse host array as device arrays by block, ``(rows, a, b)``."""
