@@ -514,26 +514,27 @@ speaker = Brain.compose(inputs=35, actions=18, modules=(64,), seed=0, recall=Tru
 assert speaker.recall.anchor and speaker.learner.config.nudged_fixed
 ```
 
-Two blocks of fresh founders read it, each under a protocol declared before its first life, on one machine,
+Three blocks of fresh founders read it, each under a protocol declared before its first life, on one machine,
 with no refused lesson and no exhausted act. The first block read the composition without the read's route
-(`recall_drive_gain=False`). The second read it paired, with the route and without. Each column of the sequence
-battery is six founders, ordered recall twelve, and a reading holds at its bar on at least 5 of 6:
+(`recall_drive_gain=False`). The second read it paired, with the route and without, both at the ordinary solve. The
+third read what a new brain composes now, with the fast solve. Each column of the sequence battery is six founders,
+ordered recall twelve, and a reading holds at its bar on at least 5 of 6:
 
-| Reading | Bar | First block, no route | Second block, no route | Second block, this composition |
-| --- | --- | --- | --- | --- |
-| Look back, `first`, at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .98 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
-| Look back, `second` | .90 | .98 to 1.00, 6 of 6 | .98 to 1.00, 6 of 6 | .97 to 1.00, 6 of 6 |
-| Look back, anchors erased: the fall of `second` | .30 | .39 to .53, 6 of 6 | .43 to .50, 6 of 6 | .43 to .48, 6 of 6 |
-| Copying unique tokens at 8 to 12 | .95 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 |
-| Copying repeated tokens | .90 | .91 to .93, 6 of 6 | .90 to .93, 6 of 6 | .90 to .94, 6 of 6 |
-| A period of 40 | .85 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 |
-| "Was A told before B?", with `recall_when=True` | .90 | .69 to 1.00, 5 of 6 | .99, 6 of 6 | .84 to .99, 5 of 6 |
-| Two hops with a think moment, second hop | .90 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
-| Induction at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .93 to .99, 6 of 6 | .95 to .99, 6 of 6 |
-| N-back at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
-| Ordered recall under `live`, reward alone | .90 on 10 of 12 | 12 of 12 | 11 of 12 | 12 of 12 |
+| Reading | Bar | First block, no route | Second block, no route | Second block, the route | Third block, this composition |
+| --- | --- | --- | --- | --- | --- |
+| Look back, `first`, at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .98 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .88 to 1.00, 5 of 6 |
+| Look back, `second` | .90 | .98 to 1.00, 6 of 6 | .98 to 1.00, 6 of 6 | .97 to 1.00, 6 of 6 | .82 to 1.00, 5 of 6 |
+| Look back, anchors erased: the fall of `second` | .30 | .39 to .53, 6 of 6 | .43 to .50, 6 of 6 | .43 to .48, 6 of 6 | .34 to .49, 6 of 6 |
+| Copying unique tokens at 8 to 12 | .95 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 |
+| Copying repeated tokens | .90 | .91 to .93, 6 of 6 | .90 to .93, 6 of 6 | .90 to .94, 6 of 6 | .91 to .93, 6 of 6 |
+| A period of 40 | .85 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 |
+| "Was A told before B?", with `recall_when=True` | .90 | .69 to 1.00, 5 of 6 | .99, 6 of 6 | .84 to .99, 5 of 6 | .97 to .99, 6 of 6 |
+| Two hops with a think moment, second hop | .90 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
+| Induction at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .93 to .99, 6 of 6 | .95 to .99, 6 of 6 | .95 to 1.00, 6 of 6 |
+| N-back at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
+| Ordered recall under `live`, reward alone | .90 on 10 of 12 | 12 of 12 | 11 of 12 | 12 of 12 | 12 of 12 |
 
-In every column the lowest paired mean against the founder memory is n-back, at -.006, -.004 and -.004 against
+In every column the lowest paired mean against the founder memory is n-back, at -.006, -.004, -.004 and -.004 against
 a limit of -.03. Cues taught one after another read at least .96 of the same cues taught mixed. The read less
 the answer stays at or under .05 on every token task on at least 5 of 6 founders. Answers with tokens no
 lesson used read 0.00; [the learned value path](#the-learned-value-path-opt-in) is the opt-in that produces them.
@@ -541,37 +542,39 @@ lesson used read 0.00; [the learned value path](#the-learned-value-path-opt-in) 
 The grammar chamber, one online pass, twelve lives per column (six founders, each on its own newborn and on
 one further seed), the mean with the least life:
 
-| Panel | Bar | First block, no route | Second block, no route | Second block, this composition | Transformer, one pass | Transformer, offline |
-| --- | --- | --- | --- | --- | --- | --- |
-| Clauses | .95 | .98 (.91) | .98 (.89) | .99 (.88) | .99 | 1.00 |
-| Two distractors | .90 | .95 (.75) | .94 (.75) | .94 (.50) | .99 | 1.00 |
-| Held-out | .90 | .94 (.81) | .93 (.78) | .93 (.70) | .91 | 1.00 |
-| Roles | .90 | .93 (.62) | .87 (.62) | .93 (.66) | .97 | 1.00 |
-| Brackets | .80 | .85 (.39) | .92 (.69) | .87 (.48) | .54 | .99 |
-| Paths | .90 | .95 (.88) | .90 (.38) | .92 (.38) | .37 | .98 |
-| Two hops | .85 | .91 (.75) | .84 (.09) | .86 (.03) | .20 | .96 |
-| Three hops | | .46 (.17) | .36 (.00) | .38 (.00) | .00 | .00 |
+| Panel | Bar | First block, no route | Second block, no route | Second block, the route | Third block, this composition | Transformer, one pass | Transformer, offline |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| Clauses | .95 | .98 (.91) | .98 (.89) | .99 (.88) | .99 (.98) | .99 | 1.00 |
+| Two distractors | .90 | .95 (.75) | .94 (.75) | .94 (.50) | .97 (.94) | .97 | 1.00 |
+| Held-out | .90 | .94 (.81) | .93 (.78) | .93 (.70) | .93 (.67) | .98 | 1.00 |
+| Roles | .90 | .93 (.62) | .87 (.62) | .93 (.66) | .98 (.91) | .99 | 1.00 |
+| Brackets | .80 | .85 (.39) | .92 (.69) | .87 (.48) | .92 (.64) | .60 | 1.00 |
+| Paths | .90 | .95 (.88) | .90 (.38) | .92 (.38) | .96 (.89) | .33 | 1.00 |
+| Two hops | .85 | .91 (.75) | .84 (.09) | .86 (.03) | .92 (.81) | .18 | 1.00 |
+| Three hops | | .46 (.17) | .36 (.00) | .38 (.00) | .38 (.00) | .00 | .00 |
 
 Without the route the second block reads roles, paths and two hops under their bars, and the first block holds
-them. With the route the second block holds every bar. Paired on that block, every difference is inside two
-standard errors, and the read's gain settles at .99 here, so the two forms read alike on this chamber and the two
-blocks show the founder spread. One newborn of the second block reads paths at .38 in both forms. The transformer
-is read on the first block's founders, scored independently at the composition's parameter count: one pass is
-the brain's exposure, and offline replays those batches to its stopping rule. Eight passes of fresh batches,
-which stay under the brain's seconds, read brackets .92, paths .74, two hops .64 and three hops .00.
+them. With the route the second block holds every bar, and the third block, with the fast solve, holds every bar on
+founders of its own. Paired on the second block, every difference is inside two standard errors, and the read's gain
+settles at .99 there and at 1.00 on the third, so the two forms read alike on this chamber and the blocks show the
+founder spread. One newborn of the second block reads paths at .38 in both forms. The transformer is read on the third
+block's founders, scored independently at the composition's parameter count: one pass is the brain's exposure, and
+offline replays those batches to its stopping rule. Fresh batches for the seconds of the brain's life, four to five
+passes, read brackets .93, paths .69, two hops .62 and three hops .00.
 
 At two distractors a verb the read delivers is said. The first head attends most to the verb's moment, or to the
-moment before it whose next it is, at .75, .75 and .72 across the columns, and the brain says the verb at .98, .98
-and .99, so delivered less said is at most .05 on 12, 11 and 12 of 12 lives.
+moment before it whose next it is, at .75, .75, .72 and .69 across the columns, and the brain says the verb at .98,
+.98, .99 and 1.00, so delivered less said is at most .05 on 12, 11, 12 and 12 of 12 lives.
 
-A life of this composition takes 154 seconds on one thread of a shared machine, 77 sweeps per act and 8.4e11
-multiply-accumulates, and holds 28,716 parameters on these words: 630 the associative store, 3,500 the grid and
-two the gains. The transformer takes 19 seconds and 6.9e10 for one pass, and 276 seconds and 1.2e12 offline.
+A life of this composition takes 82 seconds on one thread of a shared machine, where the ordinary solve took 154, and
+87 sweeps per act by its slowest row. It takes at most 9.4e11 multiply-accumulates, counting each row at the act's
+slowest, and holds 28,716 parameters on these words: 630 the associative store, 3,500 the grid and two the gains. The
+transformer takes 29 seconds and 6.9e10 for one pass, and 289 seconds and 1.2e12 offline.
 
 Six founders per column at width, on their own newborns, at whole steps with the read map at .01, the mean with
 the least life:
 
-| Width | Panel | First block, no route | Second block, no route | Second block, this composition | Transformer, one pass, offline |
+| Width | Panel | First block, no route | Second block, no route | Second block, the route | Transformer, one pass, offline |
 | --- | --- | --- | --- | --- | --- |
 | 128 | Clauses | .97 (.89) | .96 (.86) | .93 (.69) | 1.00, 1.00 |
 | 128 | Brackets | .80 (.38) | .86 (.69) | .80 (.58) | .45, .98 |
@@ -583,8 +586,12 @@ the least life:
 | 256 | Two hops | .94 (.88) | .80 (.06) | .65 (.03) | .04, .88 |
 
 A low life on paths comes and goes with the founder at every width. A new brain [steps at its
-width](tune.md#wide-brains): on six further fresh founders, twelve lives a cell, it reads paths .97 (least .84) at 128 and
-.96 (least .81) at 256, against .94 (.72) and .94 (.67) at whole steps, and brackets .82 at 256 against .94.
+width](tune.md#wide-brains). On the third block, twelve lives per width, it reads:
+
+| Width | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Two hops | Three hops | Least paths | Lives under .80 | Seconds |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 128 | .99 | .98 | .95 | .97 | .89 | .96 | .93 | .43 | .91 | 0 | 111 |
+| 256 | .99 | .97 | .96 | .96 | .93 | .97 | .96 | .30 | .88 | 0 | 147 |
 
 The same brain meets look back, copying, induction, n-back, periodic continuation and two hops with no
 further setting. "Was A told before B?" asks when a read item happened, and takes
@@ -627,9 +634,11 @@ Against the founder memory, `recall_founder=True`, where a task names the memory
 
 At the key-door's delay 5 it rises: 9 to 12 of 32 on development founders, 4 to 7 of 24 on fresh ones. On six
 lives each it holds the odour nursery `live` at 300 and 1,000 and through `step` at 300, the bandit (blocks won 27
-to 28 of 30), the contextual bandit (3 to 6 of 6) and delayed response (6 of 6). Pass `recall=False` for a world
-paid by reward alone that gives the brain nothing to look up, and `recall_founder=True` for the founder memory;
-each reads as it read before this composition.
+to 28 of 30), the contextual bandit (3 to 6 of 6) and delayed response (6 of 6). These read at the ordinary solve. On the
+third block, with the fast solve, no chamber falls by the panel's rule: the key-door at delay 2 reads 5 to 5 of 8 on the
+development founders and 9 to 10 of 24 on fresh ones, at delay 5 reads 3 to 3 of 8 and 6 to 9 of 24, and the bandit
+wins 27 to 26 blocks of 30. Pass `recall=False` for a world paid by reward alone that gives the brain nothing to look up,
+and `recall_founder=True` for the founder memory; each reads as it read before this composition.
 
 ### Two heads on this composition (opt-in)
 

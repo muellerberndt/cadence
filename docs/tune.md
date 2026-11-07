@@ -323,7 +323,7 @@ an act, and only the act has to keep up with the stream.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and less of a gain on an Apple M4, whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
+| Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and .74 of one on an Apple M4 (229 to 169 CPU seconds, four pairs at the default brain on one thread of a shared machine), whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |
@@ -465,6 +465,10 @@ errors, no panel moves past them at 128. At 256 clauses rise .04 (±.04) and two
 takes 24 and 43 percent fewer multiply-accumulates. This block holds paths at whole steps as well; over 42 development lives at
 256 whole steps read paths .84, nine under .80, and the rates .94, three under .80. On that form at 512, six development lives
 read clauses .88 and paths .66 at the rates and clauses .90 and paths .56 at whole steps.
+
+These lives took the ordinary solve. With the fast solve, on a further block of six fresh founders, twelve lives per width, a new
+brain reads clauses .99 and .99, brackets .89 and .93, paths .96 (least .91) and .97 (least .88), no life under .80, at 128 and 256,
+in 111 and 147 seconds a life ([one composition](memory.md#one-composition-for-sequences)).
 
 ## The brain in a browser page
 

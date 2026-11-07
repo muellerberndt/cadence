@@ -6,7 +6,11 @@
   `equilibrate(..., fast=True)` on the compiled CPU path, the same equations, order and tolerance in fewer neuron updates,
   with other bits at every width. `learning_fast_settle=False` names the ordinary solve and `learning=` keeps its whole
   configuration. `recall=False` and `recall_founder=True` keep their bits, and a saved or grown brain keeps the solve it has.
-  See [settling](docs/settling.md#settling-and-equilibrium).
+  On a third block of fresh founders, under a protocol declared before its first life, this default holds every gate and every
+  chamber bar: on the grammar chamber's twelve lives clauses .99, two distractors .97, held-out .93, roles .98, brackets .92, paths
+  .96, two hops .92, in 82 seconds a life where the ordinary solve took 154. No chamber of the preservation panel falls against
+  `recall=False`. See [settling](docs/settling.md#settling-and-equilibrium) and
+  [one composition](docs/memory.md#one-composition-for-sequences).
 - **Default change.** A new brain with the memory steps at its association's width `w`, with no new setting: above 64 the
   projection from prefrontal to association and the association-motor pair take `64 / w` through `Learner.synapse_rate`,
   and `recall_address` is .01 times `64 / w`. At 64 and under nothing changes, to the bit, and `recall_founder=True`,
