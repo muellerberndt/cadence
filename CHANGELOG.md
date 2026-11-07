@@ -70,9 +70,9 @@
 - A float32 torch brain checks in float32 where a solve's tolerance is at least 1e-4, and reads a
   lesson's diagnostics and held gain the same way, so it learns without a float64 copy of its kernel;
   `residual` and `apical_gain` take `own_precision`, and by default keep the float64 reference. A
-  lesson's sum of squares per projection reduces each projection's values in turn from 65,536 values
-  over at most 64 projections: at the speech size on an A10G a lesson at 16 rows takes 22.6 ms against
-  35.6.
+  lesson's sums of squares per projection reduce one matrix in a fixed order in place of atomic adds, so
+  a device life with the memory repeats its bits from run to run, and at the speech size on an A10G a
+  lesson at 16 rows takes 22.6 ms against 35.6.
 - `NeuralGraph.calibrate_transport`: an opt-in plan of the transport's kernels from measurements, stored
   per graph shape, device and precision, repeatable by name. `to_dict()["torch_transport"]` reports the
   plan of a torch graph. See
