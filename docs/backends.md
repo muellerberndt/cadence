@@ -345,11 +345,13 @@ others. A program computes a tile of output rows over a tile of the batch, 16 pr
 time at float64 and 32 at float32, and accumulates each output in a fixed order; a group takes the
 tile height its rows fill, and a batch the tile it fills, since a program's mask does not spare its
 arithmetic. The neuron update of a sweep (potential, activation, adaptation, movement) is one fused
-launch, and the apical normalization three: the sums of squares over tiles of a pool's members, each
-pool's gain, the drive. `CADENCE_TRITON=0` keeps cuBLAS products and one torch operation at a time.
-The sweeps of a settle are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs
-them eagerly; a replay is bitwise the eager sweep), drives and masks reach the device through pinned
-host buffers, and a sweep allocates nothing.
+launch, a softmax nudge over equal groups side by side another, and the apical normalization three:
+the sums of squares over tiles of a pool's members, each pool's gain, the drive. `CADENCE_TRITON=0`
+keeps cuBLAS products and one torch operation at a time. The sweeps of a settle and a residual check
+are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs them eagerly; a replay is
+bitwise the eager run), drives and masks reach the device through pinned host buffers, and a sweep
+allocates nothing. A settle of no sweeps from a resident state published under no mask returns that
+state.
 
 Above `dense_limit` the CPU transport is sparse: a SciPy CSR multiply when SciPy is installed,
 a NumPy segmented sum otherwise; `"mlx"` needs the blocks. CSR indices are cached on the connectome (about `4 * (E + N + 1)` bytes for E synapses

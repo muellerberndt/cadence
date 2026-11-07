@@ -62,8 +62,9 @@
   same source neurons. `CADENCE_STILL_PRODUCTS=0` makes every product at every sweep. On CUDA with
   Triton the transport's launch takes blocks of presynaptic neurons, tiles by precision, batch and a
   group's rows, and groups by a rule measured on an A10G, the fused update takes tiles by size, batch
-  and precision, and the apical normalization is three launches, in free settles, residual checks and
-  `apical_gain`. A device sum differs from before in its last bits; the settled states match the
+  and precision, the apical normalization is three launches, in free settles, residual checks and
+  `apical_gain`, and a softmax nudge over equal groups is one. A residual check replays from a capture
+  like a sweep, and a settle of no sweeps from a resident state returns it. A device sum differs from before in its last bits; the settled states match the
   float64 host path to rounding as before. See
   [the implementation notes](docs/backends.md#implementation-notes).
 - `NeuralGraph.calibrate_transport`: an opt-in plan of the transport's kernels from measurements, stored
