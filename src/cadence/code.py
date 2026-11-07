@@ -366,6 +366,8 @@ class LearnedCode:
 
         clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
         allowed = bound(halvings) + clear
+        if not np.isfinite(allowed):  # a step halved past what the bound can state
+            return None
         doubtful = np.flatnonzero(floors < allowed)
         if len(doubtful) and not above(doubtful, allowed):
             return None

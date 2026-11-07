@@ -897,6 +897,8 @@ def test_a_state_that_is_not_finite_goes_to_the_eigenvalues():
     code = composed(seed=2).learned_code
     for value in (np.nan, np.inf):
         assert code._held_halvings(np.full((2, code.units, code.units), value)) is None
+    code.halvings = 1060  # as far as a step can be halved, where its bound overflows
+    assert code._held_halvings(np.zeros((1, code.units, code.units))) is None
 
 
 def test_the_brain_takes_new_thresholds_with_its_blocks_and_zeroes_a_moved_region():
