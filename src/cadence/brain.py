@@ -2228,7 +2228,9 @@ class _TransportPlan:
             by_batch = named["batches"]
             nearest = min(by_batch, key=lambda b: (abs(np.log2(int(b)) - np.log2(batch)), -int(b)))
             return tuple(by_batch[nearest][self.parts.index(part)])
-        return tuple(k for k in part.buckets if _launch_rule(self.buckets[k], self._precision))
+        return tuple(
+            k for k in part.buckets if _launch_rule(self.buckets[k], batch, self._precision)
+        )
 
     def _split(self, part: _Part, batch: int) -> tuple[Any, list[int]]:
         """A part's launch and the buckets on cuBLAS at this batch, found once."""
@@ -2526,28 +2528,32 @@ class _Workspaces:
 # compiled on first use (``_triton_transport``); ``CADENCE_TRITON=0`` keeps every group on
 # cuBLAS products.
 
-_TRITON_ROWS = 8  # output rows per program: the smallest group height of the visual anatomies
-_TRITON_COLS = 16  # presynaptic neurons a program takes at a time
-_TILE_COLS = 128  # at float64 a bucket of one group joins the launch up to this many columns
+# Per precision, double first: output rows per program and presynaptic neurons per step of it.
+_TRITON_TILE = {True: (8, 16), False: (16, 32)}
+_LAUNCH_COLS = 128  # a group of up to this many presynaptic neurons always joins the launch
+_LAUNCH_ROWS = 8  # from this batch every group joins the launch at float64
 tl: Any = None  # triton.language, once bound
 _TRITON_KERNEL: Any = None
 
 
 def _tile_batch(batch: int, double: bool) -> int:
-    """Rows of the batch per program of a launch: 16 at float64, where a program's pace is the
-    device's few float64 units and more programs share them, 64 at float32. A smaller batch takes
-    the tile it fills, since a program's mask does not spare its arithmetic. Measured on an A10G
-    on the real connections: docs/backends.md."""
-    wide = 16 if double else 64
-    return wide if batch >= wide else 1 << max(0, batch - 1).bit_length()
+    """Rows of the batch per program of a launch: 16 at float64, where a launch's pace is the
+    device's few float64 units and more programs share them; at float32 16, and 64 from a batch
+    of 64. A smaller batch takes the tile it fills, since a program's mask does not spare its
+    arithmetic. Measured on an A10G on the real connections: docs/backends.md."""
+    if batch >= 16:
+        return 16 if double or batch < 64 else 64
+    return 1 << max(0, batch - 1).bit_length()
 
 
-def _launch_rule(bucket: _Bucket, precision: str) -> bool:
-    """Whether a bucket joins the Triton launch without a calibration. Several groups do: cuBLAS
-    loses most of its tile to them. At float64 a group of few presynaptic neurons does too: a
-    cuBLAS product costs about 25 microseconds at that size and the launch about 9, where at
-    float32 the product costs 2 to 11."""
-    return bucket.count > 1 or (precision == "float64" and bucket.cols <= _TILE_COLS)
+def _launch_rule(bucket: _Bucket, batch: int, precision: str) -> bool:
+    """Whether a bucket joins the Triton launch. Several groups do, and a group of few presynaptic
+    neurons: a launch costs about 5 microseconds at that size, where a cuBLAS product costs about
+    25 at float64 and 5 at float32. At float64 the launch beats cuBLAS at every size read from a
+    batch of 16; below that, and at float32, cuBLAS keeps the large groups."""
+    if bucket.count > 1 or bucket.cols <= _LAUNCH_COLS:
+        return True
+    return precision == "float64" and batch >= _LAUNCH_ROWS
 
 
 def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
@@ -2610,8 +2616,17 @@ def _triton_transport() -> Any:
 
 
 _UPDATE_KERNEL: Any = None
-_UPDATE_ROWS = 32  # neurons per program of the fused update
-_UPDATE_BATCH = 16  # rows of the batch per program of the normalization
+
+
+def _update_tile(rows: int, batch: int, double: bool) -> tuple[int, int]:
+    """Neurons and rows of the batch per program of the fused update. Below a batch of 16 a
+    program takes 32 neurons and the tile of the batch it fills; from there 8 neurons at float64
+    and 16 at float32, over 16 rows of the batch, and 64 rows once the launch has more than about
+    2,000 programs. Tiles of 32 by 64 left a small brain a few programs at the device's float64
+    rate, up to 8 times the best shape (measured on an A10G: docs/backends.md)."""
+    if batch < 16:
+        return 32, 1 << max(0, batch - 1).bit_length()
+    return 8 if double else 16, 64 if rows * batch > 1 << 18 else 16
 
 
 def _update_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
@@ -2770,33 +2785,51 @@ class _SmallGroups:
 
     def __init__(self, torch: Any, device: Any, buckets: list[Any], weights_offset: list[int],
                  cols: list[np.ndarray], rows: list[np.ndarray]) -> None:
-        meta = []
+        self.torch, self.device = torch, device
+        self.groups = []
         c_base = r_base = 0
         for bucket, offset, c, r in zip(buckets, weights_offset, cols, rows, strict=True):
-            for g in range(bucket.count):
-                for r0 in range(0, bucket.rows, _TRITON_ROWS):
-                    meta.append((
-                        offset + (g * bucket.rows + r0) * bucket.cols,
-                        bucket.cols,
-                        min(_TRITON_ROWS, bucket.rows - r0),
-                        c_base + g * bucket.cols,
-                        r_base + g * bucket.rows + r0,
-                    ))
+            self.groups.append((bucket, offset, c_base, r_base))
             c_base += len(c)
             r_base += len(r)
-        self.programs = len(meta)
-        self.meta = torch.tensor(np.asarray(meta, dtype=np.int64).reshape(-1), device=device)
+        self.tables: dict[int, Any] = {}
         self.cols = torch.from_numpy(np.concatenate(cols).astype(np.int64)).to(device)
         self.rows = torch.from_numpy(np.concatenate(rows).astype(np.int64)).to(device)
-        self.device = device
+
+    def table(self, height: int) -> Any:
+        """Per program of ``height`` output rows its five numbers, as a device array."""
+        held = self.tables.get(height)
+        if held is None:
+            meta = []
+            for bucket, offset, c_base, r_base in self.groups:
+                for g in range(bucket.count):
+                    for r0 in range(0, bucket.rows, height):
+                        meta.append((
+                            offset + (g * bucket.rows + r0) * bucket.cols,
+                            bucket.cols,
+                            min(height, bucket.rows - r0),
+                            c_base + g * bucket.cols,
+                            r_base + g * bucket.rows + r0,
+                        ))
+            held = self.tables[height] = self.torch.tensor(
+                np.asarray(meta, dtype=np.int64).reshape(-1), device=self.device
+            )
+        return held
+
+    @property
+    def programs(self) -> int:
+        """Programs of the launch at float64's tile height, for reports."""
+        return int(self.table(_TRITON_TILE[True][0]).shape[0]) // 5
 
     def __call__(self, values: Any, s: Any, out: Any) -> None:
         batch, double = s.shape[1], values.element_size() == 8
+        height, width = _TRITON_TILE[double]
         block = _tile_batch(batch, double)
-        grid = (self.programs, -(-batch // block))
+        meta = self.table(height)
+        grid = (meta.shape[0] // 5, -(-batch // block))
         _triton_transport()[grid](
-            values, s, out, self.meta, self.cols, self.rows, batch,
-            ROWS=_TRITON_ROWS, COLS=_TRITON_COLS, BATCH=block, DOUBLE=double,
+            values, s, out, meta, self.cols, self.rows, batch,
+            ROWS=height, COLS=width, BATCH=block, DOUBLE=double,
         )
 
 
@@ -2884,6 +2917,7 @@ class _TorchKernel:
         # its workspaces hold the transport's output alone
         self._reference_only = reference
         self._reference: Any = None
+        self._pools: Any = None  # the normalization's tables, on CUDA with Triton
         self._version = 0  # parameter replacements so far, for the reference copy
         if device is None:
             if torch.cuda.is_available():
@@ -2928,8 +2962,7 @@ class _TorchKernel:
             self.pool_count = torch.from_numpy(
                 np.maximum(indicator.sum(axis=0), 1.0)[:, None]
             ).to(self.device, self.dtype)
-            self._pools: Any = None
-            if self.device.type == "cuda" and not reference and _triton_apical() is not None:
+            if self.device.type == "cuda" and _triton_apical() is not None:
                 # the members of every pool in order; per tile of them where it starts, its
                 # count and its pool; per pool its first tile and tile count
                 ordered = [np.arange(connectome.n)[m] for m in apical.members]
@@ -3090,29 +3123,37 @@ class _TorchKernel:
         spread = (raw2 + (apical.floor * apical.floor) * basal2 + _APICAL_TINY).sqrt()
         return apical.fraction * basal2.sqrt() / spread
 
-    def _apical_launch(self, ws: Any, total: Any, raw: Any) -> None:
-        """``total += gain * raw`` per pool in three Triton launches (CUDA): the sums of squares
-        over tiles of a pool's members, each pool's gain, the drive."""
+    def _pool_gains_launch(self, ws: Any, basal: Any, raw: Any) -> None:
+        """``Apical.gain`` per pool and row into ``ws.pool_gain``, in two Triton launches (CUDA):
+        the sums of squares over tiles of a pool's members, each pool's gain."""
         torch, batch = self.torch, ws.batch
         members, spans, tiles, constants = self._pools
         tile_count, pools = spans.shape[0] // 3, tiles.shape[0] // 2
         if ws.pool_part is None:
             ws.pool_part = torch.zeros(2 * tile_count, batch, dtype=self.dtype, device=self.device)
             ws.pool_gain = torch.zeros(pools, batch, dtype=self.dtype, device=self.device)
-        columns = -(-batch // _UPDATE_BATCH)
-        sums, gains, drive = _APICAL_KERNELS
+        double = basal.element_size() == 8
+        block = _tile_batch(batch, double)
+        columns = -(-batch // block)
+        sums, gains, _ = _APICAL_KERNELS
         with torch.cuda.device(self.device):
             sums[tile_count, columns](
-                total, raw, members, spans, ws.pool_part, batch,
-                ROWS=_POOL_ROWS, BATCH=_UPDATE_BATCH,
+                basal, raw, members, spans, ws.pool_part, batch, ROWS=_POOL_ROWS, BATCH=block,
             )
             gains[pools, columns](
                 ws.pool_part, tiles, self.pool_count, constants, ws.pool_gain, batch,
-                BATCH=_UPDATE_BATCH, DOUBLE=total.element_size() == 8,
+                BATCH=block, DOUBLE=double,
             )
-            drive[tile_count, columns](
-                total, raw, members, spans, ws.pool_gain, batch,
-                ROWS=_POOL_ROWS, BATCH=_UPDATE_BATCH,
+
+    def _apical_launch(self, ws: Any, total: Any, raw: Any) -> None:
+        """``total += gain * raw`` per pool in three Triton launches (CUDA)."""
+        torch, batch = self.torch, ws.batch
+        self._pool_gains_launch(ws, total, raw)
+        members, spans, _, _ = self._pools
+        block = _tile_batch(batch, total.element_size() == 8)
+        with torch.cuda.device(self.device):
+            _APICAL_KERNELS[2][spans.shape[0] // 3, -(-batch // block)](
+                total, raw, members, spans, ws.pool_gain, batch, ROWS=_POOL_ROWS, BATCH=block,
             )
 
     def _push(self, total: Any, s: Any, buffers: _NudgeBuffers) -> None:
@@ -3305,15 +3346,15 @@ class _TorchKernel:
         if cfg.tolerance is not None:
             torch.lt(movement.amax(), cfg.tolerance, out=ws.flag[j])
 
-    def _update_table(self, settling: bool) -> Any:
+    def _update_table(self, settling: bool, height: int) -> Any:
         """Per program of the fused update its first neuron and neuron count, as a device array:
-        every neuron, or the neurons synapses reach."""
-        table = self._update_tables.get(settling)
+        every neuron, or the neurons synapses reach, ``height`` to a program."""
+        key = (settling, height)
+        table = self._update_tables.get(key)
         if table is None:
             spans = self.plan.structure.settling if settling else [(0, self.n)]
-            rows = [(r0 + k, min(_UPDATE_ROWS, m - k))
-                    for r0, m in spans for k in range(0, m, _UPDATE_ROWS)]
-            table = self._update_tables[settling] = self.torch.tensor(
+            rows = [(r0 + k, min(height, m - k)) for r0, m in spans for k in range(0, m, height)]
+            table = self._update_tables[key] = self.torch.tensor(
                 rows, dtype=self.torch.int64, device=self.device
             ).reshape(-1)
         return table
@@ -3324,8 +3365,11 @@ class _TorchKernel:
         """The neuron update from ``ws.total`` in one Triton launch (CUDA): potentials,
         activations, adaptation and per-tile movement sums and peaks, then their reductions."""
         torch, batch = self.torch, ws.batch
-        block = 64 if batch >= 64 else max(16, 1 << max(0, batch - 1).bit_length())
-        table = self._update_table(settling)
+        spans = self.plan.structure.settling if settling else [(0, self.n)]
+        height, block = _update_tile(
+            sum(m for _, m in spans), batch, self.dtype == torch.float64
+        )
+        table = self._update_table(settling, height)
         grid = (table.shape[0] // 2, -(-batch // block))
         if (ws.part_settling if settling else ws.part) is None:
             part = torch.zeros(grid[0], batch, dtype=self.dtype, device=self.device)
@@ -3342,7 +3386,7 @@ class _TorchKernel:
             self._fused[grid](
                 ws.total, ws.v[i], ws.s[i], a_in, cfg.keep if cfg.masked else ws.total,
                 ws.v[j], ws.s[j], a_out, part, peak, self._constants, table, batch,
-                ROWS=_UPDATE_ROWS, BATCH=block, KEEP=keep_mode, ADAPT=ws.a is not None,
+                ROWS=height, BATCH=block, KEEP=keep_mode, ADAPT=ws.a is not None,
                 LEAK=self.neuron_model.leak != 0.0,
             )
         torch.add(ws.change[i], part.sum(dim=0), out=ws.change[j])
@@ -3727,9 +3771,12 @@ class _TorchKernel:
                     self._push(error, s, buffers)
                 raw = synaptic.narrow(0, n, n)
                 held = scratch(ws.standing)
-                if not self._held_into(held, nudge, batch):
-                    held = self._apical_spread(error, raw)
-                error.addcmul_(held, raw)
+                if self._held_into(held, nudge, batch):
+                    error.addcmul_(held, raw)
+                elif self._pools is not None:
+                    self._apical_launch(ws, error, raw)
+                else:
+                    error.addcmul_(self._apical_spread(error, raw), raw)
                 error.sub_(vt)
             error.mul_(kt)  # (projected_next_v - v) / dt, written without cancellation
             projection = scratch(ws.s[1])
@@ -3761,7 +3808,12 @@ class _TorchKernel:
             basal = synaptic.narrow(0, 0, n) + (self._upload(drive).T + self.bias[:, None])
             if adapt is not None:
                 basal = basal - adapt.strength * a.T
-            gain = self._apical_gain(basal, synaptic.narrow(0, n, n))
+            raw = synaptic.narrow(0, n, n)
+            if self._pools is not None:
+                self._pool_gains_launch(ws, basal, raw)
+                gain = ws.pool_gain
+            else:
+                gain = self._apical_gain(basal, raw)
         return np.asarray(gain.T.cpu().double().numpy())
 
     def keep_rows(self, handle: dict[str, Any], keep: np.ndarray) -> dict[str, Any]:
@@ -3965,7 +4017,9 @@ class _TorchKernel:
         picks: list[list[int]] = []
         seconds = {"rules": 0.0, "chosen": 0.0}
         for part in plan.parts:
-            rules = tuple(k for k in part.buckets if _launch_rule(plan.buckets[k], plan._precision))
+            rules = tuple(
+                k for k in part.buckets if _launch_rule(plan.buckets[k], batch, plan._precision)
+            )
             if not part.buckets:
                 picks.append([])
                 continue
