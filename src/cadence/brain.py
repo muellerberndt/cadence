@@ -2483,6 +2483,7 @@ class _Workspace:
         self.events = [torch.cuda.Event() for _ in range(2)] if self.cuda else None
         self.nudges: dict[Any, Any] = {}  # per nudge signature: its buffers
         self.graphs: OrderedDict[Any, Any] = OrderedDict()
+        self.pool: Any = None  # the memory these graphs share
         self.seen: dict[Any, int] = {}  # eager runs per graph key, before a capture
         self.configs: dict[Any, Any] = {}  # per graph key: its sweep configuration
         self.executed_steps = 0
@@ -2490,6 +2491,7 @@ class _Workspace:
     def clear_captures(self) -> None:
         """Drop configurations and every graph/reference that can own their nudge buffers."""
         self.graphs.clear()
+        self.pool = None
         self.seen.clear()
         self.configs.clear()
 
@@ -2997,7 +2999,6 @@ class _TorchKernel:
         self._staging = _Staging(torch, self.device)
         self._workspaces = _Workspaces()
         self._nudge_specs: dict[Any, Any] = {}
-        self._graph_pool: Any = None
         self._capture_stream: Any = None
         self._graphs_failed = False
         self.graph_stats: dict[str, Any] = {"captured": 0, "replays": 0, "failed": None}
@@ -3604,16 +3605,17 @@ class _TorchKernel:
             return graph
         if self._graphs_failed or ws.seen.get((cfg.key, stage), 0) < 2:
             return None  # not yet run eagerly from both slots
-        if self._graph_pool is None:
-            self._graph_pool = torch.cuda.graph_pool_handle()
+        if self._capture_stream is None:
             self._capture_stream = torch.cuda.Stream(self.device)
+        if ws.pool is None:  # a pool lives as long as a graph captured on it
+            ws.pool = torch.cuda.graph_pool_handle()
         stream, current = self._capture_stream, torch.cuda.current_stream(self.device)
         stream.wait_stream(current)
         graph = torch.cuda.CUDAGraph()
         try:  # the capture runs on this kernel's device, whichever device is current
             with torch.cuda.device(self.device), torch.cuda.stream(stream):
                 # relaxed: the Triton launcher's driver queries must not invalidate the capture
-                graph.capture_begin(pool=self._graph_pool, capture_error_mode="relaxed")
+                graph.capture_begin(pool=ws.pool, capture_error_mode="relaxed")
                 try:
                     for k in range(length):
                         self._sweep(ws, cfg, (parity + k) % 2, (parity + k + 1) % 2, stage)
@@ -3965,14 +3967,13 @@ class _TorchKernel:
         torch.cuda.synchronize(device)
         once = clock() - began
         length = 4 if once < 2e-3 else 1
-        if self._graph_pool is None:
-            self._graph_pool = torch.cuda.graph_pool_handle()
+        if self._capture_stream is None:
             self._capture_stream = torch.cuda.Stream(device)
         stream, current = self._capture_stream, torch.cuda.current_stream(device)
         stream.wait_stream(current)
         graph = torch.cuda.CUDAGraph()
         with torch.cuda.device(device), torch.cuda.stream(stream):
-            graph.capture_begin(pool=self._graph_pool, capture_error_mode="relaxed")
+            graph.capture_begin(capture_error_mode="relaxed")
             try:
                 for _ in range(length):
                     step()

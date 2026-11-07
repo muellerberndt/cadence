@@ -392,6 +392,24 @@ def test_graph_replay_is_bitwise_the_eager_settle(monkeypatch):
 
 
 @cuda
+def test_graphs_are_captured_again_after_every_capture_was_dropped():
+    brain = composed(apical=False)
+    dev = on(brain.learner.brain, "cuda:0")
+    kernel = dev._torch
+    drive = np.random.default_rng(7).uniform(-0.5, 1.0, (4, dev.connectome.n))
+    for _ in range(4):
+        dev.settle_batch(drive, steps=40)
+    ws = kernel._workspace(4)
+    assert kernel.graph_stats["captured"] > 0 and ws.graphs
+    expected = dev.settle_batch(drive, steps=40).activation
+    ws.clear_captures()
+    for _ in range(4):
+        again = dev.settle_batch(drive, steps=40)
+    assert kernel.graph_stats["failed"] is None and ws.graphs
+    np.testing.assert_allclose(again.activation, expected, rtol=0, atol=1e-13)
+
+
+@cuda
 def test_the_device_settle_is_deterministic():
     brain = composed(apical=True)
     rng = np.random.default_rng(6)
