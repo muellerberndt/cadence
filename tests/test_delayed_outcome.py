@@ -38,7 +38,7 @@ from typing import Any
 import checkpoints
 import numpy as np
 import pytest
-from checkpoints import earlier
+from checkpoints import flat, write
 
 import cadence as cd
 
@@ -55,7 +55,7 @@ def _life(*, youth: int = 0, seed: int = 0, efference: float = 0.3, **options: A
         working_memory_amplitude=0.3,
         efference_amplitude=efference,
         arousal=cd.ArousalConfig(youth=youth),
-        **options,
+        **{"recall": False, **options},
     )
 
 
@@ -412,7 +412,7 @@ def check_a_refused_wait_changes_nothing() -> None:
 
 
 def check_waiting_needs_a_live_action_awaiting_its_outcome() -> None:
-    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0)
+    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0, recall=False)
     plain.step(EYE[[0]])
     with pytest.raises(ValueError, match="arousal"):
         plain.wait(EYE[[1]])
@@ -463,7 +463,7 @@ def check_a_life_saved_while_waiting_continues_identically(tmp_path) -> None:
         path = brain.save(tmp_path / f"waiting-{case}.npz")
         with np.load(path) as saved:
             meta = checkpoints.metadata(saved)
-            assert meta["format"] == "cadence-generic/5" and "awaiting" in meta
+            assert "awaiting" in meta
             assert {"awaiting/v", "awaiting/activation", "awaiting/adaptation"} <= set(saved.files)
         twin = cd.Brain.load(path)
         assert twin.decision_id == brain.decision_id and twin.pending_feedback
@@ -580,32 +580,31 @@ def test_naming_the_decision_changes_nothing_in_a_life():
     _same(_durable(plain), _durable(named))
 
 
-def test_a_life_that_never_waits_keeps_its_checkpoint_format(tmp_path):
-    for efference, expected in ((0.0, "cadence-generic/3"), (0.3, "cadence-generic/4")):
+def test_a_life_that_never_waits_saves_no_awaited_state(tmp_path):
+    for efference in (0.0, 0.3):
         brain = _owing(youth=40, efference=efference)
         with np.load(brain.save(tmp_path / f"format-{efference}.npz")) as saved:
             meta = checkpoints.metadata(saved)
-            assert meta["format"] == expected and "awaiting" not in meta
+            assert "awaiting" not in meta
             assert not any(name.startswith("awaiting/") for name in saved.files)
         brain.wait(EYE[[1]])
         brain.live(EYE[[2]], reward=[0.0])  # the wait ended with its outcome
         with np.load(brain.save(tmp_path / f"after-{efference}.npz")) as saved:
-            assert checkpoints.metadata(saved)["format"] == expected
+            assert "awaiting" not in checkpoints.metadata(saved)
 
 
 def _rewrite(path, change) -> None:
     with np.load(path, allow_pickle=False) as saved:
-        arrays = earlier({name: saved[name].copy() for name in saved.files})
+        arrays = flat({name: saved[name].copy() for name in saved.files})
     metadata = checkpoints.metadata(arrays)
     change(metadata, arrays)
     arrays["generic"] = np.array(json.dumps(metadata))
-    np.savez(path, **arrays)
+    write(path, arrays)
 
 
 @pytest.mark.parametrize(
     "defect",
     [
-        "older_format",
         "missing_metadata",
         "missing_state",
         "shape",
@@ -627,9 +626,7 @@ def test_a_corrupt_waiting_checkpoint_is_refused(tmp_path, defect):
         sensed = {name: np.zeros((1, brain.connectome.n)) for name in ("v", "activation")}
 
     def corrupt(metadata, arrays):
-        if defect == "older_format":
-            metadata["format"] = "cadence-generic/3"
-        elif defect == "missing_metadata":
+        if defect == "missing_metadata":
             del metadata["awaiting"]
         elif defect == "missing_state":
             del arrays["awaiting/adaptation"]
@@ -657,7 +654,7 @@ def test_a_corrupt_waiting_checkpoint_is_refused(tmp_path, defect):
 def test_a_slotted_action_waits_and_is_credited_as_an_immediate_one(tmp_path):
     brain = cd.Brain.compose(
         4, 4, modules=(8,), slots=2, seed=1, working_memory_amplitude=0.3,
-        arousal=cd.ArousalConfig(youth=40),
+        arousal=cd.ArousalConfig(youth=40), recall=False,
     )
     action = brain.live(EYE[[0]])
     action = brain.live(EYE[[1]], reward=[float(action[0, 0] == 0)])
@@ -677,7 +674,7 @@ def test_a_wait_on_the_torch_backend_credits_and_resumes_like_the_host(tmp_path)
     torch = pytest.importorskip("torch")
     brain = cd.Brain.compose(
         4, 2, modules=(8,), seed=0, working_memory_amplitude=0.3, backend="torch",
-        arousal=cd.ArousalConfig(youth=40),
+        arousal=cd.ArousalConfig(youth=40), recall=False,
     )
     action = brain.live(EYE[[0]])
     for moment in range(3):
@@ -797,9 +794,6 @@ _LEARN_DEVICE = cd.ActorCritic._learn_device
 def _strip_awaiting(path) -> None:
     def strip(metadata, arrays):
         if metadata.pop("awaiting", None) is not None:
-            metadata["format"] = "cadence-generic/4" if metadata.get("efference") else (
-                "cadence-generic/3"
-            )
             for name in [name for name in arrays if name.startswith("awaiting/")]:
                 del arrays[name]
 

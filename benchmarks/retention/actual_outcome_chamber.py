@@ -95,7 +95,7 @@ def make_brain(seed):
                                  eta_critic=0.3, eligibility_steps=12, dopamine_cap=1),
         consolidation=0.05, episodic=True, working_memory_decay=0.2,
         working_memory_amplitude=3,
-        scales={"trace": 12.0},  # the composition of releases before 0.82.0
+        scales={"trace": 12.0}, recall=False,  # the composition of releases before 0.82.0
     )
 
 

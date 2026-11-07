@@ -82,6 +82,18 @@ returns an `Equilibrium` with `state`, per-row `residual`, `steps` (sweeps in th
 budget over up to `k + 1` attempts, each at half the previous `dt`, all checked against the
 original equations. Report a spent budget and act on it.
 
+`equilibrate(..., fast=True)`, which a composed brain's free solves take under
+`learning_fast_settle=True`, the setting of a new brain with the memory, reaches the same equations in
+fewer neuron updates on the compiled CPU path. `learning_fast_settle=False` names the ordinary solve. Its sweeps are in the same order as a plain sweep. A row stops at the check it is within 1e-5,
+or within `tolerance` once 96 sweeps are spent, and leaves the arrays the others settle in; `chunk`
+is at most 16. The activation is made in arithmetic that vectorizes, within about 1e-14 of the
+rule's. The result
+reports `row_sweeps`, the sweeps summed over the rows; `steps` counts those of the slowest row, and
+the state has no `activity_change`. The fixed point is the same to the tolerance and the bits are
+another solve's. A mask, a nudge, an apical compartment, adaptation or a `dt` other than 1 takes the
+ordinary solve, and so do a wrapped `settle_batch` or `residual`, a graph subclass with its own
+`equilibrate`, and the solves of a learner under `learning_qualified`.
+
 Regions that share one connectome settle toward one joint fixed point under the current
 drive; independent solves merged afterwards do not couple them. An equilibrium need not be
 unique or stable. Carrying a state between inputs (warm start) can save work or select a
@@ -527,12 +539,13 @@ Select rates on development data and freeze them.
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
 | `surprise_share` | `LearnerConfig` | with `surprise`, scale a lesson's step by the share of its rows it taught ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)) | `False` |
+| `fast_settle` | `LearnerConfig` | a composed brain's free solves on the compiled CPU path: rows that stop apart, the activation in vectorizing arithmetic ([settling](#settling-and-equilibrium)) | `False`; `True` in a new brain with the memory |
 | `rehearsal`, `rehearsal_capacity` | `LearnerConfig` | in a composed brain, after each lesson replay that many times its rows again, each with its episode, drawn from a reservoir of that many lesson rows ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) | 0.0 (off), 512 |
 | `outputs`, `config` | `Learner` | output neuron indices; the `LearnerConfig` | required, `LearnerConfig()` |
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |
 | `reciprocal` | `Learner` | tie each synapse and its reverse into one efficacy | `True` |
 | `tie_groups` | `Learner` | int per synapse, `-1` untied; a group shares one step | `None` |
-| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1) |
+| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1); a new brain's [width](tune.md#wide-brains) sets it above 64 |
 | `slots` | `Learner` | outputs split into softmax groups: a count of equal groups or a size per group | 1 |
 | `gain`, `slope`, `leak`, `dt`, `stimulus_amplitude` | `learning_neuron_model` | synaptic gain, activation slope, sub-rest response, integration step, input scale | 1.0, 1.0, 0.1, 0.5 (`Brain.compose` uses 1.0), 1.0 |
 | `density`, `feedback`, `lateral`, `seed` | `layered` | input-to-hidden density, feedback scale, output-to-output weight, wiring seed | 0.3, 1.0, 0.0, 0 |

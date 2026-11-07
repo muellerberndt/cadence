@@ -119,8 +119,8 @@ VISION = {"visual": "visual", "module_0": "module_0", "association": "module_1"}
 
 
 def vision_pair(seed=0):
-    donor = cd.Brain.compose((6, 6), 4, modules=(32, 16), seed=seed)
-    host = cd.Brain.compose((6, 6), 2, modules=(32, 16, 24), seed=seed + 10)
+    donor = cd.Brain.compose((6, 6), 4, modules=(32, 16), seed=seed, recall=False)
+    host = cd.Brain.compose((6, 6), 2, modules=(32, 16, 24), seed=seed + 10, recall=False)
     return donor, host
 
 
@@ -255,16 +255,16 @@ def test_graft_refuses(arguments, message):
 
 def test_graft_refuses_wiring_the_donor_has_and_this_brain_lacks():
     """The donor's sensory region feeds its first module; an observer reads no sensory input."""
-    donor = cd.Brain.compose(6, 4, modules=(16, 16), seed=0)
-    host = cd.Brain.compose(6, 4, modules=(16,), observers=(16,), seed=0)
+    donor = cd.Brain.compose(6, 4, modules=(16, 16), seed=0, recall=False)
+    host = cd.Brain.compose(6, 4, modules=(16,), observers=(16,), seed=0, recall=False)
     with pytest.raises(ValueError, match="this brain lacks"):
         host.graft(donor, {"sensory": "sensory", "module_0": "observer_0"})
 
 
 def test_graft_refuses_another_neuron_model_or_compartment():
-    plain = cd.Brain.compose(6, 4, modules=(16, 16), seed=0)
-    deep = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=0)
-    deeper = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.25, seed=0)
+    plain = cd.Brain.compose(6, 4, modules=(16, 16), seed=0, recall=False)
+    deep = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=0, recall=False)
+    deeper = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.25, seed=0, recall=False)
     with pytest.raises(ValueError, match="neuron model"):
         plain.graft(deep, ["module_0"])
     with pytest.raises(ValueError, match="apical compartment"):
@@ -272,8 +272,8 @@ def test_graft_refuses_another_neuron_model_or_compartment():
 
 
 def test_graft_refuses_a_learned_code_region():
-    donor = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=0)
-    host = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=1)
+    donor = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=0, recall=False)
+    host = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=1, recall=False)
     with pytest.raises(ValueError, match="learned code"):
         host.graft(donor, ["code"])
 
@@ -306,8 +306,8 @@ def test_the_graft_starts_a_fresh_optimizer_history():
 def test_graft_refuses_a_one_way_synapse_on_half_of_a_pair():
     """The donor's sensory region feeds its association one way; this brain's module_0 and
     association read each other through pairs that share one efficacy."""
-    donor = cd.Brain.compose(6, 4, modules=(16,), seed=0)
-    host = cd.Brain.compose(6, 4, modules=(6, 16), seed=1)
+    donor = cd.Brain.compose(6, 4, modules=(16,), seed=0, recall=False)
+    host = cd.Brain.compose(6, 4, modules=(6, 16), seed=1, recall=False)
     with pytest.raises(ValueError, match="half of a reciprocal pair"):
         host.graft(donor, {"sensory": "module_0", "association": "association"})
 
@@ -319,8 +319,8 @@ def test_graft_refuses_regions_that_share_no_synapse():
 
 
 def test_graft_refuses_another_apical_role():
-    donor = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=0)
-    host = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=1)
+    donor = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=0, recall=False)
+    host = cd.Brain.compose(6, 4, modules=(16, 16), apical=0.5, seed=1, recall=False)
     with pytest.raises(ValueError, match="apical roles"):
         host.graft(donor, {"module_0": "association", "association": "module_0"})
 
@@ -328,19 +328,19 @@ def test_graft_refuses_another_apical_role():
 def test_a_learned_code_host_takes_a_graft_its_code_reads_into():
     """Synapses from the code region are ordinary synapses; only a joint landing on the code
     region, which lives in its tables, is refused."""
-    donor = taught(cd.Brain.compose(40, 4, modules=(16, 16), seed=0), inputs=40)
-    host = cd.Brain.compose(40, 4, learned_code=16, modules=(16, 16), seed=1)
+    donor = taught(cd.Brain.compose(40, 4, modules=(16, 16), seed=0, recall=False), inputs=40)
+    host = cd.Brain.compose(40, 4, learned_code=16, modules=(16, 16), seed=1, recall=False)
     grafted = host.graft(donor, ["module_0", "association"])
     grafted.act(np.random.default_rng(0).random((2, 40)), greedy=True)
-    coded = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=2)
+    coded = cd.Brain.compose(40, 4, learned_code=16, modules=(16,), seed=2, recall=False)
     with pytest.raises(ValueError, match="land on its code region"):
         host.graft(coded, ["prefrontal", "association"])
 
 
 def test_wiring_the_donor_lacks_starts_at_zero_even_with_kept_joints():
     """This brain's motor neurons inhibit one another; the donor's do not."""
-    donor = taught(cd.Brain.compose(6, 4, modules=(16,), seed=0))
-    host = cd.Brain.compose(6, 4, modules=(16,), lateral=-0.2, seed=1)
+    donor = taught(cd.Brain.compose(6, 4, modules=(16,), seed=0, recall=False))
+    host = cd.Brain.compose(6, 4, modules=(16,), lateral=-0.2, seed=1, recall=False)
     grafted = host.graft(donor, ["association", "motor"], joints="kept")
     motor = host.connectome.populations["motor"]
     lateral = np.isin(grafted.connectome.pre, motor) & np.isin(grafted.connectome.post, motor)
@@ -351,9 +351,9 @@ def test_wiring_the_donor_lacks_starts_at_zero_even_with_kept_joints():
 def test_a_graft_carries_the_donors_contact_counts_and_keeps_this_brains_signs(tmp_path):
     """A recall copy pathway with tokens is laid out again from the brain's construction on
     load; with the donor's signs carried, the brain's connectome and its learner's disagreed."""
-    tokens = dict(recall=True, recall_copy=2.0)
-    host = cd.Brain.compose(6, 4, seed=1, modules=(16,), recall_tokens=[0, 1, 2, 3], **tokens)
-    donor = cd.Brain.compose(6, 4, seed=7, modules=(16,), **tokens)
+    tokens = dict(recall=True, recall_founder=True, recall_copy=2.0)
+    host = cd.Brain.compose(6, 4, seed=1, modules=(16,), recall_tokens=[0, 1, 2, 3], **{"recall": False, **tokens})
+    donor = cd.Brain.compose(6, 4, seed=7, modules=(16,), **{"recall": False, **tokens})
     grafted = host.graft(donor, ["recall", "next", "motor", "association"])
     np.testing.assert_array_equal(grafted.connectome.sign, host.connectome.sign)
     np.testing.assert_array_equal(grafted.connectome.count, host.connectome.count)

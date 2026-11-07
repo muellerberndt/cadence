@@ -20,7 +20,7 @@ def blobs(seed):
 
 @pytest.mark.parametrize("seed", [0, 1, 2])
 def test_default_composition_acquires_labels_with_qualified_free_answers(seed):
-    brain = cd.Brain.compose(8, 2, seed=seed)
+    brain = cd.Brain.compose(8, 2, seed=seed, recall=False)
     training, labels = blobs(0)
     held, expected = blobs(7)
     before = brain.accuracy(held, expected)
@@ -49,7 +49,7 @@ def same_checkpoint(first, second):
 def test_composed_depth_and_observation_preserve_actual_feedback_and_private_memory(
     modules, observers, tmp_path
 ):
-    brain = cd.Brain.compose(3, 3, modules=modules, observers=observers, seed=2)
+    brain = cd.Brain.compose(3, 3, modules=modules, observers=observers, seed=2, recall=False)
     cue = np.array([[0.6, -0.3, 0.1], [-0.2, 0.4, 0.3]])
     actual_action = brain.act(cue)
     before = brain.save(tmp_path / "before")
@@ -84,7 +84,7 @@ def test_composition_forwards_memory_and_learning_options_through_saved_continua
         working_memory_decay=0.7,
         working_memory_amplitude=0.4,
         learning=learning,
-        reward=reward,
+        reward=reward, recall=False,
     )
     assert (brain.hippocampus is not None) is episodic
     assert brain.working_memory.decay == 0.7 and brain.working_memory.amplitude == 0.4
@@ -107,7 +107,7 @@ def test_composition_forwards_memory_and_learning_options_through_saved_continua
 @pytest.mark.parametrize("inputs,actions", [(0, 2), (2, 0), (True, 2), (2, True)])
 def test_invalid_public_port_counts_are_refused(inputs, actions):
     with pytest.raises(ValueError, match="positive integers"):
-        cd.Brain.compose(inputs, actions, modules=(4,))
+        cd.Brain.compose(inputs, actions, modules=(4,), recall=False)
 
 
 @pytest.mark.parametrize(
@@ -122,7 +122,7 @@ def test_minimum_and_published_layouts_issue_qualified_actions(
     inputs, actions, modules, observers, seed
 ):
     brain = cd.Brain.compose(
-        inputs, actions, modules=modules, observers=observers, seed=seed
+        inputs, actions, modules=modules, observers=observers, seed=seed, recall=False
     )
     observation = np.linspace(0.1, 0.4, inputs)[None, :]
     drive = brain.stimulus(observation)

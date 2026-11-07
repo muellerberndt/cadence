@@ -30,8 +30,9 @@ continues the life later. [Teach](teach.md), [reward](reward.md), [memory](memor
 [tune](tune.md) take each part further.
 
 The composed brain has one association region (`modules=(64,)`) between the sensory and motor
-neurons, a working trace that carries the last interpretation into the next settle, and an
-associative memory that consolidates what it writes. Every region settles together into one
+neurons, a working trace that carries the last interpretation into the next settle, a recall
+memory that gives back an earlier moment when the present asks for it, and an associative memory
+that consolidates what it writes. Every region settles together into one
 equilibrium, and that equilibrium is the answer
 ([one continuing equilibrium brain](#one-continuing-equilibrium-brain)).
 
@@ -253,6 +254,7 @@ assert answer_work["max_residual"] <= answer_work["tolerance"]
 - `qualified`, per-row `row_qualified` and `residual`, `max_residual`;
 - `steps`, `budget`, `tolerance`, `residual_checks`, `damping_halvings` and `stagnation_checks`;
 - `rescue_steps` where the solve was continued (`steps` then exceeds `budget`).
+- `row_sweeps` under `learning_fast_settle`, the sweeps summed over rows that stop apart.
 
 Validation errors, `learn` and `imagine` leave it as it was; reset and load clear it. It counts
 answer work only. Teaching and feedback work, refused teaching included, is in `last_learning`,
@@ -307,8 +309,8 @@ from reward):
 | A reversal whose failures pay nothing: the paid arm's record keeps voting after the pay moves | `memory_choice=True, memory_extinction=0.5` | [extinction](../benchmarks/extinction/README.md); [a paid action that stops paying](memory.md#a-paid-action-that-stops-paying-extinction) |
 | A chain whose stages look alike and whose misses leave the observation as it was | `memory_choice=True, memory_context_hold="unchanged"` | [context key](../benchmarks/context_key/README.md); [stages that look alike](memory.md#stages-that-look-alike-the-context-hold) |
 | A choice that depends on a cue the answer does not show, from the terminal reward alone | `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True` | [credit](../benchmarks/credit/README.md); [a cue the answer does not show](reward.md#a-cue-the-answer-does-not-show) |
-| The same cue carried through distractors, taught by a lesson at the answer | `recall=True, recall_recency=0.0` | the same chamber and section |
-| Which of two writes a read finds, from reward alone | `recall=True, recall_position_reward=4.0, recall_address_reward=1.0, recall_anchor=True, recall_next=False` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
+| The same cue carried through distractors, taught by a lesson at the answer | nothing: a new brain's memory has no age charge (`recall_recency=0.0`) | the same chamber and section |
+| Which of two writes a read finds, from reward alone | nothing: a new brain holds `recall_position_reward=4.0` and the anchor; the chamber's recipe adds `recall_address_reward=1.0, recall_next=False` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
 
 The chambers' READMEs give each setting's readings and costs.
 
@@ -360,7 +362,7 @@ and associative records; recall slots survive only with `"slots"` in `keep`
 
 Keep the arousal when the new stream continues the same life. In a two-armed bandit with one
 constant observation whose paying arm moved after 300 moments
-(`Brain.compose(1, 2, modules=(16,), arousal=True)`, seeds 0 to 4):
+(`Brain.compose(1, 2, modules=(16,), arousal=True, recall=False)`, seeds 0 to 4):
 
 - Reset with `keep=()`, adults chose the newly paying arm at none of the next 120 moments.
 - Reset keeping the arousal, they fell short of the income they were used to, woke and chose as
@@ -425,7 +427,7 @@ covers modules and observers.
 | Mechanism | Default in `Brain.compose` | Advances on |
 | --- | --- | --- |
 | Neural activity | retained | each accepted action and each `wait` |
-| Memories | working trace and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
+| Memories | working trace, recall memory and associative store on, the rest opt-in | as listed in [memory](memory.md#memory-in-the-composed-brain); `wait` advances the working trace, heard history and recall slots |
 | Reward plasticity and demonstrations | `step`, `learn`, `lesson`, aroused `live` | actual outcomes and supplied labels |
 | Arousal | off unless `arousal=True` | each outcome `live` receives |
 | Observers | none unless requested | the same neural solve |
@@ -456,7 +458,7 @@ The composed brain integrates no learned model of environmental transitions
 | --- | --- |
 | Present interpretation and action | `Brain.act` qualifies the whole neural graph's residual with the trace and memory reads held as drive. With `memory_choice=True` the episodic vote joins the motor readout after the settle. The memory stores do not equilibrate jointly with the graph. |
 | Settling work | `Brain.last_settlement` reports free-answer residuals, sweeps, checks and qualification, refused attempts included. Eligibility, teaching, feedback, imagination and memory work are excluded; [`record_settlements`](api.md#record-every-settling-step) records every settlement, learning and imagination included, at a memory and copy cost. |
-| Memories | Working trace and associative store on; efference copy, heard history, episodic and recall memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
+| Memories | Working trace, associative store and recall memory on; efference copy, heard history and episodic memory opt-in. Each is read as held drive (the episodic vote joins after the settle) and written after the settle. [Memory](memory.md#memory-in-the-composed-brain). |
 | Local correction | Teacher labels change graph parameters, the address map of a recall memory and, with `memory_choice=True`, the episodic records. Chosen-action outcomes drive reward plasticity and associative writes. A label credits no earlier action. |
 | Routine and repair | `Brain.live`, for a brain built with `arousal`, answers greedily from one qualified settle while calm and changes no parameter or associative record; the trace, heard history and recall slots advance. Surprise, a reward shortfall or an unmet `need` (founder 0) or `need_scale` (0.1, a constant) raises arousal, and the outcome that wakes the brain is written to its associative store. The first `youth` moments (100) and aroused moments sample, keep eligibility and learn, from success too. One stream; the law's constants are genes. [Routine and repair](#routine-and-repair-live). |
 | Private imagination | `Brain.imagine` settles **supplied** observation sequences with a private trace and read-only durable memory. It learns nothing and generates no environmental transition. [Private imagination](#private-imagination). |

@@ -54,7 +54,7 @@ def test_qualified_supervision_does_not_expand_default_brain_reward_eligibility(
         2, 2, modules=(4,),
         learning=cd.LearnerConfig(
             qualified=True, damping=3, free_steps=1024, nudged_steps=4096, tolerance=3e-3,
-        ),
+        ), recall=False,
     )
     requested = []
     original = cd.NeuralGraph.settle_batch
@@ -112,7 +112,7 @@ def test_refused_reward_preserves_both_memories_and_retries_exactly_once(
         learning=cd.LearnerConfig(
             qualified=True, damping=3, free_steps=1024, nudged_steps=128, tolerance=3e-3,
         ),
-        reward=cd.ActorCriticConfig(eta=0.1, eta_bias=0.01, eligibility_steps=12),
+        reward=cd.ActorCriticConfig(eta=0.1, eta_bias=0.01, eligibility_steps=12), recall=False,
     )
     separator = cd.PatternSeparator(2, 8, 3, seed=7, center=0.3 if kind == "fast" else 0)
     memory_class = cd.SynapticMemory if kind == "consolidating" else cd.FastSynapses

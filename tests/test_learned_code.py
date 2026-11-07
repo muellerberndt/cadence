@@ -12,7 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 from cadence import brain as cadence_brain
@@ -142,6 +142,9 @@ def taught(brain: cd.Brain) -> list[int]:
 # 8 motor neurons in a slot, and at the founder need scale 0.1 (issue 198) where it has arousal.
 # The descriptions were re-recorded at the one spelling of the learner's temperature and
 # without the constants of the composed brain (0.93.0, every other value matching the recording).
+# The taught life was re-recorded once more when the distance lesson left (0.95.0, by the owner's
+# ruling): its acts and arrays are those of the commit before with recall_address_contrast=True,
+# which stepped this lesson, and with recall_address=0.0 the two commits read one digest.
 FOUNDERS: dict[str, dict] = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3}),
@@ -166,7 +169,7 @@ FOUNDERS: dict[str, dict] = {
     # recall without the position term of 0.89.0: the acts and parameters predate it; the
     # description and the checkpoint name recall_position=0, which differs from its founder
     "recalled": {
-        "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": True, "recall": True,
+        "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": True, "recall": True, "recall_founder": True,
                          "recall_position": 0, "history_decays": (0.2, 0.9),
                          "efference_amplitude": 1.0, "memory_choice": True}),
         "life": lived,
@@ -179,13 +182,13 @@ FOUNDERS: dict[str, dict] = {
     },
     "taught": {
         "build": (16, 8, {"modules": (64,), "lateral": 0.0, "seed": 1,
-                          "learning_surprise": True, "recall": True, "recall_position": 0}),
+                          "learning_surprise": True, "recall": True, "recall_founder": True, "recall_position": 0}),
         "life": taught,
         "parameters": "1b72292d2b15754485932c2527b342353a6934c638e8e25f3da7d05e6b1e45ce",
-        "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 7, 0, 0, 0, 1],
+        "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 5, 0, 0, 0, 1],
         "format": "cadence-brain/1",
         "names": "0aab0d179b44428d742d358f48b22b0571e9fd78c4cefa76ad52551d9920c16e",
-        "checkpoint": "67f8a80c4c28c099ea268a7b8c0fc6d607f1c7dc46ea96e1eed2690fc730e2d3",
+        "checkpoint": "014bb869ce4d9692b37a65446e79cb4755b26712f5fe8081fd7b9c6d06af3556",
         "describe": "cc8ab01bf4d13f18c5a4053a6e5ad23b0affb3679b08ec32f05a96df72703f5a",
     },
     "wide": {
@@ -209,7 +212,7 @@ def test_a_founder_is_the_composition_before_the_learned_code(tmp_path, name):
     metadata, the memories keyed as before."""
     spec = FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     assert brain.learned_code is None and "code" not in brain.connectome.populations
     assert brain.learner.plastic_synapses.all() and brain.learner.plastic_neurons.all()
     assert parameter_digest(brain) == spec["parameters"]
@@ -228,7 +231,7 @@ def test_a_founder_is_the_composition_before_the_learned_code(tmp_path, name):
 def test_the_founders_acts_and_checkpoint_bytes_are_the_recorded_ones(tmp_path, name):
     spec = FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     assert spec["life"](brain) == spec["acts"]
     assert checkpoint_digest(brain.save(tmp_path / "founder.npz")) == spec["checkpoint"]
 
@@ -259,12 +262,15 @@ def region_digest(brain: cd.Brain, acts: list[int], path: Path) -> str:
 # Both were re-recorded once more under the 0.85 defaults (an unset lateral at 0.0, the
 # scaled need at 0.1), after the two lives with those settings given at their earlier values
 # reproduced the earlier digests exactly.
+# The first was re-recorded when the distance lesson left (0.95.0, by the owner's ruling): the commit
+# before with recall_address_contrast=True, which stepped this lesson, reads this digest, and with
+# recall_address=0.0 the two commits read one digest.
 REGION_FOUNDERS: dict[str, dict] = {
     "region": {
-        "build": (16, 8, {"modules": (24,), "seed": 5, "learned_code": 16, "recall": True,
+        "build": (16, 8, {"modules": (24,), "seed": 5, "learned_code": 16, "recall": True, "recall_founder": True,
                           "recall_position": 0}),  # recorded before the position term
         "life": taught,
-        "digest": "8ef21e03bb9d987b50ee7ada774f3b391a75ea47e7c8b76599b3b48504b8fbae",
+        "digest": "52ba1f45633c71b7ab6b7d2e21de9b4d60ce42e2ca4cc15c16e90dc704a2473d",
     },
     "region_fields": {
         "build": (16, 4, {"modules": (24,), "seed": 6, "learned_code": 16,
@@ -281,30 +287,19 @@ REGION_FOUNDERS: dict[str, dict] = {
 def test_a_founder_with_the_region_lives_its_recorded_life(tmp_path, name):
     spec = REGION_FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     acts = spec["life"](brain)
     path = brain.save(tmp_path / "region.npz")
     assert region_digest(brain, acts, path) == spec["digest"]
 
 
-# the settings the readings retired, each with a value it once took
-REMOVED = {"cortex": "code", "output": "unit", "floor": 0.0, "scale": "observation",
-           "place": "free", "reads": "free", "held": True, "top_down": 2.0, "rate": 0.125,
-           "predictor": 0.0625, "threshold": 0.1, "threshold_rate": 0.000625,
-           "target": 0.1, "repair": 1.0, "silence": 10.0, "identity": 0.9, "active": 0.05}
-
-
-def test_the_settings_the_readings_retired_are_refused_by_name():
-    """A removed setting is refused at construction and in a retune with what the region
-    does instead, whatever value it is given."""
-    assert set(REMOVED) == set(cd.LearnedCode.REMOVED)
-    brain = cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8)
-    for name, value in REMOVED.items():
-        with pytest.raises(ValueError, match=f"learned_code_{name} was removed"):
-            cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8,
-                             **{f"learned_code_{name}": value})
-        with pytest.raises(ValueError, match=f"learned_code_{name} was removed"):
-            brain.retune(**{f"learned_code_{name}": value})
+def test_the_learned_code_takes_its_one_setting_and_refuses_every_other_name():
+    brain = cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8, recall=False)
+    for name, value in (("learned_code_rate", 0.125), ("learned_code_cortex", "code")):
+        with pytest.raises(TypeError, match="unknown brain setting"):
+            cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8, **{"recall": False, **{name: value}})
+        with pytest.raises(TypeError, match="unknown brain setting"):
+            brain.retune(**{name: value})
 
 
 def test_learned_code_none_is_the_founder_and_the_width_is_as_before():
@@ -312,7 +307,7 @@ def test_learned_code_none_is_the_founder_and_the_width_is_as_before():
     assert cd.Genome.observation_width(53, None, 64) == 64 + 53  # the key joins the identity
     assert cd.Genome.observation_width(53, None, 16) == 16  # a wider observation: the code
     for value in (None, 0):
-        brain = cd.Brain.compose(53, 4, modules=(8,), seed=2, learned_code=value)
+        brain = cd.Brain.compose(53, 4, modules=(8,), seed=2, learned_code=value, recall=False)
         assert brain.learned_code is None and brain.code_width == 53
         assert "learned_code" not in brain.describe()["layout"]["composition"]
 
@@ -323,7 +318,7 @@ def test_learned_code_none_is_the_founder_and_the_width_is_as_before():
 def composed(seed: int = 0, units: int = UNITS, **options):
     return cd.Brain.compose(
         INPUTS, ACTIONS, modules=(64,), seed=seed, learning_surprise=True, learned_code=units,
-        **options,
+        **{"recall": False, **options},
     )
 
 
@@ -396,7 +391,7 @@ def test_the_region_joins_the_connectome_with_its_three_synapse_groups():
 
 def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     assert cd.LearnedCode.founders() == {"fields": None}
-    assert cd.LearnedCode.GENES == ("fields",) and not cd.LearnedCode.RUNTIME
+    assert cd.LearnedCode.GENES == ("fields",)
     code = composed().learned_code
     for name, value in (("top_down", 2.0), ("rate", 0.125), ("predictor", 0.0625),
                         ("threshold", 0.1), ("threshold_rate", 0.000625), ("target", 0.1),
@@ -415,18 +410,17 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     with pytest.raises(ValueError, match="learned_code must be an integer"):
         composed(units=2.5)
     with pytest.raises(ValueError, match="need learned_code=units"):
-        cd.Brain.compose(53, 4, modules=(8,), learned_code_fields=(53,))
+        cd.Brain.compose(53, 4, modules=(8,), learned_code_fields=(53,), recall=False)
     with pytest.raises(TypeError, match="unknown brain setting"):
         composed(learned_code_speed=0.1)
     with pytest.raises(ValueError, match="joins the observation itself"):
         composed(code=64)
     with pytest.raises(ValueError, match="a vector brain"):
-        cd.Brain.compose((8, 8), 2, modules=(8,), learned_code=32)
+        cd.Brain.compose((8, 8), 2, modules=(8,), learned_code=32, recall=False)
     episodic = composed(memory_choice=True)  # the stores separate the code's keys
     assert episodic.hippocampus.separator is not None
     assert episodic.hippocampus.separator.expansion == 1024
     assert episodic.context_memory.separator.expansion == 1024
-    assert composed(memory_choice=True, memory_expansion=512).hippocampus.separator.expansion == 512
     brain = composed()
     with pytest.raises(ValueError, match="construction setting"):
         brain.retune(learned_code=32)
@@ -443,7 +437,7 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     with pytest.raises(ValueError, match="complete predictor synapses"):
         cd.Brain(graph, learned_code=6)
     with pytest.raises(ValueError, match="needs a population named 'code'"):
-        cd.Brain(cd.Brain.compose(8, 2, modules=(8,)).connectome, learned_code=6)
+        cd.Brain(cd.Brain.compose(8, 2, modules=(8,), recall=False).connectome, learned_code=6)
     complete = develop(Genome(tuple(regions), (*projections, Projection(
         "prefrontal", "code", scale=0.0, reciprocal=False))), seed=1)
     custom = cd.Brain(complete, learned_code=6)
@@ -468,7 +462,7 @@ def test_the_code_is_a_fixed_point_of_the_whole_settle_and_the_memories_key():
     at unit length; the reconstruction error fell over the phase's sweeps."""
     # the region's rates frozen: its learning after the moment would change the equations
     # the settled state is checked against
-    brain = composed(recall=True)
+    brain = composed(recall=True, recall_founder=True)
     brain.learned_code.learning = False
     x = tokens(3, 7, 11)
     brain.act(x, greedy=True)
@@ -600,7 +594,7 @@ def test_repeated_contexts_contract_predictor_error_at_every_batch_size(batch):
 
 
 def test_a_large_batch_of_continuing_brains_keeps_its_predictor_bounded():
-    brain = cd.Brain.compose(4, 2, modules=(8,), learned_code=8, seed=2)
+    brain = cd.Brain.compose(4, 2, modules=(8,), learned_code=8, seed=2, recall=False)
     x = np.tile([1.0, 0.0, 0.0, 0.0], (128, 1))
     for _ in range(30):
         brain.act(x, greedy=True)
@@ -647,7 +641,7 @@ def test_routine_live_and_wait_keep_the_code_tables_still_until_aroused(tmp_path
 
 
 def test_the_lesson_and_the_outcome_leave_the_region_to_its_own_rule():
-    brain = composed(recall=True)
+    brain = composed(recall=True, recall_founder=True)
     x = tokens(2, 6)
     brain.act(x, greedy=True)
     code = brain.learned_code
@@ -671,7 +665,7 @@ def test_the_lesson_and_the_outcome_leave_the_region_to_its_own_rule():
 
 
 def test_the_key_of_a_decision_is_its_moments_code_and_the_history_hears_the_code():
-    brain = composed(recall=True, history_decays=(0.5,), arousal=True, memory_choice=True)
+    brain = composed(recall=True, recall_founder=True, history_decays=(0.5,), arousal=True, memory_choice=True)
     assert len(brain.connectome.populations["history"]) == UNITS  # it hears the code part
     x = tokens(5)
     brain.live(x)
@@ -697,16 +691,16 @@ def test_the_key_of_a_decision_is_its_moments_code_and_the_history_hears_the_cod
 
 
 def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path):
-    brain = composed(recall=True, arousal=True, memory_choice=True, history_decays=(0.3,))
+    brain = composed(recall=True, recall_founder=True, arousal=True, memory_choice=True, history_decays=(0.3,))
     x = [tokens(k) for k in (1, 4, 7)]
     for t in range(5):
         brain.live(x[t % 3], reward=None if t == 0 else [float(t % 2)])
     brain.wait(x[1])
     path = brain.save(tmp_path / "learned.npz")
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({name: data[name].copy() for name in data.files})
+        arrays = flat({name: data[name].copy() for name in data.files})
     meta = metadata(arrays)
-    assert meta["format"] == "cadence-generic/10"
+    assert meta["format"] == "cadence-brain/1"
     assert meta["learned_code"]["units"] == UNITS and meta["composition"]["learned_code"] == UNITS
     assert meta["history"]["source"] == "code" and meta["recall"]["inputs"] == UNITS + INPUTS
     assert arrays["learned_code/dictionary"].shape == (INPUTS, UNITS)
@@ -743,14 +737,11 @@ def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path)
         meta = metadata(copy)
         mutate(meta, copy)
         copy["generic"] = np.array(json.dumps(meta))
-        np.savez(tmp_path / f"{name}.npz", **copy)
+        write(tmp_path / f"{name}.npz", copy)
         return tmp_path / f"{name}.npz"
 
     def no_region(meta, _):
         del meta["learned_code"]
-
-    def earlier_format(meta, _):
-        meta["format"] = "cadence-generic/9"
 
     def other_units(meta, _):
         meta["learned_code"]["units"] = 32
@@ -782,8 +773,7 @@ def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path)
         del copy["lived/action"]
 
     for name, mutate, message in (
-        ("no_region", no_region, "belongs to checkpoint format cadence-generic/10"),
-        ("earlier_format", earlier_format, "belongs to checkpoint format cadence-generic/10"),
+        ("no_region", no_region, "learned code"),
         ("other_units", other_units, "is not the saved learned code of 32 units"),
         ("unknown_field", unknown_field, "invalid saved learned code metadata"),
         ("bad_gene", bad_gene, "invalid saved learned code metadata"),
@@ -831,7 +821,7 @@ def test_a_one_input_world_settles_at_the_step_its_dictionary_allows():
     coupling allows over every state, and the bandit lives on without a refusal; the bound
     over every state is at least the bound at any settled state."""
     for seed in range(6):
-        brain = cd.Brain.compose(1, 2, arousal=True, learned_code=64, seed=seed)
+        brain = cd.Brain.compose(1, 2, arousal=True, learned_code=64, seed=seed, recall=False)
         code = brain.learned_code
         assert code.rest_stability() >= 4
         rng = np.random.default_rng(seed)
@@ -847,11 +837,101 @@ def test_a_one_input_world_settles_at_the_step_its_dictionary_allows():
         assert code.stability(v) <= code.rest_stability()
 
 
+def eigenvalue_halvings(code, v):
+    """The step's halvings as the eigenvalues give them, the rule ``stability`` states."""
+    v = np.atleast_2d(np.asarray(v, dtype=float))
+    slopes = np.maximum(code.model.slope_at(v), 0.0)
+    root = np.sqrt(slopes)
+    coupling = root[:, :, None] * (code.model.gain * code.lateral())[None, :, :] * root[:, None, :]
+    index = np.arange(code.units)
+    coupling[:, index, index] -= code.top_down * slopes
+    mu = float(np.linalg.eigvalsh(coupling)[:, 0].min())
+    need = code.model.dt * (1.0 - mu) / code.STEP_MARGIN
+    return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
+
+
+def test_the_step_is_the_one_the_eigenvalues_give_from_any_step_it_held():
+    """``stability`` asks Cholesky factorizations whether the present halvings still hold and
+    takes the eigenvalues where they cannot tell: the same answer from every step held, over
+    states from silent to steep, rows that differ, and dictionaries from orthogonal to one
+    direction shared by every unit."""
+    rng = np.random.default_rng(11)
+    answers, settled = set(), 0
+    for seed, overlap in enumerate((0.0, 0.3, 0.7, 1.0)):
+        code = composed(seed=seed).learned_code
+        one = rng.normal(size=(code.inputs, 1))
+        dictionary = (1.0 - overlap) * code.dictionary + overlap * one
+        code.dictionary = dictionary / np.linalg.norm(dictionary, axis=0)
+        for scale, rows in ((0.1, 1), (1.0, 1), (1.0, 4), (3.0, 4), (8.0, 16)):
+            for _ in range(6):
+                v = rng.normal(code.model.threshold, scale, (rows, code.units))
+                expected = eigenvalue_halvings(code, v)
+                answers.add(expected)
+                coupling_rows = None
+                for held in {0, 1, 2, 3, 5, expected, expected + 1, max(expected - 1, 0)}:
+                    code.restep(held)
+                    assert code.stability(v) == expected
+                    slopes = np.maximum(code.model.slope_at(v), 0.0)
+                    root = np.sqrt(slopes)
+                    coupling_rows = root[:, :, None] * (code.model.gain * code.lateral())[None] * root[:, None, :]
+                    index = np.arange(code.units)
+                    coupling_rows[:, index, index] -= code.top_down * slopes
+                    found = code._held_halvings(coupling_rows)
+                    assert found is None or found == expected
+                    settled += found is not None
+                    if held == expected:  # the factorizations settle a held step clear of a bound
+                        assert found == expected
+    assert len(answers) >= 2 and settled
+
+
+def test_a_step_a_hair_from_its_bound_goes_to_the_eigenvalues():
+    """Within ``BOUND_MARGIN`` of a bound the factorizations do not answer."""
+    code = composed(seed=2).learned_code
+    code.restep(1)
+    bound = 1.0 - code.STEP_MARGIN * 2.0 / code.model.dt
+    coupling = np.diag(np.full(code.units, bound))[None, :, :]
+    assert code._held_halvings(coupling) is None
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+    code.restep(0)
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) is None
+    code.restep(2)
+    assert code._held_halvings(coupling - 1e-6 * np.eye(code.units)) == 2
+
+
+def test_a_state_that_is_not_finite_goes_to_the_eigenvalues():
+    """No factorization answers for it: a factorization of NaN need not fail on every LAPACK."""
+    code = composed(seed=2).learned_code
+    for value in (np.nan, np.inf):
+        assert code._held_halvings(np.full((2, code.units, code.units), value)) is None
+    code.halvings = 1060  # as far as a step can be halved, where its bound overflows
+    assert code._held_halvings(np.zeros((1, code.units, code.units))) is None
+
+
+def test_the_brain_takes_new_thresholds_with_its_blocks_and_zeroes_a_moved_region():
+    """An accepted moment moves the thresholds: the graph keeps its weights. A synapse of the
+    region off zero, or at a negative zero, goes back to zero, as the first install does."""
+    brain = composed(seed=2)
+    x = np.random.default_rng(1).random((3, INPUTS))
+    brain.act(x, greedy=True)
+    graph = brain.brain
+    before = graph._weights
+    installed = brain._installed(graph)
+    assert installed._weights is before
+    np.testing.assert_array_equal(installed.bias[brain.code_index], -brain.learned_code.thresholds)
+    synapses = brain._code_synapses["lateral"][0]
+    for value in (0.5, -0.0):
+        efficacy = graph.efficacy.copy()
+        efficacy[synapses[3]] = value
+        again = brain._installed(graph.with_parameters(efficacy=efficacy))
+        assert again.efficacy[synapses].tobytes() == np.zeros(len(synapses)).tobytes()
+        assert again._weights is not before
+
+
 def test_a_brain_with_the_region_deep_copies_and_imagines():
     """``copy.deepcopy`` of a brain with the region: the copy shares the immutable
     connectomes and holds its own tables, state and generators, acts as the original acts,
     learns apart from it, and imagines."""
-    brain = composed(seed=5, recall=True, arousal=True, memory_choice=True)
+    brain = composed(seed=5, recall=True, recall_founder=True, arousal=True, memory_choice=True)
     x = tokens(3, 9)
     brain.act(x, greedy=True)
     twin = copy.deepcopy(brain)
@@ -866,7 +946,7 @@ def test_a_brain_with_the_region_deep_copies_and_imagines():
     np.testing.assert_array_equal(brain.learned_code.dictionary, before)
     phases = twin.imagine([tokens(5, 6), tokens(8, 2)])
     assert len(phases) == 2 and all(np.all(phase.qualified) for phase in phases)
-    plain = cd.Brain.compose(INPUTS, ACTIONS, modules=(8,), seed=1)  # and without the region
+    plain = cd.Brain.compose(INPUTS, ACTIONS, modules=(8,), seed=1, recall=False)  # and without the region
     plain.act(x, greedy=True)
     np.testing.assert_array_equal(copy.deepcopy(plain).act(x, greedy=True), plain.act(x, greedy=True))
 
@@ -896,7 +976,7 @@ def test_an_imagined_branch_leaves_the_region_and_the_checkpoint_as_they_were(tm
             acts.append(brain.step(moment(m), reward=reward, done=done).tolist())
         return acts
 
-    brain = cd.Brain.compose(12, 4, learned_code=16, memory_choice=True, recall=True,
+    brain = cd.Brain.compose(12, 4, learned_code=16, memory_choice=True, recall=True, recall_founder=True,
                              history_decays=(0.2, 0.8), efference_amplitude=1.0, seed=5)
     live(brain, 0, 13)
     region = brain.learned_code
@@ -926,7 +1006,7 @@ def test_every_memory_keys_on_the_context_free_code():
     code phase, reported as ``context_free_steps``), so a known situation is found again
     along a new path; the region learns from the code in context; a decision keeps the key
     it was taken under."""
-    brain = composed(seed=9, recall=True, memory_choice=True, arousal=True)
+    brain = composed(seed=9, recall=True, recall_founder=True, memory_choice=True, arousal=True)
     code = brain.learned_code
     # a predictor with weight: at birth it is zero and the two phases coincide
     code.weights[:] = 0.2 * np.random.default_rng(3).random(code.weights.shape)
@@ -981,7 +1061,7 @@ def test_a_long_stream_leaves_the_code_alive(tmp_path):
     thresholds stay finite and nonnegative, every token keeps at least one active unit in
     context and context-free, and at least one unit is in use per token; a checkpoint with
     a negative threshold is refused."""
-    brain = composed(seed=11, units=32, recall=True)
+    brain = composed(seed=11, units=32, recall=True, recall_founder=True)
     code = brain.learned_code
     code.threshold_rate = 0.01
     rng = np.random.default_rng(5)
@@ -1006,7 +1086,7 @@ def test_a_long_stream_leaves_the_code_alive(tmp_path):
     with np.load(path, allow_pickle=False) as data:
         arrays = {name: data[name].copy() for name in data.files}
     arrays["learned_code/thresholds"][0] = -0.1
-    np.savez(tmp_path / "below.npz", **arrays)
+    write(tmp_path / "below.npz", arrays)
     with pytest.raises(ValueError, match="thresholds are nonnegative"):
         cd.Brain.load(tmp_path / "below.npz")
 
@@ -1050,7 +1130,7 @@ def test_the_key_joins_the_code_to_the_observations_identity():
     """The memories' key is ``unit([sqrt(1 - w) code, sqrt(w) unit(x)])`` at the region's
     identity weight ``w`` (.9): the identity part is the observation at unit length weighted
     by ``sqrt(w)``, the code part the rectified settled code."""
-    brain = composed(seed=2, recall=True)
+    brain = composed(seed=2, recall=True, recall_founder=True)
     w = cd.LearnedCode.IDENTITY
     x = tokens(4, 9, 9)
     brain.act(x, greedy=True)
@@ -1098,7 +1178,7 @@ def test_the_module_reads_the_code_at_unit_length():
 def test_the_unit_code_read_uses_effective_forward_weights(contacts, log_gains, monkeypatch):
     """Source activity plus the drive correction reads unit code through the actual
     transport weights, including contact counts and presynaptic gains."""
-    brain = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6)
+    brain = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6, recall=False)
     original = brain.brain
     synapses, _, _ = brain._code_forward
     counts = original.connectome.count.copy()
@@ -1149,7 +1229,7 @@ def test_the_unit_code_read_uses_effective_forward_weights(contacts, log_gains, 
 def test_the_unit_code_read_sums_parallel_effective_weights(monkeypatch):
     """A custom raw connectome retains parallel rows; their actual transport sums
     both signed efficacies before the source's unit-code correction."""
-    founder = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6)
+    founder = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6, recall=False)
     original = founder.connectome
     source, target = founder.code_index[1], founder.association_index[0]
     edge = np.flatnonzero((original.pre == source) & (original.post == target))
@@ -1209,7 +1289,7 @@ def test_the_key_takes_the_observations_norm():
     one-hot one's norm 1, and the history hears the code at unit length."""
     x = tokens(3, 9)
     x[1, 20] = 1.0  # the second stream: two inputs at once
-    brain = composed(seed=6, recall=True, history_decays=(0.5,))
+    brain = composed(seed=6, recall=True, recall_founder=True, history_decays=(0.5,))
     brain.act(x, greedy=True)
     keys = brain.recall.keys[:, -1, :]
     np.testing.assert_allclose(np.linalg.norm(keys, axis=1), [1.0, np.sqrt(2.0)], atol=1e-9)
@@ -1223,7 +1303,7 @@ def test_a_held_code_is_a_source_and_the_brain_keeps_the_models_step(tmp_path):
     settle and a lesson's phases they publish the phase's code exactly, the brain integrates
     at the model's step with its budgets as configured while the region's phase steps alone,
     no standing boundary acts on the whole graph, and a checkpoint continues the life."""
-    brain = composed(seed=3, recall=True)
+    brain = composed(seed=3, recall=True, recall_founder=True)
     code = brain.learned_code
     code.top_down = 4.0  # a stepping phase
     for name in ("dictionary", "lateral", "predictor"):
@@ -1251,7 +1331,7 @@ def test_the_cortex_and_the_memories_read_the_context_free_code():
     """The code units are held at the context-free code's
     fixed point (the observation's code settled alone), the recall keys are the context-free
     keys, and the region learns from the code in context, the prediction's pull in it."""
-    brain = composed(seed=4, recall=True)
+    brain = composed(seed=4, recall=True, recall_founder=True)
     code = brain.learned_code
     x = tokens(2, 6)
     brain.act(x, greedy=True)  # the trace now carries a moment
@@ -1283,7 +1363,7 @@ def test_an_observation_wider_than_the_code_is_keyed_on_the_code_alone(tmp_path)
     assert cd.LearnedCode.joins(53, 64) and cd.LearnedCode.joins(64, 64)
     assert not cd.LearnedCode.joins(65, 64)
     assert composed(seed=2).code_width == UNITS + INPUTS
-    wide = composed(seed=2, units=32, recall=True, memory_choice=True, arousal=True)
+    wide = composed(seed=2, units=32, recall=True, recall_founder=True, memory_choice=True, arousal=True)
     assert wide.code_width == 32 and wide.learned_code.identity == 0.0
     assert cd.Genome.observation_width(INPUTS, None, 32) == 32  # the width before building
     x = tokens(3, 8)
@@ -1309,7 +1389,7 @@ def test_fields_give_each_unit_one_field_of_the_observation(tmp_path):
     competition (the Gram's off-diagonal) is zero between fields, a checkpoint continues the
     life and refuses a column that reads another field; one field is the region as without
     fields, bit for bit."""
-    brain = composed(seed=3, recall=True, learned_code_fields=(13, 40))
+    brain = composed(seed=3, recall=True, recall_founder=True, learned_code_fields=(13, 40))
     code = brain.learned_code
     assert code.field_units == (16, 48) and sum(code.field_units) == UNITS
     field = np.repeat([0, 1], code.field_units)
@@ -1329,7 +1409,7 @@ def test_fields_give_each_unit_one_field_of_the_observation(tmp_path):
     arrays["learned_code/dictionary"][0, 20] = 0.1  # unit 20 (field 1) reading input 0 (field 0)
     column = arrays["learned_code/dictionary"][:, 20]
     arrays["learned_code/dictionary"][:, 20] = column / np.linalg.norm(column)
-    np.savez(tmp_path / "other.npz", **arrays)
+    write(tmp_path / "other.npz", arrays)
     with pytest.raises(ValueError, match="reads its own fields only"):
         cd.Brain.load(tmp_path / "other.npz")
     one = composed(seed=3, learned_code_fields=(INPUTS,))
@@ -1363,8 +1443,8 @@ def test_the_region_learns_from_the_moments_free_settle_alone():
     code), a stream of lessons and outcomes leaves every table of the region bit for bit as
     a stream of acts on the same observations leaves it: the nudged phases, the eligibility
     phases and the lesson's settle enter no table."""
-    acting = composed(seed=3, recall=True, working_memory_amplitude=0.0)
-    taught = composed(seed=3, recall=True, working_memory_amplitude=0.0)
+    acting = composed(seed=3, recall=True, recall_founder=True, working_memory_amplitude=0.0)
+    taught = composed(seed=3, recall=True, recall_founder=True, working_memory_amplitude=0.0)
     rng = np.random.default_rng(2)
     for t in range(12):
         x = tokens(*rng.integers(INPUTS, size=3))

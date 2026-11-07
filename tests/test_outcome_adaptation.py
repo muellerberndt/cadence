@@ -56,7 +56,7 @@ def test_unexpected_bad_outcome_reduces_its_predicted_value():
 
 def _changing_rewards(seed: int = 0) -> dict[str, float]:
     rng = np.random.default_rng(seed)
-    agent = cd.Brain.compose(4, 4, modules=(16,), seed=seed)
+    agent = cd.Brain.compose(4, 4, modules=(16,), seed=seed, recall=False)
     context = rng.integers(4, size=32)
     action = agent.step(np.eye(4)[context])
     rewards = []
@@ -82,7 +82,7 @@ def test_reward_stream_adapts_without_restarting_its_brain():
 
 
 def test_explicit_memory_opt_out_and_checkpoint_preserve_configuration(tmp_path):
-    brain = cd.Brain.compose(2, 2, modules=(4,), episodic=False)
+    brain = cd.Brain.compose(2, 2, modules=(4,), episodic=False, recall=False)
     assert brain.hippocampus is None
     assert cd.Brain.load(brain.save(tmp_path / "without.npz")).hippocampus is None
     assert isinstance(cd.Brain(brain.connectome).hippocampus, cd.SynapticMemory)

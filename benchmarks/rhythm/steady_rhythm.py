@@ -151,7 +151,7 @@ def make_brain(seed: int, protocol: dict, recipe: str = "selected") -> Brain:
     learning = learner_config(spec["learning"])
     return Brain.compose(
         inputs.INPUTS,
-        inputs.ACTIONS,
+        inputs.ACTIONS, backend="cpu",
         modules=tuple(spec["modules"]),
         lateral=spec["lateral"],
         seed=seed,
@@ -162,7 +162,8 @@ def make_brain(seed: int, protocol: dict, recipe: str = "selected") -> Brain:
         # the composition of releases before 0.82.0 read the trace back at scale 12
         scales={"trace": spec.get("working_memory_scale", 12.0)},
         # rhythm/2: the efference copy as a gene; absent keys build the rhythm/1 brain
-        **{key: spec[key] for key in ("efference_amplitude", "efference_decay") if key in spec},
+        **{"recall": False, **{key: spec[key] for key in ("efference_amplitude",
+           "efference_decay") if key in spec}},
     )
 
 

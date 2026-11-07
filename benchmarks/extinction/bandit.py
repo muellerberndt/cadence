@@ -58,7 +58,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     options: dict[str, Any] = {"memory_choice": True}
     if theta:
         options["memory_extinction"] = theta
-    brain = Brain.compose(inputs=1, actions=2, modules=(16,), seed=seed, arousal=True, **options)
+    brain = Brain.compose(backend="cpu", inputs=1, actions=2, modules=(16,), seed=seed, arousal=True,
+    **{"recall": False, **options})
     stores = [m for m in (brain.hippocampus, brain.context_memory) if m is not None]
     code = brain.observation_code(OBS)
     action = int(brain.live(OBS)[0])

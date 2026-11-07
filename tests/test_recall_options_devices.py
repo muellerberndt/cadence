@@ -13,7 +13,7 @@ import pytest
 import cadence as cd
 
 OPTIONS = dict(
-    recall=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
+    recall=True, recall_founder=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
     recall_slope=0.1, recall_relative=True, recall_when=True, recall_position_rate=0.05,
 )
 TOKENS, CUE = 4, 4
@@ -59,7 +59,7 @@ def test_the_options_learn_on_a_device_as_on_the_cpu(tmp_path, backend, device, 
         if not torch.backends.mps.is_available():
             pytest.skip("MPS hardware unavailable")
     cpu = cd.Brain.compose(TOKENS + 1, TOKENS, seed=5, modules=(16,), episodic=False,
-                           teaching="normalized", **OPTIONS)
+                           teaching="normalized", **{"recall": False, **OPTIONS})
     cpu.save(tmp_path / "brain.npz")
     moved = cd.Brain.load(tmp_path / "brain.npz", backend=backend, device=device,
                           precision=precision)

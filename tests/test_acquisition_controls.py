@@ -26,7 +26,7 @@ from cadence import Brain  # noqa: E402
 
 @pytest.mark.parametrize("exposed", [False, True])
 def test_surprise_lessons_read_the_pre_query_stimulus_of_their_rows(exposed: bool) -> None:
-    brain = Brain.compose(sr.INPUTS, 2, seed=5, modules=[16], episodic=False)
+    brain = Brain.compose(sr.INPUTS, 2, seed=5, modules=[16], episodic=False, recall=False)
     captured: list[tuple[np.ndarray, np.ndarray]] = []
     original = brain.learner.step
 
@@ -41,7 +41,7 @@ def test_surprise_lessons_read_the_pre_query_stimulus_of_their_rows(exposed: boo
     # replay the loop by hand for the first round to know the expected lesson
     rows = sr.CASES[order[0]]
     prefix, query, _ = sr.inputs(rows[:, :3], rows[:, 3], ac.NEUTRAL_EVENTS, exposed=exposed)
-    twin = Brain.compose(sr.INPUTS, 2, seed=5, modules=[16], episodic=False)
+    twin = Brain.compose(sr.INPUTS, 2, seed=5, modules=[16], episodic=False, recall=False)
     twin.reset()
     for x in prefix:
         twin.act(x, greedy=True)
@@ -64,7 +64,7 @@ def test_surprise_lessons_read_the_pre_query_stimulus_of_their_rows(exposed: boo
 
 
 def test_every_rule_still_teaches_all_cases_then_acts() -> None:
-    brain = Brain.compose(sr.INPUTS, 2, seed=3, modules=[16], episodic=False)
+    brain = Brain.compose(sr.INPUTS, 2, seed=3, modules=[16], episodic=False, recall=False)
     calls: list[int] = []
     original = brain.learner.step
 
@@ -136,7 +136,7 @@ def decode(observation: np.ndarray) -> np.ndarray:
 def test_holdout_training_presents_the_twelve_training_cases_only() -> None:
     held = ac.holdout_split(7)
     training = np.delete(sr.CASES, held, axis=0)
-    brain = Brain.compose(sr.INPUTS, 2, seed=7, modules=[16], episodic=False)
+    brain = Brain.compose(sr.INPUTS, 2, seed=7, modules=[16], episodic=False, recall=False)
     events: list[np.ndarray] = []
     original_act, original_step = brain.act, brain.learner.step
     sizes: list[int] = []
@@ -221,7 +221,7 @@ def test_replacement_reading_counts_follow_and_stay(
 
 
 def test_replacement_reading_forks_the_trained_brain_and_leaves_it_unchanged() -> None:
-    brain = Brain.compose(sr.INPUTS, 2, seed=2, modules=[16], episodic=False)
+    brain = Brain.compose(sr.INPUTS, 2, seed=2, modules=[16], episodic=False, recall=False)
     rng = np.random.default_rng(2)
     order = np.stack([rng.permutation(len(sr.CASES)) for _ in range(2)])
     work = sr.Work()

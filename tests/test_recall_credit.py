@@ -22,10 +22,10 @@ def composed(seed=1, **options):
     """The episodic vote, the recall memory and a reward-trained address map, calm from
     birth; ``options`` vary one of them."""
     settings = dict(
-        memory_choice=True, recall=True, recall_address_reward=1.0, arousal={"youth": 0},
+        memory_choice=True, recall=True, recall_founder=True, recall_address_reward=1.0, arousal={"youth": 0},
     )
     settings.update(options)
-    return cd.Brain.compose(3, 2, modules=(8,), seed=seed, **settings)
+    return cd.Brain.compose(3, 2, modules=(8,), seed=seed, **{"recall": False, **settings})
 
 
 def routine(brain):

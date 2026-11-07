@@ -204,38 +204,11 @@ class LearnedCode:
     SILENCE = 10.0
     ACTIVE = 0.05
     IDENTITY = 0.9
-    GENES = ("fields",)
-    RUNTIME: tuple[str, ...] = ()
-    CONSTRUCTION = ("fields",)
+    GENES = ("fields",)  # construction settings: a retune refuses them
     # Keep the lower end of the linearized sweep's spectrum at least -0.5.
     # Contraction also requires its upper end below one.
     STEP_MARGIN = 1.5
-    # settings the readings retired, refused by name with what the region does instead
-    REMOVED = {
-        "cortex": "the first module reads the code alone",
-        "output": "the first module reads the rectified code at unit length",
-        "floor": "every code that is not silent is read at unit length",
-        "scale": "the memories' key takes the norm the observation itself has as a key",
-        "place": "the associative store and the episodic place records key on the "
-        "context-free code",
-        "reads": "the cortex and the memories read the context-free code; the region learns "
-        "from the code in context",
-        "held": "the code units are held at the code phase's fixed point through the whole "
-        "settle, and the rest of the brain keeps the model's step",
-        "top_down": "the prediction's weight is a constant of the region (2.0); a control sets "
-        "brain.learned_code.top_down = 0",
-        "rate": "the region's rates are constants; a reading on a copy sets "
-        "brain.learned_code.learning = False",
-        "predictor": "the predictor's share per event is a constant of the region (0.0625)",
-        "threshold": "the initial threshold is a constant of the region (0.1)",
-        "threshold_rate": "the thresholds' rate is a constant of the region (0.000625)",
-        "target": "the thresholds' target share is a constant of the region (0.1)",
-        "repair": "the repair's level is a constant of the region (1.0)",
-        "silence": "the repair's weight is a constant of the region (10)",
-        "identity": "the identity's weight in the memories' key is a constant of the region "
-        "(0.9)",
-        "active": "the thresholds' active floor is a constant of the region (0.05)",
-    }
+    BOUND_MARGIN = 1e-9  # how clear of a step bound a factorization test must be, relative
 
     @staticmethod
     def joins(inputs: int, units: int) -> bool:
@@ -251,9 +224,7 @@ class LearnedCode:
 
     @staticmethod
     def setting(name: str, value: Any) -> Any:
-        """One setting, validated and converted; a removed setting is refused."""
-        if name in LearnedCode.REMOVED:
-            raise ValueError(f"learned_code_{name} was removed: {LearnedCode.REMOVED[name]}")
+        """One setting, validated and converted."""
         if name == "fields":
             if value is None:
                 return None
@@ -359,9 +330,52 @@ class LearnedCode:
         # the standing boundary's restoring term, -top_down on every unit's own diagonal
         index = np.arange(self.units)
         coupling[:, index, index] -= self.top_down * slopes
+        held = self._held_halvings(coupling)
+        if held is not None:
+            return held
         mu = float(np.linalg.eigvalsh(coupling)[:, 0].min())
         need = self.model.dt * (1.0 - mu) / self.STEP_MARGIN
         return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
+
+    def _held_halvings(self, coupling: np.ndarray) -> int | None:
+        """The step's present halvings when Cholesky factorizations settle them: every row's
+        smallest eigenvalue clear above the bound those halvings allow, and some row's clear
+        below the bound one halving fewer would need. ``coupling - t I`` factorizes exactly
+        when its every eigenvalue lies above ``t``; a row whose Gershgorin floor already lies
+        above it needs no factorization, and the rows with the lowest floors are tried first
+        for the second test. ``BOUND_MARGIN`` keeps every test far from rounding, so the answer
+        is the one the eigenvalues give; None where a test is not clear or the halvings change,
+        and the eigenvalues decide."""
+        dt, margin, halvings = self.model.dt, self.STEP_MARGIN, self.halvings
+        index = np.arange(coupling.shape[-1])
+        eye = np.eye(len(index))
+        diagonal = coupling[:, index, index]
+        floors = (diagonal - (np.abs(coupling).sum(axis=2) - np.abs(diagonal))).min(axis=1)
+        if not np.isfinite(floors).all():
+            return None
+
+        def bound(h: int) -> float:  # the least smallest eigenvalue h halvings allow
+            return 1.0 - margin * float(np.ldexp(1.0, h)) / dt
+
+        def above(rows: np.ndarray, t: float) -> bool:  # every one of the rows above t
+            try:
+                np.linalg.cholesky(coupling[rows] - t * eye)
+            except np.linalg.LinAlgError:
+                return False
+            return True
+
+        clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
+        allowed = bound(halvings) + clear
+        if not np.isfinite(allowed):  # a step halved past what the bound can state
+            return None
+        doubtful = np.flatnonzero(floors < allowed)
+        if len(doubtful) and not above(doubtful, allowed):
+            return None
+        if halvings:
+            fewer = bound(halvings - 1) - clear
+            if all(above(np.array([row]), fewer) for row in np.argsort(floors, kind="stable")):
+                return None
+        return halvings
 
     def rest_stability(self) -> int:
         """The negative-mode step bound of ``stability`` over every state, from the

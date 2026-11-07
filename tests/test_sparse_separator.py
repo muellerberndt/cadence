@@ -1,6 +1,6 @@
-"""A sparse pattern separator: ``PatternSeparator(..., fan_in=k)`` and the episodic memory's
-``memory_fan_in``. Each code neuron reads ``k`` inputs, so the separator's storage and work
-follow the expansion and the fan-in, whatever the number of inputs."""
+"""A sparse pattern separator: ``PatternSeparator(..., fan_in=k)``, which ``code=units`` is and a
+checkpoint's episodic stores may hold. Each code neuron reads ``k`` inputs, so the separator's
+storage and work follow the expansion and the fan-in, whatever the number of inputs."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ import json
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -107,10 +107,19 @@ def test_a_fan_in_code_separates_keys_as_the_dense_code_does(shared):
         assert readings[0][0] < 2.0 and readings[0][1] < 2.0  # unrelated keys: near chance
 
 
-def test_the_episodic_memory_takes_a_fan_in_and_continues_exactly(tmp_path):
-    brain = cd.Brain.compose(20, 2, seed=31, arousal=True, memory_choice=True, memory_fan_in=16)
-    for memory in (brain.hippocampus, brain.context_memory):
-        assert memory.separator.fan_in == 16 and memory.separator.projection is None
+def sparse_brain(seed: int = 34) -> cd.Brain:
+    """An episodic brain whose stores hold a sparse separation, as a checkpoint of 0.94.0 and
+    earlier could; every brain composed since holds a dense one."""
+    brain = cd.Brain.compose(20, 2, seed=seed, arousal=True, memory_choice=True, recall=False)
+    for offset, memory in enumerate((brain.hippocampus, brain.context_memory)):
+        memory.separator = cd.PatternSeparator(
+            len(memory.pre), 1024, 24, seed=seed + offset, fan_in=16
+        )
+    return brain
+
+
+def test_a_saved_sparse_separation_loads_and_continues_exactly(tmp_path):
+    brain = sparse_brain(31)
     assert brain.describe()["memories"].get("hippocampus")["separator"]["fan_in"] == 16
     for t in range(5):
         brain.step(one_hot(t % 3, 20), reward=None if t == 0 else [float(t == 3)],
@@ -138,30 +147,13 @@ def test_the_episodic_memory_takes_a_fan_in_and_continues_exactly(tmp_path):
         )
 
 
-def test_the_fan_in_founder_keeps_the_composed_brain_byte_identical(tmp_path):
-    founder = cd.Brain.compose(3, 2, seed=32, memory_choice=True)
-    named = cd.Brain.compose(3, 2, seed=32, memory_choice=True, memory_fan_in=0)
-    for brain in (founder, named):
-        for t in range(4):
-            brain.step(one_hot(t % 3, 3), reward=None if t == 0 else [float(t == 2)])
-    left = np.load(founder.save(tmp_path / "founder.npz"))
-    right = np.load(named.save(tmp_path / "named.npz"))
-    assert sorted(left.files) == sorted(right.files)
-    for name in left.files:
-        np.testing.assert_array_equal(left[name], right[name], err_msg=name)
-    assert "fan_in" not in metadata(left)["hippocampus"]["separator"]
-
-
-def test_a_sensory_key_with_a_fan_in_holds_the_same_bytes_at_any_width():
-    def held(brain: cd.Brain) -> list[int]:
-        return [sum(value.nbytes for name, value in m.separator.arrays().items() if name != "mean")
-                for m in (brain.hippocampus, brain.context_memory)]
-
-    # code=0 keys the wide brain's memories on the observation itself (above 1,024 values the
-    # brain's code would key them, and the stores would take no separator)
-    wide = cd.Brain.compose(4096, 3, seed=33, memory_choice=True, memory_fan_in=16, code=0)
-    narrow = cd.Brain.compose(20, 3, seed=33, memory_choice=True, memory_fan_in=16)
-    assert held(wide) == held(narrow) == [1024 * 16 * 16, 1024 * 16 * 16]
+def test_a_composed_separation_is_dense_and_saves_no_fan_in(tmp_path):
+    brain = cd.Brain.compose(3, 2, seed=32, memory_choice=True, recall=False)
+    for memory in (brain.hippocampus, brain.context_memory):
+        assert memory.separator.expansion == 1024 and not memory.separator.fan_in
+    assert "fan_in" not in metadata(np.load(brain.save(tmp_path / "brain.npz")))["hippocampus"][
+        "separator"
+    ]
 
 
 def test_the_fan_in_is_validated():
@@ -170,23 +162,17 @@ def test_the_fan_in_is_validated():
             cd.PatternSeparator(4, 8, 2, fan_in=value)
     with pytest.raises(ValueError, match="fan_in must not exceed the inputs"):
         cd.PatternSeparator(4, 8, 2, fan_in=5)
-    with pytest.raises(ValueError, match="must not exceed the 3 coordinates of the place key"):
-        cd.Brain.compose(3, 2, memory_choice=True, memory_fan_in=16)
-    with pytest.raises(ValueError, match="memory_fan_in needs memory_expansion"):
-        cd.Brain.compose(3, 2, memory_choice=True, memory_expansion=0, memory_fan_in=2)
-    with pytest.raises(ValueError, match="memory_fan_in needs memory_expansion"):
-        cd.Brain.compose(3, 2, memory_fan_in=2)
-    with pytest.raises(ValueError, match="construction setting"):
-        cd.Brain.compose(20, 2, memory_choice=True, memory_fan_in=8).retune(memory_fan_in=4)
+    with pytest.raises(ValueError, match="memory_fan_in was retired in 0.95.0"):
+        cd.Brain.compose(20, 2, memory_choice=True, recall=False).retune(memory_fan_in=4)
 
 
 @pytest.mark.parametrize("tamper", ["outside", "repeated", "no_weight", "no_fan_in"])
 def test_a_corrupt_sparse_separator_is_refused(tmp_path, tamper):
-    brain = cd.Brain.compose(20, 2, seed=34, memory_choice=True, memory_fan_in=8)
+    brain = sparse_brain()
     brain.step(one_hot(0, 20))
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path) as saved:
-        data = earlier({name: saved[name].copy() for name in saved.files})
+        data = flat({name: saved[name].copy() for name in saved.files})
     meta = metadata(data)
     if tamper == "outside":
         data["episodic/separator/index"][0, -1] = 64
@@ -198,6 +184,6 @@ def test_a_corrupt_sparse_separator_is_refused(tmp_path, tamper):
         del meta["hippocampus"]["separator"]["fan_in"]  # the arrays of a sparse separator alone
     data["generic"] = np.array(json.dumps(meta))
     corrupt = tmp_path / "corrupt.npz"
-    np.savez(corrupt, **data)
+    write(corrupt, data)
     with pytest.raises(ValueError):
         cd.Brain.load(corrupt)

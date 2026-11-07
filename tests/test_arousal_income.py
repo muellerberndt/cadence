@@ -69,22 +69,6 @@ def test_a_genuine_unmet_need_remains_aroused_while_sampling():
     assert arousal.rewards == 2100 and arousal.outcomes == 100
 
 
-def test_prior_saved_income_keeps_its_readings_and_then_accepts_sampled_rewards():
-    arousal = cd.Arousal(cd.ArousalConfig(youth=0, need_scale=0.0))  # a state 0.84.3 could save
-    for reward in (0.5, 1.0, -0.1):
-        arousal.outcome(0.2, reward)
-    prior = arousal.to_dict()  # as a cadence-arousal/1 save, with the record channel at zero
-    prior["format"] = "cadence-arousal/1"
-    prior["config"] = {**prior["config"], "record_surprise": 0.0}
-    prior.update(records=3, usual_record=0.4)
-    del prior["rewards"]
-    restored = cd.Arousal.from_dict(prior)
-    assert restored.to_dict() == arousal.to_dict()
-    for own in (False, True, False):
-        assert restored.outcome(0.3, 0.1, own=own) == arousal.outcome(0.3, 0.1, own=own)
-        assert restored.to_dict() == arousal.to_dict()
-
-
 @pytest.mark.parametrize("count", [None, True, -1, 0.5, "2", 0])
 def test_new_saved_income_refuses_a_missing_invalid_or_inconsistent_count(count):
     arousal = cd.Arousal()
@@ -105,7 +89,7 @@ def test_slotted_sampling_reports_every_income_and_preserves_pending_continuatio
         modules=(8,),
         slots=5,
         seed=3,
-        arousal=cd.ArousalConfig(youth=100),
+        arousal=cd.ArousalConfig(youth=100), recall=False,
     )
     x = np.array([[0.2, 0.8]])
     brain.live(x)

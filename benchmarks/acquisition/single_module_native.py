@@ -65,13 +65,13 @@ def make_brain(recipe, seed, args):
     ):
         raise ValueError("single-module control changed the original raw teacher gene")
     return Brain.compose(
-        inputs=650,
+        backend="cpu", inputs=650,
         actions=36,
         modules=(32,),
         observers=(),
         seed=seed,
         learning=LearnerConfig(**effective["learning"]),
-        lateral=0.0,
+        lateral=0.0, recall=False,
     )
 
 

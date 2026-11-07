@@ -1,5 +1,15 @@
 # Memory relevance and attention
 
+These chambers' campaigns are retired. Their receipts stay under `results/` and verify on archived
+bytes alone: `python -m pytest benchmarks/attention/test_retained_receipts.py` checks every
+receipt's canonical form and digest and every source it binds, each script and library file as it
+ran, archived by content hash under `results/sources/`. A receipt states what was measured on the
+code it binds, and a setting it names need not exist in this version. The scripts of a campaign
+(`admission.py`, `heads_admission.py`, the `*_campaign.py` files and their protocols, tests and
+`verify.py`) are in release 0.94.0, whose tree runs the commands below. Five instruments stay
+here, runnable and tested: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
+`contextual_choice.py`.
+
 ## Retrieved content becomes the answer: the copy pathway (`recall_copy`, `recall_tokens`)
 
 The [copy-tokens benchmark](copy_tokens.py) asks two things of eight tokens. A token is heard,
@@ -193,7 +203,7 @@ The coupled-query and direct-route mechanisms below are **component experiments*
 not implement the supported `attention=True` option, which deliberately uses the simpler
 existing held-query reader described above.
 The original query selects both an event and its witnessed successor; these
-are not two attention heads. A benchmark-only [multi-head instrument](heads.py)
+are not two attention heads. A benchmark-only multi-head instrument
 now supplies independent live query/read ports over the same witnessed bank.
 Its [two-binding protocol](HEADS_PROTOCOL.md) requires behavioral comparisons
 before claiming a useful second head.
@@ -226,7 +236,7 @@ closed for this point.
 The separate [minimal two-binding prerequisite](MINIMAL_BINDING.md) keeps the
 same reader and local learner, but uses two active values and a fixed A/B
 answer order. All eight cases are trained and evaluated, with no held-out
-claim. Its [staged protocol](minimal-binding-protocol.json) requires new matched
+claim. Its staged protocol requires new matched
 exposed/held-read capacity before either learned H2 founder. Actual one-fact
 donor swaps, erasures, shams and head lesions distinguish content use from
 useful parallel selection. It cannot pass or explain the original task, and
@@ -270,13 +280,13 @@ had a different failure: content strengthened its own selection, sometimes
 completing a nearly random stored moment. Reinstalling it would not finish the
 relevance mechanism.
 
-The [protocol](protocol.json) fixes two candidate equations, two development
+The protocol fixes two candidate equations, two development
 founders, a local budget and unused confirmation founders before behavioral
 results. It keeps the original named-fact instrument and its acquisition floor
 unchanged. If supplying both facts still fails to teach the query relation,
 behavioral attention comparisons stop: that failure has not been localized to
 memory. The original admissions below failed; the separately declared
-[teaching-policy repair](repair-protocol.json) now passes on both development
+teaching-policy repair now passes on both development
 and all twenty fresh confirmation founders. Numerical checks and that acquisition
 control alone cannot admit a library attention option.
 
@@ -330,7 +340,7 @@ accepted observation, never from a teacher label or an imagined event.
 The prototype uses the CPU float64 reference path. Its bounded step-halving
 fallback now retains the same immutable memory boundary in every numerical
 candidate and checks the original full equations. Historical recipes retain
-damping zero; the [founder numerical control](heads-founder-protocol.json)
+damping zero; the founder numerical control
 tests the composed brain's existing step and damping policy.
 The lifecycle prototype now reuses the existing reward/eligibility law with
 immutable action boundaries, private coupled imagination, and an explicit
@@ -372,7 +382,7 @@ the task with more work. Confirmation seeds stay unused on admission failure.
 
 Both recipes used the same normalized teaching, development seeds and task;
 only the free/nudged sweep caps rose from 256 to 1,024 in the declared
-[numerical retry](protocol-longer.json). Failed or unrun answers remain in the
+numerical retry. Failed or unrun answers remain in the
 denominator. These are final acquired readings, not best checkpoints selected
 along the training path.
 
@@ -393,7 +403,7 @@ by content hash in `results/sources/`; the verifier checks those exact bytes,
 receipt digests and recomputed scores/gates. It does not claim independent
 behavioral reproduction.
 
-The [diagnostic replay](diagnose.py) repeats the same failed 1,024-sweep recipe
+The diagnostic replay repeats the same failed 1,024-sweep recipe
 and tries the existing three-halving damping fallback at each refused query.
 Its [readback](results/damping-readback.json) retains the extra training and solve
 work separately. Both queries still fail the original residual tolerance. This
@@ -413,7 +423,7 @@ merged as completed attention or used to close a relevance capability issue.
 The failed admission omitted an existing successful control in
 [`acquisition_controls.py`](../relevance/acquisition_controls.py): teach only
 incorrect answers from the **complete pre-query stimulus**. The new
-[protocol](repair-protocol.json) fixes the task, two development founders,
+protocol fixes the task, two development founders,
 twenty unused confirmation founders, a 600-host-second total budget and the
 original 0.95 acquisition floor before running. It keeps the same 32-unit
 reciprocal System 1, lateral 0, normalized teaching, `dt=0.1` and qualified
@@ -493,7 +503,7 @@ receipt; a stricter verifier does not silently rewrite historical evidence.
 
 ## Supplied recall content: development passes
 
-The [content protocol](content-protocol.json) keeps the repaired 32-unit,
+The content protocol keeps the repaired 32-unit,
 qualified teaching recipe. Two actual fact events and one neutral event are
 witnessed, then the working trace and warm neural state are cleared at the
 query. Both unselected facts are supplied together through ordinary recall

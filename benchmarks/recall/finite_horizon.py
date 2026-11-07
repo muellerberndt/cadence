@@ -142,7 +142,7 @@ def make_brain(
     history = genes.get("history") if heard else None
     return Brain.compose(
         inputs.INPUTS,
-        2,
+        2, backend="cpu",
         modules=tuple(genes["modules"]),
         lateral=genes["lateral"],
         seed=seed,
@@ -156,14 +156,14 @@ def make_brain(
             "sensory": float(genes.get("sensory_scale", 1.0)),
             **({} if history is None else {"history": float(history["scale"])}),
         },
-        **(
+        **{"recall": False, **(
             {}
             if history is None
             else {
                 "history_decays": tuple(float(d) for d in history["decays"]),
                 "history_amplitude": float(history["amplitude"]),
             }
-        ),
+        )},
     )
 
 

@@ -7,7 +7,7 @@ import cadence as cd
 
 
 def test_each_slot_temperature_reads_the_same_settled_motor_state():
-    brain = cd.Brain.compose(2, 9, modules=(8,), slots=(2, 3, 4), seed=4)
+    brain = cd.Brain.compose(2, 9, modules=(8,), slots=(2, 3, 4), seed=4, recall=False)
     brain.act([[0.2, 0.8]], greedy=True)
     agent = brain.basal_ganglia
     state = agent.state
@@ -25,7 +25,7 @@ def test_each_slot_temperature_reads_the_same_settled_motor_state():
 
 @pytest.mark.parametrize("temperature", [0.6, (0.2, 0.6, 1.0)])
 def test_taken_action_keeps_the_actual_sampling_policy_in_its_nudge(temperature, monkeypatch):
-    brain = cd.Brain.compose(2, 9, modules=(8,), slots=(2, 3, 4), seed=4)
+    brain = cd.Brain.compose(2, 9, modules=(8,), slots=(2, 3, 4), seed=4, recall=False)
     x = np.array([[0.2, 0.8]])
     brain.act(x, greedy=True)
     agent = brain.basal_ganglia
@@ -65,7 +65,7 @@ def test_taken_action_keeps_the_actual_sampling_policy_in_its_nudge(temperature,
     [(0.2,), (0.2, 0.4, 0.6), (0.2, 0.0), (0.2, np.inf), (True, False), ((0.2, 0.4),)],
 )
 def test_invalid_slot_temperatures_preserve_pending_action_and_randomness(temperature):
-    brain = cd.Brain.compose(2, 6, modules=(8,), slots=2, seed=2)
+    brain = cd.Brain.compose(2, 6, modules=(8,), slots=2, seed=2, recall=False)
     x = np.array([[0.2, 0.8]])
     brain.act(x)
     agent = brain.basal_ganglia
@@ -82,7 +82,7 @@ def test_invalid_slot_temperatures_preserve_pending_action_and_randomness(temper
 )
 @pytest.mark.parametrize("vector", [False, True])
 def test_temperatures_must_be_representable_before_action_mutation(vector):
-    brain = cd.Brain.compose(2, 6, modules=(8,), slots=2, seed=2)
+    brain = cd.Brain.compose(2, 6, modules=(8,), slots=2, seed=2, recall=False)
     x = np.array([[0.2, 0.8]])
     brain.act(x)
     agent = brain.basal_ganglia

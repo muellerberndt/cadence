@@ -334,7 +334,7 @@ def test_composed_qualified_learning_saved_continuation_and_private_memory(tmp_p
     brain = cd.Brain.compose(2, 36, modules=(4,), seed=0, learning=cd.LearnerConfig(
         qualified=True, free_steps=256, nudged_steps=256, tolerance=3e-3,
         momentum=0.9, normalize=0.9,
-    ))
+    ), recall=False)
     cue = np.array([[0.2, 0.8]])
     brain.step(cue, teacher=np.array([0]))
     before = brain.save(tmp_path / "before")

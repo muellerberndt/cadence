@@ -18,7 +18,7 @@ import cadence as cd
 
 
 def episodic(*args, **options) -> cd.Brain:
-    return cd.Brain.compose(*args, **{"memory_choice": True, "memory_context": 0.0, **options})
+    return cd.Brain.compose(*args, **{"recall": False, **{"memory_choice": True, "memory_context": 0.0, **options}})
 
 
 def one_hot(index: int, width: int) -> np.ndarray:
@@ -41,13 +41,15 @@ def outcome(brain: cd.Brain, x: np.ndarray, action: int, reward: float, after: n
 
 def test_extinction_is_an_opt_in_threshold_of_the_episodic_choice():
     founder = episodic(3, 2, seed=0)
-    assert founder.memory_extinction == 0.0 and founder.memories["episodic"].paid is None
+    assert founder.memories["episodic"].extinction == 0.0
+    assert founder.memories["episodic"].paid is None
     assert "extinction" not in founder.describe()["memories"]["episodic"]
     brain = episodic(3, 2, seed=0, memory_extinction=0.5)
-    assert brain.memory_extinction == 0.5 and brain.memories["episodic"].paid is not None
+    assert brain.memories["episodic"].extinction == 0.5
+    assert brain.memories["episodic"].paid is not None
     assert brain.describe()["memories"]["episodic"]["extinction"] == 0.5
     with pytest.raises(ValueError, match="need memory_choice"):
-        cd.Brain.compose(3, 2, memory_extinction=0.5)
+        cd.Brain.compose(3, 2, memory_extinction=0.5, recall=False)
     with pytest.raises(ValueError, match="memory_extinction"):
         episodic(3, 2, memory_extinction=1.5)
 
@@ -106,7 +108,7 @@ def test_the_reversal_is_acquired_when_failures_pay_nothing():
 
     def late(seed: int, extinction: float) -> float:
         brain = cd.Brain.compose(1, 2, modules=(16,), seed=seed, arousal=True,
-                                 memory_choice=True, memory_extinction=extinction)
+                                 memory_choice=True, memory_extinction=extinction, recall=False)
         action, hits = int(brain.live(observation)[0]), []
         for t in range(240):
             target = int(t >= 120)
@@ -130,7 +132,7 @@ def test_an_extinguishing_brain_saves_and_continues_exactly(tmp_path):
         outcome(brain, x, 2, 1.0, after)
     brain.step(after)  # an issued action owns the next outcome
     copy = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
-    assert copy.memory_extinction == 0.5
+    assert copy.memories["episodic"].extinction == 0.5
     for name in ("strength", "consolidated"):
         np.testing.assert_array_equal(
             getattr(copy.memories["episodic"].paid, name),
@@ -153,7 +155,7 @@ def test_grow_keeps_the_extinction_and_the_direct_payments():
     x, after = one_hot(0, 3), one_hot(1, 3)
     outcome(brain, x, 2, 1.0, after)
     grown = brain.grow(efference_amplitude=1.0)
-    assert grown.memory_extinction == 0.5
+    assert grown.memories["episodic"].extinction == 0.5
     np.testing.assert_array_equal(
         grown.memories["episodic"].paid.consolidated,
         brain.memories["episodic"].paid.consolidated,
@@ -162,7 +164,7 @@ def test_grow_keeps_the_extinction_and_the_direct_payments():
 
 @pytest.mark.parametrize("amplitude", [None, 3.0])
 def test_extinction_reads_the_direct_payment_in_reward_units_after_a_retune(amplitude):
-    brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5)
+    brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5, recall=False)
     if amplitude is not None:
         brain.retune(memory_amplitude=amplitude)
     episodic = brain.memories["episodic"]
@@ -178,7 +180,7 @@ def test_extinction_reads_the_direct_payment_in_reward_units_after_a_retune(ampl
 
 def test_the_direct_payments_share_the_place_records_separator_saved_once(tmp_path):
     brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5,
-                             arousal=True)
+                             arousal=True, recall=False)
     episodic = brain.memories["episodic"]
     assert episodic.paid.separator is brain.hippocampus.separator
     rng = np.random.default_rng(0)

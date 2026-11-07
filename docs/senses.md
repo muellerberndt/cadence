@@ -46,8 +46,7 @@ saved with the brain as `brain.sparse_code`. The code is fixed and learns nothin
 
 - In `compose` a vector brain's sensory region reads the code too; on an image brain and in
   `Brain(connectome, code=units)` only the memories use it.
-- A brain with this code refuses `memory_expansion` and `memory_fan_in`, and keys stored under
-  one code do not match another.
+- Keys stored under one code do not match another.
 - `Genome.observation_width(inputs, code)` gives the key width before building, the size of a
   custom anatomy's `recall` and `next` regions.
 
@@ -165,7 +164,9 @@ At the founder standing gain of 2, the code's slope-weighted lateral coupling is
 but a synchronous sweep at the model's step can oscillate when units with overlapping
 columns are active together. After each phase the region reports the step's halvings for
 those negative modes (`LearnedCode.stability`), and its next phase runs at that step with its
-budget scaled by the same power of two. A phase that does not qualify is settled once more at
+budget scaled by the same power of two. Whether the halvings hold is settled by Cholesky
+factorizations at their bounds, a fraction of an eigenvalue solve's cost; the eigenvalues decide
+when they change, and the answer is the same integer. A phase that does not qualify is settled once more at
 the step the dictionary's negative modes allow over every state (`LearnedCode.rest_stability`).
 If it does not qualify there either, the moment is refused with `RuntimeError` before anything
 changes, as a refused free solve is. A world of one input needs this from its first moment.
@@ -218,7 +219,7 @@ sentence = [np.eye(53)[[k]] for k in (40, 3, 44)]   # a context, a token, a cont
 for x in sentence:
     teacher.act(x, greedy=True)                      # three moments, three steps
 assert teacher.learned_code.work["updates"] == 3
-assert teacher.recall.keys.shape == (1, 3, 64 + 53) # the slots hold the moments' keys
+assert teacher.recall.keys.shape == (1, 4, 64 + 53) # a boundary slot, then the moments' keys
 teacher.lesson(sentence[1], [2])                     # a lesson moves the plastic synapses alone
 assert teacher.learned_code.work["updates"] == 3
 teacher.learned_code.learning = False               # the tables stay from here on
@@ -239,11 +240,9 @@ and `IDENTITY` 0.9 (the weight of the observation's own identity in the memories
 
 Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without the region,
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
-`learned_code`, an image brain, a backend other than `cpu`, and a custom connectome without a
+`learned_code`, an image brain, the `torch` backend, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
-sensory neurons project anywhere but to the code region. A retired `learned_code_*` setting is
-refused by name with a message saying what the region does instead
-([CHANGELOG](../CHANGELOG.md)).
+sensory neurons project anywhere but to the code region.
 
 ### When to declare fields
 
@@ -289,7 +288,7 @@ found again along a new path. An observation wider than the code (more inputs th
 camera's frame) is keyed on the code alone, at the observation's norm, so that the key keeps
 the code's width (`LearnedCode.joins`), and `brain.code_width` is then `units`. With
 `memory_choice=True` the episodic stores separate these keys as an observation's
-(`memory_expansion` 1,024 cells, 24 active). A decision
+(1,024 cells, 24 active). A decision
 keeps the key it was taken under until its outcome is recorded. `stimulus(..., memory=False)`,
 `fit`, `predict` and `accuracy` settle the context-free code alone. The heard history holds
 the code, in blocks of `units` per decay.

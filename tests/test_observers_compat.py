@@ -13,19 +13,20 @@ BASE = {"inputs": 8, "actions": 3, "seed": 5, "observers": (6, 4), "arousal": Tr
 CASES = {
     "plain": {},
     "apical": {"apical": 0.25, "teaching": "deep"},
-    "recall and boundary": {"recall": True, "recall_boundary": True, "apical": 0.25},
-    "held heads": {"learned_code": 8, "attention": True, "recall_heads": 2, "apical": 0.25},
+    "recall and boundary": {"recall": True, "recall_founder": True, "recall_boundary": True, "apical": 0.25},
+    "held heads": {"learned_code": 8, "attention": True, "recall": True, "recall_heads": 2,
+                   "apical": 0.25},
     "episodic": {"memory_choice": True, "apical": 0.25},
     "efference and history": {"efference_amplitude": 1.0, "history_decays": (0.5, 0.9),
                               "apical": 0.25},
-    "torch": {"apical": 0.25, "recall": True, "backend": "torch"},
-    "copy and own actions": {"recall": True, "recall_copy": 1.0, "recall_tokens": [0, 1, 2],
+    "torch": {"apical": 0.25, "recall": True, "recall_founder": True, "backend": "torch"},
+    "copy and own actions": {"recall": True, "recall_founder": True, "recall_copy": 1.0, "recall_tokens": [0, 1, 2],
                              "recall_action": True, "apical": 0.25},
     "held heads, copy and own actions": {
-        "learned_code": 8, "attention": True, "recall_heads": 2, "recall_copy": 1.0,
+        "learned_code": 8, "attention": True, "recall": True, "recall_heads": 2, "recall_copy": 1.0,
         "recall_tokens": [0, 1, 2], "recall_action": True, "apical": 0.25,
     },
-    "torch copy and own actions": {"apical": 0.25, "recall": True, "recall_copy": 1.0,
+    "torch copy and own actions": {"apical": 0.25, "recall": True, "recall_founder": True, "recall_copy": 1.0,
                                    "recall_tokens": [0, 1, 2], "recall_action": True,
                                    "backend": "torch"},
 }
@@ -58,14 +59,16 @@ def test_observers_live_with_every_component(name, tmp_path):
     options = CASES[name]
     if options.get("backend") == "torch" and importlib.util.find_spec("torch") is None:
         pytest.skip("torch is not installed")
-    brain = cd.Brain.compose(**BASE, **options)
+    brain = cd.Brain.compose(**BASE, **{"recall": False, **options})
     assert {"observer_0", "observer_1"} <= set(brain.connectome.populations)
     if "apical" in options:
         # an observer's return lands apically: module_0, association, motor and observer_0 pool
         assert len(brain.brain.apical.members) == 4
     life(brain)
     loaded = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
-    assert loaded.describe() == brain.describe()
+    described = brain.describe()
+    described.pop("placement", None)  # it ran on torch and now runs on the CPU
+    assert loaded.describe() == described
     x = np.eye(8)[[2]]
     np.testing.assert_array_equal(loaded.act(x, greedy=True), brain.act(x, greedy=True))
     brain.retune(working_memory_decay=0.4)

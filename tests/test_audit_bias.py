@@ -35,10 +35,10 @@ def _builders() -> list[tuple[str, cd.NeuralGraph, np.ndarray, list[int]]]:
     c, _ = cd.embedded(12, 3, 6, 24, 5, seed=0)
     brain = cd.NeuralGraph(c, cd.learning_neuron_model(dt=1.0))
     out.append(("embedded", brain, _drive_embedded(c, rng, 16), list(c.populations["hidden"])))
-    g = cd.Brain.compose(10, 4, modules=(64,), seed=0)
+    g = cd.Brain.compose(10, 4, modules=(64,), seed=0, recall=False)
     drive = g.stimulus(rng.random((16, 10)), memory=False)
     out.append(("generic", g.brain, drive, list(g.association_index)))
-    g = cd.Brain.compose((8, 8), 4, modules=(64,), seed=0)
+    g = cd.Brain.compose((8, 8), 4, modules=(64,), seed=0, recall=False)
     drive = g.stimulus(rng.random((16, 8, 8)), memory=False)
     out.append(("generic-image", g.brain, drive, list(g.connectome.populations["visual/output"])))
     return out

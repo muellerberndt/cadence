@@ -5,11 +5,20 @@ Short answers to the problems builders meet first, each linking the page that ow
 
 ## Install and run
 
-**`pip install cadence-net==0.94.0`, then `import cadence`.** Python 3.11 or newer and NumPy are
+**`pip install cadence-net==0.95.0`, then `import cadence`.** Python 3.11 or newer and NumPy are
 the only requirements.
 
 **Do I need a GPU?** No; everything runs on NumPy float64. `[fast]` adds Numba and SciPy,
 `[accel]` torch and `[apple]` MLX for the settling brain ([backends](backends.md)).
+
+**A run reads other numbers after an upgrade.** A new brain holds the recall memory and learns at
+another teaching point from 0.95.0 ([what it holds](memory.md#what-recalltrue-gives-a-new-brain)).
+`recall=False` composes the brain of 0.94.0 to the bit; a saved brain keeps what it was saved with. With
+a memory, 0.95.0 replaces the address lesson, so `recall_founder=True` restores the settings and not the
+bits.
+
+**A world paid by reward alone reads lower than without a memory.** That is a stated cost
+([what the composition gives up](memory.md#what-the-composition-gives-up)): pass `recall=False`.
 
 **Which interface do I want?** `Brain.compose(..., arousal=True)` and `brain.live(...)` for one
 continuing stream; `step` for explicit teaching, batches or learning from every outcome. Other
@@ -44,7 +53,7 @@ and distance when its hypotheses hold ([certificate](settling.md#the-settling-ce
 
 **Qualified teaching refuses every lesson.** A `LearningPhaseError` in phase `nudged` or
 `opposite` naming a budget mismatch means the nudged budget is below the free one; a composed
-brain teaches with 12 nudged against 1024 free steps. Set `learning_qualified=True,
+brain teaches with 12 nudged steps (32 at `teaching="deep"`, a new brain's) against 1024 free steps. Set `learning_qualified=True,
 learning_nudged_steps=1024` through `retune` ([budgets](settling.md#qualified-teaching-budgets)).
 
 **Two learners on one brain.** Build the second with `Learner.sharing(first, outputs, ...)` so

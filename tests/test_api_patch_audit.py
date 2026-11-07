@@ -4,7 +4,7 @@ from dataclasses import replace
 
 import numpy as np
 import pytest
-from checkpoints import earlier
+from checkpoints import flat, write
 
 import cadence as cd
 
@@ -23,14 +23,14 @@ def same_arrays(left, right):
 @pytest.mark.parametrize("learned", [None, 8])
 @pytest.mark.parametrize("legacy", [False, True])
 def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path, learned, legacy):
-    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, learned_code=learned)
+    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, learned_code=learned, recall=False)
     observations = np.eye(4)
     brain.act(observations[[0]])
     path = brain.save(tmp_path / "pending.npz")
     saved = arrays(path)
     if legacy:
-        saved = earlier(saved)
-        np.savez(path, **saved)
+        saved = flat(saved)
+        write(path, saved)
     # An intact pending checkpoint keeps the actual action's associative write.
     twin = cd.Brain.load(path)
     brain.learn([1.0], [False], observations[[1]])
@@ -39,7 +39,7 @@ def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path
     np.testing.assert_array_equal(brain.hippocampus.consolidated, twin.hippocampus.consolidated)
     for name in ("moment/observations", "moment/action", "moment/code"):
         saved.pop(name, None)
-    np.savez(path, **saved)
+    write(path, saved)
     before = path.read_bytes()
     with pytest.raises(ValueError, match="missing saved state: moment/observations"):
         cd.Brain.load(path)
@@ -48,20 +48,20 @@ def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path
 
 @pytest.mark.parametrize("defect", ["reordered", "other_population"])
 def test_composed_checkpoint_readout_must_keep_the_motor_action_mapping(tmp_path, defect):
-    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3)
+    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, recall=False)
     brain.act(np.eye(4)[[0]])
     path = brain.save(tmp_path / "readout.npz")
     saved = arrays(path)
     saved["outputs"] = (
         brain.motor_index[::-1] if defect == "reordered" else brain.association_index[:2]
     )
-    np.savez(path, **saved)
+    write(path, saved)
     with pytest.raises(ValueError, match="motor population"):
         cd.Brain.load(path)
 
 
 def test_expert_teaching_description_keeps_effective_steps_and_is_observational(tmp_path):
-    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3)
+    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, recall=False)
     config = replace(brain.learner.config, eta=0.017, eta_bias=0.004,
                      normalize=0.4, normalize_floor=0.005)
     brain.retune(learning=config)
@@ -88,6 +88,6 @@ def test_expert_teaching_description_keeps_effective_steps_and_is_observational(
 
 @pytest.mark.parametrize("point", ["founder", "normalized"])
 def test_named_teaching_points_keep_their_compact_description(point):
-    brain = cd.Brain.compose(4, 2, modules=(6,), teaching=point)
+    brain = cd.Brain.compose(4, 2, modules=(6,), teaching=point, recall=False)
     genes = brain.describe()["genes"]
     assert genes["teaching"] == point and "learning" not in genes

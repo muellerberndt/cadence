@@ -49,7 +49,7 @@ from typing import Any, cast
 import numpy as np
 
 from .blocks import block_contrast
-from .brain import Backend, Brain, BrainState, Equilibrium, Nudge
+from .brain import Backend, Brain, BrainState, Equilibrium, Nudge, _MlxState, _resident
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -84,6 +84,7 @@ def _compiled_passes() -> bool:
     return compiled()
 
 
+_PROJECTION_ROOM = 64  # a matrix of one row per projection holds this many times its values at most
 _MOMENTS = ("velocity", "velocity_bias", "second_moment", "second_moment_bias")
 
 
@@ -132,6 +133,10 @@ class LearnerConfig:
     rehearsal: float = 0.0
     # the lesson rows the reservoir keeps, each with its episode: a uniform sample of every row
     rehearsal_capacity: int = 512
+    # opt-in, a composed brain's free solves on the compiled CPU path: a row stops at the check
+    # it qualifies and the activation is made in arithmetic that vectorizes
+    # (``Brain.equilibrate``); the same equations, order and tolerance, other bits
+    fast_settle: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one
     # value at which a saved config still loads (the law of this version) and what the learner
@@ -199,6 +204,8 @@ class LearnerConfig:
             raise ValueError("normalize_relative needs normalize above zero")
         if not isinstance(self.nudged_fixed, bool):
             raise ValueError("nudged_fixed must be boolean")
+        if not isinstance(self.fast_settle, bool):
+            raise ValueError("fast_settle must be boolean")
         if self.tolerance is not None and (not np.isfinite(self.tolerance) or self.tolerance < 0):
             raise ValueError("tolerance must be finite and nonnegative, or None")
         if not isinstance(self.qualified, bool):
@@ -265,7 +272,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
-    "surprise_share": False,
+    "surprise_share": False, "fast_settle": False,
 }
 
 
@@ -326,9 +333,18 @@ _PHASE_KEYS = (
 )
 
 
-def _rows(state: BrainState, rows: np.ndarray) -> BrainState:
-    """The host copy of a batched state restricted to the rows of a boolean mask."""
+def _rows(state: BrainState, rows: np.ndarray, drive: Any = None) -> BrainState:
+    """The host copy of a batched state restricted to the rows of a boolean mask; a state a launch
+    made stays on the MLX device, and ``drive`` is those rows' own there."""
     change = state.activity_change
+    handle = state.device
+    if isinstance(handle, _MlxState):
+        unread: Any = None
+        return BrainState(
+            unread, unread, unread, state.steps,
+            activity_change=None if change is None else np.asarray(change)[rows],
+            device=handle["plan"].rows_of(handle, rows, drive),
+        )
     return BrainState(
         np.asarray(state.v)[rows], np.asarray(state.activation)[rows],
         np.asarray(state.adaptation)[rows], state.steps,
@@ -336,9 +352,19 @@ def _rows(state: BrainState, rows: np.ndarray) -> BrainState:
     )
 
 
-def _restrict(state: BrainState, taught: np.ndarray | None) -> BrainState:
-    """``state`` restricted to the taught rows, or itself when every row is taught."""
-    return state if taught is None or bool(taught.all()) else _rows(state, taught)
+def _taken_rows(drive: Any, taught: np.ndarray) -> Any:
+    """The rows of a drive a boolean mask marks; an MLX array takes their indices."""
+    if type(drive).__module__ == "mlx.core":
+        import mlx.core as mx
+
+        return drive[mx.array(np.flatnonzero(taught).astype(np.int32))]
+    return drive[taught]
+
+
+def _restrict(state: BrainState, taught: np.ndarray | None, drive: Any = None) -> BrainState:
+    """``state`` restricted to the taught rows, or itself when every row is taught; ``drive`` is
+    those rows' own, where it is the one the state settled under."""
+    return state if taught is None or bool(taught.all()) else _rows(state, taught, drive)
 
 
 def _taught_report(taught: np.ndarray | None, batch: int) -> dict[str, float]:
@@ -641,11 +667,18 @@ class Learner:
         target is an action that was taken).
         """
         # an apical compartment passes the nudge's change at the gain the free phase set
-        held = self.brain.apical_gain(drive, free)
+        held = self.brain.apical_gain(drive, free, own_precision=True)
         return self._nudged(
             drive, free, self.nudge_for(target, sign * self.config.beta, weight, held),
             "nudged" if sign >= 0 else "opposite",
         )
+
+    def _diagnostic(
+        self, drive: np.ndarray, state: BrainState, nudge: Nudge | None = None
+    ) -> np.ndarray:
+        """A finite phase's residual for its report: in a device brain's own precision, since it
+        counts work and certifies nothing, and a float64 copy of the kernel would pay float64."""
+        return self.brain.residual(drive, state, nudge=nudge, own_precision=True)
 
     def _nudged(
         self, drive: np.ndarray, free: BrainState, nudge: Nudge, name: str
@@ -749,7 +782,9 @@ class Learner:
         w = self.brain.connectome
         beta = self.config.beta
         minus_state, span = (free, beta) if opposite is None else (opposite, 2.0 * beta)
-        on_device = self.brain.contrast_on_device(nudged, minus_state)
+        on_device = None if self.brain._small_contrast(nudged) else self.brain.contrast_on_device(
+            nudged, minus_state
+        )
         if on_device is not None:  # both phases still on the accelerator: read the contrast there
             edges, neurons = on_device
             assert nudged.device is not None
@@ -900,8 +935,15 @@ class Learner:
         """Materialise optimizer history only when a host caller reads or edits it."""
         held = self.__dict__.get("_device_moments")
         if held is not None:
-            for name in _MOMENTS:
-                self.__dict__["_" + name] = held[name].detach().cpu().double().numpy().copy()
+            kernel = self.brain._mlx
+            if kernel is not None:  # by block, and over the neurons
+                for name in ("velocity", "second_moment"):
+                    self.__dict__["_" + name] = kernel.to_edges(held[name])
+                for name in ("velocity_bias", "second_moment_bias"):
+                    self.__dict__["_" + name] = np.array(held[name], dtype=np.float64)
+            else:
+                for name in _MOMENTS:
+                    self.__dict__["_" + name] = held[name].detach().cpu().double().numpy().copy()
             self.__dict__["_device_moments"] = None
 
     def _moments_on_device(self, kernel: Any) -> dict[str, Any]:
@@ -948,9 +990,14 @@ class Learner:
                 for values, group in zip(
                     (rms, rms_bias), self._projections_on_device(kernel), strict=True
                 ):
-                    size = int(group[1])
-                    power = torch.zeros(size, dtype=values.dtype, device=values.device)
-                    power.index_add_(0, group[0], values * values)
+                    # each group's values in a row of their own, summed in a fixed order: atomic
+                    # adds onto a few sums take far longer and their order varies from run to run
+                    if group[4] is not None:
+                        group[4].view(-1)[group[3]] = values * values
+                        power = group[4].sum(dim=1)
+                    else:
+                        power = torch.zeros(int(group[1]), dtype=values.dtype, device=values.device)
+                        power.index_add_(0, group[0], values * values)
                     floor = (power / group[2]).sqrt()[group[0]]
                     divisors.append(values + cfg.normalize_relative * floor + _RELATIVE_TINY)
                 edges, neurons = edges / divisors[0], neurons / divisors[1]
@@ -965,9 +1012,10 @@ class Learner:
             raise ValueError("optimizer moments must remain finite")
         return edges, neurons
 
-    def _projections_on_device(self, kernel: Any) -> list[tuple[Any, int, Any]]:
-        """``_projections`` on the kernel's device: per group the index, the group count and
-        each group's member count, made once per kernel and layout."""
+    def _projections_on_device(self, kernel: Any) -> list[tuple[Any, ...]]:
+        """``_projections`` on the kernel's device: per value its group, the group count, each
+        group's member count, where the value lies in a matrix of one row per group, and that
+        matrix, made once per kernel and layout."""
         held = self.__dict__.get("_projection_device")
         layout = self.brain.layout
         if held is None or held[0] is not kernel or held[1] is not layout:
@@ -975,15 +1023,32 @@ class Learner:
             groups = []
             for group in self._projections():
                 size = int(group.max()) + 1 if len(group) else 0
-                count = np.maximum(np.bincount(group, minlength=size), 1).astype(float)
+                members = np.bincount(group, minlength=size)
+                widest = int(members.max()) if size else 0
+                place, matrix = None, None
+                if size * widest <= _PROJECTION_ROOM * max(len(group), 1):
+                    order = np.argsort(group, kind="stable")
+                    first = np.cumsum(members) - members
+                    place = np.empty(len(group), dtype=np.int64)
+                    place[order] = (
+                        group[order] * widest + np.arange(len(group)) - first[group[order]]
+                    )
+                    place = torch.from_numpy(place).to(kernel.device)
+                    matrix = torch.zeros(
+                        size, widest, dtype=kernel.param_dtype, device=kernel.device
+                    )
                 groups.append((
                     torch.from_numpy(np.ascontiguousarray(group)).to(kernel.device),
                     size,
-                    torch.from_numpy(count).to(kernel.device, kernel.param_dtype),
+                    torch.from_numpy(np.maximum(members, 1).astype(float)).to(
+                        kernel.device, kernel.param_dtype
+                    ),
+                    place,
+                    matrix,
                 ))
             held = (kernel, layout, groups)
             self.__dict__["_projection_device"] = held
-        return cast(list[tuple[Any, int, Any]], held[2])
+        return cast(list[tuple[Any, ...]], held[2])
 
     def _device_indices(self, kernel: Any) -> dict[str, Any]:
         """Index tensors of the update on the kernel's device, made once per kernel and masks."""
@@ -1000,13 +1065,10 @@ class Learner:
             cache.get("key") != key
             or not np.array_equal(cache.get("host_synapses"), self.plastic_synapses)
             or not np.array_equal(cache.get("host_neurons"), self.plastic_neurons)
-            or (
-                cache.get("host_rate") is not None
-                if self.synapse_rate is None
-                else not np.array_equal(cache.get("host_rate"), self.synapse_rate)
-            )
         ):
             dev = kernel.device
+            if self.synapse_rate is not None:
+                self.synapse_rate.flags.writeable = False
 
             def to(x: np.ndarray, dtype: Any = None) -> Any:
                 return torch.from_numpy(np.ascontiguousarray(x)).to(dev, dtype)
@@ -1018,10 +1080,10 @@ class Learner:
                 key=key,
                 host_synapses=self.plastic_synapses.copy(),
                 host_neurons=self.plastic_neurons.copy(),
-                host_rate=None if self.synapse_rate is None else self.synapse_rate.copy(),
+                host_rate=self.synapse_rate,  # read-only from here: a new array is a new key
                 rate=None
                 if self.synapse_rate is None
-                else to(self.synapse_rate, kernel.param_dtype),
+                else to(self.synapse_rate.copy(), kernel.param_dtype),
                 paired=to(self._paired) if len(self._paired) else None,
                 paired_reverse=to(self._paired_reverse) if len(self._paired) else None,
                 members=to(self._members) if len(self._members) else None,
@@ -1141,6 +1203,83 @@ class Learner:
         assert cfg.eta_bias is not None  # resolved at construction
         return delta_scale, cfg.eta_bias * neuron_term
 
+    def _mlx_update_tables(self, plus: BrainState, minus: BrainState) -> dict[str, Any] | None:
+        """What a lesson's update reads on the MLX device, where both phases rest there and the
+        update takes this learner: every synapse plastic, no group but ties, each synapse's step
+        as ``synapse_rate`` gives it. A rate moves by a new array: the one read here is read-only,
+        since comparing millions of them would cost a lesson's fifth."""
+        kernel = self.brain._mlx
+        if (
+            kernel is None or kernel.plain or plus.device is None or minus.device is None
+            or plus.device.get("holder") is not kernel.root
+            or minus.device.get("holder") is not kernel.root
+            or len(self._members)
+            or not bool(np.all(self.plastic_synapses))
+        ):
+            return None
+        rate = self.synapse_rate
+        held = self.__dict__.get("_mlx_tables")
+        if (
+            held is None or held[0] is not kernel.root or held[1] is not self._paired
+            or held[3] is not rate or (rate is not None and rate.flags.writeable)
+        ):
+            tables = kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse)
+            if tables is not None:
+                assert self.plastic_neurons is not None
+                tables["plastic_neurons"] = kernel.mx.array(
+                    np.asarray(self.plastic_neurons, dtype=np.float32)
+                )
+                if rate is not None:
+                    rate.flags.writeable = False
+                    tables["rates"] = kernel.block_rates(rate)
+            held = (kernel.root, self._paired, tables, rate)
+            self.__dict__["_mlx_tables"] = held
+        return cast("dict[str, Any] | None", held[2])
+
+    def _update_on_mlx(
+        self, plus: BrainState, minus: BrainState, span: float, share: float,
+        tables: dict[str, Any],
+    ) -> dict[str, float]:
+        """``_update`` on the MLX device, in float32: the contrast, the moments, the ties, the
+        bound, the blocks and the biases, in one launch."""
+        kernel = self.brain._mlx
+        assert kernel is not None and plus.device is not None and minus.device is not None
+        cfg = self.config
+        assert cfg.eta_bias is not None  # resolved at construction
+        count = self.contrast_updates + 1
+        m, rho = cfg.momentum, cfg.normalize
+        held = self.__dict__.get("_device_moments")
+        if held is None or held["holder"] is not kernel.root:
+            self._host_moments()
+            held = {
+                "holder": kernel.root,
+                "velocity": kernel.to_blocks(self.__dict__["_velocity"]),
+                "second_moment": kernel.to_blocks(self.__dict__["_second_moment"]),
+                "velocity_bias": kernel.mx.array(
+                    np.asarray(self.__dict__["_velocity_bias"], dtype=np.float32)
+                ),
+                "second_moment_bias": kernel.mx.array(
+                    np.asarray(self.__dict__["_second_moment_bias"], dtype=np.float32)
+                ),
+            }
+        if kernel.scale is None:
+            held = {**held, "scale": kernel.to_blocks(self.brain.efficacy)}
+        rows = int(plus.device["vm"].shape[0] if "vm" in plus.device else plus.device["s"].shape[0])
+        new, moments, size, bias_size = kernel.taught(
+            plus.device, minus.device, rows * span, held, tables,
+            (
+                m, 1 - m, 1.0 - m**count if m > 0 else 1.0, rho, 1 - rho,
+                1.0 - rho**count if rho > 0 else 1.0, share * cfg.eta, cfg.normalize_floor,
+                cfg.normalize_relative, _RELATIVE_TINY,
+            ),
+            share * cfg.eta_bias, cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
+        )
+        self.__dict__["_device_moments"] = moments
+        self.brain = self.brain._with_mlx_parameters(new)
+        self.updates += 1
+        self.contrast_updates += 1
+        return {"scale_step": size, "bias_step": bias_size}
+
     def update(
         self,
         free: BrainState,
@@ -1174,6 +1313,10 @@ class Learner:
         cfg = self.config
         assert cfg.eta_bias is not None  # resolved at construction
         minus_state, span = (free, cfg.beta) if opposite is None else (opposite, 2.0 * cfg.beta)
+        tables = self._mlx_update_tables(nudged, minus_state)
+        if tables is not None:
+            report = self._update_on_mlx(nudged, minus_state, span, share, tables)
+            return report
         kernel = self._device_kernel(nudged, minus_state)
         if kernel is not None:  # both phases rest on the torch device: the whole update stays there
             edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
@@ -1252,7 +1395,8 @@ class Learner:
         """
         labels = self._labels(labels)
         target = self.targets(labels)
-        drive = np.asarray(drive, dtype=float)
+        if not _resident(drive):
+            drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
             drive = drive[None, :]
         if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
@@ -1277,8 +1421,8 @@ class Learner:
                 return self._agreed(free, phases, taught)
             if judged is None:
                 drive, target, weight = self._lesson(taught, drive, target, weight)
-                free = _restrict(free, taught)
-            held = self.brain.apical_gain(drive, free)
+                free = _restrict(free, taught, drive)
+            held = self.brain.apical_gain(drive, free, own_precision=True)
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 phases[name] = self._qualified_phase(
                     drive, free, cfg.nudged_steps,
@@ -1296,7 +1440,7 @@ class Learner:
         # Finite phases get post-solve residual diagnostics. They count additional
         # work and do not certify the lesson.
         phases = {
-            "free": Equilibrium(free, self.brain.residual(drive, free), free.steps,
+            "free": Equilibrium(free, self._diagnostic(drive, free), free.steps,
                                 cfg.tolerance if cfg.tolerance is not None else 0.0,
                                 residual_checks=1),
         }
@@ -1313,20 +1457,20 @@ class Learner:
             return state, report
         if judged is None:
             drive, target, weight = self._lesson(taught, drive, target, weight)
-            free = _restrict(free, taught)
-        held = self.brain.apical_gain(drive, free)  # read once, held by both phases
+            free = _restrict(free, taught, drive)
+        held = self.brain.apical_gain(drive, free, own_precision=True)  # read once, by both phases
         # one nudge per phase, read by the phase and by its diagnostic check
         pull = self.nudge_for(target, cfg.beta, weight, held)
         push = self.nudge_for(target, -cfg.beta, weight, held)
         nudged = self._nudged(drive, free, pull, "nudged")
         opposite = self._nudged(drive, free, push, "opposite")
         phases["nudged"] = Equilibrium(
-            nudged, self.brain.residual(drive, nudged, nudge=pull),
+            nudged, self._diagnostic(drive, nudged, pull),
             nudged.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
         phases["opposite"] = Equilibrium(
-            opposite, self.brain.residual(drive, opposite, nudge=push),
+            opposite, self._diagnostic(drive, opposite, push),
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
@@ -1366,7 +1510,8 @@ class Learner:
         """The rows the phases run on: every row, or the disagreeing ones."""
         if taught is None or bool(taught.all()):
             return drive, target, weight
-        return drive[taught], target[taught], None if weight is None else np.asarray(weight)[taught]
+        rows = _taken_rows(drive, taught)
+        return rows, target[taught], None if weight is None else np.asarray(weight)[taught]
 
     def _untaught(self, taught: np.ndarray) -> tuple[LearnedState, dict[str, float]]:
         """The lesson of a batch whose caller-read answer matches every label: no phase runs,

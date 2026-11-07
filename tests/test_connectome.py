@@ -1,5 +1,7 @@
 """Direct tests for cadence.connectome: Connectome construction and utility methods."""
 
+import warnings
+
 import numpy as np
 import pytest
 
@@ -88,6 +90,38 @@ def test_with_populations_stores_named_sets() -> None:
     c = _ring(6).with_populations(left=[0, 1, 2], right=[3, 4, 5])
     assert set(c.populations["left"]) == {0, 1, 2}
     assert set(c.populations["right"]) == {3, 4, 5}
+
+
+def test_a_population_out_of_order_warns_and_is_held_ascending() -> None:
+    with pytest.warns(RuntimeWarning, match="population 'late' is not ascending"):
+        c = _ring(6).with_populations(late=[3, 4, 5, 0, 1, 2])
+    assert c.populations["late"] == (0, 1, 2, 3, 4, 5)
+    with pytest.warns(RuntimeWarning, match="population 'twice' is not ascending"):
+        assert _ring(6).with_populations(twice=[1, 1, 2]).populations["twice"] == (1, 2)
+    with pytest.warns(RuntimeWarning, match="population 'late' is not ascending"):
+        Connectome.from_synapses(3, pre=[0, 1], post=[1, 2], populations={"late": [2, 0]})
+
+
+def test_a_population_in_order_or_a_set_stays_silent() -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        c = _ring(6).with_populations(left=range(3), right=np.arange(3, 6), bag={5, 0, 2})
+        assert c.with_populations(left=[0, 1]).populations["right"] == (3, 4, 5)
+        assert c.populations["bag"] == (0, 2, 5)
+        Connectome.from_synapses(3, pre=[0, 1], post=[1, 2], populations={"bag": frozenset({2, 0})})
+
+
+def test_inputs_take_a_population_in_ascending_order_whatever_it_was_given() -> None:
+    """The order a brain reads, so a caller who laid regions out of order learns what happened."""
+    pre = [0, 1, 2, 3, 4, 5, 6, 7]
+    post = [8, 8, 8, 8, 9, 9, 9, 9]
+    wiring = Connectome.from_synapses(10, pre=pre, post=post)
+    populations = {"association": [8], "motor": [9]}
+    ascending = wiring.with_populations(sensory=range(8), **populations)
+    with pytest.warns(RuntimeWarning, match="population 'sensory' is not ascending"):
+        given = wiring.with_populations(sensory=[4, 5, 6, 7, 0, 1, 2, 3], **populations)
+    assert given.populations["sensory"] == ascending.populations["sensory"]
+    assert given.digest() == ascending.digest()
 
 
 def test_members_returns_union_of_named_populations() -> None:

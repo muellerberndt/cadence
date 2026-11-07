@@ -76,12 +76,12 @@ def compose(recipe: dict[str, Any], seed: int, gated: bool) -> Any:
     )  # a mapping patches the founder
     return Brain.compose(
         inputs.INPUTS,
-        actions,
+        actions, backend="cpu",
         slots=slots,
         seed=int(seed),
         arousal=arousal,
         episodic=False,
-        **options,
+        **{"recall": False, **options},
     )
 
 

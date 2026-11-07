@@ -7,10 +7,11 @@ key-to-value synapses using the actual observed value's local prediction error.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
+from .resident import _StoreOnDevice
 from .stream import FastSynapses
 
 if TYPE_CHECKING:
@@ -65,6 +66,34 @@ class SynapticMemory(FastSynapses):
                 "set separator.center=0 and apply any fixed centering to the input"
             )
         self.consolidated = np.zeros((self.key_width, len(self.post)))
+
+    def reside(self, kernel: Any) -> None:
+        """The strengths on the device of a brain's ``kernel``, unless a separator or a surprise
+        gate keeps them on the host."""
+        if kernel is None or self.separator is not None or self.gate_noise is not None:
+            self.leave_device()
+            return
+        held = self._device
+        if held is not None:
+            if any(name in self.__dict__ for name in _StoreOnDevice.OWNED):
+                written = {
+                    name: self.__dict__.pop(name) for name in _StoreOnDevice.OWNED
+                    if name in self.__dict__
+                }
+                self.leave_device()
+                self.__dict__.update(written)
+            else:
+                held.kernel = kernel
+                return
+        self._device = _StoreOnDevice(self, kernel)
+
+    def held_values(self) -> dict[str, Any]:
+        """``FastSynapses.held_values``, the shared matrix and the noise scales with them."""
+        held: Any = self._device or self
+        return {
+            **super().held_values(), "consolidated": held.consolidated,
+            "gate_noise": self.gate_noise,  # with maturity, replaced as well
+        }
 
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Forget transient residuals; persistent synapses survive episode/batch changes."""
@@ -126,6 +155,9 @@ class SynapticMemory(FastSynapses):
         if observed.shape != value.shape or observed.dtype != np.bool_:
             raise ValueError("value_mask must be a boolean array matching the values")
         gate = gate & np.any(key != 0, axis=1) & observed.any(axis=1)
+        if self._device is not None:
+            self._device.observe(key, value, gate, salience, observed)
+            return
         same_batch = len(self.strength) == batch
         previous = (
             self.strength

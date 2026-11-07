@@ -24,19 +24,33 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from copy import copy
 from dataclasses import dataclass, field, fields
+from math import gcd
 from threading import Lock
 from types import MappingProxyType
-from typing import Any, NamedTuple
+from typing import Any, ClassVar, cast
 
 import numpy as np
 
 from ._configuration import real
+from .brain import _MLX_MAP_ENTRIES, BrainState, _MlxMatrix, _resident
 from .brain import Brain as NeuralGraph
-from .brain import BrainState
 from .connectome import Connectome
 from .learning import LearnedState
+from .resident import (
+    _host_array,
+    _Moment,
+    _on_host,
+    _RecallOnDevice,
+    _set_columns,
+    _set_silent,
+    _StoreOnDevice,
+    _stream_rows,
+    _TraceOnDevice,
+    arrays_of,
+    route_contrast,
+)
 
-__all__ = ["Trace", "FastSynapses", "History", "Recall", "columns"]
+__all__ = ["Hearing", "Trace", "FastSynapses", "History", "Recall", "columns"]
 
 
 # Large products and copies may share at most 32 workers in one pool per process.
@@ -85,8 +99,10 @@ def _by_rows(task: Callable[[int, int], Any], rows: int, size: int) -> list[Any]
     Changing the requested count reuses one bounded process pool. A forked child creates
     its own pool; it never waits for its parent's vanished workers or inherited lock.
     """
+    if size < _THREADED:
+        return None
     threads = min(_recall_threads(), rows, _RECALL_WORKERS)
-    if threads <= 1 or size < _THREADED:
+    if threads <= 1:
         return None
     bounds = np.linspace(0, rows, threads + 1).astype(int)
     return list(_recall_pool().map(
@@ -108,24 +124,29 @@ def _einsum(spec: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.einsum(spec, a, b) if parts is None else np.concatenate(parts)
 
 
-def _stream_rows(rows: np.ndarray, batch: int) -> np.ndarray:
-    """Validate stream indices or a boolean mask before changing any stream state."""
-    selected = np.asarray(rows)
-    if (
-        selected.ndim != 1
-        or (selected.size and selected.dtype.kind not in "biu")
-        or (selected.dtype.kind == "b" and selected.shape != (batch,))
-        or (selected.dtype.kind == "u" and (selected >= batch).any())
-    ):
-        raise ValueError("rows must be stream indices or a boolean mask matching the batch")
-    if not selected.size and selected.dtype.kind != "b":
-        return np.zeros(0, dtype=np.int64)
+def _compiled_terms() -> bool:
+    """Whether the compiled passes of ``cadence.fused`` are in use (the same bits either way)."""
     try:
-        return np.asarray(np.arange(batch, dtype=np.int64)[selected], dtype=np.int64)
-    except IndexError as exc:
-        raise ValueError(
-            "rows must be stream indices or a boolean mask matching the batch"
-        ) from exc
+        from .fused import compiled
+    except ImportError:  # pragma: no cover
+        return False
+    return compiled()
+
+
+def _route_matrix(
+    graph: Any, synapses: np.ndarray, places: np.ndarray, shape: tuple[int, int]
+) -> np.ndarray:
+    """The effective weights of a route's ``synapses`` as a matrix of ``shape``, each at its entry
+    of ``places`` (raveled), one synapse per entry; the one pass of ``cadence.fused`` where it is
+    in use (the same bits either way)."""
+    weights = graph._weights
+    if _compiled_terms():
+        from .fused import gather, scatter
+
+        return scatter(shape[0] * shape[1], places, gather(weights, synapses)).reshape(shape)
+    out = np.zeros(shape[0] * shape[1])
+    out[places] = weights[synapses]
+    return out.reshape(shape)
 
 
 def columns(index: np.ndarray) -> slice | np.ndarray:
@@ -150,9 +171,9 @@ def _share(logits: np.ndarray, left: np.ndarray, mass: np.ndarray) -> np.ndarray
     moment, so the head takes of each slot at most the share ``left`` the heads before it left.
     Its own attention (the softmax of ``logits`` over the slots something is left of) keeps its
     shape where the share allows, ``w = min(left, lam p)``, and ``lam`` gives the head its
-    ``mass`` over the slots (with a null slot, its share stays the head's), or every share left
-    where that is less: what a taken slot cannot give goes to the slots the head prefers next. A
-    row whose slots the heads before took whole reads nothing.
+    ``mass`` over the slots, or every share left where that is less: what a taken slot cannot
+    give goes to the slots the head prefers next. A row whose slots the heads before took whole
+    reads nothing.
 
     The slots taken whole leave before the shares are taken, and the arithmetic is in logits:
     the slots are capped in the order of ``log(left) - logit``, and a slot past the capped ones
@@ -205,11 +226,14 @@ class Trace:
     source: str = "hidden"  # the range traced
     # the range the trace enters as a stimulus, one neuron per source neuron
     target: str = "context"
+    # the learned multiplier on the amplitude (``Hearing``), 1 the working value
+    hearing: float = 1.0
     trace: np.ndarray = field(init=False)
     last: np.ndarray = field(init=False)
     cold: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
+        self._device: _TraceOnDevice | None = None  # what rests on a device (``reside``)
         if not 0 <= self.decay < 1:
             raise ValueError("decay lies in [0, 1)")
         if not np.isfinite(self.amplitude):
@@ -222,8 +246,51 @@ class Trace:
         self._hidden_columns = columns(self.hidden)
         self.reset(0)
 
+    def __getattr__(self, name: str) -> Any:
+        """``trace`` or ``last`` resting on the device, read on the host: both come back."""
+        if self.__dict__.get("_device") is not None and name in ("trace", "last"):
+            self.leave_device()
+            return self.__dict__[name]
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __getstate__(self) -> dict[str, Any]:
+        self.leave_device()
+        return self.__dict__
+
+    def reside(self, kernel: Any) -> None:
+        """``trace`` and ``last`` on the device of a brain's ``kernel``, read and written there
+        each moment."""
+        if type(self) is not Trace or kernel is None:
+            self.leave_device()
+            return
+        if self._device is not None:
+            if "trace" not in self.__dict__ and "last" not in self.__dict__:
+                return
+            self.leave_device()
+        self._device = _TraceOnDevice(self, kernel)
+
+    def leave_device(self) -> None:
+        """Back on the host; what was written there since (``_restore_traces``) stays."""
+        held = self.__dict__.get("_device")
+        if held is not None:
+            for name in ("trace", "last"):
+                if name not in self.__dict__:
+                    self.__dict__[name] = _host_array(getattr(held, name))
+            self._device = None
+
+    def _resident_path(self) -> _TraceOnDevice | None:
+        """What rests on the device, None once an array was written on the host: that brings the
+        other back first, and the host's path reads them."""
+        if self._device is not None and ("trace" in self.__dict__ or "last" in self.__dict__):
+            self.leave_device()
+        return self._device
+
     def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
         """Fresh for every stream, or for ``rows`` only (streams that begin again)."""
+        held = self._resident_path()
+        if held is not None:
+            held.reset(batch, rows)
+            return
         if rows is None or len(self.trace) != batch:
             self.trace = np.zeros((batch, len(self.hidden)))
             self.last = np.zeros((batch, len(self.hidden)))
@@ -239,14 +306,28 @@ class Trace:
 
     def stimulate(self, drive: np.ndarray) -> np.ndarray:
         """Read the trace into a drive copy; another batch size reads zero context."""
+        if self._device is not None and _resident(drive):
+            return cast(np.ndarray, self._device.stimulate(drive))
+        if _resident(drive):  # a resident drive reads what the host holds
+            if len(self.trace) == len(drive):
+                _set_columns(
+                    drive, self._glow_columns, self.amplitude * self.hearing * self.trace
+                )
+            else:
+                _set_silent(drive, self._glow_columns)
+            return drive
         out = np.array(drive, dtype=float)
         out[:, self._glow_columns] = (
-            self.amplitude * self.trace if len(self.trace) == len(out) else 0.0
+            self.amplitude * self.hearing * self.trace if len(self.trace) == len(out) else 0.0
         )
         return out
 
     def update(self, state: BrainState) -> None:
         """After the free phase: the trace decays toward the source neurons' activation."""
+        held = self._resident_path()
+        if held is not None:
+            held.update(state)
+            return
         h = self._source_activation(state)
         if len(self.trace) != len(h):
             self.reset(len(h))
@@ -366,6 +447,8 @@ class History:
     amplitude: float = 3.0
     source: str = "sensory"  # the range heard
     target: str = "history"  # one block of source width per decay
+    # the learned multiplier per block (``Hearing``); None holds the working amplitude
+    hearing: np.ndarray | None = None
     trace: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
@@ -408,10 +491,17 @@ class History:
 
     def stimulate(self, drive: np.ndarray) -> np.ndarray:
         """Read the history into a drive copy; another batch size reads silence."""
+        amplitude: Any = self.amplitude
+        if self.hearing is not None:
+            amplitude = amplitude * np.repeat(self.hearing, self.width)
+        if _resident(drive):  # a resident drive reads what the host holds
+            if len(self.trace) == len(drive):
+                _set_columns(drive, self._glow_columns, amplitude * self.trace)
+            else:
+                _set_silent(drive, self._glow_columns)
+            return drive
         out = np.array(drive, dtype=float)
-        out[:, self._glow_columns] = (
-            self.amplitude * self.trace if len(self.trace) == len(out) else 0.0
-        )
+        out[:, self._glow_columns] = amplitude * self.trace if len(self.trace) == len(out) else 0.0
         return out
 
     def hear(self, observations: np.ndarray) -> None:
@@ -453,22 +543,23 @@ class History:
         return {"trace": self.trace}
 
 
-class _Moment(NamedTuple):
-    """The present moment of every stream as the recall memory addresses it."""
-
-    event: np.ndarray  # the observations as given, to recognise the moment at its write
-    cortex: np.ndarray  # the settled association activity of the moment before
-    address: np.ndarray  # the address q, computed before the settle
-    key: np.ndarray  # the fixed part of the address, the slot's key once it is written
-    # what the address and position maps read of the moment: the event, and with ``action``
-    # the command the stream executed at the moment before
-    inputs: np.ndarray
-
-
 # A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
 # inputs ``x`` and the cortex ``c`` of the moment before: the address map, the position table and
 # the maps beside it.
 _Maps = tuple[np.ndarray, np.ndarray, np.ndarray]
+
+
+def _addressed(key: np.ndarray, maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
+    """The address ``key + x M_x + c M_c + m``, on the device where the map rests there."""
+    m_x, m_c, m = maps
+    if isinstance(m_x, _MlxMatrix):
+        return np.asarray(key + m_x.term(x, cast(_MlxMatrix, m_c), c) + m)
+    return np.asarray(key + x @ m_x + c @ m_c + m)
+
+
+def _finite(a: Any) -> bool:
+    """Whether every entry of a map or an array is finite, without fetching a map on the device."""
+    return a.finite() if isinstance(a, _MlxMatrix) else bool(np.isfinite(a).all())
 
 
 def _term(maps: _Maps, x: np.ndarray, c: np.ndarray) -> np.ndarray:
@@ -482,6 +573,9 @@ def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarra
     its inputs ``z = [x, c, 1]``, averaged over the rows. Unchecked: a caller checks what it
     keeps."""
     m_x, m_c, m = maps
+    if isinstance(m_x, _MlxMatrix):
+        on_x, on_c = m_x.stepped(cast(_MlxMatrix, m_c), x, c, step, rate)
+        return cast(np.ndarray, on_x), cast(np.ndarray, on_c), m + rate * step.mean(axis=0)
     s_x = rate * x.T @ step
     s_x /= len(x)
     s_x += m_x
@@ -491,19 +585,44 @@ def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarra
     return s_x, s_c, m + rate * step.mean(axis=0)
 
 
+# A BLAS dot sums in lanes, so what a dot of two lists of numbers rounds to depends on where the
+# zeros lie: a term keeps its lane where the zeros before it keep their count modulo this, and
+# the kernels make the same choices above this length.
+# A reward eligibility laid out in full past this many entries (1 GiB) goes to a checkpoint as the
+# actor keeps it: at the speech size and 256 streams the full layout is 34 GiB of zeros and 1 GiB.
+_SAVED_IN_FULL = 1 << 27
+_DOT_LANES = 64
+_DOT_LONG = 1 << 17
+
+
+def _laid_out_norm(pieces: Sequence[np.ndarray | int]) -> float:
+    """``np.linalg.norm`` of the vector the ``pieces`` join, an array or the count of a run of
+    zeros, to its bits, without the zeros of the long runs."""
+    total = sum(p if isinstance(p, int) else p.size for p in pieces)
+    runs = [p for p in pieces if isinstance(p, int)]
+    if total <= _DOT_LONG or not runs:
+        short = [np.zeros(p) if isinstance(p, int) else p.ravel() for p in pieces]
+    else:
+        spare = sum(max(run - run % _DOT_LANES - _DOT_LANES, 0) for run in runs)
+        floor = max(_DOT_LONG - (total - spare), 0)
+        floor += -floor % _DOT_LANES  # a whole number of lanes
+        short = []
+        for piece in pieces:
+            if isinstance(piece, int):
+                kept = piece if piece < 2 * _DOT_LANES else piece % _DOT_LANES + _DOT_LANES
+                short.append(np.zeros(kept + (min(floor, piece - kept))))
+                floor -= min(floor, piece - kept)
+            else:
+                short.append(piece.ravel())
+    return float(np.linalg.norm(np.concatenate(short)))
+
+
 def _per_bucket(gradient: np.ndarray, buckets: np.ndarray, size: int) -> np.ndarray:
     """Each row's ``gradient`` over the slots summed into ``size`` buckets, slot ``i`` into its
     bucket ``buckets[..., i]`` (one row of buckets for every row, or a row each)."""
     out = np.zeros((len(gradient), size))
     np.add.at(out, (np.arange(len(gradient))[:, None], buckets), gradient)
     return out
-
-
-def _added(maps: _Maps, step: np.ndarray, width: int) -> _Maps:
-    """A map of the moment with ``step`` added, a row of it per input of ``z = [x, c, 1]``, the
-    ``width`` inputs ``x`` first."""
-    m_x, m_c, m = maps
-    return m_x + step[:width], m_c + step[width:-1], m + step[-1]
 
 
 def _of(state: np.ndarray, streams: int) -> np.ndarray:
@@ -518,201 +637,226 @@ def _with_head(maps: list[_Maps], head: int, new: _Maps) -> list[_Maps]:
     return [new if h == head else kept for h, kept in enumerate(maps)]
 
 
+class Hearing:
+    """How strongly the association hears each carried region: one learned gain per route,
+    starting at the working value and taught by the settle's contrast.
+
+    A route is a held region and its one-way synapses into the association: the working trace,
+    the efference copy, every block of the heard history and, with ``recall_drive_gain``, every
+    port of the recall memory's read as one route. Its
+    stimulus is the gain times what it holds, so the energy's derivative for the gain is local
+    to the route: ``c = sum_j f'(v_j) a t_j sum_i W_ij m_i``, ``v_j`` the region's held
+    potential, ``a`` the route's amplitude, ``t_j`` what it holds and ``m_i`` the association's
+    movement between the nudged phases over their span. A lesson steps each gain on the mean of
+    ``c`` over its taught rows; a sampled act keeps ``c`` per row in an eligibility of its own,
+    stepped by the dopamine as every synapse is (``ActorCritic``). The step is normalized by the
+    gain's own running second moment, as a synapse's is at the normalized teaching point, at
+    ``rate``. A gain stays within ``[0, BOUND]``, or the lower ceiling its route was added with.
+    """
+
+    RHO = 0.99
+    FLOOR = 1e-9
+    BOUND = 8.0
+
+    def __init__(self, rate: float, connectome: Connectome, association: np.ndarray,
+                 model: Any) -> None:
+        self.rate = float(rate)
+        self.connectome = connectome
+        self.association = np.asarray(association, dtype=np.int64)
+        self.model = model
+        self.routes: list[dict[str, Any]] = []
+        self.second = np.zeros(0)
+        self.count = 0
+
+    def add(self, name: str, memory: Any, slot: int | None, start: int, stop: int,
+            neurons: np.ndarray, bound: float = BOUND) -> None:
+        """A route: ``memory.trace[:, start:stop]`` held on ``neurons`` at the memory's
+        amplitude; its gain is ``memory.hearing``, at ``slot`` when the memory holds one per
+        block, and goes no higher than ``bound``."""
+        pre, post = np.asarray(self.connectome.pre), np.asarray(self.connectome.post)
+        local_source = -np.ones(self.connectome.n, dtype=np.int64)
+        local_source[neurons] = np.arange(len(neurons))
+        local_cortex = -np.ones(self.connectome.n, dtype=np.int64)
+        local_cortex[self.association] = np.arange(len(self.association))
+        synapses = np.flatnonzero((local_source[pre] >= 0) & (local_cortex[post] >= 0))
+        self.routes.append({
+            "name": name, "memory": memory, "slot": slot, "start": start, "stop": stop,
+            "width": len(neurons), "synapses": synapses, "bound": float(bound),
+            "rows": local_source[pre[synapses]], "cols": local_cortex[post[synapses]],
+            "places": local_source[pre[synapses]] * len(self.association)
+            + local_cortex[post[synapses]],
+        })
+        self.second = np.zeros(len(self.routes))
+
+    def gain(self, route: dict[str, Any]) -> float:
+        memory, slot = route["memory"], route["slot"]
+        return float(memory.hearing if slot is None else memory.hearing[slot])
+
+    def gains(self) -> dict[str, float]:
+        """Every route's gain, by name."""
+        return {route["name"]: self.gain(route) for route in self.routes}
+
+    def set(self, route: dict[str, Any], value: float) -> None:
+        memory, slot = route["memory"], route["slot"]
+        if slot is None:
+            memory.hearing = value
+        else:
+            memory.hearing[slot] = value
+
+    def _contrast_on_device(
+        self, graph: Any, movement: Any, rows: np.ndarray | None, batch: int
+    ) -> np.ndarray:
+        """``_contrast`` of a movement on the device: the routes' synapses are read there, and one
+        number per row and route comes back."""
+        kernel = graph._torch if graph._torch is not None else graph._mlx
+        return route_contrast(
+            arrays_of(kernel), graph, self.routes, self.gain, self.model, len(self.association),
+            movement, rows, batch,
+        )
+
+    def _movement_on_device(self, graph: Any, plus: Any, minus: Any) -> Any:
+        """The association's movement between two phases on the device where both rest, in the
+        maps' floats as the host's copies are; None otherwise."""
+        kernel = graph._torch if graph._torch is not None else graph._mlx
+        if kernel is None or not any(
+            getattr(route["memory"], "_device", None) is not None for route in self.routes
+        ):
+            return None
+        xp = arrays_of(kernel)
+        if not (xp.rests_here(plus) and xp.rests_here(minus)):
+            return None
+        place = xp.neurons(self.association, columns(self.association))
+        return xp.part(plus, place) - xp.part(minus, place)
+
+    def _contrast(
+        self, graph: Any, movement: np.ndarray, rows: np.ndarray | None, batch: int
+    ) -> np.ndarray:
+        """``c`` per row and route: ``movement`` is the association's over the phases' span, at
+        ``rows`` of ``batch`` streams; a memory of another batch reads silence."""
+        out = np.zeros((len(movement), len(self.routes)))
+        backs = None
+        kernel = graph._mlx
+        if kernel is not None and graph._efficacy is None:  # the synapses rest on the device
+            backs = kernel.read_back([
+                (route["synapses"], route["rows"], route["cols"], route["width"])
+                for route in self.routes
+            ], movement)
+        for k, route in enumerate(self.routes):
+            memory = route["memory"]
+            if len(memory.trace) != batch:
+                continue
+            trace = memory.trace if rows is None else memory.trace[rows]
+            held = trace[:, route["start"]:route["stop"]]
+            amplitude = float(memory.amplitude)
+            v = amplitude * self.gain(route) * held
+            if backs is None:
+                if graph.layout.parallel_synapses:  # the last of a pair holds the entry
+                    w = np.zeros((route["width"], len(self.association)))
+                    w[route["rows"], route["cols"]] = graph._weights[route["synapses"]]
+                else:
+                    w = _route_matrix(
+                        graph, route["synapses"], route["places"],
+                        (route["width"], len(self.association)),
+                    )
+                back = movement @ w.T
+            else:
+                back = backs[k]
+            out[:, k] = np.einsum("bj,bj->b", self.model.slope_at(v) * amplitude * held, back)
+        return out
+
+    def step(self, contrast: np.ndarray) -> None:
+        """Every route's gain on its own contrast, over the root of its own second moment."""
+        self.count += 1
+        self.second = self.RHO * self.second + (1.0 - self.RHO) * contrast**2
+        correction = 1.0 - self.RHO**self.count
+        moved = self.rate * contrast / (np.sqrt(self.second / correction) + self.FLOOR)
+        for route, change in zip(self.routes, moved, strict=True):
+            self.set(route, float(np.clip(self.gain(route) + change, 0.0, route["bound"])))
+
+    def learn(self, graph: Any, learned: Any, beta: float) -> None:
+        """A lesson's step, at its taught rows."""
+        if (
+            not self.routes
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return
+        taught = learned.taught
+        rows = None if taught is None else np.flatnonzero(np.asarray(taught, dtype=bool))
+        if rows is not None and not len(rows):
+            return
+        minus_state = learned.free if learned.opposite is None else learned.opposite
+        moved = self._movement_on_device(graph, learned.nudged, minus_state)
+        if moved is not None:
+            span = beta if learned.opposite is None else 2.0 * beta
+            batch = len(moved) if rows is None else len(np.asarray(taught))
+            contrast = self._contrast_on_device(graph, moved / span, rows, batch)
+            self.step(contrast.mean(axis=0))
+            return
+        plus = np.atleast_2d(learned.nudged.activation)
+        one_sided = learned.opposite is None
+        minus = np.atleast_2d(learned.free.activation if one_sided else learned.opposite.activation)
+        span = beta if one_sided else 2.0 * beta
+        movement = (plus - minus)[:, self.association] / span
+        batch = len(movement) if rows is None else len(np.asarray(taught))
+        self.step(self._contrast(graph, movement, rows, batch).mean(axis=0))
+
+    def contrast_rows(self, graph: Any, plus: BrainState, minus: BrainState,
+                      beta: float) -> np.ndarray:
+        """A sampled act's ``c`` per row and route, for its eligibility."""
+        moved = self._movement_on_device(graph, plus, minus)
+        if moved is not None:
+            return self._contrast_on_device(graph, moved / (2.0 * beta), None, len(moved))
+        movement = (
+            np.atleast_2d(plus.activation) - np.atleast_2d(minus.activation)
+        )[:, self.association] / (2.0 * beta)
+        return self._contrast(graph, movement, None, len(movement))
+
+
 @dataclass
 class Recall:
     """The index memory, a held-input recall: each stream's recent moments as slots, the
     address of a moment computed before its settle and the recalled drive held through it.
 
-    Each moment the brain accepts (an act, a moment ``wait`` senses) is written after its
-    settle as one slot per stream (``witness``). The slot's key is ``heard * x`` (``heard`` a
-    constant of the memory, 1.0): ``x`` is
-    the observation as given (a brain gives its observation code). The slot's value is the
-    event ``x``, and the slot before it learns its next: the value of the moment that
-    followed it, zero until that moment comes. Before each settle the present moment's
-    address
+    Each moment the brain accepts (an act, a moment ``wait`` senses) is written after its settle
+    as one slot per stream (``witness``): its key the event ``x`` as given (a brain gives its
+    observation code), its value the event, and the slot before learns it as its next. Before each
+    settle the moment's address ``q = x + x W_x + c W_c + b`` (``c`` the settled association
+    activity of the moment before) weighs the slots once,
 
-        q = heard * x + x W_x + c W_c + b
+        p_i = softmax_i(q . K_i / temperature - recency * age_i + position terms)
 
-    (``c`` the settled association activity of the moment before) weighs the stream's slots
-    once, ``p_i = softmax_i(q . K_i / temperature - recency * age_i)`` (kept as
-    ``attended_heads``; with a ``null`` slot of logit ``null / temperature`` in the softmax,
-    which reads nothing, the slots' shares sum to one less the null slot's), and
-    ``stimulate`` sets the drive of the ``target`` region to ``amplitude * sum_i p_i V_i``
-    and, with ``next``, of the ``next`` region to ``amplitude * sum_i p_i N_i``. Both
-    regions are sources: their drive is held through the settle as a sensory drive is, so
-    the settle answers on the mixture the address chose and does not revise the choice, and
-    the address of a moment cannot depend on what that moment recalls (a second recall takes
-    a second moment). Their one-way plastic synapses into the association region learn by
-    the settle's own contrast, as the sensory ones do. With ``W_x``, ``W_c`` and ``b`` at
-    zero the address is the event heard: a moment that shares an event with a stored one
-    finds it before any lesson.
+    and ``stimulate`` holds ``amplitude * sum_i p_i V_i`` on the ``target`` region and, with
+    ``next``, ``amplitude * sum_i p_i N_i`` on the ``next`` region through the settle, as a
+    sensory drive is held: the settle answers on the mixture and does not revise it, so a second
+    recall takes a second moment. Their one-way synapses into the association region learn by the
+    settle's own contrast. ``learn`` is the address lesson, a rule beside the graph's contrast the
+    brain runs after teacher lessons: it reads the association's movement between the nudged
+    phases back through the read ports, scores each slot's value and next against it, weighs the
+    scores with the read's attention and steps the maps toward the slots the lesson names.
+    ``capacity`` bounds the slots per stream, the oldest dropped first; ``reset`` empties streams;
+    ``end`` ends their episodes and keeps their slots.
 
-    ``learn`` is the address lesson, a rule of its own beside the graph's contrast, which the
-    brain runs after teacher lessons (at the founder ``address_reward=0`` rewards leave the
-    map as it is). After a lesson it reads the association's movement between the nudged
-    phases back through the recall and next synapses, ``d``, scores each slot's value and
-    next against it,
-    ``(d_r . V_i + d_n . N_i) / |d|`` (the stored values themselves, not their effect
-    through the source neurons), weighs the scores with the attention the address gave the
-    slots, ``p* = softmax(score / address_temperature + log p)`` (``address_temperature`` a
-    constant of the memory, 0.1), and takes the
-    least-mean-squares step of the map toward ``K* = sum_i p*_i K_i`` on ``z = [x, c, 1]``
-    at the taught rows, each row at the rate ``min(address, 1 / |z|^2)``, on the error
-    ``K* - q``; a step whose result is not finite is refused.
-    ``capacity`` bounds the slots per stream, the oldest dropped first. ``reset`` empties
-    streams, and an empty stream reads silence. ``end`` ends their episodes and keeps their
-    slots: the latest slot of each learns no successor from the next episode's first moment,
-    and the moment before begins afresh; the brain ends an episode so under
-    ``Brain.reset(keep=("slots",))`` and empties the stream when an episode ends in a life.
+    The options, each a field below, zero at birth where it adds a map, so a newborn reads as
+    without it, and described and saved only where it differs from its founder (``OPTIONS``;
+    ``CONSTRUCTION_OPTIONS`` shape the memory): ``boundary`` (a silent slot a stream begins
+    with), ``window`` (an ordered key of the last k events), ``heads`` (several read ports over
+    the one bank, reading in turn), ``position`` (a learned term per age bucket, ``position_rate``
+    its lesson's rate), ``anchor`` (the same by a slot's place in its episode), ``relative`` (by
+    its age relative to the previous read's focus), ``slope`` (a lean by age at every length),
+    ``grid`` (past the table a term per residue of each of a few coprime numbers), ``when`` (the
+    read also delivers when its slots happened), ``action`` (each slot carries the command
+    executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
+    the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
+    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
+    ``copy`` (plastic synapses from the read ports into the motor region) and ``drive_gain``
+    (the read's drive is one more route of ``Hearing``: one learned gain on every port, at most 1).
 
-    With ``boundary`` (an option, founder off) a stream that begins holds a boundary slot
-    first: a silent moment, zero key and zero value, whose next the stream's first event
-    teaches as every written moment's next is taught. The first event then has a predecessor
-    as every later event has, so the start of an episode can be read through either port:
-    the first slot's value or the boundary's next. A stream begins when the memory empties
-    its streams, when ``reset`` empties some of them (their boundary takes the latest slot,
-    the moment the other streams wrote last) and when ``end`` ends the episodes of every
-    stream (one new slot for all of them, which a stream whose latest slot is silent and has
-    no successor yet takes in place of that slot; when every stream's latest slot is so, it
-    serves as the boundary and none is added). A stream that ends its episode alone (``end``
-    of some rows) begins the next one without a boundary, as the founder memory does, and a
-    memory of one slot (``capacity=1``) holds none. The boundary is no written moment
-    (``writes`` leaves it out), and its key is zero: its logit is its age's alone, so a cue
-    finds it by age through the position term, or by an address that points away from every
-    stored key.
-
-    With ``window`` k above 1 (a construction setting; ``window_decay`` d is a constant of the
-    memory, 1.0) the key's
-    fixed part is an ordered window of the stream's last k events, ``[heard * x_t, d * heard
-    * x_{t-1}, ..., d^(k-1) * heard * x_{t-k+1}]``, each position on coordinates of its own:
-    ``x_{t-j}`` the events of the stream's previous moments, acts and moments ``wait`` senses,
-    written or not, zeros before its first moment and after an episode ends. The address
-    takes the key's width, ``k * inputs``; the map reads ``[x_t, c, 1]`` as before.
-
-    With ``address_reward`` above zero reward trains the map as well: at each sampled act
-    the step the address lesson would take at each row, were the act's action the lesson's
-    label, is that row's eligibility (``contrast_rows``), which the actor keeps in a trace
-    of its own beside the synapses' and steps by ``address_reward`` times the dopamine
-    (``propose`` and ``accept``). The eligibility holds the rows of the event heard alone,
-    ``W_x`` (with ``action`` the command's rows among them), at the lesson's rate bounded by
-    the event's energy, ``min(address, 1 / |x|^2)``: at ``address_reward=1`` a unit of
-    dopamine moves those rows by one lesson's step, and ``address=0`` leaves the map as it
-    is under reward too. The rows of the cortex of the moment before and the bias, which
-    every moment's address shares whatever it heard, learn from lessons alone: stepped by
-    reward, where one question had learned to look carried another's read with it.
-
-    With ``position_reward`` above zero (an option, founder 0; runtime) reward trains the position
-    maps as well, and with ``anchor`` the anchored maps: at each sampled act the step the
-    position lesson would take at each row, were the act's action the lesson's label (the
-    cross-entropy gradient of the head's terms toward the slots the act's contrast names, on
-    the event's rows ``P_x`` and ``E_x`` alone as the address map's eligibility is, at
-    ``position_rate`` bounded by the event's energy), joins the eligibility the actor traces,
-    and a unit of dopamine moves the maps by ``position_reward`` times one lesson's step. Which
-    slot a head reads by its age (the first told or the latest) is then reachable from reward
-    alone.
-
-    With ``heads`` H above 1 (a construction setting) the memory reads its one bank through
-    H heads. Head h has a read port of its own, the regions ``recall_h`` and ``next_h``
-    (``recall`` and ``next`` for head 0), wired one way into the association as the first,
-    and an address map of its own, ``q_h = heard * x + x W_x^h + c W_c^h + b^h``, starting
-    at zero: the heads differ at birth only in their ports' synapses, and no head is
-    assigned what to read. Each head weighs the slots with its own address, and its port
-    holds its own mixture through the settle. The heads compete for the slots (``compete``,
-    the founder): a slot can be read in full once per moment, so the heads read in turn and
-    each after the first takes of every slot at most the share the heads before it left
-    (``_share``), and its lessons take that read as the prior. The address lesson steps each
-    head's map through that head's own synapses, and reward eligibility (``contrast_rows``)
-    keeps one block of columns per head. One bank is written per moment, whatever the heads.
-    Without competition (``compete=False``, the read before 0.91.3), with the address map
-    frozen (``address=0``) and no position term (``position=0``) every head reads what head 0
-    reads.
-
-    With ``position`` P above 0 (a construction setting, founder 32; 0 builds none) every head also
-    reads each slot's age,
-    the moments since it was written: the logit of slot ``i`` gains ``a_h(x, c)[bucket(age_i)]``,
-    a term per age bucket read from the moment as the address is, ``a_h = x P_x^h + c P_c^h +
-    p^h``, so what a moment hears can choose how far back its head looks ("at the beginning"
-    against "now", "one bar back"). Ages below P have a bucket each, older ones one bucket per
-    doubling up to ``capacity`` (``position_buckets``). The maps start at zero, so the memory reads
-    as one without them until a lesson moves them. ``learn`` steps them after each lesson, whatever
-    ``address`` is: the slots the lesson's movement names, ``p*`` (as the address lesson takes it,
-    position included in the prior ``p``), give each taught row the cross-entropy gradient
-    ``g_b = sum_{i in b} (p*_i - p_i)`` of its terms, and each head's maps take the
-    least-mean-squares step on ``z = [x, c, 1]`` at the rate ``position_rate``, each row's rate
-    bounded by its own energy as the address map's is; a step that is not finite is refused.
-    Reward trains the address map with ``address_reward`` and the position maps (with
-    ``anchor`` the anchored maps) with ``position_reward``; the relative and slope maps learn
-    from lessons alone.
-    ``position_map(h)`` gives head h's maps and ``position_term(h, x, c)`` its term at every
-    slot; ``weights(address, position)`` with that term gives the attention the read used.
-
-    With ``action`` (an option, founder off; a construction setting) every written slot also
-    carries the command the stream executed at that moment, one coordinate per motor neuron
-    (``actions`` of them, one-hot within each motor slot; zero for a moment ``wait`` senses),
-    in its key and in its value: the key gains ``actions`` coordinates after the window's
-    events, and the value, so the next as well, holds the event and the command. Each head's
-    read port holds the command part on regions of its own, ``<port>_action``, whose
-    synapses into the association start at zero (the composition develops them so). The
-    address and position maps also read the command the stream executed at the moment
-    before, ``u = [x, a_prev]`` in place of ``x``; the address's fixed part holds zero on the
-    command coordinates. With every new map entry and synapse at zero a newborn reads and
-    settles as one without the option, and the address lesson can teach the maps to look for
-    a slot by what was done there.
-
-    With ``anchor`` (an option, founder off; a construction setting; it needs ``position``) every
-    head's position term also reads each slot's place in its stream's current episode, the
-    moments from the episode's first to the slot: the logit of slot ``i`` gains ``e_h(x,
-    c)[anchored(i)]``, a term per anchored bucket read from the moment as the position term is,
-    ``e_h = x E_x^h + c E_c^h + e^h``. The anchored buckets follow the age buckets (exact below
-    ``position``, then one per doubling) and one more holds every slot written before the
-    episode began. Ages count back from the present, so "the first told" moves with the length
-    of what was told; its place in the episode does not. Each stream counts the moments written
-    in its episode (``told``; ``end`` and ``reset`` start it again). The maps start at zero and
-    the lesson steps them as it steps the position maps, and with ``position_reward`` reward
-    does as well.
-
-    With ``relative`` (an option, founder off; a construction setting; it needs ``position``)
-    every head's position term also reads each slot's age relative to the slot the stream's
-    previous read gave the most attention (head 0's, ``focus``): ``0`` for that slot, ``-1``
-    for the one written after it, ``+1`` for the one before, offsets beyond ``RELATIVE`` sharing
-    the outermost buckets and one more bucket for a stream with no read before. A read can
-    then be placed where an earlier read pointed, "the token after the one I just said",
-    whatever the length of what was told. The maps start at zero and the lesson steps them
-    as it steps the position maps.
-
-    With ``slope`` above zero (an option, founder 0; a construction setting; it needs
-    ``position``) every head's position term also leans by age at every length: the logit of
-    slot ``i`` gains ``s_h(x, c) * age_i / SLOPE``, one number per moment and head read from
-    the moment as the position term is, ``s_h = x S_x^h + c S_c^h + s^h``. Positive leans to
-    old slots, negative to recent ones, and the lean holds at ages no lesson reached, where
-    the table's terms stay at zero. The maps start at zero and the lesson steps them at the
-    rate ``slope`` by the same gradient as the table, ``g = sum_i (p*_i - p_i) age_i /
-    SLOPE``, each row's rate bounded by its own energy; reward does not train them.
-
-    With ``when`` (an option, founder off; a construction setting; it reads into the recall
-    regions) every head's read also delivers when what it read happened: a region of its own
-    per head, ``<recall region>_when`` (``when_regions``), driven at ``amplitude * sum_i p_i
-    F_i`` with ``F_i`` the slot's age features ``log(1 + age_i) / log(1 + SLOPE)`` and
-    ``exp(-age_i / SLOPE)``, and with ``anchor`` the same two of its place in the episode
-    (zero for a slot written before the episode began). The regions reach the association
-    through synapses that start at zero, so a newborn settles as one without the option, and
-    the lessons give them weight. The address lesson does not read the movement back through
-    them: a lesson names the slots to read by what they hold, and the region says when the
-    slots read happened (a lesson that named slots by when they happened as well taught the
-    read to find slots whose age matched the answer instead of the item asked about).
-
-    ``copy`` and ``tokens`` (options, founders ``0.0`` and None; construction settings) record
-    a pathway the composition adds: plastic synapses from every head's read port into the
-    motor region, ``copy`` their initial magnitude, learned by the settle's contrast as every
-    synapse is. ``tokens`` declares, per motor neuron, the observation coordinate that is the
-    same token (``-1`` for none), and the pathway then starts as that identity. The memory
-    checks that the synapses are there; it reads and writes nothing of its own for them.
-
-    A retired setting (``RETIRED``, and ``recency=None``) is refused at construction, under
+    A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
-    the memory does instead (``removed``); a saved memory loads where it carries the one value
-    the table keeps for it. A checkpoint of 0.84.3 carries the keys its format always wrote
-    for three of them (``FORMAT``).
+    the memory does instead (``removed``); a saved memory loads where it carries the one value the
+    table keeps for it. docs/memory.md holds each option's law and its readings.
     """
 
     connectome: Connectome
@@ -723,7 +867,6 @@ class Recall:
     next: bool = True
     address: float = 0.01
     # the options beside the founder memory (``OPTIONS``)
-    null: float | None = None  # a number: a null slot of this logit (over the temperature)
     address_reward: float = 0.0
     position_reward: float = 0.0
     window: int = 1
@@ -741,7 +884,6 @@ class Recall:
     tokens: tuple[int, ...] | None = None
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
-    compete: bool = True
     # every head's position term also reads a slot's place in its episode (``anchor_maps``)
     anchor: bool = False
     # every head's position term also reads a slot's age relative to the previous read's focus
@@ -750,8 +892,18 @@ class Recall:
     slope: float = 0.0
     # every head's read also delivers its slots' age features on a region of its own
     when: bool = False
+    # above 0, with ``tokens``: one learned scalar per read port on the tokens' identity into the
+    # motor region's drive (``gains``), taught at this rate by the motor's movement
+    gain: float = 0.0
+    # past the exact table every head's position term also reads each slot's age modulo each of
+    # these coprime numbers (``grid_maps``), and the slope takes no step
+    grid: tuple[int, ...] = ()
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
+    # the read's drive is one more carried route (``Hearing``): ``hearing`` multiplies the amplitude
+    # on every port and ``trace`` keeps what the ports held at the latest read, at amplitude one
+    drive_gain: bool = False
+    hearing: float = 1.0
     keys: np.ndarray = field(init=False, repr=False)
     values: np.ndarray = field(init=False, repr=False)
     nexts: np.ndarray = field(init=False, repr=False)
@@ -775,19 +927,38 @@ class Recall:
     # runtime except the window, the heads, the position term, the copy pathway and the
     # executed command, which shape the memory or the anatomy
     OPTIONS = (
-        "null", "address_reward", "position_reward", "window", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "compete", "anchor",
-        "relative", "slope", "when",
+        "address_reward", "position_reward", "window", "heads", "position",
+        "position_rate", "boundary", "copy", "tokens", "action", "anchor",
+        "relative", "slope", "when", "gain", "grid", "drive_gain",
     )
-    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when")
+    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens", "action", "anchor",
+                            "relative", "slope", "when", "gain", "grid", "drive_gain")
+    # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
+    # ordinary settings a caller's value overrides. The founder stays what a saved memory without
+    # the setting means, so a saved brain keeps the values it was saved with
+    # above this many observation-code coordinates ``Brain.compose`` holds a memory only by name:
+    # the address map grows with the square of the width (140 MB at 4,096, 549 MB at 8,192)
+    WIDE = 4096
+    COMPOSED: ClassVar[dict[str, Any]] = {
+        "recency": 0.0, "boundary": True, "anchor": True, "slope": 0.1, "position_rate": 0.01,
+        "relative": True, "position_reward": 4.0, "grid": (7, 8, 9, 11), "capacity": 128,
+        "drive_gain": True,
+    }
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
+    # the position lesson's rate a unit of dopamine steps the position maps at, times
+    # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
+    REWARD_RATE = 0.1
     SLOPE = 8.0  # the age at which the slope's lean reaches one unit of the slope
+    # the gains' step (``gain``): a row's rate is bounded by this over the energy of its reads, so
+    # a row taught alone moves its own drive on a motor neuron by at most this many times the
+    # neuron's movement between the nudged phases
+    GAIN_BOUND = 5.0
     # the kinds of a head's maps beside its address map (``map_names``), in the order a
     # checkpoint keeps them, each kept with its option, and the per-stream state each reads,
     # kept before its maps: the reads' focus for the relative maps, the moments told for the
     # anchored ones
-    _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"))
+    _KINDS = (("position", None), ("slope", None), ("relative", "focus"), ("anchor", "told"),
+              ("grid", None))
     # every stream's state: its slots, the cortex of the moment before, whether its latest slot
     # closed an episode, the window's events, the command executed at the moment before, the
     # moments told in its episode and the age of the slot its previous read attended most
@@ -797,21 +968,8 @@ class Recall:
     # memory loads at (the founder's, or the value its law keeps) and what the memory does
     # instead; ``removed`` makes the one sentence that refuses the name wherever it is given
     RETIRED = MappingProxyType({
-        "write": ("0.85.0", "always", "every accepted moment is written; cadence-net 0.84.3 "
-                  "takes it"),
-        "key": ("0.85.0", "event", "the key is the event heard, the window key and the "
-                "efference copy carrying what came before; cadence-net 0.84.3 takes it"),
-        "episodes": ("0.85.0", "forget", "an ended episode empties the slots and "
-                     "Brain.reset(keep=('slots',)) keeps them; cadence-net 0.84.3 takes it"),
-        "recency=None": ("0.85.0", None, "the power-law age charge is gone and a number keeps "
-                         "the linear charge recency * age; cadence-net 0.84.3 takes it"),
-        "value": ("0.85.0", "event", "the values are the events; cadence-net 0.84.3 takes it"),
-        "context": ("0.85.0", 0.0, "no fading history of the earlier events joins the key; "
-                    "cadence-net 0.84.3 takes it"),
-        "context_decay": ("0.85.0", 0.5, "no fading history of the earlier events joins the "
-                          "key; cadence-net 0.84.3 takes it"),
-        "address_step": ("0.93.0", "lms", "the address lesson steps toward the named keys, "
-                         "as it did at 'lms'"),
+        "address_step": ("0.93.0", "toward", "the address lesson steps on the named keys less "
+                         "the attended ones, what a file at 'toward' saved"),
         "heard": ("0.93.0", heard, "the present event weighs 1.0 in its key and its address, "
                   "the one weight ever read"),
         "address_temperature": ("0.93.0", address_temperature, "the address lesson weighs "
@@ -819,13 +977,11 @@ class Recall:
                                 "ever read"),
         "window_decay": ("0.93.0", window_decay, "the window's earlier events enter the key "
                          "at their full weight (1.0), the one value ever read"),
+        "compete": ("0.95.0", True, "several heads read in turn, each taking of a slot at most "
+                    "the share the heads before it left; cadence 0.94.0 takes it"),
+        "null": ("0.95.0", None, "every moment's read takes its whole mass from the slots held; "
+                 "cadence 0.94.0 takes it"),
     })
-    # the keys the checkpoint format of 0.84.3 (``cadence-generic/8`` and ``/9``) always wrote
-    # for retired settings, at the one value at which such a file loads
-    FORMAT = MappingProxyType(
-        dict(value=RETIRED["value"][1], context=RETIRED["context"][1],
-             context_decay=RETIRED["context_decay"][1])
-    )
 
     @classmethod
     def founders(cls) -> dict[str, Any]:
@@ -833,6 +989,23 @@ class Recall:
         ``Brain.compose(..., recall=True)``; ``options()`` gives the options beside them."""
         defaults = {item.name: item.default for item in fields(cls)}
         return {name: defaults[name] for name in (*cls.RUNTIME, *cls.CONSTRUCTION)}
+
+    @classmethod
+    def composed(cls, named: Mapping[str, Any]) -> dict[str, Any]:
+        """What a new memory takes (``COMPOSED``) beside the settings a caller ``named``:
+        ``recall_position=0`` builds no position term, so what reads beside it stays out,
+        ``recall_position_rate=0.0`` holds the maps still, so the reward's step on them does, and
+        ``carried_gain=0.0`` learns no gain, so the read's route does."""
+        out = dict(cls.COMPOSED)
+        if named.get("recall_position") == 0:
+            for name in ("position_rate", "anchor", "relative", "slope", "grid",
+                         "position_reward"):
+                out.pop(name, None)
+        elif named.get("recall_position_rate") == 0:
+            out.pop("position_reward", None)
+        if named.get("carried_gain") == 0:
+            out.pop("drive_gain", None)
+        return out
 
     @classmethod
     def options(cls) -> dict[str, Any]:
@@ -844,22 +1017,20 @@ class Recall:
 
     @staticmethod
     def removed(name: str) -> str:
-        """The one sentence that refuses a retired setting, ``recall_<name>`` of ``RETIRED``
-        or ``recall_recency=None``: the release that retired it and what the memory does
-        instead."""
-        key = "recency=None" if name == "recency" else name
-        release, _, instead = Recall.RETIRED[key]
-        return f"recall_{key} was retired in {release}: {instead}"
+        """The one sentence that refuses a retired setting, ``recall_<name>`` of ``RETIRED``:
+        the release that retired it and what the memory does instead."""
+        release, _, instead = Recall.RETIRED[name]
+        return f"recall_{name} was retired in {release}: {instead}"
 
     @staticmethod
     def setting(name: str, value: Any) -> Any:
         """One setting, validated and converted; ``name`` is a field of the memory. A
         retired setting is refused by name (``removed``)."""
-        if name in Recall.RETIRED or (name == "recency" and value is None):
+        if name in Recall.RETIRED:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope",
+            "position_rate", "copy", "slope", "gain",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -867,9 +1038,9 @@ class Recall:
             if number <= 0:
                 raise ValueError(f"{name} must be positive")
             return number
-        if name == "null":
-            return None if value is None else real(name, value)
-        if name in ("next", "boundary", "action", "compete", "anchor", "relative", "when"):
+        if name in (
+            "next", "boundary", "action", "anchor", "relative", "when", "drive_gain",
+        ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
@@ -886,6 +1057,23 @@ class Recall:
                     "no position term"
                 )
             return int(value)
+        if name == "grid":
+            if isinstance(value, (str, bytes, Mapping)) or not isinstance(
+                value, (Sequence, np.ndarray)
+            ):
+                raise ValueError("grid is a sequence of coprime integers of at least 2")
+            moduli = []
+            for item in value:
+                if (
+                    isinstance(item, (bool, np.bool_))
+                    or not isinstance(item, (int, np.integer))
+                    or item < 2
+                ):
+                    raise ValueError("grid is a sequence of coprime integers of at least 2")
+                moduli.append(int(item))
+            if any(gcd(a, b) > 1 for i, a in enumerate(moduli) for b in moduli[i + 1:]):
+                raise ValueError("grid is a sequence of coprime integers of at least 2")
+            return tuple(moduli)
         if name == "tokens":
             if value is None:
                 return None
@@ -908,8 +1096,6 @@ class Recall:
                         "has none"
                     )
                 out.append(int(item))
-            if not any(item >= 0 for item in out):
-                raise ValueError("tokens must name at least one observation coordinate")
             return tuple(out)
         raise TypeError(f"unknown recall setting: {name!r}")
 
@@ -975,13 +1161,15 @@ class Recall:
         return synapses, value[pre[synapses]], local_motor[post[synapses]]
 
     def _check_copy(self) -> None:
-        """With ``copy`` every read port reaches the motor region; ``tokens`` needs ``copy``
-        and names one coordinate per motor neuron within the event."""
-        if self.tokens is not None and not self.copy:
-            raise ValueError("tokens declare the copy pathway's identity and need copy above 0")
+        """With ``copy`` every read port reaches the motor region; ``tokens`` names one
+        coordinate per motor neuron within the event."""
+        motor = self.connectome.populations.get("motor", ())
+        if self.tokens is not None and len(motor) and len(self.tokens) != len(motor):
+            raise ValueError(
+                f"tokens name one observation coordinate per motor neuron ({len(motor)})"
+            )
         if not self.copy:
             return
-        motor = self.connectome.populations.get("motor", ())
         if not len(motor):
             raise ValueError("a copy pathway needs a population named 'motor'")
         synapses, _, _ = self.copy_synapses()
@@ -993,11 +1181,22 @@ class Recall:
                         "copy needs synapses from every read port into the motor region; "
                         "Brain.compose adds them"
                     )
-        if self.tokens is not None:
-            if len(self.tokens) != len(motor):
-                raise ValueError(
-                    f"tokens name one observation coordinate per motor neuron ({len(motor)})"
-                )
+
+    def _check_gain(self) -> None:
+        """With ``gain`` every read port reaches the motor region through its gain on the declared
+        tokens, whose coordinates lie in the value."""
+        if not self.gain:
+            return
+        if self.tokens is None:
+            raise ValueError("gain multiplies the declared tokens' identity: it needs tokens")
+        if not len(self.motor):
+            raise ValueError("gain needs a population named 'motor'")
+        offset = self.key_width - len(self.observed)
+        if offset < 0 or max(self.tokens) + offset >= self.key_width:
+            raise ValueError(
+                "gain needs the observation's own coordinates in the recall values: a brain "
+                "without a code, or a learned code joined to an observation no wider than it"
+            )
 
     @staticmethod
     def _rewarded(position_reward: float, position: int, position_rate: float) -> None:
@@ -1011,21 +1210,11 @@ class Recall:
                 "position_rate above 0"
             )
 
-    @staticmethod
-    def null_logit(null: float | None, temperature: float) -> float | None:
-        """The null slot's logit ``null / temperature``, or None without a null slot; a pair
-        of settings whose logit is not finite is refused."""
-        if null is None:
-            return None
-        logit = float(null) / float(temperature)
-        if not np.isfinite(logit):
-            raise ValueError("null / temperature must be finite")
-        return logit
-
     def __post_init__(self) -> None:
+        self._device: _RecallOnDevice | None = None  # what rests on a device (``reside``)
+        self._actor: Any = None  # the actor that keeps the read's eligibility
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
-        self.null_logit(self.null, self.temperature)
         populations = self.connectome.populations
         if self.target != "recall" and self.heads > 1:
             raise ValueError("a recall memory of several heads reads into the recall regions")
@@ -1101,11 +1290,22 @@ class Recall:
                     f"the {name} region needs one neuron per feature of when ({self.when_width})"
                 )
             self._whens.append((neurons, columns(neurons), self._synapses(neurons)))
+        # every neuron the read drives, the route of ``drive_gain``, and what they held at the
+        # latest read (another batch's reads silence)
+        self.port_neurons: np.ndarray = np.concatenate(
+            [part for head in self._heads for part in head]
+            + [neurons for neurons, _, _ in self._whens]
+        )
+        self._port_columns = columns(self.port_neurons)
+        self.trace: np.ndarray = np.zeros((0, len(self.port_neurons)))
         self._rewarded(self.position_reward, self.position, self.position_rate)
+        # whether a contrast has written the address columns of the reward eligibility
+        self._address_held = False
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
         self.position_maps = self._zero_maps(self.heads if count else 0, count)
-        for name, verb in (("anchor", "reads"), ("relative", "reads"), ("slope", "leans")):
+        for name, verb in (("anchor", "reads"), ("relative", "reads"), ("slope", "leans"),
+                           ("grid", "reads")):
             if getattr(self, name) and not count:
                 raise ValueError(f"{name} {verb} beside the position term: it needs position")
         # every head's anchored maps ``(E_x, E_c, e)``, one column per anchored bucket and one
@@ -1117,7 +1317,23 @@ class Recall:
         self.relative_maps = self._zero_maps(self.heads if self.relative else 0, width_r)
         # every head's slope maps ``(S_x, S_c, s)``, one number each; none without ``slope``
         self.slope_maps = self._zero_maps(self.heads if self.slope else 0)
+        # every head's grid maps ``(G_x, G_c, g)``, one column per residue of each modulus; none
+        # without ``grid``
+        self.grid_maps = self._zero_maps(self.heads if self.grid else 0, sum(self.grid))
         self._check_copy()
+        # the motor region, which the gains drive (``gain``); empty where the anatomy has none
+        self.motor: np.ndarray = np.asarray(populations.get("motor", ()), dtype=np.int64)
+        self._motor_columns = columns(self.motor)
+        self._check_gain()
+        # with ``gain`` one scalar per read port in ``ports`` order, and the token coordinates in
+        # the value and the motor neurons they drive
+        self.gains: np.ndarray = np.zeros(
+            self.heads * (2 if self.next else 1) if self.gain else 0
+        )
+        pairs = [(token, j) for j, token in enumerate(self.tokens or ()) if token >= 0]
+        offset = self.key_width - len(self.observed)
+        self._token_values = np.array([offset + t for t, _ in pairs], dtype=np.int64)
+        self._token_motors = np.array([j for _, j in pairs], dtype=np.int64)
         self.last: _Moment | None = None
         self._attended: np.ndarray | None = None  # the attention of the latest read
         # every head's address and attention of the latest read (head 0's are ``last.address``
@@ -1131,7 +1347,89 @@ class Recall:
         self._content_keys: np.ndarray | None = None
         self._scope_token: object | None = None  # the token of the operation in progress
         self._device_columns: Any = None  # the association's columns on a torch device
+        # per slot array: the wider array it is a view of, the view, its first slot and its end
+        self._rooms: dict[str, tuple[np.ndarray, np.ndarray, int, int]] = {}
         self.reset(0)
+
+    # -- what rests on a torch device
+
+    def __getattr__(self, name: str) -> Any:
+        """An array that rests on the device (``_RecallOnDevice.OWNED``), read on the host: every
+        array comes back, and the next moment places them there again."""
+        if self.__dict__.get("_device") is not None and name in _RecallOnDevice.OWNED:
+            self.leave_device()
+            return self.__dict__[name]
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __getstate__(self) -> dict[str, Any]:
+        self.leave_device()
+        return self.__dict__
+
+    @property
+    def resides(self) -> bool:
+        """Whether this memory's options have the device's path (``_RecallOnDevice``)."""
+        return (
+            self.heads == 1 and self.window == 1 and not self.action and not self.when
+            and not self.gain and self.tokens is None and self.target == "recall"
+        )
+
+    def reside(self, kernel: Any) -> None:
+        """The slots, the maps and the reads on the device of a brain's ``kernel``. An array
+        written on the host since brings the others back first."""
+        if kernel is None:
+            self.leave_device()
+            return
+        held = self._device
+        if held is not None:
+            if any(name in self.__dict__ for name in _RecallOnDevice.OWNED):
+                self.leave_device()
+            else:
+                held.kernel = kernel
+                return
+        if self.resides and not self._private:
+            self._device = _RecallOnDevice(self, kernel)
+
+    def _resident_path(self) -> _RecallOnDevice | None:
+        """What rests on the device, None once an array was written on the host: that brings the
+        others back first, and the host's path reads them."""
+        held = self._device
+        if held is not None and any(name in self.__dict__ for name in _RecallOnDevice.OWNED):
+            self.leave_device()
+            return None
+        return held
+
+    def leave_device(self) -> None:
+        """Every array back on the host, the actor's eligibility of the read with them; what was
+        written on the host since stays."""
+        held = self.__dict__.get("_device")
+        if held is None:
+            return
+        written = {
+            name: self.__dict__.pop(name) for name in _RecallOnDevice.OWNED
+            if name in self.__dict__
+        }
+        held.give_back()
+        self.__dict__.update(written)
+        self._device = None
+        actor = self._actor
+        if actor is not None:
+            for name in ("trace_memory", "_pending_memory"):
+                value = getattr(actor, name)
+                if value is not None and not isinstance(value, np.ndarray):
+                    setattr(actor, name, _host_array(value))
+
+    def joined_eligibility(self, trace: Any, contrast: Any, decay: float) -> Any:
+        """A resident memory's eligibility after an outcome: ``e <- decay e + contrast``. A new
+        tensor, so a refused outcome keeps the old one."""
+        held = self._device
+        assert held is not None
+        if isinstance(contrast, np.ndarray):
+            contrast = held.xp.here(contrast)
+        if isinstance(trace, np.ndarray):
+            trace = held.xp.here(trace)
+        if trace is None or trace.shape != contrast.shape:
+            return contrast
+        return decay * trace + contrast
 
     # -- layout and per-stream state
 
@@ -1185,16 +1483,32 @@ class Recall:
 
     @property
     def streams(self) -> int:
-        return int(len(self.keys))
+        held = self._device
+        return int(len(self.keys)) if held is None else held.streams
 
     @property
     def slots(self) -> int:
         """The slots every stream holds (a stream that began since holds fewer, ``held``)."""
-        return int(self.keys.shape[1])
+        held = self._device
+        return int(self.keys.shape[1]) if held is None else held.slots
 
     def ages(self) -> np.ndarray:
         """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest."""
         return np.arange(self.slots - 1, -1, -1, dtype=float)
+
+    def _whole_ages(self) -> np.ndarray:
+        """``ages`` as whole numbers."""
+        return np.arange(self.slots - 1, -1, -1, dtype=np.int64)
+
+    def _age_buckets(self) -> np.ndarray:
+        """Every whole age's bucket up to ``capacity - 1``, ``_bucket`` of each, made once for
+        the memory's position and capacity; an older age lies in the last bucket with it."""
+        held = self.__dict__.get("_age_bucket_table")
+        if held is None or held[0] != (self.position, self.capacity):
+            table = self._bucket(np.arange(self.capacity, dtype=float)).astype(np.int64)
+            held = ((self.position, self.capacity), table)
+            self.__dict__["_age_bucket_table"] = held
+        return np.asarray(held[1])
 
     def position_map(self, head: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """Head ``head``'s position maps ``(P_x, P_c, p)``; refused without a position term."""
@@ -1212,10 +1526,9 @@ class Recall:
     def buckets(self) -> np.ndarray:
         """Each slot's age bucket: its age below ``position``, then ``position`` plus the
         doublings of its age over ``position``, the last bucket holding every older age."""
-        ages = self.ages()
         if not self.position:
-            return np.zeros(len(ages), dtype=np.int64)
-        return self._bucket(ages).astype(np.int64)
+            return np.zeros(self.slots, dtype=np.int64)
+        return np.asarray(self._age_buckets()[self._whole_ages()])
 
     def _bucket(self, ages: np.ndarray) -> np.ndarray:
         """``ages`` (or places in an episode) in the position term's buckets: below
@@ -1228,8 +1541,10 @@ class Recall:
         """Each slot's anchored bucket for each stream, or for the streams ``rows``, ``(rows,
         slots)``: its place in the stream's current episode (``told - 1 - age``) bucketed as
         an age is, and ``position_buckets`` for a slot written before the episode began."""
-        places = self._places(rows)
-        out = self._bucket(np.maximum(places, 0.0))
+        told = self.told if rows is None else self.told[rows]
+        places = told[:, None] - 1 - self._whole_ages()[None, :]
+        table = self._age_buckets()
+        out = table[np.minimum(np.maximum(places, 0), len(table) - 1)]
         return np.where(places < 0, self.position_buckets, out).astype(np.int64)
 
     def relative_buckets(self, rows: np.ndarray | None = None) -> np.ndarray:
@@ -1238,9 +1553,18 @@ class Recall:
         ``[-RELATIVE, RELATIVE]`` and shifted to start at zero; ``2 * RELATIVE + 1`` for a
         stream with no read before."""
         focus = self.focus if rows is None else self.focus[rows]
-        offsets = self.ages()[None, :] - focus[:, None].astype(float)
-        out = np.clip(offsets, -self.RELATIVE, self.RELATIVE) + self.RELATIVE
+        offsets = self._whole_ages()[None, :] - focus[:, None]
+        out = np.minimum(np.maximum(offsets, -self.RELATIVE), self.RELATIVE) + self.RELATIVE
         return np.where(focus[:, None] < 0, 2 * self.RELATIVE + 1, out).astype(np.int64)
+
+    def grid_buckets(self) -> np.ndarray:
+        """Each slot's residue under each modulus of ``grid`` as a column of the grid maps,
+        ``(moduli, slots)``: the columns of a modulus follow those of the moduli before it."""
+        ages = self.ages().astype(np.int64)
+        starts = np.cumsum([0, *self.grid[:-1]])
+        return np.stack([
+            start + ages % modulus for start, modulus in zip(starts, self.grid, strict=True)
+        ])
 
     def position_term(
         self, head: int, event: np.ndarray, cortex: np.ndarray, rows: np.ndarray | None = None
@@ -1257,15 +1581,32 @@ class Recall:
         # the terms over each stream's episode and previous read need the moments' streams; a
         # batch of other streams reads silence (``weights``) and gets the table and the slope
         if rows is not None or len(event) == self.streams:
+            anchored = relative = None
             if self.anchor_maps:
                 anchored = _term(self.anchor_maps[head], event, cortex)
-                term = term + np.take_along_axis(anchored, self.anchored_buckets(rows), axis=1)
             if self.relative_maps:
                 relative = _term(self.relative_maps[head], event, cortex)
-                term = term + np.take_along_axis(relative, self.relative_buckets(rows), axis=1)
+            if _compiled_terms():
+                from .fused import add_episode_terms
+
+                add_episode_terms(
+                    term, anchored, relative,
+                    self.told if rows is None else self.told[rows],
+                    self.focus if rows is None else self.focus[rows],
+                    self._age_buckets(), self.position_buckets, self.RELATIVE,
+                )
+            else:
+                each = np.arange(len(event))[:, None]
+                if anchored is not None:
+                    term = term + anchored[each, self.anchored_buckets(rows)]
+                if relative is not None:
+                    term = term + relative[each, self.relative_buckets(rows)]
         if self.slope_maps:
             lean = _term(self.slope_maps[head], event, cortex)
             term = term + lean[:, None] * (self.ages() / self.SLOPE)[None, :]
+        if self.grid_maps:
+            grid = _term(self.grid_maps[head], event, cortex)[:, self.grid_buckets()].sum(axis=1)
+            term = term + grid * (self.ages() >= self.position)
         return np.asarray(term)
 
     @property
@@ -1275,6 +1616,8 @@ class Recall:
         the moment was written, read-only; None before a read, when the read found no slots,
         and once the streams changed."""
         if self._attended is None or self._head_reads is None:
+            if self._device is not None and self._attended is not None:
+                return (self._device.xp.host(self._attended),)
             return None if self._attended is None else (self._attended,)
         return self._head_reads[1]
 
@@ -1326,6 +1669,10 @@ class Recall:
         """Empty every stream, or the streams of ``rows`` only (streams that begin again): their
         slots, the cortex of the moment before and the window's events. The address map is
         learned and stays."""
+        held_device = self._resident_path()
+        if held_device is not None:
+            held_device.reset(batch, rows)
+            return
         if rows is not None:
             rows = _stream_rows(rows, batch)
         if rows is None or self.streams != batch:
@@ -1442,14 +1789,24 @@ class Recall:
         self._unread()
 
     def snapshot(self) -> dict[str, Any]:
-        """The per-stream state, to restore after a refused operation; every write replaces
-        these arrays rather than changing them."""
+        """The per-stream state, to restore after a refused operation. The next write starts
+        new arrays and changes none of these."""
+        held = self._resident_path()
+        if held is not None:
+            return held.snapshot()
+        self._rooms = {}
         return {name: getattr(self, name) for name in self._STATE}
 
     def restore(self, snapshot: dict[str, Any]) -> None:
-        """Return to a ``snapshot``; the next moment is addressed afresh."""
+        """Return to a ``snapshot``; the next moment is addressed afresh. A snapshot of the host's
+        arrays stays on the host, whatever the operation since placed on the device."""
+        held = self._resident_path()
+        if held is not None and not isinstance(snapshot["keys"], np.ndarray):
+            held.restore(snapshot)
+            return
+        self.leave_device()
         for name, value in snapshot.items():
-            setattr(self, name, value)
+            setattr(self, name, value if isinstance(value, np.ndarray) else _host_array(value))
         self._unread()
 
     def reading(self) -> tuple[Any, ...]:
@@ -1467,8 +1824,35 @@ class Recall:
         A forecast at an episode's end reads the streams as the end leaves them before the
         end is committed; once it is, that read is the moment's, so the act it decides keeps
         the read's eligibility and ``attended_heads`` describes it."""
-        self.last, self._attended = reading[0], reading[1]
+        last, attended = reading[0], reading[1]
+        if self._device is None and attended is not None and not isinstance(attended, np.ndarray):
+            attended = _host_array(attended)  # a read on the device of arrays that have left it
+            attended.flags.writeable = False
+            if last is not None:
+                last = _Moment(last.event, *(_host_array(a) for a in last[1:]))
+        self.last, self._attended = last, attended
         self._head_reads = reading[2] if len(reading) > 2 else None
+
+    # -- the MLX device
+
+    def place(self, kernel: Any) -> None:
+        """A brain on the MLX device keeps a large address map there (``_MLX_MAP_ENTRIES``): its
+        product is most of a moment's read and its step most of a lesson's address lesson. The
+        slots and the smaller maps stay on the host."""
+        if kernel is None or kernel.plain or self.__dict__.get("_device") is not None:
+            return
+        first = self.head_maps[0][0]
+        if isinstance(first, _MlxMatrix) or first.size < _MLX_MAP_ENTRIES:
+            return
+        of = _MlxMatrix.of
+        self.head_maps = [
+            (
+                cast(np.ndarray, of(kernel.mx, w_x)),
+                cast(np.ndarray, of(kernel.mx, w_c)),
+                b,
+            )
+            for w_x, w_c, b in self.head_maps
+        ]
 
     # -- the memory contract (``cadence.memories``)
 
@@ -1479,12 +1863,14 @@ class Recall:
     def branch(self) -> Recall:
         """A private copy for an imagined branch: it reads the live slots and writes none; the
         cortex of the moment before, the window's events and the command follow the branch."""
+        self.leave_device()
         branch = copy(self)
         branch.previous = self.previous.copy()
         branch.past = self.past.copy()
         branch.acted = self.acted.copy()
         branch._unread()
         branch._private = True
+        branch._rooms = {}
         branch._contents = []
         branch._content_keys = None
         branch._scope_token = None
@@ -1497,7 +1883,8 @@ class Recall:
             name: getattr(self, name) for name in ("keys", "values", "nexts", "held", "previous")
         }
         for h, maps in enumerate(self.head_maps):  # every head's address map, head 0's first
-            out.update(zip(self.map_names("address", h), maps, strict=True))
+            held = (np.asarray(maps[0]), np.asarray(maps[1]), maps[2])  # the host's, once read
+            out.update(zip(self.map_names("address", h), held, strict=True))
         if self.ended.any():
             out["ended"] = self.ended
         if self.window > 1:
@@ -1510,13 +1897,16 @@ class Recall:
                 out[state] = getattr(self, state)
             for h, maps in enumerate(kept):
                 out.update(zip(self.map_names(kind, h), maps, strict=True))
+        if self.gain:  # the gains, one per read port, saved only with the option
+            out["gains"] = self.gains
         return out
 
     @staticmethod
     def map_names(kind: str, head: int) -> tuple[str, str, str]:
         """The checkpoint names of head ``head``'s three maps of one ``kind``: ``"address"``
         for ``(w_x, w_c, b)``, ``"position"`` for ``(P_x, P_c, p)``, ``"anchor"`` for ``(E_x,
-        E_c, e)``, ``"relative"`` for ``(R_x, R_c, r)`` and ``"slope"`` for ``(S_x, S_c, s)``;
+        E_c, e)``, ``"relative"`` for ``(R_x, R_c, r)``, ``"slope"`` for ``(S_x, S_c, s)`` and
+        ``"grid"`` for ``(G_x, G_c, g)``;
         head 0's names are bare and head ``h``'s carry ``_h``."""
         suffix = "" if head == 0 else f"_{head}"
         if kind == "address":
@@ -1555,8 +1945,7 @@ class Recall:
             acted = _of(self.acted, n)
             key = np.concatenate([key, np.zeros((n, self.command_width))], axis=1)
             inputs = np.concatenate([x, acted], axis=1)
-        w_x, w_c, b = self.head_maps[0]
-        q = key + inputs @ w_x + c @ w_c + b
+        q = _addressed(key, self.head_maps[0], inputs, c)
         return _Moment(x, c, q, key, inputs)
 
     def _attention(
@@ -1609,8 +1998,7 @@ class Recall:
         and one bank snapshot are retained.
         """
         if (keys is not self.keys or address.dtype != np.float64
-                or keys.dtype != np.float64 or not address.flags.c_contiguous
-                or not keys.flags.c_contiguous):
+                or keys.dtype != np.float64 or not address.flags.c_contiguous):
             return np.asarray(_einsum("bk,bmk->bm", address, keys) / self.temperature)
         if self._scope_token is not None and self._scope_token in _OPERATIONS:
             if self._content_keys is not keys:
@@ -1638,19 +2026,9 @@ class Recall:
         streams hold no slot or are another batch. ``position`` is a head's position term at
         every slot (``position_term``); without it the attention is the content's and the
         recency's alone, which is what the read used only where the memory has no position
-        term. With a ``null`` slot, whose logit ``null / temperature`` joins the softmax and
-        which reads nothing, the slots' shares sum to one less the null slot's."""
+        term."""
         if not self.slots or self.streams != len(address):
             return None
-        if self.null is not None:
-            logits = self._attention(
-                address, self.keys, None if self.held.all() else self.held, position
-            )
-            null = self.null / self.temperature
-            top = np.maximum(logits.max(axis=1), null)  # a stream that holds no slot: the null
-            p = np.exp(logits - top[:, None])
-            total = p.sum(axis=1) + np.exp(null - top)
-            return np.asarray(p / total[:, None])
         if self.held.all():
             logits = self._attention(address, self.keys, None, position)
             p = np.exp(logits - logits.max(axis=1, keepdims=True))
@@ -1671,20 +2049,28 @@ class Recall:
         kept for its write and its lesson, and the attention the read used as
         ``attended_heads``. With several heads each head reads the slots with its own address
         into its own port."""
+        if self._device is not None:
+            return cast(np.ndarray, self._device.stimulate(drive, observations))
         moment = self._moment(self._port(observations))
         self.last = moment
-        out = np.array(drive, dtype=float)
+        out = np.array(_on_host(drive), dtype=float)
         addresses, attended = self._reads(moment)
         whens = self.when_features() if self._whens and self.slots else None
+        amplitude = 1.0 if self.drive_gain else self.amplitude
         for h, p in enumerate(attended):
             if p is not None:
                 p.flags.writeable = False
                 recall_columns, next_columns = self._head_columns[h]
-                out[:, recall_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.values)
+                out[:, recall_columns] = amplitude * _einsum("bm,bmc->bc", p, self.values)
                 if self.next:
-                    out[:, next_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.nexts)
+                    out[:, next_columns] = amplitude * _einsum("bm,bmc->bc", p, self.nexts)
                 if whens is not None:
-                    out[:, self._whens[h][1]] = self.amplitude * _einsum("bm,bmw->bw", p, whens)
+                    out[:, self._whens[h][1]] = amplitude * _einsum("bm,bmw->bw", p, whens)
+        if self.drive_gain:  # what the ports hold, kept for the route's lesson, at the gain
+            self.trace = out[:, self._port_columns].copy()
+            out[:, self._port_columns] = self.amplitude * self.hearing * self.trace
+        if self.gain:  # every port's read of a token, through the port's gain, into the motor
+            out[:, self._motor_columns] += self._gain_drive(out)
         self._attended = attended[0]  # the attention this read uses, kept past the write
         # with several heads, every head's address and attention, and the writes the bank had
         self._head_reads = (
@@ -1697,18 +2083,144 @@ class Recall:
         addresses = [moment.address] + [self._address(moment, h) for h in range(1, self.heads)]
         return addresses, self._read(addresses, moment)
 
+    # -- the gains (``gain``)
+
+    def _gain_drive(self, drive: np.ndarray) -> np.ndarray:
+        """The gains' drive on the motor region, ``(batch, motor)``: every port's read of a token
+        as ``drive`` holds it on the port's columns, through the port's gain, summed over the
+        ports."""
+        total = np.zeros((len(drive), len(self.motor)))
+        ports = [
+            part for recall_columns, next_columns in self._head_columns
+            for part in ((recall_columns, next_columns) if self.next else (recall_columns,))
+        ]
+        for k, port in enumerate(ports):
+            total[:, self._token_motors] += self.gains[k] * drive[:, port][:, self._token_values]
+        return total
+
+    def _held_attention(self, moment: _Moment) -> list[np.ndarray | None]:
+        """Every head's attention over the slots held now, as the latest read used it
+        (``stimulate``, head 0's ``_attended`` and the other heads' kept reads while the bank
+        holds what they read), else computed now."""
+        if self.heads == 1:
+            return [self._attended]
+        reads = self._head_reads
+        if reads is not None and reads[2] == self.writes and len(reads[1]) == self.heads:
+            return list(reads[1])
+        return self._reads(moment)[1]
+
+    def _port_reads(self, attended: Sequence[np.ndarray | None]) -> list[np.ndarray | None]:
+        """Every port's read in ``ports`` order, ``(batch, value)`` each: head ``h``'s
+        attention ``attended[h]`` over the slots' values and, with ``next``, their nexts, at
+        ``amplitude``, as ``stimulate`` holds it on the port; None where the head read
+        nothing."""
+        reads: list[np.ndarray | None] = []
+        for p in attended:
+            if p is None or p.shape[1] != self.slots:
+                reads.extend([None] * (2 if self.next else 1))
+                continue
+            amplitude = self.amplitude * self.hearing
+            reads.append(amplitude * _einsum("bm,bmc->bc", p, self.values))
+            if self.next:
+                reads.append(amplitude * _einsum("bm,bmc->bc", p, self.nexts))
+        return reads
+
+    def _motor_movement(self, plus: BrainState, minus: BrainState) -> np.ndarray:
+        """The motor region's movement between two phases, ``(batch, motor)``."""
+        s_plus = np.atleast_2d(np.asarray(plus.activation, dtype=float))
+        s_minus = np.atleast_2d(np.asarray(minus.activation, dtype=float))
+        return np.asarray((s_plus - s_minus)[:, self.motor], dtype=float)
+
+    def _gain_rates(self, reads: Sequence[np.ndarray | None]) -> np.ndarray:
+        """Each row's rate of the gains' step, ``min(gain, GAIN_BOUND / E)``, ``E`` the energy of
+        the row's reads over every port: the drive on a motor neuron reads them all together, so a
+        row taught alone moves its own drive by at most ``GAIN_BOUND`` times the neuron's
+        movement. A row that read nothing keeps the rate; its step is zero."""
+        energy = np.zeros(self.streams)
+        for r in reads:
+            if r is not None:
+                energy = energy + np.einsum("bi,bi->b", r, r)
+        with np.errstate(divide="ignore", invalid="ignore", over="ignore"):
+            return np.minimum(self.gain, self.GAIN_BOUND / energy)
+
+    def _gain_step(self, read: np.ndarray, movement: np.ndarray) -> np.ndarray:
+        """Per row, the sum over the tokens of a port's read of the token times its motor
+        neuron's movement: the contrast of the gain that multiplies every token's identity."""
+        return np.asarray(np.einsum(
+            "bt,bt->b", read[:, self._token_values], movement[:, self._token_motors]
+        ))
+
+    def learn_gain(self, learned: LearnedState) -> dict[str, float]:
+        """The gains' lesson after a teacher lesson whose phases are ``learned``, at its taught
+        rows: each port's gain takes the mean over the rows of the row's rate (``_gain_rates``)
+        times ``_gain_step`` on the port's read (``_port_reads``, what the port held at the moment
+        the lesson's drive addressed) and the motor region's movement between the nudged phases. A
+        step that is not finite is refused whole. Returns ``gain_rows``, the rows that moved, and
+        ``gain_refused``, the rows a refused step left as they were; nothing without the option,
+        and both zero for a lesson without a nudged phase or a moment."""
+        if not self.gain:
+            return {}
+        quiet = {"gain_rows": 0.0, "gain_refused": 0.0}
+        moment = self.last
+        if (
+            moment is None
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return quiet
+        taught = learned.taught
+        rows = (
+            np.arange(len(moment.address))
+            if taught is None
+            else np.flatnonzero(np.asarray(taught, dtype=bool))
+        )
+        if not self.slots or not len(rows) or self.streams != len(moment.address):
+            return quiet
+        movement = self._motor_movement(
+            learned.nudged, learned.free if learned.opposite is None else learned.opposite
+        )
+        reads = self._port_reads(self._held_attention(moment))
+        with np.errstate(over="ignore", invalid="ignore"):
+            rates = self._gain_rates(reads)[rows]
+            gains = self.gains + np.array([
+                0.0 if r is None else np.mean(rates * self._gain_step(r[rows], movement))
+                for r in reads
+            ])
+        if not np.isfinite(gains).all():
+            return {"gain_rows": 0.0, "gain_refused": float(len(rows))}
+        self.gains = gains
+        return {"gain_rows": float(len(rows)), "gain_refused": 0.0}
+
+    def _gain_rows(
+        self, out: np.ndarray, moment: _Moment, plus: BrainState, minus: BrainState
+    ) -> None:
+        """The gains' eligibility of a sampled act, written into the last columns of ``out``
+        (``contrast_rows``' array) on the array's first row: per row and port, the row's rate
+        (``_gain_rates``) times ``_gain_step`` on the act's two nudged phases, the step the lesson
+        would take were the act's action the label; a row whose step is not finite keeps none."""
+        start = out.shape[2] - len(self.gains)
+        movement = self._motor_movement(plus, minus)
+        reads = self._port_reads(self._held_attention(moment))
+        rate = self._gain_rates(reads)
+        for k, r in enumerate(reads):
+            if r is None:
+                continue
+            with np.errstate(over="ignore", invalid="ignore"):
+                step = rate * self._gain_step(r, movement)
+            kept = np.isfinite(step)
+            out[kept, 0, start + k] = step[kept]
+
     def _read(self, addresses: Sequence[np.ndarray], moment: _Moment) -> list[np.ndarray | None]:
         """Every head's attention over the slots held now, head ``h`` at ``addresses[h]`` with
-        its position term at ``moment``: its own (``weights``), or among competing heads, each
-        after the first taking of every slot at most the share the heads before it left
-        (``_share``)."""
+        its position term at ``moment``: the first head's own (``weights``), and each after it
+        taking of every slot at most the share the heads before it left (``_share``)."""
         attended: list[np.ndarray | None] = []
         left: np.ndarray | None = None  # each slot's share the heads before have left
-        competing = self.compete and self.heads > 1
         for h, address in enumerate(addresses):
             position = self.position_term(h, moment.inputs, moment.cortex)
             p = self.weights(address, position)
-            if p is not None and competing:
+            if p is not None and self.heads > 1:
                 if left is not None:
                     held = None if self.held.all() else self.held
                     logits = self._attention(address, self.keys, held, position)
@@ -1718,12 +2230,11 @@ class Recall:
         return attended
 
     def _lesson_reads(self, moment: _Moment) -> list[np.ndarray | None]:
-        """For each head's lesson, the attention it read the moment with where heads compete
-        (None for head 0, whose prior is its own attention, and without competition): the reads
-        ``stimulate`` kept while the bank holds what they read, else the read computed now,
-        before any lesson steps a map."""
-        if not (self.compete and self.heads > 1):
-            return [None] * self.heads
+        """For each head's lesson, the attention it read the moment with (None for head 0, whose
+        prior is its own attention): the reads ``stimulate`` kept while the bank holds what they
+        read, else the read computed here, before any lesson steps a map."""
+        if self.heads == 1:
+            return [None]
         reads = self._head_reads
         if reads is not None and reads[2] == self.writes and all(r is not None for r in reads[1]):
             attended = list(reads[1])
@@ -1736,8 +2247,7 @@ class Recall:
         own map."""
         if head == 0:
             return moment.address
-        w_x, w_c, b = self.head_maps[head]
-        return np.asarray(moment.key + moment.inputs @ w_x + moment.cortex @ w_c + b)
+        return _addressed(moment.key, self.head_maps[head], moment.inputs, moment.cortex)
 
     def _head_address(self, moment: _Moment, head: int) -> np.ndarray:
         """Head ``head``'s address of the moment the latest read addressed: the one it read
@@ -1786,6 +2296,9 @@ class Recall:
         value and becomes the command of the moment before. Another batch size begins the
         streams with empty memories first. An imagined branch moves the cortex, the window
         and the command only."""
+        if self._device is not None:
+            self._device.witness(observations, state, command)
+            return
         x = self._port(observations)
         moment = self.last
         if moment is None or moment.event.shape != x.shape or not np.array_equal(moment.event, x):
@@ -1854,6 +2367,39 @@ class Recall:
         self.told = self.told + 1
         self.focus = focus
 
+    def _longer(
+        self, name: str, old: np.ndarray, drop: int, new: np.ndarray | None
+    ) -> np.ndarray:
+        """The slots ``old`` less the ``drop`` oldest, with a new latest slot of ``new`` (zero
+        without one). The slots are a view into a wider array, in the order every read sums
+        them, and the new slot is written in the room behind them, so a write costs one slot
+        and not the bank; when the room runs out the slots move into a new array of twice their
+        number, at most twice the capacity. An array the memory did not make itself starts one."""
+        held = self._rooms.get(name)
+        if (
+            held is not None and held[1] is old and old.base is held[0]
+            and held[3] < held[0].shape[1]
+        ):
+            room, first, stop = held[0], held[2] + drop, held[3]
+        else:
+            kept = old.shape[1] - drop
+            size = min(2 * self.capacity, max(16, 2 * kept + 2))
+            room = np.empty((old.shape[0], size, *old.shape[2:]), dtype=old.dtype)
+
+            def move(start: int, end: int) -> None:
+                room[start:end, :kept] = old[start:end, drop:]
+
+            if _by_rows(move, len(old), old.size) is None:
+                move(0, len(old))
+            first, stop = 0, kept
+        if new is None:
+            room[:, stop] = 0
+        else:
+            room[:, stop] = new
+        out = room[:, first : stop + 1]
+        self._rooms[name] = (room, out, first, stop + 1)
+        return out
+
     def _append(
         self,
         key: np.ndarray,
@@ -1865,27 +2411,13 @@ class Recall:
         no successor yet, held by the streams ``held`` marks; beyond ``capacity`` the oldest
         slot is dropped. ``successor`` is what the slots before learn as their next
         (``_observe``): ``(slice(None), value)`` for every stream's latest slot, or ``(rows,
-        slots, values)``. Every array is new, written once: a caller may hold the old ones."""
+        slots, values)``. The arrays are new views of the slots (``_longer``): a caller that holds
+        the old ones to restore them says so (``snapshot``)."""
         if value is None:
             value = np.zeros((len(key), self.value_width))
         kept = self.keys.shape[1]
         drop = max(kept + 1 - self.capacity, 0)
-
-        def grown(old: np.ndarray, new: np.ndarray | None) -> np.ndarray:
-            out = np.empty((old.shape[0], kept + 1 - drop, *old.shape[2:]), dtype=old.dtype)
-
-            def move(start: int, stop: int) -> None:
-                out[start:stop, : kept - drop] = old[start:stop, drop:]
-
-            if _by_rows(move, len(old), old.size) is None:
-                move(0, len(old))
-            if new is None:
-                out[:, -1] = 0
-            else:
-                out[:, -1] = new
-            return out
-
-        nexts = grown(self.nexts, None)
+        nexts = self._longer("nexts", self.nexts, drop, None)
         if successor is not None and kept:
             if len(successor) == 2:
                 if kept - drop:  # the latest slot survives the drop
@@ -1894,9 +2426,10 @@ class Recall:
                 rows, slots, values = successor
                 keep = slots >= drop
                 nexts[rows[keep], slots[keep] - drop] = values[keep]
-        self.keys, self.values, self.nexts, self.held = (
-            grown(self.keys, key), grown(self.values, value), nexts, grown(self.held, held)
-        )
+        self.keys = self._longer("keys", self.keys, drop, key)
+        self.values = self._longer("values", self.values, drop, value)
+        self.nexts = nexts
+        self.held = self._longer("held", self.held, drop, held)
         self._contents = []
         self._content_keys = None
 
@@ -1924,13 +2457,43 @@ class Recall:
         recall_synapses, next_synapses = self._head_synapses[head]
         synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
         width = len(self._heads[head][0 if region == "recall" else 1])
-        w = np.zeros((width, len(self.association)))
-        np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+        if graph.layout.parallel_synapses:
+            w = np.zeros((width, len(self.association)))
+            np.add.at(w, (rows, cols), graph._weights[synapses])
+        else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
+            w = _route_matrix(
+                graph, synapses, rows * len(self.association) + cols, (width, len(self.association))
+            )
+            w += 0.0
         return np.asarray(movement @ w.T)
 
-    def learn(self, graph: NeuralGraph, learned: LearnedState) -> dict[str, float]:
+    def _read_backs(
+        self, graph: NeuralGraph, movement: np.ndarray, head: int
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        """Head ``head``'s two ``readback`` reads: on the blocks where the synapses rest on the
+        MLX device, in one launch."""
+        kernel = graph._mlx
+        if kernel is not None and graph._efficacy is None:
+            ports = [
+                (*synapses, len(neurons)) for synapses, neurons in zip(
+                    self._head_synapses[head], self._heads[head], strict=True
+                )
+            ]
+            read = kernel.read_back(ports if self.next else ports[:1], movement)
+            if read is not None:
+                return read[0], read[1] if self.next else None
+        d_value = self.readback(graph, "recall", movement, head)
+        d_next = self.readback(graph, "next", movement, head) if self.next else None
+        return d_value, d_next
+
+    def learn(
+        self, graph: NeuralGraph, learned: LearnedState, content: np.ndarray | None = None
+    ) -> dict[str, float]:
         """The address lesson after a lesson whose phases are ``learned``, at its taught rows,
         through the synapses of ``graph`` (the learner's brain after the lesson's update).
+        ``content`` (a boolean per row, from the brain with ``tokens``) keeps the rows whose
+        answer is a token a slot can hold: the lesson takes its target from the slots'
+        contents, and an answer that is no token (yes or no, a count) names none of them.
         Reads the moment the lesson's drive addressed (``stimulate``); returns how many rows
         moved, the mean absolute error the step corrects before it (``address_error``, the
         addresses' error ``K* - q``), and how many rows a refused step left as they were
@@ -1940,6 +2503,8 @@ class Recall:
         report also counts the rows whose position maps moved (``position_rows``) and those a
         refused position step left as they were (``position_refused``), summed over the
         heads."""
+        if self._device is not None:
+            return self._device.learn(graph, learned)
         quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
         if self.position_maps:
             quiet.update(position_rows=0.0, position_refused=0.0)
@@ -1959,6 +2524,8 @@ class Recall:
             if taught is None
             else np.flatnonzero(np.asarray(taught, dtype=bool))
         )
+        if content is not None:
+            rows = rows[np.asarray(content, dtype=bool)[rows]]
         if not self.slots or not len(rows) or self.streams != len(moment.address):
             return quiet
         plus = np.atleast_2d(learned.nudged.activation)
@@ -1971,8 +2538,7 @@ class Recall:
         # the attention every competing head read with, taken before any head's lesson steps
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
-            d_value = self.readback(graph, "recall", movement, h)
-            d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_value, d_next = self._read_backs(graph, movement, h)
             head_moment = moment._replace(address=self._head_address(moment, h))
             # one reading of the rows for both steps: the address step changes neither the
             # address the read used nor this head's position term
@@ -2026,10 +2592,23 @@ class Recall:
                 width = 2 * self.RELATIVE + 2
                 step = _per_bucket(gradient, self.relative_buckets(streams), width) * bound
                 stepped["relative_maps"] = _lms(self.relative_maps[head], step, rate, x, c)
-            if self.slope_maps:  # the same gradient, read along each slot's age
+            # the same gradient, read along each slot's age; with ``grid`` only within the table
+            if self.slope_maps and not (self.grid_maps and self.slots > self.position):
                 lean = gradient @ (self.ages() / self.SLOPE)
                 lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
                 stepped["slope_maps"] = _lms(self.slope_maps[head], lean, self.slope, x, c)
+            if self.grid_maps:  # past the table, the gradient over its peak, on the residues
+                attended = np.where(np.isfinite(prior), np.exp(prior), 0.0)
+                peak = np.maximum(
+                    target.max(axis=1, keepdims=True), attended.max(axis=1, keepdims=True)
+                )
+                far = np.where(peak > 0, gradient / peak, gradient)
+                far = far * (self.ages() >= self.position)
+                width = sum(self.grid)
+                step = sum(
+                    _per_bucket(far, residues[None, :], width) for residues in self.grid_buckets()
+                ) * bound
+                stepped["grid_maps"] = _lms(self.grid_maps[head], step, rate, x, c)
         # every map of the step or none: a step that is not finite is refused whole
         if not all(np.isfinite(a).all() for maps in stepped.values() for a in maps):
             return 0, int(len(x))
@@ -2070,8 +2649,8 @@ class Recall:
         _, x, c, key, error, step, _, _ = found
         with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
             w_x, w_c, b = _lms(self.head_map(head), step, self.address, x, c)
-            address = key + x @ w_x + c @ w_c + b
-        if not all(np.isfinite(a).all() for a in (w_x, w_c, b, address)):
+            address = _addressed(key, (w_x, w_c, b), x, c)
+        if not all(_finite(a) for a in (w_x, w_c, b, address)):
             return {**quiet, "address_refused": float(len(x))}
         self._set_map(head, w_x, w_c, b)
         return {
@@ -2091,13 +2670,13 @@ class Recall:
     ) -> tuple[np.ndarray, ...] | None:
         """Each row's step of the address lesson before the average over rows: the rows of
         ``rows`` that move (a movement and a held slot), and at those rows the event ``x``,
-        the cortex ``c``, the key, the error toward the named keys, the error bounded by
-        the row's own energy, ``error * min(1, 1 / (address |z|^2))``, the attention ``p*``
-        the lesson names and the log of the prior attention the address gave (head ``head``'s
-        position term in it). Among competing heads ``read`` is the attention the head read
-        with over every stream's slots (``_lesson_reads``), and it is the prior; a row it read
-        nothing at does not move. None when no row moves. The arithmetic is unchecked: a
-        caller checks what it keeps."""
+        the cortex ``c``, the key, the error (the named keys less the attended ones, zero where the
+        attention is what the lesson names), the error bounded by the row's own energy, ``error *
+        min(1, 1 / (address |z|^2))``, the attention ``p*`` the lesson names and the log of the
+        prior attention the address gave (head ``head``'s position term in it). Among competing
+        heads ``read`` is the attention the head read with over every stream's slots
+        (``_lesson_reads``), and it is the prior; a row it read nothing at does not move. None when
+        no row moves. The arithmetic is unchecked: a caller checks what it keeps."""
         if len(rows) == len(self.keys):  # every stream, in order: the slots themselves
             values, nexts, keys, held = self.values, self.nexts, self.keys, self.held
         else:
@@ -2152,14 +2731,13 @@ class Recall:
             logits = logits + attention
             p = np.exp(logits - logits.max(axis=1, keepdims=True))
             p /= p.sum(axis=1, keepdims=True)
-            target = _einsum("bm,bmk->bk", p, keys)
-            error = target - q
+            # the gradient of the content logits toward the named slots: the named keys less
+            # the attended ones, zero where the attention is what the lesson names
+            gradient = p - np.where(np.isfinite(attention), np.exp(attention), 0.0)
+            error = _einsum("bm,bmk->bk", gradient, keys)
             # each row's gain on its own address, rate * |z|^2, is at most one: a row taught
-            # alone lands on its target at most, and a row within the bound keeps the rate as
-            # it is. Over a batch the step maps the errors E to (I - M) E, M = rate / n * G D
-            # with G the rows' Gram matrix of z and D their bounds; D^(1/2) M D^(-1/2) is
-            # symmetric with its eigenvalues in [0, 1] (its trace is the mean of the rows'
-            # gains), so sum_i D_i |e_i|^2 does not grow, though one row can pass its target.
+            # alone moves its address by its error at most, and a row within the bound keeps the
+            # rate as it is
             energy = np.einsum("bi,bi->b", x, x) + np.einsum("bi,bi->b", c, c) + 1.0
             step = error * np.minimum(1.0, 1.0 / (rate * energy))[:, None]
         return moving, x, c, key, error, step, p, attention
@@ -2169,12 +2747,14 @@ class Recall:
     def contrast_rows(
         self, graph: NeuralGraph, plus: BrainState, minus: BrainState
     ) -> np.ndarray | None:
-        """The read's eligibility from a sampled act, one ``(inputs + association + 1,
-        reward_columns)`` array per row (the rows of ``w_x``, ``w_c`` and ``b`` in that order;
-        with several heads one block of ``address`` columns per head, head 0's first, then
-        with ``position_reward`` the position and anchored buckets), or None when neither
-        ``address_reward`` nor ``position_reward`` trains the read: the step the address and
-        position lessons would take at each row,
+        """The read's eligibility from a sampled act, one ``(inputs, kept columns)`` array per
+        row, or None when neither ``address_reward`` nor ``position_reward`` nor ``gain`` trains
+        the read: the event's rows of the maps and the columns that can step (``reward_blocks``;
+        ``full_eligibility`` lays it out over the rows of ``w_x``, ``w_c`` and ``b`` and over
+        every column, with several heads one block of ``address`` columns per head, head 0's
+        first, then with ``position_reward`` the position and anchored buckets, and with ``gain``
+        one column per port, ``_gain_rows``): the step the address and position lessons would
+        take at each row,
         were the act's action a lesson's label, before the average over rows. The
         association's movement between the act's two nudged phases, ``plus`` less ``minus``,
         is read back through the recall and next synapses of ``graph`` and scored against the
@@ -2183,34 +2763,40 @@ class Recall:
         of ``z = [x, c, 1]``, and its error ``K* - q`` (the position rows alike at
         ``position_rate``): the cortex and bias rows learn from lessons alone.
         A row that does not move, or whose contribution is not finite, keeps none."""
+        if self._device is not None:
+            return cast("np.ndarray | None", self._device.contrast_rows(graph, plus, minus))
         positions = bool(self.position_reward) and bool(self.position_maps)
-        if not (self.address_reward or positions):
+        if not (self.address_reward or positions or self.gain):
             return None
         movement = self.activity(plus) - self.activity(minus)
         batch, width, columns_ = len(movement), self.map_width, self.address_width
         count = self.position_buckets
-        out = np.zeros((batch, width + len(self.association) + 1, self.reward_columns))
+        if self.address_reward:
+            self._address_held = True
+        out = np.zeros((batch, width, sum(block[1] for block in self.reward_blocks)))
         moment = self.last
         if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
             return out
+        if self.gain:  # the gains' step, in their own columns
+            self._gain_rows(out, moment, plus, minus)
+        if not (self.address_reward or positions):
+            return out
         reads = self._lesson_reads(moment)
         for h in range(self.heads):
-            d_value = self.readback(graph, "recall", movement, h)
-            d_next = self.readback(graph, "next", movement, h) if self.next else None
+            d_value, d_next = self._read_backs(graph, movement, h)
             head_moment = moment._replace(address=self._head_address(moment, h))
             found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
             if found is None:
                 continue
-            moving, x, c, _, error, _, target, prior = found
+            moving, x, _, _, error, _, target, prior = found
             index = np.flatnonzero(moving)
             # the event's rows of ``z = [x, c, 1]`` step, each at a rate bounded by the
-            # event's energy; the cortex and bias rows, zero here, learn from lessons alone
-            z = np.concatenate([x, np.zeros((len(x), c.shape[1] + 1))], axis=1)
+            # event's energy; the cortex and bias rows learn from lessons alone
             with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
                 energy = np.einsum("bi,bi->b", x, x)
                 if self.address_reward:
                     step = error * np.minimum(1.0, 1.0 / (self.address * energy))[:, None]
-                    rows = self.address * np.einsum("bi,bk->bik", z, step)
+                    rows = self.address * np.einsum("bi,bk->bik", x, step)
                     kept = np.isfinite(rows).all(axis=(1, 2))
                     out[index[kept], :, h * columns_:(h + 1) * columns_] = rows[kept]
             if not positions:
@@ -2219,31 +2805,118 @@ class Recall:
                 # the position lesson's step at each row, as ``_position_step`` takes it, on
                 # the event's rows
                 gradient = np.where(np.isfinite(prior), target - np.exp(prior), 0.0)
-                rate = self.position_rate
-                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None] if rate else 1.0
+                # at the founder's lesson rate, whatever rate the lessons take: a slow table
+                # taught by lessons does not slow what reward teaches
+                rate = self.REWARD_RATE
+                bound = np.minimum(1.0, 1.0 / (rate * energy))[:, None]
                 blocks = [(self.buckets()[None, :], count)]
                 if self.anchor_maps:
                     blocks.append((self.anchored_buckets(index), count + 1))
-                start = self.heads * columns_
+                start = self.heads * columns_ if self._address_held else 0
                 for buckets, size in blocks:
                     terms = _per_bucket(gradient, buckets, size)
-                    rows = rate * np.einsum("bi,bk->bik", z, terms * bound)
+                    rows = rate * np.einsum("bi,bk->bik", x, terms * bound)
                     kept = np.isfinite(rows).all(axis=(1, 2))
                     out[index[kept], :, start + h * size:start + (h + 1) * size] = rows[kept]
                     start += self.heads * size
         return out
 
     @property
+    def reward_blocks(self) -> list[tuple[int, int]]:
+        """The columns of the reward eligibility that can hold anything, as ``(start, width)`` of
+        ``reward_columns``: the address's once ``address_reward`` wrote them, with
+        ``position_reward`` the position's and the anchored ones, and with ``gain`` the gains'.
+        The other columns stay zero, as do the cortex and bias rows, so the actor keeps these
+        alone, over the event's rows (``full_eligibility``)."""
+        columns_ = self.heads * self.address_width
+        blocks = [(0, columns_)] if self._address_held or self.address_reward else []
+        start = columns_
+        if self.position_reward and self.position_buckets:
+            size = self.heads * self.position_buckets
+            blocks.append((start, size))
+            start += size
+            if self.anchor:
+                size = self.heads * (self.position_buckets + 1)
+                blocks.append((start, size))
+                start += size
+        if len(self.gains):
+            blocks.append((start, len(self.gains)))
+        return blocks
+
+    def full_eligibility(self, kept: np.ndarray) -> np.ndarray:
+        """A reward eligibility laid out as a checkpoint keeps it, ``(batch, inputs + association
+        + 1, reward_columns)``: the rows of ``w_x``, ``w_c`` and ``b``, every column."""
+        if not isinstance(kept, np.ndarray):
+            kept = _host_array(kept)
+        out = np.zeros((len(kept), self.map_width + len(self.association) + 1, self.reward_columns))
+        at = 0
+        for start, width in self.reward_blocks:
+            out[:, : self.map_width, start : start + width] = kept[:, :, at : at + width]
+            at += width
+        return out
+
+    def kept_eligibility(self, full: np.ndarray) -> np.ndarray:
+        """What the actor keeps of a reward eligibility laid out in full, a row's or a batch's."""
+        parts = [
+            full[..., : self.map_width, start : start + width]
+            for start, width in self.reward_blocks
+        ]
+        return np.concatenate(parts, axis=-1)
+
+    def reblocked_eligibility(
+        self, kept: np.ndarray, before: list[tuple[int, int]]
+    ) -> np.ndarray:
+        """What the actor keeps once the columns that can step changed from the blocks ``before``:
+        a column held before keeps its numbers, and a new one holds nothing. No full layout: at
+        the speech size and 256 streams that is 34 GiB."""
+        after = self.reward_blocks
+        if after == before:
+            return kept
+        held, at = {}, 0
+        for start, width in before:
+            held[start, width] = at
+            at += width
+        out = np.zeros((*kept.shape[:-1], sum(width for _, width in after)))
+        at = 0
+        for start, width in after:
+            source = held.get((start, width))
+            if source is not None:
+                out[..., at : at + width] = kept[..., source : source + width]
+            at += width
+        return out
+
+    def saved_eligibility(self, name: str, kept: Any) -> dict[str, np.ndarray]:
+        """A reward eligibility as a checkpoint holds it: laid out in full while that stays small,
+        and past ``_SAVED_IN_FULL`` entries what the actor keeps, under ``name + "_kept"``."""
+        whole = len(kept) * (self.map_width + len(self.association) + 1) * self.reward_columns
+        if whole <= _SAVED_IN_FULL:
+            return {name: self.full_eligibility(kept)}
+        return {name + "_kept": kept if isinstance(kept, np.ndarray) else _host_array(kept)}
+
+    def took_eligibility(self, *saved: np.ndarray) -> None:
+        """A checkpoint's reward eligibilities, laid out in full, are about to be kept: the
+        address columns count as written where they hold anything."""
+        if any(full[..., : self.heads * self.address_width].any() for full in saved):
+            self._address_held = True
+
+    def took_kept_eligibility(self, *saved: np.ndarray) -> None:
+        """The same of those a checkpoint holds as the actor keeps them: every column there means
+        the address columns were written."""
+        if any(kept.shape[-1] == self.reward_columns for kept in saved):
+            self._address_held = True
+
+    @property
     def reward_columns(self) -> int:
         """The columns of the reward eligibility (``contrast_rows``): every head's address
         columns, and with ``position_reward`` every head's position buckets, then with
-        ``anchor`` every head's anchored buckets."""
+        ``anchor`` every head's anchored buckets, and last with ``gain`` one column per read
+        port."""
         columns_ = self.heads * self.address_width
-        if self.position_reward and self.position_maps:
+        if self.position_reward and self.position_buckets:
             columns_ += self.heads * self.position_buckets
-            if self.anchor_maps:
+            if self.anchor:
                 columns_ += self.heads * (self.position_buckets + 1)
-        return columns_
+        return columns_ + len(self.gains)
 
     def propose(self, step: np.ndarray) -> tuple[Any, ...] | None:
         """The address map after a reward's step, not installed: ``step`` is the rows'
@@ -2251,24 +2924,44 @@ class Recall:
         ``address_reward``. Returns ``w_x``, ``w_c``, ``b`` and the norm of the step (with
         several heads, each of the three a tuple of every head's, head 0's first), then with
         ``position_reward`` every head's position maps and, with ``anchor``, its anchored maps
-        (None without), or None when neither reward trains the read; a step whose map is not
-        finite is refused (``ValueError``)."""
+        (None without), with ``gain`` last the gains (a further item, none without), or None when
+        nothing reward trains is there; a step whose map is not finite is refused
+        (``ValueError``)."""
+        if self._device is not None:
+            return self._device.propose(step)
         positions = bool(self.position_reward) and bool(self.position_maps)
-        if not (self.address_reward or positions):
+        if not (self.address_reward or positions or self.gain):
             return None
         step = np.asarray(step, dtype=float)
         width, columns_ = self.map_width, self.address_width
         shape = (width + len(self.association) + 1, self.reward_columns)
-        if step.shape != shape:
+        if step.shape == shape:
+            step = self.kept_eligibility(step)
+        elif step.shape != (width, sum(block[1] for block in self.reward_blocks)):
             raise ValueError(f"an address map's step is a {shape} array")
-        split = self.heads * columns_
+        gains: np.ndarray | None = None
+        moved_gains: list[np.ndarray] = []
+        if self.gain:  # the gains, stepped on their own columns of the first row
+            moved_gains = [step[0, step.shape[1] - len(self.gains):]]
+            with np.errstate(over="ignore", invalid="ignore"):
+                gains = self.gains + moved_gains[0]
+        split = self.heads * columns_ if self._address_held or self.address_reward else 0
+        rest = len(self.association) + 1  # the cortex and bias rows, which hold nothing
+        full_split = self.heads * columns_
+        # a whole row's zeros: every part stepped, in the order of the columns
+        parts: list[np.ndarray | int] = []
+        maps = self.head_maps
         with np.errstate(over="ignore", invalid="ignore"):
-            moved = self.address_reward * step[:, :split]
-            maps = [
-                _added(self.head_map(h), moved[:, h * columns_:(h + 1) * columns_], width)
-                for h in range(self.heads)
-            ]
-            stepped: list[np.ndarray] = [moved]
+            if self.address_reward:
+                moved = self.address_reward * step[:, :split]
+                maps = [
+                    (kept[0] + moved[:, h * columns_:(h + 1) * columns_], kept[1], kept[2])
+                    for h, kept in enumerate(self.head_maps)
+                ]
+                parts += [moved, rest * full_split]
+            else:
+                parts.append((width + rest) * full_split)
+            stepped: list[np.ndarray] = [] if not self.address_reward else [moved]
             position_maps = anchor_maps = None
             if positions:
                 count, start = self.position_buckets, split
@@ -2279,36 +2972,50 @@ class Recall:
                 for kept_maps, size in kinds:
                     part = self.position_reward * step[:, start:start + self.heads * size]
                     stepped.append(part)
+                    parts += [part, rest * self.heads * size]
                     found_maps.append([
-                        _added(kept, part[:, h * size:(h + 1) * size], width)
+                        (kept[0] + part[:, h * size:(h + 1) * size], kept[1], kept[2])
                         for h, kept in enumerate(kept_maps)
                     ])
                     start += self.heads * size
                 position_maps = found_maps[0]
                 anchor_maps = found_maps[1] if len(found_maps) > 1 else None
-        every = [*(a for head in maps for a in head), *stepped]
+        parts += moved_gains
+        stepped += moved_gains
+        every = [*(head[0] for head in maps), *stepped] if self.address_reward else [*stepped]
+        if gains is not None:
+            every.append(gains)
         for found in (position_maps, anchor_maps):
-            every += [a for head in found or () for a in head]
+            every += [head[0] for head in found or ()]
         if not all(np.isfinite(a).all() for a in every):
             raise ValueError("the address map's reward step must be finite")
-        # one norm over every part stepped: with the address map alone, 0.92.1's own
-        norm = float(np.linalg.norm(np.concatenate([part.ravel() for part in stepped])))
-        if self.heads == 1:
-            return maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps
-        return (
-            tuple(m[0] for m in maps), tuple(m[1] for m in maps), tuple(m[2] for m in maps), norm,
-            position_maps, anchor_maps,
+        # one norm over every part stepped, as of the whole eligibility: with the address map
+        # alone, 0.92.1's own
+        norm = _laid_out_norm(parts)
+        proposal: tuple[Any, ...] = (
+            (maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps)
+            if self.heads == 1
+            else (
+                tuple(m[0] for m in maps), tuple(m[1] for m in maps), tuple(m[2] for m in maps),
+                norm, position_maps, anchor_maps,
+            )
         )
+        return proposal if gains is None else (*proposal, gains)
 
     def accept(self, proposal: tuple[Any, ...]) -> None:
-        """Install a step ``propose`` made: the address maps, and with ``position_reward`` the
-        position maps (and the anchored ones)."""
+        """Install a step ``propose`` made: the address maps, with ``position_reward`` the
+        position maps (and the anchored ones), and with ``gain`` the gains."""
+        if self._device is not None:
+            self._device.accept(proposal)
+            return
         heads = [proposal[:3]] if self.heads == 1 else zip(*proposal[:3], strict=True)
         self.head_maps = [(w_x, w_c, b) for w_x, w_c, b in heads]
         if len(proposal) > 4 and proposal[4] is not None:
             self.position_maps = list(proposal[4])
         if len(proposal) > 5 and proposal[5] is not None:
             self.anchor_maps = list(proposal[5])
+        if len(proposal) > 6:
+            self.gains = proposal[6]
 
     def to_dict(self) -> dict[str, Any]:
         """The memory's settings and counts: the keys always written (``SAVED``), the ports,
@@ -2329,11 +3036,14 @@ class Recall:
              if getattr(self, name) != founders[name]}
         )
         if self.heads > 1:
-            # always kept with several heads: a file saved before heads competed holds none,
-            # and loads with heads that read alike as they did
-            out["compete"] = self.compete
-        if "tokens" in out:  # JSON-safe: a list, as a checkpoint keeps it
-            out["tokens"] = list(out["tokens"])
+            # always written with several heads: a file saved before heads competed holds none,
+            # and its heads read alike, a law this version refuses
+            out["compete"] = True
+        for name in ("tokens", "grid"):  # JSON-safe: a list, as a checkpoint keeps it
+            if name in out:
+                out[name] = list(out[name])
+        if self.drive_gain:  # the learned multiplier on the amplitude, read here and in the gains
+            out["hearing"] = self.hearing
         return out
 
 
@@ -2370,9 +3080,8 @@ class PatternSeparator:
     the signed sparse weights over the inputs independently, as above.
 
     The projection is drawn once from the seed and never learns. A brain's ``code=units``
-    observation code and its episodic ``memory_expansion`` separators (sparse when
-    ``memory_fan_in`` is set) are such fixed random codes; a brain's learned code is the
-    region ``learned_code=units`` adds (``cadence.code.LearnedCode``).
+    observation code and its episodic separators are such fixed random codes; a brain's learned
+    code is the region ``learned_code=units`` adds (``cadence.code.LearnedCode``).
     """
 
     inputs: int
@@ -2580,6 +3289,7 @@ class FastSynapses:
     writes: int = 0
 
     def __post_init__(self) -> None:
+        self._device: _StoreOnDevice | None = None  # what rests on a device (``reside``)
         for name in ("pre", "post"):
             raw = np.asarray(getattr(self, name))
             if (
@@ -2614,6 +3324,42 @@ class FastSynapses:
         self._post_columns = columns(self.post)
         self.strength = np.zeros((0, self.key_width, len(self.post)))
         self.mass = np.zeros(0)
+
+    def __getattr__(self, name: str) -> Any:
+        """An array resting on the device, read on the host: they all come back."""
+        if self.__dict__.get("_device") is not None and name in _StoreOnDevice.OWNED:
+            self.leave_device()
+            return self.__dict__[name]
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __getstate__(self) -> dict[str, Any]:
+        self.leave_device()
+        return self.__dict__
+
+    def reside(self, kernel: Any) -> None:
+        """The strengths on the device of a brain's ``kernel``; only a consolidating store has
+        the device's path."""
+        self.leave_device()
+
+    def leave_device(self) -> None:
+        held = self.__dict__.get("_device")
+        if held is not None:
+            held.give_back()
+            self._device = None
+
+    def held_values(self) -> dict[str, Any]:
+        """What a refused outcome restores (``take_values``): a write replaces the arrays."""
+        held: Any = self._device or self
+        return {"strength": held.strength, "mass": held.mass, "writes": self.writes}
+
+    def take_values(self, values: Mapping[str, Any]) -> None:
+        """Return to ``held_values``."""
+        held = self._device
+        for name, value in values.items():
+            if held is not None and name in _StoreOnDevice.OWNED:
+                setattr(held, name, value if _resident(value) else held.xp.here(value))
+            else:
+                setattr(self, name, _on_host(value))
 
     @property
     def key_width(self) -> int:
@@ -2745,6 +3491,9 @@ class FastSynapses:
         """Add the read to the post columns of ``drive`` (a copy, unless ``inplace``): the read
         of the pre columns of ``drive``, or with ``key`` the read of that ``(batch, pre)``
         key, for a memory keyed on a code of the observation rather than on neurons."""
+        if self._device is not None and _resident(drive):
+            return cast(np.ndarray, self._device.stimulate(drive, key))
+        drive = _on_host(drive)
         out = drive if inplace else np.array(drive, dtype=float)
         out[:, self._post_columns] += self.read(out) if key is None else self.recall(key)
         return out

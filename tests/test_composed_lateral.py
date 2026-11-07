@@ -7,8 +7,8 @@ import cadence as cd
 
 
 def test_explicit_default_motor_lateral_preserves_the_complete_default_composition(tmp_path):
-    implicit = cd.Brain.compose(2, 3, modules=(5, 4), observers=(3,), seed=7)
-    explicit = cd.Brain.compose(2, 3, modules=(5, 4), observers=(3,), lateral=0.0, seed=7)
+    implicit = cd.Brain.compose(2, 3, modules=(5, 4), observers=(3,), seed=7, recall=False)
+    explicit = cd.Brain.compose(2, 3, modules=(5, 4), observers=(3,), lateral=0.0, seed=7, recall=False)
     for name in ("pre", "post", "count", "sign"):
         np.testing.assert_array_equal(
             getattr(implicit.connectome, name), getattr(explicit.connectome, name),
@@ -22,7 +22,7 @@ def test_explicit_default_motor_lateral_preserves_the_complete_default_compositi
 
 @pytest.mark.parametrize("lateral", [0., -0.125, 0.1])
 def test_motor_lateral_is_the_requested_circuit_with_reciprocal_feedback(lateral):
-    brain = cd.Brain.compose(2, 4, modules=(5, 3), observers=(2,), lateral=lateral, seed=3)
+    brain = cd.Brain.compose(2, 4, modules=(5, 3), observers=(2,), lateral=lateral, seed=3, recall=False)
     graph = brain.connectome
     motor = brain.motor_index
     mask = np.isin(graph.pre, motor) & np.isin(graph.post, motor)
@@ -40,7 +40,7 @@ def test_lateral_zero_qualified_teaching_and_saved_pending_feedback_continue(tmp
     brain = cd.Brain.compose(2, 3, modules=(5, 4), lateral=0, seed=3,
         learning=cd.LearnerConfig(
             qualified=True, free_steps=512, nudged_steps=512, tolerance=3e-3,
-        ),
+        ), recall=False,
     )
     observed = np.array([[0.3, 0.], [0., 0.3]])
     brain.step(observed, teacher=np.array([0, 1]))
@@ -60,4 +60,4 @@ def test_lateral_zero_qualified_teaching_and_saved_pending_feedback_continue(tmp
 @pytest.mark.parametrize("lateral", [np.nan, np.inf, -np.inf, True, np.bool_(False), "zero", [0]])
 def test_invalid_motor_lateral_is_rejected(lateral):
     with pytest.raises(ValueError, match="lateral must be a finite signed weight"):
-        cd.Brain.compose(2, 3, lateral=lateral)
+        cd.Brain.compose(2, 3, lateral=lateral, recall=False)

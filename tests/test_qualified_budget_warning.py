@@ -37,7 +37,7 @@ def test_qualified_config_with_starved_nudged_budget_warns_at_the_call_site() ->
 def test_replacing_a_composed_config_to_qualified_warns_without_changing_budgets() -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        brain = cd.Brain.compose(inputs=4, actions=2, modules=(4,), seed=0)
+        brain = cd.Brain.compose(inputs=4, actions=2, modules=(4,), seed=0, recall=False)
     composed = brain.learner.config
     assert composed.free_steps == 1024 and composed.nudged_steps == 12
     with pytest.warns(RuntimeWarning, match="qualified=True"):

@@ -5,7 +5,7 @@ import json
 import checkpoints
 import numpy as np
 import pytest
-from checkpoints import earlier
+from checkpoints import flat, write
 
 import cadence as cd
 
@@ -13,17 +13,17 @@ import cadence as cd
 def _brain(*, youth=0):
     return cd.Brain.compose(
         4, 2, modules=(8,), working_memory_amplitude=0.3,
-        arousal=cd.ArousalConfig(youth=youth),
+        arousal=cd.ArousalConfig(youth=youth), recall=False,
     )
 
 
 def _rewrite(path, change):
     with np.load(path, allow_pickle=False) as saved:
-        arrays = earlier({name: saved[name].copy() for name in saved})
+        arrays = flat({name: saved[name].copy() for name in saved})
     metadata = checkpoints.metadata(arrays)
     change(metadata, arrays)
     arrays["generic"] = np.array(json.dumps(metadata))
-    np.savez(path, **arrays)
+    write(path, arrays)
 
 
 @pytest.mark.parametrize("acted", [False, True])

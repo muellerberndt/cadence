@@ -18,6 +18,17 @@ row's update reads only that row, so with more than one row the rows run on Numb
 serial build, and the batch-wide stopping rule is read after the sweep. A graph with an
 apical compartment sums its basal and its apical blocks apart and normalizes the apical
 input per row and pool, in the order and summation the NumPy loop uses.
+
+The helpers of a row's sweep are inlined into the kernels: a compiled call pays atomic reference
+counts per array argument, and at this rate a call per row costs as much as the row's arithmetic.
+Inlined helpers still count their arrays, so the rows of a free sweep run in a kernel that counts
+none (``_free_rows``). Index arithmetic is unsigned, which lets the loops vectorize (``_index``). A
+free solve runs its checks and its chunks in one compiled call (``fused_solve``), and a state keeps
+what it published (``_keep_published``), so a launch from it makes no activation it already holds.
+
+Every kernel above keeps the NumPy loop's bits. ``_fast_solve``, under ``learning_fast_settle``, is
+another solve of the same equations and does not: rows that stop apart and an activation that
+vectorizes.
 """
 
 from __future__ import annotations
@@ -58,27 +69,47 @@ def _compiled(kernel: _Kernel) -> _Kernel:
     return cast(_Kernel, njit(cache=True)(kernel))
 
 
-def _rows_builds(kernel: _Kernel) -> tuple[_Kernel, _Kernel]:
+def _vectorized(kernel: _Kernel) -> _Kernel:
+    """``numba.njit(cache=True, error_model="numpy")``: Python's error model branches on every
+    divisor, which keeps a loop with a division from vectorizing."""
+    assert njit is not None
+    return cast(_Kernel, njit(cache=True, error_model="numpy")(kernel))
+
+
+def _rows_builds(kernel: _Kernel, *, divides: bool = False) -> tuple[_Kernel, _Kernel]:
     """One source compiled twice: serially, and with its ``prange`` over rows on Numba's
     threads. ``prange`` is ``range`` in the serial build. The parallel build compiles a copy
     under a name of its own, because Numba's cache files a function by name and not by its
-    parallel flag."""
+    parallel flag. ``divides``: a per-synapse pass with a division takes NumPy's error model,
+    as ``_vectorized``, and a zero divisor gives what NumPy's form gives."""
     assert njit is not None
+    errors = {"error_model": "numpy"} if divides else {}
     name = kernel.__name__ + "_parallel"
+    on_threads = (True,) if kernel.__defaults__ else None  # a kernel's last parameter says which
     copy = types.FunctionType(
-        kernel.__code__, kernel.__globals__, name, kernel.__defaults__, kernel.__closure__
+        kernel.__code__, kernel.__globals__, name, on_threads, kernel.__closure__
     )
     copy.__qualname__ = kernel.__qualname__ + "_parallel"
-    serial = njit(cache=True)(kernel)
-    parallel = njit(cache=True, parallel=True)(copy)
+    serial = njit(cache=True, **errors)(kernel)
+    parallel = njit(cache=True, parallel=True, **errors)(copy)
     return cast(_Kernel, serial), cast(_Kernel, parallel)
 
 
 def _inlined(kernel: _Kernel) -> _Kernel:
-    """``numba.njit(inline="always")``: a per-neuron helper merged into its caller, so no call
-    and no array reference counting is paid per neuron."""
+    """``numba.njit(inline="always")``: a per-neuron or per-row helper merged into its caller, so
+    no call is paid per neuron or per row. Each array of a compiled call costs two atomic
+    operations, and an inlined helper's arrays cost them too where the compiler cannot drop the
+    pair (``_unreferenced``)."""
     assert njit is not None
     return cast(_Kernel, njit(inline="always")(kernel))
+
+
+def _unreferenced(kernel: _Kernel) -> _Kernel:
+    """``numba.njit(cache=True, _nrt=False)``: a kernel that allocates nothing and counts no
+    references, whatever is inlined into it. A helper inlined under the runtime still costs atomic
+    operations per array, and at a row's rate they cost about as much as its exponentials."""
+    assert njit is not None
+    return cast(_Kernel, njit(cache=True, _nrt=False)(kernel))
 
 
 def available() -> bool:
@@ -112,6 +143,15 @@ if njit is not None and hasattr(os, "register_at_fork"):
     os.register_at_fork(after_in_child=_after_fork)
 
 
+# A fast solve settles its rows past the tolerance that qualifies them, as a solve that checks
+# every 32 sweeps does: a row stops within this, and a row that does not get there stops at the
+# tolerance once this many sweeps are spent.
+_FAST_SETTLED = 1e-5
+_FAST_PATIENCE = 96
+
+# The entries of the record at the end of a state's kept array (``_keep_published``)
+_RECORD = 6
+
 # A sweep of at least this many neurons over all rows runs its rows on Numba's threads; a
 # smaller one runs serially, since handing a sweep to the threads costs tens of microseconds.
 _PARALLEL_WORK = 1 << 16
@@ -140,6 +180,35 @@ def _launch(
 
 
 if njit is not None:
+
+    @_inlined
+    def _index(x: int) -> Any:
+        """A count or an offset as the unsigned index it is."""
+        return np.uint64(x)
+
+    @_compiled
+    def rows_finite(x: np.ndarray) -> bool:
+        """Whether every entry of the ``(rows, columns)`` array ``x`` is finite: a finite number
+        less itself is zero, anything else NaN. A loop that vectorizes, without the array of
+        flags ``np.isfinite(x).all()`` makes."""
+        finite = True
+        width = _index(x.shape[1])
+        for b in range(x.shape[0]):
+            for i in range(width):
+                d = x[b, i]
+                finite = finite & (d - d == 0.0)
+        return finite
+
+    @_compiled
+    def _standing(drive: np.ndarray, bias: np.ndarray) -> np.ndarray:
+        """``drive + bias``, a new C-ordered array."""
+        batch, n = drive.shape
+        out = np.empty((batch, n))
+        width = _index(n)
+        for b in range(batch):
+            for i in range(width):
+                out[b, i] = drive[b, i] + bias[i]
+        return out
 
     @_compiled
     def _activation(
@@ -237,11 +306,83 @@ if njit is not None:
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """One array for what a state keeps, and its parts as views: the activations range by
         range (``columns`` entries), the products of the basal blocks (``size``) and of the
-        apical blocks (``size_up``), and one flag per range, 1 where the products the range
-        feeds are stale."""
-        kept = np.empty(columns + size + size_up + ranges)
+        apical blocks (``size_up``), one flag per range, 1 where the products the range feeds
+        are stale, then what ``_keep_published`` writes."""
+        kept = np.empty(columns + size + size_up + ranges + 2 * columns + _RECORD)
         up, flags = columns + size, columns + size + size_up
-        return kept, kept[:columns], kept[columns:up], kept[up:flags], kept[flags:]
+        return kept, kept[:columns], kept[columns:up], kept[up:flags], kept[flags:flags + ranges]
+
+    @_compiled
+    def _keep_published(
+        v: np.ndarray, s: np.ndarray, kept: np.ndarray, masked: bool, slope: float,
+        threshold: float, rest: float, leak: float,
+    ) -> None:
+        """The potentials and the activations a launch ends on at the end of ``kept``, then
+        the record ``_publish`` reads them by: whether they hold (a mask's activations are not
+        the rule's), their count, and the activation rule."""
+        batch, n = v.shape
+        count = _index(batch) * _index(n)
+        head = _index(kept.shape[0]) - _index(_RECORD)
+        kept[head] = 0.0 if masked else 1.0
+        kept[head + _index(1)] = float(batch * n)
+        kept[head + _index(2)] = slope
+        kept[head + _index(3)] = threshold
+        kept[head + _index(4)] = rest
+        kept[head + _index(5)] = leak
+        if masked:
+            return
+        at = head - _index(2) * count
+        width = _index(n)
+        for b in range(batch):
+            for i in range(width):
+                kept[at + i] = v[b, i]
+            for i in range(width):
+                kept[at + count + i] = s[b, i]
+            at += width
+
+    @_compiled
+    def _publish(
+        v: np.ndarray, s: np.ndarray, kept: np.ndarray, has_kept: bool, slope: float,
+        threshold: float, rest: float, leak: float,
+    ) -> bool:
+        """The activations of the potentials ``v`` into ``s``: read from ``kept``
+        (``_keep_published``) where they are the ones it holds under the same rule, which
+        returns True, else each neuron's. Equal potentials have equal activations; a NaN never
+        equals. From rest every neuron publishes the same thing."""
+        batch, n = v.shape
+        head = kept.shape[0] - _RECORD
+        same = (
+            has_kept and kept[head] == 1.0 and kept[head + 1] == float(batch * n)
+            and kept[head + 2] == slope and kept[head + 3] == threshold
+            and kept[head + 4] == rest and kept[head + 5] == leak
+        )
+        count = _index(batch) * _index(n)
+        width = _index(n)
+        if same:
+            at = _index(head) - _index(2) * count
+            b = 0
+            while same and b < batch:
+                for i in range(width):
+                    same = same and v[b, i] == kept[at + i]
+                at += width
+                b += 1
+        if same:
+            at = _index(head) - count
+            for b in range(batch):
+                for i in range(width):
+                    s[b, i] = kept[at + i]
+                at += width
+            return True
+        if not v.any():
+            row = np.empty(n)
+            _activation(np.zeros(n), slope, threshold, rest, leak, row)
+            for b in range(batch):
+                for i in range(width):
+                    s[b, i] = row[i]
+        else:
+            for b in range(batch):
+                _activation(v[b], slope, threshold, rest, leak, s[b])
+        return False
 
     @_compiled
     def _task_order(
@@ -258,9 +399,16 @@ if njit is not None:
             a, b = pair_pre[k], pair_post[k]
             size[q] = -float((starts[a + 1] - starts[a]) * (starts[b + 1] - starts[b]))
             feeds[a] = True
-        return np.argsort(size, kind="mergesort"), feeds
+        order = np.arange(size.shape[0])
+        for q in range(1, size.shape[0]):  # stable; a sort of NumPy's costs a second to compile
+            task, at = order[q], q
+            while at > 0 and size[order[at - 1]] > size[task]:
+                order[at] = order[at - 1]
+                at -= 1
+            order[at] = task
+        return order, feeds
 
-    @_compiled
+    @_inlined
     def _due(
         first: bool,
         order: np.ndarray,
@@ -283,19 +431,19 @@ if njit is not None:
                 due += 1
         return due
 
-    @_compiled
+    @_inlined
     def _copy_columns(
         b: int, s: np.ndarray, columns: np.ndarray, starts: np.ndarray, feeds: np.ndarray
     ) -> None:
         """Row ``b``'s activations into ``columns``, the batch's activations range by range:
-        each range a block reads as one contiguous ``(batch, width)`` matrix at ``batch *
+        each range ``feeds`` names as one contiguous ``(batch, width)`` matrix at ``batch *
         starts[r]``, the operand of its products."""
         batch = s.shape[0]
         for r in range(feeds.shape[0]):
             if feeds[r]:
-                a0 = starts[r]
-                na = starts[r + 1] - a0
-                base = batch * a0 + b * na
+                a0 = _index(starts[r])
+                na = _index(starts[r + 1]) - a0
+                base = _index(batch) * a0 + _index(b) * na
                 for i in range(na):
                     columns[base + i] = s[b, a0 + i]
 
@@ -315,7 +463,7 @@ if njit is not None:
         what a check or a sweep reads from them is the same to the bit."""
         batch = columns.shape[0] // starts[starts.shape[0] - 1]
         ranges = feeds.shape[0]
-        flags = given.shape[0] - ranges
+        flags = given.shape[0] - _RECORD - 2 * columns.shape[0] - ranges
         for r in range(ranges):
             held = feeds[r] and given[flags + r] == 0.0
             i, stop = batch * starts[r], batch * starts[r + 1]
@@ -326,7 +474,7 @@ if njit is not None:
         for i in range(columns.shape[0], flags):  # the products; those not held are remade
             kept[i] = given[i]
 
-    @_compiled
+    @_inlined
     def _block_product(
         columns: np.ndarray,
         flat: np.ndarray,
@@ -348,7 +496,7 @@ if njit is not None:
         block = flat[offset[k] : offset[k + 1]].reshape(na, nb)
         np.dot(source, block, cache[c0 : c0 + batch * nb].reshape(batch, nb))
 
-    @_compiled
+    @_inlined
     def _gather(
         b: int,
         out: np.ndarray,
@@ -360,16 +508,18 @@ if njit is not None:
         receives: np.ndarray,
     ) -> None:
         """Row ``b`` of the synaptic input of ``pairs``: zero where a block lands, then every
-        block's cached product added in block order."""
+        block's cached product added in block order. Indices that cannot be negative are
+        unsigned here and in ``_copy_columns``: no wraparound is computed per entry, so the
+        loops vectorize, with the same sums."""
         for r in range(receives.shape[0]):
             if receives[r]:
-                for i in range(starts[r], starts[r + 1]):
+                for i in range(_index(starts[r]), _index(starts[r + 1])):
                     out[b, i] = 0.0
         for q in range(pairs.shape[0]):
             k = pairs[q]
-            b0 = starts[pair_post[k]]
-            nb = starts[pair_post[k] + 1] - b0
-            c0 = cache_offset[q] + b * nb
+            b0 = _index(starts[pair_post[k]])
+            nb = _index(starts[pair_post[k] + 1]) - b0
+            c0 = _index(cache_offset[q]) + _index(b) * nb
             for j in range(nb):
                 out[b, b0 + j] += cache[c0 + j]
 
@@ -515,7 +665,87 @@ if njit is not None:
 
     # -- one sweep of one row
 
-    @_compiled
+    @_inlined
+    def _sweep_range(
+        b: int,
+        r: int,
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        synaptic_input: np.ndarray,
+        ahead: np.ndarray,
+        starts: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        change: float,
+        moved: float,
+    ) -> tuple[float, float, bool, bool]:
+        """Range ``r`` of row ``b`` takes a step with no nudge, adaptation or mask on it: the next
+        potentials into ``ahead`` in one loop that vectorizes, then each neuron that moved
+        publishes its activation. The same arithmetic as ``_sweep_row``'s per-neuron loop.
+        Returns the row's running movement, its largest, and whether the range's activation and
+        potential moved."""
+        range_moved = False
+        potential_moved = False
+        first, stop = _index(starts[r]), _index(starts[r + 1])
+        for i in range(first, stop):
+            x = v[b, i]
+            ahead[b, i] = x + dt * (synaptic_input[b, i] + standing[b, i] - x)
+        for i in range(first, stop):
+            vn = ahead[b, i]
+            if vn != v[b, i]:  # a neuron whose potential did not move publishes what it did
+                potential_moved = True
+                v[b, i] = vn
+                sn = _act_scalar(vn, slope, threshold, rest, leak)
+                d = abs(sn - s[b, i])
+                change += d
+                if d > 0.0:
+                    range_moved = True
+                    if d > moved:
+                        moved = d
+                s[b, i] = sn
+        return change, moved, range_moved, potential_moved
+
+    @_inlined
+    def _sweep_row_plain(
+        b: int,
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        synaptic_input: np.ndarray,
+        ahead: np.ndarray,
+        starts: np.ndarray,
+        frozen: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        row_range: np.ndarray,
+        row_potential: np.ndarray,
+        activity_change: np.ndarray,
+    ) -> float:
+        """``_sweep_row`` with no nudge, no adaptation and no mask, the free settle."""
+        ranges = starts.shape[0] - 1
+        moved = 0.0
+        change = activity_change[b]
+        for r in range(ranges):
+            range_moved = False
+            potential_moved = False
+            if not frozen[r]:
+                change, moved, range_moved, potential_moved = _sweep_range(
+                    b, r, v, s, standing, synaptic_input, ahead, starts, dt, slope, threshold,
+                    rest, leak, change, moved,
+                )
+            row_range[b, r] = range_moved
+            row_potential[b, r] = potential_moved
+        activity_change[b] = change
+        return moved
+
+    @_inlined
     def _sweep_row(
         b: int,
         v: np.ndarray,
@@ -527,14 +757,9 @@ if njit is not None:
         frozen: np.ndarray,
         keep: np.ndarray,
         masked: bool,
-        dt: float,
-        slope: float,
-        threshold: float,
-        rest: float,
-        leak: float,
+        rule: tuple[float, float, float, float, float],
         has_adapt: bool,
-        adapt_strength: float,
-        adapt_tau: float,
+        adapt: tuple[float, float],
         has_nudge: bool,
         target: np.ndarray,
         nmask: np.ndarray,
@@ -547,15 +772,20 @@ if njit is not None:
         weight: np.ndarray,
         anchor: np.ndarray,
         anchor_gain: np.ndarray,
-        p: np.ndarray,
-        zmax: np.ndarray,
-        total: np.ndarray,
-        moved_range: np.ndarray,
-        moved_potential: np.ndarray,
+        scratch: tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray],
+        row_range: np.ndarray,
+        row_potential: np.ndarray,
         activity_change: np.ndarray,
     ) -> float:
         """Every neuron of row ``b`` takes one step; returns the row's largest movement and
-        marks the ranges whose potential (``moved_potential``) and activation moved."""
+        marks the ranges whose potential (``row_potential``) and activation (``row_range``)
+        moved. ``rule`` is ``(dt, slope, threshold, rest, leak)``, ``adapt`` ``(strength, time
+        constant)`` and ``scratch`` every row's softmax arrays ``(p, zmax, total)``, the next
+        potentials ``ahead`` and ``quiet``, the ranges nothing but synapses and the drive reach
+        (``_sweep_range``): tuples keep the call within what Numba can inline."""
+        dt, slope, threshold, rest, leak = rule
+        adapt_strength, adapt_tau = adapt
+        p, zmax, total, ahead, quiet = scratch
         ranges = starts.shape[0] - 1
         moved = 0.0
         # the row's running total and range flags live in registers and are written once: rows
@@ -563,11 +793,16 @@ if njit is not None:
         change = activity_change[b]
         # the nudge on this row, from the activations before the step: one softmax per group
         if has_nudge and softmax_t[0] > 0.0:
-            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p, zmax, total)
+            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p[b], zmax[b], total[b])
         for r in range(ranges):
             range_moved = False
             potential_moved = False
-            for i in range(starts[r], starts[r] if frozen[r] else starts[r + 1]):
+            if quiet[r] and not frozen[r]:
+                change, moved, range_moved, potential_moved = _sweep_range(
+                    b, r, v, s, standing, synaptic_input, ahead, starts, dt, slope, threshold,
+                    rest, leak, change, moved,
+                )
+            for i in range(starts[r], starts[r] if frozen[r] or quiet[r] else starts[r + 1]):
                 tot = synaptic_input[b, i] + standing[b, i]
                 if has_adapt:
                     tot -= adapt_strength * a[b, i]
@@ -578,7 +813,7 @@ if njit is not None:
                 tot -= v[b, i]
                 vn = v[b, i] + dt * tot
                 if has_nudge and softmax_t[0] > 0.0 and nmask[i] > 0.0:
-                    vn += dt * beta * weight[b] * (target[b, i] - p[position[i]]) * nmask[i]
+                    vn += dt * beta * weight[b] * (target[b, i] - p[b, position[i]]) * nmask[i]
                 if masked:
                     vn *= keep[b, i]
                 if vn != v[b, i]:  # a neuron whose potential did not move publishes what it did
@@ -596,8 +831,8 @@ if njit is not None:
                     s[b, i] = sn
                 if has_adapt:
                     a[b, i] = a[b, i] + (s[b, i] - a[b, i]) / adapt_tau
-            moved_range[r] = range_moved
-            moved_potential[r] = potential_moved
+            row_range[b, r] = range_moved
+            row_potential[b, r] = potential_moved
         activity_change[b] = change
         return moved
 
@@ -721,7 +956,7 @@ if njit is not None:
         activity_change[b] = change
         return moved
 
-    @_compiled
+    @_inlined
     def _close_sweep(
         t: int,
         row_moved: np.ndarray,
@@ -749,6 +984,44 @@ if njit is not None:
             if freezable[r] and not potential_moved and t > 0:
                 frozen[r] = True
         return moved
+
+    @_unreferenced
+    def _free_rows(
+        first: int,
+        stop: int,
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        synaptic_input: np.ndarray,
+        ahead: np.ndarray,
+        cache: np.ndarray,
+        cache_offset: np.ndarray,
+        pairs: np.ndarray,
+        pair_post: np.ndarray,
+        starts: np.ndarray,
+        receives: np.ndarray,
+        frozen: np.ndarray,
+        moving: np.ndarray,
+        columns: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        row_moved: np.ndarray,
+        row_range: np.ndarray,
+        row_potential: np.ndarray,
+        activity_change: np.ndarray,
+    ) -> None:
+        """The rows ``first`` to ``stop`` of a free sweep: no nudge, adaptation, mask or
+        compartment. Each row's input, its step and its activations into ``columns``."""
+        for b in range(first, stop):
+            _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts, receives)
+            row_moved[b] = _sweep_row_plain(
+                b, v, s, standing, synaptic_input, ahead, starts, frozen, dt, slope, threshold,
+                rest, leak, row_range, row_potential, activity_change,
+            )
+            _copy_columns(b, s, columns, starts, moving)
 
     def _settle_rows(
         v: np.ndarray,
@@ -799,11 +1072,12 @@ if njit is not None:
         use_tolerance: bool,
         given: np.ndarray,
         has_given: bool,
+        on_threads: bool = False,
     ) -> tuple[int, np.ndarray, np.ndarray]:
         """The settle: per sweep the block products of the batch, then every row's step (the
-        rows in parallel in the parallel build), then the batch-wide reading and stop. The
-        first sweep takes the given products (``has_given``: what the starting state keeps,
-        laid out as ``_kept_room``) that hold for its activations. Returns the sweeps taken,
+        rows in parallel in the parallel build, ``on_threads``), then the batch-wide reading and
+        stop. The first sweep takes the given products (``has_given``: what the starting state
+        keeps, laid out as ``_kept_room``) that hold for its activations. Returns the sweeps taken,
         the activity change, and what the last state keeps: its activations, the cached
         products, and the ranges whose products its last sweep left stale."""
         batch, n = v.shape
@@ -826,6 +1100,7 @@ if njit is not None:
         if has_given:  # the first sweep makes only the products the given ones do not hold for
             _reusable(columns, kept, given, starts, feeds, moved_range)
         synaptic_input = np.zeros((batch, n))
+        ahead = np.empty((batch, n))
         raw = np.zeros((batch, n if has_apical else 1))
         basal = np.empty((batch, n if has_apical else 1))
         gain = np.empty((batch, max(pool_starts.shape[0] - 1, 1)))
@@ -840,6 +1115,19 @@ if njit is not None:
         row_range = np.zeros((batch, ranges), dtype=np.bool_)
         row_potential = np.zeros((batch, ranges), dtype=np.bool_)
         frozen = np.zeros(ranges, dtype=np.bool_)  # a range that can never change again
+        moving = np.empty(ranges, dtype=np.bool_)  # a range some block reads that can still change
+        plain = not (has_nudge or has_adapt or masked or has_apical)
+        # the ranges with no neuron a nudge or an anchor reaches, under no adaptation and no mask
+        quiet = np.zeros(ranges, dtype=np.bool_)
+        if not (has_adapt or masked or plain):
+            for r in range(ranges):
+                quiet[r] = True
+                for i in range(starts[r], starts[r + 1]):
+                    if nmask[i] > 0.0 or anchor_gain[i] > 0.0:
+                        quiet[r] = False
+        rule = (dt, slope, threshold, rest, leak)
+        adapt = (adapt_strength, adapt_tau)
+        scratch = (p, zmax, total, ahead, quiet)
         taken = 0
         for t in range(steps):
             # the block products of the batch, distinct blocks on distinct threads
@@ -854,30 +1142,47 @@ if njit is not None:
                     _block_product(columns, flat_apical, apical_pairs[q - basal_count], pair_pre,
                                    pair_post, starts, offset, cache_up,
                                    cache_up_offset[q - basal_count])
+            for r in range(ranges):
+                moving[r] = feeds[r] and not frozen[r]
             # every row's step, the rows on distinct threads
-            for b in prange(batch):
-                _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts, receives)
-                if has_apical:
-                    _gather(b, raw, cache_up, cache_up_offset, apical_pairs, pair_post, starts,
-                            receives_up)
-                    row_moved[b] = _sweep_row_apical(
-                        b, v, a, s, standing, synaptic_input, raw, starts, frozen, keep, masked,
-                        dt, slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau,
-                        has_nudge, target, nmask, group, gid, ngroups, position, beta, softmax_t,
-                        weight, anchor, anchor_gain, p[b], zmax[b], total[b], pool_of,
-                        pool_index, pool_starts, pool_run, fraction, floor2, tiny, held, has_held,
-                        basal[b], gain[b], values[b], frames[b], left[b], row_range[b],
-                        row_potential[b], activity_change,
+            if plain and not on_threads:
+                _free_rows(
+                    0, batch, v, s, standing, synaptic_input, ahead, cache, cache_offset, pairs,
+                    pair_post, starts, receives, frozen, moving, columns, dt, slope, threshold,
+                    rest, leak, row_moved, row_range, row_potential, activity_change,
+                )
+            elif plain:
+                for b in prange(batch):
+                    _free_rows(
+                        b, b + 1, v, s, standing, synaptic_input, ahead, cache, cache_offset,
+                        pairs, pair_post, starts, receives, frozen, moving, columns, dt, slope,
+                        threshold, rest, leak, row_moved, row_range, row_potential,
+                        activity_change,
                     )
-                else:
-                    row_moved[b] = _sweep_row(
-                        b, v, a, s, standing, synaptic_input, starts, frozen, keep, masked, dt,
-                        slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau,
-                        has_nudge, target, nmask, group, gid, ngroups, position, beta, softmax_t,
-                        weight, anchor, anchor_gain, p[b], zmax[b], total[b], row_range[b],
-                        row_potential[b], activity_change,
-                    )
-                _copy_columns(b, s, columns, starts, feeds)  # what the next products read
+            else:
+                for b in prange(batch):
+                    _gather(b, synaptic_input, cache, cache_offset, pairs, pair_post, starts,
+                            receives)
+                    if has_apical:
+                        _gather(b, raw, cache_up, cache_up_offset, apical_pairs, pair_post, starts,
+                                receives_up)
+                        row_moved[b] = _sweep_row_apical(
+                            b, v, a, s, standing, synaptic_input, raw, starts, frozen, keep, masked,
+                            dt, slope, threshold, rest, leak, has_adapt, adapt_strength, adapt_tau,
+                            has_nudge, target, nmask, group, gid, ngroups, position, beta,
+                            softmax_t, weight, anchor, anchor_gain, p[b], zmax[b], total[b],
+                            pool_of, pool_index, pool_starts, pool_run, fraction, floor2, tiny,
+                            held, has_held, basal[b], gain[b], values[b], frames[b], left[b],
+                            row_range[b], row_potential[b], activity_change,
+                        )
+                    else:
+                        row_moved[b] = _sweep_row(
+                            b, v, a, s, standing, synaptic_input, starts, frozen, keep, masked,
+                            rule, has_adapt, adapt, has_nudge, target, nmask, group, gid, ngroups,
+                            position, beta, softmax_t, weight, anchor, anchor_gain, scratch,
+                            row_range, row_potential, activity_change,
+                        )
+                    _copy_columns(b, s, columns, starts, moving)  # what the next products read
             moved = _close_sweep(t, row_moved, row_range, row_potential, moved_range, freezable,
                                  frozen)
             taken = t + 1
@@ -885,13 +1190,14 @@ if njit is not None:
                 break
         for r in range(ranges):
             stale[r] = 1.0 if moved_range[r] else 0.0
+        _keep_published(v, s, kept, masked, slope, threshold, rest, leak)
         return taken, activity_change, kept
 
     _kernel, _kernel_parallel = _rows_builds(_settle_rows)
 
     # -- the residual: one transport (the products kept where they hold), then each row's error
 
-    @_compiled
+    @_inlined
     def _residual_row(
         b: int,
         v: np.ndarray,
@@ -921,10 +1227,11 @@ if njit is not None:
         total: np.ndarray,
     ) -> float:
         """Row ``b``'s largest equation error at the published activations ``s``: the terms the
-        settle adds, without a step; infinity where it is not finite."""
+        settle adds, without a step; infinity where it is not finite. ``p``, ``zmax`` and
+        ``total`` are every row's softmax scratch."""
         n = v.shape[1]
         if has_nudge and softmax_t[0] > 0.0:
-            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p, zmax, total)
+            _softmax_groups(s[b], group, gid, ngroups, softmax_t, p[b], zmax[b], total[b])
         worst = 0.0
         finite = True
         for i in range(n):
@@ -935,7 +1242,7 @@ if njit is not None:
                 tot += anchor_gain[i] * (anchor[b, i] - s[b, i])
             if has_nudge and nmask[i] > 0.0:
                 if softmax_t[0] > 0.0:
-                    tot += beta * weight[b] * (target[b, i] - p[position[i]]) * nmask[i]
+                    tot += beta * weight[b] * (target[b, i] - p[b, position[i]]) * nmask[i]
                 else:
                     tot += beta * weight[b] * nmask[i] * (target[b, i] - s[b, i])
             k_ = keep[b, i] if masked else 1.0
@@ -1045,6 +1352,7 @@ if njit is not None:
     def _residual_rows(
         v: np.ndarray,
         a: np.ndarray,
+        s: np.ndarray,
         standing: np.ndarray,
         flat: np.ndarray,
         pairs: np.ndarray,
@@ -1086,36 +1394,44 @@ if njit is not None:
         out: np.ndarray,
         given: np.ndarray,
         has_given: bool,
+        in_place: bool,
     ) -> np.ndarray:
-        """The fixed-point equation error of every row, in one compiled call: the activations
-        of ``v`` under the mask, one block transport, then each row's error into ``out``. The
-        transport takes the given products (``has_given``: what the state keeps, laid out as
-        ``_kept_room``) that hold for its activations and makes the rest. Returns what the
-        state keeps after the check: its activations and its products, every one current."""
+        """The fixed-point equation error of every row, in one compiled call: one block
+        transport at the activations ``s`` of ``v`` under the mask, then each row's error into
+        ``out``. The transport takes the given products (``has_given``: what the state keeps,
+        laid out as ``_kept_room``) that hold for its activations and makes the rest; with
+        ``in_place`` the given array holds these very activations, and its stale products are
+        made in it, which leaves it true for every state that holds it. Returns what the state
+        keeps after the check: its activations and its products, every one current."""
         batch, n = v.shape
         ranges = starts.shape[0] - 1
-        s = np.empty((batch, n))
-        for b in prange(batch):
-            _activation(v[b], slope, threshold, rest, leak, s[b])
-            if masked:
-                for i in range(n):
-                    s[b, i] *= keep[b, i]
         group = np.flatnonzero(nmask > 0.0)
         position = np.full(n, -1, dtype=np.int64)
         for k in range(group.shape[0]):
             position[group[k]] = k
         cache_offset, receives = _product_cache(batch, pairs, pair_post, starts)
         cache_up_offset, receives_up = _product_cache(batch, apical_pairs, pair_post, starts)
-        kept, columns, cache, cache_up, stale = _kept_room(
-            batch * n, int(cache_offset[-1]), int(cache_up_offset[-1]), ranges
-        )
         order, feeds = _task_order(pairs, apical_pairs, pair_pre, pair_post, starts)
         basal_count = pairs.shape[0]
-        for b in prange(batch):
-            _copy_columns(b, s, columns, starts, feeds)
         moved_range = np.ones(ranges, dtype=np.bool_)
-        if has_given:
-            _reusable(columns, kept, given, starts, feeds, moved_range)
+        if in_place:
+            size = int(cache_offset[-1])
+            kept = given
+            up, flags = batch * n + size, batch * n + size + int(cache_up_offset[-1])
+            cache, cache_up = kept[batch * n:up], kept[up:flags]
+            stale = kept[flags:flags + ranges]
+            columns = kept[:batch * n]
+            for r in range(ranges):
+                moved_range[r] = not (feeds[r] and stale[r] == 0.0)
+        else:
+            kept, columns, cache, cache_up, stale = _kept_room(
+                batch * n, int(cache_offset[-1]), int(cache_up_offset[-1]), ranges
+            )
+            for b in prange(batch):
+                _copy_columns(b, s, columns, starts, feeds)
+            if has_given:
+                _reusable(columns, kept, given, starts, feeds, moved_range)
+            _keep_published(v, s, kept, masked, slope, threshold, rest, leak)
         stale[:] = 0.0
         for j in prange(order.shape[0]):
             q = order[j]
@@ -1153,11 +1469,342 @@ if njit is not None:
                 out[b] = _residual_row(
                     b, v, a, s, standing, synaptic_input, keep, masked, dt, has_adapt,
                     adapt_strength, has_nudge, target, nmask, group, gid, ngroups, position,
-                    beta, softmax_t, weight, anchor, anchor_gain, p[b], zmax[b], total[b],
+                    beta, softmax_t, weight, anchor, anchor_gain, p, zmax, total,
                 )
         return kept
 
     _residual_kernel, _residual_kernel_parallel = _rows_builds(_residual_rows)
+    # the serial builds as a solve calls them
+    _sweeps, _check = _kernel, _residual_kernel
+
+    @_compiled
+    def _solve_rows(
+        v: np.ndarray,
+        a: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        flat: np.ndarray,
+        pairs: np.ndarray,
+        flat_apical: np.ndarray,
+        apical_pairs: np.ndarray,
+        starts: np.ndarray,
+        pair_pre: np.ndarray,
+        pair_post: np.ndarray,
+        offset: np.ndarray,
+        freezable: np.ndarray,
+        keep: np.ndarray,
+        dt: float,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        strength: float,
+        tau: float,
+        target: np.ndarray,
+        nmask: np.ndarray,
+        gid: np.ndarray,
+        ngroups: int,
+        beta: float,
+        softmax_t: np.ndarray,
+        weight: np.ndarray,
+        anchor: np.ndarray,
+        anchor_gain: np.ndarray,
+        pool_of: np.ndarray,
+        pool_index: np.ndarray,
+        pool_starts: np.ndarray,
+        pool_run: np.ndarray,
+        held: np.ndarray,
+        budget: int,
+        chunk: int,
+        tolerance: float,
+        out: np.ndarray,
+        given: np.ndarray,
+        has_given: bool,
+        in_place: bool,
+    ) -> tuple[int, int, int, np.ndarray, np.ndarray]:
+        """A free solve of a state whose activations ``s`` are published, in one compiled call:
+        the check, then chunks of sweeps and their checks while a row is over ``tolerance``
+        and sweeps are left, as ``Brain._equilibrate_local`` makes them one launch each, in place
+        on ``v``, ``a`` and ``s``. ``out`` ends on each row's error. Returns the sweeps, the
+        checks, the last chunk's sweeps and activity change, and what the state keeps."""
+        batch = v.shape[0]
+        # variables and not the constants: to the compiler a constant argument is a type of its
+        # own, and the kernels would compile again for the calls a launch makes
+        off, on = batch < 0, batch >= 0
+        kept = _check(
+            v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
+            pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
+            off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
+            off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off, out,
+            given, has_given, in_place,
+        )
+        used, checks, taken = 0, 1, 0
+        change = np.zeros(batch)
+        while used < budget:
+            qualified = True
+            finite = True
+            for b in range(batch):
+                qualified = qualified and out[b] <= tolerance
+                finite = finite and out[b] <= 1.7976931348623157e308
+            if qualified:
+                break
+            if not finite and not (rows_finite(v) and rows_finite(s) and rows_finite(a)):
+                break  # a divergent state is no warm start for another chunk
+            taken, change, kept = _sweeps(
+                v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
+                pair_post, offset, freezable, keep, off, dt, slope, threshold, rest, leak,
+                off, strength, tau, off, target, nmask, gid, ngroups, beta, softmax_t,
+                weight, anchor, anchor_gain, off, pool_of, pool_index, pool_starts, pool_run,
+                1.0, 1.0, 0.0, held, off, min(chunk, budget - used), 0.0, off, kept, on,
+            )
+            used += taken
+            kept = _check(
+                v, a, s, standing, flat, pairs, flat_apical, apical_pairs, starts, pair_pre,
+                pair_post, offset, keep, off, dt, slope, threshold, rest, leak, off, strength,
+                off, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain,
+                off, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, held, off,
+                out, kept, on, on,
+            )
+            checks += 1
+        return used, checks, taken, change, kept
+
+
+if njit is not None:
+
+    @_inlined
+    def _act_plain(
+        x: float, slope: float, threshold: float, rest: float, up: float, down: float
+    ) -> float:
+        """The activation in plain arithmetic a loop can vectorize: the exponential as a power
+        series at 1/256 of the argument, squared eight times, the argument held within +-36,
+        where the sigmoid has saturated. Within about 1e-14 of the rule's."""
+        z = -slope * (x - threshold)
+        z = 36.0 if z > 36.0 else (-36.0 if z < -36.0 else z)
+        y = z * 0.00390625
+        e = 1.0 + y * (1.0 + y * (0.5 + y * (0.16666666666666666 + y * (
+            0.041666666666666664 + y * (0.008333333333333333 + y * (
+                0.001388888888888889 + y * 0.0001984126984126984))))))
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        e = e * e
+        q = 1.0 / (1.0 + e) - rest
+        return q * up if q > 0.0 else q * down
+
+    @_inlined
+    def _row_home(
+        home: int, b: int, batch: int, work_v: np.ndarray, v: np.ndarray, s: np.ndarray,
+        columns: np.ndarray, starts: np.ndarray,
+    ) -> None:
+        """Working row ``b`` of ``_fast_solve`` into row ``home`` of the state."""
+        width = _index(starts[starts.shape[0] - 1])
+        for i in range(width):
+            v[home, i] = work_v[b, i]
+        for r in range(starts.shape[0] - 1):
+            a0 = _index(starts[r])
+            wr = _index(starts[r + 1]) - a0
+            at = _index(batch) * a0 + _index(b) * wr
+            for i in range(wr):
+                s[home, a0 + i] = columns[at + i]
+
+    @_vectorized
+    def _fast_solve(
+        v: np.ndarray,
+        s: np.ndarray,
+        standing: np.ndarray,
+        flat: np.ndarray,
+        starts: np.ndarray,
+        pair_pre: np.ndarray,
+        pair_post: np.ndarray,
+        offset: np.ndarray,
+        slope: float,
+        threshold: float,
+        rest: float,
+        leak: float,
+        budget: int,
+        chunk: int,
+        tolerance: float,
+        settled: float,
+        out: np.ndarray,
+    ) -> tuple[int, int, int, int, np.ndarray]:
+        """A free solve at dt = 1 and no mask, in the ordinary order: every range reads the sweep
+        before. A row stops at the check it is within ``settled``, or within ``tolerance`` once
+        ``_FAST_PATIENCE`` sweeps are spent. Rows that stop leave
+        the working arrays, so the block products cover the rows still settling. ``v``, ``s``
+        and ``out`` end on every row's state and error. Returns the sweeps, the checks, the last
+        chunk's sweeps, the sweeps over the rows and what the state keeps: its publication,
+        every product stale."""
+        batch, n = v.shape
+        ranges = starts.shape[0] - 1
+        pairs = pair_pre.shape[0]
+        up = 1.0 / (1.0 - rest)
+        down = leak / rest if rest > 0.0 else 0.0
+        fed = np.zeros(ranges, dtype=np.bool_)
+        widest = 1
+        for q in range(pairs):
+            fed[pair_post[q]] = True
+            widest = max(widest, starts[pair_post[q] + 1] - starts[pair_post[q]])
+        total = np.empty((batch, n))
+        work_v = np.empty((batch, n))
+        work_standing = np.empty((batch, n))
+        columns = np.empty(batch * n)
+        scratch = np.empty(batch * widest)
+        rows = np.arange(batch)
+        m = batch
+        un = _index(n)
+        for b in range(batch):
+            for i in range(un):
+                work_v[b, i] = v[b, i]
+                work_standing[b, i] = standing[b, i]
+                total[b, i] = 0.0
+            for r in range(ranges):
+                a0 = _index(starts[r])
+                a1 = _index(starts[r + 1])
+                at = _index(batch) * a0 + _index(b) * (a1 - a0)
+                if fed[r]:
+                    for i in range(a1 - a0):
+                        columns[at + i] = s[b, a0 + i]
+                else:
+                    for i in range(a1 - a0):
+                        x = work_standing[b, a0 + i]
+                        work_v[b, a0 + i] = x
+                        columns[at + i] = _act_plain(x, slope, threshold, rest, up, down)
+        for q in range(pairs):
+            a, c = pair_pre[q], pair_post[q]
+            if not fed[a]:
+                a0, a1, b0, b1 = starts[a], starts[a + 1], starts[c], starts[c + 1]
+                nb = b1 - b0
+                product = scratch[: batch * nb].reshape(batch, nb)
+                np.dot(columns[batch * a0 : batch * a1].reshape(batch, a1 - a0),
+                       flat[offset[q] : offset[q + 1]].reshape(a1 - a0, nb), product)
+                ub0, unb = _index(b0), _index(nb)
+                for b in range(batch):
+                    for i in range(unb):
+                        total[b, ub0 + i] += product[b, i]
+        used, checks, taken, row_sweeps = 0, 0, 0, 0
+        while True:
+            # the check at the rows still settling: the rows' errors, each row that meets the
+            # tolerance leaves
+            for b in range(m):
+                out[rows[b]] = 0.0
+            for r in range(ranges):
+                if not fed[r]:
+                    continue
+                b0, b1 = starts[r], starts[r + 1]
+                nb = b1 - b0
+                ub0, unb = _index(b0), _index(nb)
+                check = np.empty((m, nb))
+                for b in range(m):
+                    for i in range(unb):
+                        check[b, i] = (
+                            total[b, ub0 + i] + work_standing[b, ub0 + i] - work_v[b, ub0 + i]
+                        )
+                for q in range(pairs):
+                    a = pair_pre[q]
+                    if pair_post[q] == r and fed[a]:
+                        a0, a1 = starts[a], starts[a + 1]
+                        product = scratch[: m * nb].reshape(m, nb)
+                        source = columns[batch * a0 : batch * a0 + m * (a1 - a0)]
+                        np.dot(source.reshape(m, a1 - a0),
+                               flat[offset[q] : offset[q + 1]].reshape(a1 - a0, nb), product)
+                        for b in range(m):
+                            for i in range(unb):
+                                check[b, i] += product[b, i]
+                for b in range(m):
+                    worst = out[rows[b]]
+                    for i in range(unb):
+                        d = abs(check[b, i])
+                        if d > worst or d != d:
+                            worst = d
+                    out[rows[b]] = worst
+            checks += 1
+            b = 0
+            while b < m:
+                error = out[rows[b]]
+                if (
+                    error <= settled
+                    or (error <= tolerance and used >= _FAST_PATIENCE)
+                    or not (error <= 1e300)
+                ):
+                    # this row is done: its state goes home, the last active row takes its place
+                    home = rows[b]
+                    if not (out[home] <= 1e300):
+                        out[home] = np.inf
+                    _row_home(home, b, batch, work_v, v, s, columns, starts)
+                    m -= 1
+                    if b != m:
+                        for r in range(ranges):
+                            a0 = _index(starts[r])
+                            wr = _index(starts[r + 1]) - a0
+                            at = _index(batch) * a0 + _index(b) * wr
+                            at2 = _index(batch) * a0 + _index(m) * wr
+                            for i in range(wr):
+                                columns[at + i] = columns[at2 + i]
+                        for i in range(un):
+                            work_v[b, i] = work_v[m, i]
+                            work_standing[b, i] = work_standing[m, i]
+                            total[b, i] = total[m, i]
+                        rows[b] = rows[m]
+                else:
+                    b += 1
+            if m == 0 or used >= budget:
+                break
+            taken = min(chunk, budget - used)
+            for _ in range(taken):
+                for r in range(ranges):
+                    if not fed[r]:
+                        continue
+                    b0, b1 = starts[r], starts[r + 1]
+                    nb = b1 - b0
+                    ub0, unb = _index(b0), _index(nb)
+                    for b in range(m):
+                        for i in range(unb):
+                            work_v[b, ub0 + i] = total[b, ub0 + i] + work_standing[b, ub0 + i]
+                    for q in range(pairs):
+                        a = pair_pre[q]
+                        if pair_post[q] == r and fed[a]:
+                            a0, a1 = starts[a], starts[a + 1]
+                            product = scratch[: m * nb].reshape(m, nb)
+                            source = columns[batch * a0 : batch * a0 + m * (a1 - a0)]
+                            np.dot(source.reshape(m, a1 - a0),
+                                   flat[offset[q] : offset[q + 1]].reshape(a1 - a0, nb), product)
+                            for b in range(m):
+                                for i in range(unb):
+                                    work_v[b, ub0 + i] += product[b, i]
+                for r in range(ranges):  # the next potentials are in; now the activations
+                    if not fed[r]:
+                        continue
+                    b0, b1 = starts[r], starts[r + 1]
+                    nb = b1 - b0
+                    ub0, unb = _index(b0), _index(nb)
+                    base = _index(batch) * ub0
+                    for b in range(m):
+                        at = base + _index(b) * unb
+                        for i in range(unb):
+                            columns[at + i] = _act_plain(
+                                work_v[b, ub0 + i], slope, threshold, rest, up, down
+                            )
+            used += taken
+            row_sweeps += taken * m
+        for b in range(m):  # the budget ran out: the rows still settling go home as they are
+            _row_home(rows[b], b, batch, work_v, v, s, columns, starts)
+        # what the state keeps: its publication, every product stale
+        feeds = np.zeros(ranges, dtype=np.bool_)
+        size = 0
+        for q in range(pairs):
+            feeds[pair_pre[q]] = True
+            size += batch * (starts[pair_post[q] + 1] - starts[pair_post[q]])
+        kept, kept_columns, _, _, stale = _kept_room(batch * n, size, 0, ranges)
+        for b in range(batch):
+            _copy_columns(b, s, kept_columns, starts, feeds)
+        for r in range(ranges):
+            stale[r] = 1.0
+        _keep_published(v, s, kept, False, slope, threshold, rest, leak)
+        return used, checks, taken, row_sweeps, kept
 
 
 @functools.lru_cache(maxsize=32)
@@ -1302,9 +1949,10 @@ def _compartment(
 
 # What a settled or checked state keeps of its transport (``BrainState``), so a check of it or
 # a settle from it makes only the block products of the ranges whose activations differ from
-# the ones they were made from: ``(blocks, apical blocks, rows, kept)``, weak references to the
-# flat blocks the products were made with (they keep no blocks alive), the batch, and the
-# kernels' array of the activations range by range, the products and the stale ranges
+# the ones they were made from, and publishes its potentials' activations by reading them:
+# ``(blocks, apical blocks, rows, kept)``, weak references to the flat blocks the products were
+# made with (they keep no blocks alive), the batch, and the kernels' array of the activations
+# range by range, the products, the stale ranges, the potentials and activations it ended on
 # (``_kept_room``)
 Products = tuple[Any, Any, int, np.ndarray]
 
@@ -1325,6 +1973,11 @@ def _given(
     if (flat if made_up is made else made_up()) is not flat_apical:
         return _NO_PRODUCTS
     return kept, True
+
+
+def _held(products: Products | None) -> tuple[np.ndarray, bool]:
+    """What a state keeps of its publication, whichever blocks its products were made with."""
+    return _NO_PRODUCTS if products is None else (products[3], True)
 
 
 def _rule(neuron_model: NeuronModel) -> tuple[Any, ...]:
@@ -1373,7 +2026,7 @@ def fused_settle(
     """
     assert njit is not None
     batch, n = v.shape
-    standing = np.ascontiguousarray(drive + bias)
+    standing = _standing(np.ascontiguousarray(drive), bias)
     if keep is None:
         masked = False
         keep = _NO_MASK
@@ -1382,15 +2035,8 @@ def fused_settle(
         keep = np.ascontiguousarray(np.broadcast_to(np.asarray(keep, float), (batch, n)))
         masked = bool((keep != 1.0).any())
     dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
-    if not v.any():  # from rest every neuron publishes the same thing
-        row = np.empty(n)
-        _activation(np.zeros(n), slope, threshold, rest, leak, row)
-        s = np.empty((batch, n))
-        s[:] = row
-    else:  # row by row, in the state's own memory order
-        s = np.empty_like(v)
-        for b in range(batch):
-            _activation(v[b], slope, threshold, rest, leak, s[b])
+    s = np.empty_like(v)  # the state's own memory order
+    _publish(v, s, *_held(products), slope, threshold, rest, leak)
     if masked:
         s *= keep
     if steps == 0:  # no sweep: the activations are published and nothing else is read
@@ -1463,6 +2109,92 @@ def fused_settle(
     return s, taken, activity_change, _kept(flat, flat_apical, batch, kept)
 
 
+def fused_solve(
+    v: np.ndarray,
+    a: np.ndarray,
+    s: np.ndarray,
+    drive: np.ndarray,
+    bias: np.ndarray,
+    layout: Layout,
+    flat: np.ndarray,
+    neuron_model: NeuronModel,
+    budget: int,
+    chunk: int,
+    tolerance: float,
+    products: Products | None,
+) -> tuple[np.ndarray, int, int, int, np.ndarray, Products] | None:
+    """A free solve without a mask, a nudge or a compartment in one compiled call, in place on a
+    C-ordered state of published activations ``s``: what ``Brain._equilibrate_local`` makes of the
+    state in launches of one settle or one check. Returns each row's error, the sweeps, the
+    checks, the last chunk's sweeps and activity change and the products; None for adaptation,
+    rows that settle on Numba's threads, or a state in another memory order, which the launches
+    serve."""
+    assert njit is not None
+    batch, n = v.shape
+    if (
+        neuron_model.adaptation is not None
+        or _in_parallel(batch, n)
+        or not (v.flags.c_contiguous and a.flags.c_contiguous)
+    ):
+        return None
+    dt, slope, threshold, rest, leak, strength, tau = _rule(neuron_model)
+    target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
+        None, batch, n
+    )
+    compartment = _compartment(None, layout, flat, None, batch, n)
+    pairs, flat_apical, apical_pairs = compartment[:3]
+    pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
+    held = compartment[11]
+    freezable = ~_fed_ranges(layout)
+    # the check's activations are the state's own: published under no mask, they are the rule's
+    given, has_given = _given(products, flat, flat_apical, batch)
+    in_place = has_given and _publish(v, s, *_held(products), slope, threshold, rest, leak)
+    out = np.empty(batch)
+    used, checks, taken, change, kept = _solve_rows(
+        v, a, s, _standing(np.ascontiguousarray(drive), bias), flat, pairs, flat_apical,
+        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
+        _NO_MASK, dt, slope, threshold, rest, leak, strength, tau, target, nmask, gid, ngroups,
+        beta, softmax_t, weight, anchor, anchor_gain, pool_of, pool_index, pool_starts, pool_run,
+        held, budget, chunk, float(tolerance), out, given, has_given, in_place,
+    )
+    return out, used, checks, taken, change, _kept(flat, flat_apical, batch, kept)
+
+
+def fused_fast_solve(
+    v: np.ndarray,
+    a: np.ndarray,
+    s: np.ndarray,
+    drive: np.ndarray,
+    bias: np.ndarray,
+    layout: Layout,
+    flat: np.ndarray,
+    neuron_model: NeuronModel,
+    budget: int,
+    chunk: int,
+    tolerance: float,
+) -> tuple[np.ndarray, int, int, int, int, Products] | None:
+    """``Brain.equilibrate``'s ``fast`` solve in place on a C-ordered state of published activations
+    (``_fast_solve``). Returns each row's error, the sweeps, the checks, the last chunk's sweeps,
+    the sweeps over the rows and what the state keeps; None under adaptation or another ``dt``,
+    which take the ordinary solve."""
+    assert njit is not None
+    batch, n = v.shape
+    if (
+        neuron_model.adaptation is not None
+        or neuron_model.dt != 1.0
+        or not (v.flags.c_contiguous and s.flags.c_contiguous)
+    ):
+        return None
+    _, slope, threshold, rest, leak, _, _ = _rule(neuron_model)
+    out = np.empty(batch)
+    used, checks, taken, row_sweeps, kept = _fast_solve(
+        v, s, _standing(np.ascontiguousarray(drive), bias), flat, layout.starts, layout.pair_pre,
+        layout.pair_post, layout.offset, slope, threshold, rest, leak, budget, chunk,
+        float(tolerance), min(float(tolerance), _FAST_SETTLED), out,
+    )
+    return out, used, checks, taken, row_sweeps, _kept(flat, flat, batch, kept)
+
+
 def fused_residual(
     v: np.ndarray,
     a: np.ndarray,
@@ -1502,14 +2234,21 @@ def fused_residual(
         apical, layout, flat, nudge, batch, n
     )
     out = np.empty(batch)
+    v = np.ascontiguousarray(v, dtype=float)
+    s = np.empty_like(v)
+    held = _publish(v, s, *_held(products), slope, threshold, rest, leak)
+    if masked:
+        s *= keep
+    given, has_given = _given(products, flat, flat_apical, batch)
     kept = _launch(
         _residual_kernel,
         _residual_kernel_parallel,
         batch,
         n,
-        np.ascontiguousarray(v, dtype=float),
+        v,
         np.ascontiguousarray(a, dtype=float),
-        np.ascontiguousarray(drive + bias),
+        s,
+        _standing(np.ascontiguousarray(drive), bias),
         flat,
         pairs,
         flat_apical,
@@ -1539,7 +2278,9 @@ def fused_residual(
         anchor_gain,
         *compartment,
         out,
-        *_given(products, flat, flat_apical, batch),
+        given,
+        has_given,
+        held and has_given and not masked,
     )
     return out, _kept(flat, flat_apical, batch, kept)
 
@@ -1616,58 +2357,6 @@ def trace_step(
     return step_scale, step_bias
 
 
-if njit is not None:
-
-    @_compiled
-    def _contrast_mean(
-        s_plus: np.ndarray,
-        s_minus: np.ndarray,
-        pre: np.ndarray,
-        post: np.ndarray,
-        span: float,
-        out_edges: np.ndarray,
-        out_neurons: np.ndarray,
-    ) -> None:
-        """Batch-mean contrast per synapse and per neuron, one pass, no (batch, edges) temporary."""
-        batch, n = s_plus.shape
-        edges = pre.shape[0]
-        for e in range(edges):
-            out_edges[e] = 0.0
-        for i in range(n):
-            out_neurons[i] = 0.0
-        for b in range(batch):
-            for e in range(edges):
-                a_plus, a_minus = s_plus[b, pre[e]], s_minus[b, pre[e]]
-                b_plus, b_minus = s_plus[b, post[e]], s_minus[b, post[e]]
-                out_edges[e] += a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
-            for i in range(n):
-                out_neurons[i] += s_plus[b, i] - s_minus[b, i]
-        scale = 1.0 / (batch * span)
-        for e in range(edges):
-            out_edges[e] *= scale
-        for i in range(n):
-            out_neurons[i] *= scale
-
-
-def contrast_mean(
-    s_plus: np.ndarray, s_minus: np.ndarray, pre: np.ndarray, post: np.ndarray, span: float
-) -> tuple[np.ndarray, np.ndarray]:
-    """Fused ``Learner.contrast``: ``(per_synapse, per_neuron)`` batch means divided by ``span``."""
-    assert njit is not None
-    out_edges = np.empty(pre.shape[0])
-    out_neurons = np.empty(s_plus.shape[1])
-    _contrast_mean(
-        np.ascontiguousarray(s_plus),
-        np.ascontiguousarray(s_minus),
-        pre,
-        post,
-        float(span),
-        out_edges,
-        out_neurons,
-    )
-    return out_edges, out_neurons
-
-
 # -- per-synapse passes of a lesson: the same element arithmetic as NumPy, one compiled pass
 
 # A pass this long runs on Numba's threads (when it runs more than one); a shorter one serially.
@@ -1692,7 +2381,7 @@ if njit is not None:
         for e in prange(index.shape[0]):
             out[e] = values[index[e]] / divisor
 
-    _pick, _pick_parallel = _rows_builds(_gather_entries)
+    _pick, _pick_parallel = _rows_builds(_gather_entries, divides=True)
 
     @_compiled
     def _group_power(
@@ -1794,7 +2483,7 @@ if njit is not None:
             else:
                 out[e] = eta * t
 
-    _plain, _plain_parallel = _rows_builds(_plain_entries)
+    _plain, _plain_parallel = _rows_builds(_plain_entries, divides=True)
 
     def _moment_entries(
         raw: np.ndarray,
@@ -1826,7 +2515,7 @@ if njit is not None:
             root[e] = np.sqrt(held / rho_correction)
             term[e] = t
 
-    _moments, _moments_parallel = _rows_builds(_moment_entries)
+    _moments, _moments_parallel = _rows_builds(_moment_entries, divides=True)
 
     def _step_entries(
         term: np.ndarray,
@@ -1842,7 +2531,7 @@ if njit is not None:
         for e in prange(term.shape[0]):
             out[e] = eta * (term[e] / (root[e] + share * group_root[group[e]] + tiny))
 
-    _step, _step_parallel = _rows_builds(_step_entries)
+    _step, _step_parallel = _rows_builds(_step_entries, divides=True)
 
     def _tied_entries(
         delta: np.ndarray,
@@ -1877,6 +2566,111 @@ if njit is not None:
         return bad_delta, bad_scale, bad_weight
 
     _tied, _tied_parallel = _rows_builds(_tied_entries)
+
+
+if njit is not None:
+
+    @_compiled
+    def _add_episode_terms(
+        term: np.ndarray,
+        anchored: np.ndarray,
+        relative: np.ndarray,
+        has_anchored: bool,
+        has_relative: bool,
+        told: np.ndarray,
+        focus: np.ndarray,
+        table: np.ndarray,
+        last_bucket: int,
+        outside: int,
+        reach: int,
+        none: int,
+    ) -> None:
+        """The anchored and relative terms of a read added to ``term`` ``(rows, slots)`` in place,
+        anchored first: each slot's place in its stream's episode through ``table``, ``last_bucket``
+        for an older place and ``outside`` for a place before the episode; each slot's age less
+        the stream's focus, within ``reach``, ``none`` for a stream with no read before."""
+        rows, slots = term.shape
+        for b in range(rows):
+            if has_anchored:
+                t = told[b]
+                for m in range(slots):
+                    place = t - 1 - (slots - 1 - m)
+                    if place < 0:
+                        bucket = outside
+                    else:
+                        bucket = table[place] if place <= last_bucket else table[last_bucket]
+                    term[b, m] += anchored[b, bucket]
+            if has_relative:
+                f = focus[b]
+                for m in range(slots):
+                    if f < 0:
+                        bucket = none
+                    else:
+                        offset = slots - 1 - m - f
+                        offset = min(offset, reach)
+                        bucket = max(offset, -reach) + reach
+                    term[b, m] += relative[b, bucket]
+
+
+def add_episode_terms(
+    term: np.ndarray,
+    anchored: np.ndarray | None,
+    relative: np.ndarray | None,
+    told: np.ndarray,
+    focus: np.ndarray,
+    table: np.ndarray,
+    outside: int,
+    reach: int,
+) -> None:
+    """The recall read's anchored and relative position terms added to ``term``, a new array
+    (``_add_episode_terms``)."""
+    assert njit is not None
+    _add_episode_terms(
+        term, _NO_TERM if anchored is None else anchored,
+        _NO_TERM if relative is None else relative, anchored is not None, relative is not None,
+        told, focus, table, len(table) - 1, outside, reach, 2 * reach + 1,
+    )
+
+
+# the term of a read without it: the kernel reads it only where told to
+_NO_TERM = np.zeros((1, 1))
+
+
+if njit is not None:
+
+    @_compiled
+    def _clear_choice(s: np.ndarray, temperature: float) -> tuple[np.ndarray, bool]:
+        """Each row's largest ``s / temperature`` and whether it stands clear of the others in
+        every row, finite and by more than 1e-9: its softmax is then strictly the largest too."""
+        rows, width = s.shape
+        choice = np.empty(rows, dtype=np.int64)
+        clear = True
+        for b in range(rows):
+            best = -np.inf
+            second = -np.inf
+            at = 0
+            for i in range(width):
+                z = s[b, i] / temperature
+                if not abs(z) < np.inf:
+                    clear = False
+                if z > best:
+                    second = best
+                    best = z
+                    at = i
+                elif z > second:
+                    second = z
+            choice[b] = at
+            if not best - second > 1e-9:
+                clear = False
+        return choice, clear
+
+
+def clear_choice(s: np.ndarray, temperature: float) -> np.ndarray | None:
+    """The greedy choice of one slot's activations ``(rows, width)`` where every row's largest
+    stands clear of the rest, which is ``np.argmax`` of their softmax; None where one does not."""
+    assert njit is not None
+    choice, clear = _clear_choice(np.ascontiguousarray(s, dtype=float), float(temperature))
+    return choice if clear else None
 
 
 def optimizer_step(

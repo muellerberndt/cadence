@@ -10,7 +10,7 @@ import cadence as cd
 
 
 def relative(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, seed=5, recall=True, **options)
+    return cd.Brain.compose(6, 4, seed=5, recall=True, recall_founder=True, **options)
 
 
 def test_relative_is_an_option_beside_the_position_term():

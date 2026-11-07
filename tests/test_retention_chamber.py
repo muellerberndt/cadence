@@ -88,7 +88,7 @@ def test_constructor_preserves_the_ordinary_declared_gene(chamber):
     # the chamber froze the working trace of its release (amplitude 3, retention 0.2, scale 12)
     ordinary = cd.Brain.compose(8, 2, modules=(32,), lateral=-0.5, seed=0,
                                 working_memory_amplitude=3.0, working_memory_decay=0.2,
-                                scales={"trace": 12.0})
+                                scales={"trace": 12.0}, recall=False)
     left, right = chamber.model_identity(candidate), chamber.model_identity(ordinary)
     assert left == right
     assert left["learner"]["normalize"] == 0
@@ -102,7 +102,7 @@ def test_observational_capture_preserves_public_actual_reward_checkpoint(chamber
                              learning=cd.LearnerConfig(eta=0, eta_bias=0, free_steps=1024,
                                                        nudged_steps=12, tolerance=0.003),
                              reward=cd.ActorCriticConfig(eta=0, eta_bias=0, eta_critic=0,
-                                                         eligibility_steps=12))
+                                                         eligibility_steps=12), recall=False)
     copied = cd.Brain.load(brain.save(tmp_path / "original.npz"))
     key = np.eye(8)
     raw_action = brain.act(key)
@@ -138,7 +138,7 @@ def test_saved_pending_private_refusal_and_next_action_contract(chamber, tmp_pat
                              learning=cd.LearnerConfig(eta=0, eta_bias=0, free_steps=1024,
                                                        nudged_steps=12, tolerance=0.003),
                              reward=cd.ActorCriticConfig(eta=0, eta_bias=0, eta_critic=0,
-                                                         eligibility_steps=12))
+                                                         eligibility_steps=12), recall=False)
     root = tmp_path / "custody"
     root.mkdir()
     (root / "protocol.json").write_text("{}\n")

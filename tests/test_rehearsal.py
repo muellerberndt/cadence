@@ -17,7 +17,7 @@ import cadence as cd
 from cadence.learning import LearnerConfig
 
 VOCAB, CUES = 4, ("first", "last")
-READ = dict(recall=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
+READ = dict(recall=True, recall_founder=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
             learning_surprise=True)
 
 
@@ -33,7 +33,7 @@ def lesson_rows(kind: int, rng: np.random.Generator, rows: int = 8):
 
 
 def taught_in_sequence(rehearsal: float, lessons: int = 150) -> cd.Brain:
-    brain = cd.Brain.compose(12, 4, seed=0, learning_rehearsal=rehearsal, learning_surprise=True)
+    brain = cd.Brain.compose(12, 4, seed=0, learning_rehearsal=rehearsal, learning_surprise=True, recall=False)
     rng = np.random.default_rng(0)
     for kind in (0, 1, 2):
         for _ in range(lessons):
@@ -49,7 +49,7 @@ def kind_accuracy(brain: cd.Brain, kind: int) -> float:
 
 
 def test_the_founder_keeps_no_reservoir_and_no_record_of_one(tmp_path):
-    brain = cd.Brain.compose(12, 4, seed=0)
+    brain = cd.Brain.compose(12, 4, seed=0, recall=False)
     brain.lesson(*lesson_rows(0, np.random.default_rng(0)))
     assert brain.learner.config.rehearsal == 0.0
     assert not brain.rehearsal_moments and not brain._episode_moments
@@ -78,9 +78,11 @@ def test_the_reservoir_keeps_a_uniform_sample_within_its_capacity():
 
 def test_rehearsal_settings_are_validated():
     with pytest.raises(ValueError, match="rehearsal must be"):
-        cd.Brain.compose(12, 4, learning_rehearsal=-1.0)
-    with pytest.raises(ValueError, match="rehearsal_capacity"):
-        cd.Brain.compose(12, 4, learning_rehearsal=1.0, learning_rehearsal_capacity=0)
+        cd.Brain.compose(12, 4, learning_rehearsal=-1.0, recall=False)
+    with pytest.raises(ValueError, match="rehearsal_capacity must be a positive integer"):
+        cd.LearnerConfig(rehearsal_capacity=0)
+    with pytest.raises(ValueError, match="learning_rehearsal_capacity was retired in 0.95.0"):
+        cd.Brain.compose(12, 4, learning_rehearsal=1.0, learning_rehearsal_capacity=16, recall=False)
 
 
 # -- types the recall read holds
@@ -99,7 +101,7 @@ def story(rng: np.random.Generator, cue: str | None = None, batch: int = 8, leng
 
 def composed(seed: int = 0, **options) -> cd.Brain:
     return cd.Brain.compose(VOCAB + len(CUES), VOCAB, modules=(16,), seed=seed, episodic=False,
-                            teaching="normalized", **options)
+                            teaching="normalized", **{"recall": False, **options})
 
 
 def taught(brain: cd.Brain, rng: np.random.Generator, episodes: int, cue: str | None = None,
@@ -178,7 +180,7 @@ def frozen(rehearsal: float, **options) -> cd.Brain:
     """A brain whose lessons change no parameter (the learner's and the read's steps at zero),
     with every memory a stream keeps."""
     return cd.Brain.compose(
-        VOCAB + len(CUES), VOCAB, modules=(16,), seed=3, recall=True, recall_recency=0.0,
+        VOCAB + len(CUES), VOCAB, modules=(16,), seed=3, recall=True, recall_founder=True, recall_recency=0.0,
         recall_boundary=True, recall_anchor=True, recall_relative=True, recall_address=0.0,
         recall_position_rate=0.0, efference_amplitude=1.0, history_decays=(0.5,),
         learning=LearnerConfig(eta=0.0, eta_bias=0.0, surprise=True, rehearsal=rehearsal),
@@ -375,19 +377,28 @@ def test_the_reservoir_is_saved_while_rehearsal_is_off(tmp_path):
     assert brain.rehearsal_draws > draws
 
 
-def test_the_capacity_is_a_named_integer_setting():
-    brain = cd.Brain.compose(6, 4, seed=0, learning_rehearsal=1.0, learning_rehearsal_capacity=256)
-    assert brain.learner.config.rehearsal_capacity == 256
-    brain.retune(learning_rehearsal_capacity=128)
+def capacity(brain: cd.Brain, rows: int) -> cd.Brain:
+    """The reservoir's size through the expert route, the configuration passed whole."""
+    return brain.retune(learning=replace(brain.learner.config, rehearsal_capacity=rows))
+
+
+def test_the_capacity_is_a_constant_an_expert_configuration_moves():
+    brain = cd.Brain.compose(6, 4, seed=0, learning_rehearsal=1.0, recall=False)
+    assert brain.learner.config.rehearsal_capacity == 512
+    assert "learning_rehearsal_capacity" not in brain.describe()["genes"]
+    with pytest.raises(ValueError, match="learning_rehearsal_capacity was retired in 0.95.0"):
+        brain.retune(learning_rehearsal_capacity=128)
+    capacity(brain, 128)
     assert brain.learner.config.rehearsal_capacity == 128
+    assert brain.describe()["genes"]["learning_rehearsal_capacity"] == 128
 
 
 def test_a_smaller_capacity_trims_the_reservoir_and_the_brain_saves_and_loads(tmp_path):
-    brain = composed(**READ, learning_rehearsal=1.0, learning_rehearsal_capacity=16)
+    brain = capacity(composed(**READ, learning_rehearsal=1.0), 16)
     rng = np.random.default_rng(8)
     taught(brain, rng, 3)
     assert len(brain.rehearsal_moments) == 16 and brain.rehearsal_seen == 24
-    brain.retune(learning_rehearsal_capacity=4)  # retune cuts the reservoir at once
+    capacity(brain, 4)  # retune cuts the reservoir at once
     assert len(brain.rehearsal_moments) == 4 and len(brain.rehearsal_labels) == 4
     copy = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
     outs = [taught(twin, np.random.default_rng(9), 2) for twin in (brain, copy)]
@@ -398,7 +409,7 @@ def test_a_smaller_capacity_trims_the_reservoir_and_the_brain_saves_and_loads(tm
 
 
 def test_save_grow_and_graft_leave_the_living_reservoir_as_it_is(tmp_path):
-    brain = composed(**READ, learning_rehearsal=1.0, learning_rehearsal_capacity=16)
+    brain = capacity(composed(**READ, learning_rehearsal=1.0), 16)
     taught(brain, np.random.default_rng(10), 2)
     # set without retune: the next lesson trims
     brain.learner.config = replace(brain.learner.config, rehearsal_capacity=4)
@@ -408,7 +419,7 @@ def test_save_grow_and_graft_leave_the_living_reservoir_as_it_is(tmp_path):
     assert len(brain.rehearsal_moments) == len(before) == 16
     for moment, kept in zip(brain.rehearsal_moments, before, strict=True):
         np.testing.assert_array_equal(moment, kept)
-    brain.retune(learning_rehearsal_capacity=4)  # retune trims at once
+    capacity(brain, 4)  # retune trims at once
     assert len(brain.rehearsal_moments) == 4
     # the grown brain starts its reservoir afresh and keeps the setting
     assert grown.learner.config.rehearsal == 1.0
@@ -416,8 +427,8 @@ def test_save_grow_and_graft_leave_the_living_reservoir_as_it_is(tmp_path):
     taught(grown, np.random.default_rng(10), 2)
     assert len(grown.rehearsal_moments) == 4 and grown.last_learning["rehearsal_rows"] == 8.0
     # a graft keeps this brain's
-    host = cd.Brain.compose(6, 4, modules=(16, 16), seed=0, learning_rehearsal=1.0)
-    donor = cd.Brain.compose(6, 4, modules=(16, 16), seed=1)
+    host = cd.Brain.compose(6, 4, modules=(16, 16), seed=0, learning_rehearsal=1.0, recall=False)
+    donor = cd.Brain.compose(6, 4, modules=(16, 16), seed=1, recall=False)
     rng = np.random.default_rng(11)
     for _ in range(2):
         host.reset()

@@ -136,13 +136,13 @@ def test_overlapping_weight_ties_form_one_constraint():
 
 
 def test_generic_brain_exposes_current_learned_parameters():
-    brain = cd.Brain.compose(2, 2, modules=(3,))
+    brain = cd.Brain.compose(2, 2, modules=(3,), recall=False)
     brain.fit(np.eye(2), np.array([0, 1]), epochs=1)
     assert brain.brain is brain.learner.brain
 
 
 def test_generic_brain_owns_action_and_observation_buffers():
-    brain = cd.Brain.compose(2, 2, modules=(3,), episodic=True)
+    brain = cd.Brain.compose(2, 2, modules=(3,), episodic=True, recall=False)
     cue = np.array([[1.0, 0.0]])
     action = brain.act(cue)
     chosen = int(action[0])
@@ -156,14 +156,14 @@ def test_generic_brain_owns_action_and_observation_buffers():
 
 @pytest.mark.parametrize("labels", [[0.9, 1.0], [[0], [1]], [0]])
 def test_generic_fit_rejects_invalid_labels_before_learning(labels):
-    brain = cd.Brain.compose(2, 2, modules=(3,))
+    brain = cd.Brain.compose(2, 2, modules=(3,), recall=False)
     with pytest.raises(ValueError):
         brain.fit(np.eye(2), labels, epochs=1)
     assert brain.learner.updates == 0
 
 
 def test_bad_transition_does_not_change_memory_or_eligibility():
-    brain = cd.Brain.compose(2, 2, modules=(3,), episodic=True)
+    brain = cd.Brain.compose(2, 2, modules=(3,), episodic=True, recall=False)
     brain.act(np.eye(2))
     trace = brain.working_memory.trace.copy()
     with pytest.raises(ValueError):
@@ -298,7 +298,7 @@ def test_complete_brain_checkpoint_resumes_learning_and_memory(tmp_path, backend
         episodic=True,
         backend=backend,
         device="cpu" if backend == "torch" else None,
-        reward=cd.ActorCriticConfig(),
+        reward=cd.ActorCriticConfig(), recall=False,
     )
     drive = np.eye(2)
     for _ in range(3):
@@ -322,7 +322,7 @@ def test_complete_brain_checkpoint_resumes_learning_and_memory(tmp_path, backend
 
 
 def test_failed_checkpoint_write_preserves_previous_file(tmp_path, monkeypatch):
-    brain = cd.Brain.compose(2, 2, modules=(3,))
+    brain = cd.Brain.compose(2, 2, modules=(3,), recall=False)
     path = brain.save(tmp_path / "safe.npz")
     before = path.read_bytes()
 
@@ -338,7 +338,7 @@ def test_failed_checkpoint_write_preserves_previous_file(tmp_path, monkeypatch):
 
 
 def test_pending_action_cannot_be_silently_lost_on_save(tmp_path):
-    brain = cd.Brain.compose(2, 2, modules=(3,))
+    brain = cd.Brain.compose(2, 2, modules=(3,), recall=False)
     brain.act(np.eye(2))
     restored = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
     assert restored.basal_ganglia._pending is not None

@@ -60,7 +60,7 @@ def test_unrepresentable_reward_spread_refuses_without_changing_arousal(own):
 @pytest.mark.parametrize("slots", [1, (2, 3)])
 @pytest.mark.parametrize("dtype", [np.float32, np.float64])
 def test_subnormal_temperature_keeps_categorical_slots_normalized(slots, dtype):
-    brain = cd.Brain.compose(2, 5, modules=(8,), slots=slots, seed=0)
+    brain = cd.Brain.compose(2, 5, modules=(8,), slots=slots, seed=0, recall=False)
     x = np.array([[0.2, 0.8]])
     expected = brain.act(x, greedy=True)
     agent = brain.basal_ganglia

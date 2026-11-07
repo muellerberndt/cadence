@@ -21,7 +21,7 @@ import numpy as np
 from cadence import Brain
 
 rng = np.random.default_rng(0)
-brain = Brain.compose(inputs=6, actions=4, modules=(32,), seed=0)
+brain = Brain.compose(inputs=6, actions=4, modules=(32,), seed=0, recall=False)
 for _ in range(20):
     brain.step(rng.random((4, 6)), teacher=rng.integers(0, 4, size=4))
 
@@ -39,7 +39,7 @@ bigger.step(x, teacher=labels)
 
 | Setting | Adds | Starts at zero |
 | --- | --- | --- |
-| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory): its read ports, empty slots, address and position maps at their founders | The ports' synapses into the association region (and a copy pathway's into the motor region) |
+| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory) at [what a new brain's memory holds](memory.md#what-recalltrue-gives-a-new-brain) (`recall_founder=True` for its founders): its read ports, empty slots, and address and position maps at zero. The brain keeps its teaching point and its lesson settings, and the read's route comes only with the brain's own `carried_gain` | The ports' synapses into the association region (and a copy pathway's into the motor region) |
 | `recall_heads=k` | More read heads of the brain's recall memory, over its bank | The new ports' synapses |
 | `history_decays=(...)` | A heard history (with `history_amplitude`), or the brain's decays followed by new ones | The history's synapses into the association region |
 | `efference_amplitude=a` (above zero) | An efference copy (with `efference_decay`) | The copy's synapses into the association region |
@@ -49,7 +49,9 @@ Several parts grow in one call, and a grown brain grows again. The grown brain i
 layout composed again from its recorded construction and its settings, with the same seed, and
 the parts added. It carries every learned parameter, the optimizer's history, the plasticity
 masks, the memories' records and settings, the actor and critic, the arousal and the random
-generators. `grown.describe()` differs from `brain.describe()` in the new parts alone.
+generators. `grown.describe()` differs from `brain.describe()` in the new parts alone. With
+[`carried_gain`](memory.md#how-strongly-a-carried-region-is-heard) it keeps its gains by
+route, the read's over the heads it adds, and a route the growth adds starts at 1.
 
 ## Graft trained regions into a larger brain
 
@@ -202,6 +204,12 @@ feedback, as an association region does, settles in the larger brain without tha
   knowing that the trained parts move faster as well. Under the `"normalized"` teaching point a
   new synapse's optimizer history is short while the brain's count of lessons is long, so its
   first tens of steps are up to about twice the size a settled synapse takes.
+- **A wide brain's steps.** An association's width is fixed at birth, and so are the
+  [steps it gives](tune.md#wide-brains). `grow` keeps them: a new slot's synapses with the
+  association take the pair's step, and every other new synapse steps at 1. A memory grown on a
+  brain without one takes the read map of this width, and the brain keeps its steps. A brain saved
+  under other rates keeps those. `graft` leaves every synapse at this brain's rates, the grafted
+  ones too.
 - **A new memory starts empty.** Every act writes a slot of a new recall memory; lessons teach
   the brain to read the slots. A brain composed with `attention=True` keeps its one-head
   address settings when it grows heads; retune `recall_address` and `recall_temperature` to the
@@ -276,4 +284,4 @@ What does not grow or graft:
   new neuron would join the pool's normalization;
 - a learned code's region, or a joint landing on it: the code lives in its tables as well as its
   synapses;
-- brains with tied or rated synapses.
+- brains with tied synapses or rates set by hand; set the rates on the new brain.

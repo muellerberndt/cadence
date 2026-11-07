@@ -208,7 +208,8 @@ def make_brain(point: dict[str, Any], seed: int, genes: dict[str, Any] | None) -
     for name, value in dict(point.get("learning", {})).items():
         options[f"learning_{name}"] = value
     brain = cd.Brain.compose(
-        ODOURS, 2, modules=tuple(point.get("modules", (32,))), seed=seed, **options
+        ODOURS, 2, backend="cpu", modules=tuple(point.get("modules", (32,))), seed=seed, **{"recall": False,
+                                                                             **options}
     )
     if "actor_eta" in point:
         eta = float(point["actor_eta"])

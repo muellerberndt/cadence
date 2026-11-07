@@ -18,6 +18,7 @@ from cadence import brain as brain_module
 from cadence.brain import _copy_state
 
 pytest.importorskip("numba")
+pytestmark = pytest.mark.skipif(not brain_module._FUSED, reason="CADENCE_FUSED=0 reads the NumPy loop alone")
 
 
 def bare(state: cd.BrainState) -> cd.BrainState:
@@ -40,14 +41,14 @@ def same(a: cd.BrainState, b: cd.BrainState) -> bool:
 def graphs() -> Iterator[tuple[cd.Brain, cd.NeuralGraph]]:
     """The founder's graph, the same with adaptation, and a deep graph with an apical
     compartment."""
-    founder = cd.Brain.compose(10, 4, modules=(12, 8), seed=1)
+    founder = cd.Brain.compose(10, 4, modules=(12, 8), seed=1, recall=False)
     yield founder, founder.brain
     g = founder.brain
     yield founder, cd.NeuralGraph(
         g.connectome, g.neuron_model.replace(adaptation=cd.Adaptation(tau_steps=7.0, strength=0.4)),
         efficacy=g.efficacy, bias=g.bias,
     )
-    deep = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=2, apical=0.25)
+    deep = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=2, apical=0.25, recall=False)
     yield deep, deep.brain
 
 
@@ -94,7 +95,7 @@ def test_a_check_and_a_settle_read_the_kept_products_to_the_bits_of_making_them_
 
 
 def test_kept_products_are_read_where_the_activations_hold_and_made_where_they_differ() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     lay, n, batch = graph.layout, graph.connectome.n, 2
     drive = brain.stimulus(np.random.default_rng(0).random((batch, 8)))
@@ -118,7 +119,7 @@ def test_kept_products_are_read_where_the_activations_hold_and_made_where_they_d
 
 
 def test_kept_products_hold_only_for_the_blocks_they_were_made_with() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(1).random((2, 8)))
     state = graph.settle_batch(drive, steps=12)
@@ -141,7 +142,7 @@ def test_kept_products_hold_only_for_the_blocks_they_were_made_with() -> None:
 
 
 def test_copies_leave_the_kept_products_and_the_solver_copy_and_no_sweeps_keep_them() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(2).random((2, 8)))
     state = graph.settle_batch(drive, steps=5)
@@ -165,7 +166,7 @@ def test_copies_leave_the_kept_products_and_the_solver_copy_and_no_sweeps_keep_t
 def test_a_warm_state_keeps_its_memory_order():
     """A settle from a Fortran-ordered state publishes activations in that order, as 0.93.0's
     kernels did, with the same values as from the C-ordered state."""
-    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=1)
+    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=1, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(4).random((3, 10)), memory=False)
     warm = graph.settle_batch(drive, steps=5)
@@ -178,3 +179,61 @@ def test_a_warm_state_keeps_its_memory_order():
     assert np.array_equal(after.activation, plain.activation)
     zero = graph.settle_batch(drive, steps=0, state=fortran)
     assert zero.activation.flags.f_contiguous and not zero.activation.flags.c_contiguous
+
+
+def test_a_launch_reads_its_potentials_activations_from_what_the_state_keeps() -> None:
+    """A settle or a check of a state publishes the activations it ended on without computing
+    them again, where its potentials are the ones it kept, under the same rule and no mask: to
+    the bits of computing them."""
+    from cadence import fused
+
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
+    graph = brain.brain
+    drive = brain.stimulus(np.random.default_rng(5).random((2, 8)))
+    state = graph.settle_batch(drive, steps=9)
+    m = graph.neuron_model
+    rule = m.slope, m.threshold, m.rest_emission, m.leak
+    held = kept(state)
+    out = np.empty_like(state.v)
+    assert fused._publish(state.v, out, held, True, *rule)
+    np.testing.assert_array_equal(out, graph.neuron_model.activation(state.v))
+    # read from the array, not computed: a kept activation that is no longer the rule's is read
+    tampered = held.copy()
+    tampered[-fused._RECORD - 1] += 1.0
+    assert fused._publish(state.v, out, tampered, True, *rule)
+    assert out[-1, -1] != graph.neuron_model.activation(state.v)[-1, -1]
+    # potentials that differ, another rule or a mask's publication are computed
+    moved = state.v.copy()
+    moved[0, 0] += 0.25
+    assert not fused._publish(moved, out, held, True, *rule)
+    np.testing.assert_array_equal(out, graph.neuron_model.activation(moved))
+    assert not fused._publish(state.v, out, held, True, m.slope * 2, *rule[1:])
+    assert not fused._publish(state.v, out, held, False, *rule)
+    shared = np.ones(graph.connectome.n)
+    shared[0] = 0.5
+    masked = graph.settle_batch(drive, steps=4, mask=shared)
+    assert not fused._publish(masked.v, out, kept(masked), True, *rule)
+    # a state edited in place is checked and settled as a state that keeps nothing
+    state.v[:, 0] += 0.5
+    np.testing.assert_array_equal(graph.residual(drive, state), graph.residual(drive, bare(state)))
+    assert same(graph.settle_batch(drive, steps=3, state=state),
+                graph.settle_batch(drive, steps=3, state=bare(state)))
+    state.activation[:] = 0.0  # the public array is not what the launch reads
+    assert same(graph.settle_batch(drive, steps=3, state=state),
+                graph.settle_batch(drive, steps=3, state=bare(state)))
+
+
+def test_a_check_makes_the_stale_products_in_the_array_the_state_keeps() -> None:
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
+    graph = brain.brain
+    drive = brain.stimulus(np.random.default_rng(6).random((2, 8)))
+    state = graph.settle_batch(drive, steps=9)
+    held = kept(state)
+    twin = _copy_state(state)
+    assert kept(twin) is held
+    expected = graph.residual(drive, bare(state))
+    np.testing.assert_array_equal(graph.residual(drive, state), expected)
+    assert kept(state) is held  # a state and its copy read one array, whole
+    np.testing.assert_array_equal(graph.residual(drive, twin), expected)
+    assert same(graph.settle_batch(drive, steps=4, state=twin),
+                graph.settle_batch(drive, steps=4, state=bare(state)))

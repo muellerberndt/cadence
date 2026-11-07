@@ -30,19 +30,19 @@ def motor_synapses(brain):
 
 @pytest.mark.parametrize("actions", [2, 4, 8, 9, 36])
 def test_an_unset_lateral_wires_no_motor_competition(actions: int) -> None:
-    brain = cd.Brain.compose(inputs=8, actions=actions, modules=(8,), seed=0)
+    brain = cd.Brain.compose(inputs=8, actions=actions, modules=(8,), seed=0, recall=False)
     assert len(motor_synapses(brain)) == 0
 
 
 def test_an_explicit_lateral_is_used_as_given():
-    brain = cd.Brain.compose(inputs=8, actions=36, modules=(8,), seed=0, lateral=-0.5)
+    brain = cd.Brain.compose(inputs=8, actions=36, modules=(8,), seed=0, lateral=-0.5, recall=False)
     signs = motor_synapses(brain)
     assert len(signs) == 36 * 35 and np.all(signs == -0.5)
-    signs = motor_synapses(cd.Brain.compose(inputs=8, actions=4, modules=(8,), seed=0, lateral=-0.5))
+    signs = motor_synapses(cd.Brain.compose(inputs=8, actions=4, modules=(8,), seed=0, lateral=-0.5, recall=False))
     assert len(signs) == 4 * 3 and np.all(signs == -0.5)
     assert (
         len(
-            motor_synapses(cd.Brain.compose(inputs=8, actions=4, modules=(8,), seed=0, lateral=0.0))
+            motor_synapses(cd.Brain.compose(inputs=8, actions=4, modules=(8,), seed=0, lateral=0.0, recall=False))
         )
         == 0
     )
@@ -62,7 +62,7 @@ def test_wide_composed_brain_settles_undamped_at_the_default():
     # settle an undamped free solve at all; at the resolved default it settles
     # in the ordinary few dozen sweeps.
     rng = np.random.default_rng(3)
-    brain = cd.Brain.compose(inputs=64, actions=36, modules=(64, 32), seed=1)
+    brain = cd.Brain.compose(inputs=64, actions=36, modules=(64, 32), seed=1, recall=False)
     drive = brain.stimulus(rng.uniform(0, 1, (8, 64)), memory=False)
     phase = brain.brain.equilibrate(drive, budget=256, tolerance=3e-3)
     assert bool(np.all(phase.qualified)) and phase.steps <= 64
@@ -84,13 +84,13 @@ def test_eight_action_composed_brain_settles_undamped_at_the_default():
         brain.lesson(rng.uniform(0, 1, (16, 64)), rng.integers(0, 8, 16))
         return settles, brain.last_learning
 
-    competing = cd.Brain.compose(inputs=64, actions=8, modules=(64, 32), seed=1, lateral=-0.5)
+    competing = cd.Brain.compose(inputs=64, actions=8, modules=(64, 32), seed=1, lateral=-0.5, recall=False)
     with pytest.warns(RuntimeWarning, match="entire free_steps budget"):
         settles, lesson = life(competing)
     assert any(settled["damping_halvings"] > 0 for settled in settles)
     assert lesson["demonstration_free_budget_exhausted"] == 1.0
 
-    brain = cd.Brain.compose(inputs=64, actions=8, modules=(64, 32), seed=1)
+    brain = cd.Brain.compose(inputs=64, actions=8, modules=(64, 32), seed=1, recall=False)
     drive = brain.stimulus(np.random.default_rng(3).uniform(0, 1, (16, 64)), memory=False)
     phase = brain.brain.equilibrate(drive, budget=256, tolerance=3e-3)
     assert bool(np.all(phase.qualified)) and phase.steps <= 64
@@ -107,9 +107,9 @@ def test_eight_action_composed_brain_settles_undamped_at_the_default():
 
 def test_invalid_lateral_is_still_rejected():
     with pytest.raises(ValueError, match="lateral"):
-        cd.Brain.compose(inputs=8, actions=4, modules=(8,), lateral=np.nan)
+        cd.Brain.compose(inputs=8, actions=4, modules=(8,), lateral=np.nan, recall=False)
     with pytest.raises(ValueError, match="lateral"):
-        cd.Brain.compose(inputs=8, actions=4, modules=(8,), lateral=True)
+        cd.Brain.compose(inputs=8, actions=4, modules=(8,), lateral=True, recall=False)
 
 
 # -- issue 125: calibration targets the competitive operating point by default
@@ -245,7 +245,7 @@ def test_dominating_bias_rate_warns_and_zero_eta_stays_silent():
 
 
 def test_composed_default_bias_rate_follows_the_composed_eta():
-    config = cd.Brain.compose(inputs=4, actions=2, modules=(4,), seed=0).learner.config
+    config = cd.Brain.compose(inputs=4, actions=2, modules=(4,), seed=0, recall=False).learner.config
     assert config.eta == 0.5 and config.eta_bias == pytest.approx(0.05)
 
 
@@ -294,13 +294,13 @@ def test_fixed_length_phases_and_settled_phases_stay_silent():
 
 
 def test_brain_step_reports_the_exhausted_demonstration():
-    composed = cd.Brain.compose(inputs=4, actions=2, modules=(4,), seed=0)
+    composed = cd.Brain.compose(inputs=4, actions=2, modules=(4,), seed=0, recall=False)
     brain = cd.Brain.compose(
         inputs=4,
         actions=2,
         modules=(4,),
         seed=0,
-        learning=replace(composed.learner.config, free_steps=1),
+        learning=replace(composed.learner.config, free_steps=1), recall=False,
     )
     # The lesson is taught and counted before the following answer, whose
     # one-sweep budget then refuses without undoing the learning.
@@ -340,7 +340,7 @@ def test_actor_dominating_bias_rate_warns_and_zero_eta_stays_silent():
 
 
 def test_composed_actor_keeps_its_measured_bias_rate():
-    brain = cd.Brain.compose(inputs=4, actions=3, modules=(8,), seed=0)
+    brain = cd.Brain.compose(inputs=4, actions=3, modules=(8,), seed=0, recall=False)
     config = brain.basal_ganglia.config
     assert config.eta == 1.0 and config.eta_bias == 0.05
     saved = config.to_dict()

@@ -23,7 +23,7 @@ ACTIONS = 4
 
 def taught(inputs=6, lessons=12, seed=1, **settings):
     """A brain composed with ``settings`` and taught a few moments of random labels."""
-    brain = cd.Brain.compose(inputs, ACTIONS, seed=seed, **{"modules": (16,), **settings})
+    brain = cd.Brain.compose(inputs, ACTIONS, seed=seed, **{"recall": False, **{"modules": (16,), **settings}})
     rng = np.random.default_rng(0)
     slots = brain.learner.slot_sizes
     for _ in range(lessons):
@@ -77,9 +77,9 @@ def check_identical(trained, grown, inputs=6, moments=8, atol=1e-12):
 
 LAYOUTS = {
     "founder": dict(),
-    "recall heads": dict(recall=True, recall_heads=2, recall_temperature=0.4),
-    "recall action": dict(recall=True, recall_action=True, recall_copy=0.5, recall_capacity=16),
-    "episodic": dict(memory_choice=True, memory_expansion=256, memory_fan_in=4),
+    "recall heads": dict(recall=True, recall_founder=True, recall_heads=2, recall_temperature=0.4),
+    "recall action": dict(recall=True, recall_founder=True, recall_action=True, recall_copy=0.5, recall_capacity=16),
+    "episodic": dict(memory_choice=True),
     "history": dict(history_decays=(0.5, 0.9), history_amplitude=2.0),
     "efference": dict(efference_amplitude=1.0, efference_decay=0.3),
     "arousal": dict(arousal=True, arousal_heat=1.5),
@@ -92,9 +92,9 @@ LAYOUTS = {
 
 @pytest.mark.parametrize("name", sorted(LAYOUTS))
 def test_a_brain_composed_from_its_own_construction_is_the_brain(name):
-    brain = cd.Brain.compose(6, ACTIONS, seed=1, **{"modules": (16,), **LAYOUTS[name]})
+    brain = cd.Brain.compose(6, ACTIONS, seed=1, **{"recall": False, **{"modules": (16,), **LAYOUTS[name]}})
     inputs, actions, settings = generic._composed_again(brain)
-    again = cd.Brain.compose(inputs, actions, **settings)
+    again = cd.Brain.compose(inputs, actions, **{"recall": False, **settings})
     assert again.connectome.digest() == brain.connectome.digest()
     np.testing.assert_array_equal(again.brain.efficacy, brain.brain.efficacy)
     assert again.describe() == brain.describe()
@@ -105,42 +105,42 @@ def test_a_brain_composed_from_its_own_construction_is_the_brain(name):
     [
         (40, dict(code=64)),
         (40, dict(learned_code=16)),
-        (40, dict(learned_code=16, attention=True)),
+        (40, dict(learned_code=16, attention=True, recall=True)),
         ((6, 6), dict(features=4, field=2)),
         ((5, 5, 2), dict(code=40)),
     ],
 )
 def test_wide_inputs_are_composed_again(inputs, settings):
-    brain = cd.Brain.compose(inputs, ACTIONS, seed=2, modules=(16,), **settings)
+    brain = cd.Brain.compose(inputs, ACTIONS, seed=2, modules=(16,), **{"recall": False, **settings})
     inputs, actions, composed = generic._composed_again(brain)
-    again = cd.Brain.compose(inputs, actions, **composed)
+    again = cd.Brain.compose(inputs, actions, **{"recall": False, **composed})
     assert again.connectome.digest() == brain.connectome.digest()
     assert again.describe() == brain.describe()
 
 
 GROWTHS = {
-    "recall": ({}, dict(recall=True)),
+    "recall": ({}, dict(recall=True, recall_founder=True)),
     "recall with settings": (
         {},
         dict(
-            recall=True, recall_heads=2, recall_capacity=16, recall_temperature=0.3, recall_window=2
+            recall=True, recall_founder=True, recall_heads=2, recall_capacity=16, recall_temperature=0.3, recall_window=2
         ),
     ),
-    "a second head": (dict(recall=True), dict(recall_heads=2)),
-    "a third head": (dict(recall=True, recall_heads=2), dict(recall_heads=3)),
+    "a second head": (dict(recall=True, recall_founder=True), dict(recall_heads=2)),
+    "a third head": (dict(recall=True, recall_founder=True, recall_heads=2), dict(recall_heads=3)),
     "a history": ({}, dict(history_decays=(0.5,), history_amplitude=2.0)),
     "more decays": (dict(history_decays=(0.5,)), dict(history_decays=(0.5, 0.9))),
     "an efference copy": ({}, dict(efference_amplitude=1.0, efference_decay=0.3)),
     "a slot": ({}, dict(slots=(4, 3))),
-    "slots beside memories": (dict(recall=True, efference_amplitude=1.0), dict(slots=(4, 2, 2))),
+    "slots beside memories": (dict(recall=True, recall_founder=True, efference_amplitude=1.0), dict(slots=(4, 2, 2))),
     "everything at once": (
         {},
-        dict(recall=True, history_decays=(0.5,), efference_amplitude=1.0, slots=(4, 3)),
+        dict(recall=True, recall_founder=True, history_decays=(0.5,), efference_amplitude=1.0, slots=(4, 3)),
     ),
-    "recall in a deep brain": (dict(modules=(16, 16), apical=0.5), dict(recall=True)),
-    "recall beside episodes": (dict(memory_choice=True, memory_expansion=256), dict(recall=True)),
-    "recall in an aroused brain": (dict(arousal=True), dict(recall=True)),
-    "recall in a normalized brain": (dict(teaching="normalized"), dict(recall=True)),
+    "recall in a deep brain": (dict(modules=(16, 16), apical=0.5), dict(recall=True, recall_founder=True)),
+    "recall beside episodes": (dict(memory_choice=True), dict(recall=True, recall_founder=True)),
+    "recall in an aroused brain": (dict(arousal=True), dict(recall=True, recall_founder=True)),
+    "recall in a normalized brain": (dict(teaching="normalized"), dict(recall=True, recall_founder=True)),
 }
 
 
@@ -156,14 +156,14 @@ def test_new_slots_in_a_deep_brain_act_as_the_trained_brain_within_rounding():
     """The motor region lies inside the layout: a deep brain's larger graph sums in another
     order, so its trained neurons settle as before within rounding."""
     trained = taught(modules=(16, 16), apical=0.5)
-    check_identical(trained, trained.grow(slots=(4, 3), recall=True), atol=1e-11)
+    check_identical(trained, trained.grow(slots=(4, 3), recall=True, recall_founder=True), atol=1e-11)
 
 
 @pytest.mark.parametrize(
     "inputs, settings, parts",
     [
-        ((6, 6), dict(features=4, field=2), dict(recall=True, slots=(4, 2))),
-        (40, dict(learned_code=16), dict(recall=True, slots=(4, 2))),
+        ((6, 6), dict(features=4, field=2), dict(recall=True, recall_founder=True, slots=(4, 2))),
+        (40, dict(learned_code=16), dict(recall=True, recall_founder=True, slots=(4, 2))),
         (40, dict(code=64), dict(history_decays=(0.5,), efference_amplitude=1.0)),
     ],
 )
@@ -173,7 +173,7 @@ def test_wide_input_brains_grow(inputs, settings, parts):
 
 
 def test_the_trained_brain_is_carried_and_the_new_synapses_start_at_zero():
-    trained = taught(recall=True)
+    trained = taught(recall=True, recall_founder=True)
     grown = trained.grow(recall_heads=2, slots=(4, 3))
     old, new = trained.connectome, grown.connectome
     index = np.zeros(old.n, dtype=np.int64)
@@ -202,7 +202,7 @@ def test_the_trained_brain_is_carried_and_the_new_synapses_start_at_zero():
 
 
 def test_retuned_settings_carry_into_the_grown_brain():
-    trained = taught(recall=True, efference_amplitude=1.0)
+    trained = taught(recall=True, recall_founder=True, efference_amplitude=1.0)
     trained.retune(
         recall_temperature=0.4,
         working_memory_amplitude=2.0,
@@ -227,7 +227,7 @@ def test_growing_leaves_the_trained_brain_as_it_was(tmp_path):
     trained = taught()
     assert trained.pending_feedback
     twin = copy.deepcopy(trained)
-    trained.grow(recall=True, slots=(4, 2))
+    trained.grow(recall=True, recall_founder=True, slots=(4, 2))
     assert trained.pending_feedback and trained.recall is None
     x = np.random.default_rng(3).random((3, 6))
     trained.step(x, reward=np.ones(3))
@@ -237,7 +237,7 @@ def test_growing_leaves_the_trained_brain_as_it_was(tmp_path):
 
 
 def test_a_grown_brain_saves_and_continues(tmp_path):
-    grown = taught().grow(recall=True, slots=(4, 2))
+    grown = taught().grow(recall=True, recall_founder=True, slots=(4, 2))
     rng = np.random.default_rng(4)
     for _ in range(3):
         grown.step(rng.random((3, 6)), teacher=rng.integers(0, 2, size=(3, 2)))
@@ -253,7 +253,7 @@ def test_a_saved_brain_grows(tmp_path):
     trained = taught(history_decays=(0.5,))
     trained.save(tmp_path / "trained.npz")
     loaded = cd.Brain.load(tmp_path / "trained.npz")
-    check_identical(loaded, loaded.grow(recall=True, efference_amplitude=1.0))
+    check_identical(loaded, loaded.grow(recall=True, recall_founder=True, efference_amplitude=1.0))
 
 
 def test_the_grown_brain_keeps_the_backend_and_precision(tmp_path):
@@ -262,7 +262,7 @@ def test_the_grown_brain_keeps_the_backend_and_precision(tmp_path):
     trained = cd.Brain.load(
         tmp_path / "trained.npz", backend="torch", device="cpu", precision="float32"
     )
-    grown = trained.grow(recall=True, slots=(4, 2))
+    grown = trained.grow(recall=True, recall_founder=True, slots=(4, 2))
     assert (grown.brain.backend, grown.brain.precision) == ("torch", "float32")
     check_identical(trained, grown, atol=1e-5)
 
@@ -295,9 +295,9 @@ def live_through(brain, episodes, tokens=8, length=5, teach=True):
 def test_a_grown_recall_memory_learns_what_the_trained_brain_could_not():
     rng = np.random.default_rng(1)
     first, then, test = twice_shown(rng, 4), twice_shown(rng, 8), twice_shown(rng, 6)
-    plain = cd.Brain.compose(8, 8, seed=3, modules=(48,))
+    plain = cd.Brain.compose(8, 8, seed=3, modules=(48,), recall=False)
     live_through(plain, first)
-    grown = plain.grow(recall=True)
+    grown = plain.grow(recall=True, recall_founder=True)
     live_through(plain, then)
     live_through(grown, then)
     ports = np.isin(
@@ -318,7 +318,7 @@ def test_a_new_slot_learns_beside_the_trained_one():
         kind = rng.integers(0, 12, size=count)
         return prototypes[kind] + 0.4 * rng.normal(size=(count, 8)), kind % 4, kind // 4
 
-    trained = cd.Brain.compose(8, 4, seed=3, modules=(32,))
+    trained = cd.Brain.compose(8, 4, seed=3, modules=(32,), recall=False)
     for _ in range(150):
         x, first, _ = views(16)
         trained.lesson(x, first)
@@ -339,12 +339,12 @@ def test_a_new_slot_learns_beside_the_trained_one():
     [
         ({}, {}, "grow needs a part to add"),
         ({}, dict(recall=False), "recall=True"),
-        (dict(recall=True), dict(recall=True), "adds read heads"),
+        (dict(recall=True, recall_founder=True), dict(recall=True, recall_founder=True), "adds read heads"),
         ({}, dict(recall_heads=2), "needs the recall memory"),
-        (dict(recall=True, recall_heads=2), dict(recall_heads=2), "must exceed"),
-        (dict(recall=True), dict(recall_heads=True), "integer"),
-        (dict(recall=True), dict(recall_temperature=0.3), "keeps its construction"),
-        (dict(recall=True), dict(recall_heads=2, recall_capacity=8), "keeps its construction"),
+        (dict(recall=True, recall_founder=True, recall_heads=2), dict(recall_heads=2), "must exceed"),
+        (dict(recall=True, recall_founder=True), dict(recall_heads=True), "integer"),
+        (dict(recall=True, recall_founder=True), dict(recall_temperature=0.3), "keeps its construction"),
+        (dict(recall=True, recall_founder=True), dict(recall_heads=2, recall_capacity=8), "keeps its construction"),
         (dict(history_decays=(0.5,)), dict(history_decays=(0.9,)), "must extend"),
         (dict(history_decays=(0.5,)), dict(history_decays=(0.5,)), "must extend"),
         (dict(history_decays=(0.5,)), dict(history_amplitude=2.0), "retune"),
@@ -355,7 +355,7 @@ def test_a_new_slot_learns_beside_the_trained_one():
         ({}, dict(slots=(2, 2, 3)), "followed by the new ones"),
         ({}, dict(slots=2), "followed by the new ones"),
         ({}, dict(slots=(4, True)), "positive integers"),
-        (dict(recall=True, recall_action=True), dict(slots=(4, 2)), "per action"),
+        (dict(recall=True, recall_founder=True, recall_action=True), dict(slots=(4, 2)), "per action"),
         (dict(memory_choice=True), dict(slots=(4, 2)), "memory_choice"),
         (dict(modules=(16, 16), observers=(4,), apical=0.5), dict(slots=(4, 2)), "apical pool"),
         ({}, dict(modules=(32,)), "own loop"),
@@ -377,14 +377,14 @@ def test_grow_refuses_a_custom_anatomy():
     genome = cd.Genome.composed(6, ACTIONS, modules=(16,))
     brain = cd.Brain.compose(6, ACTIONS, connectome=cd.develop(genome, seed=0), seed=0)
     with pytest.raises(ValueError, match="records its construction"):
-        brain.grow(recall=True)
+        brain.grow(recall=True, recall_founder=True)
 
 
 def test_a_composed_visual_cortex_keeps_its_receptive_fields():
     """The maps project one way into the first module, so no nudge reaches them: a composed
     brain's receptive fields keep their initial draw while the rest of the brain learns (on the
     founder settings, whose phases settle; phases that stop short leave a residue)."""
-    brain = cd.Brain.compose((6, 6), ACTIONS, seed=0, modules=(16,))
+    brain = cd.Brain.compose((6, 6), ACTIONS, seed=0, modules=(16,), recall=False)
     connectome = brain.connectome
     fields = np.isin(connectome.pre, connectome.populations["visual/input"]) & np.isin(
         connectome.post, connectome.populations["visual/output"]
@@ -402,8 +402,8 @@ FIXTURES = Path(__file__).resolve().parent / "fixtures"
 
 
 def test_a_brain_saved_by_an_earlier_version_grows():
-    """A brain of checkpoint format cadence-generic/8 (0.84) with arousal, recall, a history, an
-    efference copy and episodic records grows heads and decays."""
+    """A brain saved by 0.94.0 with arousal, recall, a history, an efference copy and episodic
+    records grows heads and decays."""
     trained = cd.Brain.load(FIXTURES / "observation_code" / "recalled.npz")
     grown = trained.grow(recall_heads=2, history_decays=(0.2, 0.9, 0.99))
     assert grown.recall.heads == 2 and tuple(grown.history.decays) == (0.2, 0.9, 0.99)
@@ -412,14 +412,14 @@ def test_a_brain_saved_by_an_earlier_version_grows():
 
 def test_a_grown_brain_grows_again():
     trained = taught()
-    once = trained.grow(recall=True)
+    once = trained.grow(recall=True, recall_founder=True)
     twice = once.grow(slots=(4, 2), recall_heads=2)
     check_identical(trained, copy.deepcopy(twice))  # each check acts on the brain it reads
     check_identical(once, twice)
 
 
 def test_growing_is_deterministic():
-    trained = taught(recall=True)
+    trained = taught(recall=True, recall_founder=True)
     first, second = trained.grow(recall_heads=2), trained.grow(recall_heads=2)
     assert first.connectome.digest() == second.connectome.digest()
     np.testing.assert_array_equal(first.brain.efficacy, second.brain.efficacy)
@@ -427,13 +427,12 @@ def test_growing_is_deterministic():
 
 
 def test_the_grown_brain_describes_the_trained_brain_and_its_new_parts():
-    trained = taught(recall=True)
+    trained = taught(recall=True, recall_founder=True)
     grown = trained.grow(recall_heads=2, history_decays=(0.5,))
     before, after = trained.describe(), grown.describe()
     assert {name: after["genes"][name] for name in before["genes"]} == before["genes"]
     assert set(after["genes"]) - set(before["genes"]) == {
         "recall_heads",
-        "recall_compete",
         "history_decays",
         "history_amplitude",
     }
@@ -442,18 +441,18 @@ def test_the_grown_brain_describes_the_trained_brain_and_its_new_parts():
 
 
 def test_identity_holds_while_the_recall_memory_fills_and_evicts():
-    trained = taught(recall=True, recall_capacity=6)
+    trained = taught(recall=True, recall_founder=True, recall_capacity=6)
     check_identical(trained, trained.grow(recall_heads=2, slots=(4, 3)), moments=24)
 
 
 def test_a_living_brain_grows_and_lives_on():
     rng = np.random.default_rng(6)
-    trained = cd.Brain.compose(6, ACTIONS, seed=1, modules=(16,), arousal=True)
+    trained = cd.Brain.compose(6, ACTIONS, seed=1, modules=(16,), arousal=True, recall=False)
     reward = None
     for _ in range(40):
         action = trained.live(rng.random((1, 6)), reward=reward)
         reward = np.array([float(action[0] == 0)])
-    grown = trained.grow(recall=True)
+    grown = trained.grow(recall=True, recall_founder=True)
     assert grown.arousal.to_dict() == trained.arousal.to_dict()
     ports = np.isin(grown.connectome.pre, grown.connectome.populations["recall"])
     assert not grown.brain.efficacy[ports].any()
@@ -474,8 +473,8 @@ def test_two_brains_combine_by_teaching():
         kind = rng.integers(0, 12, size=count)
         return prototypes[kind] + 0.4 * rng.normal(size=(count, 8)), kind
 
-    first = cd.Brain.compose(8, 4, seed=3, modules=(32,))
-    second = cd.Brain.compose(8, 3, seed=4, modules=(32,))
+    first = cd.Brain.compose(8, 4, seed=3, modules=(32,), recall=False)
+    second = cd.Brain.compose(8, 3, seed=4, modules=(32,), recall=False)
     for _ in range(200):
         x, kind = views(16)
         first.lesson(x, kind % 4)
@@ -490,18 +489,22 @@ def test_two_brains_combine_by_teaching():
     assert np.mean(answers[:, 0] == first.predict(test)) > 0.85
 
 
-@pytest.mark.parametrize(
-    "inputs, settings",
-    [(40, dict(code=64, memory_choice=True)), (6, dict(memory_choice=True, memory_expansion=0))],
-)
-def test_episodic_brains_without_a_separation_grow(inputs, settings):
-    trained = taught(inputs=inputs, seed=2, **settings)
-    check_identical(trained, trained.grow(recall=True), inputs=inputs)
+def test_an_episodic_brain_on_a_fixed_code_grows():
+    trained = taught(inputs=40, seed=2, code=64, memory_choice=True)
+    check_identical(trained, trained.grow(recall=True, recall_founder=True), inputs=40)
+
+
+def test_a_saved_separation_of_another_size_is_not_grown():
+    # a checkpoint of an earlier release may hold one; the brain itself loads and lives on
+    trained = taught(memory_choice=True)
+    trained.hippocampus.separator = None
+    with pytest.raises(ValueError, match="cadence 0.94.0 grows it"):
+        trained.grow(recall=True, recall_founder=True)
 
 
 def test_sampled_choices_follow_the_trained_brain_without_new_slots():
     """Without new slots the grown brain draws the trained brain's random numbers."""
-    trained = taught(recall=True)
+    trained = taught(recall=True, recall_founder=True)
     twin = copy.deepcopy(trained)
     twin.reset()
     grown = trained.grow(recall_heads=2, history_decays=(0.5,))
@@ -516,14 +519,14 @@ def test_sampled_choices_follow_the_trained_brain_without_new_slots():
     [
         ({}, dict(efference_amplitude=0.0), "above zero"),
         ({}, dict(recall_temperature=0.3), "grow it with recall=True"),
-        ({}, dict(recall=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]), "tokens"),
+        ({}, dict(recall=True, recall_founder=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]), "tokens"),
         (
-            dict(recall=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
+            dict(recall=True, recall_founder=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
             dict(recall_heads=2),
             "tokens",
         ),
         (
-            dict(recall=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
+            dict(recall=True, recall_founder=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
             dict(slots=(4, 2)),
             "per action",
         ),
@@ -543,7 +546,7 @@ def test_grow_refuses_with_the_reason(base, parts, message):
 
 
 def test_a_plain_archive_saves_and_loads_the_same_brain(tmp_path):
-    brain = taught(recall=True)
+    brain = taught(recall=True, recall_founder=True)
     brain.save(tmp_path / "plain.npz", compressed=False)
     brain.save(tmp_path / "packed.npz")
     plain, packed = cd.Brain.load(tmp_path / "plain.npz"), cd.Brain.load(tmp_path / "packed.npz")

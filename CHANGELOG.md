@@ -1,5 +1,319 @@
 # Changelog
 
+## 0.95.0 — 2026-11-07
+
+Every new brain holds the recall memory at one composition that reads sentences and sequences with no
+further setting, and runs on the fastest backend the machine has at its size. `recall=False` builds a
+brain without the memory, bit-identical to what 0.94.0 composes, on `backend="cpu"`.
+
+The composition holds every sequence gate and every grammar chamber bar on three blocks of fresh
+founders, each under a protocol declared before its first life, the last on what a new brain composes
+here. In one online pass of 82 seconds it reads clauses .99, held-out .93, roles .98, brackets .92,
+paths .96, two hops .92 and three hops .38. Eight passes of a matched transformer at about the same
+seconds read 1.00, .98, .98, .93, .69, .62 and .00, and offline at about 3.5 times the seconds it reads
+1.00 on all but three hops, .00. N-back reads 1.00 at 100 items and .96 to 1.00 at 1,000, where the
+transformer reads chance, and ordered recall comes from reward alone on 12 of 12 founders.
+
+The memory and the apical compartment run on MLX and CUDA in one device form, with nothing wider than
+the action crossing back per moment above a size rule. `backend="auto"` is the default of
+`Brain.compose`, and a device takes float32 unless named. With nothing named, a `step` of sixteen
+streams at 3,920 inputs falls from 2,459 ms to 44.6 ms on an A10G and from 10,905 ms to 148 ms on an
+Apple M4, and small brains stay on the CPU, which beats a device at their size. The accepted costs are
+in [what the composition gives up](docs/memory.md#what-the-composition-gives-up).
+
+- **Default change.** `Brain.compose` gives a new brain with the memory `learning_fast_settle=True`: its free solves take
+  `equilibrate(..., fast=True)` on the compiled CPU path, the same equations, order and tolerance in fewer neuron updates,
+  with other bits at every width. `learning_fast_settle=False` names the ordinary solve and `learning=` keeps its whole
+  configuration. `recall=False` and `recall_founder=True` keep their bits, and a saved or grown brain keeps the solve it has.
+  On a third block of fresh founders, under a protocol declared before its first life, this default holds every gate and every
+  chamber bar: on the grammar chamber's twelve lives clauses .99, two distractors .97, held-out .93, roles .98, brackets .92, paths
+  .96, two hops .92, in 82 seconds a life where the ordinary solve took 154. No chamber of the preservation panel falls against
+  `recall=False`. See [settling](docs/settling.md#settling-and-equilibrium) and
+  [one composition](docs/memory.md#one-composition-for-sequences).
+- **Default change.** A new brain with the memory steps at its association's width `w`, with no new setting: above 64 the
+  projection from prefrontal to association and the association-motor pair take `64 / w` through `Learner.synapse_rate`,
+  and `recall_address` is .01 times `64 / w`. At 64 and under nothing changes, to the bit, and `recall_founder=True`,
+  `recall=False`, `attention=True` and a custom anatomy take none of it. A rate you name wins over its part:
+  `recall_address`; a `teaching` other than `"deep"` or `learning=` at `compose`; `brain.learner.synapse_rate` at any time.
+  `describe()` states the steps under `layout["projection_rates"]`. A checkpoint keeps them, and a brain saved under other
+  rates keeps those. `grow` keeps them, since a brain's width is fixed at birth: a new slot's synapses with the association
+  take the pair's step and every other new synapse steps at 1. `graft` leaves every synapse at the host's rates. Both accept
+  these rates and refuse rates set by hand. On six fresh founders, twelve lives a cell, the grammar chamber's paths read .97
+  (least .84) at 128 and .96 (least .81) at 256 against .94 (.72) and .94 (.67) at whole steps, no life under .80 against one
+  of twelve at each width, brackets at 256 fall from .94 to .82, and a life takes 24 and 43 percent fewer
+  multiply-accumulates. See [wide brains](docs/tune.md#wide-brains).
+- The `"mlx"` backend costs 9 to 13 times less per act and 9 to 17 times less per taught lesson on a
+  brain a launch takes, and about 1.6 times less on one it does not take, with the same equations and
+  tolerance within float32 rounding; its bits change, and every CPU path keeps its own. A chunk of
+  sweeps runs in one Metal launch that ends with the equations' residual, a state stays on the device
+  until read, a lesson's update from 131,072 block entries and a recall address map from 1,048,576
+  entries stay on the device, and a sweep no launch takes is compiled. On an Apple M4 at the speech
+  size (3,920 inputs, 6.3 million synapses), at a load of 12 to 25, an act takes 8 ms against 26 on one CPU
+  core, a lesson 59 against 648 and a `step` 45 against 365; at 16 rows of the chamber one core stays ahead.
+  `Brain.residual` reads a launch's check of a state under its own drive, nudge and
+  parameters, in float32; `on_device=False` keeps the float64 reference, which also decides a solve
+  below a tolerance of 1e-4. `copy.deepcopy` of an MLX brain works. `CADENCE_MLX_LAUNCH=0` keeps one
+  MLX operation at a time. See [which hardware](docs/backends.md#which-hardware).
+- The `"mlx"` backend holds an apical compartment and a learned code, which it refused. A launch reads
+  a neuron's basal and top-down products apart and joins them at its pool's gain per sweep and row, or at
+  the gain a nudged settle holds, and a source range under another step than `dt = 1` follows its drive
+  in closed form, so every neuron rule without adaptation launches. A block holding synapses of both
+  compartments, or more than 1,360 settling neurons with a compartment, takes the compiled sweep. A settle
+  agrees with the CPU within 2.3e-7, with equal steps and checks, and a continued life on one set of weights
+  within 2e-5. At a load of 12 to 25 four regions under a compartment at 64 rows take 12 ms per act and 36 per lesson
+  against 35 and 101 on one CPU core, and `modules=(256, 128)` at the speech size and 16 rows 13 and 89 against 210
+  and 938. On `benchmarks/depth/and_count.py`'s four regions the mean of the ten readings from lesson 3,100
+  over six seeds is .802 on the CPU and .786 on MLX, a difference of .016 with a standard error of .015.
+  See [precision matters](docs/backends.md#precision-matters).
+- **Default change: the fastest backend, with nothing named.** `Brain.compose` takes `backend="auto"`:
+  at its first moment, when its rows are known, a brain takes the fastest backend the machine has for its
+  size and rows, by the measured rule in [the default backend](docs/backends.md#the-default-backend), and a
+  brain a device passes at one row takes it at compose. On an A10G the speech size's `step` reads 21 ms against
+  291 on one CPU core at one row, and 35 against 997 at 16; the chamber at 16 rows stays on the core.
+  `brain.placement` states what it took and why, and `describe()` and a checkpoint state it wherever the brain
+  is not on the CPU by name. A device that refuses a brain falls to the next fastest and the report names it. Nothing is imported
+  below a device's work. `backend="cpu"` keeps its bits; `CADENCE_BACKEND` names a backend for a whole run; tests,
+  benchmarks and examples name theirs. MPS leaves the list, and a card the table has not read takes a device from
+  twice the work.
+- **Default change: float32 on a device.** A device named with no precision, and `backend="auto"`, take
+  float32, efficacies, biases and the optimizer's history with it; `precision="float64"` stays by name, and
+  `Brain.compose` takes `precision`. A float32 lesson at the speech size and 256 rows reads 81 ms against 1,025
+  in float64 on an A10G.
+- **A moment on CUDA.** From a moment of `streams * width * (width + 1024) >= 3,000,000` the recall
+  memory, the working trace, the consolidating store, the carried routes' contrast, the critic's weights
+  and eligibility and the moment's drive run on the device, by the same equations, within rounding of
+  the float64 host path; of a moment only the observations and the dopamine go there, and the motor
+  columns, a value per stream and the checks come back. `CADENCE_TORCH_MEMORY`
+  overrides the size rule. See
+  [memories on the device](docs/backends.md#memories-on-the-device).
+- **A moment on MLX.** From a moment of `streams * width * (width + 1024) >= 8,000,000` the same memories, the critic's
+  weights and eligibility and the moment's drive rest on MLX in float32, by the code CUDA runs, beside the actor's eligibility
+  and the optimizer: a moment's reads join the launch that settles on them, a slot is written in place in unified memory,
+  a step needs no array of the streams' contrast, and a wide brain's rates step there. At the speech size at 16 streams
+  on an Apple M4 a `step` takes 145 ms against 2,115 on one CPU core, at a load of 12 to 25, and 256 streams peak at 7.9 GB.
+  `CADENCE_MLX_MEMORY` overrides the size rule. The default brain's chamber and battery panels on MLX read after this
+  release, and `backend="auto"` keeps those sizes on the CPU at 16 rows. See
+  [memories on the device](docs/backends.md#memories-on-the-device).
+- **A moment on a torch device crosses less.** The drive goes up once per moment, a settle from rest
+  uploads nothing, a warm start stays on the device, the motor and critic read their columns and no
+  state comes up whole. `copy.deepcopy` copies a brain on torch.
+- **The read's reward eligibility keeps what can step.** The actor holds the event's rows of the columns
+  that can step, 69 columns of 3,920 rows at the default memory and speech's width, where it held 141 MB per
+  row, and a checkpoint holds the full layout. Every bit of a CPU life is unchanged. One core's `step`
+  at 3,920 inputs: 475 to 262 ms at one stream, 2,408 to 992 ms at 16.
+- A lesson's per-synapse passes (the optimizer's step, its projection-relative form and the contrast's gather) compile
+  under NumPy's error model, so their divisions vectorize and a zero divisor gives what NumPy's form gives instead of
+  Python's error. The bits of every finite step are unchanged. On one thread the optimizer's pass over 504,064 synapses
+  falls from 1.6 ms to 1.0 ms. A learned code's forward weights take one compiled pass where `np.add.at` took 0.7 ms.
+- A brain with a learned code acts two to three times faster, with the same bits. `LearnedCode.stability` answers
+  from Cholesky factorizations at the step's bounds while the halvings hold and from the eigenvalues when they
+  change, and the brain takes a moment's new thresholds on its own blocks instead of rebuilding them. At 256 code
+  units and 548 inputs on one thread, an act of one stream falls from 34 ms to 12 ms, an act of sixteen streams
+  from 111 ms to 47 ms, a lesson and act of sixteen from 247 ms to 114 ms.
+- A lesson on a brain with a wide read is faster, with the same bits: the address lesson's readback and the carried
+  gains' contrast build each route's weight matrix in one compiled pass. A heavy lesson on a brain of 548 inputs and
+  504,064 synapses falls from 43 ms to 33 ms on one thread.
+- A `Connectome` warns when a population is given as a sequence out of ascending order or with a neuron twice. It
+  holds a population ascending, and a brain's k-th input or action takes its k-th neuron in that order, so a
+  caller who listed a late region first had its inputs moved with no word. The population held is unchanged. A set
+  states no order and stays silent.
+- **Torch speed.** On CUDA and the torch CPU device, under a step of one without adaptation or a
+  compartment, a settle makes the products of source neurons (no synapse reaches them) twice and later
+  sweeps read them, and from sweep 3 the fused update covers only the neurons synapses reach; from
+  4,194,304 entries times rows those products are held for the next settle or residual check of the
+  same source neurons. `CADENCE_STILL_PRODUCTS=0` makes every product at every sweep. On CUDA with
+  Triton the transport's launch takes blocks of presynaptic neurons, tiles by precision, batch and a
+  group's rows, and groups by a rule measured on an A10G, the fused update takes tiles by size, batch
+  and precision, the apical normalization is three launches, in free settles, residual checks and
+  `apical_gain`, and a softmax nudge over equal groups is one. A residual check replays from a capture
+  like a sweep, and a settle of no sweeps from a resident state returns it. A device sum differs from before in its last bits; the settled states match the
+  float64 host path to rounding as before. See
+  [the implementation notes](docs/backends.md#implementation-notes).
+- A float32 torch brain checks in float32 where a solve's tolerance is at least 1e-4, and reads a
+  lesson's diagnostics and held gain the same way, so it learns without a float64 copy of its kernel;
+  `residual` and `apical_gain` take `own_precision`, and by default keep the float64 reference. A
+  lesson's sums of squares per projection reduce one matrix in a fixed order in place of atomic adds, so
+  a device life with the memory repeats its bits from run to run, and at the speech size on an A10G a
+  lesson at 16 rows takes 22.6 ms against 35.6.
+- `NeuralGraph.calibrate_transport`: an opt-in plan of the transport's kernels from measurements, stored
+  per graph shape, device and precision, repeatable by name. `to_dict()["torch_transport"]` reports the
+  plan of a torch graph. See
+  [choosing kernels by measurement](docs/backends.md#choosing-kernels-by-measurement).
+- A torch workspace's CUDA graphs share a memory pool of their own, so a workspace that drops every
+  capture captures again, where the next capture used to fail and turn graphs off for the kernel.
+- **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
+  [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
+  `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only
+  by name. Above 4,096 observation-code coordinates `compose` refuses to choose and names `code=units`,
+  `recall=False` and `recall=True`, since the address map grows with the square of the width. A saved
+  brain keeps what it was saved with: one saved without a memory loads without one. The composition gives up
+  the key-door at delay 2 (18 to 13 of 32 lives, 13 to 10 of 24 on fresh founders), the observed chain (38 to 34
+  of 48), the competing ring (.67 to .55 and .70 to .55 on its hard nursery) and the odour nursery `step` at 1,000
+  (22 to 18 of 30) against `recall=False`, and against `recall_founder=True` the hidden route (.40 to .22 sampled, .25 to .08 greedy, on 30
+  founders), the binding chambers' held-out answers (.97 to .89 and .99 to .92, a restated name .76 to .59), "how long ago?" (.64 to
+  .56) and a chain whose stages look alike (7 to 4 of 48). See
+  [what the composition gives up](docs/memory.md#what-the-composition-gives-up).
+- **Default change.** `Brain.compose(..., recall=True)` gives a new brain `carried_gain=0.01` and
+  `recall_drive_gain=True`: every carried route takes a learned gain from its working value, so beside the
+  memory the trace falls from 3.0 where the read carries the cue, and the read itself takes one that can
+  quiet it and holds it at or below its amplitude. Name `recall_drive_gain=False` or `carried_gain=0.0` to opt
+  out, or `recall_founder=True` for every founder. A saved brain, and a brain that grows a memory, keeps the
+  gains it has. Brains without the memory are unchanged. See
+  [what `recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
+- **Default change.** `Brain.compose(..., recall=True)` gives a new brain the recipe for lengths no
+  lesson reached and the reward's position read: `learning_surprise=True`, `recall_recency=0.0`,
+  `recall_boundary=True`, `recall_anchor=True`, `recall_slope=0.1`, `recall_position_rate=0.01`,
+  `recall_relative=True`, `recall_position_reward=4.0`, `recall_grid=(7, 8, 9, 11)` and
+  `recall_capacity=128`. Each has its
+  own opt-out, its founder by name, and `recall_founder=True` restores them all. `recall_when=True`
+  stays an opt-in for tasks that ask "before?". A saved brain keeps the values it was saved with.
+  Brains without the memory are unchanged. See
+  [what `recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
+- **Default change.** `Brain.compose(..., recall=True)` gives a new brain `teaching="deep"` with no
+  apical: its lessons take whole nudged phases. `teaching="founder"` or `recall_founder=True` opts out,
+  and `learning=` keeps its whole configuration. A saved brain keeps the values it was saved with.
+  Brains without the memory are unchanged. See
+  [what `recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
+- Add `recall_founder` to `Brain.compose`: `recall_founder=True` beside `recall=True` composes the
+  memory at the founders of its settings table, whatever `recall=True` gives a new brain. It is no
+  setting of the memory, so it is neither described nor saved.
+- Add `recall_drive_gain` (opt-in, construction, founder off; it needs `carried_gain`): the read's drive
+  is one more route of the carried gains, one learned gain over every read port, starting at
+  `recall_amplitude` and reaching no higher, taught by the same contrast on lessons and the same
+  eligibility on the dopamine. One parameter. `brain.carried_gains["read"]` reads it, `describe` holds the
+  gene and the value, a checkpoint keeps it, `grow` carries it by route and `graft` keeps this brain's. A
+  newborn settles as one without the option, and brains without it are unchanged. See
+  [the read's route](docs/memory.md#the-reads-drive-as-a-route).
+- Add `carried_gain` (opt-in, construction, founder off): one learned gain per carried route, the
+  working trace, the efference copy and every block of the heard history, starting at the working
+  value and multiplying the route's stimulus. A lesson steps it on the settle's contrast at the taught
+  rows and a sampled act's eligibility on the dopamine, over the gain's own second moment, within
+  `[0, 8]`. One parameter per route. `brain.carried_gains` reads them by name. Saved with the brain,
+  carried by `grow` by route and by `graft`. A newborn settles as one without the option, and brains
+  without it are unchanged. See [carried gain](docs/memory.md#how-strongly-a-carried-region-is-heard).
+- Add `recall_grid` (opt-in, construction, founder none; needs `recall_position`): past the exact
+  table every head's position term also reads each slot's age modulo each of these coprime numbers,
+  one term per residue, so a few dozen terms separate the ages up to the moduli's product, where the
+  table's buckets double. Once the slots pass the table the slope takes no step. A brain with the
+  option reads and learns as without it until a slot passes `recall_position`; the maps are saved
+  with the brain, counted by `parameters()` and carried by `grow` and `graft`. `recall_position=32,
+  recall_grid=(7, 8, 9, 11), recall_capacity=128` reads a period of 40 at .999 on six fresh founders
+  where a table of 64 at 64 slots reads .870, the other sequence gates to the digit. See [reads over
+  long context](docs/memory.md#reads-over-long-context). Brains without the option are unchanged.
+- Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`), the learned value
+  path (#262, a delivery of #260): one scalar per read port on the declared tokens' identity into the
+  motor region's drive, starting at zero, so what lessons on some tokens teach holds for a token no
+  lesson used, and which port holds the answer is learned. Lessons step each gain by the sum over the
+  tokens of the port's read of the token times its motor neuron's movement between the nudged phases,
+  at `min(rate, 5 / E)`, `E` the energy of the row's reads, refused whole when not finite (`gain_rows`,
+  `gain_refused`); under reward a sampled act keeps that step in one column per port of the read's
+  eligibility. The address lesson's readback is untouched. A newborn acts as one without the path.
+  Saved as the array `gains`, counted by `parameters`, kept by `grow` and `graft`, refused by `retune`;
+  a read revised inside the settle is not composed with it. The copy pathway (`recall_copy`) stays as
+  the fixed form. On six fresh founders the answers on tokens no lesson used rise from 0.00 to
+  0.92-1.00 on induction, 0.93-0.97 on a period of 8, 0.76-0.97 on copying and 0.70-0.82 on two hops;
+  n-back reads 0.08-0.50 and look back 0.00. The cost is the read: a brain that answers early stops
+  teaching it, copying repeated tokens falls from 0.91-0.95 to 0.82-0.85, the second hop from 0.99-1.00
+  to 0.94-0.96, the grammar chamber's Dyck sentences from 0.45 to 0.36 and its paths from 0.30 to 0.21. See [memory](docs/memory.md#the-learned-value-path-opt-in).
+- **The recall read's address lesson changes.** It steps on the keys it names less the keys the read
+  attended, the gradient of the content logits and zero where the read is right, in place of the
+  distance to the named keys, which keeps regressing the address onto the mean named key. There is
+  no setting: every memory learns its addresses this way, and it adds no parameter. A brain at
+  `recall=False` is bit-identical. A memory's lessons do not reproduce the bits of 0.94.0. A saved
+  memory of 0.85.0 on loads with its map and continues under this lesson. See
+  [how the address learns](docs/memory.md#how-it-writes-and-how-the-address-learns).
+- Add `learning_fast_settle` (runtime, founder off): a composed brain's free solves take
+  `equilibrate(..., fast=True)` on the compiled CPU path. A row stops at the check it is within
+  1e-5, and the activation is made in arithmetic that vectorizes. The same equations, order and
+  tolerance in about half of a chamber pass, with other bits. A settle's report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without
+  the option are unchanged.
+- Add `dense_limit` to `Brain.compose` (construction, founder 2048): a brain whose blocks exceed it
+  settles on the sparse transport in Python, about 30 times slower at a speech instrument's 3,920
+  inputs; a larger limit keeps it on the blocks and the compiled kernels. With `recall=True` a brain
+  that names no limit takes one as wide as its blocks wherever at least half of their entries are
+  synapses, so a new memory brain over 2048 squared entries settles on the blocks and its last bits
+  differ from what the sparse transport gave. A saved brain keeps its limit, and a brain without the
+  memory is unchanged. See [backends](docs/backends.md).
+- A brain costs less per moment, with the same bits and the same reports (#271): a chamber pass
+  takes about 0.4 of its time. The settle's rows pay no atomic reference counts and run on vector loops,
+  a launch reads the activations a state keeps instead of computing them again, a free solve runs in
+  one compiled call, the act after a surprise lesson that taught no row reads that lesson's settle,
+  a greedy choice with one motor reads the neurons where one stands clear, and the recall read's
+  position buckets are table lookups and its episode terms one compiled pass. The recall bank is
+  a view into a wider array and a write adds one slot in place of copying every slot, so a write's
+  cost does not grow with `recall_capacity`; a caller that holds `recall.nexts` or the other slot arrays
+  across a write takes `recall.snapshot()`. The kernels' first use compiles in about 10 seconds on
+  an Apple M4. See [what a moment costs](docs/tune.md#what-a-moment-costs).
+- With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
+  recall read's address and position maps as they are: the read's lessons take their target
+  from the slots' contents, which hold no yes or no. Inside the positions recipe a yes or no
+  lesson pulled the read off the items asked about, and "was A told before B?" stayed at 0.51
+  to 0.65 on development founders. Under surprise lessons such a row is taught at every lesson,
+  answered right or not: judged only where wrong, the lessons of a judgment between two classes
+  carry one class at a time ("before" stays at chance after 4,500 surprise lessons, 0.97 at every
+  row), and lessons at every row collapse the token answers of induction, copying and two hops,
+  which stay judged by surprise. `recall_tokens` may be given without `recall_copy`, as a
+  declaration of which answers are tokens (no synapse is added), and may declare no token at
+  all (`[-1] * actions`). Brains without tokens are unchanged.
+- Reward steps the recall read's position maps (`recall_position_reward`) by a lesson's step at
+  the founder's position rate, 0.1, whatever `recall_position_rate` the lessons take. Beside the
+  positions recipe's slow table (0.01) the reward step was a tenth as large: in the ordered recall
+  world under `live` the composed sequence brain learned order on 3 of 6 development founders,
+  and on 5 of 6 at the founder's step (12 of 12 fresh founders with the step restored by
+  setting). Brains at the founder's position rate, and brains without the reward read, are
+  unchanged.
+
+### A planning window: the next k actions settled jointly (#257)
+
+A brain composed with `actions=k * menu, slots=k` settles its next `k` actions in one settle
+under the meaning it holds, a lesson teaches the `k` slots at once, and the window advances
+through the world's echo or the efference copy. No library code changes: the window is the
+documented use of `slots` ([a planning window](docs/tune.md#a-planning-window)), with tests of
+its contract under `tests/test_planning_window.py` and its readings in the grammar chamber
+(`benchmarks/grammar/window.py`). The founder, one slot, is unchanged to the bit.
+
+### What left (#273)
+
+Each name below is refused at `compose` and `retune` with one sentence that says what the brain
+does instead.
+
+- `memory_expansion` and `memory_fan_in`. The episodic separation holds 1,024 dense cells, a
+  constant, and a brain with a fixed code keys on the code as it is. The two names sized a store:
+  no chamber or application read a value of either. Write `code=units` for a wide observation. A
+  checkpoint with a sparse separation loads and continues, and `grow` refuses a brain saved with
+  a separation of another size. `Brain(connectome, memory_choice=True)` separates its keys as a
+  composed brain does.
+- `learning_rehearsal_capacity`. The rehearsal's reservoir keeps 512 lesson rows, a constant no
+  reading moved. `learning=LearnerConfig(rehearsal_capacity=...)` moves it as an expert.
+- The refusal sentences of `LearnedCode.REMOVED`, seventeen names no release took. They are unknown
+  settings (`TypeError`), and the retune branch that could never run went with them.
+- The live checks of the attention chambers (`benchmarks/attention`): 84 scripts, tests and protocols,
+  about 850 test cases. Their receipts stay and verify on archived bytes alone
+  (`benchmarks/attention/test_retained_receipts.py`); release 0.94.0 holds the campaigns. Five
+  instruments stay: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
+  `contextual_choice.py`.
+- The readers of the checkpoints of 0.84.3 and earlier. `Brain.load` reads `cadence-brain/1` and
+  `/2`, every file of 0.85.0 on. It refuses `cadence-generic/1` to `/10`, `cadence-arousal/1` to
+  `/3` and `cadence-checkpoint/1` by name: load such a file once under cadence 0.94.0 and save it,
+  and this version reads the result.
+- `recall_compete`. Several heads read in turn, each taking of a slot at most the share the heads
+  before it left, which is what they did at the founder. With `False` two heads read one slot on
+  184 of 192 decisions, and on the held-heads benchmark under this release's address lesson the two
+  settings read alike (development). Write nothing. A file saved at `False`, and a file of several heads saved by 0.88.0 to 0.91.2, whose
+  heads read alike, are refused by name; cadence 0.94.0 runs them.
+- `recall_null`, a slot that reads nothing. It had no reading of its own, and a null slot fails the
+  fresh-bindings gate. Write nothing: a read takes its whole mass from the slots held. A file saved
+  with one is refused by name; cadence 0.94.0 runs it.
+- The refusal sentences of the names 0.85.0 retired: the seven `actor_` names of the centred
+  dopamine and the critic's signal, `arousal_record_surprise`, `working_memory_focus`, `resting_bias`
+  and the recall memory's `write`, `key`, `episodes`, `value`, `context`, `context_decay` and
+  `recency=None`. They are unknown settings (`TypeError`), and no file of 0.85.0 on carries them;
+  cadence 0.94.0 names each with what the brain does instead. `learning_nudge`, `learning_centered`
+  and `learning_decay` keep their sentences, because `Learner.load` reads a learner's file of 0.84.3.
+- The properties `Brain.memory_context`, `memory_context_hold` and `memory_extinction`. Read
+  `brain.memories["episodic"].share`, `.hold` and `.extinction`. `describe()["memories"]` carries
+  them too.
+
 ## 0.94.0 — 2026-11-05
 
 One opt-in, maturity, for a brain that goes on learning after it has acquired a skill (#169,

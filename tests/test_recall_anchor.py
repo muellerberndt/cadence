@@ -10,7 +10,7 @@ import cadence as cd
 
 
 def anchored(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, seed=4, recall=True, **options)
+    return cd.Brain.compose(6, 4, seed=4, recall=True, recall_founder=True, **options)
 
 
 def lessons(brain: cd.Brain, count: int = 12, seed: int = 0) -> None:

@@ -36,6 +36,8 @@ designed region can replace any of them.
 
 from __future__ import annotations
 
+import math
+import os
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -44,7 +46,7 @@ from dataclasses import replace
 from functools import wraps
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, TypeVar, cast
+from typing import Any, Literal, TypeVar, cast
 
 import numpy as np
 
@@ -64,7 +66,9 @@ from ._configuration import (
     teaching_point,
 )
 from .arousal import Arousal, ArousalConfig
-from .brain import Apical, Backend, BrainState, Equilibrium
+from .blocks import Layout
+from .blocks import layout as make_layout
+from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
@@ -79,21 +83,37 @@ from .learning import (
 )
 from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
-from .plasticity import ActorCritic, ActorCriticConfig, Maturity
+from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
-from .stream import Efference, FastSynapses, History, PatternSeparator, Recall, Trace
+from .resident import (
+    _backend_of_the_run,
+    _Candidate,
+    _fastest_backends,
+    _memory_on_device,
+    arrays_of,
+)
+from .stream import (
+    Efference,
+    FastSynapses,
+    Hearing,
+    History,
+    PatternSeparator,
+    Recall,
+    Trace,
+    _route_matrix,
+)
 
 __all__ = ["Brain"]
 
 # The checkpoint format of a brain: one group per memory (``Brain.save``). ``Brain.load`` reads
-# it and, through 0.85.x, the earlier formats: ``cadence-generic/1`` to ``/9``, which 0.84.3
-# reads, and ``/10``, which development builds of the learned code wrote.
+# it alone: the formats before it, ``cadence-generic/1`` to ``/10``, are refused by name, and
+# cadence 0.94.0 loads them and saves this one.
 BRAIN_FORMAT = "cadence-brain/1"
 # A brain with maturity (#253) saves under its own format name, which 0.93.1 and earlier refuse;
 # every other brain keeps BRAIN_FORMAT.
 MATURITY_FORMAT = "cadence-brain/2"
-# A memory's group in BRAIN_FORMAT and the prefix its arrays had in the formats of 0.84.3; the
-# episodic memory's arrays are the context store's and the stream's (``_earlier_layout``).
+# A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
+# episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
     "working_memory": "working/",
     "efference": "efference/",
@@ -113,8 +133,9 @@ _REWARD_ARRAYS = (
 # phase and the parameters it was settled under, the drive, a pending action and the
 # eligibility.
 _STREAM_ACTOR = (
-    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "trace", "trace_bias",
-    "trace_critic", "trace_memory", "_trace_device", "salience",
+    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "_pending_hearing", "trace",
+    "trace_bias", "trace_critic", "trace_memory", "trace_hearing", "_trace_device", "_trace_mlx",
+    "salience",
 )
 # The brain's records of its streams' moments, held by a replay with the streams themselves.
 _STREAM_RECORDS = (
@@ -153,6 +174,19 @@ _CODE_STREAM = 7103
 _Operation = TypeVar("_Operation", bound=Callable[..., Any])
 
 
+_PLACED_LATER = "it takes its backend at its first moment, when its rows are known"
+
+
+def _place_of(candidate: _Candidate, precision: str | None) -> dict[str, Any]:
+    """The constructor's settings of a place a brain can run."""
+    place: dict[str, Any] = {"backend": candidate.backend}
+    if candidate.device is not None:
+        place["device"] = candidate.device
+    if candidate.precision is not None or precision is not None:
+        place["precision"] = candidate.precision or precision
+    return place
+
+
 def _operation(method: _Operation) -> _Operation:
     """A public operation: the recall memory binds the content products it reuses to its
     bank for the operation's length (``Recall._scope``). A warning the method issues for its
@@ -160,6 +194,8 @@ def _operation(method: _Operation) -> _Operation:
 
     @wraps(method)
     def operated(self: Brain, *args: Any, **kwargs: Any) -> Any:
+        if self._unplaced:
+            self._place_for(args[0] if args else kwargs.get("observations"))
         if self.recall is None:
             return method(self, *args, **kwargs)
         with self.recall._scope():
@@ -174,6 +210,8 @@ def _moment_of_life(method: _Operation) -> _Operation:
 
     @wraps(method)
     def lived(self: Brain, *args: Any, **kwargs: Any) -> Any:
+        if self._unplaced:  # before anything of this brain is held across the moment
+            self._place_for(args[0] if args else kwargs.get("observations"))
         maturity = self.basal_ganglia.maturity
         if maturity is None:
             return method(self, *args, **kwargs)
@@ -274,6 +312,75 @@ def _history_decays(value: Any) -> tuple[float, ...]:
     return decays
 
 
+# what ``Brain.compose(..., recall=True)`` gives a new brain's lessons beside its memory
+# (``Recall.COMPOSED``): the teaching point, at no apical, and settings a caller's value overrides
+_COMPOSED_TEACHING = "deep"
+_COMPOSED_SETTINGS: dict[str, Any] = {
+    "learning_surprise": True, "learning_fast_settle": True, "carried_gain": 0.01,
+}
+# the association's width those lessons hold at: past it the two projections that grow with the
+# width (``_width_rates``) and the read's address map each step at this over the width
+_COMPOSED_WIDTH = 64
+
+
+def _width_rates(connectome: Connectome) -> np.ndarray | None:
+    """Each synapse's step in a new brain with a wide association: ``_COMPOSED_WIDTH`` over its
+    width on the two projections whose fan-in grows with it, prefrontal to association and the
+    association-motor pair, and 1 on every other; None at or under that width, and for a
+    connectome without those regions, where every step stays whole."""
+    populations = connectome.populations
+    if any(name not in populations for name in ("association", "motor", "prefrontal")):
+        return None
+    width = len(populations["association"])
+    if width <= _COMPOSED_WIDTH:
+        return None
+
+    def among(name: str) -> np.ndarray:
+        members = np.zeros(connectome.n, dtype=bool)
+        members[np.asarray(populations[name], dtype=np.int64)] = True
+        return members
+
+    association, motor = among("association"), among("motor")
+    pre, post = connectome.pre, connectome.post
+    grows = (
+        (among("prefrontal")[pre] & association[post])
+        | (association[pre] & motor[post])
+        | (motor[pre] & association[post])
+    )
+    rate = np.ones(connectome.synapses)
+    rate[grows] = _COMPOSED_WIDTH / width
+    return rate
+
+
+def _rated_by_hand(brain: Brain) -> bool:
+    """Whether the brain holds per-synapse rates other than the ones its width gave it."""
+    rate = brain.learner.synapse_rate
+    if rate is None:
+        return False
+    composed = _width_rates(brain.connectome)
+    return composed is None or not np.array_equal(rate, composed)
+
+
+def _projection_rates(connectome: Connectome, rate: np.ndarray) -> dict[str, Any]:
+    """Each projection's step where a brain holds per-synapse rates, by ``"pre->post"``: one number
+    for a projection that moves as one, else its least and largest, and no entry at a step of 1."""
+    names = [name for name in connectome.populations if "/" not in name]
+    label = np.full(connectome.n, -1, dtype=np.int64)
+    for index, name in enumerate(names):
+        label[np.asarray(connectome.populations[name], dtype=np.int64)] = index
+    pre, post = label[connectome.pre], label[connectome.post]
+    pair = pre * len(names) + post
+    moved = (rate != 1.0) & (pre >= 0) & (post >= 0)
+    out: dict[str, Any] = {}
+    for key in np.unique(pair[moved]):
+        values = rate[pair == key]
+        low, high = float(values.min()), float(values.max())
+        out[f"{names[key // len(names)]}->{names[key % len(names)]}"] = (
+            low if low == high else [low, high]
+        )
+    return out
+
+
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
     """The recall memory's settings, validated: its founders and options at their founders
     with every ``recall_<setting>`` of ``genes`` over them (those names are removed from
@@ -283,6 +390,12 @@ def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("recall must be boolean")
     founders = Recall.founders()
     settings: dict[str, Any] = {}
+    # ``compose``'s word for a memory at its founders: read there, no setting of the memory
+    named_founder = genes.pop("recall_founder", None)
+    if named_founder is not None and not isinstance(named_founder, bool):
+        raise ValueError("recall_founder must be boolean")
+    if named_founder is not None and not recall:
+        raise ValueError("recall settings need recall=True")
     for name in [name for name in genes if name.startswith("recall_")]:
         setting = name[len("recall_"):]
         if setting in Recall.RETIRED:
@@ -304,11 +417,10 @@ def _copy_identity(
 
     For motor neuron ``j`` of token ``tokens[j]``: the synapse from every head's ``recall``
     port at value coordinate ``offset + tokens[j]`` (the observation's own coordinates in the
-    value) starts at ``recall_copy``, so the token the read delivers drives its own action; the
-    synapse from every ``next`` port at that coordinate starts at zero; and the synapse from
-    sensory neuron ``tokens[j]`` starts at ``-recall_copy``, so a token the present
-    observation already holds, the read's echo of the moment that addressed it, is not copied
-    back. Every other synapse into the motor region from a read port, or from the sensory
+    value) starts at ``recall_copy``, so the token the read delivers drives its own action; and
+    the synapse from sensory neuron ``tokens[j]`` starts at ``-recall_copy``, so a token the
+    present observation holds, the read's echo of the moment that addressed it, is not
+    copied back. Every other synapse into the motor region from a read port, or from the sensory
     region, starts at zero. The same connectome when it already starts so (a saved brain).
     Every one of these synapses learns on its own, as every synapse does."""
     populations = connectome.populations
@@ -372,7 +484,7 @@ def _learned_code_genes(learned_code: Any, genes: dict[str, Any]) -> dict[str, A
     settings: dict[str, Any] = {}
     for name in [name for name in genes if name.startswith("learned_code_")]:
         setting = name[len("learned_code_"):]
-        if setting not in LearnedCode.GENES and setting not in LearnedCode.REMOVED:
+        if setting not in LearnedCode.GENES:
             raise TypeError(f"unknown brain setting: {name!r}")
         settings[setting] = LearnedCode.setting(setting, genes.pop(name))
     if not units:
@@ -498,19 +610,16 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
     "memory_context": 0.5,
     # a known outcome moves a record halfway: remembered at once, revised by repetition
     "memory_rate": 0.5,
-    "memory_expansion": 1024,
 }
-_EPISODIC_SETTINGS = (
-    "memory_choice", "memory_context", "memory_expansion", "memory_fan_in",
-    "memory_extinction", "memory_context_hold",
-)
-# The constants of the stores the brain builds since 0.93.0, the founders every reading used
-# (``RETIRED``): the share of a stream's record each later write keeps (``memory_decay``) and
-# the active cells of the episodic separation per key (``memory_winners``). A saved memory
-# loads with its own (an instrument's memory attached to a brain keeps its decay and
-# separation); ``EpisodicRecords.REPLAY`` and ``.DEMONSTRATIONS`` are the episodic records'
+_EPISODIC_SETTINGS = ("memory_choice", "memory_context", "memory_extinction", "memory_context_hold")
+# The constants of the stores the brain builds, the founders every reading used (``RETIRED``):
+# the share of a stream's record each later write keeps (``memory_decay``) and the cells of the
+# episodic separation and those active per key (``memory_expansion``, ``memory_winners``). A
+# saved memory loads with its own (an instrument's memory attached to a brain keeps its decay
+# and separation); ``EpisodicRecords.REPLAY`` and ``.DEMONSTRATIONS`` are the episodic records'
 # own.
 _MEMORY_DECAY = 0.9
+_MEMORY_EXPANSION = 1024
 _MEMORY_WINNERS = 24
 # The brain's maturity (``maturity``, #253): the founders of the use scale (``U_c``, in the
 # actor's own step units per synapse) and of the recovery (moments).
@@ -533,13 +642,6 @@ def _load_code(
             raise ValueError("saved code tables require code metadata")
         return None
     fields = {"inputs", "expansion", "winners", "seed", "center", "fan_in", "cover", "cortex"}
-    if isinstance(spec, dict) and set(spec) == fields - {"cover"}:
-        # a code saved before the covering construction drew signed weights independently;
-        # this version neither builds such a code nor reads one
-        raise ValueError(
-            "the saved code lacks the covering construction's field, cover: it was saved "
-            "before the covering code and cannot be loaded by this version"
-        )
     if not isinstance(spec, dict) or set(spec) != fields or not isinstance(spec["cortex"], bool):
         raise ValueError("invalid saved code metadata")
     for name in ("inputs", "expansion", "winners", "seed", "fan_in", "cover"):
@@ -618,13 +720,10 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
     if value is None:
         return None
     expected = {"inputs", "actions", "modules", "observers", "slots", "lateral",
-                "sensory_scale", "seed"}
-    if isinstance(value, dict) and set(value) == expected:
-        # provenance without a working_memory_scale was composed at the fixed scale 12
-        value = {**value, "working_memory_scale": 12.0}
+                "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical"
-    } != (expected | {"working_memory_scale"}):
+    } != expected:
         raise ValueError("invalid saved composition provenance")
     compartment = learner.brain.apical
     if ("apical" in value) != (compartment is not None) or (
@@ -774,24 +873,10 @@ def _load_memory(
         separator = None
         spec = metadata.get("separator")  # An unseparated memory may omit this field.
         if shared is not None:
-            saved = {
-                key[len(prefix + "separator/"):]: data[key]
-                for key in data
-                if key.startswith(prefix + "separator/")
-            }
-            if spec is not None or saved:
-                # a checkpoint of the 0.93 development line saved its own copy of the shared
-                # separator: the same separator is read as the shared one, another is refused
-                arrays = shared.arrays()
-                if (
-                    spec != shared.to_dict()
-                    or set(saved) != set(arrays)
-                    or any(not np.array_equal(saved[name], value) for name, value in arrays.items())
-                ):
-                    raise ValueError(
-                        "the saved direct payments carry a separator other than the place "
-                        "records'"
-                    )
+            if spec is not None or any(key.startswith(prefix + "separator/") for key in data):
+                raise ValueError(
+                    "the saved direct payments carry a separator; they read the place records'"
+                )
             separator = shared
         elif spec is None:
             if any(key.startswith(prefix + "separator/") for key in data):
@@ -1015,7 +1100,6 @@ def _validate_life_state(
         if array(prefix + "cold", (batch,)).dtype != np.bool_:
             raise ValueError(f"invalid saved {what} cold flags")
 
-    level = int(meta["format"].rpartition("/")[2])  # cadence-generic/1 to /10 (Brain.load)
     count("updates")
     bias = meta.get("b_critic")
     if isinstance(bias, bool) or not isinstance(bias, (int, float)) or not np.isfinite(bias):
@@ -1085,14 +1169,6 @@ def _validate_life_state(
             or not isinstance(lived.get("own"), bool)
         ):
             raise ValueError("invalid saved lived forecast")
-        recorded = lived.get("recorded")  # the record channel's forecast, which 0.84.3 saved
-        if recorded is not None and (
-            isinstance(recorded, bool)
-            or not isinstance(recorded, (int, float))
-            or not np.isfinite(recorded)
-            or meta["hippocampus"] is None
-        ):
-            raise ValueError("invalid saved lived record forecast")
         if was_sampled != bool(meta.get("pending", False)) or batch != 1:
             raise ValueError("a saved lived action must match the pending action of one stream")
         observations = array("lived/observations", (1, observed))
@@ -1109,12 +1185,6 @@ def _validate_life_state(
     if "lived/code" in data and (not learned or "lived" not in meta):
         raise ValueError("a saved lived code belongs to a lived action of a learned code")
     awaiting = meta.get("awaiting")
-    if level == 5 and "awaiting" not in meta:
-        raise ValueError("format cadence-generic/5 carries a sensed state awaiting an outcome")
-    if "awaiting" in meta and level < 5:
-        raise ValueError(
-            "a sensed state awaiting an outcome belongs to formats cadence-generic/5 to /10"
-        )
     if "awaiting" not in meta:
         if any(name.startswith("awaiting/") for name in data):
             raise ValueError("saved awaiting arrays require awaiting metadata")
@@ -1133,12 +1203,6 @@ def _validate_life_state(
         source, target = working["source"], working["target"]
         if source not in populations or target not in populations:
             raise ValueError("invalid saved working-memory ports")
-        # the trace's focus of 0.84.3, a weighting of each neuron by its movement, is read
-        # at its founder zero
-        if working.get("focus", 0.0) != 0.0:
-            raise ValueError(
-                removed_on_load("working trace", "focus", working["focus"], "working_memory_focus")
-            )
         trace("working/", len(populations[source]), "working-memory")
     efference = meta.get("efference")
     if efference is None and (
@@ -1146,10 +1210,6 @@ def _validate_life_state(
     ):
         raise ValueError("saved efference neurons and state require efference metadata")
     if efference is not None:
-        if level < 4:
-            raise ValueError(
-                "an efference copy belongs to checkpoint formats cadence-generic/4 to /10"
-            )
         source, target = efference["source"], efference["target"]
         if (
             source != "motor"
@@ -1197,8 +1257,8 @@ def _validate_recall_state(
     sensory: int,
     width: int,
 ) -> None:
-    """The settings, slots and address map of a recall memory (formats /8 to /10); ``width``
-    is the observation code's, the observations the memory is given. A file saved under a
+    """The settings, slots and address map of a recall memory; ``width`` is the observation
+    code's, the observations the memory is given. A file saved under a
     retired setting at a value other than the one the memory keeps for it is refused with the
     sentence ``Recall.removed`` gives, naming the release that retired it."""
     populations = learner.brain.connectome.populations
@@ -1208,10 +1268,9 @@ def _validate_recall_state(
             raise ValueError("saved recall state requires recall metadata")
         return
     names = {*Recall.RUNTIME, *Recall.CONSTRUCTION}
-    # a retired setting is saved where the format of its release wrote it: the keys of
-    # ``FORMAT`` always, the others, like the options, only where they differed from their
-    # founders
-    optional = {"inputs", *Recall.OPTIONS, *Recall.RETIRED}
+    # a retired setting is saved where the format of its release wrote it: like the options,
+    # only where it differed from its founder
+    optional = {"inputs", "hearing", *Recall.OPTIONS, *Recall.RETIRED}
     if (
         not isinstance(recalled, dict)
         or set(recalled) - optional
@@ -1225,14 +1284,18 @@ def _validate_recall_state(
     for name, (_, kept, _) in Recall.RETIRED.items():
         if name in recalled and recalled[name] != kept:
             raise ValueError(Recall.removed(name))
-    if recalled["recency"] is None:
-        raise ValueError(Recall.removed("recency"))
     settings = {name: Recall.setting(name, recalled[name]) for name in names}
     # an option is saved where it differs from its founder, and takes its founder where absent
     settings.update({name: Recall.setting(name, recalled[name]) for name in Recall.OPTIONS
                      if name in recalled})
+    if settings.get("heads", 1) > 1 and "compete" not in recalled:
+        raise ValueError(
+            f"this memory's heads read alike, as 0.91.2 and earlier saved them: "
+            f"{Recall.removed('compete')}"
+        )
     settings["position"] = _saved_position(recalled, data)
-    settings["compete"] = _saved_compete(recalled)
+    if settings.get("drive_gain"):
+        real("saved carried_gain", meta["carried_gain"]["rate"], low=0)
     writes = recalled["writes"]
     if isinstance(writes, bool) or not isinstance(writes, int) or writes < 0:
         raise ValueError("invalid saved recall write count")
@@ -1294,10 +1357,6 @@ def _validate_recall_state(
     array("previous", (batch, association))
     if command:
         array("acted", (batch, command))
-    # the format of 0.84.3 wrote the context history, empty at the one value of ``FORMAT``
-    history = data.get("recall/history")
-    if history is not None:
-        array("history", (0 if not len(history) else batch, key))
     maps: dict[str, tuple[int, ...]] = {}
     states: set[str] = set()
 
@@ -1317,6 +1376,7 @@ def _validate_recall_state(
         ("anchor", "anchored", (count + 1,), "told", 0),
         ("relative", "relative", (2 * Recall.RELATIVE + 2,), "focus", -1),
         ("slope", "slope", (), None, 0),
+        ("grid", "grid", (sum(settings.get("grid", ())),), None, 0),
     ):
         if settings.get(kind):
             saved(kind, *outputs)
@@ -1330,6 +1390,10 @@ def _validate_recall_state(
             name.startswith(f"recall/{kind}_") for name in data
         ):
             raise ValueError(f"saved {noun} maps belong to a recall memory with {kind}")
+    if settings.get("gain", 0.0):  # the gains, one per read port, with the option
+        maps["gains"] = (len(regions),)
+    elif "recall/gains" in data:
+        raise ValueError("saved recall gains belong to a recall memory with gain")
     for name, shape in maps.items():
         array(name, shape)
     if window > 1:  # the window's previous events per stream: a window of another length
@@ -1339,25 +1403,32 @@ def _validate_recall_state(
     columns = heads * address  # with position_reward the position and anchored buckets follow
     if settings.get("position_reward", 0.0) and count:
         columns += heads * count + (heads * (count + 1) if settings.get("anchor", False) else 0)
+    if settings.get("gain", 0.0):  # and one column per read port for the gains
+        columns += len(regions)
     eligibility = (batch, key + command + association + 1, columns)
     if "recall/trace" in data:
         array("trace", eligibility)
-    if "recall/pending" in data:
+    if "recall/pending" in data or "recall/pending_kept" in data:
         if not meta.get("pending", False):
             raise ValueError("a saved address contrast belongs to a pending action")
+    if "recall/pending" in data:
         array("pending", eligibility)
+    for kept in ("trace_kept", "pending_kept"):  # as the actor keeps them, with or without the
+        if "recall/" + kept in data:  # address columns
+            width = data["recall/" + kept].shape[-1]
+            if width not in (columns, columns - heads * address):
+                raise ValueError(f"invalid saved recall state: {kept}")
+            array(kept, (batch, key + command, width))
     # the streams whose latest slot closed an episode, saved while one does
     if "recall/ended" in data and array("ended", (batch,)).dtype != np.bool_:
         raise ValueError("invalid saved recall state: ended")
     expected = {"keys", "values", "nexts", "held", "previous", *maps, *states}
     if command:
         expected |= {"acted"}
-    if history is not None:
-        expected |= {"history"}
     if window > 1:
         expected |= {"past"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
-        "trace", "pending", "ended"
+        "trace", "pending", "trace_kept", "pending_kept", "ended"
     } != expected:
         raise ValueError("unexpected saved recall arrays")
 
@@ -1373,42 +1444,21 @@ def _saved_position(recalled: dict[str, Any], data: Any) -> int:
     return 0
 
 
-def _saved_compete(recalled: dict[str, Any]) -> bool:
-    """A saved memory's competing heads: the option as saved (a memory of several heads always
-    keeps it); a file of several heads saved before heads competed holds none and loads with
-    heads that read alike, as it was saved."""
-    if "compete" in recalled:
-        return bool(Recall.setting("compete", recalled["compete"]))
-    return bool(int(recalled.get("heads", 1)) == 1)
-
-
 def _actor_config(values: Any) -> ActorCriticConfig:
-    """A saved actor's config. A gene the actor retired (``ActorCriticConfig.RETIRED``) loads
-    at the value at which the law is this version's and is refused otherwise, with the
-    release that retired it; a gene the law never reads loads at any value. The running level
-    of the centred dopamine and the optimizer moments that 0.84.3 saved beside it are not
-    read."""
+    """A saved actor's config."""
     if not isinstance(values, dict):
         raise ValueError("invalid saved actor config")
-    values = dict(values)
-    for name, (_, kept, _) in ActorCriticConfig.RETIRED.items():
-        if name not in values:
-            continue
-        value = values.pop(name)
-        if kept is None:
-            continue
-        accepted = kept if isinstance(kept, tuple) else (kept,)
-        if isinstance(value, bool) != isinstance(accepted[0], bool) or value not in accepted:
-            raise ValueError(removed_on_load("actor", name, value, f"actor_{name}"))
-    return ActorCriticConfig(**values)
+    try:
+        return ActorCriticConfig(**values)
+    except TypeError as exc:
+        raise ValueError("invalid saved actor config") from exc
 
 
-def _earlier_layout(
+def _flat_layout(
     saved: dict[str, Any], data: Mapping[str, Any]
 ) -> tuple[dict[str, Any], dict[str, Any]]:
-    """A ``cadence-brain/1`` file in the layout of the formats of 0.84.3, which the reader
-    validates: each memory's settings and arrays under the names those formats gave them,
-    and the format number of the latest component the file carries."""
+    """A checkpoint in the layout the reader validates: each memory's settings at the top of the
+    metadata and its arrays under a prefix of its own."""
     memories = saved.get("memories")
     if not isinstance(memories, dict) or set(memories) - {*_MEMORY_PREFIXES, "episodic"}:
         raise ValueError("invalid saved memories")
@@ -1421,14 +1471,6 @@ def _earlier_layout(
     for name in ("efference", "history", "recall", "episodic"):
         if name in memories:
             meta[name] = memories[name]
-    level = max(
-        (number for number, present in (
-            (2, True), (3, "arousal" in meta), (4, "efference" in meta),
-            (5, "awaiting" in meta), (6, "episodic" in meta), (7, "history" in meta),
-            (8, "recall" in meta), (9, "code" in meta), (10, "learned_code" in meta),
-        ) if present),
-    )
-    meta["format"] = f"cadence-generic/{level}"
     arrays: dict[str, Any] = {}
     for name in data:
         if name == "brain":
@@ -1455,8 +1497,8 @@ def _earlier_layout(
 def _validate_episodic_state(
     meta: dict[str, Any], data: Mapping[str, Any], learner: Learner, sensory: int
 ) -> None:
-    """The settings and stream state of an episodic memory's choice (formats /6 to /10);
-    ``sensory`` is the width of the observation code the records are keyed on."""
+    """The settings and stream state of an episodic memory's choice; ``sensory`` is the width of
+    the observation code the records are keyed on."""
     names = ("episode/context", "episode/decision") + tuple(
         "episode/path/" + name
         for name in (
@@ -1865,6 +1907,19 @@ def _layout(
     }
 
 
+def _composed_limit(layout: Layout, synapses: int, asked: int | None, recall: bool) -> int:
+    """The dense limit a composed brain takes: the one asked for, else the graph's 2048, and with
+    the recall memory as wide as its blocks wherever at least half of their entries are synapses.
+    The memory's regions are dense: over 2048 squared entries a sparse settle runs in Python, about
+    30 times the cost of the compiled one, and the blocks hold no more than the sparse form does."""
+    if asked is not None:
+        return asked
+    size = layout.size
+    if recall and size > 2048 * 2048 and 2 * synapses >= size:
+        return math.isqrt(size - 1) + 1
+    return 2048
+
+
 class Brain:
     """Senses, an association cortex, a motor cortex, basal ganglia and consolidating memory.
 
@@ -1893,10 +1948,9 @@ class Brain:
     channels silent. The code's seed is drawn from ``seed`` on a stream of its own
     (``SeedSequence([seed, 7103])``). Left unset, the memories key on the observation
     whatever its width. The code is a fixed random sparse code and learns nothing; it bounds
-    the size of keys on wide observations, and ``memory_fan_in`` bounds an uncoded episodic
-    separation the same way. ``learned_code=units`` (opt-in, without ``code``) learns the
-    code instead: a region of the brain's own neurons (``LearnedCode``) whose code the cortex
-    reads and every memory keys on. With
+    the size of keys on wide observations. ``learned_code=units`` (opt-in, without ``code``)
+    learns the code instead: a region of the brain's own neurons (``LearnedCode``) whose code the
+    cortex reads and every memory keys on. With
     ``inputs`` (the width of the observations) the sensory region is the code: every
     observation is coded before the drive, and ``inputs`` must then be named beside a
     ``code`` of the region's width.
@@ -1930,8 +1984,6 @@ class Brain:
         memory_amplitude: float = 1.0,
         memory_choice: bool = False,
         memory_context: float = 0.0,
-        memory_expansion: int = 0,
-        memory_fan_in: int | None = None,
         memory_extinction: float = 0.0,
         memory_context_hold: str | None = None,
         maturity: bool = False,
@@ -1943,6 +1995,7 @@ class Brain:
         efference_amplitude: float = 0.0,
         history_decays: Sequence[float] = (),
         history_amplitude: float = 3.0,
+        carried_gain: float = 0.0,
         recall: bool = False,
         learning: LearnerConfig | None = None,
         reward: ActorCriticConfig | None = None,
@@ -1951,10 +2004,12 @@ class Brain:
         seed: int = 0,
         backend: Backend = "cpu",
         device: str | None = None,
+        precision: str | None = None,
         inputs: int | None = None,
         code: int | None = None,
         learned_code: int | None = None,
         apical: float = 0.0,
+        dense_limit: int | None = None,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -1991,8 +2046,8 @@ class Brain:
             raise ValueError(_LEARNED_CODE_TOGETHER)
         if learned and sensory != "sensory":
             raise ValueError("a learned code needs a vector brain with a 'sensory' population")
-        if learned and backend != "cpu":
-            raise ValueError("a learned code settles on the cpu backend in this version")
+        if learned and backend == "torch":
+            raise ValueError("a learned code settles on the cpu or mlx backend in this version")
         for name in ("code", "prefrontal") if learned else ():
             if name not in populations:
                 raise ValueError(
@@ -2018,9 +2073,10 @@ class Brain:
         # than on the observation itself
         self._coded_keys = bool(units) or bool(learned)
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
-        # declared tokens start the copy pathway as their identity, the echo included
+        # declared tokens start the copy pathway as their identity, the echo included, and the
+        # gains read them (``recall_gain``)
         tokened = bool(recalled.get("copy")) and recalled.get("tokens") is not None
-        if tokened:
+        if recalled.get("tokens") is not None and (tokened or recalled.get("gain")):
             # the observation's own coordinates in the recall values: the observation itself,
             # or a learned code joined to it, after the code's units
             joined = bool(learned) and LearnedCode.joins(self.inputs, learned["units"])
@@ -2046,7 +2102,8 @@ class Brain:
             ]
             if recalled["action"]:
                 ports += [f"{name}_action" for name in ports]
-            if all(name in populations for name in (*ports, "motor")):  # else the memory names it
+            # the pathway's identity needs its synapses (else the memory names them)
+            if tokened and all(name in populations for name in (*ports, "motor")):
                 connectome = _copy_identity(
                     connectome, recalled, learned["units"] if learned else 0
                 )
@@ -2078,24 +2135,13 @@ class Brain:
         if not maturity and {"maturity_scale": maturity_scale,
                              "maturity_recovery": maturity_recovery} != _MATURITY_FOUNDERS:
             raise ValueError("maturity_scale and maturity_recovery need maturity")
-        memory_expansion = _count("memory_expansion", memory_expansion)
-        memory_fan_in = _count("memory_fan_in", 0 if memory_fan_in is None else memory_fan_in)
-        if units and (memory_expansion or memory_fan_in):
-            # a brain with a fixed code keys its memories on that code as it is: the code is
-            # their separation; the learned code's stores separate their keys as without it
-            raise ValueError(
-                "a fixed code's memories key on the code as it is; memory_expansion and "
-                "memory_fan_in need a brain without a fixed code"
-            )
-        separated = bool(memory_expansion)
+        # a brain with a fixed code keys its memories on that code as it is: the code is their
+        # separation; the learned code's stores separate their keys as without it
+        separated = memory_choice and not units
         if memory_choice and not episodic:
             raise ValueError("memory_choice needs the episodic memory")
-        if not memory_choice and (memory_context or memory_expansion or memory_extinction):
-            raise ValueError(
-                "memory_context, memory_expansion and memory_extinction need memory_choice"
-            )
-        if memory_fan_in and not memory_expansion:
-            raise ValueError("memory_fan_in needs memory_expansion")
+        if not memory_choice and (memory_context or memory_extinction):
+            raise ValueError("memory_context and memory_extinction need memory_choice")
         working_memory_decay = real("working_memory_decay", working_memory_decay, low=0)
         efference_decay = real("efference_decay", efference_decay, low=0)
         if working_memory_decay >= 1 or efference_decay >= 1:
@@ -2110,14 +2156,22 @@ class Brain:
         compartment = _apical(connectome, fraction) if fraction else None
         if compartment is not None and not compartment.synapses.any():
             raise ValueError("apical needs reciprocal pairs between regions; this anatomy has none")
+        layout = make_layout(connectome)
         brain = NeuralGraph(
             connectome,
             learning_neuron_model(dt=1.0 if compartment is None else _APICAL_STEP),
             backend=backend,
             device=device,
+            precision=precision,
+            dense_limit=_composed_limit(layout, connectome.synapses, dense_limit, recall),
+            layout=layout,
             apical=compartment,
         )
         self._composition: dict[str, Any] | None = None  # construction provenance, not parameters
+        # a composed brain's backend, when the rule chose it (``placement``); ``_unplaced``: it
+        # takes it at its first moment, when its rows are known
+        self._placement: dict[str, Any] | None = None
+        self._unplaced = False
         # ``attention`` is a compose-only recipe marker. Its behavior is fully represented by
         # the learned-code and Recall settings, but the marker keeps the user's construction
         # choice inspectable and round-trippable.
@@ -2232,16 +2286,21 @@ class Brain:
             )
             # with ``recall_address_reward`` the actor keeps the address map's eligibility
             self.basal_ganglia.memory = self.recall
+            self.recall._actor = self.basal_ganglia
+        self.hearing: Hearing | None = None
+        self._carried_rate = real("carried_gain", carried_gain, low=0)
+        if self.recall is not None and self.recall.drive_gain and not self._carried_rate:
+            raise ValueError(
+                "recall_drive_gain makes the read's drive one more route of carried_gain: it "
+                "needs carried_gain above 0"
+            )
+        if self._carried_rate:
+            self._wire_hearing()
         self.hippocampus: FastSynapses | None = None
         # ``memory_choice``: the episodic records that vote in the choice, the store's place
         # records and, with a temporal context, the same records keyed by the stream's
         # temporal context, the fading code of what it sensed and did
         self._episodic: EpisodicRecords | None = None
-        if memory_fan_in > self.code_width:
-            raise ValueError(
-                f"memory_fan_in must not exceed the {self.code_width} coordinates of the "
-                "place key"
-            )
         if episodic:
 
             def store(keys: np.ndarray, offset: int) -> SynapticMemory:
@@ -2249,8 +2308,7 @@ class Brain:
                     keys, self.motor_index, consolidation=consolidation,
                     decay=_MEMORY_DECAY, rate=memory_rate, amplitude=memory_amplitude,
                     separator=PatternSeparator(
-                        len(keys), memory_expansion, _MEMORY_WINNERS, seed=seed + offset,
-                        fan_in=memory_fan_in,
+                        len(keys), _MEMORY_EXPANSION, _MEMORY_WINNERS, seed=seed + offset
                     )
                     if separated
                     else None,
@@ -2291,6 +2349,7 @@ class Brain:
                     hold=memory_context_hold,
                 )
         self.rng = np.random.default_rng(seed)
+        self._settling = False  # a moment's own drive is being read: it stays where it rests
         # the validated observations a settle is being prepared for and their code, computed
         # once per moment: ``stimulus`` given that same array reads it, ``_choose`` takes it;
         # with a learned code also the code region's settled state, the whole graph's warm start
@@ -2305,6 +2364,8 @@ class Brain:
         self._prepared: np.ndarray | None = None  # the observations ``learn`` settled
         self.last_learning: dict[str, float] = {}
         self._last_settlement: Mapping[str, Any] | None = None
+        # the settle a surprise lesson judged by, for an act on the same moment (``_read_judged``)
+        self._judged: tuple[Any, ...] | None = None
         # ``live``: the arousal of the stream, and the action it issued that awaits an outcome
         # (observations, action, the value forecast made before the outcome, sampled?, its
         # free state, the brain's own best guess?, the code it was keyed on with a learned
@@ -2369,24 +2430,6 @@ class Brain:
     def memory_choice(self) -> bool:
         """Whether the episodic records vote in the choice."""
         return self._episodic is not None
-
-    @property
-    def memory_context(self) -> float:
-        """The share of the temporal context the past keeps per moment; 0.0 without
-        ``memory_choice``."""
-        return 0.0 if self._episodic is None else self._episodic.share
-
-    @property
-    def memory_context_hold(self) -> str | None:
-        """The decisions kept out of the temporal context: ``"unchanged"``, ``"punished"``,
-        or None."""
-        return None if self._episodic is None else self._episodic.hold
-
-    @property
-    def memory_extinction(self) -> float:
-        """The vote and direct payment at which a zero outcome extinguishes a record; 0.0
-        when off or without ``memory_choice``."""
-        return 0.0 if self._episodic is None else self._episodic.extinction
 
     def _read_moment(self, x: np.ndarray, code: np.ndarray, place: Any = None) -> Moment:
         """What the memories read of a moment: the store reads under the place key with a
@@ -2563,8 +2606,13 @@ class Brain:
         out[:, self.code_index] = v - self.brain.bias[self.code_index]
         unit = code.code_of(s)
         synapses, j, m = self._code_forward
-        weights = np.zeros((len(self.association_index), code.units))
-        np.add.at(weights, (m, j), self.brain.weights[synapses])
+        shape = (len(self.association_index), code.units)
+        if self.brain.layout.parallel_synapses:
+            weights = np.zeros(shape)
+            np.add.at(weights, (m, j), self.brain.weights[synapses])
+        else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
+            weights = _route_matrix(self.brain, synapses, m * shape[1] + j, shape)
+            weights += 0.0
         out[:, self.association_index] += (unit - s) @ weights.T
         return out
 
@@ -2574,10 +2622,15 @@ class Brain:
         weights and predictor act in the region's own phase."""
         code = self.learned_code
         assert code is not None
-        efficacy, bias = graph.efficacy.copy(), graph.bias.copy()
-        for synapses, _, _ in self._code_synapses.values():
-            efficacy[synapses] = 0.0
+        efficacy, bias = graph.efficacy, graph.bias.copy()
         bias[self.code_index] = -code.thresholds
+        regions = [synapses for synapses, _, _ in self._code_synapses.values()]
+        if not any(efficacy[s].view(np.int64).any() for s in regions):  # every one +0.0
+            # the region's synapses already at zero: the graph keeps its weights and blocks
+            return graph.with_parameters(bias=bias)
+        efficacy = efficacy.copy()
+        for synapses in regions:
+            efficacy[synapses] = 0.0
         return graph.with_parameters(efficacy=efficacy, bias=bias)
 
     def _learn_code(self, state: BrainState) -> None:
@@ -2647,216 +2700,49 @@ class Brain:
         slots: int | Sequence[int] = 1,
         **options: Any,
     ) -> Brain:
-        """Compose a modular brain with working memory and consolidation.
+        """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
+        its memories, settling together.
 
-        ``inputs`` is a vector length, or an image shape ``(height, width)`` or ``(height,
-        width, channels)``: the sensory region is then a ``visual_cortex``
-        of the image (``features`` maps of ``field`` by ``field`` receptive fields), whose
-        feature maps project to the first module as the sensory region does.
-        The memories key on the observation code
-        (``observation_code``): the observation itself, or with ``code=units`` the brain's
-        sparse code of it (each input read through an ON and an OFF channel, every channel by
-        two units at least, with positive weights, 32 channels per unit or more, one unit in
-        ten active, unit length).
-        ``code=units`` makes a vector brain's sensory region that code: every observation is
-        coded before the drive, so 12,824 inputs reach the cortex as 1,024 units through
-        1,024 x 64 sensory synapses in place of 12,824 x 64, and the memories key on the same
-        code; the founder leaves the cortex and the memories on the observation. The code is
-        fixed and random and learns nothing. For an image brain
-        ``code`` names the memories' code alone, the cortex reading the pixels through the
-        visual cortex.
-        ``learned_code=units`` (opt-in; a vector brain, without ``code``) places a ``code``
-        region of that many neurons between the sensory region and the first module: a
-        learned sparse code of the observation, settled in the region's own phase before
-        the rest of the brain, under lateral competition through its dictionary and drawn
-        toward the prediction the working trace makes of it, then held as a source through
-        the whole settle; explicit acts and aroused ``live`` moments learn it by local rules
-        (``LearnedCode``). The cortex reads the context-free code, the observation settled
-        alone, the heard history holds it, and every memory keys on it at unit length,
-        joined to the observation's own identity. ``learned_code_fields`` declares the
-        observation's fields; every other part of the region is a constant of it; the
-        founder ``learned_code=None`` builds the brain without the region.
+        ``inputs`` is a vector length or an image shape ``(height, width[, channels])``, whose
+        sensory region is a ``visual_cortex`` of ``features`` maps of ``field`` by ``field``
+        receptive fields. ``actions`` counts the motor neurons, grouped by ``slots`` into readouts
+        that settle together, one softmax each: a count of equal groups, or one size per group.
+        ``modules`` is a chain of reciprocal regions, the last the association cortex.
+        ``observers`` adds regions with reciprocal access to all of them, which settle with the
+        rest and never override an answer. ``lateral`` is the weight between the motor neurons
+        of a slot (unset: 0.0, no such synapses). ``scales`` names the initial magnitudes of the
+        ``"sensory"`` and ``"trace"`` projections.
 
-        ``attention=True`` is the opt-in single-head contextual-memory recipe for a learned
-        code. It requires ``learned_code=units`` and enables Recall with a two-moment ordered
-        key, successor values, no age preference and temperature 0.1. The resulting address
-        is selected from learned meaning codes before the neural settle and its recalled
-        value is held as a source through that same settle. Explicit ``recall_*`` settings
-        may tune the recipe, but its window must remain at least two and its successor read
-        must remain enabled. This option does not enable episodic action voting and does not
-        change the default brain.
+        ``code=units`` keys the memories on a fixed sparse code of the observation and, on a
+        vector brain, makes the sensory region that code. ``learned_code=units`` places a region
+        between the senses and the first module that settles to a learned sparse code, which the
+        cortex reads and the memories key on; ``attention=True`` is the recall recipe for it.
+        ``teaching`` is the teaching point of the lesson's learner (``"founder"``,
+        ``"normalized"`` or ``"deep"``); ``learning=LearnerConfig(...)`` replaces the whole
+        configuration instead. ``connectome`` wraps a custom anatomy with these founders;
+        ``Genome.composed`` returns the layout developed here, to edit or evolve.
 
-        ``modules`` specifies a chain of reciprocally connected processing
-        regions. The final region is the association cortex. ``observers``
-        optionally adds regions with reciprocal access to all processing and
-        motor regions, including earlier observers. Every region participates
-        in the same neural settlement; observer regions never run as a separate
-        critic or override an already completed answer.
+        A new brain holds the recall memory, up to 4,096 observation-code coordinates;
+        ``recall=False`` builds it without one, and a custom anatomy holds one only by name.
+        With no ``backend`` named a brain takes the fastest this machine has for its size and rows,
+        in float32 on a device, at its first moment (``placement``, docs/backends.md). ``device``
+        and ``precision`` name a place on torch; a run that must repeat names its backend.
+        On an association wider than 64 it steps prefrontal to association, the association-motor
+        pair and the read's address map at 64 over that width: ``recall_address``, a ``teaching``
+        other than ``"deep"`` and ``learning=`` name rates that win over it, and
+        ``brain.learner.synapse_rate`` holds the steps after that (docs/tune.md, wide brains).
+        ``options`` takes the constructor's memory settings (``recall`` and its
+        ``recall_<setting>``, ``episodic``, ``memory_choice`` and its settings,
+        ``efference_amplitude``, ``history_decays``, ``working_memory_*``) and every configuration
+        field as ``learning_<field>``, ``actor_<field>`` or ``arousal_<field>``; ``temperature``
+        is the learner's softmax temperature. ``arousal=True`` enables the founder arousal, a
+        mapping patches it, a configuration replaces it. A name the library retired is refused
+        with one sentence saying what the brain does instead, and an unknown name with
+        ``TypeError``.
 
-        ``lateral`` is the signed weight between each pair of motor neurons in a
-        slot. Left unset it is 0.0 at every menu size: no synapses between the
-        motor neurons, the motor and association feedback kept. A negative weight
-        makes the actions compete; at -0.5 the undamped free solve oscillates from
-        4 actions on, so an act may settle only under the damping fallback and a
-        teaching free phase may run out its budget. Select a nonzero weight against
-        0.0 on development tasks.
-
-        ``slots`` groups the motor neurons into several readouts that settle
-        together, one softmax each: a count of equal groups, or one size per group
-        covering ``actions``. ``act`` and ``step`` then return one index per slot,
-        and a nonzero ``lateral`` is wired within a slot. One slot is one choice
-        over every action.
-
-        Observer wiring is experimental.
-        Inputs are fixed external drives; their neural representations can vary.
-        ``scales`` maps ``"sensory"``, ``"trace"``, ``"history"`` and ``"recall"`` to the
-        initial magnitudes of the projections from the sensory region (founder 1.0), from the
-        prefrontal region that feeds the carried interpretation back to the association
-        region (1.2: the prefrontal region holds the copy at ``working_memory_amplitude``
-        3.0, and learning strengthens the projection where the past predicts the outcome),
-        from the heard history (1.2) and from the recall and next regions (1.2); a name left
-        out keeps its founder. It is a construction setting; ``retune`` refuses it.
-        ``teaching`` is the teaching point of the lesson's learner: ``"founder"`` (steps 0.5
-        and 0.05 on the raw contrast, momentum 0.9), ``"normalized"`` (steps 0.003 and
-        0.0003 under a running RMS of forgetting 0.99 and floor 1e-4, momentum 0.9), the
-        point for many lessons, as in imitation, or ``"deep"``, the normalized point for a
-        brain with an apical compartment (the projection-relative floor at 0.1 in place of
-        the constant floor, and nudged phases of a whole 32 sweeps); ``retune(teaching=...)``
-        moves a living brain between them. ``learning=LearnerConfig(...)`` replaces the
-        whole configuration instead, the expert's way to other steps.
-        ``options`` accepts the constructor's memory settings and every other
-        configuration field as ``learning_<field>``, ``actor_<field>`` or
-        ``arousal_<field>``; ``temperature`` is the learner's softmax temperature.
-        ``arousal=True`` enables the founder arousal config; a mapping patches
-        those founders. Supplied config objects remain full replacements.
-        A positive ``efference_amplitude`` adds the efference copy: one ``efference``
-        neuron per motor neuron, driven by the fading one-hot of the command the
-        stream issued (``efference_decay``) and read by the association region
-        through a plastic projection of founder scale 12. The founder
-        value zero builds the brain without it, the control to select the copy against.
-        A nonempty ``history_decays`` adds the heard history: a ``history`` region of one
-        block of ``inputs`` neurons per decay, each block a fading trace of the observations
-        as heard (the values the sensory neurons were stimulated with, before settling) at
-        its own decay, held at ``history_amplitude`` (3.0) and read by the association
-        region through a plastic projection of initial magnitude ``scales["history"]``
-        (1.2), initialized like the working trace's. After each act the blocks take in the
-        observation the brain acted on, so at a decision the history holds the past and the
-        sensory drive the present. The founder ``history_decays=()`` builds the brain
-        without it.
-        ``recall=True`` adds the recall memory, an index of the stream's own recent moments:
-        a ``recall`` and a ``next`` region (one neuron per value coordinate each), read by
-        the association region through plastic projections of initial magnitude
-        ``scales["recall"]`` (1.2), appended after any history. After each act, and after each
-        moment ``wait`` senses, the moment is written as one slot per stream (``Recall``):
-        its key the event heard (the observation code, the observation itself or the brain's
-        sparse code of it, at the memory's constant weight ``Recall.heard`` 1.0), its value
-        the event, and the
-        slot before learns it as its next.
-        Before each settle the moment's address, the key plus a learned map of the event and
-        of the association activity of the moment before, weighs the slots by a softmax
-        (``recall_temperature`` 0.25, ``recall_recency`` 0.25 per moment of age), and the
-        recalled value and next drive the two regions at ``recall_amplitude`` (3.0), a drive
-        held through the settle, which answers on it and does not revise the choice. After
-        each teacher lesson the address lesson scores each slot's value and next against the
-        association's movement under the nudge, read back through the recall and next
-        projections, weighs the scores with the address's own attention (at the memory's
-        constant temperature ``Recall.address_temperature`` 0.1), and steps the map toward
-        the weighted keys
-        (``recall_address`` 0.01, each row's rate bounded by its own input energy).
-        ``recall_capacity`` (64) bounds the slots per stream. Options beside the founder
-        memory, each a gene described and saved only where it differs from its founder and a
-        runtime one but the key and the window: a number ``recall_null`` adds a null slot of
-        logit ``recall_null / recall_temperature`` that reads nothing; and
-        ``recall_address_reward`` above zero lets reward train the address map, each sampled
-        act keeping the step its lesson would take on the rows of the event heard as the map's
-        eligibility and each outcome stepping those rows by that rate times the dopamine times
-        the trace: the eligibility carries the lesson's rate, so at 1.0 a unit of dopamine
-        moves the rows by one lesson's step; ``recall_address=0`` leaves the map as it is under
-        reward too, and the rows of the cortex of the moment before and the bias, which every
-        moment shares, learn from lessons alone.
-        When an episode ends the stream's slots are emptied with its working trace;
-        ``Brain.reset(keep=("slots",))`` keeps the slots across a reset.
-        ``recall_window`` k above 1 (construction) makes every key an ordered window of the
-        stream's last k events, ``[x_t, x_(t-1), ..., x_(t-k+1)]`` (each at the memory's
-        constant weight, ``Recall.window_decay`` 1.0 per position back), each position on
-        coordinates of its own, zeros before a stream's first moment and after an episode
-        ends: a key of ``k * code`` values, the address and the map's outputs as wide.
-        The founder ``recall=False`` builds the brain without it.
-        Every head of a composed recall memory also reads each slot's age: ``recall_position``
-        P (founder 32, construction) gives ages below P a bucket each and older ones one
-        bucket per doubling, and each head adds a term per bucket read from the moment as its
-        address is, so what a moment hears can choose how far back the head looks. The terms
-        start at zero and lessons teach them at ``recall_position_rate`` (runtime, founder
-        0.1), whatever ``recall_address`` is; ``recall_position=0`` builds none. A brain
-        saved without a position term loads without one.
-        ``recall_boundary=True`` (runtime, founder off) gives each stream that begins a
-        boundary slot first, a silent moment whose next the stream's first event teaches, so
-        the start of an episode has a predecessor as every later event has.
-        ``recall_copy`` above 0 (construction, founder 0.0) adds the copy pathway: plastic
-        synapses from every head's read ports into the motor region, appended last and drawn
-        at that magnitude, learned by the settle's contrast. ``recall_tokens`` (construction,
-        founder None) declares per action the observation coordinate that is the same token
-        (``-1`` for none; a brain without a code, or a learned code joined to the
-        observation): the pathway then starts from each recall port as that identity at
-        ``recall_copy``, from each next port at zero, and from the sensory region as the
-        negative identity, so a token the read delivers drives its own action unless the
-        present observation already holds it.
-        ``recall_action=True`` (construction, founder off) writes the executed command, one
-        value per motor neuron, into every slot's key and value, read on ``<port>_action``
-        regions whose synapses into the association start at zero; the address and position
-        maps also read the command of the moment before, so a newborn reads and settles as
-        one without it.
-        ``recall_capacity``, ``recall_next``, ``recall_window``,
-        ``recall_heads`` (several held heads over the one bank,
-        each with its own port and address map; ``recall_compete``, a runtime option with
-        founder True, makes them read in turn, each taking of a slot at most the share the
-        heads before it left), ``recall_position``, ``recall_copy``,
-        ``recall_tokens`` and ``recall_action`` are construction settings; the keys, the
-        values and the address map follow the observation code's width, a brain's ``code``
-        among the ways to bound it. A retired recall setting (``Recall.RETIRED``, and
-        ``recall_recency=None``) is refused by name with one sentence naming the release that
-        retired it and what the memory does instead; the CHANGELOG gives each one's reading.
-        ``memory_choice=True`` makes the hippocampus an episodic memory: its records vote
-        in every choice, greedy or sampled, added to the motor readout before the softmax.
-        Each record is kept twice: keyed by the observation (place), and keyed by the
-        stream's temporal context, the observation with the fading trace of what the stream
-        saw and did before it (``memory_context``, the share the past keeps per moment, 0.5;
-        zero keeps the place records alone). The vote is the mean of the two reads: the
-        place records answer a known situation reached along a new path, the context records
-        tell apart situations that look the same. It records the outcome of the chosen action
-        when the outcome is known: a reward or a punishment, the end of an attempt
-        (``done``), or a surprise that woke a calm ``live`` brain; a zero outcome in the
-        middle of an attempt leaves the record as it was. A demonstrated action is recorded
-        at 1.0 for the situation it was shown in. A write corrects
-        the stream's record halfway at once (``memory_rate`` 0.5), a trace that fades by
-        0.9 per later write, and consolidates into the record every stream
-        shares and resets keep at ``consolidation`` (0.05). A reward is replayed backwards
-        along the stream's recent path (8 steps; one decision per
-        situation, the one that left it, while a decision whose own outcome was known stays
-        on the path), through the decisions whose own outcome was nothing, back to the last
-        known outcome, discounted per step and up to the discounted reward. A reward that
-        ends an attempt (``done``) is replayed whole into both kinds of record. In a
-        continuing life a reward is replayed in proportion to its surprise, the reward less
-        what the memory expected of the paid decision: into each decision's context record,
-        and into its place record as far as it was an exploration rather than the brain's
-        best guess. Nothing has to mark the end of an attempt. Keys are separated
-        (``memory_expansion`` 1,024 cells, 24 active per key; a brain with a fixed code keys
-        on that code as it is, with no separation, and a learned code's keys are separated
-        as an observation's are). ``memory_fan_in`` above zero makes the separation
-        sparse: each of its cells reads that many of the key's values, chosen at random, so
-        its size follows the cells and the fan-in alone; the founder 0 keeps it dense, one
-        weight per cell and key value. Dense or sparse, the separation is a fixed random
-        projection. Each setting can be passed beside ``memory_choice=True``. The founder
-        ``memory_choice=False`` keeps the consolidating hippocampus, keyed by the observation
-        code and read into the motor drive; ``episodic=False`` builds none. Where the history
-        does not matter, compare the episodic memory against the founder on the task.
-        ``connectome`` wraps a custom anatomy with these founders, the episodic founders
-        filled under ``memory_choice=True`` as here: its ``sensory`` (or ``visual/input``)
-        population holds the inputs (the code's units with ``code=units``), its ``motor``
-        population the actions, and it brings its own layout, so ``modules``, ``observers``,
-        ``lateral``, the projection scales, ``features`` and ``field`` stay at their founders.
-        ``Genome.composed`` returns the layout developed here, to edit or evolve;
-        ``Genome``, ``Region`` and ``Projection`` give custom ports, sparsity and named wiring.
+        The guides own each part: docs/tune.md the founders and the layout, docs/memory.md the
+        memories, docs/senses.md the codes, docs/teach.md the teaching points, docs/api.md every
+        refusal.
         """
 
         if not isinstance(attention, bool):
@@ -2875,6 +2761,32 @@ class Brain:
             options.setdefault("recall_address", 0.0 if single else 0.01)
             options.setdefault("recall_recency", 0.0)
             options.setdefault("recall_temperature", 0.1 if single else 0.25)
+        if connectome is None and "recall" not in options:
+            # a new brain holds the memory, up to the width where its map should not arrive silently
+            width = _observation_width(inputs, code, learned_code)
+            if width > Recall.WIDE:
+                raise ValueError(
+                    "a new brain's recall memory keeps a map of about "
+                    f"{8 * width**2 // 10**6:,} MB over {width:,} observation coordinates: pass "
+                    "code=units to bound it, "
+                    "recall=False to build without one, or recall=True to take it"
+                )
+            options["recall"] = True
+        # the memory and the lessons a new brain composes, each an ordinary setting the
+        # caller's overrides; the founder word takes none of them
+        composes_memory = (
+            options.get("recall", False) is True
+            and not attention
+            and not options.get("recall_founder", False)
+        )
+        if composes_memory:
+            for name, value in Recall.composed(options).items():
+                options.setdefault(f"recall_{name}", value)
+            for name, value in _COMPOSED_SETTINGS.items():
+                if not (name.startswith("learning_") and "learning" in options):
+                    options.setdefault(name, value)
+            if teaching is None and "learning" not in options:
+                teaching = _COMPOSED_TEACHING
 
         genome, layout = _layout(
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
@@ -2882,6 +2794,11 @@ class Brain:
             learned_code=learned_code, seed=seed, slots=slots,
         )
         units, learned = layout["units"], layout["learned"]
+        association = layout["widths"][-1]
+        if composes_memory and association > _COMPOSED_WIDTH:  # a wide brain's read map steps less
+            options.setdefault(
+                "recall_address", Recall.founders()["address"] * _COMPOSED_WIDTH / association
+            )
         if attention and (
             layout["recalled"]["window"] < 2 or not layout["recalled"]["next"]
         ):
@@ -2899,9 +2816,7 @@ class Brain:
             raise ValueError("episodic must be boolean")
         if options.get("episodic", True) and options.get("memory_choice") is True:
             for name, value in _EPISODIC_FOUNDERS.items():
-                # a fixed code's memories key on the code as it is: no separation of their own;
-                # the hippocampus separates the patterns of a learned code as of an observation
-                options.setdefault(name, 0 if units and name == "memory_expansion" else value)
+                options.setdefault(name, value)
         custom = connectome is not None
         if connectome is None:
             connectome = develop(genome, seed=seed)
@@ -2928,14 +2843,58 @@ class Brain:
                     f"{motor} neurons, where these inputs need {needed} and these actions "
                     f"{layout['actions']}"
                 )
-        result = cls(
-            connectome, seed=seed, slots=slots, code=units,
-            inputs=layout["inputs"] if layout["coded_cortex"] else None,
-            learned_code=learned or None, **options,
-        )
+        where = {name: options.pop(name) for name in ("backend", "device", "precision")
+                 if name in options}
+
+        def built(**place: Any) -> Brain:
+            return cls(
+                connectome, seed=seed, slots=slots, code=units,
+                inputs=layout["inputs"] if layout["coded_cortex"] else None,
+                learned_code=learned or None, **options, **place,
+            )
+
+        if where.get("backend", "auto") != "auto":
+            result = built(**where)
+        elif where.get("device") is not None:  # a device named names torch
+            result = built(**{**where, "backend": "torch"})
+        elif (run := _backend_of_the_run()) is not None:
+            result = built(**_place_of(run, where.get("precision")))
+            result._placement = {"chosen_by": "environment", "why": run.why, "refused": []}
+        else:
+            held: dict[str, Any] = {
+                "chosen_by": "auto", "why": _PLACED_LATER, "refused": [],
+                "precision_named": where.get("precision"),
+            }
+            # where a device is the fastest at one row it is at any rows: no second move, and the
+            # brain is built once
+            found: Brain | None = None
+            for candidate in _fastest_backends(
+                1, connectome.synapses, settling=int(np.unique(connectome.post).size),
+                apical=bool(options.get("apical")), precision=where.get("precision"),
+                learned_code=bool(learned),
+            ):
+                if candidate.backend == "cpu":
+                    if held["refused"]:  # the devices the rule asks of have refused it
+                        held["why"] = candidate.why
+                    break
+                try:
+                    placed = built(**_place_of(candidate, None))
+                except Exception as error:  # detection never fails a compose
+                    held["refused"].append(f"{candidate.backend}: {error}")
+                    continue
+                placed._placement = {**held, "why": candidate.why}
+                if placed._backends_at(1)[0].backend == candidate.backend:
+                    found = placed  # and no option keeps the memories from it
+                break
+            result = found if found is not None else built()
+            if found is None:
+                result._placement = held
+                result._unplaced = not held["refused"]
         result.attention = attention
         if custom:
             return result  # a custom anatomy records no composition
+        if composes_memory and teaching == _COMPOSED_TEACHING:  # steps the caller did not name
+            result.learner.synapse_rate = _width_rates(result.connectome)
         result._composition = {
             "inputs": layout["inputs"],
             "actions": layout["actions"],
@@ -2988,18 +2947,20 @@ class Brain:
 
         Wiring, initialization and enabling/disabling components are construction
         choices. A ``learning_rehearsal`` retuned above zero keeps the streams' moments from then
-        on, so an episode in progress is replayed from the moments heard after the retune; a
-        lowered ``learning_rehearsal_capacity`` cuts the rehearsal's reservoir at once.
+        on, so an episode in progress is replayed from the moments heard after the retune; an
+        expert configuration of a lower ``rehearsal_capacity`` cuts the reservoir at once.
         ``retune`` resets nothing; ``brain.arousal.reset()`` resets the arousal level
         and reward references and keeps its age and work counters. Returns this same brain.
         """
         options = dict(genes)
         construction = {
             "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
-            "episodic", "backend", "device", "connectome", "history_decays",
+            "episodic", "backend", "device", "precision", "dense_limit", "connectome",
+            "history_decays",
+            "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
-            "learned_code", *(f"learned_code_{name}" for name in LearnedCode.CONSTRUCTION),
+            "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
             "attention", "apical", "maturity",
         }
         for name in options:
@@ -3079,26 +3040,11 @@ class Brain:
             memory_changes.append(
                 (self.recall, setting, Recall.setting(setting, options.pop(name)))
             )
-        for name in [name for name in options if name.startswith("learned_code_")]:
-            setting = name[len("learned_code_"):]
-            if setting in LearnedCode.REMOVED:
-                LearnedCode.setting(setting, options[name])  # refused by name
-            if setting not in LearnedCode.RUNTIME:
-                raise TypeError(f"unknown brain setting: {name!r}")
-            if self.learned_code is None:
-                raise ValueError(f"{name} requires its existing learned code")
-            value = LearnedCode.setting(setting, options.pop(name))
-            memory_changes.append((self.learned_code, setting, value))
         if self.recall is not None:
-            # the null slot's logit, null / temperature, must stay finite under the change
             retuned = {
                 field: value for component, field, value in memory_changes
                 if component is self.recall
             }
-            Recall.null_logit(
-                retuned.get("null", self.recall.null),
-                retuned.get("temperature", self.recall.temperature),
-            )
             # the pairings construction refuses
             Recall._rewarded(
                 retuned.get("position_reward", self.recall.position_reward),
@@ -3142,20 +3088,21 @@ class Brain:
             self.arousal.config = arousal
         # the columns of the read's reward eligibility, which position_reward sets
         columns = None if self.recall is None else self.recall.reward_columns
+        blocks = None if self.recall is None else self.recall.reward_blocks
+        if self.recall is not None:
+            self.recall.leave_device()  # the settings shape what rests there
         for component, field, value in memory_changes:
             setattr(component, field, value)
+        if self.recall is not None and agent.trace_memory is not None:
+            assert blocks is not None
+            agent.trace_memory = self.recall.reblocked_eligibility(agent.trace_memory, blocks)
         if self.recall is not None and self.recall.reward_columns != columns:
             # a trace of the old columns cannot continue (no contrast is pending: refused above)
             agent.trace_memory = None
-        if self.learned_code is not None and any(
-            component is self.learned_code for component, _, _ in memory_changes
-        ):
-            # the region's sub-network and the graph take the tables again
-            self.learned_code.install()
-            self.learner.brain = self._installed(self.brain)
         if self.recall is not None and not (
             self.recall.address_reward
             or (self.recall.position_reward and self.recall.position_maps)
+            or self.recall.gain
         ):
             # reward leaves the read as it is: the actor keeps no eligibility of it, and the
             # brain reports and saves as one composed without it
@@ -3183,13 +3130,17 @@ class Brain:
         outcome this brain awaits stays with this brain; so does the rehearsal's reservoir
         (``learning_rehearsal``), which the grown brain starts afresh.
         Learning gives the new synapses weight: a synapse moves on what its two neurons do in the
-        free and nudged phases, not on its own weight.
+        free and nudged phases, not on its own weight. An association's width is fixed at birth,
+        so the steps its width gave keep their rates: a new slot's synapses with the association
+        take the pair's, every other new synapse steps at 1. A new memory's address map takes the
+        step of a new memory at this width.
 
         Refused: a brain that records no construction (a custom anatomy); a part inside the brain's
         loop (``modules``, ``observers``, a code), which learns nothing at zero and changes the
         brain at any other start; a setting that is not a part, which ``retune`` changes; new
         slots where a memory is laid out per action (``recall_action``, ``recall_tokens``,
-        ``memory_choice``) or would join a deep brain's apical pool. See ``docs/grow.md``.
+        ``memory_choice``) or would join a deep brain's apical pool; tied synapses and rates set by
+        hand. See ``docs/grow.md``.
         """
         return _grow(self, parts)
 
@@ -3224,23 +3175,27 @@ class Brain:
         its own regions, and learning gives the joints weight. Everything else is this brain's:
         its other weights, its memories and their records, its settings, actor and arousal, so a
         whole donor grafted into a larger anatomy chooses as the donor does where those agree.
-        The streams start afresh, as after ``reset()``.
+        Every synapse steps at this brain's rates, the grafted ones too; the donor's stay with the
+        donor. The streams start afresh, as after ``reset()``.
 
         Refused: populations either brain lacks or of different sizes; grafted regions that
         share no synapse; a donor synapse among the grafted neurons that this brain lacks, or a
         one-way donor synapse landing on half of one of this brain's reciprocal pairs; a
         different neuron model, apical compartment or apical role; a learned code's region, or
-        a joint landing on it; tied or rated synapses. See ``docs/grow.md``.
+        a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
         return _graft(self, donor, regions, into, joints, freeze)
 
     def describe(self) -> dict[str, Any]:
-        """Describe the brain without changing live state: four sections.
+        """Describe the brain without changing live state: four sections, and ``placement``, where
+        it runs and why (``placement``), where that is not the CPU by name.
 
         - ``layout``: the inputs, actions, regions, slots, neurons, synapses and populations;
           ``code``, what the memories key on; ``learned_code``, a learned code's settings and
-          counts; and ``composition``, the construction choices of a composed brain (None for
-          a custom anatomy), provenance rather than a description of learned weights.
+          counts; ``composition``, the construction choices of a composed brain (None for a
+          custom anatomy), provenance rather than a description of learned weights; and
+          ``projection_rates``, each projection's step other than 1 where the brain holds
+          per-synapse rates.
         - ``genes``: every setting by the name ``compose`` and ``retune`` take, the teaching
           point as ``teaching`` (``"custom"`` for steps that ``learning=LearnerConfig(...)``
           set outside every point, whose six effective settings are then under ``learning``).
@@ -3259,6 +3214,8 @@ class Brain:
         # the nudge is a standalone Learner's choice, a composed brain's the cross-entropy; the
         # steps, their normalization and the floor are the teaching point's
         genes: dict[str, Any] = {"teaching": teaching}
+        if self.hearing is not None:
+            genes["carried_gain"] = self._carried_rate
         if teaching == "custom":
             genes["learning"] = steps
         # a constant of the composed brain (``CONSTANTS``) is no gene: it is described, by its
@@ -3346,11 +3303,21 @@ class Brain:
                 },
                 **({} if learned is None else {"learned_code": learned.to_dict()}),
                 "composition": self._composition,
+                **(
+                    {} if self.learner.synapse_rate is None else {
+                        "projection_rates": _projection_rates(
+                            self.connectome, self.learner.synapse_rate
+                        )
+                    }
+                ),
             },
             "genes": genes,
             "memories": {name: memory.to_dict() for name, memory in self.memories.items()},
             "pending": self.pending_feedback,
         }
+        ran_on = self.placement
+        if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
+            result["placement"] = ran_on
         return dict(plain(result))
 
     # -- stimulus
@@ -3464,7 +3431,7 @@ class Brain:
             held = self.working_memory if trace is None else trace
             drive = np.zeros((len(x), len(self.prefrontal_index)))
             if held is not None and len(held.trace) == len(x):
-                drive = held.amplitude * held.trace
+                drive = held.amplitude * held.hearing * held.trace
             z = model.activation(drive + bias[self.prefrontal_index])
         warm = None
         current = self._activity()
@@ -3585,23 +3552,158 @@ class Brain:
         alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
         if coded is not None and coded[0] is observations:
-            return self._stimulus(coded[0], coded[1], memory=memory)
-        x = self._observations(observations)
-        return self._stimulus(x, self._code(x), memory=memory)
+            drive = self._stimulus(coded[0], coded[1], memory=memory)
+        else:
+            x = self._observations(observations)
+            drive = self._stimulus(x, self._code(x), memory=memory)
+        return drive if self._settling or not _resident(drive) else _host_copy(drive)
+
+    def _moment_drive(self, x: np.ndarray) -> np.ndarray:
+        """The drive a moment's settles read, ``stimulus`` where it rests. On a torch device it
+        stays or goes there here, once: every settle of the moment and its checks read it there."""
+        self._settling = True
+        try:
+            drive = self.stimulus(x)
+        finally:
+            self._settling = False
+        kernel = self.brain._torch
+        if kernel is None or _resident(drive) or os.environ.get("CADENCE_TORCH_MEMORY") == "0":
+            return drive
+        if not np.isfinite(drive).all():
+            raise ValueError("drive must be finite and the brain must contain neurons")
+        return cast(np.ndarray, kernel.observed(drive))
 
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
-        drive = np.zeros((len(x), self.connectome.n))
-        drive[:, self.sensory_index] = (
-            self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
-        )
+        kernel = self._memories_kernel(len(x)) if memory else None
+        drive: Any
+        if kernel is not None:
+            drive = self._resident_drive(kernel, x, code)
+        else:
+            drive = np.zeros((len(x), self.connectome.n))
+            drive[:, self.sensory_index] = (
+                self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
+            )
         region = self.learned_code
         if region is not None:
             drive = self._unit_read(x, drive, memory=memory)
         if memory:
+            for held in (self.recall, self.working_memory, self.hippocampus):
+                if held is not None:
+                    held.reside(kernel)
+            self.basal_ganglia.reside(kernel)
+            if self.recall is not None:
+                self.recall.place(self.brain._mlx)
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))
+        return cast(np.ndarray, drive)
+
+    # -- where the brain runs
+
+    @property
+    def placement(self) -> dict[str, Any]:
+        """Where this brain runs, and why: ``backend``, ``device`` and ``precision``; ``chosen_by``,
+        ``"named"`` for a backend the caller named, ``"environment"`` for ``CADENCE_BACKEND`` and
+        ``"auto"`` for the rule's choice; ``why``; ``refused``, the devices that refused it on the
+        way; ``pending`` while it has not taken its backend (its first moment decides)."""
+        graph, held = self.brain, self._placement or {}
+        kernel = graph._torch
+        precision = "float64" if graph.backend == "cpu" else "float32"
+        if kernel is not None:
+            precision = str(kernel.dtype).replace("torch.", "")
+        out = {
+            "backend": graph.backend,
+            "device": None if kernel is None else str(kernel.device),
+            "precision": precision,
+            "chosen_by": held.get("chosen_by", "named"),
+            "why": held.get("why", "the backend was named"),
+            "refused": list(held.get("refused", ())),
+            "pending": self._unplaced,
+        }
+        if "saved_on" in held:
+            out["saved_on"] = held["saved_on"]
+        return out
+
+    def _memories_stay_on_host(self) -> bool:
+        """Whether an option keeps the moment's memories on the host at every size: several heads,
+        a window, the read of the command or of when, the gains, tokens, a separator, a surprise
+        gate, an episodic vote or a learned code."""
+        recall, store = self.recall, self.hippocampus
+        return bool(
+            self._episodic is not None or self.learned_code is not None
+            or (recall is not None and not recall.resides)
+            or (store is not None and (store.separator is not None
+                                       or getattr(store, "gate_noise", None) is not None))
+        )
+
+    def _backends_at(self, rows: int) -> list[_Candidate]:
+        connectome = self.connectome
+        return _fastest_backends(
+            rows, connectome.synapses,
+            settling=int(np.unique(connectome.post).size),
+            apical=self.brain.apical is not None,
+            precision=(self._placement or {}).get("precision_named"),
+            host_memory=self._memories_stay_on_host(),
+            learned_code=self.learned_code is not None,
+        )
+
+    def _place_for(self, observations: Any) -> None:
+        """Take the backend the rule chooses at the rows of a brain's first moment. Invalid
+        observations are the operation's to refuse, and the next moment decides."""
+        try:
+            rows = len(self._observations(observations))
+        except (TypeError, ValueError):
+            return
+        self._place_at(rows)
+
+    def _place_at(self, rows: int) -> None:
+        """The first candidate that takes this brain, in place of its host parts; nothing has been
+        learned yet that a move could lose, and what a caller changed goes with the checkpoint. A
+        device that refuses it is reported, and the CPU path takes every brain."""
+        import tempfile
+
+        self._unplaced = False
+        held = self._placement = {**(self._placement or {}), "chosen_by": "auto"}
+        refused = list(held.get("refused", ()))
+        for candidate in self._backends_at(rows):
+            if candidate.backend == "cpu":
+                held.update(why=candidate.why, refused=refused)
+                return
+            try:
+                with tempfile.TemporaryDirectory(prefix="cadence-place-") as folder:
+                    path = self.save(Path(folder) / "brain.npz", compressed=False)
+                    placed = type(self).load(path, **_place_of(candidate, None))
+            except Exception as error:  # a device that refuses the brain is not its failure
+                refused.append(f"{candidate.backend}: {error}")
+                continue
+            self.__dict__.clear()
+            self.__dict__.update(placed.__dict__)
+            self._placement = {**held, "why": candidate.why, "refused": refused}
+            return
+
+    def _memories_kernel(self, rows: int) -> Any:
+        """The kernel whose device holds this brain's memories, its critic and its moments' drives
+        at ``rows`` streams, where each of them has a device path and the moment's size pays for it
+        (``_memory_on_device``); None otherwise: several heads, a window, the read of the command
+        or of when, the gains, tokens, a separator, a surprise gate or an episodic vote keep the
+        whole moment's memory on the host."""
+        kernel = self.brain._torch if self.brain._torch is not None else self.brain._mlx
+        if (
+            kernel is None or not _memory_on_device(kernel, rows, self.code_width)
+            or self._memories_stay_on_host()
+        ):
+            return None
+        return kernel
+
+    def _resident_drive(self, kernel: Any, x: np.ndarray, code: np.ndarray) -> Any:
+        """The sensory part of a moment's drive on the device, where the memories add theirs to it
+        and the settle reads it: nothing of it comes to the host."""
+        xp = arrays_of(kernel)
+        drive = xp.zeros((len(x), self.connectome.n))
+        drive[:, xp.columns(kernel.index_of(self.sensory_index))] = kernel.observed(
+            self._sensed(x, code)
+        ) * self.brain.neuron_model.stimulus_amplitude
         return drive
 
     # -- independent-sample convenience operations (no mode switch)
@@ -3630,6 +3732,8 @@ class Brain:
                 or value < minimum
             ):
                 raise ValueError(f"{name} must be an integer >= {minimum}")
+        if self._unplaced:
+            self._place_at(min(batch, len(labels)))
         # Supervision changes the parameters under any previously cached decision.
         self.reset(keep=("arousal",))
         history = []
@@ -3665,8 +3769,13 @@ class Brain:
                 damping=cfg.damping,
             )
         first_budget = budget if budget < 2 else (budget + 1) // 2
+        # on the host a solve copies what it continues from, and MLX never writes an array; a
+        # torch state stays apart, as it is
+        own = type(brain).equilibrate is not NeuralGraph.equilibrate  # a subclass's own solve
+        options: dict[str, Any] = {"fast": True} if cfg.fast_settle and not own else {}
         phase = brain.equilibrate(
-            drive, state=_copy_state(state), budget=first_budget, tolerance=tolerance
+            drive, state=state if brain.backend != "torch" else _copy_state(state),
+            budget=first_budget, tolerance=tolerance, **options,
         )
         if np.all(phase.qualified) or phase.steps >= budget:
             return phase
@@ -3701,8 +3810,35 @@ class Brain:
             damping_halvings=1,
         )
 
+    def _read_judged(
+        self, drive: np.ndarray, state: BrainState | None, operation: str
+    ) -> BrainState | None:
+        """The settle a surprise lesson judged by, when this solve is the same one: its drive
+        and its warm state to the bit, under the same parameters and settings. A solve is a
+        function of these, so its state and its report are the ones a second solve makes: a
+        lesson that taught no row costs the act that follows no settle of its own. The report
+        states the sweeps the state took. It is read once."""
+        held, self._judged = self._judged, None
+        if held is None:
+            return None
+        graph = self.brain
+        if (
+            held[0] is graph
+            and held[1] is graph._efficacy
+            and held[2] is graph._bias
+            and held[3] is self.learner.config
+            and held[4] == operation
+            and held[5] is state
+            and held[6] == drive.tobytes()
+            and (state is None or held[7] == (state.v.tobytes(), state.adaptation.tobytes()))
+        ):
+            self._last_settlement = MappingProxyType(held[9])
+            return cast(BrainState, held[8])
+        return None
+
     def _qualified(
-        self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer"
+        self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer",
+        judges: bool = False,
     ) -> BrainState:
         """Check the complete current graph before publishing an answer. A solve that does not
         qualify within ``free_steps`` continues once from where it stopped on the damping
@@ -3711,16 +3847,20 @@ class Brain:
         is the answer refused. A solve that ended with a value that is not finite, or a budget
         of no sweeps, is refused without one. The rescue changes nothing where the first solve
         qualifies; the report counts its sweeps (``rescue_steps``) and sums both solves' sweeps
-        and checks."""
+        and checks. A solve that ``judges`` a lesson is kept for the same solve next
+        (``_read_judged``)."""
         from .brain import _copy_state
 
         cfg = self.learner.config
         if cfg.tolerance is None:
             raise ValueError("Brain answers require a finite residual tolerance")
+        read = self._read_judged(drive, state, operation)
+        if read is not None:
+            return read
         phase = self._equilibrate(drive, state, budget=cfg.free_steps, tolerance=cfg.tolerance)
         rescue, rescued = 0, False
         # a budget of no sweeps has no rescue of as many
-        if cfg.free_steps > 0 and not all(bool(value) for value in phase.qualified) and all(
+        if cfg.free_steps > 0 and not phase.qualified.all() and all(
             np.isfinite(np.asarray(value)).all()
             for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
         ):
@@ -3740,8 +3880,8 @@ class Brain:
                 residual_checks=int(before.residual_checks) + int(phase.residual_checks),
                 stagnation_checks=int(before.stagnation_checks) + int(phase.stagnation_checks),
             )
-        rows = tuple(bool(value) for value in phase.qualified)
-        residual = tuple(float(value) for value in phase.residual)
+        rows = tuple(phase.qualified.tolist())
+        residual = tuple(phase.residual.tolist())
         report: dict[str, Any] = {
             "operation": operation,
             "qualified": all(rows),
@@ -3757,6 +3897,8 @@ class Brain:
         }
         if rescue:
             report["rescue_steps"] = rescue
+        if phase.row_sweeps is not None:
+            report["row_sweeps"] = int(phase.row_sweeps)
         if self.learned_code is not None and self._code_settlement is not None:
             report.update(self._code_settlement)  # the code phase this settle started from
         self._last_settlement = MappingProxyType(report)
@@ -3767,12 +3909,19 @@ class Brain:
                 + f": residual={float(np.max(phase.residual)):.6g}, "
                 f"tolerance={cfg.tolerance:g}; no action issued"
             )
+        graph = self.brain
+        if judges and graph.backend == "cpu" and self.learned_code is None:
+            self._judged = (
+                graph, graph._efficacy, graph._bias, cfg, operation, state, drive.tobytes(),
+                None if state is None else (state.v.tobytes(), state.adaptation.tobytes()),
+                phase.state, report,
+            )
         return phase.state
 
     def _choices(self, state: BrainState) -> np.ndarray:
         """The most active motor neuron per output slot: ``(batch,)`` for one slot,
         ``(batch, slots)`` when the motor neurons split into several readouts."""
-        out = np.asarray(state.activation)[:, self.motor_index]
+        out = state.part(self.motor_index)
         learner = self.learner
         if learner.slot_count > 1 and learner.slot_size == 0:  # unequal slots: one argmax each
             choice = [
@@ -3843,7 +3992,7 @@ class Brain:
         x = self._observations(observations)
         batch = len(x)
         current = self.basal_ganglia.state
-        if current is not None and len(np.atleast_2d(current.v)) != batch:
+        if current is not None and _batch_of(current) != batch:
             raise ValueError("action batch must match the live streams; reset for new streams")
         r = np.zeros(batch) if reward is None else np.asarray(reward, dtype=float)
         ended = np.zeros(batch, bool) if done is None else np.asarray(done)
@@ -3903,7 +4052,7 @@ class Brain:
         if len(labels) != len(x):
             raise ValueError("labels must match the observation batch")
         current = self.basal_ganglia.state
-        if current is not None and len(np.atleast_2d(current.v)) != len(x):
+        if current is not None and _batch_of(current) != len(x):
             raise ValueError("lesson batch must match the live streams; reset for new streams")
         if self.basal_ganglia._pending is not None:
             raise RuntimeError(
@@ -3920,7 +4069,8 @@ class Brain:
                 "lesson on the observations the brain just acted on: the act already wrote "
                 "this moment to the recall memory, so the lesson reads the moment itself, its "
                 "successor still empty. Teach before acting, as step(..., teacher=labels) "
-                "orders them.",
+                "orders them. A world whose next moment looks the same as this one is already "
+                "in that order, and this does not apply to it.",
                 RuntimeWarning,
                 stacklevel=3,  # the caller, past the operation wrapper
             )
@@ -3933,6 +4083,19 @@ class Brain:
         with self._code_attempt():
             return self._teach(x, labels)
 
+    def _token_rows(self, labels: np.ndarray) -> np.ndarray | None:
+        """Per row, whether a label names an action that is a token (``recall_tokens``), or
+        None for a brain without declared tokens. With several output slots a row is a token
+        row where any slot's label is one."""
+        recall = self.recall
+        if recall is None or recall.tokens is None:
+            return None
+        tokens = np.asarray(recall.tokens) >= 0
+        sizes = np.asarray(self.learner.slot_sizes)
+        starts = np.concatenate([[0], np.cumsum(sizes)[:-1]])
+        chosen = np.asarray(labels, dtype=np.int64).reshape(len(labels), -1) + starts[None, :]
+        return np.asarray(tokens[chosen].any(axis=1))
+
     def _teach(
         self, x: np.ndarray, labels: np.ndarray, *, replayed: bool = False
     ) -> dict[str, float]:
@@ -3944,18 +4107,27 @@ class Brain:
 
         batch = len(x)
         self._prepare(x)
-        drive = self.stimulus(x)
+        drive = self._moment_drive(x)
         code = self._coded(x)
         place = self._placed(x)
         key = self._decision_key(code)  # of the decision the lesson is shown for
         answer = None
+        tokens = self._token_rows(labels)
         if self.learner.config.surprise:
             # the brain's own answer, the act it would issue: its complete greedy choice on the
             # settle its act reads, warm from the stream, with the episodic vote under the
             # decision's own key; a row that answer already gives as shown is no surprise
             answer = self._greedy(
-                self._qualified(drive, self._activity(), operation="act"), place, key
+                self._qualified(drive, self._activity(), operation="act", judges=True), place, key
             )
+            if tokens is not None and not tokens.all():
+                # with declared tokens, a row whose answer is no token (a yes or a no, a
+                # count) is taught at every lesson: judged only where wrong, the lessons of a
+                # judgment between two classes carry one class at a time and never the
+                # comparison that separates them
+                answer = np.where(
+                    tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
+                )
         try:
             # the lesson's free phase starts from rest, with a learned code's phase in it
             lesson, teaching = self.learner.step(
@@ -3968,8 +4140,13 @@ class Brain:
             self.last_learning["demonstrations"] = 0.0
             raise
         if self.recall is not None:
-            # the address lesson: the slots scored against the lesson's movement step the map
-            teaching.update(self.recall.learn(self.learner.brain, lesson))
+            # the address lesson: the slots scored against the lesson's movement step the map,
+            # with declared tokens at the rows whose answer is one
+            teaching.update(self.recall.learn(self.learner.brain, lesson, tokens))
+            # the gains' lesson (``recall_gain``): the motor's movement steps them
+            teaching.update(self.recall.learn_gain(lesson))
+        if self.hearing is not None:
+            self.hearing.learn(self.learner.brain, lesson, self.learner.config.beta)
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )
@@ -3995,6 +4172,48 @@ class Brain:
                 )
         self.last_learning["demonstrations"] = float(batch)
         return teaching
+
+    def _wire_hearing(self) -> None:
+        """One learned gain per carried route (``carried_gain``): the working trace, the
+        efference copy, every block of the heard history and with ``recall_drive_gain`` the
+        read's drive over every port, each at its working value."""
+        hearing = Hearing(
+            self._carried_rate, self.connectome, self.association_index, self.brain.neuron_model
+        )
+        for name, trace in (("trace", self.working_memory), ("efference", self.efference)):
+            if trace is not None:
+                hearing.add(name, trace, None, 0, len(trace.glow), trace.glow)
+        if self.history is not None:
+            self.history.hearing = np.ones(len(self.history.decays))
+            width = self.history.width
+            for k in range(len(self.history.decays)):
+                hearing.add(
+                    f"history_{k}", self.history, k, k * width, (k + 1) * width,
+                    self.history.glow[k * width:(k + 1) * width],
+                )
+        recall = self.recall
+        if recall is not None and recall.drive_gain:
+            # the read can quiet and stays at or below its amplitude
+            hearing.add("read", recall, None, 0, len(recall.port_neurons), recall.port_neurons,
+                        bound=1.0)
+        self.hearing = hearing
+        self.basal_ganglia.hearing = hearing
+
+    def _take_gains(self, saved: Mapping[str, Any]) -> None:
+        """The learned gains a checkpoint holds, by route; a route it does not name starts at
+        its working value (a part ``grow`` added)."""
+        hearing = self.hearing
+        assert hearing is not None
+        for k, route in enumerate(hearing.routes):
+            if route["name"] in saved["gains"]:
+                hearing.set(route, float(saved["gains"][route["name"]]))
+                hearing.second[k] = float(saved["second"][route["name"]])
+        hearing.count = int(saved["count"])
+
+    @property
+    def carried_gains(self) -> dict[str, float]:
+        """Every carried route's learned gain by name (``carried_gain``); empty without it."""
+        return {} if self.hearing is None else self.hearing.gains()
 
     # -- rehearsal: the lessons' episodes replayed (``learning_rehearsal``, #238)
 
@@ -4245,7 +4464,7 @@ class Brain:
         x = self._observations(observations)
         agent = self.basal_ganglia
         current = agent.state
-        if len(x) != 1 or (current is not None and len(np.atleast_2d(current.v)) != 1):
+        if len(x) != 1 or (current is not None and _batch_of(current) != 1):
             raise ValueError("live follows one continuing stream; reset before changing streams")
         lived = self._lived
         if lived is not None and current is not lived[4]:
@@ -4452,7 +4671,7 @@ class Brain:
             )
         x = self._observations(observations)
         current = self.basal_ganglia.state
-        if len(x) != 1 or (current is not None and len(np.atleast_2d(current.v)) != 1):
+        if len(x) != 1 or (current is not None and _batch_of(current) != 1):
             raise ValueError("wait follows one continuing stream; reset before changing streams")
         if current is None or not self.pending_feedback:
             raise RuntimeError(
@@ -4460,7 +4679,7 @@ class Brain:
             )
         with self._code_attempt():
             self._prepare(x)
-            drive = self.stimulus(x)
+            drive = self._moment_drive(x)
             state = self._qualified(drive, self._activity(), operation="wait")
         code = self._coded(x)
         lived = self._lived
@@ -4688,7 +4907,7 @@ class Brain:
         """
         x = self._observations(observations)
         current = self.basal_ganglia.state
-        if current is not None and len(np.atleast_2d(current.v)) != len(x):
+        if current is not None and _batch_of(current) != len(x):
             raise ValueError("action batch must match the live streams; reset for new streams")
         if temperature is not None:
             temperature = self.basal_ganglia._temperature(temperature)
@@ -4703,7 +4922,7 @@ class Brain:
         Refusal raises before anything changes."""
         with self._code_attempt():
             self._prepare(x)
-            drive = self.stimulus(x)
+            drive = self._moment_drive(x)
             return drive, self._qualified(drive, self._activity(), operation="act")
 
     def _coded(self, x: np.ndarray) -> np.ndarray:
@@ -4738,7 +4957,7 @@ class Brain:
         """
         self.basal_ganglia._free = free
         self.basal_ganglia._free_brain = self.brain
-        self.basal_ganglia._drive = drive.copy()
+        self.basal_ganglia._drive = _held_drive(drive)
         self._prepared = None
         self._awaiting = None
         code = self._coded(x)  # the memories key on the observation code
@@ -4867,14 +5086,7 @@ class Brain:
         memory = self.hippocampus
         # Synaptic writes replace arrays, so retain their old references rather
         # than copying a potentially large persistent matrix for every outcome.
-        memory_values = (
-            {}
-            if memory is None
-            else {name: getattr(memory, name) for name in ("strength", "mass", "writes")}
-        )
-        if isinstance(memory, SynapticMemory):
-            memory_values["consolidated"] = memory.consolidated
-            memory_values["gate_noise"] = memory.gate_noise  # with maturity, replaced as well
+        memory_values = {} if memory is None else memory.held_values()
         separator_mean = (
             None if memory is None or memory.separator is None else memory.separator.mean
         )
@@ -4919,7 +5131,7 @@ class Brain:
                 heard.reset(len(done), rows=np.flatnonzero(done))
             if recalled is not None and done.any():
                 recalled.reset(len(done), rows=np.flatnonzero(done))
-            next_drive = self.stimulus(following)
+            next_drive = self._moment_drive(following)
             warm = self._awaited()
             if self.learned_code is not None:
                 # the next state settles warm from the stream's state with the code's phase
@@ -4927,8 +5139,7 @@ class Brain:
             report = self.basal_ganglia.learn(reward, done, next_drive, bootstrap, warm=warm)
         except Exception:
             if memory is not None:
-                for name, value in memory_values.items():
-                    setattr(memory, name, value)
+                memory.take_values(memory_values)
                 if memory.separator is not None and separator_mean is not None:
                     memory.separator.mean = separator_mean
             if trace is not None:
@@ -5022,7 +5233,7 @@ class Brain:
     def parameters(self) -> int:
         """Actor/critic and consolidated weights (the episodic records' paid store with
         ``memory_extinction``), the recall memory's address and position maps and the maps of
-        its options (anchor, relative, slope), a learned code's tables, and with ``maturity``
+        its options (anchor, relative, slope, gain), a learned code's tables, and with ``maturity``
         its use and the place records' noise scales; per-stream transient storage is
         additional."""
         recall = self.recall
@@ -5044,12 +5255,14 @@ class Brain:
                     a.size
                     for maps in (
                         *recall.position_maps, *recall.anchor_maps, *recall.relative_maps,
-                        *recall.slope_maps,
+                        *recall.slope_maps, *recall.grid_maps,
                     )
                     for a in maps
                 )
+                + recall.gains.size
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
+            + (0 if self.hearing is None else len(self.hearing.routes))
         )
 
     def save(self, path: str | Path, *, compressed: bool = True) -> Path:
@@ -5087,12 +5300,29 @@ class Brain:
             "last_learning": self.last_learning,
             "memories": memories,
         }
+        # what it ran on, where that is not the CPU by name: such a file keeps its bytes
+        ran_on = self.placement
+        if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
+            metadata["placement"] = ran_on
         if self._composition is not None:
             metadata["composition"] = plain(self._composition)
         if self.attention:
             metadata["attention"] = True
         if agent.maturity is not None:
             metadata["maturity"] = agent.maturity.to_dict()
+        hearing = self.hearing
+        if hearing is not None:  # the carried routes' learned gains, and only with them
+            metadata["carried_gain"] = {
+                "rate": hearing.rate,
+                "gains": hearing.gains(),
+                "second": {r["name"]: float(s) for r, s in zip(hearing.routes, hearing.second,
+                                                                strict=True)},
+                "count": hearing.count,
+            }
+            if agent.trace_hearing is not None:
+                data["hearing/trace"] = agent.trace_hearing
+            if agent._pending is not None and agent._pending_hearing is not None:
+                data["hearing/pending"] = agent._pending_hearing
         if self.arousal is not None:
             metadata["arousal"] = self.arousal.to_dict()
             lived = self._lived
@@ -5133,13 +5363,14 @@ class Brain:
                 data["moment/observations"], data["moment/action"] = self._moment
                 if self._moment_code is not None:  # the code the decision was keyed on
                     data["moment/code"] = self._moment_code
+        agent._host_trace()
         for name in _REWARD_ARRAYS:
             value = getattr(agent, name)
             if value is not None:
-                data["actor/" + name] = np.asarray(value)
-        if agent._trace_device is not None:
+                data["actor/" + name] = _host_copy(value) if _resident(value) else np.asarray(value)
+        if agent._trace_device is not None:  # in the brain's precision: 256 streams at the speech
             for name, tensor in zip(("trace", "trace_bias"), agent._trace_device, strict=True):
-                data["actor/" + name] = tensor.detach().cpu().double().numpy()
+                data["actor/" + name] = tensor.detach().cpu().numpy()  # size are 6 GB in float32
         if agent.state is not None:
             data.update(_state_arrays("free/", agent.state))
         if self._prepared is not None:
@@ -5176,10 +5407,12 @@ class Brain:
         if "recall" in out:
             # the actor's eligibility of the address map, and the pending action's contrast
             arrays = out["recall"][1]
+            recall = self.recall
+            assert recall is not None
             if agent.trace_memory is not None:
-                arrays["trace"] = agent.trace_memory
+                arrays.update(recall.saved_eligibility("trace", agent.trace_memory))
             if agent._pending is not None and agent._pending_memory is not None:
-                arrays["pending"] = agent._pending_memory
+                arrays.update(recall.saved_eligibility("pending", agent._pending_memory))
         return out
 
     @classmethod
@@ -5187,86 +5420,54 @@ class Brain:
         cls,
         path: str | Path,
         *,
-        backend: Backend = "cpu",
+        backend: Backend | Literal["auto"] | None = None,
         device: str | None = None,
         precision: str | None = None,
     ) -> Brain:
-        """Resume a complete saved brain, defaulting to portable CPU inference and learning.
+        """Resume a complete saved brain. With no ``backend`` named, a brain whose backend the rule
+        chose takes it again at its first moment (``backend="auto"``), and any other runs on the
+        CPU, portable inference and learning.
 
-        Reads ``cadence-brain/1``, ``cadence-brain/2`` (a brain with maturity) and, through
-        0.85.x, the earlier formats:
-        ``cadence-generic/1`` to ``/9``, which 0.84.3 reads, and ``/10``, which development
-        builds of the learned code wrote. A setting of 0.84.3 that this version removed loads
-        at the value whose law this version keeps and is refused otherwise, with a message
-        naming 0.84.3. Keep the saved batch row identities, or call ``reset`` for new
-        episodes. Cross-backend results are subject to floating-point differences.
+        Reads ``cadence-brain/1`` and ``cadence-brain/2`` (a brain with maturity), the formats
+        of 0.85.0 on, and refuses the earlier ``cadence-generic/1`` to ``/10`` by name: cadence
+        0.94.0 loads those and saves ``cadence-brain/1``. Keep the saved batch row identities, or
+        call ``reset`` for new episodes. Cross-backend results are subject to floating-point
+        differences.
         """
         import json
 
         with np.load(path, allow_pickle=False) as archive:
             data: Mapping[str, Any] = archive
-            if "brain" in archive:
-                saved = json.loads(str(archive["brain"]))
-                if not isinstance(saved, dict) or saved.get("format") not in (
-                    BRAIN_FORMAT, MATURITY_FORMAT
-                ):
-                    raise ValueError("unsupported Brain checkpoint format")
-                if (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
-                    raise ValueError(
-                        f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
-                    )
-                meta, data = _earlier_layout(saved, archive)
-            elif "generic" in archive:
-                meta = json.loads(str(archive["generic"]))
-                if isinstance(meta, dict) and "maturity" in meta:
-                    raise ValueError(
-                        f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
-                    )
-            else:
+            if "generic" in archive:
+                raise ValueError(
+                    "this checkpoint is a cadence-generic file, which 0.84.3 and earlier wrote: "
+                    "cadence 0.94.0 loads it and saves the format this version reads"
+                )
+            if "brain" not in archive:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
-            formats = tuple(f"cadence-generic/{level}" for level in range(1, 11))
-            if not isinstance(meta, dict) or meta.get("format") not in formats:
+            saved = json.loads(str(archive["brain"]))
+            if not isinstance(saved, dict) or saved.get("format") not in (
+                BRAIN_FORMAT, MATURITY_FORMAT
+            ):
                 raise ValueError("unsupported Brain checkpoint format")
-            # each format carries the component it was introduced for, and may carry those
-            # of the earlier formats; a component under an earlier format name is refused
-            level = formats.index(meta["format"]) + 1
-            if (level == 10) != ("learned_code" in meta):
+            if (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
                 raise ValueError(
-                    "a brain's learned code belongs to checkpoint format cadence-generic/10"
+                    f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
                 )
-            if (level == 9) != ("code" in meta):
-                raise ValueError("a brain's code belongs to checkpoint format cadence-generic/9")
-            if level == 8 and meta.get("recall") is None:
-                raise ValueError("format cadence-generic/8 carries a recall memory")
-            if meta.get("recall") is not None and level < 8:
-                raise ValueError(
-                    "a recall memory belongs to checkpoint formats cadence-generic/8 to /10"
-                )
-            if level == 7 and meta.get("history") is None:
-                raise ValueError("format cadence-generic/7 carries a heard history")
-            if meta.get("history") is not None and level < 7:
-                raise ValueError(
-                    "a heard history belongs to checkpoint formats cadence-generic/7 to /10"
-                )
-            if level == 6 and "episodic" not in meta:
-                raise ValueError("format cadence-generic/6 carries an episodic memory's choice")
-            if "episodic" in meta and level < 6:
-                raise ValueError(
-                    "an episodic memory's choice belongs to checkpoint formats cadence-generic/6 "
-                    "to /10"
-                )
-            if level == 5 and "arousal" not in meta:
-                raise ValueError("format cadence-generic/5 carries a live stream's arousal")
-            if level == 4 and meta.get("efference") is None:
-                raise ValueError("format cadence-generic/4 carries an efference copy")
-            if level < 4 and ("arousal" in meta) != (level == 3):
-                raise ValueError("arousal state belongs to checkpoint format cadence-generic/3")
+            meta, data = _flat_layout(saved, archive)
             arousal = Arousal.from_dict(meta["arousal"]) if "arousal" in meta else None
-            if "hippocampus" not in meta:
-                raise ValueError("missing hippocampus metadata")
-            # the resting bias 0.84.3 recorded was the initial bias of the processing regions,
-            # provenance only: the saved biases hold whatever it and learning made of them
-            learner = Learner.load(path, backend=backend, device=device, precision=precision)
+            ran_on = meta.get("placement")
+            chosen = isinstance(ran_on, dict) and ran_on.get("chosen_by") == "auto"
+            asked: str = backend if backend is not None else ("auto" if chosen else "cpu")
+            place_later = asked == "auto"
+            if place_later:
+                run = _backend_of_the_run()
+                asked = "cpu" if run is None else run.backend
+                device = None if run is None else run.device
+                place_later = run is None
+            learner = Learner.load(
+                path, backend=cast(Backend, asked), device=device, precision=precision
+            )
             if learner.config.nudge != "cross_entropy":
                 raise ValueError(
                     removed_on_load("learner", "nudge", learner.config.nudge, "learning_nudge")
@@ -5343,8 +5544,13 @@ class Brain:
                             if name in recalled
                         },
                         "recall_position": _saved_position(recalled, data),
-                        "recall_compete": _saved_compete(recalled),
                     }
+                ),
+                # the read's route is one of the carried gains (validated above)
+                **(
+                    {"carried_gain": meta["carried_gain"]["rate"]}
+                    if recalled is not None and recalled.get("drive_gain")
+                    else {}
                 ),
             )
             if code is not None:
@@ -5411,6 +5617,8 @@ class Brain:
                         setattr(recall, f"{kind}_maps", saved_maps(kind))
                         if read:
                             setattr(recall, read, data["recall/" + read].astype(np.int64))
+                if recall.gain:  # the gains (validated above)
+                    recall.gains = data["recall/gains"].astype(float)
                 if recall.window > 1:  # validated above: saved with the window
                     recall.past = data["recall/past"].astype(float)
                 if recall.action:  # validated above: saved with the command
@@ -5423,9 +5631,11 @@ class Brain:
             agent.learner = learner
             for name in _REWARD_ARRAYS:
                 if "actor/" + name in data:
-                    value = data["actor/" + name].copy()
+                    value = data["actor/" + name]  # read for this load alone: no second array
                     if not np.isfinite(value).all():
                         raise ValueError(f"nonfinite saved actor state: {name}")
+                    if value.dtype != np.float64 and learner.brain._torch is None:
+                        value = value.astype(np.float64)  # the host's steps add in float64
                     setattr(agent, name, value)
             agent.updates, agent.b_critic = int(meta["updates"]), float(meta["b_critic"])
             if "maturity" in meta:  # the brain's maturity, and the store's gate it engages
@@ -5443,6 +5653,33 @@ class Brain:
                 agent._free_brain = learner.brain if meta.get("free_current", False) else None
             result._prepared = data["prepared"].copy() if "prepared" in data else None
             result.last_learning = meta.get("last_learning", {})
+            if isinstance(ran_on, dict):
+                here = result.placement
+                moved = any(
+                    ran_on.get(name) != here[name] for name in ("backend", "device", "precision")
+                )
+                result._placement = (
+                    {"chosen_by": "named", "why": "the backend was named at load", "refused": [],
+                     "saved_on": ran_on}
+                    if moved else
+                    {"chosen_by": ran_on.get("chosen_by", "named"), "why": ran_on.get("why", ""),
+                     "refused": list(ran_on.get("refused", ()))}
+                )
+            if place_later:
+                result._placement = {
+                    **(result._placement or {}), "chosen_by": "auto",
+                    "precision_named": precision, "why": _PLACED_LATER, "refused": [],
+                }
+                result._unplaced = True
+            recalled_memory = result.recall
+            if recalled_memory is not None:
+                recalled_memory.took_eligibility(*(
+                    data[name] for name in ("recall/trace", "recall/pending") if name in data
+                ))
+                recalled_memory.took_kept_eligibility(*(
+                    data[name] for name in ("recall/trace_kept", "recall/pending_kept")
+                    if name in data
+                ))
             if meta.get("pending", False):
                 phases = [
                     _saved_state(data, f"pending/{name}/", meta["pending_" + name + "_steps"])
@@ -5450,7 +5687,12 @@ class Brain:
                 ]
                 agent._pending = ("states", phases[0], phases[1], data["pending/value"].copy())
                 if "recall/pending" in data:  # validated above: a pending action's contrast
-                    agent._pending_memory = data["recall/pending"].astype(float)
+                    assert recalled_memory is not None
+                    agent._pending_memory = recalled_memory.kept_eligibility(
+                        data["recall/pending"].astype(float)
+                    )
+                elif "recall/pending_kept" in data:
+                    agent._pending_memory = data["recall/pending_kept"].astype(float)
                 if "moment/observations" in data:
                     result._moment = (
                         data["moment/observations"].copy(),
@@ -5459,7 +5701,12 @@ class Brain:
                     if "moment/code" in data:
                         result._moment_code = data["moment/code"].astype(float)
             if "recall/trace" in data:
-                agent.trace_memory = data["recall/trace"].astype(float)
+                assert recalled_memory is not None
+                agent.trace_memory = recalled_memory.kept_eligibility(
+                    data["recall/trace"].astype(float)
+                )
+            elif "recall/trace_kept" in data:
+                agent.trace_memory = data["recall/trace_kept"].astype(float)
             working = meta["working_memory"]
             result.working_memory = None
             if working is not None:
@@ -5498,6 +5745,15 @@ class Brain:
                         f"brain's {result.code_width}: a coded brain numbers them from zero "
                         "and an uncoded one keys on its sensory neurons"
                     )
+            saved_gains = meta.get("carried_gain")
+            if saved_gains is not None:
+                result._carried_rate = real("saved carried_gain", saved_gains["rate"], low=0)
+                result._wire_hearing()
+                result._take_gains(saved_gains)
+                if "hearing/trace" in data:
+                    agent.trace_hearing = data["hearing/trace"].astype(float)
+                if "hearing/pending" in data:
+                    agent._pending_hearing = data["hearing/pending"].astype(float)
             result.hippocampus = memory
             episodic = meta.get("episodic")
             if episodic is not None:
@@ -5654,7 +5910,16 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
     changes = _grow_parts(brain, settings)
     inputs, actions, composed = _composed_again(brain)
     grown = int(sum(changes["slots"])) if "slots" in changes else actions
-    template = type(brain).compose(inputs, grown, **{**composed, **changes})
+    template = type(brain).compose(inputs, grown, backend="cpu", **{**composed, **changes})
+    if brain.learner.synapse_rate is not None:  # the rates its width gave it, on the grown layout
+        template.learner.synapse_rate = _width_rates(template.connectome)
+    gains = None
+    if brain.hearing is not None:
+        gains = {
+            "gains": brain.hearing.gains(), "count": brain.hearing.count,
+            "second": {r["name"]: float(s) for r, s in zip(brain.hearing.routes,
+                                                           brain.hearing.second, strict=True)},
+        }
     graph = brain.brain
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-grow-") as folder:
@@ -5662,7 +5927,7 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
         # the trained brain through its checkpoint, on the CPU, whatever device it lives on;
         # the grown brain starts its streams afresh, as after reset()
         brain.save(root / "living.npz", compressed=False)
-        trained = type(brain).load(root / "living.npz")
+        trained = type(brain).load(root / "living.npz", backend="cpu")
         trained.reset()
         trained.save(root / "trained.npz", compressed=False)
         template.save(root / "template.npz", compressed=False)
@@ -5677,9 +5942,12 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
                 (actions, grown),
             )
         _write(data, root / "grown.npz", compressed=False)
-        return type(brain).load(
+        result = type(brain).load(
             root / "grown.npz", backend=graph.backend, device=device, precision=graph.precision
         )
+        if gains is not None:
+            result._take_gains(gains)
+        return result
 
 
 def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
@@ -5831,8 +6099,11 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             "grow needs a brain that records its construction: a custom anatomy "
             "(compose(connectome=...)) records none, nor does a checkpoint saved without it"
         )
-    if brain.learner.tie_groups is not None or brain.learner.synapse_rate is not None:
-        raise ValueError("grow takes a composed brain without tied or rated synapses")
+    if brain.learner.tie_groups is not None or _rated_by_hand(brain):
+        raise ValueError(
+            "grow takes a composed brain without tied synapses or rates set by hand: set the "
+            "rates on the grown brain"
+        )
     genes = brain.describe()["genes"]
     settings: dict[str, Any] = {
         name: value
@@ -5852,30 +6123,38 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
     settings["scales"] = {
         "sensory": composition["sensory_scale"], "trace": composition["working_memory_scale"],
     }
+    # the gains the brain has, whatever a new brain's memory composes
+    settings.setdefault("carried_gain", 0.0)
     if brain.arousal is not None:
         settings["arousal"] = brain.arousal.config
     if brain.efference is not None and not settings.get("efference_amplitude"):
         # a copy retuned to zero keeps its region: lay it out, the brain's own amplitude
         # comes back with the brain's settings
         settings["efference_amplitude"] = 1.0
+    settings["recall"] = brain.recall is not None
     if brain.recall is not None:
-        settings["recall"] = True
+        # the brain's own settings, whatever a new brain's memory composes
+        settings["recall_founder"] = True
     if brain.hippocampus is None:
         settings["episodic"] = False
-    if brain.memory_choice:
+    if brain._episodic is not None:
         hippocampus = brain.hippocampus
         assert hippocampus is not None  # memory_choice makes the hippocampus episodic
         separator = hippocampus.separator
+        if brain.sparse_code is None and (
+            separator is None or separator.expansion != _MEMORY_EXPANSION or separator.fan_in
+        ):
+            raise ValueError(
+                "grow lays an episodic brain out again with the separation of 1,024 dense cells "
+                "every such brain holds; this one was saved with another: cadence 0.94.0 "
+                "grows it"
+            )
         settings.update(
             memory_choice=True,
-            memory_context=brain.memory_context,
-            memory_extinction=brain.memory_extinction,
-            memory_context_hold=brain.memory_context_hold,
+            memory_context=brain._episodic.share,
+            memory_extinction=brain._episodic.extinction,
+            memory_context_hold=brain._episodic.hold,
         )
-        if separator is not None:
-            settings.update(memory_expansion=separator.expansion, memory_fan_in=separator.fan_in)
-        elif brain.sparse_code is None:  # keys without separation; a fixed code's are founders
-            settings["memory_expansion"] = 0
     inputs: Any = composition["inputs"]
     if "image" in composition:
         inputs = tuple(composition["image"])
@@ -5913,8 +6192,6 @@ def _grown_checkpoint(
     from .receipts import canonical_json
 
     meta_old, meta_new = json.loads(str(old["meta"])), json.loads(str(new["meta"]))
-    if old["tie_groups"].size or old["synapse_rate"].size:
-        raise ValueError("grow takes a composed brain without tied or rated synapses")
     n = int(meta_new["n"])
     index = _grown_neurons(meta_old["populations"], meta_new["populations"], int(meta_old["n"]))
     known = np.zeros(n, dtype=bool)
@@ -5927,6 +6204,10 @@ def _grown_checkpoint(
         raise RuntimeError("grow could not lay this brain out again: a trained synapse is missing")
     kept = np.zeros(len(key), dtype=bool)
     kept[at] = True
+    if old["synapse_rate"].size and not np.array_equal(
+        new["synapse_rate"][at], old["synapse_rate"]
+    ):
+        raise RuntimeError("grow could not lay this brain out again: a synapse's rate moved")
     data = dict(new)
     for name in _GROW_SYNAPSE:
         values = np.array(new[name])
@@ -5980,6 +6261,9 @@ def _grown_checkpoint(
     ):
         if name in meta_old:
             meta[name] = meta_old[name]
+    # a limit no smaller than the graph's own follows the blocks that grew, as compose takes it
+    if meta_old.get("dense_limit", 0) >= 2048:
+        meta["dense_limit"] = max(meta_old["dense_limit"], meta_new.get("dense_limit", 0))
     data["meta"] = np.array(canonical_json(meta))
     life_old, life_new = json.loads(str(old["brain"])), json.loads(str(new["brain"]))
     if set(life_old["memories"]) - set(life_new["memories"]):
@@ -6095,6 +6379,11 @@ def _graft(
     if joints not in ("zero", "kept"):
         raise ValueError("joints is 'zero' or 'kept'")
     source, target = _graft_pairs(donor.connectome, host.connectome, regions, into)
+    if _rated_by_hand(host) or _rated_by_hand(donor):
+        raise ValueError(
+            "graft takes brains without tied synapses or rates set by hand: set the rates on the "
+            "grafted brain"
+        )
     for brain, index, whose in ((donor, source, "the donor's"), (host, target, "this brain's")):
         code = brain.connectome.populations.get("code", ()) if brain.learned_code else ()
         if np.isin(index, code).any():
@@ -6109,7 +6398,7 @@ def _graft(
     with tempfile.TemporaryDirectory(prefix="cadence-graft-") as folder:
         root = Path(folder)
         host.save(root / "living.npz", compressed=False)
-        fresh = type(host).load(root / "living.npz")
+        fresh = type(host).load(root / "living.npz", backend="cpu")
         fresh.reset()  # the grafted brain starts its streams afresh, as after reset()
         fresh.save(root / "host.npz", compressed=False)
         donor.save(root / "donor.npz", compressed=False)
@@ -6201,8 +6490,11 @@ def _grafted_checkpoint(
     if meta_host.get("apical") != meta_donor.get("apical"):
         raise ValueError("the donor's apical compartment differs from this brain's")
     for checkpoint in (host, donor):
-        if checkpoint["tie_groups"].size or checkpoint["synapse_rate"].size:
-            raise ValueError("graft takes brains without tied or rated synapses")
+        if checkpoint["tie_groups"].size:
+            raise ValueError(
+                "graft takes brains without tied synapses or rates set by hand: set the rates on "
+                "the grafted brain"
+            )
     n = int(meta_host["n"])
     where = np.full(int(meta_donor["n"]), -1, dtype=np.int64)
     where[source] = target

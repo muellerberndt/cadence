@@ -55,11 +55,11 @@ def test_fixture_panels_are_hash_bound_disjoint_balanced_and_sealed():
 
 def test_independent_residual_matches_original_nudge_and_detects_false_cache():
     brain = Brain.compose(
-        inputs=2,
+        backend="cpu", inputs=2,
         actions=2,
         modules=(3,),
         seed=4,
-        learning=LearnerConfig(free_steps=12, nudged_steps=12),
+        learning=LearnerConfig(free_steps=12, nudged_steps=12), recall=False,
     )
     inputs, labels = np.eye(2), np.array([0, 1])
     drive = brain.stimulus(inputs, memory=False)

@@ -12,7 +12,7 @@ import warnings
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -22,7 +22,7 @@ POSITIONS = {"recall_anchor": True, "recall_slope": 0.1, "recall_relative": True
              "recall_when": True}
 # the recall settings 0.93.0 retired: a value each took, and the brain that could take it
 RETIRED = {
-    "recall_address_step": ("toward", {}),
+    "recall_address_step": ("lms", {}),
     "recall_heard": (2.0, {}),
     "recall_address_temperature": (0.05, {}),
     "recall_window_decay": (0.5, {}),
@@ -32,7 +32,7 @@ RETIRED = {
 def lived(**options) -> cd.Brain:
     """A brain of six inputs and three actions after a few rewarded and taught steps."""
     rng = np.random.default_rng(1)
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **options)
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **options})
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         brain.step(X[0])
@@ -51,7 +51,7 @@ def greedy(brain: cd.Brain) -> list:
     [*POSITIONS.items(), ("memory_context_hold", "unchanged"), ("memory_extinction", 0.5)],
 )
 def test_retune_refuses_the_construction_settings(name, value):
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_heads=2,
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_founder=True, recall_heads=2,
                              memory_choice=True)
     with pytest.raises(ValueError, match=f"{name} is a construction setting"):
         brain.retune(**{name: value})
@@ -68,9 +68,9 @@ def test_a_setting_retired_in_this_release_is_refused_naming_the_release(tmp_pat
     release, kept, _ = cd.Recall.RETIRED[setting]
     sentence = cd.Recall.removed(setting)
     assert release == "0.93.0" and sentence.startswith(f"{name} was retired in 0.93.0: ")
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, **base)
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_founder=True, **base)
     with pytest.raises(ValueError, match=re.escape(sentence)):
-        cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, **base, **{name: value})
+        cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_founder=True, **base, **{name: value})
     with pytest.raises(ValueError, match=re.escape(sentence)):
         brain.retune(**{name: value})
     brain.act(X[0], greedy=True)
@@ -78,17 +78,17 @@ def test_a_setting_retired_in_this_release_is_refused_naming_the_release(tmp_pat
     described = brain.describe()
     assert name not in described["genes"]
     with np.load(path, allow_pickle=False) as data:
-        arrays = earlier({member: data[member].copy() for member in data.files})
+        arrays = flat({member: data[member].copy() for member in data.files})
     meta = metadata(arrays)
     meta["recall"][setting] = value  # as a file of 0.92.1 with the option set carries it
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "retired.npz", **arrays)
+    write(tmp_path / "retired.npz", arrays)
     with pytest.raises(ValueError, match=re.escape(sentence)):
         cd.Brain.load(tmp_path / "retired.npz")
     assert cd.Brain.load(path).describe() == described
     meta["recall"][setting] = kept
     arrays["generic"] = np.array(json.dumps(meta))
-    np.savez(tmp_path / "kept.npz", **arrays)
+    write(tmp_path / "kept.npz", arrays)
     assert cd.Brain.load(tmp_path / "kept.npz").describe() == described
 
 
@@ -96,7 +96,7 @@ def test_the_withdrawn_chain_setting_is_unknown():
     """A chained second head was built on the release branch and withdrawn before release:
     its setting is refused as any unknown setting is."""
     with pytest.raises(TypeError, match="unknown brain setting: 'recall_chain'"):
-        cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_heads=2,
+        cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_founder=True, recall_heads=2,
                          recall_chain=True)
 
 
@@ -125,13 +125,13 @@ def taught(brain: cd.Brain) -> np.ndarray:
     ("name", "value", "base"),
     [("learning_surprise_share", True, {"learning_surprise": True}),
      ("learning_rehearsal", 1.0, {}),
-     ("recall_position_reward", 1.0, {"recall": True})],
+     ("recall_position_reward", 1.0, {"recall": True, "recall_founder": True})],
 )
 def test_a_retuned_setting_acts_as_built_and_is_saved(tmp_path, name, value, base):
-    plain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **base)
-    retuned = cd.Brain.compose(6, 3, modules=(16,), seed=2, **base)
+    plain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **base})
+    retuned = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **base})
     retuned.retune(**{name: value})
-    built = cd.Brain.compose(6, 3, modules=(16,), seed=2, **base, **{name: value})
+    built = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **base, name: value})
     expected = taught(built)
     assert not np.array_equal(taught(plain), expected)  # the setting changes what is learned
     np.testing.assert_array_equal(taught(retuned), expected)
@@ -141,18 +141,19 @@ def test_a_retuned_setting_acts_as_built_and_is_saved(tmp_path, name, value, bas
 
 @pytest.mark.parametrize(
     ("parts", "options"),
-    [({"recall": True, **POSITIONS}, {}),
-     ({"recall_heads": 2}, {"recall": True, "recall_when": True, "recall_anchor": True}),
-     ({"recall_heads": 2}, {"recall": True, "recall_position_reward": 1.0,
+    [({"recall": True, "recall_founder": True, **POSITIONS}, {}),
+     ({"recall_heads": 2}, {"recall": True, "recall_founder": True, "recall_when": True, "recall_anchor": True}),
+     ({"recall_heads": 2}, {"recall": True, "recall_founder": True, "recall_position_reward": 1.0,
                             "recall_address_reward": 1.0, "recall_anchor": True}),
-     ({"recall_heads": 3}, {"recall": True, "recall_heads": 2, "recall_anchor": True})],
+     ({"recall_heads": 3}, {"recall": True, "recall_founder": True, "recall_heads": 2, "recall_anchor": True})],
     ids=["positions", "when_heads", "position_reward_heads", "three_heads"],
 )
 def test_a_brain_grows_into_the_recall_options_and_saves_what_it_grew(tmp_path, parts, options):
     brain = lived(**options)
     grown = brain.grow(**parts)
     genes = grown.describe()["genes"]
-    assert all(genes[k] == v for k, v in {**options, **parts}.items() if k != "recall")
+    assert all(genes[k] == v for k, v in {**options, **parts}.items()
+               if k not in ("recall", "recall_founder"))
     assert greedy(grown) == greedy(brain)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

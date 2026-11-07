@@ -9,19 +9,20 @@ and an MLP or classifier setup is a control to compare against. The
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.94.0
+python -m pip install cadence-net==0.95.0
 ```
 
 Cadence needs Python 3.11 or later and NumPy. From a checkout, run `python -m pip install -e .`
 at the repository root. The extras `[fast]` (Numba and SciPy), `[accel]` (PyTorch) and
 `[apple]` (MLX) add backends; [backends](backends.md) says which to choose. The
-[v0.94.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.94.0/docs/README.md)
+[v0.95.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.95.0/docs/README.md)
 is pinned to the release tag.
 
 ## The composed brain
 
 `Brain.compose(inputs, actions)` builds one association region of 64 neurons between the senses
-and the motor choice, a working trace and an associative store, all settling together; with
+and the motor choice, a working trace, a recall memory of the stream's recent moments and an
+associative store, all settling together (`recall=False` builds it without the recall memory); with
 `arousal=True` it is a creature that `live` runs, learning while young or aroused, and `step`
 learns from every outcome and from labels. Every other part is opt-in and described in the
 guide that owns it.

@@ -91,7 +91,8 @@ def test_the_level_panels_at_the_declared_values_are_the_instruments_first_two(
 def test_without_the_memory_the_brain_is_the_composed_one_at_every_width() -> None:
     for width in (64, 256):
         built = runs.built({"seed": 3, "genes": None, "width": width}, inputs=20)
-        composed = Brain.compose(20, tb.VALUES, modules=(width,), lateral=tb.LATERAL, seed=3)
+        composed = Brain.compose(20, tb.VALUES, backend="cpu", modules=(width,), lateral=tb.LATERAL, seed=3,
+                                 recall=False)
         assert built.index is None and "recall" not in built.connectome.populations
         np.testing.assert_array_equal(built.connectome.pre, composed.connectome.pre)
         np.testing.assert_array_equal(built.connectome.post, composed.connectome.post)

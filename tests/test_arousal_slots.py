@@ -15,7 +15,7 @@ def needy_brain(slots=5, seed=3):
         modules=(8,),
         slots=slots,
         seed=seed,
-        arousal=cd.ArousalConfig(youth=100, need=1.0),
+        arousal=cd.ArousalConfig(youth=100, need=1.0), recall=False,
     )
 
 

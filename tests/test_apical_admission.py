@@ -25,7 +25,7 @@ def test_symmetric_apical_edges_do_not_admit_the_plain_sum_ep_argument():
     ("fraction", "bool"), ("floor", "string"),
 ])
 def test_checkpoint_refuses_coercible_or_incomplete_compartments(tmp_path, field, kind):
-    original = cd.Brain.compose(3, 2, modules=(5, 4), apical=0.25, seed=3)
+    original = cd.Brain.compose(3, 2, modules=(5, 4), apical=0.25, seed=3, recall=False)
     path = original.learner.save(tmp_path / "good.npz")
     with np.load(path, allow_pickle=False) as data:
         arrays = {key: data[key] for key in data.files}

@@ -197,7 +197,7 @@ def test_a_ladder_takes_a_rule_whose_fields_are_arrays():
     """A neuron rule built from 0-d arrays (as ``np.load`` hands scalars back) cannot be a
     cache key; its damping ladder is checked at every call and solves as the rule of floats
     does."""
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=2)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=2, recall=False)
     graph = brain.brain
     fields = {k: v for k, v in graph.neuron_model.to_dict().items() if k != "adaptation"}
     arrays = cd.NeuronModel(**{k: np.asarray(v) for k, v in fields.items()})

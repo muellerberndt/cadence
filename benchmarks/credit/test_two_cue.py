@@ -247,8 +247,8 @@ def test_every_arm_composes_and_the_hold_and_extinction_reach_the_episodic_memor
     for arm in tc.ARMS:
         brain = tc.make_brain(arm, 0)
         assert brain.basal_ganglia.config.eta == tc.ARMS[arm].get("actor_eta", 1.0)
-    assert tc.make_brain("slow_episodic_hold", 0).memory_context_hold == "unchanged"
-    assert tc.make_brain("slow_episodic_extinction", 0).memory_extinction == 0.5
+    assert tc.make_brain("slow_episodic_hold", 0).memories["episodic"].hold == "unchanged"
+    assert tc.make_brain("slow_episodic_extinction", 0).memories["episodic"].extinction == 0.5
     assert tc.make_brain("recall_recency0_boundary", 0).describe()["genes"]["recall_boundary"]
 
 
@@ -269,13 +269,13 @@ def test_a_setting_reaches_each_chambers_own_brains_and_leaves_compose_as_it_was
     with pr.composed_with({"memory_choice": True, "memory_extinction": 0.5}):
         inside = nursery.make_brain(point, 0, None)
     outside = nursery.make_brain(point, 0, None)
-    assert inside.memory_choice and inside.memory_extinction == 0.5
+    assert inside.memory_choice and inside.memories["episodic"].extinction == 0.5
     assert not outside.memory_choice
     assert inside.basal_ganglia.config.eta == outside.basal_ganglia.config.eta == 0.1
     assert type(cd.Brain.__dict__["compose"]) is classmethod
     with pytest.raises(ValueError, match="sets 'seed' itself"):
         with pr.composed_with({"seed": 3}):
-            cd.Brain.compose(1, 2, seed=0)
+            cd.Brain.compose(1, 2, backend="cpu", seed=0, recall=False)
 
 
 def test_the_bandit_moves_its_paying_arm_every_block(monkeypatch):

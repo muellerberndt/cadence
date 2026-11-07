@@ -11,7 +11,7 @@ import cadence as cd
 def test_refused_cortex_restores_code_policy_and_checkpoint(tmp_path):
     # the code region settles; the cortex refuses after its budget and the rescue
     brain = cd.Brain.compose(1, 12, modules=(8,), learned_code=16, seed=1,
-                             episodic=False, learning_free_steps=16, lateral=-1.0)
+                             episodic=False, learning_free_steps=16, lateral=-1.0, recall=False)
     region = brain.learned_code
     policy = region.halvings, region.graph, region.last
     with pytest.raises(RuntimeError, match="brain did not settle"):
@@ -25,7 +25,7 @@ def test_refused_cortex_restores_code_policy_and_checkpoint(tmp_path):
 
 
 def test_refused_prediction_restores_its_provisional_code_phase(monkeypatch):
-    brain = cd.Brain.compose(1, 2, modules=(4,), learned_code=16, seed=2, episodic=False)
+    brain = cd.Brain.compose(1, 2, modules=(4,), learned_code=16, seed=2, episodic=False, recall=False)
     region = brain.learned_code
     policy = region.halvings, region.graph, region.last
 
@@ -41,7 +41,7 @@ def test_refused_prediction_restores_its_provisional_code_phase(monkeypatch):
 
 @pytest.mark.parametrize("field", ["reward", "done", "bootstrap", "salience"])
 def test_invalid_feedback_never_prepares_the_next_code(field):
-    brain = cd.Brain.compose(1, 2, modules=(4,), learned_code=16, seed=2, episodic=False)
+    brain = cd.Brain.compose(1, 2, modules=(4,), learned_code=16, seed=2, episodic=False, recall=False)
     brain.act([[0.0]])
     control = deepcopy(brain)
     region = brain.learned_code

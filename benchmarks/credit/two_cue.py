@@ -80,9 +80,10 @@ ARMS: dict[str, dict[str, Any]] = {
     "slow_episodic": {**SLOW, "memory_choice": True},
     "slow_episodic_extinction": {**SLOW, "memory_choice": True, "memory_extinction": 0.5},
     "slow_episodic_hold": {**SLOW, "memory_choice": True, "memory_context_hold": "unchanged"},
-    "recall": {"recall": True},
-    "recall_recency0": {"recall": True, "recall_recency": 0.0},
-    "recall_recency0_boundary": {"recall": True, "recall_recency": 0.0, "recall_boundary": True},
+    "recall": {"recall": True, "recall_founder": True},
+    "recall_recency0": {"recall": True, "recall_founder": True, "recall_recency": 0.0},
+    "recall_recency0_boundary": {"recall": True, "recall_founder": True, "recall_recency": 0.0,
+                                 "recall_boundary": True},
 }
 
 
@@ -172,7 +173,8 @@ def make_brain(arm: str, founder: int, settings: dict[str, Any] | None = None) -
     import cadence as cd
 
     return cd.Brain.compose(
-        INPUTS, ACTIONS, seed=int(founder), arousal=True, **{**ARMS[arm], **(settings or {})}
+        INPUTS, ACTIONS, seed=int(founder), arousal=True,
+        **{"backend": "cpu", "recall": False, **{**ARMS[arm], **(settings or {})}},
     )
 
 

@@ -40,7 +40,8 @@ from typing import Any, NamedTuple, Protocol
 import numpy as np
 
 from .memory import SynapticMemory
-from .stream import FastSynapses, _stream_rows
+from .resident import _stream_rows
+from .stream import FastSynapses
 
 __all__ = ["EpisodicRecords", "Memories", "Memory", "Moment"]
 

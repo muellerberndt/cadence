@@ -311,8 +311,7 @@ rows). The message lists what was checked, or names the disagreement or the chec
 This verifies the declared source inventory; it cannot discover omitted dependencies.
 The attention and depth runners bind every library Python module, package metadata, the
 provenance helper and their protocol scripts, and record the effective numerical mode,
-dependency versions and thread environment; the attention checkers also validate the
-declared configuration and founder/arm census before recomputing decisions.
+dependency versions and thread environment.
 
 A receipt registered in `benchmarks/historical-receipts.json` verifies against its archived
 source bytes, at the evidence scope it was recorded with, and replays no training:
@@ -353,4 +352,4 @@ library version, because one version string can cover several source revisions. 
 is evidence for its own source snapshot: keep its bytes and verify against that snapshot
 instead of re-signing an old result against later code. A run records data generation,
 seeds, every scheduled condition, predictions and targets, and its verifier rejects missing
-outcomes instead of averaging whichever rows remain.
+outcomes instead of averaging whichever rows are left.

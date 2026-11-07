@@ -4,7 +4,7 @@ Declared 22 October 2026 before this benchmark's behavioral runs. This is a
 bounded component experiment, using the existing reciprocal System 1 and local
 free/nudged teaching. It does not change a library default or establish general
 semantic attention, sentence production or continuing sequence competence.
-The machine-readable declaration is [heads-protocol.json](heads-protocol.json).
+The machine-readable declaration is heads-protocol.json.
 
 ## Task, split and supplied information
 
@@ -199,7 +199,7 @@ below `.003` after 160 more sweeps at the same `.1` step. Damping within the
 original 1,024 budget still fails. This locates one numerical budget failure;
 it does not establish that later boundaries or any selector pass.
 
-The separate [longer protocol](heads-longer-protocol.json) declares **one**
+The separate longer protocol declares **one**
 numerical retry at 2,048 free/nudged sweeps for every arm, with 4,096 for the
 larger-work single-head control. The step, tolerance, teaching, anatomy,
 candidate equations and gates stay fixed. The previous 128.228748 host seconds
@@ -214,7 +214,7 @@ The 2,048-sweep retry also fails: supplied-read founders stop on a prefix after
 pairs. Keep the [failed retry](results/heads-capacity-longer.json); do not raise
 the sweep cap again. No behavioral selector comparison follows from it.
 
-The [fixed-read declaration](heads-fixed-read-protocol.json) changes the
+The fixed-read declaration changes the
 **oracle capacity control only**. The external `3*fact` source with memory
 energy disabled omits the candidate's restoring term. Instead hold its two
 oracle addresses on the latest actually witnessed A/B facts, independent of
@@ -256,7 +256,7 @@ transfer remain unrun.
 
 ## Founder numerical control
 
-The [founder control](heads-founder-protocol.json) restores the numerical
+The founder control restores the numerical
 settings already used by the composed brain: initial step `1.0` and up to
 three halvings within one total qualified-sweep budget. The earlier prototype
 had explicitly reduced the step to `.1` and disabled damping. Its rejection
@@ -286,7 +286,7 @@ accuracy is 100%/87.5%; all four held-out pair readings are 0%. The
 the original 512-round requirement is retained. It costs 254.714154 host
 seconds, bringing retained work to 756.051724 seconds.
 
-The [host-time extension](heads-founder-extended-protocol.json) keeps every
+The host-time extension keeps every
 task, neural, teacher and qualified-sweep setting unchanged. It declares 240
 host seconds per capacity arm and 600 additional seconds total before rerunning
 the same four controls. Its later relevance stage, only after complete positive
@@ -347,7 +347,7 @@ it proves neither global convergence nor that another schedule would rescue
 the original 2,048-sweep run. No alternative step, teacher or training run was
 tried. Its measured cost is 0.859652 host seconds.
 
-The separately frozen [continuation protocol](heads-continuation-protocol.json)
+The separately frozen continuation protocol
 finishes only H2's missing 191/223 draws from its original schedules. It restores
 all three parameter arrays, all four optimizer arrays and both update counters
 from source-bound research snapshots. A 2+2-round identity check compares this
@@ -398,7 +398,7 @@ remedy. The JSON ledger verifies retained records and accounting; it does not
 independently replay binary phase states. Cumulative model work is
 2,748.518539 host seconds, including the failed instrument attempt once.
 
-The [new initializer declaration](query-founder-protocol.json) tests one
+The new initializer declaration tests one
 ordinary reciprocal projection draw on each existing query/cortex interface,
 once before a fresh brain's first event. The [construction guide](QUERY_FOUNDER.md)
 states its independent seed streams and limits. No runtime equation, neuron,

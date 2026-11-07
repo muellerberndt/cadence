@@ -27,7 +27,7 @@ def test_slot_sizes_cover_the_actions():
 
 
 def test_slots_group_the_motor_readout():
-    brain = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9))
+    brain = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9), recall=False)
     assert brain.learner.slot_sizes.tolist() == [3, 13, 9]
     action = brain.act(np.full((2, 6), 0.3))
     assert action.shape == (2, 3)
@@ -39,7 +39,7 @@ def test_slots_group_the_motor_readout():
 
 def test_lateral_inhibition_stays_within_a_slot():
     brain = cd.Brain.compose(
-        inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9), lateral=-0.5
+        inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9), lateral=-0.5, recall=False
     )
     motor = brain.motor_index.tolist()
     group = {}
@@ -54,12 +54,12 @@ def test_lateral_inhibition_stays_within_a_slot():
 
 
 def test_an_unset_lateral_wires_no_competition_in_any_slot():
-    wide = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9))
+    wide = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9), recall=False)
     assert motor_pairs(wide) == []
-    narrow = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=5)
+    narrow = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=5, recall=False)
     assert motor_pairs(narrow) == []
     competing = cd.Brain.compose(
-        inputs=6, actions=25, modules=(8,), seed=0, slots=5, lateral=-0.5
+        inputs=6, actions=25, modules=(8,), seed=0, slots=5, lateral=-0.5, recall=False
     )
     assert len(motor_pairs(competing)) == 5 * 5 * 4  # an explicit weight stays within each slot
     region = motor_cortex(10, lateral=-0.5, slots=2)
@@ -67,8 +67,8 @@ def test_an_unset_lateral_wires_no_competition_in_any_slot():
 
 
 def test_one_slot_is_the_unchanged_default():
-    a = cd.Brain.compose(inputs=6, actions=4, modules=(8,), seed=0)
-    b = cd.Brain.compose(inputs=6, actions=4, modules=(8,), seed=0, slots=1)
+    a = cd.Brain.compose(inputs=6, actions=4, modules=(8,), seed=0, recall=False)
+    b = cd.Brain.compose(inputs=6, actions=4, modules=(8,), seed=0, slots=1, recall=False)
     for name in ("pre", "post", "sign"):
         np.testing.assert_array_equal(getattr(a.connectome, name), getattr(b.connectome, name))
     np.testing.assert_array_equal(a.brain.efficacy, b.brain.efficacy)
@@ -79,11 +79,11 @@ def test_one_slot_is_the_unchanged_default():
 def test_slots_are_validated_at_composition():
     for bad in (4, (3, 13), True):
         with pytest.raises(ValueError, match="slot"):
-            cd.Brain.compose(inputs=6, actions=25, modules=(8,), slots=bad)
+            cd.Brain.compose(inputs=6, actions=25, modules=(8,), slots=bad, recall=False)
 
 
 def test_compose_and_the_composed_layout_take_slots():
-    brain = cd.Brain.compose(6, 25, modules=(8,), slots=(3, 13, 9), seed=0)
+    brain = cd.Brain.compose(6, 25, modules=(8,), slots=(3, 13, 9), seed=0, recall=False)
     assert brain.learner.slot_sizes.tolist() == [3, 13, 9]
     assert motor_pairs(brain) == []
     genome = cd.Genome.composed(6, 10, modules=(8,), slots=2, lateral=-0.5)
@@ -93,7 +93,7 @@ def test_compose_and_the_composed_layout_take_slots():
 
 
 def test_save_and_load_carry_the_grouping(tmp_path):
-    brain = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9))
+    brain = cd.Brain.compose(inputs=6, actions=25, modules=(8,), seed=0, slots=(3, 13, 9), recall=False)
     rng = np.random.default_rng(0)
     x = rng.random((2, 6))
     brain.step(x)

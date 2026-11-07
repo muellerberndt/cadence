@@ -24,7 +24,7 @@ def region_names(connectome):
 
 def apical_brain(**options):
     options = {"modules": (6, 5), "seed": 2, "apical": 0.25, **options}
-    return Brain.compose(4, 3, **options)
+    return Brain.compose(4, 3, **{"recall": False, **options})
 
 
 def test_compose_lands_the_top_down_half_of_every_reciprocal_pair_apically():
@@ -50,8 +50,8 @@ def test_compose_lands_the_top_down_half_of_every_reciprocal_pair_apically():
 
 
 def test_apical_zero_is_the_founder_brain():
-    founder = Brain.compose(4, 3, modules=(6, 5), seed=2)
-    zero = Brain.compose(4, 3, modules=(6, 5), seed=2, apical=0.0)
+    founder = Brain.compose(4, 3, modules=(6, 5), seed=2, recall=False)
+    zero = Brain.compose(4, 3, modules=(6, 5), seed=2, apical=0.0, recall=False)
     assert founder.brain.apical is None and zero.brain.apical is None
     assert founder.describe() == zero.describe()
     assert "apical" not in founder.describe()["genes"]
@@ -60,7 +60,7 @@ def test_apical_zero_is_the_founder_brain():
     np.testing.assert_array_equal(founder.act(x), zero.act(x))
 
 
-def test_apical_is_a_construction_setting_with_reciprocal_pairs_and_no_mlx():
+def test_apical_is_a_construction_setting_with_reciprocal_pairs():
     brain = apical_brain()
     assert brain.describe()["genes"]["apical"] == 0.25
     assert brain.describe()["layout"]["composition"]["apical"] == 0.25
@@ -68,8 +68,6 @@ def test_apical_is_a_construction_setting_with_reciprocal_pairs_and_no_mlx():
         brain.retune(apical=0.5)
     with pytest.raises(ValueError, match="apical"):
         apical_brain(apical=-0.1)
-    with pytest.raises(ValueError, match="mlx"):
-        Graph(brain.connectome, brain.brain.neuron_model, backend="mlx", apical=brain.brain.apical)
     one_way = Genome(
         (Region("sensory", 4), Region("association", 5), Region("motor", 3)),
         (Projection("sensory", "association", reciprocal=False),
@@ -196,14 +194,14 @@ def test_checkpoints_keep_the_compartment_in_a_format_of_their_own(tmp_path):
     assert loaded.describe() == brain.describe()
     x = rng.normal(size=(3, 4))
     np.testing.assert_array_equal(loaded.act(x), brain.act(x))
-    founder = Brain.compose(4, 3, modules=(6, 5), seed=2).learner.save(tmp_path / "founder.npz")
+    founder = Brain.compose(4, 3, modules=(6, 5), seed=2, recall=False).learner.save(tmp_path / "founder.npz")
     with np.load(founder, allow_pickle=False) as data:
         assert "apical_synapses" not in data.files
         assert json.loads(str(data["meta"]))["format"] == "cadence-checkpoint/2"
 
 
 def test_a_learned_code_keeps_its_full_step_beside_the_compartment(tmp_path):
-    brain = Brain.compose(6, 3, modules=(8, 5), learned_code=8, seed=1, apical=0.25)
+    brain = Brain.compose(6, 3, modules=(8, 5), learned_code=8, seed=1, apical=0.25, recall=False)
     assert brain.brain.neuron_model.dt == 0.5
     assert brain.learned_code.model.dt == 1.0
     x = np.random.default_rng(2).normal(size=(2, 6))
@@ -228,17 +226,17 @@ def test_the_relative_floor_is_validated_and_neutral_when_off():
         replace(base, normalize_relative=-0.1)
     with pytest.raises(ValueError, match="normalize above zero"):
         LearnerConfig(normalize_relative=0.1)
-    founder = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized")
+    founder = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized", recall=False)
     assert founder.learner.config.normalize_relative == 0.0
     assert founder.describe()["genes"]["teaching"] == "normalized"
-    deep = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    deep = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep", recall=False)
     assert deep.learner.config.normalize_relative == 0.1
     assert deep.describe()["genes"]["teaching"] == "deep"
     assert "learning_normalize_relative" not in deep.describe()["genes"]
 
 
 def test_each_step_is_divided_by_its_projection_scale():
-    brain = Brain.compose(4, 3, modules=(6, 5), seed=3, teaching="deep", episodic=False)
+    brain = Brain.compose(4, 3, modules=(6, 5), seed=3, teaching="deep", episodic=False, recall=False)
     learner = brain.learner
     rng = np.random.default_rng(4)
     rms = rng.uniform(0.0, 1.0, learner.brain.connectome.synapses)
@@ -306,7 +304,7 @@ def test_a_nudged_settle_holds_the_free_phase_gain():
     with pytest.raises(ValueError, match="apical_gain"):
         graph.settle_batch(drive, steps=2, state=free,
                            nudge=learner.nudge_for(target, 0.1, None, held[:2]))
-    founder = Brain.compose(4, 3, modules=(6, 5), seed=11)
+    founder = Brain.compose(4, 3, modules=(6, 5), seed=11, recall=False)
     assert founder.brain.apical_gain(drive, founder.learner.free(drive)) is None
 
 
@@ -338,7 +336,7 @@ def test_tools_that_read_the_plain_sum_refuse_the_compartment():
         conformance(graph, None)
     with pytest.raises(ValueError, match="apical"):
         certificate(graph)
-    founder = Brain.compose(4, 3, modules=(6, 5), seed=2).brain
+    founder = Brain.compose(4, 3, modules=(6, 5), seed=2, recall=False).brain
     assert founder.dense().shape == (founder.connectome.n, founder.connectome.n)
     assert certificate(founder) is not None
 
@@ -352,7 +350,7 @@ def test_a_settlement_record_carries_the_compartment():
         brain.learner.free(brain.stimulus(np.ones((1, 4))))
     assert records and records[0].apical is not None
     np.testing.assert_array_equal(records[0].apical.synapses, brain.brain.apical.synapses)
-    founder, plain = Brain.compose(4, 3, modules=(6, 5), seed=2), []
+    founder, plain = Brain.compose(4, 3, modules=(6, 5), seed=2, recall=False), []
     with record_settlements(plain.append):
         founder.learner.free(founder.stimulus(np.ones((1, 4))))
     assert plain and plain[0].apical is None
@@ -361,7 +359,7 @@ def test_a_settlement_record_carries_the_compartment():
 def test_the_new_learner_settings_take_the_new_format_without_the_compartment(tmp_path):
     import json
 
-    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep", recall=False)
     path = brain.learner.save(tmp_path / "learner.npz")
     with np.load(path, allow_pickle=False) as data:
         meta = json.loads(str(data["meta"]))
@@ -384,13 +382,13 @@ def test_the_new_learner_settings_take_the_new_format_without_the_compartment(tm
 
 
 def test_retune_moves_between_the_teaching_points_with_their_floors_and_phases():
-    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    brain = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep", recall=False)
     brain.retune(teaching="founder")
     config = brain.learner.config
     assert config.normalize == 0.0 and config.normalize_relative == 0.0 and config.eta == 0.5
     assert not config.nudged_fixed and brain.describe()["genes"]["teaching"] == "founder"
     brain.retune(teaching="deep")
-    deep = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep")
+    deep = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="deep", recall=False)
     assert brain.learner.config == deep.learner.config
 
 
@@ -400,13 +398,13 @@ def test_the_folded_names_are_refused_and_a_depth_checkpoint_of_0921_describes_a
     by the three names, saves and loads as the point."""
     for name, value in (("learning_normalize_relative", 0.1), ("learning_nudged_fixed", True)):
         with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0.*teaching='deep'"):
-            Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized", **{name: value})
+            Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized", **{"recall": False, **{name: value}})
         with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0"):
             apical_brain(teaching="deep").retune(**{name: value})
-    normalized = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized").learner.config
+    normalized = Brain.compose(4, 3, modules=(6, 5), seed=2, teaching="normalized", recall=False).learner.config
     expert = Brain.compose(
         4, 3, modules=(6, 5), seed=2, apical=0.25,
-        learning=replace(normalized, normalize_relative=0.1, nudged_steps=32, nudged_fixed=True),
+        learning=replace(normalized, normalize_relative=0.1, nudged_steps=32, nudged_fixed=True), recall=False,
     )
     deep = apical_brain(teaching="deep")
     assert expert.learner.config == deep.learner.config
@@ -416,7 +414,7 @@ def test_the_folded_names_are_refused_and_a_depth_checkpoint_of_0921_describes_a
     assert twin.describe()["genes"]["teaching"] == "deep"
     assert twin.learner.config == deep.learner.config
     custom = Brain.compose(4, 3, modules=(6, 5), seed=2, apical=0.25,
-                           learning=replace(normalized, normalize_relative=0.2))
+                           learning=replace(normalized, normalize_relative=0.2), recall=False)
     genes = custom.describe()["genes"]
     assert genes["teaching"] == "custom" and genes["learning"]["normalize_relative"] == 0.2
     assert set(genes["learning"]) == {"eta", "eta_bias", "normalize", "normalize_floor",

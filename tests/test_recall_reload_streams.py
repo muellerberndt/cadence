@@ -16,7 +16,7 @@ import cadence as cd
     ids=["founder", "anchor", "relative", "heads"],
 )
 def test_a_reloaded_recall_brain_continues_through_partial_ends(options, tmp_path):
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, **options)
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, recall_founder=True, **options)
     rng = np.random.default_rng(0)
     brain.step(rng.random((2, 6)))
     for _ in range(3):
@@ -43,7 +43,7 @@ def test_a_reloaded_recall_brain_continues_through_partial_ends(options, tmp_pat
     ids=["founder", "anchor", "relative", "slope", "when_anchor"],
 )
 def test_a_batch_of_other_streams_after_a_reset_that_keeps_the_slots(options):
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, **options)
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, recall_founder=True, **options)
     rng = np.random.default_rng(0)
     for _ in range(3):
         brain.act(rng.random((2, 6)), greedy=True)

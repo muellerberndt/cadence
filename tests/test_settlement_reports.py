@@ -23,7 +23,7 @@ def assert_same_checkpoint(before, after):
 def test_action_report_counts_actual_free_work_and_excludes_reward_eligibility(
     monkeypatch, qualified,
 ):
-    brain = Brain.compose(2, 2, modules=(4,), observers=(2,), seed=3)
+    brain = Brain.compose(2, 2, modules=(4,), observers=(2,), seed=3, recall=False)
     brain.learner.config = replace(brain.learner.config, qualified=qualified, damping=3)
     assert brain.last_settlement is None
     records, checks = [], []
@@ -62,7 +62,7 @@ def test_action_report_counts_actual_free_work_and_excludes_reward_eligibility(
 def test_refused_row_replaces_report_without_changing_pending_life(tmp_path):
     brain = Brain.compose(
         2, 2, modules=(4,), observers=(2,), seed=3,
-        episodic=False, working_memory_amplitude=0,
+        episodic=False, working_memory_amplitude=0, recall=False,
     )
     observation = np.array([[0.2, -0.1], [-0.1, 0.3]])
     brain.act(observation)
@@ -90,7 +90,7 @@ def test_refused_row_replaces_report_without_changing_pending_life(tmp_path):
 
 
 def test_reports_replace_on_solves_only_and_do_not_enter_checkpoint_continuation(tmp_path):
-    brain = Brain.compose(2, 2, modules=(4,), seed=3)
+    brain = Brain.compose(2, 2, modules=(4,), seed=3, recall=False)
     observation = [[0.2, -0.1]]
     brain.step(observation)
     assert brain.last_settlement["operation"] == "act"
@@ -123,7 +123,7 @@ def test_reports_replace_on_solves_only_and_do_not_enter_checkpoint_continuation
 
 def test_cached_zero_budget_answer_reports_its_fresh_residual_check():
     brain = Brain.compose(
-        2, 2, modules=(4,), seed=3, episodic=False, working_memory_amplitude=0,
+        2, 2, modules=(4,), seed=3, episodic=False, working_memory_amplitude=0, recall=False,
     )
     observation = [[0.2, -0.1]]
     brain.act(observation, greedy=True)

@@ -24,7 +24,6 @@
         1,
         1
       ]
-    ],
-    "efficacy": "continued_efficacy.npy: the efficacies after the continuation, written on macOS arm64; another platform's BLAS agrees within 1e-8 (the SHA-256 of these bytes on macOS was aa88723adb34e3a158efde379333bd34350eee742c7ad31b5b67f64e10258b13)"
+    ]
   }
 }

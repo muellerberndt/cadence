@@ -67,7 +67,7 @@ def campaign(tmp_path, captured):
             2,
             seed=0,
             learning=cd.LearnerConfig(**graph["learning"]),
-            reward=cd.ActorCriticConfig(**graph["reward"]),
+            reward=cd.ActorCriticConfig(**graph["reward"]), recall=False,
         )
         brain.save(folder / "acquired.npz")
         outcomes.append(record)

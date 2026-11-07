@@ -71,7 +71,7 @@ def twin(brain: cd.Brain, path: Path) -> cd.Brain:
 def adult_and_action(seed: int, moments: int = 300) -> tuple[cd.Brain, int]:
     """A brain that lived ``moments`` moments of a two-armed bandit in which arm 0 pays 1.0
     and arm 1 nothing (its youth of 100 moments ends inside them), and its issued action."""
-    brain = cd.Brain.compose(inputs=1, actions=2, modules=(16,), seed=seed, arousal=True)
+    brain = cd.Brain.compose(inputs=1, actions=2, modules=(16,), seed=seed, arousal=True, recall=False)
     action = int(brain.live(OBS)[0])
     for _ in range(moments):
         action = int(brain.live(OBS, reward=[float(action == 0)])[0])
@@ -211,7 +211,7 @@ def test_keeping_the_arousal_is_the_default_reset(tmp_path: Path) -> None:
 
 
 def test_a_brain_without_arousal_resets_as_without_the_keyword(tmp_path: Path) -> None:
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=3)
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=3, recall=False)
     brain.step(CUE)
     brain.step(GO, reward=[1.0])
     other = twin(brain, tmp_path / "other")
@@ -228,7 +228,7 @@ def test_keeping_the_slots_and_the_arousal_keeps_both(tmp_path: Path) -> None:
     """Together the two names keep the recall memory's slots and the arousal state; the brain
     then continues as one reset with ``keep=("slots",)`` whose arousal state, saved before
     the reset, is restored after it."""
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=5, recall=True,
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=5, recall=True, recall_founder=True,
                              arousal=cd.ArousalConfig(youth=6))
     brain.live(CUE)
     for t in range(1, 12):
@@ -485,7 +485,7 @@ FOUNDERS: dict[str, dict[str, Any]] = {
     # recall_position=0, which differs from its founder
     "composed": {
         "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": cd.ArousalConfig(youth=10),
-                         "recall": True, "recall_position": 0, "history_decays": (0.2, 0.9),
+                         "recall": True, "recall_founder": True, "recall_position": 0, "history_decays": (0.2, 0.9),
                          "efference_amplitude": 1.0}),
         "life": _streams,
         "digest": "bf4d075047bb0d0713d3ab20312bd17853820de818de29e228b2edaf5bcdd26c",
@@ -526,7 +526,7 @@ FOUNDERS: dict[str, dict[str, Any]] = {
 
 def _build(spec: dict[str, Any]) -> cd.Brain:
     inputs, actions, options = spec["build"]
-    return cd.Brain.compose(inputs, actions, **options)
+    return cd.Brain.compose(inputs, actions, **{"recall": False, **options})
 
 
 @pytest.mark.parametrize("name", sorted(FOUNDERS))

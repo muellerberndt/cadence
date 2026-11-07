@@ -39,7 +39,8 @@ def make_brain(seed: int, consolidation: float) -> Brain:
         damping=3,
     )
     brain = Brain.compose(
-        650, 36, modules=(32, 16), seed=seed, consolidation=consolidation, learning=config
+        650, 36, backend="cpu", modules=(32, 16), seed=seed, consolidation=consolidation, learning=config,
+            recall=False
     )
     graph = brain.brain
     bias = graph.bias.copy()

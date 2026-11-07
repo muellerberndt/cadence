@@ -12,10 +12,10 @@ import cadence as cd
 
 
 def brains(**options) -> tuple[cd.Brain, cd.Brain]:
-    plain = cd.Brain.compose(6, 4, seed=7, episodic=False, learning_surprise=True, **options)
+    plain = cd.Brain.compose(6, 4, seed=7, episodic=False, learning_surprise=True, **{"recall": False, **options})
     shared = cd.Brain.compose(
         6, 4, seed=7, episodic=False, learning_surprise=True, learning_surprise_share=True,
-        **options,
+        **{"recall": False, **options},
     )
     return plain, shared
 
@@ -82,7 +82,7 @@ def test_the_share_scales_the_step_on_a_torch_device(device, precision, rtol):
     for share in (False, True):
         brain = cd.Brain.compose(
             6, 4, seed=7, episodic=False, learning_surprise=True,
-            learning_surprise_share=share,
+            learning_surprise_share=share, recall=False,
         )
         graph = brain.brain
         brain.learner.brain = cd.NeuralGraph(

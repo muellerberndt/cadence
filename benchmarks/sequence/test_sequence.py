@@ -98,9 +98,16 @@ def test_every_arm_reaches_the_brain(arm):
         if name == "recall":
             assert brain.recall is not None
             continue
+        if name == "recall_founder":  # a word of compose's, no setting of the memory
+            continue
         assert name in genes, name
         got = genes[name]
         assert (list(got) if isinstance(value, list) else got) == value, name
+
+
+def test_settings_name_a_lifes_backend():
+    brain = bt.make_brain(bt.TwoHop(), "recipe", 0, {"backend": "cpu"}, module=16)
+    assert brain.brain.backend == "cpu"
 
 
 @pytest.mark.parametrize("arm", list(od.ARMS))

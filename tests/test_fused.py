@@ -9,6 +9,7 @@ import cadence as cd
 from cadence import brain as brain_module
 
 pytest.importorskip("numba")
+pytestmark = pytest.mark.skipif(not brain_module._FUSED, reason="CADENCE_FUSED=0 reads the NumPy loop alone")
 
 from cadence import fused  # noqa: E402
 
@@ -108,16 +109,6 @@ def edge_contrast(s_plus: np.ndarray, s_minus: np.ndarray, pre: np.ndarray, post
     return a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
 
 
-def test_contrast_mean_matches_numpy() -> None:
-    n, batch, span = 9, 6, 0.4
-    rng = np.random.default_rng(3)
-    pre, post = rng.integers(0, n, 20), rng.integers(0, n, 20)
-    s_plus, s_minus = phases(3, batch, n)
-    edges, neurons = fused.contrast_mean(s_plus, s_minus, pre, post, span)
-    np.testing.assert_allclose(edges, edge_contrast(s_plus, s_minus, pre, post).mean(0) / span)
-    np.testing.assert_allclose(neurons, (s_plus - s_minus).mean(0) / span)
-
-
 def test_trace_step_decays_accumulates_and_weights_by_dopamine() -> None:
     n, batch, edges, span, decay = 7, 3, 12, 0.5, 0.8
     rng = np.random.default_rng(5)
@@ -175,7 +166,7 @@ def test_a_settle_of_no_sweeps_publishes_the_activations_without_a_launch(monkey
 
 
 def test_a_held_gain_of_another_shape_is_refused_at_no_sweeps_too() -> None:
-    brain = cd.Brain.compose(10, 4, modules=(12, 9), seed=3, apical=0.25)
+    brain = cd.Brain.compose(10, 4, modules=(12, 9), seed=3, apical=0.25, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.ones((3, 10)))
     free = graph.settle_batch(drive, steps=20)
@@ -274,7 +265,7 @@ def test_the_tied_step_gives_numpys_step_efficacy_and_weights_and_their_finitene
 
 
 def test_a_compiled_update_takes_the_passs_arrays_as_with_parameters_would() -> None:
-    brain = cd.Brain.compose(6, 3, modules=(24,), seed=4)
+    brain = cd.Brain.compose(6, 3, modules=(24,), seed=4, recall=False)
     graph = brain.brain
     learner = brain.learner
     rng = np.random.default_rng(2)
@@ -301,3 +292,18 @@ def test_a_compiled_update_takes_the_passs_arrays_as_with_parameters_would() -> 
     with pytest.raises(ValueError, match="bias must have one finite entry"):
         graph._with_update(graph.efficacy, graph.weights, np.full(brain.connectome.n, np.nan),
                            (True, True))
+
+
+def test_a_zero_divisor_in_a_synapse_pass_gives_what_numpy_gives() -> None:
+    """The optimizer's pass at a floor of zero on a silent synapse, and a gather: a number, never
+    Python's error, and a learner's own finite check refuses it as it refuses the NumPy form."""
+    pytest.importorskip("numba")
+    raw = np.array([0.0, 1.0])
+    gathered = fused.gather(raw, np.array([1, 0]), 0.0)
+    assert np.isinf(gathered[0]) and np.isnan(gathered[1])
+    _, _, step = fused.optimizer_step(
+        raw, np.zeros(2), np.zeros(2), 0.0, 1.0, 0.5, 1.0, 1.0, 0.0, 0.0, 1e-30, np.zeros(2, dtype=np.int64), 1
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        expected = raw / (np.sqrt(0.5 * raw * raw) + 0.0)
+    assert step.tobytes() == expected.tobytes()

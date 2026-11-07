@@ -12,7 +12,7 @@ import cadence as cd
 
 
 def composed(**options):
-    return cd.Brain.compose(8, 3, modules=(16,), seed=3, episodic=False, recall=True, **options)
+    return cd.Brain.compose(8, 3, modules=(16,), seed=3, episodic=False, recall=True, recall_founder=True, **options)
 
 
 def event(*symbols):

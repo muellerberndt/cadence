@@ -27,7 +27,7 @@ def configured_brain():
             gamma=np.float32(0.9), lam=np.float32(0.8), eta=np.float32(0.03),
             eta_bias=np.float32(0.003), eta_critic=np.float32(0.3),
             eligibility_steps=np.int64(12),
-        ),
+        ), recall=False,
     )
 
 
@@ -99,7 +99,7 @@ def test_checkpoint_refuses_a_removed_teaching_setting_away_from_its_law(
 ):
     """The settings of 0.84.3 that this version removed load at the value whose law is the
     law of this version (centered True, decay 0) and are refused otherwise, naming 0.84.3."""
-    brain = cd.Brain.compose(2, 2, modules=(4,))
+    brain = cd.Brain.compose(2, 2, modules=(4,), recall=False)
     owner = brain if kind == "brain" else brain.learner
     path = owner.save(tmp_path / kind)
     with np.load(path, allow_pickle=False) as saved:

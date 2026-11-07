@@ -17,7 +17,7 @@ action is read from that equilibrium, and every synapse learns from the differen
 settles, with no backward pass and no training/inference switch.
 
 ```sh
-python -m pip install cadence-net==0.94.0
+python -m pip install cadence-net==0.95.0
 ```
 
 ```python
@@ -40,8 +40,9 @@ the motor choice, settling together with them; a working trace that carries the 
 interpretation into the next settle; and an associative store that keeps each situation's
 outcomes. Under `live` the brain learns while young (its first 100 moments) or aroused by
 surprise or want, and otherwise answers greedily from one settle; under `step` it learns from
-every outcome and from `teacher=` labels. Everything else is opt-in: System 2 observers, the
-episodic memory, the recall memory, a learned code, images.
+every outcome and from `teacher=` labels. It also holds a recall memory of its recent moments
+(`recall=False` builds it without one). Everything else is opt-in: System 2 observers, the
+episodic memory, a learned code, images.
 
 | You want to | Read |
 | --- | --- |
@@ -55,7 +56,7 @@ episodic memory, the recall memory, a learned code, images.
 The [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md)
 lists the rest: wide inputs, growing and grafting, evaluation, your own anatomy, how the
 brain settles, backends; the
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.94.0/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.95.0/docs/README.md)
 describes the APIs of the installed package. Integrated learned world prediction, repair
 localized to what failed and cheap stable operation are work in progress; Cadence is alpha
 research software.
@@ -67,8 +68,7 @@ research software.
 `live` takes the **preceding action's** measured reward, then chooses the next
 action for one continuing stream; supply one observation row per call. It needs
 `arousal=True` (the founder arousal settings). The working trace advances at every
-accepted moment; with the opt-in recall memory (`recall=True`) its slots advance at
-every accepted moment too. Tune named settings with `compose` or `brain.retune(...)`
+accepted moment, and so do the recall memory's slots. Tune named settings with `compose` or `brain.retune(...)`
 and inspect them with `brain.describe()`
 ([tune and read](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md#defaults-and-expert-overrides)).
 [Continuous interaction](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#continuous-interaction)
@@ -87,7 +87,7 @@ relevant recent context and its successor, and `recall_heads=k` when one answer 
 witnessed facts at once. The options can be used together.
 [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
 starts with these common cases before giving the complete reference.
-A brain trained without one of them gets it later: `brain.grow(recall=True)`, or new output
+A brain trained without a recall memory gets one later: `brain.grow(recall=True)`, or new output
 slots with `brain.grow(slots=...)`, returns a new brain, the trained one with the part added,
 settling as the trained one did until learning gives the part weight. `brain.graft(donor, ...)` puts trained
 regions of another brain into a larger one, such as a trained visual system, or a whole

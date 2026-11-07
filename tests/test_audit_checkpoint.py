@@ -98,9 +98,22 @@ def test_checkpoint_meta_names_the_format_and_version(tmp_path) -> None:
             assert name in data.files
 
 
+def test_the_first_format_is_refused_naming_the_release_that_loads_it(tmp_path) -> None:
+    c = cd.layered(3, 4, 2, seed=0)
+    learner = cd.Learner(cd.NeuralGraph(c, cd.learning_neuron_model()), c.populations["output"])
+    path = learner.save(tmp_path / "small")
+    with np.load(path, allow_pickle=False) as data:
+        arrays = {name: data[name] for name in data.files}
+    meta = json.loads(str(arrays["meta"]))
+    arrays["meta"] = np.array(json.dumps({**meta, "format": "cadence-checkpoint/1"}))
+    np.savez(path, **arrays)
+    with pytest.raises(ValueError, match="cadence 0.94.0 loads cadence-checkpoint/1"):
+        cd.Learner.load(path)
+
+
 def test_generic_brain_resumes_identically(tmp_path) -> None:
     rng = np.random.default_rng(0)
-    g = cd.Brain.compose(6, 3, modules=(16,), seed=1)
+    g = cd.Brain.compose(6, 3, modules=(16,), seed=1, recall=False)
     g.step(rng.random((4, 6)))
     g.step(rng.random((4, 6)), reward=rng.normal(size=4), done=np.array([False, True, False, False]))
     g.step(rng.random((4, 6)), reward=rng.normal(size=4), teacher=np.array([0, 1, 2, 0]))

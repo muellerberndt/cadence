@@ -42,12 +42,12 @@ LESSONS, TESTS, MODULE = 1500, 100, 64
 FOUNDERS = (0, 1, 2)
 SEEDS = {"train": 11, "test": 33}
 
-TABLE = {"recall": True, "recall_recency": 0.0, "learning_surprise": True}
+TABLE = {"recall": True, "recall_founder": True, "recall_recency": 0.0, "learning_surprise": True}
 BOUNDARY = {**TABLE, "recall_boundary": True}
 RECIPE = {**BOUNDARY, "recall_anchor": True, "recall_slope": 0.1, "recall_position_rate": 0.01}
 HEADS = {**TABLE, "recall_heads": 2}
 COPY = {"recall_copy": 2.0, "recall_tokens": list(range(16))}  # two hops' 16 tokens
-WHEN = {"recall": True, "recall_recency": 0.0}  # every-row lessons
+WHEN = {"recall": True, "recall_founder": True, "recall_recency": 0.0}  # every-row lessons
 ARMS: dict[str, dict[str, Any]] = {
     "table": TABLE,
     "boundary": BOUNDARY,
@@ -392,7 +392,8 @@ def make_brain(task: Task, arm: str, founder: int, settings: dict[str, Any] | No
 
     return cd.Brain.compose(task.inputs, task.actions, modules=(module,), seed=int(founder),
                             episodic=False, teaching="normalized",
-                            **{**ARMS[arm], **(settings or {})})
+                            **{"backend": "cpu", "recall": False,
+                               **{**ARMS[arm], **(settings or {})}})
 
 
 def new_stats() -> dict[str, Any]:

@@ -55,7 +55,7 @@ def test_optional_resting_bias_acquires_retains_and_continues_same_graph(
     relations = helpers["relations"]
     curriculum = helpers["online_curriculum"].curriculum
     independent_residual = helpers["run"].independent_residual
-    brain = cd.Brain.compose(650, 36, modules=(32, 16), observers=(), lateral=0, seed=0)
+    brain = cd.Brain.compose(650, 36, modules=(32, 16), observers=(), lateral=0, seed=0, recall=False)
     if resting_bias:
         helpers["run"].resting(brain, resting_bias)
     brain.learner.config = replace(

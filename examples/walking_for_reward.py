@@ -56,7 +56,7 @@ def founder(copy: bool) -> Brain:
     genes = {"efference_amplitude": 3.0, "efference_decay": 0.0} if copy else {}
     brain = Brain.compose(
         4,
-        2,
+        2, backend="cpu",
         modules=(32,),
         seed=SEED,
         episodic=False,

@@ -16,7 +16,7 @@ evidence for the original initialization.
 
 ## The one changed factor
 
-[query_founder.py](query_founder.py) first calls the unchanged brain factory.
+query_founder.py first calls the unchanged brain factory.
 At `query_scale=0`, it retains the original graph and parameters exactly. At
 `query_scale=1`, each head receives one isolated ordinary
 `Projection("query", "association")` draw through the public `Genome` and

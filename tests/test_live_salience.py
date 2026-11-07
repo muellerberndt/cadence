@@ -16,7 +16,7 @@ def brain(*, sampled=True, episodic=True, learned=False):
         4, 2, modules=(8,), seed=3, working_memory_amplitude=0.3,
         arousal={"youth": 100 if sampled else 0},
         memory_choice=episodic, learned_code=8 if learned else None,
-        recall=True, history_decays=(0.5,), actor_eta=0.03, actor_eta_bias=0.003,
+        recall=True, recall_founder=True, history_decays=(0.5,), actor_eta=0.03, actor_eta_bias=0.003,
     )
 
 

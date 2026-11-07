@@ -4,7 +4,7 @@ import json
 
 import numpy as np
 import pytest
-from checkpoints import earlier, metadata
+from checkpoints import flat, metadata, write
 
 import cadence as cd
 
@@ -19,7 +19,7 @@ def test_next_decision_refreshes_activity_after_a_reward_update(backend):
         modules=(8,),
         episodic=False,
         backend=backend,
-        device="cpu" if backend == "torch" else None,
+        device="cpu" if backend == "torch" else None, recall=False,
     )
     actor = brain.basal_ganglia
     drive = brain.stimulus(np.eye(3))
@@ -33,7 +33,7 @@ def test_next_decision_refreshes_activity_after_a_reward_update(backend):
 
 
 def test_actor_cache_detects_an_update_from_another_learning_head():
-    brain = cd.Brain.compose(2, 2, modules=(6,), episodic=False)
+    brain = cd.Brain.compose(2, 2, modules=(6,), episodic=False, recall=False)
     actor = brain.basal_ganglia
     drive = brain.stimulus(np.eye(2))
     actor.act(drive)
@@ -46,7 +46,7 @@ def test_actor_cache_detects_an_update_from_another_learning_head():
 
 
 def test_resume_between_learning_and_next_action_refreshes_the_same_way(tmp_path):
-    brain = cd.Brain.compose(2, 2, modules=(8,))
+    brain = cd.Brain.compose(2, 2, modules=(8,), recall=False)
     brain.act(np.eye(2))
     brain.learn(np.ones(2), np.zeros(2, bool), np.eye(2))
     restored = cd.Brain.load(brain.save(tmp_path / "life"))
@@ -75,7 +75,7 @@ def test_hypothetical_query_batch_cannot_erase_live_memories(memory_class):
 
 
 def test_hypothetical_stimulus_cannot_erase_carried_context():
-    brain = cd.Brain.compose(2, 2, modules=(8,))
+    brain = cd.Brain.compose(2, 2, modules=(8,), recall=False)
     brain.act(np.eye(2))
     memory = brain.working_memory
     before = [memory.trace.copy(), memory.last.copy(), memory.cold.copy()]
@@ -86,13 +86,13 @@ def test_hypothetical_stimulus_cannot_erase_carried_context():
 
 @pytest.mark.parametrize("array_name", ["free/v", "pending/value", "working/trace"])
 def test_invalid_lifetime_arrays_are_rejected_at_load(tmp_path, array_name):
-    brain = cd.Brain.compose(2, 2, modules=(6,))
+    brain = cd.Brain.compose(2, 2, modules=(6,), recall=False)
     brain.step(np.eye(2))
     path = brain.save(tmp_path / "life")
     with np.load(path, allow_pickle=False) as saved:
-        data = earlier({name: saved[name].copy() for name in saved.files})
+        data = flat({name: saved[name].copy() for name in saved.files})
     data[array_name] = np.full_like(data[array_name], np.nan, dtype=float)
-    np.savez(path, **data)
+    write(path, data)
     with pytest.raises(ValueError, match="saved|checkpoint"):
         cd.Brain.load(path)
 
@@ -147,11 +147,11 @@ def test_separator_can_average_large_representable_keys():
     ],
 )
 def test_invalid_continuation_structure_is_rejected(tmp_path, corruption):
-    brain = cd.Brain.compose(2, 2, modules=(6,))
+    brain = cd.Brain.compose(2, 2, modules=(6,), recall=False)
     brain.step(np.eye(2))
     path = brain.save(tmp_path / "life")
     with np.load(path, allow_pickle=False) as saved:
-        data = earlier({name: saved[name].copy() for name in saved.files})
+        data = flat({name: saved[name].copy() for name in saved.files})
     meta = metadata(data)
     if corruption == "free-shape":
         data["free/activation"] = data["free/activation"][:1]
@@ -170,6 +170,6 @@ def test_invalid_continuation_structure_is_rejected(tmp_path, corruption):
     elif corruption == "missing-metadata":
         del meta["free_steps"]
     data["generic"] = np.array(json.dumps(meta))
-    np.savez(path, **data)
+    write(path, data)
     with pytest.raises(ValueError, match="saved|checkpoint"):
         cd.Brain.load(path)
