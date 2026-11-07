@@ -2,6 +2,18 @@
 
 ## Unreleased
 
+- **Default change.** A new brain with the memory steps at its association's width `w`, with no new setting: above 64 the
+  projection from prefrontal to association and the association-motor pair take `64 / w` through `Learner.synapse_rate`,
+  and `recall_address` is .01 times `64 / w`. At 64 and under nothing changes, to the bit, and `recall_founder=True`,
+  `recall=False`, `attention=True` and a custom anatomy take none of it. A rate you name wins over its part:
+  `recall_address`; a `teaching` other than `"deep"` or `learning=` at `compose`; `brain.learner.synapse_rate` at any time.
+  `describe()` states the steps under `layout["projection_rates"]`. A checkpoint keeps them, and a brain saved under other
+  rates keeps those. `grow` keeps them, since a brain's width is fixed at birth: a new slot's synapses with the association
+  take the pair's step and every other new synapse steps at 1. `graft` leaves every synapse at the host's rates. Both accept
+  these rates and refuse rates set by hand. On six fresh founders, twelve lives a cell, the grammar chamber's paths read .97
+  (least .84) at 128 and .96 (least .81) at 256 against .94 (.72) and .94 (.67) at whole steps, no life under .80 against one
+  of twelve at each width, brackets at 256 fall from .94 to .82, and a life takes 24 and 43 percent fewer
+  multiply-accumulates. See [wide brains](docs/tune.md#wide-brains).
 - A lesson's per-synapse passes (the optimizer's step, its projection-relative form and the contrast's gather) compile
   under NumPy's error model, so their divisions vectorize and a zero divisor gives what NumPy's form gives instead of
   Python's error. The bits of every finite step are unchanged. On one thread the optimizer's pass over 504,064 synapses

@@ -40,7 +40,7 @@ assert action.shape == (1,)
 | Vector senses and several motors, a brain in a body | one motor slot per motor, `live` and `retune` across stages, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) | [one experience step by hand](#one-experience-step-by-hand) |
 | Pixels and a teacher | image `inputs`, teaching through `step`, as in the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade) | [wide inputs](senses.md#image-inputs) |
 | Features of features | several `modules`, `apical`, `teaching="deep"` | [deep brains](#deep-brains) |
-| Modules of several hundred neurons | surprise lessons with `learning_surprise_share=True`, the projection rates and the read map | [wide brains](#wide-brains) |
+| Modules of several hundred neurons | a new brain's rates follow its width; surprise lessons with `learning_surprise_share=True` | [wide brains](#wide-brains) |
 | To time a body's own moments | `act` and `learn` | [one experience step by hand](#one-experience-step-by-hand) |
 | To draw what a brain does | `record_settlements` | [the brain in a browser page](#the-brain-in-a-browser-page) |
 | Which memory to use | the table of the memory guide | [memory](memory.md#start-with-the-need) |
@@ -404,67 +404,67 @@ For modules of several hundred neurons and more
   ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)); otherwise one wrong
   row takes a whole lesson's step and a wide brain's answers swing.
 - **The trace's amplitude.** Beside a recall memory at `teaching="deep"` the founder's 3.0 falls with
-  width, and `carried_gain=0.01` or `working_memory_amplitude=0.3` takes most of that back at the composed
-  steps ([the amplitude beside a read](memory.md#the-amplitude-beside-a-read)).
-- **Projection rates and the read map.** A neuron's drive sums over its fan-in, so on the composed steps a
-  projection that grows with the width moves that drive further per lesson, and the read's address map,
-  stepped on the association's settled activity, moves further as well. Scale each projection's step by
-  its fan-in at width 64 over its fan-in at this width, capped at 1, a reciprocal pair at the lower of its
-  two, and set `recall_address` to .01 times `64 / w`. The trace's projection and the association-motor
-  pair then take `64 / w`, and the sensory projection and the memory's reads keep their step.
+  width, and `carried_gain=0.01` or `working_memory_amplitude=0.3` takes most of that back at whole steps
+  ([the amplitude beside a read](memory.md#the-amplitude-beside-a-read)).
+- **Projection rates and the read map.** A neuron's drive sums over its fan-in, so a projection that grows with the
+  width moves that drive further per lesson, and the read's address map, stepped on the association's settled
+  activity, moves further as well. A brain composed with the memory takes the answer from its association's width
+  `w`, with no setting: above 64 the projection from prefrontal to association and the association-motor pair step at
+  `64 / w` (`Learner.synapse_rate`), and `recall_address` is .01 times `64 / w`. At 64 and under every step is whole.
+  Every other projection keeps its step: the sensory one, a chain between modules, an observer's and the memory's reads.
+  The rate multiplies every step on those synapses, a lesson's and a reward's.
+
+A rate you name wins over its part:
+
+| You name | The read map | The two projections |
+| --- | --- | --- |
+| Nothing | .01 times `64 / w` | `64 / w` |
+| `recall_address=x`, at `compose` or in `retune` | `x` | `64 / w` |
+| `teaching="founder"`, `teaching="normalized"` or `learning=LearnerConfig(...)` at `compose` | .01 times `64 / w` | The named steps, whole |
+| `brain.learner.synapse_rate = rates` at any time, `None` for whole steps | As it was | `rates` |
+| `recall_founder=True` | The founder's .01 | Whole |
+| `recall=False` | None | Whole |
 
 ```python
-def projection_rates(wide: Brain, narrow: Brain) -> np.ndarray:
-    """Each projection's step scaled by its fan-in in ``narrow`` over its fan-in in ``wide``, the
-    same composition at a smaller width, capped at 1; a reciprocal pair takes the lower of its two."""
-    c, n = wide.connectome, narrow.connectome
-    rate = np.ones(c.synapses)
-    names = [k for k in c.populations if k in n.populations and len(c.populations[k])]
+wide = Brain.compose(8, 4, modules=(256,), seed=0)
+assert wide.recall.address == 0.0025
+assert wide.describe()["layout"]["projection_rates"] == {
+    "association->motor": 0.25, "motor->association": 0.25, "prefrontal->association": 0.25,
+}
 
-    def labels(connectome):
-        label = np.full(connectome.n, -1, dtype=np.int64)
-        for i, k in enumerate(names):
-            label[np.asarray(connectome.populations[k], dtype=np.int64)] = i
-        return label
-
-    lw, ln = labels(c), labels(n)
-    for i in range(len(names)):
-        for j, post in enumerate(names):
-            into_w = (lw[c.pre] == i) & (lw[c.post] == j)
-            into_n = (ln[n.pre] == i) & (ln[n.post] == j)
-            if into_w.any() and into_n.any():
-                fan_w = into_w.sum() / len(c.populations[post])
-                fan_n = into_n.sum() / len(n.populations[post])
-                rate[into_w] = min(1.0, fan_n / fan_w)
-    reverse = np.asarray(wide.learner.reverse)
-    paired = reverse >= 0
-    rate[paired] = np.minimum(rate[paired], rate[reverse[paired]])
-    return rate
-
-
-wide = Brain.compose(8, 4, modules=(256,), seed=0, recall=True)
-narrow = Brain.compose(8, 4, modules=(64,), seed=0, recall=True)
-wide.learner.synapse_rate = projection_rates(wide, narrow)
-wide.retune(recall_address=0.01 * 64 / 256)
-assert wide.learner.synapse_rate.max() <= 1.0
+whole = Brain.compose(8, 4, modules=(256,), seed=0, recall_address=0.01)
+whole.learner.synapse_rate = None
+assert "projection_rates" not in whole.describe()["layout"]
 ```
 
-The grammar chamber, one online pass, on what a new brain composes. Six development founders per row:
+`describe()` states the steps under `layout["projection_rates"]` and the map under `genes["recall_address"]`. A checkpoint
+keeps both, and a brain saved under other rates keeps those. `retune` keeps the steps through a change of teaching point.
+The width is fixed at birth, so `grow` keeps these rates: a new slot's synapses with the association take the pair's step,
+every other new synapse steps at 1, and a memory grown on a brain without one takes the read map of this width while the
+brain keeps its steps. `graft` leaves every synapse at the host's rates, the grafted ones too. `grow` and `graft` refuse
+rates set by hand; set those on the new brain.
 
-| Width | Steps | Clauses | Held-out | Roles | Brackets | Paths | Two hops | Three hops | Paths by life |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 128 | composed | .96 | .90 | .87 | .83 | .94 | .92 | .37 | .98 .95 .98 1.00 .70 1.00 |
-| 128 | rates and read map | .97 | .91 | .95 | .81 | .98 | .96 | .42 | .97 .98 1.00 1.00 .92 .98 |
-| 256 | composed | .97 | .89 | .95 | .75 | .73 | .61 | .29 | .97 .33 .72 .97 .97 .42 |
-| 256 | rates and read map | 1.00 | .99 | .96 | .82 | .98 | .97 | .34 | 1.00 .98 .98 .97 .95 .98 |
+The grammar chamber, one online pass, twelve lives per row on six fresh founders, each on its own newborn and on one
+further seed, the mean with the least life on paths. Whole steps are the same brain with the earlier rates named. Seconds are
+one thread of a shared machine. The transformer is scored independently at the brain's parameter count, on the six founders:
 
-On six fresh founders, on the recipe at `teaching="deep"` with the trace held at 3.0 and no learned gain, the
-rates and the read map take clauses from .84 to .97 and paths from .49 to .85 at width 128, and clauses from
-.64 to .95 and paths from .23 to .82 at width 256. At width 512, on three development founders, that form
-reads clauses .83 and paths .40. The [composition's width table](memory.md#one-composition-for-sequences) holds
-the composed steps on fresh founders.
+| Width | Steps | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Least paths | Two hops | Three hops | Sweeps per act | Seconds | Multiply-accumulates |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 128 | Whole | .98 | .95 | .95 | .97 | .90 | .94 | .72 | .89 | .34 | 78 | 366 | 2.2e12 |
+| 128 | At its width | .99 | .99 | .93 | .93 | .89 | .97 | .84 | .94 | .39 | 58 | 306 | 1.7e12 |
+| 128 | Transformer, one pass | 1.00 | 1.00 | 1.00 | 1.00 | .56 | .29 | | .07 | .00 | | 32 | 1.4e11 |
+| 128 | Transformer, offline | 1.00 | 1.00 | .98 | 1.00 | 1.00 | .94 | | .91 | .00 | | 776 | 3.0e12 |
+| 256 | Whole | .95 | .88 | .94 | .93 | .94 | .94 | .67 | .91 | .41 | 78 | 658 | 6.6e12 |
+| 256 | At its width | .99 | .96 | .96 | .96 | .82 | .96 | .81 | .94 | .33 | 44 | 462 | 3.7e12 |
+| 256 | Transformer, one pass | 1.00 | 1.00 | .99 | .99 | .39 | .36 | | .19 | .00 | | 50 | 3.4e11 |
+| 256 | Transformer, offline | 1.00 | 1.00 | .97 | .97 | 1.00 | .87 | | .86 | .00 | | 876 | 7.6e12 |
 
-`grow` refuses a brain with per-synapse rates; set the rates on the grown brain.
+At its width no life reads paths under .80, against one of twelve at whole steps at each width. Paired, with two standard
+errors, no panel moves past them at 128. At 256 clauses rise .04 (±.04) and two distractors .09 (±.10), and brackets fall .12
+(±.09): that is the rates' cost. The acts settle in 25 percent fewer sweeps at 128 and 44 percent fewer at 256, and a life
+takes 24 and 43 percent fewer multiply-accumulates. This block holds paths at whole steps as well; over 42 development lives at
+256 whole steps read paths .84, nine under .80, and the rates .94, three under .80. On that form at 512, six development lives
+read clauses .88 and paths .66 at the rates and clauses .90 and paths .56 at whole steps.
 
 ## The brain in a browser page
 

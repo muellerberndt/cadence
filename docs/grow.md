@@ -204,6 +204,12 @@ feedback, as an association region does, settles in the larger brain without tha
   knowing that the trained parts move faster as well. Under the `"normalized"` teaching point a
   new synapse's optimizer history is short while the brain's count of lessons is long, so its
   first tens of steps are up to about twice the size a settled synapse takes.
+- **A wide brain's steps.** An association's width is fixed at birth, and so are the
+  [steps it gives](tune.md#wide-brains). `grow` keeps them: a new slot's synapses with the
+  association take the pair's step, and every other new synapse steps at 1. A memory grown on a
+  brain without one takes the read map of this width, and the brain keeps its steps. A brain saved
+  under other rates keeps those. `graft` leaves every synapse at this brain's rates, the grafted
+  ones too.
 - **A new memory starts empty.** Every act writes a slot of a new recall memory; lessons teach
   the brain to read the slots. A brain composed with `attention=True` keeps its one-head
   address settings when it grows heads; retune `recall_address` and `recall_temperature` to the
@@ -278,4 +284,4 @@ What does not grow or graft:
   new neuron would join the pool's normalization;
 - a learned code's region, or a joint landing on it: the code lives in its tables as well as its
   synapses;
-- brains with tied or rated synapses.
+- brains with tied synapses or rates set by hand; set the rates on the new brain.

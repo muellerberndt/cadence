@@ -545,7 +545,7 @@ Select rates on development data and freeze them.
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |
 | `reciprocal` | `Learner` | tie each synapse and its reverse into one efficacy | `True` |
 | `tie_groups` | `Learner` | int per synapse, `-1` untied; a group shares one step | `None` |
-| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1) |
+| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1); a new brain's [width](tune.md#wide-brains) sets it above 64 |
 | `slots` | `Learner` | outputs split into softmax groups: a count of equal groups or a size per group | 1 |
 | `gain`, `slope`, `leak`, `dt`, `stimulus_amplitude` | `learning_neuron_model` | synaptic gain, activation slope, sub-rest response, integration step, input scale | 1.0, 1.0, 0.1, 0.5 (`Brain.compose` uses 1.0), 1.0 |
 | `density`, `feedback`, `lateral`, `seed` | `layered` | input-to-hidden density, feedback scale, output-to-output weight, wiring seed | 0.3, 1.0, 0.0, 0 |

@@ -420,6 +420,37 @@ def test_a_new_slot_takes_the_pairs_step():
     assert len(grown.connectome.populations["motor"]) == 6
 
 
+def test_the_width_is_fixed_at_birth_so_growth_keeps_its_rates():
+    trained = lessons(wide())
+    with pytest.raises(ValueError, match="own loop"):
+        trained.grow(modules=(256,))
+    twice = trained.grow(slots=(4, 2)).grow(history_decays=(0.5,))
+    np.testing.assert_array_equal(twice.learner.synapse_rate, generic._width_rates(twice.connectome))
+    assert twice.recall.address == trained.recall.address
+    assert lessons(plain()).grow(slots=(4, 2)).learner.synapse_rate is None
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{"observers": (8,)}, {"modules": (32, 96)}, {"recall_heads": 2}, {"recall_copy": 2.0, "recall_tokens": [0, 1, 2, 3]},
+     {"recall_when": True}, {"history_decays": (0.5,)}, {"efference_amplitude": 1.0}, {"learned_code": 16}, {"apical": 0.25},
+     {"arousal": True, "maturity": True}, {"memory_choice": True}, {"learning_rehearsal": 1.0}, {"inputs": (6, 6)},
+     {"inputs": 64, "code": 32}],
+    ids=lambda options: "+".join(sorted(options)),
+)
+def test_a_wide_new_brain_holds_its_rates_beside_every_part(options, tmp_path):
+    options = dict(options)
+    inputs = options.pop("inputs", 6)
+    brain = cd.Brain.compose(inputs, 4, **{"modules": (96,), **options}, seed=5)
+    rng = np.random.default_rng(6)
+    for _ in range(3):
+        brain.step(rng.random((3, int(np.prod(inputs)))), teacher=rng.integers(0, 4, size=3))
+    assert brain.recall.address == 0.01 * 64 / 96
+    assert set(brain.describe()["layout"]["projection_rates"].values()) == {64 / 96}
+    again = cd.Brain.load(brain.save(tmp_path / "wide.npz"))
+    np.testing.assert_array_equal(again.learner.synapse_rate, brain.learner.synapse_rate)
+
+
 def test_a_grown_brain_saves_and_continues_at_its_rates(tmp_path):
     grown = lessons(wide()).grow(history_decays=(0.5,))
     twin = cd.Brain.load(grown.save(tmp_path / "grown.npz"))
