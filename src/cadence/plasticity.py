@@ -27,7 +27,7 @@ steps the parameters on it.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Iterator, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -1007,30 +1007,22 @@ class ActorCritic:
         next_brain = self.learner.brain
         eta, eta_bias = self._rates()
         step_bias = eta_bias * (d[:, None] * trace_bias).mean(dim=0)
-        # the mean over the streams of d e, with e <- decay e + contrast, part by part: the trace
-        # moves only after the last refusal, in place, so the streams hold one array of it
         salience = None if self.salience is None else torch.as_tensor(
             np.asarray(self.salience), dtype=trace.dtype, device=trace.device
         )
-
-        def parts() -> Iterator[tuple[int, int, Any]]:
-            for first, stop, part in kernel.contrast_parts(s_plus, s_minus):
-                if salience is not None:
-                    part = part * salience[first:stop][:, kernel._row_index[0]]
-                yield first, stop, part.div_(span)
-
+        # the mean over the streams of d e, with e <- decay e + contrast: a row's contrast is a
+        # product of two short rows, so the step needs no array of them; the trace moves only after
+        # the last refusal, in place, so the streams hold one array of it
         step = decay * torch.mv(trace.T, d)
-        # where the device has no room to keep the contrast for the last refusal, it is made again
-        # to install it
-        kept: list[tuple[int, int, Any]] | None = [] if kernel.has_room(trace) else None
-        for first, stop, part in parts():
-            step += torch.mv(part.T, d[first:stop])
-            if kept is not None:
-                kept.append((first, stop, part))
+        if salience is None:
+            step += kernel.contrast_edges(s_plus, s_minus, d) / span
+        else:
+            for first, stop, part in kernel.contrast_parts(s_plus, s_minus):
+                part = (part * salience[first:stop][:, kernel._row_index[0]]).div_(span)
+                step += torch.mv(part.T, d[first:stop])
         report = self.learner._apply_device(kernel, eta * (step / batch), step_bias)
         trace.mul_(decay)
-        for first, stop, part in parts() if kept is None else kept:
-            trace[first:stop] += part
+        kernel.add_contrast(trace, s_plus, s_minus, span, salience)
         self._accept_critic(critic)
         if proposal is not None:
             self.memory.accept(proposal)

@@ -1884,6 +1884,8 @@ _SMALL_GATHER = 4096  # a gather this small costs less than a sparse product's s
 _CHUNK = 1 << 25
 # The entries of the arrays a part of a per-stream contrast makes (``contrast_parts``).
 _CONTRAST_ENTRIES = 1 << 28
+# More rectangles of synapses than this and a stream's contrast reads each synapse's neurons.
+_CONTRAST_RECTANGLES = 64
 # Pinned staging pays for copies at least this large; smaller ones go straight from NumPy.
 _PINNED_BYTES = 1 << 20
 # Still products of at least this many entries times rows are kept for the next settle or check
@@ -3085,6 +3087,7 @@ class _TorchKernel:
         self.layout = layout
         self._connectome = connectome  # for the per-row contrast's edge index, made on first use
         self._row_index: Any = None
+        self._rectangles_held: tuple[Any] | None = None  # made on first use
         self.apical = apical
         if apical is not None:
             # the pools as an indicator matrix (neurons x pools): a pool's sum of squares and
@@ -4010,11 +4013,18 @@ class _TorchKernel:
         return {"kernel": self.backend_name, "holder": self, "fetch": fetch, **tensors}
 
     def contrast_tensors(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
-        """The Gram contrast on the device, per synapse and per neuron, as tensors.
+        """The Gram contrast on the device, per synapse and per neuron, as tensors."""
+        edges = self.contrast_edges(s_plus, s_minus).to(self.param_dtype)
+        return edges, (s_plus - s_minus).sum(dim=0).to(self.param_dtype)
+
+    def contrast_edges(self, s_plus: Any, s_minus: Any, weights: Any = None) -> Any:
+        """The Gram contrast per synapse, in the states' floats.
 
         The phases are differenced before the products: subtracting two large Gram matrices
         can erase a small contrast, especially in float32. ``A+^T (B+ - B-) + (A+ - A-)^T B-``
-        is one product per row group over both terms, in the transport plan's groups.
+        is one product per row group over both terms, in the transport plan's groups. With
+        ``weights``, one per row, the rows' contrasts add up weighted: the synapses' mean step of
+        a dopamine needs no array of the streams' contrast.
         """
         torch, n = self.torch, self.n
         batch = s_plus.shape[0]
@@ -4029,22 +4039,80 @@ class _TorchKernel:
             right = torch.empty(n, 2 * m, dtype=diff.dtype, device=diff.device)  # presynaptic
             left[:, :m].copy_(diff.T)
             left[:, m:].copy_(minus.T)
+            if weights is not None:
+                left.mul_(weights[b0 : b0 + step].repeat(2))
             right[:, :m].copy_(plus.T)
             right[:, m:].copy_(diff.T)
             values = self.plan.gram(left, right, values)
         assert values is not None
-        edges = values[self.plan.position].to(self.param_dtype)
-        neurons = (s_plus - s_minus).sum(dim=0).to(self.param_dtype)
-        return edges, neurons
+        return values[self.plan.position]
 
-    def has_room(self, like: Any) -> bool:
-        """Whether the device can hold one more array of the size of ``like`` with room to work."""
-        if self.device.type != "cuda":
-            return True
-        torch = self.torch
-        free = torch.cuda.mem_get_info(self.device)[0]
-        cached = torch.cuda.memory_reserved(self.device) - torch.cuda.memory_allocated(self.device)
-        return bool(4 * like.numel() * like.element_size() <= 3 * (free + cached))
+    def _rectangles(self) -> list[tuple[int, int, int, Any, int]] | None:
+        """The synapses as rectangles of their flat order, where consecutive postsynaptic neurons
+        read the same presynaptic neurons: ``(first synapse, first post neuron, post neurons,
+        presynaptic neurons, their count)``. None where they make more than a few of them, or the
+        flat order is not by postsynaptic neuron."""
+        held = self._rectangles_held
+        if held is None:
+            held = self._rectangles_held = (self._find_rectangles(),)
+        return held[0]
+
+    def _find_rectangles(self) -> list[tuple[int, int, int, Any, int]] | None:
+        pre, post = self._connectome.pre, self._connectome.post
+        if not len(post) or (np.diff(post) < 0).any():
+            return None
+        starts = np.r_[0, np.flatnonzero(np.diff(post)) + 1, len(post)]
+        found: list[tuple[int, int, int, Any, int]] = []
+        i, runs = 0, len(starts) - 1
+        while i < runs:
+            first, stop = int(starts[i]), int(starts[i + 1])
+            columns = pre[first:stop]
+            j = i + 1
+            while (
+                j < runs
+                and post[starts[j]] == post[starts[j - 1]] + 1
+                and starts[j + 1] - starts[j] == stop - first
+                and np.array_equal(pre[starts[j] : starts[j + 1]], columns)
+            ):
+                j += 1
+            found.append((
+                first, int(post[first]), j - i,
+                self.torch.from_numpy(columns.copy()).to(self.device), stop - first,
+            ))
+            if len(found) > _CONTRAST_RECTANGLES:
+                return None
+            i = j
+        return found
+
+    def add_contrast(
+        self, trace: Any, s_plus: Any, s_minus: Any, span: float, salience: Any = None
+    ) -> None:
+        """``trace += contrast / span`` per row, in place, the bits of ``contrast_parts``: over
+        rectangles of the synapses a row's contrast is two outer products of short rows, with no
+        read of each synapse's two neurons."""
+        rectangles = self._rectangles()
+        if rectangles is None:
+            for first, stop, part in self.contrast_parts(s_plus, s_minus):
+                if salience is not None:
+                    part = part * salience[first:stop][:, self._row_index[0]]
+                trace[first:stop] += part.div_(span)
+            return
+        batch = s_plus.shape[0]
+        moved = s_plus - s_minus
+        for start, neuron, rows, columns, width in rectangles:
+            post = slice(neuron, neuron + rows)
+            per = max(1, _CONTRAST_ENTRIES // max(1, 8 * rows * width))
+            synapses = slice(start, start + rows * width)
+            for first in range(0, batch, per):
+                stop = first + per
+                part = (
+                    moved[first:stop, post][:, :, None] * s_plus[first:stop][:, columns][:, None, :]
+                    + s_minus[first:stop, post][:, :, None]
+                    * moved[first:stop][:, columns][:, None, :]
+                )
+                if salience is not None:
+                    part = part * salience[first:stop][:, columns][:, None, :]
+                trace[first:stop, synapses] += part.div_(span).flatten(1)
 
     def contrast_parts(self, s_plus: Any, s_minus: Any) -> Iterator[tuple[int, int, Any]]:
         """The contrast per row by parts of the streams: ``(first, stop, (rows, edges))``, each
@@ -4060,10 +4128,9 @@ class _TorchKernel:
         per = max(1, _CONTRAST_ENTRIES // max(1, 8 * pre.shape[0]))
         for first in range(0, batch, per):
             plus, minus = s_plus[first : first + per], s_minus[first : first + per]
-            a_plus, a_minus = plus[:, pre], minus[:, pre]
-            b_plus, b_minus = plus[:, post], minus[:, post]
+            moved = plus - minus
             yield first, first + plus.shape[0], (
-                a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
+                plus[:, pre] * moved[:, post] + moved[:, pre] * minus[:, post]
             )
 
     def contrast_rows(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:

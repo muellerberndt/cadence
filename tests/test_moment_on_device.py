@@ -110,16 +110,13 @@ def _a_life_of_rewards(brain: cd.Brain, seed: int = 5, moments: int = 12) -> lis
 
 
 @pytest.mark.parametrize("entries", [1, 1 << 14])
-@pytest.mark.parametrize("room", [False, True])
-def test_the_streams_eligibility_reads_alike_in_parts_and_made_twice(monkeypatch, entries, room):
-    """A large batch makes each stream's contrast in parts and, past what can wait for the last
-    refusal, makes it again to install it: the same life within rounding."""
+def test_the_streams_eligibility_reads_alike_in_parts(monkeypatch, entries):
+    """A large batch makes each stream's contrast in parts: the same life within rounding."""
     from cadence import brain as graph_module
 
     whole = brain_on_torch()
     plain = _a_life_of_rewards(whole)
     monkeypatch.setattr(graph_module, "_CONTRAST_ENTRIES", entries)
-    monkeypatch.setattr(graph_module._TorchKernel, "has_room", lambda self, like: room)
     parted = brain_on_torch()
     for ours, theirs in zip(plain, _a_life_of_rewards(parted), strict=True):
         np.testing.assert_array_equal(ours, theirs)
@@ -130,9 +127,6 @@ def test_the_streams_eligibility_reads_alike_in_parts_and_made_twice(monkeypatch
 
 
 def test_a_refused_outcome_leaves_the_streams_eligibility_as_it_was(monkeypatch):
-    from cadence import brain as graph_module
-
-    monkeypatch.setattr(graph_module._TorchKernel, "has_room", lambda self, like: False)
     brain = brain_on_torch()
     _a_life_of_rewards(brain, moments=6)
     x = np.eye(12)[[1, 7, 3]]
@@ -236,6 +230,64 @@ def test_a_salience_weighs_the_eligibility_as_on_the_host():
             )
         np.testing.assert_array_equal(host.step(x, **kwargs), device.step(x, **kwargs))
     np.testing.assert_allclose(device.brain.efficacy, host.brain.efficacy, rtol=0, atol=1e-10)
+
+
+def test_the_mean_step_of_a_dopamine_is_the_weighted_contrast():
+    """The synapses' step of a dopamine reads a weighted Gram contrast as the mean over each row's
+    own contrast reads it, whichever the row's sign."""
+    brain = brain_on_torch()
+    kernel = brain.brain._torch
+    torch.manual_seed(2)
+    plus = torch.rand((5, kernel.n), dtype=torch.float64)
+    minus = plus + 1e-3 * torch.randn((5, kernel.n), dtype=torch.float64)
+    d = torch.tensor([0.5, -1.0, 2.0, 0.0, -0.25], dtype=torch.float64)
+    weighted = kernel.contrast_edges(plus, minus, d)
+    rows = torch.cat([part for _, _, part in kernel.contrast_parts(plus, minus)])
+    np.testing.assert_allclose(weighted.numpy(), torch.mv(rows.T, d).numpy(), rtol=1e-12, atol=1e-15)
+    plain = kernel.contrast_edges(plus, minus)
+    assert torch.equal(kernel.contrast_edges(plus, minus, torch.ones_like(d)), plain)
+
+
+@pytest.mark.parametrize(
+    "graph",
+    [
+        lambda: cd.Brain.compose(12, 5, modules=(16,), seed=3, backend="torch", device="cpu").brain,
+        lambda: cd.Brain.compose(
+            12, 5, modules=(16, 8), apical=0.25, teaching="deep", seed=3, backend="torch",
+            device="cpu",
+        ).brain,
+        lambda: cd.NeuralGraph(
+            cd.layered(6, 24, 3, density=0.4, seed=4), cd.learning_neuron_model(), backend="torch",
+            device="cpu",
+        ),
+    ],
+    ids=["default", "apical", "sparse"],
+)
+@pytest.mark.parametrize("entries", [1, 1 << 28])
+@pytest.mark.parametrize("salient", [False, True])
+def test_a_contrast_added_by_rectangles_has_the_bits_of_one_read_by_synapse(
+    monkeypatch, graph, entries, salient
+):
+    from cadence import brain as graph_module
+
+    monkeypatch.setattr(graph_module, "_CONTRAST_ENTRIES", entries)
+    kernel = graph()._torch
+    connectome = kernel._connectome
+    torch.manual_seed(1)
+    plus = torch.rand((3, kernel.n), dtype=torch.float64)
+    minus = plus + 1e-3 * torch.randn((3, kernel.n), dtype=torch.float64)
+    salience = torch.rand((3, kernel.n), dtype=torch.float64) if salient else None
+    pre = torch.from_numpy(connectome.pre.copy())
+    rows = torch.cat([part for _, _, part in kernel.contrast_parts(plus, minus)])
+    if salient:
+        rows = rows * salience[:, pre]
+    rows = rows / 0.5
+    start = torch.rand(rows.shape, dtype=torch.float64)
+    added = start.clone()
+    kernel.add_contrast(added, plus, minus, 0.5, salience)
+    assert torch.equal(added, start + rows)
+    if len(connectome.pre) > 100:
+        assert kernel._rectangles() is not None or (np.diff(connectome.post) < 0).any()
 
 
 # -- the critic rests with the memories
