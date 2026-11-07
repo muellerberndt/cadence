@@ -10,7 +10,9 @@ import numpy as np
 import pytest
 
 import cadence as cd
+from cadence import brain as brain_module
 from cadence import resident
+from cadence.learning import _restrict
 from cadence.resident import _memory_on_device, _RecallOnDevice
 
 pytestmark = pytest.mark.skipif("mlx" not in cd.available_backends(), reason="mlx not installed")
@@ -100,10 +102,16 @@ def test_a_life_at_the_speech_size_rests_on_the_device(form, tmp_path):
         grafted.lesson(rows_of(rng, 2), rng.integers(SPEECH[1], size=2))
 
 
-def test_a_stream_lives_at_the_speech_size_on_the_device():
+def test_a_stream_lives_at_the_speech_size_on_the_device(monkeypatch):
     cpu = cd.Brain.compose(*SPEECH, seed=2, modules=(512,), arousal=True)
     mlx = cd.Brain.compose(*SPEECH, seed=2, modules=(512,), arousal=True, backend="mlx")
     rng = np.random.default_rng(4)
+
+    def forbidden(*_, **__):
+        raise AssertionError("the memory came back to the host")
+
+    monkeypatch.setattr(resident._RecallOnDevice, "give_back", forbidden)
+    monkeypatch.setattr(resident._StoreOnDevice, "give_back", forbidden)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for t in range(12):
@@ -112,6 +120,60 @@ def test_a_stream_lives_at_the_speech_size_on_the_device():
             np.testing.assert_array_equal(cpu.live(x, **kwargs), mlx.live(x, **kwargs))
             assert mlx.last_arousal["mode"] == cpu.last_arousal["mode"]
     assert mlx.recall._device is not None
+
+
+def test_a_lesson_of_some_rows_moves_as_on_the_host(monkeypatch):
+    """A lesson teaches the rows answered wrong, whose drive and moment are cut on the device."""
+    monkeypatch.setenv("CADENCE_MLX_MEMORY", "1")
+    monkeypatch.setattr(brain_module, "_MLX_UPDATE_ENTRIES", 1)
+    settings = {"modules": (32,), "seed": 3, "learning_surprise": True}
+    cpu, mlx = cd.Brain.compose(12, 5, **settings), cd.Brain.compose(12, 5, backend="mlx", **settings)
+    rng = np.random.default_rng(7)
+    taught = set()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(40):  # the rows answered right grow with the lessons
+            seen = rng.integers(12, size=8)
+            x = np.eye(12)[seen]
+            labels = seen % 5
+            a, b = cpu.lesson(x, labels), mlx.lesson(x, labels)
+            assert b["accepted_presentations"] == a["accepted_presentations"]
+            assert (b["free_steps"], b["nudged_steps"]) == (a["free_steps"], a["nudged_steps"])
+            taught.add(a["accepted_presentations"])
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+    assert len(taught) > 1
+    assert isinstance(mlx.basal_ganglia.state.device, brain_module._MlxState)
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=SYNAPSES)
+
+
+@pytest.mark.parametrize("options", [{}, {"modules": (32, 16), "apical": 0.25}], ids=["whole", "half"])
+def test_a_state_of_some_rows_stays_on_the_device(options, monkeypatch):
+    """Its rows are cut there, a settle from it under those rows' drive takes the sources where
+    they stand, and it reads as the same rows of the host's state."""
+    settings = {"modules": (32,), "seed": 3, "recall": False, **options}
+    cpu = cd.Brain.compose(12, 5, **settings)
+    mlx = cd.Brain.compose(12, 5, backend="mlx", **settings)
+    x = np.random.default_rng(8).random((4, 12))
+    drive = cpu.stimulus(x, memory=False)
+    keep = np.array([True, False, True, True])
+    a = cpu.brain.equilibrate(drive, budget=512, tolerance=1e-4).state
+    b = mlx.brain.equilibrate(drive, budget=512, tolerance=1e-4).state
+    host, cut = _restrict(a, keep), _restrict(b, keep, drive[keep])
+    assert isinstance(cut.device, brain_module._MlxState) and cut.device["vm"].shape[0] == 3
+    np.testing.assert_array_equal(cut.activation, b.activation[keep])
+    np.testing.assert_array_equal(cut.v, b.v[keep])
+    if cut.device.get("relaxed"):  # no product made again
+        plan = mlx.brain._mlx.plan
+
+        def forbidden(*_, **__):
+            raise AssertionError("the sources' products were made again")
+
+        monkeypatch.setattr(plan, "under_drive", forbidden)
+        monkeypatch.setattr(plan, "ramp", forbidden)
+    c = cpu.brain.settle_batch(drive[keep], steps=8, state=host)
+    d = mlx.brain.settle_batch(drive[keep], steps=8, state=cut)
+    np.testing.assert_allclose(d.activation, c.activation, rtol=0, atol=READS)
+    np.testing.assert_allclose(d.v, c.v, rtol=0, atol=READS)
 
 
 def test_a_moment_takes_no_arrays_back_and_forth(monkeypatch):

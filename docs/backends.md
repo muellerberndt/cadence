@@ -63,10 +63,9 @@ precision; `Brain.load` defaults to `backend="cpu"`, `Learner.load` to the saved
 `Learner.load(path, backend="cpu")` brings a checkpoint learned on any device back to the
 float64 receipt backend.
 
-On CUDA a composed brain's memories rest on the device once a moment is large enough to pay for it
-(the [rule and its readings](#memories-on-the-device)); below that size, on MPS and a torch CPU
-device, they run on the host. On MLX they run on the host except a large recall address map
-([implementation notes](#implementation-notes)).
+On CUDA and on MLX a composed brain's memories rest on the device once a moment is large enough to pay
+for it (the [rule and its readings](#memories-on-the-device)); below that size, on MPS and a torch CPU
+device, they run on the host.
 
 On a device backend `settle_batch` returns a state that stays resident (`BrainState.device`;
 `None` on the CPU and from the one-stimulus `settle`), so a continuing phase starts there.
@@ -76,25 +75,29 @@ normalization stay on the device, and so does the apical gain a nudged phase hol
 (`NeuralGraph.apical_gain`). On MLX a lesson's update stays on the device from 131,072 block entries,
 where every entry holds one synapse, each block has one gain, every tie is one block's entries with
 another's, transposed, and every synapse is plastic at one rate: the contrast, the moments and the
-normalization by block in float32, the ties, the bound and the new blocks in one launch, the neurons'
-arithmetic on the host in float64. Below that, MLX hands the contrast to a host optimizer. `ActorCritic` updates on the device when both of its
-phases settled there; its critic and dopamine use host arrays, which read the critic's columns of
-a state and nothing else of it. Reading
+normalization by block and over the neurons in float32, the ties, the bound, the new blocks and the
+biases in one launch. Below that, MLX hands the contrast to a host optimizer. `ActorCritic` updates on the
+device when both of its phases settled there, by the same sizes on MLX; its critic and dopamine use host
+arrays, which read the critic's columns of a state and nothing else of it. Reading
 parameters or saving a checkpoint copies arrays back. Parameter edits and the `learner.brain`
 rule are in [contracts](contracts.md).
 
 ### Memories on the device
 
-On CUDA, from a moment of `streams * width * (width + 1024) >= 3,000,000` (`width` the observation
-code's), the recall memory's slots, maps, read, write and lessons, the working trace, the consolidating
-store, the carried routes' contrast, the critic's weights and eligibility and the moment's drive run
-on the device in the brain's precision, by the host's equations: a float64 life agrees with the float64
-host path within rounding at each moment
-([`tests/test_memories_on_device.py`](../tests/test_memories_on_device.py)). In a float32 brain these and
-the synapses' eligibility are float32, and its efficacies and biases add up in float64. 3,920 inputs reach
-that size at one stream and 35 inputs at about 128. Below it each operation's launch costs more than
-the host's arithmetic, so the memories stay on the host. On an A10G a brain of 12 to 1,024 inputs
-crosses over there, within about 10% on either side.
+On CUDA from a moment of `streams * width * (width + 1024) >= 3,000,000` and on MLX from `8,000,000`
+(`width` the observation code's), the recall memory's slots, maps, read, write and lessons, the working
+trace, the consolidating store, the carried routes' contrast, the critic's weights and eligibility and the
+moment's drive run on the device in the brain's precision, by the host's equations, the same code on both
+([`cadence/resident.py`](../src/cadence/resident.py)): a float64 life agrees with the float64 host path
+within rounding at each moment, and a float32 life within float32's
+([`tests/test_memories_on_device.py`](../tests/test_memories_on_device.py),
+[`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)). In a float32 brain on CUDA these and the synapses'
+eligibility are float32, and its efficacies and biases add up in float64; on MLX all of it is float32. 3,920
+inputs reach that size at one stream, and 35 inputs at about 128 on CUDA and 256 on MLX. Below it each
+operation's launch costs more than the host's arithmetic, so the memories stay on the host. On an A10G a brain
+of 12 to 1,024 inputs crosses over there, within about 10% on either side, and so does a brain of 12 to 3,920
+inputs on an Apple M4. On MLX a moment's reads join the launch that settles on them, and a slot is written in
+place in unified memory.
 
 A memory with several heads, a window, `recall_action`, `recall_when`, `recall_gain` or
 `recall_tokens`, a store with a separator or a surprise gate, `memory_choice` and a learned code keep
@@ -106,7 +109,8 @@ imagining or retuning the memory
 brings them back, and the next moment places them again; nothing else about a brain changes.
 `brain.stimulus` returns a host array whichever way the moment runs.
 `CADENCE_TORCH_MEMORY=0` keeps them on the host, and `=1` places them at any size on any torch device
-but MPS, which is how the tests read this path on a machine without a GPU.
+but MPS, which is how the tests read this path on a machine without a GPU. `CADENCE_MLX_MEMORY` does the
+same on MLX.
 
 Each moment still crosses: to the device the observations, a sampled action's target, the outcome's
 reward, key and dopamine; to the host the motor columns, a value per stream, one number per stream and
@@ -335,9 +339,10 @@ environment before `cadence` is imported forces the NumPy loop; use it to reprod
 look-back, contextual-choice, held-heads, copy-tokens and own-action receipts, which were
 recorded on that loop.
 
-On MLX a recall address map of at least 1,048,576 entries rests on the device: its product with a
-moment and its step are launched there, in float32, and it reads as a float64 array wherever an array
-is asked for. The read back of a lesson's movement uses the blocks when the synapses rest there.
+On MLX a recall address map of at least 1,048,576 entries of a memory that keeps to the host (several
+heads, a window, the command) rests on the device: its product with a moment and its step are launched
+there, in float32, and it reads as a float64 array wherever an array is asked for. The read back of a
+lesson's movement uses the blocks when the synapses rest there.
 On the host a recall memory's reads, writes and address lessons are products
 of each stream's address or attention with its slots, and the copy of the slots a write makes.
 `CADENCE_RECALL_THREADS=N` shares those of at least 262,144 values over blocks of streams,

@@ -77,7 +77,12 @@ def same(host: cd.Brain, device: cd.Brain, atol: float = TIGHT) -> None:
     ours, theirs = arrays(host), arrays(device)
     assert set(ours) == set(theirs)
     for name, value in ours.items():
-        np.testing.assert_allclose(theirs[name], value, rtol=0, atol=atol, err_msg=name)
+        # what a stream wrote, at float32's rounding of what it heard, whatever its weights
+        written = name in ("recall/keys", "recall/values", "recall/nexts", "recall/held",
+                           "recall/told", "recall/focus")
+        np.testing.assert_allclose(
+            theirs[name], value, rtol=0, atol=min(atol, 1e-6) if written else atol, err_msg=name
+        )
 
 
 def resident(brain: cd.Brain) -> bool:

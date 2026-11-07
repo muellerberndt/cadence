@@ -3809,6 +3809,11 @@ class _MlxMatrix:
         return bool(self.flag.item())
 
 
+def _on_device(mx: Any, array: Any) -> Any:
+    """An array on the MLX device: one that rests there as it is."""
+    return array if _resident(array) else mx.array(array)
+
+
 def _launch_error(errors: Any, which: int) -> np.ndarray:
     """Each row's largest residual at a launch's first (0) or last (1) state, from every thread's;
     infinity where one is not finite."""
@@ -4820,24 +4825,22 @@ class _MlxKernel:
     # -- a reward's update on the device: every stream's eligibility, by block
 
     def _reward_step_of(self, moves_pre: bool) -> Any:
-        """One block's eligibility and its dopamine's step, compiled once per kind and shape:
-        ``e <- decay e + contrast / span`` per row, the contrast a row's own
-        ``a+ (b+ - b-) + (a+ - a-) b-``, and ``eta`` times the mean over rows of ``d e``. A block
-        whose presynaptic range stands in both phases has no second term. Each row's mean size
-        comes with them."""
+        """One block's eligibility, compiled once per kind and shape: ``e <- decay e + contrast /
+        span`` per row, the contrast a row's own ``a+ (b+ - b-) + (a+ - a-) b-``, and its size
+        with it, one pass of the block. A block whose presynaptic range stands in both phases has
+        no second term."""
         held = self.root.reward_steps.get(moves_pre)
         if held is not None:
             return held
         mx = self.mx
 
         def step(trace: Any, a_plus: Any, a_minus: Any, moved: Any, b_minus: Any,
-                 numbers: Sequence[Any]) -> tuple[Any, Any, Any]:
-            decay, span, d, eta = numbers
+                 decay: Any, span: Any) -> tuple[Any, Any]:
             contrast = a_plus[:, :, None] * moved[:, None, :]
             if moves_pre:
                 contrast = contrast + (a_plus - a_minus)[:, :, None] * b_minus[:, None, :]
             new = decay * trace + contrast / span
-            return new, eta * (d * new).mean(axis=0), mx.abs(new).mean(axis=(1, 2))
+            return new, mx.abs(new)
 
         held = self.mx.compile(step)
         self.root.reward_steps[moves_pre] = held
@@ -4859,12 +4862,10 @@ class _MlxKernel:
         plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
         shared = plus.get("sources") if plus.get("sources") is minus.get("sources") else None
         plan = self.plan
-        numbers = [
-            mx.array(np.asarray(decay, dtype=np.float32))[:, None, None],
-            mx.array(float(span), dtype=mx.float32),
-            mx.array(np.asarray(delta, dtype=np.float32))[:, None, None],
-            mx.array(float(eta), dtype=mx.float32),
-        ]
+        each_decay = mx.array(np.asarray(decay, dtype=np.float32))[:, None, None]
+        each_span = mx.array(float(span), dtype=mx.float32)
+        dopamine = mx.array(np.asarray(delta, dtype=np.float32))
+        over_rows = float(eta) / rows
         moved = {r: plus_of(r) - minus_of(r) for r in {int(x) for x in lay.pair_post}}
         new_trace, steps, sizes = [], [], []
         for k in range(lay.pairs):
@@ -4874,22 +4875,26 @@ class _MlxKernel:
                 mx.zeros((rows, a1 - a0, b1 - b0), dtype=mx.float32) if trace is None else trace[k]
             )
             moves_pre = shared is None or plan is None or pre in plan.place
-            one, step, size = self._reward_step_of(moves_pre)(
-                held, plus_of(pre), minus_of(pre), moved[post], minus_of(post), numbers,
+            one, size = self._reward_step_of(moves_pre)(
+                held, plus_of(pre), minus_of(pre), moved[post], minus_of(post), each_decay,
+                each_span,
             )
             new_trace.append(one)
-            steps.append(step)
-            sizes.append((a1 - a0) * (b1 - b0) * size)
+            # the mean over the rows of the dopamine on the block, a product of the flat rows
+            steps.append(
+                over_rows * (dopamine[None, :] @ one.reshape(rows, -1)).reshape(a1 - a0, b1 - b0)
+            )
+            sizes.append(size.sum(axis=(1, 2)))
         new, total = self._moved_by(steps, scale, tables, cap)
         each = mx.sum(mx.stack(sizes), axis=0)
         movement = mx.concatenate(
             [plus_of(r) - minus_of(r) for r in range(lay.ranges)], axis=1
         )
-        new_bias_trace = numbers[0][:, :, 0] * (
+        new_bias_trace = each_decay[:, :, 0] * (
             mx.zeros_like(movement) if trace_bias is None else trace_bias
-        ) + movement / numbers[1]
+        ) + movement / each_span
         bias_step = (
-            float(eta_bias) * (numbers[2][:, :, 0] * new_bias_trace).mean(axis=0)
+            float(eta_bias) * (dopamine[:, None] * new_bias_trace).mean(axis=0)
             * tables["plastic_neurons"]
         )
         new.bias = self.bias + bias_step
@@ -5063,11 +5068,11 @@ class _MlxKernel:
         if plan.rho != 0.0:
             return self._ramped(start, goals, gaps, kept, standing, sweeps)
         if not plan.outer:  # nothing the sources reach: their activations and no product
-            sources = {r: plan.activate(mx.array(p)) for r, p in goals.items()}
+            sources = {r: plan.activate(_on_device(mx, p)) for r, p in goals.items()}
             outer, fixed = None, standing
         else:
             activated, outer, fixed = plan.under_drive(
-                [mx.array(goals[r]) for r in plan.sources],
+                [_on_device(mx, goals[r]) for r in plan.sources],
                 [self.blocks[k] for k in plan.outer], standing,
             )
             sources = dict(zip(plan.sources, activated, strict=True))
@@ -5133,8 +5138,8 @@ class _MlxKernel:
         rows = int(standing.shape[0])
         widest = max((g.shape[1] for g in gaps.values()), default=1)
         each = max(1, _MLX_RAMP_FLOATS // (rows * widest))
-        goal = [mx.array(goals[r]) for r in plan.sources]
-        gap = [mx.array(gaps[r]) for r in plan.sources]
+        goal = [_on_device(mx, goals[r]) for r in plan.sources]
+        gap = [_on_device(mx, gaps[r]) for r in plan.sources]
         blocks = [self.blocks[k] for k in plan.outer]
         at = [start["sources"][r] for r in plan.sources]
         stacks, paths, peaks = [], [], []
@@ -5240,7 +5245,7 @@ class _MlxKernel:
                 r: goals[r] + float(share) * gaps[r] for r in plan.sources
             }
             if taken < driven["ramp"]:  # a stop inside the ramp: the sources where it left them
-                sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
+                sources = {r: plan.activate(_on_device(mx, p)) for r, p in potentials.items()}
                 outer = None
             if share != 0.0:
                 error = np.maximum(error, self._source_gap(driven, taken))
