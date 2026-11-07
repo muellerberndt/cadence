@@ -39,6 +39,23 @@
   that can step, 69 columns of 3,920 rows at the default memory and speech's width, where it held 141 MB per
   row, and a checkpoint still holds the full layout. Every bit of a CPU life is unchanged. One core's `step`
   at 3,920 inputs: 475 to 262 ms at one stream, 2,408 to 992 ms at 16.
+- **Torch speed.** On CUDA and the torch CPU device, under a step of one without adaptation or a
+  compartment, a settle makes the products of source neurons (no synapse reaches them) twice and later
+  sweeps read them, and from sweep 3 the fused update covers only the neurons synapses reach; from
+  4,194,304 entries times rows those products are held for the next settle or residual check of the
+  same source neurons. `CADENCE_STILL_PRODUCTS=0` makes every product at every sweep. On CUDA with
+  Triton the transport's launch takes blocks of presynaptic neurons, tiles by precision, batch and a
+  group's rows, and groups by a rule measured on an A10G, the fused update takes tiles by size, batch
+  and precision, and the apical normalization is three launches, in free settles, residual checks and
+  `apical_gain`. A device sum differs from before in its last bits; the settled states match the
+  float64 host path to rounding as before. See
+  [the implementation notes](docs/backends.md#implementation-notes).
+- `NeuralGraph.calibrate_transport`: an opt-in plan of the transport's kernels from measurements, stored
+  per graph shape, device and precision, repeatable by name. `to_dict()["torch_transport"]` reports the
+  plan of a torch graph. See
+  [choosing kernels by measurement](docs/backends.md#choosing-kernels-by-measurement).
+- A torch workspace's CUDA graphs share a memory pool of their own, so a workspace that drops every
+  capture captures again, where the next capture used to fail and turn graphs off for the kernel.
 - **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
   [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
   `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only

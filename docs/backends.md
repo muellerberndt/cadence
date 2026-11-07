@@ -137,16 +137,47 @@ print(check["backend"], check["max_abs_deviation"])                             
 ## Which hardware
 
 Use CPU with Numba for small continuing brains, and measure an accelerator on the actual
-changing-input workload before switching: small brains spend more time synchronizing with the GPU
-than doing arithmetic, while wide and deep brains and large batches gain from the device.
-On an NVIDIA A10G ([`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md)), CUDA float64
-runs a lesson of a deep apical visual brain (7,956 neurons, 903,520 synapses) about 14 times
-faster than one CPU core at batch 64 and about 27 times faster at batch 4,096. The flat founder
-(3,220 neurons, 203,264 synapses) gains at most four times, because its sweeps are elementwise
-work over the sensory neurons, which the device does in float64 at memory speed.
-`precision="float32"` runs the deep brain's lessons two to three times faster again (that GPU
-does float64 at a sixty-fourth of its float32 rate); check it against float64 as below before
-relying on it. On the small continuing nursery of the
+changing-input workload before switching: small brains spend more time launching GPU
+operations than doing arithmetic, while deep brains and large batches gain from the device.
+On an NVIDIA A10G, one process, milliseconds per act and per taught lesson of a newborn, CUDA
+against one CPU core of the same machine (an AMD EPYC 7R32) with Numba, the same sweeps:
+
+| Brain | Rows | One CPU core, act and lesson | CUDA float64 | CUDA float32 |
+| --- | ---: | ---: | ---: | ---: |
+| The chamber's default brain: 251 neurons, 13,120 synapses | 1 | 0.56, 2.76 | 2.64, 10.8 | 2.69, 10.7 |
+| The same | 16 | 1.53, 7.81 | 2.95, 13.6 | 2.94, 12.1 |
+| The same | 64 | 4.57, 24.2 | 3.42, 25.9 | 3.39, 25.4 |
+| The speech size, `Brain.compose(3920, 37, modules=(512,))`: 12,821 neurons, 6.3 million synapses | 1 | 9.46, 393 | 10.0, 236 | 10.0, 238 |
+| The same | 16 | 52.9, 493 | 37.1, 304 | 37.3, 296 |
+| The same | 64 | 160, 834 | 104, 515 | 103, 483 |
+| The same | 256 | 597, 2,270 | 366, 1,332 | 362, 1,263 |
+| The same | 1,024 | 2,889, 9,907 | 1,577, 4,828 | 1,602, 4,662 |
+| A deep apical brain, `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`: 535 neurons, 50,048 synapses | 1 | 1.36, 6.30 | 3.54, 14.2 | 3.26, 13.0 |
+| The same | 16 | 10.6, 37.3 | 3.86, 15.4 | 3.44, 13.8 |
+| The same | 64 | 38.7, 134 | 5.35, 20.7 | 4.42, 16.6 |
+| The same | 256 | 152, 524 | 12.8, 44.0 | 8.73, 27.9 |
+| The deep anatomy of [`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md) under its compartment: 7,956 neurons, 903,520 synapses | 64 | 895, 2,245 | 25.9, 55.4 | 15.1, 26.4 |
+| The same | 256 | 3,478, 8,617 | 93.5, 191 | 54.6, 79.5 |
+
+A settle of 32 sweeps from a warm state under a new drive on that device, in milliseconds:
+
+| Brain | Rows | CUDA float64 | CUDA float32 |
+| --- | ---: | ---: | ---: |
+| The chamber's default brain | 1 | 0.70 | 0.58 |
+| The same | 16 | 0.79 | 0.60 |
+| The same | 1,024 | 2.49 | 1.10 |
+| The speech size | 1 | 1.25 | 0.93 |
+| The same | 16 | 3.77 | 1.34 |
+| The same | 64 | 9.14 | 2.82 |
+| The same | 1,024 | 98.9 | 30.9 |
+| The deep apical brain | 16 | 1.55 | 0.90 |
+| The same | 256 | 5.84 | 1.38 |
+| The deep anatomy | 16 | 6.13 | 2.39 |
+| The same | 1,024 | 209 | 49.6 |
+
+A settle is a small part of an act of a brain with the memory, whose reads run on the host. The
+device's float64 runs at a sixty-fourth of its float32 rate; check float32 against float64 as below
+before relying on it. On the small continuing nursery of the
 [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
 than CUDA.
 
@@ -291,15 +322,35 @@ of one shape are one batched product over a gather of their presynaptic rows. No
 padded, every row is written by one product in a fixed order, so the device sum is
 deterministic. A graph whose rows share few presynaptic neurons uses the dense blocks above
 when they fit, one product per block, and a CSR product otherwise (cuSPARSE on CUDA, whose sums
-are not deterministic). On CUDA with Triton (bundled with the CUDA builds of PyTorch on Linux)
-every group of fewer rows is one Triton launch that accumulates each output in a fixed order,
-and the neuron update of a sweep (potential, activation, adaptation, movement) is one fused
-launch; `CADENCE_TRITON=0` keeps cuBLAS products and one torch operation at a time. The sweeps
-of a settle are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs them
-eagerly; a replay is bitwise the eager sweep), drives and masks reach the device through pinned
-host buffers, and a sweep allocates nothing. `CADENCE_TORCH_TRANSPORT=grouped`, `blocks` or
-`sparse` forces a plan. Every plan matches the float64 host path to rounding: the same fixed
-points and step counts, activations within 1e-10 (`tests/test_torch_settle_parity.py`).
+are not deterministic). `CADENCE_TORCH_TRANSPORT=grouped`, `blocks` or `sparse` forces a plan.
+Every plan matches the float64 host path to rounding: the same fixed points and step counts,
+activations within 1e-10 (`tests/test_torch_settle_parity.py`).
+
+Under a step of one, without adaptation or an apical compartment, on CUDA or the torch CPU device,
+the products of source neurons (those no synapse reaches: the sensory, prefrontal and recall ranges
+of a composed brain) are a part of the plan of their own, 99.4% of the entries of the speech-size
+brain below and 82% of the chamber's. Such a neuron stands at its drive from the second sweep of a
+settle. Sweeps 0 and 1 make those products, later sweeps read them, and from sweep 3 the fused update
+covers only the neurons synapses reach. A mask, or a nudge that reaches a source neuron, makes every
+product at every sweep. From 4,194,304 entries times rows the workspace keeps them with the source
+potentials they were made from, so a settle that starts from those potentials, or under a drive that
+holds them, and a residual check of such a state make none, under the same parameters.
+`CADENCE_STILL_PRODUCTS=0` makes every product at every sweep.
+
+On CUDA with Triton (bundled with the CUDA builds of PyTorch on Linux) the rest are launches where
+a measurement favours them. Several groups of one shape always are, and a group of up to 128
+presynaptic neurons at float64 or 256 at float32: a launch costs about 5 microseconds there and a
+cuBLAS product about 25 at float64 and 5 at float32. At float64 from a batch of 8 a group of up to
+4,096 presynaptic neurons is too, and a larger one once it fills about 64 programs. cuBLAS keeps the
+others. A program computes a tile of output rows over a tile of the batch, 16 presynaptic neurons at a
+time at float64 and 32 at float32, and accumulates each output in a fixed order; a group takes the
+tile height its rows fill, and a batch the tile it fills, since a program's mask does not spare its
+arithmetic. The neuron update of a sweep (potential, activation, adaptation, movement) is one fused
+launch, and the apical normalization three: the sums of squares over tiles of a pool's members, each
+pool's gain, the drive. `CADENCE_TRITON=0` keeps cuBLAS products and one torch operation at a time.
+The sweeps of a settle are captured once as CUDA graphs and replayed (`CADENCE_CUDA_GRAPHS=0` runs
+them eagerly; a replay is bitwise the eager sweep), drives and masks reach the device through pinned
+host buffers, and a sweep allocates nothing.
 
 Above `dense_limit` the CPU transport is sparse: a SciPy CSR multiply when SciPy is installed,
 a NumPy segmented sum otherwise; `"mlx"` needs the blocks. CSR indices are cached on the connectome (about `4 * (E + N + 1)` bytes for E synapses
@@ -366,3 +417,23 @@ update, the softmax over the nudged group, the apical normalization and the larg
 for the tolerance. Check a new one against the
 neuron-by-neuron reference through `conformance`; `tests/test_brain.py` holds the tests every
 kernel passes.
+
+### Choosing kernels by measurement
+
+`graph.to_dict()["torch_transport"]` reports what a torch graph runs: its kind, its products and
+launches at a batch of 16, how many of them are still products, and the plan it follows, `"rules"`
+until something asks otherwise. `graph.calibrate_transport(batches=(16, 64))` times, at each batch and
+on this device, every bucket in a launch and on cuBLAS, then each part of a sweep under that choice,
+under every bucket in the launch, under none and under the rules, and keeps what reads fastest; a
+choice replaces the rules only when it reads at least 2% faster. The plan names a launch per bucket
+and batch, and a batch it does not name takes the nearest it names. It is a stored object: no later
+timing moves it, nothing changes it in the middle of a life, and it is kept per graph shape, device
+and precision, in the process and in `CADENCE_PLAN_CACHE` (by default
+`~/.cache/cadence/transport_plans.json`), so a second brain of one shape pays nothing. It is repeated
+by name with `graph.calibrate_transport(name=plan["name"])`, which refuses a plan made for another
+shape, device or precision, and `name="rules"` returns to the rules. A graph on new parameters keeps
+its plan; a checkpoint does not carry one. On an A10G a calibration costs 10 to 950 milliseconds per
+batch size. On the brains of the table above, at batches 1 to 1,024, it matches the rules at 51 of 60
+readings and gains 1.29 at most, at one row. On eight graphs read after the rules were set the rules'
+transport stands within 1.86 of the better of every bucket in a launch or none, at one row, and the
+plan within 1.06. A device without Triton has no launch to choose, and its plan names none.

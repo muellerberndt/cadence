@@ -562,6 +562,7 @@ before any change.
 | `stimulus_vector(stimulus)`, `stimulus_levels(levels)`, `readings(state, names, i=0, level=0.5)` | Drive construction ([pattern targets](settling.md#pattern-targets)); population readings. |
 | `with_parameters(*, efficacy=None, log_gain=None, bias=None)`, `weights`, `dense()`, `to_dict()` | A new graph; effective drive per synapse; the `W[pre, post]` matrix. |
 | `contrast_on_device(plus, minus)` | The learning contrast on the accelerator, or `None`. |
+| `calibrate_transport(batches=(1, 16, 64, 256), *, name=None) -> dict` | Torch only. Chooses the transport's kernels from measurements on this device, once per graph shape, device and precision, and keeps the plan; `name` repeats a stored plan and `"rules"` returns to the rules ([choosing kernels by measurement](backends.md#choosing-kernels-by-measurement)). |
 | `connectome`, `neuron_model`, `layout` | The topology, the model and the block cut in use. |
 
 Nonfinite drives and warm states are refused. Convergence of a solve says nothing about
