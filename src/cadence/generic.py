@@ -1157,7 +1157,7 @@ def _validate_recall_state(
     names = {*Recall.RUNTIME, *Recall.CONSTRUCTION}
     # a retired setting is saved where the format of its release wrote it: like the options,
     # only where it differed from its founder
-    optional = {"inputs", *Recall.OPTIONS, *Recall.RETIRED}
+    optional = {"inputs", "hearing", *Recall.OPTIONS, *Recall.RETIRED}
     if (
         not isinstance(recalled, dict)
         or set(recalled) - optional
@@ -1181,6 +1181,8 @@ def _validate_recall_state(
             f"{Recall.removed('compete')}"
         )
     settings["position"] = _saved_position(recalled, data)
+    if settings.get("drive_gain"):
+        real("saved carried_gain", meta["carried_gain"]["rate"], low=0)
     writes = recalled["writes"]
     if isinstance(writes, bool) or not isinstance(writes, int) or writes < 0:
         raise ValueError("invalid saved recall write count")
@@ -2145,6 +2147,11 @@ class Brain:
             self.basal_ganglia.memory = self.recall
         self.hearing: Hearing | None = None
         self._carried_rate = real("carried_gain", carried_gain, low=0)
+        if self.recall is not None and self.recall.drive_gain and not self._carried_rate:
+            raise ValueError(
+                "recall_drive_gain makes the read's drive one more route of carried_gain: it "
+                "needs carried_gain above 0"
+            )
         if self._carried_rate:
             self._wire_hearing()
         self.hippocampus: FastSynapses | None = None
@@ -3767,7 +3774,8 @@ class Brain:
 
     def _wire_hearing(self) -> None:
         """One learned gain per carried route (``carried_gain``): the working trace, the
-        efference copy and every block of the heard history, each at its working value."""
+        efference copy, every block of the heard history and with ``recall_drive_gain`` the
+        read's drive over every port, each at its working value."""
         hearing = Hearing(
             self._carried_rate, self.connectome, self.association_index, self.brain.neuron_model
         )
@@ -3782,6 +3790,11 @@ class Brain:
                     f"history_{k}", self.history, k, k * width, (k + 1) * width,
                     self.history.glow[k * width:(k + 1) * width],
                 )
+        recall = self.recall
+        if recall is not None and recall.drive_gain:
+            # the read can quiet and stays at or below its amplitude
+            hearing.add("read", recall, None, 0, len(recall.port_neurons), recall.port_neurons,
+                        bound=1.0)
         self.hearing = hearing
         self.basal_ganglia.hearing = hearing
 
@@ -5119,6 +5132,12 @@ class Brain:
                         },
                         "recall_position": _saved_position(recalled, data),
                     }
+                ),
+                # the read's route is one of the carried gains (validated above)
+                **(
+                    {"carried_gain": meta["carried_gain"]["rate"]}
+                    if recalled is not None and recalled.get("drive_gain")
+                    else {}
                 ),
             )
             if code is not None:

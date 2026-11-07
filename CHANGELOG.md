@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- Add `recall_drive_gain` (opt-in, construction, founder off; it needs `carried_gain`): the read's drive
+  is one more route of the carried gains, one learned gain over every read port, starting at
+  `recall_amplitude` and reaching no higher, taught by the same contrast on lessons and the same
+  eligibility on the dopamine. One parameter. `brain.carried_gains["read"]` reads it, `describe` holds the
+  gene and the value, a checkpoint keeps it, `grow` carries it by route and `graft` keeps this brain's. A
+  newborn settles as one without the option, and brains without it are unchanged. See
+  [the read's route](docs/memory.md#the-reads-drive-as-a-route-opt-in).
 - Add `carried_gain` (opt-in, construction, founder off): one learned gain per carried route, the
   working trace, the efference copy and every block of the heard history, starting at the working
   value and multiplying the route's stimulus. A lesson steps it on the settle's contrast at the taught

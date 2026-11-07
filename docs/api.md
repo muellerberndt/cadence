@@ -193,7 +193,7 @@ maturity and a `cadence-brain/2` file without one.
 | `actor/`, `free/`, `pending/`, `moment/`, `prepared`, `lived/`, `awaiting/` | the critic and eligibility, the free phase, a pending action's phases and decision, the action `live` issued, the sensed state |
 | `code/`, `learned_code/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds` |
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
-| `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata |
+| `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata, the read's route among them with `recall_drive_gain` |
 | `memories/history/` | the heard history's `trace` |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |
@@ -322,7 +322,7 @@ Recall(connectome, amplitude=3.0, temperature=0.25, recency=0.25,
        window=1, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
        boundary=False, copy=0.0, tokens=None, action=False, anchor=False,
-       relative=False, slope=0.0, when=False, gain=0.0, grid=(), actions=0)
+       relative=False, slope=0.0, when=False, gain=0.0, grid=(), actions=0, drive_gain=False)
 ```
 
 The held-input index memory of each stream's recent moments. Each constructor argument is the

@@ -540,7 +540,8 @@ class Hearing:
     starting at the working value and taught by the settle's contrast.
 
     A route is a held region and its one-way synapses into the association: the working trace,
-    the efference copy, every block of the heard history. Its
+    the efference copy, every block of the heard history and, with ``recall_drive_gain``, every
+    port of the recall memory's read as one route. Its
     stimulus is the gain times what it holds, so the energy's derivative for the gain is local
     to the route: ``c = sum_j f'(v_j) a t_j sum_i W_ij m_i``, ``v_j`` the region's held
     potential, ``a`` the route's amplitude, ``t_j`` what it holds and ``m_i`` the association's
@@ -548,7 +549,7 @@ class Hearing:
     ``c`` over its taught rows; a sampled act keeps ``c`` per row in an eligibility of its own,
     stepped by the dopamine as every synapse is (``ActorCritic``). The step is normalized by the
     gain's own running second moment, as a synapse's is at the normalized teaching point, at
-    ``rate``. A gain stays within ``[0, BOUND]``.
+    ``rate``. A gain stays within ``[0, BOUND]``, or the lower ceiling its route was added with.
     """
 
     RHO = 0.99
@@ -566,10 +567,10 @@ class Hearing:
         self.count = 0
 
     def add(self, name: str, memory: Any, slot: int | None, start: int, stop: int,
-            neurons: np.ndarray) -> None:
+            neurons: np.ndarray, bound: float = BOUND) -> None:
         """A route: ``memory.trace[:, start:stop]`` held on ``neurons`` at the memory's
         amplitude; its gain is ``memory.hearing``, at ``slot`` when the memory holds one per
-        block."""
+        block, and goes no higher than ``bound``."""
         pre, post = np.asarray(self.connectome.pre), np.asarray(self.connectome.post)
         local_source = -np.ones(self.connectome.n, dtype=np.int64)
         local_source[neurons] = np.arange(len(neurons))
@@ -578,7 +579,7 @@ class Hearing:
         synapses = np.flatnonzero((local_source[pre] >= 0) & (local_cortex[post] >= 0))
         self.routes.append({
             "name": name, "memory": memory, "slot": slot, "start": start, "stop": stop,
-            "width": len(neurons), "synapses": synapses,
+            "width": len(neurons), "synapses": synapses, "bound": float(bound),
             "rows": local_source[pre[synapses]], "cols": local_cortex[post[synapses]],
         })
         self.second = np.zeros(len(self.routes))
@@ -628,7 +629,7 @@ class Hearing:
         correction = 1.0 - self.RHO**self.count
         moved = self.rate * contrast / (np.sqrt(self.second / correction) + self.FLOOR)
         for route, change in zip(self.routes, moved, strict=True):
-            self.set(route, float(np.clip(self.gain(route) + change, 0.0, self.BOUND)))
+            self.set(route, float(np.clip(self.gain(route) + change, 0.0, route["bound"])))
 
     def learn(self, graph: Any, learned: Any, beta: float) -> None:
         """A lesson's step, at its taught rows."""
@@ -695,8 +696,9 @@ class Recall:
     read also delivers when its slots happened), ``action`` (each slot carries the command
     executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
     the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
-    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
-    ``copy`` (plastic synapses from the read ports into the motor region).
+    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
+    ``copy`` (plastic synapses from the read ports into the motor region) and ``drive_gain``
+    (the read's drive is one more route of ``Hearing``: one learned gain on every port, at most 1).
 
     A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -745,6 +747,10 @@ class Recall:
     grid: tuple[int, ...] = ()
     # the motor neurons a slot's command covers with ``action``: a brain passes its motor width
     actions: int = 0
+    # the read's drive is one more carried route (``Hearing``): ``hearing`` multiplies the amplitude
+    # on every port and ``trace`` keeps what the ports held at the latest read, at amplitude one
+    drive_gain: bool = False
+    hearing: float = 1.0
     keys: np.ndarray = field(init=False, repr=False)
     values: np.ndarray = field(init=False, repr=False)
     nexts: np.ndarray = field(init=False, repr=False)
@@ -770,10 +776,10 @@ class Recall:
     OPTIONS = (
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "anchor",
-        "relative", "slope", "when", "gain", "grid",
+        "relative", "slope", "when", "gain", "grid", "drive_gain",
     )
-    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens",
-                            "action", "anchor", "relative", "slope", "when", "gain", "grid")
+    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens", "action", "anchor",
+                            "relative", "slope", "when", "gain", "grid", "drive_gain")
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the position lesson's rate a unit of dopamine steps the position maps at, times
     # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
@@ -852,7 +858,7 @@ class Recall:
                 raise ValueError(f"{name} must be positive")
             return number
         if name in (
-            "next", "boundary", "action", "anchor", "relative", "when",
+            "next", "boundary", "action", "anchor", "relative", "when", "drive_gain",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
@@ -1101,6 +1107,14 @@ class Recall:
                     f"the {name} region needs one neuron per feature of when ({self.when_width})"
                 )
             self._whens.append((neurons, columns(neurons), self._synapses(neurons)))
+        # every neuron the read drives, the route of ``drive_gain``, and what they held at the
+        # latest read (another batch's reads silence)
+        self.port_neurons: np.ndarray = np.concatenate(
+            [part for head in self._heads for part in head]
+            + [neurons for neurons, _, _ in self._whens]
+        )
+        self._port_columns = columns(self.port_neurons)
+        self.trace: np.ndarray = np.zeros((0, len(self.port_neurons)))
         self._rewarded(self.position_reward, self.position, self.position_rate)
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
@@ -1730,15 +1744,19 @@ class Recall:
         out = np.array(drive, dtype=float)
         addresses, attended = self._reads(moment)
         whens = self.when_features() if self._whens and self.slots else None
+        amplitude = 1.0 if self.drive_gain else self.amplitude
         for h, p in enumerate(attended):
             if p is not None:
                 p.flags.writeable = False
                 recall_columns, next_columns = self._head_columns[h]
-                out[:, recall_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.values)
+                out[:, recall_columns] = amplitude * _einsum("bm,bmc->bc", p, self.values)
                 if self.next:
-                    out[:, next_columns] = self.amplitude * _einsum("bm,bmc->bc", p, self.nexts)
+                    out[:, next_columns] = amplitude * _einsum("bm,bmc->bc", p, self.nexts)
                 if whens is not None:
-                    out[:, self._whens[h][1]] = self.amplitude * _einsum("bm,bmw->bw", p, whens)
+                    out[:, self._whens[h][1]] = amplitude * _einsum("bm,bmw->bw", p, whens)
+        if self.drive_gain:  # what the ports hold, kept for the route's lesson, at the gain
+            self.trace = out[:, self._port_columns].copy()
+            out[:, self._port_columns] = self.amplitude * self.hearing * self.trace
         if self.gain:  # every port's read of a token, through the port's gain, into the motor
             out[:, self._motor_columns] += self._gain_drive(out)
         self._attended = attended[0]  # the attention this read uses, kept past the write
@@ -1789,9 +1807,10 @@ class Recall:
             if p is None or p.shape[1] != self.slots:
                 reads.extend([None] * (2 if self.next else 1))
                 continue
-            reads.append(self.amplitude * _einsum("bm,bmc->bc", p, self.values))
+            amplitude = self.amplitude * self.hearing
+            reads.append(amplitude * _einsum("bm,bmc->bc", p, self.values))
             if self.next:
-                reads.append(self.amplitude * _einsum("bm,bmc->bc", p, self.nexts))
+                reads.append(amplitude * _einsum("bm,bmc->bc", p, self.nexts))
         return reads
 
     def _motor_movement(self, plus: BrainState, minus: BrainState) -> np.ndarray:
@@ -2580,6 +2599,8 @@ class Recall:
         for name in ("tokens", "grid"):  # JSON-safe: a list, as a checkpoint keeps it
             if name in out:
                 out[name] = list(out[name])
+        if self.drive_gain:  # the learned multiplier on the amplitude, read here and in the gains
+            out["hearing"] = self.hearing
         return out
 
 

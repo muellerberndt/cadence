@@ -51,7 +51,7 @@ the parts added. It carries every learned parameter, the optimizer's history, th
 masks, the memories' records and settings, the actor and critic, the arousal and the random
 generators. `grown.describe()` differs from `brain.describe()` in the new parts alone. With
 [`carried_gain`](memory.md#how-strongly-a-carried-region-is-heard-opt-in) it keeps its gains by
-route, and a route the growth adds starts at 1.
+route, the read's over the heads it adds, and a route the growth adds starts at 1.
 
 ## Graft trained regions into a larger brain
 

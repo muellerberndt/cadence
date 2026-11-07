@@ -21,6 +21,7 @@ works, its settings, its readings and its limits.
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
 | What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
 | How strongly each carried region is heard, per task | `carried_gain=0.01` | [carried gain](#how-strongly-a-carried-region-is-heard-opt-in) |
+| How strongly the read drives the settle, per task | `recall_drive_gain=True` | [the read's route](#the-reads-drive-as-a-route-opt-in) |
 | A cue carried across a short delay, with no recall memory | nothing: the working trace is on | [working trace](#working-trace) |
 | One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
 | Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
@@ -284,6 +285,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
 | `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#the-learned-value-path-opt-in)) |
+| `recall_drive_gain` | `False` | construction | The read's drive is one more route of `carried_gain`: one learned gain over every read port, from the amplitude and no higher ([the read's route](#the-reads-drive-as-a-route-opt-in)); needs `carried_gain` |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
@@ -1217,8 +1219,9 @@ The trace, the copy and the history each drive the settle at a fixed amplitude, 
 amplitude serves every task: a delayed response needs the trace loud, and a
 grammar lesson needs it quiet. `carried_gain=rate` gives every carried route one learned gain,
 which multiplies the route's stimulus. A route is a held region and its synapses into the
-association region: `trace`, `efference`, `history_0`, `history_1`, ... one per block. Every gain
-starts at 1, so a newborn settles as one without the option.
+association region: `trace`, `efference`, `history_0`, `history_1`, ... one per block, and with
+[`recall_drive_gain`](#the-reads-drive-as-a-route-opt-in) `read`. Every gain starts at 1, so a newborn
+settles as one without the option.
 
 ```python
 heard = Brain.compose(inputs=3, actions=2, seed=0, carried_gain=0.01, history_decays=(0.5, 0.9))
@@ -1266,6 +1269,67 @@ lives: clauses .98, brackets .83, paths .95, three hops .44 against .98, .87, .9
 n-back on all six founders (0.955 at the lowest against 0.886), induction at 0.924 or above against
 0.906, and holds paths over a second pass of the same lessons (0.96 against 0.92). The nursery's
 teacher steps at 1,000 pass on 18 lives of 30 against 25.
+
+### The read's drive as a route (opt-in)
+
+The read drives the settle at `recall_amplitude`, 3.0 by default. `recall_drive_gain=True` makes that
+drive one more route of `carried_gain`: one learned gain over every port the read holds, `recall`,
+`next`, every head's and every `recall_when` region, as one number. The gain starts at 1, so a newborn
+settles as one without the option. It multiplies the amplitude and reaches no higher than 1, so the read
+can quiet and stays at or below `recall_amplitude`.
+
+```python
+routed = Brain.compose(
+    inputs=3, actions=2, seed=0, recall=True, carried_gain=0.01, recall_drive_gain=True
+)
+assert routed.carried_gains == {"trace": 1.0, "read": 1.0}
+assert routed.describe()["genes"]["recall_drive_gain"] is True
+routed.step(np.array([[1.0, 0.0, 0.0]]), teacher=[1])
+assert routed.describe()["memories"]["recall"]["hearing"] == routed.carried_gains["read"]
+assert routed.carried_gains["read"] <= 1.0
+```
+
+The route's contrast, its rate and its eligibility are the carried gain's: `t_j` is what the ports hold at
+amplitude one, and it stays kept while the gain is at zero, so a silent read can come back. It needs
+`carried_gain` above 0.
+
+The gain settles by task. At each life's end, on fresh founders where the task has six or twelve, mean with
+least and largest:
+
+| Where | The read's gain |
+| --- | --- |
+| Grammar chamber at 64, 128 and 256 | .99 (.94 to 1.00), 1.00 (1.00), 1.00 (.98 to 1.00) |
+| Look back, copying, induction, n-back, two hops, periods of 8 and 40 | 1.00 (.98 to 1.00) |
+| "How long ago?" | .94 (.88 to .99) |
+| "Was A told before B?" | .33 (.12 to .50) |
+| Ordered recall under `live` | .98 (.80 to 1.00) |
+| Delayed response, contextual bandit | 1.00 (1.00), .98 (.90 to 1.00) |
+| Odour nursery at 1,000, `live` and `step` | .95 (.87 to 1.00), .81 (.50 to .98) |
+| Bandit | .49 (.01 to .99) |
+| Key-door at delays 2 and 5 | .66 (.09 to .97), .82 (.07 to 1.00) |
+
+On spoken phrases it falls to about .1 by 4,000 phrases.
+
+The grammar chamber holds its read near the amplitude it has, and a rise costs it. Twenty-four development
+lives, one online pass, twelve at 0.3:
+
+| The read's drive | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Two hops | Three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `recall_amplitude=0.3` | .62 | .34 | .55 | .51 | .32 | .43 | .28 | .05 |
+| `recall_amplitude=1.0` | .91 | .84 | .81 | .79 | .62 | .86 | .77 | .33 |
+| `recall_amplitude=2.0` | .97 | .92 | .92 | .95 | .78 | .96 | .93 | .40 |
+| `recall_amplitude=3.0` | .99 | .96 | .93 | .95 | .85 | .96 | .93 | .42 |
+| `recall_amplitude=6.0` | .95 | .88 | .88 | .88 | .80 | .85 | .75 | .25 |
+| `recall_drive_gain=True` | .98 | .93 | .91 | .92 | .85 | .94 | .90 | .42 |
+
+A gain free to rise settles at 1.67 to 2.34 on this chamber and reads .97 .92 .87 .89 .86 .87 .79 .31, the
+cost the amplitude of 6.0 shows, so the route stops at 1.
+
+`recall_drive_gain` (`False`) is a construction setting, refused by `retune`, and `grow` adds it only with a
+new memory. The route costs one parameter, which `parameters()` counts. A checkpoint keeps the gain, its
+second moment and the actor's eligibility. `grow` carries the gain by route over new heads, and `graft` keeps
+this brain's. `retune(recall_amplitude=...)` moves the drive under the gain. `recall_gain` is another number: a
+gain on the identity from a port's token to its action, which needs `recall_tokens`.
 
 ## Associative store (the hippocampus)
 
