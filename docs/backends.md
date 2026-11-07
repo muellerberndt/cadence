@@ -37,10 +37,11 @@ print(cd.available_backends())
 device. MPS refuses float64, `"mlx"` refuses a connectome whose blocks exceed `dense_limit`,
 and a float32 backend refuses a neuron rule whose constants float32 cannot represent.
 
-On MLX a composed brain settles and learns as on the CPU within float32 rounding, lives,
-imagines, saves and continues a pending outcome, reads several recall heads, grows and holds an
-apical compartment or a learned code ([`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py),
-[`tests/test_mlx_launch.py`](../tests/test_mlx_launch.py)).
+On MLX a composed brain settles and learns by the CPU's equations in float32, within float32 rounding of an
+ordinary solve and within the solver's tolerance of [the fast form](#the-default-backend) the CPU takes by default. It
+lives, imagines, saves and continues a pending outcome, reads several recall heads, grows, grafts and retunes, and holds
+an apical compartment or a learned code ([`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py),
+[`tests/test_mlx_launch.py`](../tests/test_mlx_launch.py), [`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)).
 On a float32 backend a brain reloaded from its checkpoint continues within that rounding, not
 bit for bit; on the CPU the reloaded brain is exact.
 
@@ -104,7 +105,8 @@ place in unified memory.
 
 A memory with several heads, a window, `recall_action`, `recall_when`, `recall_gain` or
 `recall_tokens`, a store with a separator or a surprise gate, `memory_choice` and a learned code keep
-the moment's memories on the host at every size.
+the moment's memories on the host at every size. On MLX a `maturity` reads the efficacies on the host at each
+outcome, since it measures the step applied.
 
 Reading one of these arrays on the host (`brain.recall.keys`, `brain.working_memory.trace`,
 `brain.hippocampus.strength`, `brain.basal_ganglia.w_critic`), saving a checkpoint, copying the brain,
@@ -123,8 +125,10 @@ cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
 
 A stream's synapse eligibility takes one float per synapse, 25 MB at the speech size in float32, so `step`
 takes its streams from the device's memory: 256 of them fit an A10G's 22 GB in float32 and in float64, and 22 GB
-hold about 800 of them in float32 by that arithmetic. `act` and `lesson` hold no eligibility. A large read eligibility
-goes to a checkpoint as the actor keeps it, and the reader takes that form or the full layout.
+hold about 800 of them in float32 by that arithmetic. On a 24 GB Apple M4 256 of them peak at 7.9 GB, and the 17 GB
+Metal gives a process hold about 680 by that arithmetic; past that Metal raises at allocation. `act` and `lesson`
+hold no eligibility. A large read eligibility goes to a checkpoint as the actor keeps it, and the reader takes that form
+or the full layout.
 
 
 ## The default backend
