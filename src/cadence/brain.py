@@ -44,7 +44,7 @@ import sys
 import threading
 import weakref
 from collections import OrderedDict
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, cast
 
@@ -1853,6 +1853,8 @@ _MAX_BUCKETS = 64
 _SMALL_GATHER = 4096  # a gather this small costs less than a sparse product's setup
 # Bound on the elements of one temporary in the chunked contrast products.
 _CHUNK = 1 << 25
+# The entries of the arrays a part of a per-stream contrast makes (``contrast_parts``).
+_CONTRAST_ENTRIES = 1 << 28
 # Pinned staging pays for copies at least this large; smaller ones go straight from NumPy.
 _PINNED_BYTES = 1 << 20
 
@@ -3416,9 +3418,9 @@ class _TorchKernel:
         neurons = (s_plus - s_minus).sum(dim=0).to(self.param_dtype)
         return edges, neurons
 
-    def contrast_rows(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
-        """The contrast per row, ``(batch, edges)`` and ``(batch, neurons)``, as tensors: each
-        stream's own product of the two phases, for an eligibility trace kept per stream."""
+    def contrast_parts(self, s_plus: Any, s_minus: Any) -> Iterator[tuple[int, int, Any]]:
+        """The contrast per row by parts of the streams: ``(first, stop, (rows, edges))``, each
+        stream's own product of the two phases, in arrays of at most ``_CONTRAST_ENTRIES``."""
         torch = self.torch
         if self._row_index is None:
             self._row_index = (
@@ -3426,12 +3428,20 @@ class _TorchKernel:
                 torch.from_numpy(self._connectome.post.copy()).to(self.device),
             )
         pre, post = self._row_index
-        a_plus, a_minus = s_plus[:, pre], s_minus[:, pre]
-        b_plus, b_minus = s_plus[:, post], s_minus[:, post]
-        edges = a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
-        edges = edges.to(self.param_dtype)
-        neurons = (s_plus - s_minus).to(self.param_dtype)
-        return edges, neurons
+        batch = s_plus.shape[0]
+        per = max(1, _CONTRAST_ENTRIES // max(1, 8 * pre.shape[0]))
+        for first in range(0, batch, per):
+            plus, minus = s_plus[first : first + per], s_minus[first : first + per]
+            a_plus, a_minus = plus[:, pre], minus[:, pre]
+            b_plus, b_minus = plus[:, post], minus[:, post]
+            edges = a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
+            yield first, first + plus.shape[0], edges.to(self.param_dtype)
+
+    def contrast_rows(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
+        """The contrast per row, ``(batch, edges)`` and ``(batch, neurons)``, as tensors: for an
+        eligibility trace kept per stream."""
+        edges = self.torch.cat([part for _, _, part in self.contrast_parts(s_plus, s_minus)])
+        return edges, (s_plus - s_minus).to(self.param_dtype)
 
     def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
         """The Gram contrast on the device; the per-synapse and per-neuron sums come back."""

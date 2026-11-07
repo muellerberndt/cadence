@@ -91,3 +91,62 @@ def test_a_life_on_torch_reads_as_on_the_host(seed):
         answer = host.act(x, greedy=True)
         np.testing.assert_array_equal(device.act(x, greedy=True), answer)
     np.testing.assert_allclose(device.brain.efficacy, host.brain.efficacy, rtol=0, atol=1e-9)
+
+
+def _a_life_of_rewards(brain: cd.Brain, seed: int = 5, moments: int = 12) -> list[np.ndarray]:
+    rng = np.random.default_rng(seed)
+    actions = []
+    for t in range(moments):
+        x = np.eye(12)[rng.integers(12, size=3)]
+        kwargs = {} if t == 0 else {
+            "reward": rng.random(3), "done": rng.random(3) < 0.2,
+        }
+        actions.append(np.asarray(brain.step(x, **kwargs)))
+    return actions
+
+
+@pytest.mark.parametrize("entries", [1, 1 << 14])
+@pytest.mark.parametrize("kept", [0, 1 << 40])
+def test_the_streams_eligibility_reads_alike_in_parts_and_made_twice(monkeypatch, entries, kept):
+    """A large batch makes each stream's contrast in parts and, past what can wait for the last
+    refusal, makes it again to install it: the same life within rounding."""
+    from cadence import brain as graph_module
+    from cadence import plasticity
+
+    whole = brain_on_torch()
+    plain = _a_life_of_rewards(whole)
+    monkeypatch.setattr(graph_module, "_CONTRAST_ENTRIES", entries)
+    monkeypatch.setattr(plasticity, "_KEPT_CONTRAST", kept)
+    parted = brain_on_torch()
+    for ours, theirs in zip(plain, _a_life_of_rewards(parted), strict=True):
+        np.testing.assert_array_equal(ours, theirs)
+    np.testing.assert_allclose(parted.brain.efficacy, whole.brain.efficacy, rtol=0, atol=1e-12)
+    for ours, theirs in zip(whole.basal_ganglia._trace_device, parted.basal_ganglia._trace_device,
+                            strict=True):
+        np.testing.assert_allclose(theirs.numpy(), ours.numpy(), rtol=0, atol=1e-12)
+
+
+def test_a_refused_outcome_leaves_the_streams_eligibility_as_it_was(monkeypatch):
+    from cadence import plasticity
+
+    monkeypatch.setattr(plasticity, "_KEPT_CONTRAST", 0)
+    brain = brain_on_torch()
+    _a_life_of_rewards(brain, moments=6)
+    x = np.eye(12)[[1, 7, 3]]
+    brain.act(x)
+    agent = brain.basal_ganglia
+    trace, trace_bias = (tensor.clone() for tensor in agent._trace_device)
+    critic = agent.trace_critic.copy()
+    efficacy = brain.brain.efficacy.copy()
+
+    def refused(*_args, **_kwargs):
+        raise ValueError("refused")
+
+    monkeypatch.setattr(brain.learner, "_apply_device", refused)
+    with pytest.raises(ValueError, match="refused"):
+        brain.learn(np.ones(3), np.zeros(3, dtype=bool), x)
+    monkeypatch.undo()
+    np.testing.assert_array_equal(agent._trace_device[0].numpy(), trace.numpy())
+    np.testing.assert_array_equal(agent._trace_device[1].numpy(), trace_bias.numpy())
+    np.testing.assert_array_equal(agent.trace_critic, critic)
+    np.testing.assert_array_equal(brain.brain.efficacy, efficacy)

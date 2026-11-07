@@ -27,7 +27,7 @@ steps the parameters on it.
 from __future__ import annotations
 
 import warnings
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,6 +66,9 @@ def _batch_of(state: BrainState) -> int:
 
 
 SATURATION_BAND = 0.02  # an output within this of 0 or 1 has no slope left for a nudge
+# At most this many entries of a per-stream contrast wait for the last refusal; beyond them it is
+# made again to install it, so that the device holds the streams' synapse trace once.
+_KEPT_CONTRAST = 1 << 29
 
 
 @dataclass(slots=True)
@@ -878,25 +881,24 @@ class ActorCritic:
         span = 2.0 * self.learner.config.beta
         decay = cfg.gamma * cfg.lam
         batch = len(reward)
-        edges, neurons = kernel.contrast_rows(plus.device["s"], minus.device["s"])
-        if self.salience is not None:
-            salience = torch.as_tensor(
-                np.asarray(self.salience), dtype=edges.dtype, device=edges.device
-            )
-            edges = edges * salience[:, kernel._row_index[0]]
-        if self._trace_device is None or self._trace_device[0].shape != edges.shape:
-            if self.trace is not None and self.trace.shape == tuple(edges.shape):
+        s_plus, s_minus = plus.device["s"], minus.device["s"]
+        neurons = (s_plus - s_minus).to(kernel.param_dtype)
+        synapses = self.synapses
+        if self._trace_device is None or tuple(self._trace_device[0].shape) != (batch, synapses):
+            if self.trace is not None and self.trace.shape == (batch, synapses):
                 self._trace_device = (
-                    torch.as_tensor(self.trace, dtype=edges.dtype, device=edges.device).clone(),
+                    torch.as_tensor(self.trace, dtype=neurons.dtype, device=neurons.device).clone(),
                     torch.as_tensor(
                         self.trace_bias, dtype=neurons.dtype, device=neurons.device
                     ).clone(),
                 )
             else:
-                self._trace_device = (torch.zeros_like(edges), torch.zeros_like(neurons))
+                self._trace_device = (
+                    torch.zeros((batch, synapses), dtype=neurons.dtype, device=neurons.device),
+                    torch.zeros_like(neurons),
+                )
             self.trace = self.trace_bias = None
         trace, trace_bias = self._trace_device
-        trace = decay * trace + edges / span
         trace_bias = decay * trace_bias + neurons / span
         if self.trace_critic is None or self.trace_critic.shape[0] != batch:
             self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
@@ -924,21 +926,47 @@ class ActorCritic:
         self.updates += 1
         critic_weights, critic_bias = self._critic_candidate(delta)
         d = torch.as_tensor(np.asarray(delta, dtype=float), dtype=trace.dtype, device=trace.device)
-        d = d[:, None]
         proposal = self._memory_proposal(delta)  # checked before anything is installed
         next_brain = self.learner.brain
         eta, eta_bias = self._rates()
-        step_bias = eta_bias * (d * trace_bias).mean(dim=0)
-        report = self.learner._apply_device(kernel, eta * (d * trace).mean(dim=0), step_bias)
+        step_bias = eta_bias * (d[:, None] * trace_bias).mean(dim=0)
+        # the mean over the streams of d e, with e <- decay e + contrast, part by part: the trace
+        # moves only after the last refusal, in place, so the streams hold one array of it
+        salience = None
+        if self.salience is not None:
+            salience = torch.as_tensor(
+                np.asarray(self.salience), dtype=trace.dtype, device=trace.device
+            )
+            salience = salience[:, torch.as_tensor(self.learner.brain.connectome.pre,
+                                                   device=trace.device)]
+
+        def parts() -> Iterator[tuple[int, int, Any]]:
+            for first, stop, part in kernel.contrast_parts(s_plus, s_minus):
+                if salience is not None:
+                    part = part * salience[first:stop]
+                yield first, stop, part.div_(span)
+
+        step = decay * torch.mv(trace.T, d)
+        kept: list[tuple[int, int, Any]] | None = (
+            [] if batch * synapses <= _KEPT_CONTRAST else None
+        )
+        for first, stop, part in parts():
+            step += torch.mv(part.T, d[first:stop])
+            if kept is not None:
+                kept.append((first, stop, part))
+        report = self.learner._apply_device(kernel, eta * (step / batch), step_bias)
+        trace.mul_(decay)
+        for first, stop, part in parts() if kept is None else kept:
+            trace[first:stop] += part
         self.w_critic, self.b_critic = critic_weights, critic_bias
         if proposal is not None:
             self.memory.accept(proposal)
             report["address_reward_step"] = float(proposal[3])
         self._hearing_step(delta)
         if done.any():  # a finished stream forgets its traces
-            keep = torch.as_tensor(~done, dtype=trace.dtype, device=trace.device)[:, None]
-            trace = trace * keep
-            trace_bias = trace_bias * keep
+            ended = torch.as_tensor(np.flatnonzero(done), device=trace.device)
+            trace[ended] = 0.0
+            trace_bias[ended] = 0.0
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
                 self.trace_memory = _forgotten(self.trace_memory, done)
@@ -959,11 +987,15 @@ class ActorCritic:
         report["saturation"] = self._saturation(free)
         plastic = self.learner.plastic_synapses
         assert plastic is not None
-        if plastic.all():
-            report["trace"] = float(trace.abs().mean())
-        else:
+        # the mean magnitude row by row: no array of the streams' size
+        total = trace.new_zeros(())
+        index = None
+        if not plastic.all():
             index = torch.as_tensor(np.flatnonzero(plastic), device=trace.device)
-            report["trace"] = float(trace[:, index].abs().mean())
+        for row in trace:
+            total += (row if index is None else row[index]).abs().sum()
+        kept = trace.shape[1] if index is None else index.shape[0]
+        report["trace"] = float(total / (batch * kept))
         return report
 
     def _host_trace(self) -> None:
@@ -1118,11 +1150,13 @@ class ActorCritic:
                 factor[ended] = 0.0
             self._trace_mlx = (self._trace_mlx[0], factor)
         if self._trace_device is not None:
-            trace, trace_bias = (decay * tensor for tensor in self._trace_device)
+            trace, trace_bias = self._trace_device
+            trace.mul_(decay)
+            trace_bias.mul_(decay)
             if ended is not None and ended.any():
-                keep = trace.new_tensor((~ended).astype(float))[:, None]
-                trace, trace_bias = trace * keep, trace_bias * keep
-            self._trace_device = (trace, trace_bias)
+                gone = np.flatnonzero(ended)
+                trace[gone] = 0.0
+                trace_bias[gone] = 0.0
         for name in present:
             value = getattr(self, name)
             value *= decay
