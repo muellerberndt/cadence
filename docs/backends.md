@@ -94,14 +94,45 @@ print(check["backend"], check["max_abs_deviation"])                             
 Use CPU with Numba for small continuing brains, and measure an accelerator on the actual
 changing-input workload before switching: small brains spend more time launching GPU
 operations than doing arithmetic, while deep brains and large batches gain from the device.
-On an NVIDIA A10G ([`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md)), CUDA float64
-runs a lesson of a deep apical visual brain (7,956 neurons, 903,520 synapses) about 14 times
-faster than one CPU core at batch 64 and about 27 times faster at batch 4,096. The flat founder
-(3,220 neurons, 203,264 synapses) gains at most four times, because its sweeps are elementwise
-work over the sensory neurons, which the device does in float64 at memory speed.
-`precision="float32"` runs the deep brain's lessons two to three times faster again (that GPU
-does float64 at a sixty-fourth of its float32 rate); check it against float64 as below before
-relying on it. On the small continuing nursery of the
+On an NVIDIA A10G, one process, milliseconds per act and per taught lesson of a newborn, CUDA
+against one CPU core of the same machine (an AMD EPYC 7R32) with Numba, the same sweeps:
+
+| Brain | Rows | One CPU core, act and lesson | CUDA float64 | CUDA float32 |
+| --- | ---: | ---: | ---: | ---: |
+| The chamber's default brain: 251 neurons, 13,120 synapses | 1 | 0.56, 2.76 | 2.64, 10.8 | 2.69, 10.7 |
+| The same | 16 | 1.53, 7.81 | 2.95, 13.6 | 2.94, 12.1 |
+| The same | 64 | 4.57, 24.2 | 3.42, 25.9 | 3.39, 25.4 |
+| The speech size, `Brain.compose(3920, 37, modules=(512,))`: 12,821 neurons, 6.3 million synapses | 1 | 9.46, 393 | 10.0, 236 | 10.0, 238 |
+| The same | 16 | 52.9, 493 | 37.1, 304 | 37.3, 296 |
+| The same | 64 | 160, 834 | 104, 515 | 103, 483 |
+| The same | 256 | 597, 2,270 | 366, 1,332 | 362, 1,263 |
+| The same | 1,024 | 2,889, 9,907 | 1,577, 4,828 | 1,602, 4,662 |
+| A deep apical brain, `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`: 535 neurons, 50,048 synapses | 1 | 1.36, 6.30 | 3.54, 14.2 | 3.26, 13.0 |
+| The same | 16 | 10.6, 37.3 | 3.86, 15.4 | 3.44, 13.8 |
+| The same | 64 | 38.7, 134 | 5.35, 20.7 | 4.42, 16.6 |
+| The same | 256 | 152, 524 | 12.8, 44.0 | 8.73, 27.9 |
+| The deep anatomy of [`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md) under its compartment: 7,956 neurons, 903,520 synapses | 64 | 895, 2,245 | 25.9, 55.4 | 15.1, 26.4 |
+| The same | 256 | 3,478, 8,617 | 93.5, 191 | 54.6, 79.5 |
+
+A settle of 32 sweeps from a warm state under a new drive on that device, in milliseconds:
+
+| Brain | Rows | CUDA float64 | CUDA float32 |
+| --- | ---: | ---: | ---: |
+| The chamber's default brain | 1 | 0.70 | 0.58 |
+| The same | 16 | 0.79 | 0.60 |
+| The same | 1,024 | 2.49 | 1.10 |
+| The speech size | 1 | 1.25 | 0.93 |
+| The same | 16 | 3.77 | 1.34 |
+| The same | 64 | 9.14 | 2.82 |
+| The same | 1,024 | 98.9 | 30.9 |
+| The deep apical brain | 16 | 1.55 | 0.90 |
+| The same | 256 | 5.84 | 1.38 |
+| The deep anatomy | 16 | 6.13 | 2.39 |
+| The same | 1,024 | 209 | 49.6 |
+
+A settle is a small part of an act of a brain with the memory, whose reads run on the host. The
+device's float64 runs at a sixty-fourth of its float32 rate; check float32 against float64 as below
+before relying on it. On the small continuing nursery of the
 [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
 than CUDA.
 
@@ -278,7 +309,7 @@ and precision, in the process and in `CADENCE_PLAN_CACHE` (by default
 by name with `graph.calibrate_transport(name=plan["name"])`, which refuses a plan made for another
 shape, device or precision, and `name="rules"` returns to the rules. A graph on new parameters keeps
 its plan; a checkpoint does not carry one. On an A10G a calibration costs 10 to 950 milliseconds per
-batch size on the brains below. On the composed brains the rules stand within 1.1 of its plan. On
-graphs read after the rules were set the rules' transport stands within 1.86 of the best of every
-bucket in a launch or none, and the plan within 1.06. A device without Triton has no launch to choose,
-and its plan names none.
+batch size. On the brains of the table above, at batches 1 to 1,024, it matches the rules at 51 of 60
+readings and gains 1.29 at most, at one row. On eight graphs read after the rules were set the rules'
+transport stands within 1.86 of the better of every bucket in a launch or none, at one row, and the
+plan within 1.06. A device without Triton has no launch to choose, and its plan names none.
