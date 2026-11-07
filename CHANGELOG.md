@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Default change.** `Brain.compose` gives a new brain with the memory `learning_fast_settle=True`: its free solves take
+  `equilibrate(..., fast=True)` on the compiled CPU path, the same equations, order and tolerance in fewer neuron updates,
+  with other bits at every width. `learning_fast_settle=False` names the ordinary solve and `learning=` keeps its whole
+  configuration. `recall=False` and `recall_founder=True` keep their bits, and a saved or grown brain keeps the solve it has.
+  See [settling](docs/settling.md#settling-and-equilibrium).
 - **Default change.** A new brain with the memory steps at its association's width `w`, with no new setting: above 64 the
   projection from prefrontal to association and the association-motor pair take `64 / w` through `Learner.synapse_rate`,
   and `recall_address` is .01 times `64 / w`. At 64 and under nothing changes, to the bit, and `recall_founder=True`,
@@ -127,7 +132,7 @@
   `recall=False` is bit-identical. A memory's lessons do not reproduce the bits of 0.94.0. A saved
   memory of 0.85.0 on loads with its map and continues under this lesson. See
   [how the address learns](docs/memory.md#how-it-writes-and-how-the-address-learns).
-- Add `learning_fast_settle` (opt-in, runtime, founder off): a composed brain's free solves take
+- Add `learning_fast_settle` (runtime, founder off): a composed brain's free solves take
   `equilibrate(..., fast=True)` on the compiled CPU path. A row stops at the check it is within
   1e-5, and the activation is made in arithmetic that vectorizes. The same equations, order and
   tolerance in about half of a chamber pass, with other bits. A settle's report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without
