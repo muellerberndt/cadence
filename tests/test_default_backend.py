@@ -363,3 +363,16 @@ def test_what_a_caller_changed_before_the_first_moment_moves_with_the_brain(monk
     brain.act(np.eye(12)[[1, 2, 3]], greedy=True)
     assert brain.brain._torch is not None
     assert brain.describe()["genes"] == genes
+
+
+def test_a_mature_brain_placed_at_its_first_moment_keeps_relaxing(monkeypatch):
+    pytest.importorskip("torch")
+    monkeypatch.setattr(generic, "_fastest_backends", to_the_torch_cpu(from_rows=2))
+    brain = small(maturity=True, learning_fast_settle=False)
+    a_life(brain)
+    assert brain.brain._torch is not None and brain._life_depth == 0
+    named = small(maturity=True, learning_fast_settle=False, backend="cpu")
+    a_life(named)
+    assert brain.basal_ganglia.maturity.use == pytest.approx(
+        named.basal_ganglia.maturity.use, abs=1e-6
+    )

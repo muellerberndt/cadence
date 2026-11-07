@@ -210,6 +210,8 @@ def _moment_of_life(method: _Operation) -> _Operation:
 
     @wraps(method)
     def lived(self: Brain, *args: Any, **kwargs: Any) -> Any:
+        if self._unplaced:  # before anything of this brain is held across the moment
+            self._place_for(args[0] if args else kwargs.get("observations"))
         maturity = self.basal_ganglia.maturity
         if maturity is None:
             return method(self, *args, **kwargs)
