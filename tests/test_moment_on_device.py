@@ -438,6 +438,29 @@ def test_a_large_eligibility_goes_to_a_checkpoint_as_the_actor_keeps_it(
     np.testing.assert_array_equal(one.basal_ganglia.trace_memory, other.basal_ganglia.trace_memory)
 
 
+def test_a_float32_brains_eligibility_goes_to_a_checkpoint_in_float32(tmp_path):
+    """Half the file and no second array at a load: 256 streams at the speech size hold 6 GB in
+    float32; on the host it continues in float64."""
+    brain = cd.Brain.compose(
+        12, 5, modules=(16,), seed=3, backend="torch", device="cpu", precision="float32"
+    )
+    _a_life_of_rewards(brain, moments=6)
+    path = brain.save(tmp_path / "brain.npz")
+    with np.load(path) as held:
+        assert held["actor/trace"].dtype == np.float32
+    again = cd.Brain.load(path, backend="torch", device="cpu", precision="float32")
+    assert again.basal_ganglia.trace.dtype == np.float32
+    on_host = cd.Brain.load(path, backend="cpu")
+    assert on_host.basal_ganglia.trace.dtype == np.float64
+    np.testing.assert_array_equal(on_host.basal_ganglia.trace, again.basal_ganglia.trace)
+    x = np.eye(12)[[1, 7, 3]]
+    for one in (again, on_host):
+        for _ in range(3):  # the saved action's outcome on the host's phases, then on the device
+            one.step(x, reward=np.ones(3))
+    assert again.basal_ganglia._trace_device[0].dtype == torch.float32
+    assert on_host.basal_ganglia.trace.dtype == np.float64
+
+
 def test_a_retune_keeps_the_eligibility_without_its_full_layout(monkeypatch):
     """A change of what can step keeps every column held, and reads no array of the full layout."""
     brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, backend="cpu")

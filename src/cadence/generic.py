@@ -5368,9 +5368,9 @@ class Brain:
             value = getattr(agent, name)
             if value is not None:
                 data["actor/" + name] = _host_copy(value) if _resident(value) else np.asarray(value)
-        if agent._trace_device is not None:
+        if agent._trace_device is not None:  # in the brain's precision: 256 streams at the speech
             for name, tensor in zip(("trace", "trace_bias"), agent._trace_device, strict=True):
-                data["actor/" + name] = tensor.detach().cpu().double().numpy()
+                data["actor/" + name] = tensor.detach().cpu().numpy()  # size are 6 GB in float32
         if agent.state is not None:
             data.update(_state_arrays("free/", agent.state))
         if self._prepared is not None:
@@ -5631,9 +5631,11 @@ class Brain:
             agent.learner = learner
             for name in _REWARD_ARRAYS:
                 if "actor/" + name in data:
-                    value = data["actor/" + name].copy()
+                    value = data["actor/" + name]  # read for this load alone: no second array
                     if not np.isfinite(value).all():
                         raise ValueError(f"nonfinite saved actor state: {name}")
+                    if value.dtype != np.float64 and learner.brain._torch is None:
+                        value = value.astype(np.float64)  # the host's steps add in float64
                     setattr(agent, name, value)
             agent.updates, agent.b_critic = int(meta["updates"]), float(meta["b_critic"])
             if "maturity" in meta:  # the brain's maturity, and the store's gate it engages
