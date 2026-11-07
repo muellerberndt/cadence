@@ -77,3 +77,17 @@ def test_retune_refuses_a_position_reward_at_a_frozen_table():
         frozen.retune(recall_position_reward=1.0)
     frozen.retune(recall_position_rate=0.05, recall_position_reward=1.0)  # both at once
     assert frozen.recall.position_reward == 1.0 and frozen.recall.position_rate == 0.05
+
+
+def test_a_new_brain_takes_the_positions_reward_off_with_an_eligibility_held():
+    """A new brain's read keeps the position columns alone: off, it keeps no eligibility of it."""
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3)
+    rng = np.random.default_rng(2)
+    brain.step(np.eye(12)[rng.integers(12, size=2)])
+    brain.step(np.eye(12)[rng.integers(12, size=2)], reward=[1.0, 0.0])
+    brain.learn([1.0, 0.0], [False, False], np.eye(12)[rng.integers(12, size=2)])
+    assert brain.basal_ganglia.trace_memory is not None
+    brain.retune(recall_position_reward=0.0)
+    assert brain.recall.position_reward == 0.0 and brain.basal_ganglia.trace_memory is None
+    brain.step(np.eye(12)[rng.integers(12, size=2)])
+    assert brain.basal_ganglia._pending_memory is None

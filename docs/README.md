@@ -21,7 +21,8 @@ is pinned to the release tag.
 ## The composed brain
 
 `Brain.compose(inputs, actions)` builds one association region of 64 neurons between the senses
-and the motor choice, a working trace and an associative store, all settling together; with
+and the motor choice, a working trace, a recall memory of the stream's recent moments and an
+associative store, all settling together (`recall=False` builds it without the recall memory); with
 `arousal=True` it is a creature that `live` runs, learning while young or aroused, and `step`
 learns from every outcome and from labels. Every other part is opt-in and described in the
 guide that owns it.

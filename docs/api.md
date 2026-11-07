@@ -46,13 +46,18 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
-- `teaching`: the teaching point of the lesson's learner, `"founder"` (unset), `"normalized"`
-  or `"deep"` (the normalized point with the projection-relative floor 0.1 and nudged phases
-  of a whole 32 sweeps, for a brain with an apical compartment). It sets `eta`, `eta_bias`,
+- `teaching`: the teaching point of the lesson's learner, `"founder"`, `"normalized"` or `"deep"`
+  (the normalized point with the projection-relative floor 0.1 and nudged phases of a whole 32
+  sweeps). Unset: `"deep"` in a new brain with the memory, `"founder"` otherwise. It sets `eta`, `eta_bias`,
   `normalize`, `normalize_floor`, `normalize_relative` and `nudged_fixed`, whose `learning_`
   names it replaces ([many lessons](teach.md#many-lessons-the-normalized-point-for-imitation),
   [deep brains](tune.md#deep-brains)). `retune(teaching=...)` moves a living brain between the
   points; `learning=LearnerConfig(...)` replaces the whole configuration instead.
+- `recall`: unset, a new brain holds the memory up to 4,096 observation-code coordinates, at
+  [what `recall=True` gives a new brain](memory.md#what-recalltrue-gives-a-new-brain), and refuses to
+  choose above that, naming `code=units`, `recall=False` and `recall=True`. `recall=False` builds it
+  without one; `recall_founder=True` composes the memory at its founders; a custom `connectome` holds one
+  only by name.
 - `options`: every constructor keyword below and every `learning_<field>`, `actor_<field>`
   and `arousal_<field>` name; with `memory_choice=True` it fills in the episodic founders.
 
@@ -70,7 +75,7 @@ the caller did not, through k heads with `recall_heads=k`
 episodic action voting.
 
 Refusals: unknown names, the bare `eta` or `eta_bias`, and duplicate aliases raise
-`TypeError`; a `recall_` name without `recall=True`, a setting outside its range, and
+`TypeError`; a `recall_` name with `recall=False`, a setting outside its range, and
 `arousal_*` names without `arousal` raise `ValueError`. A retired setting is refused by name
 with a message naming its replacement ([CHANGELOG](../CHANGELOG.md)). `attention` must be boolean;
 `attention=True` without `learned_code`, with `recall=False`, with `recall_window < 2` or
@@ -148,7 +153,7 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `describe() -> dict` | JSON-safe `layout` (regions, `code`, `composition`, `projection_rates` where the brain holds per-synapse rates), `genes` (every setting by its `compose` name; at `teaching="custom"`, `learning` gives the six effective expert teaching settings), `memories` (each member's `to_dict()`) and `pending`, and `placement` where the brain is not on the CPU by name. | [defaults](tune.md#defaults-and-expert-overrides) |
 | `observation_code(observations) -> (batch, code_width)` | The unit-length key every memory reads and writes; with a learned code, the code the observations settle to without a context. | [the observation code](senses.md#the-observation-code), [the learned code](senses.md#the-learned-code) |
 | `stimulus(observations, *, memory=True) -> drive` | The drive of a batch; with `memory` the trace, copy, history, recall and hippocampal reads are added, and the recall address is fixed for the moment. | [memory](memory.md) |
-| `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps and its options' maps (anchor, relative, slope), a learned code's tables, and with `maturity` its use (one) and the place records' noise scales (`gate_noise`, one per consolidated entry). | |
+| `parameters() -> int` | Actor and critic parameters, the consolidated matrices of the place and context records and of the direct payments, the recall memory's address and position maps, its options' maps (anchor, relative, slope, grid) and gains, one per carried route, a learned code's tables, and with `maturity` its use (one) and the place records' noise scales (`gate_noise`, one per consolidated entry). | |
 | `copy.deepcopy(brain)` | An independent copy: every array, store, state and random generator copied, the immutable connectomes shared. |
 | `save(path, *, compressed=True) -> Path`, `Brain.load(path, *, backend=None, device=None, precision=None)` | The whole continuation, written atomically ([the format](#checkpoint-format)); `compressed=False` writes a plain archive, faster for a large brain. `Brain.load` refuses a learner-only file; `Learner.load` reads either. | [reset and save](start.md#reset-and-save) |
 
@@ -297,8 +302,8 @@ brain's memories are explained in [memory](memory.md); the standalone stores in
 [standalone memory stores](memory.md#standalone-memory-stores).
 
 ```text
-Trace(connectome, decay=0.5, amplitude=1.0, source="hidden", target="context")
-Efference(connectome, decay=0.5, amplitude=1.0, source="motor", target="efference")
+Trace(connectome, decay=0.5, amplitude=1.0, source="hidden", target="context", hearing=1.0)
+Efference(connectome, decay=0.5, amplitude=1.0, source="motor", target="efference", hearing=1.0)
 ```
 
 Methods: `reset(batch, rows=None)`, `keep(rows)`, `stimulate(drive)`, `update(state)`,
@@ -307,7 +312,7 @@ Behaviour: [traces](memory.md#traces); in the brain: [working trace](memory.md#w
 [efference copy](memory.md#efference-copy).
 
 ```text
-History(connectome, decays, amplitude=3.0, source="sensory", target="history")
+History(connectome, decays, amplitude=3.0, source="sensory", target="history", hearing=None)
 ```
 
 One block of `source` width per decay in `target`; `hear(observations)` moves block `d` by
@@ -324,7 +329,8 @@ Recall(connectome, amplitude=3.0, temperature=0.25, recency=0.25,
        window=1, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
        boundary=False, copy=0.0, tokens=None, action=False, anchor=False,
-       relative=False, slope=0.0, when=False, gain=0.0, grid=(), actions=0, drive_gain=False)
+       relative=False, slope=0.0, when=False, gain=0.0, grid=(), actions=0, drive_gain=False,
+       hearing=1.0)
 ```
 
 The held-input index memory of each stream's recent moments. Each constructor argument is the
@@ -346,7 +352,7 @@ retired setting is refused by name with a sentence saying what the memory does i
 | `end(batch, rows=None)` | Ends episodes and keeps the slots, as `Brain.reset(keep=("slots",))` does; the latest slot learns no successor. With `boundary` an end of every stream opens one boundary slot. |
 | `weights(address, position=None)`, `position_term(head, event, cortex, rows=None)`, `ages()`, `buckets()`, `readback(graph, region, movement, head=0)`, `activity(state)` | The read's slot shares (with a head's position term from `position_term`, the shares the read used; without it the content's and recency's alone), one head's position term at every slot, slot ages and their position buckets, and the association movement read back through one head's recall synapses. |
 | `reset(batch, rows=None)`, `keep(rows)`, `snapshot()`, `restore(snapshot)`, `reading()`, `hold(reading)`, `branch()` | Stream bookkeeping; `branch()` is a copy that reads the live slots and writes none. |
-| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the sixteen options saved only where they differ, validation of one gene, the null slot's logit, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`; head 0's bare, head h's with `_h`). |
+| `Recall.founders()`, `Recall.options()`, `Recall.setting(name, value)`, `Recall.removed(name)`, `Recall.ports(heads, next=True)`, `Recall.action_ports(heads, next=True)`, `Recall.position_count(position, capacity)`, `Recall.map_names(kind, head)` | The always-described genes, the seventeen options saved only where they differ, validation of one gene, the sentence that refuses a retired setting, the regions of each head's port and of its command, the number of age buckets, and the checkpoint names of one head's three maps of a kind (`"address"`, `"position"`, `"anchor"`, `"relative"`, `"slope"`, `"grid"`; head 0's bare, head h's with `_h`). |
 | `grid_maps`, `grid_buckets()` | With `grid` every head's `(G_x, G_c, g)` maps, one column per residue of each modulus, and each slot's residues as columns of them, `(moduli, slots)`; empty without it |
 | `told`, `focus`, `anchor_maps`, `relative_maps`, `slope_maps`, `anchored_buckets(rows=None)`, `relative_buckets(rows=None)`, `when_regions(heads)`, `when_features`, `when_width`, `RELATIVE`, `SLOPE` | The options' state: each stream's moments told in its episode and the age of the slot its previous read attended most (`-1` before a read); one `(E_x, E_c, e)`, `(Q_x, Q_c, q)`, `(S_x, S_c, s)` map per head for the anchor, the relative read and the slope (empty lists without the option); each slot's anchored and relative bucket per stream; the when regions' names, the features a read delivers per slot (two of its age, with the anchor two more of its place) and their count; the relative offsets kept apart (8) and the slope's age scale (8). |
 | `attended_heads`, `head_map(head)`, `head_maps`, `position_map(head)`, `position_maps`, `position_buckets` | Every head's attention of the latest read, head 0's first (None before a read, when the read found no slots, and once the streams changed); one head's address map `(w_x, w_c, b)` and every head's; one head's position maps `(P_x, P_c, p)` (refused at `position=0`), every head's (empty at `position=0`), and their number of age buckets. |

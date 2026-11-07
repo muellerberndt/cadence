@@ -1,4 +1,4 @@
-| How strongly the read drives the settle, per task | nothing: a new brain with the memory learns it (`recall_drive_gain=True`) || How strongly each carried region is heard, per task | nothing: a new brain with the memory learns it (`carried_gain=0.01`) |# Memory
+# Memory
 
 A memory is anything the brain keeps from an earlier moment and can use in a later answer.
 Everything else is computed again from the current observation. This page starts from the
@@ -20,9 +20,9 @@ works, its settings, its readings and its limits.
 | "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
 | What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
-| How strongly each carried region is heard, per task | `carried_gain=0.01` | [carried gain](#how-strongly-a-carried-region-is-heard) |
-| How strongly the read drives the settle, per task | `recall_drive_gain=True` | [the read's route](#the-reads-drive-as-a-route) |
-| A cue carried across a short delay, with no recall memory | nothing: the working trace is on | [working trace](#working-trace) |
+| How strongly each carried region is heard, per task | nothing: a new brain with the memory learns it (`carried_gain=0.01`) | [carried gain](#how-strongly-a-carried-region-is-heard) |
+| How strongly the read drives the settle, per task | nothing: a new brain with the memory learns it (`recall_drive_gain=True`) | [the read's route](#the-reads-drive-as-a-route) |
+| A cue carried across a short delay | nothing: the working trace is on, with or without a recall memory | [working trace](#working-trace) |
 | One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
 | Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
 | Noisy or signed pay | `memory_rate=0.2` | [associative store](#associative-store-the-hippocampus) |
@@ -236,11 +236,11 @@ and the cortex of the moment before, the history and the window begin afresh.
 there (`Recall.end`), and the ended episode's last slot learns no successor from the next
 stream's first moment.
 
-**The episode's boundary (opt-in, `recall_boundary=True`).** A slot's next is taught by the
+**The episode's boundary (`recall_boundary`, on in a new brain).** A slot's next is taught by the
 moment that follows it, so every event but the first has a predecessor whose next holds it, and
 a read can find an event through two ports: its own slot's value, or the slot before's next.
 The first event of an episode has only the first. A brain that learns to answer one cue through
-the next port then has no route to the start of an episode. With the option each stream that
+the next port then has no route to the start of an episode. With it each stream that
 begins holds a boundary slot first, a silent moment of zero key and zero value whose next the
 first event teaches, so both routes exist for every position. A stream begins when the memory
 empties its streams, when some of them are reset (their boundary takes the latest slot, the
@@ -284,7 +284,7 @@ configuration.
 | `recall_position_rate` | `0.1` | `0.01` | The slow position table |
 | `recall_relative` | `False` | `True` | Each slot's age relative to the previous read's focus |
 | `recall_grid` | `()` | `(7, 8, 9, 11)` | Past the table of 32 a term per residue, for a period longer than the table ([long context](#reads-over-long-context)) |
-| `recall_capacity` | `64` | `128` | Slots that still hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
+| `recall_capacity` | `64` | `128` | Slots that hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
 | `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
 | `carried_gain` | `0.0` | `0.01` | [A learned gain per carried route](#how-strongly-a-carried-region-is-heard), from the trace's 3.0 |
 | `recall_drive_gain` | `False` | `True` | [The read's route](#the-reads-drive-as-a-route): the read quiets where it does not pay and stays at or below its amplitude |
@@ -327,7 +327,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_copy` | `0.0` | construction | Above 0, plastic synapses from every read port into the motor region at that initial magnitude ([the copy pathway](#the-copy-pathway-opt-in)) |
-| `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none); the pathway starts as their identity, echo suppressed; needs `recall_copy` |
+| `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none). With `recall_copy` the pathway starts as their identity, echo suppressed; without it no synapse is added, and a lesson whose answer has no token leaves the read's maps as they are |
 | `recall_action` | `False` | construction | Every slot carries the executed command in its key and value, and the maps read the command of the moment before ([its own actions](#its-own-actions-in-the-slots-opt-in)) |
 
 The [API reference](api.md#recall-memory-genes) gives the `Recall` class signature.
@@ -360,7 +360,7 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
   that target, and each head's maps take a bounded least-mean-squares step at
   `recall_position_rate`. This happens whatever `recall_address` is: a frozen address map does
   not freeze the position term.
-- **Trained by reward on request.** At `recall_position_reward` above zero, each sampled act
+- **Trained by reward.** A new brain holds `recall_position_reward=4.0`. Above zero, each sampled act
   keeps the step the position lesson would take, were the act's action the lesson's label, in
   the eligibility the actor traces, and dopamine steps the maps by `recall_position_reward`
   times one lesson's step at the founder's rate of 0.1, whatever `recall_position_rate` the
@@ -412,7 +412,7 @@ fall short on some founders.
 
 ### Positions at lengths no lesson reached
 
-**The anchor (opt-in, `recall_anchor=True`; it needs the position term).** An age counts back
+**The anchor (`recall_anchor`, on in a new brain; it needs the position term).** An age counts back
 from the present, so the first moment of a story has a different age in every story of another
 length: a head that learned "the first told" on stories of 12 reads the wrong slot in stories of
 36. With the anchor every head's term also reads each slot's place in its stream's current
@@ -431,7 +431,7 @@ without the option; lessons step them with the position maps, and rewards with
 and `second` at 0.99 to 1.00, against 0.31 to 0.45 without it; induction, n-back, periodic
 continuation and copying read the same with and without it.
 
-**The relative read (opt-in, `recall_relative=True`; it needs the position term).** Some reads
+**The relative read (`recall_relative`, on in a new brain; it needs the position term).** Some reads
 are placed where an earlier read pointed: copying a sequence, the token after the one just
 said is the slot written after the slot the previous read found, whatever the length. With the
 option every head's term also reads each slot's age relative to the slot the stream's previous
@@ -443,7 +443,7 @@ maps. Copying sequences with repeated tokens, taught at lengths 3 to 6 and teste
 the relative read answers 0.54 to 0.74 of the tokens in closed loop against 0.10 to 0.14
 without it; with the recipe below it answers 0.92 to 0.94.
 
-**The slope (opt-in, `recall_slope` above 0; it needs the position term).** The table holds one
+**The slope (`recall_slope`, 0.1 in a new brain; it needs the position term).** The table holds one
 term per age bucket, and an age no lesson reached keeps its zero: a head taught to look back to
 the first of 5 to 12 symbols does not look back past 12. With the slope every head's term also
 leans by age at every length:
@@ -457,7 +457,7 @@ keeps the exact offsets beside it. The maps start at zero, so a newborn reads as
 the option, and the lesson steps them by the table's gradient read along the ages, at the rate
 `recall_slope`; rewards do not train them.
 
-**The recipe for lengths no lesson reached.** Combine the anchor, the slope at 0.1 and the table
+**The recipe for lengths no lesson reached.** A new brain combines the anchor, the slope at 0.1 and the table
 taught slowly beside it, `recall_position_rate=0.01` (with `recall_recency=0` and the boundary;
 [sequence battery](../benchmarks/sequence/README.md), 1,500 lessons):
 
@@ -517,7 +517,7 @@ assert speaker.recall.anchor and speaker.learner.config.nudged_fixed
 Three blocks of fresh founders read it, each under a protocol declared before its first life, on one machine,
 with no refused lesson and no exhausted act. The first block read the composition without the read's route
 (`recall_drive_gain=False`). The second read it paired, with the route and without, both at the ordinary solve. The
-third read what a new brain composes now, with the fast solve. Each column of the sequence battery is six founders,
+third read what a new brain composes, with the fast solve. Each column of the sequence battery is six founders,
 ordered recall twelve, and a reading holds at its bar on at least 5 of 6:
 
 | Reading | Bar | First block, no route | Second block, no route | Second block, the route | Third block, this composition |
@@ -632,6 +632,21 @@ Against the founder memory, `recall_founder=True`, where a task names the memory
 | Hidden route, guided, 30 founders | sampled success | .40 | .22 | .21 |
 | Hidden route, guided, 30 founders | greedy success | .25 | .08 | .00 |
 
+Lessons that read a binding, and the chain whose stages look alike, read lower than the founder memory (the library at the ordinary solve,
+no `recall=False` reading where the chamber needs a memory to erase):
+
+| Chamber | Reading | `recall_founder=True` | This composition | `recall=False` |
+| --- | --- | --- | --- | --- |
+| Binding token, six lives | held-out answers | .97 | .89 | |
+| Binding token, six lives | a name restated | .76 | .59 | |
+| Binding continuing, six lives | held-out answers | .99 | .92 | |
+| Sequence battery, four founders | "How long ago?" | .64 | .56 | .38 |
+| [Chain whose stages look alike](../benchmarks/context_key/README.md), 48 lives | clean greedy | 7 of 48 | 4 of 48 | 2 of 48 |
+
+At width 256 the rates cost brackets: on six fresh founders at the ordinary solve, twelve lives a cell, brackets read .82 at the
+width's steps against .94 at whole steps, a paired fall of .12 (±.09), and the other panels hold or rise
+([wide brains](tune.md#wide-brains)). On the third block, with the fast solve, brackets read .93 at the width's steps.
+
 At the key-door's delay 5 it rises: 9 to 12 of 32 on development founders, 4 to 7 of 24 on fresh ones. On six
 lives each it holds the odour nursery `live` at 300 and 1,000 and through `step` at 300, the bandit (blocks won 27
 to 28 of 30), the contextual bandit (3 to 6 of 6) and delayed response (6 of 6). These read at the ordinary solve. On the
@@ -704,7 +719,7 @@ assert far.recall.position == 32 and far.recall.grid_maps[0][2].shape == (35,)
 ```
 
 **How many slots.** The slots hold the distance and more. On a stream that repeats, a read one period
-back meets a noisy copy; with about 2.5 times the period the slots still hold the first period and the
+back meets a noisy copy; with about 2.5 times the period the slots hold the first period and the
 read lands on it, on about 2 slots at a period of 40: the sequence composition reads that period at
 .999 with the grid at 128 slots and at .821 to .925 with table 64 at 64. The grid's parameters stay fixed as the slots
 grow, at `35 (width + association + 1)` per head; an exact table's grow with them, to 206,733 at 1,280
@@ -870,7 +885,7 @@ for token in range(TOKENS):                          # no lesson used any of the
   every synapse learns by, with the source held. A row's rate is `min(recall_gain, 5 / E)`, `E` the
   energy of the row's reads over every port (`Recall.GAIN_BOUND`, a constant of the memory), so a
   row taught alone moves its own drive by at most five times the neuron's movement. Above the bound
-  the rate no longer matters, and without the bound a large rate collapses the read. A step that
+  the rate moves nothing, and without the bound a large rate collapses the read. A step that
   is not finite is refused whole; the report gives `gain_rows` and `gain_refused`.
 - **The gains learn which port holds the answer.** Nothing assigns a port. On six fresh founders the
   next port's gain ends at 1.5 to 1.9 on a period of 8 and the recall port's near zero; on two hops
@@ -888,7 +903,7 @@ for token in range(TOKENS):                          # no lesson used any of the
   recall memory with tokens, as for the copy pathway.
 - **Limit.** The drive is a term held through the settle, which is sound for a held read. A read
   revised by the live association inside the settle would have to carry it in the reciprocal force,
-  or the settle is no longer the descent of one energy; the two are not composed.
+  or the settle leaves the descent of one energy; the two are not composed.
 
 Read on six fresh founders beside [one composition for sequences](#one-composition-for-sequences), at
 `recall_gain=1.0`, in the [sequence battery](../benchmarks/sequence/README.md) (1,500 lessons, 16 streams)
@@ -921,7 +936,7 @@ recipe in the place of the composition):
   development founder, and each moves the association a third as far or less. The read then falls at
   positions no lesson reached, and the answer follows it. On a path's hop the read's delivery falls the
   same way. This is the copy pathway's failure beside the recipe, smaller.
-- **An action no lesson taught still loses the vote.** On look back the read names the held token
+- **An action no lesson taught loses the vote.** On look back the read names the held token
   (0.46 to 0.98) and the answer is 0.00. Lessons on other actions push the association's drive on that
   action down, and the read is spread over the slots it holds, so the path's edge for the right token
   is smaller than the association's for the taught one.
@@ -1134,8 +1149,9 @@ synapses. Each further head adds its two regions, their projections and one more
 The address map is `code` by `address_width` plus the association width by `address_width`;
 with compose's 64 association neurons it is 0.66 MB at 256 inputs, 1,322 MB at 12,824 inputs
 on the uncoded observation and 8.9 MB with `code=1024`. One stream's slots hold `capacity`
-keys, values and nexts, 0.39 MB at 256 inputs, in arrays of up to twice the capacity: a write adds a
-slot in the room behind the others and moves them when the room runs out. The map is learned: a
+keys, values and nexts, 0.79 MB at 256 inputs and a new brain's 128 slots, in arrays of up to twice the capacity: a write adds a
+slot in the room behind the others and moves them when the room runs out. A new brain's position, anchored, relative, slope and
+grid maps add 39,483 numbers at 256 inputs beside the address map's 82,176, 0.32 MB against 0.66. The map is learned: a
 reset keeps it, `parameters()` counts it and a checkpoint saves it. The keys are the observation
 code, so changing the code makes the stored keys inconsistent with new addresses.
 
@@ -1235,7 +1251,7 @@ The founder's 3.0 is the amplitude at which the trace alone carries a cue across
 a recall memory at `teaching="deep"` the read carries the cue, and at 3.0 the taught brain answers
 through the trace: on the [grammar chamber](../benchmarks/grammar/README.md#state-across-moments),
 emptying the trace before every act takes clauses from 0.96 to 0.38. It also falls with width. A
-tenth of the amplitude removes both, on the synapses already there. Twenty-four lives on
+tenth of the amplitude removes both, on the synapses as they stand. Twenty-four lives on
 development founders, widths three lives each at whole steps with the read map at .01:
 
 | Width, amplitude | Clauses | Held-out | Roles | Brackets | Paths | Three hops |
@@ -1338,7 +1354,7 @@ it steps every synapse's. The step is `carried_gain` over the root of the gain's
 second moment, the normalized teaching point's rule for one number, and a gain stays within
 `[0, 8]`.
 
-`carried_gain` (`0.0`, off) is a construction setting. It costs one parameter per route, which
+`carried_gain` (founder `0.0`, off; `0.01` in a new brain with the memory) is a construction setting. It costs one parameter per route, which
 `parameters()` counts. A checkpoint keeps the gains, their second moments and the actor's
 eligibility. `grow` carries the gains by route, and a route it adds starts at 1; `graft` keeps this
 brain's. `brain.carried_gains` reads them by name, and `brain.hearing` is the learner (`None`
@@ -1358,7 +1374,7 @@ width: clauses 1.00, paths .79 and three hops .32 at 128, 1.00, .97 and .47 at 2
 where the fixed amplitude reads .92, .54 and .06, and .62, .25 and .00. The
 [chamber's README](../benchmarks/grammar/README.md#state-across-moments) holds the rows.
 
-Beside a trace already at 0.3 it reads the grammar chamber as the fixed amplitude does (twenty-four
+Beside a trace at 0.3 it reads the grammar chamber as the fixed amplitude does (twenty-four
 lives: clauses .98, brackets .83, paths .95, three hops .44 against .98, .87, .96, .46), passes
 n-back on all six founders (0.955 at the lowest against 0.886), induction at 0.924 or above against
 0.906, and holds paths over a second pass of the same lessons (0.96 against 0.92). The nursery's
@@ -1420,7 +1436,7 @@ lives, one online pass, twelve at 0.3:
 A gain free to rise settles at 1.67 to 2.34 on this chamber and reads .97 .92 .87 .89 .86 .87 .79 .31, the
 cost the amplitude of 6.0 shows, so the route stops at 1.
 
-`recall_drive_gain` (`False`) is a construction setting, refused by `retune`, and `grow` adds it only with a
+`recall_drive_gain` (founder `False`; `True` in a new brain with the memory) is a construction setting, refused by `retune`, and `grow` adds it only with a
 new memory. The route costs one parameter, which `parameters()` counts. A checkpoint keeps the gain, its
 second moment and the actor's eligibility. `grow` carries the gain by route over new heads, and `graft` keeps
 this brain's. `retune(recall_amplitude=...)` moves the drive under the gain. `recall_gain` is another number: a
@@ -1487,7 +1503,7 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
 - **Noisy or signed pay.** `memory_rate=1.0` keeps only the last outcome, so one bad outcome
   overwrites the record. Use `memory_rate=0.2`; in the
   [competing ring](../benchmarks/competing/README.md) it acquires as fast and takes about 0.10
-  off the loss, most of which remains.
+  off the loss, and most of the loss stays.
 
 ### Maturity and surprise-gated writes
 
@@ -1771,8 +1787,6 @@ On Will Glynn's Stone Age chains ([`benchmarks/context_key`](../benchmarks/conte
 - A record that paid is not extinguished by failures that pay nothing unless
   `memory_extinction` is set ([above](#a-paid-action-that-stops-paying-extinction)).
 - `predict` and `fit` answer independent samples and read no memory.
-
-<a id="the-recall-memory-in-full"></a>
 
 ## Standalone memory stores
 
