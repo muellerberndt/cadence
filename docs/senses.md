@@ -238,7 +238,7 @@ and `IDENTITY` 0.9 (the weight of the observation's own identity in the memories
 
 Refused with `ValueError`: `learned_code` below 2, `learned_code_fields` without the region,
 fields that do not sum to the inputs or leave a field fewer than two units, `code` beside
-`learned_code`, an image brain, a backend other than `cpu`, and a custom connectome without a
+`learned_code`, an image brain, the `torch` backend, and a custom connectome without a
 `code` population and the complete dictionary, lateral and predictor synapses, or whose
 sensory neurons project anywhere but to the code region.
 

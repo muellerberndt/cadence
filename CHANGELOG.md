@@ -2,18 +2,29 @@
 
 ## Unreleased
 
-- The `"mlx"` backend costs 8 to 14 times less per act and 3 to 13 times less per taught lesson on a
+- The `"mlx"` backend costs 9 to 13 times less per act and 9 to 17 times less per taught lesson on a
   brain a launch takes, and about 1.6 times less on one it does not take, with the same equations and
   tolerance within float32 rounding; its bits change, and every CPU path keeps its own. A chunk of
   sweeps runs in one Metal launch that ends with the equations' residual, a state stays on the device
   until read, a lesson's update from 131,072 block entries and a recall address map from 1,048,576
   entries stay on the device, and a sweep no launch takes is compiled. On an Apple M4 at the speech
-  size (3,920 inputs, 6.3 million synapses) an act takes 2.4 ms against 9.2 on one CPU core, and a
-  taught lesson 21 against 184; a chamber batch of 16 rows takes about 1.5 times one CPU core's.
+  size (3,920 inputs, 6.3 million synapses) an act takes 2.8 ms against 14 on one CPU core, and a
+  taught lesson 23 against 291; a chamber batch of 16 rows takes about 1.2 times one CPU core's.
   `Brain.residual` reads a launch's check of a state under its own drive, nudge and
   parameters, in float32; `on_device=False` keeps the float64 reference, which also decides a solve
   below a tolerance of 1e-4. `copy.deepcopy` of an MLX brain works. `CADENCE_MLX_LAUNCH=0` keeps one
   MLX operation at a time. See [which hardware](docs/backends.md#which-hardware).
+- The `"mlx"` backend holds an apical compartment and a learned code, which it refused. A launch reads
+  a neuron's basal and top-down products apart and joins them at its pool's gain per sweep and row, or at
+  the gain a nudged settle holds, and a source range under another step than `dt = 1` follows its drive
+  in closed form, so every neuron rule without adaptation launches. A block holding synapses of both
+  compartments, or more than 1,360 settling neurons with a compartment, takes the compiled sweep. A settle
+  agrees with the CPU within 2.3e-7, with equal steps and checks, and a continued life on one set of weights
+  within 2e-5. Four regions under a compartment at 64 rows take 3.9 ms per act and 13 per lesson against 13
+  and 55 on one CPU core; `modules=(256, 128)` at the speech size and 16 rows 9.6 and 40 against 101 and
+  441. On `benchmarks/depth/and_count.py`'s four regions the mean of the ten readings from lesson 3,100
+  over six seeds is .802 on the CPU and .786 on MLX, a difference of .016 with a standard error of .015.
+  See [precision matters](docs/backends.md#precision-matters).
 - **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
   [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
   `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only

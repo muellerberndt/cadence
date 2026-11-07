@@ -116,7 +116,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
-| `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, a backend other than `cpu`, or a connectome without the region's populations and complete synapses | `ValueError` |
+| `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -547,8 +547,8 @@ defaults to the connectome's signs, `log_gain` and `bias` to zero. Graphs whose 
 fit in `dense_limit` squared entries use the [block transport](#blocks-cadenceblocks);
 `layout` passes a precomputed cut. `precision` (torch only) is `"float32"` or `"float64"`
 ([backends](backends.md)). `apical` (an `Apical`) lands some synapses on an apical
-compartment ([the apical compartment](anatomy.md#the-apical-compartment)); the mlx backend
-refuses it. Parameter arrays are read-only; assign whole validated arrays to
+compartment ([the apical compartment](anatomy.md#the-apical-compartment)). Parameter arrays are
+read-only; assign whole validated arrays to
 `efficacy`, `bias` or `log_gain`, or use `with_parameters`. Nonfinite values are refused
 before any change.
 

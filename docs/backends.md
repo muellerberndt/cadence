@@ -36,8 +36,9 @@ device. MPS refuses float64, `"mlx"` refuses a connectome whose blocks exceed `d
 and a float32 backend refuses a neuron rule whose constants float32 cannot represent.
 
 On MLX a composed brain settles and learns as on the CPU within float32 rounding, lives,
-imagines, saves and continues a pending outcome, reads several recall heads and grows; it
-refuses an apical compartment ([`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py)).
+imagines, saves and continues a pending outcome, reads several recall heads, grows and holds an
+apical compartment or a learned code ([`tests/test_mlx_backend.py`](../tests/test_mlx_backend.py),
+[`tests/test_mlx_launch.py`](../tests/test_mlx_launch.py)).
 On a float32 backend a brain reloaded from its checkpoint continues within that rounding, not
 bit for bit; on the CPU the reloaded brain is exact.
 
@@ -111,31 +112,40 @@ relying on it. On the small continuing nursery of the
 than CUDA.
 
 On an Apple M4, one process, milliseconds per act and per taught lesson of a newborn, MLX
-against one CPU core with Numba (float32 against float64, the same sweeps):
+against one CPU core with Numba (float32 against float64, the same sweeps), at a load of about 2.5:
 
 | Brain | Rows | One CPU core, act and lesson | MLX, act and lesson |
 | --- | ---: | ---: | ---: |
-| A small founder: 12 inputs, association 32 | 1 | 0.07, 0.26 | 0.39, 1.8 |
-| The chamber's recipe: 251 neurons, 13,120 synapses | 16 | 0.43, 2.2 | 0.56, 2.6 |
-| The founder at the speech size: 3,920 inputs, 2.3 million synapses | 1 | 0.75, 24 | 0.93, 4.8 |
-| The recipe at the speech size: 6.3 million synapses, 24 million parameters | 1 | 9.2, 184 | 2.4, 21 |
-| The same | 16 | 13, 185 | 5.2, 31 |
-| The same | 64 | 38, 265 | 16, 67 |
-| The same | 256 | 129, 605 | 54, 167 |
-| The same | 1,024 | 535, 2,009 | 229, 693 |
-| The same | 4,096 | 2,582, 12,243 | 990, 2,775 |
-| The deep anatomy above, without its apical compartment: 7,956 neurons, 903,520 synapses | 1 | 17, 58 | 52, 173 |
-| The same | 16 | 43, 122 | 48, 167 |
-| The same | 64 | 146, 363 | 65, 195 |
-| The same | 256 | 518, 1,402 | 151, 372 |
-| The same | 1,024 | 2,111, 5,623 | 639, 1,435 |
-| The same | 4,096 | 9,366, 25,157 | 2,594, 7,845 |
+| A small brain without the memory: 12 inputs, association 32 | 1 | 0.07, 0.26 | 0.66, 2.8 |
+| The same with the memory a new brain holds | 1 | 0.17, 0.77 | 0.73, 3.1 |
+| The chamber's recipe: 251 neurons, 13,120 synapses | 16 | 0.53, 2.8 | 0.67, 3.1 |
+| A new brain at the speech size: 3,920 inputs, 6.3 million synapses, 24 million parameters | 1 | 14, 291 | 2.8, 23 |
+| The same | 16 | 17, 295 | 6.2, 34 |
+| The same | 64 | 49, 411 | 17, 70 |
+| The same | 256 | 185, 922 | 60, 205 |
+| The same | 1,024 | 751, 3,020 | 347, 1,260 |
+| The same | 4,096 | 3,230, 19,500 | 1,520, 7,250 |
+| Four regions under an apical compartment, `modules=(128, 64, 64, 64)`, without the memory: 439 neurons, 43,904 synapses | 1 | 0.42, 1.8 | 0.73, 3.3 |
+| The same | 16 | 1.9, 5.5 | 0.79, 3.3 |
+| The same | 64 | 8.4, 23 | 5.9, 21 |
+| The same with the memory: 535 neurons, 50,048 synapses | 1 | 0.50, 2.5 | 0.85, 4.5 |
+| The same | 16 | 2.4, 9.3 | 1.1, 5.6 |
+| The same | 64 | 13, 55 | 3.9, 13 |
+| The speech size under a compartment, `modules=(256, 128)`, with the memory: 12,309 neurons, 2.1 million synapses | 1 | 27, 191 | 7.2, 30 |
+| The same | 16 | 101, 441 | 9.6, 40 |
+| The deep anatomy above, with its compartment: 7,956 neurons, 903,520 synapses | 1 | 33, 118 | 99, 260 |
+| The same | 16 | 132, 426 | 106, 537 |
+| The same | 64 | 248, 650 | 118, 350 |
+| The same | 256 | 1,090, 2,680 | 312, 896 |
+| The same | 1,024 | 4,550, 11,400 | 1,370, 3,560 |
+| The same | 4,096 | 18,000, 49,100 | 7,130, 25,500 |
 
-MLX wins on the recipe at the speech size at every batch, and on the deep anatomy from about 32 rows.
-At the chamber's size one synchronization with the GPU costs about 180 microseconds whatever the work, and
-a solve of three chunks takes three: a pass of the [grammar chamber](../benchmarks/grammar/README.md),
-4,000 batches of 16 rows, takes 51 s on one CPU core and 75 s on MLX. One core stays the choice at
-that size.
+MLX wins at the speech size at every batch, on four regions under a compartment from about 16 rows, and on the
+deep anatomy, which takes the compiled sweep, from about 32 rows. At the chamber's size one synchronization with the
+GPU costs about 180 microseconds whatever the work, and a solve of three chunks takes three: a pass of the
+[grammar chamber](../benchmarks/grammar/README.md), 4,000 batches of 16 rows, takes 51 s on one CPU core and
+75 s on MLX. One core stays the choice at that size. The load moves these readings: above a load of 4 an MLX act
+at the speech size has read twice its quiet time.
 
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
 dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize
@@ -150,6 +160,21 @@ contrast errors. Every backend forms the phase contrast as
 exactly zero. Check the deployed backend with `conformance` on representative drives, compare
 residuals and task readouts, and declare precision in any receipt. Run gradient checks on
 float64 CPU or CUDA with the nudge size and phase residuals declared.
+
+A deep brain under an apical compartment shows what this means. One lesson on MLX or on torch at
+float32 reads a synapse's contrast within 1e-8 of the float64 reading, where the contrasts of the
+deepest projection stand near 1e-7 at birth and 4e-6 once it learns. Its step agrees within 3e-5
+wherever the contrast reaches 1e-6, and below that rounding sets the sign. Those differences do not
+stay small: from one checkpoint on the same rows the efficacies of float64 and float32 part from 4e-7
+after one lesson to 4e-3 after 200, and two float64 runs part the same way from a start rounded to
+float32, reading .72 and .52 at lesson 1,200. So a float32 run is another run. What it learned reads
+the same on every backend: the same answer on all 2,000 held rows of
+[`benchmarks/depth/and_count.py`](../benchmarks/depth/README.md) on the CPU, on MLX and on torch at
+float32, whichever of the first two taught it. On that benchmark's four regions over 4,000 lessons,
+the mean of the ten readings from lesson 3,100 over six seeds is .802 on the CPU (.719 to .831) and
+.786 on MLX (.751 to .817): MLX reads .016 below, with a standard error of .015 on that difference. A
+single reading swings further on both, down to .40 past lesson 2,000 on the CPU and .39 on MLX, so
+compare runs by such a mean over seeds, not by a last reading.
 
 ## Residual checks, masks and conformance
 
@@ -202,12 +227,19 @@ MLX runs a chunk of sweeps in one Metal launch (`mx.fast.metal_kernel`): one thr
 one thread per settling neuron (a neuron of a range that receives synapses), the activations in
 threadgroup memory, a barrier per sweep, and the equations' residual of the launch's first and
 last state read at its end, so a solve that needs one chunk synchronizes with the device once.
-Under `dt = 1` without adaptation a source range's potential is its drive from its first sweep on,
-so its products are made once a settle, one MLX operation each, and reach the launch summed. The
+Without adaptation a source range's potential follows its drive in closed form. Under `dt = 1` it is
+its drive from its first sweep on, so its products are made once a settle, one MLX operation each,
+and reach the launch summed. Under another step each sweep reads the products of its own, made in one
+compiled operation, until the range's gap to its drive is below 1e-7: about 22 sweeps after a new
+observation at `dt = 0.5`. With an apical compartment a thread reads a neuron's basal and top-down
+products apart, a second barrier per sweep lets it read its pool's mean squares, and it adds the
+top-down input at the pool's gain; a nudged settle reads the gains it holds. A launch's last state
+leaves its gains, so `apical_gain` after a free settle takes no launch of its own. The
 state stays on the device; the host's arrays are made from it without another launch when read.
-A launch holds up to 2,048 settling neurons, and takes no mask, anchor, trajectory or recording,
-no softmax group that is not a range of settling neurons and no temperature below 0.02. Those
-settles, and other rules, run a sweep through `mx.compile`, the blocks as inputs, with every block's
+A launch holds up to 2,048 settling neurons, 1,360 with a compartment, and takes no mask, anchor,
+trajectory or recording, no block holding synapses of both compartments, no adaptation, no softmax
+group that is not a range of settling neurons and no temperature below 0.02. Those settles run a
+sweep through `mx.compile`, the blocks as inputs, with every block's
 product at every step, and evaluate a settle's graph once at its end (at least every 64 steps of a
 long one), or at every step when a movement `tolerance` is read. `CADENCE_MLX_LAUNCH=0` keeps one MLX
 operation at a time and the update and the maps on the host.
