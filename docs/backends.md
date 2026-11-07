@@ -135,30 +135,58 @@ on the host and places itself there, with nothing learned yet to move. A brain a
 takes the device at compose. Reading `brain.recall` or `brain.brain` before a first moment that moves the
 brain holds the host's object; read them after it, or name the backend.
 
-| Device | A brain takes it from | Read on |
-| --- | --- | --- |
-| CUDA, float32 | `rows * synapses >= 850,000`, under an apical compartment 150,000 | an NVIDIA A10G against the compiled CPU path at its default on its EPYC 7R32, over `act`, `lesson` and `step` |
-| MLX, float32 | `rows * synapses >= 500,000`; a brain no launch takes, past 2,048 settling neurons or 1,360 under a compartment, from 32 rows | an Apple M4 against one of its cores |
-| The compiled CPU path | every other brain | |
+| Device | A brain takes it from, `rows * synapses` | Under an apical compartment | Read on |
+| --- | ---: | ---: | --- |
+| CUDA, float32 | 800,000 | 110,000 | an NVIDIA A10G against one core of its EPYC 7R32 at the CPU path's default |
+| MLX, float32 | 800,000 | 500,000 | an Apple M4 against one of its cores at the CPU path's default |
+| The compiled CPU path | every other brain | every other brain | |
 
-On that A10G, in milliseconds of `act`, `lesson` and `step`, one CPU core at its default solve, then the device:
+On MLX a brain no launch takes, past 2,048 settling neurons or 1,360 under a compartment, takes the device from 32
+rows at any size. The crossing is where `act`, `lesson` and `step` together pass the core, by their geometric
+mean. On each device one brain near it reads a small loss: 512 inputs at 4 rows, because no single number
+also takes 1,024 inputs at one row, which the device runs in half the time.
+
+On that A10G, milliseconds of `act`, `lesson` and `step`, each cell read in turn with the GPU to itself:
 
 | Brain | Synapses | Rows | One core | A10G, float32 |
 | --- | ---: | ---: | ---: | ---: |
-| The chamber's default brain, 35 inputs | 13,120 | 1 | 0.82, 4.4, 4.4 | 2.76, 11.5, 9.2 |
-| The same | | 16 | 1.04, 7.9, 9.9 | 3.05, 13.2, 11.5 |
-| The same | | 64 | 3.63, 34.4, 33.1 | 3.89, 23.3, 17.6 |
-| The same | | 256 | 8.79, 86.0, 87.6 | 4.51, 32.5, 25.7 |
-| 128 inputs, `modules=(64,)` | 30,976 | 16 | 1.78, 13.0, 18.8 | 3.49, 18.2, 14.3 |
-| The same | | 64 | 6.23, 46.2, 66.2 | 4.60, 22.7, 19.6 |
-| 512 inputs, `modules=(128,)` | 222,464 | 4 | 2.77, 22.5, 25.8 | 4.65, 20.1, 18.8 |
-| The same | | 16 | 7.80, 36.1, 71.7 | 4.59, 20.0, 18.9 |
-| 1,024 inputs, `modules=(256,)` | 870,912 | 1 | 2.94, 59.6, 52.2 | 4.19, 31.5, 25.6 |
-| The speech size, 3,920 inputs, `modules=(512,)` | 6,321,152 | 1 | 11.2, 623, 444 | 5.04, 42.6, 28.7 |
-| The same | | 16 | 52.2, 642, 1,142 | 6.18, 46.5, 44.6 |
-| `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`, 48 inputs | 50,048 | 1 | 1.63, 7.4, 6.6 | 3.33, 14.4, 12.2 |
-| The same | | 4 | 4.20, 20.0, 18.4 | 3.52, 14.7, 12.8 |
-| The same | | 64 | 55.0, 170, 119 | 5.20, 32.4, 22.9 |
+| The chamber's default brain, 35 inputs | 13,120 | 1 | 0.52, 2.66, 2.73 | 1.61, 8.04, 7.32 |
+| The same | | 16 | 0.93, 6.82, 8.36 | 1.99, 9.49, 9.65 |
+| The same | | 64 | 2.10, 23.1, 23.9 | 2.72, 17.0, 15.7 |
+| The same | | 256 | 8.32, 77.3, 79.9 | 3.49, 16.2, 24.5 |
+| 128 inputs, `modules=(64,)` | 30,976 | 16 | 1.37, 11.4, 15.9 | 2.32, 14.1, 12.5 |
+| The same | | 64 | 4.25, 31.6, 43.7 | 3.36, 15.4, 18.0 |
+| 512 inputs, `modules=(128,)` | 222,464 | 4 | 2.01, 16.6, 22.1 | 3.49, 15.5, 16.3 |
+| The same | | 16 | 4.67, 27.9, 52.0 | 3.36, 15.5, 16.7 |
+| 1,024 inputs, `modules=(256,)` | 870,912 | 1 | 1.95, 41.8, 31.9 | 2.76, 25.7, 22.3 |
+| The speech size, 3,920 inputs, `modules=(512,)` | 6,321,152 | 1 | 7.05, 480, 291 | 3.83, 21.8, 20.9 |
+| The same | | 16 | 42.7, 591, 997 | 4.58, 24.3, 35.4 |
+| `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`, 48 inputs | 50,048 | 1 | 1.46, 6.55, 5.35 | 1.91, 9.60, 9.50 |
+| The same | | 4 | 3.75, 13.6, 12.7 | 2.02, 10.2, 10.3 |
+| The same | | 16 | 10.8, 37.3, 32.7 | 2.24, 11.6, 12.0 |
+| `modules=(256, 128), apical=0.25, teaching="deep"`, 3,920 inputs | 2,098,432 | 1 | 40.1, 278, 138 | 4.30, 19.7, 19.3 |
+| The same | | 16 | 230, 932, 817 | 5.84, 24.9, 27.6 |
+
+On an Apple M4, the same, single readings on a shared machine at a load of 12 to 25:
+
+| Brain | Synapses | Rows | One core | Apple M4, MLX |
+| --- | ---: | ---: | ---: | ---: |
+| The chamber's default brain, 35 inputs | 13,120 | 1 | 1.04, 4.51, 5.66 | 3.56, 12.6, 14.4 |
+| The same | | 16 | 2.44, 13.3, 12.6 | 6.34, 14.1, 17.2 |
+| The same | | 64 | 6.11, 32.9, 36.9 | 7.16, 26.1, 35.3 |
+| The same | | 256 | 22.5, 158, 114 | 9.39, 29.6, 102 |
+| 128 inputs, `modules=(64,)` | 30,976 | 16 | 4.69, 22.4, 18.1 | 3.24, 16.4, 25.5 |
+| The same | | 64 | 10.2, 39.5, 45.6 | 5.92, 16.8, 31.3 |
+| 512 inputs, `modules=(128,)` | 222,464 | 4 | 2.98, 24.6, 20.2 | 5.32, 25.9, 25.6 |
+| The same | | 16 | 8.51, 63.2, 118 | 5.86, 21.7, 31.9 |
+| 1,024 inputs, `modules=(256,)` | 870,912 | 1 | 11.0, 232, 125 | 8.38, 34.6, 28.0 |
+| The speech size, 3,920 inputs, `modules=(512,)` | 6,321,152 | 1 | 25.6, 648, 365 | 8.05, 59.2, 44.5 |
+| The same | | 16 | 51.6, 849, 2,115 | 15.4, 60.4, 145 |
+| `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`, 48 inputs | 50,048 | 1 | 3.29, 14.5, 13.1 | 3.92, 18.4, 15.1 |
+| The same | | 4 | 5.81, 16.5, 14.0 | 5.86, 21.0, 17.3 |
+| The same | | 64 | 34.7, 101, 94.9 | 11.6, 36.4, 71.1 |
+| `modules=(256, 128), apical=0.25, teaching="deep"`, 3,920 inputs | 2,098,432 | 1 | 73.1, 361, 221 | 10.4, 45.9, 37.8 |
+| The same | | 16 | 210, 938, 683 | 13.3, 89.2, 74.7 |
 
 MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
 have no reading; name them to use them. A CUDA card this table has not read takes the device from twice the
@@ -187,7 +215,7 @@ connectome = cd.layered(4, 16, 2, seed=0)
 neuron_model = cd.learning_neuron_model()
 cd.NeuralGraph(connectome, neuron_model, backend="torch")                        # cuda, else mps, else cpu
 cd.NeuralGraph(connectome, neuron_model, backend="torch", device="cpu")          # force a device
-cd.NeuralGraph(connectome, neuron_model, backend="torch", precision="float64")   # float64 on a device
+cd.NeuralGraph(connectome, neuron_model, backend="torch", precision="float32")   # a named precision
 if "mlx" in cd.available_backends():
     cd.NeuralGraph(connectome, neuron_model, backend="mlx")
 brain = cd.Brain.compose(8, 3, backend="torch", device="cpu")                    # a composed brain

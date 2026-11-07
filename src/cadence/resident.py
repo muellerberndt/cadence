@@ -67,7 +67,8 @@ def _memory_on_device(kernel: Any, streams: int, width: int) -> bool:
 # settle costs the CPU more, and on an Apple M4.
 _AUTO_CUDA_WORK = 800_000
 _AUTO_CUDA_APICAL = 110_000
-_AUTO_MLX_WORK = 500_000
+_AUTO_MLX_WORK = 800_000
+_AUTO_MLX_APICAL = 500_000
 # A launch on MLX takes this many settling neurons, and past them a brain runs its compiled sweep,
 # which passes one CPU core from about this many rows (one deep anatomy, between 16 and 64).
 _MLX_LAUNCH_NEURONS = (8, 2048)
@@ -122,9 +123,10 @@ def _fastest_backends(
     out: list[_Candidate] = []
     low, high = _MLX_LAUNCH_NEURONS
     launched = settling is None or low <= settling <= (_MLX_LAUNCH_APICAL if apical else high)
+    mlx_work = (_AUTO_MLX_APICAL if apical else _AUTO_MLX_WORK) * margin
     if (
         precision != "float64"
-        and (work >= _AUTO_MLX_WORK * margin if launched else rows >= _MLX_SWEEP_ROWS)
+        and (work >= mlx_work if launched else rows >= _MLX_SWEEP_ROWS)
         and _mlx_present()
     ):
         out.append(_Candidate("mlx", None, None, f"{said} are past where MLX passes one CPU core"))

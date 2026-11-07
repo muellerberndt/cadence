@@ -85,6 +85,23 @@ def test_mlx_takes_the_brains_its_table_read_faster(monkeypatch):
     assert choose(1, SPEECH, precision="float64") == ("cpu",)
 
 
+# as read on an Apple M4: rows, synapses, under a compartment, the fastest
+READ_ON_THE_M4 = [
+    (16, CHAMBER, False, "cpu"), (64, CHAMBER, False, "mlx"), (16, 30_976, False, "cpu"),
+    (64, 30_976, False, "mlx"), (1, 222_464, False, "cpu"), (16, 222_464, False, "mlx"),
+    (1, 870_912, False, "mlx"), (1, SPEECH, False, "mlx"), (16, SPEECH, False, "mlx"),
+    (4, DEEP, True, "cpu"), (16, DEEP, True, "mlx"), (4, 107_136, True, "cpu"),
+    (16, 107_136, True, "mlx"), (4, 10_752, True, "cpu"), (64, 10_752, True, "mlx"),
+    (1, 2_098_432, True, "mlx"),
+]
+
+
+@pytest.mark.parametrize(("rows", "synapses", "apical", "fastest"), READ_ON_THE_M4)
+def test_the_rule_chooses_what_read_fastest_on_the_m4(monkeypatch, rows, synapses, apical, fastest):
+    on_a_machine(monkeypatch, mlx=True)
+    assert choose(rows, synapses, apical=apical)[0] == fastest
+
+
 def test_a_brain_no_launch_takes_passes_one_core_at_its_rows_on_mlx(monkeypatch):
     on_a_machine(monkeypatch, mlx=True)
     deep_anatomy = {"settling": 7_000, "apical": True}
