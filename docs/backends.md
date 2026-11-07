@@ -164,8 +164,8 @@ reasoned from the readings above and not read at that size. A learned code stays
 A choice is made once, at the first moment: rows that grow later do not move the brain. `brain.placement` states
 the `backend`, `device`, `precision`, `chosen_by` (`"auto"`, `"named"` or `"environment"`), `why`, `refused` and
 `pending`. `brain.describe()` and a checkpoint state the same wherever the brain is not on the CPU by name, whose
-descriptions and files keep their bytes, and a brain loaded elsewhere reports `saved_on`. A device that refuses the brain falls to the next fastest, and `refused` names it with its reason:
-detection never fails a compose. Without the optional packages nothing is imported, and below a device's
+descriptions and files keep their bytes, and a brain loaded elsewhere reports `saved_on`. A device that refuses the
+brain falls to the next fastest, and `refused` names it with its reason: detection never fails a compose. Without the optional packages nothing is imported, and below a device's
 work neither torch nor MLX is imported where they are installed.
 
 A new brain's free solves take the fast form on the compiled CPU path alone, so by default the host and a
@@ -182,7 +182,7 @@ connectome = cd.layered(4, 16, 2, seed=0)
 neuron_model = cd.learning_neuron_model()
 cd.NeuralGraph(connectome, neuron_model, backend="torch")                        # cuda, else mps, else cpu
 cd.NeuralGraph(connectome, neuron_model, backend="torch", device="cpu")          # force a device
-cd.NeuralGraph(connectome, neuron_model, backend="torch", precision="float32")   # float32 settling
+cd.NeuralGraph(connectome, neuron_model, backend="torch", precision="float64")   # float64 on a device
 if "mlx" in cd.available_backends():
     cd.NeuralGraph(connectome, neuron_model, backend="mlx")
 brain = cd.Brain.compose(8, 3, backend="torch", device="cpu")                    # a composed brain

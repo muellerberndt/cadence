@@ -93,7 +93,7 @@ class _Candidate(NamedTuple):
 
 def _cuda_card() -> str | None:
     """The CUDA card here, None without one. Torch is imported only when the rule asks."""
-    if importlib.util.find_spec("torch") is None:
+    if sys.platform == "darwin" or importlib.util.find_spec("torch") is None:
         return None
     try:
         import torch
@@ -140,7 +140,7 @@ def _fastest_backends(
             out.append(_Candidate(
                 "torch", "cuda", floats, f"{said} are past where {card} passes one CPU core"
             ))
-    why = "the next fastest" if out else f"{said} are below where a device here passes one CPU core"
+    why = "the next fastest" if out else f"one CPU core is the fastest here for {said}"
     out.append(_Candidate("cpu", None, None, why))
     return out
 
