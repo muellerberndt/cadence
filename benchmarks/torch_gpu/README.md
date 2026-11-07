@@ -42,6 +42,22 @@ The deep brain's float64 lesson on the device beats one CPU core by about ten ti
 sweeps are mostly elementwise work over 3,072 sensory neurons, which the device does in float64
 at memory speed and the compiled CPU loop does well; it gains at most four times.
 
+The same lessons on an A10G that nothing else used, against 0.94.0 on that box (one process each, five
+lessons after three to warm up), and one core of the same machine (an AMD EPYC 7R32 with Numba):
+
+| brain | batch | one CPU core | CUDA float64 0.94.0 | CUDA float64 | CUDA float32 0.94.0 | CUDA float32 |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| deep | 64 | 2.27 | 0.073 | 0.055 | 0.033 | 0.027 |
+| deep | 256 | 8.41 | 0.233 | 0.191 | 0.096 | 0.083 |
+| deep | 1,024 | | 0.753 | 0.704 | 0.324 | 0.283 |
+| deep | 4,096 | | 2.84 | 2.77 | 1.25 | 1.11 |
+| flat | 64 | 0.024 | 0.014 | 0.013 | 0.012 | 0.013 |
+| flat | 256 | 0.144 | 0.042 | 0.037 | 0.035 | 0.035 |
+| flat | 1,024 | | 0.166 | 0.139 | 0.136 | 0.133 |
+| flat | 4,096 | | 0.614 | 0.537 | 0.517 | 0.499 |
+
+The first table above read 0.90.0 and its successor on a shared GPU.
+
 Where a deep lesson's time goes (`--split`, the device synchronized around each part, seconds):
 
 | batch | version | free settle | two nudged settles | residual checks | apical gain | contrast and update |

@@ -309,6 +309,35 @@ def test_held_still_products_serve_only_their_own_source_neurons(device, transpo
     np.testing.assert_allclose(held, host2.residual(first, a), rtol=0, atol=1e-12)
 
 
+def test_a_settle_of_no_sweeps_rests_where_the_state_is_unless_a_mask_moves_it(device):
+    brain = composed(apical=False)
+    host = brain.learner.brain
+    dev = on(host, device)
+    n = host.connectome.n
+    rng = np.random.default_rng(23)
+    drive = rng.uniform(-0.5, 1.0, (3, n))
+    a, b = host.settle_batch(drive, steps=9), dev.settle_batch(drive, steps=9)
+    rests = dev.settle_batch(drive, steps=0, state=b)
+    assert rests.steps == 0 and rests.device["s"] is b.device["s"]
+    np.testing.assert_array_equal(rests.activity_change, np.zeros(3))
+    same(host.settle_batch(drive, steps=0, state=a), rests)
+    # a mask republishes the activation; a settle under it does not rest for the next
+    keep = np.ones(n)
+    keep[3] = 0.0
+    a2, b2 = host.settle_batch(drive, steps=0, state=a, mask=keep), dev.settle_batch(
+        drive, steps=0, state=b, mask=keep)
+    same(a2, b2)
+    a3, b3 = host.settle_batch(drive, steps=5, state=a, mask=keep), dev.settle_batch(
+        drive, steps=5, state=b, mask=keep)
+    assert not b3.device["unmasked"]
+    a4, b4 = host.settle_batch(drive, steps=0, state=a3), dev.settle_batch(drive, steps=0, state=b3)
+    assert b4.device["s"] is not b3.device["s"]
+    same(a4, b4)
+    # a reset row returns to rest
+    kept = dev._torch.keep_rows(b.device, np.array([True, False, True]))
+    assert "unmasked" not in kept
+
+
 def test_still_products_can_be_turned_off(device, monkeypatch):
     brain = composed(apical=False)
     host = brain.learner.brain

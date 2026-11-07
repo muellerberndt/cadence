@@ -2577,7 +2577,9 @@ class _Workspace:
 
         self.batch = batch
         self.out = zeros(rows, batch)  # the transport's output; rows no synapse writes stay zero
-        # a light workspace (residual checks only) holds no state slots
+        # a light workspace (a float64 copy that checks only) makes its buffers at its first check
+        self.light = light
+        self.checked: Any = None
         state = 0 if light else n
         self.v = [zeros(state, batch), zeros(state, batch)]
         self.s = [zeros(state, batch), zeros(state, batch)]
@@ -2611,6 +2613,25 @@ class _Workspace:
         self.seen: dict[Any, int] = {}  # eager runs per graph key, before a capture
         self.configs: dict[Any, Any] = {}  # per graph key: its sweep configuration
         self.executed_steps = 0
+
+    def fill_for_checks(
+        self, torch: Any, device: Any, dtype: Any, n: int, batch: int, split: bool
+    ) -> None:
+        """A residual check's buffers: those of a settle, which a light workspace makes now."""
+        if self.checked is None:
+            self.checked = torch.zeros(batch, dtype=dtype, device=device)
+            if self.light:
+                def zeros() -> Any:
+                    return torch.zeros(n, batch, dtype=dtype, device=device)
+
+                self.v = [zeros(), zeros()]
+                self.s[0], self.s[1] = zeros(), zeros()
+                self.total, self.standing = zeros(), zeros()
+                self.light = False
+        if split and self.input is None:
+            self.input = torch.zeros(n, batch, dtype=dtype, device=device)
+        if split and self.still is None:
+            self.still = torch.zeros(n, batch, dtype=dtype, device=device)
 
     def clear_captures(self) -> None:
         """Drop configurations and every graph/reference that can own their nudge buffers."""
@@ -3412,24 +3433,6 @@ class _TorchKernel:
             ws.still_goal.copy_(ws.standing)
             ws.still_version = self._version
 
-    def _checked_input(self, ws: Any, s: Any, v: Any, masked: bool) -> Any:
-        """The synaptic input a residual check reads: every product, the still ones held in the
-        workspace when they are those of these source neurons."""
-        plan = self.plan
-        batch = ws.batch
-        if (plan.still is None or masked or "_synaptic_input" in self.__dict__
-                or plan.still_size * batch < _STILL_KEPT):
-            return self._synaptic_input(s, ws.out)
-        if ws.still is None:
-            ws.still = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
-        if ws.still_goal is None:
-            ws.still_goal = self.torch.empty_like(ws.still)
-        if ws.still_version != self._version or self._differ_from_goal(ws, v)[0]:
-            plan.products(plan.still, s, ws.still)
-            ws.still_goal.copy_(v)
-            ws.still_version = self._version
-        return plan.products(plan.moving, s, ws.out) + ws.still
-
     def _sweep(self, ws: Any, cfg: _SweepConfig, i: int, j: int, stage: int = 0) -> None:
         """One sweep from slot ``i`` into slot ``j``: no host synchronization, no new buffer."""
         plan = self.plan
@@ -3771,18 +3774,26 @@ class _TorchKernel:
         )
 
     def _graph(self, ws: Any, cfg: _SweepConfig, parity: int, length: int, stage: int = 0) -> Any:
-        """The captured graph of ``length`` sweeps from slot ``parity``, or None to run eagerly.
+        """The captured graph of ``length`` sweeps from slot ``parity``, or None to run eagerly."""
 
-        A configuration runs eagerly from both slots first (the kernels' lazy setup), then is
-        captured; a graph whose capture fails turns graphs off for this kernel."""
+        def body() -> None:
+            for k in range(length):
+                self._sweep(ws, cfg, (parity + k) % 2, (parity + k + 1) % 2, stage)
+
+        return self._captured(ws, (cfg.key, stage, parity, length), (cfg.key, stage), body)
+
+    def _captured(self, ws: Any, key: Any, seen: Any, body: Any) -> Any:
+        """The graph captured of ``body`` under ``key``, or None to run it eagerly.
+
+        ``seen`` counts its eager runs: it runs eagerly twice first (the kernels' lazy setup),
+        then is captured; a graph whose capture fails turns graphs off for this kernel."""
         torch = self.torch
-        key = (cfg.key, stage, parity, length)
         graph = ws.graphs.get(key)
         if graph is not None:
             ws.graphs.move_to_end(key)
             return graph
-        if self._graphs_failed or ws.seen.get((cfg.key, stage), 0) < 2:
-            return None  # not yet run eagerly from both slots
+        if self._graphs_failed or ws.seen.get(seen, 0) < 2:
+            return None  # not yet run eagerly twice
         if self._capture_stream is None:
             self._capture_stream = torch.cuda.Stream(self.device)
         if ws.pool is None:  # a pool lives as long as a graph captured on it
@@ -3795,8 +3806,7 @@ class _TorchKernel:
                 # relaxed: the Triton launcher's driver queries must not invalidate the capture
                 graph.capture_begin(pool=ws.pool, capture_error_mode="relaxed")
                 try:
-                    for k in range(length):
-                        self._sweep(ws, cfg, (parity + k) % 2, (parity + k + 1) % 2, stage)
+                    body()
                 finally:
                     graph.capture_end()
         except Exception as error:
@@ -3906,69 +3916,102 @@ class _TorchKernel:
             return reference.residual(
                 drive, keep, nudge, {"v": handle["v"].double(), "a": handle["a"].double()}
             )
-        torch, neuron_model, n = self.torch, self.neuron_model, self.n
+        torch = self.torch
         v, a = handle["v"], handle["a"]
         batch = v.shape[0]
-        adapt = neuron_model.adaptation
         with torch.no_grad():
             ws = self._workspace(batch)
-
-            def scratch(buffer: Any) -> Any:  # a workspace buffer between settles, or a new one
-                if buffer is not None and tuple(buffer.shape) == (n, batch):
-                    return buffer
-                return torch.empty(n, batch, dtype=self.dtype, device=self.device)
-
-            d = self._drive_here(drive).T
-            k = np.asarray(keep, dtype=float)
-            kt = self._upload(k.reshape(-1))[:, None] if k.ndim == 1 or k.shape[0] == 1 else (
-                self._upload(k).T
-            )
-            vt = scratch(ws.v[0])
-            vt.copy_(v.T)
-            s = self._activation_into(vt, scratch(ws.s[0]))
-            s.mul_(kt)
-            at = None
-            if adapt is not None:
-                at = scratch(ws.v[1])
-                at.copy_(a.T)
-            synaptic = self._checked_input(ws, s, vt, bool((k != 1.0).any()))
+            ws.fill_for_checks(torch, self.device, self.dtype, self.n, batch,
+                               self.plan.still is not None)
+            ws.v[0].copy_(v.T)
+            if ws.a is not None:
+                ws.v[1].copy_(a.T)
+            ws.standing.copy_(self._drive_here(drive).T)
+            ws.standing.add_(self.bias[:, None])
+            kind, keep_buffer = self._keep(ws, keep, batch)
             buffers = self._nudge_buffers(ws, nudge, batch)
-            error = scratch(ws.total)
-            if self.apical is None:
-                torch.add(synaptic, d, out=error)
-                error.add_(self.bias[:, None])
-                error.sub_(vt)
-                if adapt is not None and at is not None:
-                    error.sub_(at, alpha=adapt.strength)
-                if buffers is not None:
-                    self._push(error, s, buffers)
+            held = False
+            if self.apical is not None:
+                if ws.held is None:
+                    ws.held = torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
+                held = self._held_into(ws.held, nudge, batch)
+            # the still products a check makes, unless the workspace holds them for this state
+            plan = self.plan
+            big = kind is None and plan.still_size * batch >= _STILL_KEPT
+            make = plan.still is not None and not (
+                big and ws.still_version == self._version
+                and not self._differ_from_goal(ws, ws.v[0])[0]
+            )
+            key = ("check", kind, None if buffers is None else id(buffers), held, make)
+
+            def body() -> None:
+                self._check(ws, keep_buffer, buffers, held, make)
+
+            graph = self._captured(ws, key, key, body) if self._graphs_on(False) else None
+            if graph is not None:
+                with torch.cuda.device(self.device):
+                    graph.replay()
+                self.graph_stats["replays"] += 1
             else:
-                torch.add(d, self.bias[:, None], out=error)
-                error.add_(synaptic.narrow(0, 0, n))
-                if adapt is not None and at is not None:
-                    error.sub_(at, alpha=adapt.strength)
-                if buffers is not None:
-                    self._push(error, s, buffers)
-                raw = synaptic.narrow(0, n, n)
-                held = scratch(ws.standing)
-                if self._held_into(held, nudge, batch):
-                    error.addcmul_(held, raw)
-                elif self._pools is not None:
-                    self._apical_launch(ws, error, raw)
+                body()
+                ws.seen[key] = ws.seen.get(key, 0) + 1
+            if make:
+                if big:
+                    if ws.still_goal is None:
+                        ws.still_goal = torch.empty_like(ws.standing)
+                    ws.still_goal.copy_(ws.v[0])
+                    ws.still_version = self._version
                 else:
-                    error.addcmul_(self._apical_spread(error, raw), raw)
-                error.sub_(vt)
-            error.mul_(kt)  # (projected_next_v - v) / dt, written without cancellation
-            projection = scratch(ws.s[1])
-            torch.mul(vt, kt - 1.0, out=projection)
+                    ws.still_version = -1
+            out = ws.checked.cpu().double().numpy()
+        return np.where(np.isfinite(out), out, np.inf)
+
+    def _check(self, ws: Any, keep: Any, buffers: Any, held: bool, make: bool) -> None:
+        """The equations' residual per row of the potentials ``ws.v[0]`` (and adaptation
+        ``ws.v[1]``) under ``ws.standing`` into ``ws.checked``, on workspace buffers alone so that
+        a capture can replay it. ``(projected_next_v - v) / dt``, written without cancellation."""
+        torch, neuron_model, n = self.torch, self.neuron_model, self.n
+        plan = self.plan
+        adapt = neuron_model.adaptation
+        vt, s, error = ws.v[0], ws.s[0], ws.total
+        at = ws.v[1] if adapt is not None else None
+        self._activation_into(vt, s)
+        if keep is not None:
+            s.mul_(keep)
+        if plan.still is None or "_synaptic_input" in self.__dict__:
+            synaptic = self._synaptic_input(s, ws.out)
+        else:
+            if make:
+                plan.products(plan.still, s, ws.still)
+            torch.add(plan.products(plan.moving, s, ws.out), ws.still, out=ws.input)
+            synaptic = ws.input
+        torch.add(synaptic.narrow(0, 0, n), ws.standing, out=error)
+        if at is not None and adapt is not None:
+            error.sub_(at, alpha=adapt.strength)
+        if buffers is not None:
+            self._push(error, s, buffers)
+        if self.apical is not None:
+            raw = synaptic.narrow(0, n, n)
+            if held:
+                error.addcmul_(ws.held, raw)
+            elif self._pools is not None:
+                self._apical_launch(ws, error, raw)
+            else:
+                error.addcmul_(self._apical_spread(error, raw), raw)
+        error.sub_(vt)
+        projection = ws.s[1]
+        if keep is not None:
+            error.mul_(keep)
+            torch.mul(vt, keep - 1.0, out=projection)
             projection.div_(neuron_model.dt)
             error.add_(projection)
-            result = error.abs_().amax(dim=0)
-            if at is not None:
-                torch.sub(s, at, out=projection)
-                result = torch.maximum(result, projection.abs_().amax(dim=0))
-        out = result.cpu().double().numpy()
-        return np.where(np.isfinite(out), out, np.inf)
+        error.abs_()
+        if at is None:
+            torch.amax(error, dim=0, out=ws.checked)
+        else:
+            torch.sub(s, at, out=projection)
+            projection.abs_()
+            torch.maximum(error.amax(dim=0), projection.amax(dim=0), out=ws.checked)
 
     def apical_gain(self, drive: np.ndarray, handle: dict[str, Any]) -> np.ndarray:
         """``Brain.apical_gain`` for a state on this device: ``(batch, pools)`` on the host,
@@ -4160,6 +4203,13 @@ class _TorchKernel:
         torch = self.torch
         batch = drive.shape[0]
         handle = state.device if state is not None and state.device is not None else None
+        if (
+            steps == 0 and not want and capture is None and handle is not None
+            and handle.get("holder") is self and handle.get("unmasked")
+            and not bool((np.asarray(keep) != 1.0).any())
+        ):
+            # no sweep and no mask: the state as it rests, which no solve writes
+            return (None, None, None, None, 0, np.zeros(batch), {**handle, "discarded_steps": 0})
         traj: list[np.ndarray] | None = [] if want else None
         with torch.no_grad():
             ws = self._workspace(batch)
@@ -4175,9 +4225,14 @@ class _TorchKernel:
                 ws.v[0].copy_(self._upload(v0).T)
             if ws.a is not None:
                 ws.a[0].copy_(a_in.T)
-            self._activation_into(ws.v[0], ws.s[0])
-            if cfg.masked:
-                ws.s[0].mul_(cfg.keep)
+            if handle is not None and handle.get("unmasked") and handle.get("holder") is self and (
+                not cfg.masked
+            ):
+                ws.s[0].copy_(handle["s"].T)  # the state's own, published under no mask
+            else:
+                self._activation_into(ws.v[0], ws.s[0])
+                if cfg.masked:
+                    ws.s[0].mul_(cfg.keep)
             ws.change[0].zero_()
             if capture is not None:
                 capture.step(
@@ -4195,7 +4250,8 @@ class _TorchKernel:
             contiguous = torch.contiguous_format
             tensors = {
                 "v": ws.v[j].T.clone(memory_format=contiguous),
-                "a": (a_in if ws.a is None else ws.a[j].T).clone(memory_format=contiguous),
+                # no sweep moves adaptation it does not have, and nothing writes a state
+                "a": a_in if ws.a is None else ws.a[j].T.clone(memory_format=contiguous),
                 "s": ws.s[j].T.clone(memory_format=contiguous),
             }
             activity_change = _host_copy(ws.change[j])
@@ -4206,7 +4262,7 @@ class _TorchKernel:
         # fetch closes over the tensors, never over the handle: a cycle there would hold the
         # device memory of every settled state until a garbage-collection pass
         held = {"kernel": self.backend_name, "holder": self, "fetch": fetch,
-                "discarded_steps": ws.executed_steps - taken, **tensors}
+                "discarded_steps": ws.executed_steps - taken, "unmasked": not cfg.masked, **tensors}
         return (
             None,
             None,
