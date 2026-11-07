@@ -621,6 +621,13 @@ class Hearing:
         """``c`` per row and route: ``movement`` is the association's over the phases' span, at
         ``rows`` of ``batch`` streams; a memory of another batch reads silence."""
         out = np.zeros((len(movement), len(self.routes)))
+        backs = None
+        kernel = graph._mlx
+        if kernel is not None and graph._efficacy is None:  # the synapses rest on the device
+            backs = kernel.read_back([
+                (route["synapses"], route["rows"], route["cols"], route["width"])
+                for route in self.routes
+            ], movement)
         for k, route in enumerate(self.routes):
             memory = route["memory"]
             if len(memory.trace) != batch:
@@ -629,13 +636,15 @@ class Hearing:
             held = trace[:, route["start"]:route["stop"]]
             amplitude = float(memory.amplitude)
             v = amplitude * self.gain(route) * held
-            w = np.zeros((route["width"], len(self.association)))
-            w[route["rows"], route["cols"]] = (
-                graph._gain_pre[route["synapses"]] * graph.efficacy[route["synapses"]]
-            )
-            out[:, k] = np.einsum(
-                "bj,bj->b", self.model.slope_at(v) * amplitude * held, movement @ w.T
-            )
+            if backs is None:
+                w = np.zeros((route["width"], len(self.association)))
+                w[route["rows"], route["cols"]] = (
+                    graph._gain_pre[route["synapses"]] * graph.efficacy[route["synapses"]]
+                )
+                back = movement @ w.T
+            else:
+                back = backs[k]
+            out[:, k] = np.einsum("bj,bj->b", self.model.slope_at(v) * amplitude * held, back)
         return out
 
     def step(self, contrast: np.ndarray) -> None:
@@ -2221,7 +2230,11 @@ class Recall:
         MLX device, in one launch."""
         kernel = graph._mlx
         if kernel is not None and graph._efficacy is None:
-            ports = self._head_synapses[head]
+            ports = [
+                (*synapses, len(neurons)) for synapses, neurons in zip(
+                    self._head_synapses[head], self._heads[head], strict=True
+                )
+            ]
             read = kernel.read_back(ports if self.next else ports[:1], movement)
             if read is not None:
                 return read[0], read[1] if self.next else None

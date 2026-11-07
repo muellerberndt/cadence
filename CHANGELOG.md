@@ -14,13 +14,6 @@
   parameters, in float32; `on_device=False` keeps the float64 reference, which also decides a solve
   below a tolerance of 1e-4. `copy.deepcopy` of an MLX brain works. `CADENCE_MLX_LAUNCH=0` keeps one
   MLX operation at a time. See [which hardware](docs/backends.md#which-hardware).
-- Add `recall_gain` (opt-in, construction, founder 0.0; it needs `recall_tokens`): one learned scalar
-  per read port on the tokens' identity into the motor region's drive, starting at zero and taught
-  by the motor region's movement in each lesson and by the act's eligibility under reward, so what
-  lessons on some tokens teach holds for a token no lesson used. Answers with such tokens read above
-  0.00 on induction, periodic continuation, copying and two hops, at a cost to copying repeated
-  tokens; look back and n-back stay near zero. It adds one parameter per read port and a brain
-  without it is unchanged. See [the gain](docs/memory.md#a-learned-gain-on-the-reads-tokens-opt-in).
 - **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
   [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
   `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only

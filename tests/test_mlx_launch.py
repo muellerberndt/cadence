@@ -324,11 +324,7 @@ def on_device(monkeypatch):
     monkeypatch.setattr(stream_module, "_MLX_MAP_ENTRIES", 1)
 
 
-RECIPE = dict(
-    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
-    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True,
-    teaching="deep", recall_address_contrast=True, episodic=False,
-)
+RECIPE = dict(recall=True, episodic=False)  # the memory a new brain composes, its gains on
 # float32 contrasts near a synapse's noise, through RMS normalization: the backend's own bound
 SYNAPSES, MAPS = 2e-2, 2e-2
 
@@ -611,3 +607,51 @@ def test_the_environment_keeps_the_update_and_the_map_on_the_host(on_device, mon
     assert mlx.brain._mlx.plan is None and mlx.brain._mlx.scale is None
     assert mlx.brain._efficacy is not None
     assert isinstance(mlx.recall.head_map(0)[0], np.ndarray)
+
+
+def test_the_routes_gains_and_the_grid_learn_on_the_device_as_on_the_host(on_device):
+    settings = dict(RECIPE, history_decays=(0.5, 0.9), working_memory_amplitude=0.0)
+    cpu, mlx = pair(**settings)
+    assert mlx.recall.grid and mlx.recall.drive_gain and mlx.carried_gains
+    assert set(mlx.carried_gains) == set(cpu.carried_gains)
+    lives(cpu, mlx, lessons=6)
+    assert mlx.brain._efficacy is None  # the routes' lessons read the blocks, not the host
+    for name, gain in cpu.carried_gains.items():
+        assert mlx.carried_gains[name] == pytest.approx(gain, abs=5e-3)
+    for kept, host in zip(mlx.recall.grid_maps[0], cpu.recall.grid_maps[0], strict=True):
+        np.testing.assert_allclose(kept, host, rtol=0, atol=MAPS)
+    # a long stream reads past the position table, where the grid answers
+    rng = np.random.default_rng(13)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(40):
+            x = rng.random((ROWS, 8))
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+    assert mlx.recall.slots > mlx.recall.position
+
+
+def test_a_default_brain_composes_and_lives_on_the_device(tmp_path):
+    """The memory a new brain holds, its blocks at any width and a checkpoint of it."""
+    cpu, mlx = cd.Brain.compose(64, 8, seed=2), cd.Brain.compose(64, 8, seed=2, backend="mlx")
+    assert mlx.recall is not None and mlx.carried_gains
+    rng = np.random.default_rng(14)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(4):
+            x = rng.random((ROWS, 64))
+            labels = rng.integers(8, size=ROWS)
+            cpu.lesson(x, labels)
+            mlx.lesson(x, labels)
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+    mlx.save(tmp_path / "brain.npz")
+    again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
+    x = rng.random((ROWS, 64))
+    np.testing.assert_array_equal(mlx.act(x, greedy=True), again.act(x, greedy=True))
+    assert again.carried_gains == mlx.carried_gains
+
+
+def test_a_default_brain_at_the_speech_size_composes_on_the_blocks():
+    brain = cd.Brain.compose(3920, 37, modules=(512,), seed=1, backend="mlx")
+    assert brain.brain._mlx is not None and brain.brain._blocked
+    x = np.random.default_rng(0).random((1, 3920)) * 0.25
+    assert np.asarray(brain.act(x, greedy=True)).shape == (1,)

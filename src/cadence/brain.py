@@ -3945,7 +3945,7 @@ class _MlxKernel:
         self.root = self  # with_parameters' kernels share it: a state continues on any of them
         self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
         self.sweeps: dict[tuple[Any, ...], Any] = {}  # the compiled sweeps, shared with those too
-        self.read_blocks: dict[int, tuple[np.ndarray, int]] = {}  # a read's synapses, their block
+        self.read_blocks: dict[int, tuple[np.ndarray, Any]] = {}  # a read's synapses, their blocks
         self.lesson_steps: dict[tuple[bool, bool, bool], Any] = {}  # the optimizer's, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n)
@@ -4225,35 +4225,62 @@ class _MlxKernel:
         return self.to_edges(self.scale)
 
     def read_back(
-        self, groups: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray]], movement: np.ndarray,
+        self, groups: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray, int]],
+        movement: np.ndarray,
     ) -> list[np.ndarray] | None:
-        """``movement @ W.T`` per group of synapses ``(synapses, rows, cols)`` read as ``W[rows,
-        cols]``, on the blocks, one launch for all; None where a group is not one whole block, in
-        its order."""
-        mx, lay = self.mx, self.layout
-        root = self.root
-        blocks = []
-        for synapses, rows, cols in groups:
-            known = root.read_blocks.get(id(synapses))
-            if known is None:
-                k = int(lay.block_of_edge[synapses[0]]) if len(synapses) else -1
-                a0, a1, b0, b1 = lay.bounds(k) if k >= 0 else (0, 0, 0, 0)
-                whole = (
-                    len(synapses) == (a1 - a0) * (b1 - b0) > 0
-                    and bool(np.all(
-                        np.asarray(lay.edge_index)[synapses] - lay.offset[k]
-                        == np.asarray(rows) * (b1 - b0) + np.asarray(cols)
-                    ))
-                )
-                known = (synapses, k if whole else -1)
-                root.read_blocks[id(synapses)] = known
-            if known[1] < 0:
-                return None
-            blocks.append(self.blocks[known[1]])
+        """``movement @ W.T`` per group of synapses ``(synapses, rows, cols, width)`` read as
+        ``W[rows, cols]``, on the blocks, one launch for all; None where a group is not whole rows
+        of blocks in their order."""
+        mx = self.mx
+        parts = [self._read_blocks(group) for group in groups]
+        if any(part is None for part in parts):
+            return None
         m = mx.array(np.asarray(movement, dtype=np.float32)).T
-        out = [block @ m for block in blocks]
-        mx.eval(out)
-        return [np.array(part, dtype=np.float64).T for part in out]
+        products = [
+            [self.blocks[k][i0:i1] @ m for k, _, i0, i1 in part or ()] for part in parts
+        ]
+        mx.eval(products)
+        out = []
+        for group, part, made in zip(groups, parts, products, strict=True):
+            row = np.empty((len(movement), group[3]))
+            for (_, at, i0, i1), product in zip(part or (), made, strict=True):
+                row[:, at : at + i1 - i0] = np.array(product, copy=False).T
+            out.append(row)
+        return out
+
+    def _read_blocks(
+        self, group: tuple[np.ndarray, np.ndarray, np.ndarray, int],
+    ) -> list[tuple[int, int, int, int]] | None:
+        """The block rows of a group of synapses, ``(block, the group's row they start at, first
+        row, row past the last)``, kept with the synapses; None where they are not whole rows of
+        blocks in their order."""
+        synapses, rows, cols, _ = group
+        lay, known = self.layout, self.root.read_blocks
+        held = known.get(id(synapses))
+        if held is not None:
+            return cast("list[tuple[int, int, int, int]] | None", held[1])
+        block = np.asarray(lay.block_of_edge)[synapses]
+        rows, cols = np.asarray(rows), np.asarray(cols)
+        at = np.asarray(lay.edge_index)[synapses]
+        parts: list[tuple[int, int, int, int]] | None = []
+        for k in (int(one) for one in np.unique(block)):
+            mine = block == k
+            a0, a1, b0, b1 = lay.bounds(k)
+            width = b1 - b0
+            row_in_block, col_in_block = np.divmod(at[mine] - lay.offset[k], width)
+            start, i0 = int(rows[mine].min()), int(row_in_block.min())
+            i1 = int(row_in_block.max()) + 1
+            if (
+                int(mine.sum()) != (i1 - i0) * width
+                or (row_in_block - i0 != rows[mine] - start).any()
+                or (col_in_block != cols[mine]).any()
+            ):
+                parts = None
+                break
+            assert parts is not None
+            parts.append((k, start, i0, i1))
+        known[id(synapses)] = (synapses, parts)  # the synapses kept: their id stays theirs
+        return parts
 
     def _ranges_of(self, handle: Mapping[str, Any]) -> Any:
         """A state's activations of a neuron range, ``(rows, width)``, wherever it keeps them."""
