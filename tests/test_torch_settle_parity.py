@@ -367,6 +367,53 @@ def test_learning_steps_match_the_host(device):
     np.testing.assert_allclose(dev.bias, host.bias, rtol=0, atol=ATOL)
 
 
+def test_learning_steps_match_the_host_with_a_projections_sums_by_reductions(device, monkeypatch):
+    from cadence import learning
+
+    monkeypatch.setattr(learning, "_SPAN_VALUES", 0)
+    brains = [composed(apical=True, seed=6) for _ in range(2)]
+    brains[1].learner.brain = on(brains[1].learner.brain, device)
+    rng = np.random.default_rng(12)
+    n = brains[0].learner.brain.connectome.n
+    assert brains[0].learner.config.normalize_relative
+    for _ in range(4):
+        drive = rng.uniform(-0.3, 1.0, (6, n))
+        labels = rng.integers(0, 3, (6, 2))
+        for brain in brains:
+            brain.learner.step(drive, labels)
+    kernel = brains[1].learner.brain._torch
+    assert all(group[3] is not None for group in brains[1].learner._projections_on_device(kernel))
+    host, dev = brains[0].learner.brain, brains[1].learner.brain
+    np.testing.assert_allclose(dev.efficacy, host.efficacy, rtol=0, atol=ATOL)
+    np.testing.assert_allclose(dev.bias, host.bias, rtol=0, atol=ATOL)
+
+
+def test_a_float32_brain_learns_and_solves_without_a_float64_copy(device):
+    brain = composed(apical=True, seed=7)
+    brain.learner.brain = on(brain.learner.brain, device, precision="float32")
+    rng = np.random.default_rng(13)
+    n = brain.learner.brain.connectome.n
+    state = None
+    for _ in range(3):
+        drive = rng.uniform(-0.3, 1.0, (4, n))
+        solved = brain.learner.brain.equilibrate(drive, budget=64, tolerance=1e-3, state=state)
+        state = solved.state
+        brain.learner.step(drive, rng.integers(0, 3, (4, 2)))
+        state = None
+    kernel = brain.learner.brain._torch
+    assert kernel._reference is None
+    # asked plainly, the float64 copy answers; asked below the floor, it decides
+    drive = rng.uniform(-0.3, 1.0, (4, n))
+    free = brain.learner.brain.settle_batch(drive, steps=20)
+    own = brain.learner.brain.residual(drive, free, own_precision=True)
+    assert kernel._reference is None
+    plain = brain.learner.brain.residual(drive, free)
+    assert kernel._reference is not None
+    np.testing.assert_allclose(own, plain, rtol=0, atol=1e-3)
+    gain = brain.learner.brain.apical_gain(drive, free, own_precision=True)
+    np.testing.assert_allclose(gain, brain.learner.brain.apical_gain(drive, free), rtol=0, atol=1e-3)
+
+
 def test_trajectory_and_recording_paths_match_the_plain_settle(device):
     brain = composed(apical=True, adaptation=True)
     dev = on(brain.learner.brain, device)

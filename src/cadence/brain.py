@@ -1248,10 +1248,14 @@ class Brain:
             solved = kernel.solve(held, current, nudge, budget, chunk, tolerance)
             if solved is not None:
                 return solved
-        # below the launch's floor the float64 reference decides, also of a launched state
+        # below the launch's floor the float64 reference decides, also of a launched state;
+        # from it a float32 torch state is checked in float32
         reference: dict[str, bool] = (
             {"on_device": False}
-            if self._mlx is not None and tolerance < _MLX_CHECK_FLOOR else {}
+            if self._mlx is not None and tolerance < _MLX_CHECK_FLOOR
+            else {"own_precision": True}
+            if self._torch is not None and tolerance >= _MLX_CHECK_FLOOR
+            else {}
         )
         error = self.residual(drive, current, mask=mask, nudge=nudge, **reference)
         used, checks, stagnation_checks, repeats = 0, 1, 0, 0
@@ -1517,6 +1521,7 @@ class Brain:
         nudge: Nudge | None = None,
         mask: np.ndarray | None = None,
         on_device: bool = True,
+        own_precision: bool = False,
     ) -> np.ndarray:
         """Maximum absolute fixed-point equation residual per row, without settling.
 
@@ -1536,7 +1541,9 @@ class Brain:
         state is checked on its device in float64, returning only one scalar per row (a
         float32 state by a float64 copy of the kernel, the same float64 reference). Other
         states, MPS and other MLX states included, use the float64 CPU reference;
-        ``on_device=False`` forces that reference. No state value or parameter is changed.
+        ``on_device=False`` forces that reference. ``own_precision`` checks an unread float32
+        torch state in float32 on its device: a solve does at tolerances from 1e-4, where its
+        rounding is about a hundredth of the tolerance. No state value or parameter is changed.
         A state an MLX launch made under this drive, nudge and these parameters reads the launch's
         own check, in float32, with no launch of its own. A single state returns a length-one array;
         nonfinite errors return infinity.
@@ -1573,7 +1580,8 @@ class Brain:
             ):
                 raise ValueError("state batch does not match the drive batch")
             return np.asarray(kernel.residual(
-                d, np.ones(self.connectome.n) if keep is None else keep, nudge, handle
+                d, np.ones(self.connectome.n) if keep is None else keep, nudge, handle,
+                own_precision,
             ))
         if _resident(d):
             d = _host_copy(d)
@@ -1669,9 +1677,12 @@ class Brain:
         self.__dict__["_apical_cache"] = parts
         return parts
 
-    def apical_gain(self, drive: np.ndarray, state: BrainState) -> np.ndarray | None:
+    def apical_gain(
+        self, drive: np.ndarray, state: BrainState, *, own_precision: bool = False
+    ) -> np.ndarray | None:
         """The apical compartment's gain ``(batch, pools)`` at ``state`` under ``drive``: what a
-        nudged settle from it holds (``Nudge.apical_gain``); None without the compartment."""
+        nudged settle from it holds (``Nudge.apical_gain``); None without the compartment.
+        ``own_precision`` reads an unread float32 torch state's in float32, as ``residual`` does."""
         apical = self.apical
         if apical is None:
             return None
@@ -1690,7 +1701,7 @@ class Brain:
         ):  # the state never left the device: the gain is read there, one row per pool
             if tuple(handle["s"].shape) != tuple(d.shape):
                 raise ValueError("state batch does not match the drive batch")
-            gain: np.ndarray = kernel.apical_gain(d, handle)
+            gain: np.ndarray = kernel.apical_gain(d, handle, own_precision)
             return gain
         if _resident(d):
             d = _host_copy(d)
@@ -3254,7 +3265,7 @@ class _TorchKernel:
             raise ValueError("device parameters must match synapse and neuron shapes")
         weights = (self.gain_pre * scale).to(self.dtype)
         live_bias = bias.to(self.dtype)
-        values = self.plan.scatter(weights)
+        values = self.plan.scatter(weights) if self.plan.parallel else None
         checked = [scale, bias, weights, live_bias] + ([values] if self.plan.parallel else [])
         if not bool(torch.stack([torch.isfinite(value).all() for value in checked]).all()):
             if self.plan.parallel and bool(
@@ -3267,7 +3278,10 @@ class _TorchKernel:
         # Validation precedes every write to the shared live kernel and its weights.
         self.scale = scale
         self.bias_param = bias
-        self.plan.values.copy_(values)
+        if values is None:
+            self.plan.values[self.plan.position] = weights
+        else:
+            self.plan.values.copy_(values)
         self.bias = live_bias
         self._version += 1
 
@@ -3968,13 +3982,14 @@ class _TorchKernel:
     # -- the kernel's entry points
 
     def residual(
-        self, drive: np.ndarray, keep: np.ndarray, nudge: Nudge | None, handle: dict[str, Any]
+        self, drive: np.ndarray, keep: np.ndarray, nudge: Nudge | None, handle: dict[str, Any],
+        own_precision: bool = False,
     ) -> np.ndarray:
         """``Brain.residual`` for a state on this device; the same equations, one row each.
 
         A float32 state is checked in float64 by the kernel's float64 copy, as the host's
-        float64 reference would check it."""
-        reference = self._float64()
+        float64 reference would check it, and in float32 with ``own_precision``."""
+        reference = self if own_precision else self._float64()
         if reference is not self:
             return reference.residual(
                 drive, keep, nudge, {"v": handle["v"].double(), "a": handle["a"].double()}
@@ -4076,10 +4091,13 @@ class _TorchKernel:
             projection.abs_()
             torch.maximum(error.amax(dim=0), projection.amax(dim=0), out=ws.checked)
 
-    def apical_gain(self, drive: np.ndarray, handle: dict[str, Any]) -> np.ndarray:
+    def apical_gain(
+        self, drive: np.ndarray, handle: dict[str, Any], own_precision: bool = False
+    ) -> np.ndarray:
         """``Brain.apical_gain`` for a state on this device: ``(batch, pools)`` on the host,
-        in float64 (a float32 state's by the kernel's float64 copy)."""
-        reference = self._float64()
+        in float64 (a float32 state's by the kernel's float64 copy, or in float32 with
+        ``own_precision``)."""
+        reference = self if own_precision else self._float64()
         if reference is not self:
             return reference.apical_gain(
                 drive, {"s": handle["s"].double(), "a": handle["a"].double()}

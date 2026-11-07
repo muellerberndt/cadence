@@ -84,6 +84,10 @@ def _compiled_passes() -> bool:
     return compiled()
 
 
+# From this many values over at most this many groups a sum per group goes one reduction at a
+# time: atomic adds onto a few addresses cost 11.7 ms over 6.3 million values on an A10G.
+_SPAN_VALUES = 1 << 16
+_SPAN_GROUPS = 64
 _MOMENTS = ("velocity", "velocity_bias", "second_moment", "second_moment_bias")
 
 
@@ -666,11 +670,18 @@ class Learner:
         target is an action that was taken).
         """
         # an apical compartment passes the nudge's change at the gain the free phase set
-        held = self.brain.apical_gain(drive, free)
+        held = self.brain.apical_gain(drive, free, own_precision=True)
         return self._nudged(
             drive, free, self.nudge_for(target, sign * self.config.beta, weight, held),
             "nudged" if sign >= 0 else "opposite",
         )
+
+    def _diagnostic(
+        self, drive: np.ndarray, state: BrainState, nudge: Nudge | None = None
+    ) -> np.ndarray:
+        """A finite phase's residual for its report: in a device brain's own precision, since it
+        counts work and certifies nothing, and a float64 copy of the kernel would pay float64."""
+        return self.brain.residual(drive, state, nudge=nudge, own_precision=True)
 
     def _nudged(
         self, drive: np.ndarray, free: BrainState, nudge: Nudge, name: str
@@ -982,9 +993,14 @@ class Learner:
                 for values, group in zip(
                     (rms, rms_bias), self._projections_on_device(kernel), strict=True
                 ):
-                    size = int(group[1])
-                    power = torch.zeros(size, dtype=values.dtype, device=values.device)
-                    power.index_add_(0, group[0], values * values)
+                    if group[3] is None:
+                        power = torch.zeros(int(group[1]), dtype=values.dtype, device=values.device)
+                        power.index_add_(0, group[0], values * values)
+                    else:  # many values onto few sums: one reduction per projection
+                        squares = (values * values)[group[3]]
+                        power = torch.stack(
+                            [squares.narrow(0, first, count).sum() for first, count in group[4]]
+                        )
                     floor = (power / group[2]).sqrt()[group[0]]
                     divisors.append(values + cfg.normalize_relative * floor + _RELATIVE_TINY)
                 edges, neurons = edges / divisors[0], neurons / divisors[1]
@@ -999,9 +1015,10 @@ class Learner:
             raise ValueError("optimizer moments must remain finite")
         return edges, neurons
 
-    def _projections_on_device(self, kernel: Any) -> list[tuple[Any, int, Any]]:
+    def _projections_on_device(self, kernel: Any) -> list[tuple[Any, ...]]:
         """``_projections`` on the kernel's device: per group the index, the group count and
-        each group's member count, made once per kernel and layout."""
+        each group's member count, made once per kernel and layout; where many values fall on
+        few groups also the order that lays each group's values side by side and their spans."""
         held = self.__dict__.get("_projection_device")
         layout = self.brain.layout
         if held is None or held[0] is not kernel or held[1] is not layout:
@@ -1009,15 +1026,23 @@ class Learner:
             groups = []
             for group in self._projections():
                 size = int(group.max()) + 1 if len(group) else 0
-                count = np.maximum(np.bincount(group, minlength=size), 1).astype(float)
+                members = np.bincount(group, minlength=size)
+                count = np.maximum(members, 1).astype(float)
+                order, spans = None, None
+                if len(group) >= _SPAN_VALUES and size <= _SPAN_GROUPS:
+                    order = torch.from_numpy(np.argsort(group, kind="stable")).to(kernel.device)
+                    ends = np.cumsum(members)
+                    spans = [(int(e - m), int(m)) for e, m in zip(ends, members, strict=True)]
                 groups.append((
                     torch.from_numpy(np.ascontiguousarray(group)).to(kernel.device),
                     size,
                     torch.from_numpy(count).to(kernel.device, kernel.param_dtype),
+                    order,
+                    spans,
                 ))
             held = (kernel, layout, groups)
             self.__dict__["_projection_device"] = held
-        return cast(list[tuple[Any, int, Any]], held[2])
+        return cast(list[tuple[Any, ...]], held[2])
 
     def _device_indices(self, kernel: Any) -> dict[str, Any]:
         """Index tensors of the update on the kernel's device, made once per kernel and masks."""
@@ -1385,7 +1410,7 @@ class Learner:
             if judged is None:
                 drive, target, weight = self._lesson(taught, drive, target, weight)
                 free = _restrict(free, taught, drive)
-            held = self.brain.apical_gain(drive, free)
+            held = self.brain.apical_gain(drive, free, own_precision=True)
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 phases[name] = self._qualified_phase(
                     drive, free, cfg.nudged_steps,
@@ -1403,7 +1428,7 @@ class Learner:
         # Finite phases get post-solve residual diagnostics. They count additional
         # work and do not certify the lesson.
         phases = {
-            "free": Equilibrium(free, self.brain.residual(drive, free), free.steps,
+            "free": Equilibrium(free, self._diagnostic(drive, free), free.steps,
                                 cfg.tolerance if cfg.tolerance is not None else 0.0,
                                 residual_checks=1),
         }
@@ -1421,19 +1446,19 @@ class Learner:
         if judged is None:
             drive, target, weight = self._lesson(taught, drive, target, weight)
             free = _restrict(free, taught, drive)
-        held = self.brain.apical_gain(drive, free)  # read once, held by both phases
+        held = self.brain.apical_gain(drive, free, own_precision=True)  # read once, by both phases
         # one nudge per phase, read by the phase and by its diagnostic check
         pull = self.nudge_for(target, cfg.beta, weight, held)
         push = self.nudge_for(target, -cfg.beta, weight, held)
         nudged = self._nudged(drive, free, pull, "nudged")
         opposite = self._nudged(drive, free, push, "opposite")
         phases["nudged"] = Equilibrium(
-            nudged, self.brain.residual(drive, nudged, nudge=pull),
+            nudged, self._diagnostic(drive, nudged, pull),
             nudged.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
         phases["opposite"] = Equilibrium(
-            opposite, self.brain.residual(drive, opposite, nudge=push),
+            opposite, self._diagnostic(drive, opposite, push),
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
