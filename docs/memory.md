@@ -13,11 +13,11 @@ works, its settings, its readings and its limits.
 | --- | --- | --- |
 | The present observation holds the answer | `recall=False, episodic=False, working_memory_amplitude=0.0` is the control to compare against; add one memory at a time | [check that a memory does the work](#check-that-a-memory-does-the-work) |
 | A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | `recall=True` | [recall memory](#the-recall-memory-in-full) |
-| Whole sentences or stories, read at lengths no lesson reached | `recall=True, learning_surprise=True, teaching="deep", recall_recency=0.0, recall_boundary=True, recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True` | [one composition for sequences](#one-composition-for-sequences) |
-| A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_grid=(7, 8, 9, 11)`, `recall_capacity` about 2.5 times the distance | [reads over long context](#reads-over-long-context) |
+| Whole sentences or stories, read at lengths no lesson reached | `recall=True` | [one composition for sequences](#one-composition-for-sequences) |
+| A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_capacity` about 2.5 times the distance: a new brain holds the grid and 128 slots | [reads over long context](#reads-over-long-context) |
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
-| "How long ago?", "was A told before B?" | `recall_when=True, recall_position_rate=0.0, recall_temperature=0.1` | [when a read item happened](#when-a-read-item-happened-opt-in) |
+| "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
 | What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
 | How strongly each carried region is heard, per task | `carried_gain=0.01` | [carried gain](#how-strongly-a-carried-region-is-heard-opt-in) |
@@ -166,7 +166,7 @@ name = np.array([[1.0, 0.0, 0.0, 0.0]])
 drive = brain.stimulus(name)                     # the name addresses the slots before its settle
 recalled = drive[0, brain.connectome.populations["recall"]]
 assert recalled[3] > recalled[1]                 # the moment that shares the name comes back
-report = brain.lesson(name, [1])                 # a lesson also steps the address map
+report = brain.lesson(name, [0])                 # a lesson also steps the address map
 assert report["address_rows"] == 1.0
 brain.reset()                                    # slots emptied, the learned address map kept
 assert brain.recall.slots == 0 and brain.recall.head_map(0)[0].any()
@@ -272,7 +272,19 @@ configuration.
 | Setting | Founder | A new brain's | What it gives |
 | --- | --- | --- | --- |
 | `teaching` | `"founder"` | `"deep"`, no apical | Whole nudged phases ([the deep point](tune.md#deep-brains)) |
+| `learning_surprise` | `False` | `True` | [Lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs) |
+| `recall_recency` | `0.25` | `0.0` | No age charge: position is learned, not assumed ([positions at lengths no lesson reached](#positions-at-lengths-no-lesson-reached)) |
+| `recall_boundary` | `False` | `True` | A silent first slot, so a stream's first event has a predecessor |
+| `recall_anchor` | `False` | `True` | Each slot's place in its episode |
+| `recall_slope` | `0.0` | `0.1` | A lean by age |
+| `recall_position_rate` | `0.1` | `0.01` | The slow position table |
+| `recall_relative` | `False` | `True` | Each slot's age relative to the previous read's focus |
+| `recall_grid` | `()` | `(7, 8, 9, 11)` | Past the table of 32 a term per residue, for a period longer than the table ([long context](#reads-over-long-context)) |
+| `recall_capacity` | `64` | `128` | Slots that still hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
+| `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
 
+`recall_when=True` stays an opt-in, for tasks that ask "before?": it carries that question and it costs
+the grammar chamber's paths and two hops ([one composition](#one-composition-for-sequences)).
 ### Recall settings
 
 Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is
@@ -441,12 +453,10 @@ taught slowly beside it, `recall_position_rate=0.01` (with `recall_recency=0` an
 [sequence battery](../benchmarks/sequence/README.md), 1,500 lessons):
 
 ```python
-long_stories = Brain.compose(
-    inputs=8, actions=3, modules=(16,), recall=True, seed=0,
-    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01,
-    recall_recency=0.0, recall_boundary=True,
-)
-assert long_stories.recall.position == 32
+long_stories = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)
+assert long_stories.recall.anchor and long_stories.recall.boundary
+assert long_stories.recall.slope == 0.1 and long_stories.recall.position_rate == 0.01
+assert long_stories.recall.recency == 0.0
 ```
 
 | Recall settings beside the position term | Copying unique tokens: taught 3 to 6, read at 8 to 12, closed loop | Look back: taught 5 to 12, read at 24 to 60, "first" |
@@ -462,8 +472,8 @@ With the recipe every head reads "the first told", "the second" and "the latest"
 times the longest length it was taught. On six fresh founders, look back taught at 5 to 12 and
 read at 24 to 60 answers "first" and "second" at 0.99 to 1.00, and copying unique tokens at
 unseen lengths 0.99 to 1.00. On induction and n-back it stays within 0.014 of the founder
-table. A period longer than `recall_position` needs a code past the table: for a period of 40 add
-`recall_grid=(7, 8, 9, 11), recall_capacity=128` (the recipe continues it at .999 on six fresh
+table. A period longer than `recall_position` needs a code past the table: for a period of 40 a new brain holds
+`recall_grid=(7, 8, 9, 11)` and `recall_capacity=128` (it continues it at .999 on six fresh
 founders, [reads over long context](#reads-over-long-context)), or a table exact that far with
 `recall_position=64` (0.86 to 0.94 against 0.35 to 0.39 at 32 exact ages).
 
@@ -485,100 +495,150 @@ lengths and few lessons must teach exact ages, the founder table serves.
 
 ### One composition for sequences
 
-A brain that says whole sentences takes the positions recipe below at `teaching="deep"` (`Fd` in the
-[grammar chamber](../benchmarks/grammar/README.md#readings-at-the-base-composition-development)):
+A new brain is one composition for sentences and sequences alike: the positions recipe at
+`teaching="deep"`, a position code past the table, learned gains on what is carried and on the read, and the
+reward's position read. It takes no setting, and [the table above](#what-recalltrue-gives-a-new-brain) lists
+what it holds.
 
 ```python
-speaker = Brain.compose(
-    inputs=35, actions=18, modules=(64,), seed=0, episodic=False, teaching="deep",
-    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
-    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True,
-)
-assert speaker.learner.config.nudged_fixed
+speaker = Brain.compose(inputs=35, actions=18, modules=(64,), seed=0, recall=True)
+assert speaker.recall.anchor and speaker.learner.config.nudged_fixed
 ```
 
-| One online pass, development | Clauses | Two distractors | Held-out | Roles | Brackets | Paths | Two hops | Three hops |
-| --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| this composition, twelve lives | .96 | .95 | .91 | .91 | .78 | .87 | .80 | .22 |
-| the recipe at `teaching="normalized"`, on the distance | .57 | .24 | .52 | .31 | .33 | .27 | .03 | .00 |
-| a matched transformer, one pass, three lives | 1.00 | | 1.00 | 1.00 | .18 | .36 | | .00 |
+Two blocks of fresh founders read it, each under a protocol declared before its first life, on one machine,
+with no refused lesson and no exhausted act. The first block read the composition without the read's route
+(`recall_drive_gain=False`). The second read it paired, with the route and without. Each column of the sequence
+battery is six founders, ordered recall twelve, and a reading holds at its bar on at least 5 of 6:
 
-Both Cadence rows hold 24,384 parameters and take 6.3 million sweeps per life. The sequence battery
-holds beside it: look back .946 to .995, n-back .974 to .995, a second hop .996 to .998, copying
-repeated tokens .942 to .963, induction .987 to .998. Its costs: the
-[key-door chamber](../benchmarks/keydoor/README.md) falls from 5 of 8 lives to 1 of 8 at delay 2 and
-from 3 of 8 to 0 of 8 at delay 5, most of it with the recall memory alone
-(2 of 8 and 1 of 8), and the read of tokens no lesson used falls at n-back
-(.96 .99 .71 to .62 .99 .59).
+| Reading | Bar | First block, no route | Second block, no route | Second block, this composition |
+| --- | --- | --- | --- | --- |
+| Look back, `first`, at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .98 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
+| Look back, `second` | .90 | .98 to 1.00, 6 of 6 | .98 to 1.00, 6 of 6 | .97 to 1.00, 6 of 6 |
+| Look back, anchors erased: the fall of `second` | .30 | .39 to .53, 6 of 6 | .43 to .50, 6 of 6 | .43 to .48, 6 of 6 |
+| Copying unique tokens at 8 to 12 | .95 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 |
+| Copying repeated tokens | .90 | .91 to .93, 6 of 6 | .90 to .93, 6 of 6 | .90 to .94, 6 of 6 |
+| A period of 40 | .85 | 1.00, 6 of 6 | 1.00, 6 of 6 | 1.00, 6 of 6 |
+| "Was A told before B?", with `recall_when=True` | .90 | .69 to 1.00, 5 of 6 | .99, 6 of 6 | .84 to .99, 5 of 6 |
+| Two hops with a think moment, second hop | .90 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
+| Induction at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .93 to .99, 6 of 6 | .95 to .99, 6 of 6 |
+| N-back at 24 to 60 | .90 | .98 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 | .99 to 1.00, 6 of 6 |
+| Ordered recall under `live`, reward alone | .90 on 10 of 12 | 12 of 12 | 11 of 12 | 12 of 12 |
 
-A brain that meets look back, copying, induction, n-back, periodic continuation, two hops and "was
-A told before B?" in one life takes the recipe for lengths no lesson reached with the options
-that compose with it, and declares which of its answers are tokens:
+In every column the lowest paired mean against the founder memory is n-back, at -.006, -.004 and -.004 against
+a limit of -.03. Cues taught one after another read at least .96 of the same cues taught mixed. The read less
+the answer stays at or under .05 on every token task on at least 5 of 6 founders. Answers with tokens no
+lesson used read 0.00; [the learned value path](#the-learned-value-path-opt-in) is the opt-in that produces them.
+
+The grammar chamber, one online pass, twelve lives per column (six founders, each on its own newborn and on
+one further seed), the mean with the least life:
+
+| Panel | Bar | First block, no route | Second block, no route | Second block, this composition | Transformer, one pass | Transformer, offline |
+| --- | --- | --- | --- | --- | --- | --- |
+| Clauses | .95 | .98 (.91) | .98 (.89) | .99 (.88) | .99 | 1.00 |
+| Two distractors | .90 | .95 (.75) | .94 (.75) | .94 (.50) | .99 | 1.00 |
+| Held-out | .90 | .94 (.81) | .93 (.78) | .93 (.70) | .91 | 1.00 |
+| Roles | .90 | .93 (.62) | .87 (.62) | .93 (.66) | .97 | 1.00 |
+| Brackets | .80 | .85 (.39) | .92 (.69) | .87 (.48) | .54 | .99 |
+| Paths | .90 | .95 (.88) | .90 (.38) | .92 (.38) | .37 | .98 |
+| Two hops | .85 | .91 (.75) | .84 (.09) | .86 (.03) | .20 | .96 |
+| Three hops | | .46 (.17) | .36 (.00) | .38 (.00) | .00 | .00 |
+
+Without the route the second block reads roles, paths and two hops under their bars, and the first block holds
+them. With the route the second block holds every bar. Paired on that block, every difference is inside two
+standard errors, and the read's gain settles at .99 here, so the two forms read alike on this chamber and the two
+blocks show the founder spread. One newborn of the second block reads paths at .38 in both forms. The transformer
+is read on the first block's founders, scored independently at the composition's parameter count: one pass is
+the brain's exposure, and offline replays those batches to its stopping rule. Eight passes of fresh batches,
+which stay under the brain's seconds, read brackets .92, paths .74, two hops .64 and three hops .00.
+
+At two distractors a verb the read delivers is said. The first head attends most to the verb's moment, or to the
+moment before it whose next it is, at .75, .75 and .72 across the columns, and the brain says the verb at .98, .98
+and .99, so delivered less said is at most .05 on 12, 11 and 12 of 12 lives.
+
+A life of this composition takes 154 seconds on one thread of a shared machine, 77 sweeps per act and 8.4e11
+multiply-accumulates, and holds 28,716 parameters on these words: 630 the associative store, 3,500 the grid and
+two the gains. The transformer takes 19 seconds and 6.9e10 for one pass, and 276 seconds and 1.2e12 offline.
+
+Six founders per column at width, on their own newborns, at the composed steps, the mean with the least life:
+
+| Width | Panel | First block, no route | Second block, no route | Second block, this composition | Transformer, one pass, offline |
+| --- | --- | --- | --- | --- | --- |
+| 128 | Clauses | .97 (.89) | .96 (.86) | .93 (.69) | 1.00, 1.00 |
+| 128 | Brackets | .80 (.38) | .86 (.69) | .80 (.58) | .45, .98 |
+| 128 | Paths | .76 (.30) | .90 (.56) | .91 (.64) | .35, .94 |
+| 128 | Two hops | .64 (.00) | .82 (.22) | .85 (.34) | .17, .91 |
+| 256 | Clauses | .97 (.92) | .98 (.92) | .98 (.94) | .99, 1.00 |
+| 256 | Brackets | .79 (.39) | .92 (.81) | .95 (.91) | .36, 1.00 |
+| 256 | Paths | .96 (.92) | .88 (.38) | .76 (.33) | .25, .89 |
+| 256 | Two hops | .94 (.88) | .80 (.06) | .65 (.03) | .04, .88 |
+
+A low life on paths comes and goes with the founder at every width. [The projection rates and the read
+map](tune.md#wide-brains) hold paths at .98 at both widths on six development founders.
+
+The same brain meets look back, copying, induction, n-back, periodic continuation and two hops with no
+further setting. "Was A told before B?" asks when a read item happened, and takes
+[`recall_when=True`](#when-a-read-item-happened-opt-in):
 
 ```python
-sequences = Brain.compose(
-    inputs=26, actions=16, modules=(64,), seed=0, teaching="normalized",
-    recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True,
-    recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_position=64,
-    recall_relative=True, recall_when=True, recall_address_reward=1.0,
-    recall_position_reward=4.0,
-    recall_tokens=list(range(14)) + [-1, -1],  # actions 14 and 15 are a yes and a no
-)
-assert sequences.recall.copy == 0.0  # the tokens declare; no pathway is added
+sequences = Brain.compose(inputs=26, actions=16, modules=(64,), seed=0, recall=True)
+assert sequences.recall.position_reward == 4.0 and not sequences.recall.when
+before = Brain.compose(inputs=26, actions=2, modules=(64,), seed=0, recall=True, recall_when=True)
+assert before.recall.when
 ```
 
-- The positions recipe, `recall_position=64` and the relative read carry look back, copying
-  and a period of 40 at lengths no lesson reached; the when channel carries "before".
-- The tokens keep the yes and no lessons off the read and teach those rows at every lesson
-  ([answers that are no token](#the-copy-pathway-opt-in)); the token answers stay judged by
-  surprise.
-- The reward read finds the writes of ordered recall from reward alone; its step does not
-  shrink with the recipe's slow table.
-- The copy pathway is left out: beside the recipe it stops look back's read learning where to
-  look.
+Ordered recall under `live` from reward alone needs `recall_position_reward`: at 3.0 of the trace's
+amplitude it reads 12 of 12 used founders at .90 with it, 0 of 12 without ([ordered
+recall](../benchmarks/sequence/README.md#ordered-recall-orderpy)). `recall_when=True` earns "before", 260
+parameters, and costs the chamber's paths. `recall_grid` with 128 slots earns a period of 40, .999 on six
+fresh founders against .870 with a table of 64 at 64 slots, the other sequence gates to the digit, and it
+costs the place in a long story past the table ([long context](#reads-over-long-context)).
 
-Read on six fresh founders of the [sequence battery](../benchmarks/sequence/README.md) (1,500
-lessons, 16 streams), every task at its own life: look back taught 5 to 12 and read at 24 to 60
-0.92 to 1.00 for every cue, copying unique tokens taught 3 to 6 and read at 8 to 12 0.997 to
-1.000 in closed loop, repeated tokens 0.925 to 0.941, induction and n-back taught short and read
-at 24 to 60 0.970 to 0.998 and 0.933 to 0.994, a period of 40 0.900 to 0.939 on five founders
-and 0.825 on one, two hops with a think moment 0.995 to 1.000,
-"before" 0.962 to 0.978, look back's cues taught one after another with
-`learning_rehearsal=1.0` 0.969 to 1.000 (taught mixed 0.972 to 1.000), and ordered recall from
-reward 1.00 on 9 lives of 12 (two lives answer one action on every query, sampled or greedy;
-one leaves "the latest" without a gap unanswered, where the first write's next port holds the
-second write's value). Where it falls short:
+### What the composition gives up
 
-- **Answer tokens never taught** are not produced (0.00 on every task), though the read names
-  them (induction and periodic continuation 1.00, two hops 0.91 to 0.93). Lessons that teach
-  other actions push the association's synapses onto an action never taught down: with the copy
-  pathway beside this composition, on a development founder, the association drives the
-  never-taught answer at -1.2 to -5.1 (copying, two hops, n-back, look back) and the winner at
-  +1.1 to +7.0, against the copy's +0.3 to +1.5. The copy pathway produces them only where it
-  answers from the first lesson and the association stays untaught. The shape that follows from this, a copy gain per port shared by every
-  token with outputs a lesson does not name keeping their inputs, was read as a development
-  emulation on two founders: induction 1.00, copying 0.995 to 0.999 and periodic continuation
-  0.96 to 0.98 of the never-taught answers, two hops 0.06 to 0.18 on the second hop, look back
-  0.00 to 0.15 and n-back below 0.02, at a cost to look back (`second` 0.90 on one founder) and
-  copying repeated tokens (0.91 to 0.92). That form is not in the library; the
-  [learned value path](#the-learned-value-path-opt-in) is the form that is.
-- **N-back** costs 0.033 on the mean against the founder memory, which answers it at 0.998 to
-  1.000; two founders of six read 0.933. The cost is the recipe's slow table
-  (`recall_position_rate=0.01`): at the founder's rate those two founders read 0.997 and 0.972,
-  and copying unique tokens at lengths no lesson reached falls to 0.17 (the content shortcut of
-  the table at 0.1). The two gates ask opposite rates of the one table; the composition keeps
-  the slow one.
-- **Ordered recall from reward** misses on three lives of twelve, where `reward_recipe`,
-  without the next port that successor reads need, misses on two. Two of the three pin the
-  actor's readout on one action from their first 256 episodes: the query's outputs sit at 0.95 to
-  0.99 and near zero, where the activation has no slope and neither the dopamine nor the read's
-  eligibility can move the choice. A relaxation of the pinned output's bias opened both locks and
-  moved another life to a miss, and the count stayed 9 of 12, so the library carries none. What
-  limits the other lives is the next port: a write's value is on its own slot's recall port and on the slot before's next
-  port, so with no gap between the writes "the first" and "the latest" each have a slot whose
-  two ports disagree, and a life can learn either. `reward_recipe` answers both through the
-  write's own slot by leaving the next port out; this composition keeps the next port for its
-  successor reads.
+Against the brain with no memory, `recall=False`, on this release's library:
+
+| Chamber | Reading | `recall=False` | This composition |
+| --- | --- | --- | --- |
+| Key-door, delay 2, 32 development founders | rule A acquired | 18 of 32 | 13 of 32 |
+| Key-door, delay 2, 24 fresh founders | rule A acquired | 13 of 24 | 10 of 24 |
+| Observed chain, 48 lives | clean greedy | 38 of 48 | 34 of 48 |
+| Observed chain, 48 lives | sampled success | .91 | .74 |
+| Competing ring, hard nursery, six lives | skill A after its reset: full ring, ring alone | .67, .70 | .55, .55 |
+| Competing ring, soft nursery, six lives | skill A after its reset: full ring, ring alone | .53, .60 | .51, .53 |
+| Odour nursery `step` at 1,000, 30 lives | every learning check | 22 of 30 | 18 of 30 |
+
+Against the founder memory, `recall_founder=True`, where a task names the memory:
+
+| Chamber | Reading | `recall_founder=True` | This composition | `recall=False` |
+| --- | --- | --- | --- | --- |
+| Hidden route, guided, 30 founders | sampled success | .39 | .22 | .21 |
+| Hidden route, guided, 30 founders | greedy success | .25 | .08 | .00 |
+
+At the key-door's delay 5 it rises: 9 to 12 of 32 on development founders, 4 to 7 of 24 on fresh ones. On six
+lives each it holds the odour nursery `live` at 300 and 1,000 and through `step` at 300, the bandit (blocks won 27
+to 28 of 30), the contextual bandit (3 to 6 of 6) and delayed response (6 of 6). Pass `recall=False` for a world
+paid by reward alone that gives the brain nothing to look up, and `recall_founder=True` for the founder memory;
+each reads as it read before this composition.
+
+### Two heads on this composition (opt-in)
+
+Two heads at about one head's parameters: width 33, the read's temperature at .15. The first block read this
+form without the read's route:
+
+```python
+two = Brain.compose(
+    inputs=35, actions=18, modules=(33,), seed=0, recall=True, recall_heads=2, recall_temperature=0.15,
+    recall_drive_gain=False,
+)
+assert two.recall.heads == 2 and two.parameters() == 30186
+```
+
+It holds every reading of the sequence battery above on six founders and ordered recall at 12 of 12. On the grammar
+chamber, twelve lives, it reads clauses .98, two distractors .93, held-out .94, roles .94, brackets .79 under
+their bar of .80, paths .95, two hops .91 and three hops .54, at 147 seconds and 5.0e11 multiply-accumulates
+against one head's 182 seconds and 8.5e11. Paths read .93 (least .84) at width 84 and .90 (least .75) at width 196,
+six lives each. It gives up more of the panel against `recall=False`, on the six to eight lives of each chamber: the
+odour nursery at 1,000, `live` 6 to 4 and `step` 6 to 2, and the key-door at delay 2, 5 to 1.
 
 ### Reads over long context
 
@@ -597,7 +657,7 @@ slot is gone. Inside the capacity three things decide how far a read holds as th
   every slot that holds the answer, and the gradient at the right slot is about `(tokens - 1) /
   slots`, so the lessons a distance takes grow with it.
 
-**The grid (opt-in, `recall_grid`; it needs the position term).** Every head's term also reads each
+**The grid (`recall_grid`, `(7, 8, 9, 11)` in a new brain; it needs the position term).** Every head's term also reads each
 slot past the table by its age modulo each of a few coprime numbers:
 
 ```text
@@ -772,7 +832,7 @@ its own action.
 ```python
 TOKENS, HEAR, ASK, NOISE = 6, 6, 7, 8
 speaker = Brain.compose(
-    inputs=9, actions=TOKENS, modules=(16,), seed=3, episodic=False, recall=True,
+    inputs=9, actions=TOKENS, modules=(16,), seed=3, episodic=False, recall=True, recall_founder=True,
     recall_gain=1.0, recall_tokens=range(TOKENS),   # observation i and action i: one token
 )
 assert (speaker.recall.gains == 0.0).all()          # a newborn acts as one without the path
@@ -862,7 +922,7 @@ contrast as every other synapse, inside the one settle.
 ```python
 TOKENS, HEAR, ASK, NOISE = 6, 6, 7, 8
 copier = Brain.compose(
-    inputs=9, actions=TOKENS, modules=(16,), seed=3, episodic=False, recall=True,
+    inputs=9, actions=TOKENS, modules=(16,), seed=3, episodic=False, recall=True, recall_founder=True,
     recall_copy=2.0, recall_tokens=range(TOKENS),   # observation i and action i: one token
 )
 for token in range(TOKENS):                          # no lesson: every token is untaught
@@ -971,7 +1031,7 @@ mover = Brain.compose(inputs=4, actions=2, modules=(16,), seed=0, recall=True,
                       recall_action=True)
 x = np.eye(4)[[0]]                                     # the same observation every moment
 done = [int(mover.act(x, greedy=True)[0]) for _ in range(3)]
-assert (mover.recall.values[0, :, 4:] == np.eye(2)[done]).all()  # what it did, slot by slot
+assert (mover.recall.values[0, -3:, 4:] == np.eye(2)[done]).all()  # what it did, slot by slot
 assert (mover.recall.acted == np.eye(2)[done[-1:]]).all()        # the command of the moment before
 ```
 

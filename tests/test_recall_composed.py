@@ -77,6 +77,34 @@ def test_a_new_memory_teaches_at_the_deep_point_with_no_apical():
     assert composed(learning=cd.LearnerConfig()).describe()["genes"]["teaching"] == "custom"
 
 
+@pytest.mark.parametrize(
+    "options",
+    [{"recall_position": 0}, {"recall_position_rate": 0.0}, {"recall_heads": 2},
+     {"recall_window": 2}, {"recall_next": False},
+     {"recall_action": True}, {"recall_when": True}, {"recall_capacity": 8},
+     {"recall_copy": 2.0, "recall_tokens": [0, 1, 2, 3]},
+     {"recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3]},
+     {"recall_address": 0.0}, {"recall_address_reward": 1.0}, {"recall_position_reward": 1.0},
+     {"recall_grid": ()}, {"recall_position": 64}, {"carried_gain": 0.0}, {"recall_drive_gain": False}],
+    ids=lambda options: "+".join(sorted(options)),
+)
+def test_every_setting_composes_beside_what_a_new_memory_takes_and_learns(options):
+    brain = composed(**options)
+    rng = np.random.default_rng(4)
+    for x in X[:3]:
+        brain.step(x, teacher=rng.integers(0, 4, size=2))
+    brain.act(X[3])
+    brain.learn(np.array([1.0, 0.0]), np.array([False, False]), X[4])
+
+
+def test_no_position_term_leaves_out_what_reads_beside_it():
+    brain = composed(recall_position=0)
+    assert brain.recall.position == 0 and not brain.recall.position_maps
+    assert not brain.recall.anchor and not brain.recall.relative and not brain.recall.slope
+    assert not brain.recall.position_reward and not brain.recall.grid
+    assert composed(recall_position_rate=0.0).recall.position_reward == 0.0
+
+
 def test_the_constructor_and_the_attention_recipe_keep_their_own_settings():
     connectome = cd.develop(cd.Genome.composed(6, 4, modules=(16,), recall=True), seed=0)
     direct = cd.Brain(connectome, seed=0, recall=True)

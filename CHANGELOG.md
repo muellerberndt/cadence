@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+- **Default change.** `Brain.compose(..., recall=True)` gives a new brain the recipe for lengths no
+  lesson reached and the reward's position read: `learning_surprise=True`, `recall_recency=0.0`,
+  `recall_boundary=True`, `recall_anchor=True`, `recall_slope=0.1`, `recall_position_rate=0.01`,
+  `recall_relative=True`, `recall_position_reward=4.0`, `recall_grid=(7, 8, 9, 11)` and
+  `recall_capacity=128`. Each has its
+  own opt-out, its founder by name, and `recall_founder=True` restores them all. `recall_when=True`
+  stays an opt-in for tasks that ask "before?". A saved brain keeps the values it was saved with.
+  Brains without the memory are unchanged. See
+  [what `recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
 - **Default change.** `Brain.compose(..., recall=True)` gives a new brain `teaching="deep"` with no
   apical: its lessons take whole nudged phases. `teaching="founder"` or `recall_founder=True` opts out,
   and `learning=` keeps its whole configuration. A saved brain keeps the values it was saved with.

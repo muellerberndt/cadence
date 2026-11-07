@@ -280,7 +280,7 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 # what ``Brain.compose(..., recall=True)`` gives a new brain's lessons beside its memory
 # (``Recall.COMPOSED``): the teaching point, at no apical, and settings a caller's value overrides
 _COMPOSED_TEACHING = "deep"
-_COMPOSED_SETTINGS: dict[str, Any] = {}
+_COMPOSED_SETTINGS: dict[str, Any] = {"learning_surprise": True}
 
 
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:

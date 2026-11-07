@@ -217,7 +217,7 @@ sentence = [np.eye(53)[[k]] for k in (40, 3, 44)]   # a context, a token, a cont
 for x in sentence:
     teacher.act(x, greedy=True)                      # three moments, three steps
 assert teacher.learned_code.work["updates"] == 3
-assert teacher.recall.keys.shape == (1, 3, 64 + 53) # the slots hold the moments' keys
+assert teacher.recall.keys.shape == (1, 4, 64 + 53) # a boundary slot, then the moments' keys
 teacher.lesson(sentence[1], [2])                     # a lesson moves the plastic synapses alone
 assert teacher.learned_code.work["updates"] == 3
 teacher.learned_code.learning = False               # the tables stay from here on
