@@ -2504,10 +2504,15 @@ class Brain:
         weights and predictor act in the region's own phase."""
         code = self.learned_code
         assert code is not None
-        efficacy, bias = graph.efficacy.copy(), graph.bias.copy()
-        for synapses, _, _ in self._code_synapses.values():
-            efficacy[synapses] = 0.0
+        efficacy, bias = graph.efficacy, graph.bias.copy()
         bias[self.code_index] = -code.thresholds
+        regions = [synapses for synapses, _, _ in self._code_synapses.values()]
+        if not any(efficacy[s].view(np.int64).any() for s in regions):  # every one +0.0
+            # the region's synapses already at zero: the graph keeps its weights and blocks
+            return graph.with_parameters(bias=bias)
+        efficacy = efficacy.copy()
+        for synapses in regions:
+            efficacy[synapses] = 0.0
         return graph.with_parameters(efficacy=efficacy, bias=bias)
 
     def _learn_code(self, state: BrainState) -> None:

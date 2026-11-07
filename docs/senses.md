@@ -164,7 +164,9 @@ At the founder standing gain of 2, the code's slope-weighted lateral coupling is
 but a synchronous sweep at the model's step can oscillate when units with overlapping
 columns are active together. After each phase the region reports the step's halvings for
 those negative modes (`LearnedCode.stability`), and its next phase runs at that step with its
-budget scaled by the same power of two. A phase that does not qualify is settled once more at
+budget scaled by the same power of two. Whether the halvings still hold is settled by Cholesky
+factorizations at their bounds, a fraction of an eigenvalue solve's cost; the eigenvalues decide
+when they change, and the answer is the same integer. A phase that does not qualify is settled once more at
 the step the dictionary's negative modes allow over every state (`LearnedCode.rest_stability`).
 If it does not qualify there either, the moment is refused with `RuntimeError` before anything
 changes, as a refused free solve is. A world of one input needs this from its first moment.

@@ -831,6 +831,94 @@ def test_a_one_input_world_settles_at_the_step_its_dictionary_allows():
         assert code.stability(v) <= code.rest_stability()
 
 
+def eigenvalue_halvings(code, v):
+    """The step's halvings as the eigenvalues give them, the rule ``stability`` states."""
+    v = np.atleast_2d(np.asarray(v, dtype=float))
+    slopes = np.maximum(code.model.slope_at(v), 0.0)
+    root = np.sqrt(slopes)
+    coupling = root[:, :, None] * (code.model.gain * code.lateral())[None, :, :] * root[:, None, :]
+    index = np.arange(code.units)
+    coupling[:, index, index] -= code.top_down * slopes
+    mu = float(np.linalg.eigvalsh(coupling)[:, 0].min())
+    need = code.model.dt * (1.0 - mu) / code.STEP_MARGIN
+    return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
+
+
+def test_the_step_is_the_one_the_eigenvalues_give_from_any_step_it_held():
+    """``stability`` asks Cholesky factorizations whether the present halvings still hold and
+    takes the eigenvalues where they cannot tell: the same answer from every step held, over
+    states from silent to steep, rows that differ, and dictionaries from orthogonal to one
+    direction shared by every unit."""
+    rng = np.random.default_rng(11)
+    answers, settled = set(), 0
+    for seed, overlap in enumerate((0.0, 0.3, 0.7, 1.0)):
+        code = composed(seed=seed).learned_code
+        one = rng.normal(size=(code.inputs, 1))
+        dictionary = (1.0 - overlap) * code.dictionary + overlap * one
+        code.dictionary = dictionary / np.linalg.norm(dictionary, axis=0)
+        for scale, rows in ((0.1, 1), (1.0, 1), (1.0, 4), (3.0, 4), (8.0, 16)):
+            for _ in range(6):
+                v = rng.normal(code.model.threshold, scale, (rows, code.units))
+                expected = eigenvalue_halvings(code, v)
+                answers.add(expected)
+                coupling_rows = None
+                for held in {0, 1, 2, 3, 5, expected, expected + 1, max(expected - 1, 0)}:
+                    code.restep(held)
+                    assert code.stability(v) == expected
+                    slopes = np.maximum(code.model.slope_at(v), 0.0)
+                    root = np.sqrt(slopes)
+                    coupling_rows = root[:, :, None] * (code.model.gain * code.lateral())[None] * root[:, None, :]
+                    index = np.arange(code.units)
+                    coupling_rows[:, index, index] -= code.top_down * slopes
+                    found = code._held_halvings(coupling_rows)
+                    assert found is None or found == expected
+                    settled += found is not None
+                    if held == expected:  # the factorizations settle a held step clear of a bound
+                        assert found == expected
+    assert len(answers) >= 2 and settled
+
+
+def test_a_step_a_hair_from_its_bound_goes_to_the_eigenvalues():
+    """Within ``BOUND_MARGIN`` of a bound the factorizations do not answer."""
+    code = composed(seed=2).learned_code
+    code.restep(1)
+    bound = 1.0 - code.STEP_MARGIN * 2.0 / code.model.dt
+    coupling = np.diag(np.full(code.units, bound))[None, :, :]
+    assert code._held_halvings(coupling) is None
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+    code.restep(0)
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) is None
+    code.restep(2)
+    assert code._held_halvings(coupling - 1e-6 * np.eye(code.units)) == 2
+
+
+def test_a_state_that_is_not_finite_goes_to_the_eigenvalues():
+    """No factorization answers for it: a factorization of NaN need not fail on every LAPACK."""
+    code = composed(seed=2).learned_code
+    for value in (np.nan, np.inf):
+        assert code._held_halvings(np.full((2, code.units, code.units), value)) is None
+
+
+def test_the_brain_takes_new_thresholds_with_its_blocks_and_zeroes_a_moved_region():
+    """An accepted moment moves the thresholds: the graph keeps its weights. A synapse of the
+    region off zero, or at a negative zero, goes back to zero, as the first install does."""
+    brain = composed(seed=2)
+    x = np.random.default_rng(1).random((3, INPUTS))
+    brain.act(x, greedy=True)
+    graph = brain.brain
+    before = graph._weights
+    installed = brain._installed(graph)
+    assert installed._weights is before
+    np.testing.assert_array_equal(installed.bias[brain.code_index], -brain.learned_code.thresholds)
+    synapses = brain._code_synapses["lateral"][0]
+    for value in (0.5, -0.0):
+        efficacy = graph.efficacy.copy()
+        efficacy[synapses[3]] = value
+        again = brain._installed(graph.with_parameters(efficacy=efficacy))
+        assert again.efficacy[synapses].tobytes() == np.zeros(len(synapses)).tobytes()
+        assert again._weights is not before
+
+
 def test_a_brain_with_the_region_deep_copies_and_imagines():
     """``copy.deepcopy`` of a brain with the region: the copy shares the immutable
     connectomes and holds its own tables, state and generators, acts as the original acts,

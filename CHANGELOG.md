@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- A brain with a learned code acts two to three times faster, with the same bits. `LearnedCode.stability` answers
+  from Cholesky factorizations at the step's bounds while the halvings hold and from the eigenvalues when they
+  change, and the brain takes a moment's new thresholds on its own blocks instead of rebuilding them. At 256 code
+  units and 548 inputs on one thread, an act of one stream falls from 34 ms to 12 ms, an act of sixteen streams
+  from 111 ms to 47 ms, a lesson and act of sixteen from 247 ms to 114 ms.
 - A lesson on a brain with a wide read is faster, with the same bits: the address lesson's readback and the carried
   gains' contrast build each route's weight matrix in one compiled pass. A heavy lesson on a brain of 548 inputs and
   504,064 synapses falls from 43 ms to 33 ms on one thread.
