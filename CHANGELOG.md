@@ -47,8 +47,8 @@
   size and rows, by the measured rule in [the default backend](docs/backends.md#the-default-backend), and a
   brain a device passes at one row takes it at compose. On an A10G the speech size's `step` reads 26 ms against
   313 on one CPU core at one row, and 42 against 1,393 at 16; the chamber at 16 rows stays on the core.
-  `brain.placement` and `describe()["placement"]` state what it took and why, and a checkpoint states what it
-  ran on. A device that refuses a brain falls to the next fastest and the report names it. Nothing is imported
+  `brain.placement` states what it took and why, and `describe()` and a checkpoint state it wherever the brain
+  is not on the CPU by name. A device that refuses a brain falls to the next fastest and the report names it. Nothing is imported
   below a device's work. `backend="cpu"` keeps its bits; `CADENCE_BACKEND` names a backend for a whole run; tests,
   benchmarks and examples name theirs. MPS leaves the list, and a card the table has not read takes a device from
   twice the work.

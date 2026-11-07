@@ -131,6 +131,7 @@ def test_the_default_on_a_machine_without_a_device_has_the_bits_of_the_cpu(monke
     assert report["backend"] == "cpu" and report["pending"] is False
     assert "synapses" in report["why"]
     assert named.placement["chosen_by"] == "named"
+    assert "placement" not in named.describe()
 
 
 def to_the_torch_cpu(from_rows: int):

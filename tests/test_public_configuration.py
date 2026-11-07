@@ -503,13 +503,13 @@ def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
     np.testing.assert_array_equal(at_constant.brain.efficacy, founder.brain.efficacy)
 
 
-def test_the_description_has_five_sections_and_names_every_gene_as_compose_takes_it():
+def test_the_description_has_four_sections_and_names_every_gene_as_compose_takes_it():
     brain = cd.Brain.compose(
         4, 2, modules=(8,), seed=2, arousal=True, recall=True, recall_founder=True, memory_choice=True,
         history_decays=(0.5,), efference_amplitude=1.0, scales={"trace": 2.0},
     )
     described = brain.describe()
-    assert list(described) == ["layout", "genes", "placement", "memories", "pending"]
+    assert list(described) == ["layout", "genes", "memories", "pending"]
     assert described["layout"]["composition"]["working_memory_scale"] == 2.0
     assert described["layout"]["code"]["kind"] == "observation"
     assert list(described["memories"]) == list(brain.memories)

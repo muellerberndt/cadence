@@ -161,10 +161,10 @@ work, a stated margin with no calibration in this version. Options that keep the
 host take a device from four times the work, and `precision="float64"` named on CUDA from four times, both
 reasoned from the readings above and not read at that size. A learned code stays off torch.
 
-A choice is made once, at the first moment: rows that grow later do not move the brain. `brain.placement` and
-`brain.describe()["placement"]` state the `backend`, `device`, `precision`, `chosen_by` (`"auto"`, `"named"` or
-`"environment"`), `why`, `refused` and `pending`, and a checkpoint states what it ran on (`saved_on` after
-a load). A device that refuses the brain falls to the next fastest, and `refused` names it with its reason:
+A choice is made once, at the first moment: rows that grow later do not move the brain. `brain.placement` states
+the `backend`, `device`, `precision`, `chosen_by` (`"auto"`, `"named"` or `"environment"`), `why`, `refused` and
+`pending`. `brain.describe()` and a checkpoint state the same wherever the brain is not on the CPU by name, whose
+descriptions and files keep their bytes, and a brain loaded elsewhere reports `saved_on`. A device that refuses the brain falls to the next fastest, and `refused` names it with its reason:
 detection never fails a compose. Without the optional packages nothing is imported, and below a device's
 work neither torch nor MLX is imported where they are installed.
 

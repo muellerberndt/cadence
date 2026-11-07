@@ -3177,7 +3177,8 @@ class Brain:
         return _graft(self, donor, regions, into, joints, freeze)
 
     def describe(self) -> dict[str, Any]:
-        """Describe the brain without changing live state: five sections.
+        """Describe the brain without changing live state: four sections, and ``placement``, where
+        it runs and why (``placement``), where that is not the CPU by name.
 
         - ``layout``: the inputs, actions, regions, slots, neurons, synapses and populations;
           ``code``, what the memories key on; ``learned_code``, a learned code's settings and
@@ -3188,7 +3189,6 @@ class Brain:
         - ``genes``: every setting by the name ``compose`` and ``retune`` take, the teaching
           point as ``teaching`` (``"custom"`` for steps that ``learning=LearnerConfig(...)``
           set outside every point, whose six effective settings are then under ``learning``).
-        - ``placement``: where it runs and why (``placement``).
         - ``memories``: one entry per member of ``brain.memories``, its ``to_dict()``.
         - ``pending``: whether an issued action owns the next real outcome.
 
@@ -3302,10 +3302,12 @@ class Brain:
                 ),
             },
             "genes": genes,
-            "placement": self.placement,
             "memories": {name: memory.to_dict() for name, memory in self.memories.items()},
             "pending": self.pending_feedback,
         }
+        ran_on = self.placement
+        if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
+            result["placement"] = ran_on
         return dict(plain(result))
 
     # -- stimulus
