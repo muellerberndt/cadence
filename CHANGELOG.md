@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- **Default change.** `Brain.compose(..., recall=True)` gives a new brain `teaching="deep"` with no
+  apical: its lessons take whole nudged phases. `teaching="founder"` or `recall_founder=True` opts out,
+  and `learning=` keeps its whole configuration. A saved brain keeps the values it was saved with.
+  Brains without the memory are unchanged. See
+  [what `recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
 - Add `recall_founder` to `Brain.compose`: `recall_founder=True` beside `recall=True` composes the
   memory at the founders of its settings table, whatever `recall=True` gives a new brain. It is no
   setting of the memory, so it is neither described nor saved.

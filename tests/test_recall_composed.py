@@ -68,6 +68,15 @@ def test_a_grown_brain_keeps_its_own_values_whatever_a_new_memory_composes():
     assert grown_new.learner.config == new.learner.config
 
 
+def test_a_new_memory_teaches_at_the_deep_point_with_no_apical():
+    genes = composed().describe()["genes"]
+    assert genes["teaching"] == "deep" and composed().brain.apical is None
+    assert composed(recall_founder=True).describe()["genes"]["teaching"] == "founder"
+    assert composed(teaching="founder").describe()["genes"]["teaching"] == "founder"
+    assert composed(teaching="normalized").describe()["genes"]["teaching"] == "normalized"
+    assert composed(learning=cd.LearnerConfig()).describe()["genes"]["teaching"] == "custom"
+
+
 def test_the_constructor_and_the_attention_recipe_keep_their_own_settings():
     connectome = cd.develop(cd.Genome.composed(6, 4, modules=(16,), recall=True), seed=0)
     direct = cd.Brain(connectome, seed=0, recall=True)

@@ -260,6 +260,19 @@ setting widens the key:
 `brain.recall.address_width` reports the result. Keys, address, map outputs and a reward
 eligibility take that width; values, nexts and the two regions keep the value width.
 
+### What `recall=True` gives a new brain
+
+`Brain.compose(..., recall=True)` gives a new brain these settings over the founders of
+[the settings table](#recall-settings). Each is an ordinary setting: name its founder to opt out of
+one, or pass `recall_founder=True` for every founder at once. A saved brain keeps the values it was
+saved with, since a setting a file does not hold means its founder. `Brain(connectome, recall=True)` and
+`attention=True` name their settings and take none of these, and `learning=` keeps its whole
+configuration.
+
+| Setting | Founder | A new brain's | What it gives |
+| --- | --- | --- | --- |
+| `teaching` | `"founder"` | `"deep"`, no apical | Whole nudged phases ([the deep point](tune.md#deep-brains)) |
+
 ### Recall settings
 
 Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is

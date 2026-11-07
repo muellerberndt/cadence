@@ -277,6 +277,12 @@ def _history_decays(value: Any) -> tuple[float, ...]:
     return decays
 
 
+# what ``Brain.compose(..., recall=True)`` gives a new brain's lessons beside its memory
+# (``Recall.COMPOSED``): the teaching point, at no apical, and settings a caller's value overrides
+_COMPOSED_TEACHING = "deep"
+_COMPOSED_SETTINGS: dict[str, Any] = {}
+
+
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
     """The recall memory's settings, validated: its founders and options at their founders
     with every ``recall_<setting>`` of ``genes`` over them (those names are removed from
@@ -2629,6 +2635,11 @@ class Brain:
             if not options.get("recall_founder", False):
                 for name, value in Recall.composed(options).items():
                     options.setdefault(f"recall_{name}", value)
+                for name, value in _COMPOSED_SETTINGS.items():
+                    if not (name.startswith("learning_") and "learning" in options):
+                        options.setdefault(name, value)
+                if teaching is None and "learning" not in options:
+                    teaching = _COMPOSED_TEACHING
 
         genome, layout = _layout(
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
