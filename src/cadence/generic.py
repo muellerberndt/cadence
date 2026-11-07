@@ -5924,14 +5924,11 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-grow-") as folder:
         root = Path(folder)
-        # the trained brain through its checkpoint, on the CPU, whatever device it lives on;
-        # the grown brain starts its streams afresh, as after reset()
-        brain.save(root / "living.npz", compressed=False)
-        trained = type(brain).load(root / "living.npz", backend="cpu")
-        trained.reset()
-        trained.save(root / "trained.npz", compressed=False)
+        # the trained brain's checkpoint as after reset(): the grown brain starts its streams
+        # afresh
+        _saved_afresh(brain, root / "trained.npz")
         template.save(root / "template.npz", compressed=False)
-        del trained, template
+        del template
         with (
             np.load(root / "trained.npz", allow_pickle=False) as old,
             np.load(root / "template.npz", allow_pickle=False) as new,
@@ -5948,6 +5945,18 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
         if gains is not None:
             result._take_gains(gains)
         return result
+
+
+def _saved_afresh(brain: Brain, path: Path) -> None:
+    """``brain``'s checkpoint as after ``reset()``, and ``brain`` as it was: its streams are taken
+    aside and returned, as a replay does, so a brain of many streams is not read back from its file
+    only to drop them (at 256 streams of a wide brain that read held 12.9 GB on the host)."""
+    held = brain._streams()
+    try:
+        brain.reset()
+        brain.save(path, compressed=False)
+    finally:
+        brain._resume(held)
 
 
 def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
@@ -6397,12 +6406,8 @@ def _graft(
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-graft-") as folder:
         root = Path(folder)
-        host.save(root / "living.npz", compressed=False)
-        fresh = type(host).load(root / "living.npz", backend="cpu")
-        fresh.reset()  # the grafted brain starts its streams afresh, as after reset()
-        fresh.save(root / "host.npz", compressed=False)
+        _saved_afresh(host, root / "host.npz")  # the grafted brain starts its streams afresh
         donor.save(root / "donor.npz", compressed=False)
-        del fresh
         with (
             np.load(root / "host.npz", allow_pickle=False) as mine,
             np.load(root / "donor.npz", allow_pickle=False) as theirs,

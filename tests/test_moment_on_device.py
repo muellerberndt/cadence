@@ -568,3 +568,41 @@ def test_a_lived_moment_brings_nothing_wider_than_its_action_to_the_host(monkeyp
         else:
             brain.live(x, reward=np.array([float(t % 3 == 0)]))
     assert reads and max(reads) <= motor
+
+
+@pytest.mark.parametrize("device", ["cpu", "torch"])
+def test_grow_and_graft_leave_a_living_brain_as_it_was(device):
+    """A grown or grafted brain starts its streams afresh; the brain it came from keeps them."""
+    place = {"backend": "cpu"} if device == "cpu" else {"backend": "torch", "device": "cpu"}
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, **place)
+    _a_life_of_rewards(brain, moments=5)
+    x = np.eye(12)[[1, 7, 3]]
+    brain.act(x)
+    before = copy.deepcopy(brain)
+    grown = brain.grow(history_decays=(0.5,))
+    assert grown.basal_ganglia._pending is None
+    twin = cd.Brain.compose(12, 5, modules=(16,), seed=4, **place)
+    grafted = twin.graft(brain, regions=("association", "motor"), joints="kept")
+    assert grafted.basal_ganglia._pending is None
+    reward = np.ones(3)
+    np.testing.assert_array_equal(
+        brain.step(x, reward=reward), before.step(x, reward=reward)
+    )
+    np.testing.assert_array_equal(brain.brain.efficacy, before.brain.efficacy)
+
+
+@pytest.mark.parametrize("device", ["cpu", "torch"])
+def test_a_brain_grown_while_it_streams_is_the_brain_grown_after_a_reset(device, tmp_path):
+    place = {"backend": "cpu"} if device == "cpu" else {"backend": "torch", "device": "cpu"}
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, **place)
+    _a_life_of_rewards(brain, moments=5)
+    brain.act(np.eye(12)[[1, 7, 3]])
+    streaming = brain.grow(history_decays=(0.5,))
+    twin = copy.deepcopy(brain)
+    twin.reset()
+    afresh = twin.grow(history_decays=(0.5,))
+    ours, theirs = streaming.save(tmp_path / "a.npz"), afresh.save(tmp_path / "b.npz")
+    with np.load(ours) as a, np.load(theirs) as b:
+        assert set(a.files) == set(b.files)
+        for name in a.files:
+            np.testing.assert_array_equal(a[name], b[name], err_msg=name)
