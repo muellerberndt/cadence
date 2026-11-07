@@ -316,3 +316,17 @@ def test_a_learned_code_predicts_from_what_the_region_holds():
     model, bias = brain.brain.neuron_model, brain.brain.bias
     expected = model.activation(0.5 * trace.amplitude * held + bias[brain.prefrontal_index])
     np.testing.assert_allclose(z, expected)
+
+
+def test_a_replay_leaves_the_streams_eligibility():
+    """A rehearsal returns every stream: the gains' eligibility comes back with the synapses'."""
+    brain = brain_of(carried_gain=0.01, learning_rehearsal=1.0)
+    rng = np.random.default_rng(3)
+    for _ in range(3):
+        brain.step(rng.random((2, 6)), teacher=rng.integers(0, 4, size=2))
+    brain.act(rng.random((2, 6)))
+    brain.learn(rng.random(2), np.zeros(2, dtype=bool), rng.random((2, 6)))
+    held = brain.basal_ganglia.trace_hearing.copy()
+    brain.lesson(rng.random((2, 6)), rng.integers(0, 4, size=2))
+    assert brain.last_learning["rehearsal_rows"] > 0
+    np.testing.assert_array_equal(brain.basal_ganglia.trace_hearing, held)

@@ -127,8 +127,9 @@ _REWARD_ARRAYS = (
 # phase and the parameters it was settled under, the drive, a pending action and the
 # eligibility.
 _STREAM_ACTOR = (
-    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "trace", "trace_bias",
-    "trace_critic", "trace_memory", "_trace_device", "_trace_mlx", "salience",
+    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "_pending_hearing", "trace",
+    "trace_bias", "trace_critic", "trace_memory", "trace_hearing", "_trace_device", "_trace_mlx",
+    "salience",
 )
 # The brain's records of its streams' moments, held by a replay with the streams themselves.
 _STREAM_RECORDS = (
