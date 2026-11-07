@@ -1,6 +1,25 @@
 # Changelog
 
-## Unreleased
+## 0.95.0 — 2026-11-07
+
+Every new brain holds the recall memory at one composition that reads sentences and sequences with no
+further setting, and runs on the fastest backend the machine has at its size. `recall=False` builds a
+brain without the memory, bit-identical to what 0.94.0 composes, on `backend="cpu"`.
+
+The composition holds every sequence gate and every grammar chamber bar on three blocks of fresh
+founders, each under a protocol declared before its first life, the last on what a new brain composes
+here. In one online pass of 82 seconds it reads clauses .99, held-out .93, roles .98, brackets .92,
+paths .96, two hops .92 and three hops .38. Eight passes of a matched transformer at about the same
+seconds read 1.00, .98, .98, .93, .69, .62 and .00, and offline at about 3.5 times the seconds it reads
+1.00 on all but three hops, .00. N-back reads 1.00 at 100 items and .96 to 1.00 at 1,000, where the
+transformer reads chance, and ordered recall comes from reward alone on 12 of 12 founders.
+
+The memory and the apical compartment run on MLX and CUDA in one device form, with nothing wider than
+the action crossing back per moment above a size rule. `backend="auto"` is the default of
+`Brain.compose`, and a device takes float32 unless named. With nothing named, a `step` of sixteen
+streams at 3,920 inputs falls from 2,459 ms to 44.6 ms on an A10G and from 10,905 ms to 148 ms on an
+Apple M4, and small brains stay on the CPU, which beats a device at their size. The accepted costs are
+in [what the composition gives up](docs/memory.md#what-the-composition-gives-up).
 
 - **Default change.** `Brain.compose` gives a new brain with the memory `learning_fast_settle=True`: its free solves take
   `equilibrate(..., fast=True)` on the compiled CPU path, the same equations, order and tolerance in fewer neuron updates,

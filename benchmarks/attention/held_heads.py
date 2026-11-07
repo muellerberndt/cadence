@@ -240,7 +240,7 @@ def run_founder(
     task = Task(rule, temperature)
     arms: dict[str, Any] = {}
     for heads in (2, 1):
-        brain = task.compose(seed, heads, backend="cpu")
+        brain = task.compose(seed, heads)
         task.warm(brain)
         banks = task.banks(brain)
         training = train(task, brain, banks, lessons, seed)

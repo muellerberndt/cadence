@@ -336,6 +336,20 @@ def test_a_replay_across_the_size_rule_returns_the_streams(device, live_rows, re
 
 
 @pytest.mark.parametrize("device", DEVICES)
+def test_a_position_rate_of_zero_holds_the_position_maps(device):
+    """``recall_position_rate=0.0`` freezes the table, and the slope beside it goes on learning."""
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=0, recall_position_rate=0.0, **on_device(device))
+    rng = np.random.default_rng(1)
+    for _ in range(3):
+        brain.act(observations(rng, 3), greedy=True)
+        brain.lesson(observations(rng, 3), rng.integers(5, size=3))
+    assert brain.recall._device is not None
+    for array in brain.recall.position_maps[0]:
+        assert not np.asarray(array).any()
+    assert any(np.asarray(array).any() for array in brain.recall.slope_maps[0])
+
+
+@pytest.mark.parametrize("device", DEVICES)
 def test_what_is_written_on_the_host_stays_when_the_memories_leave(device):
     brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, **on_device(device))
     rng = np.random.default_rng(4)

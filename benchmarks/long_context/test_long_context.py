@@ -103,7 +103,7 @@ def test_a_periodic_answer_names_its_period_and_repeat():
 def _short_brain(arm="Fd", **spec):
     task = rc.DenseNBack(ks=(3, 5), lessons=6)
     return task, rc.compose(task, {"arm": arm, "founder": 0, "capacity": 32, "position": 16,
-                                   "module": 16, **spec}, backend="cpu")
+                                   "module": 16, **spec})
 
 
 @pytest.mark.parametrize("arm", ["Fd", "FdL"])
@@ -145,7 +145,7 @@ def test_a_frozen_read_leaves_the_life_as_it_was():
 def test_a_right_slot_is_counted_as_held_only_while_the_capacity_holds_it():
     task = rc.DenseNBack(ks=(21,), lessons=4)
     brain = rc.compose(task, {"arm": "Fd", "founder": 0, "capacity": 8, "position": 8,
-                              "module": 16}, backend="cpu")
+                              "module": 16})
     check = {"checked": 0, "worst": 0.0}
     cells, _ = rc.frozen_read(brain, task, np.random.default_rng(7), 1, check)
     assert cells["k21"]["held"] == 0.0 and cells["k21"]["mass_value"] == 0.0

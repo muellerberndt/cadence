@@ -34,7 +34,7 @@ def test_the_answers_follow_the_brains_own_history() -> None:
 
 
 def test_erasing_removes_every_command_and_nothing_else() -> None:
-    brain = subject.compose(0, "action", backend="cpu")
+    brain = subject.compose(0, "action")
     for _ in range(3):
         brain.act(subject.X, greedy=True)
     events = brain.recall.values[..., : -brain.recall.command_width].copy()
