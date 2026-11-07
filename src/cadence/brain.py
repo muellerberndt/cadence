@@ -2550,14 +2550,14 @@ def _launch_rule(bucket: _Bucket, batch: int, precision: str) -> bool:
     """Whether a bucket joins the Triton launch. Several groups do, and a group of few presynaptic
     neurons (128 at float64, 256 at float32): a launch costs about 5 microseconds at that size, a
     cuBLAS product about 25 at float64 and 5 at float32. At float32 cuBLAS keeps the larger groups.
-    At float64 it keeps them below a batch of 8; from there a launch beats it up to 1,024
+    At float64 it keeps them below a batch of 8; from there a launch beats it up to 4,096
     presynaptic neurons, and beyond that once the group fills about 64 programs, since a program
     takes about 40 nanoseconds per presynaptic neuron however few there are to share the work.
     Measured on an A10G: docs/backends.md."""
     double = precision == "float64"
     if bucket.count > 1 or bucket.cols <= (128 if double else 256):
         return True
-    return double and batch >= 8 and (bucket.cols <= 1024 or bucket.rows * batch >= 8192)
+    return double and batch >= 8 and (bucket.cols <= 4096 or bucket.rows * batch >= 8192)
 
 
 def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
@@ -2785,7 +2785,10 @@ def _triton_apical() -> Any:
 
 
 class _SmallGroups:
-    """The programs of one launch: per program its weights, columns and output rows."""
+    """The launches of these buckets, one per tile height: per program its weights, columns and
+    output rows. A group takes the tallest tile its rows fill, since a program's mask does not
+    spare its arithmetic: a group of one row in a tile of eight costs a float64 launch eight times
+    the work."""
 
     def __init__(self, torch: Any, device: Any, buckets: list[Any], weights_offset: list[int],
                  cols: list[np.ndarray], rows: list[np.ndarray]) -> None:
@@ -2796,45 +2799,49 @@ class _SmallGroups:
             self.groups.append((bucket, offset, c_base, r_base))
             c_base += len(c)
             r_base += len(r)
-        self.tables: dict[int, Any] = {}
+        self.tables: dict[int, list[tuple[int, Any]]] = {}
         self.cols = torch.from_numpy(np.concatenate(cols).astype(np.int64)).to(device)
         self.rows = torch.from_numpy(np.concatenate(rows).astype(np.int64)).to(device)
 
-    def table(self, height: int) -> Any:
-        """Per program of ``height`` output rows its five numbers, as a device array."""
-        held = self.tables.get(height)
+    def tiles(self, tallest: int) -> list[tuple[int, Any]]:
+        """Per tile height up to ``tallest`` the five numbers of each of its programs, as a device
+        array."""
+        held = self.tables.get(tallest)
         if held is None:
-            meta = []
+            meta: dict[int, list[tuple[int, int, int, int, int]]] = {}
             for bucket, offset, c_base, r_base in self.groups:
+                height = min(tallest, 1 << (int(bucket.rows).bit_length() - 1))
                 for g in range(bucket.count):
                     for r0 in range(0, bucket.rows, height):
-                        meta.append((
+                        meta.setdefault(height, []).append((
                             offset + (g * bucket.rows + r0) * bucket.cols,
                             bucket.cols,
                             min(height, bucket.rows - r0),
                             c_base + g * bucket.cols,
                             r_base + g * bucket.rows + r0,
                         ))
-            held = self.tables[height] = self.torch.tensor(
-                np.asarray(meta, dtype=np.int64).reshape(-1), device=self.device
-            )
+            held = self.tables[tallest] = [
+                (height, self.torch.tensor(np.asarray(rows, dtype=np.int64).reshape(-1),
+                                           device=self.device))
+                for height, rows in sorted(meta.items())
+            ]
         return held
 
     @property
     def programs(self) -> int:
-        """Programs of the launch at float64's tile height, for reports."""
-        return int(self.table(_TRITON_TILE[True][0]).shape[0]) // 5
+        """Programs of the launches at float64's tiles, for reports."""
+        return sum(int(meta.shape[0]) // 5 for _, meta in self.tiles(_TRITON_TILE[True][0]))
 
     def __call__(self, values: Any, s: Any, out: Any) -> None:
         batch, double = s.shape[1], values.element_size() == 8
-        height, width = _TRITON_TILE[double]
+        tallest, width = _TRITON_TILE[double]
         block = _tile_batch(batch, double)
-        meta = self.table(height)
-        grid = (meta.shape[0] // 5, -(-batch // block))
-        _triton_transport()[grid](
-            values, s, out, meta, self.cols, self.rows, batch,
-            ROWS=height, COLS=width, BATCH=block, DOUBLE=double,
-        )
+        for height, meta in self.tiles(tallest):
+            grid = (meta.shape[0] // 5, -(-batch // block))
+            _triton_transport()[grid](
+                values, s, out, meta, self.cols, self.rows, batch,
+                ROWS=height, COLS=width, BATCH=block, DOUBLE=double,
+            )
 
 
 def _host_copy(x: Any) -> np.ndarray:
