@@ -256,6 +256,37 @@ def test_a_moment_reads_nothing_wider_than_its_action(monkeypatch):
     assert 0 < widest <= max(SPEECH[1], len(mlx.hearing.routes))
 
 
+def test_a_wide_brain_steps_at_its_rates_on_the_device():
+    """A new brain's rates by width, and a rate set by hand, on the device: a lesson and a reward
+    move every synapse as on the host, and nothing of the optimizer comes back."""
+    options = {"modules": (256,), "learning_fast_settle": False}
+    cpu = cd.Brain.compose(*SPEECH, seed=2, backend="cpu", **options)
+    mlx = cd.Brain.compose(*SPEECH, seed=2, backend="mlx", **options)
+    assert mlx.learner.synapse_rate is not None and (mlx.learner.synapse_rate < 1).any()
+    rng = np.random.default_rng(7)
+
+    def both(brain, x, labels, rewards):
+        brain.lesson(x, labels)
+        brain.step(x)
+        brain.step(x, reward=rewards)
+        brain.learn(np.zeros(2), np.zeros(2, dtype=bool), x)
+        return np.array(brain.brain.efficacy)
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for hand in (False, True):
+            if hand:  # a new array is read again, and the one read does not change in place
+                with pytest.raises(ValueError, match="read-only"):
+                    mlx.learner.synapse_rate[0] = 0.5
+                rate = cpu.learner.synapse_rate.copy()
+                rate[rng.random(len(rate)) < 0.5] = 0.25
+                cpu.learner.synapse_rate, mlx.learner.synapse_rate = rate, rate.copy()
+            x, labels, rewards = rows_of(rng, 2), rng.integers(SPEECH[1], size=2), rng.random(2) - 0.5
+            a, b = both(cpu, x, labels, rewards), both(mlx, x, labels, rewards)
+            assert mlx.learner.__dict__.get("_device_moments") is not None
+            assert np.abs(a - b).max() < SYNAPSES * max(np.abs(a).max(), 1.0)
+
+
 def test_a_large_block_is_made_alone(monkeypatch):
     """A block past the size is made in a launch alone and its size read a part of the rows at a
     time: the same eligibility and the same report, and the next step goes on from them."""
