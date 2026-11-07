@@ -83,8 +83,8 @@ budget over up to `k + 1` attempts, each at half the previous `dt`, all checked 
 original equations. Report a spent budget and act on it.
 
 `equilibrate(..., fast=True)`, which a composed brain's free solves take under
-`learning_fast_settle=True`, reaches the same equations in fewer neuron updates on the compiled CPU
-path. Its sweeps are in the same order as a plain sweep. A row stops at the check it is within 1e-5,
+`learning_fast_settle=True`, the setting of a new brain with the memory, reaches the same equations in
+fewer neuron updates on the compiled CPU path. `learning_fast_settle=False` names the ordinary solve. Its sweeps are in the same order as a plain sweep. A row stops at the check it is within 1e-5,
 or within `tolerance` once 96 sweeps are spent, and leaves the arrays the others settle in; `chunk`
 is at most 16. The activation is made in arithmetic that vectorizes, within about 1e-14 of the
 rule's. The result
@@ -545,7 +545,7 @@ Select rates on development data and freeze them.
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |
 | `reciprocal` | `Learner` | tie each synapse and its reverse into one efficacy | `True` |
 | `tie_groups` | `Learner` | int per synapse, `-1` untied; a group shares one step | `None` |
-| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1) |
+| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1); a new brain's [width](tune.md#wide-brains) sets it above 64 |
 | `slots` | `Learner` | outputs split into softmax groups: a count of equal groups or a size per group | 1 |
 | `gain`, `slope`, `leak`, `dt`, `stimulus_amplitude` | `learning_neuron_model` | synaptic gain, activation slope, sub-rest response, integration step, input scale | 1.0, 1.0, 0.1, 0.5 (`Brain.compose` uses 1.0), 1.0 |
 | `density`, `feedback`, `lateral`, `seed` | `layered` | input-to-hidden density, feedback scale, output-to-output weight, wiring seed | 0.3, 1.0, 0.0, 0 |

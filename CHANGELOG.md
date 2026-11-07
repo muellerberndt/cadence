@@ -2,6 +2,23 @@
 
 ## Unreleased
 
+- **Default change.** `Brain.compose` gives a new brain with the memory `learning_fast_settle=True`: its free solves take
+  `equilibrate(..., fast=True)` on the compiled CPU path, the same equations, order and tolerance in fewer neuron updates,
+  with other bits at every width. `learning_fast_settle=False` names the ordinary solve and `learning=` keeps its whole
+  configuration. `recall=False` and `recall_founder=True` keep their bits, and a saved or grown brain keeps the solve it has.
+  See [settling](docs/settling.md#settling-and-equilibrium).
+- **Default change.** A new brain with the memory steps at its association's width `w`, with no new setting: above 64 the
+  projection from prefrontal to association and the association-motor pair take `64 / w` through `Learner.synapse_rate`,
+  and `recall_address` is .01 times `64 / w`. At 64 and under nothing changes, to the bit, and `recall_founder=True`,
+  `recall=False`, `attention=True` and a custom anatomy take none of it. A rate you name wins over its part:
+  `recall_address`; a `teaching` other than `"deep"` or `learning=` at `compose`; `brain.learner.synapse_rate` at any time.
+  `describe()` states the steps under `layout["projection_rates"]`. A checkpoint keeps them, and a brain saved under other
+  rates keeps those. `grow` keeps them, since a brain's width is fixed at birth: a new slot's synapses with the association
+  take the pair's step and every other new synapse steps at 1. `graft` leaves every synapse at the host's rates. Both accept
+  these rates and refuse rates set by hand. On six fresh founders, twelve lives a cell, the grammar chamber's paths read .97
+  (least .84) at 128 and .96 (least .81) at 256 against .94 (.72) and .94 (.67) at whole steps, no life under .80 against one
+  of twelve at each width, brackets at 256 fall from .94 to .82, and a life takes 24 and 43 percent fewer
+  multiply-accumulates. See [wide brains](docs/tune.md#wide-brains).
 - The `"mlx"` backend costs 9 to 13 times less per act and 9 to 17 times less per taught lesson on a
   brain a launch takes, and about 1.6 times less on one it does not take, with the same equations and
   tolerance within float32 rounding; its bits change, and every CPU path keeps its own. A chunk of
@@ -152,7 +169,7 @@
   `recall=False` is bit-identical. A memory's lessons do not reproduce the bits of 0.94.0. A saved
   memory of 0.85.0 on loads with its map and continues under this lesson. See
   [how the address learns](docs/memory.md#how-it-writes-and-how-the-address-learns).
-- Add `learning_fast_settle` (opt-in, runtime, founder off): a composed brain's free solves take
+- Add `learning_fast_settle` (runtime, founder off): a composed brain's free solves take
   `equilibrate(..., fast=True)` on the compiled CPU path. A row stops at the check it is within
   1e-5, and the activation is made in arithmetic that vectorizes. The same equations, order and
   tolerance in about half of a chamber pass, with other bits. A settle's report gains `row_sweeps`. See [settling](docs/settling.md#settling-and-equilibrium). Brains without

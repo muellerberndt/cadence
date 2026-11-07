@@ -47,6 +47,20 @@ def test_a_composed_brain_settles_and_learns_as_on_the_cpu(tmp_path):
     np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-5)
 
 
+def test_a_wide_new_brain_steps_at_its_rates_as_on_the_cpu(tmp_path):
+    cpu = cd.Brain.compose(8, 4, seed=3, modules=(128,))
+    cpu.save(tmp_path / "wide.npz")
+    mlx = cd.Brain.load(tmp_path / "wide.npz", backend="mlx")
+    np.testing.assert_array_equal(mlx.learner.synapse_rate, cpu.learner.synapse_rate)
+    assert mlx.recall.address == cpu.recall.address == 0.005
+    labels = np.array([0, 1, 2, 3])
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        cpu.lesson(X, labels)
+        mlx.lesson(X, labels)
+    assert np.abs(cpu.brain.efficacy - mlx.brain.efficacy).max() < 1e-4
+
+
 @COMPARTMENTS
 def test_a_living_brain_saves_and_continues_on_mlx(tmp_path, compartment):
     cpu, mlx = pair(tmp_path, arousal=True, **compartment)

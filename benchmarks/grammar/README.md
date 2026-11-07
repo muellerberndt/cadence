@@ -651,7 +651,7 @@ noise floor about .07. A trace at 3.0 is the founder's, at 0.3 `working_memory_a
 | 3.0 | learned gain | 12 | 1.00 | .99 | .95 | .97 | .85 | .98 | .96 | .42 | 24,385 | 77 |
 | silent | | 12 | .94 | .86 | .90 | .87 | .86 | .94 | .89 | .34 | 24,384 | 93 |
 
-Width, three lives each, composed steps (clauses, held-out, roles, brackets, paths, three hops):
+Width, three lives each, whole steps (clauses, held-out, roles, brackets, paths, three hops):
 
 | Arm | 128 | 256 |
 | --- | --- | --- |
@@ -662,7 +662,7 @@ Width, three lives each, composed steps (clauses, held-out, roles, brackets, pat
 
 Parameters at 128 and 256: 52,480 and 133,248, and one more with the learned gain. At 128 with the
 [fan-in steps](../../docs/tune.md#wide-brains) the trace at 0.3 reads .99 .69 .79 .68 .89 .34, below the
-composed steps. The matched controls online at about 52,000 parameters, the same exposure: the transformer
+whole steps. The matched controls online at about 52,000 parameters, the same exposure: the transformer
 .99 .99 1.00 .21 .34 .00 in 33 seconds, the LSTM .91 .92 .83 .74 .30 .00 in 17, where a brain's life takes
 450 to 860 seconds; offline the transformer reads 1.00 on the trained panels.
 
