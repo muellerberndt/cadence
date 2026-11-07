@@ -318,10 +318,11 @@ class TorchArrays:
         return x.gather(1, index)
 
     def per_bucket(self, gradient: Any, buckets: Any, size: int) -> Any:
-        """Each row's ``gradient`` summed into ``size`` buckets, in slot order; ``buckets`` is
-        ``(1, slots)`` or ``(rows, slots)``."""
-        out = self.torch.zeros((gradient.shape[0], size), dtype=gradient.dtype, device=self.device)
-        return out.scatter_add_(1, buckets.expand_as(gradient), gradient)
+        """Each row's ``gradient`` summed into ``size`` buckets; ``buckets`` is ``(1, slots)`` or
+        ``(rows, slots)``. Through a product and not an atomic add: on a GPU an atomic add takes its
+        floats in arrival order, and a life would not repeat to the bit."""
+        ones = self.torch.nn.functional.one_hot(buckets, size).to(gradient.dtype)
+        return (gradient[:, None, :] @ ones)[:, 0, :]
 
     def cat(self, parts: Sequence[Any], axis: int) -> Any:
         return self.torch.cat(list(parts), dim=axis)
