@@ -2532,8 +2532,6 @@ class _Workspaces:
 
 # Per precision, double first: output rows per program and presynaptic neurons per step of it.
 _TRITON_TILE = {True: (8, 16), False: (16, 32)}
-_LAUNCH_COLS = 128  # a group of up to this many presynaptic neurons always joins the launch
-_LAUNCH_ROWS = 8  # from this batch every group joins the launch at float64
 tl: Any = None  # triton.language, once bound
 _TRITON_KERNEL: Any = None
 
@@ -2550,12 +2548,16 @@ def _tile_batch(batch: int, double: bool) -> int:
 
 def _launch_rule(bucket: _Bucket, batch: int, precision: str) -> bool:
     """Whether a bucket joins the Triton launch. Several groups do, and a group of few presynaptic
-    neurons: a launch costs about 5 microseconds at that size, where a cuBLAS product costs about
-    25 at float64 and 5 at float32. At float64 the launch beats cuBLAS at every size read from a
-    batch of 16; below that, and at float32, cuBLAS keeps the large groups."""
-    if bucket.count > 1 or bucket.cols <= _LAUNCH_COLS:
+    neurons (128 at float64, 256 at float32): a launch costs about 5 microseconds at that size, a
+    cuBLAS product about 25 at float64 and 5 at float32. At float32 cuBLAS keeps the larger groups.
+    At float64 it keeps them below a batch of 8; from there a launch beats it up to 1,024
+    presynaptic neurons, and beyond that once the group fills about 64 programs, since a program
+    takes about 40 nanoseconds per presynaptic neuron however few there are to share the work.
+    Measured on an A10G: docs/backends.md."""
+    double = precision == "float64"
+    if bucket.count > 1 or bucket.cols <= (128 if double else 256):
         return True
-    return precision == "float64" and batch >= _LAUNCH_ROWS
+    return double and batch >= 8 and (bucket.cols <= 1024 or bucket.rows * batch >= 8192)
 
 
 def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
