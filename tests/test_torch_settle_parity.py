@@ -48,7 +48,7 @@ def on(graph: cd.NeuralGraph, device: str, **changes: object) -> cd.NeuralGraph:
     return cd.NeuralGraph(
         graph.connectome, graph.neuron_model, efficacy=graph.efficacy, bias=graph.bias,
         log_gain=graph.log_gain, backend="torch", device=device, apical=graph.apical,
-        **changes,  # type: ignore[arg-type]
+        **{"precision": "float64", **changes},  # type: ignore[arg-type]
     )
 
 
@@ -371,7 +371,10 @@ def test_learning_steps_match_the_host_with_a_projections_sums_by_reductions(dev
     from cadence import learning
 
     monkeypatch.setattr(learning, "_SPAN_VALUES", 0)
-    brains = [composed(apical=True, seed=6) for _ in range(2)]
+    brains = [
+        cd.Brain.compose(12, 6, modules=(10, 8), slots=(3, 3), seed=6, recall=False, teaching="deep")
+        for _ in range(2)
+    ]
     brains[1].learner.brain = on(brains[1].learner.brain, device)
     rng = np.random.default_rng(12)
     n = brains[0].learner.brain.connectome.n
@@ -518,7 +521,7 @@ def test_triton_groups_match_the_batched_products(monkeypatch):
     results = []
     for flag in ("0", "1"):
         monkeypatch.setenv("CADENCE_TRITON", flag)
-        dev = cd.NeuralGraph(connectome, model, backend="torch", device="cuda:0")
+        dev = cd.NeuralGraph(connectome, model, backend="torch", device="cuda:0", precision="float64")
         assert (dev._torch.plan.small is not None) == (flag == "1")
         results.append(dev.settle_batch(drive, steps=30, tolerance=1e-8))
     expected = host.settle_batch(drive, steps=30, tolerance=1e-8)
