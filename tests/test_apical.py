@@ -60,7 +60,7 @@ def test_apical_zero_is_the_founder_brain():
     np.testing.assert_array_equal(founder.act(x), zero.act(x))
 
 
-def test_apical_is_a_construction_setting_with_reciprocal_pairs_and_no_mlx():
+def test_apical_is_a_construction_setting_with_reciprocal_pairs():
     brain = apical_brain()
     assert brain.describe()["genes"]["apical"] == 0.25
     assert brain.describe()["layout"]["composition"]["apical"] == 0.25
@@ -68,8 +68,6 @@ def test_apical_is_a_construction_setting_with_reciprocal_pairs_and_no_mlx():
         brain.retune(apical=0.5)
     with pytest.raises(ValueError, match="apical"):
         apical_brain(apical=-0.1)
-    with pytest.raises(ValueError, match="mlx"):
-        Graph(brain.connectome, brain.brain.neuron_model, backend="mlx", apical=brain.brain.apical)
     one_way = Genome(
         (Region("sensory", 4), Region("association", 5), Region("motor", 3)),
         (Projection("sensory", "association", reciprocal=False),

@@ -1940,8 +1940,8 @@ class Brain:
             raise ValueError(_LEARNED_CODE_TOGETHER)
         if learned and sensory != "sensory":
             raise ValueError("a learned code needs a vector brain with a 'sensory' population")
-        if learned and backend != "cpu":
-            raise ValueError("a learned code settles on the cpu backend in this version")
+        if learned and backend == "torch":
+            raise ValueError("a learned code settles on the cpu or mlx backend in this version")
         for name in ("code", "prefrontal") if learned else ():
             if name not in populations:
                 raise ValueError(

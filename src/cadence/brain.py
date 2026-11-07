@@ -679,8 +679,6 @@ class Brain:
             if not isinstance(apical, Apical):
                 raise ValueError("apical must be an Apical or None")
             apical.check(connectome.synapses, connectome.n, connectome.post)
-            if backend == "mlx":
-                raise ValueError("the mlx backend does not settle an apical compartment")
         self.apical = apical
         self.dense_limit = dense_limit
         self.precision = precision  # torch only: "float64" or "float32"; default by device
@@ -744,7 +742,9 @@ class Brain:
         elif backend == "mlx":
             if not blocked:
                 raise ValueError("the mlx backend needs a connectome whose blocks fit dense_limit")
-            self._mlx = _MlxKernel(connectome, self._weights, self.bias, neuron_model, self.layout)
+            self._mlx = _MlxKernel(
+                connectome, self._weights, self.bias, neuron_model, self.layout, apical
+            )
         elif backend != "cpu":
             raise ValueError(f"unknown backend {backend!r}")
 
@@ -1608,6 +1608,9 @@ class Brain:
         if apical is None:
             return None
         d = np.atleast_2d(np.asarray(drive, dtype=float))
+        if self._mlx is not None and self._mlx.plan is not None:
+            held: np.ndarray | None = self._mlx.gains_at(d, state)
+            return held
         handle, kernel = state.device, self._torch
         if (
             kernel is not None
@@ -3428,8 +3431,14 @@ class _TorchKernel:
 _MLX_GRAPH_STEPS = 64
 # The most sweeps one launch runs under a movement tolerance: a bit per sweep of a 32-bit word.
 _MLX_BOUNDED_STEPS = 32
-# The most settling neurons one launch holds in threadgroup memory (four arrays, 32 KB in all).
+# The most settling neurons one launch holds in threadgroup memory (four arrays, 32 KB in all),
+# and with an apical compartment (six, each a multiple of 16 bytes).
 _MLX_LAUNCH_NEURONS = 2048
+_MLX_COMPARTMENT_NEURONS = 1360
+# A source range's gap to its drive that a settle's sweeps no longer read, under another step than
+# dt = 1: its products are made per sweep until then. The floats of one lazy part of them.
+_MLX_SOURCE_ROUNDING = 1e-7
+_MLX_RAMP_FLOATS = 1 << 26
 # Threads in a row's threadgroup: Metal's limit on Apple GPUs.
 _MLX_LAUNCH_THREADS = 1024
 # Inside a solve the launch's check reads float32: its rounding is about 1e-6 at potentials near
@@ -3452,22 +3461,27 @@ _MLX_CONTRAST_ENTRIES = 1 << 20
 # them), so the rows and neurons run in parallel with no host synchronization between sweeps. The
 # activations live in threadgroup memory, read four at a time: a GPU thread is many times slower
 # per load from device memory than the SIMD group it runs in. A source range's products reach the
-# launch summed in ``first`` (the first sweep's) and ``fixed`` (every later sweep's).
+# launch summed in ``first`` (one array per sweep of the ``ramp``, where the range is still moving)
+# and ``fixed`` (every later sweep's). With an apical compartment a neuron's basal and top-down
+# inputs are read apart and join at its pool's gain: the free phase's from the pool's mean squares
+# after a barrier, a nudged settle's held.
 _MLX_LAUNCH = """
     constexpr int CAP = {cap}, PER = {per};
     threadgroup float tg_a[CAP];
     threadgroup float tg_b[CAP];
     threadgroup float tg_p[CAP];
     threadgroup float tg_q[CAP];
+    {top}
     int row = (int)threadgroup_position_in_grid.x, me = (int)thread_index_in_threadgroup;
-    int m = plan[0], blocks = plan[1], threads = plan[2];
-    int sweeps = control[0];
+    int m = plan[0], blocks = plan[1], threads = plan[2], pools = plan[3];
+    int sweeps = control[0], ramp = control[5], stride = control[6], compartment = control[7];
     bool nudging = control[1] != 0, shares = control[2] != 0, bounded = control[3] != 0;
     float row_weight = control[4] != 0 ? weight[row] : 1.0f;
     float slope = scales[0], threshold = scales[1], rest = scales[2], up = scales[3];
-    float down = scales[4], beta = scales[5], tolerance = scales[6];
+    float down = scales[4], beta = scales[5], tolerance = scales[6], dt = scales[7];
+    float fraction = scales[8], floor2 = scales[9], tiny = scales[10];
     int low = me * PER, high = min(m, low + PER), at = row * m;
-    float held[PER];
+    float held[PER], below[PER], above[PER];
     threadgroup float* now = tg_a;
     threadgroup float* next = tg_b;
     threadgroup float* heat = tg_p;
@@ -3481,12 +3495,11 @@ _MLX_LAUNCH = """
     float moved = 0.0f, worst_first = 0.0f;
     uint moving = 0u;
     for (int t = 0;; t++) {{
-        float worst = 0.0f;
-        bool broken = false;
         for (int j = low; j < high; j++) {{
-            float total = t == 0 ? first[at + j] : fixed[at + j];
+            float total = t < ramp ? first[t * stride + at + j] : fixed[at + j];
+            float top = 0.0f;
             for (int k = 0; k < blocks; k++) {{
-                int e = 4 + 5 * k;
+                int e = 4 + 6 * k;
                 int a0 = plan[e], a1 = plan[e + 1], b0 = plan[e + 2];
                 if (j < b0 || j >= plan[e + 3]) continue;
                 int offset = plan[e + 4] + (j - b0) * (a1 - a0) - a0;
@@ -3497,8 +3510,10 @@ _MLX_LAUNCH = """
                     sum += float4(now[i], now[i + 1], now[i + 2], now[i + 3])
                         * float4(w[c], w[c + 1], w[c + 2], w[c + 3]);
                 }}
-                total += sum.x + sum.y + sum.z + sum.w;
-                for (; i < a1; i++) total += now[i] * w[offset + i];
+                float product = sum.x + sum.y + sum.z + sum.w;
+                for (; i < a1; i++) product += now[i] * w[offset + i];
+                if (plan[e + 5] != 0) top += product;
+                else total += product;
             }}
             if (nudging && mask[j] != 0.0f) {{
                 float share = now[j];
@@ -3514,12 +3529,56 @@ _MLX_LAUNCH = """
                 }}
                 total += beta * (target[at + j] - share) * mask[j] * row_weight;
             }}
-            float error = abs(total - held[j - low]);
+            below[j - low] = total;
+            above[j - low] = top;
+            if (compartment == 1) {{
+                tg_x[j] = total;
+                tg_u[j] = top;
+            }}
+        }}
+        if (compartment == 1) threadgroup_barrier(mem_flags::mem_threadgroup);
+        float worst = 0.0f, gain = 0.0f;
+        bool broken = false;
+        int seen = -1;
+        for (int j = low; j < high; j++) {{
+            float total = below[j - low];
+            int pool = compartment != 0 ? pool_of[j] : -1;
+            if (pool >= 0) {{  // the apical input at its pool's gain, read once per pool
+                if (pool != seen) {{
+                    seen = pool;
+                    if (compartment == 2) gain = given[row * pools + pool];
+                    else {{
+                        int i = pool_low[j], g1 = pool_high[j];
+                        float count = float(g1 - i);
+                        float4 sum_x = 0.0f, sum_u = 0.0f;
+                        for (; i + 4 <= g1; i += 4) {{
+                            float4 x = float4(tg_x[i], tg_x[i + 1], tg_x[i + 2], tg_x[i + 3]);
+                            float4 u = float4(tg_u[i], tg_u[i + 1], tg_u[i + 2], tg_u[i + 3]);
+                            sum_x += x * x;
+                            sum_u += u * u;
+                        }}
+                        float x2 = sum_x.x + sum_x.y + sum_x.z + sum_x.w;
+                        float u2 = sum_u.x + sum_u.y + sum_u.z + sum_u.w;
+                        for (; i < g1; i++) {{
+                            x2 += tg_x[i] * tg_x[i];
+                            u2 += tg_u[i] * tg_u[i];
+                        }}
+                        x2 /= count;
+                        u2 /= count;
+                        gain = fraction * sqrt(x2) / sqrt(u2 + floor2 * x2 + tiny);
+                    }}
+                }}
+                total += gain * above[j - low];
+                if (t == sweeps && j == pool_low[j]) out_g[row * pools + pool] = gain;
+            }}
+            float v = held[j - low];
+            float error = abs(total - v);
             worst = max(worst, error);
             broken = broken || !(error < INFINITY);
             if (t < sweeps) {{
-                held[j - low] = total;
-                float r = 1.0f / (1.0f + exp(-slope * (total - threshold))) - rest;
+                v = v + dt * (total - v);
+                held[j - low] = v;
+                float r = 1.0f / (1.0f + exp(-slope * (v - threshold))) - rest;
                 float a = r > 0.0f ? r * up : r * down;
                 float step = abs(a - now[j]);
                 moved += step;
@@ -3679,13 +3738,17 @@ class _MlxState(dict):  # type: ignore[type-arg]
 
 class _MlxPlan:
     """What a launch reads of a layout and a neuron rule, made once per kernel family: the settling
-    ranges (those that receive synapses) and the source ranges. A source range's potential is its
-    drive from its first sweep on under ``dt = 1`` without adaptation, so its products are made
-    once a settle; only the settling neurons sweep."""
+    ranges (those that receive synapses) and the source ranges. Without adaptation a source range's
+    potential follows its drive in closed form, ``goal + (1 - dt) ** t * gap``: under ``dt = 1`` it
+    stands there from the first sweep and its products are made once a settle, and under another
+    step once per sweep until the gap is below rounding. Only the settling neurons sweep."""
 
-    def __init__(self, mx: Any, layout: Layout, neuron_model: NeuronModel, n: int) -> None:
+    def __init__(
+        self, mx: Any, layout: Layout, neuron_model: NeuronModel, n: int, apical: Apical | None,
+    ) -> None:
         self.mx = mx
         self.n = n
+        self.rho = 1.0 - float(neuron_model.dt)
         self.settling = sorted({int(r) for r in layout.pair_post})
         self.sources = [r for r in range(layout.ranges) if r not in self.settling]
         self.spans = {
@@ -3706,56 +3769,94 @@ class _MlxPlan:
         ) if self.settling else np.zeros(0, np.int64)
         self.where = np.full(n, -1, dtype=np.int64)
         self.where[self.columns] = np.arange(self.m)
+        self.pools = 0 if apical is None else len(apical.members)
+        self.takes_compartment = True
+        tops: set[int] = set()
+        if apical is not None:
+            basal, up = _apical_blocks(apical, layout)
+            tops = set(up)
+            self.takes_compartment = (
+                not (set(basal) & tops)  # no block holds synapses of both
+                and not (tops & set(self.outer))
+                and self.m <= _MLX_COMPARTMENT_NEURONS
+            )
         self.per = max(1, -(-self.m // _MLX_LAUNCH_THREADS))
         self.threads = -(-self.m // self.per) if self.m else 0
-        table = [self.m, len(self.inner), self.threads, 0]  # a fourth entry keeps the offsets even
+        table = [self.m, len(self.inner), self.threads, self.pools]
         entries = 0
         for k in self.inner:
             a0, a1, b0, b1 = layout.bounds(k)
             p, q = self.place[self.pre[k]], self.place[self.post[k]]
-            table += [p, p + a1 - a0, q, q + b1 - b0, entries]
+            table += [p, p + a1 - a0, q, q + b1 - b0, entries, int(k in tops)]
             entries += (a1 - a0) * (b1 - b0)
         rest = neuron_model.rest_emission
         self.constants = (
             neuron_model.slope, neuron_model.threshold, rest, 1.0 / (1.0 - rest),
             neuron_model.leak / rest,
         )
+        self.compartment_constants = (
+            neuron_model.dt, 0.0 if apical is None else apical.fraction,
+            0.0 if apical is None else apical.floor * apical.floor, _APICAL_TINY,
+        )
         self.at_rest = float(neuron_model.activation(np.zeros(1))[0])
         cap = 64  # a power of two at least m: one pipeline per size in a process
         while cap < self.m:
             cap *= 2
+        if apical is not None:
+            cap = min(cap, _MLX_COMPARTMENT_NEURONS)
+        # without a compartment no array of its own: its names are never read
+        top = (
+            "threadgroup float tg_x[CAP]; threadgroup float tg_u[CAP];" if apical is not None
+            else "threadgroup float* tg_x = tg_p; threadgroup float* tg_u = tg_q;"
+        )
         self.launch = mx.fast.metal_kernel(
-            name=f"cadence_settle_{cap}_{self.per}",
+            name=f"cadence_settle_{cap}_{self.per}_{int(apical is not None)}",
             input_names=[
                 "v0", "s0", "first", "fixed", "w", "plan", "scales", "control", "target", "mask",
-                "weight", "group_low", "group_high", "over",
+                "weight", "group_low", "group_high", "over", "pool_of", "pool_low", "pool_high",
+                "given",
             ],
-            output_names=["out_v", "out_s", "out_e", "out_c", "out_m"],
-            source=_MLX_LAUNCH.format(cap=cap, per=self.per),
+            output_names=["out_v", "out_s", "out_e", "out_c", "out_m", "out_g"],
+            source=_MLX_LAUNCH.format(cap=cap, per=self.per, top=top),
             atomic_outputs=False,
             ensure_row_contiguous=True,
         )
         self.activate = mx.compile(self._activation_of(mx, neuron_model))
         self.under_drive = mx.compile(self._under_drive)
+        self.ramp = mx.compile(self._ramp)
         self.none = mx.zeros((8,), dtype=mx.float32)  # an input the launch does not read
         self.none_int = mx.zeros((8,), dtype=mx.int32)
+        self.pool_of, self.pool_low, self.pool_high = self.none_int, self.none_int, self.none_int
+        if apical is not None:
+            of, low, high = (np.full(self.m, -1, dtype=np.int32) for _ in range(3))
+            for pool, member in enumerate(apical.members):
+                places = self.where[np.arange(n)[member]]
+                if (places < 0).any() or (np.diff(places) != 1).any():
+                    self.takes_compartment = False  # a pool beyond one range of settling neurons
+                    break
+                of[places], low[places], high[places] = pool, places[0], places[-1] + 1
+            self.pool_of, self.pool_low = mx.array(of), mx.array(low)
+            self.pool_high = mx.array(high)
         self.plan_array = mx.array(np.array(table + [0] * max(0, 8 - len(table)), dtype=np.int32))
         self._controls: dict[tuple[int, ...], Any] = {}
         self._scales: dict[tuple[float, float], Any] = {}
         self._nudges: list[tuple[Any, Any, Any, Any]] = []
 
     @staticmethod
-    def of(mx: Any, layout: Layout, neuron_model: NeuronModel, n: int) -> _MlxPlan | None:
-        """The plan of a layout, or None where the launch does not apply: another step than
-        ``dt = 1``, adaptation, or a settling set beyond threadgroup memory or below the inputs'
-        least size (MLX declares an input of fewer than eight values in another address space).
-        ``CADENCE_MLX_LAUNCH=0`` keeps one MLX operation at a time."""
+    def of(
+        mx: Any, layout: Layout, neuron_model: NeuronModel, n: int, apical: Apical | None,
+    ) -> _MlxPlan | None:
+        """The plan of a layout, or None where the launch does not apply: adaptation, a settling
+        set beyond threadgroup memory or below the inputs' least size (MLX declares an input of
+        fewer than eight values in another address space), or a compartment whose blocks or pools
+        the launch does not hold. ``CADENCE_MLX_LAUNCH=0`` keeps one MLX operation at a time."""
         if os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0":
             return None
-        if neuron_model.adaptation is not None or neuron_model.dt != 1.0 or not layout.pairs:
+        if neuron_model.adaptation is not None or not layout.pairs:
             return None
-        plan = _MlxPlan(mx, layout, neuron_model, n)
-        return plan if 8 <= plan.m <= _MLX_LAUNCH_NEURONS else None
+        plan = _MlxPlan(mx, layout, neuron_model, n, apical)
+        fits = 8 <= plan.m <= _MLX_LAUNCH_NEURONS and plan.takes_compartment
+        return plan if fits else None
 
     @staticmethod
     def _activation_of(mx: Any, neuron_model: NeuronModel) -> Any:
@@ -3792,13 +3893,58 @@ class _MlxPlan:
         outer = parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
         return sources, outer, standing + outer
 
+    def _ramp(
+        self, goals: list[Any], gaps: list[Any], powers: Any, blocks: list[Any], starts: list[Any],
+        rows: Any,
+    ) -> tuple[Any, ...]:
+        """The source ranges along their way to the drive, under another step than ``dt = 1``:
+        at the ``powers`` of ``1 - dt``, ``(sweeps, 1, 1)``, their activations, their products
+        summed per settling neuron, ``(sweeps, rows, m)``, the activations at the last, the
+        movement per sweep and row from ``starts``, the activations before the first, and each
+        sweep's largest movement."""
+        mx = self.mx
+        count = powers.shape[0]
+        made = [self.activate(goal + powers * gap) for goal, gap in zip(goals, gaps, strict=True)]
+        of = dict(zip(self.sources, made, strict=True))
+        totals: dict[int, Any] = {}
+        for block, k in zip(blocks, self.outer, strict=True):
+            product = of[self.pre[k]] @ block
+            post = self.post[k]
+            totals[post] = product + totals[post] if post in totals else product
+        parts = [
+            totals[r] if r in totals
+            else mx.zeros(
+                (count, rows.shape[0], self.spans[r][1] - self.spans[r][0]), dtype=mx.float32
+            )
+            for r in self.settling
+        ]
+        outer = parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=2)
+        path = mx.zeros((count, rows.shape[0]), dtype=mx.float32)
+        peaks = mx.zeros((count,), dtype=mx.float32)
+        for at, begin in zip(made, starts, strict=True):
+            before = begin[None] if count == 1 else mx.concatenate([begin[None], at[:-1]], axis=0)
+            step = mx.abs(at - before)
+            path = path + step.sum(axis=2)
+            peaks = mx.maximum(peaks, step.max(axis=(1, 2)))
+        return outer, [at[-1] for at in made], path, peaks
+
+    def relaxing(self, worst: float) -> int:
+        """The sweeps until a source range's largest gap ``worst`` is below rounding."""
+        if self.rho == 0.0 or worst <= _MLX_SOURCE_ROUNDING:
+            return 1
+        return int(np.ceil(np.log(_MLX_SOURCE_ROUNDING / worst) / np.log(self.rho)))
+
     def controls(
-        self, sweeps: int, nudging: bool, shares: bool, bounded: bool, weighted: bool,
+        self, sweeps: int, nudging: bool, shares: bool, bounded: bool, weighted: bool, ramp: int,
+        stride: int, compartment: int,
     ) -> Any:
-        key = (sweeps, int(nudging), int(shares), int(bounded), int(weighted))
+        key = (
+            sweeps, int(nudging), int(shares), int(bounded), int(weighted), ramp, stride,
+            compartment,
+        )
         held = self._controls.get(key)
         if held is None:
-            held = self.mx.array(np.array([*key, 0, 0, 0], dtype=np.int32))
+            held = self.mx.array(np.array(key, dtype=np.int32))
             if len(self._controls) >= 256:
                 self._controls.clear()
             self._controls[key] = held
@@ -3808,9 +3954,10 @@ class _MlxPlan:
         key = (beta, tolerance)
         held = self._scales.get(key)
         if held is None:
-            held = self.mx.array(
-                np.array([*self.constants, beta, tolerance, 0.0], dtype=np.float32)
-            )
+            held = self.mx.array(np.array(
+                [*self.constants, beta, tolerance, *self.compartment_constants, 0.0],
+                dtype=np.float32,
+            ))
             if len(self._scales) >= 16:
                 self._scales.clear()
             self._scales[key] = held
@@ -3819,10 +3966,10 @@ class _MlxPlan:
     def nudge_tables(self, nudge: Nudge) -> tuple[Any, Any, Any, Any] | None:
         """The launch's arrays of ``nudge``, kept for the nudges that share its mask, groups and
         temperature: ``(mask, group_low, group_high, over)``. None where the launch does not apply:
-        an anchor, a compartment's gain, a neuron under the mask that does not settle, a group that
-        is not a range of the settling neurons, or a temperature whose exponentials float32 cannot
-        hold without the host's ladder."""
-        if nudge.anchor is not None or nudge.apical_gain is not None:
+        an anchor, a neuron under the mask that does not settle, a group that is not a range of the
+        settling neurons, or a temperature whose exponentials float32 cannot hold without the
+        host's ladder."""
+        if nudge.anchor is not None:
             return None
         heat = np.asarray(nudge.softmax_temperature, dtype=float)
         whole = np.asarray(nudge.mask, dtype=float)
@@ -3908,11 +4055,13 @@ class _MlxPlan:
         total = np.zeros(rows)
         for moved in handle["moved"]:
             total += np.array(moved, copy=False).sum(axis=1)
-        before = handle.get("sources_before")
-        if before is not None:
-            for r, after in handle["sources"].items():
-                step = np.array(after, copy=False) - np.array(before[r], copy=False)
-                total += np.abs(step).sum(axis=1)
+        for before, path, count in handle.get("source_moves", ()):
+            if path is not None:  # a ramp: the movement per sweep, of the sweeps taken
+                total += np.array(path, copy=False)[:count].sum(axis=0)
+            elif before is not None:  # dt = 1: one sweep moved them onto their drive
+                for r, after in handle["sources"].items():
+                    step = np.array(after, copy=False) - np.array(before[r], copy=False)
+                    total += np.abs(step).sum(axis=1)
         return total
 
 
@@ -3929,6 +4078,7 @@ class _MlxKernel:
         bias: np.ndarray,
         neuron_model: NeuronModel,
         layout: Layout,
+        apical: Apical | None = None,
     ) -> None:
         device, reason = _mlx_probe()
         if device is None:  # an MLX that aborts on import would take this interpreter down
@@ -3942,17 +4092,29 @@ class _MlxKernel:
         self.neuron_model = neuron_model
         self.n = connectome.n
         self.layout = layout
+        self.apical = apical
         self.root = self  # with_parameters' kernels share it: a state continues on any of them
         self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
         self.sweeps: dict[tuple[Any, ...], Any] = {}  # the compiled sweeps, shared with those too
         self.read_blocks: dict[int, tuple[np.ndarray, Any]] = {}  # a read's synapses, their blocks
         self.lesson_steps: dict[tuple[bool, bool, bool], Any] = {}  # the optimizer's, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
-        self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n)
+        self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n, apical)
+        # the blocks of each postsynaptic range, basal and apical apart
+        basal, up = (
+            (range(layout.pairs), ()) if apical is None else _apical_blocks(apical, layout)
+        )
+        self.mixed = bool(set(basal) & set(up))  # a block holds synapses of both: masked copies
         self._take(weights, bias)
         self.by_post: list[list[int]] = [[] for _ in range(layout.ranges)]
-        for k in range(layout.pairs):
+        self.by_post_up: list[list[int]] = [[] for _ in range(layout.ranges)]
+        for k in basal:
             self.by_post[int(layout.pair_post[k])].append(k)
+        for k in up:
+            self.by_post_up[int(layout.pair_post[k])].append(k)
+        self.pool_members = [] if apical is None else [
+            mx.array(np.arange(connectome.n)[member]) for member in apical.members
+        ]
         self.edge_index = mx.array(layout.edge_index)
 
     def _take(self, weights: np.ndarray, bias: np.ndarray) -> None:
@@ -3970,6 +4132,16 @@ class _MlxKernel:
         self.bias = mx.array(live_bias)
         hosted = layout.blocks(flat)
         self.blocks = [mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in hosted]
+        self.up_blocks = self.blocks
+        if self.mixed:  # the synapses of each side in a block of its own
+            assert self.apical is not None
+            mask = self.apical.synapses
+            self.blocks, self.up_blocks = (
+                [mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in layout.blocks(
+                    layout.flat(np.where(side, weights, 0.0)).astype(np.float32)
+                )]
+                for side in (~mask, mask)
+            )
         plan = self.plan
         if plan is not None:  # the launch reads a column per settling neuron
             self.version = next(_MLX_VERSIONS)
@@ -3998,7 +4170,7 @@ class _MlxKernel:
             s = s + neuron_model.leak * mx.minimum(r, 0.0) / rest
         return s
 
-    def _synaptic_input(self, s: Any, blocks: Sequence[Any]) -> Any:
+    def _synaptic_input(self, s: Any, blocks: Sequence[Any], by_post: Sequence[list[int]]) -> Any:
         """Every block's product at every step: the device makes a product in less time than a
         host synchronization would take to find its range unchanged."""
         mx, lay = self.mx, self.layout
@@ -4007,7 +4179,7 @@ class _MlxKernel:
         for r in range(lay.ranges):
             b0, b1 = int(lay.starts[r]), int(lay.starts[r + 1])
             total = None
-            for k in self.by_post[r]:
+            for k in by_post[r]:
                 a0, a1, _, _ = lay.bounds(k)
                 product = s[:, a0:a1] @ blocks[k]
                 total = product if total is None else total + product
@@ -4021,10 +4193,11 @@ class _MlxKernel:
         """One sweep of every neuron, the neuron rule's own order. ``kept`` holds what this sweep's
         kind reads: ``k`` with a mask; ``beta``, ``target`` and ``mask`` with a nudge, ``groups``
         with its softmax (members and temperature), ``weight`` and ``anchor`` with ``anchor_gain``
-        where it has them. With ``peak`` the step's largest movement comes with it."""
+        where it has them; ``up`` with an apical compartment, its blocks, and ``held`` the gains a
+        nudged settle holds. With ``peak`` the step's largest movement comes with it."""
         mx, neuron_model = self.mx, self.neuron_model
         adapt = neuron_model.adaptation
-        total = self._synaptic_input(s, blocks) + standing
+        total = self._synaptic_input(s, blocks, self.by_post) + standing
         if adapt is not None:
             total = total - adapt.strength * a
         k, target, groups = kept.get("k"), kept.get("target"), kept.get("groups")
@@ -4049,6 +4222,9 @@ class _MlxKernel:
             if "anchor" in kept:
                 push = push + kept["anchor_gain"] * (kept["anchor"] - s)
             total = total + push
+        if "up" in kept:  # the top-down input, normalized to the basal input it joins
+            raw = self._synaptic_input(s, kept["up"], self.by_post_up)
+            total = total + self._apical_drive(total, raw, kept.get("held"))
         v = v + neuron_model.dt * (-v + total)
         if k is not None:
             v = v * k
@@ -4063,6 +4239,23 @@ class _MlxKernel:
         if peak:  # the stop reads the step's largest movement, made with it
             return v, s, a, change, movement.max()
         return v, s, a, change
+
+    def _apical_drive(self, basal: Any, raw: Any, held: Any) -> Any:
+        """``Apical.drive`` on the device: every pool's gain from its mean squares, per row, or
+        the ``held`` gains ``(batch, pools)`` of a nudged settle."""
+        mx, apical = self.mx, self.apical
+        assert apical is not None
+        floor2 = apical.floor * apical.floor
+        gain = mx.zeros_like(raw)
+        for k, members in enumerate(self.pool_members):
+            if held is None:
+                b, u = basal[:, members], raw[:, members]
+                b2, u2 = mx.mean(b * b, axis=1), mx.mean(u * u, axis=1)
+                one = apical.fraction * mx.sqrt(b2) / mx.sqrt(u2 + floor2 * b2 + _APICAL_TINY)
+            else:
+                one = held[:, k]
+            gain[:, members] = one[:, None]
+        return gain * raw
 
     def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
         """The block Gram contrast on the device; the per-synapse and per-neuron sums come back."""
@@ -4145,6 +4338,10 @@ class _MlxKernel:
                 kept["weight"] = weight
             if anchor is not None:
                 kept.update(anchor=anchor, anchor_gain=anchor_gain)
+            if self.apical is not None and nudge.apical_gain is not None:
+                kept["held"] = to(np.asarray(nudge.apical_gain, dtype=float))
+        if self.apical is not None:
+            kept["up"] = self.up_blocks
         sweep = self._sweep_of(bounded, kept)
         for t in range(steps):
             out = sweep(v, s, a, activity_change, standing, self.blocks, kept)
@@ -4180,7 +4377,7 @@ class _MlxKernel:
         that is not one block's entries with another's, transposed. Each block's gain and the
         block it is tied to."""
         lay = self.layout
-        if lay.size < _MLX_UPDATE_ENTRIES or lay.parallel_synapses:
+        if lay.size < _MLX_UPDATE_ENTRIES or lay.parallel_synapses or self.mixed:
             return None
         block = np.asarray(lay.block_of_edge)
         entries = np.diff(lay.offset)
@@ -4375,6 +4572,7 @@ class _MlxKernel:
         neurons = self._movement_of_neurons(plus, minus, plus_of, minus_of)
         new = copy.copy(self)
         new.blocks = new_blocks
+        new.up_blocks = new_blocks
         new.scale = new_scale
         if plan is not None:
             pieces = [new_blocks[k].T.reshape(-1) for k in plan.inner]
@@ -4467,7 +4665,7 @@ class _MlxKernel:
             a_host = a0
         return _MlxState(
             kernel="mlx", holder=self.root, plan=plan, vm=vm, sm=sm, sources=sources,
-            potentials=potentials, a_host=a_host, moved=[], rest=rest,
+            potentials=potentials, a_host=a_host, moved=[], source_moves=[], rest=rest,
         )
 
     def _products(self, sources: Mapping[int, Any], rows: int) -> Any:
@@ -4491,51 +4689,94 @@ class _MlxKernel:
             parts.append(part)
         return parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
 
-    def _driven(self, start: _MlxState, drive: np.ndarray) -> dict[str, Any]:
-        """What the sweeps of a settle from ``start`` under ``drive`` read: ``first``, the settling
-        neurons' standing input at the first sweep, ``fixed``, at every later one, and the source
-        ranges' potentials, activations and products under the drive. A state that settled under
-        this drive and these parameters already holds them."""
+    def _driven(self, start: _MlxState, drive: np.ndarray, sweeps: int) -> dict[str, Any]:
+        """What the sweeps of a launch of ``sweeps`` from ``start`` under ``drive`` read: ``first``,
+        the settling neurons' standing input at each of the first ``ramp`` sweeps, ``fixed``, at
+        every later one, and the source ranges' ``goals``, ``gaps``, activations and products at
+        the ramp's end. ``needed`` counts the sweeps until the sources stand at their drive. A
+        state that settled there under this drive and these parameters already holds them."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         held = start.get("drive")
         rows = len(drive)
-        same = held is not None and np.array_equal(held, drive)
-        if same and start.get("version") == self.version:
-            fixed = start["fixed"]
-            return {"first": fixed, "fixed": fixed, "sources": start["sources"],
-                    "potentials": start["potentials"], "outer": start.get("outer"), "before": None}
+        same = bool(start.get("relaxed")) and np.array_equal(held, drive)
         bias = self.bias_host
+        if same:
+            fixed, outer = start.get("fixed"), start.get("outer")
+            if start.get("version") != self.version:  # the sources stand, under new parameters
+                settling = np.asarray(drive[:, plan.columns], dtype=np.float32) + bias[plan.columns]
+                outer = self._products(start["sources"], rows)
+                fixed = mx.array(settling) if outer is None else mx.array(settling) + outer
+            return {"first": fixed, "fixed": fixed, "ramp": 1, "needed": 1, "made": [],
+                    "sources": start["sources"], "goals": start["goals"], "gaps": None,
+                    "outer": outer, "before": None, "path": None, "peaks": None}
         settling = np.asarray(drive[:, plan.columns], dtype=np.float32) + bias[plan.columns]
         standing = mx.array(settling)
-        if same:  # the sources stand where they were, under new parameters
-            potentials, sources, before = start["potentials"], start["sources"], None
-            outer = self._products(sources, rows)
-            fixed = standing if outer is None else standing + outer
-            return {"first": fixed, "fixed": fixed, "sources": sources, "potentials": potentials,
-                    "outer": outer, "before": before}
-        potentials = {
+        goals = {
             r: np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32)
             + bias[slice(*plan.spans[r])]
             for r in plan.sources
         }
+        gaps = {r: start["potentials"][r] - goals[r] for r in plan.sources}
         kept = None
         if not (start.get("rest") and plan.at_rest == 0.0):
             kept = start.get("outer") if start.get("version") == self.version else None
             if kept is None:
                 kept = self._products(start["sources"], rows)
+        if plan.rho != 0.0:
+            return self._ramped(start, goals, gaps, kept, standing, sweeps)
         if not plan.outer:  # nothing the sources reach: their activations and no product
-            sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
-            return {"first": standing, "fixed": standing, "sources": sources,
-                    "potentials": potentials, "outer": None, "before": start["sources"]}
-        activated, outer, fixed = plan.under_drive(
-            [mx.array(potentials[r]) for r in plan.sources],
-            [self.blocks[k] for k in plan.outer], standing,
-        )
+            sources = {r: plan.activate(mx.array(p)) for r, p in goals.items()}
+            outer, fixed = None, standing
+        else:
+            activated, outer, fixed = plan.under_drive(
+                [mx.array(goals[r]) for r in plan.sources],
+                [self.blocks[k] for k in plan.outer], standing,
+            )
+            sources = dict(zip(plan.sources, activated, strict=True))
         first = standing if kept is None else standing + kept  # None: the products of silence
-        return {"first": first, "fixed": fixed, "potentials": potentials, "outer": outer,
-                "sources": dict(zip(plan.sources, activated, strict=True)),
-                "before": start["sources"]}
+        return {"first": first, "fixed": fixed, "ramp": 1, "needed": 1, "made": sources,
+                "sources": sources, "goals": goals, "gaps": gaps, "outer": outer,
+                "before": start["sources"], "path": None, "peaks": None}
+
+    def _ramped(
+        self, start: _MlxState, goals: dict[int, np.ndarray], gaps: dict[int, np.ndarray],
+        kept: Any, standing: Any, sweeps: int,
+    ) -> dict[str, Any]:
+        """``_driven`` under another step than ``dt = 1``: the source ranges still move, so every
+        sweep of the ramp reads its own products, made in parts of a bounded size."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        worst = max((float(np.abs(g).max(initial=0.0)) for g in gaps.values()), default=0.0)
+        needed = plan.relaxing(worst)
+        ramp = max(1, min(needed, sweeps))
+        powers = plan.rho ** np.arange(1, ramp + 1, dtype=np.float64)
+        rows = int(standing.shape[0])
+        widest = max((g.shape[1] for g in gaps.values()), default=1)
+        each = max(1, _MLX_RAMP_FLOATS // (rows * widest))
+        goal = [mx.array(goals[r]) for r in plan.sources]
+        gap = [mx.array(gaps[r]) for r in plan.sources]
+        blocks = [self.blocks[k] for k in plan.outer]
+        at = [start["sources"][r] for r in plan.sources]
+        stacks, paths, peaks = [], [], []
+        for begin in range(0, ramp, each):
+            part = mx.array(powers[begin : begin + each].astype(np.float32))[:, None, None]
+            stack, at, path, peak = plan.ramp(goal, gap, part, blocks, at, standing)
+            stacks.append(stack)
+            paths.append(path)
+            peaks.append(peak)
+        stack = stacks[0] if len(stacks) == 1 else mx.concatenate(stacks, axis=0)
+        path = paths[0] if len(paths) == 1 else mx.concatenate(paths, axis=0)
+        peak = peaks[0] if len(peaks) == 1 else mx.concatenate(peaks, axis=0)
+        outer = stack[-1]
+        begun = mx.zeros_like(outer) if kept is None else kept  # None: the products of silence
+        first = standing + begun if ramp == 1 else (
+            standing + mx.concatenate([begun[None], stack[:-1]], axis=0)
+        )
+        sources = dict(zip(plan.sources, at, strict=True))
+        return {"first": first, "fixed": standing + outer, "ramp": ramp, "needed": needed,
+                "made": [sources, path, peak], "sources": sources, "goals": goals, "gaps": gaps,
+                "outer": outer, "before": None, "path": path, "peaks": peak}
 
     def _nudged_inputs(self, nudge: Nudge, tables: Any, rows: int) -> dict[str, Any]:
         mx, plan = self.mx, self.plan
@@ -4546,57 +4787,91 @@ class _MlxKernel:
         if nudge.weight is not None:
             values = np.asarray(nudge.weight, dtype=np.float32)
             weight = mx.array(np.pad(values, (0, max(0, 8 - len(values)))))
+        given = None
+        if plan.pools and nudge.apical_gain is not None:
+            gains = np.asarray(nudge.apical_gain, dtype=np.float32).ravel()
+            given = mx.array(np.pad(gains, (0, max(0, 8 - len(gains)))))
         return {
             "target": mx.array(np.asarray(target, dtype=np.float32)), "mask": mask,
             "weight": weight,
             "group_low": group_low, "group_high": group_high, "over": over,
             "beta": float(nudge.beta), "shares": nudge.softmax_temperature is not None,
-            "weighted": nudge.weight is not None,
+            "weighted": nudge.weight is not None, "given": given,
         }
 
     def _launch(
-        self, vm: Any, sm: Any, first: Any, fixed: Any, sweeps: int, nudged: dict[str, Any] | None,
+        self, vm: Any, sm: Any, driven: dict[str, Any], sweeps: int, nudged: dict[str, Any] | None,
         tolerance: float | None,
     ) -> Any:
-        """One launch of ``sweeps`` sweeps: ``(v, s, errors, moved, moving)``; ``errors`` holds
-        each thread's largest residual at the launch's first and last state, ``moving`` a bit per
-        sweep at which one of a thread's neurons moved at least ``tolerance``."""
+        """One launch of ``sweeps`` sweeps: ``(v, s, errors, moved, moving, gains)``; ``errors``
+        holds each thread's largest residual at the launch's first and last state, ``moving`` a
+        bit per sweep at which one of a thread's neurons moved at least ``tolerance`` and ``gains``
+        each pool's at the last state."""
         mx, plan = self.mx, self.plan
         assert plan is not None
         rows, m, threads = int(vm.shape[0]), plan.m, plan.threads
         bounded = tolerance is not None
         limit = 0.0 if tolerance is None else float(tolerance)
+        given = None if nudged is None else nudged["given"]
+        compartment = 0 if not plan.pools else (1 if given is None else 2)
+        stride = rows * m
         if nudged is None:
             scales = plan.scales(0.0, limit)
-            control = plan.controls(sweeps, False, False, bounded, False)
+            control = plan.controls(
+                sweeps, False, False, bounded, False, driven["ramp"], stride, compartment,
+            )
             target = mask = weight = over = plan.none
             group_low = group_high = plan.none_int
         else:
             scales = plan.scales(nudged["beta"], limit)
-            control = plan.controls(sweeps, True, nudged["shares"], bounded, nudged["weighted"])
+            control = plan.controls(
+                sweeps, True, nudged["shares"], bounded, nudged["weighted"], driven["ramp"], stride,
+                compartment,
+            )
             target, mask, weight = nudged["target"], nudged["mask"], nudged["weight"]
             group_low, group_high, over = nudged["group_low"], nudged["group_high"], nudged["over"]
         return plan.launch(
-            inputs=[vm, sm, first, fixed, self.w, plan.plan_array, scales, control, target, mask,
-                    weight, group_low, group_high, over],
+            inputs=[vm, sm, driven["first"], driven["fixed"], self.w, plan.plan_array, scales,
+                    control, target, mask, weight, group_low, group_high, over, plan.pool_of,
+                    plan.pool_low, plan.pool_high, plan.none if given is None else given],
             grid=(rows * threads, 1, 1),
             threadgroup=(threads, 1, 1),
             output_shapes=[
                 (rows, m), (rows, m), (rows, threads * 2), (rows, threads), (rows, threads),
+                (rows, max(plan.pools, 1)),
             ],
-            output_dtypes=[mx.float32, mx.float32, mx.float32, mx.float32, mx.uint32],
+            output_dtypes=[mx.float32, mx.float32, mx.float32, mx.float32, mx.uint32, mx.float32],
         )
 
     def _settled_state(
-        self, start: _MlxState, driven: dict[str, Any], drive: np.ndarray, out: Any,
-        moved: list[Any], nudge: Nudge | None, error: np.ndarray, discarded: int = 0,
+        self, start: _MlxState, driven: dict[str, Any], drive: np.ndarray, out: Any, taken: int,
+        moved: list[Any], moves: list[Any], nudge: Nudge | None, discarded: int = 0,
     ) -> _MlxState:
+        """The state a launch of ``taken`` sweeps leaves: its settling neurons, its source ranges
+        along their way, and the check of its equations, theirs among them."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        gaps, goals = driven["gaps"], driven["goals"]
+        sources, outer = driven["sources"], driven["outer"]
+        potentials = start["potentials"]
+        error = _launch_error(out[2], 1)
+        if gaps is not None:
+            share = plan.rho**taken
+            potentials = goals if share == 0.0 else {
+                r: goals[r] + np.float32(share) * gaps[r] for r in plan.sources
+            }
+            if taken < driven["ramp"]:  # a stop inside the ramp: the sources where it left them
+                sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
+                outer = None
+            if share != 0.0:
+                error = np.maximum(error, self._source_gap(driven, taken))
         return _MlxState(
-            kernel="mlx", holder=self.root, plan=self.plan, vm=out[0], sm=out[1],
-            sources=driven["sources"], potentials=driven["potentials"], a_host=start["a_host"],
-            moved=moved, sources_before=driven["before"], drive=np.array(drive, copy=True),
-            version=self.version, fixed=driven["fixed"], outer=driven["outer"],
+            kernel="mlx", holder=self.root, plan=plan, vm=out[0], sm=out[1], sources=sources,
+            potentials=potentials, goals=goals, a_host=start["a_host"], moved=moved,
+            source_moves=moves, drive=np.array(drive, copy=True), version=self.version,
+            fixed=driven["fixed"], outer=outer, relaxed=taken >= driven["needed"],
             checked=(drive, nudge, error), discarded_steps=discarded,
+            gains=out[5] if nudge is None and plan.pools else None,
         )
 
     def _launched(
@@ -4610,53 +4885,59 @@ class _MlxKernel:
         mx, plan = self.mx, self.plan
         assert plan is not None
         rows = len(drive)
-        start = self._start(v0, a0, state, rows)
+        current = self._start(v0, a0, state, rows)
         if steps == 0:
-            return None, None, None, None, 0, None, _MlxState(start, moved=[], sources_before=None)
-        driven = self._driven(start, drive)
+            return None, None, None, None, 0, None, _MlxState(current, moved=[], source_moves=[])
         nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
         limit = _MLX_GRAPH_STEPS if tolerance is None else _MLX_BOUNDED_STEPS
-        vm, sm, first, fixed = start["vm"], start["sm"], driven["first"], driven["fixed"]
         taken, discarded = 0, 0
         moved: list[Any] = []
-        out = None
+        moves: list[Any] = []
         while taken < steps:
             sweeps = min(limit, steps - taken)
-            out = self._launch(vm, sm, first, fixed, sweeps, nudged, tolerance)
-            mx.eval(out, driven["sources"])
+            driven = self._driven(current, drive, sweeps)
+            out = self._launch(current["vm"], current["sm"], driven, sweeps, nudged, tolerance)
+            mx.eval(out, driven["made"])
+            stopped = False
             if tolerance is not None:
                 word = int(np.bitwise_or.reduce(np.array(out[4], copy=False), axis=None))
-                if taken == 0 and self._sources_moved(driven, tolerance):
-                    word |= 1
+                word |= self._sources_moved(driven, sweeps, tolerance)
                 stop = next((t for t in range(sweeps) if not word >> t & 1), None)
                 if stop is not None:
+                    stopped = True
                     if stop + 1 < sweeps:  # it went past its stop: to the stop, from its start
                         discarded += sweeps
                         sweeps = stop + 1
-                        out = self._launch(vm, sm, first, fixed, sweeps, nudged, None)
+                        out = self._launch(
+                            current["vm"], current["sm"], driven, sweeps, nudged, None
+                        )
                         mx.eval(out)
-                    moved.append(out[3])
-                    taken += sweeps
-                    break
-            moved.append(out[3])
-            vm, sm, first = out[0], out[1], fixed
             taken += sweeps
-        assert out is not None
-        error = _launch_error(out[2], 1)
-        handle = self._settled_state(start, driven, drive, out, moved, nudge, error, discarded)
-        return None, None, None, None, taken, None, handle
+            moved.append(out[3])
+            moves.append((driven["before"], driven["path"], sweeps))
+            current = self._settled_state(
+                current, driven, drive, out, sweeps, moved, moves, nudge, discarded,
+            )
+            if stopped:
+                break
+        return None, None, None, None, taken, None, current
 
-    def _sources_moved(self, driven: dict[str, Any], tolerance: float) -> bool:
-        """Whether a source range moved at least ``tolerance`` at a settle's first sweep."""
-        before = driven["before"]
-        if before is None:
-            return False
-        return any(
+    def _sources_moved(self, driven: dict[str, Any], sweeps: int, tolerance: float) -> int:
+        """A bit per sweep at which a source range moved at least ``tolerance``."""
+        word = 0
+        if driven["peaks"] is not None:  # a ramp: read per sweep
+            peaks = np.array(driven["peaks"], copy=False)
+            for t in range(min(sweeps, len(peaks))):
+                if not peaks[t] < tolerance:
+                    word |= 1 << t
+        elif driven["before"] is not None and any(
             not np.abs(
-                np.array(after, copy=False) - np.array(before[r], copy=False)
+                np.array(after, copy=False) - np.array(driven["before"][r], copy=False)
             ).max(initial=0.0) < tolerance
             for r, after in driven["sources"].items()
-        )
+        ):
+            word = 1  # dt = 1: they moved at the first sweep
+        return word
 
     def solve(
         self, drive: np.ndarray, current: BrainState, nudge: Nudge | None, budget: int, chunk: int,
@@ -4672,46 +4953,74 @@ class _MlxKernel:
         start = current.device
         if plan is None or not isinstance(start, _MlxState) or not tolerance >= _MLX_CHECK_FLOOR:
             return None
+        if chunk > _MLX_GRAPH_STEPS:  # one launch holds a bounded time of the device
+            return None
         tables = None if nudge is None else plan.nudge_tables(nudge)
         rows = len(drive)
         nudged = None if nudge is None else self._nudged_inputs(nudge, tables, rows)
-        driven = self._driven(start, drive)
-        if chunk > _MLX_GRAPH_STEPS:  # one launch holds a bounded time of the device
-            return None
         sweeps = min(chunk, budget)
-        out = self._launch(
-            start["vm"], start["sm"], driven["first"], driven["fixed"], sweeps, nudged, None
-        )
-        mx.eval(out, driven["sources"])
+        driven = self._driven(start, drive, sweeps)
+        out = self._launch(start["vm"], start["sm"], driven, sweeps, nudged, None)
+        mx.eval(out, driven["made"])
         first = _launch_error(out[2], 0)
         if sweeps == 0 or (first <= tolerance).all():
-            first = np.maximum(first, self._source_error(start, driven))
+            first = np.maximum(first, self._source_gap(driven, 0))
             if sweeps == 0 or (first <= tolerance).all():
                 return Equilibrium(current, first, 0, tolerance, residual_checks=1)
-        used, checks, error = sweeps, 2, _launch_error(out[2], 1)
-        moved = [out[3]]
+        used, checks = sweeps, 2
+        moves = [(driven["before"], driven["path"], sweeps)]
+        handle = self._settled_state(start, driven, drive, out, sweeps, [out[3]], moves, nudge)
+        error = handle["checked"][2]
         while used < budget and not (error <= tolerance).all() and np.isfinite(error).all():
             sweeps = min(chunk, budget - used)
-            fixed = driven["fixed"]
-            out = self._launch(out[0], out[1], fixed, fixed, sweeps, nudged, None)
-            mx.eval(out)
-            used, checks, error = used + sweeps, checks + 1, _launch_error(out[2], 1)
-            moved = [out[3]]
-            driven["before"] = None  # the chunk that reports has no first sweep
-        handle = self._settled_state(start, driven, drive, out, moved, nudge, error)
+            driven = self._driven(handle, drive, sweeps)
+            out = self._launch(handle["vm"], handle["sm"], driven, sweeps, nudged, None)
+            mx.eval(out, driven["made"])
+            used, checks = used + sweeps, checks + 1
+            moves = [(driven["before"], driven["path"], sweeps)]
+            handle = self._settled_state(handle, driven, drive, out, sweeps, [out[3]], moves, nudge)
+            error = handle["checked"][2]
         unread: Any = None
         return Equilibrium(
             BrainState(unread, unread, unread, sweeps, device=handle), error, used, tolerance,
             residual_checks=checks,
         )
 
-    def _source_error(self, start: _MlxState, driven: dict[str, Any]) -> np.ndarray:
-        """Each row's largest residual at the start among the source neurons: ``drive + bias - v``,
-        from the arrays the first launch left, with no launch of its own."""
+    def gains_at(self, drive: np.ndarray, state: BrainState) -> np.ndarray | None:
+        """``Brain.apical_gain``: the gains the launch that made ``state`` read at it under this
+        drive, or a launch of no sweeps that reads them. None without a compartment."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        if not plan.pools:
+            return None
+        handle = state.device
+        rows = len(drive)
+        if (
+            isinstance(handle, _MlxState) and handle.get("holder") is self.root
+            and handle.get("gains") is not None and handle.get("version") == self.version
+            and np.array_equal(handle.get("drive"), drive)
+        ):
+            return np.array(handle["gains"], dtype=np.float64)
+        on_device = handle is not None and handle.get("holder") is self.root
+        v0 = None if on_device else np.atleast_2d(state.v)
+        a0 = None if on_device else np.atleast_2d(state.adaptation)
+        start = self._start(v0, a0, state, rows)
+        if int(start["vm"].shape[0]) != rows:
+            raise ValueError("state batch does not match the drive batch")
+        driven = self._driven(start, drive, 0)
+        out = self._launch(start["vm"], start["sm"], driven, 0, None, None)
+        mx.eval(out)
+        return np.array(out[5], dtype=np.float64)
+
+    def _source_gap(self, driven: dict[str, Any], taken: int) -> np.ndarray:
+        """Each row's largest residual among the source neurons after ``taken`` sweeps from the
+        launch's start: ``drive + bias - v``, on the host, with no launch of its own."""
         plan = self.plan
         assert plan is not None
-        worst = np.zeros(int(start["vm"].shape[0]))
-        for r in plan.sources:  # both on the host: no launch
-            step = np.abs(driven["potentials"][r] - start["potentials"][r])
-            worst = np.maximum(worst, step.max(axis=1, initial=0.0))
-        return worst
+        gaps = driven["gaps"]
+        if not gaps:
+            return np.zeros(int(driven["fixed"].shape[0]))
+        worst = np.zeros(int(next(iter(gaps.values())).shape[0]))
+        for gap in gaps.values():
+            worst = np.maximum(worst, np.abs(gap).max(axis=1, initial=0.0))
+        return np.asarray(plan.rho**taken * worst)

@@ -12,11 +12,15 @@ import numpy as np
 import pytest
 
 import cadence as cd
-from cadence.brain import _MlxPlan, _MlxState
+from cadence import brain as brain_module
+from cadence.brain import _MLX_COMPARTMENT_NEURONS, Apical, _MlxPlan, _MlxState
 
 pytestmark = pytest.mark.skipif("mlx" not in cd.available_backends(), reason="mlx not installed")
 
 ROWS = 4
+# what a launch's claims are read on: the step of one, and the half step of an apical compartment
+APICAL = {"modules": (32, 16), "apical": 0.25, "recall": False}
+FORMS = pytest.mark.parametrize("form", [{}, APICAL], ids=["whole_step", "apical"])
 
 
 def pair(**settings):
@@ -42,8 +46,9 @@ def launched(state):
 
 
 @pytest.mark.parametrize("steps", [1, 2, 5, 32, 33, 100])
-def test_a_launch_settles_as_the_cpu_at_any_count_of_sweeps(steps):
-    cpu, mlx = pair()
+@FORMS
+def test_a_launch_settles_as_the_cpu_at_any_count_of_sweeps(steps, form):
+    cpu, mlx = pair(**form)
     drive = drive_of(cpu)
     a = cpu.brain.settle_batch(drive, steps=steps)
     b = mlx.brain.settle_batch(drive, steps=steps)
@@ -53,8 +58,9 @@ def test_a_launch_settles_as_the_cpu_at_any_count_of_sweeps(steps):
     np.testing.assert_allclose(b.activity_change, a.activity_change, rtol=0, atol=1e-3)
 
 
-def test_the_first_sweep_reads_the_sources_it_starts_from():
-    cpu, mlx = pair()
+@FORMS
+def test_the_first_sweep_reads_the_sources_it_starts_from(form):
+    cpu, mlx = pair(**form)
     earlier, later = drive_of(cpu, seed=1), drive_of(cpu, seed=2)
     a = cpu.brain.settle_batch(later, steps=3, state=cpu.brain.settle_batch(earlier, steps=20))
     b = mlx.brain.settle_batch(later, steps=3, state=mlx.brain.settle_batch(earlier, steps=20))
@@ -63,8 +69,9 @@ def test_the_first_sweep_reads_the_sources_it_starts_from():
 
 
 @pytest.mark.parametrize("tolerance", [1e-1, 1e-2, 3e-3, 1e-3])
-def test_a_movement_tolerance_stops_where_the_cpu_stops(tolerance):
-    cpu, mlx = pair()
+@FORMS
+def test_a_movement_tolerance_stops_where_the_cpu_stops(tolerance, form):
+    cpu, mlx = pair(**form)
     drive = drive_of(cpu)
     a = cpu.brain.settle_batch(drive, steps=400, tolerance=tolerance)
     b = mlx.brain.settle_batch(drive, steps=400, tolerance=tolerance)
@@ -76,9 +83,10 @@ def test_a_movement_tolerance_stops_where_the_cpu_stops(tolerance):
 @pytest.mark.parametrize(
     "kind", ["softmax", "softmax_weighted", "quadratic", "quadratic_weighted", "slots"]
 )
-def test_a_launch_takes_the_nudges_of_a_lesson(kind):
+@FORMS
+def test_a_launch_takes_the_nudges_of_a_lesson(kind, form):
     settings = {"slots": 2} if kind == "slots" else {}
-    cpu, mlx = pair(**settings)
+    cpu, mlx = pair(**{**form, **settings})
     drive = drive_of(cpu)
     weight = np.array([1.0, 0.5, -0.5, 0.0]) if kind.endswith("weighted") else None
     target = target_of(cpu)
@@ -101,8 +109,9 @@ def test_a_launch_takes_the_nudges_of_a_lesson(kind):
     )
 
 
-def test_a_solve_checks_on_the_device_and_counts_as_on_the_cpu():
-    cpu, mlx = pair()
+@FORMS
+def test_a_solve_checks_on_the_device_and_counts_as_on_the_cpu(form):
+    cpu, mlx = pair(**form)
     drive = drive_of(cpu)
     a = cpu.brain.equilibrate(drive, budget=512, tolerance=3e-3)
     b = mlx.brain.equilibrate(drive, budget=512, tolerance=3e-3)
@@ -116,8 +125,9 @@ def test_a_solve_checks_on_the_device_and_counts_as_on_the_cpu():
     np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-4)
 
 
-def test_a_state_within_tolerance_takes_no_sweep_and_one_check():
-    cpu, mlx = pair()
+@FORMS
+def test_a_state_within_tolerance_takes_no_sweep_and_one_check(form):
+    cpu, mlx = pair(**form)
     drive = drive_of(cpu)
     settled = mlx.brain.equilibrate(drive, budget=512, tolerance=3e-3)
     again = mlx.brain.equilibrate(drive, state=settled.state, budget=512, tolerance=3e-3)
@@ -131,8 +141,9 @@ def test_a_state_within_tolerance_takes_no_sweep_and_one_check():
     assert moved.steps > 0
 
 
-def test_a_budget_of_no_sweeps_reads_the_start():
-    cpu, mlx = pair()
+@FORMS
+def test_a_budget_of_no_sweeps_reads_the_start(form):
+    cpu, mlx = pair(**form)
     drive = drive_of(cpu)
     a = cpu.brain.equilibrate(drive, budget=0, tolerance=3e-3)
     b = mlx.brain.equilibrate(drive, budget=0, tolerance=3e-3)
@@ -172,8 +183,9 @@ def test_an_unsettling_drive_reads_infinity_and_stops():
     assert solved.steps == 32  # the first chunk that reads no finite residual ends the solve
 
 
-def test_a_state_continues_on_the_device_and_reads_back_without_a_launch():
-    cpu, mlx = pair()
+@FORMS
+def test_a_state_continues_on_the_device_and_reads_back_without_a_launch(form):
+    cpu, mlx = pair(**form)
     drive = drive_of(cpu)
     free = mlx.brain.settle_batch(drive, steps=30)
     handle = free.device
@@ -249,8 +261,6 @@ def test_the_environment_keeps_one_operation_at_a_time(monkeypatch):
 
 def test_a_rule_the_launch_does_not_hold_has_no_plan():
     connectome = cd.layered(8, 12, 4, density=1.0, seed=2)
-    half = cd.learning_neuron_model(dt=0.5)
-    assert cd.NeuralGraph(connectome, half, backend="mlx")._mlx.plan is None
     adapting = cd.learning_neuron_model(dt=1.0).replace(adaptation=cd.Adaptation(tau_steps=15))
     assert cd.NeuralGraph(connectome, adapting, backend="mlx")._mlx.plan is None
     plain = cd.NeuralGraph(connectome, cd.learning_neuron_model(dt=1.0), backend="mlx")
@@ -655,3 +665,371 @@ def test_a_default_brain_at_the_speech_size_composes_on_the_blocks():
     assert brain.brain._mlx is not None and brain.brain._blocked
     x = np.random.default_rng(0).random((1, 3920)) * 0.25
     assert np.asarray(brain.act(x, greedy=True)).shape == (1,)
+
+
+# -- an apical compartment: the half step, the sources on their way and the pools' gains
+
+def apical_form(form, backend="cpu", seed=3):
+    inputs, actions, settings = APICAL_FORMS[form]
+    return cd.Brain.compose(
+        inputs, actions, seed=seed, backend=backend, apical=0.25, teaching="deep", **settings
+    )
+
+
+APICAL_FORMS = {
+    "depth": (48, 7, {"modules": (128, 64, 64, 64), "recall": False}),
+    "depth_memory": (48, 7, {"modules": (128, 64, 64, 64)}),
+    "field": ((16, 16, 1), 6, {"modules": (64,), "features": 8, "field": 5, "recall": False}),
+    "code": (64, 8, {"modules": (64, 32), "code": 128}),
+    "learned_code": (64, 8, {"modules": (64, 32), "learned_code": 64}),
+}
+# Where a synapse's velocity stands from here, its step reads within rounding: below it a contrast
+# is float32's noise, and RMS normalization makes a step of it whichever its sign (the torch
+# backend at float32 parts from float64 the same way).
+CONTRAST = 1e-6
+
+
+def observation(brain_inputs, rng, rows=ROWS):
+    shape = (rows, *brain_inputs) if isinstance(brain_inputs, tuple) else (rows, brain_inputs)
+    return rng.random(shape) * 0.5
+
+
+def read_a_lesson_alike(cpu, mlx, before):
+    """One lesson's step from one set of weights: the raw contrast within rounding everywhere, the
+    step within rounding wherever the contrast stands above it, the backend's bound elsewhere."""
+    velocity = np.asarray(cpu.learner.velocity)
+    np.testing.assert_allclose(np.asarray(mlx.learner.velocity), velocity, rtol=0, atol=1e-7)
+    standing = np.abs(velocity) >= CONTRAST
+    assert standing.any()
+    step, device = cpu.brain.efficacy - before, mlx.brain.efficacy - before
+    np.testing.assert_allclose(device[standing], step[standing], rtol=0, atol=1e-5)
+    np.testing.assert_allclose(device, step, rtol=0, atol=SYNAPSES)
+
+
+@pytest.mark.parametrize("form", list(APICAL_FORMS))
+def test_each_apical_form_settles_learns_and_lives_as_the_cpu(form):
+    cpu, mlx = apical_form(form), apical_form(form, "mlx")
+    inputs = APICAL_FORMS[form][0]
+    actions = APICAL_FORMS[form][1]
+    plan = mlx.brain._mlx.plan
+    assert isinstance(plan, _MlxPlan) and plan.pools == len(cpu.brain.apical.members)
+    np.testing.assert_array_equal(mlx.brain.efficacy, cpu.brain.efficacy)
+    rng = np.random.default_rng(5)
+    # a settle, with the gains it leaves
+    x = observation(inputs, rng)
+    drive = cpu.stimulus(x, memory=False)
+    a = cpu.brain.equilibrate(drive, budget=512, tolerance=3e-3)
+    b = mlx.brain.equilibrate(drive, budget=512, tolerance=3e-3)
+    assert launched(b.state)
+    assert (b.steps, b.residual_checks) == (a.steps, a.residual_checks)
+    np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(b.residual, a.residual, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(
+        mlx.brain.apical_gain(drive, b.state), cpu.brain.apical_gain(drive, a.state),
+        rtol=0, atol=1e-5,
+    )
+    # a continued life, on one set of weights
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(12):
+            x = observation(inputs, rng)
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+            np.testing.assert_allclose(
+                mlx.basal_ganglia.state.activation, cpu.basal_ganglia.state.activation,
+                rtol=0, atol=2e-5,
+            )
+    # a lesson
+    before = np.array(cpu.brain.efficacy)
+    x, labels = observation(inputs, rng), rng.integers(actions, size=ROWS)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        p, q = cpu.lesson(x, labels), mlx.lesson(x, labels)
+    assert (q["free_steps"], q["nudged_steps"]) == (p["free_steps"], p["nudged_steps"])
+    np.testing.assert_allclose(q["scale_step"], p["scale_step"], rtol=2e-2)
+    read_a_lesson_alike(cpu, mlx, before)
+    np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+
+
+def test_a_form_past_the_threads_shares_them_with_its_compartment():
+    """The field form holds more settling neurons than threads: a thread reads its pools' gains
+    once each."""
+    _, mlx = apical_form("field"), apical_form("field", "mlx")
+    plan = mlx.brain._mlx.plan
+    assert 1024 < plan.m <= _MLX_COMPARTMENT_NEURONS and plan.per == 2
+
+
+def test_a_nudged_settle_holds_the_gains_of_the_free_phase():
+    cpu, mlx = pair(**APICAL)
+    drive = drive_of(cpu)
+    free_a = cpu.brain.equilibrate(drive, budget=512, tolerance=3e-3).state
+    free_b = mlx.brain.equilibrate(drive, budget=512, tolerance=3e-3).state
+    held_a = cpu.brain.apical_gain(drive, free_a)
+    eval_ = mlx.brain._mlx.mx.eval
+
+    def forbidden(*_, **__):
+        raise AssertionError("a read launched")
+
+    mlx.brain._mlx.mx.eval = forbidden  # the launch that made the state read them
+    try:
+        held_b = mlx.brain.apical_gain(drive, free_b)
+    finally:
+        mlx.brain._mlx.mx.eval = eval_
+    assert held_b.shape == held_a.shape == (ROWS, len(cpu.brain.apical.members))
+    np.testing.assert_allclose(held_b, held_a, rtol=0, atol=1e-5)
+    target = target_of(cpu)
+    nudge_a = cpu.learner.nudge_for(target, 0.1, None, held_a)
+    nudge_b = mlx.learner.nudge_for(target, 0.1, None, held_b)
+    a = cpu.brain.settle_batch(drive, steps=32, state=free_a, nudge=nudge_a)
+    b = mlx.brain.settle_batch(drive, steps=32, state=free_b, nudge=nudge_b)
+    assert launched(b)
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(
+        mlx.brain.residual(drive, b, nudge=nudge_b),
+        mlx.brain.residual(drive, b, nudge=nudge_b, on_device=False), rtol=0, atol=1e-4,
+    )
+    # the settle kept to them: it moved off the gains its own state would read
+    assert np.abs(cpu.brain.apical_gain(drive, a) - held_a).max() > 0.0
+    # a state that keeps none reads them in a launch of no sweeps, and so does one from the host
+    np.testing.assert_allclose(
+        mlx.brain.apical_gain(drive, b), cpu.brain.apical_gain(drive, a), rtol=0, atol=1e-5,
+    )
+    host = cd.BrainState(free_b.v, free_b.activation, free_b.adaptation, free_b.steps)
+    np.testing.assert_allclose(mlx.brain.apical_gain(drive, host), held_a, rtol=0, atol=1e-5)
+    other = drive_of(cpu, seed=7)  # and a state read under another drive than its own
+    np.testing.assert_allclose(
+        mlx.brain.apical_gain(other, free_b), cpu.brain.apical_gain(other, free_a),
+        rtol=0, atol=1e-5,
+    )
+    with pytest.raises(ValueError, match="batch"):
+        mlx.brain.apical_gain(other[:2], free_b)
+
+
+def half_step(backend="cpu"):
+    connectome = cd.layered(8, 12, 4, density=1.0, seed=2)
+    graph = cd.NeuralGraph(connectome, cd.learning_neuron_model(dt=0.5), backend=backend)
+    rng = np.random.default_rng(4)
+    return graph, rng.random((3, connectome.n)) * 0.5, rng.random((3, connectome.n)) * 0.5
+
+
+@pytest.mark.parametrize("steps", [1, 3, 24, 25, 40, 64, 65, 130])
+def test_another_step_reads_the_sources_on_their_way_to_the_drive(steps):
+    """Under dt = 0.5 a source range moves for sweeps on end: each of them reads its own products,
+    across launches and from a state under another drive."""
+    cpu, one, other = half_step()
+    mlx, *_ = half_step("mlx")
+    assert mlx._mlx.plan is not None and mlx._mlx.plan.rho == 0.5
+    a = cpu.settle_batch(one, steps=steps)
+    b = mlx.settle_batch(one, steps=steps)
+    assert launched(b)
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(b.v, a.v, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(b.activity_change, a.activity_change, rtol=0, atol=1e-3)
+    c = cpu.settle_batch(other, steps=steps, state=a)
+    d = mlx.settle_batch(other, steps=steps, state=b)
+    assert launched(d)
+    np.testing.assert_allclose(d.activation, c.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(d.v, c.v, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(d.activity_change, c.activity_change, rtol=0, atol=1e-3)
+
+
+@pytest.mark.parametrize("tolerance", [3e-1, 1e-1, 1e-2, 1e-3])
+def test_another_step_stops_where_the_cpu_stops_and_goes_on_from_there(tolerance):
+    cpu, one, other = half_step()
+    mlx, *_ = half_step("mlx")
+    a = cpu.settle_batch(one, steps=400, tolerance=tolerance)
+    b = mlx.settle_batch(one, steps=400, tolerance=tolerance)
+    assert b.steps == a.steps
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(b.v, a.v, rtol=0, atol=1e-5)
+    # a stop inside the sources' way: the next settle starts from where they were left
+    c = cpu.settle_batch(other, steps=7, state=a)
+    d = mlx.settle_batch(other, steps=7, state=b)
+    np.testing.assert_allclose(d.activation, c.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(d.v, c.v, rtol=0, atol=1e-5)
+    # under the drive it stopped at, too
+    e = cpu.settle_batch(one, steps=7, state=a)
+    f = mlx.settle_batch(one, steps=7, state=b)
+    np.testing.assert_allclose(f.activation, e.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(f.v, e.v, rtol=0, atol=1e-5)
+
+
+def test_another_steps_solve_reads_the_sources_equations():
+    cpu, one, other = half_step()
+    mlx, *_ = half_step("mlx")
+    a = cpu.equilibrate(one, budget=512, tolerance=1e-3)
+    b = mlx.equilibrate(one, budget=512, tolerance=1e-3)
+    assert launched(b.state)
+    assert (b.steps, b.residual_checks) == (a.steps, a.residual_checks)
+    np.testing.assert_allclose(b.residual, a.residual, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(
+        b.residual, mlx.residual(one, b.state, on_device=False), rtol=0, atol=1e-5
+    )
+    c = cpu.equilibrate(other, state=a.state, budget=512, tolerance=1e-3)
+    d = mlx.equilibrate(other, state=b.state, budget=512, tolerance=1e-3)
+    assert (d.steps, d.residual_checks) == (c.steps, c.residual_checks)
+    np.testing.assert_allclose(d.state.activation, c.state.activation, rtol=0, atol=1e-5)
+
+
+def test_the_sources_way_made_in_parts_reads_the_same_bits(monkeypatch):
+    mlx, one, other = half_step("mlx")
+    whole = mlx.settle_batch(other, steps=40, state=mlx.settle_batch(one, steps=40))
+    monkeypatch.setattr(brain_module, "_MLX_RAMP_FLOATS", 1)
+    parts = mlx.settle_batch(other, steps=40, state=mlx.settle_batch(one, steps=40))
+    np.testing.assert_array_equal(parts.activation, whole.activation)
+    np.testing.assert_array_equal(parts.v, whole.v)
+    np.testing.assert_array_equal(parts.activity_change, whole.activity_change)
+
+
+def moments_alike(cpu, mlx, inputs, actions, atol=SYNAPSES):
+    rng = np.random.default_rng(11)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(3):
+            x, labels = rng.random((ROWS, inputs)), rng.integers(actions, size=ROWS)
+            cpu.lesson(x, labels)
+            mlx.lesson(x, labels)
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=atol)
+
+
+def test_a_compartment_past_threadgroup_memory_takes_the_compiled_sweep():
+    settings = {"modules": (_MLX_COMPARTMENT_NEURONS + 8,), "apical": 0.25, "recall": False}
+    cpu, mlx = pair(**settings)
+    assert mlx.brain._mlx.plan is None
+    drive = drive_of(cpu)
+    a = cpu.brain.equilibrate(drive, budget=256, tolerance=3e-3)
+    b = mlx.brain.equilibrate(drive, budget=256, tolerance=3e-3)
+    assert not launched(b.state) and b.steps == a.steps
+    np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-5)
+    held = cpu.brain.apical_gain(drive, a.state)
+    np.testing.assert_allclose(mlx.brain.apical_gain(drive, b.state), held, rtol=0, atol=1e-5)
+    target = target_of(cpu)
+    c = cpu.brain.settle_batch(
+        drive, steps=16, state=a.state, nudge=cpu.learner.nudge_for(target, 0.1, None, held)
+    )
+    d = mlx.brain.settle_batch(
+        drive, steps=16, state=b.state, nudge=mlx.learner.nudge_for(target, 0.1, None, held)
+    )
+    np.testing.assert_allclose(d.activation, c.activation, rtol=0, atol=1e-5)
+    assert mlx.brain._mlx.sweeps  # compiled
+    moments_alike(cpu, mlx, 8, 4)
+
+
+def test_the_environment_keeps_a_compartment_one_operation_at_a_time(monkeypatch):
+    monkeypatch.setenv("CADENCE_MLX_LAUNCH", "0")
+    cpu, mlx = pair(**APICAL)
+    assert mlx.brain._mlx.plan is None and not mlx.brain._mlx.sweeps
+    drive = drive_of(cpu)
+    a = cpu.brain.settle_batch(drive, steps=12)
+    b = mlx.brain.settle_batch(drive, steps=12)
+    assert not launched(b) and not mlx.brain._mlx.sweeps
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+    moments_alike(cpu, mlx, 8, 4)
+
+
+def test_a_block_of_both_compartments_takes_the_compiled_sweep():
+    """A spec that puts part of a block on the apical side: its two sides in blocks of their own,
+    and a lesson's update on the host, where the blocks are the synapses."""
+    connectome = cd.layered(8, 12, 4, density=1.0, seed=2)
+    model = cd.learning_neuron_model(dt=0.5)
+    groups = np.full(connectome.n, -1)
+    groups[list(connectome.populations["output"])] = 0
+    hidden = [i for i in range(connectome.n) if i not in connectome.populations["output"]
+              and i not in connectome.populations["input"]]
+    groups[hidden] = 1
+    post = np.asarray(connectome.post)
+    synapses = (groups[post] >= 0) & (np.arange(connectome.synapses) % 2 == 0)
+    spec = Apical(synapses, groups, 0.25)
+    cpu = cd.NeuralGraph(connectome, model, apical=spec)
+    mlx = cd.NeuralGraph(connectome, model, backend="mlx", apical=spec)
+    assert mlx._mlx.mixed and mlx._mlx.plan is None
+    drive = np.random.default_rng(6).random((ROWS, connectome.n)) * 0.5
+    a = cpu.settle_batch(drive, steps=24)
+    b = mlx.settle_batch(drive, steps=24)
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=1e-5)
+    held = cpu.apical_gain(drive, a)
+    np.testing.assert_allclose(mlx.apical_gain(drive, b), held, rtol=0, atol=1e-5)
+    mask = np.zeros(connectome.n)
+    mask[list(connectome.populations["output"])] = 1.0
+    target = np.zeros((ROWS, connectome.n))
+    nudge = cd.Nudge(target, mask, 0.1, apical_gain=held)
+    np.testing.assert_allclose(
+        mlx.settle_batch(drive, steps=8, state=b, nudge=nudge).activation,
+        cpu.settle_batch(drive, steps=8, state=a, nudge=nudge).activation, rtol=0, atol=1e-5,
+    )
+    empty = np.zeros(0, int)
+    assert mlx._mlx.update_tables(np.ones(connectome.synapses), empty, empty) is None
+
+
+def test_the_speech_size_with_a_compartment_settles_and_learns_as_the_cpu():
+    settings = {"modules": (256, 128), "apical": 0.25, "teaching": "deep", "seed": 3}
+    cpu = cd.Brain.compose(3920, 37, **settings)
+    mlx = cd.Brain.compose(3920, 37, backend="mlx", **settings)
+    assert mlx.brain._mlx.plan is not None and mlx.brain._mlx.plan.pools
+    rng = np.random.default_rng(5)
+    x = rng.random((ROWS, 3920)) * 0.5
+    drive = cpu.stimulus(x, memory=False)
+    a = cpu.brain.equilibrate(drive, budget=256, tolerance=3e-3)
+    b = mlx.brain.equilibrate(drive, budget=256, tolerance=3e-3)
+    assert (b.steps, b.residual_checks) == (a.steps, a.residual_checks)
+    np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-5)
+    np.testing.assert_allclose(
+        mlx.brain.apical_gain(drive, b.state), cpu.brain.apical_gain(drive, a.state),
+        rtol=0, atol=1e-5,
+    )
+    before = np.array(cpu.brain.efficacy)
+    labels = rng.integers(37, size=ROWS)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        p, q = cpu.lesson(x, labels), mlx.lesson(x, labels)
+    assert (q["free_steps"], q["nudged_steps"]) == (p["free_steps"], p["nudged_steps"])
+    assert mlx.brain._efficacy is None  # the update ran on the device
+    read_a_lesson_alike(cpu, mlx, before)
+    np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+
+
+def test_a_lessons_rounding_on_a_compartment_is_float32s_own(tmp_path):
+    """A lesson at float32 parts from float64 where the contrasts lie at float32's noise. The torch
+    backend at float32 on the CPU, with no MLX in it, parts by as much."""
+    pytest.importorskip("torch")
+    cpu = apical_form("depth")
+    cpu.save(tmp_path / "brain.npz")
+    mlx = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
+    witness = cd.Brain.load(
+        tmp_path / "brain.npz", backend="torch", device="cpu", precision="float32"
+    )
+    rng = np.random.default_rng(5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(3):
+            x, labels = observation(48, rng), rng.integers(7, size=ROWS)
+            for brain in (cpu, mlx, witness):
+                brain.lesson(x, labels)
+    apart = np.abs(mlx.brain.efficacy - cpu.brain.efficacy).max()
+    alone = np.abs(witness.brain.efficacy - cpu.brain.efficacy).max()
+    assert 0.0 < apart < 2 * alone and alone < 2 * apart
+
+
+def test_an_apical_brain_saves_and_goes_on_from_the_device(on_device, tmp_path):
+    cpu, mlx = pair(**APICAL)
+    moments_alike(cpu, mlx, 8, 4)
+    rng = np.random.default_rng(12)
+    x = rng.random((ROWS, 8))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        mlx.lesson(x, rng.integers(4, size=ROWS))
+    assert mlx.brain._efficacy is None  # what the save reads rests on the device
+    mlx.act(x, greedy=True)
+    mlx.save(tmp_path / "brain.npz")
+    again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
+    back = cd.Brain.load(tmp_path / "brain.npz", backend="cpu")
+    assert again.brain.apical.fraction == back.brain.apical.fraction == 0.25
+    for _ in range(3):
+        x = rng.random((ROWS, 8))
+        expected = mlx.act(x, greedy=True)
+        np.testing.assert_array_equal(again.act(x, greedy=True), expected)
+        np.testing.assert_array_equal(back.act(x, greedy=True), expected)
+        kept = mlx.basal_ganglia.state.activation
+        np.testing.assert_allclose(again.basal_ganglia.state.activation, kept, rtol=0, atol=1e-5)
+        np.testing.assert_allclose(back.basal_ganglia.state.activation, kept, rtol=0, atol=1e-5)
