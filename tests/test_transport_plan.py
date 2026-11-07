@@ -46,6 +46,38 @@ def same(host: cd.BrainState, dev: cd.BrainState) -> None:
     np.testing.assert_allclose(dev.v, host.v, rtol=0, atol=ATOL)
 
 
+def test_a_tile_never_exceeds_what_the_batch_fills():
+    for batch, wide in ((1, 1), (2, 2), (3, 4), (5, 8), (16, 16), (17, 16), (63, 16)):
+        assert module._tile_batch(batch, True) == wide
+        assert module._tile_batch(batch, False) == wide
+    assert module._tile_batch(64, False) == 64
+    assert module._tile_batch(4096, False) == 64
+    assert module._tile_batch(4096, True) == 16
+
+
+def test_the_fused_update_takes_its_tile_from_size_batch_and_precision():
+    assert module._update_tile(251, 1, True) == (32, 1)
+    assert module._update_tile(251, 7, True) == (32, 8)
+    assert module._update_tile(251, 16, True) == (8, 16)
+    assert module._update_tile(251, 16, False) == (16, 16)
+    assert module._update_tile(12821, 64, True) == (8, 64)
+    assert module._update_tile(12821, 64, False) == (16, 64)
+
+
+def test_the_launch_rule_reads_the_group_the_batch_and_the_precision():
+    class Bucket:
+        def __init__(self, count: int, rows: int, cols: int) -> None:
+            self.count, self.rows, self.cols = count, rows, cols
+
+    rule = module._launch_rule
+    assert rule(Bucket(3, 8, 5000), 1, "float32") and rule(Bucket(3, 8, 5000), 1, "float64")
+    assert rule(Bucket(1, 64, 128), 1, "float64") and not rule(Bucket(1, 64, 129), 1, "float64")
+    assert rule(Bucket(1, 64, 256), 1, "float32") and not rule(Bucket(1, 64, 257), 4096, "float32")
+    assert not rule(Bucket(1, 64, 512), 7, "float64") and rule(Bucket(1, 64, 512), 8, "float64")
+    assert rule(Bucket(1, 64, 4096), 8, "float64") and not rule(Bucket(1, 64, 4097), 127, "float64")
+    assert rule(Bucket(1, 64, 4097), 128, "float64")
+
+
 def test_a_new_graph_runs_the_rules_and_says_so():
     first = graph("cpu")
     report = first.to_dict()["torch_transport"]
@@ -159,6 +191,35 @@ def test_every_choice_of_a_launch_matches_the_host(launched):
     assert plan.on_launch(plan.moving, 5) == tuple(chosen[0])
     drive = np.random.default_rng(4).uniform(-0.5, 1.0, (5, dev.connectome.n))
     same(host.settle_batch(drive, steps=40), dev.settle_batch(drive, steps=40))
+
+
+@cuda
+@pytest.mark.parametrize("precision", ["float64", "float32"])
+@pytest.mark.parametrize("batch", [1, 3, 16, 70])
+def test_groups_of_every_height_in_one_launch_match_the_host(precision, batch):
+    pytest.importorskip("triton")
+    # groups of 1 to 33 rows, three of each height, over windows of 7 to 40 presynaptic neurons
+    pre, post = [], []
+    first = 80
+    for height in (1, 2, 3, 5, 8, 9, 16, 17, 33):
+        for g in range(3):
+            for r in range(height):
+                for c in range(7 + height):
+                    pre.append((g * 5 + c) % 80)
+                    post.append(first + r)
+            first += height
+    connectome = cd.Connectome.from_synapses(
+        first, pre=pre, post=post, sign=np.random.default_rng(0).uniform(-0.3, 0.3, len(pre)),
+        populations={"input": range(80), "hidden": range(80, first)},
+    )
+    model = cd.learning_neuron_model()
+    host = cd.NeuralGraph(connectome, model)
+    dev = cd.NeuralGraph(connectome, model, backend="torch", device="cuda:0", precision=precision)
+    assert dev._torch.plan.small is not None
+    drive = np.random.default_rng(1).uniform(0, 1, (batch, connectome.n))
+    a, b = host.settle_batch(drive, steps=9), dev.settle_batch(drive, steps=9)
+    tolerance = 1e-10 if precision == "float64" else 2e-3
+    np.testing.assert_allclose(b.activation, a.activation, rtol=0, atol=tolerance)
 
 
 @cuda
