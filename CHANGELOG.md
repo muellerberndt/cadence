@@ -48,8 +48,8 @@ in [what the composition gives up](docs/memory.md#what-the-composition-gives-up)
   sweeps runs in one Metal launch that ends with the equations' residual, a state stays on the device
   until read, a lesson's update from 131,072 block entries and a recall address map from 1,048,576
   entries stay on the device, and a sweep no launch takes is compiled. On an Apple M4 at the speech
-  size (3,920 inputs, 6.3 million synapses) an act takes 2.8 ms against 14 on one CPU core, and a
-  taught lesson 23 against 291; a chamber batch of 16 rows takes about 1.2 times one CPU core's.
+  size (3,920 inputs, 6.3 million synapses), at a load of 12 to 25, an act takes 8 ms against 26 on one CPU
+  core, a lesson 59 against 648 and a `step` 45 against 365; at 16 rows of the chamber one core stays ahead.
   `Brain.residual` reads a launch's check of a state under its own drive, nudge and
   parameters, in float32; `on_device=False` keeps the float64 reference, which also decides a solve
   below a tolerance of 1e-4. `copy.deepcopy` of an MLX brain works. `CADENCE_MLX_LAUNCH=0` keeps one
@@ -60,9 +60,9 @@ in [what the composition gives up](docs/memory.md#what-the-composition-gives-up)
   in closed form, so every neuron rule without adaptation launches. A block holding synapses of both
   compartments, or more than 1,360 settling neurons with a compartment, takes the compiled sweep. A settle
   agrees with the CPU within 2.3e-7, with equal steps and checks, and a continued life on one set of weights
-  within 2e-5. Four regions under a compartment at 64 rows take 3.9 ms per act and 13 per lesson against 13
-  and 55 on one CPU core; `modules=(256, 128)` at the speech size and 16 rows 9.6 and 40 against 101 and
-  441. On `benchmarks/depth/and_count.py`'s four regions the mean of the ten readings from lesson 3,100
+  within 2e-5. At a load of 12 to 25 four regions under a compartment at 64 rows take 12 ms per act and 36 per lesson
+  against 35 and 101 on one CPU core, and `modules=(256, 128)` at the speech size and 16 rows 13 and 89 against 210
+  and 938. On `benchmarks/depth/and_count.py`'s four regions the mean of the ten readings from lesson 3,100
   over six seeds is .802 on the CPU and .786 on MLX, a difference of .016 with a standard error of .015.
   See [precision matters](docs/backends.md#precision-matters).
 - **Default change: the fastest backend, with nothing named.** `Brain.compose` takes `backend="auto"`:
@@ -85,6 +85,14 @@ in [what the composition gives up](docs/memory.md#what-the-composition-gives-up)
   the float64 host path; of a moment only the observations and the dopamine go there, and the motor
   columns, a value per stream and the checks come back. `CADENCE_TORCH_MEMORY`
   overrides the size rule. See
+  [memories on the device](docs/backends.md#memories-on-the-device).
+- **A moment on MLX.** From a moment of `streams * width * (width + 1024) >= 8,000,000` the same memories, the critic's
+  weights and eligibility and the moment's drive rest on MLX in float32, by the code CUDA runs, beside the actor's eligibility
+  and the optimizer: a moment's reads join the launch that settles on them, a slot is written in place in unified memory,
+  a step needs no array of the streams' contrast, and a wide brain's rates step there. At the speech size at 16 streams
+  on an Apple M4 a `step` takes 145 ms against 2,115 on one CPU core, at a load of 12 to 25, and 256 streams peak at 7.9 GB.
+  `CADENCE_MLX_MEMORY` overrides the size rule. The default brain's chamber and battery panels on MLX read after this
+  release, and `backend="auto"` keeps those sizes on the CPU at 16 rows. See
   [memories on the device](docs/backends.md#memories-on-the-device).
 - **A moment on a torch device crosses less.** The drive goes up once per moment, a settle from rest
   uploads nothing, a warm start stays on the device, the motor and critic read their columns and no

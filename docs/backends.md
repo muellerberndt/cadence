@@ -207,7 +207,8 @@ work neither torch nor MLX is imported where they are installed.
 
 A new brain's free solves take the fast form on the compiled CPU path alone, so by default the host and a
 device agree within the solver's tolerance per moment, and panels by a mean over seeds are the check; under
-`learning_fast_settle=False` a float64 device agrees with the float64 host within rounding. A run that must
+`learning_fast_settle=False` a float64 device agrees with the float64 host within rounding. The default brain's
+chamber and battery panels on MLX read after 0.95.0, and `auto` keeps those sizes on the CPU at 16 rows. A run that must
 repeat names its backend. `backend="cpu"` keeps its bits, with `recall=False` or `recall_founder=True` as well.
 `CADENCE_BACKEND` names one for a whole run where none is named: `cpu`, `mlx`, `torch`, `torch:cuda` or
 `torch:cuda:float64`. This library's tests, benchmarks and examples name theirs.
@@ -275,28 +276,17 @@ check float32 against float64 as below before relying on it. On the small contin
 [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
 than CUDA.
 
-On an Apple M4, one process, milliseconds per act and per taught lesson of a newborn, MLX
-against one CPU core with Numba (float32 against float64, the same sweeps), at a load of about 2.5:
+On an Apple M4 the rows of one CPU core at its default solve and of MLX, in milliseconds of `act`, `lesson` and
+`step`, are in [the default backend](#the-default-backend). A brain without the memory keeps the ordinary solve on the
+CPU. In milliseconds per act and per taught lesson of a newborn, MLX against one CPU core with Numba (float32 against
+float64, the same sweeps), at a load of about 2.5:
 
 | Brain | Rows | One CPU core, act and lesson | MLX, act and lesson |
 | --- | ---: | ---: | ---: |
 | A small brain without the memory: 12 inputs, association 32 | 1 | 0.07, 0.26 | 0.66, 2.8 |
-| The same with the memory a new brain holds | 1 | 0.17, 0.77 | 0.73, 3.1 |
-| The chamber's recipe: 251 neurons, 13,120 synapses | 16 | 0.53, 2.8 | 0.67, 3.1 |
-| A new brain at the speech size: 3,920 inputs, 6.3 million synapses, 24 million parameters | 1 | 14, 291 | 2.8, 23 |
-| The same | 16 | 17, 295 | 6.2, 34 |
-| The same | 64 | 49, 411 | 17, 70 |
-| The same | 256 | 185, 922 | 60, 205 |
-| The same | 1,024 | 751, 3,020 | 347, 1,260 |
-| The same | 4,096 | 3,230, 19,500 | 1,520, 7,250 |
 | Four regions under an apical compartment, `modules=(128, 64, 64, 64)`, without the memory: 439 neurons, 43,904 synapses | 1 | 0.42, 1.8 | 0.73, 3.3 |
 | The same | 16 | 1.9, 5.5 | 0.79, 3.3 |
 | The same | 64 | 8.4, 23 | 5.9, 21 |
-| The same with the memory: 535 neurons, 50,048 synapses | 1 | 0.50, 2.5 | 0.85, 4.5 |
-| The same | 16 | 2.4, 9.3 | 1.1, 5.6 |
-| The same | 64 | 13, 55 | 3.9, 13 |
-| The speech size under a compartment, `modules=(256, 128)`, with the memory: 12,309 neurons, 2.1 million synapses | 1 | 27, 191 | 7.2, 30 |
-| The same | 16 | 101, 441 | 9.6, 40 |
 | The deep anatomy above, with its compartment: 7,956 neurons, 903,520 synapses | 1 | 33, 118 | 99, 260 |
 | The same | 16 | 132, 426 | 106, 537 |
 | The same | 64 | 248, 650 | 118, 350 |
@@ -306,9 +296,8 @@ against one CPU core with Numba (float32 against float64, the same sweeps), at a
 
 MLX wins at the speech size at every batch, on four regions under a compartment from about 16 rows, and on the
 deep anatomy, which takes the compiled sweep, from about 32 rows. At the chamber's size one synchronization with the
-GPU costs about 180 microseconds whatever the work, and a solve of three chunks takes three: a pass of the
-[grammar chamber](../benchmarks/grammar/README.md), 4,000 batches of 16 rows, takes 51 s on one CPU core and
-75 s on MLX. One core stays the choice at that size.
+GPU costs about 180 microseconds whatever the work, and a solve of three chunks takes three, so one core stays the
+choice there at 16 rows.
 
 So a device costs a small brain time. At one row a new brain of 12 inputs and an association of 32 takes about 4
 times one CPU core's time per act and per lesson on MLX, and the chamber's brain about 3 times per act and per lesson on

@@ -328,7 +328,7 @@ an act, and only the act has to keep up with the stream.
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |
 | Blocks | `dense_limit` at construction | A brain over the limit settles on the sparse transport in Python, about 30 times slower at the speech size. A brain with the memory takes a limit as wide as its blocks unless it names one. |
-| Device | `backend="mlx"` from the speech size | At the speech size MLX on the same M4 takes a fifth of an act and a twelfth of a taught lesson. At the chamber's size, 16 rows over 82 settling neurons, it takes about 1.2 times as long per batch. [Which hardware](backends.md#which-hardware) gives the sizes where a device pays. |
+| Device | `backend="auto"`, a new brain's, or `backend="mlx"` by name | At the speech size at one stream MLX on the same M4 takes about a third of an act, a tenth of a lesson and an eighth of a `step`, and at 16 a fourteenth of a lesson and of a `step`, at a load of 12 to 25. At the chamber's size at 16 rows one core stays ahead. [The default backend](backends.md#the-default-backend) gives the sizes where a device pays. |
 
 ## Larger brains
 
