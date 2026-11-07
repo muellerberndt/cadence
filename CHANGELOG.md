@@ -96,10 +96,10 @@ in [what the composition gives up](docs/memory.md#what-the-composition-gives-up)
   [memories on the device](docs/backends.md#memories-on-the-device).
 - **A moment on a torch device crosses less.** The drive goes up once per moment, a settle from rest
   uploads nothing, a warm start stays on the device, the motor and critic read their columns and no
-  state comes up whole. `copy.deepcopy` of a brain on torch now works.
+  state comes up whole. `copy.deepcopy` copies a brain on torch.
 - **The read's reward eligibility keeps what can step.** The actor holds the event's rows of the columns
   that can step, 69 columns of 3,920 rows at the default memory and speech's width, where it held 141 MB per
-  row, and a checkpoint still holds the full layout. Every bit of a CPU life is unchanged. One core's `step`
+  row, and a checkpoint holds the full layout. Every bit of a CPU life is unchanged. One core's `step`
   at 3,920 inputs: 475 to 262 ms at one stream, 2,408 to 992 ms at 16.
 - A lesson's per-synapse passes (the optimizer's step, its projection-relative form and the contrast's gather) compile
   under NumPy's error model, so their divisions vectorize and a zero divisor gives what NumPy's form gives instead of
@@ -239,9 +239,9 @@ in [what the composition gives up](docs/memory.md#what-the-composition-gives-up)
   a launch reads the activations a state keeps instead of computing them again, a free solve runs in
   one compiled call, the act after a surprise lesson that taught no row reads that lesson's settle,
   a greedy choice with one motor reads the neurons where one stands clear, and the recall read's
-  position buckets are table lookups and its episode terms one compiled pass. The recall bank is now
-  a view into a wider array and a write adds one slot in place of copying every slot, so a write no
-  longer grows with `recall_capacity`; a caller that holds `recall.nexts` or the other slot arrays
+  position buckets are table lookups and its episode terms one compiled pass. The recall bank is
+  a view into a wider array and a write adds one slot in place of copying every slot, so a write's
+  cost does not grow with `recall_capacity`; a caller that holds `recall.nexts` or the other slot arrays
   across a write takes `recall.snapshot()`. The kernels' first use compiles in about 10 seconds on
   an Apple M4. See [what a moment costs](docs/tune.md#what-a-moment-costs).
 - With `recall_tokens`, a lesson whose answer is an action without a token (`-1`) leaves the
@@ -252,7 +252,7 @@ in [what the composition gives up](docs/memory.md#what-the-composition-gives-up)
   answered right or not: judged only where wrong, the lessons of a judgment between two classes
   carry one class at a time ("before" stays at chance after 4,500 surprise lessons, 0.97 at every
   row), and lessons at every row collapse the token answers of induction, copying and two hops,
-  which stay judged by surprise. `recall_tokens` may now be given without `recall_copy`, as a
+  which stay judged by surprise. `recall_tokens` may be given without `recall_copy`, as a
   declaration of which answers are tokens (no synapse is added), and may declare no token at
   all (`[-1] * actions`). Brains without tokens are unchanged.
 - Reward steps the recall read's position maps (`recall_position_reward`) by a lesson's step at
