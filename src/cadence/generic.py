@@ -2858,19 +2858,21 @@ class Brain:
             result = built(**_place_of(run, where.get("precision")))
             result._placement = {"chosen_by": "environment", "why": run.why, "refused": []}
         else:
-            result = built()
             held: dict[str, Any] = {
                 "chosen_by": "auto", "why": _PLACED_LATER, "refused": [],
                 "precision_named": where.get("precision"),
             }
-            result._placement = held
-            result._unplaced = True
-            # where a device is the fastest at one row it is at any rows: no second move
-            for candidate in result._backends_at(1):
+            # where a device is the fastest at one row it is at any rows: no second move, and the
+            # brain is built once
+            found: Brain | None = None
+            for candidate in _fastest_backends(
+                1, connectome.synapses, settling=int(np.unique(connectome.post).size),
+                apical=bool(options.get("apical")), precision=where.get("precision"),
+                learned_code=bool(learned),
+            ):
                 if candidate.backend == "cpu":
                     if held["refused"]:  # the devices the rule asks of have refused it
                         held["why"] = candidate.why
-                        result._unplaced = False
                     break
                 try:
                     placed = built(**_place_of(candidate, None))
@@ -2878,8 +2880,13 @@ class Brain:
                     held["refused"].append(f"{candidate.backend}: {error}")
                     continue
                 placed._placement = {**held, "why": candidate.why}
-                result = placed
+                if placed._backends_at(1)[0].backend == candidate.backend:
+                    found = placed  # and no option keeps the memories from it
                 break
+            result = found if found is not None else built()
+            if found is None:
+                result._placement = held
+                result._unplaced = not held["refused"]
         result.attention = attention
         if custom:
             return result  # a custom anatomy records no composition
