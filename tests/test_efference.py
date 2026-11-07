@@ -16,7 +16,7 @@ DRIVE = np.array([[1.0, 0.0, 0.0, 0.0]])
 
 def composed(seed=3, echo=1.0, **options):
     genes = {} if echo is None else {"efference_amplitude": echo}
-    return cd.Brain.compose(4, 2, modules=(8,), seed=seed, episodic=False, **genes, **options)
+    return cd.Brain.compose(4, 2, modules=(8,), seed=seed, episodic=False, **{"recall": False, **genes, **options})
 
 
 def saved_arrays(path):
@@ -105,7 +105,7 @@ def test_a_sampled_command_is_the_executed_action_not_the_most_active_motor_neur
 
 def test_slotted_actions_issue_one_command_per_slot():
     brain = cd.Brain.compose(
-        4, 5, modules=(8,), slots=(2, 3), seed=3, episodic=False, efference_amplitude=1.0
+        4, 5, modules=(8,), slots=(2, 3), seed=3, episodic=False, efference_amplitude=1.0, recall=False
     )
     action = brain.act(DRIVE, greedy=True)
     assert action.shape == (1, 2)
@@ -175,7 +175,7 @@ def test_a_routine_moment_that_ends_the_episode_starts_the_copy_afresh(tmp_path)
         seed=5,
         working_memory_amplitude=0.0,
         efference_amplitude=1.0,
-        arousal=cd.ArousalConfig(youth=0),
+        arousal=cd.ArousalConfig(youth=0), recall=False,
     )
     brain.live(DRIVE)
     brain.live(DRIVE, reward=[0.0])
@@ -280,7 +280,7 @@ def test_a_life_with_the_copy_and_arousal_saves_its_pending_moment(tmp_path):
         seed=5,
         working_memory_amplitude=0.0,
         efference_amplitude=1.0,
-        arousal=cd.ArousalConfig(youth=2),
+        arousal=cd.ArousalConfig(youth=2), recall=False,
     )
     brain.live(DRIVE)
     brain.live(DRIVE, reward=[1.0])
@@ -373,7 +373,7 @@ def alternation_after_teaching(seed, echo, bouts=24, events=12, window=48):
         working_memory_decay=0.1,
         working_memory_amplitude=3.0,
         scales={"trace": 12.0},  # the steady-rhythm chamber's composition
-        **genes,
+        **{"recall": False, **genes},
     )
     rng = np.random.default_rng(seed)
     rows = np.arange(4)

@@ -113,7 +113,7 @@ def test_the_first_format_is_refused_naming_the_release_that_loads_it(tmp_path) 
 
 def test_generic_brain_resumes_identically(tmp_path) -> None:
     rng = np.random.default_rng(0)
-    g = cd.Brain.compose(6, 3, modules=(16,), seed=1)
+    g = cd.Brain.compose(6, 3, modules=(16,), seed=1, recall=False)
     g.step(rng.random((4, 6)))
     g.step(rng.random((4, 6)), reward=rng.normal(size=4), done=np.array([False, True, False, False]))
     g.step(rng.random((4, 6)), reward=rng.normal(size=4), teacher=np.array([0, 1, 2, 0]))

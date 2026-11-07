@@ -214,21 +214,21 @@ class Life:
         if self.library:
             self.brain = Brain.compose(
                 INPUTS, ACTIONS, modules=(WIDTH,), seed=seed, learning_surprise=True,
-                learned_code=UNITS,
+                learned_code=UNITS, recall=False,
             )
             assert self.brain.learned_code is not None
             self.brain.learned_code.top_down = TOP_DOWN[arm]  # 0: the bottom-up control
         elif arm in CODE_ARMS:
             settings = cr.CodeSettings(**{**code.to_dict(), "top_down": TOP_DOWN[arm]})
             self.brain = Brain.compose(settings.units, ACTIONS, modules=(WIDTH,), seed=seed,
-                                       learning_surprise=True)
+                                       learning_surprise=True, recall=False)
             self.code = cr.CodeRegion(INPUTS, WIDTH, settings, seed=seed)
         elif arm == "random":
             self.brain = Brain.compose(INPUTS, ACTIONS, modules=(WIDTH,), seed=seed,
-                                       code=code.units, learning_surprise=True)
+                                       code=code.units, learning_surprise=True, recall=False)
         elif arm == "raw":
             self.brain = Brain.compose(INPUTS, ACTIONS, modules=(WIDTH,), seed=seed,
-                                       learning_surprise=True)
+                                       learning_surprise=True, recall=False)
         else:
             raise ValueError(arm)
         self.context: np.ndarray | None = None

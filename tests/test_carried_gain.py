@@ -14,7 +14,7 @@ from cadence.stream import Hearing
 
 
 def brain_of(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, modules=(16,), seed=5, **options)
+    return cd.Brain.compose(6, 4, modules=(16,), seed=5, **{"recall": False, **options})
 
 
 def teach(brain: cd.Brain, seed: int = 4, lessons: int = 12) -> None:

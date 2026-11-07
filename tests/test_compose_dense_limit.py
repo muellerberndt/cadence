@@ -16,7 +16,7 @@ def wide(**options) -> cd.Brain:
 
 
 def test_a_founder_composes_with_the_founders_limit() -> None:
-    assert cd.Brain.compose(6, 3).brain.dense_limit == 2048
+    assert cd.Brain.compose(6, 3, recall=False).brain.dense_limit == 2048
 
 
 def test_the_limit_takes_a_wide_brain_onto_the_blocks() -> None:
@@ -41,7 +41,7 @@ def test_a_wide_brain_with_the_memory_keeps_its_blocks_unless_it_names_a_limit()
     assert not wide(dense_limit=2048).brain._blocked
     # a brain under the graph's limit keeps it, and so does one without the memory at any width
     assert cd.Brain.compose(6, 3, recall=True, recall_founder=True).brain.dense_limit == 2048
-    founder = cd.Brain.compose(5000, 8, modules=(1024,), seed=0, episodic=False).brain
+    founder = cd.Brain.compose(5000, 8, modules=(1024,), seed=0, episodic=False, recall=False).brain
     assert founder.layout.size > 2048 ** 2
     assert founder.dense_limit == 2048 and not founder._blocked
 
@@ -59,5 +59,5 @@ def test_it_is_a_construction_choice_a_checkpoint_keeps(tmp_path) -> None:
 
 
 def test_grow_keeps_the_limit() -> None:
-    grown = cd.Brain.compose(6, 3, modules=(8,), seed=0, dense_limit=512).grow(recall=True, recall_founder=True)
+    grown = cd.Brain.compose(6, 3, modules=(8,), seed=0, dense_limit=512, recall=False).grow(recall=True, recall_founder=True)
     assert grown.brain.dense_limit == 512

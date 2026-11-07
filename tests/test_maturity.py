@@ -41,8 +41,8 @@ def checkpoint(brain, folder):
 
 
 def test_off_is_the_founder_to_the_bit():
-    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True))
-    off = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=False))
+    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False))
+    off = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=False, recall=False))
     assert founder.basal_ganglia.maturity is None and off.hippocampus.gate_noise is None
     with tempfile.TemporaryDirectory() as a, tempfile.TemporaryDirectory() as b:
         left, right = np.load(checkpoint(founder, a)), np.load(checkpoint(off, b))
@@ -53,8 +53,8 @@ def test_off_is_the_founder_to_the_bit():
 
 
 def test_use_grows_with_the_updates_and_the_step_falls():
-    young = life(cd.Brain.compose(6, 3, seed=2, arousal=True))
-    mature = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.02)
+    young = life(cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False))
+    mature = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.02, recall=False)
     start = mature.brain.efficacy.copy()
     life(mature)
     state = mature.basal_ganglia.maturity
@@ -74,8 +74,8 @@ def test_an_idle_brain_recovers_and_a_young_one_learns_as_the_founder():
     assert state.use == pytest.approx(15.0 * (1 - 1e-3) ** 3_000)
     assert before < 0.1 < 0.9 < state.factor()
     # a scale far beyond any use: m is 1, the steps and the store's writes are the founder's
-    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True))
-    young = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=1e12))
+    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False))
+    young = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=1e12, recall=False))
     # (within rounding: the gated write sums the residual's change in another order)
     np.testing.assert_allclose(young.brain.efficacy, founder.brain.efficacy, rtol=0, atol=1e-9)
     np.testing.assert_allclose(young.hippocampus.consolidated, founder.hippocampus.consolidated,
@@ -107,7 +107,7 @@ def test_a_mature_store_moves_a_record_only_by_its_surprise():
 
 
 def test_save_and_load_continue_bit_for_bit():
-    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05))
+    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05, recall=False))
     with tempfile.TemporaryDirectory() as folder:
         loaded = cd.Brain.load(checkpoint(brain, folder))
     assert loaded.hippocampus.maturity is loaded.basal_ganglia.maturity
@@ -121,13 +121,13 @@ def test_save_and_load_continue_bit_for_bit():
 
 
 def test_parameters_count_the_use_and_the_noise_scales():
-    brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True)
-    founder = cd.Brain.compose(6, 3, seed=2, arousal=True)
+    brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, recall=False)
+    founder = cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False)
     assert brain.parameters() == founder.parameters() + 1 + brain.hippocampus.gate_noise.size
 
 
 def test_retune_changes_the_constants_and_not_the_structure():
-    brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True)
+    brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, recall=False)
     brain.retune(maturity_scale=9.0, maturity_recovery=50_000.0)
     state = brain.basal_ganglia.maturity
     assert (state.scale, state.recovery) == (9.0, 50_000.0)
@@ -137,19 +137,19 @@ def test_retune_changes_the_constants_and_not_the_structure():
     with pytest.raises(ValueError, match="lie in"):
         brain.retune(maturity_recovery=0.5)
     with pytest.raises(ValueError, match="requires a brain composed with maturity"):
-        cd.Brain.compose(6, 3, seed=2, arousal=True).retune(maturity_scale=9.0)
+        cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False).retune(maturity_scale=9.0)
     with pytest.raises(ValueError, match="boolean"):
-        cd.Brain.compose(6, 3, seed=2, maturity=1)
+        cd.Brain.compose(6, 3, seed=2, maturity=1, recall=False)
 
 
 def test_without_the_store_the_maturity_scales_the_actor_alone():
     brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, episodic=False, maturity=True,
-                                  maturity_scale=0.05))
+                                  maturity_scale=0.05, recall=False))
     assert brain.hippocampus is None and brain.basal_ganglia.maturity.use > 0
 
 
 def test_step_and_learn_are_moments():
-    brain = cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_recovery=10.0)
+    brain = cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_recovery=10.0, recall=False)
     brain.basal_ganglia.maturity.use = 1.0
     rng = np.random.default_rng(0)
     brain.step(rng.random((1, 6)), reward=None)  # one moment, no update: one relaxation
@@ -157,7 +157,7 @@ def test_step_and_learn_are_moments():
 
 
 def test_grow_and_graft_keep_the_maturity():
-    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05),
+    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05, recall=False),
                  moments=200)
     grown = brain.grow(efference_amplitude=1.0)
     assert grown.basal_ganglia.maturity == brain.basal_ganglia.maturity
@@ -196,13 +196,13 @@ def assert_held(brain, before):
 
 
 def test_a_refused_moment_changes_nothing(monkeypatch):
-    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05),
+    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05, recall=False),
                  moments=50)
     before = held(brain)
     with pytest.raises(ValueError, match="6 values per row"):
         brain.live(np.zeros((1, 7)))
     assert_held(brain, before)
-    brain = stepped(cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=0.05))
+    brain = stepped(cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=0.05, recall=False))
     before = held(brain)
     with pytest.raises(ValueError):
         brain.step(np.full((1, 6), np.nan))
@@ -250,8 +250,8 @@ def test_a_vanishing_error_is_no_surprise_and_warns_nothing():
 
 
 def test_a_mature_brain_saves_a_format_of_its_own():
-    mature = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True), moments=20)
-    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True), moments=20)
+    mature = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, recall=False), moments=20)
+    founder = life(cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False), moments=20)
     with tempfile.TemporaryDirectory() as folder:
         path = checkpoint(founder, folder)
         assert json.loads(str(np.load(path)["brain"]))["format"] == "cadence-brain/1"
@@ -303,7 +303,7 @@ def test_several_writing_streams_keep_every_residual_around_the_shared_records()
 
 def test_an_outcome_whose_noise_overflows_is_refused_and_the_brain_still_loads():
     for arousal in (True, None):
-        brain = cd.Brain.compose(6, 3, seed=2, arousal=arousal, maturity=True)
+        brain = cd.Brain.compose(6, 3, seed=2, arousal=arousal, maturity=True, recall=False)
         run = brain.live if arousal else brain.step
         run(np.ones((1, 6)))
         before = held(brain)
@@ -321,7 +321,7 @@ def test_the_scaled_steps_warn_only_at_construction():
     with warnings.catch_warnings(record=True) as caught:
         warnings.simplefilter("always")
         brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.01,
-                                 actor_eta=0.1, actor_eta_bias=0.5)
+                                 actor_eta=0.1, actor_eta_bias=0.5, recall=False)
         constructed = len(caught)
         life(brain, moments=30)
     assert constructed == 1 and len(caught) == 1  # eta_bias above eta, once
@@ -333,15 +333,15 @@ def test_the_maturity_settings_need_maturity_and_valid_values():
     for settings in ({"maturity_scale": -5.0}, {"maturity_recovery": float("nan")},
                      {"maturity_scale": 3.0}, {"maturity_recovery": 5_000.0}):
         with pytest.raises(ValueError, match="maturity"):
-            cd.Brain.compose(6, 3, seed=2, **settings)
+            cd.Brain.compose(6, 3, seed=2, **{"recall": False, **settings})
     with pytest.raises(ValueError, match="need maturity"):
-        cd.Brain.compose(6, 3, seed=2, maturity_scale=3.0)
+        cd.Brain.compose(6, 3, seed=2, maturity_scale=3.0, recall=False)
     for settings in ({"maturity_scale": 0.0}, {"maturity_scale": float("inf")},
                      {"maturity_recovery": 0.5}, {"maturity_scale": True}):
         with pytest.raises(ValueError, match="maturity_"):
-            cd.Brain.compose(6, 3, seed=2, maturity=True, **settings)
+            cd.Brain.compose(6, 3, seed=2, maturity=True, **{"recall": False, **settings})
     # the founders, named, are the founder
-    founder = cd.Brain.compose(6, 3, seed=2, maturity_scale=10.0, maturity_recovery=200_000.0)
+    founder = cd.Brain.compose(6, 3, seed=2, maturity_scale=10.0, maturity_recovery=200_000.0, recall=False)
     assert founder.basal_ganglia.maturity is None
 
 
@@ -359,7 +359,7 @@ def tampered(brain, folder, edit):
 
 
 def test_load_refuses_a_malformed_maturity_by_name():
-    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05),
+    brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, maturity_scale=0.05, recall=False),
                  moments=30)
 
     def drop(name):
@@ -416,7 +416,7 @@ def test_the_factor_reads_any_use():
 def test_the_torch_backend_measures_the_step_on_the_device(monkeypatch):
     pytest.importorskip("torch")
     settings = {"seed": 2, "arousal": True, "maturity": True, "maturity_scale": 0.05}
-    brain = cd.Brain.compose(6, 3, backend="torch", device="cpu", **settings)
+    brain = cd.Brain.compose(6, 3, backend="torch", device="cpu", **{"recall": False, **settings})
     kernel = type(brain.brain._torch)
     reads = []
     host_scale = kernel.host_scale
@@ -429,7 +429,7 @@ def test_the_torch_backend_measures_the_step_on_the_device(monkeypatch):
     life(brain, moments=60)
     assert brain.basal_ganglia.updates > 0 and not reads  # no efficacy came to the host
     monkeypatch.undo()
-    host = life(cd.Brain.compose(6, 3, **settings), moments=60)
+    host = life(cd.Brain.compose(6, 3, **{"recall": False, **settings}), moments=60)
     assert brain.basal_ganglia.maturity.use == pytest.approx(host.basal_ganglia.maturity.use,
                                                              rel=1e-9)
 
@@ -437,7 +437,7 @@ def test_the_torch_backend_measures_the_step_on_the_device(monkeypatch):
 def test_maturity_is_exported_and_gates_the_place_records_alone():
     assert cd.Maturity is Maturity and "Maturity" in cd.__all__
     brain = cd.Brain.compose(6, 3, seed=2, arousal=True, maturity=True, memory_choice=True,
-                             memory_extinction=0.5)
+                             memory_extinction=0.5, recall=False)
     assert brain.hippocampus.gate_noise is not None
     episodic = brain._episodic
     assert brain.context_memory is episodic.temporal and episodic.paid is not None
@@ -458,7 +458,7 @@ def test_maturity_is_exported_and_gates_the_place_records_alone():
             with pytest.raises(ValueError, match="only the place records are surprise-gated"):
                 cd.Brain.load(tampered(brain, folder, gated(name)))
     # a brain at the limit stays there, at any scale, and saves a checkpoint that loads
-    brain = cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=1e-12)
+    brain = cd.Brain.compose(6, 3, seed=2, maturity=True, maturity_scale=1e-12, recall=False)
     brain.basal_ganglia.maturity.use = Maturity.LIMIT
     stepped(brain, moments=5)
     assert brain.basal_ganglia.maturity.use <= Maturity.LIMIT

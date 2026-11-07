@@ -201,7 +201,7 @@ def make_brain(point: dict[str, Any], seed: int) -> cd.Brain:
         actor_eta_critic=float(point["eta_critic"]),
         arousal=dict(point["arousal"]),
         seed=seed,
-        **learning,
+        **{"recall": False, **learning},
     )
 
 

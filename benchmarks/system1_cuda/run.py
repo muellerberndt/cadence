@@ -240,7 +240,7 @@ def main():
                 observers=protocol["observers"],
                 seed=args.seed,
                 backend="torch" if cuda else "cpu",
-                device="cuda:0" if cuda else None,
+                device="cuda:0" if cuda else None, recall=False,
             )
             brain.learner.config = replace(brain.learner.config, **protocol["learning"])
             brain.basal_ganglia.config = replace(brain.basal_ganglia.config, **protocol["reward"])

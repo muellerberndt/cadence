@@ -148,7 +148,7 @@ def make_brain(
     import cadence as cd
 
     return cd.Brain.compose(WORLDS[world][0], ACTIONS, seed=int(founder),
-                            **{**BRAIN, **ARMS[arm], **(settings or {})})
+                            **{"recall": False, **{**BRAIN, **ARMS[arm], **(settings or {})}})
 
 
 def read(brain: Any, founder: int, greedy: bool, world: str = "order") -> dict[str, Any]:

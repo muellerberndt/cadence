@@ -21,7 +21,7 @@ def small(**options):
         actor_eta_bias=0.003,
     )
     settings.update(options)
-    return cd.Brain.compose(3, 2, **settings)
+    return cd.Brain.compose(3, 2, **{"recall": False, **settings})
 
 
 def archive(brain, tmp_path, name):
@@ -44,7 +44,7 @@ def acquire(brain):
 
 
 def test_plain_compose_keeps_the_released_founders():
-    brain = cd.Brain.compose(3, 2, modules=(8,))
+    brain = cd.Brain.compose(3, 2, modules=(8,), recall=False)
     assert brain.arousal is None and brain.efference is None
     assert brain.learner.config.eta == 0.5
     assert brain.learner.config.eta_bias == 0.05
@@ -88,7 +88,7 @@ def test_attention_is_an_explicit_learned_code_recall_recipe(tmp_path):
 )
 def test_attention_refuses_incomplete_or_conflicting_recipes(options):
     with pytest.raises(ValueError):
-        cd.Brain.compose(12, 2, modules=(24,), **options)
+        cd.Brain.compose(12, 2, modules=(24,), **{"recall": False, **options})
 
 
 def test_attention_allows_expert_recall_tuning_without_changing_plain_defaults():
@@ -107,7 +107,7 @@ def test_attention_allows_expert_recall_tuning_without_changing_plain_defaults()
     assert tuned.recall.temperature == 0.2
     assert tuned.recall.recency == 0.1
 
-    plain = cd.Brain.compose(12, 2, modules=(24,), learned_code=8)
+    plain = cd.Brain.compose(12, 2, modules=(24,), learned_code=8, recall=False)
     assert plain.attention is False and plain.recall is None
     assert "attention" not in plain.describe()["genes"]
 
@@ -171,7 +171,7 @@ def test_a_whole_configuration_keeps_its_values_and_a_moved_constant_is_describe
     expert = cd.Brain.compose(
         3, 2, modules=(8,), seed=1, learning=cd.LearnerConfig(beta=0.2, momentum=0.5),
         reward=cd.ActorCriticConfig(dopamine_cap=0.0, eligibility_steps=4),
-        arousal=cd.ArousalConfig(need_scale=0.0),
+        arousal=cd.ArousalConfig(need_scale=0.0), recall=False,
     )
     config, actor = expert.learner.config, expert.basal_ganglia.config
     assert (config.beta, config.momentum, actor.dopamine_cap, actor.eligibility_steps) == (
@@ -184,15 +184,15 @@ def test_a_whole_configuration_keeps_its_values_and_a_moved_constant_is_describe
     twin = cd.Brain.load(expert.save(tmp_path / "expert.npz"))
     assert twin.describe() == expert.describe()
     assert twin.learner.config == config and twin.basal_ganglia.config == actor
-    founder = cd.Brain.compose(3, 2, modules=(8,), seed=1, arousal=True)
+    founder = cd.Brain.compose(3, 2, modules=(8,), seed=1, arousal=True, recall=False)
     assert not {"learning_beta", "learning_momentum", "actor_dopamine_cap",
                 "actor_eligibility_steps", "arousal_need_scale"} & set(founder.describe()["genes"])
     with pytest.raises(ValueError, match="arousal_need_scale was retired in 0.93.0"):
-        cd.Brain.compose(3, 2, modules=(8,), arousal={"need_scale": 0.5})
+        cd.Brain.compose(3, 2, modules=(8,), arousal={"need_scale": 0.5}, recall=False)
     with pytest.raises(ValueError, match="arousal_need_scale was retired in 0.93.0"):
         founder.retune(arousal={"need_scale": 0.0})
     # a standalone actor's eligibility_steps=None keeps its meaning, the learner's budget
-    budget = cd.Brain.compose(3, 2, modules=(8,), reward=cd.ActorCriticConfig(eta=0.1))
+    budget = cd.Brain.compose(3, 2, modules=(8,), reward=cd.ActorCriticConfig(eta=0.1), recall=False)
     assert budget.basal_ganglia.config.eligibility_steps is None
     assert budget.describe()["genes"]["actor_eligibility_steps"] is None
 
@@ -251,8 +251,8 @@ def test_a_checkpoint_carries_each_constant_at_its_founder_and_another_value_is_
 
 
 def test_the_sensory_scale_changes_only_the_sensory_projection():
-    control = cd.Brain.compose(3, 5, modules=(9, 6), slots=(2, 3), seed=11)
-    scaled = cd.Brain.compose(3, 5, modules=(9, 6), slots=(2, 3), seed=11, scales={"sensory": 4})
+    control = cd.Brain.compose(3, 5, modules=(9, 6), slots=(2, 3), seed=11, recall=False)
+    scaled = cd.Brain.compose(3, 5, modules=(9, 6), slots=(2, 3), seed=11, scales={"sensory": 4}, recall=False)
     first, second = control.connectome, scaled.connectome
     for field in ("pre", "post", "count"):
         np.testing.assert_array_equal(getattr(first, field), getattr(second, field))
@@ -270,7 +270,7 @@ def test_the_sensory_scale_changes_only_the_sensory_projection():
 
 def test_multi_module_composition_description_survives_sorted_checkpoint_metadata(tmp_path):
     brain = cd.Brain.compose(
-        3, 5, modules=(9, 6), observers=(4, 3), slots=(2, 3), scales={"sensory": 2.0}
+        3, 5, modules=(9, 6), observers=(4, 3), slots=(2, 3), scales={"sensory": 2.0}, recall=False
     )
     restored = cd.Brain.load(brain.save(tmp_path / "multi-module"))
     assert restored.describe() == brain.describe()
@@ -415,7 +415,7 @@ def test_memory_and_trace_tuning_keeps_learned_contents(tmp_path):
     ],
 )
 def test_retune_cannot_create_missing_components(options):
-    brain = cd.Brain.compose(3, 2, modules=(8,), episodic=False)
+    brain = cd.Brain.compose(3, 2, modules=(8,), episodic=False, recall=False)
     with pytest.raises((ValueError, TypeError)):
         brain.retune(**options)
 
@@ -454,10 +454,10 @@ def test_pending_feedback_covers_sampled_routine_and_consumed_outcomes():
 
 
 def test_the_teaching_point_sets_the_lessons_steps_and_normalization_alone():
-    founder = cd.Brain.compose(3, 2, modules=(8,), seed=1)
-    named = cd.Brain.compose(3, 2, modules=(8,), seed=1, teaching="founder")
+    founder = cd.Brain.compose(3, 2, modules=(8,), seed=1, recall=False)
+    named = cd.Brain.compose(3, 2, modules=(8,), seed=1, teaching="founder", recall=False)
     assert named.learner.config == founder.learner.config  # the founder by its name
-    normalized = cd.Brain.compose(3, 2, modules=(8,), seed=1, teaching="normalized")
+    normalized = cd.Brain.compose(3, 2, modules=(8,), seed=1, teaching="normalized", recall=False)
     config = normalized.learner.config
     assert (config.eta, config.eta_bias, config.normalize, config.normalize_floor) == (
         0.003, 0.0003, 0.99, 1e-4
@@ -471,7 +471,7 @@ def test_the_teaching_point_sets_the_lessons_steps_and_normalization_alone():
     founder.retune(teaching="founder", learning_surprise=True)
     assert founder.learner.config == replace(named.learner.config, surprise=True)
     with pytest.raises(ValueError, match="teaching"):
-        cd.Brain.compose(3, 2, learning_eta=0.1)
+        cd.Brain.compose(3, 2, learning_eta=0.1, recall=False)
     with pytest.raises(ValueError, match="one of them"):
         founder.retune(teaching="normalized", learning=cd.LearnerConfig())
 
@@ -490,12 +490,12 @@ def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
     ) == (1.0, 1.2, 1.2, 1.2)
     for old, key in (("sensory_scale", "sensory"), ("working_memory_scale", "trace")):
         with pytest.raises(ValueError, match=f"scales={{'{key}'"):
-            cd.Brain.compose(3, 2, **{old: 1.0})
+            cd.Brain.compose(3, 2, **{"recall": False, **{old: 1.0}})
     # the history's and the recall memory's projection scales are constants since 0.93.0,
     # taken at the constant alone
     for key in ("history", "recall"):
         with pytest.raises(ValueError, match=f"{key}_scale was retired in 0.93.0"):
-            cd.Brain.compose(3, 2, modules=(8,), scales={key: 12.0})
+            cd.Brain.compose(3, 2, modules=(8,), scales={key: 12.0}, recall=False)
     at_constant = cd.Brain.compose(
         3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True, recall_founder=True,
         scales={"history": 1.2, "recall": 1.2},
@@ -530,7 +530,7 @@ def test_the_description_has_four_sections_and_names_every_gene_as_compose_takes
 
 
 def test_fit_keeps_the_arousal_of_a_life_and_retune_resets_nothing():
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=5, arousal={"youth": 3})
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=5, arousal={"youth": 3}, recall=False)
     x = np.eye(4)[[0]]
     brain.live(x)
     for t in range(8):

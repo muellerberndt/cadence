@@ -196,7 +196,7 @@ def make_founder(spec: dict) -> cd.Brain:
     inputs, actions, options = spec["build"]
     if spec.get("builder") == "single":
         return single_region(inputs, actions, **options)
-    return cd.Brain.compose(inputs, actions, **options)
+    return cd.Brain.compose(inputs, actions, **{"recall": False, **options})
 
 
 def founder_record(tmp_path: Path) -> dict[str, dict]:
@@ -280,9 +280,9 @@ def test_the_saved_recall_brain_loads_continues_and_saves_the_same(tmp_path):
         inputs, actions, options = FOUNDERS["recalled"]["build"]
         # the fixture's genes: its life began under 0.84.3, whose need scale of zero is the
         # expert route's value since the constant of 0.93.0 (the founder's arousal law otherwise)
-        founder = cd.Brain.compose(inputs, actions, **options).arousal.config
+        founder = cd.Brain.compose(inputs, actions, **{"recall": False, **options}).arousal.config
         relived = cd.Brain.compose(
-            inputs, actions, **{**options, "arousal": replace(founder, need_scale=0.0)}
+            inputs, actions, **{"recall": False, **{**options, "arousal": replace(founder, need_scale=0.0)}}
         )
         FOUNDERS["recalled"]["life"](relived)
         assert checkpoint_digest(relived.save(tmp_path / "relived.npz")) == (
@@ -327,13 +327,13 @@ def test_the_code_and_the_sparse_separation_are_opt_in():
     assert cd.Genome.observation_width(300) == 300 and cd.Genome.observation_width(300, 64) == 64
     assert cd.Genome.observation_width((40, 40)) == 1600 and cd.Genome.observation_width((8, 8), 256) == 256
     with pytest.raises(ValueError, match="reads observations of at least 32 values"):
-        cd.Brain.compose(20, 2, modules=(8,), code=16)
+        cd.Brain.compose(20, 2, modules=(8,), code=16, recall=False)
     with pytest.raises(ValueError, match="at least 24 units"):
-        cd.Brain.compose(300, 2, modules=(8,), code=16)
+        cd.Brain.compose(300, 2, modules=(8,), code=16, recall=False)
     with pytest.raises(ValueError, match="code must be an integer"):
-        cd.Brain.compose(300, 2, modules=(8,), code=1.5)
+        cd.Brain.compose(300, 2, modules=(8,), code=1.5, recall=False)
     with pytest.raises(ValueError, match="construction setting"):
-        cd.Brain.compose(300, 2, modules=(8,)).retune(code=64)
+        cd.Brain.compose(300, 2, modules=(8,), recall=False).retune(code=64)
 
 
 def test_the_code_is_a_sparse_unit_length_code_fixed_by_the_seed():
@@ -347,9 +347,9 @@ def test_the_code_is_a_sparse_unit_length_code_fixed_by_the_seed():
     assert code.cover == 2 and (code.weight > 0).all() and code.channels == 2 * 12_824
     assert code.index.max() < code.channels
     assert np.bincount(code.index.ravel(), minlength=code.channels).min() >= 2
-    assert cd.Brain.compose(300, 2, modules=(8,), code=128).sparse_code.winners == 24
-    assert cd.Brain.compose(300, 2, modules=(8,), code=240).sparse_code.winners == 24
-    assert cd.Brain.compose(300, 2, modules=(8,), code=250).sparse_code.winners == 25
+    assert cd.Brain.compose(300, 2, modules=(8,), code=128, recall=False).sparse_code.winners == 24
+    assert cd.Brain.compose(300, 2, modules=(8,), code=240, recall=False).sparse_code.winners == 24
+    assert cd.Brain.compose(300, 2, modules=(8,), code=250, recall=False).sparse_code.winners == 25
     assert code.index.shape == code.weight.shape == (1024, 51) and code.projection is None
     x = frames(12_824, 5, 1)
     coded = brain.observation_code(x)
@@ -379,7 +379,7 @@ def test_every_input_reaches_the_code_in_both_signs_and_no_two_code_alike():
     sign codes to zero and no two of the 25,648 code alike; 1,169 of them read the same units
     as another and are told apart by the weights alone. The episodic separator's independent
     signed draw over the inputs is unchanged, byte for byte."""
-    brain = cd.Brain.compose(12_824, 2, modules=(8,), code=1024, seed=1, episodic=False)
+    brain = cd.Brain.compose(12_824, 2, modules=(8,), code=1024, seed=1, episodic=False, recall=False)
     code = brain.sparse_code
     assert code.channels == 25_648
     assert np.bincount(code.index.ravel(), minlength=code.channels).min() >= 2
@@ -400,7 +400,7 @@ def test_every_input_reaches_the_code_in_both_signs_and_no_two_code_alike():
     assert len(codes) == 25_648  # every one-hot input of either sign has a code of its own
     assert sum(n for n in units.values() if n > 1) <= 1_400  # 1,169 read the same units
     # a narrow code reads more channels per unit, as many as two readers per channel take
-    narrow = cd.Brain.compose(12_824, 2, modules=(8,), code=128, seed=1, episodic=False)
+    narrow = cd.Brain.compose(12_824, 2, modules=(8,), code=128, seed=1, episodic=False, recall=False)
     assert narrow.sparse_code.fan_in == 401  # ceil(2 * 2 * 12,824 / 128)
     assert np.bincount(narrow.sparse_code.index.ravel(), minlength=25_648).min() >= 2
     founder = cd.PatternSeparator(12_824, 1024, 24, seed=1, fan_in=32)
@@ -418,7 +418,7 @@ def test_a_negative_input_reaches_the_code_and_a_mixed_sign_one_codes_otherwise(
     """At 256 inputs and 128 units every one-hot input of either sign reaches the code, each
     with a code of its own (12,824 inputs: the test above), and at both sizes ``e_0 - e_j``
     codes otherwise than ``e_0``: the negative half of a signed observation reaches the code."""
-    brain = cd.Brain.compose(256, 2, modules=(8,), code=128, seed=1, episodic=False)
+    brain = cd.Brain.compose(256, 2, modules=(8,), code=128, seed=1, episodic=False, recall=False)
     code = brain.sparse_code
     assert (code.channels, code.fan_in) == (512, 32)
     assert np.bincount(code.index.ravel(), minlength=code.channels).min() >= 2
@@ -427,7 +427,7 @@ def test_a_negative_input_reaches_the_code_and_a_mixed_sign_one_codes_otherwise(
     assert positive.any(axis=1).all() and negative.any(axis=1).all()
     assert len({row.tobytes() for row in np.concatenate([positive, negative])}) == 512
     for inputs, units in ((256, 128), (12_824, 1024)):
-        brain = cd.Brain.compose(inputs, 2, modules=(8,), code=units, seed=1, episodic=False)
+        brain = cd.Brain.compose(inputs, 2, modules=(8,), code=units, seed=1, episodic=False, recall=False)
         j = np.arange(1, min(inputs, 2049))
         alone = np.zeros((1, inputs))
         alone[0, 0] = 1.0
@@ -441,7 +441,7 @@ def test_a_nonnegative_observation_leaves_the_off_channels_silent():
     """A nonnegative observation's code is the code of its ON part beside an all-zero OFF
     part, and the readers of the OFF channels add nothing to it; a signed observation drives
     them."""
-    brain = cd.Brain.compose(300, 2, modules=(8,), code=128, seed=2, episodic=False)
+    brain = cd.Brain.compose(300, 2, modules=(8,), code=128, seed=2, episodic=False, recall=False)
     code = brain.sparse_code
     rng = np.random.default_rng(5)
     x = rng.random((6, 300)) * (rng.random((6, 300)) < 0.2)  # nonnegative intensities
@@ -525,7 +525,7 @@ def test_compose_can_make_the_sensory_region_the_code():
     # heard three times at decay 0.5: the first code once, the second twice
     np.testing.assert_allclose(heard.history.trace, 0.125 * first + 0.75 * second)
     assert len(heard.imagine([x[:1], x[1:]])) == 2
-    image = cd.Brain.compose((40, 40), 2, modules=(8,), features=1, seed=1, code=256)
+    image = cd.Brain.compose((40, 40), 2, modules=(8,), features=1, seed=1, code=256, recall=False)
     assert len(image.sensory_index) == 1600 and image.code_width == 256 and not image.coded_cortex
     # a custom anatomy: the memories on the code, the cortex on the observation
     custom = cd.Brain(anatomy(3_230, 16, None), code=1024)
@@ -912,7 +912,7 @@ def test_a_wide_brain_keyed_on_its_observation_saves_and_loads_as_before(tmp_pat
 
 
 def test_compose_takes_an_image_shape_like_genome():
-    brain = cd.Brain.compose((6, 6), 2, modules=(8,), seed=2)
+    brain = cd.Brain.compose((6, 6), 2, modules=(8,), seed=2, recall=False)
     populations = brain.connectome.populations
     assert list(populations)[:3] == ["visual", "visual/input", "visual/output"]
     assert len(populations["visual/input"]) == 36 and len(populations["visual/output"]) == 128
@@ -925,8 +925,8 @@ def test_compose_takes_an_image_shape_like_genome():
     assert brain.describe()["layout"]["composition"]["image"] == [6, 6, 1]
     assert brain.describe()["layout"]["composition"]["inputs"] == 36
     assert brain.sparse_code is None  # 36 pixels: the memories key on the pixels themselves
-    assert len(cd.Brain.compose((6, 6), 2, modules=(8,), features=2, field=2).connectome.populations["visual/output"]) == 2 * 25
-    colour = cd.Brain.compose((4, 4, 3), 2, modules=(8,), seed=2)
+    assert len(cd.Brain.compose((6, 6), 2, modules=(8,), features=2, field=2, recall=False).connectome.populations["visual/output"]) == 2 * 25
+    colour = cd.Brain.compose((4, 4, 3), 2, modules=(8,), seed=2, recall=False)
     assert len(colour.sensory_index) == 48 and colour.code_width == 48
     heard = cd.Brain.compose((6, 6), 2, modules=(8,), history_decays=(0.5,), efference_amplitude=1.0,
                              memory_choice=True, arousal=True, recall=True, recall_founder=True)
@@ -941,13 +941,13 @@ def test_compose_takes_an_image_shape_like_genome():
     heard.wait(frame)
     heard.live(other, reward=[0.0], done=[True])
     assert heard.recall.slots == 1 and heard.hippocampus.writes >= 1
-    wide = cd.Brain.compose((40, 40), 2, modules=(8,), features=1, seed=1, memory_choice=True)
+    wide = cd.Brain.compose((40, 40), 2, modules=(8,), features=1, seed=1, memory_choice=True, recall=False)
     assert wide.sparse_code is None and wide.code_width == 1600  # the pixels, as every founder
     coded = cd.Brain.compose((40, 40), 2, modules=(8,), features=1, seed=1, memory_choice=True,
-                             code=1024)
+                             code=1024, recall=False)
     assert coded.code_width == 1024 and not coded.coded_cortex
     np.testing.assert_array_equal(coded.hippocampus.pre, np.arange(1024))
-    assert cd.Brain.compose(36, 2, modules=(8,)).sparse_code is None  # a vector length, as before
+    assert cd.Brain.compose(36, 2, modules=(8,), recall=False).sparse_code is None  # a vector length, as before
     for bad in ((6,), (6, 6, 1, 1), (0, 6), "6x6"):
         with pytest.raises(ValueError):
-            cd.Brain.compose(bad, 2, modules=(8,))
+            cd.Brain.compose(bad, 2, modules=(8,), recall=False)

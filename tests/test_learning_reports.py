@@ -33,7 +33,7 @@ def test_batched_lesson_reports_exposure_and_every_required_phase(qualified):
 def test_successful_teacher_work_survives_main_step_and_checkpoint(tmp_path):
     brain = cd.Brain.compose(2, 2, modules=(4,), seed=0, learning=cd.LearnerConfig(
         qualified=True, free_steps=512, nudged_steps=512, tolerance=3e-3,
-    ))
+    ), recall=False)
     brain.step(np.array([[1.0, 0.0]]), teacher=np.array([0]))
     report = brain.last_learning
     assert report["demonstrations"] == report["demonstration_accepted_presentations"] == 1
@@ -47,7 +47,7 @@ def test_successful_teacher_work_survives_main_step_and_checkpoint(tmp_path):
 
 
 def test_refused_teacher_keeps_prior_accepted_reward_and_attempted_work():
-    brain = cd.Brain.compose(2, 2, modules=(4,), seed=0)
+    brain = cd.Brain.compose(2, 2, modules=(4,), seed=0, recall=False)
     x = np.array([[1.0, 0.0]])
     brain.step(x)
     brain.learner.config = replace(
@@ -72,7 +72,7 @@ def test_refused_teacher_keeps_prior_accepted_reward_and_attempted_work():
 def test_fit_cannot_publish_a_finite_accuracy_as_a_qualified_brain_score():
     brain = cd.Brain.compose(2, 36, modules=(4,), seed=0, learning=cd.LearnerConfig(
         free_steps=1, nudged_steps=0, tolerance=3e-3, eta=0, eta_bias=0,
-    ))
+    ), recall=False)
     x, labels = np.array([[1.0, 0.0]]), np.array([0])
     # One transient sweep happens to choose the teacher label, despite failing the equations.
     assert brain.learner.accuracy(brain.stimulus(x, memory=False), labels) == 1

@@ -110,7 +110,7 @@ def test_a_fan_in_code_separates_keys_as_the_dense_code_does(shared):
 def sparse_brain(seed: int = 34) -> cd.Brain:
     """An episodic brain whose stores hold a sparse separation, as a checkpoint of 0.94.0 and
     earlier could; every brain composed since holds a dense one."""
-    brain = cd.Brain.compose(20, 2, seed=seed, arousal=True, memory_choice=True)
+    brain = cd.Brain.compose(20, 2, seed=seed, arousal=True, memory_choice=True, recall=False)
     for offset, memory in enumerate((brain.hippocampus, brain.context_memory)):
         memory.separator = cd.PatternSeparator(
             len(memory.pre), 1024, 24, seed=seed + offset, fan_in=16
@@ -148,7 +148,7 @@ def test_a_saved_sparse_separation_loads_and_continues_exactly(tmp_path):
 
 
 def test_a_composed_separation_is_dense_and_saves_no_fan_in(tmp_path):
-    brain = cd.Brain.compose(3, 2, seed=32, memory_choice=True)
+    brain = cd.Brain.compose(3, 2, seed=32, memory_choice=True, recall=False)
     for memory in (brain.hippocampus, brain.context_memory):
         assert memory.separator.expansion == 1024 and not memory.separator.fan_in
     assert "fan_in" not in metadata(np.load(brain.save(tmp_path / "brain.npz")))["hippocampus"][
@@ -163,7 +163,7 @@ def test_the_fan_in_is_validated():
     with pytest.raises(ValueError, match="fan_in must not exceed the inputs"):
         cd.PatternSeparator(4, 8, 2, fan_in=5)
     with pytest.raises(ValueError, match="memory_fan_in was retired in 0.95.0"):
-        cd.Brain.compose(20, 2, memory_choice=True).retune(memory_fan_in=4)
+        cd.Brain.compose(20, 2, memory_choice=True, recall=False).retune(memory_fan_in=4)
 
 
 @pytest.mark.parametrize("tamper", ["outside", "repeated", "no_weight", "no_fan_in"])

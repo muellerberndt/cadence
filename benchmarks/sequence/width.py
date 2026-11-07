@@ -90,7 +90,7 @@ def compose(task: Any, width: int, founder: int, memory: bool,
     options = {"recall": True, "recall_founder": True, "learning_surprise": True} if memory else {}
     return cd.Brain.compose(task.inputs, task.actions, modules=(width,), seed=int(founder),
                             episodic=False, teaching="normalized",
-                            **{**options, **(settings or {})})
+                            **{"recall": False, **{**options, **(settings or {})}})
 
 
 def fan_in_rates(wide: Any, narrow: Any) -> np.ndarray:

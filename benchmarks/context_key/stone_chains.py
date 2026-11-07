@@ -101,7 +101,7 @@ def compose(arm: str, seed: int):
 
     return cd.Brain.compose(
         7, 5, modules=(48, 24), seed=int(seed), arousal=True, memory_choice=True,
-        memory_context=0.5, memory_context_hold=ARMS[arm]["hold"],
+        memory_context=0.5, memory_context_hold=ARMS[arm]["hold"], recall=False,
     )
 
 

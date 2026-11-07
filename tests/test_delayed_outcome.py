@@ -55,7 +55,7 @@ def _life(*, youth: int = 0, seed: int = 0, efference: float = 0.3, **options: A
         working_memory_amplitude=0.3,
         efference_amplitude=efference,
         arousal=cd.ArousalConfig(youth=youth),
-        **options,
+        **{"recall": False, **options},
     )
 
 
@@ -412,7 +412,7 @@ def check_a_refused_wait_changes_nothing() -> None:
 
 
 def check_waiting_needs_a_live_action_awaiting_its_outcome() -> None:
-    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0)
+    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0, recall=False)
     plain.step(EYE[[0]])
     with pytest.raises(ValueError, match="arousal"):
         plain.wait(EYE[[1]])
@@ -654,7 +654,7 @@ def test_a_corrupt_waiting_checkpoint_is_refused(tmp_path, defect):
 def test_a_slotted_action_waits_and_is_credited_as_an_immediate_one(tmp_path):
     brain = cd.Brain.compose(
         4, 4, modules=(8,), slots=2, seed=1, working_memory_amplitude=0.3,
-        arousal=cd.ArousalConfig(youth=40),
+        arousal=cd.ArousalConfig(youth=40), recall=False,
     )
     action = brain.live(EYE[[0]])
     action = brain.live(EYE[[1]], reward=[float(action[0, 0] == 0)])
@@ -674,7 +674,7 @@ def test_a_wait_on_the_torch_backend_credits_and_resumes_like_the_host(tmp_path)
     torch = pytest.importorskip("torch")
     brain = cd.Brain.compose(
         4, 2, modules=(8,), seed=0, working_memory_amplitude=0.3, backend="torch",
-        arousal=cd.ArousalConfig(youth=40),
+        arousal=cd.ArousalConfig(youth=40), recall=False,
     )
     action = brain.live(EYE[[0]])
     for moment in range(3):

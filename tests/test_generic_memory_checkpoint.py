@@ -18,7 +18,7 @@ def separated_brain(kind="consolidating", backend="cpu"):
         episodic=True,
         seed=9,
         backend=backend,
-        device="cpu" if backend == "torch" else None,
+        device="cpu" if backend == "torch" else None, recall=False,
     )
     separator = cd.PatternSeparator(3, 16, 3, seed=7, center=0 if kind == "consolidating" else 0.3)
     # The seed cannot recover a customized projection or the observed running mean.
@@ -99,7 +99,7 @@ def test_a_file_of_the_formats_before_0_85_is_refused_naming_the_release_that_lo
     """``cadence-generic/1`` to ``/10``, what 0.84.3 and earlier wrote, are refused by name:
     cadence 0.94.0 loads them and saves the format this version reads. A learner's file and a
     format no release wrote are refused as well."""
-    path = cd.Brain.compose(3, 3, modules=(5,)).save(tmp_path / "brain.npz")
+    path = cd.Brain.compose(3, 3, modules=(5,), recall=False).save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as saved:
         arrays = {key: saved[key].copy() for key in saved}
     meta = json.loads(str(arrays.pop("brain")))
@@ -231,7 +231,7 @@ def test_the_memories_are_one_ordered_family_under_one_contract():
             assert callable(getattr(memory, method)), (name, method)
         for alias in ("begin", "imagined"):  # one name per memory for fresh streams, a copy
             assert not hasattr(memory, alias), (name, alias)
-    assert list(cd.Brain.compose(4, 2, modules=(8,), episodic=False).memories) == [
+    assert list(cd.Brain.compose(4, 2, modules=(8,), episodic=False, recall=False).memories) == [
         "working_memory"
     ]
     x = np.eye(4)[[0]]
@@ -260,12 +260,12 @@ def test_the_episodic_records_are_the_last_member_and_save_as_their_group(tmp_pa
 
     from cadence.memories import EpisodicRecords, Moment
 
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=3, memory_choice=True)
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=3, memory_choice=True, recall=False)
     records = brain.memories["episodic"]
     assert isinstance(records, EpisodicRecords) and list(brain.memories)[-1] == "episodic"
     assert records.place is brain.hippocampus and records.temporal is brain.context_memory
     assert (records.steps, records.demonstrations) == (8, 1.0)  # constants since 0.93.0
-    assert "episodic" not in cd.Brain.compose(4, 2, modules=(8,), seed=3).memories
+    assert "episodic" not in cd.Brain.compose(4, 2, modules=(8,), seed=3, recall=False).memories
     x = np.eye(4)[[0]]
     brain.step(x)
     for reward in (0.0, 1.0):

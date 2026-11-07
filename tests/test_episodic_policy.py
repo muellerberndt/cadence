@@ -22,7 +22,7 @@ import cadence as cd
 def episodic(*args, frozen: bool = False, **options) -> cd.Brain:
     """``Brain.compose`` with the episodic memory; ``frozen``: the cortex learns nothing from
     lessons (the composed teaching founders at step zero)."""
-    brain = cd.Brain.compose(*args, **{"memory_choice": True, **options})
+    brain = cd.Brain.compose(*args, **{"recall": False, **{"memory_choice": True, **options}})
     if frozen:
         brain.retune(learning=replace(brain.learner.config, eta=0.0, eta_bias=0.0))
     return brain

@@ -98,7 +98,7 @@ def test_no_writes_or_zero_keys_cannot_consolidate():
 
 
 def test_demonstrations_can_enter_the_same_ongoing_loop():
-    brain = cd.Brain.compose(2, 2, modules=(16,), seed=2)
+    brain = cd.Brain.compose(2, 2, modules=(16,), seed=2, recall=False)
     for _ in range(400):
         brain.step(np.eye(2), teacher=np.arange(2))
     assert brain.accuracy(np.eye(2), np.arange(2)) == 1
@@ -117,7 +117,7 @@ def test_reward_updates_do_not_advance_imitation_optimizer_history(tmp_path, bac
     )
     if backend == "torch":
         options["device"] = "cpu"
-    a, b = (cd.Brain.compose(2, 2, **options).learner for _ in range(2))
+    a, b = (cd.Brain.compose(2, 2, **{"recall": False, **options}).learner for _ in range(2))
     drive = np.pad(np.eye(2), ((0, 0), (0, a.brain.connectome.n - 2)))
     for i in range(4):
         a.apply(np.zeros(a.brain.connectome.synapses), np.zeros(a.brain.connectome.n))
@@ -133,7 +133,7 @@ def test_reward_updates_do_not_advance_imitation_optimizer_history(tmp_path, bac
 
 
 def test_unobserved_action_values_are_not_consolidated_by_the_reward_loop():
-    brain = cd.Brain.compose(2, 3, modules=(4,), episodic=True)
+    brain = cd.Brain.compose(2, 3, modules=(4,), episodic=True, recall=False)
     x = np.eye(2)[:1]
     action = brain.step(x)[0]
     brain.step(x, reward=np.array([2.0]))
@@ -148,8 +148,8 @@ def test_continuous_step_matches_explicit_loop_and_resumes_pending_action(tmp_pa
     options = dict(modules=(6,), episodic=True, seed=4, backend=backend)
     if backend == "torch":
         options["device"] = "cpu"
-    ongoing = cd.Brain.compose(3, 2, **options)
-    explicit = cd.Brain.compose(3, 2, **options)
+    ongoing = cd.Brain.compose(3, 2, **{"recall": False, **options})
+    explicit = cd.Brain.compose(3, 2, **{"recall": False, **options})
     x = np.eye(3)[:2]
     np.testing.assert_array_equal(ongoing.step(x), explicit.act(x))
     for i in range(3):
@@ -169,7 +169,7 @@ def test_continuous_step_matches_explicit_loop_and_resumes_pending_action(tmp_pa
 
 
 def test_bad_current_demonstration_cannot_apply_previous_feedback():
-    brain = cd.Brain.compose(2, 2, modules=(4,), episodic=True)
+    brain = cd.Brain.compose(2, 2, modules=(4,), episodic=True, recall=False)
     brain.step(np.eye(2))
     before = brain.brain.efficacy.copy()
     with pytest.raises(ValueError):
@@ -183,7 +183,7 @@ def test_bad_current_demonstration_cannot_apply_previous_feedback():
 
 def test_unified_loop_learns_without_a_training_mode():
     brain = cd.Brain.compose(
-        4, 4, seed=0, reward=cd.ActorCriticConfig(gamma=0, lam=0, eta=1, eta_critic=0.3)
+        4, 4, seed=0, reward=cd.ActorCriticConfig(gamma=0, lam=0, eta=1, eta_critic=0.3), recall=False
     )
     rng = np.random.default_rng(0)
     cue = rng.integers(4, size=32)

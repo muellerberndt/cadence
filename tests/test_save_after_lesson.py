@@ -61,7 +61,7 @@ def assert_same_free_state(first, second):
 
 def taught(recipe, batch):
     """A brain that acted, learned from the outcomes and was then taught without acting."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, **recipe)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, **{"recall": False, **recipe})
     brain.step(rows(batch, 0, 1))
     brain.step(rows(batch, 1, 2), reward=np.ones(batch))
     brain.learn(np.zeros(batch), np.zeros(batch, bool), rows(batch, 2, 0))  # nothing pending
@@ -84,7 +84,7 @@ def continuation(brain, batch):
 
 def calm():
     """A brain with arousal, calm from birth, whose routine answer awaits its outcome."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, arousal={"youth": 0})
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, arousal={"youth": 0}, recall=False)
     brain.live(EYE[[0]])
     for t in range(4):
         brain.live(EYE[[t % 3]], reward=[0.0])
@@ -107,7 +107,7 @@ def lives(brain, moments=((2, 1.0, False), (0, 0.0, False), (1, -1.0, True), (2,
 def test_a_checkpoint_between_a_lesson_and_the_next_act_loads(tmp_path, recipe):
     """The defect of 0.84.2: a greedy act, a lesson and a save gave a checkpoint that
     ``load`` refused with ``missing saved state: actor/_drive``."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, **recipe)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, **{"recall": False, **recipe})
     brain.act(EYE[[0]], greedy=True)
     brain.lesson(EYE[[1]], np.array([1]))
     assert brain.basal_ganglia._drive is None and brain.basal_ganglia.state is not None
@@ -185,7 +185,7 @@ def test_a_surprise_lesson_that_teaches_nothing_resumes(tmp_path):
     """A label the brain's act already gives is no surprise: the lesson changes no parameter,
     so the free state still belongs to the current parameters (``free_current``), and the
     drive is cleared as after any lesson."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, learning_surprise=True)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, learning_surprise=True, recall=False)
     answer = brain.act(EYE[[0]], greedy=True)
     report = brain.lesson(EYE[[0]], answer)
     assert report["agreed_presentations"] == 1.0 and report["accepted_presentations"] == 0.0
@@ -202,7 +202,7 @@ def test_a_surprise_lesson_that_teaches_nothing_resumes(tmp_path):
 def test_a_step_whose_act_refused_after_its_lesson_resumes(tmp_path):
     """``step(..., teacher=...)`` teaches, then acts. An act that refuses leaves the lesson
     learned and the stream as a lesson leaves it; its checkpoint resumes there."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, recall=False)
     brain.act(EYE[[0]], greedy=True)
     budget = brain.learner.config.free_steps
     brain.retune(learning_free_steps=1)
@@ -221,7 +221,7 @@ def test_a_step_whose_act_refused_after_its_lesson_resumes(tmp_path):
 def test_a_saved_drive_is_still_checked(tmp_path):
     """A drive saved with the free state has the free state's shape, or the checkpoint is
     refused."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, recall=False)
     brain.act(EYE[[0]], greedy=True)
     path = brain.save(tmp_path / "acted")
     arrays = saved_arrays(path)
@@ -235,7 +235,7 @@ def test_a_saved_drive_is_still_checked(tmp_path):
 def test_a_pending_action_needs_its_saved_drive(tmp_path):
     """A sampled action awaiting its outcome was chosen on the drive of its free state, which
     ``save`` writes with it; a checkpoint without that drive is damaged and refused."""
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=1, recall=False)
     brain.step(EYE[[0]])
     assert brain.basal_ganglia._pending is not None
     path = brain.save(tmp_path / "pending")

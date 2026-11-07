@@ -157,7 +157,8 @@ def make_brain(seed: int, protocol: dict, arm: str) -> Brain:
     if arm in ("copy", "own", "frozen"):
         options["efference_amplitude"] = protocol["copy"]["amplitude"]
         options["efference_decay"] = protocol["copy"]["decay"]
-    brain = Brain.compose(INPUTS, 2, modules=tuple(recipe["modules"]), seed=seed, **options)
+    brain = Brain.compose(INPUTS, 2, modules=tuple(recipe["modules"]), seed=seed,
+    **{"recall": False, **options})
     return resting(brain, recipe["resting_bias"]) if recipe["resting_bias"] else brain
 
 

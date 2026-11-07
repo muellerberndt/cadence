@@ -277,7 +277,7 @@ def check_checkpoint_round_trip() -> None:
     """A generic brain's working memory survives save and load byte for byte and continues
     identically."""
     rng = np.random.default_rng(21)
-    g = cd.Brain.compose(6, 3, modules=(16,), seed=1)
+    g = cd.Brain.compose(6, 3, modules=(16,), seed=1, recall=False)
     g.step(rng.random((4, 6)))
     g.step(rng.random((4, 6)), reward=rng.normal(size=4))
     assert g.working_memory is not None and (g.working_memory.trace != 0).any()

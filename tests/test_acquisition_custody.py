@@ -21,7 +21,7 @@ def test_qualified_continuation_keeps_phase_and_checkpoint_bytes(tmp_path, monke
         qualified=True,
         damping=3,
     )
-    brain = Brain.compose(2, 2, modules=(2,), seed=3, learning=config)
+    brain = Brain.compose(2, 2, modules=(2,), seed=3, learning=config, recall=False)
     inputs, labels = np.array([[1.0, 0.0]]), np.array([0])
     _, report = brain.learner.step(brain.stimulus(inputs, memory=False), labels)
     assert report["accepted"] == 1

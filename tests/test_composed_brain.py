@@ -15,7 +15,7 @@ def assert_same_checkpoint(first, second):
 
 @pytest.mark.parametrize("observers", [(), (3,), (3, 2)])
 def test_modular_base_and_optional_observers_share_one_connected_brain(observers):
-    brain = Brain.compose(2, 2, modules=(5, 4), observers=observers, seed=3)
+    brain = Brain.compose(2, 2, modules=(5, 4), observers=observers, seed=3, recall=False)
     assert isinstance(brain.working_memory, Trace)
     assert isinstance(brain.hippocampus, SynapticMemory)
     graph = brain.connectome
@@ -49,7 +49,7 @@ def test_modular_base_and_optional_observers_share_one_connected_brain(observers
 
 
 def test_observer_feedback_changes_the_base_inside_the_same_solve():
-    brain = Brain.compose(2, 2, modules=(5, 4), observers=(3,), seed=3)
+    brain = Brain.compose(2, 2, modules=(5, 4), observers=(3,), seed=3, recall=False)
     drive = brain.stimulus([[0.2, -0.1]])
     ordinary = brain.brain.equilibrate(drive, budget=2048, tolerance=1e-8)
     perturbed = drive.copy()
@@ -64,7 +64,7 @@ def test_observer_feedback_changes_the_base_inside_the_same_solve():
 
 
 def test_imagination_preserves_memories_randomness_pending_outcomes_and_continuation(tmp_path):
-    brain = Brain.compose(2, 2, modules=(5, 4), observers=(3,), seed=3)
+    brain = Brain.compose(2, 2, modules=(5, 4), observers=(3,), seed=3, recall=False)
     brain.hippocampus.observe(np.array([[1.0, 0.0]]), np.array([[0.7, -0.2]]))
     brain.act([[0.2, -0.1]])  # A real action is still awaiting its outcome.
     before = brain.save(tmp_path / "before")
@@ -85,7 +85,7 @@ def test_imagination_preserves_memories_randomness_pending_outcomes_and_continua
 
 
 def test_private_trace_is_used_between_imagined_steps_without_becoming_real_memory():
-    brain = Brain.compose(2, 2, modules=(5, 4), seed=3)
+    brain = Brain.compose(2, 2, modules=(5, 4), seed=3, recall=False)
     sequence = [[[0.6, -0.3]], [[0.0, 0.0]]]
     branch = brain.imagine(sequence)
     assert len(branch) == 2 and all(np.all(phase.qualified) for phase in branch)
@@ -98,7 +98,7 @@ def test_private_trace_is_used_between_imagined_steps_without_becoming_real_memo
 
 
 def test_refused_imagined_step_ends_branch_and_leaves_real_state_untouched(tmp_path):
-    brain = Brain.compose(2, 2, modules=(5, 4), seed=3)
+    brain = Brain.compose(2, 2, modules=(5, 4), seed=3, recall=False)
     before = brain.save(tmp_path / "before")
     branch = brain.imagine([[[0.2, 0.1]], [[0.5, 0.3]]], budget=0)
     assert len(branch) == 1 and not np.all(branch[0].qualified)
@@ -113,12 +113,12 @@ def test_refused_imagined_step_ends_branch_and_leaves_real_state_untouched(tmp_p
 )
 def test_invalid_composition_is_refused(modules, observers):
     with pytest.raises(ValueError):
-        Brain.compose(2, 2, modules=modules, observers=observers)
+        Brain.compose(2, 2, modules=modules, observers=observers, recall=False)
 
 
 @pytest.mark.parametrize("controls", [{"budget": -1}, {"budget": True}])
 def test_empty_imagined_branch_still_validates_solver_controls(controls):
-    brain = Brain.compose(2, 2, modules=(4,))
+    brain = Brain.compose(2, 2, modules=(4,), recall=False)
     with pytest.raises(ValueError):
         brain.imagine([], **controls)
 
@@ -126,7 +126,7 @@ def test_empty_imagined_branch_still_validates_solver_controls(controls):
 def test_imagine_settles_to_the_learners_tolerance():
     """The one tolerance is the learner's: ``imagine`` takes none of its own (the argument of
     0.92.1 is an unknown keyword), and its phases are held to ``learning_tolerance``."""
-    brain = Brain.compose(2, 2, modules=(4,), learning_tolerance=0.01)
+    brain = Brain.compose(2, 2, modules=(4,), learning_tolerance=0.01, recall=False)
     with pytest.raises(TypeError, match="tolerance"):
         brain.imagine([[[1.0, 0.0]]], tolerance=1e-6)
     phases = brain.imagine([[[1.0, 0.0]], [[0.0, 1.0]]])
@@ -137,11 +137,11 @@ def test_imagine_settles_to_the_learners_tolerance():
 @pytest.mark.parametrize("options", [{"seed": True}, {"seed": -1}, {"episodic": "yes"}])
 def test_invalid_composition_options_are_refused(options):
     with pytest.raises(ValueError):
-        Brain.compose(2, 2, modules=(4,), **options)
+        Brain.compose(2, 2, modules=(4,), **{"recall": False, **options})
 
 
 def test_learning_surprise_gene_teaches_only_the_rows_the_brain_answers_differently() -> None:
-    brain = Brain.compose(4, 2, modules=(8,), seed=0, learning_surprise=True)
+    brain = Brain.compose(4, 2, modules=(8,), seed=0, learning_surprise=True, recall=False)
     assert brain.learner.config.surprise is True
     x = np.random.default_rng(0).random((3, 4))
     labels = brain.predict(x)
@@ -155,11 +155,11 @@ def test_learning_surprise_gene_teaches_only_the_rows_the_brain_answers_differen
     report = brain.last_learning
     assert report["demonstration_accepted_presentations"] == 3.0
     assert report["demonstration_agreed_presentations"] == 0.0
-    assert Brain.compose(4, 2, modules=(8,), seed=0).learner.config.surprise is False
+    assert Brain.compose(4, 2, modules=(8,), seed=0, recall=False).learner.config.surprise is False
 
 
 def test_learning_surprise_judges_from_the_brains_own_answer(monkeypatch) -> None:
-    brain = Brain.compose(4, 2, modules=(8,), seed=0, learning_surprise=True)
+    brain = Brain.compose(4, 2, modules=(8,), seed=0, learning_surprise=True, recall=False)
     x = np.random.default_rng(1).random((3, 4))
     labels = np.array([0, 1, 0])
     read = []
@@ -185,7 +185,7 @@ def test_compose_wraps_a_custom_anatomy_with_the_composed_founders():
     from cadence import Genome, develop
 
     options = dict(memory_choice=True, recall=True, recall_founder=True, seed=3)
-    composed = Brain.compose(6, 3, modules=(8,), **options)
+    composed = Brain.compose(6, 3, modules=(8,), **{"recall": False, **options})
     genome = Genome.composed(6, 3, modules=(8,), **options)
     wrapped = Brain.compose(6, 3, connectome=develop(genome, seed=3), **options)
     np.testing.assert_array_equal(wrapped.brain.efficacy, composed.brain.efficacy)

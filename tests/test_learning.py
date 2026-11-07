@@ -263,7 +263,7 @@ def test_an_update_at_rate_zero_leaves_every_synapse_as_it_was() -> None:
         with pytest.raises(TypeError):
             cd.LearnerConfig(**{name: value})
         with pytest.raises(ValueError, match=f"learning_{name} was retired.*0.84.3"):
-            cd.Brain.compose(4, 2, modules=(8,), **{f"learning_{name}": value})
+            cd.Brain.compose(4, 2, modules=(8,), **{"recall": False, **{f"learning_{name}": value}})
 
 
 def test_a_composed_brain_learns_with_the_cross_entropy_nudge(tmp_path) -> None:
@@ -271,11 +271,11 @@ def test_a_composed_brain_learns_with_the_cross_entropy_nudge(tmp_path) -> None:
     its learning configuration, through retune and in a checkpoint, and describes no nudge
     gene."""
     with pytest.raises(ValueError, match="learning_nudge was retired.*0.84.3"):
-        cd.Brain.compose(4, 2, modules=(8,), learning_nudge="quadratic")
+        cd.Brain.compose(4, 2, modules=(8,), learning_nudge="quadratic", recall=False)
     quadratic = cd.LearnerConfig(nudge="quadratic")
     with pytest.raises(ValueError, match="cross-entropy nudge"):
-        cd.Brain.compose(4, 2, modules=(8,), learning=quadratic)
-    brain = cd.Brain.compose(4, 2, modules=(8,))
+        cd.Brain.compose(4, 2, modules=(8,), learning=quadratic, recall=False)
+    brain = cd.Brain.compose(4, 2, modules=(8,), recall=False)
     with pytest.raises(ValueError, match="cross-entropy nudge"):
         brain.retune(learning=quadratic)
     assert "learning_nudge" not in brain.describe()["genes"]

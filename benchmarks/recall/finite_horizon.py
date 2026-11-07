@@ -156,14 +156,14 @@ def make_brain(
             "sensory": float(genes.get("sensory_scale", 1.0)),
             **({} if history is None else {"history": float(history["scale"])}),
         },
-        **(
+        **{"recall": False, **(
             {}
             if history is None
             else {
                 "history_decays": tuple(float(d) for d in history["decays"]),
                 "history_amplitude": float(history["amplitude"]),
             }
-        ),
+        )},
     )
 
 

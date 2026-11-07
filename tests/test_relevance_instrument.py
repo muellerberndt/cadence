@@ -70,7 +70,7 @@ def test_pair_scores_reject_the_seventy_five_percent_shortcut():
 
 
 def test_evaluation_forks_identical_prequery_state_and_preserves_pending_outcome(tmp_path):
-    brain = cd.Brain.compose(11, 2, modules=(4,), episodic=False, seed=0)
+    brain = cd.Brain.compose(11, 2, modules=(4,), episodic=False, seed=0, recall=False)
     brain.act(np.eye(11)[[0]])  # a real pending action must survive evaluation untouched
     before = instrument.checkpoint_digest(brain.save(tmp_path / "before.npz"))
     evaluation = instrument.evaluate(brain, 1)

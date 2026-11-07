@@ -115,7 +115,7 @@ def test_invalid_step_changes_leave_the_graph_and_step_consistent(bad):
 
 def test_an_answer_reports_all_code_phase_sweeps_including_the_failed_first_attempt():
     brain = cd.Brain.compose(1, 2, modules=(4,), learned_code=32, seed=2,
-                             episodic=False, learning_free_steps=32)
+                             episodic=False, learning_free_steps=32, recall=False)
     code = brain.learned_code
     before = code.work["sweeps"]
     brain.act([[1.0]], greedy=True)
@@ -127,7 +127,7 @@ def test_an_answer_reports_all_code_phase_sweeps_including_the_failed_first_atte
 
 def test_a_code_fallback_reports_total_work_without_rewriting_the_final_state(monkeypatch):
     brain = cd.Brain.compose(1, 2, modules=(4,), learned_code=32, seed=2,
-                             episodic=False, learning_free_steps=32)
+                             episodic=False, learning_free_steps=32, recall=False)
     code = brain.learned_code
     settle = code.settle
     attempts = []

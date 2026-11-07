@@ -18,7 +18,7 @@ import cadence as cd
 
 
 def episodic(*args, **options) -> cd.Brain:
-    return cd.Brain.compose(*args, **{"memory_choice": True, "memory_context": 0.0, **options})
+    return cd.Brain.compose(*args, **{"recall": False, **{"memory_choice": True, "memory_context": 0.0, **options}})
 
 
 def one_hot(index: int, width: int) -> np.ndarray:
@@ -49,7 +49,7 @@ def test_extinction_is_an_opt_in_threshold_of_the_episodic_choice():
     assert brain.memories["episodic"].paid is not None
     assert brain.describe()["memories"]["episodic"]["extinction"] == 0.5
     with pytest.raises(ValueError, match="need memory_choice"):
-        cd.Brain.compose(3, 2, memory_extinction=0.5)
+        cd.Brain.compose(3, 2, memory_extinction=0.5, recall=False)
     with pytest.raises(ValueError, match="memory_extinction"):
         episodic(3, 2, memory_extinction=1.5)
 
@@ -108,7 +108,7 @@ def test_the_reversal_is_acquired_when_failures_pay_nothing():
 
     def late(seed: int, extinction: float) -> float:
         brain = cd.Brain.compose(1, 2, modules=(16,), seed=seed, arousal=True,
-                                 memory_choice=True, memory_extinction=extinction)
+                                 memory_choice=True, memory_extinction=extinction, recall=False)
         action, hits = int(brain.live(observation)[0]), []
         for t in range(240):
             target = int(t >= 120)
@@ -164,7 +164,7 @@ def test_grow_keeps_the_extinction_and_the_direct_payments():
 
 @pytest.mark.parametrize("amplitude", [None, 3.0])
 def test_extinction_reads_the_direct_payment_in_reward_units_after_a_retune(amplitude):
-    brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5)
+    brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5, recall=False)
     if amplitude is not None:
         brain.retune(memory_amplitude=amplitude)
     episodic = brain.memories["episodic"]
@@ -180,7 +180,7 @@ def test_extinction_reads_the_direct_payment_in_reward_units_after_a_retune(ampl
 
 def test_the_direct_payments_share_the_place_records_separator_saved_once(tmp_path):
     brain = cd.Brain.compose(4, 2, seed=0, memory_choice=True, memory_extinction=0.5,
-                             arousal=True)
+                             arousal=True, recall=False)
     episodic = brain.memories["episodic"]
     assert episodic.paid.separator is brain.hippocampus.separator
     rng = np.random.default_rng(0)

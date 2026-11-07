@@ -209,7 +209,7 @@ def test_a_founder_is_the_composition_before_the_learned_code(tmp_path, name):
     metadata, the memories keyed as before."""
     spec = FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     assert brain.learned_code is None and "code" not in brain.connectome.populations
     assert brain.learner.plastic_synapses.all() and brain.learner.plastic_neurons.all()
     assert parameter_digest(brain) == spec["parameters"]
@@ -228,7 +228,7 @@ def test_a_founder_is_the_composition_before_the_learned_code(tmp_path, name):
 def test_the_founders_acts_and_checkpoint_bytes_are_the_recorded_ones(tmp_path, name):
     spec = FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     assert spec["life"](brain) == spec["acts"]
     assert checkpoint_digest(brain.save(tmp_path / "founder.npz")) == spec["checkpoint"]
 
@@ -281,17 +281,17 @@ REGION_FOUNDERS: dict[str, dict] = {
 def test_a_founder_with_the_region_lives_its_recorded_life(tmp_path, name):
     spec = REGION_FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     acts = spec["life"](brain)
     path = brain.save(tmp_path / "region.npz")
     assert region_digest(brain, acts, path) == spec["digest"]
 
 
 def test_the_learned_code_takes_its_one_setting_and_refuses_every_other_name():
-    brain = cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8)
+    brain = cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8, recall=False)
     for name, value in (("learned_code_rate", 0.125), ("learned_code_cortex", "code")):
         with pytest.raises(TypeError, match="unknown brain setting"):
-            cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8, **{name: value})
+            cd.Brain.compose(16, 4, modules=(8,), seed=1, learned_code=8, **{"recall": False, **{name: value}})
         with pytest.raises(TypeError, match="unknown brain setting"):
             brain.retune(**{name: value})
 
@@ -301,7 +301,7 @@ def test_learned_code_none_is_the_founder_and_the_width_is_as_before():
     assert cd.Genome.observation_width(53, None, 64) == 64 + 53  # the key joins the identity
     assert cd.Genome.observation_width(53, None, 16) == 16  # a wider observation: the code
     for value in (None, 0):
-        brain = cd.Brain.compose(53, 4, modules=(8,), seed=2, learned_code=value)
+        brain = cd.Brain.compose(53, 4, modules=(8,), seed=2, learned_code=value, recall=False)
         assert brain.learned_code is None and brain.code_width == 53
         assert "learned_code" not in brain.describe()["layout"]["composition"]
 
@@ -312,7 +312,7 @@ def test_learned_code_none_is_the_founder_and_the_width_is_as_before():
 def composed(seed: int = 0, units: int = UNITS, **options):
     return cd.Brain.compose(
         INPUTS, ACTIONS, modules=(64,), seed=seed, learning_surprise=True, learned_code=units,
-        **options,
+        **{"recall": False, **options},
     )
 
 
@@ -404,13 +404,13 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     with pytest.raises(ValueError, match="learned_code must be an integer"):
         composed(units=2.5)
     with pytest.raises(ValueError, match="need learned_code=units"):
-        cd.Brain.compose(53, 4, modules=(8,), learned_code_fields=(53,))
+        cd.Brain.compose(53, 4, modules=(8,), learned_code_fields=(53,), recall=False)
     with pytest.raises(TypeError, match="unknown brain setting"):
         composed(learned_code_speed=0.1)
     with pytest.raises(ValueError, match="joins the observation itself"):
         composed(code=64)
     with pytest.raises(ValueError, match="a vector brain"):
-        cd.Brain.compose((8, 8), 2, modules=(8,), learned_code=32)
+        cd.Brain.compose((8, 8), 2, modules=(8,), learned_code=32, recall=False)
     episodic = composed(memory_choice=True)  # the stores separate the code's keys
     assert episodic.hippocampus.separator is not None
     assert episodic.hippocampus.separator.expansion == 1024
@@ -431,7 +431,7 @@ def test_the_constants_and_the_one_setting_and_bad_settings_are_refused():
     with pytest.raises(ValueError, match="complete predictor synapses"):
         cd.Brain(graph, learned_code=6)
     with pytest.raises(ValueError, match="needs a population named 'code'"):
-        cd.Brain(cd.Brain.compose(8, 2, modules=(8,)).connectome, learned_code=6)
+        cd.Brain(cd.Brain.compose(8, 2, modules=(8,), recall=False).connectome, learned_code=6)
     complete = develop(Genome(tuple(regions), (*projections, Projection(
         "prefrontal", "code", scale=0.0, reciprocal=False))), seed=1)
     custom = cd.Brain(complete, learned_code=6)
@@ -588,7 +588,7 @@ def test_repeated_contexts_contract_predictor_error_at_every_batch_size(batch):
 
 
 def test_a_large_batch_of_continuing_brains_keeps_its_predictor_bounded():
-    brain = cd.Brain.compose(4, 2, modules=(8,), learned_code=8, seed=2)
+    brain = cd.Brain.compose(4, 2, modules=(8,), learned_code=8, seed=2, recall=False)
     x = np.tile([1.0, 0.0, 0.0, 0.0], (128, 1))
     for _ in range(30):
         brain.act(x, greedy=True)
@@ -815,7 +815,7 @@ def test_a_one_input_world_settles_at_the_step_its_dictionary_allows():
     coupling allows over every state, and the bandit lives on without a refusal; the bound
     over every state is at least the bound at any settled state."""
     for seed in range(6):
-        brain = cd.Brain.compose(1, 2, arousal=True, learned_code=64, seed=seed)
+        brain = cd.Brain.compose(1, 2, arousal=True, learned_code=64, seed=seed, recall=False)
         code = brain.learned_code
         assert code.rest_stability() >= 4
         rng = np.random.default_rng(seed)
@@ -850,7 +850,7 @@ def test_a_brain_with_the_region_deep_copies_and_imagines():
     np.testing.assert_array_equal(brain.learned_code.dictionary, before)
     phases = twin.imagine([tokens(5, 6), tokens(8, 2)])
     assert len(phases) == 2 and all(np.all(phase.qualified) for phase in phases)
-    plain = cd.Brain.compose(INPUTS, ACTIONS, modules=(8,), seed=1)  # and without the region
+    plain = cd.Brain.compose(INPUTS, ACTIONS, modules=(8,), seed=1, recall=False)  # and without the region
     plain.act(x, greedy=True)
     np.testing.assert_array_equal(copy.deepcopy(plain).act(x, greedy=True), plain.act(x, greedy=True))
 
@@ -1082,7 +1082,7 @@ def test_the_module_reads_the_code_at_unit_length():
 def test_the_unit_code_read_uses_effective_forward_weights(contacts, log_gains, monkeypatch):
     """Source activity plus the drive correction reads unit code through the actual
     transport weights, including contact counts and presynaptic gains."""
-    brain = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6)
+    brain = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6, recall=False)
     original = brain.brain
     synapses, _, _ = brain._code_forward
     counts = original.connectome.count.copy()
@@ -1133,7 +1133,7 @@ def test_the_unit_code_read_uses_effective_forward_weights(contacts, log_gains, 
 def test_the_unit_code_read_sums_parallel_effective_weights(monkeypatch):
     """A custom raw connectome retains parallel rows; their actual transport sums
     both signed efficacies before the source's unit-code correction."""
-    founder = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6)
+    founder = cd.Brain.compose(8, 2, modules=(6,), learned_code=4, seed=6, recall=False)
     original = founder.connectome
     source, target = founder.code_index[1], founder.association_index[0]
     edge = np.flatnonzero((original.pre == source) & (original.post == target))

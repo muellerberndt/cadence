@@ -17,7 +17,7 @@ from cadence.memories import command
 
 
 def episodic(*args, **options) -> cd.Brain:
-    return cd.Brain.compose(*args, **{"memory_choice": True, **options})
+    return cd.Brain.compose(*args, **{"recall": False, **{"memory_choice": True, **options}})
 
 
 def one_hot(index: int, width: int) -> np.ndarray:
@@ -43,7 +43,7 @@ def test_the_hold_is_an_opt_in_setting_of_the_temporal_context():
     with pytest.raises(ValueError, match="needs memory_choice and memory_context"):
         episodic(3, 2, memory_context=0.0, memory_context_hold="unchanged")
     with pytest.raises(ValueError, match="needs memory_choice and memory_context"):
-        cd.Brain.compose(3, 2, memory_context_hold="unchanged")
+        cd.Brain.compose(3, 2, memory_context_hold="unchanged", recall=False)
 
 
 @pytest.mark.parametrize("hold", [None, "unchanged"])

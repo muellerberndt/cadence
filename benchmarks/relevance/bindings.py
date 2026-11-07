@@ -288,7 +288,7 @@ def compose(brain_name: str, rule: str, seed: int, bits: int) -> Any:
         modules=BRAINS[brain_name],
         episodic=False,
         slots=(2,) * bits,
-        **genes,
+        **{"recall": False, **genes},
     )
 
 

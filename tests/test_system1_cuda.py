@@ -52,7 +52,7 @@ def composed(execution):
             eta_bias=0.001,
             momentum=0.8,
             normalize=0.9,
-        ),
+        ), recall=False,
     )
     brain.learner.brain = graph_on(brain.brain, execution)
     return brain

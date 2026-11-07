@@ -87,7 +87,7 @@ def test_cpu_and_mps_charge_every_executed_tolerance_sweep(device, monkeypatch):
 def test_changing_heat_live_reuses_the_same_temperature_buffers():
     brain = cd.Brain.compose(1, 2, modules=(8,), seed=9, arousal=True,
                              arousal_youth=1000, arousal_need=1.0,
-                             backend="torch", device="cpu")
+                             backend="torch", device="cpu", recall=False)
     for k in range(60):
         brain.live([[1.0]], reward=None if k == 0 else [0.1 + 0.002 * k])
     ws = brain.brain._torch._workspaces.held[1]

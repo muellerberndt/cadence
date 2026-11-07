@@ -176,7 +176,8 @@ def make_brain(
     if genes is not None:
         options["arousal"] = cd.ArousalConfig(**arousal_genes(genes))
     brain = cd.Brain.compose(
-        6 if pouch else 5, 2, modules=tuple(point.get("modules", (32,))), seed=seed, **options
+        6 if pouch else 5, 2, modules=tuple(point.get("modules", (32,))), seed=seed,
+        **{"recall": False, **options}
     )
     names = type(brain.basal_ganglia.config).__slots__  # every actor gene the point names
     actor = {k: point[k] for k in names if k in point}

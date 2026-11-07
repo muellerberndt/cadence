@@ -47,7 +47,7 @@ def make_brain(inputs: int, cues: int, seed: int, decay: float, amplitude: float
     return Brain.compose(
         inputs, cues, modules=modules, lateral=0.0, seed=seed, learning=learning,
         episodic=False, working_memory_decay=decay, working_memory_amplitude=amplitude,
-        scales={"trace": 12.0},  # the composition of releases before 0.82.0
+        scales={"trace": 12.0}, recall=False,  # the composition of releases before 0.82.0
     )
 
 

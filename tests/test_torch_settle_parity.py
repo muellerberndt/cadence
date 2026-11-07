@@ -32,7 +32,7 @@ def device(request: pytest.FixtureRequest) -> str:
 
 def composed(apical: bool, seed: int = 1, adaptation: bool = False) -> cd.Brain:
     brain = cd.Brain.compose(
-        12, 6, modules=(10, 8), slots=(3, 3), seed=seed, **({"apical": 0.25} if apical else {})
+        12, 6, modules=(10, 8), slots=(3, 3), seed=seed, **{"recall": False, **({"apical": 0.25} if apical else {})}
     )
     if adaptation:
         graph = brain.learner.brain

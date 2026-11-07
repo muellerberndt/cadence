@@ -48,7 +48,7 @@ def test_without_a_code_region_the_life_is_the_released_brain(tmp_path, arm, cod
     seed = 3
     life = em.Life(arm, seed)
     brain = Brain.compose(em.INPUTS, em.ACTIONS, modules=(em.WIDTH,), seed=seed, code=code,
-                          learning_surprise=True)
+                          learning_surprise=True, recall=False)
     for seq, target in _rounds(seed, 4):
         life.reset()
         brain.reset()

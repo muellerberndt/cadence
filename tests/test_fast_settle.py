@@ -79,7 +79,7 @@ def test_the_state_it_leaves_reads_as_any() -> None:
 
 
 def test_where_it_does_not_apply_the_ordinary_solve_runs() -> None:
-    subject = cd.Brain.compose(8, 4, modules=(32,), seed=3, episodic=False)
+    subject = cd.Brain.compose(8, 4, modules=(32,), seed=3, episodic=False, recall=False)
     graph = subject.brain
     drive = subject.stimulus(np.random.default_rng(3).random((2, 8)))
     n = graph.connectome.n
@@ -119,9 +119,9 @@ def test_retune_takes_it_and_grow_and_graft_carry_it() -> None:
     assert subject.learner.config.fast_settle is True
     stream(subject, 3)
     assert "row_sweeps" in subject.last_settlement
-    plain = cd.Brain.compose(8, 4, modules=(32,), seed=3, episodic=False, learning_fast_settle=True)
+    plain = cd.Brain.compose(8, 4, modules=(32,), seed=3, episodic=False, learning_fast_settle=True, recall=False)
     assert plain.grow(recall=True, recall_founder=True).learner.config.fast_settle is True
-    donor = cd.Brain.compose(8, 4, modules=(32,), seed=4, episodic=False)
+    donor = cd.Brain.compose(8, 4, modules=(32,), seed=4, episodic=False, recall=False)
     grafted = copy.deepcopy(plain).graft(donor, ["association", "motor"])
     assert grafted.learner.config.fast_settle is True
     with pytest.raises(ValueError, match="fast_settle"):

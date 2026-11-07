@@ -336,7 +336,8 @@ def job(
     if "scale" in trace:
         options["scales"] = {"trace": trace["scale"]}
     brain = Brain.compose(
-        sr.INPUTS, 2, seed=seed, modules=BRAINS[brain_name], episodic=False, **options
+        sr.INPUTS, 2, seed=seed, modules=BRAINS[brain_name], episodic=False, **{"recall": False,
+                                                                                **options}
     )
     work = sr.Work()
     trained = train(brain, task, order, work, teaching, exposed, cases=cases)

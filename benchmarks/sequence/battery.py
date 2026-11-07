@@ -392,7 +392,7 @@ def make_brain(task: Task, arm: str, founder: int, settings: dict[str, Any] | No
 
     return cd.Brain.compose(task.inputs, task.actions, modules=(module,), seed=int(founder),
                             episodic=False, teaching="normalized",
-                            **{**ARMS[arm], **(settings or {})})
+                            **{"recall": False, **{**ARMS[arm], **(settings or {})}})
 
 
 def new_stats() -> dict[str, Any]:

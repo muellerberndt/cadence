@@ -71,7 +71,7 @@ def make_brain(recipe, seed, args):
         observers=(),
         seed=seed,
         learning=LearnerConfig(**effective["learning"]),
-        lateral=0.0,
+        lateral=0.0, recall=False,
     )
 
 

@@ -133,7 +133,7 @@ def test_the_flat_blocks_are_written_in_the_order_of_their_entries() -> None:
     """The scatter of new weights into the flat array writes it front to back, the synapses
     gathered by the layout's permutation (found once); the array is the one synapse order gives."""
     pytest.importorskip("numba")
-    brain = cd.Brain.compose(6, 3, modules=(24,), seed=2)
+    brain = cd.Brain.compose(6, 3, modules=(24,), seed=2, recall=False)
     lay = brain.brain.layout
     held = lay._flat_order
     assert held is not None and lay._flat_order is held
@@ -155,7 +155,7 @@ def test_a_synapse_at_every_entry_makes_the_gathered_weights_the_flat_array() ->
     nothing more written; where entries stay empty the scatter writes the zeros between them."""
     pytest.importorskip("numba")
     rng = np.random.default_rng(4)
-    full = cd.Brain.compose(6, 3, modules=(24,), seed=2).brain.layout
+    full = cd.Brain.compose(6, 3, modules=(24,), seed=2, recall=False).brain.layout
     sparse = layout(cd.layered(6, 5, 4, density=0.5, seed=1))
     assert len(full.edge_index) == full.size and len(sparse.edge_index) < sparse.size
     for lay in (full, sparse):

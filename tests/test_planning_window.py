@@ -22,7 +22,7 @@ def phrase(m: int) -> list[int]:
 
 
 def test_a_window_is_k_slots_of_one_menu_settled_in_one_settle():
-    speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, episodic=False)
+    speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, episodic=False, recall=False)
     assert speaker.describe()["layout"]["slots"] == [MENU] * K
     window = speaker.act(message(2), greedy=True)
     assert window.shape == (1, K) and (0 <= window).all() and (window < MENU).all()
@@ -32,7 +32,7 @@ def test_a_window_is_k_slots_of_one_menu_settled_in_one_settle():
 
 def test_a_lesson_teaches_the_k_slots_at_once_and_the_window_is_learned():
     speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=1, slots=K, episodic=False,
-                            teaching="normalized", learning_surprise=True)
+                            teaching="normalized", learning_surprise=True, recall=False)
     with pytest.raises(ValueError):
         speaker.lesson(message(0), np.array([0]))  # a slotted brain takes (batch, k) labels
     batch = np.eye(MENU)
@@ -53,7 +53,7 @@ def test_a_lesson_teaches_the_k_slots_at_once_and_the_window_is_learned():
 
 def test_the_efference_copy_advances_the_window():
     speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, episodic=False,
-                            efference_amplitude=1.0)
+                            efference_amplitude=1.0, recall=False)
     window = speaker.act(message(1), greedy=True)
     copy = speaker.efference.trace[0].reshape(K, MENU)
     assert copy.argmax(axis=1).tolist() == window[0].tolist()  # the k commands issued
@@ -65,21 +65,21 @@ def test_the_efference_copy_advances_the_window():
 
 def test_live_and_step_return_the_window_and_take_its_outcome():
     speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, episodic=False,
-                            arousal=True)
+                            arousal=True, recall=False)
     first = speaker.live(message(0))
     assert first.shape == (1, K)
     second = speaker.live(message(1), reward=[1.0])  # one outcome for the whole window
     assert second.shape == (1, K)
-    taught = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, episodic=False)
+    taught = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, episodic=False, recall=False)
     taught.reset()
     assert taught.step(message(0), teacher=np.array([phrase(0)])).shape == (1, K)
 
 
 def test_the_founder_is_one_slot_and_a_window_is_a_described_construction():
-    founder = Brain.compose(MENU, MENU, modules=(16,), seed=0)
+    founder = Brain.compose(MENU, MENU, modules=(16,), seed=0, recall=False)
     assert founder.describe()["layout"]["slots"] == [MENU]
     assert founder.act(message(0), greedy=True).shape == (1,)
-    speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K)
+    speaker = Brain.compose(MENU, K * MENU, modules=(16,), seed=0, slots=K, recall=False)
     assert speaker.describe()["layout"]["composition"]["slots"] == [MENU] * K
     grown = founder.grow(slots=(MENU,) * K)  # the whole grouping, extending the brain's own
     assert grown.describe()["layout"]["slots"] == [MENU] * K

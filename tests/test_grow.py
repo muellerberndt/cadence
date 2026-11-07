@@ -23,7 +23,7 @@ ACTIONS = 4
 
 def taught(inputs=6, lessons=12, seed=1, **settings):
     """A brain composed with ``settings`` and taught a few moments of random labels."""
-    brain = cd.Brain.compose(inputs, ACTIONS, seed=seed, **{"modules": (16,), **settings})
+    brain = cd.Brain.compose(inputs, ACTIONS, seed=seed, **{"recall": False, **{"modules": (16,), **settings}})
     rng = np.random.default_rng(0)
     slots = brain.learner.slot_sizes
     for _ in range(lessons):
@@ -92,9 +92,9 @@ LAYOUTS = {
 
 @pytest.mark.parametrize("name", sorted(LAYOUTS))
 def test_a_brain_composed_from_its_own_construction_is_the_brain(name):
-    brain = cd.Brain.compose(6, ACTIONS, seed=1, **{"modules": (16,), **LAYOUTS[name]})
+    brain = cd.Brain.compose(6, ACTIONS, seed=1, **{"recall": False, **{"modules": (16,), **LAYOUTS[name]}})
     inputs, actions, settings = generic._composed_again(brain)
-    again = cd.Brain.compose(inputs, actions, **settings)
+    again = cd.Brain.compose(inputs, actions, **{"recall": False, **settings})
     assert again.connectome.digest() == brain.connectome.digest()
     np.testing.assert_array_equal(again.brain.efficacy, brain.brain.efficacy)
     assert again.describe() == brain.describe()
@@ -105,15 +105,15 @@ def test_a_brain_composed_from_its_own_construction_is_the_brain(name):
     [
         (40, dict(code=64)),
         (40, dict(learned_code=16)),
-        (40, dict(learned_code=16, attention=True)),
+        (40, dict(learned_code=16, attention=True, recall=True)),
         ((6, 6), dict(features=4, field=2)),
         ((5, 5, 2), dict(code=40)),
     ],
 )
 def test_wide_inputs_are_composed_again(inputs, settings):
-    brain = cd.Brain.compose(inputs, ACTIONS, seed=2, modules=(16,), **settings)
+    brain = cd.Brain.compose(inputs, ACTIONS, seed=2, modules=(16,), **{"recall": False, **settings})
     inputs, actions, composed = generic._composed_again(brain)
-    again = cd.Brain.compose(inputs, actions, **composed)
+    again = cd.Brain.compose(inputs, actions, **{"recall": False, **composed})
     assert again.connectome.digest() == brain.connectome.digest()
     assert again.describe() == brain.describe()
 
@@ -295,7 +295,7 @@ def live_through(brain, episodes, tokens=8, length=5, teach=True):
 def test_a_grown_recall_memory_learns_what_the_trained_brain_could_not():
     rng = np.random.default_rng(1)
     first, then, test = twice_shown(rng, 4), twice_shown(rng, 8), twice_shown(rng, 6)
-    plain = cd.Brain.compose(8, 8, seed=3, modules=(48,))
+    plain = cd.Brain.compose(8, 8, seed=3, modules=(48,), recall=False)
     live_through(plain, first)
     grown = plain.grow(recall=True, recall_founder=True)
     live_through(plain, then)
@@ -318,7 +318,7 @@ def test_a_new_slot_learns_beside_the_trained_one():
         kind = rng.integers(0, 12, size=count)
         return prototypes[kind] + 0.4 * rng.normal(size=(count, 8)), kind % 4, kind // 4
 
-    trained = cd.Brain.compose(8, 4, seed=3, modules=(32,))
+    trained = cd.Brain.compose(8, 4, seed=3, modules=(32,), recall=False)
     for _ in range(150):
         x, first, _ = views(16)
         trained.lesson(x, first)
@@ -384,7 +384,7 @@ def test_a_composed_visual_cortex_keeps_its_receptive_fields():
     """The maps project one way into the first module, so no nudge reaches them: a composed
     brain's receptive fields keep their initial draw while the rest of the brain learns (on the
     founder settings, whose phases settle; phases that stop short leave a residue)."""
-    brain = cd.Brain.compose((6, 6), ACTIONS, seed=0, modules=(16,))
+    brain = cd.Brain.compose((6, 6), ACTIONS, seed=0, modules=(16,), recall=False)
     connectome = brain.connectome
     fields = np.isin(connectome.pre, connectome.populations["visual/input"]) & np.isin(
         connectome.post, connectome.populations["visual/output"]
@@ -447,7 +447,7 @@ def test_identity_holds_while_the_recall_memory_fills_and_evicts():
 
 def test_a_living_brain_grows_and_lives_on():
     rng = np.random.default_rng(6)
-    trained = cd.Brain.compose(6, ACTIONS, seed=1, modules=(16,), arousal=True)
+    trained = cd.Brain.compose(6, ACTIONS, seed=1, modules=(16,), arousal=True, recall=False)
     reward = None
     for _ in range(40):
         action = trained.live(rng.random((1, 6)), reward=reward)
@@ -473,8 +473,8 @@ def test_two_brains_combine_by_teaching():
         kind = rng.integers(0, 12, size=count)
         return prototypes[kind] + 0.4 * rng.normal(size=(count, 8)), kind
 
-    first = cd.Brain.compose(8, 4, seed=3, modules=(32,))
-    second = cd.Brain.compose(8, 3, seed=4, modules=(32,))
+    first = cd.Brain.compose(8, 4, seed=3, modules=(32,), recall=False)
+    second = cd.Brain.compose(8, 3, seed=4, modules=(32,), recall=False)
     for _ in range(200):
         x, kind = views(16)
         first.lesson(x, kind % 4)

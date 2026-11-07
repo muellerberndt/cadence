@@ -74,7 +74,7 @@ try:
         observers=(8,),
         seed=7,
         backend="torch" if cuda else "cpu",
-        device="cuda:0" if cuda else None,
+        device="cuda:0" if cuda else None, recall=False,
     )
     if args.backend == "cuda32":
         graph = brain.brain

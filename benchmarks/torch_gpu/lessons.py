@@ -147,7 +147,7 @@ def make(brain_name: str, backend: str, device: str | None, precision: str | Non
                                  slots=SLOTS, seed=0, **DEEP, **extra)
     else:
         brain = cd.Brain.compose(IMAGE[0] * IMAGE[1] * CHANNELS, sum(SLOTS), slots=SLOTS, seed=0,
-                                 **extra)
+                                 **{"recall": False, **extra})
     if precision is not None and backend == "torch":
         g = brain.learner.brain
         brain.learner.brain = cd.NeuralGraph(

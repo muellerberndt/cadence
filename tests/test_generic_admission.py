@@ -21,7 +21,7 @@ def assert_checkpoint_equal(before, after):
 
 
 def composed(**options):
-    return Brain.compose(2, 2, modules=(5, 4), observers=(3,), seed=3, **options)
+    return Brain.compose(2, 2, modules=(5, 4), observers=(3,), seed=3, **{"recall": False, **options})
 
 
 @pytest.mark.parametrize("backend", ["cpu", "torch"])

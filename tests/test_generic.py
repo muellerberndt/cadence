@@ -33,7 +33,7 @@ def bars(n_per: int = 40, seed: int = 0) -> tuple[np.ndarray, np.ndarray]:
 def test_the_generic_brain_learns_labels() -> None:
     # defaults (the single-region layout of earlier releases reached 1.0 on held-out
     # samples on ten seeds of this task)
-    brain = cd.Brain.compose(8, 2, seed=1)
+    brain = cd.Brain.compose(8, 2, seed=1, recall=False)
     x, y = blobs()
     history = brain.fit(x, y, epochs=4, batch=20)
     held_x, held_y = blobs(seed=7)
@@ -43,7 +43,7 @@ def test_the_generic_brain_learns_labels() -> None:
 def test_the_generic_brain_sees_bars_through_its_visual_cortex() -> None:
     # defaults (on the single-region layout of earlier releases the held-out accuracy over
     # ten seeds had median 0.97 and minimum 0.89)
-    brain = cd.Brain.compose((6, 6), 2, seed=0)
+    brain = cd.Brain.compose((6, 6), 2, seed=0, recall=False)
     assert "visual/input" in brain.connectome.populations
     x, y = bars()
     brain.fit(x, y, epochs=30, batch=20)
@@ -55,7 +55,7 @@ def test_the_generic_brain_learns_a_contextual_bandit_from_dopamine() -> None:
     # defaults with an immediate reward (the single-region layout of earlier releases reached
     # 1.0 on ten seeds of this task)
     reward_config = cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=1.0, eta_critic=0.3)
-    brain = cd.Brain.compose(4, 4, seed=0, reward=reward_config)
+    brain = cd.Brain.compose(4, 4, seed=0, reward=reward_config, recall=False)
     rng = np.random.default_rng(0)
 
     def contexts(k: int) -> tuple[np.ndarray, np.ndarray]:
@@ -83,7 +83,7 @@ def test_the_hippocampus_keeps_a_rewarded_choice_after_one_trial() -> None:
     frozen = cd.LearnerConfig(eta=0.0, eta_bias=0.0, tolerance=3e-3, nudged_steps=12)
     still = cd.ActorCriticConfig(gamma=0.0, lam=0.0, eta=0.0, eta_bias=0.0, eta_critic=0.0)
     brain = cd.Brain.compose(
-        4, 4, modules=(8,), episodic=True, seed=3, learning=frozen, reward=still
+        4, 4, modules=(8,), episodic=True, seed=3, learning=frozen, reward=still, recall=False
     )
     cue, other = np.eye(4)[[2]], np.eye(4)[[0]]
     first = int(brain.act(cue, greedy=True)[0])
@@ -98,7 +98,7 @@ def test_the_hippocampus_keeps_a_rewarded_choice_after_one_trial() -> None:
     assert int(brain.act(cue, greedy=True)[0]) == rewarded
     brain.reset()
     assert int(brain.act(other, greedy=True)[0]) == int(
-        cd.Brain.compose(4, 4, modules=(8,), seed=3, learning=frozen, reward=still).act(
+        cd.Brain.compose(4, 4, modules=(8,), seed=3, learning=frozen, reward=still, recall=False).act(
             other, greedy=True
         )[0]
     )
@@ -135,9 +135,9 @@ def delayed_response(brain: cd.Brain, episodes: int, seed: int) -> float:
 def test_the_prefrontal_cortex_bridges_a_delay() -> None:
     # defaults (tests/test_context_defaults.py reads seeds 8 to 13 at 0.96 to 1.00); the same
     # brain with its working trace silenced is the control
-    remembering = cd.Brain.compose(3, 2, seed=8)
+    remembering = cd.Brain.compose(3, 2, seed=8, recall=False)
     assert delayed_response(remembering, episodes=1500, seed=8) >= 0.9
-    forgetting = cd.Brain.compose(3, 2, seed=8, working_memory_amplitude=0.0)
+    forgetting = cd.Brain.compose(3, 2, seed=8, working_memory_amplitude=0.0, recall=False)
     assert delayed_response(forgetting, episodes=400, seed=8) < 0.75
 
 
@@ -147,7 +147,7 @@ def test_slotted_brain_predict_accuracy_and_fit_match_the_slot_contract(
 ) -> None:
     """Slotted readouts answer one choice per slot everywhere, or the slot API is a lie."""
     actions = sum(slots) if isinstance(slots, list) else 2 * slots
-    brain = cd.Brain.compose(4, actions, modules=(16,), slots=slots, seed=3)
+    brain = cd.Brain.compose(4, actions, modules=(16,), slots=slots, seed=3, recall=False)
     rng = np.random.default_rng(3)
     x = rng.normal(size=(30, 4))
     y = np.stack(
@@ -190,7 +190,7 @@ def test_slotted_brain_predict_accuracy_and_fit_match_the_slot_contract(
 
 
 def test_fit_mismatched_labels_fail_before_teaching() -> None:
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=1)
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=1, recall=False)
     x = np.zeros((4, 4))
     before = brain.brain.efficacy.copy()
     with pytest.raises(ValueError, match="same batch size"):
@@ -233,6 +233,6 @@ def test_a_lesson_on_the_moment_just_acted_on_warns_with_a_recall_memory():
         brain.act(other, greedy=True)
         brain.reset()
         brain.lesson(obs, [1])
-        plain = cd.Brain.compose(3, 2, modules=(8,), seed=0)  # no recall memory: no warning
+        plain = cd.Brain.compose(3, 2, modules=(8,), seed=0, recall=False)  # no recall memory: no warning
         plain.act(obs, greedy=True)
         plain.lesson(obs, [1])

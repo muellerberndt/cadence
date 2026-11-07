@@ -32,7 +32,7 @@ RETIRED = {
 def lived(**options) -> cd.Brain:
     """A brain of six inputs and three actions after a few rewarded and taught steps."""
     rng = np.random.default_rng(1)
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **options)
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **options})
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         brain.step(X[0])
@@ -128,10 +128,10 @@ def taught(brain: cd.Brain) -> np.ndarray:
      ("recall_position_reward", 1.0, {"recall": True, "recall_founder": True})],
 )
 def test_a_retuned_setting_acts_as_built_and_is_saved(tmp_path, name, value, base):
-    plain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **base)
-    retuned = cd.Brain.compose(6, 3, modules=(16,), seed=2, **base)
+    plain = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **base})
+    retuned = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **base})
     retuned.retune(**{name: value})
-    built = cd.Brain.compose(6, 3, modules=(16,), seed=2, **base, **{name: value})
+    built = cd.Brain.compose(6, 3, modules=(16,), seed=2, **{"recall": False, **base, name: value})
     expected = taught(built)
     assert not np.array_equal(taught(plain), expected)  # the setting changes what is learned
     np.testing.assert_array_equal(taught(retuned), expected)

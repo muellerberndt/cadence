@@ -12,26 +12,26 @@ import cadence as cd
 
 
 def test_the_composed_brain_holds_its_last_interpretation_clearly_and_reads_it_quietly():
-    brain = cd.Brain.compose(inputs=3, actions=2, seed=1, arousal=True)
+    brain = cd.Brain.compose(inputs=3, actions=2, seed=1, arousal=True, recall=False)
     memory = brain.describe()["memories"].get("working_memory")
     assert memory["amplitude"] == 3.0 and memory["decay"] == 0.0
     assert brain.describe()["layout"]["composition"]["working_memory_scale"] == 1.2
 
 
 def test_the_default_trace_is_exactly_the_last_interpretation():
-    brain = cd.Brain.compose(inputs=3, actions=2, seed=6)
+    brain = cd.Brain.compose(inputs=3, actions=2, seed=6, recall=False)
     for x in ([[1.0, 0.0, 0.0]], [[0.0, 1.0, 0.0]], [[0.0, 0.0, 1.0]]):
         brain.act(np.array(x))
         assert np.array_equal(brain.working_memory.trace, brain.working_memory.last)
-    averaged = cd.Brain.compose(inputs=3, actions=2, seed=6, working_memory_decay=0.2)
+    averaged = cd.Brain.compose(inputs=3, actions=2, seed=6, working_memory_decay=0.2, recall=False)
     averaged.act(np.array([[1.0, 0.0, 0.0]]))
     averaged.act(np.array([[0.0, 1.0, 0.0]]))
     assert not np.allclose(averaged.working_memory.trace, averaged.working_memory.last)
 
 
 def test_the_scale_changes_only_the_projection_that_reads_the_carried_interpretation():
-    control = cd.Brain.compose(3, 2, modules=(9, 6), seed=11, scales={"trace": 12.0})
-    quiet = cd.Brain.compose(3, 2, modules=(9, 6), seed=11)
+    control = cd.Brain.compose(3, 2, modules=(9, 6), seed=11, scales={"trace": 12.0}, recall=False)
+    quiet = cd.Brain.compose(3, 2, modules=(9, 6), seed=11, recall=False)
     first, second = control.connectome, quiet.connectome
     for field in ("pre", "post", "count"):
         np.testing.assert_array_equal(getattr(first, field), getattr(second, field))
@@ -44,9 +44,9 @@ def test_the_scale_changes_only_the_projection_that_reads_the_carried_interpreta
     with pytest.raises(ValueError, match="construction setting"):
         quiet.retune(scales={"trace": 12.0})
     with pytest.raises(ValueError, match="scales"):  # the argument of 0.84.3, renamed
-        cd.Brain.compose(3, 2, working_memory_scale=12.0)
+        cd.Brain.compose(3, 2, working_memory_scale=12.0, recall=False)
     with pytest.raises(ValueError):
-        cd.Brain.compose(3, 2, scales={"trace": -1.0})
+        cd.Brain.compose(3, 2, scales={"trace": -1.0}, recall=False)
 
 
 def test_a_newborn_reads_its_context_as_the_earlier_quiet_operating_point_did():
@@ -56,7 +56,7 @@ def test_a_newborn_reads_its_context_as_the_earlier_quiet_operating_point_did():
     cue, go = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]), np.array([[0.0, 0.0, 1.0]] * 2)
     states = []
     for options in ({}, {"working_memory_amplitude": 0.3, "scales": {"trace": 12.0}}):
-        brain = cd.Brain.compose(3, 2, seed=8, **options)
+        brain = cd.Brain.compose(3, 2, seed=8, **{"recall": False, **options})
         brain.act(cue, greedy=True)
         _, free = brain._settled(go)
         association = np.asarray(brain.connectome.populations["association"])
@@ -98,7 +98,7 @@ def delayed_response(brain: cd.Brain, episodes: int, seed: int) -> float:
 def test_the_composed_brain_learns_from_reward_to_carry_a_cue_across_a_delay():
     # Seeds 8 to 13 all solve it at the 0.82 defaults (0.96 to 1.00), as with the 0.81
     # composition; amplitude 0.3 at the earlier scale 12 solved 3 of the 6, seed 8 not.
-    assert delayed_response(cd.Brain.compose(3, 2, seed=8), 1500, 8) >= 0.9
+    assert delayed_response(cd.Brain.compose(3, 2, seed=8, recall=False), 1500, 8) >= 0.9
 
 
 def contextual_bandit(brain: cd.Brain, seed: int, decisions: int = 600) -> float:
@@ -122,9 +122,9 @@ def test_a_continuing_brain_can_learn_to_ignore_a_history_that_does_not_matter()
     # Seeds 0 to 5 at the 0.82 defaults: 0.72, 1.00, 0.26, 0.92, 0.46, 0.23 (mean 0.60);
     # the 0.81 composition held every seed near chance (0.22 to 0.30, here 0.22).
     actor = {"actor_gamma": 0.0, "actor_lam": 0.0}
-    assert contextual_bandit(cd.Brain.compose(4, 4, seed=1, **actor), 1) >= 0.9
+    assert contextual_bandit(cd.Brain.compose(4, 4, seed=1, **{"recall": False, **actor}), 1) >= 0.9
     earlier = cd.Brain.compose(
-        4, 4, seed=1, working_memory_decay=0.2, scales={"trace": 12.0}, **actor
+        4, 4, seed=1, working_memory_decay=0.2, scales={"trace": 12.0}, **{"recall": False, **actor}
     )
     assert contextual_bandit(earlier, 1) < 0.5
 
@@ -132,7 +132,7 @@ def test_a_continuing_brain_can_learn_to_ignore_a_history_that_does_not_matter()
 def test_a_saved_brain_keeps_the_trace_it_was_built_with(tmp_path):
     earlier = cd.Brain.compose(
         inputs=3, actions=2, seed=2, working_memory_amplitude=0.3, working_memory_decay=0.2,
-        scales={"trace": 12.0},
+        scales={"trace": 12.0}, recall=False,
     )
     x = np.array([[1.0, 0.0, 0.5]])
     earlier.act(x)
@@ -144,7 +144,7 @@ def test_a_saved_brain_keeps_the_trace_it_was_built_with(tmp_path):
 
 
 def test_a_saved_scale_out_of_range_is_refused(tmp_path):
-    brain = cd.Brain.compose(inputs=3, actions=2, seed=7, scales={"trace": 12.0})
+    brain = cd.Brain.compose(inputs=3, actions=2, seed=7, scales={"trace": 12.0}, recall=False)
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as data:
         arrays = flat({name: data[name] for name in data.files})
@@ -158,7 +158,7 @@ def test_a_saved_scale_out_of_range_is_refused(tmp_path):
 
 
 def test_the_carried_interpretation_reaches_the_next_settle():
-    brain = cd.Brain.compose(inputs=3, actions=2, seed=3)
+    brain = cd.Brain.compose(inputs=3, actions=2, seed=3, recall=False)
     x = np.array([[1.0, 0.0, 0.0]])
     brain.act(x)
     carried = brain.working_memory.trace.copy()
@@ -173,14 +173,14 @@ def test_the_readout_homeostasis_gene_is_gone():
     with pytest.raises(TypeError):
         cd.LearnerConfig(homeostasis_rate=0.1)
     with pytest.raises((TypeError, ValueError)):
-        cd.Brain.compose(inputs=3, actions=2, learning_homeostasis_rate=0.1)
-    report = cd.Brain.compose(inputs=3, actions=2, seed=4)
+        cd.Brain.compose(inputs=3, actions=2, learning_homeostasis_rate=0.1, recall=False)
+    report = cd.Brain.compose(inputs=3, actions=2, seed=4, recall=False)
     assert "learning_homeostasis_rate" not in report.describe()["genes"]
 
 
 def test_a_checkpoint_saved_at_the_genes_founder_still_loads(tmp_path):
     # 0.81.0 wrote the two fields into every learner configuration it saved
-    brain = cd.Brain.compose(inputs=3, actions=2, seed=5)
+    brain = cd.Brain.compose(inputs=3, actions=2, seed=5, recall=False)
     brain.act(np.array([[1.0, 0.0, 0.0]]))
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as data:
@@ -201,7 +201,7 @@ def test_a_checkpoint_saved_at_the_genes_founder_still_loads(tmp_path):
 
 
 def test_a_checkpoint_saved_with_the_gene_on_is_refused(tmp_path):
-    brain = cd.Brain.compose(inputs=3, actions=2, seed=5)
+    brain = cd.Brain.compose(inputs=3, actions=2, seed=5, recall=False)
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as data:
         arrays = flat({name: data[name] for name in data.files})

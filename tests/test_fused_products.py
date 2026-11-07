@@ -40,14 +40,14 @@ def same(a: cd.BrainState, b: cd.BrainState) -> bool:
 def graphs() -> Iterator[tuple[cd.Brain, cd.NeuralGraph]]:
     """The founder's graph, the same with adaptation, and a deep graph with an apical
     compartment."""
-    founder = cd.Brain.compose(10, 4, modules=(12, 8), seed=1)
+    founder = cd.Brain.compose(10, 4, modules=(12, 8), seed=1, recall=False)
     yield founder, founder.brain
     g = founder.brain
     yield founder, cd.NeuralGraph(
         g.connectome, g.neuron_model.replace(adaptation=cd.Adaptation(tau_steps=7.0, strength=0.4)),
         efficacy=g.efficacy, bias=g.bias,
     )
-    deep = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=2, apical=0.25)
+    deep = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=2, apical=0.25, recall=False)
     yield deep, deep.brain
 
 
@@ -94,7 +94,7 @@ def test_a_check_and_a_settle_read_the_kept_products_to_the_bits_of_making_them_
 
 
 def test_kept_products_are_read_where_the_activations_hold_and_made_where_they_differ() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     lay, n, batch = graph.layout, graph.connectome.n, 2
     drive = brain.stimulus(np.random.default_rng(0).random((batch, 8)))
@@ -118,7 +118,7 @@ def test_kept_products_are_read_where_the_activations_hold_and_made_where_they_d
 
 
 def test_kept_products_hold_only_for_the_blocks_they_were_made_with() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(1).random((2, 8)))
     state = graph.settle_batch(drive, steps=12)
@@ -141,7 +141,7 @@ def test_kept_products_hold_only_for_the_blocks_they_were_made_with() -> None:
 
 
 def test_copies_leave_the_kept_products_and_the_solver_copy_and_no_sweeps_keep_them() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(2).random((2, 8)))
     state = graph.settle_batch(drive, steps=5)
@@ -165,7 +165,7 @@ def test_copies_leave_the_kept_products_and_the_solver_copy_and_no_sweeps_keep_t
 def test_a_warm_state_keeps_its_memory_order():
     """A settle from a Fortran-ordered state publishes activations in that order, as 0.93.0's
     kernels did, with the same values as from the C-ordered state."""
-    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=1)
+    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=1, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(4).random((3, 10)), memory=False)
     warm = graph.settle_batch(drive, steps=5)
@@ -186,7 +186,7 @@ def test_a_launch_reads_its_potentials_activations_from_what_the_state_keeps() -
     the bits of computing them."""
     from cadence import fused
 
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(5).random((2, 8)))
     state = graph.settle_batch(drive, steps=9)
@@ -223,7 +223,7 @@ def test_a_launch_reads_its_potentials_activations_from_what_the_state_keeps() -
 
 
 def test_a_check_makes_the_stale_products_in_the_array_the_state_keeps() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(6).random((2, 8)))
     state = graph.settle_batch(drive, steps=9)

@@ -161,7 +161,7 @@ def make_brain(point: dict[str, Any], seed: int, world: dict[str, Any], need: fl
         actor_eta_critic=float(point["eta_critic"]),
         arousal=arousal,
         seed=seed,
-        **learning,
+        **{"recall": False, **learning},
     )
 
 

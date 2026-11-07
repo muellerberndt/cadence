@@ -185,7 +185,7 @@ def compose(task: Any, spec: dict[str, Any]) -> Any:
     if spec.get("position") is not None:
         options["recall_position"] = int(spec["position"])
     return cd.Brain.compose(task.inputs, task.actions, modules=(int(spec.get("module", 64)),),
-                            seed=int(spec["founder"]), **options)
+                            seed=int(spec["founder"]), **{"recall": False, **options})
 
 
 def replicate(brain: Any, replica: int) -> None:

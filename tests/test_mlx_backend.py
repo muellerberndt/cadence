@@ -16,7 +16,7 @@ pytestmark = pytest.mark.skipif("mlx" not in cd.available_backends(), reason="ml
 
 
 def pair(tmp_path, **settings):
-    cpu = cd.Brain.compose(8, 4, seed=3, modules=(32,), **settings)
+    cpu = cd.Brain.compose(8, 4, seed=3, modules=(32,), **{"recall": False, **settings})
     cpu.save(tmp_path / "brain.npz")
     return cpu, cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
 
@@ -67,7 +67,7 @@ def test_imagination_observers_recall_heads_and_growth_run_on_mlx(tmp_path):
 
 
 def test_mlx_refuses_an_apical_compartment(tmp_path):
-    cpu = cd.Brain.compose(8, 4, seed=3, modules=(32, 32), apical=0.25)
+    cpu = cd.Brain.compose(8, 4, seed=3, modules=(32, 32), apical=0.25, recall=False)
     cpu.save(tmp_path / "deep.npz")
     with pytest.raises(ValueError, match="apical"):
         cd.Brain.load(tmp_path / "deep.npz", backend="mlx")

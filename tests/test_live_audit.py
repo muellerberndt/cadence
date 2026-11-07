@@ -13,7 +13,7 @@ import cadence as cd
 def _brain(*, youth=0):
     return cd.Brain.compose(
         4, 2, modules=(8,), working_memory_amplitude=0.3,
-        arousal=cd.ArousalConfig(youth=youth),
+        arousal=cd.ArousalConfig(youth=youth), recall=False,
     )
 
 

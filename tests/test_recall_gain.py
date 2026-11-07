@@ -264,7 +264,7 @@ def test_grow_refuses_what_the_tokens_refuse():
 
 
 def test_grow_adds_no_memory_with_tokens_as_it_adds_none_with_a_pathway():
-    trained = cd.Brain.compose(6, 4, modules=(16,), seed=1)
+    trained = cd.Brain.compose(6, 4, modules=(16,), seed=1, recall=False)
     with pytest.raises(ValueError, match="tokens"):
         trained.grow(recall=True, recall_founder=True, recall_gain=RATE, recall_tokens=[0, 1, 2, 3])
 

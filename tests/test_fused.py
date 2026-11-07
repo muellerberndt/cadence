@@ -165,7 +165,7 @@ def test_a_settle_of_no_sweeps_publishes_the_activations_without_a_launch(monkey
 
 
 def test_a_held_gain_of_another_shape_is_refused_at_no_sweeps_too() -> None:
-    brain = cd.Brain.compose(10, 4, modules=(12, 9), seed=3, apical=0.25)
+    brain = cd.Brain.compose(10, 4, modules=(12, 9), seed=3, apical=0.25, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.ones((3, 10)))
     free = graph.settle_batch(drive, steps=20)
@@ -264,7 +264,7 @@ def test_the_tied_step_gives_numpys_step_efficacy_and_weights_and_their_finitene
 
 
 def test_a_compiled_update_takes_the_passs_arrays_as_with_parameters_would() -> None:
-    brain = cd.Brain.compose(6, 3, modules=(24,), seed=4)
+    brain = cd.Brain.compose(6, 3, modules=(24,), seed=4, recall=False)
     graph = brain.brain
     learner = brain.learner
     rng = np.random.default_rng(2)

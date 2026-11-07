@@ -81,7 +81,7 @@ def compose(recipe: dict[str, Any], seed: int, gated: bool) -> Any:
         seed=int(seed),
         arousal=arousal,
         episodic=False,
-        **options,
+        **{"recall": False, **options},
     )
 
 

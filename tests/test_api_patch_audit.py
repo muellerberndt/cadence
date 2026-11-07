@@ -23,7 +23,7 @@ def same_arrays(left, right):
 @pytest.mark.parametrize("learned", [None, 8])
 @pytest.mark.parametrize("legacy", [False, True])
 def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path, learned, legacy):
-    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, learned_code=learned)
+    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, learned_code=learned, recall=False)
     observations = np.eye(4)
     brain.act(observations[[0]])
     path = brain.save(tmp_path / "pending.npz")
@@ -48,7 +48,7 @@ def test_pending_checkpoint_requires_the_decision_that_owns_its_outcome(tmp_path
 
 @pytest.mark.parametrize("defect", ["reordered", "other_population"])
 def test_composed_checkpoint_readout_must_keep_the_motor_action_mapping(tmp_path, defect):
-    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3)
+    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, recall=False)
     brain.act(np.eye(4)[[0]])
     path = brain.save(tmp_path / "readout.npz")
     saved = arrays(path)
@@ -61,7 +61,7 @@ def test_composed_checkpoint_readout_must_keep_the_motor_action_mapping(tmp_path
 
 
 def test_expert_teaching_description_keeps_effective_steps_and_is_observational(tmp_path):
-    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3)
+    brain = cd.Brain.compose(4, 2, modules=(6,), seed=3, recall=False)
     config = replace(brain.learner.config, eta=0.017, eta_bias=0.004,
                      normalize=0.4, normalize_floor=0.005)
     brain.retune(learning=config)
@@ -88,6 +88,6 @@ def test_expert_teaching_description_keeps_effective_steps_and_is_observational(
 
 @pytest.mark.parametrize("point", ["founder", "normalized"])
 def test_named_teaching_points_keep_their_compact_description(point):
-    brain = cd.Brain.compose(4, 2, modules=(6,), teaching=point)
+    brain = cd.Brain.compose(4, 2, modules=(6,), teaching=point, recall=False)
     genes = brain.describe()["genes"]
     assert genes["teaching"] == point and "learning" not in genes

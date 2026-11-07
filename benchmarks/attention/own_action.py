@@ -70,7 +70,7 @@ def sources() -> list[tuple[str, Path]]:
 def compose(seed: int, arm: str) -> cd.Brain:
     return cd.Brain.compose(
         INPUTS, ACTIONS, modules=(24,), seed=seed, episodic=False, teaching="normalized",
-        learning_surprise=True, **ARMS[arm],
+        learning_surprise=True, **{"recall": False, **ARMS[arm]},
     )
 
 

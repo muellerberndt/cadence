@@ -60,7 +60,7 @@ def same(a: cd.BrainState, b: cd.BrainState) -> bool:
 def graphs() -> Iterator[tuple[str, cd.Brain, cd.NeuralGraph]]:
     """A founder, the same with adaptation, and a deep brain with the apical compartment
     (with and without adaptation): every branch of both row kernels."""
-    founder = cd.Brain.compose(10, 4, modules=(12, 8), seed=1)
+    founder = cd.Brain.compose(10, 4, modules=(12, 8), seed=1, recall=False)
     yield "founder", founder, founder.brain
     g = founder.brain
     adapted = cd.NeuralGraph(
@@ -68,7 +68,7 @@ def graphs() -> Iterator[tuple[str, cd.Brain, cd.NeuralGraph]]:
         efficacy=g.efficacy, bias=g.bias,
     )
     yield "adapted", founder, adapted
-    deep = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=2, apical=0.25, observers=(3,))
+    deep = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=2, apical=0.25, observers=(3,), recall=False)
     yield "apical", deep, deep.brain
     g = deep.brain
     yield "apical_adapted", deep, cd.NeuralGraph(
@@ -175,7 +175,7 @@ def test_the_fused_apical_compartment_is_the_numpy_loop(batch: int) -> None:
 
 
 def test_a_held_gain_of_another_shape_is_refused_by_the_fused_kernel() -> None:
-    brain = cd.Brain.compose(10, 4, modules=(12, 9), seed=3, apical=0.25)
+    brain = cd.Brain.compose(10, 4, modules=(12, 9), seed=3, apical=0.25, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.ones((3, 10)))
     free = graph.settle_batch(drive, steps=20)
@@ -279,7 +279,7 @@ def test_the_optimizer_step_is_numpys_arithmetic_to_the_bit(
 
 
 def test_layout_flat_and_block_contrast_keep_their_numpy_bits() -> None:
-    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=4)
+    brain = cd.Brain.compose(10, 4, modules=(12, 8), seed=4, recall=False)
     graph = brain.brain
     layout = graph.layout
     rng = np.random.default_rng(2)
@@ -297,7 +297,7 @@ def test_layout_flat_and_block_contrast_keep_their_numpy_bits() -> None:
 
 
 def test_the_apical_blocks_are_found_once_per_compartment_and_layout() -> None:
-    brain = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=5, apical=0.25)
+    brain = cd.Brain.compose(10, 4, modules=(12, 9, 7), seed=5, apical=0.25, recall=False)
     graph = brain.brain
     block, mask = graph.layout.block_of_edge, graph.apical.synapses
     basal, top_down = brain_module._apical_blocks(graph.apical, graph.layout)
@@ -312,7 +312,7 @@ def test_lessons_learn_the_same_bits_on_one_thread_and_on_many(apical: float) ->
     def run(parallel: bool, threads: int) -> list[np.ndarray]:
         brain = cd.Brain.compose(
             12, 5, modules=(16, 12, 12), seed=6, apical=apical, teaching="deep",
-            learning_nudged_steps=16, episodic=False,
+            learning_nudged_steps=16, episodic=False, recall=False,
         )
         rng = np.random.default_rng(7)
         with build(parallel, threads):

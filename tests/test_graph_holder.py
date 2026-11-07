@@ -98,7 +98,7 @@ def test_a_shallow_copy_shares_the_holder_and_a_rebuilt_learner_has_its_own():
 def test_a_learner_sharing_a_composed_brains_holder_teaches_the_graph_the_brain_acts_with(
     tmp_path,
 ):
-    brain = cd.Brain.compose(3, 2, seed=3, arousal=True)
+    brain = cd.Brain.compose(3, 2, seed=3, arousal=True, recall=False)
     assert brain.learner.holder.brain is brain.brain
     readout = cd.Learner.sharing(brain.learner, list(brain.motor_index),
                                  config=brain.learner.config)

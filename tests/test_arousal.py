@@ -19,7 +19,7 @@ def calm_brain(seed: int = 0, **genes) -> cd.Brain:
         modules=(16,),
         seed=seed,
         working_memory_amplitude=0.0,
-        arousal=cd.ArousalConfig(**{"youth": 0, **genes}),
+        arousal=cd.ArousalConfig(**{"youth": 0, **genes}), recall=False,
     )
 
 
@@ -274,7 +274,7 @@ def test_an_arousal_of_another_format_is_refused_naming_the_release_that_loads_i
 
 
 def test_a_behaviour_temperature_widens_sampling_and_leaves_the_policy_alone():
-    brain = cd.Brain.compose(4, 3, modules=(8,), seed=0)
+    brain = cd.Brain.compose(4, 3, modules=(8,), seed=0, recall=False)
     x = np.eye(4)[[0]]
     brain.act(x, greedy=True)
     agent = brain.basal_ganglia
@@ -299,11 +299,11 @@ def test_a_behaviour_temperature_widens_sampling_and_leaves_the_policy_alone():
 
 
 def test_live_needs_arousal_one_stream_and_a_preceding_action():
-    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0)
+    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0, recall=False)
     with pytest.raises(ValueError, match="arousal"):
         plain.live(np.eye(4)[[0]])
     with pytest.raises(ValueError, match="threshold"):
-        cd.Brain.compose(4, 2, modules=(8,), arousal={"threshold": -0.2})
+        cd.Brain.compose(4, 2, modules=(8,), arousal={"threshold": -0.2}, recall=False)
     brain = calm_brain()
     with pytest.raises(ValueError, match="one continuing stream"):
         brain.live(np.eye(4)[:2])
@@ -561,7 +561,7 @@ def test_a_slotted_brain_lives_and_owns_only_its_best_guess_in_every_slot():
         slots=2,
         seed=0,
         working_memory_amplitude=0.3,
-        arousal=cd.ArousalConfig(youth=40),
+        arousal=cd.ArousalConfig(youth=40), recall=False,
     )
     eye = np.eye(4)
     action = brain.live(eye[[0]])
@@ -588,7 +588,7 @@ def test_live_runs_on_the_torch_backend_and_fades_device_eligibility(tmp_path):
         seed=0,
         working_memory_amplitude=0.3,
         backend="torch",
-        arousal=cd.ArousalConfig(youth=10),
+        arousal=cd.ArousalConfig(youth=10), recall=False,
     )
     eye = np.eye(4)
     agent = brain.basal_ganglia
@@ -616,7 +616,7 @@ def test_live_runs_on_the_torch_backend_and_fades_device_eligibility(tmp_path):
 
 
 def test_brains_without_arousal_keep_their_checkpoint_format(tmp_path):
-    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0)
+    plain = cd.Brain.compose(4, 2, modules=(8,), seed=0, recall=False)
     plain.step(np.eye(4)[[0]])
     with np.load(plain.save(tmp_path / "plain.npz")) as data:
         meta = metadata(data)

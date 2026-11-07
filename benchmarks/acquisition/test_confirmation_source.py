@@ -95,7 +95,7 @@ def test_canonical_school_preserves_historical_motor_wiring(scripts, seed):
     # The already selected school must retain its historical explicit -0.5.
     reference = Brain.compose(
         650, 36, modules=(32, 16), observers=(), lateral=-0.5,
-        seed=seed, learning=school.learner.config,
+        seed=seed, learning=school.learner.config, recall=False,
     )
     assert_same_initial_graph(school, reference)
     motor = school.motor_index

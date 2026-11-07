@@ -225,7 +225,7 @@ def make_brain(recipe, seed, args):
     cfg = LearnerConfig(**effective["learning"])
     brain = Brain.compose(
         inputs=650, actions=36, modules=(32, 16), observers=(), seed=seed, learning=cfg,
-        lateral=effective["lateral"],
+        lateral=effective["lateral"], recall=False,
     )
     if effective["resting_bias"]:
         resting(brain, effective["resting_bias"])

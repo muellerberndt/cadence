@@ -74,7 +74,7 @@ def test_a_clear_choice_is_the_softmax_choice_and_a_near_tie_declines() -> None:
 
 
 def test_a_greedy_act_reads_as_it_did_at_a_tie() -> None:
-    brain = cd.Brain.compose(4, 3, modules=(8,), seed=0, episodic=False)
+    brain = cd.Brain.compose(4, 3, modules=(8,), seed=0, episodic=False, recall=False)
     agent = brain.basal_ganglia
     x = np.eye(4)[[0, 1]]
     drive = brain.stimulus(x)

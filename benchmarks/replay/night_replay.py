@@ -127,7 +127,7 @@ def make_brain(setting: dict[str, Any], seed: int) -> cd.Brain:
         options["working_memory_amplitude"] = setting["trace_amplitude"]
     if "trace_decay" in setting:
         options["working_memory_decay"] = setting["trace_decay"]
-    brain = cd.Brain.compose(FEATURES, 3, observers=(8,), seed=seed, **options)
+    brain = cd.Brain.compose(FEATURES, 3, observers=(8,), seed=seed, **{"recall": False, **options})
     changes: dict[str, Any] = {}
     if setting.get("frozen_actor"):
         changes.update(eta=0.0, eta_bias=0.0, eta_critic=0.0)

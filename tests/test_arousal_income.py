@@ -89,7 +89,7 @@ def test_slotted_sampling_reports_every_income_and_preserves_pending_continuatio
         modules=(8,),
         slots=5,
         seed=3,
-        arousal=cd.ArousalConfig(youth=100),
+        arousal=cd.ArousalConfig(youth=100), recall=False,
     )
     x = np.array([[0.2, 0.8]])
     brain.live(x)

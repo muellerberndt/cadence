@@ -312,7 +312,7 @@ def run(protocol: dict[str, Any]) -> Receipt:
         result: dict[str, Any] = {"seed": seed, "schedule": schedule,
                                  "schedule_sha256": canonical_sha256(schedule), "arms": {}}
         for arm in ("trace", "exposed", "frozen"):
-            brain = Brain.compose(INPUTS, 2, seed=seed, **protocol["brain"])
+            brain = Brain.compose(INPUTS, 2, seed=seed, **{"recall": False, **protocol["brain"]})
             exposed = arm == "exposed"
             initial = parameter_digest(brain)
             declared = brain.describe()

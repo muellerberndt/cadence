@@ -14,7 +14,7 @@ from cadence.stream import Hearing
 
 
 def brain_of(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, modules=(16,), seed=5, **{"recall": True, "recall_founder": True, **options})
+    return cd.Brain.compose(6, 4, modules=(16,), seed=5, **{"recall": False, **{"recall": True, "recall_founder": True, **options}})
 
 
 def gained(**options) -> cd.Brain:

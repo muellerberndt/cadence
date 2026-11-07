@@ -258,7 +258,7 @@ def test_the_founder_lives_as_the_composition_before_the_option(tmp_path, name):
     and metadata keys after the life."""
     spec = FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     assert brain.recall is None and "recall" not in brain.connectome.populations
     assert _digest(brain) == spec["digest"]
     spec["life"](brain)
@@ -270,7 +270,7 @@ def test_the_founder_lives_as_the_composition_before_the_option(tmp_path, name):
 def test_the_founders_acts_and_checkpoint_bytes_are_the_recorded_ones(tmp_path, name):
     spec = FOUNDERS[name]
     inputs, actions, options = spec["build"]
-    brain = cd.Brain.compose(inputs, actions, **options)
+    brain = cd.Brain.compose(inputs, actions, **{"recall": False, **options})
     assert spec["life"](brain) == spec["acts"]
     assert _checkpoint_digest(brain.save(tmp_path / "founder")) == spec["checkpoint"]
 
@@ -280,7 +280,7 @@ def test_the_founders_acts_and_checkpoint_bytes_are_the_recorded_ones(tmp_path, 
     [{}, {"arousal": True}, {"efference_amplitude": 1.0}, {"history_decays": (0.2, 0.8)}],
 )
 def test_recall_false_builds_the_brain_without_the_option_byte_identically(tmp_path, options):
-    control = cd.Brain.compose(4, 2, modules=(8,), seed=3, episodic=False, **options)
+    control = cd.Brain.compose(4, 2, modules=(8,), seed=3, episodic=False, **{"recall": False, **options})
     founder = composed(recall=False, **options)
     assert founder.recall is None and "recall" not in founder.connectome.populations
     for brain in (control, founder):
@@ -1058,7 +1058,7 @@ def test_the_read_and_lesson_genes_retune_and_the_layout_is_a_construction_setti
 )
 def test_invalid_genes_are_refused(genes):
     with pytest.raises(ValueError):
-        cd.Brain.compose(4, 2, modules=(8,), episodic=False, **genes)
+        cd.Brain.compose(4, 2, modules=(8,), episodic=False, **{"recall": False, **genes})
 
 
 def test_an_unknown_recall_gene_is_refused_as_a_typo():

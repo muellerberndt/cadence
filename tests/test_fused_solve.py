@@ -63,7 +63,7 @@ def test_a_solve_in_one_call_is_the_solve_in_launches(rows: int, budget: int, ch
 
 
 def test_a_state_that_diverges_stops_as_the_launches_stop() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, episodic=False)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, episodic=False, recall=False)
     graph = brain.brain
     wild = graph.with_parameters(efficacy=graph.efficacy * 1e150)
     drive = brain.stimulus(np.random.default_rng(0).random((2, 8)))
@@ -76,7 +76,7 @@ def test_a_state_that_diverges_stops_as_the_launches_stop() -> None:
 
 
 def test_a_wrapped_method_sees_every_launch(monkeypatch: pytest.MonkeyPatch) -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False, recall=False)
     graph = brain.brain
     drive = brain.stimulus(np.random.default_rng(1).random((2, 8)))
     calls: list[str] = []
@@ -98,9 +98,9 @@ def test_a_wrapped_method_sees_every_launch(monkeypatch: pytest.MonkeyPatch) -> 
 
 
 def test_masks_nudges_compartments_and_adaptation_take_the_launches() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(12, 8), seed=2, apical=0.25, episodic=False)
+    brain = cd.Brain.compose(8, 4, modules=(12, 8), seed=2, apical=0.25, episodic=False, recall=False)
     assert not brain.brain._solves_compiled()
-    plain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False).brain
+    plain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False, recall=False).brain
     adapting = NeuralGraph(
         plain.connectome, plain.neuron_model.replace(adaptation=cd.Adaptation(tau_steps=5.0)),
         efficacy=plain.efficacy, bias=plain.bias,
@@ -112,7 +112,7 @@ def test_masks_nudges_compartments_and_adaptation_take_the_launches() -> None:
 
 
 def test_a_subclass_that_withholds_its_blocks_settles_its_own_way() -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=0, episodic=False, recall=False)
     graph = brain.brain
 
     class Withheld(NeuralGraph):

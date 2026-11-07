@@ -41,7 +41,8 @@ def _walk(brain, seed: int, rows: int = 4, cut: int = 1):
 
 def test_without_read_regions_the_brain_is_the_composed_one() -> None:
     built = ir.IndexBrain.build(3)
-    composed = Brain.compose(tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL, seed=3)
+    composed = Brain.compose(tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL,
+                             seed=3, recall=False)
     np.testing.assert_array_equal(built.brain.efficacy, composed.brain.efficacy)
     assert built.index is None
 
@@ -201,7 +202,7 @@ def test_the_sparse_code_is_the_librarys_on_a_stream_of_its_own() -> None:
     code = ir.SparseCode(12_824, 1024, 32, 24, seed=3)
     own = int(np.random.SeedSequence([3, 7103]).generate_state(1)[0])
     assert code.separator.seed == own != 3
-    brain = Brain.compose(12_824, 2, modules=(8,), code=1024, seed=3, episodic=False)
+    brain = Brain.compose(12_824, 2, modules=(8,), code=1024, seed=3, episodic=False, recall=False)
     assert brain.sparse_code.seed == own and brain.sparse_code.fan_in == code.index.shape[1]
     np.testing.assert_array_equal(code.index, brain.sparse_code.index)
     np.testing.assert_array_equal(code.separator.weight, brain.sparse_code.weight)

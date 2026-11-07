@@ -13,7 +13,7 @@ import cadence as cd
 
 def episodic(*args, **options) -> cd.Brain:
     """``Brain.compose`` with the episodic memory, unless ``memory_choice`` is named."""
-    return cd.Brain.compose(*args, **{"memory_choice": True, **options})
+    return cd.Brain.compose(*args, **{"recall": False, **{"memory_choice": True, **options}})
 
 
 def one_hot(index: int, width: int, rows: int = 1) -> np.ndarray:
@@ -40,7 +40,7 @@ def consolidated(brain: cd.Brain, x: np.ndarray, action: int) -> float:
 
 
 def test_the_episodic_memory_is_an_opt_in_preset_of_the_composed_brain():
-    assert cd.Brain.compose(3, 2, seed=1).describe()["memories"].get("episodic") is None
+    assert cd.Brain.compose(3, 2, seed=1, recall=False).describe()["memories"].get("episodic") is None
     brain = episodic(3, 2, seed=1)
     for memory in (brain.hippocampus, brain.context_memory):
         # the stream's record moves halfway at once and fades; the shared record consolidates
@@ -60,7 +60,7 @@ def test_the_episodic_memory_is_an_opt_in_preset_of_the_composed_brain():
     for memory in (brain.hippocampus, brain.context_memory):
         assert memory.separator.expansion == 1024 and memory.separator.winners == 24
     assert episodic(3, 2, seed=1, memory_context=0.0).context_memory is None
-    released = cd.Brain.compose(3, 2, seed=1)
+    released = cd.Brain.compose(3, 2, seed=1, recall=False)
     assert released.describe()["memories"].get("episodic") is None and released.context_memory is None
     np.testing.assert_array_equal(released.hippocampus.pre, released.sensory_index)
     assert released.hippocampus.separator is None and released.hippocampus.rate == 1.0
@@ -68,7 +68,7 @@ def test_the_episodic_memory_is_an_opt_in_preset_of_the_composed_brain():
         np.testing.assert_array_equal(
             getattr(brain.connectome, field), getattr(released.connectome, field)
         )
-    assert cd.Brain.compose(3, 2, seed=1, episodic=False).hippocampus is None
+    assert cd.Brain.compose(3, 2, seed=1, episodic=False, recall=False).hippocampus is None
 
 
 def test_the_episodic_settings_are_validated_construction_settings():
@@ -81,10 +81,10 @@ def test_the_episodic_settings_are_validated_construction_settings():
     with pytest.raises(ValueError, match="memory_choice must be boolean"):
         episodic(3, 2, memory_choice=1)
     with pytest.raises(ValueError, match="need memory_choice"):
-        cd.Brain.compose(3, 2, memory_context=0.5)
+        cd.Brain.compose(3, 2, memory_context=0.5, recall=False)
     for name, value in (("memory_expansion", 1024), ("memory_fan_in", 16)):
         with pytest.raises(ValueError, match=f"{name} was retired in 0.95.0"):
-            cd.Brain.compose(3, 2, memory_choice=True, **{name: value})
+            cd.Brain.compose(3, 2, memory_choice=True, **{"recall": False, **{name: value}})
     connectome = episodic(3, 2, seed=2).connectome
     with pytest.raises(ValueError, match="needs the episodic memory"):
         cd.Brain(connectome, episodic=False, memory_choice=True)
@@ -334,7 +334,7 @@ def test_a_saved_episodic_brain_continues_exactly(tmp_path):
     places.step(one_hot(0, 3))
     resumed = cd.Brain.load(places.save(tmp_path / "places.npz"))
     assert resumed.context_memory is None and resumed.memory_choice
-    released = cd.Brain.compose(3, 2, seed=10)
+    released = cd.Brain.compose(3, 2, seed=10, recall=False)
     released.act(one_hot(0, 3))
     meta = metadata(np.load(released.save(tmp_path / "released.npz")))
     assert meta["format"] == "cadence-brain/1" and "episodic" not in meta
@@ -419,7 +419,7 @@ def test_a_written_outcome_broadcasts_as_given():
     per stream, and refuse an outcome of another shape, as 0.93.0 did."""
     stores = []
     for value in (np.array([0.5, 0.5]), 0.5, np.float64(0.5), np.array([0.5])):
-        brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, memory_choice=True)
+        brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, memory_choice=True, recall=False)
         records = brain._episodic
         obs = np.random.default_rng(0).random((2, len(records.place.pre)))
         keys = np.random.default_rng(1).random((2, len(records.temporal.pre)))
@@ -427,7 +427,7 @@ def test_a_written_outcome_broadcasts_as_given():
         stores.append(records.place.arrays())
     for arrays in stores[1:]:
         assert all(np.array_equal(arrays[k], stores[0][k]) for k in stores[0])
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, memory_choice=True)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=1, memory_choice=True, recall=False)
     records = brain._episodic
     obs = np.random.default_rng(0).random((2, len(records.place.pre)))
     with pytest.raises(ValueError, match="shape mismatch"):

@@ -275,7 +275,7 @@ def test_a_setting_reaches_each_chambers_own_brains_and_leaves_compose_as_it_was
     assert type(cd.Brain.__dict__["compose"]) is classmethod
     with pytest.raises(ValueError, match="sets 'seed' itself"):
         with pr.composed_with({"seed": 3}):
-            cd.Brain.compose(1, 2, seed=0)
+            cd.Brain.compose(1, 2, seed=0, recall=False)
 
 
 def test_the_bandit_moves_its_paying_arm_every_block(monkeypatch):

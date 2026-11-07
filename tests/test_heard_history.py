@@ -17,7 +17,7 @@ GO = np.array([[0.0, 0.0, 0.0, 1.0]])
 
 def composed(seed=3, decays=(0.2, 0.8), **options):
     genes = {} if decays is None else {"history_decays": decays}
-    return cd.Brain.compose(4, 2, modules=(8,), seed=seed, episodic=False, **genes, **options)
+    return cd.Brain.compose(4, 2, modules=(8,), seed=seed, episodic=False, **{"recall": False, **genes, **options})
 
 
 def saved_arrays(path):
@@ -210,7 +210,7 @@ def test_a_saved_history_continues_identically(tmp_path, episodic):
     options = {"memory_choice": True} if episodic else {}
     brain = cd.Brain.compose(
         4, 2, modules=(8,), seed=5, history_decays=(0.2, 0.9), arousal=True,
-        efference_amplitude=1.0, **options,
+        efference_amplitude=1.0, **{"recall": False, **options},
     )
     for t in range(4):
         brain.live(CUE if t % 2 else GO, reward=None if t == 0 else [float(t % 3 == 0)])
