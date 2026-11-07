@@ -5287,8 +5287,11 @@ class Brain:
             "pending": agent._pending is not None,
             "last_learning": self.last_learning,
             "memories": memories,
-            "placement": self.placement,
         }
+        # what it ran on, where that is not the CPU by name: such a file keeps its bytes
+        ran_on = self.placement
+        if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
+            metadata["placement"] = ran_on
         if self._composition is not None:
             metadata["composition"] = plain(self._composition)
         if self.attention:
