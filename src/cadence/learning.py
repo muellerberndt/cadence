@@ -1083,7 +1083,7 @@ class Learner:
                 host_rate=self.synapse_rate,  # read-only from here: a new array is a new key
                 rate=None
                 if self.synapse_rate is None
-                else to(self.synapse_rate, kernel.param_dtype),
+                else to(self.synapse_rate.copy(), kernel.param_dtype),
                 paired=to(self._paired) if len(self._paired) else None,
                 paired_reverse=to(self._paired_reverse) if len(self._paired) else None,
                 members=to(self._members) if len(self._members) else None,
