@@ -39,7 +39,7 @@ def assert_same(a: cd.Equilibrium, b: cd.Equilibrium) -> None:
 @pytest.mark.parametrize("budget", [0, 1, 7, 32, 33, 512])
 @pytest.mark.parametrize("chunk", [1, 8, 32])
 def test_a_solve_in_one_call_is_the_solve_in_launches(rows: int, budget: int, chunk: int) -> None:
-    brain = cd.Brain.compose(8, 4, modules=(16,), seed=3, recall=True, episodic=False)
+    brain = cd.Brain.compose(8, 4, modules=(16,), seed=3, recall=True, recall_founder=True, episodic=False)
     graph = brain.brain
     rng = np.random.default_rng(rows + budget + chunk)
     drive = brain.stimulus(rng.random((rows, 8)))

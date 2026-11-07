@@ -86,7 +86,8 @@ def compose(seed: int, arm: str, depth: str = "flat") -> cd.Brain:
     options = dict(FLAT if depth == "flat" else DEEP)
     options.update(ARMS[arm])
     return cd.Brain.compose(
-        INPUTS, T, seed=seed, episodic=False, recall=True, learning_surprise=True, **options,
+        INPUTS, T, seed=seed, episodic=False, recall=True, recall_founder=True,
+            learning_surprise=True, **options,
     )
 
 

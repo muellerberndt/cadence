@@ -41,6 +41,8 @@ MAP = ("w_x", "w_c", "b")  # the names of head 0's address map, as a checkpoint 
 
 def composed(seed=3, recall=True, **options):
     """``Brain.compose`` with the recall memory, its founder; ``recall=False`` is the control."""
+    if recall:
+        options.setdefault("recall_founder", True)
     return cd.Brain.compose(4, 2, modules=(8,), seed=seed, episodic=False, recall=recall, **options)
 
 
@@ -361,12 +363,12 @@ def test_a_custom_connectome_needs_regions_of_the_value_width():
         ) + tuple(Projection(name, "association", reciprocal=False) for name in names)
         return develop(Genome(layout, projections))
 
-    assert cd.Brain(graph(2), episodic=False, recall=True).recall is not None
+    assert cd.Brain(graph(2), episodic=False, recall=True, recall_founder=True).recall is not None
     with pytest.raises(ValueError):
-        cd.Brain(graph(3), episodic=False, recall=True)
+        cd.Brain(graph(3), episodic=False, recall=True, recall_founder=True)
     with pytest.raises(ValueError):
-        cd.Brain(graph(2, following=False), episodic=False, recall=True)
-    assert cd.Brain(graph(2, following=False), episodic=False, recall=True,
+        cd.Brain(graph(2, following=False), episodic=False, recall=True, recall_founder=True)
+    assert cd.Brain(graph(2, following=False), episodic=False, recall=True, recall_founder=True,
                     recall_next=False).recall is not None
     # without the option, populations of those names are ordinary ones
     assert cd.Brain(graph(3), episodic=False).recall is None
@@ -406,7 +408,7 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
     inst = ir.IndexBrain.build(seed, read=read, learning_surprise=True)
     lib = cd.Brain.compose(  # the instrument reads no position term (``recall_position=0``)
         tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL, seed=seed,
-        learning_surprise=True, recall=True, recall_position=0,
+        learning_surprise=True, recall=True, recall_founder=True, recall_position=0,
         **{f"recall_{k}": v for k, v in extra.items()},
     )
     for name in ("pre", "post", "count", "sign"):
@@ -526,9 +528,9 @@ def test_the_brains_code_keys_the_moments_and_its_storage_follows_its_units_what
     """The memory keys on the brain's observation code (``tests/test_observation_code.py``):
     its keys, values and address map follow the code's units, whatever the width."""
     narrow = cd.Brain.compose(1_025, 2, modules=(16,), seed=1, episodic=False, code=128,
-                              recall=True)
+                              recall=True, recall_founder=True)
     wide = cd.Brain.compose(12_824, 2, modules=(16,), seed=1, episodic=False, code=128,
-                            recall=True)
+                            recall=True, recall_founder=True)
     rng = np.random.default_rng(3)
     for brain in (narrow, wide):
         for _ in range(2):
@@ -638,7 +640,7 @@ def test_a_repeated_dense_query_keeps_the_address_error_bounded(width):
     founder rate on |z|^2 above two would scale a step by ``address * |z|^2`` at every lesson;
     each row's rate is bounded by its own energy, so no step is refused and the error, a
     difference of two attentions over unit keys, stays within two."""
-    brain = cd.Brain.compose(width, 2, modules=(8,), episodic=False, recall=True, seed=2)
+    brain = cd.Brain.compose(width, 2, modules=(8,), episodic=False, recall=True, recall_founder=True, seed=2)
     brain.act(np.eye(width)[[0]], greedy=True)
     brain.act(np.eye(width)[[1]], greedy=True)
     x = np.ones((1, width))
@@ -658,7 +660,7 @@ def test_two_thousand_dense_lessons_keep_the_map_finite_and_the_brain_acting():
     """The address learner alone, the graph's plasticity off: 2,000 lessons on the dense
     observation are all taken, the map and the address stay finite, and the brain acts and
     learns after them."""
-    brain = cd.Brain.compose(512, 2, modules=(8,), episodic=False, recall=True, seed=2)
+    brain = cd.Brain.compose(512, 2, modules=(8,), episodic=False, recall=True, recall_founder=True, seed=2)
     brain.retune(learning=replace(brain.learner.config, eta=0.0, eta_bias=0.0))
     brain.act(np.eye(512)[[0]], greedy=True)
     x = np.ones((1, 512))
@@ -761,7 +763,7 @@ def test_the_bound_leaves_the_token_task_as_it_was(monkeypatch):
     ir = instrument("index_read")
     tb = ir.tb
     brain = cd.Brain.compose(tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL,
-                             seed=0, learning_surprise=True, recall=True)
+                             seed=0, learning_surprise=True, recall=True, recall_founder=True)
     model = brain.brain.neuron_model
     reach = np.abs(model.activation(np.array([-50.0, 50.0]))).max()
     assert reach <= 1.0
@@ -790,7 +792,7 @@ def test_the_bound_leaves_the_token_task_as_it_was(monkeypatch):
 
 
 def test_lessons_teach_the_address_and_step_gives_the_same_lesson():
-    brain = cd.Brain.compose(16, 8, modules=(64,), lateral=0.0, seed=7, recall=True,
+    brain = cd.Brain.compose(16, 8, modules=(64,), lateral=0.0, seed=7, recall=True, recall_founder=True,
                              recall_address=0.1, learning_surprise=True)
     rng = np.random.default_rng(7)
     rows = taught = 0.0
@@ -949,7 +951,7 @@ def test_a_fork_carries_its_own_memory():
 )
 def test_a_saved_memory_continues_identically(tmp_path, options):
     brain = cd.Brain.compose(
-        4, 2, modules=(8,), seed=5, recall=True, recall_address=0.2, arousal=True,
+        4, 2, modules=(8,), seed=5, recall=True, recall_founder=True, recall_address=0.2, arousal=True,
         history_decays=(0.5,), efference_amplitude=1.0, learning_surprise=True, **options,
     )
     for t in range(6):
@@ -1046,12 +1048,12 @@ def test_the_read_and_lesson_genes_retune_and_the_layout_is_a_construction_setti
     [
         {"recall": 1},
         {"recall": False, "recall_amplitude": 1.0},
-        {"recall": True, "recall_temperature": 0.0},
-        {"recall": True, "recall_capacity": 0},
-        {"recall": True, "recall_next": 1},
-        {"recall": True, "recall_recency": -0.1},
-        {"recall": True, "recall_amplitude": float("nan")},
-        {"recall": True, "scales": {"recall": -1.0}},
+        {"recall": True, "recall_founder": True, "recall_temperature": 0.0},
+        {"recall": True, "recall_founder": True, "recall_capacity": 0},
+        {"recall": True, "recall_founder": True, "recall_next": 1},
+        {"recall": True, "recall_founder": True, "recall_recency": -0.1},
+        {"recall": True, "recall_founder": True, "recall_amplitude": float("nan")},
+        {"recall": True, "recall_founder": True, "scales": {"recall": -1.0}},
     ],
 )
 def test_invalid_genes_are_refused(genes):
@@ -1132,7 +1134,7 @@ def _option_lives(extra, seed=2, rounds=8):
     inst = ir.IndexBrain.build(seed, read=dict(_declared(ir), **extra), learning_surprise=True)
     lib = cd.Brain.compose(  # the instrument reads no position term (``recall_position=0``)
         tb.INPUTS, tb.VALUES, modules=(tb.WIDTH,), lateral=tb.LATERAL, seed=seed,
-        learning_surprise=True, recall=True, recall_position=0,
+        learning_surprise=True, recall=True, recall_founder=True, recall_position=0,
         **{f"recall_{k}": v for k, v in extra.items()},
     )
     held = tb.holdout(seed)

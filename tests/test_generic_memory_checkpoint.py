@@ -220,7 +220,7 @@ def test_the_memories_are_one_ordered_family_under_one_contract():
     member is the brain's own attribute and keeps the contract of ``cadence.memories``."""
     from cadence.memories import Memories, Moment
 
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=3, recall=True, efference_amplitude=1.0,
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=3, recall=True, recall_founder=True, efference_amplitude=1.0,
                              history_decays=(0.2, 0.8))
     memories = brain.memories
     assert isinstance(memories, Memories)
@@ -293,7 +293,7 @@ def test_the_episodic_records_are_the_last_member_and_save_as_their_group(tmp_pa
 def test_retained_recall_slots_resume_when_saved_immediately_after_reset(tmp_path, legacy, keep):
     """A reset can keep the old streams' recall slots before the next streams act. Saving
     at that boundary preserves the slots and the following acquired life in either format."""
-    original = cd.Brain.compose(4, 2, modules=(5,), seed=9, recall=True, arousal=True)
+    original = cd.Brain.compose(4, 2, modules=(5,), seed=9, recall=True, recall_founder=True, arousal=True)
     observations = np.eye(4)
     original.step(observations[[0, 1]])
     original.step(observations[[1, 2]], reward=[1.0, -0.5])

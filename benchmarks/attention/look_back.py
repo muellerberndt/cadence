@@ -46,7 +46,7 @@ def sources() -> list[tuple[str, Path]]:
 
 def compose(seed: int, position: int) -> cd.Brain:
     return cd.Brain.compose(
-        INPUTS, SYMBOLS, modules=(24,), seed=seed, episodic=False, recall=True,
+        INPUTS, SYMBOLS, modules=(24,), seed=seed, episodic=False, recall=True, recall_founder=True,
         recall_position=position, recall_recency=0.0, recall_temperature=0.25,
         teaching="normalized", recall_boundary=True,
     )

@@ -22,7 +22,7 @@ RATE = 0.05
 
 def composed(**options):
     options.setdefault("modules", (16,))
-    return cd.Brain.compose(INPUTS, TOKENS, seed=3, episodic=False, recall=True, **options)
+    return cd.Brain.compose(INPUTS, TOKENS, seed=3, episodic=False, recall=True, recall_founder=True, **options)
 
 
 def gained(**options):
@@ -51,7 +51,7 @@ def test_it_is_an_option_that_needs_tokens_and_a_newborn_reads_as_without_it():
     with pytest.raises(ValueError, match="gain"):
         composed(recall_gain=-0.1, recall_tokens=range(TOKENS))
     with pytest.raises(ValueError, match="observation's own coordinates"):
-        cd.Brain.compose(40, 4, code=64, recall=True, recall_gain=RATE,
+        cd.Brain.compose(40, 4, code=64, recall=True, recall_founder=True, recall_gain=RATE,
                          recall_tokens=[0, 1, 2, 3])
     brain = gained()
     np.testing.assert_array_equal(brain.recall.gains, np.zeros(2))
@@ -266,12 +266,12 @@ def test_grow_refuses_what_the_tokens_refuse():
 def test_grow_adds_no_memory_with_tokens_as_it_adds_none_with_a_pathway():
     trained = cd.Brain.compose(6, 4, modules=(16,), seed=1)
     with pytest.raises(ValueError, match="tokens"):
-        trained.grow(recall=True, recall_gain=RATE, recall_tokens=[0, 1, 2, 3])
+        trained.grow(recall=True, recall_founder=True, recall_gain=RATE, recall_tokens=[0, 1, 2, 3])
 
 
 def test_graft_keeps_this_brains_gains(tmp_path):
     host = taught()
-    donor = cd.Brain.compose(INPUTS, TOKENS, modules=(16,), seed=7, episodic=False, recall=True)
+    donor = cd.Brain.compose(INPUTS, TOKENS, modules=(16,), seed=7, episodic=False, recall=True, recall_founder=True)
     grafted = host.graft(donor, ["association", "motor"])
     assert grafted.recall.gain == RATE
     np.testing.assert_array_equal(grafted.recall.gains, host.recall.gains)
@@ -280,7 +280,7 @@ def test_graft_keeps_this_brains_gains(tmp_path):
 
 
 def test_reward_credits_the_gains_of_a_sampled_act(tmp_path):
-    brain = cd.Brain.compose(INPUTS, TOKENS, seed=0, modules=(16,), episodic=False, recall=True,
+    brain = cd.Brain.compose(INPUTS, TOKENS, seed=0, modules=(16,), episodic=False, recall=True, recall_founder=True,
                              recall_gain=RATE, recall_tokens=range(TOKENS))
     assert brain.recall.reward_columns == INPUTS + 2
     brain.act(event(HEAR, 2), greedy=True)
@@ -307,7 +307,7 @@ def test_reward_credits_the_gains_of_a_sampled_act(tmp_path):
 
 
 def test_retune_keeps_the_eligibility_with_the_gain_on():
-    brain = cd.Brain.compose(INPUTS, TOKENS, seed=0, modules=(16,), episodic=False, recall=True,
+    brain = cd.Brain.compose(INPUTS, TOKENS, seed=0, modules=(16,), episodic=False, recall=True, recall_founder=True,
                              recall_gain=RATE, recall_tokens=range(TOKENS))
     brain.act(event(HEAR, 2), greedy=True)
     brain.act(event(HEAR, ASK))
@@ -318,7 +318,7 @@ def test_retune_keeps_the_eligibility_with_the_gain_on():
 
 
 def test_a_reward_step_that_is_not_finite_is_refused_and_a_contrast_keeps_none(monkeypatch):
-    brain = cd.Brain.compose(INPUTS, TOKENS, seed=0, modules=(16,), episodic=False, recall=True,
+    brain = cd.Brain.compose(INPUTS, TOKENS, seed=0, modules=(16,), episodic=False, recall=True, recall_founder=True,
                              recall_gain=RATE, recall_tokens=range(TOKENS))
     recall = brain.recall
     shape = (recall.map_width + len(recall.association) + 1, recall.reward_columns)
@@ -345,7 +345,7 @@ def test_the_gain_learns_on_a_device_as_on_the_cpu(tmp_path, backend, device, pr
     if backend not in cd.available_backends():
         pytest.skip(f"{backend} not installed")
     cpu = cd.Brain.compose(INPUTS, TOKENS, seed=5, modules=(16,), episodic=False,
-                           teaching="normalized", recall=True, recall_gain=RATE,
+                           teaching="normalized", recall=True, recall_founder=True, recall_gain=RATE,
                            recall_tokens=range(TOKENS))
     cpu.save(tmp_path / "brain.npz")
     moved = cd.Brain.load(tmp_path / "brain.npz", backend=backend, device=device,

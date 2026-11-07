@@ -18,7 +18,7 @@ INPUTS, ACTIONS = 5, 3
 
 def composed(**options):
     options.setdefault("modules", (16,))
-    return cd.Brain.compose(INPUTS, ACTIONS, seed=2, episodic=False, recall=True, **options)
+    return cd.Brain.compose(INPUTS, ACTIONS, seed=2, episodic=False, recall=True, recall_founder=True, **options)
 
 
 def event(i):
@@ -79,7 +79,7 @@ def test_every_slot_carries_the_command_executed_at_its_moment():
 
 
 def test_a_slotted_motor_carries_one_choice_per_slot():
-    brain = cd.Brain.compose(INPUTS, 5, slots=(3, 2), seed=1, episodic=False, recall=True,
+    brain = cd.Brain.compose(INPUTS, 5, slots=(3, 2), seed=1, episodic=False, recall=True, recall_founder=True,
                              recall_action=True)
     chosen = brain.act(event(1), greedy=True)
     command = np.zeros(5)

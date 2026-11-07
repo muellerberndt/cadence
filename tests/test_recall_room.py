@@ -12,7 +12,7 @@ import cadence as cd
 
 
 def brain(capacity: int = 8) -> cd.Brain:
-    return cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, recall_capacity=capacity,
+    return cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, recall_founder=True, recall_capacity=capacity,
                             episodic=False)
 
 

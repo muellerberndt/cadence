@@ -184,14 +184,14 @@ def test_compose_wraps_a_custom_anatomy_with_the_composed_founders():
     refuses layout settings and populations that do not fit the inputs and actions."""
     from cadence import Genome, develop
 
-    options = dict(memory_choice=True, recall=True, seed=3)
+    options = dict(memory_choice=True, recall=True, recall_founder=True, seed=3)
     composed = Brain.compose(6, 3, modules=(8,), **options)
     genome = Genome.composed(6, 3, modules=(8,), **options)
     wrapped = Brain.compose(6, 3, connectome=develop(genome, seed=3), **options)
     np.testing.assert_array_equal(wrapped.brain.efficacy, composed.brain.efficacy)
     np.testing.assert_array_equal(wrapped.brain.bias, composed.brain.bias)
     assert wrapped.describe()["memories"].get("episodic") == composed.describe()["memories"].get("episodic")
-    plain = Brain(develop(genome, seed=3), memory_choice=True, recall=True, seed=3)
+    plain = Brain(develop(genome, seed=3), memory_choice=True, recall=True, recall_founder=True, seed=3)
     # only compose fills them in
     assert plain.memories["episodic"].share == 0.0 < wrapped.memories["episodic"].share
     x = np.eye(6)[[1]]

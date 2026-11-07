@@ -13,7 +13,7 @@ pytest.importorskip("numba")
 
 
 def composed() -> cd.Brain:
-    return cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_recency=0.0,
+    return cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_founder=True, recall_recency=0.0,
                             recall_anchor=True, recall_relative=True, recall_slope=0.1,
                             recall_capacity=24, episodic=False)
 

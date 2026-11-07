@@ -13,7 +13,7 @@ import pytest
 import cadence as cd
 
 OPTIONS = dict(
-    recall=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
+    recall=True, recall_founder=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
     recall_slope=0.1, recall_relative=True, recall_when=True, recall_position_rate=0.05,
 )
 TOKENS, CUE = 4, 4

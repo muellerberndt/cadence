@@ -17,7 +17,7 @@ def composed(seed=3, heads=2, **options):
     """A small brain with the recall memory and ``heads`` heads learning their addresses."""
     options.setdefault("recall_address", 0.01)
     return cd.Brain.compose(
-        4, 2, modules=(8,), seed=seed, episodic=False, recall=True, recall_heads=heads, **options
+        4, 2, modules=(8,), seed=seed, episodic=False, recall=True, recall_founder=True, recall_heads=heads, **options
     )
 
 

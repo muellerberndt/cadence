@@ -286,6 +286,12 @@ def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
         raise ValueError("recall must be boolean")
     founders = Recall.founders()
     settings: dict[str, Any] = {}
+    # ``compose``'s word for a memory at its founders: read there, no setting of the memory
+    named_founder = genes.pop("recall_founder", None)
+    if named_founder is not None and not isinstance(named_founder, bool):
+        raise ValueError("recall_founder must be boolean")
+    if named_founder is not None and not recall:
+        raise ValueError("recall settings need recall=True")
     for name in [name for name in genes if name.startswith("recall_")]:
         setting = name[len("recall_"):]
         if setting in Recall.RETIRED:
@@ -2617,6 +2623,12 @@ class Brain:
             options.setdefault("recall_address", 0.0 if single else 0.01)
             options.setdefault("recall_recency", 0.0)
             options.setdefault("recall_temperature", 0.1 if single else 0.25)
+        if options.get("recall", False) is True and not attention:
+            # the memory and the lessons a new brain composes, each an ordinary setting the
+            # caller's overrides; the founder word takes none of them
+            if not options.get("recall_founder", False):
+                for name, value in Recall.composed(options).items():
+                    options.setdefault(f"recall_{name}", value)
 
         genome, layout = _layout(
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
@@ -5691,7 +5703,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
         # comes back with the brain's settings
         settings["efference_amplitude"] = 1.0
     if brain.recall is not None:
-        settings["recall"] = True
+        # the brain's own settings, whatever a new brain's memory composes
+        settings.update(recall=True, recall_founder=True)
     if brain.hippocampus is None:
         settings["episodic"] = False
     if brain._episodic is not None:

@@ -13,7 +13,7 @@ import cadence as cd
 
 
 def lived(**options) -> cd.Brain:
-    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, **options)
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, recall_founder=True, **options)
     rng = np.random.default_rng(0)
     for i in range(4):
         brain.step(rng.random((2, 6)), **({} if i == 0 else {"reward": rng.normal(size=2)}))
@@ -54,9 +54,9 @@ def test_an_unrelated_retune_keeps_the_position_trace():
 
 def test_position_reward_needs_the_position_term():
     with pytest.raises(ValueError, match="needs position"):
-        cd.Brain.compose(6, 3, seed=0, recall=True, recall_position=0,
+        cd.Brain.compose(6, 3, seed=0, recall=True, recall_founder=True, recall_position=0,
                          recall_position_reward=1.0)
-    brain = cd.Brain.compose(6, 3, seed=0, recall=True, recall_position=0)
+    brain = cd.Brain.compose(6, 3, seed=0, recall=True, recall_founder=True, recall_position=0)
     with pytest.raises(ValueError, match="needs position"):
         brain.retune(recall_position_reward=1.0)
 
@@ -69,10 +69,10 @@ def test_the_position_rate_retunes_freely_where_reward_does_not_train_the_positi
 
 
 def test_retune_refuses_a_position_reward_at_a_frozen_table():
-    brain = cd.Brain.compose(6, 4, seed=0, recall=True, recall_position_reward=1.0)
+    brain = cd.Brain.compose(6, 4, seed=0, recall=True, recall_founder=True, recall_position_reward=1.0)
     with pytest.raises(ValueError, match="position_rate above 0"):
         brain.retune(recall_position_rate=0.0)
-    frozen = cd.Brain.compose(6, 4, seed=0, recall=True, recall_position_rate=0.0)
+    frozen = cd.Brain.compose(6, 4, seed=0, recall=True, recall_founder=True, recall_position_rate=0.0)
     with pytest.raises(ValueError, match="position_rate above 0"):
         frozen.retune(recall_position_reward=1.0)
     frozen.retune(recall_position_rate=0.05, recall_position_reward=1.0)  # both at once

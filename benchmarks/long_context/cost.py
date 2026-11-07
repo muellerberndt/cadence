@@ -26,7 +26,8 @@ from typing import Any
 import numpy as np
 
 FD: dict[str, Any] = {
-    "episodic": False, "teaching": "deep", "recall": True, "recall_recency": 0.0,
+    "episodic": False, "teaching": "deep", "recall": True, "recall_founder": True,
+        "recall_recency": 0.0,
     "learning_surprise": True, "recall_boundary": True, "recall_anchor": True,
     "recall_slope": 0.1, "recall_position_rate": 0.01, "recall_relative": True,
 }

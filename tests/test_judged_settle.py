@@ -15,7 +15,7 @@ from cadence.brain import Brain as NeuralGraph
 
 
 def composed(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, learning_surprise=True,
+    return cd.Brain.compose(6, 3, modules=(16,), seed=0, recall=True, recall_founder=True, learning_surprise=True,
                             teaching="normalized", episodic=False, **options)
 
 

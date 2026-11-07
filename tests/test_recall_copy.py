@@ -20,7 +20,7 @@ HEAR, ASK, NOISE = TOKENS, TOKENS + 1, TOKENS + 2
 
 def composed(**options):
     options.setdefault("modules", (16,))
-    return cd.Brain.compose(INPUTS, TOKENS, seed=3, episodic=False, recall=True, **options)
+    return cd.Brain.compose(INPUTS, TOKENS, seed=3, episodic=False, recall=True, recall_founder=True, **options)
 
 
 def event(*on):
@@ -159,11 +159,11 @@ def test_invalid_pathways_are_refused(options, message):
 
 def test_a_fixed_code_and_a_custom_anatomy_without_the_synapses_are_refused():
     with pytest.raises(ValueError, match="observation's own coordinates"):
-        cd.Brain.compose(40, 4, code=64, recall=True, recall_copy=1.0,
+        cd.Brain.compose(40, 4, code=64, recall=True, recall_founder=True, recall_copy=1.0,
                          recall_tokens=[0, 1, 2, 3])
     founder = composed()
     with pytest.raises(ValueError, match="copy needs synapses"):
-        cd.Brain(founder.connectome, recall=True, recall_copy=1.0, episodic=False)
+        cd.Brain(founder.connectome, recall=True, recall_founder=True, recall_copy=1.0, episodic=False)
     with pytest.raises(ValueError, match="construction setting"):
         composed(recall_copy=1.0).retune(recall_copy=2.0)
 

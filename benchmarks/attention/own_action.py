@@ -51,9 +51,10 @@ UNIFORM = 0.5
 TASKS = ("alternate", "timing")
 ARMS: dict[str, dict[str, Any]] = {
     "plain": {},
-    "recall": {"recall": True},
-    "action": {"recall": True, "recall_action": True},
-    "efference": {"recall": True, "efference_amplitude": 3.0, "efference_decay": 0.5},
+    "recall": {"recall": True, "recall_founder": True},
+    "action": {"recall": True, "recall_founder": True, "recall_action": True},
+    "efference": {"recall": True, "recall_founder": True, "efference_amplitude": 3.0,
+                  "efference_decay": 0.5},
 }
 SEEDS = (0, 1, 2, 3, 4, 5)
 # every moment is a new moment; the observation repeats by design, so the library's warning

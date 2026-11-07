@@ -52,7 +52,7 @@ def test_one_gain_per_carried_route_each_one_parameter():
     assert brain.carried_gains == {"trace": 1.0}
     assert brain.parameters() == brain_of().parameters() + 1
     options = {
-        "history_decays": (0.5, 0.9), "efference_amplitude": 0.2, "recall": True, "recall_heads": 2,
+        "history_decays": (0.5, 0.9), "efference_amplitude": 0.2, "recall": True, "recall_founder": True, "recall_heads": 2,
     }
     full = brain_of(carried_gain=0.01, **options)
     assert full.carried_gains == {
@@ -64,7 +64,7 @@ def test_one_gain_per_carried_route_each_one_parameter():
 
 def test_a_gain_scales_what_its_route_drives():
     brain = brain_of(
-        carried_gain=0.01, history_decays=(0.5, 0.9), efference_amplitude=0.2, recall=True,
+        carried_gain=0.01, history_decays=(0.5, 0.9), efference_amplitude=0.2, recall=True, recall_founder=True,
     )
     rng = np.random.default_rng(2)
     for _ in range(3):
@@ -159,7 +159,7 @@ def test_a_lesson_of_another_batch_reads_its_memory_as_silence():
 
 
 def test_a_checkpoint_continues_exactly(tmp_path):
-    brain = brain_of(carried_gain=0.01, history_decays=(0.5, 0.9), recall=True)
+    brain = brain_of(carried_gain=0.01, history_decays=(0.5, 0.9), recall=True, recall_founder=True)
     teach(brain)
     live(brain)
     rng = np.random.default_rng(9)
@@ -252,7 +252,7 @@ def test_the_gains_learn_on_a_device_as_on_the_cpu(tmp_path, backend, device, pr
         torch = pytest.importorskip("torch")
         if not torch.backends.mps.is_available():
             pytest.skip("MPS hardware unavailable")
-    cpu = brain_of(carried_gain=0.01, history_decays=(0.5, 0.9), recall=True, recall_when=True)
+    cpu = brain_of(carried_gain=0.01, history_decays=(0.5, 0.9), recall=True, recall_founder=True, recall_when=True)
     cpu.save(tmp_path / "brain.npz")
     moved = cd.Brain.load(
         tmp_path / "brain.npz", backend=backend, device=device, precision=precision
@@ -276,7 +276,7 @@ def test_grow_adds_no_gains_to_a_brain_without_them():
 
 def test_every_routine_keeps_the_gains_in_their_bounds():
     brain = brain_of(
-        carried_gain=0.01, recall=True, arousal=True, memory_choice=True,
+        carried_gain=0.01, recall=True, recall_founder=True, arousal=True, memory_choice=True,
         efference_amplitude=0.5, history_decays=(0.5,),
     )
     rng = np.random.default_rng(4)

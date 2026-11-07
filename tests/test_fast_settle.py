@@ -15,7 +15,7 @@ pytest.importorskip("numba")
 
 
 def brain(**options) -> cd.Brain:
-    return cd.Brain.compose(8, 4, modules=(32,), seed=3, recall=True, episodic=False,
+    return cd.Brain.compose(8, 4, modules=(32,), seed=3, recall=True, recall_founder=True, episodic=False,
                             learning_surprise=True, **options)
 
 
@@ -120,7 +120,7 @@ def test_retune_takes_it_and_grow_and_graft_carry_it() -> None:
     stream(subject, 3)
     assert "row_sweeps" in subject.last_settlement
     plain = cd.Brain.compose(8, 4, modules=(32,), seed=3, episodic=False, learning_fast_settle=True)
-    assert plain.grow(recall=True).learner.config.fast_settle is True
+    assert plain.grow(recall=True, recall_founder=True).learner.config.fast_settle is True
     donor = cd.Brain.compose(8, 4, modules=(32,), seed=4, episodic=False)
     grafted = copy.deepcopy(plain).graft(donor, ["association", "motor"])
     assert grafted.learner.config.fast_settle is True

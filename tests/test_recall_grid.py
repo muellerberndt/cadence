@@ -15,7 +15,7 @@ FLAT = {"recall_recency": 0.0}
 
 
 def grid(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=True, **options)
+    return cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=True, recall_founder=True, **options)
 
 
 def fill(brain: cd.Brain, slots: int, seed: int = 1) -> cd.Recall:

@@ -56,7 +56,7 @@ def test_a_living_brain_saves_and_continues_on_mlx(tmp_path):
 
 
 def test_imagination_observers_recall_heads_and_growth_run_on_mlx(tmp_path):
-    _, mlx = pair(tmp_path, observers=(8,), recall=True, recall_heads=2)
+    _, mlx = pair(tmp_path, observers=(8,), recall=True, recall_founder=True, recall_heads=2)
     phases = mlx.imagine([X[:1], X[1:2]])
     assert all(np.all(phase.qualified) for phase in phases)
     for _ in range(3):

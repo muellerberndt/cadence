@@ -17,7 +17,7 @@ import cadence as cd
 from cadence.learning import LearnerConfig
 
 VOCAB, CUES = 4, ("first", "last")
-READ = dict(recall=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
+READ = dict(recall=True, recall_founder=True, recall_recency=0.0, recall_boundary=True, recall_anchor=True,
             learning_surprise=True)
 
 
@@ -180,7 +180,7 @@ def frozen(rehearsal: float, **options) -> cd.Brain:
     """A brain whose lessons change no parameter (the learner's and the read's steps at zero),
     with every memory a stream keeps."""
     return cd.Brain.compose(
-        VOCAB + len(CUES), VOCAB, modules=(16,), seed=3, recall=True, recall_recency=0.0,
+        VOCAB + len(CUES), VOCAB, modules=(16,), seed=3, recall=True, recall_founder=True, recall_recency=0.0,
         recall_boundary=True, recall_anchor=True, recall_relative=True, recall_address=0.0,
         recall_position_rate=0.0, efference_amplitude=1.0, history_decays=(0.5,),
         learning=LearnerConfig(eta=0.0, eta_bias=0.0, surprise=True, rehearsal=rehearsal),

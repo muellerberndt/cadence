@@ -17,7 +17,7 @@ X = np.eye(4)
 def life(position_reward: float, *, anchor: bool = False, moments: int = 60, seed: int = 0,
          **options):
     brain = cd.Brain.compose(
-        4, 2, seed=seed, recall=True, arousal=True, recall_position_reward=position_reward,
+        4, 2, seed=seed, recall=True, recall_founder=True, arousal=True, recall_position_reward=position_reward,
         recall_anchor=anchor, **options,
     )
     action = brain.live(X[[0]])
@@ -32,7 +32,7 @@ def moved(maps) -> bool:
 
 def first_contrast(**options) -> np.ndarray:
     """The read's first eligibility that is not zero in a life of rewards."""
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=1, recall=True, arousal=True, **options)
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=1, recall=True, recall_founder=True, arousal=True, **options)
     action = brain.live(X[[0]])
     for t in range(1, 30):
         pending = brain.basal_ganglia._pending_memory
@@ -72,7 +72,7 @@ def test_position_reward_needs_a_position_rate_above_zero():
     import pytest
 
     with pytest.raises(ValueError, match="position_rate above 0"):
-        cd.Brain.compose(6, 4, seed=0, recall=True, recall_position_reward=1.0,
+        cd.Brain.compose(6, 4, seed=0, recall=True, recall_founder=True, recall_position_reward=1.0,
                          recall_position_rate=0.0)
 
 
@@ -86,7 +86,7 @@ def test_reward_steps_the_event_rows_alone():
     for kind in (recall.position_maps, recall.anchor_maps):
         (p_x, p_c, p), = kind
         assert p_x.any() and not (p_c.any() or p.any())
-    taught = cd.Brain.compose(4, 2, seed=0, recall=True, arousal=True, recall_anchor=True)
+    taught = cd.Brain.compose(4, 2, seed=0, recall=True, recall_founder=True, arousal=True, recall_anchor=True)
     for t in range(6):
         taught.act(X[[t % 4]], greedy=True)
     taught.lesson(X[[1]], np.array([1]))

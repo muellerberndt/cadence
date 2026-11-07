@@ -10,7 +10,7 @@ import cadence as cd
 
 def populated() -> cd.Brain:
     brain = cd.Brain.compose(
-        3, 2, modules=(4,), seed=31, memory_choice=True, recall=True, recall_window=2
+        3, 2, modules=(4,), seed=31, memory_choice=True, recall=True, recall_founder=True, recall_window=2
     )
     brain.act(np.eye(3), greedy=True)
     brain.act(np.roll(np.eye(3), 1, axis=1), greedy=True)

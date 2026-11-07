@@ -17,7 +17,7 @@ FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recall_when_093"
 
 
 def when(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, seed=5, recall=True, **options)
+    return cd.Brain.compose(6, 4, seed=5, recall=True, recall_founder=True, **options)
 
 
 def test_when_is_an_option_with_a_region_per_head():

@@ -14,7 +14,7 @@ from cadence import stream
 
 def two_slots():
     brain = cd.Brain.compose(
-        2, 2, modules=(4,), episodic=False, recall=True,
+        2, 2, modules=(4,), episodic=False, recall=True, recall_founder=True,
         recall_temperature=0.25, recall_recency=0.0,
     )
     brain.act([[1.0, 0.0]], greedy=True)
@@ -114,7 +114,7 @@ def test_an_operation_binds_the_bank_by_identity_and_releases_it(monkeypatch):
 
 def held_heads_brain(**options):
     return cd.Brain.compose(
-        4, 3, modules=(8,), episodic=False, recall=True, recall_heads=2, recall_window=2,
+        4, 3, modules=(8,), episodic=False, recall=True, recall_founder=True, recall_heads=2, recall_window=2,
         recall_temperature=0.25, recall_recency=0.0, seed=3, **options,
     )
 
@@ -236,7 +236,7 @@ def test_the_lesson_warning_names_its_caller():
 
 def test_a_partial_reset_inside_an_operation_is_read():
     brain = cd.Brain.compose(
-        2, 2, modules=(4,), episodic=False, recall=True,
+        2, 2, modules=(4,), episodic=False, recall=True, recall_founder=True,
         recall_temperature=0.25, recall_recency=0.0,
     )
     brain.act([[1.0, 0.0], [0.0, 1.0]], greedy=True)
@@ -270,7 +270,7 @@ def test_a_copy_taken_during_an_operation_reads_edits_after_it():
 @pytest.mark.parametrize("capacity", [1, 2, 7])
 def test_successors_and_eviction_match_independent_stream_histories(capacity):
     recall = cd.Brain.compose(
-        4, 2, modules=(8,), episodic=False, recall=True, recall_capacity=capacity,
+        4, 2, modules=(8,), episodic=False, recall=True, recall_founder=True, recall_capacity=capacity,
     ).recall
     recall._empty(3)
     rng = np.random.default_rng(825)

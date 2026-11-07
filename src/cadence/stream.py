@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, fields
 from math import gcd
 from threading import Lock
 from types import MappingProxyType
-from typing import Any, NamedTuple
+from typing import Any, ClassVar, NamedTuple
 
 import numpy as np
 
@@ -780,6 +780,10 @@ class Recall:
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens", "action", "anchor",
                             "relative", "slope", "when", "gain", "grid", "drive_gain")
+    # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
+    # ordinary settings a caller's value overrides. The founder stays what a saved memory without
+    # the setting means, so a saved brain keeps the values it was saved with
+    COMPOSED: ClassVar[dict[str, Any]] = {}
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the position lesson's rate a unit of dopamine steps the position maps at, times
     # ``position_reward``: the founder's ``position_rate``, whatever rate the lessons take
@@ -825,6 +829,23 @@ class Recall:
         ``Brain.compose(..., recall=True)``; ``options()`` gives the options beside them."""
         defaults = {item.name: item.default for item in fields(cls)}
         return {name: defaults[name] for name in (*cls.RUNTIME, *cls.CONSTRUCTION)}
+
+    @classmethod
+    def composed(cls, named: Mapping[str, Any]) -> dict[str, Any]:
+        """What a new memory takes (``COMPOSED``) beside the settings a caller ``named``:
+        ``recall_position=0`` builds no position term, so what reads beside it stays out,
+        ``recall_position_rate=0.0`` holds the maps still, so the reward's step on them does, and
+        ``carried_gain=0.0`` learns no gain, so the read's route does."""
+        out = dict(cls.COMPOSED)
+        if named.get("recall_position") == 0:
+            for name in ("position_rate", "anchor", "relative", "slope", "grid",
+                         "position_reward"):
+                out.pop(name, None)
+        elif named.get("recall_position_rate") == 0:
+            out.pop("position_reward", None)
+        if named.get("carried_gain") == 0:
+            out.pop("drive_gain", None)
+        return out
 
     @classmethod
     def options(cls) -> dict[str, Any]:

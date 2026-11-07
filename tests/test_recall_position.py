@@ -23,7 +23,7 @@ FIXTURE = Path(__file__).resolve().parent / "fixtures" / "recall_0890"
 
 
 def composed(**options):
-    return cd.Brain.compose(8, 3, modules=(16,), seed=3, episodic=False, recall=True, **options)
+    return cd.Brain.compose(8, 3, modules=(16,), seed=3, episodic=False, recall=True, recall_founder=True, **options)
 
 
 def stream(n=12, seed=0):

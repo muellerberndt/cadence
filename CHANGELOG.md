@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- Add `recall_founder` to `Brain.compose`: `recall_founder=True` beside `recall=True` composes the
+  memory at the founders of its settings table, whatever `recall=True` gives a new brain. It is no
+  setting of the memory, so it is neither described nor saved.
 - Add `recall_drive_gain` (opt-in, construction, founder off; it needs `carried_gain`): the read's drive
   is one more route of the carried gains, one learned gain over every read port, starting at
   `recall_amplitude` and reaching no higher, taught by the same contrast on lessons and the same

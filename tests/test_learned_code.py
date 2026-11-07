@@ -166,7 +166,7 @@ FOUNDERS: dict[str, dict] = {
     # recall without the position term of 0.89.0: the acts and parameters predate it; the
     # description and the checkpoint name recall_position=0, which differs from its founder
     "recalled": {
-        "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": True, "recall": True,
+        "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": True, "recall": True, "recall_founder": True,
                          "recall_position": 0, "history_decays": (0.2, 0.9),
                          "efference_amplitude": 1.0, "memory_choice": True}),
         "life": lived,
@@ -179,7 +179,7 @@ FOUNDERS: dict[str, dict] = {
     },
     "taught": {
         "build": (16, 8, {"modules": (64,), "lateral": 0.0, "seed": 1,
-                          "learning_surprise": True, "recall": True, "recall_position": 0}),
+                          "learning_surprise": True, "recall": True, "recall_founder": True, "recall_position": 0}),
         "life": taught,
         "parameters": "1b72292d2b15754485932c2527b342353a6934c638e8e25f3da7d05e6b1e45ce",
         "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 7, 0, 0, 0, 1],
@@ -261,7 +261,7 @@ def region_digest(brain: cd.Brain, acts: list[int], path: Path) -> str:
 # reproduced the earlier digests exactly.
 REGION_FOUNDERS: dict[str, dict] = {
     "region": {
-        "build": (16, 8, {"modules": (24,), "seed": 5, "learned_code": 16, "recall": True,
+        "build": (16, 8, {"modules": (24,), "seed": 5, "learned_code": 16, "recall": True, "recall_founder": True,
                           "recall_position": 0}),  # recorded before the position term
         "life": taught,
         "digest": "8ef21e03bb9d987b50ee7ada774f3b391a75ea47e7c8b76599b3b48504b8fbae",
@@ -456,7 +456,7 @@ def test_the_code_is_a_fixed_point_of_the_whole_settle_and_the_memories_key():
     at unit length; the reconstruction error fell over the phase's sweeps."""
     # the region's rates frozen: its learning after the moment would change the equations
     # the settled state is checked against
-    brain = composed(recall=True)
+    brain = composed(recall=True, recall_founder=True)
     brain.learned_code.learning = False
     x = tokens(3, 7, 11)
     brain.act(x, greedy=True)
@@ -635,7 +635,7 @@ def test_routine_live_and_wait_keep_the_code_tables_still_until_aroused(tmp_path
 
 
 def test_the_lesson_and_the_outcome_leave_the_region_to_its_own_rule():
-    brain = composed(recall=True)
+    brain = composed(recall=True, recall_founder=True)
     x = tokens(2, 6)
     brain.act(x, greedy=True)
     code = brain.learned_code
@@ -659,7 +659,7 @@ def test_the_lesson_and_the_outcome_leave_the_region_to_its_own_rule():
 
 
 def test_the_key_of_a_decision_is_its_moments_code_and_the_history_hears_the_code():
-    brain = composed(recall=True, history_decays=(0.5,), arousal=True, memory_choice=True)
+    brain = composed(recall=True, recall_founder=True, history_decays=(0.5,), arousal=True, memory_choice=True)
     assert len(brain.connectome.populations["history"]) == UNITS  # it hears the code part
     x = tokens(5)
     brain.live(x)
@@ -685,7 +685,7 @@ def test_the_key_of_a_decision_is_its_moments_code_and_the_history_hears_the_cod
 
 
 def test_a_checkpoint_carries_the_region_and_a_tampered_one_is_refused(tmp_path):
-    brain = composed(recall=True, arousal=True, memory_choice=True, history_decays=(0.3,))
+    brain = composed(recall=True, recall_founder=True, arousal=True, memory_choice=True, history_decays=(0.3,))
     x = [tokens(k) for k in (1, 4, 7)]
     for t in range(5):
         brain.live(x[t % 3], reward=None if t == 0 else [float(t % 2)])
@@ -835,7 +835,7 @@ def test_a_brain_with_the_region_deep_copies_and_imagines():
     """``copy.deepcopy`` of a brain with the region: the copy shares the immutable
     connectomes and holds its own tables, state and generators, acts as the original acts,
     learns apart from it, and imagines."""
-    brain = composed(seed=5, recall=True, arousal=True, memory_choice=True)
+    brain = composed(seed=5, recall=True, recall_founder=True, arousal=True, memory_choice=True)
     x = tokens(3, 9)
     brain.act(x, greedy=True)
     twin = copy.deepcopy(brain)
@@ -880,7 +880,7 @@ def test_an_imagined_branch_leaves_the_region_and_the_checkpoint_as_they_were(tm
             acts.append(brain.step(moment(m), reward=reward, done=done).tolist())
         return acts
 
-    brain = cd.Brain.compose(12, 4, learned_code=16, memory_choice=True, recall=True,
+    brain = cd.Brain.compose(12, 4, learned_code=16, memory_choice=True, recall=True, recall_founder=True,
                              history_decays=(0.2, 0.8), efference_amplitude=1.0, seed=5)
     live(brain, 0, 13)
     region = brain.learned_code
@@ -910,7 +910,7 @@ def test_every_memory_keys_on_the_context_free_code():
     code phase, reported as ``context_free_steps``), so a known situation is found again
     along a new path; the region learns from the code in context; a decision keeps the key
     it was taken under."""
-    brain = composed(seed=9, recall=True, memory_choice=True, arousal=True)
+    brain = composed(seed=9, recall=True, recall_founder=True, memory_choice=True, arousal=True)
     code = brain.learned_code
     # a predictor with weight: at birth it is zero and the two phases coincide
     code.weights[:] = 0.2 * np.random.default_rng(3).random(code.weights.shape)
@@ -965,7 +965,7 @@ def test_a_long_stream_leaves_the_code_alive(tmp_path):
     thresholds stay finite and nonnegative, every token keeps at least one active unit in
     context and context-free, and at least one unit is in use per token; a checkpoint with
     a negative threshold is refused."""
-    brain = composed(seed=11, units=32, recall=True)
+    brain = composed(seed=11, units=32, recall=True, recall_founder=True)
     code = brain.learned_code
     code.threshold_rate = 0.01
     rng = np.random.default_rng(5)
@@ -1034,7 +1034,7 @@ def test_the_key_joins_the_code_to_the_observations_identity():
     """The memories' key is ``unit([sqrt(1 - w) code, sqrt(w) unit(x)])`` at the region's
     identity weight ``w`` (.9): the identity part is the observation at unit length weighted
     by ``sqrt(w)``, the code part the rectified settled code."""
-    brain = composed(seed=2, recall=True)
+    brain = composed(seed=2, recall=True, recall_founder=True)
     w = cd.LearnedCode.IDENTITY
     x = tokens(4, 9, 9)
     brain.act(x, greedy=True)
@@ -1193,7 +1193,7 @@ def test_the_key_takes_the_observations_norm():
     one-hot one's norm 1, and the history hears the code at unit length."""
     x = tokens(3, 9)
     x[1, 20] = 1.0  # the second stream: two inputs at once
-    brain = composed(seed=6, recall=True, history_decays=(0.5,))
+    brain = composed(seed=6, recall=True, recall_founder=True, history_decays=(0.5,))
     brain.act(x, greedy=True)
     keys = brain.recall.keys[:, -1, :]
     np.testing.assert_allclose(np.linalg.norm(keys, axis=1), [1.0, np.sqrt(2.0)], atol=1e-9)
@@ -1207,7 +1207,7 @@ def test_a_held_code_is_a_source_and_the_brain_keeps_the_models_step(tmp_path):
     settle and a lesson's phases they publish the phase's code exactly, the brain integrates
     at the model's step with its budgets as configured while the region's phase steps alone,
     no standing boundary acts on the whole graph, and a checkpoint continues the life."""
-    brain = composed(seed=3, recall=True)
+    brain = composed(seed=3, recall=True, recall_founder=True)
     code = brain.learned_code
     code.top_down = 4.0  # a stepping phase
     for name in ("dictionary", "lateral", "predictor"):
@@ -1235,7 +1235,7 @@ def test_the_cortex_and_the_memories_read_the_context_free_code():
     """The code units are held at the context-free code's
     fixed point (the observation's code settled alone), the recall keys are the context-free
     keys, and the region learns from the code in context, the prediction's pull in it."""
-    brain = composed(seed=4, recall=True)
+    brain = composed(seed=4, recall=True, recall_founder=True)
     code = brain.learned_code
     x = tokens(2, 6)
     brain.act(x, greedy=True)  # the trace now carries a moment
@@ -1267,7 +1267,7 @@ def test_an_observation_wider_than_the_code_is_keyed_on_the_code_alone(tmp_path)
     assert cd.LearnedCode.joins(53, 64) and cd.LearnedCode.joins(64, 64)
     assert not cd.LearnedCode.joins(65, 64)
     assert composed(seed=2).code_width == UNITS + INPUTS
-    wide = composed(seed=2, units=32, recall=True, memory_choice=True, arousal=True)
+    wide = composed(seed=2, units=32, recall=True, recall_founder=True, memory_choice=True, arousal=True)
     assert wide.code_width == 32 and wide.learned_code.identity == 0.0
     assert cd.Genome.observation_width(INPUTS, None, 32) == 32  # the width before building
     x = tokens(3, 8)
@@ -1293,7 +1293,7 @@ def test_fields_give_each_unit_one_field_of_the_observation(tmp_path):
     competition (the Gram's off-diagonal) is zero between fields, a checkpoint continues the
     life and refuses a column that reads another field; one field is the region as without
     fields, bit for bit."""
-    brain = composed(seed=3, recall=True, learned_code_fields=(13, 40))
+    brain = composed(seed=3, recall=True, recall_founder=True, learned_code_fields=(13, 40))
     code = brain.learned_code
     assert code.field_units == (16, 48) and sum(code.field_units) == UNITS
     field = np.repeat([0, 1], code.field_units)
@@ -1347,8 +1347,8 @@ def test_the_region_learns_from_the_moments_free_settle_alone():
     code), a stream of lessons and outcomes leaves every table of the region bit for bit as
     a stream of acts on the same observations leaves it: the nudged phases, the eligibility
     phases and the lesson's settle enter no table."""
-    acting = composed(seed=3, recall=True, working_memory_amplitude=0.0)
-    taught = composed(seed=3, recall=True, working_memory_amplitude=0.0)
+    acting = composed(seed=3, recall=True, recall_founder=True, working_memory_amplitude=0.0)
+    taught = composed(seed=3, recall=True, recall_founder=True, working_memory_amplitude=0.0)
     rng = np.random.default_rng(2)
     for t in range(12):
         x = tokens(*rng.integers(INPUTS, size=3))

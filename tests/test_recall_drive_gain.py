@@ -14,7 +14,7 @@ from cadence.stream import Hearing
 
 
 def brain_of(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, modules=(16,), seed=5, **{"recall": True, **options})
+    return cd.Brain.compose(6, 4, modules=(16,), seed=5, **{"recall": True, "recall_founder": True, **options})
 
 
 def gained(**options) -> cd.Brain:
@@ -347,7 +347,7 @@ def test_a_memory_grown_with_it_starts_its_route_at_one():
     brain = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False, carried_gain=0.01)
     teach(brain)
     trace = brain.carried_gains["trace"]
-    grown = brain.grow(recall=True, recall_drive_gain=True)
+    grown = brain.grow(recall=True, recall_founder=True, recall_drive_gain=True)
     assert grown.carried_gains == {"trace": trace, "read": 1.0}
 
 
@@ -415,7 +415,7 @@ def test_it_composes_with_the_memorys_other_forms(tmp_path, options):
 
 def test_a_memory_on_a_code_reads_on_its_ports_at_the_codes_width():
     brain = cd.Brain.compose(
-        40, 4, modules=(16,), seed=5, code=64, recall=True, carried_gain=0.01, recall_drive_gain=True
+        40, 4, modules=(16,), seed=5, code=64, recall=True, recall_founder=True, carried_gain=0.01, recall_drive_gain=True
     )
     assert len(port_columns(brain)) == 2 * 64 == brain.recall.neurons
     brain.recall.hearing = 0.5

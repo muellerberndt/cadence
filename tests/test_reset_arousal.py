@@ -228,7 +228,7 @@ def test_keeping_the_slots_and_the_arousal_keeps_both(tmp_path: Path) -> None:
     """Together the two names keep the recall memory's slots and the arousal state; the brain
     then continues as one reset with ``keep=("slots",)`` whose arousal state, saved before
     the reset, is restored after it."""
-    brain = cd.Brain.compose(4, 2, modules=(8,), seed=5, recall=True,
+    brain = cd.Brain.compose(4, 2, modules=(8,), seed=5, recall=True, recall_founder=True,
                              arousal=cd.ArousalConfig(youth=6))
     brain.live(CUE)
     for t in range(1, 12):
@@ -485,7 +485,7 @@ FOUNDERS: dict[str, dict[str, Any]] = {
     # recall_position=0, which differs from its founder
     "composed": {
         "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": cd.ArousalConfig(youth=10),
-                         "recall": True, "recall_position": 0, "history_decays": (0.2, 0.9),
+                         "recall": True, "recall_founder": True, "recall_position": 0, "history_decays": (0.2, 0.9),
                          "efference_amplitude": 1.0}),
         "life": _streams,
         "digest": "bf4d075047bb0d0713d3ab20312bd17853820de818de29e228b2edaf5bcdd26c",

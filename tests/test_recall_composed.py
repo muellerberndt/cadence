@@ -1,0 +1,78 @@
+"""What ``Brain.compose(..., recall=True)`` gives a new brain (``Recall.COMPOSED`` and the lessons'
+settings): each is an ordinary setting a caller's value overrides, ``recall_founder=True`` restores the
+founders, and a saved brain keeps the values it was saved with."""
+from __future__ import annotations
+
+import numpy as np
+import pytest
+
+import cadence as cd
+
+X = [np.random.default_rng(0).random((2, 6)) for _ in range(6)]
+
+
+def composed(**options):
+    return cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=True, **options)
+
+
+def founders() -> dict[str, object]:
+    return {**cd.Recall.founders(), **cd.Recall.options()}
+
+
+def test_the_founder_word_is_no_setting_of_the_memory():
+    brain = composed(recall_founder=True)
+    assert "recall_founder" not in brain.describe()["genes"]
+    assert not hasattr(brain.recall, "founder")
+    with pytest.raises(ValueError, match="recall_founder must be boolean"):
+        composed(recall_founder=1)
+    with pytest.raises(ValueError, match="recall settings need recall=True"):
+        cd.Brain.compose(6, 4, seed=5, recall=False, recall_founder=True)
+
+
+def test_the_founder_word_gives_every_setting_its_founder():
+    brain = composed(recall_founder=True)
+    for name, value in founders().items():
+        assert getattr(brain.recall, name) == value, name
+
+
+@pytest.mark.parametrize("name", sorted(cd.Recall.COMPOSED))
+def test_a_new_memory_takes_what_is_composed_and_a_callers_value_overrides(name):
+    assert getattr(composed().recall, name) == cd.Recall.COMPOSED[name]
+    assert cd.Recall.COMPOSED[name] != founders()[name]
+    kept = composed(**{f"recall_{name}": founders()[name]})
+    assert getattr(kept.recall, name) == founders()[name]
+
+
+def test_a_saved_memory_keeps_its_values(tmp_path):
+    founder = composed(recall_founder=True)
+    loaded = cd.Brain.load(founder.save(tmp_path / "founder.npz"))
+    new = composed()
+    again = cd.Brain.load(new.save(tmp_path / "new.npz"))
+    for name in cd.Recall.COMPOSED:
+        assert getattr(loaded.recall, name) == getattr(founder.recall, name), name
+        assert getattr(again.recall, name) == cd.Recall.COMPOSED[name], name
+
+
+def test_a_grown_brain_keeps_its_own_values_whatever_a_new_memory_composes():
+    founder = composed(recall_founder=True)
+    new = composed()
+    for brain in (founder, new):
+        rng = np.random.default_rng(2)
+        for x in X[:3]:
+            brain.lesson(x, rng.integers(0, 4, size=2))
+    grown_founder, grown_new = (b.grow(history_decays=(0.5,)) for b in (founder, new))
+    for name in cd.Recall.COMPOSED:
+        assert getattr(grown_founder.recall, name) == getattr(founder.recall, name), name
+        assert getattr(grown_new.recall, name) == cd.Recall.COMPOSED[name], name
+    assert grown_founder.learner.config == founder.learner.config
+    assert grown_new.learner.config == new.learner.config
+
+
+def test_the_constructor_and_the_attention_recipe_keep_their_own_settings():
+    connectome = cd.develop(cd.Genome.composed(6, 4, modules=(16,), recall=True), seed=0)
+    direct = cd.Brain(connectome, seed=0, recall=True)
+    attention = cd.Brain.compose(8, 4, modules=(16,), seed=0, learned_code=16, attention=True)
+    for name in cd.Recall.COMPOSED:
+        assert getattr(direct.recall, name) == founders()[name], name
+        if name not in ("recency",):  # the attention recipe names its own recency
+            assert getattr(attention.recall, name) == founders()[name], name

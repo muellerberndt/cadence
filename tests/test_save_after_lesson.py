@@ -23,10 +23,10 @@ RECIPES = {
     "surprise": {"learning_surprise": True},
     "episodic": {"memory_choice": True},
     "episodic_surprise": {"memory_choice": True, "learning_surprise": True},
-    "recall": {"recall": True},
-    "recall_surprise": {"recall": True, "learning_surprise": True},
+    "recall": {"recall": True, "recall_founder": True},
+    "recall_surprise": {"recall": True, "recall_founder": True, "learning_surprise": True},
     "recall_episodic_surprise": {
-        "recall": True, "memory_choice": True, "learning_surprise": True,
+        "recall": True, "recall_founder": True, "memory_choice": True, "learning_surprise": True,
         "recall_address_reward": 1.0,
     },
 }

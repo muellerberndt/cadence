@@ -285,6 +285,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_position_rate` | `0.1` | retune | Rate of the position term's lesson step; `0.0` freezes it |
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
 | `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#the-learned-value-path-opt-in)) |
+| `recall_founder` | `False` | `compose` | `True` composes the memory at the founders of this table, whatever `recall=True` gives a new brain; no setting of the memory, so neither described nor saved |
 | `recall_drive_gain` | `False` | construction | The read's drive is one more route of `carried_gain`: one learned gain over every read port, from the amplitude and no higher ([the read's route](#the-reads-drive-as-a-route-opt-in)); needs `carried_gain` |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |

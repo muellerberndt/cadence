@@ -13,7 +13,7 @@ X = [RNG.random((2, 6)) for _ in range(10)]
 
 
 def brain_of(**options) -> cd.Brain:
-    return cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=True, **options)
+    return cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=True, recall_founder=True, **options)
 
 
 def stored(brain: cd.Brain, query: np.ndarray) -> cd.Recall:

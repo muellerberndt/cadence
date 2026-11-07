@@ -73,7 +73,7 @@ BRAIN = {
     "modules": (32,), "lateral": 0.0, "episodic": False, "arousal": True,
     "learning_qualified": True, "learning_free_steps": 1024, "learning_nudged_steps": 1024,
     "learning_tolerance": 0.003, "working_memory_decay": 0.0,
-    "working_memory_amplitude": 0.3, "recall": True,
+    "working_memory_amplitude": 0.3, "recall": True, "recall_founder": True,
 }
 ARMS: dict[str, dict[str, Any]] = {
     "founder": {},

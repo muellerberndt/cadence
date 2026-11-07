@@ -154,9 +154,9 @@ def test_the_constants_of_the_composed_brain_are_refused_by_name(name, value):
     """The names 0.93.0 made constants are refused at compose and retune with the release and
     the constant, whatever the value, and describe emits none of them."""
     with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0"):
-        cd.Brain.compose(3, 2, modules=(8,), arousal=True, memory_choice=True, recall=True,
+        cd.Brain.compose(3, 2, modules=(8,), arousal=True, memory_choice=True, recall=True, recall_founder=True,
                          history_decays=(0.5,), **{name: value})
-    brain = cd.Brain.compose(3, 2, modules=(8,), arousal=True, memory_choice=True, recall=True,
+    brain = cd.Brain.compose(3, 2, modules=(8,), arousal=True, memory_choice=True, recall=True, recall_founder=True,
                              history_decays=(0.5,))
     with pytest.raises(ValueError, match=f"{name} was retired in 0.93.0"):
         brain.retune(**{name: value})
@@ -206,7 +206,7 @@ def test_a_checkpoint_carries_each_constant_at_its_founder_and_another_value_is_
     expert route's fields load as saved, and a saved memory's decay and separation are its
     own."""
     brain = cd.Brain.compose(3, 2, modules=(8,), seed=2, arousal=True, memory_choice=True,
-                             recall=True, history_decays=(0.5,))
+                             recall=True, recall_founder=True, history_decays=(0.5,))
     path = brain.save(tmp_path / "brain.npz")
     with np.load(path, allow_pickle=False) as saved:
         arrays = {name: saved[name].copy() for name in saved.files}
@@ -477,9 +477,9 @@ def test_the_teaching_point_sets_the_lessons_steps_and_normalization_alone():
 
 
 def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
-    founder = cd.Brain.compose(3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True)
+    founder = cd.Brain.compose(3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True, recall_founder=True)
     named = cd.Brain.compose(
-        3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True,
+        3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True, recall_founder=True,
         scales={"sensory": 1.0, "trace": 1.2},
     )
     np.testing.assert_array_equal(named.brain.efficacy, founder.brain.efficacy)
@@ -497,7 +497,7 @@ def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
         with pytest.raises(ValueError, match=f"{key}_scale was retired in 0.93.0"):
             cd.Brain.compose(3, 2, modules=(8,), scales={key: 12.0})
     at_constant = cd.Brain.compose(
-        3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True,
+        3, 2, modules=(8,), seed=4, history_decays=(0.5,), recall=True, recall_founder=True,
         scales={"history": 1.2, "recall": 1.2},
     )
     np.testing.assert_array_equal(at_constant.brain.efficacy, founder.brain.efficacy)
@@ -505,7 +505,7 @@ def test_scales_name_the_projection_magnitudes_and_keep_their_founders():
 
 def test_the_description_has_four_sections_and_names_every_gene_as_compose_takes_it():
     brain = cd.Brain.compose(
-        4, 2, modules=(8,), seed=2, arousal=True, recall=True, memory_choice=True,
+        4, 2, modules=(8,), seed=2, arousal=True, recall=True, recall_founder=True, memory_choice=True,
         history_decays=(0.5,), efference_amplitude=1.0, scales={"trace": 2.0},
     )
     described = brain.describe()
