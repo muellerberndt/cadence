@@ -4098,6 +4098,7 @@ class _MlxKernel:
         self.sweeps: dict[tuple[Any, ...], Any] = {}  # the compiled sweeps, shared with those too
         self.read_blocks: dict[int, tuple[np.ndarray, Any]] = {}  # a read's synapses, their blocks
         self.lesson_steps: dict[tuple[bool, bool, bool], Any] = {}  # the optimizer's, compiled
+        self.reward_steps: dict[bool, Any] = {}  # a reward's eligibility and step, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n, apical)
         # the blocks of each postsynaptic range, basal and apical apart
@@ -4558,6 +4559,22 @@ class _MlxKernel:
                 raw, velocity[k], second[k], [*constants, entries]
             )
             steps.append(step)
+        new, total = self._moved_by(steps, scale, tables, cap)
+        ok = mx.all(mx.stack([mx.isfinite(mx.sum(x)) for x in (*velocity, *second)]))
+        neurons = self._movement_of_neurons(plus, minus, plus_of, minus_of)
+        mx.eval(new.blocks, new.scale, velocity, second, total, ok, neurons, new.w if plan else [])
+        if not bool(ok.item()) or not np.isfinite(float(total.item())):
+            raise ValueError("phase contrasts and optimizer steps must remain finite")
+        size = float(total.item()) / max(tables["synapses"], 1)
+        kept = {"holder": self.root, "velocity": velocity, "second_moment": second}
+        return new, kept, np.array(neurons, dtype=np.float64), size
+
+    def _moved_by(
+        self, steps: list[Any], scale: Sequence[Any], tables: dict[str, Any], cap: float,
+    ) -> tuple[_MlxKernel, Any]:
+        """The kernel after steps by block, not yet evaluated, and the sum of the steps' sizes:
+        the ties, the bound and the new blocks. ``steps`` is written with the ties' means."""
+        mx, plan = self.mx, self.plan
         for k, other in tables["ties"].items():  # one synapse, one weight: the mean of the two
             if k <= other:
                 mean = 0.5 * (steps[k] + steps[other].T)
@@ -4568,8 +4585,6 @@ class _MlxKernel:
             for k, e in enumerate(new_scale)
         ]
         total = mx.sum(mx.stack([mx.sum(mx.abs(step)) for step in steps]))
-        ok = mx.all(mx.stack([mx.isfinite(mx.sum(x)) for x in (*velocity, *second)]))
-        neurons = self._movement_of_neurons(plus, minus, plus_of, minus_of)
         new = copy.copy(self)
         new.blocks = new_blocks
         new.up_blocks = new_blocks
@@ -4578,12 +4593,95 @@ class _MlxKernel:
             pieces = [new_blocks[k].T.reshape(-1) for k in plan.inner]
             new.w = mx.concatenate([*pieces, mx.zeros((8,), dtype=mx.float32)])
             new.version = next(_MLX_VERSIONS)
-        mx.eval(new_blocks, new_scale, velocity, second, total, ok, neurons, new.w if plan else [])
-        if not bool(ok.item()) or not np.isfinite(float(total.item())):
-            raise ValueError("phase contrasts and optimizer steps must remain finite")
-        size = float(total.item()) / max(tables["synapses"], 1)
-        kept = {"holder": self.root, "velocity": velocity, "second_moment": second}
-        return new, kept, np.array(neurons, dtype=np.float64), size
+        return new, total
+
+    # -- a reward's update on the device: every stream's eligibility, by block
+
+    def _reward_step_of(self, moves_pre: bool) -> Any:
+        """One block's eligibility and its dopamine's step, compiled once per kind and shape:
+        ``e <- decay e + contrast / span`` per row, the contrast a row's own
+        ``a+ (b+ - b-) + (a+ - a-) b-``, and ``eta`` times the mean over rows of ``d e``. A block
+        whose presynaptic range stands in both phases has no second term. Each row's mean size
+        comes with them."""
+        held = self.root.reward_steps.get(moves_pre)
+        if held is not None:
+            return held
+        mx = self.mx
+
+        def step(trace: Any, a_plus: Any, a_minus: Any, moved: Any, b_minus: Any,
+                 numbers: Sequence[Any]) -> tuple[Any, Any, Any]:
+            decay, span, d, eta = numbers
+            contrast = a_plus[:, :, None] * moved[:, None, :]
+            if moves_pre:
+                contrast = contrast + (a_plus - a_minus)[:, :, None] * b_minus[:, None, :]
+            new = decay * trace + contrast / span
+            return new, eta * (d * new).mean(axis=0), mx.abs(new).mean(axis=(1, 2))
+
+        held = self.mx.compile(step)
+        self.root.reward_steps[moves_pre] = held
+        return held
+
+    def rewarded(
+        self, plus: Mapping[str, Any], minus: Mapping[str, Any], trace: Sequence[Any] | None,
+        decay: np.ndarray, span: float, delta: np.ndarray, eta: float, scale: Sequence[Any],
+        tables: dict[str, Any], cap: float,
+    ) -> tuple[_MlxKernel, list[Any], np.ndarray, float]:
+        """A reward's update of the synapses, all of it on the device: each row's eligibility by
+        block, ``decay`` its own factor, the dopamine ``delta``'s mean step at ``eta``, the ties,
+        the bound and the new blocks. One launch at its end. Returns the new kernel (without its
+        bias, the host's business), the eligibility, each row's mean size of it and the mean step's
+        size; a value that is not finite raises ``ValueError`` with nothing changed."""
+        mx, lay = self.mx, self.layout
+        rows = len(delta)
+        plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
+        shared = plus.get("sources") if plus.get("sources") is minus.get("sources") else None
+        plan = self.plan
+        numbers = [
+            mx.array(np.asarray(decay, dtype=np.float32))[:, None, None],
+            mx.array(float(span), dtype=mx.float32),
+            mx.array(np.asarray(delta, dtype=np.float32))[:, None, None],
+            mx.array(float(eta), dtype=mx.float32),
+        ]
+        moved = {r: plus_of(r) - minus_of(r) for r in {int(x) for x in lay.pair_post}}
+        new_trace, steps, sizes = [], [], []
+        for k in range(lay.pairs):
+            pre, post = int(lay.pair_pre[k]), int(lay.pair_post[k])
+            a0, a1, b0, b1 = lay.bounds(k)
+            held = (
+                mx.zeros((rows, a1 - a0, b1 - b0), dtype=mx.float32) if trace is None else trace[k]
+            )
+            moves_pre = shared is None or plan is None or pre in plan.place
+            one, step, size = self._reward_step_of(moves_pre)(
+                held, plus_of(pre), minus_of(pre), moved[post], minus_of(post), numbers,
+            )
+            new_trace.append(one)
+            steps.append(step)
+            sizes.append((a1 - a0) * (b1 - b0) * size)
+        new, total = self._moved_by(steps, scale, tables, cap)
+        each = mx.sum(mx.stack(sizes), axis=0)
+        ok = mx.isfinite(total)
+        mx.eval(new.blocks, new.scale, new_trace, each, total, ok, new.w if plan else [])
+        if not bool(ok.item()):
+            raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        return (
+            new, new_trace, np.array(each, dtype=np.float64) / max(tables["synapses"], 1),
+            float(total.item()) / max(tables["synapses"], 1),
+        )
+
+    def rows_to_blocks(self, edges: np.ndarray) -> list[Any]:
+        """A per-row, per-synapse host array as device arrays by block, ``(rows, a, b)``."""
+        mx, lay = self.mx, self.layout
+        rows = [lay.blocks(lay.flat(row).astype(np.float32)) for row in np.asarray(edges, float)]
+        return [
+            mx.array(np.stack([np.ascontiguousarray(row[k]) for row in rows]))
+            for k in range(lay.pairs)
+        ]
+
+    def rows_to_edges(self, blocks: Sequence[Any]) -> np.ndarray:
+        """Device arrays by block, ``(rows, a, b)``, as the host's per-row, per-synapse array."""
+        rows = int(blocks[0].shape[0]) if blocks else 0
+        flat = np.concatenate([np.array(b, copy=False).reshape(rows, -1) for b in blocks], axis=1)
+        return np.asarray(flat[:, self.layout.edge_index], dtype=np.float64)
 
     def _movement_of_neurons(self, plus: Any, minus: Any, plus_of: Any, minus_of: Any) -> Any:
         """Each neuron's activation movement between two phases, summed over the rows, ``(n,)``."""

@@ -117,7 +117,7 @@ _REWARD_ARRAYS = (
 # eligibility.
 _STREAM_ACTOR = (
     "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "trace", "trace_bias",
-    "trace_critic", "trace_memory", "_trace_device", "salience",
+    "trace_critic", "trace_memory", "_trace_device", "_trace_mlx", "salience",
 )
 # The brain's records of its streams' moments, held by a replay with the streams themselves.
 _STREAM_RECORDS = (
@@ -5028,6 +5028,7 @@ class Brain:
                 data["moment/observations"], data["moment/action"] = self._moment
                 if self._moment_code is not None:  # the code the decision was keyed on
                     data["moment/code"] = self._moment_code
+        agent._host_trace()
         for name in _REWARD_ARRAYS:
             value = getattr(agent, name)
             if value is not None:

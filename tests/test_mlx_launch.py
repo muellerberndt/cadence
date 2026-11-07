@@ -1057,3 +1057,100 @@ def test_an_apical_brain_saves_and_goes_on_from_the_device(on_device, tmp_path):
         kept = mlx.basal_ganglia.state.activation
         np.testing.assert_allclose(again.basal_ganglia.state.activation, kept, rtol=0, atol=1e-5)
         np.testing.assert_allclose(back.basal_ganglia.state.activation, kept, rtol=0, atol=1e-5)
+
+
+# -- a reward on the device
+
+def outcomes(cpu, mlx, moments=6, seed=21, rows=ROWS, done_at=None):
+    """The same observations and rewards on both brains, sampled actions and their outcomes."""
+    rng = np.random.default_rng(seed)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for t in range(moments):
+            x = rng.random((rows, 8))
+            reward = rng.random(rows) - 0.5
+            done = np.zeros(rows, bool)
+            if done_at == t:
+                done[0] = True
+            a = cpu.step(x, reward=reward, done=done) if t else cpu.step(x)
+            b = mlx.step(x, reward=reward, done=done) if t else mlx.step(x)
+            np.testing.assert_array_equal(a, b)
+
+
+def test_a_rewards_eligibility_and_step_rest_on_the_device(on_device):
+    cpu, mlx = pair(recall=False)
+    outcomes(cpu, mlx, done_at=3)
+    agent, host = mlx.basal_ganglia, cpu.basal_ganglia
+    assert agent._trace_mlx is not None and agent.trace is None
+    assert mlx.brain._efficacy is None  # nothing read the synapses
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-4)
+    np.testing.assert_allclose(mlx.brain.bias, cpu.brain.bias, rtol=0, atol=1e-4)
+    np.testing.assert_allclose(agent.w_critic, host.w_critic, rtol=0, atol=1e-4)
+    np.testing.assert_allclose(agent.trace_bias, host.trace_bias, rtol=0, atol=1e-3)
+    assert (mlx.last_learning["trace"] == pytest.approx(cpu.last_learning["trace"], abs=1e-4))
+    assert (mlx.last_learning["scale_step"] == pytest.approx(cpu.last_learning["scale_step"], abs=1e-5))
+    # a moment that adds no eligibility fades it, on the host, and a finished row forgets it
+    ended = np.zeros(ROWS, bool)
+    ended[1] = True
+    agent.fade(ended), host.fade(ended)
+    assert agent._trace_mlx[1][1] == 0.0
+    agent._host_trace()
+    assert agent._trace_mlx is None
+    np.testing.assert_allclose(agent.trace, host.trace, rtol=0, atol=1e-3)
+    outcomes(cpu, mlx, moments=3, seed=22)  # from the host's back onto the device
+    assert agent._trace_mlx is not None and agent.trace is None
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-3)
+
+
+def test_a_refused_reward_on_the_device_changes_nothing(on_device):
+    _, mlx = pair(recall=False)
+    rng = np.random.default_rng(23)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for t in range(3):
+            x = rng.random((ROWS, 8))
+            mlx.step(x, reward=np.ones(ROWS)) if t else mlx.step(x)
+        agent, graph = mlx.basal_ganglia, mlx.brain
+        before = (agent._trace_mlx, agent.trace_bias.copy(), agent.w_critic.copy(), graph.efficacy.copy())
+        kernel = graph._mlx
+        original = kernel.rewarded
+
+        def refused(*args, **kwargs):
+            raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+
+        kernel.rewarded = refused
+        try:
+            with pytest.raises(ValueError, match="finite"):
+                mlx.step(rng.random((ROWS, 8)), reward=np.ones(ROWS))
+        finally:
+            kernel.rewarded = original
+    assert agent._trace_mlx is before[0]
+    np.testing.assert_array_equal(agent.trace_bias, before[1])
+    np.testing.assert_array_equal(agent.w_critic, before[2])
+    np.testing.assert_array_equal(mlx.brain.efficacy, before[3])
+
+
+def test_a_reward_on_the_device_saves_and_goes_on(on_device, tmp_path):
+    cpu, mlx = pair(recall=False)
+    outcomes(cpu, mlx)
+    assert mlx.basal_ganglia._trace_mlx is not None
+    mlx.save(tmp_path / "brain.npz")
+    again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
+    back = cd.Brain.load(tmp_path / "brain.npz", backend="cpu")
+    np.testing.assert_allclose(back.basal_ganglia.trace_bias, cpu.basal_ganglia.trace_bias, rtol=0, atol=1e-3)
+    np.testing.assert_allclose(back.basal_ganglia.trace, cpu.basal_ganglia.trace, rtol=0, atol=1e-3)
+    rng = np.random.default_rng(24)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(3):
+            x, reward = rng.random((ROWS, 8)), rng.random(ROWS)
+            np.testing.assert_array_equal(mlx.step(x, reward=reward), again.step(x, reward=reward))
+    assert again.basal_ganglia._trace_mlx is not None
+    np.testing.assert_allclose(again.brain.efficacy, mlx.brain.efficacy, rtol=0, atol=1e-4)
+
+
+def test_a_reward_below_the_device_size_stays_on_the_host():
+    cpu, mlx = pair(recall=False)
+    outcomes(cpu, mlx)
+    assert mlx.basal_ganglia._trace_mlx is None and mlx.basal_ganglia.trace is not None
+    np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-4)
