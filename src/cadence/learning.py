@@ -84,10 +84,7 @@ def _compiled_passes() -> bool:
     return compiled()
 
 
-# From this many values over at most this many groups a sum per group goes one reduction at a
-# time: atomic adds onto a few addresses cost 11.7 ms over 6.3 million values on an A10G.
-_SPAN_VALUES = 1 << 16
-_SPAN_GROUPS = 64
+_PROJECTION_ROOM = 64  # a matrix of one row per projection holds this many times its values at most
 _MOMENTS = ("velocity", "velocity_bias", "second_moment", "second_moment_bias")
 
 
@@ -993,14 +990,14 @@ class Learner:
                 for values, group in zip(
                     (rms, rms_bias), self._projections_on_device(kernel), strict=True
                 ):
-                    if group[3] is None:
+                    # each group's values in a row of their own, summed in a fixed order: atomic
+                    # adds onto a few sums take far longer and their order varies from run to run
+                    if group[4] is not None:
+                        group[4].view(-1)[group[3]] = values * values
+                        power = group[4].sum(dim=1)
+                    else:
                         power = torch.zeros(int(group[1]), dtype=values.dtype, device=values.device)
                         power.index_add_(0, group[0], values * values)
-                    else:  # many values onto few sums: one reduction per projection
-                        squares = (values * values)[group[3]]
-                        power = torch.stack(
-                            [squares.narrow(0, first, count).sum() for first, count in group[4]]
-                        )
                     floor = (power / group[2]).sqrt()[group[0]]
                     divisors.append(values + cfg.normalize_relative * floor + _RELATIVE_TINY)
                 edges, neurons = edges / divisors[0], neurons / divisors[1]
@@ -1016,9 +1013,9 @@ class Learner:
         return edges, neurons
 
     def _projections_on_device(self, kernel: Any) -> list[tuple[Any, ...]]:
-        """``_projections`` on the kernel's device: per group the index, the group count and
-        each group's member count, made once per kernel and layout; where many values fall on
-        few groups also the order that lays each group's values side by side and their spans."""
+        """``_projections`` on the kernel's device: per value its group, the group count, each
+        group's member count, where the value lies in a matrix of one row per group, and that
+        matrix, made once per kernel and layout."""
         held = self.__dict__.get("_projection_device")
         layout = self.brain.layout
         if held is None or held[0] is not kernel or held[1] is not layout:
@@ -1027,18 +1024,27 @@ class Learner:
             for group in self._projections():
                 size = int(group.max()) + 1 if len(group) else 0
                 members = np.bincount(group, minlength=size)
-                count = np.maximum(members, 1).astype(float)
-                order, spans = None, None
-                if len(group) >= _SPAN_VALUES and size <= _SPAN_GROUPS:
-                    order = torch.from_numpy(np.argsort(group, kind="stable")).to(kernel.device)
-                    ends = np.cumsum(members)
-                    spans = [(int(e - m), int(m)) for e, m in zip(ends, members, strict=True)]
+                widest = int(members.max()) if size else 0
+                place, matrix = None, None
+                if size * widest <= _PROJECTION_ROOM * max(len(group), 1):
+                    order = np.argsort(group, kind="stable")
+                    first = np.cumsum(members) - members
+                    place = np.empty(len(group), dtype=np.int64)
+                    place[order] = (
+                        group[order] * widest + np.arange(len(group)) - first[group[order]]
+                    )
+                    place = torch.from_numpy(place).to(kernel.device)
+                    matrix = torch.zeros(
+                        size, widest, dtype=kernel.param_dtype, device=kernel.device
+                    )
                 groups.append((
                     torch.from_numpy(np.ascontiguousarray(group)).to(kernel.device),
                     size,
-                    torch.from_numpy(count).to(kernel.device, kernel.param_dtype),
-                    order,
-                    spans,
+                    torch.from_numpy(np.maximum(members, 1).astype(float)).to(
+                        kernel.device, kernel.param_dtype
+                    ),
+                    place,
+                    matrix,
                 ))
             held = (kernel, layout, groups)
             self.__dict__["_projection_device"] = held

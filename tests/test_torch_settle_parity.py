@@ -367,10 +367,7 @@ def test_learning_steps_match_the_host(device):
     np.testing.assert_allclose(dev.bias, host.bias, rtol=0, atol=ATOL)
 
 
-def test_learning_steps_match_the_host_with_a_projections_sums_by_reductions(device, monkeypatch):
-    from cadence import learning
-
-    monkeypatch.setattr(learning, "_SPAN_VALUES", 0)
+def test_learning_steps_match_the_host_with_a_projections_sums(device):
     brains = [
         cd.Brain.compose(12, 6, modules=(10, 8), slots=(3, 3), seed=6, recall=False, teaching="deep")
         for _ in range(2)
@@ -384,8 +381,6 @@ def test_learning_steps_match_the_host_with_a_projections_sums_by_reductions(dev
         labels = rng.integers(0, 3, (6, 2))
         for brain in brains:
             brain.learner.step(drive, labels)
-    kernel = brains[1].learner.brain._torch
-    assert all(group[3] is not None for group in brains[1].learner._projections_on_device(kernel))
     host, dev = brains[0].learner.brain, brains[1].learner.brain
     np.testing.assert_allclose(dev.efficacy, host.efficacy, rtol=0, atol=ATOL)
     np.testing.assert_allclose(dev.bias, host.bias, rtol=0, atol=ATOL)
@@ -486,6 +481,20 @@ def test_graphs_are_captured_again_after_every_capture_was_dropped():
         again = dev.settle_batch(drive, steps=40)
     assert kernel.graph_stats["failed"] is None and ws.graphs
     np.testing.assert_allclose(again.activation, expected, rtol=0, atol=1e-13)
+
+
+@cuda
+def test_a_device_life_is_deterministic():
+    runs = []
+    for _ in range(2):
+        brain = cd.Brain.compose(12, 6, modules=(10, 8), seed=8, teaching="deep", backend="torch",
+                                 device="cuda:0", precision="float64")
+        rng = np.random.default_rng(15)
+        for _ in range(6):
+            x = rng.random((16, 12)) * 0.5
+            brain.lesson(x, np.asarray(brain.act(x, greedy=True)).reshape(-1) % 6)
+        runs.append(np.array(brain.learner.brain.efficacy))
+    np.testing.assert_array_equal(runs[0], runs[1])
 
 
 @cuda
