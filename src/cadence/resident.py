@@ -107,13 +107,13 @@ class _Moment(NamedTuple):
 
 
 class TorchArrays:
-    """The array namespace of a torch kernel: floats in its parameters' dtype, on its device."""
+    """The array namespace of a torch kernel: floats in the brain's precision, on its device."""
 
     inf = float("inf")
 
     def __init__(self, kernel: Any) -> None:
         self.torch = kernel.torch
-        self.device, self.dtype = kernel.device, kernel.param_dtype
+        self.device, self.dtype = kernel.device, kernel.dtype
         self.staging = kernel._staging
         self.placed: dict[int, tuple[Any, ...]] = {}
 

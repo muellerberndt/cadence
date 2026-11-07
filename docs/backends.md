@@ -88,10 +88,10 @@ rule are in [contracts](contracts.md).
 On CUDA, from a moment of `streams * width * (width + 1024) >= 3,000,000` (`width` the observation
 code's), the recall memory's slots, maps, read, write and lessons, the working trace, the consolidating
 store, the carried routes' contrast, the critic's weights and eligibility and the moment's drive run
-on the device, in the parameters' floats (float64 on CUDA whatever the brain's precision), by the
-host's equations: a life agrees with
-the float64 host path within rounding at each moment
-([`tests/test_memories_on_device.py`](../tests/test_memories_on_device.py)). 3,920 inputs reach
+on the device in the brain's precision, by the host's equations: a float64 life agrees with the float64
+host path within rounding at each moment
+([`tests/test_memories_on_device.py`](../tests/test_memories_on_device.py)). In a float32 brain these and
+the synapses' eligibility are float32, and its efficacies and biases add up in float64. 3,920 inputs reach
 that size at one stream and 35 inputs at about 128. Below it each operation's launch costs more than
 the host's arithmetic, so the memories stay on the host. On an A10G a brain of 12 to 1,024 inputs
 crosses over there, within about 10% on either side.

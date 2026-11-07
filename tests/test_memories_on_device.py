@@ -299,3 +299,27 @@ def test_the_size_decides_on_cuda_and_nothing_else_places_them(monkeypatch):
     assert not stream._memory_on_device(mps, 1, 3920)
     monkeypatch.setenv("CADENCE_TORCH_MEMORY", "0")
     assert not stream._memory_on_device(cuda, 1, 3920)
+
+
+@pytest.mark.parametrize("device", [d for d in DEVICES if d != "mlx"])
+def test_a_float32_brain_works_in_float32_and_its_parameters_add_up_in_float64(device, tmp_path):
+    """Where a float32 brain's memories rest, they, its critic and its eligibility are float32; its
+    efficacies and biases stay float64 so that small steps add up. A life reads as the host's within
+    float32's rounding (the panels' reading is in docs/backends.md)."""
+    host, _ = pair(device)
+    path = tmp_path / "brain.npz"
+    host.save(path)
+    placed = cd.Brain.load(path, backend="torch", device=device, precision="float32")
+    rng = np.random.default_rng(1)
+    for t in range(30):
+        x = observations(rng, 3)
+        kwargs = {} if t == 0 else {"reward": rng.random(3), "done": rng.random(3) < 0.1}
+        np.testing.assert_array_equal(host.step(x, **kwargs), placed.step(x, **kwargs))
+    agent, kernel = placed.basal_ganglia, placed.brain._torch
+    assert resident(placed) and agent._critic_device is not None
+    assert kernel.dtype == torch.float32 and kernel.scale.dtype == torch.float64
+    assert agent._trace_device[0].dtype == torch.float32
+    assert agent._critic_device.weights.dtype == torch.float32
+    assert placed.recall._device.keys.dtype == torch.float32
+    assert placed.hippocampus._device.strength.dtype == torch.float32
+    same(host, placed, atol=ROUNDED)

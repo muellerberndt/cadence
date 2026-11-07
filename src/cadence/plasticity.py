@@ -960,7 +960,7 @@ class ActorCritic:
         decay = cfg.gamma * cfg.lam
         batch = len(reward)
         s_plus, s_minus = plus.device["s"], minus.device["s"]
-        neurons = (s_plus - s_minus).to(kernel.param_dtype)
+        neurons = s_plus - s_minus  # the eligibility in the brain's precision, and the step with it
         synapses = self.synapses
         if self._trace_device is None or tuple(self._trace_device[0].shape) != (batch, synapses):
             if self.trace is not None and self.trace.shape == (batch, synapses):

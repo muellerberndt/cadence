@@ -2965,11 +2965,11 @@ class _TorchKernel:
         return drive.to(self.dtype) if _resident(drive) else self._upload(drive)
 
     def observed(self, x: np.ndarray) -> Any:
-        """Observations on the device in the parameters' floats, uploaded once however many of a
+        """Observations on the device in the brain's precision, uploaded once however many of a
         moment's memories read the same array."""
         held = self._observed
         if held is None or held[0] is not x:
-            held = self._observed = (x, self._staging.upload(x, self.param_dtype))
+            held = self._observed = (x, self._staging.upload(x, self.dtype))
         return held[1]
 
     def index_of(self, index: np.ndarray) -> Any:
@@ -3443,14 +3443,15 @@ class _TorchKernel:
             plus, minus = s_plus[first : first + per], s_minus[first : first + per]
             a_plus, a_minus = plus[:, pre], minus[:, pre]
             b_plus, b_minus = plus[:, post], minus[:, post]
-            edges = a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
-            yield first, first + plus.shape[0], edges.to(self.param_dtype)
+            yield first, first + plus.shape[0], (
+                a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
+            )
 
     def contrast_rows(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
         """The contrast per row, ``(batch, edges)`` and ``(batch, neurons)``, as tensors: for an
         eligibility trace kept per stream."""
         edges = self.torch.cat([part for _, _, part in self.contrast_parts(s_plus, s_minus)])
-        return edges, (s_plus - s_minus).to(self.param_dtype)
+        return edges, s_plus - s_minus
 
     def contrast(self, s_plus: Any, s_minus: Any) -> tuple[np.ndarray, np.ndarray]:
         """The Gram contrast on the device; the per-synapse and per-neuron sums come back."""
