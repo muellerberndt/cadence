@@ -1917,6 +1917,7 @@ class Brain:
         seed: int = 0,
         backend: Backend = "cpu",
         device: str | None = None,
+        precision: str | None = None,
         inputs: int | None = None,
         code: int | None = None,
         learned_code: int | None = None,
@@ -2074,6 +2075,7 @@ class Brain:
             learning_neuron_model(dt=1.0 if compartment is None else _APICAL_STEP),
             backend=backend,
             device=device,
+            precision=precision,
             dense_limit=_composed_limit(layout, connectome.synapses, dense_limit, recall),
             layout=layout,
             apical=compartment,
@@ -2802,7 +2804,8 @@ class Brain:
         options = dict(genes)
         construction = {
             "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
-            "episodic", "backend", "device", "dense_limit", "connectome", "history_decays",
+            "episodic", "backend", "device", "precision", "dense_limit", "connectome",
+            "history_decays",
             "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",

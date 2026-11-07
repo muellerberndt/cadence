@@ -26,7 +26,7 @@ print(cd.available_backends())
 | backend | where it runs | precision | extra | use it for |
 |---|---|---|---|---|
 | `"cpu"` | NumPy, with Numba and SciPy when installed | float64 | none; `[fast]` to accelerate | first examples, receipts, numerical checks, sparse graphs, small continuing brains |
-| `"torch"` on CUDA | NVIDIA GPU | float64, or float32 with `precision="float32"` | `[accel]` | deep brains, large batches, long lives |
+| `"torch"` on CUDA | NVIDIA GPU | float32, or float64 with `precision="float64"` | `[accel]` | deep brains, large batches, long lives |
 | `"torch"` on MPS | Apple silicon GPU through Metal | float32 only | `[accel]` | a Mac when torch is what you have |
 | `"mlx"` | Apple silicon GPU through MLX, unified memory | float32 | `[apple]` | a Mac's wide brains and large batches, on blocked connectomes |
 | `"torch"` on CPU | torch on the host | float64, or float32 with `precision="float32"` | `[accel]` | one code path on a machine without a GPU |
@@ -56,10 +56,9 @@ remembered, so an MLX installed later in the process is found
 
 `backend=` (default `"cpu"`) and `device=` (default `None`, the best device) are construction
 arguments of `NeuralGraph` and `Brain.compose`; `Brain.retune` refuses them. `precision=`
-(`"float64"` or `"float32"`, read by torch, default by device) is an argument of
-`NeuralGraph`, `Brain.load` and `Learner.load` only, so a composed brain runs at its device's
-default precision until it is saved and loaded with another. Loads default to the saved
-precision; `Brain.load` defaults to `backend="cpu"`, `Learner.load` to the saved backend.
+(`"float64"` or `"float32"`, read by torch: float32 on a device, float64 on the CPU device, unless
+named) is an argument of `NeuralGraph`, `Brain.compose`, `Brain.load` and `Learner.load`. Loads default
+to the saved precision; `Brain.load` defaults to `backend="cpu"`, `Learner.load` to the saved backend.
 `Learner.load(path, backend="cpu")` brings a checkpoint learned on any device back to the
 float64 receipt backend.
 
@@ -91,8 +90,8 @@ moment's drive run on the device in the brain's precision, by the host's equatio
 ([`cadence/resident.py`](../src/cadence/resident.py)): a float64 life agrees with the float64 host path
 within rounding at each moment, and a float32 life within float32's
 ([`tests/test_memories_on_device.py`](../tests/test_memories_on_device.py),
-[`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)). In a float32 brain on CUDA these and the synapses'
-eligibility are float32, and its efficacies and biases add up in float64; on MLX all of it is float32. 3,920
+[`tests/test_mlx_memory.py`](../tests/test_mlx_memory.py)). In a float32 brain all of it is float32, the
+synapses' eligibility, efficacies and biases and the optimizer's history with it. 3,920
 inputs reach that size at one stream, and 35 inputs at about 128 on CUDA and 256 on MLX. Below it each
 operation's launch costs more than the host's arithmetic, so the memories stay on the host. On an A10G a brain
 of 12 to 1,024 inputs crosses over there, within about 10% on either side, and so does a brain of 12 to 3,920

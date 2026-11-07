@@ -35,7 +35,9 @@ def _placed(monkeypatch):
 
 
 def on_device(device: str) -> dict[str, str]:
-    return {"backend": "mlx"} if device == "mlx" else {"backend": "torch", "device": device}
+    if device == "mlx":
+        return {"backend": "mlx"}
+    return {"backend": "torch", "device": device, "precision": "float64"}
 
 
 def pair(
@@ -307,10 +309,10 @@ def test_the_size_decides_on_cuda_and_nothing_else_places_them(monkeypatch):
 
 
 @pytest.mark.parametrize("device", [d for d in DEVICES if d != "mlx"])
-def test_a_float32_brain_works_in_float32_and_its_parameters_add_up_in_float64(device, tmp_path):
-    """Where a float32 brain's memories rest, they, its critic and its eligibility are float32; its
-    efficacies and biases stay float64 so that small steps add up. A life reads as the host's within
-    float32's rounding (the panels' reading is in docs/backends.md)."""
+def test_a_float32_brain_works_in_float32_on_its_device(device, tmp_path):
+    """Where a float32 brain's memories rest, they, its critic, its eligibility, its efficacies and
+    its biases are float32. A life reads as the host's within float32's rounding (the panels'
+    reading is in docs/backends.md)."""
     host, _ = pair(device)
     path = tmp_path / "brain.npz"
     host.save(path)
@@ -322,7 +324,7 @@ def test_a_float32_brain_works_in_float32_and_its_parameters_add_up_in_float64(d
         np.testing.assert_array_equal(host.step(x, **kwargs), placed.step(x, **kwargs))
     agent, kernel = placed.basal_ganglia, placed.brain._torch
     assert resident(placed) and agent._critic_device is not None
-    assert kernel.dtype == torch.float32 and kernel.scale.dtype == torch.float64
+    assert kernel.dtype == torch.float32 and kernel.scale.dtype == torch.float32
     assert agent._trace_device[0].dtype == torch.float32
     assert agent._critic_device.weights.dtype == torch.float32
     assert placed.recall._device.keys.dtype == torch.float32

@@ -106,7 +106,7 @@ def available_backends() -> dict[str, str]:
         import torch
 
         if torch.cuda.is_available():
-            out["torch"] = "cuda float64"
+            out["torch"] = "cuda float32"
         elif getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
             out["torch"] = "mps float32"
         else:
@@ -717,7 +717,7 @@ class Brain:
             apical.check(connectome.synapses, connectome.n, connectome.post)
         self.apical = apical
         self.dense_limit = dense_limit
-        self.precision = precision  # torch only: "float64" or "float32"; default by device
+        self.precision = precision  # torch only: "float64" or "float32"; float32 on a device
         self.layout: Layout = make_layout(connectome) if layout is None else layout
         # The parameters live on the host, or on the torch device once a learner has moved
         # them there; the host arrays are then fetched when something reads them.
@@ -3028,8 +3028,8 @@ class _TorchKernel:
 
     On CUDA with Triton the products ``_launch_rule`` names, the neuron update of a sweep and
     the apical normalization are launches (``CADENCE_TRITON=0`` keeps cuBLAS products and one
-    torch operation at a time). The default precision is float32 on MPS and float64 elsewhere;
-    ``precision`` overrides it.
+    torch operation at a time). The default precision is float32 on a device and float64 on the
+    CPU device; ``precision`` overrides it.
     """
 
     def __init__(
@@ -3068,7 +3068,7 @@ class _TorchKernel:
                 device = "cpu"
         self.device = torch.device(device)
         if precision is None:
-            self.dtype = torch.float32 if self.device.type == "mps" else torch.float64
+            self.dtype = torch.float64 if self.device.type == "cpu" else torch.float32
         elif precision in ("float32", "float64"):
             self.dtype = torch.float32 if precision == "float32" else torch.float64
         else:
@@ -3076,9 +3076,9 @@ class _TorchKernel:
         if self.device.type == "mps" and self.dtype == torch.float64:
             raise ValueError("MPS has no float64; use precision='float32' or another device")
         neuron_model._validate_precision("float32" if self.dtype == torch.float32 else "float64")
-        # The parameters, kept on the device in float64 (float32 on MPS, which has no float64)
-        # so a learner can move them there without a host round trip per update.
-        self.param_dtype = torch.float32 if self.device.type == "mps" else torch.float64
+        # The parameters, kept on the device in the brain's precision, so a learner can move them
+        # there without a host round trip per update.
+        self.param_dtype = self.dtype
         self.gain_pre = torch.from_numpy(np.ascontiguousarray(gain_pre)).to(
             self.device, self.param_dtype
         )
