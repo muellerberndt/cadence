@@ -886,11 +886,10 @@ class ActorCritic:
         synapses = self.synapses
         if self._trace_device is None or tuple(self._trace_device[0].shape) != (batch, synapses):
             if self.trace is not None and self.trace.shape == (batch, synapses):
-                self._trace_device = (
-                    torch.as_tensor(self.trace, dtype=neurons.dtype, device=neurons.device).clone(),
-                    torch.as_tensor(
-                        self.trace_bias, dtype=neurons.dtype, device=neurons.device
-                    ).clone(),
+                # one copy on the device: at speech size the streams' trace is 50 MB each
+                self._trace_device = tuple(
+                    torch.from_numpy(array).to(neurons.device, neurons.dtype, copy=True)
+                    for array in (self.trace, self.trace_bias)
                 )
             else:
                 self._trace_device = (
@@ -932,18 +931,14 @@ class ActorCritic:
         step_bias = eta_bias * (d[:, None] * trace_bias).mean(dim=0)
         # the mean over the streams of d e, with e <- decay e + contrast, part by part: the trace
         # moves only after the last refusal, in place, so the streams hold one array of it
-        salience = None
-        if self.salience is not None:
-            salience = torch.as_tensor(
-                np.asarray(self.salience), dtype=trace.dtype, device=trace.device
-            )
-            salience = salience[:, torch.as_tensor(self.learner.brain.connectome.pre,
-                                                   device=trace.device)]
+        salience = None if self.salience is None else torch.as_tensor(
+            np.asarray(self.salience), dtype=trace.dtype, device=trace.device
+        )
 
         def parts() -> Iterator[tuple[int, int, Any]]:
             for first, stop, part in kernel.contrast_parts(s_plus, s_minus):
                 if salience is not None:
-                    part = part * salience[first:stop]
+                    part = part * salience[first:stop][:, kernel._row_index[0]]
                 yield first, stop, part.div_(span)
 
         step = decay * torch.mv(trace.T, d)

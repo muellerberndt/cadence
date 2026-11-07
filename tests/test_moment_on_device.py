@@ -205,3 +205,18 @@ def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, option
     again = cd.Brain.load(path, backend="torch", device="cpu")
     _both_live(on_cpu, again, rng)
     assert again.recall._device is not None
+
+
+def test_a_salience_weighs_the_eligibility_as_on_the_host():
+    host = cd.Brain.compose(12, 5, seed=2, modules=(16,), backend="cpu")
+    device = brain_on_torch(2)
+    rng = np.random.default_rng(11)
+    for t in range(10):
+        x = np.eye(12)[rng.integers(12, size=3)]
+        kwargs = {} if t == 0 else {"reward": rng.random(3)}
+        for brain in (host, device):
+            brain.basal_ganglia.salience = (
+                None if t < 2 else np.ones((3, brain.connectome.n)) * (1.0 + t % 3)
+            )
+        np.testing.assert_array_equal(host.step(x, **kwargs), device.step(x, **kwargs))
+    np.testing.assert_allclose(device.brain.efficacy, host.brain.efficacy, rtol=0, atol=1e-10)
