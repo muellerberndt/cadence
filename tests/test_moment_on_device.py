@@ -150,3 +150,58 @@ def test_a_refused_outcome_leaves_the_streams_eligibility_as_it_was(monkeypatch)
     np.testing.assert_array_equal(agent._trace_device[1].numpy(), trace_bias.numpy())
     np.testing.assert_array_equal(agent.trace_critic, critic)
     np.testing.assert_array_equal(brain.brain.efficacy, efficacy)
+
+
+def _twins(monkeypatch, **options) -> tuple[cd.Brain, cd.Brain]:
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    options.setdefault("modules", (16,))
+    return (
+        cd.Brain.compose(12, 5, seed=4, backend="cpu", **options),
+        cd.Brain.compose(12, 5, seed=4, backend="torch", device="cpu", **options),
+    )
+
+
+def _both_live(host: cd.Brain, placed: cd.Brain, rng: np.random.Generator, moments: int = 5) -> None:
+    for _ in range(moments):
+        x = np.eye(12)[rng.integers(12, size=2)]
+        pending = host.basal_ganglia._pending is not None
+        kwargs = {"reward": rng.random(2)} if pending else {}
+        np.testing.assert_array_equal(host.step(x, **kwargs), placed.step(x, **kwargs))
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"modules": (16, 8), "apical": 0.25, "teaching": "deep"}],
+    ids=["default", "apical"],
+)
+def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, options):
+    """A brain whose memories rest on its device retunes, grows, is grafted and saves as the host's
+    does, and each of them continues where the host's does."""
+    host, placed = _twins(monkeypatch, **options)
+    rng = np.random.default_rng(10)
+    _both_live(host, placed, rng)
+    assert placed.recall._device is not None
+    for brain in (host, placed):
+        if brain.basal_ganglia._pending is not None:
+            brain.learn(np.zeros(2), np.zeros(2, dtype=bool), np.eye(12)[[0, 1]])
+        brain.retune(recall_amplitude=2.5, recall_address_reward=0.5)
+    assert placed.basal_ganglia.trace_memory.shape == host.basal_ganglia.trace_memory.shape
+    _both_live(host, placed, rng)
+    np.testing.assert_allclose(placed.brain.efficacy, host.brain.efficacy, rtol=0, atol=1e-9)
+    grown = host.grow(history_decays=(0.5,)), placed.grow(history_decays=(0.5,))
+    assert grown[1].brain.backend == "torch"
+    _both_live(*grown, rng)
+    np.testing.assert_allclose(grown[1].brain.efficacy, grown[0].brain.efficacy, rtol=0, atol=1e-9)
+    if "apical" not in options:
+        donor = cd.Brain.compose(12, 5, seed=5, modules=(16,))
+        regions = ("association", "motor")
+        grafted = host.graft(donor, regions), placed.graft(donor, regions)
+        _both_live(*grafted, rng)
+        np.testing.assert_allclose(
+            grafted[1].brain.efficacy, grafted[0].brain.efficacy, rtol=0, atol=1e-9
+        )
+    path = placed.save(tmp_path / "placed.npz", compressed=False)
+    on_cpu = cd.Brain.load(path, backend="cpu")
+    again = cd.Brain.load(path, backend="torch", device="cpu")
+    _both_live(on_cpu, again, rng)
+    assert again.recall._device is not None
