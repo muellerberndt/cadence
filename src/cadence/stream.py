@@ -524,19 +524,41 @@ def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarra
     return s_x, s_c, m + rate * step.mean(axis=0)
 
 
+# A BLAS dot sums in lanes, so what a dot of two lists of numbers rounds to depends on where the
+# zeros lie: a term keeps its lane where the zeros before it keep their count modulo this, and
+# the kernels make the same choices above this length.
+_DOT_LANES = 64
+_DOT_LONG = 1 << 17
+
+
+def _laid_out_norm(pieces: Sequence[np.ndarray | int]) -> float:
+    """``np.linalg.norm`` of the vector the ``pieces`` join, an array or the count of a run of
+    zeros, to its bits, without the zeros of the long runs."""
+    total = sum(p if isinstance(p, int) else p.size for p in pieces)
+    runs = [p for p in pieces if isinstance(p, int)]
+    if total <= _DOT_LONG or not runs:
+        short = [np.zeros(p) if isinstance(p, int) else p.ravel() for p in pieces]
+    else:
+        spare = sum(max(run - run % _DOT_LANES - _DOT_LANES, 0) for run in runs)
+        floor = max(_DOT_LONG - (total - spare), 0)
+        floor += -floor % _DOT_LANES  # a whole number of lanes
+        short = []
+        for piece in pieces:
+            if isinstance(piece, int):
+                kept = piece if piece < 2 * _DOT_LANES else piece % _DOT_LANES + _DOT_LANES
+                short.append(np.zeros(kept + (min(floor, piece - kept))))
+                floor -= min(floor, piece - kept)
+            else:
+                short.append(piece.ravel())
+    return float(np.linalg.norm(np.concatenate(short)))
+
+
 def _per_bucket(gradient: np.ndarray, buckets: np.ndarray, size: int) -> np.ndarray:
     """Each row's ``gradient`` over the slots summed into ``size`` buckets, slot ``i`` into its
     bucket ``buckets[..., i]`` (one row of buckets for every row, or a row each)."""
     out = np.zeros((len(gradient), size))
     np.add.at(out, (np.arange(len(gradient))[:, None], buckets), gradient)
     return out
-
-
-def _added(maps: _Maps, step: np.ndarray, width: int) -> _Maps:
-    """A map of the moment with ``step`` added, a row of it per input of ``z = [x, c, 1]``, the
-    ``width`` inputs ``x`` first."""
-    m_x, m_c, m = maps
-    return m_x + step[:width], m_c + step[width:-1], m + step[-1]
 
 
 def _of(state: np.ndarray, streams: int) -> np.ndarray:
@@ -1169,6 +1191,8 @@ class Recall:
         self._port_columns = columns(self.port_neurons)
         self.trace: np.ndarray = np.zeros((0, len(self.port_neurons)))
         self._rewarded(self.position_reward, self.position, self.position_rate)
+        # whether a contrast has written the address columns of the reward eligibility
+        self._address_held = False
         # every head's position maps ``(P_x, P_c, p)``, head 0's first; none without ``position``
         count = self.position_buckets
         self.position_maps = self._zero_maps(self.heads if count else 0, count)
@@ -1961,7 +1985,7 @@ class Recall:
         (``contrast_rows``' array) on the array's first row: per row and port, the row's rate
         (``_gain_rates``) times ``_gain_step`` on the act's two nudged phases, the step the lesson
         would take were the act's action the label; a row whose step is not finite keeps none."""
-        start = self.reward_columns - len(self.gains)
+        start = out.shape[2] - len(self.gains)
         movement = self._motor_movement(plus, minus)
         reads = self._port_reads(self._held_attention(moment))
         rate = self._gain_rates(reads)
@@ -2501,13 +2525,14 @@ class Recall:
     def contrast_rows(
         self, graph: NeuralGraph, plus: BrainState, minus: BrainState
     ) -> np.ndarray | None:
-        """The read's eligibility from a sampled act, one ``(inputs + association + 1,
-        reward_columns)`` array per row (the rows of ``w_x``, ``w_c`` and ``b`` in that order;
-        with several heads one block of ``address`` columns per head, head 0's first, then
-        with ``position_reward`` the position and anchored buckets, and with ``gain`` one column
-        per port, ``_gain_rows``), or None when neither ``address_reward`` nor ``position_reward``
-        nor ``gain`` trains the read: the step the address and position lessons would take at each
-        row,
+        """The read's eligibility from a sampled act, one ``(inputs, kept columns)`` array per
+        row, or None when neither ``address_reward`` nor ``position_reward`` nor ``gain`` trains
+        the read: the event's rows of the maps and the columns that can step (``reward_blocks``;
+        ``full_eligibility`` lays it out over the rows of ``w_x``, ``w_c`` and ``b`` and over
+        every column, with several heads one block of ``address`` columns per head, head 0's
+        first, then with ``position_reward`` the position and anchored buckets, and with ``gain``
+        one column per port, ``_gain_rows``): the step the address and position lessons would
+        take at each row,
         were the act's action a lesson's label, before the average over rows. The
         association's movement between the act's two nudged phases, ``plus`` less ``minus``,
         is read back through the recall and next synapses of ``graph`` and scored against the
@@ -2522,7 +2547,9 @@ class Recall:
         movement = self.activity(plus) - self.activity(minus)
         batch, width, columns_ = len(movement), self.map_width, self.address_width
         count = self.position_buckets
-        out = np.zeros((batch, width + len(self.association) + 1, self.reward_columns))
+        if self.address_reward:
+            self._address_held = True
+        out = np.zeros((batch, width, sum(block[1] for block in self.reward_blocks)))
         moment = self.last
         if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
             return out
@@ -2537,16 +2564,15 @@ class Recall:
             found = self._row_steps(head_moment, np.arange(batch), d_value, d_next, h, reads[h])
             if found is None:
                 continue
-            moving, x, c, _, error, _, target, prior = found
+            moving, x, _, _, error, _, target, prior = found
             index = np.flatnonzero(moving)
             # the event's rows of ``z = [x, c, 1]`` step, each at a rate bounded by the
-            # event's energy; the cortex and bias rows, zero here, learn from lessons alone
-            z = np.concatenate([x, np.zeros((len(x), c.shape[1] + 1))], axis=1)
+            # event's energy; the cortex and bias rows learn from lessons alone
             with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
                 energy = np.einsum("bi,bi->b", x, x)
                 if self.address_reward:
                     step = error * np.minimum(1.0, 1.0 / (self.address * energy))[:, None]
-                    rows = self.address * np.einsum("bi,bk->bik", z, step)
+                    rows = self.address * np.einsum("bi,bk->bik", x, step)
                     kept = np.isfinite(rows).all(axis=(1, 2))
                     out[index[kept], :, h * columns_:(h + 1) * columns_] = rows[kept]
             if not positions:
@@ -2562,14 +2588,60 @@ class Recall:
                 blocks = [(self.buckets()[None, :], count)]
                 if self.anchor_maps:
                     blocks.append((self.anchored_buckets(index), count + 1))
-                start = self.heads * columns_
+                start = self.heads * columns_ if self._address_held else 0
                 for buckets, size in blocks:
                     terms = _per_bucket(gradient, buckets, size)
-                    rows = rate * np.einsum("bi,bk->bik", z, terms * bound)
+                    rows = rate * np.einsum("bi,bk->bik", x, terms * bound)
                     kept = np.isfinite(rows).all(axis=(1, 2))
                     out[index[kept], :, start + h * size:start + (h + 1) * size] = rows[kept]
                     start += self.heads * size
         return out
+
+    @property
+    def reward_blocks(self) -> list[tuple[int, int]]:
+        """The columns of the reward eligibility that can hold anything, as ``(start, width)`` of
+        ``reward_columns``: the address's once ``address_reward`` wrote them, with
+        ``position_reward`` the position's and the anchored ones, and with ``gain`` the gains'.
+        The other columns stay zero, as do the cortex and bias rows, so the actor keeps these
+        alone, over the event's rows (``full_eligibility``)."""
+        columns_ = self.heads * self.address_width
+        blocks = [(0, columns_)] if self._address_held or self.address_reward else []
+        start = columns_
+        if self.position_reward and self.position_maps:
+            size = self.heads * self.position_buckets
+            blocks.append((start, size))
+            start += size
+            if self.anchor_maps:
+                size = self.heads * (self.position_buckets + 1)
+                blocks.append((start, size))
+                start += size
+        if len(self.gains):
+            blocks.append((start, len(self.gains)))
+        return blocks
+
+    def full_eligibility(self, kept: np.ndarray) -> np.ndarray:
+        """A reward eligibility laid out as a checkpoint keeps it, ``(batch, inputs + association
+        + 1, reward_columns)``: the rows of ``w_x``, ``w_c`` and ``b``, every column."""
+        out = np.zeros((len(kept), self.map_width + len(self.association) + 1, self.reward_columns))
+        at = 0
+        for start, width in self.reward_blocks:
+            out[:, : self.map_width, start : start + width] = kept[:, :, at : at + width]
+            at += width
+        return out
+
+    def kept_eligibility(self, full: np.ndarray) -> np.ndarray:
+        """What the actor keeps of a reward eligibility laid out in full, a row's or a batch's."""
+        parts = [
+            full[..., : self.map_width, start : start + width]
+            for start, width in self.reward_blocks
+        ]
+        return np.concatenate(parts, axis=-1)
+
+    def took_eligibility(self, *saved: np.ndarray) -> None:
+        """A checkpoint's reward eligibilities, laid out in full, are about to be kept: the
+        address columns count as written where they hold anything."""
+        if any(full[..., : self.heads * self.address_width].any() for full in saved):
+            self._address_held = True
 
     @property
     def reward_columns(self) -> int:
@@ -2599,7 +2671,9 @@ class Recall:
         step = np.asarray(step, dtype=float)
         width, columns_ = self.map_width, self.address_width
         shape = (width + len(self.association) + 1, self.reward_columns)
-        if step.shape != shape:
+        if step.shape == shape:
+            step = self.kept_eligibility(step)
+        elif step.shape != (width, sum(block[1] for block in self.reward_blocks)):
             raise ValueError(f"an address map's step is a {shape} array")
         gains: np.ndarray | None = None
         moved_gains: list[np.ndarray] = []
@@ -2607,14 +2681,23 @@ class Recall:
             moved_gains = [step[0, step.shape[1] - len(self.gains):]]
             with np.errstate(over="ignore", invalid="ignore"):
                 gains = self.gains + moved_gains[0]
-        split = self.heads * columns_
+        split = self.heads * columns_ if self._address_held or self.address_reward else 0
+        rest = len(self.association) + 1  # the cortex and bias rows, which hold nothing
+        full_split = self.heads * columns_
+        # a whole row's zeros: every part stepped, in the order of the columns
+        parts: list[np.ndarray | int] = []
+        maps = self.head_maps
         with np.errstate(over="ignore", invalid="ignore"):
-            moved = self.address_reward * step[:, :split]
-            maps = [
-                _added(self.head_map(h), moved[:, h * columns_:(h + 1) * columns_], width)
-                for h in range(self.heads)
-            ]
-            stepped: list[np.ndarray] = [moved]
+            if self.address_reward:
+                moved = self.address_reward * step[:, :split]
+                maps = [
+                    (kept[0] + moved[:, h * columns_:(h + 1) * columns_], kept[1], kept[2])
+                    for h, kept in enumerate(self.head_maps)
+                ]
+                parts += [moved, rest * full_split]
+            else:
+                parts.append((width + rest) * full_split)
+            stepped: list[np.ndarray] = [] if not self.address_reward else [moved]
             position_maps = anchor_maps = None
             if positions:
                 count, start = self.position_buckets, split
@@ -2625,23 +2708,26 @@ class Recall:
                 for kept_maps, size in kinds:
                     part = self.position_reward * step[:, start:start + self.heads * size]
                     stepped.append(part)
+                    parts += [part, rest * self.heads * size]
                     found_maps.append([
-                        _added(kept, part[:, h * size:(h + 1) * size], width)
+                        (kept[0] + part[:, h * size:(h + 1) * size], kept[1], kept[2])
                         for h, kept in enumerate(kept_maps)
                     ])
                     start += self.heads * size
                 position_maps = found_maps[0]
                 anchor_maps = found_maps[1] if len(found_maps) > 1 else None
+        parts += moved_gains
         stepped += moved_gains
-        every = [*(a for head in maps for a in head), *stepped]
+        every = [*(head[0] for head in maps), *stepped] if self.address_reward else [*stepped]
         if gains is not None:
             every.append(gains)
         for found in (position_maps, anchor_maps):
-            every += [a for head in found or () for a in head]
+            every += [head[0] for head in found or ()]
         if not all(np.isfinite(a).all() for a in every):
             raise ValueError("the address map's reward step must be finite")
-        # one norm over every part stepped: with the address map alone, 0.92.1's own
-        norm = float(np.linalg.norm(np.concatenate([part.ravel() for part in stepped])))
+        # one norm over every part stepped, as of the whole eligibility: with the address map
+        # alone, 0.92.1's own
+        norm = _laid_out_norm(parts)
         proposal: tuple[Any, ...] = (
             (maps[0][0], maps[0][1], maps[0][2], norm, position_maps, anchor_maps)
             if self.heads == 1

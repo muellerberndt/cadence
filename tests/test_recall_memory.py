@@ -1287,7 +1287,7 @@ def test_a_sampled_act_keeps_the_step_its_lesson_would_take_as_the_maps_eligibil
     assert agent.memory is recall and agent._pending_memory is None
     before = recall.snapshot()
     brain.act(NAME)  # sampled
-    contrast = agent._pending_memory
+    contrast = recall.full_eligibility(agent._pending_memory)
     assert contrast.shape == (1, 4 + 8 + 1, 4) and np.abs(contrast).max() > 0
     after = recall.snapshot()
     _, plus, minus, _ = agent._pending
@@ -1318,11 +1318,12 @@ def test_an_outcome_steps_the_address_map_by_its_trace_and_the_dopamine():
         brain.act(x, greedy=True)
     recall, agent = brain.recall, brain.basal_ganglia
     brain.act(NAME)  # sampled
-    contrast = agent._pending_memory.copy()
+    contrast = recall.full_eligibility(agent._pending_memory)
     start = _map(recall)
     brain.live(CUE, reward=[1.0])  # the act's outcome, learned; the brain answers calm
     report = brain.last_learning
-    np.testing.assert_array_equal(agent.trace_memory, contrast)  # the first trace
+    # the first trace
+    np.testing.assert_array_equal(recall.full_eligibility(agent.trace_memory), contrast)
     step = 0.5 * report["dopamine"] * contrast[0]
     for now, then, part in zip(_map(recall), start, _split(step, 4), strict=True):
         np.testing.assert_allclose(now - then, part, rtol=1e-12, atol=1e-15)
@@ -1349,9 +1350,10 @@ def test_the_maps_trace_follows_the_streams_and_a_refused_outcome_moves_nothing(
         brain.act(x, greedy=True)
     brain.act(x)
     agent, recall = brain.basal_ganglia, brain.recall
-    assert agent._pending_memory.shape == (3, 13, 4)
+    assert recall.full_eligibility(agent._pending_memory).shape == (3, 13, 4)
     brain.learn(np.array([1.0, 0.0, -1.0]), np.array([False, True, False]), x)
-    assert agent.trace_memory.shape == (3, 13, 4) and not agent.trace_memory[1].any()
+    assert recall.full_eligibility(agent.trace_memory).shape == (3, 13, 4)
+    assert not agent.trace_memory[1].any()
     assert agent.trace_memory[[0, 2]].any()
     brain.act(x)
     assert not agent._pending_memory[1].any()  # the ended stream holds no slot it read

@@ -270,7 +270,7 @@ def test_reward_keeps_one_block_of_eligibility_per_head():
     trace = brain.basal_ganglia.trace_memory
     assert trace is not None
     width = recall.key_width + len(recall.association) + 1
-    assert trace.shape[1:] == (width, 2 * recall.address_width)
+    assert recall.full_eligibility(trace).shape[1:] == (width, 2 * recall.address_width)
     assert moved
 
 

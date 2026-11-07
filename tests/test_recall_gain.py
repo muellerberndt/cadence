@@ -286,7 +286,7 @@ def test_reward_credits_the_gains_of_a_sampled_act(tmp_path):
     brain.act(event(HEAR, 2), greedy=True)
     brain.act(event(NOISE), greedy=True)
     brain.act(event(HEAR, ASK))  # sampled: the act keeps its eligibility
-    pending = brain.basal_ganglia._pending_memory
+    pending = brain.recall.full_eligibility(brain.basal_ganglia._pending_memory)
     assert pending.shape[-1] == brain.recall.reward_columns
     assert not pending[:, 1:, INPUTS:].any()  # the gains' columns: the first row alone
     credit = pending[0, 0, INPUTS:].copy()

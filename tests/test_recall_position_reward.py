@@ -37,7 +37,7 @@ def first_contrast(**options) -> np.ndarray:
     for t in range(1, 30):
         pending = brain.basal_ganglia._pending_memory
         if pending is not None and pending.any():
-            return pending
+            return brain.recall.full_eligibility(pending)
         action = brain.live(X[[t % 4]], reward=[float(action[0] == t % 2)])
     raise AssertionError("no sampled act kept an eligibility")
 
@@ -54,7 +54,8 @@ def test_reward_alone_steps_the_position_maps_and_the_anchored_ones():
     w_x, w_c, b = brain.recall.head_map(0)  # the address map stays with address_reward at 0
     assert not (w_x.any() or w_c.any() or b.any())
     trace = brain.basal_ganglia.trace_memory
-    assert trace is not None and trace.shape[-1] == brain.recall.reward_columns
+    assert trace is not None
+    assert brain.recall.full_eligibility(trace).shape[-1] == brain.recall.reward_columns
 
 
 def test_a_life_with_position_reward_saves_and_continues_exactly(tmp_path):
@@ -118,3 +119,60 @@ def test_the_reward_step_does_not_follow_the_lessons_rate():
         for m, n in zip(a, b, strict=True):
             np.testing.assert_array_equal(m, n)
     assert moved(slow_table.recall.position_maps)
+
+
+def test_the_actor_keeps_the_columns_that_can_step_over_the_event_rows():
+    """The default memory's eligibility at speech's width would be 141 MB per row in full: the
+    actor keeps the position's and the anchored columns of the event's rows, and the checkpoint's
+    layout is made from them."""
+    brain = life(1.0, anchor=True)
+    recall, agent = brain.recall, brain.basal_ganglia
+    assert recall.reward_blocks == [
+        (recall.address_width, recall.position_buckets),
+        (recall.address_width + recall.position_buckets, recall.position_buckets + 1),
+    ]
+    width = 2 * recall.position_buckets + 1
+    assert agent.trace_memory.shape == (1, recall.map_width, width)
+    full = recall.full_eligibility(agent.trace_memory)
+    assert full.shape == (1, recall.map_width + len(recall.association) + 1, recall.reward_columns)
+    np.testing.assert_array_equal(recall.kept_eligibility(full), agent.trace_memory)
+    assert not full[:, recall.map_width:].any() and not full[:, :, :recall.address_width].any()
+
+
+@pytest.mark.parametrize("seed", range(4))
+@pytest.mark.parametrize(("width", "association", "columns", "size"), [
+    (4, 8, 4, 3), (35, 64, 35, 34), (64, 64, 64, 36), (256, 128, 256, 36), (1024, 256, 1024, 36),
+])
+def test_the_report_of_a_reward_step_reads_as_the_norm_of_the_whole_eligibility(
+    seed, width, association, columns, size
+):
+    """Without the zeros of the long runs each term keeps its lane in the dot, so the norm has the
+    bits of the whole vector's."""
+    from cadence.stream import _laid_out_norm
+
+    rng = np.random.default_rng(seed)
+    position = rng.normal(size=(width, size)) * 10.0 ** rng.uniform(-6, 0)
+    anchored = rng.normal(size=(width, size + 1)) * 10.0 ** rng.uniform(-6, 0)
+    rest = association + 1
+    whole = np.concatenate([
+        np.zeros((width + rest) * columns), position.ravel(), np.zeros(rest * size),
+        anchored.ravel(), np.zeros(rest * (size + 1)),
+    ])
+    pieces = [(width + rest) * columns, position, rest * size, anchored, rest * (size + 1)]
+    assert _laid_out_norm(pieces) == np.linalg.norm(whole)
+
+
+def test_a_retuned_address_reward_keeps_the_eligibility_as_it_lay():
+    brain = life(1.0, anchor=True)
+    recall, agent = brain.recall, brain.basal_ganglia
+    if agent._pending is not None:  # the setting waits for the outcome of a sampled act
+        brain.learn(np.zeros(1), np.zeros(1, dtype=bool), X[[0]])
+    before = recall.full_eligibility(agent.trace_memory)
+    brain.retune(recall_address_reward=0.5)  # its columns join, at zero
+    assert agent.trace_memory.shape[-1] == recall.address_width + 2 * recall.position_buckets + 1
+    np.testing.assert_array_equal(recall.full_eligibility(agent.trace_memory), before)
+    brain.retune(recall_address_reward=0.0)
+    np.testing.assert_array_equal(
+        recall.full_eligibility(agent.trace_memory)[:, :, recall.address_width:],
+        before[:, :, recall.address_width:],
+    )

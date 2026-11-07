@@ -2904,8 +2904,13 @@ class Brain:
             self.arousal.config = arousal
         # the columns of the read's reward eligibility, which position_reward sets
         columns = None if self.recall is None else self.recall.reward_columns
+        whole = None
+        if self.recall is not None and agent.trace_memory is not None:
+            whole = self.recall.full_eligibility(agent.trace_memory)
         for component, field, value in memory_changes:
             setattr(component, field, value)
+        if whole is not None and self.recall is not None:
+            agent.trace_memory = self.recall.kept_eligibility(whole)
         if self.recall is not None and self.recall.reward_columns != columns:
             # a trace of the old columns cannot continue (no contrast is pending: refused above)
             agent.trace_memory = None
@@ -5066,10 +5071,12 @@ class Brain:
         if "recall" in out:
             # the actor's eligibility of the address map, and the pending action's contrast
             arrays = out["recall"][1]
+            recall = self.recall
+            assert recall is not None
             if agent.trace_memory is not None:
-                arrays["trace"] = agent.trace_memory
+                arrays["trace"] = recall.full_eligibility(agent.trace_memory)
             if agent._pending is not None and agent._pending_memory is not None:
-                arrays["pending"] = agent._pending_memory
+                arrays["pending"] = recall.full_eligibility(agent._pending_memory)
         return out
 
     @classmethod
@@ -5295,6 +5302,11 @@ class Brain:
                 agent._free_brain = learner.brain if meta.get("free_current", False) else None
             result._prepared = data["prepared"].copy() if "prepared" in data else None
             result.last_learning = meta.get("last_learning", {})
+            recalled_memory = result.recall
+            if recalled_memory is not None:
+                recalled_memory.took_eligibility(*(
+                    data[name] for name in ("recall/trace", "recall/pending") if name in data
+                ))
             if meta.get("pending", False):
                 phases = [
                     _saved_state(data, f"pending/{name}/", meta["pending_" + name + "_steps"])
@@ -5302,7 +5314,10 @@ class Brain:
                 ]
                 agent._pending = ("states", phases[0], phases[1], data["pending/value"].copy())
                 if "recall/pending" in data:  # validated above: a pending action's contrast
-                    agent._pending_memory = data["recall/pending"].astype(float)
+                    assert recalled_memory is not None
+                    agent._pending_memory = recalled_memory.kept_eligibility(
+                        data["recall/pending"].astype(float)
+                    )
                 if "moment/observations" in data:
                     result._moment = (
                         data["moment/observations"].copy(),
@@ -5311,7 +5326,10 @@ class Brain:
                     if "moment/code" in data:
                         result._moment_code = data["moment/code"].astype(float)
             if "recall/trace" in data:
-                agent.trace_memory = data["recall/trace"].astype(float)
+                assert recalled_memory is not None
+                agent.trace_memory = recalled_memory.kept_eligibility(
+                    data["recall/trace"].astype(float)
+                )
             working = meta["working_memory"]
             result.working_memory = None
             if working is not None:
