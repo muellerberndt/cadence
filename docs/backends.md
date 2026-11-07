@@ -121,6 +121,11 @@ carried route, one small read per residual check and per settle, and one read of
 update's report and finite checks. The memories, the eligibility and the optimizer's state do not
 cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
 
+A stream's synapse eligibility takes one float per synapse, 25 MB at the speech size in float32, so `step`
+takes its streams from the device's memory: 256 of them fit an A10G's 22 GB in float32 and in float64, and
+about 800 is that device's limit in float32. `act` and `lesson` hold no eligibility. A large read eligibility
+goes to a checkpoint as the actor keeps it, and the reader takes that form or the full layout.
+
 
 ## The default backend
 
