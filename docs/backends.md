@@ -256,7 +256,10 @@ through a float64 copy of the kernel, the same float64 reference); a state an ML
 that launch's own check, in float32, under the same drive, nudge and parameters; other MLX states,
 MPS states, a state read on the host and `on_device=False` use the float64 host reference. A solve
 on MLX decides by the launch's check from a tolerance of 1e-4, where its rounding is about a
-hundredth of the tolerance, and by the reference below that. A positive movement
+hundredth of the tolerance, and by the reference below that. So does a solve on a float32 torch state,
+by that state's check in float32 (`own_precision=True`); a finite lesson's diagnostics and the gain
+its nudged phases hold are read the same way, so a float32 brain learns without a float64 copy of its
+kernel. A positive movement
 `tolerance` in `settle_batch` tests every step; on CUDA the test is read one sweep behind (the
 next sweep is queued before the host reads the flag, into the other state slot), so the host
 never stalls the device, and the reported state and step count are those of the first sweep
