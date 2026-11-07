@@ -72,7 +72,8 @@ class Genome:
 
     @classmethod
     def composed(cls, inputs: Any, actions: int, **settings: Any) -> Genome:
-        """The layout ``Brain.compose(inputs, actions, **settings)`` develops: the sensory
+        """The layout ``Brain.compose(inputs, actions, recall=False, **settings)`` develops, the
+        recall regions only with ``recall=True``: the sensory
         region (an image's visual cortex), the code region with ``learned_code``, the modules
         ending in the association region, the prefrontal region of the working trace, the
         motor region, the observers, and the efference, history, recall and next regions its

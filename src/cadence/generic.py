@@ -2599,6 +2599,8 @@ class Brain:
         configuration instead. ``connectome`` wraps a custom anatomy with these founders;
         ``Genome.composed`` returns the layout developed here, to edit or evolve.
 
+        A new brain holds the recall memory, up to 4,096 observation-code coordinates;
+        ``recall=False`` builds it without one, and a custom anatomy holds one only by name.
         ``options`` takes the constructor's memory settings (``recall`` and its
         ``recall_<setting>``, ``episodic``, ``memory_choice`` and its settings,
         ``efference_amplitude``, ``history_decays``, ``working_memory_*``) and every configuration
@@ -2629,6 +2631,17 @@ class Brain:
             options.setdefault("recall_address", 0.0 if single else 0.01)
             options.setdefault("recall_recency", 0.0)
             options.setdefault("recall_temperature", 0.1 if single else 0.25)
+        if connectome is None and "recall" not in options:
+            # a new brain holds the memory, up to the width where its map should not arrive silently
+            width = _observation_width(inputs, code, learned_code)
+            if width > Recall.WIDE:
+                raise ValueError(
+                    "a new brain's recall memory keeps a map of about "
+                    f"{8 * width**2 // 10**6:,} MB over {width:,} observation coordinates: pass "
+                    "code=units to bound it, "
+                    "recall=False to build without one, or recall=True to take it"
+                )
+            options["recall"] = True
         if options.get("recall", False) is True and not attention:
             # the memory and the lessons a new brain composes, each an ordinary setting the
             # caller's overrides; the founder word takes none of them
@@ -5715,9 +5728,10 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
         # a copy retuned to zero keeps its region: lay it out, the brain's own amplitude
         # comes back with the brain's settings
         settings["efference_amplitude"] = 1.0
+    settings["recall"] = brain.recall is not None
     if brain.recall is not None:
         # the brain's own settings, whatever a new brain's memory composes
-        settings.update(recall=True, recall_founder=True)
+        settings["recall_founder"] = True
     if brain.hippocampus is None:
         settings["episodic"] = False
     if brain._episodic is not None:

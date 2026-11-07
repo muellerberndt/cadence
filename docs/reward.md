@@ -393,7 +393,7 @@ credits them. `memory_rate=0` alone leaves the consolidated record learning at `
 def walk_school(rate, steps=600):
     """Demonstrated walks on a line of seven cells that pay only at the ends."""
     cells = 7
-    walker = Brain.compose(cells, 2, modules=(16,), seed=0)
+    walker = Brain.compose(cells, 2, modules=(16,), seed=0, recall=False)
     school = {"actor_eta": 0.0, "actor_eta_bias": 0.0, "memory_rate": 0.0, "consolidation": 0.0}
     kept = {name: walker.describe()["genes"][name] for name in school}
     walker.retune(actor_eta_critic=rate, **school)

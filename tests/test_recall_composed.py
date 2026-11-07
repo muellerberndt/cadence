@@ -97,6 +97,34 @@ def test_every_setting_composes_beside_what_a_new_memory_takes_and_learns(option
     brain.learn(np.array([1.0, 0.0]), np.array([False, False]), X[4])
 
 
+def test_every_new_brain_holds_the_memory_and_the_opt_out_builds_none(tmp_path):
+    brain = cd.Brain.compose(6, 4, modules=(16,), seed=5)
+    assert brain.recall is not None and brain.recall.anchor
+    without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
+    assert without.recall is None
+    assert cd.Brain.load(without.save(tmp_path / "without.npz")).recall is None
+    assert without.grow(history_decays=(0.5,)).recall is None
+    assert without.grow(recall=True).recall is not None
+
+
+def test_a_custom_anatomy_holds_a_memory_only_by_name():
+    connectome = cd.develop(cd.Genome.composed(6, 4, modules=(16,)), seed=0)
+    assert "recall" not in connectome.populations
+    assert cd.Brain.compose(6, 4, connectome=connectome, seed=0).recall is None
+    holding = cd.develop(cd.Genome.composed(6, 4, modules=(16,), recall=True), seed=0)
+    assert cd.Brain.compose(6, 4, connectome=holding, seed=0, recall=True).recall is not None
+
+
+def test_above_the_wide_limit_compose_names_the_three_ways_out(monkeypatch):
+    monkeypatch.setattr(cd.Recall, "WIDE", 32)
+    with pytest.raises(ValueError, match=r"code=units.*recall=False.*recall=True"):
+        cd.Brain.compose(40, 2, modules=(8,), seed=0)
+    assert cd.Brain.compose(32, 2, modules=(8,), seed=0).recall is not None
+    assert cd.Brain.compose(40, 2, modules=(8,), seed=0, recall=False).recall is None
+    assert cd.Brain.compose(40, 2, modules=(8,), seed=0, recall=True).recall is not None
+    assert cd.Brain.compose(40, 2, modules=(8,), seed=0, code=32).recall is not None
+
+
 def test_no_position_term_leaves_out_what_reads_beside_it():
     brain = composed(recall_position=0)
     assert brain.recall.position == 0 and not brain.recall.position_maps

@@ -133,7 +133,7 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `episodic`, `memory_rate`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.5` with `memory_choice`), `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |
 | `code` | unset: the observation itself | construction | [memory](senses.md#the-observation-code) |
 | `memory_choice` and the other `memory_*` episodic settings | `False` | construction | [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) |
-| `recall` and every `recall_*` | `False` | see the page | [recall memory](memory.md#the-recall-memory-in-full) |
+| `recall` and every `recall_*` | `True` up to 4,096 code coordinates; `recall=False` builds no memory | see the page | [recall memory](memory.md#the-recall-memory-in-full) |
 | `backend`, `device`, `dense_limit` | `"cpu"`, `None`, `2048` (with `recall=True` as wide as dense blocks) | construction | [backends](backends.md) |
 
 Constants of the composed brain, not settings: the nudge `beta` 0.1, the learner's `momentum`

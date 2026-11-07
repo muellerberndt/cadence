@@ -21,7 +21,7 @@ import numpy as np
 from cadence import Brain
 
 rng = np.random.default_rng(0)
-brain = Brain.compose(inputs=6, actions=4, modules=(32,), seed=0)
+brain = Brain.compose(inputs=6, actions=4, modules=(32,), seed=0, recall=False)
 for _ in range(20):
     brain.step(rng.random((4, 6)), teacher=rng.integers(0, 4, size=4))
 

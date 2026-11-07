@@ -12,8 +12,8 @@ works, its settings, its readings and its limits.
 | The situation | Write | Section |
 | --- | --- | --- |
 | The present observation holds the answer | `recall=False, episodic=False, working_memory_amplitude=0.0` is the control to compare against; add one memory at a time | [check that a memory does the work](#check-that-a-memory-does-the-work) |
-| A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | `recall=True` | [recall memory](#the-recall-memory-in-full) |
-| Whole sentences or stories, read at lengths no lesson reached | `recall=True` | [one composition for sequences](#one-composition-for-sequences) |
+| A moment heard once has to return by its content: a name stated with a value, look back, n-back, copying | nothing: a new brain holds the memory | [recall memory](#the-recall-memory-in-full) |
+| Whole sentences or stories, read at lengths no lesson reached | nothing: a new brain's memory is this composition | [one composition for sequences](#one-composition-for-sequences) |
 | A position nothing marks, past the table: a period of 40, n-back at 400 | `recall_capacity` about 2.5 times the distance: a new brain holds the grid and 128 slots | [reads over long context](#reads-over-long-context) |
 | Two or more facts in one answer | `recall_heads=2` | [several heads](#several-heads-opt-in) |
 | A read that depends on what another read found | a "think" moment between the two reads | [several heads](#several-heads-opt-in) |
@@ -55,7 +55,7 @@ answer has to [qualify](start.md#qualification-and-refusal) whichever of them sh
 | Heard history | no | `history_decays=(0.2, 0.8)` | the observations as heard, one fading block per decay | none | after each act and each moment `wait` senses | no | [below](#heard-history) |
 | Associative store | yes | `episodic=False` removes it | one value per action per situation, in reward units | observation code | each outcome of the chosen action | yes | [below](#associative-store-the-hippocampus) |
 | Episodic memory | no | `memory_choice=True` | place and context records that vote in the choice | observation code, and code with the temporal context | known outcomes, demonstrations, replay of the path to a reward | records yes, context no | [below](#episodic-memory-what-happened-in-this-situation-before) |
-| Recall memory | no | `recall=True`; `attention=True` selects its learned-code contextual recipe | the stream's recent moments as slots, and a learned address map | observation code | a slot per moment; the map at lessons | map yes, slots no | [below](#the-recall-memory-in-full) |
+| Recall memory | yes | `recall=False` removes it; `attention=True` selects its learned-code contextual recipe | the stream's recent moments as slots, and a learned address map | observation code | a slot per moment; the map at lessons | map yes, slots no | [below](#the-recall-memory-in-full) |
 | Learned code | no | `learned_code=units` | a dictionary, a predictor and thresholds: the code region's synapses and biases | none | every accepted moment, by local rules | yes | [the learned code](senses.md#the-learned-code) |
 | Learned weights | yes | learning rates of zero freeze them | synapse scales and biases, actor and critic | none | lessons, and outcomes (aroused ones under `live`) | yes | [the free/nudged rule](settling.md#learning-the-freenudged-rule) |
 | Actor eligibility | yes | `actor_lam=0.0` credits the last action only | each synapse's credit for recent sampled acts | none | each sampled act | no | [reward.md](reward.md#eligibility-traces-and-dopamine) |
@@ -138,10 +138,13 @@ nothing for that key.
 
 ## Recall memory
 
-`Brain.compose(..., recall=True)` keeps each stream's recent moments as slots and gives one
-back when the present asks for it. Use it when a moment heard once has to return by its
-content (a name stated with a value, asked for later), or when the brain needs what followed
-an earlier moment that matches the present. The founder `recall=False` is the control. Each
+A new brain's recall memory keeps each stream's recent moments as slots and gives one back when
+the present asks for it: a moment heard once returns by its content (a name stated with a value,
+asked for later), and the brain reads what followed an earlier moment that matches the present.
+`recall=False` builds the brain without it, the control, and a custom anatomy (`connectome=`) names
+`recall=True` to hold one. Above 4,096 observation-code coordinates `Brain.compose` refuses to choose:
+the address map grows with the square of the width (140 MB at 4,096, 549 MB at 8,192), so it asks for
+`code=units` to bound it, `recall=False`, or `recall=True` to take it. Each
 slot holds a key (the event as heard), a value (the event) and a next (the value of the moment
 that followed). Two source regions, `recall` and `next`, carry the recalled value and next into
 the association region.
@@ -296,7 +299,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 
 | Setting | Founder | When | What it sets |
 | --- | --- | --- | --- |
-| `recall` | `False` | construction | Adds the memory and its `recall` and `next` regions |
+| `recall` | `True` in `Brain.compose` up to 4,096 code coordinates, `False` in `Brain(connectome)` | construction | Adds the memory and its `recall` and `next` regions |
 | `recall_amplitude` | `3.0` | retune | Drive of a slot that holds the whole weight |
 | `recall_temperature` | `0.25` | retune | Softmax temperature over the slots |
 | `recall_recency` | `0.25` | retune | Logit cost per moment of age |
@@ -1301,7 +1304,7 @@ settles as one without the option.
 
 ```python
 heard = Brain.compose(inputs=3, actions=2, seed=0, carried_gain=0.01, history_decays=(0.5, 0.9))
-assert heard.carried_gains == {"trace": 1.0, "history_0": 1.0, "history_1": 1.0}
+assert heard.carried_gains == {"trace": 1.0, "history_0": 1.0, "history_1": 1.0, "read": 1.0}
 heard.step(np.array([[1.0, 0.0, 0.0]]), teacher=[1])
 ```
 

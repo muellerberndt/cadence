@@ -40,8 +40,9 @@ the motor choice, settling together with them; a working trace that carries the 
 interpretation into the next settle; and an associative store that keeps each situation's
 outcomes. Under `live` the brain learns while young (its first 100 moments) or aroused by
 surprise or want, and otherwise answers greedily from one settle; under `step` it learns from
-every outcome and from `teacher=` labels. Everything else is opt-in: System 2 observers, the
-episodic memory, the recall memory, a learned code, images.
+every outcome and from `teacher=` labels. It also holds a recall memory of its recent moments
+(`recall=False` builds it without one). Everything else is opt-in: System 2 observers, the
+episodic memory, a learned code, images.
 
 | You want to | Read |
 | --- | --- |
@@ -67,8 +68,7 @@ research software.
 `live` takes the **preceding action's** measured reward, then chooses the next
 action for one continuing stream; supply one observation row per call. It needs
 `arousal=True` (the founder arousal settings). The working trace advances at every
-accepted moment; with the opt-in recall memory (`recall=True`) its slots advance at
-every accepted moment too. Tune named settings with `compose` or `brain.retune(...)`
+accepted moment, and so do the recall memory's slots. Tune named settings with `compose` or `brain.retune(...)`
 and inspect them with `brain.describe()`
 ([tune and read](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md#defaults-and-expert-overrides)).
 [Continuous interaction](https://github.com/muellerberndt/cadence/blob/main/docs/start.md#continuous-interaction)

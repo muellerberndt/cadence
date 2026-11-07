@@ -783,6 +783,9 @@ class Recall:
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
     # the setting means, so a saved brain keeps the values it was saved with
+    # above this many observation-code coordinates ``Brain.compose`` holds a memory only by name:
+    # the address map grows with the square of the width (140 MB at 4,096, 549 MB at 8,192)
+    WIDE = 4096
     COMPOSED: ClassVar[dict[str, Any]] = {
         "recency": 0.0, "boundary": True, "anchor": True, "slope": 0.1, "position_rate": 0.01,
         "relative": True, "position_reward": 4.0, "grid": (7, 8, 9, 11), "capacity": 128,

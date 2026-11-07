@@ -93,7 +93,7 @@ def demonstrator(position):  # the policy the brain watches: 1 steps right, 0 st
 def move(position, action):
     return np.clip(position + np.where(action == 1, 1, -1), 0, 4)
 
-pupil = cd.Brain.compose(inputs=5, actions=2, seed=0, teaching="normalized")  # the point above
+pupil = cd.Brain.compose(inputs=5, actions=2, seed=0, teaching="normalized", recall=False)  # the point above
 position = np.full(32, 2)  # 32 streams, one per batch row, starting in the middle
 for moment in range(32):  # bootstrap by watching: the demonstrator's moves are executed
     label = demonstrator(position)
