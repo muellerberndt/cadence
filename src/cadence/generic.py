@@ -1320,10 +1320,17 @@ def _validate_recall_state(
     eligibility = (batch, key + command + association + 1, columns)
     if "recall/trace" in data:
         array("trace", eligibility)
-    if "recall/pending" in data:
+    if "recall/pending" in data or "recall/pending_kept" in data:
         if not meta.get("pending", False):
             raise ValueError("a saved address contrast belongs to a pending action")
+    if "recall/pending" in data:
         array("pending", eligibility)
+    for kept in ("trace_kept", "pending_kept"):  # as the actor keeps them, with or without the
+        if "recall/" + kept in data:  # address columns
+            width = data["recall/" + kept].shape[-1]
+            if width not in (columns, columns - heads * address):
+                raise ValueError(f"invalid saved recall state: {kept}")
+            array(kept, (batch, key + command, width))
     # the streams whose latest slot closed an episode, saved while one does
     if "recall/ended" in data and array("ended", (batch,)).dtype != np.bool_:
         raise ValueError("invalid saved recall state: ended")
@@ -1333,7 +1340,7 @@ def _validate_recall_state(
     if window > 1:
         expected |= {"past"}
     if {name[len("recall/"):] for name in data if name.startswith("recall/")} - {
-        "trace", "pending", "ended"
+        "trace", "pending", "trace_kept", "pending_kept", "ended"
     } != expected:
         raise ValueError("unexpected saved recall arrays")
 
@@ -5137,9 +5144,9 @@ class Brain:
             recall = self.recall
             assert recall is not None
             if agent.trace_memory is not None:
-                arrays["trace"] = recall.full_eligibility(agent.trace_memory)
+                arrays.update(recall.saved_eligibility("trace", agent.trace_memory))
             if agent._pending is not None and agent._pending_memory is not None:
-                arrays["pending"] = recall.full_eligibility(agent._pending_memory)
+                arrays.update(recall.saved_eligibility("pending", agent._pending_memory))
         return out
 
     @classmethod
@@ -5370,6 +5377,10 @@ class Brain:
                 recalled_memory.took_eligibility(*(
                     data[name] for name in ("recall/trace", "recall/pending") if name in data
                 ))
+                recalled_memory.took_kept_eligibility(*(
+                    data[name] for name in ("recall/trace_kept", "recall/pending_kept")
+                    if name in data
+                ))
             if meta.get("pending", False):
                 phases = [
                     _saved_state(data, f"pending/{name}/", meta["pending_" + name + "_steps"])
@@ -5381,6 +5392,8 @@ class Brain:
                     agent._pending_memory = recalled_memory.kept_eligibility(
                         data["recall/pending"].astype(float)
                     )
+                elif "recall/pending_kept" in data:
+                    agent._pending_memory = data["recall/pending_kept"].astype(float)
                 if "moment/observations" in data:
                     result._moment = (
                         data["moment/observations"].copy(),
@@ -5393,6 +5406,8 @@ class Brain:
                 agent.trace_memory = recalled_memory.kept_eligibility(
                     data["recall/trace"].astype(float)
                 )
+            elif "recall/trace_kept" in data:
+                agent.trace_memory = data["recall/trace_kept"].astype(float)
             working = meta["working_memory"]
             result.working_memory = None
             if working is not None:

@@ -566,6 +566,9 @@ def _lms(maps: _Maps, step: np.ndarray, rate: float, x: np.ndarray, c: np.ndarra
 # A BLAS dot sums in lanes, so what a dot of two lists of numbers rounds to depends on where the
 # zeros lie: a term keeps its lane where the zeros before it keep their count modulo this, and
 # the kernels make the same choices above this length.
+# A reward eligibility laid out in full past this many entries (1 GiB) goes to a checkpoint as the
+# actor keeps it: at the speech size and 256 streams the full layout is 34 GiB of zeros and 1 GiB.
+_SAVED_IN_FULL = 1 << 27
 _DOT_LANES = 64
 _DOT_LONG = 1 << 17
 
@@ -2808,10 +2811,24 @@ class Recall:
         ]
         return np.concatenate(parts, axis=-1)
 
+    def saved_eligibility(self, name: str, kept: Any) -> dict[str, np.ndarray]:
+        """A reward eligibility as a checkpoint holds it: laid out in full while that stays small,
+        and past ``_SAVED_IN_FULL`` entries what the actor keeps, under ``name + "_kept"``."""
+        whole = len(kept) * (self.map_width + len(self.association) + 1) * self.reward_columns
+        if whole <= _SAVED_IN_FULL:
+            return {name: self.full_eligibility(kept)}
+        return {name + "_kept": kept if isinstance(kept, np.ndarray) else _host_array(kept)}
+
     def took_eligibility(self, *saved: np.ndarray) -> None:
         """A checkpoint's reward eligibilities, laid out in full, are about to be kept: the
         address columns count as written where they hold anything."""
         if any(full[..., : self.heads * self.address_width].any() for full in saved):
+            self._address_held = True
+
+    def took_kept_eligibility(self, *saved: np.ndarray) -> None:
+        """The same of those a checkpoint holds as the actor keeps them: every column there means
+        the address columns were written."""
+        if any(kept.shape[-1] == self.reward_columns for kept in saved):
             self._address_held = True
 
     @property

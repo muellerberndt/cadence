@@ -342,6 +342,64 @@ def test_a_refused_critic_step_is_refused_on_the_device(monkeypatch):
         agent._critic_device.candidate(np.ones(3))
 
 
+@pytest.mark.parametrize("pending", [False, True], ids=["after an outcome", "with an action out"])
+def test_a_large_eligibility_goes_to_a_checkpoint_as_the_actor_keeps_it(
+    monkeypatch, tmp_path, pending
+):
+    """Past a size a checkpoint holds the read's eligibility without the columns and rows that hold
+    nothing, and it continues as the full layout does: on the host to the bit."""
+    from cadence import stream
+
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, backend="cpu")
+    rng = np.random.default_rng(0)
+    x = np.eye(12)[rng.integers(12, size=2)]
+    brain.step(x)
+    for _ in range(4):
+        x = np.eye(12)[rng.integers(12, size=2)]
+        brain.step(x, reward=rng.random(2))
+    if not pending:
+        brain.learn(rng.random(2), np.zeros(2, dtype=bool), x)
+    full = brain.save(tmp_path / "full.npz")
+    monkeypatch.setattr(stream, "_SAVED_IN_FULL", 0)
+    small = brain.save(tmp_path / "small.npz")
+    with np.load(full) as whole, np.load(small) as kept:
+        assert "memories/recall/trace" in whole.files and "memories/recall/trace" not in kept.files
+        assert kept["memories/recall/trace_kept"].size < whole["memories/recall/trace"].size
+        assert ("memories/recall/pending_kept" in kept.files) == pending
+        assert "memories/recall/pending" not in kept.files
+    one, other = cd.Brain.load(full, backend="cpu"), cd.Brain.load(small, backend="cpu")
+    for name in ("trace_memory", "_pending_memory"):
+        ours, theirs = getattr(one.basal_ganglia, name), getattr(other.basal_ganglia, name)
+        if ours is None:
+            assert theirs is None
+        else:
+            np.testing.assert_array_equal(ours, theirs)
+    assert one.recall._address_held == other.recall._address_held
+    for _ in range(4):
+        x = np.eye(12)[rng.integers(12, size=2)]
+        kwargs = {"reward": rng.random(2)} if one.basal_ganglia._pending is not None else {}
+        np.testing.assert_array_equal(one.step(x, **kwargs), other.step(x, **kwargs))
+    np.testing.assert_array_equal(one.brain.efficacy, other.brain.efficacy)
+    np.testing.assert_array_equal(one.basal_ganglia.trace_memory, other.basal_ganglia.trace_memory)
+
+
+def test_a_kept_eligibility_of_another_width_is_refused(monkeypatch, tmp_path):
+    from cadence import stream
+
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, backend="cpu")
+    x = np.eye(12)[[1, 7]]
+    brain.step(x)
+    brain.step(x, reward=np.ones(2))
+    monkeypatch.setattr(stream, "_SAVED_IN_FULL", 0)
+    path = brain.save(tmp_path / "small.npz", compressed=False)
+    with np.load(path) as held:
+        arrays = {name: held[name] for name in held.files}
+    arrays["memories/recall/trace_kept"] = arrays["memories/recall/trace_kept"][:, :, :-1]
+    np.savez(tmp_path / "wrong.npz", **arrays)
+    with pytest.raises(ValueError, match="trace_kept"):
+        cd.Brain.load(tmp_path / "wrong.npz", backend="cpu")
+
+
 # -- what a moment brings to the host
 
 
