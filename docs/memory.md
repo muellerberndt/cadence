@@ -616,7 +616,7 @@ Against the founder memory, `recall_founder=True`, where a task names the memory
 
 | Chamber | Reading | `recall_founder=True` | This composition | `recall=False` |
 | --- | --- | --- | --- | --- |
-| Hidden route, guided, 30 founders | sampled success | .39 | .22 | .21 |
+| Hidden route, guided, 30 founders | sampled success | .40 | .22 | .21 |
 | Hidden route, guided, 30 founders | greedy success | .25 | .08 | .00 |
 
 At the key-door's delay 5 it rises: 9 to 12 of 32 on development founders, 4 to 7 of 24 on fresh ones. On six
