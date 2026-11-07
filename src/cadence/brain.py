@@ -3418,6 +3418,15 @@ class _TorchKernel:
         neurons = (s_plus - s_minus).sum(dim=0).to(self.param_dtype)
         return edges, neurons
 
+    def has_room(self, like: Any) -> bool:
+        """Whether the device can hold one more array of the size of ``like`` with room to work."""
+        if self.device.type != "cuda":
+            return True
+        torch = self.torch
+        free = torch.cuda.mem_get_info(self.device)[0]
+        cached = torch.cuda.memory_reserved(self.device) - torch.cuda.memory_allocated(self.device)
+        return bool(4 * like.numel() * like.element_size() <= 3 * (free + cached))
+
     def contrast_parts(self, s_plus: Any, s_minus: Any) -> Iterator[tuple[int, int, Any]]:
         """The contrast per row by parts of the streams: ``(first, stop, (rows, edges))``, each
         stream's own product of the two phases, in arrays of at most ``_CONTRAST_ENTRIES``."""

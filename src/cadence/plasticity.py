@@ -66,9 +66,6 @@ def _batch_of(state: BrainState) -> int:
 
 
 SATURATION_BAND = 0.02  # an output within this of 0 or 1 has no slope left for a nudge
-# At most this many entries of a per-stream contrast wait for the last refusal; beyond them it is
-# made again to install it, so that the device holds the streams' synapse trace once.
-_KEPT_CONTRAST = 1 << 29
 
 
 @dataclass(slots=True)
@@ -942,9 +939,9 @@ class ActorCritic:
                 yield first, stop, part.div_(span)
 
         step = decay * torch.mv(trace.T, d)
-        kept: list[tuple[int, int, Any]] | None = (
-            [] if batch * synapses <= _KEPT_CONTRAST else None
-        )
+        # where the device has no room to keep the contrast for the last refusal, it is made again
+        # to install it
+        kept: list[tuple[int, int, Any]] | None = [] if kernel.has_room(trace) else None
         for first, stop, part in parts():
             step += torch.mv(part.T, d[first:stop])
             if kept is not None:

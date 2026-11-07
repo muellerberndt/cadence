@@ -106,17 +106,16 @@ def _a_life_of_rewards(brain: cd.Brain, seed: int = 5, moments: int = 12) -> lis
 
 
 @pytest.mark.parametrize("entries", [1, 1 << 14])
-@pytest.mark.parametrize("kept", [0, 1 << 40])
-def test_the_streams_eligibility_reads_alike_in_parts_and_made_twice(monkeypatch, entries, kept):
+@pytest.mark.parametrize("room", [False, True])
+def test_the_streams_eligibility_reads_alike_in_parts_and_made_twice(monkeypatch, entries, room):
     """A large batch makes each stream's contrast in parts and, past what can wait for the last
     refusal, makes it again to install it: the same life within rounding."""
     from cadence import brain as graph_module
-    from cadence import plasticity
 
     whole = brain_on_torch()
     plain = _a_life_of_rewards(whole)
     monkeypatch.setattr(graph_module, "_CONTRAST_ENTRIES", entries)
-    monkeypatch.setattr(plasticity, "_KEPT_CONTRAST", kept)
+    monkeypatch.setattr(graph_module._TorchKernel, "has_room", lambda self, like: room)
     parted = brain_on_torch()
     for ours, theirs in zip(plain, _a_life_of_rewards(parted), strict=True):
         np.testing.assert_array_equal(ours, theirs)
@@ -127,9 +126,9 @@ def test_the_streams_eligibility_reads_alike_in_parts_and_made_twice(monkeypatch
 
 
 def test_a_refused_outcome_leaves_the_streams_eligibility_as_it_was(monkeypatch):
-    from cadence import plasticity
+    from cadence import brain as graph_module
 
-    monkeypatch.setattr(plasticity, "_KEPT_CONTRAST", 0)
+    monkeypatch.setattr(graph_module._TorchKernel, "has_room", lambda self, like: False)
     brain = brain_on_torch()
     _a_life_of_rewards(brain, moments=6)
     x = np.eye(12)[[1, 7, 3]]
