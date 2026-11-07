@@ -1702,6 +1702,7 @@ class Brain:
                 else "numpy_segmented"
             ),
             "layout": self.layout.to_dict(),
+            **({} if self._torch is None else {"torch_transport": self._torch.plan.describe()}),
             **({} if self.apical is None else {"apical": self.apical.to_dict()}),
             "efficacy_changed": int((self.efficacy != self.connectome.sign).sum()),
             "log_gain_nonzero": int((self.log_gain != 0).sum()),
@@ -1749,6 +1750,12 @@ _SETTLE_BATCH, _RESIDUAL = Brain.settle_batch, Brain.residual
 def _graphs_enabled() -> bool:
     """CUDA graph replay of sweeps; ``CADENCE_CUDA_GRAPHS=0`` runs every sweep eagerly."""
     return os.environ.get("CADENCE_CUDA_GRAPHS", "1") != "0"
+
+
+def _still_products() -> bool:
+    """Products of source neurons made once a settle; ``CADENCE_STILL_PRODUCTS=0`` makes them
+    at every sweep."""
+    return os.environ.get("CADENCE_STILL_PRODUCTS", "1") != "0"
 
 
 def _transport_override() -> str | None:
@@ -1849,9 +1856,27 @@ def _take(x: Any, span: tuple[int, int] | None, index: Any) -> Any:
     return x.index_select(0, index)
 
 
+class _Part:
+    """The products of one part of a sweep: a Triton launch, buckets on cuBLAS, or blocks (with
+    the spans of output rows they accumulate into)."""
+
+    __slots__ = ("small", "large", "pairs", "spans")
+
+    def __init__(self) -> None:
+        self.small: Any = None
+        self.large: list[int] = []
+        self.pairs: list[int] = []
+        self.spans: list[tuple[int, int]] = []
+
+
 class _PlanStructure:
     """What a transport plan knows of its graph alone (no weights): its kind, the row groups
-    and their device index tensors, made once per connectome, compartment, layout and device."""
+    and their device index tensors, made once per connectome, compartment, layout and device.
+
+    With ``still`` the products of the synapses that leave a source neuron (one no synapse
+    reaches) are a part of their own: under a step of one such a neuron stands at its drive from
+    the second sweep on, so a settle makes those products twice and every other sweep reuses them.
+    """
 
     def __init__(
         self,
@@ -1863,6 +1888,7 @@ class _PlanStructure:
         device: Any,
         layout: Any = None,
         kind: str | None = None,
+        still: bool = False,
     ) -> None:
         synapses = len(pre)
         row = np.asarray(post, dtype=np.int64)
@@ -1906,29 +1932,57 @@ class _PlanStructure:
         self.pairs: list[tuple[int, int, int, int, int, int]] = []  # blocks: rows and bounds
         bucket_cols: list[np.ndarray] = []
         bucket_rows: list[np.ndarray] = []
+        # the neurons synapses reach, as contiguous spans, and the entries read from the others
+        heard = np.zeros(n, dtype=bool)
+        heard[np.asarray(post, dtype=np.int64)] = True
+        self.source = ~heard
+        edges = np.flatnonzero(np.diff(np.concatenate([[0], heard.astype(np.int8), [0]])))
+        self.settling = [
+            (int(a), int(b - a)) for a, b in zip(edges[0::2], edges[1::2], strict=True)
+        ]
+        from_source = self.source[entry_col]
+        self.split = bool(still and kind != "sparse" and from_source.any())
+        members_of: list[list[int]] = []  # the buckets of each part
         if kind == "grouped":
             positions = []
             offset = 0
-            for (rows_, cols_), members in shapes.items():
-                out_rows = np.concatenate(
-                    [np.arange(g_first[g], g_first[g] + rows_) for g in members]
-                )
-                in_cols = np.concatenate(
-                    [entry_col[g_entry[g] : g_entry[g] + cols_] for g in members]
-                )
-                bucket = _Bucket(
-                    torch, device, len(members), rows_, cols_, out_rows, in_cols, offset, n
-                )
-                self.buckets.append(bucket)
-                bucket_cols.append(in_cols)
-                bucket_rows.append(out_rows)
-                # the bucket's weights (count, rows, cols): entry of group g, row i, column j
-                for g in members:
-                    r0 = int(g_first[g])
-                    positions.append(
-                        (starts[r0 : r0 + rows_, None] + np.arange(cols_)[None, :]).ravel()
+            for chosen in (
+                (np.flatnonzero(~from_source), np.flatnonzero(from_source)) if self.split
+                else (None,)
+            ):
+                if chosen is None:
+                    p_col, p_starts, p_first, p_entry = entry_col, starts, g_first, g_entry
+                    p_shapes = shapes
+                else:
+                    p_col = entry_col[chosen]
+                    p_starts, p_first, p_rows, p_cols, p_entry = _row_groups(
+                        entry_row[chosen], p_col, self.rows
                     )
-                offset += bucket.size
+                    p_shapes = {}
+                    for g in range(len(p_first)):
+                        p_shapes.setdefault((int(p_rows[g]), int(p_cols[g])), []).append(g)
+                part: list[int] = []
+                for (rows_, cols_), members in p_shapes.items():
+                    out_rows = np.concatenate(
+                        [np.arange(p_first[g], p_first[g] + rows_) for g in members]
+                    )
+                    in_cols = np.concatenate(
+                        [p_col[p_entry[g] : p_entry[g] + cols_] for g in members]
+                    )
+                    bucket = _Bucket(
+                        torch, device, len(members), rows_, cols_, out_rows, in_cols, offset, n
+                    )
+                    part.append(len(self.buckets))
+                    self.buckets.append(bucket)
+                    bucket_cols.append(in_cols)
+                    bucket_rows.append(out_rows)
+                    # the bucket's weights (count, rows, cols): entry of group g, row i, column j
+                    for g in members:
+                        r0 = int(p_first[g])
+                        at = (p_starts[r0 : r0 + rows_, None] + np.arange(cols_)[None, :]).ravel()
+                        positions.append(at if chosen is None else chosen[at])
+                    offset += bucket.size
+                members_of.append(part)
             entry_at = np.concatenate(positions) if positions else np.zeros(0, np.int64)
             where = np.empty(self.entries, dtype=np.int64)
             where[entry_at] = np.arange(self.entries)
@@ -1955,34 +2009,49 @@ class _PlanStructure:
             self.col = torch.from_numpy(entry_col.copy()).to(device)
             self.entry_row = torch.from_numpy(entry_row % n).to(device)
         self.position = torch.from_numpy(position).to(device)
-        # On CUDA the buckets of several small groups are one Triton launch; a bucket of one
-        # group is one dense product, which cuBLAS does well.
-        self.small: Any = None
-        self.large = list(range(len(self.buckets)))
-        several = [k for k, bucket in enumerate(self.buckets) if bucket.count > 1]
-        if kind == "grouped" and device.type == "cuda" and several:
-            if _triton_transport() is not None:
-                self.small = _SmallGroups(
-                    torch, device, [self.buckets[k] for k in several],
-                    [self.buckets[k].offset for k in several],
-                    [bucket_cols[k] for k in several], [bucket_rows[k] for k in several],
-                )
-                self.large = [k for k in self.large if k not in set(several)]
+        # The parts of a sweep: without ``split`` one, every product; with it the moving part
+        # and the still part.
+        self.parts: list[_Part] = []
+        if kind == "blocks":
+            sources = self.source
+            choices = [[k for k, pair in enumerate(self.pairs) if not sources[pair[2]]],
+                       [k for k, pair in enumerate(self.pairs) if sources[pair[2]]]]
+            for chosen_pairs in choices if self.split else [list(range(len(self.pairs)))]:
+                part_ = _Part()
+                part_.pairs = chosen_pairs
+                part_.spans = sorted({(self.pairs[k][0], self.pairs[k][1]) for k in chosen_pairs})
+                self.parts.append(part_)
+        else:
+            for buckets_ in members_of or [list(range(len(self.buckets)))]:
+                part_ = _Part()
+                part_.large = list(buckets_)
+                # On CUDA the buckets of several small groups are one Triton launch; a bucket of
+                # one group is one dense product, which cuBLAS does well.
+                several = [k for k in buckets_ if self.buckets[k].count > 1]
+                if kind == "grouped" and device.type == "cuda" and several:
+                    if _triton_transport() is not None:
+                        part_.small = _SmallGroups(
+                            torch, device, [self.buckets[k] for k in several],
+                            [self.buckets[k].offset for k in several],
+                            [bucket_cols[k] for k in several], [bucket_rows[k] for k in several],
+                        )
+                        part_.large = [k for k in buckets_ if k not in set(several)]
+                self.parts.append(part_)
 
 
 def _plan_structure(
     torch: Any, connectome: Connectome, apical: Apical | None, device: Any, layout: Any,
-    kind: str | None,
+    kind: str | None, still: bool = False,
 ) -> _PlanStructure:
     """The connectome's plan structure for this compartment, layout and device, made once: a
     brain rebuilt on new parameters (``with_parameters``, a damped copy) reuses it."""
     held = connectome.__dict__.setdefault("_torch_plans", {})
-    key = (str(device), kind, id(layout), id(apical), _triton_transport() is not None)
+    key = (str(device), kind, id(layout), id(apical), _triton_transport() is not None, still)
     entry = held.get(key)
     if entry is None or entry[1] is not layout or entry[2] is not apical:
         structure = _PlanStructure(
             torch, connectome.pre, connectome.post, connectome.n,
-            None if apical is None else apical.synapses, device, layout, kind,
+            None if apical is None else apical.synapses, device, layout, kind, still,
         )
         if len(held) >= 8:
             held.clear()
@@ -2006,11 +2075,10 @@ class _TransportPlan:
         self.kind, self.rows, self.entries = structure.kind, structure.rows, structure.entries
         self.parallel, self.groups = structure.parallel, structure.groups
         self.buckets, self.pairs = structure.buckets, structure.pairs
-        self.small, self.large = structure.small, structure.large
+        self.parts = structure.parts
+        self.moving = structure.parts[0]
+        self.still: _Part | None = structure.parts[1] if structure.split else None
         self.position = structure.position
-        if dtype not in (torch.float32, torch.float64):
-            self.small = None
-            self.large = list(range(len(self.buckets)))
         self.values = torch.zeros(structure.size, dtype=dtype, device=device)
         if self.kind == "sparse":
             self.csr = torch.sparse_csr_tensor(
@@ -2047,19 +2115,32 @@ class _TransportPlan:
             out[self.position] = weights
         return out
 
-    def forward(self, s: Any, out: Any) -> Any:
-        """The inputs ``(rows, batch)`` of a neuron-major activation ``s``, into ``out``.
+    @property
+    def small(self) -> Any:
+        """The Triton launch of the moving part, else of the still part; None without one."""
+        return next((part.small for part in self.parts if part.small is not None), None)
 
-        ``out`` must hold zeros in the rows no synapse writes; grouped products write every
-        other row in full, block products accumulate into zeroed rows.
+    def forward(self, s: Any, out: Any) -> Any:
+        """The inputs ``(rows, batch)`` of a neuron-major activation ``s``: every product."""
+        if self.still is None:
+            return self.products(self.moving, s, out)
+        return self.products(self.moving, s, out) + self.products(
+            self.still, s, self.torch.zeros_like(out)
+        )
+
+    def products(self, part: _Part, s: Any, out: Any) -> Any:
+        """The products of one part of a sweep, into ``out``.
+
+        ``out`` must hold zeros in the rows the part does not write; grouped products write
+        every other row in full, block products accumulate into their zeroed rows.
         """
         torch = self.torch
         batch = s.shape[1]
         if self.kind == "grouped":
-            if self.small is not None:
+            if part.small is not None:
                 with torch.cuda.device(self.device):
-                    self.small(self.values, s, out)
-            for k in self.large:
+                    part.small(self.values, s, out)
+            for k in part.large:
                 bucket, w = self.buckets[k], self.weights[k]
                 x = _take(s, bucket.col_range, bucket.col_index)
                 x = x.view(bucket.count, bucket.cols, batch)
@@ -2071,10 +2152,11 @@ class _TransportPlan:
                     out.index_copy_(0, bucket.row_index, y.view(-1, batch))
             return out
         if self.kind == "blocks":
-            out.zero_()
-            for (r0, width, a0, height, _start, _k), w in zip(self.pairs, self.weights,
-                                                              strict=True):
-                out.narrow(0, r0, width).addmm_(w.T, s.narrow(0, a0, height))
+            for r0, width in part.spans:
+                out.narrow(0, r0, width).zero_()
+            for k in part.pairs:
+                r0, width, a0, height, _start, _k = self.pairs[k]
+                out.narrow(0, r0, width).addmm_(self.weights[k].T, s.narrow(0, a0, height))
             return out
         return torch.sparse.mm(self.csr, s)
 
@@ -2150,9 +2232,14 @@ class _TransportPlan:
             "kind": self.kind,
             "entries": int(self.values.shape[0]),
             "groups": self.groups,
-            "products": (len(self.large) + (self.small is not None))
+            "products": sum(len(part.large) + (part.small is not None) for part in self.parts)
             if self.kind == "grouped" else (len(self.pairs) if self.kind == "blocks" else 1),
-            "triton_programs": 0 if self.small is None else self.small.programs,
+            "triton_programs": sum(
+                part.small.programs for part in self.parts if part.small is not None
+            ),
+            "still_products": 0 if self.still is None else (
+                len(self.still.large) + (self.still.small is not None) + len(self.still.pairs)
+            ),
             "deterministic": self.deterministic,
         }
 
@@ -2226,6 +2313,10 @@ class _Workspace:
         self.held: Any = None  # (n, batch): a nudge's held apical gain spread over its pools
         self.part: Any = None  # the fused update's movement sums per row tile, and its peaks
         self.peak: Any = None
+        self.part_settling: Any = None  # the same over the neurons synapses reach
+        self.peak_settling: Any = None
+        self.still: Any = None  # a split plan's still products, and the standing input with them
+        self.input: Any = None
         self.flag = [torch.zeros((), dtype=torch.bool, device=device) for _ in range(2)]
         self.cuda = device.type == "cuda"
         self.flag_host = (
@@ -2337,17 +2428,19 @@ _UPDATE_ROWS = 32  # neurons per program of the fused update
 
 def _update_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
     total_ptr, v_ptr, s_ptr, a_ptr, keep_ptr, v_out, s_out, a_out, part_ptr, peak_ptr, c_ptr,
-    n, batch,
+    span_ptr, batch,
     ROWS: tl.constexpr, BATCH: tl.constexpr, KEEP: tl.constexpr, ADAPT: tl.constexpr,
     LEAK: tl.constexpr,
 ):
     # the neuron update of a sweep after its drive ``total``, as ``_TorchKernel._update`` does
-    # it one operation at a time; the constants come from a device array in the state's dtype
+    # it one operation at a time; the constants come from a device array in the state's dtype,
+    # each program's first neuron and neuron count from ``span_ptr``
     rb = tl.program_id(0)
     cb = tl.program_id(1)
-    rows = rb * ROWS + tl.arange(0, ROWS)
+    offs_r = tl.arange(0, ROWS)
+    rows = tl.load(span_ptr + rb * 2) + offs_r
     cols = cb * BATCH + tl.arange(0, BATCH)
-    in_rows = rows < n
+    in_rows = offs_r < tl.load(span_ptr + rb * 2 + 1)
     inside = in_rows[:, None] & (cols < batch)[None, :]
     at = rows[:, None] * batch + cols[None, :]
     dt = tl.load(c_ptr)
@@ -2400,6 +2493,56 @@ def _triton_update() -> Any:
     return _UPDATE_KERNEL
 
 
+_APICAL_KERNEL: Any = None
+
+
+def _apical_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
+    total_ptr, raw_ptr, member_ptr, span_ptr, count_ptr, c_ptr, batch,
+    BATCH: tl.constexpr, DOUBLE: tl.constexpr,
+):
+    # the apical compartment's drive added to ``total``, one program per pool and tile of the
+    # batch: the pool's two sums of squares over its members in order, ``Apical.gain``, the drive
+    p = tl.program_id(0)
+    offs = tl.program_id(1) * BATCH + tl.arange(0, BATCH)
+    inside = offs < batch
+    first = tl.load(span_ptr + p * 2)
+    last = first + tl.load(span_ptr + p * 2 + 1)
+    if DOUBLE:
+        basal2 = tl.zeros((BATCH,), dtype=tl.float64)
+        raw2 = tl.zeros((BATCH,), dtype=tl.float64)
+    else:
+        basal2 = tl.zeros((BATCH,), dtype=tl.float32)
+        raw2 = tl.zeros((BATCH,), dtype=tl.float32)
+    for k in range(first, last):
+        at = tl.load(member_ptr + k) * batch + offs
+        b = tl.load(total_ptr + at, mask=inside, other=0.0)
+        u = tl.load(raw_ptr + at, mask=inside, other=0.0)
+        basal2 += b * b
+        raw2 += u * u
+    count = tl.load(count_ptr + p)
+    basal2 = basal2 / count
+    raw2 = raw2 / count
+    spread = tl.sqrt(raw2 + tl.load(c_ptr + 1) * basal2 + tl.load(c_ptr + 2))
+    gain = tl.load(c_ptr) * tl.sqrt(basal2) / spread
+    for k in range(first, last):
+        at = tl.load(member_ptr + k) * batch + offs
+        b = tl.load(total_ptr + at, mask=inside, other=0.0)
+        u = tl.load(raw_ptr + at, mask=inside, other=0.0)
+        tl.store(total_ptr + at, b + gain * u, mask=inside)
+
+
+def _triton_apical() -> Any:
+    """The compiled normalization, or None without Triton or under ``CADENCE_TRITON=0``."""
+    global _APICAL_KERNEL
+    if _triton_transport() is None:  # binds ``tl``
+        return None
+    if _APICAL_KERNEL is None:
+        import triton
+
+        _APICAL_KERNEL = triton.jit(_apical_tiles)
+    return _APICAL_KERNEL
+
+
 class _SmallGroups:
     """The programs of one launch: per program its weights, columns and output rows."""
 
@@ -2444,13 +2587,15 @@ def _host_copy(x: Any) -> np.ndarray:
 class _SweepConfig:
     """What one settle's sweeps read besides the state: the buffers and the graph key."""
 
-    __slots__ = ("key", "masked", "keep", "nudge", "held", "tolerance")
+    __slots__ = ("key", "masked", "keep", "nudge", "held", "tolerance", "quiet")
 
     def __init__(
-        self, key: Any, masked: bool, keep: Any, nudge: Any, held: bool, tolerance: float | None
+        self, key: Any, masked: bool, keep: Any, nudge: Any, held: bool, tolerance: float | None,
+        quiet: bool = False,
     ) -> None:
         self.key, self.masked, self.keep = key, masked, keep
         self.nudge, self.held, self.tolerance = nudge, held, tolerance
+        self.quiet = quiet  # the source neurons stand at their drive from the second sweep on
 
 
 class _NudgeBuffers:
@@ -2463,6 +2608,7 @@ class _NudgeBuffers:
         u, u_range, u_index, groups, tiled = spec
         m = len(u)
         self.m, self.u_range, self.u_index, self.groups = m, u_range, u_index, groups
+        self.reach = u
         self.temperatures = (
             None if groups is None else torch.zeros(len(groups), 1, 1, dtype=dtype, device=device)
         )
@@ -2560,10 +2706,27 @@ class _TorchKernel:
             self.pool_count = torch.from_numpy(
                 np.maximum(indicator.sum(axis=0), 1.0)[:, None]
             ).to(self.device, self.dtype)
+            self._pools: Any = None
+            if self.device.type == "cuda" and not reference and _triton_apical() is not None:
+                # per pool its members in order and, as a launch reads them, where they lie
+                ordered = [np.arange(connectome.n)[m] for m in apical.members]
+                sizes = np.array([len(m) for m in ordered], dtype=np.int64)
+                starts = np.concatenate([[0], np.cumsum(sizes)[:-1]]).astype(np.int64)
+                self._pools = (
+                    torch.from_numpy(np.concatenate(ordered).astype(np.int64)).to(self.device),
+                    torch.from_numpy(np.stack([starts, sizes], axis=1).reshape(-1)).to(self.device),
+                    torch.tensor(
+                        [apical.fraction, apical.floor * apical.floor, _APICAL_TINY],
+                        dtype=self.dtype, device=self.device,
+                    ),
+                )
         self.plan = _TransportPlan(
             torch,
-            _plan_structure(torch, connectome, apical, self.device, layout,
-                            _transport_override()),
+            _plan_structure(
+                torch, connectome, apical, self.device, layout, _transport_override(),
+                _still_products() and self.device.type in ("cuda", "cpu") and apical is None
+                and neuron_model.adaptation is None and neuron_model.dt == 1.0,
+            ),
             connectome.n,
             self.device,
             self.dtype,
@@ -2582,6 +2745,7 @@ class _TorchKernel:
         # On CUDA with Triton the neuron update of a sweep is one fused launch (CADENCE_TRITON=0
         # keeps the operation-by-operation update); its constants in the state's dtype
         self._fused: Any = None
+        self._update_tables: dict[Any, Any] = {}
         if self.device.type == "cuda" and not reference:
             self._fused = _triton_update()
         adapt = neuron_model.adaptation
@@ -2696,6 +2860,17 @@ class _TorchKernel:
         spread = (raw2 + (apical.floor * apical.floor) * basal2 + _APICAL_TINY).sqrt()
         return apical.fraction * basal2.sqrt() / spread
 
+    def _apical_launch(self, total: Any, raw: Any, batch: int) -> None:
+        """``total += gain * raw`` per pool in one Triton launch (CUDA)."""
+        members, spans, constants = self._pools
+        block = 64 if batch >= 64 else max(16, 1 << max(0, batch - 1).bit_length())
+        grid = (spans.shape[0] // 2, -(-batch // block))
+        with self.torch.cuda.device(self.device):
+            _APICAL_KERNEL[grid](
+                total, raw, members, spans, self.pool_count, constants, batch,
+                BATCH=block, DOUBLE=total.element_size() == 8,
+            )
+
     def _push(self, total: Any, s: Any, buffers: _NudgeBuffers) -> None:
         """Add ``Nudge.drive`` at neuron-major ``s`` into ``total``, on the neurons it reaches."""
         torch = self.torch
@@ -2744,19 +2919,45 @@ class _TorchKernel:
         else:
             total.index_add_(0, buffers.u_index, push)
 
-    def _sweep(self, ws: Any, cfg: _SweepConfig, i: int, j: int) -> None:
+    def _stage(self, cfg: _SweepConfig, t: int) -> int:
+        """What sweep ``t`` of a settle makes: 0 every product and every neuron; 1 the moving
+        products (the still ones are those of sweep 1) and every neuron; 2 the moving products
+        and the neurons synapses reach, once both state slots hold the source neurons at their
+        drive."""
+        if not cfg.quiet or t < 2:
+            return 0
+        return 1 if t == 2 or self._fused is None else 2
+
+    def _sweep(self, ws: Any, cfg: _SweepConfig, i: int, j: int, stage: int = 0) -> None:
         """One sweep from slot ``i`` into slot ``j``: no host synchronization, no new buffer."""
-        synaptic = self._synaptic_input(ws.s[i], ws.out)
-        self._update(ws, cfg, i, j, synaptic)
+        plan = self.plan
+        if plan.still is None or "_synaptic_input" in self.__dict__:
+            self._update(ws, cfg, i, j, self._synaptic_input(ws.s[i], ws.out), stage, ws.standing)
+        else:
+            if stage == 0:
+                plan.products(plan.still, ws.s[i], ws.still)
+                self.torch.add(ws.standing, ws.still, out=ws.input)
+            synaptic = plan.products(plan.moving, ws.s[i], ws.out)
+            self._update(ws, cfg, i, j, synaptic, stage, ws.input)
         if cfg.tolerance is not None and ws.cuda:
             ws.flag_host[j].copy_(ws.flag[j], non_blocking=True)
 
-    def _update(self, ws: Any, cfg: _SweepConfig, i: int, j: int, synaptic: Any) -> None:
+    def _update(
+        self, ws: Any, cfg: _SweepConfig, i: int, j: int, synaptic: Any, stage: int, standing: Any,
+    ) -> None:
         """The neuron-local part of a sweep, from the synaptic input into slot ``j``."""
         torch, neuron_model, n = self.torch, self.neuron_model, self.n
         v, s = ws.v[i], ws.s[i]
         total = ws.total
-        torch.add(synaptic.narrow(0, 0, n), ws.standing, out=total)
+        if stage == 2:
+            for r0, m in self.plan.structure.settling:
+                torch.add(synaptic.narrow(0, r0, m), standing.narrow(0, r0, m),
+                          out=total.narrow(0, r0, m))
+            if cfg.nudge is not None:
+                self._push(total, s, cfg.nudge)
+            self._fused_update(ws, cfg, i, j, True)
+            return
+        torch.add(synaptic.narrow(0, 0, n), standing, out=total)
         adapt = neuron_model.adaptation
         if adapt is not None:
             total.sub_(ws.a[i], alpha=adapt.strength)
@@ -2764,7 +2965,12 @@ class _TorchKernel:
             self._push(total, s, cfg.nudge)
         if self.apical is not None:  # the apical compartment, normalized to the basal input
             raw = synaptic.narrow(0, n, n)
-            total.addcmul_(ws.held if cfg.held else self._apical_spread(total, raw), raw)
+            if cfg.held:
+                total.addcmul_(ws.held, raw)
+            elif self._pools is not None:
+                self._apical_launch(total, raw, ws.batch)
+            else:
+                total.addcmul_(self._apical_spread(total, raw), raw)
         if self._fused is not None:
             self._fused_update(ws, cfg, i, j)
             return
@@ -2789,28 +2995,49 @@ class _TorchKernel:
         if cfg.tolerance is not None:
             torch.lt(movement.amax(), cfg.tolerance, out=ws.flag[j])
 
-    def _fused_update(self, ws: Any, cfg: _SweepConfig, i: int, j: int) -> None:
+    def _update_table(self, settling: bool) -> Any:
+        """Per program of the fused update its first neuron and neuron count, as a device array:
+        every neuron, or the neurons synapses reach."""
+        table = self._update_tables.get(settling)
+        if table is None:
+            spans = self.plan.structure.settling if settling else [(0, self.n)]
+            rows = [(r0 + k, min(_UPDATE_ROWS, m - k))
+                    for r0, m in spans for k in range(0, m, _UPDATE_ROWS)]
+            table = self._update_tables[settling] = self.torch.tensor(
+                rows, dtype=self.torch.int64, device=self.device
+            ).reshape(-1)
+        return table
+
+    def _fused_update(
+        self, ws: Any, cfg: _SweepConfig, i: int, j: int, settling: bool = False
+    ) -> None:
         """The neuron update from ``ws.total`` in one Triton launch (CUDA): potentials,
         activations, adaptation and per-tile movement sums and peaks, then their reductions."""
-        torch, n, batch = self.torch, self.n, ws.batch
+        torch, batch = self.torch, ws.batch
         block = 64 if batch >= 64 else max(16, 1 << max(0, batch - 1).bit_length())
-        grid = (-(-n // _UPDATE_ROWS), -(-batch // block))
-        if ws.part is None:
-            ws.part = torch.zeros(grid[0], batch, dtype=self.dtype, device=self.device)
-            ws.peak = torch.zeros(grid[0] * grid[1], dtype=self.dtype, device=self.device)
+        table = self._update_table(settling)
+        grid = (table.shape[0] // 2, -(-batch // block))
+        if (ws.part_settling if settling else ws.part) is None:
+            part = torch.zeros(grid[0], batch, dtype=self.dtype, device=self.device)
+            peak = torch.zeros(grid[0] * grid[1], dtype=self.dtype, device=self.device)
+            if settling:
+                ws.part_settling, ws.peak_settling = part, peak
+            else:
+                ws.part, ws.peak = part, peak
+        part, peak = (ws.part_settling, ws.peak_settling) if settling else (ws.part, ws.peak)
         keep_mode = 0 if not cfg.masked else (1 if cfg.keep.shape[1] == 1 else 2)
         a_in = ws.a[i] if ws.a is not None else ws.total
         a_out = ws.a[j] if ws.a is not None else ws.total
         with torch.cuda.device(self.device):
             self._fused[grid](
                 ws.total, ws.v[i], ws.s[i], a_in, cfg.keep if cfg.masked else ws.total,
-                ws.v[j], ws.s[j], a_out, ws.part, ws.peak, self._constants, n, batch,
+                ws.v[j], ws.s[j], a_out, part, peak, self._constants, table, batch,
                 ROWS=_UPDATE_ROWS, BATCH=block, KEEP=keep_mode, ADAPT=ws.a is not None,
                 LEAK=self.neuron_model.leak != 0.0,
             )
-        torch.add(ws.change[i], ws.part.sum(dim=0), out=ws.change[j])
+        torch.add(ws.change[i], part.sum(dim=0), out=ws.change[j])
         if cfg.tolerance is not None:
-            torch.lt(ws.peak.amax(), cfg.tolerance, out=ws.flag[j])
+            torch.lt(peak.amax(), cfg.tolerance, out=ws.flag[j])
 
     # -- device arrays of a settle
 
@@ -2968,6 +3195,9 @@ class _TorchKernel:
         d = self._upload(drive)
         ws.standing.copy_(d.T)
         ws.standing.add_(self.bias[:, None])  # the part of every neuron's drive that never moves
+        if self.plan.still is not None and ws.still is None:
+            ws.still = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
+            ws.input = self.torch.zeros(self.n, batch, dtype=self.dtype, device=self.device)
         kind, keep_buffer = self._keep(ws, keep, batch)
         buffers = self._nudge_buffers(ws, nudge, batch)
         held = False
@@ -2986,8 +3216,11 @@ class _TorchKernel:
         if cfg is None:
             if len(ws.configs) >= 32:
                 ws.clear_captures()
+            structure = self.plan.structure
             cfg = ws.configs[key] = _SweepConfig(
-                key, kind is not None, keep_buffer, buffers, held, tolerance
+                key, kind is not None, keep_buffer, buffers, held, tolerance,
+                self.plan.still is not None and kind is None
+                and (buffers is None or not structure.source[buffers.reach].any()),
             )
         return cast(_SweepConfig, cfg)
 
@@ -3003,18 +3236,18 @@ class _TorchKernel:
             and _graphs_enabled()
         )
 
-    def _graph(self, ws: Any, cfg: _SweepConfig, parity: int, length: int) -> Any:
+    def _graph(self, ws: Any, cfg: _SweepConfig, parity: int, length: int, stage: int = 0) -> Any:
         """The captured graph of ``length`` sweeps from slot ``parity``, or None to run eagerly.
 
         A configuration runs eagerly from both slots first (the kernels' lazy setup), then is
         captured; a graph whose capture fails turns graphs off for this kernel."""
         torch = self.torch
-        key = (cfg.key, parity, length)
+        key = (cfg.key, stage, parity, length)
         graph = ws.graphs.get(key)
         if graph is not None:
             ws.graphs.move_to_end(key)
             return graph
-        if self._graphs_failed or ws.seen.get(cfg.key, 0) < 2:
+        if self._graphs_failed or ws.seen.get((cfg.key, stage), 0) < 2:
             return None  # not yet run eagerly from both slots
         if self._graph_pool is None:
             self._graph_pool = torch.cuda.graph_pool_handle()
@@ -3028,7 +3261,7 @@ class _TorchKernel:
                 graph.capture_begin(pool=self._graph_pool, capture_error_mode="relaxed")
                 try:
                     for k in range(length):
-                        self._sweep(ws, cfg, (parity + k) % 2, (parity + k + 1) % 2)
+                        self._sweep(ws, cfg, (parity + k) % 2, (parity + k + 1) % 2, stage)
                 finally:
                     graph.capture_end()
         except Exception as error:
@@ -3038,7 +3271,7 @@ class _TorchKernel:
             torch.cuda.synchronize(self.device)
             return None
         current.wait_stream(stream)
-        while len(ws.graphs) >= 24:
+        while len(ws.graphs) >= 48:
             ws.graphs.popitem(last=False)
         ws.graphs[key] = graph
         self.graph_stats["captured"] += 1
@@ -3047,7 +3280,8 @@ class _TorchKernel:
     def _advance(self, ws: Any, cfg: _SweepConfig, t: int, length: int, graphs: bool) -> None:
         """Sweeps ``t`` to ``t + length - 1``: a graph replay or eager sweeps; on CUDA the
         event of the last one's slot is recorded for the movement test."""
-        graph = self._graph(ws, cfg, t % 2, length) if graphs else None
+        stage = self._stage(cfg, t)
+        graph = self._graph(ws, cfg, t % 2, length, stage) if graphs else None
         ws.executed_steps += length
         if graph is not None:
             with self.torch.cuda.device(self.device):
@@ -3055,8 +3289,8 @@ class _TorchKernel:
             self.graph_stats["replays"] += 1
         else:
             for k in range(length):
-                self._sweep(ws, cfg, (t + k) % 2, (t + k + 1) % 2)
-            ws.seen[cfg.key] = ws.seen.get(cfg.key, 0) + 1
+                self._sweep(ws, cfg, (t + k) % 2, (t + k + 1) % 2, stage)
+            ws.seen[(cfg.key, stage)] = ws.seen.get((cfg.key, stage), 0) + 1
         if ws.cuda:
             ws.events[(t + length) % 2].record(self.torch.cuda.current_stream(self.device))
 
@@ -3096,6 +3330,8 @@ class _TorchKernel:
             t = 0
             while t < steps:
                 length = min(8, steps - t) if graphs else steps - t
+                if cfg.quiet and t < 3:  # the stages turn at sweeps 2 and 3
+                    length = min(length, 2 - t if t < 2 else 1)
                 self._advance(ws, cfg, t, length, graphs)
                 t += length
             return steps
