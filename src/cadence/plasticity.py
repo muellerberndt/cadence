@@ -34,7 +34,7 @@ from typing import Any
 import numpy as np
 
 from .brain import _FUSED as _FUSED_TRACE
-from .brain import Brain, BrainState, Nudge
+from .brain import Brain, BrainState, Nudge, _resident
 from .learning import Learner
 
 __all__ = [
@@ -42,6 +42,12 @@ __all__ = [
     "ActorCriticConfig",
     "Maturity",
 ]
+
+
+def _held_drive(drive: Any) -> Any:
+    """A drive as the actor keeps it for the next read: the host's a caller may write, a
+    resident one nothing writes once it settled."""
+    return drive if _resident(drive) else drive.copy()
 
 
 def _batch_of(state: BrainState) -> int:
@@ -227,7 +233,7 @@ class ActorCritic:
         return self._free
 
     def value(self, state: BrainState) -> np.ndarray:
-        return np.asarray(state.activation[:, self.critic_index] @ self.w_critic + self.b_critic)
+        return np.asarray(state.part(self.critic_index) @ self.w_critic + self.b_critic)
 
     def probabilities(
         self,
@@ -247,7 +253,7 @@ class ActorCritic:
         of an episodic memory.
         """
         temperature = self._temperature(temperature)
-        s = state.activation[:, self.learner.output_index]
+        s = state.part(self.learner.output_index)
         if bias is not None:
             bias = np.asarray(bias, dtype=float)
             if bias.shape != s.shape or not np.isfinite(bias).all():
@@ -277,7 +283,7 @@ class ActorCritic:
         if not compiled():
             return None
         return clear_choice(
-            state.activation[:, self.learner.output_index], float(self.learner.config.temperature)
+            state.part(self.learner.output_index), float(self.learner.config.temperature)
         )
 
     @staticmethod
@@ -330,12 +336,16 @@ class ActorCritic:
             self.reset()
         self._free = self.learner.free(drive, warm=self._free)
         self._free_brain = self.learner.brain
-        self._drive = drive.copy()
+        self._drive = _held_drive(drive)
         self._pending = None
         self._pending_memory = None
         return self._free
 
     def _validated_drive(self, drive: np.ndarray) -> np.ndarray:
+        if _resident(drive):  # a resident drive reads finite memories at finite observations
+            if drive.ndim != 2 or drive.shape[1] != self.n or not len(drive):
+                raise ValueError(f"drive must be a nonempty finite (batch, {self.n}) array")
+            return drive
         drive = np.asarray(drive, dtype=float)
         if (
             drive.ndim != 2
@@ -382,7 +392,10 @@ class ActorCritic:
             if self._free is not None
             and self._drive is not None
             and self._free_brain is self.learner.brain
-            and np.array_equal(self._drive, drive)
+            and (self._drive is drive or (
+                not _resident(drive) and not _resident(self._drive)
+                and np.array_equal(self._drive, drive)
+            ))
             else self.settle(drive)
         )
         self._pending = None  # eligibility always belongs to this decision, including greedy reads
@@ -724,7 +737,7 @@ class ActorCritic:
                 self.trace_hearing[done] = 0.0
         self._free = next_state
         self._free_brain = next_brain
-        self._drive = next_drive.copy()
+        self._drive = _held_drive(next_drive)
         self._pending = None
         self._pending_memory = None
         self._pending_hearing = None
@@ -770,7 +783,7 @@ class ActorCritic:
         """The fraction of output activations within ``SATURATION_BAND`` of 0 or 1, where the
         activation has no slope and a nudge cannot move it: a latch shows here before it shows
         in the reward."""
-        s = np.asarray(free.activation)[:, self.learner.output_index]
+        s = free.part(self.learner.output_index)
         return float(((s < SATURATION_BAND) | (s > 1.0 - SATURATION_BAND)).mean())
 
     def _validated_transition(
@@ -872,7 +885,7 @@ class ActorCritic:
         free = self._free
         assert free is not None
         self.trace_critic *= cfg.gamma * cfg.lam
-        self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
+        self.trace_critic[:, :-1] += free.part(self.critic_index)
         self.trace_critic[:, -1] += 1.0
         self._memory_eligibility(batch, decay)
         self._hearing_eligibility(batch, decay)
@@ -916,7 +929,7 @@ class ActorCritic:
         self._trace_device = (trace, trace_bias)
         self._free = next_state
         self._free_brain = next_brain
-        self._drive = next_drive.copy()
+        self._drive = _held_drive(next_drive)
         self._pending = None
         self._pending_memory = None
         report["delta"] = float(np.abs(delta).mean())

@@ -37,6 +37,7 @@ designed region can replace any of them.
 from __future__ import annotations
 
 import math
+import os
 import warnings
 from collections.abc import Callable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -67,7 +68,7 @@ from ._configuration import (
 from .arousal import Arousal, ArousalConfig
 from .blocks import Layout
 from .blocks import layout as make_layout
-from .brain import Apical, Backend, BrainState, Equilibrium
+from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _resident
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
@@ -82,7 +83,7 @@ from .learning import (
 )
 from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
-from .plasticity import ActorCritic, ActorCriticConfig, Maturity
+from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
 from .stream import Efference, FastSynapses, Hearing, History, PatternSeparator, Recall, Trace
 
@@ -2237,6 +2238,7 @@ class Brain:
                     hold=memory_context_hold,
                 )
         self.rng = np.random.default_rng(seed)
+        self._settling = False  # a moment's own drive is being read: it stays where it rests
         # the validated observations a settle is being prepared for and their code, computed
         # once per moment: ``stimulus`` given that same array reads it, ``_choose`` takes it;
         # with a learned code also the code region's settled state, the whole graph's warm start
@@ -3349,9 +3351,26 @@ class Brain:
         alone, as the cortex reads it."""
         coded = self._coded_moment  # the moment's code, when this is its settle
         if coded is not None and coded[0] is observations:
-            return self._stimulus(coded[0], coded[1], memory=memory)
-        x = self._observations(observations)
-        return self._stimulus(x, self._code(x), memory=memory)
+            drive = self._stimulus(coded[0], coded[1], memory=memory)
+        else:
+            x = self._observations(observations)
+            drive = self._stimulus(x, self._code(x), memory=memory)
+        return drive if self._settling or not _resident(drive) else _host_copy(drive)
+
+    def _moment_drive(self, x: np.ndarray) -> np.ndarray:
+        """The drive a moment's settles read, ``stimulus`` where it rests. On a torch device it
+        stays or goes there here, once: every settle of the moment and its checks read it there."""
+        self._settling = True
+        try:
+            drive = self.stimulus(x)
+        finally:
+            self._settling = False
+        kernel = self.brain._torch
+        if kernel is None or _resident(drive) or os.environ.get("CADENCE_TORCH_MEMORY") == "0":
+            return drive
+        if not np.isfinite(drive).all():
+            raise ValueError("drive must be finite and the brain must contain neurons")
+        return cast(np.ndarray, kernel.observed(drive))
 
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
@@ -3432,7 +3451,7 @@ class Brain:
             )
         first_budget = budget if budget < 2 else (budget + 1) // 2
         # on the host a solve copies what it continues from, and MLX never writes an array; a
-        # torch state stays apart
+        # torch state stays apart, as it is
         own = type(brain).equilibrate is not NeuralGraph.equilibrate  # a subclass's own solve
         options: dict[str, Any] = {"fast": True} if cfg.fast_settle and not own else {}
         phase = brain.equilibrate(
@@ -3583,7 +3602,7 @@ class Brain:
     def _choices(self, state: BrainState) -> np.ndarray:
         """The most active motor neuron per output slot: ``(batch,)`` for one slot,
         ``(batch, slots)`` when the motor neurons split into several readouts."""
-        out = np.asarray(state.activation)[:, self.motor_index]
+        out = state.part(self.motor_index)
         learner = self.learner
         if learner.slot_count > 1 and learner.slot_size == 0:  # unequal slots: one argmax each
             choice = [
@@ -3654,7 +3673,7 @@ class Brain:
         x = self._observations(observations)
         batch = len(x)
         current = self.basal_ganglia.state
-        if current is not None and len(np.atleast_2d(current.v)) != batch:
+        if current is not None and _batch_of(current) != batch:
             raise ValueError("action batch must match the live streams; reset for new streams")
         r = np.zeros(batch) if reward is None else np.asarray(reward, dtype=float)
         ended = np.zeros(batch, bool) if done is None else np.asarray(done)
@@ -3714,7 +3733,7 @@ class Brain:
         if len(labels) != len(x):
             raise ValueError("labels must match the observation batch")
         current = self.basal_ganglia.state
-        if current is not None and len(np.atleast_2d(current.v)) != len(x):
+        if current is not None and _batch_of(current) != len(x):
             raise ValueError("lesson batch must match the live streams; reset for new streams")
         if self.basal_ganglia._pending is not None:
             raise RuntimeError(
@@ -3768,7 +3787,7 @@ class Brain:
 
         batch = len(x)
         self._prepare(x)
-        drive = self.stimulus(x)
+        drive = self._moment_drive(x)
         code = self._coded(x)
         place = self._placed(x)
         key = self._decision_key(code)  # of the decision the lesson is shown for
@@ -4125,7 +4144,7 @@ class Brain:
         x = self._observations(observations)
         agent = self.basal_ganglia
         current = agent.state
-        if len(x) != 1 or (current is not None and len(np.atleast_2d(current.v)) != 1):
+        if len(x) != 1 or (current is not None and _batch_of(current) != 1):
             raise ValueError("live follows one continuing stream; reset before changing streams")
         lived = self._lived
         if lived is not None and current is not lived[4]:
@@ -4332,7 +4351,7 @@ class Brain:
             )
         x = self._observations(observations)
         current = self.basal_ganglia.state
-        if len(x) != 1 or (current is not None and len(np.atleast_2d(current.v)) != 1):
+        if len(x) != 1 or (current is not None and _batch_of(current) != 1):
             raise ValueError("wait follows one continuing stream; reset before changing streams")
         if current is None or not self.pending_feedback:
             raise RuntimeError(
@@ -4340,7 +4359,7 @@ class Brain:
             )
         with self._code_attempt():
             self._prepare(x)
-            drive = self.stimulus(x)
+            drive = self._moment_drive(x)
             state = self._qualified(drive, self._activity(), operation="wait")
         code = self._coded(x)
         lived = self._lived
@@ -4568,7 +4587,7 @@ class Brain:
         """
         x = self._observations(observations)
         current = self.basal_ganglia.state
-        if current is not None and len(np.atleast_2d(current.v)) != len(x):
+        if current is not None and _batch_of(current) != len(x):
             raise ValueError("action batch must match the live streams; reset for new streams")
         if temperature is not None:
             temperature = self.basal_ganglia._temperature(temperature)
@@ -4583,7 +4602,7 @@ class Brain:
         Refusal raises before anything changes."""
         with self._code_attempt():
             self._prepare(x)
-            drive = self.stimulus(x)
+            drive = self._moment_drive(x)
             return drive, self._qualified(drive, self._activity(), operation="act")
 
     def _coded(self, x: np.ndarray) -> np.ndarray:
@@ -4618,7 +4637,7 @@ class Brain:
         """
         self.basal_ganglia._free = free
         self.basal_ganglia._free_brain = self.brain
-        self.basal_ganglia._drive = drive.copy()
+        self.basal_ganglia._drive = _held_drive(drive)
         self._prepared = None
         self._awaiting = None
         code = self._coded(x)  # the memories key on the observation code
@@ -4799,7 +4818,7 @@ class Brain:
                 heard.reset(len(done), rows=np.flatnonzero(done))
             if recalled is not None and done.any():
                 recalled.reset(len(done), rows=np.flatnonzero(done))
-            next_drive = self.stimulus(following)
+            next_drive = self._moment_drive(following)
             warm = self._awaited()
             if self.learned_code is not None:
                 # the next state settles warm from the stream's state with the code's phase
@@ -5032,7 +5051,7 @@ class Brain:
         for name in _REWARD_ARRAYS:
             value = getattr(agent, name)
             if value is not None:
-                data["actor/" + name] = np.asarray(value)
+                data["actor/" + name] = _host_copy(value) if _resident(value) else np.asarray(value)
         if agent._trace_device is not None:
             for name, tensor in zip(("trace", "trace_bias"), agent._trace_device, strict=True):
                 data["actor/" + name] = tensor.detach().cpu().double().numpy()

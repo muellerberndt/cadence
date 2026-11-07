@@ -81,6 +81,11 @@ _FUSED = (
 )  # the compiled dense kernel, identical arithmetic; CADENCE_FUSED=0 forces the NumPy loop
 
 
+def _resident(array: Any) -> bool:
+    """Whether an array rests on a torch device, not on the host."""
+    return hasattr(array, "detach")
+
+
 def _rows_finite(x: np.ndarray) -> bool:
     """Whether a settle's ``(batch, neurons)`` float64 array is finite."""
     if _FUSED:
@@ -532,9 +537,25 @@ class BrainState:
     def active(self, level: float = 0.5, i: int = 0) -> int:
         return int((self.row(i) >= level).sum())
 
+    def part(self, index: np.ndarray) -> np.ndarray:
+        """The activation at the neurons ``index`` on the host, ``(batch, neurons)``. Of a state
+        resting on a torch device only they come to the host, once each."""
+        handle = self.__dict__.get("device")
+        if handle is None or self.__dict__.get("activation") is not None or "s" not in handle:
+            return np.asarray(self.activation[:, index])
+        s = handle["s"]
+        if not _resident(s):
+            return np.asarray(self.activation[:, index])
+        held = self.__dict__.setdefault("_parts", {})
+        part = held.get(id(index))
+        if part is None:
+            part = held[id(index)] = _host_copy(s[:, handle["holder"].index_of(index)])
+        return np.asarray(part)
+
     def __getstate__(self) -> dict[str, Any]:
         held = dict(self.__dict__)
         held.pop("_products", None)  # the kernels' products stay with this object
+        held.pop("_parts", None)
         return held
 
 
@@ -561,6 +582,9 @@ _checked_ladder = functools.lru_cache(maxsize=64)(_ladder_rule)
 def _copy_state(state: BrainState | None) -> BrainState | None:
     if state is None:
         return None
+    handle = state.__dict__.get("device")
+    if handle is not None and "s" in handle and _resident(handle["s"]):
+        return state  # no solve writes a state on a torch device
     copied = BrainState(
         state.v.copy(),
         state.activation.copy(),
@@ -1302,9 +1326,11 @@ class Brain:
         ``mask`` has shape ``(n,)`` or ``(1, n)`` for shared ablations, or
         ``(batch, n)`` for a separate mask on each row.
         """
-        drive = np.asarray(drive, float)
-        if drive.ndim == 1:
-            drive = drive[None, :]
+        resident = _resident(drive)
+        if not resident:
+            drive = np.asarray(drive, float)
+            if drive.ndim == 1:
+                drive = drive[None, :]
         if drive.ndim != 2 or drive.shape[0] == 0:
             raise ValueError("drive must have shape (batch, neurons) with at least one row")
         if isinstance(steps, bool) or not isinstance(steps, (int, np.integer)) or steps < 0:
@@ -1318,7 +1344,7 @@ class Brain:
         batch, n = drive.shape
         if n != self.connectome.n:
             raise ValueError("drive must have one column per neuron")
-        if n == 0 or not _rows_finite(drive):
+        if n == 0 or not (resident or _rows_finite(drive)):
             raise ValueError("drive must be finite and the brain must contain neurons")
         if mask is not None:
             keep = np.asarray(mask, float)
@@ -1349,7 +1375,10 @@ class Brain:
         v: Any
         a: Any
         if state is None:
-            v, a = np.zeros((batch, n)), np.zeros((batch, n))
+            # rest needs no upload on a torch device
+            v = a = None if self.backend == "torch" else np.zeros((batch, n))
+            if self.backend != "torch":
+                a = np.zeros((batch, n))
         elif on_kernel:  # the state never left the device: no host array is read
             assert state is not None and state.device is not None
             v = a = None
@@ -1370,6 +1399,8 @@ class Brain:
         ):
             raise ValueError("warm potentials and adaptation must be finite")
         capture = _capture()
+        if capture is not None and resident:
+            drive = _host_copy(drive)
         handle = products = None
         if self.backend in ("torch", "mlx"):
             kernel = self._torch if self.backend == "torch" else self._mlx
@@ -1477,7 +1508,7 @@ class Brain:
         own check, in float32, with no launch of its own. A single state returns a length-one array;
         nonfinite errors return infinity.
         """
-        d = np.asarray(drive, dtype=float)
+        d = drive if _resident(drive) else np.asarray(drive, dtype=float)
         if d.ndim == 1:
             d = d[None, :]
         if d.ndim != 2 or d.shape[1] != self.connectome.n:
@@ -1504,11 +1535,15 @@ class Brain:
             and state.__dict__.get("v") is None
             and state.__dict__.get("adaptation") is None
         ):
-            if tuple(handle["v"].shape) != d.shape or tuple(handle["a"].shape) != d.shape:
+            if tuple(handle["v"].shape) != tuple(d.shape) or (
+                tuple(handle["a"].shape) != tuple(d.shape)
+            ):
                 raise ValueError("state batch does not match the drive batch")
             return np.asarray(kernel.residual(
                 d, np.ones(self.connectome.n) if keep is None else keep, nudge, handle
             ))
+        if _resident(d):
+            d = _host_copy(d)
         v = np.atleast_2d(state.v)
         a = np.atleast_2d(state.adaptation)
         if v.shape != d.shape or a.shape != d.shape:
@@ -1607,7 +1642,7 @@ class Brain:
         apical = self.apical
         if apical is None:
             return None
-        d = np.atleast_2d(np.asarray(drive, dtype=float))
+        d = drive if _resident(drive) else np.atleast_2d(np.asarray(drive, dtype=float))
         if self._mlx is not None and self._mlx.plan is not None:
             held: np.ndarray | None = self._mlx.gains_at(d, state)
             return held
@@ -1620,10 +1655,12 @@ class Brain:
             and state.__dict__.get("activation") is None
             and state.__dict__.get("adaptation") is None
         ):  # the state never left the device: the gain is read there, one row per pool
-            if tuple(handle["s"].shape) != d.shape:
+            if tuple(handle["s"].shape) != tuple(d.shape):
                 raise ValueError("state batch does not match the drive batch")
             gain: np.ndarray = kernel.apical_gain(d, handle)
             return gain
+        if _resident(d):
+            d = _host_copy(d)
         s = np.atleast_2d(np.asarray(state.activation, dtype=float))
         basal, raw = self._split_input(s, *self._apical_transports())
         basal += d + self.bias
@@ -2640,6 +2677,8 @@ class _TorchKernel:
         )
         self.flat = self.plan.values  # the live effective weights, in the plan's order
         self._staging = _Staging(torch, self.device)
+        self._observed: tuple[np.ndarray, Any] | None = None
+        self._indices: dict[int, tuple[np.ndarray, Any]] = {}
         self._workspaces = _Workspaces()
         self._nudge_specs: dict[Any, Any] = {}
         self._graph_pool: Any = None
@@ -2664,6 +2703,18 @@ class _TorchKernel:
             torch.from_numpy(np.ascontiguousarray(efficacy)).to(self.device, self.param_dtype),
             torch.from_numpy(np.ascontiguousarray(bias)).to(self.device, self.param_dtype),
         )
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> _TorchKernel:
+        """A kernel of its own on the same device: a copy of a brain moves its own parameters, and
+        the workspaces and captured graphs are made again."""
+        twin = _TorchKernel(
+            self._connectome, self.host_scale(), _host_copy(self.gain_pre), self.host_bias(),
+            self.neuron_model, str(self.device), self.layout,
+            "float32" if self.dtype == self.torch.float32 else "float64", self.apical,
+            reference=self._reference_only,
+        )
+        memo[id(self)] = twin
+        return twin
 
     # -- parameters
 
@@ -2897,6 +2948,34 @@ class _TorchKernel:
     def _upload(self, x: np.ndarray) -> Any:
         return self._staging.upload(x, self.dtype)
 
+    def _drive_here(self, drive: Any) -> Any:
+        """A settle's drive on the device, in the kernel's floats: a resident one as it rests."""
+        return drive.to(self.dtype) if _resident(drive) else self._upload(drive)
+
+    def observed(self, x: np.ndarray) -> Any:
+        """Observations on the device in the parameters' floats, uploaded once however many of a
+        moment's memories read the same array."""
+        held = self._observed
+        if held is None or held[0] is not x:
+            held = self._observed = (x, self._staging.upload(x, self.param_dtype))
+        return held[1]
+
+    def index_of(self, index: np.ndarray) -> Any:
+        """Neurons as an index of the device's arrays: a slice where they are a contiguous
+        range, made once per array of them."""
+        held = self._indices.get(id(index))
+        if held is None or held[0] is not index:
+            if len(self._indices) > 64:
+                self._indices.clear()
+            first = int(index[0]) if len(index) else 0
+            contiguous = np.array_equal(index, np.arange(first, first + len(index)))
+            on_device = (
+                slice(first, first + len(index)) if contiguous
+                else self.torch.from_numpy(np.array(index, dtype=np.int64)).to(self.device)
+            )
+            held = self._indices[id(index)] = (index, on_device)
+        return held[1]
+
     def _nudge_spec(self, nudge: Nudge) -> tuple[Any, Any]:
         """The nudge's topology and arithmetic branches, independent of temperature values.
 
@@ -3035,7 +3114,7 @@ class _TorchKernel:
         tolerance: float | None, batch: int,
     ) -> _SweepConfig:
         """Fill ``ws`` with what this settle's sweeps read and name the graph they replay."""
-        d = self._upload(drive)
+        d = self._drive_here(drive)
         ws.standing.copy_(d.T)
         ws.standing.add_(self.bias[:, None])  # the part of every neuron's drive that never moves
         kind, keep_buffer = self._keep(ws, keep, batch)
@@ -3213,7 +3292,7 @@ class _TorchKernel:
                     return buffer
                 return torch.empty(n, batch, dtype=self.dtype, device=self.device)
 
-            d = self._upload(drive).T
+            d = self._drive_here(drive).T
             k = np.asarray(keep, dtype=float)
             kt = self._upload(k.reshape(-1))[:, None] if k.ndim == 1 or k.shape[0] == 1 else (
                 self._upload(k).T
@@ -3277,7 +3356,7 @@ class _TorchKernel:
         with torch.no_grad():
             ws = self._workspace(batch)
             synaptic = self._synaptic_input(s.T.contiguous(), ws.out)
-            basal = synaptic.narrow(0, 0, n) + (self._upload(drive).T + self.bias[:, None])
+            basal = synaptic.narrow(0, 0, n) + (self._drive_here(drive).T + self.bias[:, None])
             if adapt is not None:
                 basal = basal - adapt.strength * a.T
             gain = self._apical_gain(basal, synaptic.narrow(0, n, n))
@@ -3372,6 +3451,9 @@ class _TorchKernel:
             if handle is not None and handle.get("holder") is self:
                 a_in = handle["a"]  # the state never left the device
                 ws.v[0].copy_(handle["v"].T)
+            elif v0 is None:  # from rest
+                a_in = torch.zeros((batch, self.n), dtype=self.dtype, device=self.device)
+                ws.v[0].zero_()
             else:
                 a_in = self._upload(a0)
                 ws.v[0].copy_(self._upload(v0).T)

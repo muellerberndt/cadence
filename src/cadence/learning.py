@@ -49,7 +49,7 @@ from typing import Any, cast
 import numpy as np
 
 from .blocks import block_contrast
-from .brain import Backend, Brain, BrainState, Equilibrium, Nudge
+from .brain import Backend, Brain, BrainState, Equilibrium, Nudge, _resident
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -1352,7 +1352,8 @@ class Learner:
         """
         labels = self._labels(labels)
         target = self.targets(labels)
-        drive = np.asarray(drive, dtype=float)
+        if not _resident(drive):
+            drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
             drive = drive[None, :]
         if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
