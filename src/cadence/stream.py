@@ -133,6 +133,22 @@ def _compiled_terms() -> bool:
     return compiled()
 
 
+def _route_matrix(
+    graph: Any, synapses: np.ndarray, places: np.ndarray, shape: tuple[int, int]
+) -> np.ndarray:
+    """The effective weights of a route's ``synapses`` as a matrix of ``shape``, each at its entry
+    of ``places`` (raveled), one synapse per entry; the one pass of ``cadence.fused`` where it is
+    in use (the same bits either way)."""
+    weights = graph._weights
+    if _compiled_terms():
+        from .fused import gather, scatter
+
+        return scatter(shape[0] * shape[1], places, gather(weights, synapses)).reshape(shape)
+    out = np.zeros(shape[0] * shape[1])
+    out[places] = weights[synapses]
+    return out.reshape(shape)
+
+
 def columns(index: np.ndarray) -> slice | np.ndarray:
     """A slice when the neurons are one contiguous range, else the index array.
 
@@ -661,6 +677,8 @@ class Hearing:
             "name": name, "memory": memory, "slot": slot, "start": start, "stop": stop,
             "width": len(neurons), "synapses": synapses, "bound": float(bound),
             "rows": local_source[pre[synapses]], "cols": local_cortex[post[synapses]],
+            "places": local_source[pre[synapses]] * len(self.association)
+            + local_cortex[post[synapses]],
         })
         self.second = np.zeros(len(self.routes))
 
@@ -726,10 +744,14 @@ class Hearing:
             amplitude = float(memory.amplitude)
             v = amplitude * self.gain(route) * held
             if backs is None:
-                w = np.zeros((route["width"], len(self.association)))
-                w[route["rows"], route["cols"]] = (
-                    graph._gain_pre[route["synapses"]] * graph.efficacy[route["synapses"]]
-                )
+                if graph.layout.parallel_synapses:  # the last of a pair holds the entry
+                    w = np.zeros((route["width"], len(self.association)))
+                    w[route["rows"], route["cols"]] = graph._weights[route["synapses"]]
+                else:
+                    w = _route_matrix(
+                        graph, route["synapses"], route["places"],
+                        (route["width"], len(self.association)),
+                    )
                 back = movement @ w.T
             else:
                 back = backs[k]
@@ -2408,11 +2430,14 @@ class Recall:
         recall_synapses, next_synapses = self._head_synapses[head]
         synapses, rows, cols = recall_synapses if region == "recall" else next_synapses
         width = len(self._heads[head][0 if region == "recall" else 1])
-        w = np.zeros((width, len(self.association)))
         if graph.layout.parallel_synapses:
-            np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
+            w = np.zeros((width, len(self.association)))
+            np.add.at(w, (rows, cols), graph._weights[synapses])
         else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
-            w[rows, cols] = graph._gain_pre[synapses] * graph.efficacy[synapses] + 0.0
+            w = _route_matrix(
+                graph, synapses, rows * len(self.association) + cols, (width, len(self.association))
+            )
+            w += 0.0
         return np.asarray(movement @ w.T)
 
     def _read_backs(

@@ -291,3 +291,18 @@ def test_a_compiled_update_takes_the_passs_arrays_as_with_parameters_would() -> 
     with pytest.raises(ValueError, match="bias must have one finite entry"):
         graph._with_update(graph.efficacy, graph.weights, np.full(brain.connectome.n, np.nan),
                            (True, True))
+
+
+def test_a_zero_divisor_in_a_synapse_pass_gives_what_numpy_gives() -> None:
+    """The optimizer's pass at a floor of zero on a silent synapse, and a gather: a number, never
+    Python's error, and a learner's own finite check refuses it as it refuses the NumPy form."""
+    pytest.importorskip("numba")
+    raw = np.array([0.0, 1.0])
+    gathered = fused.gather(raw, np.array([1, 0]), 0.0)
+    assert np.isinf(gathered[0]) and np.isnan(gathered[1])
+    _, _, step = fused.optimizer_step(
+        raw, np.zeros(2), np.zeros(2), 0.0, 1.0, 0.5, 1.0, 1.0, 0.0, 0.0, 1e-30, np.zeros(2, dtype=np.int64), 1
+    )
+    with np.errstate(divide="ignore", invalid="ignore"):
+        expected = raw / (np.sqrt(0.5 * raw * raw) + 0.0)
+    assert step.tobytes() == expected.tobytes()

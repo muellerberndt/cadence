@@ -208,6 +208,7 @@ class LearnedCode:
     # Keep the lower end of the linearized sweep's spectrum at least -0.5.
     # Contraction also requires its upper end below one.
     STEP_MARGIN = 1.5
+    BOUND_MARGIN = 1e-9  # how clear of a step bound a factorization test must be, relative
 
     @staticmethod
     def joins(inputs: int, units: int) -> bool:
@@ -329,9 +330,52 @@ class LearnedCode:
         # the standing boundary's restoring term, -top_down on every unit's own diagonal
         index = np.arange(self.units)
         coupling[:, index, index] -= self.top_down * slopes
+        held = self._held_halvings(coupling)
+        if held is not None:
+            return held
         mu = float(np.linalg.eigvalsh(coupling)[:, 0].min())
         need = self.model.dt * (1.0 - mu) / self.STEP_MARGIN
         return 0 if need <= 1.0 else int(np.ceil(np.log2(need)))
+
+    def _held_halvings(self, coupling: np.ndarray) -> int | None:
+        """The step's present halvings when Cholesky factorizations settle them: every row's
+        smallest eigenvalue clear above the bound those halvings allow, and some row's clear
+        below the bound one halving fewer would need. ``coupling - t I`` factorizes exactly
+        when its every eigenvalue lies above ``t``; a row whose Gershgorin floor already lies
+        above it needs no factorization, and the rows with the lowest floors are tried first
+        for the second test. ``BOUND_MARGIN`` keeps every test far from rounding, so the answer
+        is the one the eigenvalues give; None where a test is not clear or the halvings change,
+        and the eigenvalues decide."""
+        dt, margin, halvings = self.model.dt, self.STEP_MARGIN, self.halvings
+        index = np.arange(coupling.shape[-1])
+        eye = np.eye(len(index))
+        diagonal = coupling[:, index, index]
+        floors = (diagonal - (np.abs(coupling).sum(axis=2) - np.abs(diagonal))).min(axis=1)
+        if not np.isfinite(floors).all():
+            return None
+
+        def bound(h: int) -> float:  # the least smallest eigenvalue h halvings allow
+            return 1.0 - margin * float(np.ldexp(1.0, h)) / dt
+
+        def above(rows: np.ndarray, t: float) -> bool:  # every one of the rows above t
+            try:
+                np.linalg.cholesky(coupling[rows] - t * eye)
+            except np.linalg.LinAlgError:
+                return False
+            return True
+
+        clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
+        allowed = bound(halvings) + clear
+        if not np.isfinite(allowed):  # a step halved past what the bound can state
+            return None
+        doubtful = np.flatnonzero(floors < allowed)
+        if len(doubtful) and not above(doubtful, allowed):
+            return None
+        if halvings:
+            fewer = bound(halvings - 1) - clear
+            if all(above(np.array([row]), fewer) for row in np.argsort(floors, kind="stable")):
+                return None
+        return halvings
 
     def rest_stability(self) -> int:
         """The negative-mode step bound of ``stability`` over every state, from the

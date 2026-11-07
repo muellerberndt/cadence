@@ -100,3 +100,28 @@ def test_the_readback_is_the_one_a_sum_over_the_synapses_makes() -> None:
         w = np.zeros((width, 16))
         np.add.at(w, (rows, cols), graph._gain_pre[synapses] * graph.efficacy[synapses])
         assert read.tobytes() == (movement @ w.T).tobytes()
+
+
+def test_a_route_matrix_is_the_same_bits_compiled_or_not(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The address lesson's readback and the carried gains' contrast, on a brain with a read route."""
+    brain = cd.Brain.compose(6, 3, modules=(16,), seed=2, recall=True, recall_capacity=24, episodic=False)
+    rng = np.random.default_rng(3)
+    for _ in range(12):
+        x = np.eye(6)[rng.integers(0, 6, 3)]
+        brain.lesson(x, rng.integers(0, 3, 3))
+        brain.act(x, greedy=True)
+    graph, recall, hearing = brain.brain, brain.recall, brain.hearing
+    association = len(recall.association)
+    movement = rng.normal(size=(3, association))
+    compiled = recall.readback(graph, "recall", movement, 0)
+    contrast = hearing._contrast(graph, movement, None, 3)
+    assert np.any(contrast)
+    with monkeypatch.context() as patched:
+        patched.setattr(stream, "_compiled_terms", lambda: False)
+        assert compiled.tobytes() == recall.readback(graph, "recall", movement, 0).tobytes()
+        assert contrast.tobytes() == hearing._contrast(graph, movement, None, 3).tobytes()
+    # the sum with zero np.add.at would make, and the product the graph holds
+    synapses, rows, cols = recall._head_synapses[0][0]
+    w = np.zeros((len(recall._heads[0][0]), association))
+    w[rows, cols] = graph._gain_pre[synapses] * graph.efficacy[synapses] + 0.0
+    assert compiled.tobytes() == np.asarray(movement @ w.T).tobytes()

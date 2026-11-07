@@ -39,6 +39,22 @@
   that can step, 69 columns of 3,920 rows at the default memory and speech's width, where it held 141 MB per
   row, and a checkpoint still holds the full layout. Every bit of a CPU life is unchanged. One core's `step`
   at 3,920 inputs: 475 to 262 ms at one stream, 2,408 to 992 ms at 16.
+- A lesson's per-synapse passes (the optimizer's step, its projection-relative form and the contrast's gather) compile
+  under NumPy's error model, so their divisions vectorize and a zero divisor gives what NumPy's form gives instead of
+  Python's error. The bits of every finite step are unchanged. On one thread the optimizer's pass over 504,064 synapses
+  falls from 1.6 ms to 1.0 ms. A learned code's forward weights take one compiled pass where `np.add.at` took 0.7 ms.
+- A brain with a learned code acts two to three times faster, with the same bits. `LearnedCode.stability` answers
+  from Cholesky factorizations at the step's bounds while the halvings hold and from the eigenvalues when they
+  change, and the brain takes a moment's new thresholds on its own blocks instead of rebuilding them. At 256 code
+  units and 548 inputs on one thread, an act of one stream falls from 34 ms to 12 ms, an act of sixteen streams
+  from 111 ms to 47 ms, a lesson and act of sixteen from 247 ms to 114 ms.
+- A lesson on a brain with a wide read is faster, with the same bits: the address lesson's readback and the carried
+  gains' contrast build each route's weight matrix in one compiled pass. A heavy lesson on a brain of 548 inputs and
+  504,064 synapses falls from 43 ms to 33 ms on one thread.
+- A `Connectome` warns when a population is given as a sequence out of ascending order or with a neuron twice. It
+  holds a population ascending, and a brain's k-th input or action takes its k-th neuron in that order, so a
+  caller who listed a late region first had its inputs moved with no word. The population held is unchanged. A set
+  states no order and stays silent.
 - **Torch speed.** On CUDA and the torch CPU device, under a step of one without adaptation or a
   compartment, a settle makes the products of source neurons (no synapse reaches them) twice and later
   sweeps read them, and from sweep 3 the fused update covers only the neurons synapses reach; from
