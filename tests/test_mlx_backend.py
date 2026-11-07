@@ -15,8 +15,13 @@ import cadence as cd
 pytestmark = pytest.mark.skipif("mlx" not in cd.available_backends(), reason="mlx not installed")
 
 
+COMPARTMENTS = pytest.mark.parametrize(
+    "compartment", [{}, {"modules": (32, 16), "apical": 0.25}], ids=["basal", "apical"]
+)
+
+
 def pair(tmp_path, **settings):
-    cpu = cd.Brain.compose(8, 4, seed=3, modules=(32,), **{"recall": False, **settings})
+    cpu = cd.Brain.compose(8, 4, seed=3, **{"modules": (32,), "recall": False, **settings})
     cpu.save(tmp_path / "brain.npz")
     return cpu, cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
 
@@ -42,12 +47,15 @@ def test_a_composed_brain_settles_and_learns_as_on_the_cpu(tmp_path):
     np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-5)
 
 
-def test_a_living_brain_saves_and_continues_on_mlx(tmp_path):
-    _, mlx = pair(tmp_path, arousal=True)
+@COMPARTMENTS
+def test_a_living_brain_saves_and_continues_on_mlx(tmp_path, compartment):
+    cpu, mlx = pair(tmp_path, arousal=True, **compartment)
     rng = np.random.default_rng(1)
     reward = None
     for _ in range(12):
-        action = mlx.live(rng.random((1, 8)), reward=reward)
+        x = rng.random((1, 8))
+        action = mlx.live(x, reward=reward)
+        np.testing.assert_array_equal(cpu.live(x, reward=reward), action)
         reward = np.array([float(action[0] == 0)])
     mlx.save(tmp_path / "living.npz")
     again = cd.Brain.load(tmp_path / "living.npz", backend="mlx")
@@ -55,8 +63,11 @@ def test_a_living_brain_saves_and_continues_on_mlx(tmp_path):
     np.testing.assert_array_equal(mlx.live(x, reward=reward), again.live(x, reward=reward))
 
 
-def test_imagination_observers_recall_heads_and_growth_run_on_mlx(tmp_path):
-    _, mlx = pair(tmp_path, observers=(8,), recall=True, recall_founder=True, recall_heads=2)
+@COMPARTMENTS
+def test_imagination_observers_recall_heads_and_growth_run_on_mlx(tmp_path, compartment):
+    _, mlx = pair(
+        tmp_path, observers=(8,), recall=True, recall_founder=True, recall_heads=2, **compartment
+    )
     phases = mlx.imagine([X[:1], X[1:2]])
     assert all(np.all(phase.qualified) for phase in phases)
     for _ in range(3):
