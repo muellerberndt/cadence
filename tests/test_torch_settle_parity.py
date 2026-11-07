@@ -178,6 +178,150 @@ def test_every_transport_matches_the_host(device, transport, monkeypatch):
          dev.settle_batch(drive, steps=50, tolerance=1e-6))
 
 
+@pytest.mark.parametrize("transport", ["grouped", "blocks"])
+@pytest.mark.parametrize("steps", [1, 2, 3, 4, 5, 11, 12, 33, 34])
+def test_still_products_match_the_host_at_every_stage(device, transport, steps, monkeypatch):
+    monkeypatch.setenv("CADENCE_TORCH_TRANSPORT", transport)
+    brain = composed(apical=False)
+    host = brain.learner.brain
+    dev = on(host, device)
+    plan = dev._torch.plan
+    assert plan.kind == transport and plan.still is not None
+    assert dev.to_dict()["torch_transport"]["still_products"] > 0
+    n = host.connectome.n
+    rng = np.random.default_rng(steps)
+    first, second = rng.uniform(-0.5, 1.0, (2, 4, n))
+    a, b = host.settle_batch(first, steps=7), dev.settle_batch(first, steps=7)
+    same(a, b)
+    for _ in range(3):  # a new drive from a warm state, then the same again from where it ended
+        a, b = host.settle_batch(second, steps=steps, state=a), dev.settle_batch(
+            second, steps=steps, state=b)
+        same(a, b)
+        np.testing.assert_allclose(dev.residual(second, b), host.residual(second, a),
+                                   rtol=0, atol=1e-12)
+    for tolerance in (1e-3, 1e-6, 1e-30):
+        a, b = host.settle_batch(first, steps=steps, state=a, tolerance=tolerance), (
+            dev.settle_batch(first, steps=steps, state=b, tolerance=tolerance))
+        same(a, b)
+    target = np.zeros((4, n))
+    target[:, brain.learner.output_index[0]] = 1.0
+    nudge = brain.learner.nudge_for(target, 0.1, None, None)
+    a, b = host.settle_batch(first, steps=steps, state=a, nudge=nudge), dev.settle_batch(
+        first, steps=steps, state=b, nudge=nudge)
+    same(a, b)
+    np.testing.assert_allclose(dev.residual(first, b, nudge=nudge),
+                               host.residual(first, a, nudge=nudge), rtol=0, atol=1e-12)
+
+
+@pytest.mark.parametrize("steps", [2, 3, 9, 34])
+def test_a_mask_or_a_nudge_on_a_source_makes_every_product(device, steps):
+    brain = composed(apical=False)
+    host = brain.learner.brain
+    dev = on(host, device)
+    kernel = dev._torch
+    n = host.connectome.n
+    source = np.flatnonzero(kernel.plan.structure.source)
+    rng = np.random.default_rng(3)
+    drive = rng.uniform(-0.5, 1.0, (3, n))
+    keep = np.ones(n)
+    keep[source[0]] = 0.5
+    a, b = host.settle_batch(drive, steps=steps, mask=keep), dev.settle_batch(
+        drive, steps=steps, mask=keep)
+    same(a, b)
+    assert not kernel._workspace(3).configs[("shared", None, False, None)].quiet
+    mask = np.zeros(n)
+    mask[source[:2]] = 1.0
+    nudge = cd.Nudge(rng.uniform(0, 1, (3, n)), mask, 0.2)
+    a2, b2 = host.settle_batch(drive, steps=steps, nudge=nudge), dev.settle_batch(
+        drive, steps=steps, nudge=nudge)
+    same(a2, b2)
+    assert any(not cfg.quiet for cfg in kernel._workspace(3).configs.values())
+
+
+def test_still_products_stay_out_of_a_compartment_adaptation_and_a_smaller_step(device):
+    brain = composed(apical=True)
+    assert on(brain.learner.brain, device)._torch.plan.still is None
+    assert on(composed(apical=False, adaptation=True).learner.brain, device)._torch.plan.still is None
+    graph = composed(apical=False).learner.brain
+    halved = cd.NeuralGraph(graph.connectome, graph.neuron_model.replace(dt=0.5), efficacy=graph.efficacy,
+                            bias=graph.bias, log_gain=graph.log_gain, backend="torch", device=device)
+    assert halved._torch.plan.still is None
+
+
+@pytest.mark.parametrize("transport", ["grouped", "blocks"])
+def test_held_still_products_serve_only_their_own_source_neurons(device, transport, monkeypatch):
+    from cadence import brain as module
+
+    monkeypatch.setenv("CADENCE_TORCH_TRANSPORT", transport)
+    monkeypatch.setattr(module, "_STILL_KEPT", 0)
+    brain = composed(apical=False, seed=2)
+    host = brain.learner.brain
+    dev = on(host, device)
+    kernel = dev._torch
+    n = host.connectome.n
+    rng = np.random.default_rng(14)
+    first, second = rng.uniform(-0.5, 1.0, (2, 4, n))
+    ws_of = lambda: kernel._workspace(4)  # noqa: E731
+    a, b = host.settle_batch(first, steps=9), dev.settle_batch(first, steps=9)
+    same(a, b)
+    assert ws_of().reuse == 0
+    # the same drive from where it ended: no product of a source neuron is made
+    a, b = host.settle_batch(first, steps=9, state=a), dev.settle_batch(first, steps=9, state=b)
+    held = dev.residual(first, b)  # on the device, before anything reads the state on the host
+    same(a, b)
+    assert ws_of().reuse == 2
+    np.testing.assert_allclose(held, host.residual(first, a), rtol=0, atol=1e-12)
+    # a new drive: sweep 0 reads the held products, sweep 1 makes its own
+    a, b = host.settle_batch(second, steps=9, state=a), dev.settle_batch(second, steps=9, state=b)
+    assert ws_of().reuse == 1
+    held = dev.residual(second, b)
+    same(a, b)
+    np.testing.assert_allclose(held, host.residual(second, a), rtol=0, atol=1e-12)
+    # a check of another state, then a settle from a state nothing held
+    other = rng.uniform(-0.5, 1.0, (4, n))
+    start = host.settle_batch(other, steps=9)
+    fetched = cd.BrainState(np.array(start.v), np.array(start.activation),
+                            np.array(start.adaptation), start.steps)
+    a, b = host.settle_batch(second, steps=2, state=start), dev.settle_batch(
+        second, steps=2, state=fetched)
+    same(a, b)
+    # a mask and a nudge on a source neuron leave nothing held
+    keep = np.ones(n)
+    keep[np.flatnonzero(kernel.plan.structure.source)[0]] = 0.5
+    a, b = host.settle_batch(second, steps=9, state=a, mask=keep), dev.settle_batch(
+        second, steps=9, state=b, mask=keep)
+    same(a, b)
+    assert ws_of().still_version == -1
+    a, b = host.settle_batch(first, steps=1, state=a), dev.settle_batch(first, steps=1, state=b)
+    same(a, b)
+    assert ws_of().still_version == -1
+    # new parameters: what was held is not read
+    a, b = host.settle_batch(first, steps=9, state=a), dev.settle_batch(first, steps=9, state=b)
+    same(a, b)
+    host2 = host.with_parameters(efficacy=np.asarray(host.efficacy) * 0.9)
+    dev = dev._with_device_parameters(
+        torch.from_numpy(np.asarray(host2.efficacy).copy()).to(kernel.device, kernel.param_dtype),
+        kernel.bias_param,
+    )
+    a, b = host2.settle_batch(first, steps=9, state=a), dev.settle_batch(first, steps=9, state=b)
+    held = dev.residual(first, b)  # on the device, before anything reads the state on the host
+    same(a, b)
+    np.testing.assert_allclose(held, host2.residual(first, a), rtol=0, atol=1e-12)
+
+
+def test_still_products_can_be_turned_off(device, monkeypatch):
+    brain = composed(apical=False)
+    host = brain.learner.brain
+    with_still = on(host, device)
+    monkeypatch.setenv("CADENCE_STILL_PRODUCTS", "0")
+    without = on(host, device)
+    assert with_still._torch.plan.still is not None and without._torch.plan.still is None
+    drive = np.random.default_rng(1).uniform(-0.5, 1.0, (4, host.connectome.n))
+    a, b = with_still.settle_batch(drive, steps=40), without.settle_batch(drive, steps=40)
+    assert a.steps == b.steps
+    np.testing.assert_allclose(a.activation, b.activation, rtol=0, atol=1e-13)
+
+
 def test_learning_steps_match_the_host(device):
     brains = [composed(apical=True, seed=4) for _ in range(2)]
     brains[1].learner.brain = on(brains[1].learner.brain, device)
@@ -248,6 +392,24 @@ def test_graph_replay_is_bitwise_the_eager_settle(monkeypatch):
 
 
 @cuda
+def test_graphs_are_captured_again_after_every_capture_was_dropped():
+    brain = composed(apical=False)
+    dev = on(brain.learner.brain, "cuda:0")
+    kernel = dev._torch
+    drive = np.random.default_rng(7).uniform(-0.5, 1.0, (4, dev.connectome.n))
+    for _ in range(4):
+        dev.settle_batch(drive, steps=40)
+    ws = kernel._workspace(4)
+    assert kernel.graph_stats["captured"] > 0 and ws.graphs
+    expected = dev.settle_batch(drive, steps=40).activation
+    ws.clear_captures()
+    for _ in range(4):
+        again = dev.settle_batch(drive, steps=40)
+    assert kernel.graph_stats["failed"] is None and ws.graphs
+    np.testing.assert_allclose(again.activation, expected, rtol=0, atol=1e-13)
+
+
+@cuda
 def test_the_device_settle_is_deterministic():
     brain = composed(apical=True)
     rng = np.random.default_rng(6)
@@ -286,6 +448,23 @@ def test_triton_groups_match_the_batched_products(monkeypatch):
     expected = host.settle_batch(drive, steps=30, tolerance=1e-8)
     for result in results:
         same(expected, result)
+
+
+@cuda
+def test_the_apical_launch_matches_the_products(monkeypatch):
+    pytest.importorskip("triton")
+    brain = composed(apical=True)
+    host = brain.learner.brain
+    rng = np.random.default_rng(12)
+    drive = rng.uniform(-0.5, 1.0, (5, host.connectome.n))
+    expected = host.settle_batch(drive, steps=40, tolerance=1e-7)
+    launched = on(host, "cuda:0")
+    assert launched._torch._pools is not None
+    same(expected, launched.settle_batch(drive, steps=40, tolerance=1e-7))
+    monkeypatch.setenv("CADENCE_TRITON", "0")
+    products = on(host, "cuda:0")
+    assert products._torch._pools is None
+    same(expected, products.settle_batch(drive, steps=40, tolerance=1e-7))
 
 
 @pytest.mark.parametrize("device_name", devices())
