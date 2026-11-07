@@ -1177,25 +1177,34 @@ class Learner:
 
     def _mlx_update_tables(self, plus: BrainState, minus: BrainState) -> dict[str, Any] | None:
         """What a lesson's update reads on the MLX device, where both phases rest there and the
-        update takes this learner: every synapse plastic at one rate, no group but ties."""
+        update takes this learner: every synapse plastic, no group but ties, each synapse's step
+        as ``synapse_rate`` gives it. A rate moves by a new array: the one read here is read-only,
+        since comparing millions of them would cost a lesson's fifth."""
         kernel = self.brain._mlx
         if (
             kernel is None or kernel.plain or plus.device is None or minus.device is None
             or plus.device.get("holder") is not kernel.root
             or minus.device.get("holder") is not kernel.root
-            or self.synapse_rate is not None or len(self._members)
+            or len(self._members)
             or not bool(np.all(self.plastic_synapses))
         ):
             return None
+        rate = self.synapse_rate
         held = self.__dict__.get("_mlx_tables")
-        if held is None or held[0] is not kernel.root or held[1] is not self._paired:
+        if (
+            held is None or held[0] is not kernel.root or held[1] is not self._paired
+            or held[3] is not rate or (rate is not None and rate.flags.writeable)
+        ):
             tables = kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse)
             if tables is not None:
                 assert self.plastic_neurons is not None
                 tables["plastic_neurons"] = kernel.mx.array(
                     np.asarray(self.plastic_neurons, dtype=np.float32)
                 )
-            held = (kernel.root, self._paired, tables)
+                if rate is not None:
+                    rate.flags.writeable = False
+                    tables["rates"] = kernel.block_rates(rate)
+            held = (kernel.root, self._paired, tables, rate)
             self.__dict__["_mlx_tables"] = held
         return cast("dict[str, Any] | None", held[2])
 

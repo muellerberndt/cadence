@@ -76,9 +76,10 @@ both states are resident; MLX needs a blocked graph). Torch `Learner` updates, m
 normalization stay on the device, and so does the apical gain a nudged phase holds
 (`NeuralGraph.apical_gain`). On MLX a lesson's update stays on the device from 131,072 block entries,
 where every entry holds one synapse, each block has one gain, every tie is one block's entries with
-another's, transposed, and every synapse is plastic at one rate: the contrast, the moments and the
-normalization by block and over the neurons in float32, the ties, the bound, the new blocks and the
-biases in one launch. Below that, MLX hands the contrast to a host optimizer. `ActorCritic` updates on the
+another's, transposed, and every synapse is plastic: the contrast, the moments and the
+normalization by block and over the neurons in float32, each synapse's rate, the ties, the bound, the new
+blocks and the biases in one launch. `brain.learner.synapse_rate = rates` changes a rate there; the array an
+update read is read-only, since comparing it per lesson would cost a fifth of a lesson at the speech size. Below that, MLX hands the contrast to a host optimizer. `ActorCritic` updates on the
 device when both of its phases settled there, by the same sizes on MLX. Its dopamine is the host's, and below
 the [memories' size](#memories-on-the-device) so is its critic, which reads the critic's columns of a state and
 nothing else of it. Reading parameters or saving a checkpoint copies arrays back. Parameter edits and the `learner.brain`

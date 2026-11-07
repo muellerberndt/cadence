@@ -5409,6 +5409,19 @@ class _MlxKernel:
             "synapses": len(block),
         }
 
+    def block_rates(self, rate: np.ndarray) -> list[tuple[int, Any]]:
+        """A per-synapse step's factor, for every block whose steps are not whole: one number where
+        a block moves as one, else an array by entry. For a layout whose entries are all synapses
+        (``update_tables``)."""
+        out: list[tuple[int, Any]] = []
+        for k, part in enumerate(self.layout.blocks(self.layout.flat(rate))):
+            low, high = float(part.min()), float(part.max())
+            if low != high:
+                out.append((k, self.mx.array(np.ascontiguousarray(part).astype(np.float32))))
+            elif low != 1.0:
+                out.append((k, low))
+        return out
+
     def to_blocks(self, edges: np.ndarray) -> list[Any]:
         """Per-synapse host values as device arrays by block; an entry without a synapse reads 0."""
         flat = self.layout.flat(np.asarray(edges, dtype=float)).astype(np.float32)
@@ -5628,8 +5641,11 @@ class _MlxKernel:
         self, steps: list[Any], scale: Sequence[Any], tables: dict[str, Any], cap: float,
     ) -> tuple[_MlxKernel, Any]:
         """The kernel after steps by block, not yet evaluated, and the sum of the steps' sizes:
-        the ties, the bound and the new blocks. ``steps`` is written with the ties' means."""
+        each synapse's rate, the ties, the bound and the new blocks. ``steps`` is written with the
+        rates and the ties' means."""
         mx, plan = self.mx, self.plan
+        for k, rate in tables.get("rates", ()):  # each synapse's own step, before tying
+            steps[k] = rate * steps[k]
         for k, other in tables["ties"].items():  # one synapse, one weight: the mean of the two
             if k <= other:
                 mean = 0.5 * (steps[k] + steps[other].T)
