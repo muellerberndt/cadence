@@ -225,48 +225,49 @@ print(check["backend"], check["max_abs_deviation"])                             
 
 ## Which hardware
 
-Use CPU with Numba for small continuing brains, and measure an accelerator on the actual
-changing-input workload before switching: small brains spend more time launching GPU
-operations than doing arithmetic, while deep brains and large batches gain from the device.
-On an NVIDIA A10G, one process, milliseconds per act and per taught lesson of a newborn, CUDA
-against one CPU core of the same machine (an AMD EPYC 7R32) with Numba, the same sweeps:
+[The default backend](#the-default-backend) holds the rule a new brain follows and the A10G and M4 tables of
+`act`, `lesson` and `step`. Small brains spend more time launching GPU operations than doing arithmetic, while
+large brains, deep brains and large batches gain from the device. On that A10G, one process with the GPU to
+itself, milliseconds per act and per taught lesson of a newborn at each precision, against one CPU core of the
+same machine at the CPU path's default:
 
 | Brain | Rows | One CPU core, act and lesson | CUDA float64 | CUDA float32 |
 | --- | ---: | ---: | ---: | ---: |
-| The chamber's default brain: 251 neurons, 13,120 synapses | 1 | 0.56, 2.76 | 2.64, 10.8 | 2.69, 10.7 |
-| The same | 16 | 1.53, 7.81 | 2.95, 13.6 | 2.94, 12.1 |
-| The same | 64 | 4.57, 24.2 | 3.42, 25.9 | 3.39, 25.4 |
-| The speech size, `Brain.compose(3920, 37, modules=(512,))`: 12,821 neurons, 6.3 million synapses | 1 | 9.46, 393 | 10.0, 236 | 10.0, 238 |
-| The same | 16 | 52.9, 493 | 37.1, 304 | 37.3, 296 |
-| The same | 64 | 160, 834 | 104, 515 | 103, 483 |
-| The same | 256 | 597, 2,270 | 366, 1,332 | 362, 1,263 |
-| The same | 1,024 | 2,889, 9,907 | 1,577, 4,828 | 1,602, 4,662 |
-| A deep apical brain, `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`: 535 neurons, 50,048 synapses | 1 | 1.36, 6.30 | 3.54, 14.2 | 3.26, 13.0 |
-| The same | 16 | 10.6, 37.3 | 3.86, 15.4 | 3.44, 13.8 |
-| The same | 64 | 38.7, 134 | 5.35, 20.7 | 4.42, 16.6 |
-| The same | 256 | 152, 524 | 12.8, 44.0 | 8.73, 27.9 |
-| The deep anatomy of [`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md) under its compartment: 7,956 neurons, 903,520 synapses | 64 | 895, 2,245 | 25.9, 55.4 | 15.1, 26.4 |
-| The same | 256 | 3,478, 8,617 | 93.5, 191 | 54.6, 79.5 |
+| The chamber's default brain: 251 neurons, 13,120 synapses | 1 | 0.52, 2.68 | 1.61, 7.90 | 1.51, 7.66 |
+| The same | 16 | 0.92, 6.94 | 1.99, 9.84 | 1.76, 8.46 |
+| The same | 64 | 1.90, 20.6 | 2.58, 18.3 | 2.10, 16.8 |
+| The speech size, `Brain.compose(3920, 37, modules=(512,))`: 12,821 neurons, 6.3 million synapses | 1 | 9.39, 405 | 3.78, 29.5 | 3.53, 21.9 |
+| The same | 16 | 42.4, 505 | 6.95, 42.3 | 3.92, 23.2 |
+| The same | 64 | 123, 815 | 14.1, 70.2 | 5.29, 27.9 |
+| The same | 256 | 439, 2,165 | 48.4, 191 | 11.3, 47.2 |
+| The same | 1,024 | 2,248, 9,424 | 174, 667 | 36.6, 149 |
+| A deep apical brain, `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`: 535 neurons, 50,048 synapses | 1 | 1.42, 6.32 | 2.31, 10.8 | 1.84, 9.27 |
+| The same | 16 | 10.7, 37.4 | 2.75, 12.1 | 2.05, 9.96 |
+| The same | 64 | 38.8, 133 | 4.89, 20.9 | 3.49, 16.3 |
+| The same | 256 | 152, 524 | 8.55, 33.9 | 3.76, 17.6 |
+| The deep anatomy of [`benchmarks/torch_gpu`](../benchmarks/torch_gpu/README.md) under its compartment: 7,956 neurons, 903,520 synapses | 64 | 910, 2,247 | 16.8, 46.6 | 4.26, 15.7 |
+| The same | 256 | 3,479, 8,625 | 58.7, 164 | 13.9, 40.3 |
 
 A settle of 32 sweeps from a warm state under a new drive on that device, in milliseconds:
 
 | Brain | Rows | CUDA float64 | CUDA float32 |
 | --- | ---: | ---: | ---: |
-| The chamber's default brain | 1 | 0.70 | 0.58 |
-| The same | 16 | 0.79 | 0.60 |
-| The same | 1,024 | 2.49 | 1.10 |
-| The speech size | 1 | 1.25 | 0.93 |
-| The same | 16 | 3.77 | 1.34 |
-| The same | 64 | 9.14 | 2.82 |
-| The same | 1,024 | 98.9 | 30.9 |
-| The deep apical brain | 16 | 1.55 | 0.90 |
-| The same | 256 | 5.84 | 1.38 |
-| The deep anatomy | 16 | 6.13 | 2.39 |
-| The same | 1,024 | 209 | 49.6 |
+| The chamber's default brain | 1 | 0.65 | 0.53 |
+| The same | 16 | 0.74 | 0.55 |
+| The same | 1,024 | 2.43 | 1.03 |
+| The speech size | 1 | 1.20 | 0.88 |
+| The same | 16 | 3.71 | 1.28 |
+| The same | 64 | 8.97 | 2.80 |
+| The same | 1,024 | 95.4 | 29.6 |
+| The deep apical brain | 16 | 1.50 | 0.85 |
+| The same | 256 | 5.76 | 1.31 |
+| The deep anatomy | 16 | 6.04 | 2.33 |
+| The same | 1,024 | 207 | 48.8 |
 
-A settle is a small part of an act of a brain whose memories run on the host, as they do below
-[their size](#memories-on-the-device). The device's float64 runs at a sixty-fourth of its float32 rate; check float32 against float64 as below
-before relying on it. On the small continuing nursery of the
+A settle is about a third of an act of a brain with the memory, whether its memories run on the host below
+[their size](#memories-on-the-device) or on the device from it: 0.55 of 1.76 milliseconds for the chamber's brain
+at 16 rows and 1.28 of 3.92 at the speech size. The device's float64 runs at a sixty-fourth of its float32 rate;
+check float32 against float64 as below before relying on it. On the small continuing nursery of the
 [System 1 CUDA qualification](../benchmarks/system1_cuda/RESULTS.md), CPU with Numba is faster
 than CUDA.
 
@@ -306,9 +307,9 @@ GPU costs about 180 microseconds whatever the work, and a solve of three chunks 
 75 s on MLX. One core stays the choice at that size.
 
 So a device costs a small brain time. At one row a new brain of 12 inputs and an association of 32 takes about 4
-times one CPU core's time per act and per lesson on MLX, and the chamber's brain about 5 times per act and 4 per lesson on
-CUDA; at 16 rows the chamber's brain takes about 1.2 times on MLX and 1.8 times on CUDA. Keep a brain on the CPU under the
-sizes where a device passes one core.
+times one CPU core's time per act and per lesson on MLX, and the chamber's brain about 3 times per act and per lesson on
+CUDA; at 16 rows the chamber's brain takes about 1.2 times on MLX, and on CUDA 1.9 times per act and 1.2 per lesson. Keep a
+brain on the CPU under the sizes where a device passes one core.
 
 The load moves these readings: above a load of 4 an MLX act
 at the speech size has read twice its quiet time.
