@@ -38,9 +38,13 @@ from __future__ import annotations
 
 import copy
 import functools
+import hashlib
+import json
 import os
+import statistics
 import sys
 import threading
+import time
 import weakref
 from collections import OrderedDict
 from collections.abc import Mapping, Sequence
@@ -787,6 +791,25 @@ class Brain:
         if self._weights_host is None:
             self._weights_host = self._gain_pre * self.efficacy
         return self._weights_host
+
+    def calibrate_transport(
+        self, batches: Sequence[int] = (1, 16, 64, 256), *, name: str | None = None,
+    ) -> dict[str, Any]:
+        """Choose this torch graph's transport kernels from measurements, once, and keep them.
+
+        At each batch size the products of each part of a sweep are timed on this device, in a
+        Triton launch and on cuBLAS; the plan holds what read fastest and stays fixed: no later
+        timing moves it. A plan is kept per graph shape, device and precision (in this process
+        and in ``CADENCE_PLAN_CACHE``, by default under ``~/.cache/cadence``), so a second graph
+        of one shape pays nothing. A batch the plan does not name takes the nearest it names.
+        ``name`` repeats a stored plan without timing anything, and refuses one made for another
+        shape, device or precision; ``name="rules"`` returns to the rules every graph starts
+        under. Only a device with Triton has anything to choose; elsewhere the plan names no
+        launch. Returns the plan, which ``to_dict()["torch_transport"]`` reports.
+        """
+        if self._torch is None:
+            raise ValueError("a transport plan belongs to the torch backend")
+        return cast("dict[str, Any]", self._torch.calibrate(batches, name))
 
     def _with_device_parameters(self, scale: Any, bias: Any) -> Brain:
         """The brain with new parameters that stay on the torch device.
@@ -1860,16 +1883,22 @@ def _take(x: Any, span: tuple[int, int] | None, index: Any) -> Any:
 
 
 class _Part:
-    """The products of one part of a sweep: a Triton launch, buckets on cuBLAS, or blocks (with
-    the spans of output rows they accumulate into)."""
+    """The products of one part of a sweep: its buckets, or its blocks with the spans of output
+    rows they accumulate into."""
 
-    __slots__ = ("small", "large", "pairs", "spans")
+    __slots__ = ("buckets", "pairs", "spans")
 
     def __init__(self) -> None:
-        self.small: Any = None
-        self.large: list[int] = []
+        self.buckets: list[int] = []
         self.pairs: list[int] = []
         self.spans: list[tuple[int, int]] = []
+
+    @classmethod
+    def of(cls, buckets: list[int]) -> _Part:
+        """A part of these buckets alone."""
+        part = cls()
+        part.buckets = buckets
+        return part
 
 
 class _PlanStructure:
@@ -2028,19 +2057,80 @@ class _PlanStructure:
         else:
             for buckets_ in members_of or [list(range(len(self.buckets)))]:
                 part_ = _Part()
-                part_.large = list(buckets_)
-                # On CUDA the buckets of several small groups are one Triton launch; a bucket of
-                # one group is one dense product, which cuBLAS does well.
-                several = [k for k in buckets_ if self.buckets[k].count > 1]
-                if kind == "grouped" and device.type == "cuda" and several:
-                    if _triton_transport() is not None:
-                        part_.small = _SmallGroups(
-                            torch, device, [self.buckets[k] for k in several],
-                            [self.buckets[k].offset for k in several],
-                            [bucket_cols[k] for k in several], [bucket_rows[k] for k in several],
-                        )
-                        part_.large = [k for k in buckets_ if k not in set(several)]
+                part_.buckets = list(buckets_)
                 self.parts.append(part_)
+        self.launches = kind == "grouped" and device.type == "cuda" and (
+            _triton_transport() is not None
+        )
+        self.bucket_cols, self.bucket_rows = bucket_cols, bucket_rows
+        self._device = device
+        self._torch = torch
+        self._launch_of: dict[tuple[int, ...], Any] = {}
+        self.calibrated: dict[str, Any] = {}  # per precision: the plan a calibration stored
+
+    def launch(self, chosen: tuple[int, ...]) -> Any:
+        """The Triton launch of these buckets, made once; None without any."""
+        if not chosen:
+            return None
+        held = self._launch_of.get(chosen)
+        if held is None:
+            held = self._launch_of[chosen] = _SmallGroups(
+                self._torch, self._device, [self.buckets[k] for k in chosen],
+                [self.buckets[k].offset for k in chosen],
+                [self.bucket_cols[k] for k in chosen], [self.bucket_rows[k] for k in chosen],
+            )
+        return held
+
+    def digest(self) -> str:
+        """The shape of the plan's products: what a calibration's readings depend on."""
+        shapes = [
+            (b.count, b.rows, b.cols, b.col_range is not None, b.row_range is not None)
+            for b in self.buckets
+        ]
+        parts = [(part.buckets, part.pairs) for part in self.parts]
+        text = json.dumps([self.kind, self.rows, self.entries, self.size, shapes, parts])
+        return hashlib.sha256(text.encode()).hexdigest()[:16]
+
+
+_PLANS: dict[str, dict[str, Any]] = {}  # the stored plans this process has read or made
+
+
+def _plan_file() -> str:
+    """Where stored plans rest: ``CADENCE_PLAN_CACHE``, else the user's cache folder."""
+    return os.environ.get("CADENCE_PLAN_CACHE") or os.path.join(
+        os.path.expanduser("~"), ".cache", "cadence", "transport_plans.json"
+    )
+
+
+def _stored_plan(name: str) -> dict[str, Any] | None:
+    """A stored plan by name, from this process or the file; None if there is none."""
+    if name not in _PLANS:
+        try:
+            with open(_plan_file(), encoding="utf-8") as handle:
+                _PLANS.update(json.load(handle))
+        except (OSError, ValueError):
+            pass
+    return _PLANS.get(name)
+
+
+def _store_plan(plan: dict[str, Any]) -> None:
+    """Keep a plan for this process and, where the file can be written, for later ones."""
+    _PLANS[plan["name"]] = plan
+    path = _plan_file()
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        try:
+            with open(path, encoding="utf-8") as handle:
+                held = json.load(handle)
+        except (OSError, ValueError):
+            held = {}
+        held[plan["name"]] = plan
+        temporary = f"{path}.{os.getpid()}"
+        with open(temporary, "w", encoding="utf-8") as handle:
+            json.dump(held, handle, indent=1, sort_keys=True)
+        os.replace(temporary, path)
+    except OSError:
+        pass
 
 
 def _plan_structure(
@@ -2083,6 +2173,9 @@ class _TransportPlan:
         self.moving = structure.parts[0]
         self.still: _Part | None = structure.parts[1] if structure.split else None
         self.still_size = structure.still_size
+        self.launches = structure.launches and dtype in (torch.float32, torch.float64)
+        self._precision = str(dtype).replace("torch.", "")
+        self._chosen: dict[tuple[int, int], tuple[Any, list[int]]] = {}
         self.position = structure.position
         self.values = torch.zeros(structure.size, dtype=dtype, device=device)
         if self.kind == "sparse":
@@ -2121,9 +2214,50 @@ class _TransportPlan:
         return out
 
     @property
+    def named(self) -> dict[str, Any] | None:
+        """The plan a calibration stored for this shape and precision; None under the rules."""
+        return cast("dict[str, Any] | None", self.structure.calibrated.get(self._precision))
+
+    def on_launch(self, part: _Part, batch: int) -> tuple[int, ...]:
+        """The buckets of a part in its Triton launch at this batch: the stored plan's where
+        one holds this batch, else the rules (``_launch_rule``)."""
+        if not self.launches:
+            return ()
+        named = self.named
+        if named is not None:
+            by_batch = named["batches"]
+            nearest = min(by_batch, key=lambda b: (abs(np.log2(int(b)) - np.log2(batch)), -int(b)))
+            return tuple(by_batch[nearest][self.parts.index(part)])
+        return tuple(k for k in part.buckets if _launch_rule(self.buckets[k], self._precision))
+
+    def _split(self, part: _Part, batch: int) -> tuple[Any, list[int]]:
+        """A part's launch and the buckets on cuBLAS at this batch, found once."""
+        key = (self.parts.index(part), batch)
+        held = self._chosen.get(key)
+        if held is None:
+            chosen = self.on_launch(part, batch)
+            held = self._chosen[key] = (
+                self.structure.launch(chosen), [k for k in part.buckets if k not in chosen],
+            )
+        return held
+
+    def choose(self, plan: dict[str, Any] | None) -> None:
+        """Hold ``plan`` for this shape and precision (None: the rules)."""
+        if plan is None:
+            self.structure.calibrated.pop(self._precision, None)
+        else:
+            self.structure.calibrated[self._precision] = plan
+        self._chosen.clear()
+
+    @property
     def small(self) -> Any:
-        """The Triton launch of the moving part, else of the still part; None without one."""
-        return next((part.small for part in self.parts if part.small is not None), None)
+        """The Triton launch at a batch of 16 of the moving part, else of the still part; None
+        without one."""
+        for part in self.parts:
+            launch = self._split(part, 16)[0]
+            if launch is not None:
+                return launch
+        return None
 
     def forward(self, s: Any, out: Any) -> Any:
         """The inputs ``(rows, batch)`` of a neuron-major activation ``s``: every product."""
@@ -2140,21 +2274,13 @@ class _TransportPlan:
         every other row in full, block products accumulate into their zeroed rows.
         """
         torch = self.torch
-        batch = s.shape[1]
         if self.kind == "grouped":
-            if part.small is not None:
+            launch, large = self._split(part, s.shape[1])
+            if launch is not None:
                 with torch.cuda.device(self.device):
-                    part.small(self.values, s, out)
-            for k in part.large:
-                bucket, w = self.buckets[k], self.weights[k]
-                x = _take(s, bucket.col_range, bucket.col_index)
-                x = x.view(bucket.count, bucket.cols, batch)
-                if bucket.row_range is not None:
-                    target = out.narrow(0, bucket.row_range[0], bucket.row_range[1])
-                    torch.bmm(w, x, out=target.view(bucket.count, bucket.rows, batch))
-                else:
-                    y = torch.bmm(w, x)
-                    out.index_copy_(0, bucket.row_index, y.view(-1, batch))
+                    launch(self.values, s, out)
+            for k in large:
+                self.bucket_product(k, s, out)
             return out
         if self.kind == "blocks":
             for r0, width in part.spans:
@@ -2164,6 +2290,20 @@ class _TransportPlan:
                 out.narrow(0, r0, width).addmm_(self.weights[k].T, s.narrow(0, a0, height))
             return out
         return torch.sparse.mm(self.csr, s)
+
+    def bucket_product(self, k: int, s: Any, out: Any) -> None:
+        """One bucket's batched product over a gather of its presynaptic rows, on cuBLAS."""
+        torch = self.torch
+        batch = s.shape[1]
+        bucket, w = self.buckets[k], self.weights[k]
+        x = _take(s, bucket.col_range, bucket.col_index)
+        x = x.view(bucket.count, bucket.cols, batch)
+        if bucket.row_range is not None:
+            target = out.narrow(0, bucket.row_range[0], bucket.row_range[1])
+            torch.bmm(w, x, out=target.view(bucket.count, bucket.rows, batch))
+        else:
+            y = torch.bmm(w, x)
+            out.index_copy_(0, bucket.row_index, y.view(-1, batch))
 
     def gram(self, left: Any, right: Any, out: Any = None) -> Any:
         """Per entry ``(post, pre)`` the sum over ``k`` of ``left[post, k] * right[pre, k]``.
@@ -2233,19 +2373,25 @@ class _TransportPlan:
         return out
 
     def describe(self) -> dict[str, Any]:
+        """The plan as it runs at a batch of 16 (a stored plan names its choice at every batch)."""
+        splits = [self._split(part, 16) for part in self.parts] if self.kind == "grouped" else []
+        named = self.named
         return {
             "kind": self.kind,
             "entries": int(self.values.shape[0]),
             "groups": self.groups,
-            "products": sum(len(part.large) + (part.small is not None) for part in self.parts)
+            "products": sum(len(large) + (launch is not None) for launch, large in splits)
             if self.kind == "grouped" else (len(self.pairs) if self.kind == "blocks" else 1),
             "triton_programs": sum(
-                part.small.programs for part in self.parts if part.small is not None
+                launch.programs for launch, _ in splits if launch is not None
             ),
             "still_products": 0 if self.still is None else (
-                len(self.still.large) + (self.still.small is not None) + len(self.still.pairs)
+                len(self.still.pairs) if self.kind == "blocks"
+                else len(splits[1][1]) + (splits[1][0] is not None)
             ),
             "deterministic": self.deterministic,
+            "plan": "rules" if named is None else named["name"],
+            **({} if named is None else {"plan_batches": named["batches"]}),
         }
 
 
@@ -2368,26 +2514,45 @@ class _Workspaces:
 # -- the small row groups on CUDA: one Triton launch
 #
 # Each program of the kernel computes a tile of ``ROWS`` output rows of one row group over
-# ``BATCH`` columns of the batch: for every presynaptic neuron of the group, in order, it loads
-# that neuron's batch row and the group's weight column and accumulates their outer product.
-# Every output element is summed by one program in a fixed order, so the result is deterministic,
-# and the launch can be captured in a CUDA graph. The cuBLAS batched products it replaces lose
-# most of their tile to groups of eight or sixteen rows, and their float64 kernels run far below
-# the device's rate; a single launch over every small group also replaces three operations per
-# group shape (gather, product, scatter) with one.
+# ``BATCH`` columns of the batch: for every ``COLS`` presynaptic neurons of the group, in order, it
+# loads those neurons' batch rows and the group's weights and accumulates their product. Every
+# output element is summed by one program in a fixed order, so the result is deterministic, and
+# the launch can be captured in a CUDA graph. The cuBLAS batched products it replaces lose most of
+# their tile to groups of eight or sixteen rows, and their float64 kernels run far below the
+# device's rate; a single launch over every small group also replaces three operations per group
+# shape (gather, product, scatter) with one.
 #
 # Triton is optional and CUDA-only: its language module is bound to ``tl`` and the kernel
 # compiled on first use (``_triton_transport``); ``CADENCE_TRITON=0`` keeps every group on
 # cuBLAS products.
 
 _TRITON_ROWS = 8  # output rows per program: the smallest group height of the visual anatomies
+_TRITON_COLS = 16  # presynaptic neurons a program takes at a time
+_TILE_COLS = 128  # at float64 a bucket of one group joins the launch up to this many columns
 tl: Any = None  # triton.language, once bound
 _TRITON_KERNEL: Any = None
 
 
+def _tile_batch(batch: int, double: bool) -> int:
+    """Rows of the batch per program of a launch: 16 at float64, where a program's pace is the
+    device's few float64 units and more programs share them, 64 at float32. A smaller batch takes
+    the tile it fills, since a program's mask does not spare its arithmetic. Measured on an A10G
+    on the real connections: docs/backends.md."""
+    wide = 16 if double else 64
+    return wide if batch >= wide else 1 << max(0, batch - 1).bit_length()
+
+
+def _launch_rule(bucket: _Bucket, precision: str) -> bool:
+    """Whether a bucket joins the Triton launch without a calibration. Several groups do: cuBLAS
+    loses most of its tile to them. At float64 a group of few presynaptic neurons does too: a
+    cuBLAS product costs about 25 microseconds at that size and the launch about 9, where at
+    float32 the product costs 2 to 11."""
+    return bucket.count > 1 or (precision == "float64" and bucket.cols <= _TILE_COLS)
+
+
 def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the annotations
     w_ptr, s_ptr, out_ptr, meta_ptr, col_ptr, row_ptr, batch,
-    ROWS: tl.constexpr, BATCH: tl.constexpr, DOUBLE: tl.constexpr,
+    ROWS: tl.constexpr, COLS: tl.constexpr, BATCH: tl.constexpr, DOUBLE: tl.constexpr,
 ):
     p = tl.program_id(0)
     tile = tl.program_id(1)
@@ -2400,15 +2565,27 @@ def _small_group_tiles(  # type: ignore[no-untyped-def]  # Triton reads the anno
     in_batch = offs_b < batch
     offs_r = tl.arange(0, ROWS)
     in_rows = offs_r < rows
+    offs_c = tl.arange(0, COLS)
     if DOUBLE:
         acc = tl.zeros((ROWS, BATCH), dtype=tl.float64)
     else:
         acc = tl.zeros((ROWS, BATCH), dtype=tl.float32)
-    for c in range(0, cols):
-        col = tl.load(col_ptr + c_off + c)
-        x = tl.load(s_ptr + col * batch + offs_b, mask=in_batch, other=0.0)
-        w = tl.load(w_ptr + w_off + offs_r * cols + c, mask=in_rows, other=0.0)
-        acc += w[:, None] * x[None, :]
+    for c in range(0, cols, COLS):
+        at = c + offs_c
+        in_cols = at < cols
+        col = tl.load(col_ptr + c_off + at, mask=in_cols, other=0)
+        x = tl.load(
+            s_ptr + col[:, None] * batch + offs_b[None, :],
+            mask=in_cols[:, None] & in_batch[None, :], other=0.0,
+        )
+        w = tl.load(
+            w_ptr + w_off + offs_r[:, None] * cols + at[None, :],
+            mask=in_rows[:, None] & in_cols[None, :], other=0.0,
+        )
+        if DOUBLE:
+            acc += tl.dot(w, x, allow_tf32=False, out_dtype=tl.float64)
+        else:
+            acc += tl.dot(w, x, allow_tf32=False)
     row = tl.load(row_ptr + r_off + offs_r, mask=in_rows, other=0)
     tl.store(
         out_ptr + row[:, None] * batch + offs_b[None, :], acc,
@@ -2614,12 +2791,12 @@ class _SmallGroups:
         self.device = device
 
     def __call__(self, values: Any, s: Any, out: Any) -> None:
-        batch = s.shape[1]
-        block = 64 if batch >= 64 else max(16, 1 << max(0, batch - 1).bit_length())
+        batch, double = s.shape[1], values.element_size() == 8
+        block = _tile_batch(batch, double)
         grid = (self.programs, -(-batch // block))
         _triton_transport()[grid](
             values, s, out, self.meta, self.cols, self.rows, batch,
-            ROWS=_TRITON_ROWS, BATCH=block, DOUBLE=values.element_size() == 8,
+            ROWS=_TRITON_ROWS, COLS=_TRITON_COLS, BATCH=block, DOUBLE=double,
         )
 
 
@@ -3722,6 +3899,142 @@ class _TorchKernel:
             activity_change,
             held,
         )
+
+    # -- the calibration
+
+    def _seconds(self, step: Any) -> float:
+        """Seconds per call of ``step`` replayed from a captured graph, as a sweep runs it."""
+        torch, device = self.torch, self.device
+        clock = time.perf_counter
+        step()
+        torch.cuda.synchronize(device)
+        began = clock()
+        step()
+        torch.cuda.synchronize(device)
+        once = clock() - began
+        length = 4 if once < 2e-3 else 1
+        if self._graph_pool is None:
+            self._graph_pool = torch.cuda.graph_pool_handle()
+            self._capture_stream = torch.cuda.Stream(device)
+        stream, current = self._capture_stream, torch.cuda.current_stream(device)
+        stream.wait_stream(current)
+        graph = torch.cuda.CUDAGraph()
+        with torch.cuda.device(device), torch.cuda.stream(stream):
+            graph.capture_begin(pool=self._graph_pool, capture_error_mode="relaxed")
+            try:
+                for _ in range(length):
+                    step()
+            finally:
+                graph.capture_end()
+        current.wait_stream(stream)
+        replays = max(1, min(32, int(2e-3 / max(once * length, 1e-6))))
+        readings = []
+        with torch.cuda.device(device):
+            graph.replay()
+            for _ in range(3):
+                torch.cuda.synchronize(device)
+                began = clock()
+                for _ in range(replays):
+                    graph.replay()
+                torch.cuda.synchronize(device)
+                readings.append((clock() - began) / (replays * length))
+        return statistics.median(readings)
+
+    def _calibrate_batch(self, batch: int) -> tuple[list[list[int]], dict[str, float]]:
+        """Each part's launch at this batch: every bucket timed in a launch and on cuBLAS, then
+        the part under that choice, every bucket in the launch, none, and the rules; a choice
+        replaces the rules only when it reads at least 2% faster."""
+        torch, plan = self.torch, self.plan
+        s = torch.rand(self.n, batch, dtype=self.dtype, device=self.device)
+        out = torch.zeros(plan.rows, batch, dtype=self.dtype, device=self.device)
+        structure = plan.structure
+
+        def part_seconds(chosen: tuple[int, ...], part: _Part) -> float:
+            launch = structure.launch(chosen)
+            large = [k for k in part.buckets if k not in chosen]
+
+            def step() -> None:
+                if launch is not None:
+                    with torch.cuda.device(self.device):
+                        launch(plan.values, s, out)
+                for k in large:
+                    plan.bucket_product(k, s, out)
+
+            return self._seconds(step)
+
+        picks: list[list[int]] = []
+        seconds = {"rules": 0.0, "chosen": 0.0}
+        for part in plan.parts:
+            rules = tuple(k for k in part.buckets if _launch_rule(plan.buckets[k], plan._precision))
+            if not part.buckets:
+                picks.append([])
+                continue
+            single = tuple(
+                k for k in part.buckets
+                if part_seconds((k,), _Part.of([k])) < part_seconds((), _Part.of([k]))
+            )
+            ruled = part_seconds(rules, part)
+            best, best_seconds = rules, ruled
+            for candidate in dict.fromkeys((single, tuple(part.buckets), ())):
+                if candidate != rules:
+                    reading = part_seconds(candidate, part)
+                    if reading < 0.98 * best_seconds:
+                        best, best_seconds = candidate, reading
+            picks.append(sorted(best))
+            seconds["rules"] += ruled
+            seconds["chosen"] += best_seconds
+        return picks, seconds
+
+    def calibrate(self, batches: Sequence[int], name: str | None) -> dict[str, Any]:
+        """``NeuralGraph.calibrate_transport``."""
+        plan = self.plan
+        structure = plan.structure
+        if name == "rules":
+            plan.choose(None)
+            self._workspaces.held.clear()
+            return {"name": "rules"}
+        hardware = (
+            self.torch.cuda.get_device_name(self.device) if self.device.type == "cuda"
+            else self.device.type
+        )
+        shape = structure.digest()
+        own = "-".join((hardware.replace(" ", "_"), plan._precision, shape))
+        if name is not None:
+            held = _stored_plan(name)
+            if held is None:
+                raise ValueError(f"no stored transport plan is named {name!r}")
+            if (held["hardware"], held["precision"], held["shape"]) != (
+                hardware, plan._precision, shape
+            ):
+                raise ValueError(f"the transport plan {name!r} is for another graph or device")
+            plan.choose(held)
+            self._workspaces.held.clear()
+            return held
+        wanted = sorted({int(b) for b in batches})
+        if not wanted or min(wanted) < 1:
+            raise ValueError("batches must name at least one batch size of at least 1")
+        held = _stored_plan(own)
+        chosen: dict[str, Any] = {} if held is None else dict(held["batches"])
+        readings: dict[str, Any] = {} if held is None else dict(held["seconds"])
+        missing = [b for b in wanted if str(b) not in chosen]
+        if missing or held is None:
+            began = time.perf_counter()
+            with self.torch.no_grad():
+                for batch in missing:
+                    if plan.launches:
+                        chosen[str(batch)], readings[str(batch)] = self._calibrate_batch(batch)
+                    else:
+                        chosen[str(batch)] = [[] for _ in plan.parts]
+            held = {
+                "name": own, "hardware": hardware, "precision": plan._precision, "shape": shape,
+                "batches": chosen, "seconds": readings,
+                "calibration_seconds": time.perf_counter() - began
+                + (0.0 if held is None else held["calibration_seconds"]),
+            }
+            _store_plan(held)
+        plan.choose(held)
+        self._workspaces.held.clear()
+        return held
 
     def describe(self) -> dict[str, Any]:
         """The transport plan and the replay mode, for reports."""
