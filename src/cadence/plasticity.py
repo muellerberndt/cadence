@@ -221,8 +221,9 @@ class ActorCritic:
         self._pending_hearing: np.ndarray | None = None
         # one stream's traces on the torch device, when it settles there
         self._trace_device: Any = None
-        # the eligibility on the MLX device: by block, and each row's factor on the host
-        self._trace_mlx: tuple[list[Any], np.ndarray] | None = None
+        # the eligibility on the MLX device: by block, over the neurons, and each row's factor on
+        # the host
+        self._trace_mlx: tuple[list[Any], Any, np.ndarray] | None = None
         # (batch, neurons): when set before ``learn``, each synapse's eligibility is weighted by
         # its pre neuron's salience (a ``Trace.ringing``: what is still ringing gets written)
         self.salience: np.ndarray | None = None
@@ -1072,7 +1073,9 @@ class ActorCritic:
         held = self._trace_mlx
         if held is not None:
             kernel = self.learner.brain._mlx
-            self.trace = held[1][:, None] * kernel.rows_to_edges(held[0])
+            factor = held[2][:, None]
+            self.trace = factor * kernel.rows_to_edges(held[0])
+            self.trace_bias = factor * np.array(held[1], dtype=np.float64)
             self._trace_mlx = None
 
     def _learn_mlx(
@@ -1089,9 +1092,9 @@ class ActorCritic:
         warm: BrainState | None = None,
     ) -> dict[str, float]:
         """``learn`` for streams whose phases rest on the MLX device, in float32: each stream's
-        contrast, eligibility and the mean step of the synapses never come to the host; the
-        critic, the dopamine and the neurons' eligibility stay there, in float64. A moment that
-        adds no eligibility changes a factor per row on the host (``fade``)."""
+        contrast, eligibility and the mean steps never come to the host; the critic and the
+        dopamine stay there, in float64. A moment that adds no eligibility changes a factor per row
+        on the host (``fade``)."""
         cfg = self.config
         learner = self.learner
         span = 2.0 * learner.config.beta
@@ -1100,17 +1103,17 @@ class ActorCritic:
         kernel = learner.brain._mlx
         assert kernel is not None
         held = self._trace_mlx
-        if held is not None and int(held[0][0].shape[0]) != batch:
+        if held is not None and len(held[2]) != batch:
             held = None
         if held is None and self.trace is not None and self.trace.shape[0] == batch:
-            held = (kernel.rows_to_blocks(self.trace), np.ones(batch))
-        self.trace = None
-        if self.trace_bias is None or self.trace_bias.shape[0] != batch:
-            self.trace_bias = np.zeros((batch, self.n))
+            held = (
+                kernel.rows_to_blocks(self.trace),
+                kernel.mx.array(np.asarray(self.trace_bias, dtype=np.float32)), np.ones(batch),
+            )
+        self.trace = self.trace_bias = None
+        if self.trace_critic is None or self.trace_critic.shape[0] != batch:
             self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
-        assert self.trace_bias is not None and self.trace_critic is not None
-        self.trace_bias *= decay
-        self.trace_bias += (plus.activation - minus.activation) / span
+        assert self.trace_critic is not None
         free = self._free
         assert free is not None
         self.trace_critic *= cfg.gamma * cfg.lam
@@ -1138,23 +1141,15 @@ class ActorCritic:
         next_brain = learner.brain
         eta, eta_bias = self._rates()
         scale = kernel.scale if kernel.scale is not None else kernel.to_blocks(next_brain.efficacy)
-        step_bias = eta_bias * (delta[:, None] * self.trace_bias).mean(axis=0)
-        if not np.isfinite(step_bias).all():
-            raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
-        new, blocks, sizes, size = kernel.rewarded(
+        new, blocks, bias_trace, sizes, size, bias_size = kernel.rewarded(
             plus.device, minus.device, None if held is None else held[0],
-            decay * (np.ones(batch) if held is None else held[1]), span, delta, eta, scale, tables,
-            learner.config.scale_cap,
+            None if held is None else held[1],
+            decay * (np.ones(batch) if held is None else held[2]), span, delta, eta, eta_bias,
+            scale, tables, learner.config.scale_cap,
         )
-        assert learner.plastic_neurons is not None
-        step_bias = np.where(learner.plastic_neurons, step_bias, 0.0)
-        bias = next_brain.bias + step_bias
-        new.with_bias(bias)
-        learner.brain = next_brain._with_mlx_parameters(new, np.array(bias))
+        learner.brain = next_brain._with_mlx_parameters(new)
         learner.updates += 1
-        report: dict[str, float] = {
-            "scale_step": size, "bias_step": float(np.abs(step_bias).mean()),
-        }
+        report: dict[str, float] = {"scale_step": size, "bias_step": bias_size}
         self.w_critic, self.b_critic = critic_weights, critic_bias
         if proposal is not None:
             self.memory.accept(proposal)
@@ -1162,13 +1157,12 @@ class ActorCritic:
         self._hearing_step(delta)
         factor = np.where(done, 0.0, 1.0)  # a finished stream forgets its traces
         if done.any():
-            self.trace_bias[done] = 0.0
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
                 self.trace_memory = _forgotten(self.trace_memory, done)
             if self.trace_hearing is not None:
                 self.trace_hearing[done] = 0.0
-        self._trace_mlx = (blocks, factor)
+        self._trace_mlx = (blocks, bias_trace, factor)
         self._free = next_state
         self._free_brain = next_brain
         self._drive = _held_drive(next_drive)
@@ -1215,14 +1209,14 @@ class ActorCritic:
         if self._trace_device is not None:
             rows.add(int(self._trace_device[0].shape[0]))
         if self._trace_mlx is not None:
-            rows.add(len(self._trace_mlx[1]))
+            rows.add(len(self._trace_mlx[2]))
         if ended is not None and any(count != len(ended) for count in rows):
             raise ValueError("done must match the streams of the eligibility traces")
         if self._trace_mlx is not None:
-            factor = decay * self._trace_mlx[1]
+            factor = decay * self._trace_mlx[2]
             if ended is not None and ended.any():
                 factor[ended] = 0.0
-            self._trace_mlx = (self._trace_mlx[0], factor)
+            self._trace_mlx = (self._trace_mlx[0], self._trace_mlx[1], factor)
         if self._trace_device is not None:
             trace, trace_bias = self._trace_device
             trace.mul_(decay)

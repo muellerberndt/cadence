@@ -811,8 +811,9 @@ class Brain:
     def bias(self) -> np.ndarray:
         """Read-only biases; replace via the setter or ``with_parameters``."""
         if self._bias is None:
-            assert self._torch is not None
-            self._bias = self._torch.host_bias()
+            kernel = self._torch if self._mlx is None else self._mlx
+            assert kernel is not None
+            self._bias = kernel.host_bias()
         result = self._bias.view()
         result.setflags(write=False)
         return result
@@ -840,13 +841,13 @@ class Brain:
             self._weights_host = self._gain_pre * self.efficacy
         return self._weights_host
 
-    def _with_mlx_parameters(self, kernel: _MlxKernel, bias: np.ndarray) -> Brain:
-        """The brain under a lesson's parameters on the MLX device: ``kernel`` holds them, with
-        ``bias``, the host's array of its biases; the host reads the efficacies when it asks."""
+    def _with_mlx_parameters(self, kernel: _MlxKernel) -> Brain:
+        """The brain under a lesson's or a reward's parameters on the MLX device: ``kernel`` holds
+        them; the host reads the efficacies and the biases when it asks."""
         new = copy.copy(self)
         new._mlx = kernel
         new._efficacy = None
-        new._bias = bias
+        new._bias = None
         new._weights_host = None
         new._flat = None
         new._csr = None
@@ -3881,6 +3882,7 @@ class _MlxPlan:
         ) if self.settling else np.zeros(0, np.int64)
         self.where = np.full(n, -1, dtype=np.int64)
         self.where[self.columns] = np.arange(self.m)
+        self.columns_device = mx.array(self.columns.astype(np.int32))
         self.pools = 0 if apical is None else len(apical.members)
         self.takes_compartment = True
         tops: set[int] = set()
@@ -4160,6 +4162,33 @@ class _MlxPlan:
                 out[:, n0:n1] = np.array(sources[r], copy=False)
         return out
 
+    def rows_of(self, handle: _MlxState, rows: np.ndarray, drive: Any = None) -> _MlxState:
+        """The state at the rows a boolean mask marks, on the device. With ``drive``, those rows'
+        own, a settle from it under that drive takes the sources where they stand."""
+        mx = self.mx
+        index = mx.array(np.flatnonzero(rows).astype(np.int32))
+
+        def take(array: Any) -> Any:
+            return array[index] if _resident(array) else array[rows]
+
+        potentials = {r: take(p) for r, p in handle["potentials"].items()}
+        new = _MlxState(
+            kernel="mlx", holder=handle["holder"], plan=self, vm=handle["vm"][index],
+            sm=handle["sm"][index], sources={r: s[index] for r, s in handle["sources"].items()},
+            potentials=potentials, a_host=np.atleast_2d(handle["a_host"])[rows], moved=[],
+            source_moves=[], version=handle.get("version"),
+        )
+        if drive is not None and handle.get("relaxed") and handle.get("fixed") is not None:
+            goals = handle.get("goals")
+            new.update(
+                drive=drive, relaxed=True, fixed=handle["fixed"][index],
+                goals=None if goals is None else {r: take(g) for r, g in goals.items()},
+            )
+            outer = handle.get("outer")
+            if outer is not None:
+                new["outer"] = outer[index]
+        return new
+
     def part(self, handle: _MlxState, index: np.ndarray) -> np.ndarray | bool:
         """The activation of settling neurons on the host in float64, read from the array the
         launch made; False where one of them does not settle."""
@@ -4217,7 +4246,7 @@ class _MlxKernel:
         self.plain = os.environ.get("CADENCE_MLX_LAUNCH", "1") == "0"
         self.sweeps: dict[tuple[Any, ...], Any] = {}  # the compiled sweeps, shared with those too
         self.read_blocks: dict[int, tuple[np.ndarray, Any]] = {}  # a read's synapses, their blocks
-        self.lesson_steps: dict[tuple[bool, bool, bool], Any] = {}  # the optimizer's, compiled
+        self.lesson_steps: dict[tuple[Any, ...], Any] = {}  # the optimizer's, compiled
         self.reward_steps: dict[bool, Any] = {}  # a reward's eligibility and step, compiled
         self._activate = self._activation if self.plain else mx.compile(self._activation)
         self.plan = _MlxPlan.of(mx, layout, neuron_model, connectome.n, apical)
@@ -4270,6 +4299,7 @@ class _MlxKernel:
                 "device parameters and effective weights must be finite at runtime precision"
             )
         self.bias = mx.array(live_bias)
+        self.bias_columns: Any = None  # the settling neurons' biases, made when first read
         hosted = layout.blocks(flat)
         self.blocks = [mx.array(np.ascontiguousarray(b, dtype=np.float32)) for b in hosted]
         self.up_blocks = self.blocks
@@ -4288,7 +4318,6 @@ class _MlxKernel:
             self.w = mx.array(np.concatenate(
                 [hosted[k].T.ravel() for k in plan.inner] + [np.zeros(8, dtype=np.float32)]
             ))
-            self.bias_host = live_bias
 
     def __deepcopy__(self, memo: dict[int, Any]) -> _MlxKernel:
         return self  # a kernel's arrays are never written: a new set of parameters is a new kernel
@@ -4666,16 +4695,51 @@ class _MlxKernel:
         self.root.lesson_steps[(momentum, normalize, relative)] = held
         return held
 
+    def _bias_step_of(self, momentum: bool, normalize: bool, relative: bool) -> Any:
+        """The neurons' step of the optimizer, compiled once per kind: ``_lesson_step_of`` over
+        the neurons, a relative floor reading each range's RMS. Its numbers are ``norm, m, 1 - m,
+        m's correction, rho, 1 - rho, rho's correction, eta, floor, share, tiny``."""
+        key = (momentum, normalize, relative, "neurons")
+        held = self.root.lesson_steps.get(key)
+        if held is not None:
+            return held
+        mx, lay = self.mx, self.layout
+        ranges = [(int(lay.starts[r]), int(lay.starts[r + 1])) for r in range(lay.ranges)]
+
+        def bias_step(raw: Any, velocity: Any, second: Any, numbers: Sequence[Any]) -> Any:
+            norm, m, keep_m, m_c, rho, keep_rho, rho_c, eta, floor, share, tiny = numbers
+            raw = raw / norm
+            term = raw
+            if momentum:
+                velocity = m * velocity + keep_m * raw
+                term = velocity / m_c
+            if normalize:
+                second = rho * second + keep_rho * (raw * raw)
+                root = mx.sqrt(second / rho_c)
+                if relative:
+                    floors = mx.concatenate([
+                        mx.full((n1 - n0,), mx.sqrt(mx.mean(root[n0:n1] * root[n0:n1])))
+                        for n0, n1 in ranges if n1 > n0
+                    ])
+                    term = term / (root + share * floors + tiny)
+                else:
+                    term = term / (root + floor)
+            return eta * term, velocity, second
+
+        held = mx.compile(bias_step)
+        self.root.lesson_steps[key] = held
+        return held
+
     def taught(
         self, plus: Mapping[str, Any], minus: Mapping[str, Any], norm: float,
-        moments: dict[str, Any], tables: dict[str, Any], numbers: Sequence[float], cap: float,
-        momentum: bool, normalize: bool, relative: bool,
-    ) -> tuple[_MlxKernel, dict[str, Any], Any, float]:
-        """A lesson's update of the synapses, all of it on the device: the block Gram contrast of
-        the two phases over ``norm``, the optimizer, the ties, the bound and the new blocks. One
-        launch at its end. Returns the new kernel (without its bias, the host's business), the
-        moments, the neurons' raw contrast as a host array and the mean step's size; a value that
-        is not finite raises ``ValueError`` with nothing changed."""
+        moments: dict[str, Any], tables: dict[str, Any], numbers: Sequence[float],
+        eta_bias: float, cap: float, momentum: bool, normalize: bool, relative: bool,
+    ) -> tuple[_MlxKernel, dict[str, Any], float, float]:
+        """A lesson's update, all of it on the device: the block Gram contrast of the two phases
+        over ``norm``, the optimizer, the ties, the bound and the new blocks, the neurons'
+        contrast, moments and biases. One launch at its end. Returns the new kernel, the moments
+        and the mean steps' sizes; a value that is not finite raises ``ValueError`` with nothing
+        changed."""
         mx, lay = self.mx, self.layout
         scale = self.scale if self.scale is not None else moments["scale"]
         plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
@@ -4699,14 +4763,32 @@ class _MlxKernel:
             )
             steps.append(step)
         new, total = self._moved_by(steps, scale, tables, cap)
-        ok = mx.all(mx.stack([mx.isfinite(mx.sum(x)) for x in (*velocity, *second)]))
         neurons = self._movement_of_neurons(plus, minus, plus_of, minus_of)
-        mx.eval(new.blocks, new.scale, velocity, second, total, ok, neurons, new.w if plan else [])
+        bias_numbers = list(constants)
+        bias_numbers[7] = mx.array(float(eta_bias), dtype=mx.float32)
+        bias_step, velocity_bias, second_bias = self._bias_step_of(momentum, normalize, relative)(
+            neurons, moments["velocity_bias"], moments["second_moment_bias"], bias_numbers,
+        )
+        bias_step = bias_step * tables["plastic_neurons"]
+        new.bias = self.bias + bias_step
+        new.bias_columns = None
+        bias_size = mx.mean(mx.abs(bias_step))
+        ok = mx.all(mx.stack([
+            mx.isfinite(mx.sum(x))
+            for x in (*velocity, *second, velocity_bias, second_bias, new.bias)
+        ]))
+        mx.eval(
+            new.blocks, new.scale, velocity, second, total, ok, velocity_bias, second_bias,
+            new.bias, bias_size, new.w if plan else [],
+        )
         if not bool(ok.item()) or not np.isfinite(float(total.item())):
             raise ValueError("phase contrasts and optimizer steps must remain finite")
         size = float(total.item()) / max(tables["synapses"], 1)
-        kept = {"holder": self.root, "velocity": velocity, "second_moment": second}
-        return new, kept, np.array(neurons, dtype=np.float64), size
+        kept = {
+            "holder": self.root, "velocity": velocity, "second_moment": second,
+            "velocity_bias": velocity_bias, "second_moment_bias": second_bias,
+        }
+        return new, kept, size, float(bias_size.item())
 
     def _moved_by(
         self, steps: list[Any], scale: Sequence[Any], tables: dict[str, Any], cap: float,
@@ -4762,14 +4844,15 @@ class _MlxKernel:
 
     def rewarded(
         self, plus: Mapping[str, Any], minus: Mapping[str, Any], trace: Sequence[Any] | None,
-        decay: np.ndarray, span: float, delta: np.ndarray, eta: float, scale: Sequence[Any],
-        tables: dict[str, Any], cap: float,
-    ) -> tuple[_MlxKernel, list[Any], np.ndarray, float]:
-        """A reward's update of the synapses, all of it on the device: each row's eligibility by
-        block, ``decay`` its own factor, the dopamine ``delta``'s mean step at ``eta``, the ties,
-        the bound and the new blocks. One launch at its end. Returns the new kernel (without its
-        bias, the host's business), the eligibility, each row's mean size of it and the mean step's
-        size; a value that is not finite raises ``ValueError`` with nothing changed."""
+        trace_bias: Any, decay: np.ndarray, span: float, delta: np.ndarray, eta: float,
+        eta_bias: float, scale: Sequence[Any], tables: dict[str, Any], cap: float,
+    ) -> tuple[_MlxKernel, list[Any], Any, np.ndarray, float, float]:
+        """A reward's update, all of it on the device: each row's eligibility by block and over
+        the neurons, ``decay`` its own factor, the dopamine ``delta``'s mean steps at ``eta`` and
+        ``eta_bias``, the ties, the bound, the new blocks and the biases. One launch at its end.
+        Returns the new kernel, the two eligibilities, each row's mean size of the synapses' and
+        the mean steps' sizes; a value that is not finite raises ``ValueError`` with nothing
+        changed."""
         mx, lay = self.mx, self.layout
         rows = len(delta)
         plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
@@ -4798,13 +4881,30 @@ class _MlxKernel:
             sizes.append((a1 - a0) * (b1 - b0) * size)
         new, total = self._moved_by(steps, scale, tables, cap)
         each = mx.sum(mx.stack(sizes), axis=0)
-        ok = mx.isfinite(total)
-        mx.eval(new.blocks, new.scale, new_trace, each, total, ok, new.w if plan else [])
+        movement = mx.concatenate(
+            [plus_of(r) - minus_of(r) for r in range(lay.ranges)], axis=1
+        )
+        new_bias_trace = numbers[0][:, :, 0] * (
+            mx.zeros_like(movement) if trace_bias is None else trace_bias
+        ) + movement / numbers[1]
+        bias_step = (
+            float(eta_bias) * (numbers[2][:, :, 0] * new_bias_trace).mean(axis=0)
+            * tables["plastic_neurons"]
+        )
+        new.bias = self.bias + bias_step
+        new.bias_columns = None
+        bias_size = mx.mean(mx.abs(bias_step))
+        ok = mx.isfinite(total) & mx.isfinite(mx.sum(bias_step))
+        mx.eval(
+            new.blocks, new.scale, new_trace, each, total, ok, new_bias_trace, new.bias, bias_size,
+            new.w if plan else [],
+        )
         if not bool(ok.item()):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
         return (
-            new, new_trace, np.array(each, dtype=np.float64) / max(tables["synapses"], 1),
-            float(total.item()) / max(tables["synapses"], 1),
+            new, new_trace, new_bias_trace,
+            np.array(each, dtype=np.float64) / max(tables["synapses"], 1),
+            float(total.item()) / max(tables["synapses"], 1), float(bias_size.item()),
         )
 
     def rows_to_blocks(self, edges: np.ndarray) -> list[Any]:
@@ -4828,11 +4928,14 @@ class _MlxKernel:
         pieces = [(plus_of(r) - minus_of(r)).sum(axis=0) for r in range(lay.ranges)]
         return mx.concatenate(pieces)
 
-    def with_bias(self, bias: np.ndarray) -> None:
-        """This kernel's bias, from the host's array."""
-        live = bias.astype(np.float32)
-        self.bias = self.mx.array(live)
-        self.bias_host = live
+    @property
+    def bias_host(self) -> np.ndarray:
+        """This kernel's biases as the host reads them, in float32, without a copy."""
+        return np.array(self.bias, copy=False)
+
+    def host_bias(self) -> np.ndarray:
+        """This kernel's biases as the host's array, in float64."""
+        return np.array(self.bias, dtype=np.float64)
 
     def _heat(self, temperature: float) -> Any:
         """A softmax's temperature as a compiled sweep reads it, an input a new value does not
@@ -4976,26 +5079,31 @@ class _MlxKernel:
         """The settling neurons' standing input under ``drive``, ``(rows, m)``."""
         mx, plan = self.mx, self.plan
         assert plan is not None
-        bias = self.bias_host[plan.columns]
+        bias = self.bias_columns
+        if bias is None:
+            bias = self.bias_columns = self.bias[plan.columns_device]
         if _resident(drive):
             parts = [drive[:, slice(*plan.spans[r])] for r in plan.settling]
             whole = parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
-            return whole + mx.array(bias)
-        return mx.array(np.asarray(drive[:, plan.columns], dtype=np.float32) + bias)
+            return whole + bias
+        return mx.array(np.asarray(drive[:, plan.columns], dtype=np.float32)) + bias
 
     def _goals(self, start: _MlxState, drive: Any) -> tuple[dict[int, Any], dict[int, Any]]:
         """Each source range's potential under ``drive`` and its gap from ``start``: the host's
         arrays under a host's drive, the device's under a resident one, made with its launch."""
         mx, plan = self.mx, self.plan
         assert plan is not None
-        bias = self.bias_host
         if _resident(drive):
             goals = {
-                r: drive[:, slice(*plan.spans[r])] + mx.array(bias[slice(*plan.spans[r])])
+                r: drive[:, slice(*plan.spans[r])] + self.bias[slice(*plan.spans[r])]
                 for r in plan.sources
             }
-            gaps = {r: mx.array(start["potentials"][r]) - goals[r] for r in plan.sources}
+            gaps = {}
+            for r in plan.sources:
+                held = start["potentials"][r]
+                gaps[r] = (held if _resident(held) else mx.array(held)) - goals[r]
             return goals, gaps
+        bias = self.bias_host
         goals = {
             r: np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32)
             + bias[slice(*plan.spans[r])]

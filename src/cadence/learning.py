@@ -49,7 +49,7 @@ from typing import Any, cast
 import numpy as np
 
 from .blocks import block_contrast
-from .brain import Backend, Brain, BrainState, Equilibrium, Nudge, _resident
+from .brain import Backend, Brain, BrainState, Equilibrium, Nudge, _MlxState, _resident
 from .connectome import Connectome
 from .neuron import NeuronModel
 
@@ -332,9 +332,18 @@ _PHASE_KEYS = (
 )
 
 
-def _rows(state: BrainState, rows: np.ndarray) -> BrainState:
-    """The host copy of a batched state restricted to the rows of a boolean mask."""
+def _rows(state: BrainState, rows: np.ndarray, drive: Any = None) -> BrainState:
+    """The host copy of a batched state restricted to the rows of a boolean mask; a state a launch
+    made stays on the MLX device, and ``drive`` is those rows' own there."""
     change = state.activity_change
+    handle = state.device
+    if isinstance(handle, _MlxState):
+        unread: Any = None
+        return BrainState(
+            unread, unread, unread, state.steps,
+            activity_change=None if change is None else np.asarray(change)[rows],
+            device=handle["plan"].rows_of(handle, rows, drive),
+        )
     return BrainState(
         np.asarray(state.v)[rows], np.asarray(state.activation)[rows],
         np.asarray(state.adaptation)[rows], state.steps,
@@ -351,9 +360,10 @@ def _taken_rows(drive: Any, taught: np.ndarray) -> Any:
     return drive[taught]
 
 
-def _restrict(state: BrainState, taught: np.ndarray | None) -> BrainState:
-    """``state`` restricted to the taught rows, or itself when every row is taught."""
-    return state if taught is None or bool(taught.all()) else _rows(state, taught)
+def _restrict(state: BrainState, taught: np.ndarray | None, drive: Any = None) -> BrainState:
+    """``state`` restricted to the taught rows, or itself when every row is taught; ``drive`` is
+    those rows' own, where it is the one the state settled under."""
+    return state if taught is None or bool(taught.all()) else _rows(state, taught, drive)
 
 
 def _taught_report(taught: np.ndarray | None, batch: int) -> dict[str, float]:
@@ -918,9 +928,11 @@ class Learner:
         held = self.__dict__.get("_device_moments")
         if held is not None:
             kernel = self.brain._mlx
-            if kernel is not None:  # by block, the neurons' moments on the host
+            if kernel is not None:  # by block, and over the neurons
                 for name in ("velocity", "second_moment"):
                     self.__dict__["_" + name] = kernel.to_edges(held[name])
+                for name in ("velocity_bias", "second_moment_bias"):
+                    self.__dict__["_" + name] = np.array(held[name], dtype=np.float64)
             else:
                 for name in _MOMENTS:
                     self.__dict__["_" + name] = held[name].detach().cpu().double().numpy().copy()
@@ -1177,10 +1189,13 @@ class Learner:
             return None
         held = self.__dict__.get("_mlx_tables")
         if held is None or held[0] is not kernel.root or held[1] is not self._paired:
-            held = (
-                kernel.root, self._paired,
-                kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse),
-            )
+            tables = kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse)
+            if tables is not None:
+                assert self.plastic_neurons is not None
+                tables["plastic_neurons"] = kernel.mx.array(
+                    np.asarray(self.plastic_neurons, dtype=np.float32)
+                )
+            held = (kernel.root, self._paired, tables)
             self.__dict__["_mlx_tables"] = held
         return cast("dict[str, Any] | None", held[2])
 
@@ -1188,9 +1203,8 @@ class Learner:
         self, plus: BrainState, minus: BrainState, span: float, share: float,
         tables: dict[str, Any],
     ) -> dict[str, float]:
-        """``_update`` with the synapses on the MLX device, in float32: the contrast, the moments,
-        the ties, the bound and the blocks, in one launch; the neurons' arithmetic stays the
-        host's, in float64."""
+        """``_update`` on the MLX device, in float32: the contrast, the moments, the ties, the
+        bound, the blocks and the biases, in one launch."""
         kernel = self.brain._mlx
         assert kernel is not None and plus.device is not None and minus.device is not None
         cfg = self.config
@@ -1204,47 +1218,30 @@ class Learner:
                 "holder": kernel.root,
                 "velocity": kernel.to_blocks(self.__dict__["_velocity"]),
                 "second_moment": kernel.to_blocks(self.__dict__["_second_moment"]),
+                "velocity_bias": kernel.mx.array(
+                    np.asarray(self.__dict__["_velocity_bias"], dtype=np.float32)
+                ),
+                "second_moment_bias": kernel.mx.array(
+                    np.asarray(self.__dict__["_second_moment_bias"], dtype=np.float32)
+                ),
             }
         if kernel.scale is None:
             held = {**held, "scale": kernel.to_blocks(self.brain.efficacy)}
         rows = int(plus.device["vm"].shape[0] if "vm" in plus.device else plus.device["s"].shape[0])
-        new, moments, neurons, size = kernel.taught(
+        new, moments, size, bias_size = kernel.taught(
             plus.device, minus.device, rows * span, held, tables,
             (
                 m, 1 - m, 1.0 - m**count if m > 0 else 1.0, rho, 1 - rho,
                 1.0 - rho**count if rho > 0 else 1.0, share * cfg.eta, cfg.normalize_floor,
                 cfg.normalize_relative, _RELATIVE_TINY,
             ),
-            cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
+            share * cfg.eta_bias, cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
         )
-        raw_neuron = neurons / (rows * span)
-        if not np.isfinite(raw_neuron).all():
-            raise ValueError("phase contrasts must be finite")
-        neuron_term = raw_neuron
-        if m > 0:
-            velocity = m * self.__dict__["_velocity_bias"] + (1 - m) * raw_neuron
-            self.__dict__["_velocity_bias"] = velocity
-            neuron_term = velocity / (1.0 - m**count)
-        if rho > 0:
-            second = rho * self.__dict__["_second_moment_bias"] + (1 - rho) * raw_neuron**2
-            self.__dict__["_second_moment_bias"] = second
-            root = np.sqrt(second / (1.0 - rho**count))
-            if cfg.normalize_relative:
-                rms_bias = self._relative_divisor(root, self._projections()[1])
-            else:
-                rms_bias = root + cfg.normalize_floor
-            neuron_term = neuron_term / rms_bias
-        assert self.plastic_neurons is not None
-        delta_bias = np.where(self.plastic_neurons, share * cfg.eta_bias * neuron_term, 0.0)
-        bias = self.brain.bias + delta_bias
-        if not np.isfinite(bias).all():
-            raise ValueError("bias must have one finite entry per neuron")
-        new.with_bias(bias)
         self.__dict__["_device_moments"] = moments
-        self.brain = self.brain._with_mlx_parameters(new, np.array(bias))
+        self.brain = self.brain._with_mlx_parameters(new)
         self.updates += 1
         self.contrast_updates += 1
-        return {"scale_step": size, "bias_step": float(np.abs(delta_bias).mean())}
+        return {"scale_step": size, "bias_step": bias_size}
 
     def update(
         self,
@@ -1387,7 +1384,7 @@ class Learner:
                 return self._agreed(free, phases, taught)
             if judged is None:
                 drive, target, weight = self._lesson(taught, drive, target, weight)
-                free = _restrict(free, taught)
+                free = _restrict(free, taught, drive)
             held = self.brain.apical_gain(drive, free)
             for name, sign in (("nudged", 1.0), ("opposite", -1.0)):
                 phases[name] = self._qualified_phase(
@@ -1423,7 +1420,7 @@ class Learner:
             return state, report
         if judged is None:
             drive, target, weight = self._lesson(taught, drive, target, weight)
-            free = _restrict(free, taught)
+            free = _restrict(free, taught, drive)
         held = self.brain.apical_gain(drive, free)  # read once, held by both phases
         # one nudge per phase, read by the phase and by its diagnostic check
         pull = self.nudge_for(target, cfg.beta, weight, held)

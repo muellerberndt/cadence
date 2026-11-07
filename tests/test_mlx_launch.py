@@ -1081,22 +1081,22 @@ def test_a_rewards_eligibility_and_step_rest_on_the_device(on_device):
     cpu, mlx = pair(recall=False)
     outcomes(cpu, mlx, done_at=3)
     agent, host = mlx.basal_ganglia, cpu.basal_ganglia
-    assert agent._trace_mlx is not None and agent.trace is None
-    assert mlx.brain._efficacy is None  # nothing read the synapses
+    assert agent._trace_mlx is not None and agent.trace is None and agent.trace_bias is None
+    assert mlx.brain._efficacy is None and mlx.brain._bias is None  # nothing read the parameters
     np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-4)
     np.testing.assert_allclose(mlx.brain.bias, cpu.brain.bias, rtol=0, atol=1e-4)
     np.testing.assert_allclose(agent.w_critic, host.w_critic, rtol=0, atol=1e-4)
-    np.testing.assert_allclose(agent.trace_bias, host.trace_bias, rtol=0, atol=1e-3)
-    assert (mlx.last_learning["trace"] == pytest.approx(cpu.last_learning["trace"], abs=1e-4))
-    assert (mlx.last_learning["scale_step"] == pytest.approx(cpu.last_learning["scale_step"], abs=1e-5))
+    for name in ("trace", "scale_step", "bias_step"):
+        assert mlx.last_learning[name] == pytest.approx(cpu.last_learning[name], abs=1e-4), name
     # a moment that adds no eligibility fades it, on the host, and a finished row forgets it
     ended = np.zeros(ROWS, bool)
     ended[1] = True
     agent.fade(ended), host.fade(ended)
-    assert agent._trace_mlx[1][1] == 0.0
+    assert agent._trace_mlx[2][1] == 0.0
     agent._host_trace()
     assert agent._trace_mlx is None
     np.testing.assert_allclose(agent.trace, host.trace, rtol=0, atol=1e-3)
+    np.testing.assert_allclose(agent.trace_bias, host.trace_bias, rtol=0, atol=1e-3)
     outcomes(cpu, mlx, moments=3, seed=22)  # from the host's back onto the device
     assert agent._trace_mlx is not None and agent.trace is None
     np.testing.assert_allclose(mlx.brain.efficacy, cpu.brain.efficacy, rtol=0, atol=1e-3)
@@ -1111,7 +1111,7 @@ def test_a_refused_reward_on_the_device_changes_nothing(on_device):
             x = rng.random((ROWS, 8))
             mlx.step(x, reward=np.ones(ROWS)) if t else mlx.step(x)
         agent, graph = mlx.basal_ganglia, mlx.brain
-        before = (agent._trace_mlx, agent.trace_bias.copy(), agent.w_critic.copy(), graph.efficacy.copy())
+        before = (agent._trace_mlx, agent.w_critic.copy(), graph.efficacy.copy())
         kernel = graph._mlx
         original = kernel.rewarded
 
@@ -1125,9 +1125,8 @@ def test_a_refused_reward_on_the_device_changes_nothing(on_device):
         finally:
             kernel.rewarded = original
     assert agent._trace_mlx is before[0]
-    np.testing.assert_array_equal(agent.trace_bias, before[1])
-    np.testing.assert_array_equal(agent.w_critic, before[2])
-    np.testing.assert_array_equal(mlx.brain.efficacy, before[3])
+    np.testing.assert_array_equal(agent.w_critic, before[1])
+    np.testing.assert_array_equal(mlx.brain.efficacy, before[2])
 
 
 def test_a_reward_on_the_device_saves_and_goes_on(on_device, tmp_path):
@@ -1137,8 +1136,9 @@ def test_a_reward_on_the_device_saves_and_goes_on(on_device, tmp_path):
     mlx.save(tmp_path / "brain.npz")
     again = cd.Brain.load(tmp_path / "brain.npz", backend="mlx")
     back = cd.Brain.load(tmp_path / "brain.npz", backend="cpu")
-    np.testing.assert_allclose(back.basal_ganglia.trace_bias, cpu.basal_ganglia.trace_bias, rtol=0, atol=1e-3)
-    np.testing.assert_allclose(back.basal_ganglia.trace, cpu.basal_ganglia.trace, rtol=0, atol=1e-3)
+    host = cpu.basal_ganglia
+    np.testing.assert_allclose(back.basal_ganglia.trace_bias, host.trace_bias, rtol=0, atol=1e-3)
+    np.testing.assert_allclose(back.basal_ganglia.trace, host.trace, rtol=0, atol=1e-3)
     rng = np.random.default_rng(24)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
