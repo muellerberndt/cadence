@@ -40,7 +40,7 @@ assert action.shape == (1,)
 | Vector senses and several motors, a brain in a body | one motor slot per motor, `live` and `retune` across stages, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) | [one experience step by hand](#one-experience-step-by-hand) |
 | Pixels and a teacher | image `inputs`, teaching through `step`, as in the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade) | [wide inputs](senses.md#image-inputs) |
 | Features of features | several `modules`, `apical`, `teaching="deep"` | [deep brains](#deep-brains) |
-| Modules of several hundred neurons | surprise lessons with `learning_surprise_share=True`, fan-in rates | [wide brains](#wide-brains) |
+| Modules of several hundred neurons | surprise lessons with `learning_surprise_share=True`, the projection rates and the read map | [wide brains](#wide-brains) |
 | To time a body's own moments | `act` and `learn` | [one experience step by hand](#one-experience-step-by-hand) |
 | To draw what a brain does | `record_settlements` | [the brain in a browser page](#the-brain-in-a-browser-page) |
 | Which memory to use | the table of the memory guide | [memory](memory.md#start-with-the-need) |
@@ -403,36 +403,66 @@ For modules of several hundred neurons and more
   step scales with the share of rows it taught
   ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)); otherwise one wrong
   row takes a whole lesson's step and a wide brain's answers swing.
-- **The trace's amplitude.** Beside a recall memory at `teaching="deep"` the founder's 3.0 falls
-  with width, and `working_memory_amplitude=0.3` or `carried_gain=0.01` holds at the composed steps
-  ([the amplitude beside a read](memory.md#the-amplitude-beside-a-read)).
-- **Fan-in rates.** A neuron's drive sums over its fan-in, so on the composed steps a wide
-  module's motor neurons saturate and associative recall collapses. Scaling each synapse's step
-  to its neuron's fan-in in the same brain composed narrow keeps recall at 1.00 at every width,
-  but gives up the gain width brings a lookup task, so it is a recipe, not a default:
+- **The trace's amplitude.** Beside a recall memory at `teaching="deep"` the founder's 3.0 falls with
+  width, and `carried_gain=0.01` or `working_memory_amplitude=0.3` takes most of that back at the composed
+  steps ([the amplitude beside a read](memory.md#the-amplitude-beside-a-read)).
+- **Projection rates and the read map.** A neuron's drive sums over its fan-in, so on the composed steps a
+  projection that grows with the width moves that drive further per lesson, and the read's address map,
+  stepped on the association's settled activity, moves further as well. Scale each projection's step by
+  its fan-in at width 64 over its fan-in at this width, capped at 1, a reciprocal pair at the lower of its
+  two, and set `recall_address` to .01 times `64 / w`. The trace's projection and the association-motor
+  pair then take `64 / w`, and the sensory projection and the memory's reads keep their step.
 
 ```python
-def fan_in_rates(wide: Brain, narrow: Brain) -> np.ndarray:
-    """Each synapse's step scaled to the largest fan-in of its neuron's population in
-    ``narrow``, the same composition at a smaller width; capped at 1."""
+def projection_rates(wide: Brain, narrow: Brain) -> np.ndarray:
+    """Each projection's step scaled by its fan-in in ``narrow`` over its fan-in in ``wide``, the
+    same composition at a smaller width, capped at 1; a reciprocal pair takes the lower of its two."""
     c, n = wide.connectome, narrow.connectome
-    fan = np.bincount(c.post, minlength=c.n).astype(float)
-    fan_narrow = np.bincount(n.post, minlength=n.n).astype(float)
-    reference = fan.copy()
-    for name, neurons in c.populations.items():
-        index = np.asarray(neurons, dtype=np.int64)
-        if name in n.populations and len(index):
-            top = fan_narrow[np.asarray(n.populations[name], dtype=np.int64)].max(initial=0.0)
-            if top > 0:
-                reference[index] = np.minimum(reference[index], top)
-    return np.minimum(1.0, reference[c.post] / np.maximum(fan[c.post], 1.0))
+    rate = np.ones(c.synapses)
+    names = [k for k in c.populations if k in n.populations and len(c.populations[k])]
+
+    def labels(connectome):
+        label = np.full(connectome.n, -1, dtype=np.int64)
+        for i, k in enumerate(names):
+            label[np.asarray(connectome.populations[k], dtype=np.int64)] = i
+        return label
+
+    lw, ln = labels(c), labels(n)
+    for i in range(len(names)):
+        for j, post in enumerate(names):
+            into_w = (lw[c.pre] == i) & (lw[c.post] == j)
+            into_n = (ln[n.pre] == i) & (ln[n.post] == j)
+            if into_w.any() and into_n.any():
+                fan_w = into_w.sum() / len(c.populations[post])
+                fan_n = into_n.sum() / len(n.populations[post])
+                rate[into_w] = min(1.0, fan_n / fan_w)
+    reverse = np.asarray(wide.learner.reverse)
+    paired = reverse >= 0
+    rate[paired] = np.minimum(rate[paired], rate[reverse[paired]])
+    return rate
 
 
 wide = Brain.compose(8, 4, modules=(256,), seed=0, recall=True)
 narrow = Brain.compose(8, 4, modules=(64,), seed=0, recall=True)
-wide.learner.synapse_rate = fan_in_rates(wide, narrow)
+wide.learner.synapse_rate = projection_rates(wide, narrow)
+wide.retune(recall_address=0.01 * 64 / 256)
 assert wide.learner.synapse_rate.max() <= 1.0
 ```
+
+The grammar chamber, one online pass, on what a new brain composes. Six development founders per row:
+
+| Width | Steps | Clauses | Held-out | Roles | Brackets | Paths | Two hops | Three hops | Paths by life |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 128 | composed | .96 | .90 | .87 | .83 | .94 | .92 | .37 | .98 .95 .98 1.00 .70 1.00 |
+| 128 | rates and read map | .97 | .91 | .95 | .81 | .98 | .96 | .42 | .97 .98 1.00 1.00 .92 .98 |
+| 256 | composed | .97 | .89 | .95 | .75 | .73 | .61 | .29 | .97 .33 .72 .97 .97 .42 |
+| 256 | rates and read map | 1.00 | .99 | .96 | .82 | .98 | .97 | .34 | 1.00 .98 .98 .97 .95 .98 |
+
+On six fresh founders, on the recipe at `teaching="deep"` with the trace held at 3.0 and no learned gain, the
+rates and the read map take clauses from .84 to .97 and paths from .49 to .85 at width 128, and clauses from
+.64 to .95 and paths from .23 to .82 at width 256. At width 512, on three development founders, that form
+reads clauses .83 and paths .40. The [composition's width table](memory.md#one-composition-for-sequences) holds
+the composed steps on fresh founders.
 
 `grow` refuses a brain with per-synapse rates; set the rates on the grown brain.
 

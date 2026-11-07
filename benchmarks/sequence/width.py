@@ -16,7 +16,7 @@ recall of 64 keys and 16 values, and ``lookup``, one noisy view of one of 256 fi
 labelled with its class. The brain is the battery's composition at the module width, with the
 recall memory and surprise lessons where ``memory`` is set. Arms: ``founder``, and ``relative``,
 every synapse's step scaled to its neuron's fan-in in the same brain composed at width 64
-(``fan_in_rates`` of docs/tune.md, ``Learner.synapse_rate``). ``settings`` add options, such as
+(``fan_in_rates`` below, ``Learner.synapse_rate``). ``settings`` add options, such as
 ``{"learning_surprise_share": true}``.
 
     python benchmarks/sequence/width.py --task induction --memory --arms relative \\

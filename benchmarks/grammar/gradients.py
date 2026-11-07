@@ -613,7 +613,7 @@ def install_cut(brain: Any, cut: list[str]) -> None:
 
 def fan_in_rates(wide: Any, narrow: Any) -> np.ndarray:
     """Each synapse's step scaled to the largest fan-in of its neuron's population in ``narrow``,
-    the same composition at a smaller width; capped at 1 (docs/tune.md, wide brains)."""
+    the same composition at a smaller width; capped at 1."""
     c, n = wide.connectome, narrow.connectome
     fan = np.bincount(c.post, minlength=c.n).astype(float)
     fan_narrow = np.bincount(n.post, minlength=n.n).astype(float)

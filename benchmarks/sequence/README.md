@@ -115,7 +115,7 @@ as misses) and rescued answers. Tasks: `induction` over 128 tokens, `associative
 keys and 16 values, and `lookup`, one noisy view of one of 256 fixed prototypes labelled with
 its class. `--memory` adds the recall memory with surprise lessons. Arms: `founder`, and
 `relative`, every synapse's step scaled to its neuron's fan-in in the same brain composed at
-width 64 (`fan_in_rates` of [docs/tune.md](../../docs/tune.md#wide-brains)). `--settings` adds
+width 64 (`fan_in_rates` in `width.py`). `--settings` adds
 options, such as `{"learning_surprise_share": true}`.
 
 ## Run
@@ -489,8 +489,8 @@ lessons, to 0.013 to 0.294.
 No act was refused in these lives. The life that refused an act at lesson 343 before the settle
 rescue existed (induction at 64 neurons on the composed steps, founder 0) runs its 1,500
 lessons: two answers are rescued, none is refused, and it reads 0.64, 0.82, 0.93 and 0.97
-held-out at 250, 500, 1,000 and 1,500 lessons. The 0.92.0 sweep that gave
-[docs/tune.md](../../docs/tune.md#wide-brains) its numbers (lookup 0.77 at 64 and 0.92 at 1,024
+held-out at 250, 500, 1,000 and 1,500 lessons. The 0.92.0 sweep of the
+fan-in steps (lookup 0.77 at 64 and 0.92 at 1,024
 neurons on the founder steps, 0.82 to 0.87 with the fan-in steps; associative recall 0.73 to 0.84
 at 1,024 on the founder steps, 1.00 with the fan-in steps; two founders) is `--task lookup` and
 `--task associative --memory` with `--arms founder relative --widths 64 128 256 512 1024`; its
