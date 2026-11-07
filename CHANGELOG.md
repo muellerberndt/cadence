@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- A lesson on a brain with a wide read is faster, with the same bits: the address lesson's readback and the carried
+  gains' contrast build each route's weight matrix in one compiled pass. A heavy lesson on a brain of 548 inputs and
+  504,064 synapses falls from 43 ms to 33 ms on one thread.
 - A `Connectome` warns when a population is given as a sequence out of ascending order or with a neuron twice. It
   holds a population ascending, and a brain's k-th input or action takes its k-th neuron in that order, so a
   caller who listed a late region first had its inputs moved with no word. The population held is unchanged. A set
