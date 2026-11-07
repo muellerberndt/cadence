@@ -289,7 +289,9 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 # what ``Brain.compose(..., recall=True)`` gives a new brain's lessons beside its memory
 # (``Recall.COMPOSED``): the teaching point, at no apical, and settings a caller's value overrides
 _COMPOSED_TEACHING = "deep"
-_COMPOSED_SETTINGS: dict[str, Any] = {"learning_surprise": True, "carried_gain": 0.01}
+_COMPOSED_SETTINGS: dict[str, Any] = {
+    "learning_surprise": True, "learning_fast_settle": True, "carried_gain": 0.01,
+}
 # the association's width those lessons hold at: past it the two projections that grow with the
 # width (``_width_rates``) and the read's address map each step at this over the width
 _COMPOSED_WIDTH = 64

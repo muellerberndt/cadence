@@ -140,6 +140,7 @@ def test_a_new_memory_takes_the_settings_beside_it():
     brain = composed()
     genes = brain.describe()["genes"]
     assert genes["learning_surprise"] is True and genes["carried_gain"] == 0.01
+    assert genes["learning_fast_settle"] is True
     assert genes["working_memory_amplitude"] == 3.0 and genes["recall_drive_gain"] is True
     assert brain.carried_gains == {"trace": 1.0, "read": 1.0}
     assert composed(learning_surprise=False).describe()["genes"]["learning_surprise"] is False
@@ -150,12 +151,43 @@ def test_a_new_memory_takes_the_settings_beside_it():
     founder = composed(recall_founder=True)
     assert founder.describe()["genes"]["learning_surprise"] is False and founder.hearing is None
     assert not founder.recall.drive_gain
+    assert "learning_fast_settle" not in founder.describe()["genes"]
     assert founder.grow(history_decays=(0.5,)).hearing is None
     grown = composed().grow(history_decays=(0.5,))
     assert grown.carried_gains == {"trace": 1.0, "read": 1.0, "history_0": 1.0}
     without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
     assert without.hearing is None
     assert without.grow(recall=True).hearing is None and not without.grow(recall=True).recall.drive_gain
+
+
+def test_a_new_memory_takes_the_fast_solve_until_a_word_names_another():
+    brain = composed()
+    assert brain.learner.config.fast_settle is True
+    lessons(brain, 2)
+    assert "row_sweeps" in brain.last_settlement
+    named = composed(learning_fast_settle=True)
+    the_same(lessons(named, 2), brain)
+    off = composed(learning_fast_settle=False)
+    assert off.learner.config.fast_settle is False and "learning_fast_settle" not in off.describe()["genes"]
+    lessons(off, 2)
+    assert "row_sweeps" not in off.last_settlement
+    assert composed(teaching="normalized").learner.config.fast_settle is True
+    for word in ({"recall_founder": True}, {"learning": cd.LearnerConfig()}):
+        assert composed(**word).learner.config.fast_settle is False
+    assert cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False).learner.config.fast_settle is False
+    attention = cd.Brain.compose(8, 4, modules=(16,), seed=0, learned_code=16, attention=True)
+    assert attention.learner.config.fast_settle is False
+
+
+def test_a_saved_brain_and_a_grown_brain_keep_the_solve_they_have(tmp_path):
+    new, off = composed(), composed(learning_fast_settle=False)
+    assert cd.Brain.load(new.save(tmp_path / "new.npz")).learner.config.fast_settle is True
+    assert cd.Brain.load(off.save(tmp_path / "off.npz")).learner.config.fast_settle is False
+    assert new.grow(history_decays=(0.5,)).learner.config.fast_settle is True
+    assert off.grow(history_decays=(0.5,)).learner.config.fast_settle is False
+    without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
+    assert without.grow(recall=True).learner.config.fast_settle is False
+    assert off.retune(learning_fast_settle=True).learner.config.fast_settle is True
 
 
 def test_the_constructor_and_the_attention_recipe_keep_their_own_settings():
