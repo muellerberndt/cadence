@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **Default change.** `Brain.compose(..., recall=True)` gives a new brain `carried_gain=0.01` and
+  `recall_drive_gain=True`: every carried route takes a learned gain from its working value, so beside the
+  memory the trace falls from 3.0 where the read carries the cue, and the read itself takes one that can
+  quiet it and holds it at or below its amplitude. Name `recall_drive_gain=False` or `carried_gain=0.0` to opt
+  out, or `recall_founder=True` for every founder. A saved brain, and a brain that grows a memory, keeps the
+  gains it has. Brains without the memory are unchanged. See
+  [what `recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
 - **Default change.** `Brain.compose(..., recall=True)` gives a new brain the recipe for lengths no
   lesson reached and the reward's position read: `learning_surprise=True`, `recall_recency=0.0`,
   `recall_boundary=True`, `recall_anchor=True`, `recall_slope=0.1`, `recall_position_rate=0.01`,
@@ -25,14 +32,14 @@
   eligibility on the dopamine. One parameter. `brain.carried_gains["read"]` reads it, `describe` holds the
   gene and the value, a checkpoint keeps it, `grow` carries it by route and `graft` keeps this brain's. A
   newborn settles as one without the option, and brains without it are unchanged. See
-  [the read's route](docs/memory.md#the-reads-drive-as-a-route-opt-in).
+  [the read's route](docs/memory.md#the-reads-drive-as-a-route).
 - Add `carried_gain` (opt-in, construction, founder off): one learned gain per carried route, the
   working trace, the efference copy and every block of the heard history, starting at the working
   value and multiplying the route's stimulus. A lesson steps it on the settle's contrast at the taught
   rows and a sampled act's eligibility on the dopamine, over the gain's own second moment, within
   `[0, 8]`. One parameter per route. `brain.carried_gains` reads them by name. Saved with the brain,
   carried by `grow` by route and by `graft`. A newborn settles as one without the option, and brains
-  without it are unchanged. See [carried gain](docs/memory.md#how-strongly-a-carried-region-is-heard-opt-in).
+  without it are unchanged. See [carried gain](docs/memory.md#how-strongly-a-carried-region-is-heard).
 - Add `recall_grid` (opt-in, construction, founder none; needs `recall_position`): past the exact
   table every head's position term also reads each slot's age modulo each of these coprime numbers,
   one term per residue, so a few dozen terms separate the ages up to the moduli's product, where the

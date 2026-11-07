@@ -126,8 +126,8 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor`, `arousal_fast`, `arousal_slow` | `0.2`, `0.9`, `2.0`, `0.1`, `0.05`, `0.005` | retune | [continuous](start.md#routine-and-repair-live) |
 | `arousal_heat`, `arousal_youth`, `arousal_value_surprise`, `arousal_need` | `2.0`, `100`, `1.0`, `0.0` | retune | [continuous](start.md#routine-and-repair-live) |
 | `working_memory_*` | amplitude `3.0`, decay `0.0` | retune | [memory](memory.md#working-trace) |
-| `carried_gain` | `0.0` (off) | construction | [memory](memory.md#how-strongly-a-carried-region-is-heard-opt-in) |
-| `recall_drive_gain` | `False` | construction | [memory](memory.md#the-reads-drive-as-a-route-opt-in) |
+| `carried_gain` | `0.0` (off), `0.01` in a new brain with the memory | construction | [memory](memory.md#how-strongly-a-carried-region-is-heard) |
+| `recall_drive_gain` | `False`, `True` in a new brain with the memory | construction | [memory](memory.md#the-reads-drive-as-a-route) |
 | `efference_*` | amplitude `0.0` (absent), decay `0.2` | a positive amplitude at construction adds it | [memory](memory.md#efference-copy) |
 | `history_*` | decays `()` (absent), amplitude `3.0` | decays at construction | [memory](memory.md#heard-history) |
 | `episodic`, `memory_rate`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.5` with `memory_choice`), `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |

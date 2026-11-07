@@ -280,7 +280,7 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 # what ``Brain.compose(..., recall=True)`` gives a new brain's lessons beside its memory
 # (``Recall.COMPOSED``): the teaching point, at no apical, and settings a caller's value overrides
 _COMPOSED_TEACHING = "deep"
-_COMPOSED_SETTINGS: dict[str, Any] = {"learning_surprise": True}
+_COMPOSED_SETTINGS: dict[str, Any] = {"learning_surprise": True, "carried_gain": 0.01}
 
 
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
@@ -5707,6 +5707,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
     settings["scales"] = {
         "sensory": composition["sensory_scale"], "trace": composition["working_memory_scale"],
     }
+    # the gains the brain has, whatever a new brain's memory composes
+    settings.setdefault("carried_gain", 0.0)
     if brain.arousal is not None:
         settings["arousal"] = brain.arousal.config
     if brain.efference is not None and not settings.get("efference_amplitude"):

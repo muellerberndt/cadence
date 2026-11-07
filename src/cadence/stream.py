@@ -786,6 +786,7 @@ class Recall:
     COMPOSED: ClassVar[dict[str, Any]] = {
         "recency": 0.0, "boundary": True, "anchor": True, "slope": 0.1, "position_rate": 0.01,
         "relative": True, "position_reward": 4.0, "grid": (7, 8, 9, 11), "capacity": 128,
+        "drive_gain": True,
     }
     RELATIVE = 8  # the offsets from the previous read's focus with a bucket each, either side
     # the position lesson's rate a unit of dopamine steps the position maps at, times

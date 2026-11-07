@@ -161,7 +161,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `basal_ganglia` | the `ActorCritic` reading the association region |
 | `memories` | the present memories by name, in the order the brain reads them ([`Memories`](#the-memories-cadencememories)) |
 | `working_memory`, `efference`, `history`, `recall` | the `Trace`, `Efference`, `History` and `Recall`, each `None` when absent |
-| `hearing`, `carried_gains` | the `Hearing` of `carried_gain`, or `None`; every carried route's learned gain by name, empty without it ([carried gain](memory.md#how-strongly-a-carried-region-is-heard-opt-in)) |
+| `hearing`, `carried_gains` | the `Hearing` of `carried_gain`, or `None`; every carried route's learned gain by name, empty without it ([carried gain](memory.md#how-strongly-a-carried-region-is-heard)) |
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |

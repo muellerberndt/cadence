@@ -105,6 +105,28 @@ def test_no_position_term_leaves_out_what_reads_beside_it():
     assert composed(recall_position_rate=0.0).recall.position_reward == 0.0
 
 
+def test_a_new_memory_takes_the_settings_beside_it():
+    brain = composed()
+    genes = brain.describe()["genes"]
+    assert genes["learning_surprise"] is True and genes["carried_gain"] == 0.01
+    assert genes["working_memory_amplitude"] == 3.0 and genes["recall_drive_gain"] is True
+    assert brain.carried_gains == {"trace": 1.0, "read": 1.0}
+    assert composed(learning_surprise=False).describe()["genes"]["learning_surprise"] is False
+    assert composed(recall_drive_gain=False).carried_gains == {"trace": 1.0}
+    silent = composed(carried_gain=0.0)
+    assert silent.hearing is None and not silent.recall.drive_gain
+    assert composed(carried_gain=0.1).describe()["genes"]["carried_gain"] == 0.1
+    founder = composed(recall_founder=True)
+    assert founder.describe()["genes"]["learning_surprise"] is False and founder.hearing is None
+    assert not founder.recall.drive_gain
+    assert founder.grow(history_decays=(0.5,)).hearing is None
+    grown = composed().grow(history_decays=(0.5,))
+    assert grown.carried_gains == {"trace": 1.0, "read": 1.0, "history_0": 1.0}
+    without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
+    assert without.hearing is None
+    assert without.grow(recall=True).hearing is None and not without.grow(recall=True).recall.drive_gain
+
+
 def test_the_constructor_and_the_attention_recipe_keep_their_own_settings():
     connectome = cd.develop(cd.Genome.composed(6, 4, modules=(16,), recall=True), seed=0)
     direct = cd.Brain(connectome, seed=0, recall=True)

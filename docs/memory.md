@@ -1,4 +1,4 @@
-# Memory
+| How strongly the read drives the settle, per task | nothing: a new brain with the memory learns it (`recall_drive_gain=True`) || How strongly each carried region is heard, per task | nothing: a new brain with the memory learns it (`carried_gain=0.01`) |# Memory
 
 A memory is anything the brain keeps from an earlier moment and can use in a later answer.
 Everything else is computed again from the current observation. This page starts from the
@@ -20,8 +20,8 @@ works, its settings, its readings and its limits.
 | "How long ago?", "was A told before B?" | `recall_when=True` | [when a read item happened](#when-a-read-item-happened-opt-in) |
 | The answer is the token the read found, tokens no lesson used included | `recall_tokens=..., recall_gain=1.0` | [the learned value path](#the-learned-value-path-opt-in) |
 | What it did itself, where the observations are alike | `efference_amplitude=1.0` for its last command; `recall_action=True` to find commands with their moments | [efference copy](#efference-copy), [its own actions](#its-own-actions-in-the-slots-opt-in) |
-| How strongly each carried region is heard, per task | `carried_gain=0.01` | [carried gain](#how-strongly-a-carried-region-is-heard-opt-in) |
-| How strongly the read drives the settle, per task | `recall_drive_gain=True` | [the read's route](#the-reads-drive-as-a-route-opt-in) |
+| How strongly each carried region is heard, per task | `carried_gain=0.01` | [carried gain](#how-strongly-a-carried-region-is-heard) |
+| How strongly the read drives the settle, per task | `recall_drive_gain=True` | [the read's route](#the-reads-drive-as-a-route) |
 | A cue carried across a short delay, with no recall memory | nothing: the working trace is on | [working trace](#working-trace) |
 | One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
 | Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
@@ -282,6 +282,8 @@ configuration.
 | `recall_grid` | `()` | `(7, 8, 9, 11)` | Past the table of 32 a term per residue, for a period longer than the table ([long context](#reads-over-long-context)) |
 | `recall_capacity` | `64` | `128` | Slots that still hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
 | `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
+| `carried_gain` | `0.0` | `0.01` | [A learned gain per carried route](#how-strongly-a-carried-region-is-heard), from the trace's 3.0 |
+| `recall_drive_gain` | `False` | `True` | [The read's route](#the-reads-drive-as-a-route): the read quiets where it does not pay and stays at or below its amplitude |
 
 `recall_when=True` stays an opt-in, for tasks that ask "before?": it carries that question and it costs
 the grammar chamber's paths and two hops ([one composition](#one-composition-for-sequences)).
@@ -311,7 +313,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_when` | `False` | construction | Every head's read also delivers when its slots happened, on a region of its own ([when a read item happened](#when-a-read-item-happened-opt-in)) |
 | `recall_gain` | `0.0` | construction | One learned scalar per read port on the tokens' identity into the motor region's drive, starting at zero and taught at this rate; needs `recall_tokens` ([the gain](#the-learned-value-path-opt-in)) |
 | `recall_founder` | `False` | `compose` | `True` composes the memory at the founders of this table, whatever `recall=True` gives a new brain; no setting of the memory, so neither described nor saved |
-| `recall_drive_gain` | `False` | construction | The read's drive is one more route of `carried_gain`: one learned gain over every read port, from the amplitude and no higher ([the read's route](#the-reads-drive-as-a-route-opt-in)); needs `carried_gain` |
+| `recall_drive_gain` | `False` | construction | The read's drive is one more route of `carried_gain`: one learned gain over every read port, from the amplitude and no higher ([the read's route](#the-reads-drive-as-a-route)); needs `carried_gain` |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
@@ -1233,7 +1235,7 @@ costs "before" (0.82 to 0.875 on six founders against 0.84 to 0.93, bar 0.90), c
 tokens (about 0.91 against 0.95) and n-back on one founder of six (0.886 against 0.974). With no
 recall memory the trace has to hold the cue itself: a delayed response at 0.75 passes on 0 lives of
 3, so the founder keeps 3.0. A
-[learned gain](#how-strongly-a-carried-region-is-heard-opt-in) finds the strength per task instead.
+[learned gain](#how-strongly-a-carried-region-is-heard) finds the strength per task instead.
 
 ## Efference copy
 
@@ -1287,14 +1289,14 @@ magnitude 1.2 a constant; `history_amplitude` (3.0) can be retuned. On a coded v
 blocks hold the code. Three decays at 256 inputs and four actions add 768 neurons and 49,152
 synapses to a founder of 20,992 synapses.
 
-## How strongly a carried region is heard (opt-in)
+## How strongly a carried region is heard
 
 The trace, the copy and the history each drive the settle at a fixed amplitude, and no one
 amplitude serves every task: a delayed response needs the trace loud, and a
 grammar lesson needs it quiet. `carried_gain=rate` gives every carried route one learned gain,
-which multiplies the route's stimulus. A route is a held region and its synapses into the
+which multiplies the route's stimulus, and [a new brain with the memory](#what-recalltrue-gives-a-new-brain) holds `carried_gain=0.01`. A route is a held region and its synapses into the
 association region: `trace`, `efference`, `history_0`, `history_1`, ... one per block, and with
-[`recall_drive_gain`](#the-reads-drive-as-a-route-opt-in) `read`. Every gain starts at 1, so a newborn
+[`recall_drive_gain`](#the-reads-drive-as-a-route) `read`. Every gain starts at 1, so a newborn
 settles as one without the option.
 
 ```python
@@ -1344,13 +1346,14 @@ n-back on all six founders (0.955 at the lowest against 0.886), induction at 0.9
 0.906, and holds paths over a second pass of the same lessons (0.96 against 0.92). The nursery's
 teacher steps at 1,000 pass on 18 lives of 30 against 25.
 
-### The read's drive as a route (opt-in)
+### The read's drive as a route
 
 The read drives the settle at `recall_amplitude`, 3.0 by default. `recall_drive_gain=True` makes that
 drive one more route of `carried_gain`: one learned gain over every port the read holds, `recall`,
 `next`, every head's and every `recall_when` region, as one number. The gain starts at 1, so a newborn
 settles as one without the option. It multiplies the amplitude and reaches no higher than 1, so the read
-can quiet and stays at or below `recall_amplitude`.
+can quiet and stays at or below `recall_amplitude`. A new brain with the memory holds it; `recall_drive_gain=False`
+or `carried_gain=0.0` builds a memory without the route.
 
 ```python
 routed = Brain.compose(
