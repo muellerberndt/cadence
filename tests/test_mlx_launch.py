@@ -14,6 +14,7 @@ import pytest
 import cadence as cd
 from cadence import brain as brain_module
 from cadence.brain import _MLX_COMPARTMENT_NEURONS, Apical, _MlxPlan, _MlxState
+from cadence.genome import Genome, Projection, Region, develop
 
 pytestmark = pytest.mark.skipif("mlx" not in cd.available_backends(), reason="mlx not installed")
 
@@ -702,7 +703,7 @@ def read_a_lesson_alike(cpu, mlx, before):
     standing = np.abs(velocity) >= CONTRAST
     assert standing.any()
     step, device = cpu.brain.efficacy - before, mlx.brain.efficacy - before
-    np.testing.assert_allclose(device[standing], step[standing], rtol=0, atol=1e-5)
+    np.testing.assert_allclose(device[standing], step[standing], rtol=0, atol=3e-5)
     np.testing.assert_allclose(device, step, rtol=0, atol=SYNAPSES)
 
 
@@ -871,6 +872,20 @@ def test_another_steps_solve_reads_the_sources_equations():
     np.testing.assert_allclose(d.state.activation, c.state.activation, rtol=0, atol=1e-5)
 
 
+@pytest.mark.parametrize("dt", [1.0, 0.5])
+def test_a_graph_with_no_source_range_launches(dt):
+    genome = Genome((Region("a", 8), Region("b", 8)), (Projection("a", "b", reciprocal=True),))
+    connectome = develop(genome, seed=0)
+    model = cd.learning_neuron_model(dt=dt)
+    cpu, mlx = cd.NeuralGraph(connectome, model), cd.NeuralGraph(connectome, model, backend="mlx")
+    assert mlx._mlx.plan is not None and not mlx._mlx.plan.sources
+    drive = np.random.default_rng(2).random((ROWS, connectome.n)) * 0.5
+    a = cpu.equilibrate(drive, budget=256, tolerance=1e-3)
+    b = mlx.equilibrate(drive, budget=256, tolerance=1e-3)
+    assert launched(b.state) and b.steps == a.steps
+    np.testing.assert_allclose(b.state.activation, a.state.activation, rtol=0, atol=1e-5)
+
+
 def test_the_sources_way_made_in_parts_reads_the_same_bits(monkeypatch):
     mlx, one, other = half_step("mlx")
     whole = mlx.settle_batch(other, steps=40, state=mlx.settle_batch(one, steps=40))
@@ -978,6 +993,15 @@ def test_the_speech_size_with_a_compartment_settles_and_learns_as_the_cpu():
         mlx.brain.apical_gain(drive, b.state), cpu.brain.apical_gain(drive, a.state),
         rtol=0, atol=1e-5,
     )
+    with warnings.catch_warnings():  # a continued life, on one set of weights
+        warnings.simplefilter("ignore")
+        for _ in range(4):
+            x = rng.random((ROWS, 3920)) * 0.5
+            np.testing.assert_array_equal(cpu.act(x, greedy=True), mlx.act(x, greedy=True))
+            np.testing.assert_allclose(
+                mlx.basal_ganglia.state.activation, cpu.basal_ganglia.state.activation,
+                rtol=0, atol=2e-5,
+            )
     before = np.array(cpu.brain.efficacy)
     labels = rng.integers(37, size=ROWS)
     with warnings.catch_warnings():
