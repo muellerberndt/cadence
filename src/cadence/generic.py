@@ -5940,6 +5940,9 @@ def _grown_checkpoint(
     ):
         if name in meta_old:
             meta[name] = meta_old[name]
+    # a limit no smaller than the graph's own follows the blocks that grew, as compose takes it
+    if meta_old.get("dense_limit", 0) >= 2048:
+        meta["dense_limit"] = max(meta_old["dense_limit"], meta_new.get("dense_limit", 0))
     data["meta"] = np.array(canonical_json(meta))
     life_old, life_new = json.loads(str(old["brain"])), json.loads(str(new["brain"]))
     if set(life_old["memories"]) - set(life_new["memories"]):

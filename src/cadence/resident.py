@@ -29,9 +29,9 @@ __all__: list[str] = []
 # read on an A10G from 12 to 1,024 inputs and 1 to 256 streams).
 _RESIDENT_WORK = 3_000_000
 _RESIDENT_ROW = 1024
-# The same on MLX, read on an Apple M4: there a launch costs a synchronization of about 200
-# microseconds, and the host's arithmetic is one core's.
-_MLX_RESIDENT_WORK = 3_000_000
+# The same on MLX, read on an Apple M4 from 12 to 3,920 inputs and 1 to 1,024 streams: at 35 inputs
+# and 256 streams, 128 and 64, 1,024 and 4 the device's lesson and step come to the host's.
+_MLX_RESIDENT_WORK = 8_000_000
 _MLX_RESIDENT_ROW = 1024
 
 

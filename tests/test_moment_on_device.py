@@ -155,13 +155,25 @@ def test_a_refused_outcome_leaves_the_streams_eligibility_as_it_was(monkeypatch)
     np.testing.assert_array_equal(brain.brain.efficacy, efficacy)
 
 
-def _twins(monkeypatch, **options) -> tuple[cd.Brain, cd.Brain]:
+def _twins(monkeypatch, device: str, **options) -> tuple[cd.Brain, cd.Brain]:
     monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    monkeypatch.setenv("CADENCE_MLX_MEMORY", "1")
     options.setdefault("modules", (16,))
     return (
         cd.Brain.compose(12, 5, seed=4, backend="cpu", **options),
-        cd.Brain.compose(12, 5, seed=4, backend="torch", device="cpu", **options),
+        cd.Brain.compose(12, 5, seed=4, **_placed_on(device), **options),
     )
+
+
+def _placed_on(device: str) -> dict[str, str]:
+    return {"backend": "mlx"} if device == "mlx" else {"backend": "torch", "device": device}
+
+
+# the devices a life is read on, and how far a synapse lies from the host's on each
+_DEVICES = [
+    ("cpu", 1e-9),
+    *([("mlx", 3e-2)] if "mlx" in cd.available_backends() else []),
+]
 
 
 def _both_live(host: cd.Brain, placed: cd.Brain, rng: np.random.Generator, moments: int = 5) -> None:
@@ -172,15 +184,16 @@ def _both_live(host: cd.Brain, placed: cd.Brain, rng: np.random.Generator, momen
         np.testing.assert_array_equal(host.step(x, **kwargs), placed.step(x, **kwargs))
 
 
+@pytest.mark.parametrize(("device", "atol"), _DEVICES, ids=[row[0] for row in _DEVICES])
 @pytest.mark.parametrize(
     "options",
     [{}, {"modules": (16, 8), "apical": 0.25, "teaching": "deep"}],
     ids=["default", "apical"],
 )
-def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, options):
+def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, options, device, atol):
     """A brain whose memories rest on its device retunes, grows, is grafted and saves as the host's
     does, and each of them continues where the host's does."""
-    host, placed = _twins(monkeypatch, **options)
+    host, placed = _twins(monkeypatch, device, **options)
     rng = np.random.default_rng(10)
     _both_live(host, placed, rng)
     assert placed.recall._device is not None
@@ -190,22 +203,22 @@ def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, option
         brain.retune(recall_amplitude=2.5, recall_address_reward=0.5)
     assert placed.basal_ganglia.trace_memory.shape == host.basal_ganglia.trace_memory.shape
     _both_live(host, placed, rng)
-    np.testing.assert_allclose(placed.brain.efficacy, host.brain.efficacy, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(placed.brain.efficacy, host.brain.efficacy, rtol=0, atol=atol)
     grown = host.grow(history_decays=(0.5,)), placed.grow(history_decays=(0.5,))
-    assert grown[1].brain.backend == "torch"
+    assert grown[1].brain.backend == placed.brain.backend
     _both_live(*grown, rng)
-    np.testing.assert_allclose(grown[1].brain.efficacy, grown[0].brain.efficacy, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(grown[1].brain.efficacy, grown[0].brain.efficacy, rtol=0, atol=atol)
     if "apical" not in options:
         donor = cd.Brain.compose(12, 5, seed=5, modules=(16,))
         regions = ("association", "motor")
         grafted = host.graft(donor, regions), placed.graft(donor, regions)
         _both_live(*grafted, rng)
         np.testing.assert_allclose(
-            grafted[1].brain.efficacy, grafted[0].brain.efficacy, rtol=0, atol=1e-9
+            grafted[1].brain.efficacy, grafted[0].brain.efficacy, rtol=0, atol=atol
         )
     path = placed.save(tmp_path / "placed.npz", compressed=False)
     on_cpu = cd.Brain.load(path, backend="cpu")
-    again = cd.Brain.load(path, backend="torch", device="cpu")
+    again = cd.Brain.load(path, **_placed_on(device))
     _both_live(on_cpu, again, rng)
     assert again.recall._device is not None
 
