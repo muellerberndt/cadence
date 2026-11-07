@@ -87,8 +87,9 @@ rule are in [contracts](contracts.md).
 
 On CUDA, from a moment of `streams * width * (width + 1024) >= 3,000,000` (`width` the observation
 code's), the recall memory's slots, maps, read, write and lessons, the working trace, the consolidating
-store, the carried routes' contrast and the moment's drive run on the device, in the parameters'
-floats (float64 on CUDA whatever the brain's precision), by the host's equations: a life agrees with
+store, the carried routes' contrast, the critic's weights and eligibility and the moment's drive run
+on the device, in the parameters' floats (float64 on CUDA whatever the brain's precision), by the
+host's equations: a life agrees with
 the float64 host path within rounding at each moment
 ([`tests/test_memories_on_device.py`](../tests/test_memories_on_device.py)). 3,920 inputs reach
 that size at one stream and 35 inputs at about 128. Below it each operation's launch costs more than
@@ -100,15 +101,18 @@ A memory with several heads, a window, `recall_action`, `recall_when`, `recall_g
 the moment's memories on the host at every size.
 
 Reading one of these arrays on the host (`brain.recall.keys`, `brain.working_memory.trace`,
-`brain.hippocampus.strength`), saving a checkpoint, copying the brain, imagining or retuning the memory
+`brain.hippocampus.strength`, `brain.basal_ganglia.w_critic`), saving a checkpoint, copying the brain,
+imagining or retuning the memory
 brings them back, and the next moment places them again; nothing else about a brain changes.
 `brain.stimulus` returns a host array whichever way the moment runs.
 `CADENCE_TORCH_MEMORY=0` keeps them on the host, and `=1` places them at any size on any torch device
 but MPS, which is how the tests read this path on a machine without a GPU.
 
-Each moment still crosses: the observations down, a sampled action's target and the outcome's reward
-and key down, one small read per residual check and per settle, the motor and critic columns up, and
-one read of the lesson's or update's report and finite checks. The rest stays on the device.
+Each moment still crosses: to the device the observations, a sampled action's target, the outcome's
+reward, key and dopamine; to the host the motor columns, a value per stream, one number per stream and
+carried route, one small read per residual check and per settle, and one read of the lesson's or
+update's report and finite checks. The memories, the eligibility and the optimizer's state do not
+cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
 
 
 ## Choosing a device

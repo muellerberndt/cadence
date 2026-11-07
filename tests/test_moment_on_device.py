@@ -1,6 +1,7 @@
 """A moment on a torch device crosses less (cadence#274): its drive is uploaded once for every
 settle and check, a settle from rest uploads no zeros, the motor and critic reads bring their columns
-and not the state, and a copy of a brain has a kernel of its own."""
+and not the state, a copy of a brain has a kernel of its own, and where the memories rest on the
+device the critic rests with them and nothing wider than the action comes to the host."""
 
 from __future__ import annotations
 
@@ -13,6 +14,9 @@ import pytest
 import cadence as cd
 
 torch = pytest.importorskip("torch")
+
+
+DEVICES = ["cpu", *(["cuda"] if torch.cuda.is_available() else [])]
 
 
 def brain_on_torch(seed: int = 3) -> cd.Brain:
@@ -219,3 +223,179 @@ def test_a_salience_weighs_the_eligibility_as_on_the_host():
             )
         np.testing.assert_array_equal(host.step(x, **kwargs), device.step(x, **kwargs))
     np.testing.assert_allclose(device.brain.efficacy, host.brain.efficacy, rtol=0, atol=1e-10)
+
+
+# -- the critic rests with the memories
+
+
+@pytest.fixture
+def lived_twins(monkeypatch) -> tuple[cd.Brain, cd.Brain, np.random.Generator]:
+    host, placed = _twins(monkeypatch)
+    rng = np.random.default_rng(6)
+    _both_live(host, placed, rng, moments=7)
+    return host, placed, rng
+
+
+def _critics_agree(host: cd.Brain, placed: cd.Brain) -> None:
+    ours, theirs = host.basal_ganglia, placed.basal_ganglia
+    np.testing.assert_allclose(theirs.w_critic, ours.w_critic, rtol=0, atol=1e-11)
+    if ours.trace_critic is None:
+        assert theirs.trace_critic is None
+    else:
+        np.testing.assert_allclose(theirs.trace_critic, ours.trace_critic, rtol=0, atol=1e-11)
+    assert theirs.b_critic == pytest.approx(ours.b_critic, abs=1e-11)
+
+
+def test_the_critic_rests_on_the_device_and_comes_back_when_the_host_reads_it(lived_twins):
+    host, placed, rng = lived_twins
+    agent = placed.basal_ganglia
+    assert agent._critic_device is not None
+    assert "w_critic" not in agent.__dict__ and "trace_critic" not in agent.__dict__
+    assert agent.parameters() == host.basal_ganglia.parameters()  # without a read of the weights
+    assert agent._critic_device is not None
+    _critics_agree(host, placed)
+    assert agent._critic_device is None
+    assert isinstance(agent.w_critic, np.ndarray) and isinstance(agent.trace_critic, np.ndarray)
+    _both_live(host, placed, rng)
+    assert agent._critic_device is not None
+    _critics_agree(host, placed)
+
+
+def test_a_write_on_the_host_reaches_the_resting_critics_next_read(lived_twins):
+    host, placed, rng = lived_twins
+    for brain in (host, placed):
+        brain.basal_ganglia.w_critic = brain.basal_ganglia.w_critic * 0.5  # the other array stays
+        brain.basal_ganglia.b_critic = 0.25
+    _both_live(host, placed, rng)
+    assert placed.basal_ganglia._critic_device is not None
+    _critics_agree(host, placed)
+    for brain in (host, placed):
+        brain.basal_ganglia.trace_critic[:] = 0.0  # a read and an edit of what it brought back
+    _both_live(host, placed, rng)
+    _critics_agree(host, placed)
+
+
+def test_a_fade_and_a_reset_reach_the_resting_critic(lived_twins):
+    host, placed, rng = lived_twins
+    agent = placed.basal_ganglia
+    ended = np.array([True, False])
+    for brain in (host, placed):
+        brain.basal_ganglia.fade(ended)
+    assert agent._critic_device is not None
+    with pytest.raises(ValueError, match="must match"):
+        agent.fade(np.array([True, False, False]))
+    assert not agent._critic_device.trace[0].any()
+    _both_live(host, placed, rng, moments=2)
+    _critics_agree(host, placed)
+    _both_live(host, placed, rng, moments=2)
+    for brain in (host, placed):
+        brain.basal_ganglia.reset()
+    assert agent._critic_device is not None and agent._critic_device.trace is None
+    assert agent.trace_critic is None and agent._critic_device is None
+
+
+def test_a_refused_outcome_leaves_the_resting_critic_as_it_was(monkeypatch):
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    brain = brain_on_torch()
+    _a_life_of_rewards(brain, moments=6)
+    x = np.eye(12)[[1, 7, 3]]
+    brain.act(x)
+    agent = brain.basal_ganglia
+    held = agent._critic_device
+    assert held is not None
+    weights, trace, bias = held.weights.clone(), held.trace.clone(), agent.b_critic
+
+    def refused(*_args, **_kwargs):
+        raise ValueError("refused")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(brain.learner, "_apply_device", refused)
+        with pytest.raises(ValueError, match="refused"):
+            brain.learn(np.ones(3), np.zeros(3, dtype=bool), x)
+    assert agent._critic_device is held and "trace_critic" not in agent.__dict__
+    assert torch.equal(held.weights, weights) and torch.equal(held.trace, trace)
+    assert agent.b_critic == bias
+
+
+def test_a_refused_critic_step_is_refused_on_the_device(monkeypatch):
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    brain = brain_on_torch()
+    _a_life_of_rewards(brain, moments=4)
+    x = np.eye(12)[[1, 7, 3]]
+    brain.act(x)
+    agent = brain.basal_ganglia
+    agent._critic_device.weights[0] = float("inf")
+    with pytest.raises(ValueError, match="critic parameters must remain finite"):
+        agent._critic_device.candidate(np.ones(3))
+
+
+# -- what a moment brings to the host
+
+
+@pytest.mark.parametrize(
+    "options",
+    [{}, {"modules": (16, 8), "apical": 0.25, "teaching": "deep"}],
+    ids=["default", "apical"],
+)
+@pytest.mark.parametrize("device", DEVICES)
+def test_a_moment_brings_nothing_wider_than_its_action_to_the_host(monkeypatch, options, device):
+    """The memories, the eligibility and the optimizer rest on the device: of a moment only the
+    motor columns, a number per row and the checks come to the host."""
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    options = {"modules": (16,), **options}
+    rows, motor = 3, 5
+    brain = cd.Brain.compose(12, motor, seed=3, backend="torch", device=device, **options)
+    rng = np.random.default_rng(0)
+
+    def observed() -> np.ndarray:
+        return np.eye(12)[rng.integers(12, size=rows)]
+
+    reward, ended = np.ones(rows), np.zeros(rows, dtype=bool)
+    for _ in range(4):  # the slots, the eligibility and the optimizer's state exist from here
+        brain.act(observed())
+        brain.learn(reward, ended, observed())
+    reads: list[int] = []
+    bring = torch.Tensor.numpy
+
+    def counted(self, *args, **kwargs):
+        reads.append(int(self.numel()))
+        return bring(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.Tensor, "numpy", counted)
+    x = observed()
+    brain.act(x)
+    brain.learn(reward, ended, observed())
+    brain.act(x, greedy=True)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        brain.lesson(x, np.arange(rows) % motor)
+    brain.step(x)
+    brain.step(observed(), reward=reward)
+    assert reads and max(reads) <= rows * motor
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_a_lived_moment_brings_nothing_wider_than_its_action_to_the_host(monkeypatch, device):
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    motor = 5
+    brain = cd.Brain.compose(
+        12, motor, seed=3, backend="torch", device=device, modules=(16,), arousal=True
+    )
+    rng = np.random.default_rng(0)
+    for t in range(6):
+        brain.live(np.eye(12)[[rng.integers(12)]], **({"reward": np.ones(1)} if t else {}))
+    reads: list[int] = []
+    bring = torch.Tensor.numpy
+
+    def counted(self, *args, **kwargs):
+        reads.append(int(self.numel()))
+        return bring(self, *args, **kwargs)
+
+    monkeypatch.setattr(torch.Tensor, "numpy", counted)
+    for t in range(12):
+        x = np.eye(12)[[rng.integers(12)]]
+        if t % 5 == 4 and brain.pending_feedback:
+            brain.wait(x)
+        else:
+            brain.live(x, reward=np.array([float(t % 3 == 0)]))
+    assert reads and max(reads) <= motor

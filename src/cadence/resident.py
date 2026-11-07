@@ -1428,6 +1428,76 @@ class _StoreOnDevice:
         owner.writes += len(rows)
 
 
+# -- the critic
+
+
+class _CriticOnDevice:
+    """A critic's weights and eligibility on the device of its brain (``ActorCritic``'s equations):
+    a value per row comes to the host at each moment and the dopamine goes there, one number per
+    row each. The bias is the host's, one number. A moment's eligibility is a new array, so a
+    refused outcome keeps the old one. What no device path reads brings them back
+    (``ActorCritic.__getattr__``)."""
+
+    OWNED = ("w_critic", "trace_critic")
+
+    def __init__(self, owner: Any, kernel: Any) -> None:
+        xp = arrays_of(kernel)
+        self.owner, self.kernel, self.xp = owner, kernel, xp
+        held = owner.__dict__
+        self.weights = xp.here(held.pop("w_critic"))
+        trace = held.pop("trace_critic")
+        self.trace = None if trace is None else xp.here(trace)
+        self.source = xp.neurons(owner.critic_index, kernel.index_of(owner.critic_index))
+
+    def give_back(self) -> None:
+        held = self.owner.__dict__
+        held["w_critic"] = self.xp.host(self.weights)
+        held["trace_critic"] = None if self.trace is None else self.xp.host(self.trace)
+
+    def value(self, state: BrainState) -> np.ndarray:
+        """``ActorCritic.value``."""
+        xp = self.xp
+        return xp.host(xp.part(state, self.source) @ self.weights + self.owner.b_critic)
+
+    def add(self, state: BrainState, batch: int, decay: float) -> None:
+        """``e <- decay e + (activity, 1)``."""
+        xp = self.xp
+        trace = self.trace
+        if trace is None or len(trace) != batch:
+            trace = xp.zeros((batch, len(self.owner.critic_index) + 1))
+        trace = decay * trace
+        trace[:, :-1] = trace[:, :-1] + xp.part(state, self.source)
+        trace[:, -1] = trace[:, -1] + 1.0
+        xp.settle(trace)
+        self.trace = trace
+
+    def candidate(self, delta: np.ndarray) -> tuple[Any, float]:
+        """``ActorCritic._critic_candidate``: one read, of the checks and the bias's step."""
+        owner, xp = self.owner, self.xp
+        trace = self.trace
+        assert trace is not None
+        trace = trace / (1.0 + (trace * trace).sum(axis=1, keepdims=True))
+        step = owner.config.eta_critic * (xp.here(delta)[:, None] * trace).mean(axis=0)
+        weights = self.weights + step[:-1]
+        read = xp.read(xp.all_finite(weights), step[-1], also=(weights,))
+        bias = owner.b_critic + float(read[1])
+        if not read[0] or not np.isfinite(bias):
+            raise ValueError("critic parameters must remain finite")
+        return weights, bias
+
+    def forget(self, done: np.ndarray) -> None:
+        if self.trace is not None:
+            self.trace = _forgotten(self.trace, done)
+
+    def fade(self, decay: float, ended: np.ndarray | None) -> None:
+        """``ActorCritic.fade``: ``ended`` rows forget."""
+        if self.trace is None:
+            return
+        self.trace = decay * self.trace
+        if ended is not None and ended.any():
+            self.forget(ended)
+
+
 # -- the carried routes' contrast
 
 

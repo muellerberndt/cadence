@@ -26,8 +26,10 @@
   over six seeds is .802 on the CPU and .786 on MLX, a difference of .016 with a standard error of .015.
   See [precision matters](docs/backends.md#precision-matters).
 - **A moment on CUDA.** From a moment of `streams * width * (width + 1024) >= 3,000,000` the recall
-  memory, the working trace, the consolidating store, the carried routes' contrast and the moment's
-  drive run on the device, by the same equations, within rounding of the float64 host path. `CADENCE_TORCH_MEMORY`
+  memory, the working trace, the consolidating store, the carried routes' contrast, the critic's weights
+  and eligibility and the moment's drive run on the device, by the same equations, within rounding of
+  the float64 host path; of a moment only the observations and the dopamine go there, and the motor
+  columns, a value per stream and the checks come back. `CADENCE_TORCH_MEMORY`
   overrides the size rule. See
   [memories on the device](docs/backends.md#memories-on-the-device).
 - **A moment on a torch device crosses less.** The drive goes up once per moment, a settle from rest

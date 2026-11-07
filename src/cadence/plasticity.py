@@ -36,7 +36,7 @@ import numpy as np
 from .brain import _FUSED as _FUSED_TRACE
 from .brain import Brain, BrainState, Nudge, _host_copy, _resident
 from .learning import Learner
-from .resident import _forgotten
+from .resident import _CriticOnDevice, _forgotten
 
 __all__ = [
     "ActorCritic",
@@ -205,6 +205,9 @@ class ActorCritic:
         self.trace: np.ndarray | None = None
         self.trace_bias: np.ndarray | None = None
         self.trace_critic: np.ndarray | None = None
+        # the critic's weights and eligibility when they rest on the device of the brain; then the
+        # two attributes are absent, and reading one brings both back
+        self._critic_device: _CriticOnDevice | None = None
         # a memory whose learned parameters reward trains beside the synapses (the brain that
         # owns it sets it), their eligibility per row, and the contrast of the action that
         # awaits its outcome
@@ -232,6 +235,44 @@ class ActorCritic:
         # the brain's maturity (``Maturity``), which scales the steps; None: the founder's steps
         self.maturity: Maturity | None = None
 
+    # -- the critic on the device
+
+    def __getattr__(self, name: str) -> Any:
+        """The critic's weights or eligibility resting on the device, read on the host: both come
+        back, and the next moment places them there again."""
+        if self.__dict__.get("_critic_device") is not None and name in _CriticOnDevice.OWNED:
+            self.leave_device()
+            return self.__dict__[name]
+        raise AttributeError(f"{type(self).__name__!r} object has no attribute {name!r}")
+
+    def __getstate__(self) -> dict[str, Any]:
+        self.leave_device()
+        return self.__dict__
+
+    def reside(self, kernel: Any) -> None:
+        """The critic's weights and eligibility on the device of a brain's torch ``kernel``, read
+        and written there each moment. An array written on the host since brings the other back
+        first."""
+        if kernel is None or hasattr(kernel, "mx"):
+            self.leave_device()
+            return
+        if self._critic_device is not None:
+            if not any(name in self.__dict__ for name in _CriticOnDevice.OWNED):
+                return
+            self.leave_device()
+        self._critic_device = _CriticOnDevice(self, kernel)
+
+    def leave_device(self) -> None:
+        held = self.__dict__.get("_critic_device")
+        if held is not None:
+            written = {
+                name: self.__dict__.pop(name) for name in _CriticOnDevice.OWNED
+                if name in self.__dict__
+            }
+            held.give_back()
+            self.__dict__.update(written)
+            self._critic_device = None
+
     # -- readings
 
     @property
@@ -240,6 +281,8 @@ class ActorCritic:
         return self._free
 
     def value(self, state: BrainState) -> np.ndarray:
+        if self._critic_device is not None:
+            return self._critic_device.value(state)
         return np.asarray(state.part(self.critic_index) @ self.w_critic + self.b_critic)
 
     def probabilities(
@@ -565,7 +608,7 @@ class ActorCritic:
         the synapse and bias steps are its ``factor()`` times the config's, and the synapse
         step applied adds to its ``use``; the critic and the memory keep their steps.
         """
-        arrays = ("trace", "trace_bias", "trace_critic", "trace_memory", "trace_hearing")
+        arrays = ("trace", "trace_bias", "trace_memory", "trace_hearing")
         saved = {
             name: _kept(getattr(self, name))
             for name in arrays
@@ -573,9 +616,15 @@ class ActorCritic:
         saved.update(
             {
                 name: getattr(self, name)
-                for name in ("_trace_device", "_trace_mlx", "updates")
+                for name in ("_trace_device", "_trace_mlx", "_critic_device", "updates")
             }
         )
+        critic = self._critic_device
+        critic_trace = None
+        if critic is None:
+            saved["trace_critic"] = _kept(self.trace_critic)
+        else:
+            critic_trace = critic.trace
         # a mature brain's use grows by the synapse step applied, measured on the torch backend
         # on the device (an update replaces the kernel's scale tensor): one number to the host
         maturity, kernel, before = self.maturity, self.learner.brain._torch, None
@@ -584,6 +633,10 @@ class ActorCritic:
         try:
             report = self._learn(reward, done, next_drive, bootstrap, observed=observed, warm=warm)
         except Exception:
+            if critic is not None:  # as it rested, whichever way the outcome went
+                for name in _CriticOnDevice.OWNED:
+                    self.__dict__.pop(name, None)
+                critic.trace = critic_trace
             self.__dict__.update(saved)
             raise
         if maturity is not None and self.config.eta > 0:
@@ -657,6 +710,7 @@ class ActorCritic:
                 observed,
                 warm,
             )
+        self.leave_device()
         if self._trace_device is not None:
             self.trace, self.trace_bias = (
                 tensor.detach().cpu().double().numpy().copy() for tensor in self._trace_device
@@ -772,7 +826,33 @@ class ActorCritic:
         report["trace"] = float(np.abs(traces).mean())
         return report
 
-    def _critic_candidate(self, delta: np.ndarray) -> tuple[np.ndarray, float]:
+    def _critic_eligibility(self, free: BrainState, batch: int) -> None:
+        """The critic's eligibility of a moment's free state: its neurons' activity and the bias."""
+        decay = self.config.gamma * self.config.lam
+        if self._critic_device is not None:
+            self._critic_device.add(free, batch, decay)
+            return
+        if self.trace_critic is None or self.trace_critic.shape[0] != batch:
+            self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
+        self.trace_critic *= decay
+        self.trace_critic[:, :-1] += free.part(self.critic_index)
+        self.trace_critic[:, -1] += 1.0
+
+    def _accept_critic(self, candidate: tuple[Any, float]) -> None:
+        if self._critic_device is not None:
+            self._critic_device.weights, self.b_critic = candidate
+        else:
+            self.w_critic, self.b_critic = candidate
+
+    def _forget_critic(self, done: np.ndarray) -> None:
+        if self._critic_device is not None:
+            self._critic_device.forget(done)
+        elif self.trace_critic is not None:
+            self.trace_critic[done] = 0.0
+
+    def _critic_candidate(self, delta: np.ndarray) -> tuple[Any, float]:
+        if self._critic_device is not None:
+            return self._critic_device.candidate(delta)
         cfg = self.config
         critic_trace = self.trace_critic
         assert critic_trace is not None
@@ -871,8 +951,9 @@ class ActorCritic:
         warm: BrainState | None = None,
     ) -> dict[str, float]:
         """``learn`` for streams whose phases rest on the torch device: each stream's contrast,
-        eligibility trace and the mean step never come to the host; the critic and the
-        dopamine do (a value per stream and a row of the critic's neurons)."""
+        eligibility trace and the mean step never come to the host; a value per stream does, and
+        the dopamine goes back. The critic rests with them from the size its memories do
+        (``_CriticOnDevice``), and otherwise a row of its neurons comes to the host."""
         cfg = self.config
         torch = kernel.torch
         span = 2.0 * self.learner.config.beta
@@ -896,13 +977,9 @@ class ActorCritic:
             self.trace = self.trace_bias = None
         trace, trace_bias = self._trace_device
         trace_bias = decay * trace_bias + neurons / span
-        if self.trace_critic is None or self.trace_critic.shape[0] != batch:
-            self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
         free = self._free
         assert free is not None
-        self.trace_critic *= cfg.gamma * cfg.lam
-        self.trace_critic[:, :-1] += free.part(self.critic_index)
-        self.trace_critic[:, -1] += 1.0
+        self._critic_eligibility(free, batch)
         self._memory_eligibility(batch, decay)
         self._hearing_eligibility(batch, decay)
         next_state = self._next_state(next_drive, done, warm)
@@ -920,7 +997,7 @@ class ActorCritic:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         delta = np.where(observed, delta / observed.mean(), 0.0)
         self.updates += 1
-        critic_weights, critic_bias = self._critic_candidate(delta)
+        critic = self._critic_candidate(delta)
         d = torch.as_tensor(np.asarray(delta, dtype=float), dtype=trace.dtype, device=trace.device)
         proposal = self._memory_proposal(delta)  # checked before anything is installed
         next_brain = self.learner.brain
@@ -950,7 +1027,7 @@ class ActorCritic:
         trace.mul_(decay)
         for first, stop, part in parts() if kept is None else kept:
             trace[first:stop] += part
-        self.w_critic, self.b_critic = critic_weights, critic_bias
+        self._accept_critic(critic)
         if proposal is not None:
             self.memory.accept(proposal)
             report["address_reward_step"] = float(proposal[3])
@@ -959,7 +1036,7 @@ class ActorCritic:
             ended = torch.as_tensor(np.flatnonzero(done), device=trace.device)
             trace[ended] = 0.0
             trace_bias[ended] = 0.0
-            self.trace_critic[done] = 0.0
+            self._forget_critic(done)
             if self.trace_memory is not None:
                 self.trace_memory = _forgotten(self.trace_memory, done)
             if self.trace_hearing is not None:
@@ -1124,12 +1201,17 @@ class ActorCritic:
         ended = None if done is None else np.asarray(done)
         if ended is not None and (ended.ndim != 1 or ended.dtype != np.bool_):
             raise ValueError("done must be a boolean vector")
+        critic = self._critic_device
         present = [
             name
-            for name in ("trace", "trace_bias", "trace_critic", "trace_memory", "trace_hearing")
+            for name in ("trace", "trace_bias", "trace_memory", "trace_hearing")
             if getattr(self, name) is not None
         ]
+        if critic is None and self.trace_critic is not None:
+            present.append("trace_critic")
         rows = {len(getattr(self, name)) for name in present}
+        if critic is not None and critic.trace is not None:
+            rows.add(len(critic.trace))
         if self._trace_device is not None:
             rows.add(int(self._trace_device[0].shape[0]))
         if self._trace_mlx is not None:
@@ -1149,6 +1231,8 @@ class ActorCritic:
                 gone = np.flatnonzero(ended)
                 trace[gone] = 0.0
                 trace_bias[gone] = 0.0
+        if critic is not None:
+            critic.fade(decay, ended)
         for name in present:
             value = getattr(self, name)
             value *= decay
@@ -1163,7 +1247,11 @@ class ActorCritic:
         self._pending = None
         self._pending_memory = None
         self._pending_hearing = None
-        self.trace = self.trace_bias = self.trace_critic = None
+        self.trace = self.trace_bias = None
+        if self._critic_device is not None:
+            self._critic_device.trace = None
+        else:
+            self.trace_critic = None
         self.trace_memory = None
         self.trace_hearing = None
         self._trace_device = None
@@ -1171,7 +1259,7 @@ class ActorCritic:
         self.salience = None
 
     def parameters(self) -> int:
-        return self.learner.parameters() + len(self.w_critic) + 1 + (self.maturity is not None)
+        return self.learner.parameters() + len(self.critic_index) + 1 + (self.maturity is not None)
 
     def to_dict(self) -> dict[str, Any]:
         return {

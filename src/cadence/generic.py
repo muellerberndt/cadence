@@ -3402,6 +3402,7 @@ class Brain:
             for held in (self.recall, self.working_memory, self.hippocampus):
                 if held is not None:
                     held.reside(kernel)
+            self.basal_ganglia.reside(kernel)
             if self.recall is not None:
                 self.recall.place(self.brain._mlx)
             # every memory in order; the recall memory's address, before the settle, reads the
@@ -3410,8 +3411,8 @@ class Brain:
         return cast(np.ndarray, drive)
 
     def _memories_kernel(self, rows: int) -> Any:
-        """The kernel whose device holds this brain's memories and its moments' drives at ``rows``
-        streams, where each of them has a device path and the moment's size pays for it
+        """The kernel whose device holds this brain's memories, its critic and its moments' drives
+        at ``rows`` streams, where each of them has a device path and the moment's size pays for it
         (``_memory_on_device``); None otherwise: several heads, a window, the read of the command
         or of when, the gains, tokens, a separator, a surprise gate or an episodic vote keep the
         whole moment's memory on the host."""
