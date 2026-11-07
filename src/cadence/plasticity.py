@@ -36,6 +36,7 @@ import numpy as np
 from .brain import _FUSED as _FUSED_TRACE
 from .brain import Brain, BrainState, Nudge, _host_copy, _resident
 from .learning import Learner
+from .resident import _forgotten
 
 __all__ = [
     "ActorCritic",
@@ -493,8 +494,7 @@ class ActorCritic:
         if trace is None or self.memory is None:
             return None
         if not isinstance(trace, np.ndarray):  # the memory's on the device
-            d = trace.new_tensor(np.asarray(delta, dtype=float))
-            return self.memory.propose((d[:, None, None] * trace).mean(dim=0))
+            return self.memory.propose(self.memory._device.weighted(trace, delta))
         weighted = delta.reshape(-1, *([1] * (trace.ndim - 1))) * trace
         return self.memory.propose(weighted.mean(axis=0))
 
@@ -750,7 +750,7 @@ class ActorCritic:
             self.trace_bias[done] = 0.0
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
-                self.trace_memory[done] = 0.0
+                self.trace_memory = _forgotten(self.trace_memory, done)
             if self.trace_hearing is not None:
                 self.trace_hearing[done] = 0.0
         self._free = next_state
@@ -941,7 +941,7 @@ class ActorCritic:
             trace_bias = trace_bias * keep
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
-                self.trace_memory[done] = 0.0
+                self.trace_memory = _forgotten(self.trace_memory, done)
             if self.trace_hearing is not None:
                 self.trace_hearing[done] = 0.0
         self._trace_device = (trace, trace_bias)
@@ -1013,7 +1013,7 @@ class ActorCritic:
         free = self._free
         assert free is not None
         self.trace_critic *= cfg.gamma * cfg.lam
-        self.trace_critic[:, :-1] += free.activation[:, self.critic_index]
+        self.trace_critic[:, :-1] += free.part(self.critic_index)
         self.trace_critic[:, -1] += 1.0
         self._memory_eligibility(batch, decay)
         self._hearing_eligibility(batch, decay)
@@ -1064,13 +1064,13 @@ class ActorCritic:
             self.trace_bias[done] = 0.0
             self.trace_critic[done] = 0.0
             if self.trace_memory is not None:
-                self.trace_memory[done] = 0.0
+                self.trace_memory = _forgotten(self.trace_memory, done)
             if self.trace_hearing is not None:
                 self.trace_hearing[done] = 0.0
         self._trace_mlx = (blocks, factor)
         self._free = next_state
         self._free_brain = next_brain
-        self._drive = next_drive.copy()
+        self._drive = _held_drive(next_drive)
         self._pending = None
         self._pending_memory = None
         self._pending_hearing = None
@@ -1127,7 +1127,7 @@ class ActorCritic:
             value = getattr(self, name)
             value *= decay
             if ended is not None and ended.any():
-                value[ended] = 0.0
+                setattr(self, name, _forgotten(value, ended))
 
     def reset(self) -> None:
         """Clear stream state and eligibility; keep learned parameters."""

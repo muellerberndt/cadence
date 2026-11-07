@@ -1,7 +1,7 @@
-"""A torch brain's memories on its device (cadence#274): the recall memory, the working trace and
-the store rest there, the moment's drive with them, and a life reads as on the float64 host path
-within rounding, moment by moment. ``CADENCE_TORCH_MEMORY=1`` places them at any size, on a CPU
-device here and on CUDA where there is one."""
+"""A brain's memories on its device (cadence#274): the recall memory, the working trace and the
+store rest there, the moment's drive with them, and a life reads as on the float64 host path within
+rounding, moment by moment. ``CADENCE_TORCH_MEMORY=1`` and ``CADENCE_MLX_MEMORY=1`` place them at any
+size, on a torch CPU device, on CUDA where there is one and on MLX where it is installed."""
 
 from __future__ import annotations
 
@@ -11,17 +11,31 @@ import numpy as np
 import pytest
 
 import cadence as cd
-from cadence import stream
+from cadence import resident as stream
 
 torch = pytest.importorskip("torch")
 
-DEVICES = ["cpu", *(["cuda"] if torch.cuda.is_available() else [])]
+DEVICES = [
+    "cpu", *(["cuda"] if torch.cuda.is_available() else []),
+    *(["mlx"] if "mlx" in cd.available_backends() else []),
+]
 TIGHT = 1e-9
+# float32 on MLX: a read within rounding, a synapse's normalized step within the backend's bound
+ROUNDED = 3e-2
+
+
+def within(device: str) -> float:
+    return ROUNDED if device == "mlx" else TIGHT
 
 
 @pytest.fixture(autouse=True)
 def _placed(monkeypatch):
     monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    monkeypatch.setenv("CADENCE_MLX_MEMORY", "1")
+
+
+def on_device(device: str) -> dict[str, str]:
+    return {"backend": "mlx"} if device == "mlx" else {"backend": "torch", "device": device}
 
 
 def pair(
@@ -30,7 +44,7 @@ def pair(
     options.setdefault("modules", (16,))
     return (
         cd.Brain.compose(inputs, actions, seed=seed, backend="cpu", **options),
-        cd.Brain.compose(inputs, actions, seed=seed, backend="torch", device=device, **options),
+        cd.Brain.compose(inputs, actions, seed=seed, **on_device(device), **options),
     )
 
 
@@ -91,11 +105,13 @@ def test_a_life_of_acts_and_lessons_reads_as_on_the_host(device, rows):
             assert resident(placed)
             assert set(reports[0]) == set(reports[1])
             for name, value in reports[0].items():
-                assert reports[1][name] == pytest.approx(value, rel=1e-9, abs=1e-9), name
+                assert reports[1][name] == pytest.approx(
+                    value, rel=within(device) or 1e-9, abs=within(device)
+                ), name
         answer = host.act(x, greedy=True)
         np.testing.assert_array_equal(placed.act(x, greedy=True), answer)
     assert resident(placed)
-    same(host, placed)
+    same(host, placed, within(device))
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -110,11 +126,13 @@ def test_a_life_of_rewards_with_ended_streams_reads_as_on_the_host(device):
             reward, done = rng.random(3), rng.random(3) < 0.2
             first = host.step(x, reward=reward, done=done), placed.step(x, reward=reward, done=done)
             for name, value in host.last_learning.items():
-                assert placed.last_learning[name] == pytest.approx(value, rel=1e-9, abs=1e-9), name
+                assert placed.last_learning[name] == pytest.approx(
+                    value, rel=within(device), abs=within(device)
+                ), name
         np.testing.assert_array_equal(*first)
     assert resident(placed)
     assert not isinstance(placed.basal_ganglia.trace_memory, np.ndarray)
-    same(host, placed)
+    same(host, placed, within(device))
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -131,8 +149,10 @@ def test_live_and_wait_read_as_on_the_host(device):
                                     "done": np.array([t % 13 == 0])}
         np.testing.assert_array_equal(host.live(x, **kwargs), placed.live(x, **kwargs))
         assert host.last_arousal["mode"] == placed.last_arousal["mode"]
-        assert placed.last_arousal["level"] == pytest.approx(host.last_arousal["level"], abs=1e-9)
-    same(host, placed, atol=1e-8)
+        assert placed.last_arousal["level"] == pytest.approx(
+            host.last_arousal["level"], abs=within(device)
+        )
+    same(host, placed, atol=within(device) * 10)
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -169,7 +189,7 @@ def test_a_write_on_the_host_reaches_the_next_read(device):
         brain.recall.keys = brain.recall.keys * 0.5  # an expert's edit
     x = observations(rng, 2)
     np.testing.assert_array_equal(host.act(x, greedy=True), placed.act(x, greedy=True))
-    same(host, placed)
+    same(host, placed, within(device))
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -181,16 +201,17 @@ def test_a_checkpoint_continues_within_rounding(device, tmp_path):
         placed.step(observations(rng, 2), reward=rng.random(2))
     path = placed.save(tmp_path / "placed.npz", compressed=False)
     on_cpu = cd.Brain.load(path, backend="cpu")
-    again = cd.Brain.load(path, backend="torch", device=device)
+    again = cd.Brain.load(path, **on_device(device))
     assert not resident(again)
     for _ in range(6):
         x, reward = observations(rng, 2), rng.random(2)
         np.testing.assert_array_equal(on_cpu.step(x, reward=reward), again.step(x, reward=reward))
     assert resident(again)
-    same(on_cpu, again)
+    same(on_cpu, again, within(device))
     np.testing.assert_allclose(
         on_cpu.recall.full_eligibility(on_cpu.basal_ganglia.trace_memory),
-        again.recall.full_eligibility(again.basal_ganglia.trace_memory), rtol=0, atol=TIGHT,
+        again.recall.full_eligibility(again.basal_ganglia.trace_memory), rtol=0,
+        atol=within(device),
     )
 
 
@@ -212,8 +233,8 @@ def test_a_deep_copy_and_an_imagined_branch_keep_the_life(device):
     actions = [brain.step(x, reward=reward) for brain in (host, placed, twin)]
     np.testing.assert_array_equal(actions[0], actions[1])
     np.testing.assert_array_equal(actions[0], actions[2])
-    same(host, placed)
-    same(host, twin)
+    same(host, placed, within(device))
+    same(host, twin, within(device))
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -233,6 +254,7 @@ def test_a_refused_outcome_leaves_the_memories_as_they_were(device, monkeypatch)
         raise ValueError("refused")
 
     monkeypatch.setattr(placed.learner, "_apply_device", refused)
+    monkeypatch.setattr(placed.learner, "apply", refused)
     with pytest.raises(ValueError, match="refused"):
         placed.learn(rng.random(2), np.zeros(2, dtype=bool), observations(rng, 2))
     assert agent.trace_memory is trace and agent._pending_memory is pending

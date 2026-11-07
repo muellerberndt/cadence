@@ -342,6 +342,15 @@ def _rows(state: BrainState, rows: np.ndarray) -> BrainState:
     )
 
 
+def _taken_rows(drive: Any, taught: np.ndarray) -> Any:
+    """The rows of a drive a boolean mask marks; an MLX array takes their indices."""
+    if type(drive).__module__ == "mlx.core":
+        import mlx.core as mx
+
+        return drive[mx.array(np.flatnonzero(taught).astype(np.int32))]
+    return drive[taught]
+
+
 def _restrict(state: BrainState, taught: np.ndarray | None) -> BrainState:
     """``state`` restricted to the taught rows, or itself when every row is taught."""
     return state if taught is None or bool(taught.all()) else _rows(state, taught)
@@ -1467,7 +1476,8 @@ class Learner:
         """The rows the phases run on: every row, or the disagreeing ones."""
         if taught is None or bool(taught.all()):
             return drive, target, weight
-        return drive[taught], target[taught], None if weight is None else np.asarray(weight)[taught]
+        rows = _taken_rows(drive, taught)
+        return rows, target[taught], None if weight is None else np.asarray(weight)[taught]
 
     def _untaught(self, taught: np.ndarray) -> tuple[LearnedState, dict[str, float]]:
         """The lesson of a batch whose caller-read answer matches every label: no phase runs,

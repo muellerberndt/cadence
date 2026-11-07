@@ -82,8 +82,8 @@ _FUSED = (
 
 
 def _resident(array: Any) -> bool:
-    """Whether an array rests on a torch device, not on the host."""
-    return hasattr(array, "detach")
+    """Whether an array rests on a device, not on the host: a torch tensor or an MLX array."""
+    return hasattr(array, "detach") or type(array).__module__ == "mlx.core"
 
 
 def _rows_finite(x: np.ndarray) -> bool:
@@ -543,6 +543,12 @@ class BrainState:
         handle = self.__dict__.get("device")
         if handle is None or self.__dict__.get("activation") is not None or "s" not in handle:
             return np.asarray(self.activation[:, index])
+        if isinstance(handle, _MlxState):
+            held = self.__dict__.setdefault("_parts", {})
+            part = held.get(id(index))
+            if part is None:
+                part = held[id(index)] = handle["plan"].part(handle, index)
+            return np.asarray(part if part is not False else self.activation[:, index])
         s = handle["s"]
         if not _resident(s):
             return np.asarray(self.activation[:, index])
@@ -583,8 +589,10 @@ def _copy_state(state: BrainState | None) -> BrainState | None:
     if state is None:
         return None
     handle = state.__dict__.get("device")
-    if handle is not None and "s" in handle and _resident(handle["s"]):
-        return state  # no solve writes a state on a torch device
+    if isinstance(handle, _MlxState) or (
+        handle is not None and "s" in handle and _resident(handle["s"])
+    ):
+        return state  # no solve writes a state on a device
     copied = BrainState(
         state.v.copy(),
         state.activation.copy(),
@@ -2545,6 +2553,8 @@ class _SmallGroups:
 def _host_copy(x: Any) -> np.ndarray:
     """A float64 host array that shares no memory with the tensor (a CPU tensor's ``numpy``
     would: the workspace buffers are overwritten by the next sweep)."""
+    if type(x).__module__ == "mlx.core":
+        return np.array(x, dtype=np.float64)
     return np.array(x.detach().cpu().numpy(), dtype=np.float64, copy=True)
 
 
@@ -4130,6 +4140,14 @@ class _MlxPlan:
                 out[:, n0:n1] = np.array(sources[r], copy=False)
         return out
 
+    def part(self, handle: _MlxState, index: np.ndarray) -> np.ndarray | bool:
+        """The activation of settling neurons on the host in float64, read from the array the
+        launch made; False where one of them does not settle."""
+        places = self.where[index]
+        if (places < 0).any():
+            return False
+        return np.asarray(np.array(handle["sm"], copy=False)[:, places], dtype=np.float64)
+
     def _change(self, handle: _MlxState) -> np.ndarray:
         """The settle's total movement per row: the launches' sums, and with a first sweep the
         movement of the source ranges onto their drive."""
@@ -4199,6 +4217,25 @@ class _MlxKernel:
             mx.array(np.arange(connectome.n)[member]) for member in apical.members
         ]
         self.edge_index = mx.array(layout.edge_index)
+
+    def observed(self, x: np.ndarray) -> Any:
+        """Observations on the device, uploaded once however many of a moment's memories read the
+        same array."""
+        root = self.root
+        held = root.__dict__.get("_observed")
+        if held is None or held[0] is not x:
+            held = root.__dict__["_observed"] = (
+                x, self.mx.array(np.asarray(x, dtype=np.float32))
+            )
+        return held[1]
+
+    def index_of(self, index: np.ndarray) -> Any:
+        """Columns of neurons: a slice where they are a range, else the host's indices, which the
+        array namespace places (``cadence.resident``)."""
+        index = np.asarray(index)
+        if len(index) and (np.diff(index) == 1).all():
+            return slice(int(index[0]), int(index[-1]) + 1)
+        return index
 
     def _take(self, weights: np.ndarray, bias: np.ndarray) -> None:
         """The bias and the weight blocks on the device, made from the host ``weights`` and
@@ -4383,7 +4420,7 @@ class _MlxKernel:
             v, a = handle["v"], handle["a"]
         else:
             v, a = to(v0), to(a0)
-        d, k = to(drive), to(keep)
+        d, k = drive if _resident(drive) else to(drive), to(keep)
         batch = v.shape[0]
         masked = bool((keep != 1.0).any())
         target = mask = weight = anchor = anchor_gain = None
@@ -4879,25 +4916,21 @@ class _MlxKernel:
         assert plan is not None
         held = start.get("drive")
         rows = len(drive)
-        same = bool(start.get("relaxed")) and np.array_equal(held, drive)
-        bias = self.bias_host
+        resident = _resident(drive)
+        same = bool(start.get("relaxed")) and (
+            held is drive if resident or _resident(held) else np.array_equal(held, drive)
+        )
         if same:
             fixed, outer = start.get("fixed"), start.get("outer")
             if start.get("version") != self.version:  # the sources stand, under new parameters
-                settling = np.asarray(drive[:, plan.columns], dtype=np.float32) + bias[plan.columns]
+                settling = self._standing(drive)
                 outer = self._products(start["sources"], rows)
-                fixed = mx.array(settling) if outer is None else mx.array(settling) + outer
+                fixed = settling if outer is None else settling + outer
             return {"first": fixed, "fixed": fixed, "ramp": 1, "needed": 1, "made": [],
                     "sources": start["sources"], "goals": start["goals"], "gaps": None,
                     "outer": outer, "before": None, "path": None, "peaks": None}
-        settling = np.asarray(drive[:, plan.columns], dtype=np.float32) + bias[plan.columns]
-        standing = mx.array(settling)
-        goals = {
-            r: np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32)
-            + bias[slice(*plan.spans[r])]
-            for r in plan.sources
-        }
-        gaps = {r: start["potentials"][r] - goals[r] for r in plan.sources}
+        standing = self._standing(drive)
+        goals, gaps = self._goals(start, drive)
         kept = None
         if not (start.get("rest") and plan.at_rest == 0.0):
             kept = start.get("outer") if start.get("version") == self.version else None
@@ -4919,15 +4952,52 @@ class _MlxKernel:
                 "sources": sources, "goals": goals, "gaps": gaps, "outer": outer,
                 "before": start["sources"], "path": None, "peaks": None}
 
+    def _standing(self, drive: Any) -> Any:
+        """The settling neurons' standing input under ``drive``, ``(rows, m)``."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        bias = self.bias_host[plan.columns]
+        if _resident(drive):
+            parts = [drive[:, slice(*plan.spans[r])] for r in plan.settling]
+            whole = parts[0] if len(parts) == 1 else mx.concatenate(parts, axis=1)
+            return whole + mx.array(bias)
+        return mx.array(np.asarray(drive[:, plan.columns], dtype=np.float32) + bias)
+
+    def _goals(self, start: _MlxState, drive: Any) -> tuple[dict[int, Any], dict[int, Any]]:
+        """Each source range's potential under ``drive`` and its gap from ``start``: the host's
+        arrays under a host's drive, the device's under a resident one, made with its launch."""
+        mx, plan = self.mx, self.plan
+        assert plan is not None
+        bias = self.bias_host
+        if _resident(drive):
+            goals = {
+                r: drive[:, slice(*plan.spans[r])] + mx.array(bias[slice(*plan.spans[r])])
+                for r in plan.sources
+            }
+            gaps = {r: mx.array(start["potentials"][r]) - goals[r] for r in plan.sources}
+            return goals, gaps
+        goals = {
+            r: np.asarray(drive[:, slice(*plan.spans[r])], dtype=np.float32)
+            + bias[slice(*plan.spans[r])]
+            for r in plan.sources
+        }
+        potentials = start["potentials"]
+        return goals, {r: np.array(potentials[r], copy=False) - goals[r] for r in plan.sources}
+
     def _ramped(
-        self, start: _MlxState, goals: dict[int, np.ndarray], gaps: dict[int, np.ndarray],
+        self, start: _MlxState, goals: dict[int, Any], gaps: dict[int, Any],
         kept: Any, standing: Any, sweeps: int,
     ) -> dict[str, Any]:
         """``_driven`` under another step than ``dt = 1``: the source ranges still move, so every
         sweep of the ramp reads its own products, made in parts of a bounded size."""
         mx, plan = self.mx, self.plan
         assert plan is not None
-        worst = max((float(np.abs(g).max(initial=0.0)) for g in gaps.values()), default=0.0)
+        if any(_resident(g) for g in gaps.values()):  # how far the sources have to go decides
+            mx.eval(list(gaps.values()))
+        worst = max(
+            (float(np.abs(np.array(g, copy=False)).max(initial=0.0)) for g in gaps.values()),
+            default=0.0,
+        )
         needed = plan.relaxing(worst)
         ramp = max(1, min(needed, sweeps))
         powers = plan.rho ** np.arange(1, ramp + 1, dtype=np.float64)
@@ -5038,7 +5108,7 @@ class _MlxKernel:
         if gaps is not None:
             share = plan.rho**taken
             potentials = goals if share == 0.0 else {
-                r: goals[r] + np.float32(share) * gaps[r] for r in plan.sources
+                r: goals[r] + float(share) * gaps[r] for r in plan.sources
             }
             if taken < driven["ramp"]:  # a stop inside the ramp: the sources where it left them
                 sources = {r: plan.activate(mx.array(p)) for r, p in potentials.items()}
@@ -5048,7 +5118,8 @@ class _MlxKernel:
         return _MlxState(
             kernel="mlx", holder=self.root, plan=plan, vm=out[0], sm=out[1], sources=sources,
             potentials=potentials, goals=goals, a_host=start["a_host"], moved=moved,
-            source_moves=moves, drive=np.array(drive, copy=True), version=self.version,
+            source_moves=moves, drive=drive if _resident(drive) else np.array(drive, copy=True),
+            version=self.version,
             fixed=driven["fixed"], outer=outer, relaxed=taken >= driven["needed"],
             checked=(drive, nudge, error), discarded_steps=discarded,
             gains=out[5] if nudge is None and plan.pools else None,
@@ -5178,7 +5249,10 @@ class _MlxKernel:
         if (
             isinstance(handle, _MlxState) and handle.get("holder") is self.root
             and handle.get("gains") is not None and handle.get("version") == self.version
-            and np.array_equal(handle.get("drive"), drive)
+            and (
+                handle.get("drive") is drive if _resident(drive)
+                else np.array_equal(handle.get("drive"), drive)
+            )
         ):
             return np.array(handle["gains"], dtype=np.float64)
         on_device = handle is not None and handle.get("holder") is self.root
@@ -5202,5 +5276,7 @@ class _MlxKernel:
             return np.zeros(int(driven["fixed"].shape[0]))
         worst = np.zeros(int(next(iter(gaps.values())).shape[0]))
         for gap in gaps.values():
-            worst = np.maximum(worst, np.abs(gap).max(axis=1, initial=0.0))
+            worst = np.maximum(
+                worst, np.abs(np.array(gap, copy=False)).max(axis=1, initial=0.0)
+            )
         return np.asarray(plan.rho**taken * worst)

@@ -85,6 +85,7 @@ from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
+from .resident import _memory_on_device, arrays_of
 from .stream import (
     Efference,
     FastSynapses,
@@ -93,7 +94,6 @@ from .stream import (
     PatternSeparator,
     Recall,
     Trace,
-    _memory_on_device,
 )
 
 __all__ = ["Brain"]
@@ -3410,12 +3410,12 @@ class Brain:
         return cast(np.ndarray, drive)
 
     def _memories_kernel(self, rows: int) -> Any:
-        """The torch kernel whose device holds this brain's memories and its moments' drives at
-        ``rows`` streams, where each of them has a device path and the moment's size pays for it
+        """The kernel whose device holds this brain's memories and its moments' drives at ``rows``
+        streams, where each of them has a device path and the moment's size pays for it
         (``_memory_on_device``); None otherwise: several heads, a window, the read of the command
         or of when, the gains, tokens, a separator, a surprise gate or an episodic vote keep the
         whole moment's memory on the host."""
-        kernel = self.brain._torch
+        kernel = self.brain._torch if self.brain._torch is not None else self.brain._mlx
         if kernel is None:
             return None
         recall, store = self.recall, self.hippocampus
@@ -3430,12 +3430,11 @@ class Brain:
         return kernel
 
     def _resident_drive(self, kernel: Any, x: np.ndarray, code: np.ndarray) -> Any:
-        """The sensory part of a moment's drive on the torch device, where the memories add theirs
-        to it and the settle reads it: nothing of it comes to the host."""
-        drive = kernel.torch.zeros(
-            (len(x), self.connectome.n), dtype=kernel.param_dtype, device=kernel.device
-        )
-        drive[:, kernel.index_of(self.sensory_index)] = kernel.observed(
+        """The sensory part of a moment's drive on the device, where the memories add theirs to it
+        and the settle reads it: nothing of it comes to the host."""
+        xp = arrays_of(kernel)
+        drive = xp.zeros((len(x), self.connectome.n))
+        drive[:, xp.columns(kernel.index_of(self.sensory_index))] = kernel.observed(
             self._sensed(x, code)
         ) * self.brain.neuron_model.stimulus_amplitude
         return drive

@@ -27,7 +27,7 @@ from dataclasses import dataclass, field, fields
 from math import gcd
 from threading import Lock
 from types import MappingProxyType
-from typing import Any, ClassVar, NamedTuple, cast
+from typing import Any, ClassVar, cast
 
 import numpy as np
 
@@ -36,6 +36,19 @@ from .brain import _MLX_MAP_ENTRIES, BrainState, _MlxMatrix, _resident
 from .brain import Brain as NeuralGraph
 from .connectome import Connectome
 from .learning import LearnedState
+from .resident import (
+    _host_array,
+    _Moment,
+    _on_host,
+    _RecallOnDevice,
+    _set_columns,
+    _set_silent,
+    _StoreOnDevice,
+    _stream_rows,
+    _TraceOnDevice,
+    arrays_of,
+    route_contrast,
+)
 
 __all__ = ["Hearing", "Trace", "FastSynapses", "History", "Recall", "columns"]
 
@@ -111,39 +124,6 @@ def _einsum(spec: str, a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return np.einsum(spec, a, b) if parts is None else np.concatenate(parts)
 
 
-# The memories of a moment of ``streams * width * (width + _RESIDENT_ROW)`` from this many rest on
-# CUDA: below it each operation's launch costs more than the host's arithmetic (docs/backends.md,
-# read on an A10G from 12 to 1,024 inputs and 1 to 256 streams).
-_RESIDENT_WORK = 3_000_000
-_RESIDENT_ROW = 1024
-
-
-def _memory_on_device(kernel: Any, streams: int, width: int) -> bool:
-    """Whether a torch brain's memories rest on its device at ``streams`` of keys of ``width``:
-    on CUDA from ``_RESIDENT_WORK``. ``CADENCE_TORCH_MEMORY=1`` places them at any size on any
-    device but MPS (float32 alone), and ``=0`` keeps them on the host."""
-    choice = os.environ.get("CADENCE_TORCH_MEMORY", "")
-    if choice == "0" or kernel.device.type == "mps":
-        return False
-    if choice == "1":
-        return True
-    return (
-        kernel.device.type == "cuda"
-        and streams * width * (width + _RESIDENT_ROW) >= _RESIDENT_WORK
-    )
-
-
-def _host_array(tensor: Any) -> np.ndarray:
-    """A host copy of a tensor, whichever its device."""
-    return np.array(tensor.detach().cpu().numpy())
-
-
-def _on_host(drive: Any) -> Any:
-    """A drive a memory without a device path reads and writes: the moment's continues on the
-    host from it."""
-    return _host_array(drive) if _resident(drive) else drive
-
-
 def _compiled_terms() -> bool:
     """Whether the compiled passes of ``cadence.fused`` are in use (the same bits either way)."""
     try:
@@ -151,26 +131,6 @@ def _compiled_terms() -> bool:
     except ImportError:  # pragma: no cover
         return False
     return compiled()
-
-
-def _stream_rows(rows: np.ndarray, batch: int) -> np.ndarray:
-    """Validate stream indices or a boolean mask before changing any stream state."""
-    selected = np.asarray(rows)
-    if (
-        selected.ndim != 1
-        or (selected.size and selected.dtype.kind not in "biu")
-        or (selected.dtype.kind == "b" and selected.shape != (batch,))
-        or (selected.dtype.kind == "u" and (selected >= batch).any())
-    ):
-        raise ValueError("rows must be stream indices or a boolean mask matching the batch")
-    if not selected.size and selected.dtype.kind != "b":
-        return np.zeros(0, dtype=np.int64)
-    try:
-        return np.asarray(np.arange(batch, dtype=np.int64)[selected], dtype=np.int64)
-    except IndexError as exc:
-        raise ValueError(
-            "rows must be stream indices or a boolean mask matching the batch"
-        ) from exc
 
 
 def columns(index: np.ndarray) -> slice | np.ndarray:
@@ -257,7 +217,7 @@ class Trace:
     cold: np.ndarray = field(init=False)
 
     def __post_init__(self) -> None:
-        self._device: _TraceOnDevice | None = None  # what rests on a torch device (``reside``)
+        self._device: _TraceOnDevice | None = None  # what rests on a device (``reside``)
         if not 0 <= self.decay < 1:
             raise ValueError("decay lies in [0, 1)")
         if not np.isfinite(self.amplitude):
@@ -282,8 +242,8 @@ class Trace:
         return self.__dict__
 
     def reside(self, kernel: Any) -> None:
-        """``trace`` and ``last`` on the device of a torch brain's ``kernel``, read and written
-        there each moment."""
+        """``trace`` and ``last`` on the device of a brain's ``kernel``, read and written there
+        each moment."""
         if type(self) is not Trace or kernel is None:
             self.leave_device()
             return
@@ -328,11 +288,12 @@ class Trace:
         if self._device is not None and _resident(drive):
             return cast(np.ndarray, self._device.stimulate(drive))
         if _resident(drive):  # a resident drive reads what the host holds
-            resident: Any = drive
-            resident[:, self._glow_columns] = (
-                resident.new_tensor(self.amplitude * self.hearing * self.trace)
-                if len(self.trace) == len(drive) else 0.0
-            )
+            if len(self.trace) == len(drive):
+                _set_columns(
+                    drive, self._glow_columns, self.amplitude * self.hearing * self.trace
+                )
+            else:
+                _set_silent(drive, self._glow_columns)
             return drive
         out = np.array(drive, dtype=float)
         out[:, self._glow_columns] = (
@@ -407,60 +368,6 @@ class Trace:
     def arrays(self) -> dict[str, np.ndarray]:
         """The arrays a checkpoint keeps."""
         return {name: getattr(self, name) for name in ("trace", "last", "cold")}
-
-
-class _TraceOnDevice:
-    """A working trace's ``trace`` and ``last`` on the torch device of its brain (``Trace``'s
-    equations); what no device path reads brings them back (``Trace.__getattr__``)."""
-
-    def __init__(self, owner: Trace, kernel: Any) -> None:
-        self.owner, self.kernel = owner, kernel
-        torch = kernel.torch
-        self.torch, self.device, self.dtype = torch, kernel.device, kernel.param_dtype
-        held = owner.__dict__
-        self.trace = torch.from_numpy(np.array(held.pop("trace"), dtype=np.float64)).to(
-            self.device, self.dtype
-        )
-        self.last = torch.from_numpy(np.array(held.pop("last"), dtype=np.float64)).to(
-            self.device, self.dtype
-        )
-        self.source = kernel.index_of(owner.hidden)
-
-    def reset(self, batch: int, rows: np.ndarray | None) -> None:
-        owner, torch = self.owner, self.torch
-        if rows is None or len(self.trace) != batch:
-            width = (batch, len(owner.hidden))
-            self.trace = torch.zeros(width, dtype=self.dtype, device=self.device)
-            self.last = torch.zeros(width, dtype=self.dtype, device=self.device)
-            owner.cold = np.ones(batch, dtype=bool)
-            return
-        keep = np.ones(batch)
-        keep[rows] = 0.0
-        kept = torch.from_numpy(keep).to(self.device, self.dtype)[:, None]
-        self.trace = self.trace * kept
-        self.last = self.last * kept
-        owner.cold[rows] = True
-
-    def stimulate(self, drive: Any) -> Any:
-        owner = self.owner
-        drive[:, owner._glow_columns] = (
-            owner.amplitude * owner.hearing * self.trace if len(self.trace) == len(drive) else 0.0
-        )
-        return drive
-
-    def update(self, state: BrainState) -> None:
-        owner = self.owner
-        handle = getattr(state, "device", None)
-        s = handle.get("s") if isinstance(handle, dict) else None
-        if s is None or not _resident(s):
-            s = self.torch.from_numpy(np.atleast_2d(np.asarray(state.activation, dtype=np.float64)))
-            s = s.to(self.device, self.dtype)
-        h = s[:, self.source].to(self.dtype)
-        if len(self.trace) != len(h):
-            self.reset(len(h), None)
-        self.trace = owner.decay * self.trace + (1.0 - owner.decay) * h
-        self.last = h
-        owner.cold[:] = False
 
 
 @dataclass
@@ -566,11 +473,10 @@ class History:
         if self.hearing is not None:
             amplitude = amplitude * np.repeat(self.hearing, self.width)
         if _resident(drive):  # a resident drive reads what the host holds
-            resident: Any = drive
-            resident[:, self._glow_columns] = (
-                resident.new_tensor(amplitude * self.trace)
-                if len(self.trace) == len(drive) else 0.0
-            )
+            if len(self.trace) == len(drive):
+                _set_columns(drive, self._glow_columns, amplitude * self.trace)
+            else:
+                _set_silent(drive, self._glow_columns)
             return drive
         out = np.array(drive, dtype=float)
         out[:, self._glow_columns] = amplitude * self.trace if len(self.trace) == len(out) else 0.0
@@ -613,18 +519,6 @@ class History:
     def arrays(self) -> dict[str, np.ndarray]:
         """The arrays a checkpoint keeps."""
         return {"trace": self.trace}
-
-
-class _Moment(NamedTuple):
-    """The present moment of every stream as the recall memory addresses it."""
-
-    event: np.ndarray  # the observations as given, to recognise the moment at its write
-    cortex: np.ndarray  # the settled association activity of the moment before
-    address: np.ndarray  # the address q, computed before the settle
-    key: np.ndarray  # the fixed part of the address, the slot's key once it is written
-    # what the address and position maps read of the moment: the event, and with ``action``
-    # the command the stream executed at the moment before
-    inputs: np.ndarray
 
 
 # A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
@@ -785,75 +679,27 @@ class Hearing:
     def _contrast_on_device(
         self, graph: Any, movement: Any, rows: np.ndarray | None, batch: int
     ) -> np.ndarray:
-        """``_contrast`` of a movement on the torch device: the routes' synapses are read there,
-        and one number per row and route comes back."""
-        kernel = graph._torch
-        torch, model = kernel.torch, self.model
-        out = []
-        index = None if rows is None else torch.from_numpy(rows.astype(np.int64)).to(kernel.device)
-        for route in self.routes:
-            memory = route["memory"]
-            resident = getattr(memory, "_device", None)
-            if resident is not None:
-                trace = resident.trace
-            else:
-                trace = memory.trace
-                if not isinstance(trace, np.ndarray):  # a resident working trace
-                    pass
-                else:
-                    trace = torch.from_numpy(np.array(trace, dtype=np.float64)).to(
-                        kernel.device, movement.dtype
-                    )
-            if len(trace) != batch:
-                out.append(torch.zeros(len(movement), dtype=movement.dtype, device=kernel.device))
-                continue
-            held = (trace if index is None else trace[index])[:, route["start"]:route["stop"]]
-            amplitude = float(memory.amplitude)
-            v = amplitude * self.gain(route) * held
-            placed = route.get("placed")
-            if placed is None or placed[0] != kernel.device:
-                placed = route["placed"] = (
-                    kernel.device, *(
-                        torch.from_numpy(np.asarray(route[name], dtype=np.int64)).to(kernel.device)
-                        for name in ("synapses", "rows", "cols")
-                    ),
-                )
-            _, synapses, on_rows, on_cols = placed
-            w = torch.zeros((route["width"], len(self.association)), dtype=movement.dtype,
-                            device=kernel.device)
-            w[on_rows, on_cols] = (kernel.gain_pre[synapses] * kernel.scale[synapses]).to(
-                movement.dtype
-            )
-            rest = model.rest_emission
-            sig = 1.0 / (1.0 + torch.exp(-model.slope * (v - model.threshold)))
-            d = model.slope * sig * (1.0 - sig)
-            slope = torch.where(sig > rest, d / (1.0 - rest), model.leak * d / rest)
-            out.append((slope * amplitude * held * (movement @ w.T)).sum(dim=1))
-        return np.array(torch.stack(out, dim=1).detach().cpu().numpy(), dtype=np.float64)
+        """``_contrast`` of a movement on the device: the routes' synapses are read there, and one
+        number per row and route comes back."""
+        kernel = graph._torch if graph._torch is not None else graph._mlx
+        return route_contrast(
+            arrays_of(kernel), graph, self.routes, self.gain, self.model, len(self.association),
+            movement, rows, batch,
+        )
 
     def _movement_on_device(self, graph: Any, plus: Any, minus: Any) -> Any:
-        """The association's movement between two phases on the torch device where both rest, in
-        float64 as the host's copies are; None otherwise."""
-        kernel = graph._torch
+        """The association's movement between two phases on the device where both rest, in the
+        maps' floats as the host's copies are; None otherwise."""
+        kernel = graph._torch if graph._torch is not None else graph._mlx
         if kernel is None or not any(
             getattr(route["memory"], "_device", None) is not None for route in self.routes
         ):
             return None
-        for state in (plus, minus):
-            handle = state.device
-            if (
-                handle is None or "s" not in handle
-                or handle["s"].device.type != kernel.device.type
-            ):
-                return None
-        index = self.__dict__.get("_on_device")
-        if index is None or index[0] != kernel.device:
-            index = self._on_device = (
-                kernel.device,
-                kernel.torch.from_numpy(self.association.astype(np.int64)).to(kernel.device),
-            )
-        dtype = kernel.param_dtype
-        return plus.device["s"][:, index[1]].to(dtype) - minus.device["s"][:, index[1]].to(dtype)
+        xp = arrays_of(kernel)
+        if not (xp.rests_here(plus) and xp.rests_here(minus)):
+            return None
+        place = xp.neurons(self.association, columns(self.association))
+        return xp.part(plus, place) - xp.part(minus, place)
 
     def _contrast(
         self, graph: Any, movement: np.ndarray, rows: np.ndarray | None, batch: int
@@ -1334,7 +1180,7 @@ class Recall:
             )
 
     def __post_init__(self) -> None:
-        self._device: _RecallOnDevice | None = None  # what rests on a torch device (``reside``)
+        self._device: _RecallOnDevice | None = None  # what rests on a device (``reside``)
         self._actor: Any = None  # the actor that keeps the read's eligibility
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
@@ -1497,7 +1343,7 @@ class Recall:
         )
 
     def reside(self, kernel: Any) -> None:
-        """The slots, the maps and the reads on the device of a torch brain's ``kernel``. An array
+        """The slots, the maps and the reads on the device of a brain's ``kernel``. An array
         written on the host since brings the others back first."""
         if kernel is None:
             self.leave_device()
@@ -1537,9 +1383,9 @@ class Recall:
         held = self._device
         assert held is not None
         if isinstance(contrast, np.ndarray):
-            contrast = held._here(contrast)
+            contrast = held.xp.here(contrast)
         if isinstance(trace, np.ndarray):
-            trace = held._here(trace)
+            trace = held.xp.here(trace)
         if trace is None or trace.shape != contrast.shape:
             return contrast
         return decay * trace + contrast
@@ -1730,7 +1576,7 @@ class Recall:
         and once the streams changed."""
         if self._attended is None or self._head_reads is None:
             if self._device is not None and self._attended is not None:
-                return (self._device._host(self._attended),)
+                return (self._device.xp.host(self._attended),)
             return None if self._attended is None else (self._attended,)
         return self._head_reads[1]
 
@@ -1941,7 +1787,7 @@ class Recall:
         """A brain on the MLX device keeps a large address map there (``_MLX_MAP_ENTRIES``): its
         product is most of a moment's read and its step most of a lesson's address lesson. The
         slots and the smaller maps stay on the host."""
-        if kernel is None or kernel.plain:
+        if kernel is None or kernel.plain or self.__dict__.get("_device") is not None:
             return
         first = self.head_maps[0][0]
         if isinstance(first, _MlxMatrix) or first.size < _MLX_MAP_ENTRIES:
@@ -3110,756 +2956,6 @@ class Recall:
         return out
 
 
-class _RecallOnDevice:
-    """A recall memory's slots, maps and reads on the torch device of its brain.
-
-    The same equations as ``Recall``'s host methods, in the maps' floats (``param_dtype``, float64
-    wherever the device has it), for a memory without several heads, a window, the command, the
-    read of when, the gains or declared tokens (``Recall.resides``). What rests here rests only
-    here: the memory's attribute of each name in ``OWNED`` is absent while it does, and reading
-    one brings every array back to the host (``Recall.__getattr__``), so what no device path
-    takes (a checkpoint, an imagined branch, an expert's edit) runs on the host's arrays, and the
-    next moment places them here again. ``held`` and ``ended`` stay the host's, which decides
-    without a read of the device. A slot's key and value are one tensor while they are equal,
-    as they are without a window or the command.
-    """
-
-    OWNED = (
-        "keys", "values", "nexts", "previous", "told", "focus", "trace", "head_maps",
-        "position_maps", "anchor_maps", "relative_maps", "slope_maps", "grid_maps",
-    )
-    keys: Any
-    values: Any
-    nexts: Any
-    previous: Any
-    told: Any
-    focus: Any
-    trace: Any
-    head_maps: list[Any]
-    position_maps: list[Any]
-    anchor_maps: list[Any]
-    relative_maps: list[Any]
-    slope_maps: list[Any]
-    grid_maps: list[Any]
-
-    def __init__(self, recall: Recall, kernel: Any) -> None:
-        torch = kernel.torch
-        self.recall, self.kernel, self.torch = recall, kernel, torch
-        self.device, self.dtype = kernel.device, kernel.param_dtype
-        self.rooms: dict[str, tuple[Any, Any, int, int]] = {}
-        association = recall._association_columns
-        self.columns = (
-            association if isinstance(association, slice) else self._long(recall.association)
-        )
-        capacity = int(recall.capacity)
-        # every age up to the capacity, the oldest first: a stream's slots are their last ones
-        self.whole_ages = self._long(np.arange(capacity - 1, -1, -1, dtype=np.int64))
-        self.ages_ = self.whole_ages.to(self.dtype)
-        self.table = self._long(
-            recall._age_buckets() if recall.position else np.zeros(capacity, dtype=np.int64)
-        )
-        self.grid: Any = None
-        if recall.grid:
-            ages = np.arange(capacity - 1, -1, -1, dtype=np.int64)
-            starts = np.cumsum([0, *recall.grid[:-1]])
-            self.grid = self._long(np.stack([
-                start + ages % modulus
-                for start, modulus in zip(starts, recall.grid, strict=True)
-            ]))
-        self.ports: dict[str, tuple[Any, Any, Any, int]] = {}
-        for name, (synapses, rows, cols), width in (
-            ("recall", recall._head_synapses[0][0], len(recall.recall_neurons)),
-            ("next", recall._head_synapses[0][1], len(recall.next_neurons)),
-        ):
-            self.ports[name] = (self._long(synapses), self._long(rows), self._long(cols), width)
-        self.adopt()
-
-    # -- the arrays' way here and back
-
-    def _long(self, array: np.ndarray) -> Any:
-        return self.torch.from_numpy(np.array(array, dtype=np.int64)).to(self.device)
-
-    def _here(self, array: Any) -> Any:
-        return self.torch.from_numpy(np.array(array, dtype=np.float64)).to(self.device, self.dtype)
-
-    def adopt(self) -> None:
-        """Every array the memory holds comes here, and leaves the host."""
-        recall, here = self.recall, self._here
-        held = recall.__dict__
-        keys, values = held.pop("keys"), held.pop("values")
-        self.keys = here(keys)
-        self.values = self.keys if np.array_equal(keys, values) else here(values)
-        self.nexts = here(held.pop("nexts"))
-        self.previous = here(held.pop("previous"))
-        self.told = self._long(held.pop("told"))
-        self.focus = self._long(held.pop("focus"))
-        self.trace = here(held.pop("trace"))
-        for name in ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps",
-                     "grid_maps"):
-            setattr(self, name, [tuple(here(a) for a in maps) for maps in held.pop(name)])
-        attended = recall._attended
-        if attended is not None:
-            recall._attended = here(attended)
-        recall.last = None if recall.last is None else self._moment_here(recall.last)
-        self.rooms = {}
-        recall._rooms = {k: v for k, v in recall._rooms.items() if k == "held"}
-
-    def _moment_here(self, moment: _Moment) -> _Moment:
-        here = self._here
-        return _Moment(moment.event, here(moment.cortex), here(moment.address), here(moment.key),
-                       here(moment.inputs))
-
-    def _host(self, tensor: Any) -> np.ndarray:
-        return np.array(tensor.detach().cpu().numpy(), dtype=np.float64)
-
-    def give_back(self) -> None:
-        """Every array returns to the host, as the host's methods read and write them."""
-        recall, host = self.recall, self._host
-        held = recall.__dict__
-        held["keys"] = host(self.keys)
-        held["values"] = host(self.values)
-        held["nexts"] = host(self.nexts)
-        held["previous"] = host(self.previous)
-        held["told"] = np.array(self.told.cpu().numpy(), dtype=np.int64)
-        held["focus"] = np.array(self.focus.cpu().numpy(), dtype=np.int64)
-        held["trace"] = host(self.trace)
-        for name in ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps",
-                     "grid_maps"):
-            held[name] = [tuple(host(a) for a in maps) for maps in getattr(self, name)]
-        if recall._attended is not None:
-            attended = host(recall._attended)
-            attended.flags.writeable = False
-            recall._attended = attended
-        if recall.last is not None:
-            moment = recall.last
-            recall.last = _Moment(moment.event, host(moment.cortex), host(moment.address),
-                                  host(moment.key), host(moment.inputs))
-
-    # -- the slots' count
-
-    @property
-    def streams(self) -> int:
-        return int(self.keys.shape[0])
-
-    @property
-    def slots(self) -> int:
-        return int(self.keys.shape[1])
-
-    def _whole_ages(self) -> Any:
-        return self.whole_ages[self.whole_ages.shape[0] - self.slots:]
-
-    def _ages(self) -> Any:
-        return self.ages_[self.ages_.shape[0] - self.slots:]
-
-    # -- the moment's address and read
-
-    def _moment(self, x: np.ndarray) -> _Moment:
-        """``Recall._moment``: ``event`` stays the host's, to recognise the moment at its write."""
-        recall = self.recall
-        inputs = self.kernel.observed(x)
-        n = len(x)
-        c = self.previous if len(self.previous) == n else self.torch.zeros(
-            (n, len(recall.association)), dtype=self.dtype, device=self.device
-        )
-        key = recall.heard * inputs
-        w_x, w_c, b = self.head_maps[0]
-        return _Moment(x, c, key + inputs @ w_x + c @ w_c + b, key, inputs)
-
-    def _term(self, maps: _Maps, x: Any, c: Any) -> Any:
-        m_x, m_c, m = maps
-        return x @ m_x + c @ m_c + m
-
-    def _anchored(self, told: Any) -> Any:
-        """``Recall.anchored_buckets`` of the streams whose moments ``told`` holds."""
-        recall, torch = self.recall, self.torch
-        places = told[:, None] - 1 - self._whole_ages()[None, :]
-        out = self.table[places.clamp(min=0, max=self.table.shape[0] - 1)]
-        return torch.where(places < 0, recall.position_buckets, out)
-
-    def _relative(self, focus: Any) -> Any:
-        """``Recall.relative_buckets`` of the streams whose reads' focus is ``focus``."""
-        reach = self.recall.RELATIVE
-        offsets = self._whole_ages()[None, :] - focus[:, None]
-        out = offsets.clamp(min=-reach, max=reach) + reach
-        return self.torch.where(focus[:, None] < 0, 2 * reach + 1, out)
-
-    def _position(self, x: Any, c: Any, told: Any, focus: Any) -> Any:
-        """``Recall.position_term`` of head 0, at every slot."""
-        recall = self.recall
-        if not self.position_maps or not self.slots:
-            return None
-        whole = self._whole_ages()
-        term = self._term(self.position_maps[0], x, c)[:, self.table[whole]]
-        if self.anchor_maps:
-            term = term + self._term(self.anchor_maps[0], x, c).gather(1, self._anchored(told))
-        if self.relative_maps:
-            term = term + self._term(self.relative_maps[0], x, c).gather(1, self._relative(focus))
-        ages = self._ages()
-        if self.slope_maps:
-            lean = self._term(self.slope_maps[0], x, c)
-            term = term + lean[:, None] * (ages / recall.SLOPE)[None]
-        if self.grid_maps:
-            grid = self.grid[:, self.grid.shape[1] - self.slots:]
-            terms = self._term(self.grid_maps[0], x, c)[:, grid].sum(dim=1)
-            term = term + terms * (ages >= recall.position)
-        return term
-
-    def _logits(self, address: Any, keys: Any, held: Any, position: Any) -> Any:
-        """``Recall._attention``: ``held`` None where every stream holds every slot."""
-        recall, torch = self.recall, self.torch
-        logits = torch.bmm(keys, address[:, :, None])[:, :, 0] / recall.temperature
-        if recall.recency:
-            logits = logits - recall.recency * self._ages()[None, :]
-        if position is not None:
-            logits = logits + position
-        return logits if held is None else torch.where(held, logits, -torch.inf)
-
-    def _held(self, held: np.ndarray) -> Any:
-        return self.torch.from_numpy(np.array(held, dtype=bool)).to(self.device)
-
-    def _attention(self, moment: _Moment) -> Any:
-        """``Recall.weights`` at the moment's address, with its position term; None without
-        slots or of another batch."""
-        recall, torch = self.recall, self.torch
-        if not self.slots or self.streams != len(moment.address):
-            return None
-        position = self._position(moment.inputs, moment.cortex, self.told, self.focus)
-        if recall.held.all():
-            logits = self._logits(moment.address, self.keys, None, position)
-            p = torch.exp(logits - logits.amax(dim=1, keepdim=True))
-            return p / p.sum(dim=1, keepdim=True)
-        held = self._held(recall.held)
-        logits = self._logits(moment.address, self.keys, held, position)
-        top = torch.where(~held.any(dim=1), 0.0, logits.amax(dim=1))
-        p = torch.exp(logits - top[:, None])
-        total = p.sum(dim=1, keepdim=True)
-        return p / torch.where(total > 0, total, 1.0)
-
-    def stimulate(self, drive: Any, observations: np.ndarray) -> Any:
-        """``Recall.stimulate``."""
-        recall, torch = self.recall, self.torch
-        moment = self._moment(recall._port(observations))
-        recall.last = moment
-        p = self._attention(moment)
-        columns_ = recall._port_columns
-        resident = _resident(drive)
-        out: Any = drive if resident else np.array(drive, dtype=float)
-        if p is None:
-            held = out[:, columns_] if resident else self._here(out[:, columns_])
-        else:
-            amplitude = 1.0 if recall.drive_gain else recall.amplitude
-            read = p[:, None, :]
-            parts = [amplitude * torch.bmm(read, self.values)[:, 0]]
-            if recall.next:
-                parts.append(amplitude * torch.bmm(read, self.nexts)[:, 0])
-            held = torch.cat(parts, dim=1)
-        if recall.drive_gain:
-            self.trace = held
-            held = recall.amplitude * recall.hearing * held
-        out[:, columns_] = held if resident else held.detach().cpu().numpy()
-        recall._attended = p
-        recall._head_reads = None
-        return out
-
-    # -- the write after the settle
-
-    def _activity(self, state: BrainState) -> Any:
-        """The association's settled activation here, in the maps' floats."""
-        handle = getattr(state, "device", None)
-        s = handle.get("s") if isinstance(handle, dict) else None
-        if s is None or not hasattr(s, "device") or s.device.type != self.device.type:
-            s = self._here(np.atleast_2d(np.asarray(state.activation, dtype=float)))
-        return s[:, self.columns].to(self.dtype)
-
-    def witness(
-        self, observations: np.ndarray, state: BrainState, command: np.ndarray | None = None
-    ) -> None:
-        """``Recall.witness``."""
-        recall = self.recall
-        x = recall._port(observations)
-        moment = recall.last
-        if moment is None or moment.event.shape != x.shape or not (
-            moment.event is x or np.array_equal(moment.event, x)
-        ):
-            moment = self._moment(x)
-        cortex = self._activity(state)
-        if len(cortex) != len(x):
-            raise ValueError("the settled state needs one row per stream")
-        self._observe(moment.key, moment.inputs)
-        recall.writes += len(x)
-        self.previous = cortex
-        recall.last = None
-
-    def _observe(self, key: Any, value: Any) -> None:
-        """``Recall._observe``."""
-        recall, torch = self.recall, self.torch
-        if len(key) != self.streams:
-            self.empty(len(key))
-        successor: tuple[Any, ...] | None = None
-        if self.slots:
-            if recall.held.all() and not recall.ended.any():
-                successor = (slice(None), value)
-            else:
-                held = recall.held
-                rows = held.any(axis=1) & ~recall.ended
-                latest = held.shape[1] - 1 - np.argmax(held[:, ::-1], axis=1)
-                index = np.flatnonzero(rows)
-                successor = (index, latest[index], value[self._long(index)])
-        if recall.ended.any():
-            recall.ended = np.zeros(len(key), dtype=bool)
-        attended: Any = recall._attended
-        if attended is not None and tuple(attended.shape) == (len(key), self.slots) and self.slots:
-            read = attended.argmax(dim=1)
-            focus = torch.where(
-                attended.amax(dim=1) > 0, self._whole_ages()[read] + 1, -1
-            )
-        else:
-            focus = torch.where(self.focus >= 0, self.focus + 1, -1)
-        self._append(key, np.ones(len(key), dtype=bool), value, successor)
-        self.told = self.told + 1
-        self.focus = focus
-
-    def _longer(self, name: str, old: Any, drop: int, new: Any) -> Any:
-        """``Recall._longer``: the slots a view into a wider tensor, a write one slot of it."""
-        held = self.rooms.get(name)
-        if held is not None and held[1] is old and held[3] < held[0].shape[1]:
-            room, first, stop = held[0], held[2] + drop, held[3]
-        else:
-            kept = old.shape[1] - drop
-            size = min(2 * self.recall.capacity, max(16, 2 * kept + 2))
-            room = self.torch.empty(
-                (old.shape[0], size, old.shape[2]), dtype=old.dtype, device=self.device
-            )
-            room[:, :kept] = old[:, drop:]
-            first, stop = 0, kept
-        if new is None:
-            room[:, stop] = 0.0
-        else:
-            room[:, stop] = new
-        out = room[:, first : stop + 1]
-        self.rooms[name] = (room, out, first, stop + 1)
-        return out
-
-    def _append(
-        self, key: Any, held: np.ndarray, value: Any = None,
-        successor: tuple[Any, ...] | None = None,
-    ) -> None:
-        """``Recall._append``; the host keeps ``held``."""
-        recall = self.recall
-        kept = self.keys.shape[1]
-        drop = max(kept + 1 - recall.capacity, 0)
-        shared = self.values is self.keys
-        nexts = self._longer("nexts", self.nexts, drop, None)
-        if successor is not None and kept:
-            if len(successor) == 2:
-                if kept - drop:
-                    nexts[:, kept - 1 - drop] = successor[1]
-            else:
-                rows, slots, values = successor
-                keep = slots >= drop
-                if keep.any():
-                    nexts[self._long(rows[keep]), self._long(slots[keep] - drop)] = (
-                        values[self._long(np.flatnonzero(keep))]
-                    )
-        self.keys = self._longer("keys", self.keys, drop, key)
-        if shared:
-            self.values = self.keys
-        else:
-            self.values = self._longer("values", self.values, drop, value)
-        self.nexts = nexts
-        recall.held = recall._longer("held", recall.held, drop, held)
-
-    def empty(self, batch: int) -> None:
-        """``Recall._empty``."""
-        recall, torch = self.recall, self.torch
-        slots = 1 if recall._bounded() and batch else 0
-        zeros = {"dtype": self.dtype, "device": self.device}
-        self.keys = torch.zeros((batch, slots, recall.address_width), **zeros)
-        self.values = self.keys
-        self.nexts = torch.zeros((batch, slots, recall.value_width), **zeros)
-        self.previous = torch.zeros((batch, len(recall.association)), **zeros)
-        self.told = torch.zeros(batch, dtype=torch.int64, device=self.device)
-        self.focus = torch.full((batch,), -1, dtype=torch.int64, device=self.device)
-        recall.held = np.ones((batch, slots), dtype=bool)
-        recall.ended = np.zeros(batch, dtype=bool)
-        recall.acted = np.zeros((batch, recall.command_width))
-        recall.past = np.zeros((0, recall.window - 1, recall.key_width))
-        self.rooms = {}
-        recall._unread()
-
-    def reset(self, batch: int, rows: np.ndarray | None) -> None:
-        """``Recall.reset``."""
-        recall, torch = self.recall, self.torch
-        if rows is not None:
-            rows = _stream_rows(rows, batch)
-        if rows is None or self.streams != batch:
-            self.empty(batch)
-            return
-        chosen = np.zeros(batch, dtype=bool)
-        chosen[rows] = True
-        if chosen.all():
-            self.empty(batch)
-            return
-        if not chosen.any():
-            return
-        keep = ~chosen
-        here = self._held(keep)
-        shared = self.values is self.keys
-        held = recall.held & keep[:, None]
-        keys = torch.where(here[:, None, None], self.keys, 0.0)
-        values = keys if shared else torch.where(here[:, None, None], self.values, 0.0)
-        nexts = torch.where(here[:, None, None], self.nexts, 0.0)
-        if recall._bounded():
-            if not held.shape[1]:
-                zeros = {"dtype": self.dtype, "device": self.device}
-                keys = torch.zeros((batch, 1, keys.shape[2]), **zeros)
-                values = keys if shared else torch.zeros((batch, 1, values.shape[2]), **zeros)
-                nexts = torch.zeros((batch, 1, nexts.shape[2]), **zeros)
-                held = np.zeros((batch, 1), dtype=bool)
-            held[chosen, -1] = True
-        lead = held.any(axis=0)
-        first = int(np.argmax(lead)) if lead.any() else held.shape[1]
-        self.keys = keys[:, first:]
-        self.values = self.keys if shared else values[:, first:]
-        self.nexts = nexts[:, first:]
-        recall.held = held[:, first:].copy()
-        self.rooms = {}
-        self.previous = torch.where(here[:, None], self.previous, 0.0)
-        self.told = torch.where(here, self.told, 0)
-        self.focus = torch.where(here, self.focus, -1)
-        recall.ended = recall.ended & keep
-        recall._unread()
-
-    def snapshot(self) -> dict[str, Any]:
-        """``Recall.snapshot``: the next write starts new tensors and changes none of these."""
-        recall = self.recall
-        self.rooms = {}
-        recall._rooms = {}
-        return {
-            "keys": self.keys, "values": self.values, "nexts": self.nexts, "held": recall.held,
-            "previous": self.previous, "ended": recall.ended, "past": recall.past,
-            "acted": recall.acted, "told": self.told, "focus": self.focus,
-        }
-
-    def restore(self, snapshot: dict[str, Any]) -> None:
-        """``Recall.restore``."""
-        recall = self.recall
-        for name in ("keys", "values", "nexts", "previous", "told", "focus"):
-            setattr(self, name, snapshot[name])
-        for name in ("held", "ended", "past", "acted"):
-            recall.__dict__[name] = snapshot[name]
-        self.rooms = {}
-        recall._unread()
-
-    # -- the address lesson
-
-    def _weights(self, graph: Any, port: tuple[Any, Any, Any, int]) -> Any:
-        """The dense ``(source, association)`` matrix of a read port's effective synapses."""
-        synapses, rows, cols, width = port
-        kernel = graph._torch
-        values = (kernel.gain_pre[synapses] * kernel.scale[synapses]).to(self.dtype)
-        recall = self.recall
-        w = self.torch.zeros((width, len(recall.association)), dtype=self.dtype,
-                             device=self.device)
-        if graph.layout.parallel_synapses:
-            w.view(-1).index_add_(0, rows * w.shape[1] + cols, values)
-        else:
-            w[rows, cols] = values
-        return w
-
-    def _readbacks(self, graph: Any, movement: Any) -> tuple[Any, Any]:
-        """``Recall.readback`` through the recall and next ports."""
-        d_value = movement @ self._weights(graph, self.ports["recall"]).T
-        recall = self.recall
-        d_next = movement @ self._weights(graph, self.ports["next"]).T if recall.next else None
-        return d_value, d_next
-
-    def _row_steps(
-        self, moment: _Moment, rows: np.ndarray, d_value: Any, d_next: Any
-    ) -> tuple[Any, ...] | None:
-        """``Recall._row_steps`` of head 0; ``moving`` as host booleans."""
-        recall, torch = self.recall, self.torch
-        whole = len(rows) == self.streams
-        values, nexts, keys = self.values, self.nexts, self.keys
-        told, focus = self.told, self.focus
-        q, x, c, key = moment.address, moment.inputs, moment.cortex, moment.key
-        held = recall.held
-        if not whole:
-            index = self._long(rows)
-            shared = values is keys
-            values, nexts, keys = values[index], nexts[index], keys[index]
-            if shared:
-                values = keys
-            told, focus = told[index], focus[index]
-            q, x, c, key = q[index], x[index], c[index], key[index]
-            held = held[rows]
-        masked = not held.all()
-        score = torch.bmm(values, d_value[:, :, None])[:, :, 0]
-        norm = (d_value * d_value).sum(dim=1)
-        if d_next is not None:
-            score = score + torch.bmm(nexts, d_next[:, :, None])[:, :, 0]
-            norm = norm + (d_next * d_next).sum(dim=1)
-        norm = torch.sqrt(norm)
-        moving = norm > 1e-12
-        if masked:
-            moving = moving & self._held(held.any(axis=1))
-        moved = moving.cpu().numpy()
-        if not moved.any():
-            return None
-        everyone = bool(moved.all())
-        if not everyone:
-            index = self._long(np.flatnonzero(moved))
-            keys, score, norm, told, focus = (
-                a[index] for a in (keys, score, norm, told, focus)
-            )
-            q, x, c, key = q[index], x[index], c[index], key[index]
-        logits = score / norm[:, None] / recall.address_temperature
-        held_t = None
-        if masked:
-            held_t = self._held(held if everyone else held[moved])
-            logits = torch.where(held_t, logits, -torch.inf)
-        attention = self._logits(q, keys, held_t, self._position(x, c, told, focus))
-        attention = attention - attention.amax(dim=1, keepdim=True)
-        attention = attention - torch.log(torch.exp(attention).sum(dim=1, keepdim=True))
-        logits = logits + attention
-        p = torch.exp(logits - logits.amax(dim=1, keepdim=True))
-        p = p / p.sum(dim=1, keepdim=True)
-        finite = torch.isfinite(attention)
-        gradient = p - torch.where(finite, torch.exp(attention), 0.0)
-        error = torch.bmm(gradient[:, None, :], keys)[:, 0]
-        energy = (x * x).sum(dim=1) + (c * c).sum(dim=1) + 1.0
-        bound = torch.minimum(torch.ones_like(energy), 1.0 / (recall.address * energy))
-        step = error * bound[:, None]
-        return moved, x, c, key, error, step, p, attention, told, focus
-
-    def learn(self, graph: Any, learned: LearnedState) -> dict[str, float]:
-        """``Recall.learn``."""
-        recall = self.recall
-        quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
-        if self.position_maps:
-            quiet.update(position_rows=0.0, position_refused=0.0)
-        moment = recall.last
-        positions = bool(self.position_maps) and (recall.position_rate > 0 or recall.slope > 0)
-        if (
-            not (recall.address or positions)
-            or moment is None
-            or learned.free is None
-            or learned.nudged is None
-            or learned.nudged is learned.free
-        ):
-            return quiet
-        taught = learned.taught
-        rows = (
-            np.arange(len(moment.address))
-            if taught is None
-            else np.flatnonzero(np.asarray(taught, dtype=bool))
-        )
-        if not self.slots or not len(rows) or self.streams != len(moment.address):
-            return quiet
-        minus = learned.free if learned.opposite is None else learned.opposite
-        movement = self._movement(learned.nudged, minus)
-        d_value, d_next = self._readbacks(graph, movement)
-        found = self._row_steps(moment, rows, d_value, d_next)
-        report = dict(quiet)
-        if found is None:
-            return report
-        if recall.address:
-            report.update(self._step(found))
-        if positions:
-            moved, refused = self._position_step(found)
-            report["position_rows"] = float(moved)
-            report["position_refused"] = float(refused)
-        return report
-
-    def _movement(self, plus: BrainState, minus: BrainState) -> Any:
-        """The association's movement between two phases, in the maps' floats: differenced after
-        the cast, as the host's copies are."""
-        return self._activity(plus) - self._activity(minus)
-
-    def _lms(self, maps: _Maps, step: Any, rate: float, x: Any, c: Any) -> _Maps:
-        """``_lms``: the same arithmetic on the device."""
-        m_x, m_c, m = maps
-        count = len(x)
-        return (
-            rate * (x.T @ step) / count + m_x,
-            rate * (c.T @ step) / count + m_c,
-            m + rate * step.mean(dim=0),
-        )
-
-    def _all_finite(self, *arrays: Any) -> Any:
-        torch = self.torch
-        return torch.stack([torch.isfinite(a).all() for a in arrays]).all()
-
-    def _step(self, found: tuple[Any, ...]) -> dict[str, float]:
-        """``Recall._step``."""
-        recall = self.recall
-        _, x, c, key, error, step = found[:6]
-        w_x, w_c, b = self._lms(self.head_maps[0], step, recall.address, x, c)
-        address = key + x @ w_x + c @ w_c + b
-        checked = self.torch.stack([
-            self._all_finite(w_x, w_c, b, address).to(self.dtype), error.abs().mean()
-        ]).cpu().numpy()
-        if not checked[0]:
-            return {"address_rows": 0.0, "address_error": 0.0, "address_refused": float(len(x))}
-        self.head_maps = [(w_x, w_c, b)]
-        return {
-            "address_rows": float(len(x)),
-            "address_error": float(checked[1]),
-            "address_refused": 0.0,
-        }
-
-    def _per_bucket(self, gradient: Any, buckets: Any, size: int) -> Any:
-        """``_per_bucket``: each row's ``gradient`` summed into ``size`` buckets, in slot order."""
-        torch = self.torch
-        out = torch.zeros((gradient.shape[0], size), dtype=gradient.dtype, device=self.device)
-        return out.scatter_add_(1, buckets.expand_as(gradient), gradient)
-
-    def _position_step(self, found: tuple[Any, ...]) -> tuple[int, int]:
-        """``Recall._position_step``."""
-        recall, torch = self.recall, self.torch
-        _, x, c, _, _, _, target, prior, told, focus = found
-        rate = recall.position_rate
-        count = recall.position_buckets
-        whole = self._whole_ages()
-        ages = self._ages()
-        finite = torch.isfinite(prior)
-        attended = torch.where(finite, torch.exp(prior), 0.0)
-        gradient = torch.where(finite, target - attended, 0.0)
-        energy = (x * x).sum(dim=1) + (c * c).sum(dim=1) + 1.0
-        one = torch.ones_like(energy)
-        bound = torch.minimum(one, 1.0 / (rate * energy))[:, None]
-        step = self._per_bucket(gradient, self.table[whole][None, :], count) * bound
-        stepped = {"position_maps": self._lms(self.position_maps[0], step, rate, x, c)}
-        if self.anchor_maps:
-            step = self._per_bucket(gradient, self._anchored(told), count + 1) * bound
-            stepped["anchor_maps"] = self._lms(self.anchor_maps[0], step, rate, x, c)
-        if self.relative_maps:
-            width = 2 * recall.RELATIVE + 2
-            step = self._per_bucket(gradient, self._relative(focus), width) * bound
-            stepped["relative_maps"] = self._lms(self.relative_maps[0], step, rate, x, c)
-        if self.slope_maps and not (self.grid_maps and self.slots > recall.position):
-            lean = gradient @ (ages / recall.SLOPE)
-            lean = lean * torch.minimum(one, 1.0 / (recall.slope * energy))
-            stepped["slope_maps"] = self._lms(self.slope_maps[0], lean, recall.slope, x, c)
-        if self.grid_maps:
-            peak = torch.maximum(
-                target.amax(dim=1, keepdim=True), attended.amax(dim=1, keepdim=True)
-            )
-            far = torch.where(peak > 0, gradient / peak, gradient)
-            far = far * (ages >= recall.position)
-            width = sum(recall.grid)
-            grid = self.grid[:, self.grid.shape[1] - self.slots:]
-            total = torch.zeros((far.shape[0], width), dtype=far.dtype, device=self.device)
-            for residues in grid:
-                total = total + self._per_bucket(far, residues[None, :], width)
-            stepped["grid_maps"] = self._lms(self.grid_maps[0], total * bound, rate, x, c)
-        if not bool(self._all_finite(*(a for maps in stepped.values() for a in maps))):
-            return 0, int(len(x))
-        for name, maps in stepped.items():
-            setattr(self, name, [maps])
-        return int(len(x)), 0
-
-    # -- reward trains the read
-
-    def contrast_rows(self, graph: Any, plus: BrainState, minus: BrainState) -> Any:
-        """``Recall.contrast_rows``: ``(batch, inputs, columns)``, the columns ``reward_blocks``
-        names."""
-        recall, torch = self.recall, self.torch
-        positions = bool(recall.position_reward) and bool(self.position_maps)
-        if not (recall.address_reward or positions):
-            return None
-        movement = self._movement(plus, minus)
-        batch = len(movement)
-        if recall.address_reward:
-            recall._address_held = True
-        out = torch.zeros((batch, recall.map_width, sum(b[1] for b in recall.reward_blocks)),
-                          dtype=self.dtype, device=self.device)
-        moment = recall.last
-        if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
-            return out
-        d_value, d_next = self._readbacks(graph, movement)
-        found = self._row_steps(moment, np.arange(batch), d_value, d_next)
-        if found is None:
-            return out
-        moved, x, _, _, error, _, target, prior, told, _ = found
-        everyone = bool(moved.all())
-        index = None if everyone else self._long(np.flatnonzero(moved))
-        energy = (x * x).sum(dim=1)
-        one = torch.ones_like(energy)
-
-        def join(start: int, block: Any) -> None:
-            rows = x[:, :, None] * block[:, None, :]
-            rows = torch.where(
-                torch.isfinite(rows).all(dim=2).all(dim=1)[:, None, None], rows, 0.0
-            )
-            if everyone:
-                out[:, :, start : start + block.shape[1]] = rows
-            else:
-                out[index, :, start : start + block.shape[1]] = rows
-
-        start = recall.address_width if recall._address_held else 0
-        if recall.address_reward:
-            step = error * torch.minimum(one, 1.0 / (recall.address * energy))[:, None]
-            join(0, recall.address * step)
-        if positions:
-            rate = recall.REWARD_RATE
-            gradient = torch.where(torch.isfinite(prior), target - torch.exp(prior), 0.0)
-            bound = torch.minimum(one, 1.0 / (rate * energy))[:, None]
-            count = recall.position_buckets
-            whole = self._whole_ages()
-            terms = self._per_bucket(gradient, self.table[whole][None, :], count)
-            join(start, rate * terms * bound)
-            start += count
-            if self.anchor_maps:
-                terms = self._per_bucket(gradient, self._anchored(told), count + 1)
-                join(start, rate * terms * bound)
-        return out
-
-    def propose(self, step: Any) -> tuple[Any, ...] | None:
-        """``Recall.propose`` of a step on the event's rows and the blocks that step."""
-        recall, torch = self.recall, self.torch
-        positions = bool(recall.position_reward) and bool(self.position_maps)
-        if not (recall.address_reward or positions):
-            return None
-        w_x, w_c, b = self.head_maps[0]
-        stepped, changed = [], []
-        start = recall.address_width if recall._address_held or recall.address_reward else 0
-        if recall.address_reward:
-            moved = recall.address_reward * step[:, :recall.address_width]
-            w_x = w_x + moved
-            stepped.append(moved)
-            changed.append(w_x)
-        position_maps = anchor_maps = None
-        if positions:
-            count = recall.position_buckets
-            part = recall.position_reward * step[:, start : start + count]
-            on_x, on_c, on_b = self.position_maps[0]
-            position_maps = [(on_x + part, on_c, on_b)]
-            stepped.append(part)
-            changed.append(position_maps[0][0])
-            start += count
-            if self.anchor_maps:
-                part = recall.position_reward * step[:, start : start + count + 1]
-                on_x, on_c, on_b = self.anchor_maps[0]
-                anchor_maps = [(on_x + part, on_c, on_b)]
-                stepped.append(part)
-                changed.append(anchor_maps[0][0])
-        every = [*changed, *stepped]
-        norm = torch.sqrt(sum((part * part).sum() for part in stepped))
-        read = torch.stack([self._all_finite(*every).to(self.dtype), norm]).cpu().numpy()
-        if not read[0]:
-            raise ValueError("the address map's reward step must be finite")
-        return (w_x, w_c, b, float(read[1]), position_maps, anchor_maps)
-
-    def accept(self, proposal: tuple[Any, ...]) -> None:
-        """``Recall.accept``."""
-        self.head_maps = [proposal[:3]]
-        if proposal[4] is not None:
-            self.position_maps = list(proposal[4])
-        if proposal[5] is not None:
-            self.anchor_maps = list(proposal[5])
-
-
 @dataclass
 class PatternSeparator:
     """Pattern separation: expand a key into a wider random code and keep the strongest winners.
@@ -4071,96 +3167,6 @@ class PatternSeparator:
         return out
 
 
-class _StoreOnDevice:
-    """A consolidating store's strengths on the torch device of its brain (``SynapticMemory``'s
-    equations, without a separator or a surprise gate): its read at every moment, its write at
-    every outcome. What no device path reads brings them back (``FastSynapses.__getattr__``)."""
-
-    OWNED = ("strength", "mass", "consolidated")
-    strength: Any
-    mass: Any
-    consolidated: Any
-
-    def __init__(self, owner: Any, kernel: Any) -> None:
-        self.owner, self.kernel = owner, kernel
-        torch = kernel.torch
-        self.torch, self.device, self.dtype = torch, kernel.device, kernel.param_dtype
-        held = owner.__dict__
-        for name in self.OWNED:
-            setattr(self, name, self._here(held.pop(name)))
-        self.pre = kernel.index_of(owner.pre)
-
-    def _here(self, array: np.ndarray) -> Any:
-        return self.torch.from_numpy(np.array(array, dtype=np.float64)).to(self.device, self.dtype)
-
-    def give_back(self) -> None:
-        for name in self.OWNED:
-            self.owner.__dict__[name] = _host_array(getattr(self, name))
-
-    def _unit(self, x: Any) -> Any:
-        """``FastSynapses._delta_unit``."""
-        torch = self.torch
-        scale = x.abs().amax(dim=-1, keepdim=True)
-        scaled = x / torch.where(scale > 0, scale, 1.0)
-        norm = torch.linalg.vector_norm(scaled, dim=-1, keepdim=True)
-        return scaled / torch.where(norm > 0, norm, 1.0)
-
-    def stimulate(self, drive: Any, key: np.ndarray | None) -> Any:
-        """``FastSynapses.stimulate`` of the memory's read into a resident drive."""
-        owner, torch = self.owner, self.torch
-        if key is None:
-            cue = drive[:, self.pre].to(self.dtype)
-        else:
-            cue = self.kernel.observed(owner._port(key, len(owner.pre), "key"))
-        same_batch = len(self.strength) == len(cue)
-        strength = self.strength if same_batch else self.consolidated[None, :, :]
-        cue = self._unit(cue)
-        read = torch.matmul(cue[:, None, :], strength)[:, 0, :]
-        drive[:, owner._post_columns] += owner.amplitude * read
-        return drive
-
-    def observe(
-        self, key: np.ndarray, value: np.ndarray, gate: np.ndarray, salience: np.ndarray,
-        observed: np.ndarray,
-    ) -> None:
-        """``SynapticMemory.observe`` without a surprise gate: validated on the host."""
-        owner, torch = self.owner, self.torch
-        batch = len(key)
-        same_batch = len(self.strength) == batch
-        consolidated = self.consolidated
-        previous = (
-            self.strength if same_batch else consolidated[None, :, :].expand(batch, -1, -1)
-        )
-        strength = consolidated + owner.decay * (previous - consolidated)
-        mass = self.mass * owner.decay if same_batch else torch.zeros(
-            batch, dtype=self.dtype, device=self.device
-        )
-        rows = np.flatnonzero(gate)
-        if not len(rows):
-            self.strength, self.mass = strength, mass
-            return
-        upload = self.kernel._staging.upload
-        cue = self._unit(upload(key[rows], self.dtype))
-        value_t = upload(value[rows], self.dtype)
-        mask = upload(observed[rows].astype(np.float64), self.dtype)
-        rate = owner.consolidation + np.minimum(1.0, owner.consolidation * salience[rows])
-        rate = upload(np.minimum(1.0, rate), self.dtype)
-        error = (value_t - cue @ consolidated) * mask
-        change = ((rate[:, None] * cue).T @ error) / len(rows)
-        strength = strength + change
-        index = torch.from_numpy(rows.astype(np.int64)).to(self.device)
-        prediction = torch.matmul(cue[:, None, :], strength[index])[:, 0, :]
-        correction = (value_t - prediction) * mask
-        fast = owner.rate * cue[:, :, None] * correction[:, None, :]
-        new = consolidated + change
-        strength[index] += fast
-        if not bool(torch.isfinite(strength).all() & torch.isfinite(new).all()):
-            raise ValueError("synaptic update overflowed; scale the observed values")
-        mass[index] += owner.rate
-        self.consolidated, self.strength, self.mass = new, strength, mass
-        owner.writes += len(rows)
-
-
 @dataclass
 class FastSynapses:
     """A bounded associative memory between two ranges, one matrix per stream.
@@ -4192,7 +3198,7 @@ class FastSynapses:
     writes: int = 0
 
     def __post_init__(self) -> None:
-        self._device: _StoreOnDevice | None = None  # what rests on a torch device (``reside``)
+        self._device: _StoreOnDevice | None = None  # what rests on a device (``reside``)
         for name in ("pre", "post"):
             raw = np.asarray(getattr(self, name))
             if (
@@ -4240,8 +3246,8 @@ class FastSynapses:
         return self.__dict__
 
     def reside(self, kernel: Any) -> None:
-        """The strengths on the device of a torch brain's ``kernel``; only a consolidating store
-        has the device's path."""
+        """The strengths on the device of a brain's ``kernel``; only a consolidating store has
+        the device's path."""
         self.leave_device()
 
     def leave_device(self) -> None:

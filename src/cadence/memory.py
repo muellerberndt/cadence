@@ -11,7 +11,8 @@ from typing import TYPE_CHECKING, Any
 
 import numpy as np
 
-from .stream import FastSynapses, _StoreOnDevice
+from .resident import _StoreOnDevice
+from .stream import FastSynapses
 
 if TYPE_CHECKING:
     from .plasticity import Maturity
@@ -67,8 +68,8 @@ class SynapticMemory(FastSynapses):
         self.consolidated = np.zeros((self.key_width, len(self.post)))
 
     def reside(self, kernel: Any) -> None:
-        """The strengths on the device of a torch brain's ``kernel``, unless a separator or a
-        surprise gate keeps them on the host."""
+        """The strengths on the device of a brain's ``kernel``, unless a separator or a surprise
+        gate keeps them on the host."""
         if kernel is None or self.separator is not None or self.gate_noise is not None:
             self.leave_device()
             return
