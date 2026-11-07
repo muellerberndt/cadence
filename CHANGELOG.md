@@ -122,8 +122,9 @@
   brain keeps what it was saved with: one saved without a memory loads without one. The composition gives up
   the key-door at delay 2 (18 to 13 of 32 lives, 13 to 10 of 24 on fresh founders), the observed chain (38 to 34
   of 48), the competing ring (.67 to .55 and .70 to .55 on its hard nursery) and the odour nursery `step` at 1,000
-  (22 to 18 of 30) against `recall=False`, and the hidden route (.40 to .22 sampled, .25 to .08 greedy, on 30
-  founders) against `recall_founder=True`. See
+  (22 to 18 of 30) against `recall=False`, and against `recall_founder=True` the hidden route (.40 to .22 sampled, .25 to .08 greedy, on 30
+  founders), the binding chambers' held-out answers (.97 to .89 and .99 to .92, a restated name .76 to .59), "how long ago?" (.64 to
+  .56) and a chain whose stages look alike (7 to 4 of 48). See
   [what the composition gives up](docs/memory.md#what-the-composition-gives-up).
 - **Default change.** `Brain.compose(..., recall=True)` gives a new brain `carried_gain=0.01` and
   `recall_drive_gain=True`: every carried route takes a learned gain from its working value, so beside the

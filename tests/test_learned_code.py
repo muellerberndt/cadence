@@ -142,6 +142,9 @@ def taught(brain: cd.Brain) -> list[int]:
 # 8 motor neurons in a slot, and at the founder need scale 0.1 (issue 198) where it has arousal.
 # The descriptions were re-recorded at the one spelling of the learner's temperature and
 # without the constants of the composed brain (0.93.0, every other value matching the recording).
+# The taught life was re-recorded once more when the distance lesson left (0.95.0, by the owner's
+# ruling): its acts and arrays are those of the commit before with recall_address_contrast=True,
+# which stepped this lesson, and with recall_address=0.0 the two commits read one digest.
 FOUNDERS: dict[str, dict] = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3}),
@@ -182,10 +185,10 @@ FOUNDERS: dict[str, dict] = {
                           "learning_surprise": True, "recall": True, "recall_founder": True, "recall_position": 0}),
         "life": taught,
         "parameters": "1b72292d2b15754485932c2527b342353a6934c638e8e25f3da7d05e6b1e45ce",
-        "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 7, 0, 0, 0, 1],
+        "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 5, 0, 0, 0, 1],
         "format": "cadence-brain/1",
         "names": "0aab0d179b44428d742d358f48b22b0571e9fd78c4cefa76ad52551d9920c16e",
-        "checkpoint": "67f8a80c4c28c099ea268a7b8c0fc6d607f1c7dc46ea96e1eed2690fc730e2d3",
+        "checkpoint": "014bb869ce4d9692b37a65446e79cb4755b26712f5fe8081fd7b9c6d06af3556",
         "describe": "cc8ab01bf4d13f18c5a4053a6e5ad23b0affb3679b08ec32f05a96df72703f5a",
     },
     "wide": {
@@ -259,12 +262,15 @@ def region_digest(brain: cd.Brain, acts: list[int], path: Path) -> str:
 # Both were re-recorded once more under the 0.85 defaults (an unset lateral at 0.0, the
 # scaled need at 0.1), after the two lives with those settings given at their earlier values
 # reproduced the earlier digests exactly.
+# The first was re-recorded when the distance lesson left (0.95.0, by the owner's ruling): the commit
+# before with recall_address_contrast=True, which stepped this lesson, reads this digest, and with
+# recall_address=0.0 the two commits read one digest.
 REGION_FOUNDERS: dict[str, dict] = {
     "region": {
         "build": (16, 8, {"modules": (24,), "seed": 5, "learned_code": 16, "recall": True, "recall_founder": True,
                           "recall_position": 0}),  # recorded before the position term
         "life": taught,
-        "digest": "8ef21e03bb9d987b50ee7ada774f3b391a75ea47e7c8b76599b3b48504b8fbae",
+        "digest": "52ba1f45633c71b7ab6b7d2e21de9b4d60ce42e2ca4cc15c16e90dc704a2473d",
     },
     "region_fields": {
         "build": (16, 4, {"modules": (24,), "seed": 6, "learned_code": 16,

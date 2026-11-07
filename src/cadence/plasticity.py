@@ -1043,6 +1043,7 @@ class ActorCritic:
         self._drive = _held_drive(next_drive)
         self._pending = None
         self._pending_memory = None
+        self._pending_hearing = None
         report["delta"] = float(np.abs(delta).mean())
         report["dopamine"] = float(delta.mean())
         report["td_error"] = float(np.abs(td_error[observed]).mean())

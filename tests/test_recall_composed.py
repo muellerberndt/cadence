@@ -160,6 +160,7 @@ def test_a_new_memory_takes_the_settings_beside_it():
     assert without.grow(recall=True).hearing is None and not without.grow(recall=True).recall.drive_gain
 
 
+@pytest.mark.skipif(not cd.brain._FUSED, reason="CADENCE_FUSED=0 reads the NumPy loop alone")
 def test_a_new_memory_takes_the_fast_solve_until_a_word_names_another():
     brain = composed()
     assert brain.learner.config.fast_settle is True

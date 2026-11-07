@@ -1561,8 +1561,10 @@ class Brain:
         handle, kernel = state.device, self._torch
         if on_device and keep is None and isinstance(handle, _MlxState):
             checked = handle.get("checked")  # the launch that made the state read its equations
+            held = handle.get("drive")  # a copy of a host's drive, which a caller may write since
             if (
-                checked is not None and checked[0] is d and checked[1] is nudge
+                checked is not None and checked[1] is nudge
+                and (held is d if _resident(d) or _resident(held) else np.array_equal(held, d))
                 and self._mlx is not None and handle.get("version") == self._mlx.version
             ):
                 return np.array(checked[2])

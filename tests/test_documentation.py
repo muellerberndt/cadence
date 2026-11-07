@@ -103,6 +103,12 @@ def test_introductory_python_snippets(page, tmp_path, monkeypatch):
         assert namespace["brain"].last_arousal is not None
 
 
+def test_every_guide_opens_with_its_title():
+    """A guide's first line is its heading: a merge can leave a stray line in front of it."""
+    for page in sorted((ROOT / "docs").glob("*.md")):
+        assert page.read_text().startswith("# "), page.name
+
+
 def test_every_python_block_is_run_or_marked_illustrative():
     """A new page with python blocks must join PAGES, or mark each block ``<!-- not-run -->``."""
     covered = set(PAGES)

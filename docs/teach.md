@@ -6,9 +6,11 @@ folds a lesson into a moment of the stream. A lesson changes the graph's weights
 `memory_choice=True` the episodic memory also records the shown act for its situation
 ([episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before)).
 
-Choose the teaching point by the number of lessons:
+A new brain with the memory teaches at `teaching="deep"` and only where its answer differs; a brain
+without one (`recall=False`) at the founder point on every row. Name another point at `compose` or
+with `retune`. Choose it by the number of lessons:
 
-- With few lessons the founder teaching point acquires fastest.
+- With few lessons `teaching="founder"` acquires fastest.
 - With many lessons, as in the imitation of a demonstrator, `teaching="normalized"` holds more
   of what was shown ([many lessons](#many-lessons-the-normalized-point-for-imitation)).
 - When the brain's mistakes take it where the demonstrator never went, teach on its own path
@@ -122,7 +124,8 @@ normalized point [above](#many-lessons-the-normalized-point-for-imitation).
 ## Lessons only where the answer differs
 
 `learning_surprise=True` at `compose` (`LearnerConfig(surprise=True)` for a learner) teaches only
-the rows whose answer differs from the label. The founder is `False`.
+the rows whose answer differs from the label. The founder is `False`, and a new brain with the memory
+holds `True`.
 
 - A standalone learner judges by its free phase, which runs on every row; agreeing rows get no
   nudged phase and no update.
@@ -177,8 +180,8 @@ replays earlier lessons alongside the new ones.
 - **The reservoir.** A uniform sample of every lesson row (512 rows, a constant), each row with
   its episode: the moments its stream heard since the episode began (at a
   `reset`, or where a `done` ended the stream's attempt), at most as many as the recall memory
-  keeps slots (its `capacity`, 64 at the founder; 64 without a recall memory), then the moment it
-  was taught on. At 512, the reservoir holds up to 512 episodes of up to 64 moments each.
+  keeps slots (its `capacity`, 128 in a new brain; 64 without a recall memory), then the moment it
+  was taught on. The reservoir holds up to 512 episodes of up to that many moments each.
 - **The replay.** After each lesson `r` times the lesson's rows (at least one) are drawn. The rows
   of equally long episodes replay together on fresh streams, as after `reset`. They hear every
   moment before the last as a greedy `act` hears it (a learned code takes no step on them) and are
@@ -265,11 +268,11 @@ above zero replaces it by a floor of that share of each synapse's projection (th
 synapses between its two neuron ranges; a bias reads its range): every projection steps at about
 the rate on its own scale, the faint one as the strong one, and a synapse quieter than its
 projection steps less. It needs `normalize` above zero. The teaching point `"deep"` sets it at
-0.1 for brains with the [apical compartment](anatomy.md#the-apical-compartment), the other points
+0.1, with or without the [apical compartment](anatomy.md#the-apical-compartment), the other points
 keep `normalize_floor`, and `LearnerConfig.normalize_relative` sets it for an expert
 configuration.
 
-The composed rates (`eta=0.5` teaching, 1.0 actor) are unnormalized; normalized at those rates,
+The founder point's rates (`eta=0.5` teaching) and the actor's (1.0) are unnormalized; normalized at those rates,
 steps can dwarf the raw signals and saturate the outputs. Retune `eta` and `eta_bias` together; a
 development sweep might start at `eta` 0.001 to 0.003, checked against acquisition, retention and
 actual step sizes. `LearnerConfig` warns when `normalize > 0` and `eta` or `eta_bias` exceeds

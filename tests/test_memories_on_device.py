@@ -271,6 +271,85 @@ def test_a_refused_outcome_leaves_the_memories_as_they_were(device, monkeypatch)
     assert all(a is b for a, b in zip(after, before, strict=True))
 
 
+@pytest.mark.parametrize("device", DEVICES)
+def test_a_refused_outcome_of_a_loaded_brain_continues(device, monkeypatch, tmp_path):
+    """The outcome's snapshot holds the host's arrays, and its moment places them on the device: a
+    refusal comes back to them, and the next moment reads and writes as if nothing happened."""
+    _, placed = pair(device)
+    rng = np.random.default_rng(7)
+    placed.step(observations(rng, 2))
+    placed.step(observations(rng, 2), reward=rng.random(2))
+    loaded = cd.Brain.load(placed.save(tmp_path / "pending.npz"), **on_device(device))
+    assert loaded.recall._device is None and loaded.hippocampus._device is None
+    before = {
+        "keys": loaded.recall.keys.copy(), "strength": loaded.hippocampus.strength.copy(),
+    }
+    outcome = rng.random(2), np.array([True, False]), observations(rng, 2)
+
+    def refused(*_args, **_kwargs):
+        raise ValueError("refused")
+
+    agent = loaded.basal_ganglia
+    with monkeypatch.context() as patched:
+        patched.setattr(agent, "_critic_candidate", refused)
+        with pytest.raises(ValueError, match="refused"):
+            loaded.learn(*outcome)
+    np.testing.assert_array_equal(loaded.recall.keys, before["keys"])
+    np.testing.assert_array_equal(loaded.hippocampus.strength, before["strength"])
+    twin = cd.Brain.load(tmp_path / "pending.npz", **on_device(device))
+    for brain in (loaded, twin):
+        brain.learn(*outcome)
+        later = np.random.default_rng(9)
+        brain.step(observations(later, 2))
+        brain.step(observations(later, 2), reward=[1.0, 0.0])
+    same(twin, loaded, within(device))
+
+
+@pytest.mark.parametrize("device", DEVICES)
+@pytest.mark.parametrize("live_rows, rehearsal", [(1, 8.0), (4, 0.25)], ids=["up", "down"])
+def test_a_replay_across_the_size_rule_returns_the_streams(device, live_rows, rehearsal, monkeypatch):
+    """A replay of other rows than the live streams can place the memories where the live moment
+    does not: the streams come back with their traces, slots and reads, as on the host."""
+    from cadence import generic
+
+    def life(rule) -> cd.Brain:
+        monkeypatch.setattr(generic, "_memory_on_device", rule)
+        brain = cd.Brain.compose(
+            12, 5, modules=(16,), seed=3, efference_amplitude=1.0, learning_rehearsal=rehearsal,
+            **on_device(device),
+        )
+        rng = np.random.default_rng(1)
+        for _ in range(6):
+            brain.lesson(observations(rng, live_rows), rng.integers(5, size=live_rows))
+            brain.act(observations(rng, live_rows), greedy=True)
+        assert brain.last_learning.get("rehearsal_rows", 0.0) > 0.0
+        assert "rehearsal_refused" not in brain.last_learning
+        return brain
+
+    host = life(lambda _kernel, _streams, _width: False)
+    moved = life(lambda _kernel, streams, _width: streams >= 4)
+    ours, theirs = arrays(host), arrays(moved)
+    for name in ("trace", "recall/keys", "recall/previous", "recall/told", "recall/focus"):
+        np.testing.assert_allclose(
+            theirs[name], ours[name], rtol=0, atol=within(device), err_msg=name
+        )
+
+
+@pytest.mark.parametrize("device", DEVICES)
+def test_what_is_written_on_the_host_stays_when_the_memories_leave(device):
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, **on_device(device))
+    rng = np.random.default_rng(4)
+    brain.act(observations(rng, 2), greedy=True)
+    trace, recall = brain.working_memory, brain.recall
+    assert trace._device is not None and recall._device is not None
+    trace.trace = np.full((2, len(trace.hidden)), 0.25)
+    recall.previous = np.full((2, len(recall.association)), 0.5)
+    trace.leave_device()
+    recall.leave_device()
+    np.testing.assert_array_equal(trace.trace, np.full((2, len(trace.hidden)), 0.25))
+    np.testing.assert_array_equal(recall.previous, np.full((2, len(recall.association)), 0.5))
+
+
 @pytest.mark.parametrize(
     "options",
     [{"recall_heads": 2}, {"recall_window": 2}, {"recall_action": True}, {"recall_when": True},
