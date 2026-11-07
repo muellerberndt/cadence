@@ -551,7 +551,9 @@ class MlxArrays:
 
     def add_outer(self, m: Any, a: Any, b: Any, rate: float, count: int) -> Any:
         """``m + rate * (a @ b) / count``, the product written into the sum: a third of the cost
-        of the two operations on a map of millions."""
+        of the two operations on a map of millions. ``addmm`` reads an ``alpha`` of zero as one."""
+        if not rate:
+            return m
         return self.mx.addmm(m, a, b, alpha=rate / count, beta=1.0)
 
     def unit_norm(self, x: Any) -> Any:
