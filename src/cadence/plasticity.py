@@ -34,7 +34,7 @@ from typing import Any
 import numpy as np
 
 from .brain import _FUSED as _FUSED_TRACE
-from .brain import Brain, BrainState, Nudge, _resident
+from .brain import Brain, BrainState, Nudge, _host_copy, _resident
 from .learning import Learner
 
 __all__ = [
@@ -42,6 +42,12 @@ __all__ = [
     "ActorCriticConfig",
     "Maturity",
 ]
+
+
+def _kept(value: Any) -> Any:
+    """An eligibility as a refused outcome restores it: the host's in-place steps need a copy; a
+    resident memory's steps make new tensors."""
+    return value.copy() if isinstance(value, np.ndarray) else value
 
 
 def _held_drive(drive: Any) -> Any:
@@ -437,7 +443,9 @@ class ActorCritic:
         if rows is None:
             return None
         contrast = rows(self.learner.brain, plus, minus)
-        return None if contrast is None else np.asarray(contrast, dtype=float)
+        if contrast is None or not isinstance(contrast, (np.ndarray, list)):
+            return contrast  # None, or a resident memory's on the device
+        return np.asarray(contrast, dtype=float)
 
     def _memory_eligibility(self, batch: int, decay: float) -> None:
         """The memory's trace after an outcome, as every synapse's: ``e <- gamma lam e +
@@ -447,6 +455,13 @@ class ActorCritic:
         if contrast is None or len(contrast) != batch:
             self.trace_memory = None
             return
+        if getattr(self.memory, "_device", None) is not None:  # never in place
+            self.trace_memory = self.memory.joined_eligibility(trace, contrast, decay)
+            return
+        if not isinstance(contrast, np.ndarray):
+            contrast = _host_copy(contrast)
+        if trace is not None and not isinstance(trace, np.ndarray):
+            trace = _host_copy(trace)
         if trace is None or trace.shape != contrast.shape:
             trace = np.zeros_like(contrast)
         trace *= decay
@@ -477,6 +492,9 @@ class ActorCritic:
         trace = self.trace_memory
         if trace is None or self.memory is None:
             return None
+        if not isinstance(trace, np.ndarray):  # the memory's on the device
+            d = trace.new_tensor(np.asarray(delta, dtype=float))
+            return self.memory.propose((d[:, None, None] * trace).mean(dim=0))
         weighted = delta.reshape(-1, *([1] * (trace.ndim - 1))) * trace
         return self.memory.propose(weighted.mean(axis=0))
 
@@ -549,7 +567,7 @@ class ActorCritic:
         """
         arrays = ("trace", "trace_bias", "trace_critic", "trace_memory", "trace_hearing")
         saved = {
-            name: None if getattr(self, name) is None else getattr(self, name).copy()
+            name: _kept(getattr(self, name))
             for name in arrays
         }
         saved.update(

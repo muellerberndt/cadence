@@ -85,7 +85,16 @@ from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
-from .stream import Efference, FastSynapses, Hearing, History, PatternSeparator, Recall, Trace
+from .stream import (
+    Efference,
+    FastSynapses,
+    Hearing,
+    History,
+    PatternSeparator,
+    Recall,
+    Trace,
+    _memory_on_device,
+)
 
 __all__ = ["Brain"]
 
@@ -2176,6 +2185,7 @@ class Brain:
             )
             # with ``recall_address_reward`` the actor keeps the address map's eligibility
             self.basal_ganglia.memory = self.recall
+            self.recall._actor = self.basal_ganglia
         self.hearing: Hearing | None = None
         self._carried_rate = real("carried_gain", carried_gain, low=0)
         if self.recall is not None and self.recall.drive_gain and not self._carried_rate:
@@ -2907,6 +2917,8 @@ class Brain:
         # the columns of the read's reward eligibility, which position_reward sets
         columns = None if self.recall is None else self.recall.reward_columns
         whole = None
+        if self.recall is not None:
+            self.recall.leave_device()  # the settings shape what rests there
         if self.recall is not None and agent.trace_memory is not None:
             whole = self.recall.full_eligibility(agent.trace_memory)
         for component, field, value in memory_changes:
@@ -3374,19 +3386,58 @@ class Brain:
 
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
-        drive = np.zeros((len(x), self.connectome.n))
-        drive[:, self.sensory_index] = (
-            self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
-        )
+        kernel = self._memories_kernel(len(x)) if memory else None
+        drive: Any
+        if kernel is not None:
+            drive = self._resident_drive(kernel, x, code)
+        else:
+            drive = np.zeros((len(x), self.connectome.n))
+            drive[:, self.sensory_index] = (
+                self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
+            )
         region = self.learned_code
         if region is not None:
             drive = self._unit_read(x, drive, memory=memory)
         if memory:
+            for held in (self.recall, self.working_memory, self.hippocampus):
+                if held is not None:
+                    held.reside(kernel)
             if self.recall is not None:
                 self.recall.place(self.brain._mlx)
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))
+        return cast(np.ndarray, drive)
+
+    def _memories_kernel(self, rows: int) -> Any:
+        """The torch kernel whose device holds this brain's memories and its moments' drives at
+        ``rows`` streams, where each of them has a device path and the moment's size pays for it
+        (``_memory_on_device``); None otherwise: several heads, a window, the read of the command
+        or of when, the gains, tokens, a separator, a surprise gate or an episodic vote keep the
+        whole moment's memory on the host."""
+        kernel = self.brain._torch
+        if kernel is None:
+            return None
+        recall, store = self.recall, self.hippocampus
+        if (
+            not _memory_on_device(kernel, rows, self.code_width)
+            or self._episodic is not None or self.learned_code is not None
+            or (recall is not None and not recall.resides)
+            or (store is not None and (store.separator is not None
+                                       or getattr(store, "gate_noise", None) is not None))
+        ):
+            return None
+        return kernel
+
+    def _resident_drive(self, kernel: Any, x: np.ndarray, code: np.ndarray) -> Any:
+        """The sensory part of a moment's drive on the torch device, where the memories add theirs
+        to it and the settle reads it: nothing of it comes to the host."""
+        drive = kernel.torch.zeros(
+            (len(x), self.connectome.n), dtype=kernel.param_dtype, device=kernel.device
+        )
+        drive[:, kernel.index_of(self.sensory_index)] = kernel.observed(
+            self._sensed(x, code)
+        ) * self.brain.neuron_model.stimulus_amplitude
         return drive
 
     # -- independent-sample convenience operations (no mode switch)
@@ -4766,14 +4817,7 @@ class Brain:
         memory = self.hippocampus
         # Synaptic writes replace arrays, so retain their old references rather
         # than copying a potentially large persistent matrix for every outcome.
-        memory_values = (
-            {}
-            if memory is None
-            else {name: getattr(memory, name) for name in ("strength", "mass", "writes")}
-        )
-        if isinstance(memory, SynapticMemory):
-            memory_values["consolidated"] = memory.consolidated
-            memory_values["gate_noise"] = memory.gate_noise  # with maturity, replaced as well
+        memory_values = {} if memory is None else memory.held_values()
         separator_mean = (
             None if memory is None or memory.separator is None else memory.separator.mean
         )
@@ -4826,8 +4870,7 @@ class Brain:
             report = self.basal_ganglia.learn(reward, done, next_drive, bootstrap, warm=warm)
         except Exception:
             if memory is not None:
-                for name, value in memory_values.items():
-                    setattr(memory, name, value)
+                memory.take_values(memory_values)
                 if memory.separator is not None and separator_mean is not None:
                     memory.separator.mean = separator_mean
             if trace is not None:

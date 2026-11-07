@@ -864,7 +864,7 @@ for token in range(TOKENS):                          # no lesson used any of the
 - **The address lesson is untouched.** The address and position maps step on the association's
   movement read back through the port synapses; nothing is read back through the gains.
 - **Under reward.** Each sampled act keeps the step the lesson would take were the act's action the
-  lesson's label, in one column per port of the read's eligibility (`reward_columns`); the actor
+  lesson's label, in one column per port of the read's eligibility (`reward_blocks`); the actor
   traces it and a unit of dopamine moves each gain by one such step. `learn` reports the whole
   read's step as `address_reward_step`.
 - **A newborn is the founder.** The gains start at zero, so a newborn settles, acts and saves as one

@@ -25,6 +25,18 @@
   441. On `benchmarks/depth/and_count.py`'s four regions the mean of the ten readings from lesson 3,100
   over six seeds is .802 on the CPU and .786 on MLX, a difference of .016 with a standard error of .015.
   See [precision matters](docs/backends.md#precision-matters).
+- **A moment on CUDA.** From a moment of `streams * width * (width + 1024) >= 3,000,000` the recall
+  memory, the working trace, the consolidating store, the carried routes' contrast and the moment's
+  drive run on the device, by the same equations, within rounding of the float64 host path. `CADENCE_TORCH_MEMORY`
+  overrides the size rule. See
+  [memories on the device](docs/backends.md#memories-on-the-device).
+- **A moment on a torch device crosses less.** The drive goes up once per moment, a settle from rest
+  uploads nothing, a warm start stays on the device, the motor and critic read their columns and no
+  state comes up whole. `copy.deepcopy` of a brain on torch now works.
+- **The read's reward eligibility keeps what can step.** The actor holds the event's rows of the columns
+  that can step, 69 columns of 3,920 rows at the default memory and speech's width, where it held 141 MB per
+  row, and a checkpoint still holds the full layout. Every bit of a CPU life is unchanged. One core's `step`
+  at 3,920 inputs: 475 to 262 ms at one stream, 2,408 to 992 ms at 16.
 - **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
   [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
   `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only
