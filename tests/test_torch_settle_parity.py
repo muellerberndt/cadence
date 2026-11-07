@@ -45,6 +45,7 @@ def composed(apical: bool, seed: int = 1, adaptation: bool = False) -> cd.Brain:
 
 
 def on(graph: cd.NeuralGraph, device: str, **changes: object) -> cd.NeuralGraph:
+    changes.setdefault("precision", "float64")  # a device's own default is float32
     return cd.NeuralGraph(
         graph.connectome, graph.neuron_model, efficacy=graph.efficacy, bias=graph.bias,
         log_gain=graph.log_gain, backend="torch", device=device, apical=graph.apical,
@@ -442,7 +443,7 @@ def test_triton_groups_match_the_batched_products(monkeypatch):
     results = []
     for flag in ("0", "1"):
         monkeypatch.setenv("CADENCE_TRITON", flag)
-        dev = cd.NeuralGraph(connectome, model, backend="torch", device="cuda:0")
+        dev = cd.NeuralGraph(connectome, model, backend="torch", device="cuda:0", precision="float64")
         assert (dev._torch.plan.small is not None) == (flag == "1")
         results.append(dev.settle_batch(drive, steps=30, tolerance=1e-8))
     expected = host.settle_batch(drive, steps=30, tolerance=1e-8)

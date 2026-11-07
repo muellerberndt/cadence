@@ -28,6 +28,7 @@ def stored_plans(tmp_path, monkeypatch):
 
 
 def graph(device: str, seed: int = 1, apical: bool = False, **options: object) -> cd.NeuralGraph:
+    options.setdefault("precision", "float64")  # a device's own default is float32
     brain = cd.Brain.compose(
         12, 6, modules=(10, 8), slots=(3, 3), seed=seed, recall=False,
         **({"apical": 0.25} if apical else {}),
