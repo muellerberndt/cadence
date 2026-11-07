@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A lesson's per-synapse passes (the optimizer's step, its projection-relative form and the contrast's gather) compile
+  under NumPy's error model, so their divisions vectorize and a zero divisor gives what NumPy's form gives instead of
+  Python's error. The bits of every finite step are unchanged. On one thread the optimizer's pass over 504,064 synapses
+  falls from 1.6 ms to 1.0 ms. A learned code's forward weights take one compiled pass where `np.add.at` took 0.7 ms.
 - A brain with a learned code acts two to three times faster, with the same bits. `LearnedCode.stability` answers
   from Cholesky factorizations at the step's bounds while the halvings hold and from the eigenvalues when they
   change, and the brain takes a moment's new thresholds on its own blocks instead of rebuilding them. At 256 code

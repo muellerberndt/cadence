@@ -84,7 +84,16 @@ from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
 from .regions import Region, cortex, motor_cortex, prefrontal_cortex, visual_cortex
-from .stream import Efference, FastSynapses, Hearing, History, PatternSeparator, Recall, Trace
+from .stream import (
+    Efference,
+    FastSynapses,
+    Hearing,
+    History,
+    PatternSeparator,
+    Recall,
+    Trace,
+    _route_matrix,
+)
 
 __all__ = ["Brain"]
 
@@ -2493,8 +2502,13 @@ class Brain:
         out[:, self.code_index] = v - self.brain.bias[self.code_index]
         unit = code.code_of(s)
         synapses, j, m = self._code_forward
-        weights = np.zeros((len(self.association_index), code.units))
-        np.add.at(weights, (m, j), self.brain.weights[synapses])
+        shape = (len(self.association_index), code.units)
+        if self.brain.layout.parallel_synapses:
+            weights = np.zeros(shape)
+            np.add.at(weights, (m, j), self.brain.weights[synapses])
+        else:  # one synapse per entry: the sum with zero that np.add.at would make, in one pass
+            weights = _route_matrix(self.brain, synapses, m * shape[1] + j, shape)
+            weights += 0.0
         out[:, self.association_index] += (unit - s) @ weights.T
         return out
 
@@ -3728,7 +3742,8 @@ class Brain:
                 "lesson on the observations the brain just acted on: the act already wrote "
                 "this moment to the recall memory, so the lesson reads the moment itself, its "
                 "successor still empty. Teach before acting, as step(..., teacher=labels) "
-                "orders them.",
+                "orders them. A world whose next moment looks the same as this one is already "
+                "in that order, and this does not apply to it.",
                 RuntimeWarning,
                 stacklevel=3,  # the caller, past the operation wrapper
             )

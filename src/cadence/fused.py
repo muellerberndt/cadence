@@ -76,20 +76,22 @@ def _vectorized(kernel: _Kernel) -> _Kernel:
     return cast(_Kernel, njit(cache=True, error_model="numpy")(kernel))
 
 
-def _rows_builds(kernel: _Kernel) -> tuple[_Kernel, _Kernel]:
+def _rows_builds(kernel: _Kernel, *, divides: bool = False) -> tuple[_Kernel, _Kernel]:
     """One source compiled twice: serially, and with its ``prange`` over rows on Numba's
     threads. ``prange`` is ``range`` in the serial build. The parallel build compiles a copy
     under a name of its own, because Numba's cache files a function by name and not by its
-    parallel flag."""
+    parallel flag. ``divides``: a per-synapse pass with a division takes NumPy's error model,
+    as ``_vectorized``, and a zero divisor gives what NumPy's form gives."""
     assert njit is not None
+    errors = {"error_model": "numpy"} if divides else {}
     name = kernel.__name__ + "_parallel"
     on_threads = (True,) if kernel.__defaults__ else None  # a kernel's last parameter says which
     copy = types.FunctionType(
         kernel.__code__, kernel.__globals__, name, on_threads, kernel.__closure__
     )
     copy.__qualname__ = kernel.__qualname__ + "_parallel"
-    serial = njit(cache=True)(kernel)
-    parallel = njit(cache=True, parallel=True)(copy)
+    serial = njit(cache=True, **errors)(kernel)
+    parallel = njit(cache=True, parallel=True, **errors)(copy)
     return cast(_Kernel, serial), cast(_Kernel, parallel)
 
 
@@ -2379,7 +2381,7 @@ if njit is not None:
         for e in prange(index.shape[0]):
             out[e] = values[index[e]] / divisor
 
-    _pick, _pick_parallel = _rows_builds(_gather_entries)
+    _pick, _pick_parallel = _rows_builds(_gather_entries, divides=True)
 
     @_compiled
     def _group_power(
@@ -2481,7 +2483,7 @@ if njit is not None:
             else:
                 out[e] = eta * t
 
-    _plain, _plain_parallel = _rows_builds(_plain_entries)
+    _plain, _plain_parallel = _rows_builds(_plain_entries, divides=True)
 
     def _moment_entries(
         raw: np.ndarray,
@@ -2513,7 +2515,7 @@ if njit is not None:
             root[e] = np.sqrt(held / rho_correction)
             term[e] = t
 
-    _moments, _moments_parallel = _rows_builds(_moment_entries)
+    _moments, _moments_parallel = _rows_builds(_moment_entries, divides=True)
 
     def _step_entries(
         term: np.ndarray,
@@ -2529,7 +2531,7 @@ if njit is not None:
         for e in prange(term.shape[0]):
             out[e] = eta * (term[e] / (root[e] + share * group_root[group[e]] + tiny))
 
-    _step, _step_parallel = _rows_builds(_step_entries)
+    _step, _step_parallel = _rows_builds(_step_entries, divides=True)
 
     def _tied_entries(
         delta: np.ndarray,
