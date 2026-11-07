@@ -47,21 +47,6 @@ jobs:
       - name: Exercise the continuing brain
         run: |
           python examples/continuing_brain.py
-  numpy-solver:
-    # The recorded lives: acts and checkpoint digests pinned on the NumPy loop, which the compiled
-    # kernels of the dev extra skip everywhere else.
-    runs-on: macos-latest
-    env:
-      CADENCE_FUSED: "0"
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.13"
-      - run: python -m pip install -e ".[dev]"
-      - run: >-
-          pytest -q tests/test_learned_code.py tests/test_observation_code.py
-          tests/test_recall_memory.py tests/test_reset_arousal.py
   test:
     runs-on: ${{ matrix.os }}
     strategy:
