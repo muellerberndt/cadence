@@ -238,7 +238,7 @@ def test_a_brain_life_teaches_every_frame_and_its_copy_answers_alike(protocol, t
 
 
 def test_the_window_arm_composes_the_pressed_in_observation(protocol):
-    brain = chamber.compose("window", 9 * 16, 0, protocol, backend="cpu")
+    brain = chamber.compose("window", 9 * 16, 0, protocol)
     assert brain.describe()["layout"]["inputs"] == 144
     assert brain.describe()["genes"]["learning_surprise"] is True
     stream = {"frames": np.zeros((3, 16))}

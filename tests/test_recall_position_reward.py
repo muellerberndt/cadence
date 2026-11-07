@@ -146,8 +146,8 @@ def test_the_actor_keeps_the_columns_that_can_step_over_the_event_rows():
 def test_the_report_of_a_reward_step_reads_as_the_norm_of_the_whole_eligibility(
     seed, width, association, columns, size
 ):
-    """Without the zeros of the long runs each term keeps its lane in the dot, so the norm has the
-    bits of the whole vector's."""
+    """Without the zeros of the long runs each term keeps its lane in the dot, so the norm reads as
+    the whole vector's, to the last bits a BLAS of another machine moves."""
     from cadence.stream import _laid_out_norm
 
     rng = np.random.default_rng(seed)
@@ -159,7 +159,7 @@ def test_the_report_of_a_reward_step_reads_as_the_norm_of_the_whole_eligibility(
         anchored.ravel(), np.zeros(rest * (size + 1)),
     ])
     pieces = [(width + rest) * columns, position, rest * size, anchored, rest * (size + 1)]
-    assert _laid_out_norm(pieces) == np.linalg.norm(whole)
+    assert _laid_out_norm(pieces) == pytest.approx(np.linalg.norm(whole), rel=1e-14)
 
 
 def test_a_retuned_address_reward_keeps_the_eligibility_as_it_lay():

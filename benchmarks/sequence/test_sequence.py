@@ -164,8 +164,8 @@ def test_a_life_is_the_same_twice_and_the_summary_spans_its_founders():
 
 def test_fan_in_rates_scale_a_wide_brain_to_the_narrow_one():
     task = wd.TASKS["associative"]()
-    narrow = wd.compose(task, 64, 0, True, backend="cpu")
-    wide = wd.compose(task, 128, 0, True, {"learning_surprise_share": True}, backend="cpu")
+    narrow = wd.compose(task, 64, 0, True)
+    wide = wd.compose(task, 128, 0, True, {"learning_surprise_share": True})
     assert wide.learner.config.surprise_share
     rates = wd.fan_in_rates(wide, narrow)
     assert rates.shape == (wide.connectome.synapses,)

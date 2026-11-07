@@ -32,7 +32,7 @@ def test_the_tasks_ask_what_they_declare() -> None:
 
 
 def test_the_arms_differ_only_in_the_pathway() -> None:
-    founder, recipe, control = (subject.compose(0, arm, backend="cpu") for arm in ("founder", "identity",
+    founder, recipe, control = (subject.compose(0, arm) for arm in ("founder", "identity",
                                                                        "random"))
     assert founder.recall.copy == 0.0 and recipe.recall.copy == 2.0
     assert recipe.recall.tokens == tuple(range(subject.T)) and control.recall.tokens is None
