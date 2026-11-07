@@ -587,8 +587,10 @@ Connectome.from_synapses(n, *, pre, post, count=None, sign=None, populations=Non
 ```
 
 Parallel synapses merge (counts add), autapses and synapses below `min_count` drop, and the
-arrays are sorted by `(post, pre)`. Fields `n`, `pre`, `post`, `count`, `sign`, `populations`
-and `label` are read-only. `members(*names)`, `with_populations(**populations)`,
+arrays are sorted by `(post, pre)`. A population is held ascending, each neuron once; a sequence
+given in another order warns (`RuntimeWarning`), since a brain's inputs and actions take its
+neurons in that order, and a set states no order. Fields `n`, `pre`, `post`, `count`, `sign`,
+`populations` and `label` are read-only. `members(*names)`, `with_populations(**populations)`,
 `in_degree()`, `out_degree()`, `synapses`, `summary()`, `digest()` (SHA-256 of the arrays).
 Guide: [brains from a connectome](anatomy.md#brains-from-a-connectome).
 

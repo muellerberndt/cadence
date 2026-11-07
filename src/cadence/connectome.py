@@ -8,6 +8,7 @@ Named populations of neurons live alongside it so protocols can speak in names.
 
 from __future__ import annotations
 
+import warnings
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from hashlib import sha256
@@ -30,6 +31,29 @@ def _neuron_indices(values: Sequence[int] | np.ndarray, n: int, name: str) -> np
     if np.any(array < 0) or np.any(array >= n):
         raise ValueError(f"{name} indices must lie in [0, n)")
     return array.astype(np.int64, copy=False)
+
+
+def _as_given(values: Iterable[int]) -> tuple[int, ...]:
+    """Population indices in the order they state; a set states none, so it reads ascending."""
+    return tuple(sorted(values)) if isinstance(values, (set, frozenset)) else tuple(values)
+
+
+def _held_population(values: Iterable[int], n: int, name: str) -> tuple[int, ...]:
+    """A population as a connectome holds it: its neurons ascending, each once. A brain lays its
+    inputs and actions on them in this order, so a sequence given in another order would move them
+    without a word: it warns."""
+    given = _neuron_indices(_as_given(values), n, name)
+    held = np.unique(given)
+    if not np.array_equal(held, given):
+        warnings.warn(
+            f"population {name!r} is not ascending once each: a connectome holds a population "
+            "ascending, and a brain's k-th input or action takes its k-th neuron in that order, "
+            "not in the order given. Number the neurons in the order wanted, or pass a set "
+            "where the order means nothing.",
+            RuntimeWarning,
+            stacklevel=4,  # past __post_init__ and the dataclass's __init__
+        )
+    return tuple(int(i) for i in held)
 
 
 def _edge_arrays(
@@ -81,8 +105,7 @@ class Connectome:
             self,
             "populations",
             MappingProxyType({
-                k: tuple(int(i) for i in np.unique(_neuron_indices(tuple(v), self.n, k)))
-                for k, v in self.populations.items()
+                k: _held_population(v, self.n, k) for k, v in self.populations.items()
             }),
         )
         for name in ("pre", "post", "count", "sign"):
@@ -138,12 +161,12 @@ class Connectome:
             post=uniq // n,
             count=merged_count,
             sign=merged_sign,
-            populations={k: tuple(v) for k, v in (populations or {}).items()},
+            populations={k: _as_given(v) for k, v in (populations or {}).items()},
             label=label,
         )
 
     def with_populations(self, **populations: Iterable[int]) -> Connectome:
-        merged = {**self.populations, **{k: tuple(v) for k, v in populations.items()}}
+        merged = {**self.populations, **{k: _as_given(v) for k, v in populations.items()}}
         return Connectome(self.n, self.pre, self.post, self.count, self.sign, merged, self.label)
 
     # -- queries

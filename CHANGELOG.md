@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+- A `Connectome` warns when a population is given as a sequence out of ascending order or with a neuron twice. It
+  holds a population ascending, and a brain's k-th input or action takes its k-th neuron in that order, so a
+  caller who listed a late region first had its inputs moved with no word. The population held is unchanged. A set
+  states no order and stays silent.
 - **Default change.** `Brain.compose` gives every new brain the recall memory, at the settings
   [`recall=True` gives a new brain](docs/memory.md#what-recalltrue-gives-a-new-brain).
   `recall=False` builds the brain without it; `Brain(connectome)` and a custom anatomy hold one only

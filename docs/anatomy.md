@@ -26,7 +26,9 @@ Brain loop. Wrap it in a brain in one of two ways:
 - `Brain.compose(inputs, actions, connectome=connectome, ...)` adds the composed founders
   ([defaults](tune.md#defaults-and-expert-overrides)), and the episodic founders under
   `memory_choice=True`. Its `sensory` (or `visual/input`) population holds the inputs (the
-  code's units with `code=units`) and its `motor` population the actions. The anatomy brings
+  code's units with `code=units`) and its `motor` population the actions, each in ascending
+  neuron order: the k-th input takes the k-th neuron by index, whatever order the population was
+  given in, and a connectome warns when a sequence is given out of that order. The anatomy brings
   its own layout, so the layout settings (`modules`, `observers`, `lateral`, `scales`,
   `features`, `field`) stay at their founders. To change the composed layout itself, edit or
   evolve `Genome.composed(inputs, actions, ...)`, the layout `compose` develops
