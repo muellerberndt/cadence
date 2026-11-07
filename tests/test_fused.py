@@ -9,6 +9,7 @@ import cadence as cd
 from cadence import brain as brain_module
 
 pytest.importorskip("numba")
+pytestmark = pytest.mark.skipif(not brain_module._FUSED, reason="CADENCE_FUSED=0 reads the NumPy loop alone")
 
 from cadence import fused  # noqa: E402
 
