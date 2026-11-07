@@ -3020,11 +3020,11 @@ class Brain:
             whole = self.recall.full_eligibility(agent.trace_memory)
         for component, field, value in memory_changes:
             setattr(component, field, value)
-        if whole is not None and self.recall is not None:
-            agent.trace_memory = self.recall.kept_eligibility(whole)
         if self.recall is not None and self.recall.reward_columns != columns:
             # a trace of the old columns cannot continue (no contrast is pending: refused above)
             agent.trace_memory = None
+        elif whole is not None and self.recall is not None:
+            agent.trace_memory = self.recall.kept_eligibility(whole)
         if self.recall is not None and not (
             self.recall.address_reward
             or (self.recall.position_reward and self.recall.position_maps)
