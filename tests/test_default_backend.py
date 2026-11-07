@@ -49,6 +49,26 @@ def test_cuda_takes_the_brains_its_table_read_faster(monkeypatch):
     assert choose(1, SPEECH, learned_code=True) == ("cpu",)
 
 
+# the crossings read at the rule's constants: rows, synapses, under a compartment, the fastest
+READ_ON_THE_A10G = [
+    (1, CHAMBER, False, "cpu"), (16, CHAMBER, False, "cpu"), (64, CHAMBER, False, "cpu"),
+    (256, CHAMBER, False, "torch"), (16, 30_976, False, "cpu"), (64, 30_976, False, "torch"),
+    (1, 222_464, False, "cpu"), (16, 222_464, False, "torch"), (1, 870_912, False, "torch"),
+    (1, SPEECH, False, "torch"), (16, SPEECH, False, "torch"), (256, SPEECH, False, "torch"),
+    (1, DEEP, True, "cpu"), (4, DEEP, True, "torch"), (64, DEEP, True, "torch"),
+    (1, 10_752, True, "cpu"), (4, 10_752, True, "cpu"), (16, 10_752, True, "torch"),
+    (1, 2_098_432, True, "torch"), (16, 2_098_432, True, "torch"),
+]
+
+
+@pytest.mark.parametrize(("rows", "synapses", "apical", "fastest"), READ_ON_THE_A10G)
+def test_the_rule_chooses_what_read_fastest_on_the_a10g(monkeypatch, rows, synapses, apical, fastest):
+    on_a_machine(monkeypatch, card="NVIDIA A10G")
+    assert choose(rows, synapses, apical=apical)[0] == fastest
+    on_a_machine(monkeypatch)
+    assert choose(rows, synapses, apical=apical) == ("cpu",)
+
+
 def test_a_compartment_passes_one_core_sooner_on_cuda(monkeypatch):
     on_a_machine(monkeypatch, card="NVIDIA A10G")
     assert choose(1, DEEP, apical=True) == ("cpu",)
