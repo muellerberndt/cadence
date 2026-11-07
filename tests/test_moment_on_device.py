@@ -80,7 +80,7 @@ def test_a_copy_of_a_brain_on_torch_continues_alike_with_a_kernel_of_its_own():
 
 @pytest.mark.parametrize("seed", range(3))
 def test_a_life_on_torch_reads_as_on_the_host(seed):
-    host = cd.Brain.compose(12, 5, modules=(16,), seed=seed, backend="cpu")
+    host = cd.Brain.compose(12, 5, modules=(16,), seed=seed, backend="cpu", learning_fast_settle=False)
     device = brain_on_torch(seed)
     rng = np.random.default_rng(seed)
     answer = None
@@ -153,6 +153,7 @@ def _twins(monkeypatch, device: str = "cpu", **options) -> tuple[cd.Brain, cd.Br
     monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
     monkeypatch.setenv("CADENCE_MLX_MEMORY", "1")
     options.setdefault("modules", (16,))
+    options.setdefault("learning_fast_settle", False)  # the compiled CPU path's other solve
     return (
         cd.Brain.compose(12, 5, seed=4, backend="cpu", **options),
         cd.Brain.compose(12, 5, seed=4, **_placed_on(device), **options),
@@ -160,7 +161,9 @@ def _twins(monkeypatch, device: str = "cpu", **options) -> tuple[cd.Brain, cd.Br
 
 
 def _placed_on(device: str) -> dict[str, str]:
-    return {"backend": "mlx"} if device == "mlx" else {"backend": "torch", "device": device}
+    if device == "mlx":
+        return {"backend": "mlx"}
+    return {"backend": "torch", "device": device, "precision": "float64"}
 
 
 # the devices a life is read on, and how far a synapse lies from the host's on each
@@ -218,7 +221,7 @@ def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, option
 
 
 def test_a_salience_weighs_the_eligibility_as_on_the_host():
-    host = cd.Brain.compose(12, 5, seed=2, modules=(16,), backend="cpu")
+    host = cd.Brain.compose(12, 5, seed=2, modules=(16,), backend="cpu", learning_fast_settle=False)
     device = brain_on_torch(2)
     rng = np.random.default_rng(11)
     for t in range(10):

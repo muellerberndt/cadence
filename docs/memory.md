@@ -276,6 +276,7 @@ configuration.
 | --- | --- | --- | --- |
 | `teaching` | `"founder"` | `"deep"`, no apical | Whole nudged phases ([the deep point](tune.md#deep-brains)) |
 | `learning_surprise` | `False` | `True` | [Lessons only where the answer differs](teach.md#lessons-only-where-the-answer-differs) |
+| `learning_fast_settle` | `False` | `True` | [The free solves' fast form](settling.md#settling-and-equilibrium): the same equations, order and tolerance in fewer neuron updates, with other bits |
 | `recall_recency` | `0.25` | `0.0` | No age charge: position is learned ([positions at lengths no lesson reached](#positions-at-lengths-no-lesson-reached)) |
 | `recall_boundary` | `False` | `True` | A silent first slot, so a stream's first event has a predecessor |
 | `recall_anchor` | `False` | `True` | Each slot's place in its episode |
@@ -287,6 +288,9 @@ configuration.
 | `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
 | `carried_gain` | `0.0` | `0.01` | [A learned gain per carried route](#how-strongly-a-carried-region-is-heard), from the trace's 3.0 |
 | `recall_drive_gain` | `False` | `True` | [The read's route](#the-reads-drive-as-a-route): the read quiets where it does not pay and stays at or below its amplitude |
+
+Above an association of 64 a new brain also [steps at its width](tune.md#wide-brains): `recall_address` is .01 times
+`64 / w` and the two projections that grow with the width step at `64 / w`, each until you name its rate.
 
 `recall_when=True` stays an opt-in, for tasks that ask "before?": it carries that question and it costs
 the grammar chamber's paths and two hops ([one composition](#one-composition-for-sequences)).
@@ -303,7 +307,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_amplitude` | `3.0` | retune | Drive of a slot that holds the whole weight |
 | `recall_temperature` | `0.25` | retune | Softmax temperature over the slots |
 | `recall_recency` | `0.25` | retune | Logit cost per moment of age |
-| `recall_address` | `0.01` | retune | Address lesson rate, bounded per row by `1 / \|z\|^2`; `0.0` freezes the map |
+| `recall_address` | `0.01` | retune | Address lesson rate, bounded per row by `1 / \|z\|^2`; `0.0` freezes the map. A new brain's association of `w` above 64 takes .01 times `64 / w` |
 | `recall_capacity` | `64` | construction | Slots per stream, oldest dropped first |
 | `recall_next` | `True` | construction | The `next` region and each slot's next |
 | `scales["recall"]` | `1.2` | construction | Initial magnitude of the two projections (a `compose` argument) |
@@ -564,7 +568,8 @@ A life of this composition takes 154 seconds on one thread of a shared machine, 
 multiply-accumulates, and holds 28,716 parameters on these words: 630 the associative store, 3,500 the grid and
 two the gains. The transformer takes 19 seconds and 6.9e10 for one pass, and 276 seconds and 1.2e12 offline.
 
-Six founders per column at width, on their own newborns, at the composed steps, the mean with the least life:
+Six founders per column at width, on their own newborns, at whole steps with the read map at .01, the mean with
+the least life:
 
 | Width | Panel | First block, no route | Second block, no route | Second block, this composition | Transformer, one pass, offline |
 | --- | --- | --- | --- | --- | --- |
@@ -577,8 +582,9 @@ Six founders per column at width, on their own newborns, at the composed steps, 
 | 256 | Paths | .96 (.92) | .88 (.38) | .76 (.33) | .25, .89 |
 | 256 | Two hops | .94 (.88) | .80 (.06) | .65 (.03) | .04, .88 |
 
-A low life on paths comes and goes with the founder at every width. [The projection rates and the read
-map](tune.md#wide-brains) hold paths at .98 at both widths on six development founders.
+A low life on paths comes and goes with the founder at every width. A new brain [steps at its
+width](tune.md#wide-brains): on six further fresh founders, twelve lives a cell, it reads paths .97 (least .84) at 128 and
+.96 (least .81) at 256, against .94 (.72) and .94 (.67) at whole steps, and brackets .82 at 256 against .94.
 
 The same brain meets look back, copying, induction, n-back, periodic continuation and two hops with no
 further setting. "Was A told before B?" asks when a read item happened, and takes
@@ -1221,7 +1227,7 @@ a recall memory at `teaching="deep"` the read carries the cue, and at 3.0 the ta
 through the trace: on the [grammar chamber](../benchmarks/grammar/README.md#state-across-moments),
 emptying the trace before every act takes clauses from 0.96 to 0.38. It also falls with width. A
 tenth of the amplitude removes both, on the synapses already there. Twenty-four lives on
-development founders, widths three lives each at the composed steps:
+development founders, widths three lives each at whole steps with the read map at .01:
 
 | Width, amplitude | Clauses | Held-out | Roles | Brackets | Paths | Three hops |
 | --- | --- | --- | --- | --- | --- | --- |

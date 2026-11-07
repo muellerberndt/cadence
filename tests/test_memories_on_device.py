@@ -44,6 +44,7 @@ def pair(
     device: str, inputs: int = 12, actions: int = 5, seed: int = 3, **options
 ) -> tuple[cd.Brain, cd.Brain]:
     options.setdefault("modules", (16,))
+    options.setdefault("learning_fast_settle", False)  # the compiled CPU path's other solve
     return (
         cd.Brain.compose(inputs, actions, seed=seed, backend="cpu", **options),
         cd.Brain.compose(inputs, actions, seed=seed, **on_device(device), **options),

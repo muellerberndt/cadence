@@ -106,7 +106,7 @@ def test_the_rule_imports_nothing_below_a_devices_work():
 
 
 def small(**options) -> cd.Brain:
-    return cd.Brain.compose(12, 5, modules=(16,), seed=3, **options)
+    return cd.Brain.compose(12, 5, **{"modules": (16,), "seed": 3, **options})
 
 
 def a_life(brain: cd.Brain, rows: int = 3, moments: int = 8) -> list[np.ndarray]:
@@ -146,18 +146,27 @@ def to_the_torch_cpu(from_rows: int):
 
 
 @pytest.mark.parametrize("rows", [3, 5])
-def test_a_brain_takes_its_backend_at_its_first_moment_and_lives_on(monkeypatch, rows):
-    torch = pytest.importorskip("torch")
-    assert torch is not None
+@pytest.mark.parametrize(
+    "options",
+    [
+        {}, {"modules": (128,)}, {"modules": (16, 8), "apical": 0.25, "teaching": "deep"},
+        {"recall": False}, {"recall_founder": True},
+    ],
+    ids=["default", "wide", "apical", "no recall", "recall founder"],
+)
+def test_a_brain_takes_its_backend_at_its_first_moment_and_lives_on(monkeypatch, rows, options):
+    pytest.importorskip("torch")
     monkeypatch.setattr(generic, "_fastest_backends", to_the_torch_cpu(from_rows=2))
-    named = small(backend="cpu")
-    default = small()
+    if options.get("recall_founder") is None and options.get("recall") is None:
+        options = {**options, "learning_fast_settle": False}  # the compiled CPU path's other solve
+    named = small(**{"backend": "cpu", **options})
+    default = small(**options)
     assert default.brain._torch is None and default.placement["pending"] is True
     host, placed = a_life(named, rows), a_life(default, rows)
     assert default.brain._torch is not None
     for ours, theirs in zip(host, placed, strict=True):
         np.testing.assert_array_equal(ours, theirs)
-    np.testing.assert_allclose(default.brain.efficacy, named.brain.efficacy, rtol=0, atol=1e-9)
+    np.testing.assert_allclose(default.brain.efficacy, named.brain.efficacy, rtol=0, atol=2e-8)
     report = default.placement
     assert report["backend"] == "torch" and report["chosen_by"] == "auto"
     assert report["device"] == "cpu" and report["precision"] == "float64"

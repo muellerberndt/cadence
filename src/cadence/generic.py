@@ -312,7 +312,70 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 # what ``Brain.compose(..., recall=True)`` gives a new brain's lessons beside its memory
 # (``Recall.COMPOSED``): the teaching point, at no apical, and settings a caller's value overrides
 _COMPOSED_TEACHING = "deep"
-_COMPOSED_SETTINGS: dict[str, Any] = {"learning_surprise": True, "carried_gain": 0.01}
+_COMPOSED_SETTINGS: dict[str, Any] = {
+    "learning_surprise": True, "learning_fast_settle": True, "carried_gain": 0.01,
+}
+# the association's width those lessons hold at: past it the two projections that grow with the
+# width (``_width_rates``) and the read's address map each step at this over the width
+_COMPOSED_WIDTH = 64
+
+
+def _width_rates(connectome: Connectome) -> np.ndarray | None:
+    """Each synapse's step in a new brain with a wide association: ``_COMPOSED_WIDTH`` over its
+    width on the two projections whose fan-in grows with it, prefrontal to association and the
+    association-motor pair, and 1 on every other; None at or under that width, and for a
+    connectome without those regions, where every step stays whole."""
+    populations = connectome.populations
+    if any(name not in populations for name in ("association", "motor", "prefrontal")):
+        return None
+    width = len(populations["association"])
+    if width <= _COMPOSED_WIDTH:
+        return None
+
+    def among(name: str) -> np.ndarray:
+        members = np.zeros(connectome.n, dtype=bool)
+        members[np.asarray(populations[name], dtype=np.int64)] = True
+        return members
+
+    association, motor = among("association"), among("motor")
+    pre, post = connectome.pre, connectome.post
+    grows = (
+        (among("prefrontal")[pre] & association[post])
+        | (association[pre] & motor[post])
+        | (motor[pre] & association[post])
+    )
+    rate = np.ones(connectome.synapses)
+    rate[grows] = _COMPOSED_WIDTH / width
+    return rate
+
+
+def _rated_by_hand(brain: Brain) -> bool:
+    """Whether the brain holds per-synapse rates other than the ones its width gave it."""
+    rate = brain.learner.synapse_rate
+    if rate is None:
+        return False
+    composed = _width_rates(brain.connectome)
+    return composed is None or not np.array_equal(rate, composed)
+
+
+def _projection_rates(connectome: Connectome, rate: np.ndarray) -> dict[str, Any]:
+    """Each projection's step where a brain holds per-synapse rates, by ``"pre->post"``: one number
+    for a projection that moves as one, else its least and largest, and no entry at a step of 1."""
+    names = [name for name in connectome.populations if "/" not in name]
+    label = np.full(connectome.n, -1, dtype=np.int64)
+    for index, name in enumerate(names):
+        label[np.asarray(connectome.populations[name], dtype=np.int64)] = index
+    pre, post = label[connectome.pre], label[connectome.post]
+    pair = pre * len(names) + post
+    moved = (rate != 1.0) & (pre >= 0) & (post >= 0)
+    out: dict[str, Any] = {}
+    for key in np.unique(pair[moved]):
+        values = rate[pair == key]
+        low, high = float(values.min()), float(values.max())
+        out[f"{names[key // len(names)]}->{names[key % len(names)]}"] = (
+            low if low == high else [low, high]
+        )
+    return out
 
 
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
@@ -2661,6 +2724,10 @@ class Brain:
         With no ``backend`` named a brain takes the fastest this machine has for its size and rows,
         in float32 on a device, at its first moment (``placement``, docs/backends.md). ``device``
         and ``precision`` name a place on torch; a run that must repeat names its backend.
+        On an association wider than 64 it steps prefrontal to association, the association-motor
+        pair and the read's address map at 64 over that width: ``recall_address``, a ``teaching``
+        other than ``"deep"`` and ``learning=`` name rates that win over it, and
+        ``brain.learner.synapse_rate`` holds the steps after that (docs/tune.md, wide brains).
         ``options`` takes the constructor's memory settings (``recall`` and its
         ``recall_<setting>``, ``episodic``, ``memory_choice`` and its settings,
         ``efference_amplitude``, ``history_decays``, ``working_memory_*``) and every configuration
@@ -2702,17 +2769,21 @@ class Brain:
                     "recall=False to build without one, or recall=True to take it"
                 )
             options["recall"] = True
-        if options.get("recall", False) is True and not attention:
-            # the memory and the lessons a new brain composes, each an ordinary setting the
-            # caller's overrides; the founder word takes none of them
-            if not options.get("recall_founder", False):
-                for name, value in Recall.composed(options).items():
-                    options.setdefault(f"recall_{name}", value)
-                for name, value in _COMPOSED_SETTINGS.items():
-                    if not (name.startswith("learning_") and "learning" in options):
-                        options.setdefault(name, value)
-                if teaching is None and "learning" not in options:
-                    teaching = _COMPOSED_TEACHING
+        # the memory and the lessons a new brain composes, each an ordinary setting the
+        # caller's overrides; the founder word takes none of them
+        composes_memory = (
+            options.get("recall", False) is True
+            and not attention
+            and not options.get("recall_founder", False)
+        )
+        if composes_memory:
+            for name, value in Recall.composed(options).items():
+                options.setdefault(f"recall_{name}", value)
+            for name, value in _COMPOSED_SETTINGS.items():
+                if not (name.startswith("learning_") and "learning" in options):
+                    options.setdefault(name, value)
+            if teaching is None and "learning" not in options:
+                teaching = _COMPOSED_TEACHING
 
         genome, layout = _layout(
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
@@ -2720,6 +2791,11 @@ class Brain:
             learned_code=learned_code, seed=seed, slots=slots,
         )
         units, learned = layout["units"], layout["learned"]
+        association = layout["widths"][-1]
+        if composes_memory and association > _COMPOSED_WIDTH:  # a wide brain's read map steps less
+            options.setdefault(
+                "recall_address", Recall.founders()["address"] * _COMPOSED_WIDTH / association
+            )
         if attention and (
             layout["recalled"]["window"] < 2 or not layout["recalled"]["next"]
         ):
@@ -2807,6 +2883,8 @@ class Brain:
         result.attention = attention
         if custom:
             return result  # a custom anatomy records no composition
+        if composes_memory and teaching == _COMPOSED_TEACHING:  # steps the caller did not name
+            result.learner.synapse_rate = _width_rates(result.connectome)
         result._composition = {
             "inputs": layout["inputs"],
             "actions": layout["actions"],
@@ -3043,13 +3121,17 @@ class Brain:
         outcome this brain awaits stays with this brain; so does the rehearsal's reservoir
         (``learning_rehearsal``), which the grown brain starts afresh.
         Learning gives the new synapses weight: a synapse moves on what its two neurons do in the
-        free and nudged phases, not on its own weight.
+        free and nudged phases, not on its own weight. An association's width is fixed at birth,
+        so the steps its width gave keep their rates: a new slot's synapses with the association
+        take the pair's, every other new synapse steps at 1. A new memory's address map takes the
+        step of a new memory at this width.
 
         Refused: a brain that records no construction (a custom anatomy); a part inside the brain's
         loop (``modules``, ``observers``, a code), which learns nothing at zero and changes the
         brain at any other start; a setting that is not a part, which ``retune`` changes; new
         slots where a memory is laid out per action (``recall_action``, ``recall_tokens``,
-        ``memory_choice``) or would join a deep brain's apical pool. See ``docs/grow.md``.
+        ``memory_choice``) or would join a deep brain's apical pool; tied synapses and rates set by
+        hand. See ``docs/grow.md``.
         """
         return _grow(self, parts)
 
@@ -3084,13 +3166,14 @@ class Brain:
         its own regions, and learning gives the joints weight. Everything else is this brain's:
         its other weights, its memories and their records, its settings, actor and arousal, so a
         whole donor grafted into a larger anatomy chooses as the donor does where those agree.
-        The streams start afresh, as after ``reset()``.
+        Every synapse steps at this brain's rates, the grafted ones too; the donor's stay with the
+        donor. The streams start afresh, as after ``reset()``.
 
         Refused: populations either brain lacks or of different sizes; grafted regions that
         share no synapse; a donor synapse among the grafted neurons that this brain lacks, or a
         one-way donor synapse landing on half of one of this brain's reciprocal pairs; a
         different neuron model, apical compartment or apical role; a learned code's region, or
-        a joint landing on it; tied or rated synapses. See ``docs/grow.md``.
+        a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
         return _graft(self, donor, regions, into, joints, freeze)
 
@@ -3099,8 +3182,10 @@ class Brain:
 
         - ``layout``: the inputs, actions, regions, slots, neurons, synapses and populations;
           ``code``, what the memories key on; ``learned_code``, a learned code's settings and
-          counts; and ``composition``, the construction choices of a composed brain (None for
-          a custom anatomy), provenance rather than a description of learned weights.
+          counts; ``composition``, the construction choices of a composed brain (None for a
+          custom anatomy), provenance rather than a description of learned weights; and
+          ``projection_rates``, each projection's step other than 1 where the brain holds
+          per-synapse rates.
         - ``genes``: every setting by the name ``compose`` and ``retune`` take, the teaching
           point as ``teaching`` (``"custom"`` for steps that ``learning=LearnerConfig(...)``
           set outside every point, whose six effective settings are then under ``learning``).
@@ -3209,6 +3294,13 @@ class Brain:
                 },
                 **({} if learned is None else {"learned_code": learned.to_dict()}),
                 "composition": self._composition,
+                **(
+                    {} if self.learner.synapse_rate is None else {
+                        "projection_rates": _projection_rates(
+                            self.connectome, self.learner.synapse_rate
+                        )
+                    }
+                ),
             },
             "genes": genes,
             "placement": self.placement,
@@ -5545,7 +5637,9 @@ class Brain:
             result.last_learning = meta.get("last_learning", {})
             if isinstance(ran_on, dict):
                 here = result.placement
-                moved = any(ran_on.get(name) != here[name] for name in ("backend", "device", "precision"))
+                moved = any(
+                    ran_on.get(name) != here[name] for name in ("backend", "device", "precision")
+                )
                 result._placement = (
                     {"chosen_by": "named", "why": "the backend was named at load", "refused": [],
                      "saved_on": ran_on}
@@ -5799,6 +5893,8 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
     inputs, actions, composed = _composed_again(brain)
     grown = int(sum(changes["slots"])) if "slots" in changes else actions
     template = type(brain).compose(inputs, grown, backend="cpu", **{**composed, **changes})
+    if brain.learner.synapse_rate is not None:  # the rates its width gave it, on the grown layout
+        template.learner.synapse_rate = _width_rates(template.connectome)
     gains = None
     if brain.hearing is not None:
         gains = {
@@ -5985,8 +6081,11 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             "grow needs a brain that records its construction: a custom anatomy "
             "(compose(connectome=...)) records none, nor does a checkpoint saved without it"
         )
-    if brain.learner.tie_groups is not None or brain.learner.synapse_rate is not None:
-        raise ValueError("grow takes a composed brain without tied or rated synapses")
+    if brain.learner.tie_groups is not None or _rated_by_hand(brain):
+        raise ValueError(
+            "grow takes a composed brain without tied synapses or rates set by hand: set the "
+            "rates on the grown brain"
+        )
     genes = brain.describe()["genes"]
     settings: dict[str, Any] = {
         name: value
@@ -6075,8 +6174,6 @@ def _grown_checkpoint(
     from .receipts import canonical_json
 
     meta_old, meta_new = json.loads(str(old["meta"])), json.loads(str(new["meta"]))
-    if old["tie_groups"].size or old["synapse_rate"].size:
-        raise ValueError("grow takes a composed brain without tied or rated synapses")
     n = int(meta_new["n"])
     index = _grown_neurons(meta_old["populations"], meta_new["populations"], int(meta_old["n"]))
     known = np.zeros(n, dtype=bool)
@@ -6089,6 +6186,10 @@ def _grown_checkpoint(
         raise RuntimeError("grow could not lay this brain out again: a trained synapse is missing")
     kept = np.zeros(len(key), dtype=bool)
     kept[at] = True
+    if old["synapse_rate"].size and not np.array_equal(
+        new["synapse_rate"][at], old["synapse_rate"]
+    ):
+        raise RuntimeError("grow could not lay this brain out again: a synapse's rate moved")
     data = dict(new)
     for name in _GROW_SYNAPSE:
         values = np.array(new[name])
@@ -6260,6 +6361,11 @@ def _graft(
     if joints not in ("zero", "kept"):
         raise ValueError("joints is 'zero' or 'kept'")
     source, target = _graft_pairs(donor.connectome, host.connectome, regions, into)
+    if _rated_by_hand(host) or _rated_by_hand(donor):
+        raise ValueError(
+            "graft takes brains without tied synapses or rates set by hand: set the rates on the "
+            "grafted brain"
+        )
     for brain, index, whose in ((donor, source, "the donor's"), (host, target, "this brain's")):
         code = brain.connectome.populations.get("code", ()) if brain.learned_code else ()
         if np.isin(index, code).any():
@@ -6366,8 +6472,11 @@ def _grafted_checkpoint(
     if meta_host.get("apical") != meta_donor.get("apical"):
         raise ValueError("the donor's apical compartment differs from this brain's")
     for checkpoint in (host, donor):
-        if checkpoint["tie_groups"].size or checkpoint["synapse_rate"].size:
-            raise ValueError("graft takes brains without tied or rated synapses")
+        if checkpoint["tie_groups"].size:
+            raise ValueError(
+                "graft takes brains without tied synapses or rates set by hand: set the rates on "
+                "the grafted brain"
+            )
     n = int(meta_host["n"])
     where = np.full(int(meta_donor["n"]), -1, dtype=np.int64)
     where[source] = target
