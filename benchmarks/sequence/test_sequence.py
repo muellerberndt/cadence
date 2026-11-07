@@ -105,6 +105,11 @@ def test_every_arm_reaches_the_brain(arm):
         assert (list(got) if isinstance(value, list) else got) == value, name
 
 
+def test_settings_name_a_lifes_backend():
+    brain = bt.make_brain(bt.TwoHop(), "recipe", 0, {"backend": "cpu"}, module=16)
+    assert brain.brain.backend == "cpu"
+
+
 @pytest.mark.parametrize("arm", list(od.ARMS))
 def test_every_ordered_recall_arm_reaches_the_brain(arm):
     genes = od.make_brain(arm, 1001, {"modules": [8]}).describe()["genes"]
