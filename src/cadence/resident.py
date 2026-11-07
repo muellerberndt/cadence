@@ -65,8 +65,8 @@ def _memory_on_device(kernel: Any, streams: int, width: int) -> bool:
 # ``rows * synapses`` from which a device passes the CPU at its default on a composed brain, over
 # a moment's ``act``, ``lesson`` and ``step``: in float32 on an A10G, under a compartment, whose
 # settle costs the CPU more, and on an Apple M4.
-_AUTO_CUDA_WORK = 850_000
-_AUTO_CUDA_APICAL = 150_000
+_AUTO_CUDA_WORK = 800_000
+_AUTO_CUDA_APICAL = 110_000
 _AUTO_MLX_WORK = 500_000
 # A launch on MLX takes this many settling neurons, and past them a brain runs its compiled sweep,
 # which passes one CPU core from about this many rows (one deep anatomy, between 16 and 64).
