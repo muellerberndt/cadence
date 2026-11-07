@@ -54,7 +54,8 @@ def test_a_compartment_passes_one_core_sooner_on_cuda(monkeypatch):
     assert choose(1, DEEP, apical=True) == ("cpu",)
     assert choose(4, DEEP, apical=True) == ("torch", "cpu")
     assert choose(4, DEEP) == ("cpu",)
-    assert choose(64, CHAMBER) == ("torch", "cpu")
+    assert choose(64, CHAMBER) == ("cpu",)
+    assert choose(128, CHAMBER) == ("torch", "cpu")
 
 
 def test_mlx_takes_the_brains_its_table_read_faster(monkeypatch):

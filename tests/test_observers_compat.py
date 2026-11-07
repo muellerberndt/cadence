@@ -66,7 +66,9 @@ def test_observers_live_with_every_component(name, tmp_path):
         assert len(brain.brain.apical.members) == 4
     life(brain)
     loaded = cd.Brain.load(brain.save(tmp_path / "brain.npz"))
-    assert loaded.describe() == brain.describe()
+    described = brain.describe()
+    described.pop("placement", None)  # it ran on torch and now runs on the CPU
+    assert loaded.describe() == described
     x = np.eye(8)[[2]]
     np.testing.assert_array_equal(loaded.act(x, greedy=True), brain.act(x, greedy=True))
     brain.retune(working_memory_decay=0.4)

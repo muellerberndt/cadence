@@ -131,29 +131,28 @@ brain holds the host's object; read them after it, or name the backend.
 
 | Device | A brain takes it from | Read on |
 | --- | --- | --- |
-| CUDA, float32 | `rows * synapses >= 700,000`, under an apical compartment 150,000 | an NVIDIA A10G against one core of its EPYC 7R32, `step` and `lesson` |
+| CUDA, float32 | `rows * synapses >= 850,000`, under an apical compartment 150,000 | an NVIDIA A10G against the compiled CPU path at its default on its EPYC 7R32, over `act`, `lesson` and `step` |
 | MLX, float32 | `rows * synapses >= 500,000`; a brain no launch takes, past 2,048 settling neurons or 1,360 under a compartment, from 32 rows | an Apple M4 against one of its cores |
 | The compiled CPU path | every other brain | |
 
-On that A10G, in milliseconds of `step` per moment, one CPU core then the device:
+On that A10G, in milliseconds of `act`, `lesson` and `step`, one CPU core at its default solve, then the device:
 
 | Brain | Synapses | Rows | One core | A10G, float32 |
 | --- | ---: | ---: | ---: | ---: |
-| The chamber's default brain, 35 inputs | 13,120 | 1 | 3.1 | 10.5 |
-| The same | | 16 | 11.0 | 12.0 |
-| The same | | 64 | 30.6 | 18.3 |
-| The same | | 256 | 97.1 | 26.9 |
-| 128 inputs, `modules=(64,)` | 30,976 | 16 | 18.2 | 18.0 |
-| 512 inputs, `modules=(128,)` | 222,464 | 4 | 31.7 | 27.7 |
-| 1,024 inputs, `modules=(256,)` | 870,912 | 1 | 39.4 | 24.6 |
-| The speech size, 3,920 inputs, `modules=(512,)` | 6,321,152 | 1 | 313 | 26.3 |
-| The same | | 16 | 1,393 | 41.6 |
-| `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`, 48 inputs | 50,048 | 1 | 6.4 | 11.7 |
-| The same | | 4 | 17.8 | 12.7 |
-| The same | | 64 | 164 | 22.7 |
-
-An `act` crosses later than `step` and `lesson`: the chamber at 16 rows reads 1.5 ms on one core and 3.2 on
-that device, and the speech size at one row 10.2 and 5.1.
+| The chamber's default brain, 35 inputs | 13,120 | 1 | 0.82, 4.4, 4.4 | 2.76, 11.5, 9.2 |
+| The same | | 16 | 1.04, 7.9, 9.9 | 3.05, 13.2, 11.5 |
+| The same | | 64 | 3.63, 34.4, 33.1 | 3.89, 23.3, 17.6 |
+| The same | | 256 | 8.79, 86.0, 87.6 | 4.51, 32.5, 25.7 |
+| 128 inputs, `modules=(64,)` | 30,976 | 16 | 1.78, 13.0, 18.8 | 3.49, 18.2, 14.3 |
+| The same | | 64 | 6.23, 46.2, 66.2 | 4.60, 22.7, 19.6 |
+| 512 inputs, `modules=(128,)` | 222,464 | 4 | 2.77, 22.5, 25.8 | 4.65, 20.1, 18.8 |
+| The same | | 16 | 7.80, 36.1, 71.7 | 4.59, 20.0, 18.9 |
+| 1,024 inputs, `modules=(256,)` | 870,912 | 1 | 2.94, 59.6, 52.2 | 4.19, 31.5, 25.6 |
+| The speech size, 3,920 inputs, `modules=(512,)` | 6,321,152 | 1 | 11.2, 623, 444 | 5.04, 42.6, 28.7 |
+| The same | | 16 | 52.2, 642, 1,142 | 6.18, 46.5, 44.6 |
+| `modules=(128, 64, 64, 64), apical=0.25, teaching="deep"`, 48 inputs | 50,048 | 1 | 1.63, 7.4, 6.6 | 3.33, 14.4, 12.2 |
+| The same | | 4 | 4.20, 20.0, 18.4 | 3.52, 14.7, 12.8 |
+| The same | | 64 | 55.0, 170, 119 | 5.20, 32.4, 22.9 |
 
 MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
 have no reading; name them to use them. A CUDA card this table has not read takes the device from twice the

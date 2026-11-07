@@ -1034,13 +1034,10 @@ class Learner:
             cache.get("key") != key
             or not np.array_equal(cache.get("host_synapses"), self.plastic_synapses)
             or not np.array_equal(cache.get("host_neurons"), self.plastic_neurons)
-            or (
-                cache.get("host_rate") is not None
-                if self.synapse_rate is None
-                else not np.array_equal(cache.get("host_rate"), self.synapse_rate)
-            )
         ):
             dev = kernel.device
+            if self.synapse_rate is not None:
+                self.synapse_rate.flags.writeable = False
 
             def to(x: np.ndarray, dtype: Any = None) -> Any:
                 return torch.from_numpy(np.ascontiguousarray(x)).to(dev, dtype)
@@ -1052,7 +1049,7 @@ class Learner:
                 key=key,
                 host_synapses=self.plastic_synapses.copy(),
                 host_neurons=self.plastic_neurons.copy(),
-                host_rate=None if self.synapse_rate is None else self.synapse_rate.copy(),
+                host_rate=self.synapse_rate,  # read-only from here: a new array is a new key
                 rate=None
                 if self.synapse_rate is None
                 else to(self.synapse_rate, kernel.param_dtype),
