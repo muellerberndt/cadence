@@ -323,7 +323,7 @@ an act, and only the act has to keep up with the stream.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and less of a gain on an Apple M4, whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
+| Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and .74 of one on an Apple M4 (229 to 169 CPU seconds, four pairs at the default brain on one thread of a shared machine), whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
 | Address map | `code` at construction | At the speech size `code=1024` takes about a sixth of an act and a quarter of a taught lesson, with 3.6 million parameters in place of 24 million. The memory then addresses the code, so read your own panels. |
