@@ -438,6 +438,26 @@ def test_a_large_eligibility_goes_to_a_checkpoint_as_the_actor_keeps_it(
     np.testing.assert_array_equal(one.basal_ganglia.trace_memory, other.basal_ganglia.trace_memory)
 
 
+def test_a_retune_keeps_the_eligibility_without_its_full_layout(monkeypatch):
+    """A change of what can step keeps every column held, and reads no array of the full layout."""
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, backend="cpu")
+    rng = np.random.default_rng(0)
+    brain.step(np.eye(12)[rng.integers(12, size=2)])
+    for _ in range(3):
+        brain.step(np.eye(12)[rng.integers(12, size=2)], reward=rng.random(2))
+    brain.learn(rng.random(2), np.zeros(2, dtype=bool), np.eye(12)[rng.integers(12, size=2)])
+    recall, agent = brain.recall, brain.basal_ganglia
+    before = recall.full_eligibility(agent.trace_memory)
+    width = agent.trace_memory.shape[-1]
+    monkeypatch.setattr(type(recall), "kept_eligibility", None)
+    brain.retune(recall_amplitude=2.5)
+    assert agent.trace_memory.shape[-1] == width
+    brain.retune(recall_address_reward=0.5)
+    assert agent.trace_memory.shape[-1] == width + recall.address_width
+    monkeypatch.undo()
+    np.testing.assert_array_equal(recall.full_eligibility(agent.trace_memory), before)
+
+
 def test_a_kept_eligibility_of_another_width_is_refused(monkeypatch, tmp_path):
     from cadence import stream
 

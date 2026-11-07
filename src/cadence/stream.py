@@ -2836,6 +2836,28 @@ class Recall:
         ]
         return np.concatenate(parts, axis=-1)
 
+    def reblocked_eligibility(
+        self, kept: np.ndarray, before: list[tuple[int, int]]
+    ) -> np.ndarray:
+        """What the actor keeps once the columns that can step changed from the blocks ``before``:
+        a column held before keeps its numbers, and a new one holds nothing. No full layout: at
+        the speech size and 256 streams that is 34 GiB."""
+        after = self.reward_blocks
+        if after == before:
+            return kept
+        held, at = {}, 0
+        for start, width in before:
+            held[start, width] = at
+            at += width
+        out = np.zeros((*kept.shape[:-1], sum(width for _, width in after)))
+        at = 0
+        for start, width in after:
+            source = held.get((start, width))
+            if source is not None:
+                out[..., at : at + width] = kept[..., source : source + width]
+            at += width
+        return out
+
     def saved_eligibility(self, name: str, kept: Any) -> dict[str, np.ndarray]:
         """A reward eligibility as a checkpoint holds it: laid out in full while that stays small,
         and past ``_SAVED_IN_FULL`` entries what the actor keeps, under ``name + "_kept"``."""

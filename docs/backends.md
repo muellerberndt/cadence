@@ -168,8 +168,10 @@ a load). A device that refuses the brain falls to the next fastest, and `refused
 detection never fails a compose. Without the optional packages nothing is imported, and below a device's
 work neither torch nor MLX is imported where they are installed.
 
-Results differ between backends within rounding per moment, so a run that must repeat names its backend.
-`backend="cpu"` keeps its bits, with `recall=False` or `recall_founder=True` as well.
+A new brain's free solves take the fast form on the compiled CPU path alone, so by default the host and a
+device agree within the solver's tolerance per moment, and panels by a mean over seeds are the check; under
+`learning_fast_settle=False` a float64 device agrees with the float64 host within rounding. A run that must
+repeat names its backend. `backend="cpu"` keeps its bits, with `recall=False` or `recall_founder=True` as well.
 `CADENCE_BACKEND` names one for a whole run where none is named: `cpu`, `mlx`, `torch`, `torch:cuda` or
 `torch:cuda:float64`. This library's tests, benchmarks and examples name theirs.
 

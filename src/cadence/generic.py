@@ -3078,15 +3078,14 @@ class Brain:
             self.arousal.config = arousal
         # the columns of the read's reward eligibility, which position_reward sets
         columns = None if self.recall is None else self.recall.reward_columns
-        whole = None
+        blocks = None if self.recall is None else self.recall.reward_blocks
         if self.recall is not None:
             self.recall.leave_device()  # the settings shape what rests there
-        if self.recall is not None and agent.trace_memory is not None:
-            whole = self.recall.full_eligibility(agent.trace_memory)
         for component, field, value in memory_changes:
             setattr(component, field, value)
-        if whole is not None and self.recall is not None:
-            agent.trace_memory = self.recall.kept_eligibility(whole)
+        if self.recall is not None and agent.trace_memory is not None:
+            assert blocks is not None
+            agent.trace_memory = self.recall.reblocked_eligibility(agent.trace_memory, blocks)
         if self.recall is not None and self.recall.reward_columns != columns:
             # a trace of the old columns cannot continue (no contrast is pending: refused above)
             agent.trace_memory = None
