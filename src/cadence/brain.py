@@ -3269,8 +3269,8 @@ class _TorchKernel:
         self.set_parameters(self._placed(efficacy), self._placed(bias))
 
     def _placed(self, values: Any) -> Any:
-        """A parameter on this device in its precision: a host array is uploaded, and a tensor
-        already there in that precision is the same tensor."""
+        """A parameter on this device in its precision: a host array is uploaded, and a tensor on
+        this device in that precision is the same tensor."""
         if isinstance(values, self.torch.Tensor):
             return values.to(self.device, self.param_dtype)
         return self.torch.from_numpy(np.ascontiguousarray(values)).to(
