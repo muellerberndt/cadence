@@ -735,6 +735,26 @@ class Learner:
             raise ValueError("a label lies outside its output slot's choices")
         return labels.astype(np.int64, copy=False)
 
+    def soft_targets(self, probabilities: Any) -> np.ndarray:
+        """Per-neuron target activation for a distribution over each row's actions: ``(batch,
+        outputs)``, one column per output neuron in the order of ``output_index``, nonnegative,
+        and summing to one over each slot's columns (with one slot, over the row). A one-hot row
+        is the target ``targets`` gives its label."""
+        p = np.asarray(probabilities, dtype=float)
+        if p.ndim != 2 or p.shape[1] != len(self.output_index):
+            raise ValueError(
+                "targets must have shape (batch, outputs): one probability per output neuron"
+            )
+        if not np.isfinite(p).all() or (p < 0).any():
+            raise ValueError("target probabilities must be finite and nonnegative")
+        if len(p) and not np.allclose(
+            np.add.reduceat(p, self.slot_offsets, axis=1), 1.0, rtol=0.0, atol=1e-6
+        ):
+            raise ValueError("target probabilities must sum to one over each output slot")
+        target = np.zeros((len(p), self.brain.connectome.n))
+        target[:, self.output_index] = p
+        return target
+
     def targets(self, labels: np.ndarray) -> np.ndarray:
         """Per-neuron target activation for class labels: ``(batch,)``, or ``(batch, slots)``."""
         labels = self._labels(labels)
@@ -965,22 +985,29 @@ class Learner:
         cfg = self.config
         if not (cfg.momentum or cfg.normalize):
             return edges, neurons
+        # the new history is written beside the old, which stays as it was for a refused update
+        # (``update``): each moment the rule moves is made out of place, the arithmetic of a
+        # copy moved in place without the copy, and one it does not move is the same tensor
         previous = self._moments_on_device(kernel)
-        held = {"holder": kernel, **{name: previous[name].clone() for name in _MOMENTS}}
+        held = {"holder": kernel, **{name: previous[name] for name in _MOMENTS}}
         self.__dict__["_device_moments"] = held
         count = self.contrast_updates + 1
         raw_edges, raw_neurons = edges, neurons
         if cfg.momentum:
             m = cfg.momentum
-            held["velocity"].mul_(m).add_(edges, alpha=1.0 - m)
-            held["velocity_bias"].mul_(m).add_(neurons, alpha=1.0 - m)
+            held["velocity"] = previous["velocity"].mul(m).add_(edges, alpha=1.0 - m)
+            held["velocity_bias"] = previous["velocity_bias"].mul(m).add_(neurons, alpha=1.0 - m)
             correction = 1.0 - m**count
             edges = held["velocity"] / correction
             neurons = held["velocity_bias"] / correction
         if cfg.normalize:
             rho = cfg.normalize
-            held["second_moment"].mul_(rho).addcmul_(raw_edges, raw_edges, value=1.0 - rho)
-            held["second_moment_bias"].mul_(rho).addcmul_(raw_neurons, raw_neurons, value=1.0 - rho)
+            held["second_moment"] = previous["second_moment"].mul(rho).addcmul_(
+                raw_edges, raw_edges, value=1.0 - rho
+            )
+            held["second_moment_bias"] = previous["second_moment_bias"].mul(rho).addcmul_(
+                raw_neurons, raw_neurons, value=1.0 - rho
+            )
             correction = 1.0 - rho**count
             if cfg.normalize_relative:
                 rms = (held["second_moment"] / correction).sqrt()
@@ -1370,11 +1397,12 @@ class Learner:
     def step(
         self,
         drive: np.ndarray,
-        labels: np.ndarray,
+        labels: np.ndarray | None,
         warm: BrainState | None = None,
         weight: np.ndarray | None = None,
         *,
         answer: np.ndarray | None = None,
+        targets: np.ndarray | None = None,
     ) -> tuple[LearnedState, dict[str, float]]:
         """One free phase, the nudged phase(s), one update; returns the states and step sizes.
 
@@ -1392,9 +1420,21 @@ class Learner:
         Without ``answer`` the free phase's own answer judges, after it ran on every row. In
         both cases ``accepted_presentations`` counts the rows taught and
         ``agreed_presentations`` the rest.
+
+        ``targets`` in place of ``labels`` (None) pulls each row toward a distribution over its
+        actions (``soft_targets``) through the same nudged phases; a one-hot row teaches as its
+        label does. A distribution has no single answer to agree with: ``surprise`` judges
+        labels, and every row of targets is taught.
         """
-        labels = self._labels(labels)
-        target = self.targets(labels)
+        if labels is None:
+            if targets is None:
+                raise ValueError("a lesson needs labels or targets")
+            target = self.soft_targets(targets)
+        else:
+            if targets is not None:
+                raise ValueError("a lesson takes labels or targets, not both")
+            labels = self._labels(labels)
+            target = self.targets(labels)
         if not _resident(drive):
             drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
@@ -1402,9 +1442,9 @@ class Learner:
         if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
-        batch = len(labels)
+        batch = len(target)
         judged = None
-        if cfg.surprise and answer is not None:
+        if cfg.surprise and answer is not None and labels is not None:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
                 return self._untaught(judged)
@@ -1494,9 +1534,10 @@ class Learner:
             return 1.0
         return float(np.mean(taught))
 
-    def _taught(self, free: BrainState, labels: np.ndarray) -> np.ndarray | None:
-        """Under ``surprise``, True per row where the free answer differs from its label."""
-        if not self.config.surprise:
+    def _taught(self, free: BrainState, labels: np.ndarray | None) -> np.ndarray | None:
+        """Under ``surprise``, True per row where the free answer differs from its label; None
+        for targets, which teach every row."""
+        if not self.config.surprise or labels is None:
             return None
         return self._differs(self._answer(free), labels)
 

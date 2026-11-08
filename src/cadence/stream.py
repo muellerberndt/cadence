@@ -1806,7 +1806,13 @@ class Recall:
             return
         self.leave_device()
         for name, value in snapshot.items():
-            setattr(self, name, value if isinstance(value, np.ndarray) else _host_array(value))
+            if not isinstance(value, np.ndarray):
+                # a device snapshot comes home as ``leave_device`` brings its arrays: the episodes'
+                # counts and the reads' focus as integers
+                value = _host_array(value)
+                if name in ("told", "focus"):
+                    value = value.astype(np.int64)
+            setattr(self, name, value)
         self._unread()
 
     def reading(self) -> tuple[Any, ...]:

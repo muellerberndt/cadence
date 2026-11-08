@@ -1,5 +1,95 @@
 # Changelog
 
+## 0.95.1
+
+Two opt-in options for `Brain.lesson`, faster qualified lessons on torch, and `grow` and `graft`
+without reading a brain's streams back. On `backend="cpu"` every array, answer, report and
+checkpoint of a brain that names neither option is as on 0.95.0, and so is every lesson on torch
+whose phases settle at the full step; a torch lesson whose phases halve their step updates on the
+device, within the device's rounding of 0.95.0 (below).
+
+### A lesson of a distribution, a lesson of weighted rows (opt-in)
+
+- **`targets=`.** `lesson(observations, targets=p)` teaches a distribution over the actions per row
+  in place of labels: `p` of shape `(rows, actions)`, nonnegative, each row summing to one (with
+  several motor slots, each slot's columns side by side, each slot's summing to one). The nudged
+  phases pull the motor neurons toward `p` as they pull toward a label's one-hot row, and a one-hot
+  `p` teaches to the bit as its label does. Its use is distillation: a search's visit shares, or a
+  teacher brain's motor activations made a distribution. Under `learning_surprise` every row of
+  targets is taught, an episodic memory records no demonstration from them, and a brain with
+  `recall_tokens` or `learning_rehearsal` refuses them. A learner takes the same through
+  `Learner.step(drive, None, targets=p)` and `Learner.soft_targets(p)`.
+
+  ```python
+  brain.lesson(position, targets=np.array([[0.6, 0.4, 0.0]]))  # a search's visit shares
+  ```
+
+- **`weights=`.** One nonnegative number per row scales that row's pull, and with it the row's
+  share of the update: weights of one teach to the bit as a lesson without weights, and a weight of
+  zero teaches its row nothing. Its use is balance: rare classes or critical positions weigh more.
+  Under the normalized point a weight common to every row divides out. A brain with
+  `learning_rehearsal` refuses weights other than one, since the rehearsal replays its rows at
+  weight one.
+
+  ```python
+  brain.lesson(x, labels, weights=np.where(labels == rare, 3.0, 1.0))
+  ```
+
+See [teach a distribution, weigh the rows](docs/teach.md#teach-a-distribution-weigh-the-rows).
+
+### Qualified lessons on torch
+
+A qualified solve that halves its step (a `learning_qualified=True` phase on its damping ladder,
+and the rescue of an act that does not qualify) settles each halved step on a kernel the live
+kernel keeps for it: made once from the parameters on the device, given the new parameters where a
+lesson changed them, its states resting on the live kernel. On 0.95.0 every halving built a new
+kernel and its transport plan from parameters read back to the host, and a lesson whose nudged
+phase halved read its phases to the host and took its update there. A lesson whose phases halve
+updates on the device as every other lesson does; after ten such lessons its parameters agree with
+0.95.0's to within 3e-17 in float64 on the torch CPU device and 6e-8 in float32 on MPS. A settle's
+movement (`activity_change`) stays on the device until something reads it, and the optimizer
+writes its new history beside the old one without copying it first (on the torch CPU device 38 to
+45 ms a call against 43 to 57 at 4.6 million synapses; on MPS within the noise). An act whose
+solve takes the rescue reads its closing residual on the device as every other check of a resting
+state does, within rounding of 0.95.0's check on the host. The live kernel keeps one kernel per
+halved step it used, each holding the transport's weights once on the device: at width 2,048 on
+MPS a lesson whose phases halve holds 353 MiB where one that does not holds 315. The MLX backend
+builds its halved steps as on 0.95.0.
+
+Seconds per lesson on an Apple M4, torch 2.14, a composed brain of 64 inputs and 8 actions, every
+lesson qualified with surprise off, at a tolerance of 3e-5 and 48 sweeps a phase, where most phases
+halve their step (the mean of two runs each; CUDA was not measured for this release):
+
+| Device | Width | Rows | 0.95.0 | 0.95.1 |
+| --- | --- | --- | --- | --- |
+| MPS, float32 | 1,024 | 32 | 0.124 | 0.072 |
+| MPS, float32 | 2,048 | 32 | 0.343 | 0.149 |
+| MPS, float32 | 4,096 | 16 | 0.911 | 0.347 |
+| torch CPU, float64 | 512 | 16 | 0.028 | 0.021 |
+| torch CPU, float64 | 1,024 | 16 | 0.075 | 0.055 |
+
+At 2,048 on MPS the halvings' kernels took 24 percent of a lesson's time on 0.95.0 and take 2
+percent. Lessons that do not halve take the same seconds and teach the same parameters.
+
+### `grow` and `graft` read no streams back
+
+`grow` and `graft` write the checkpoint of the brain they start from as after `reset()` by taking
+its streams aside with the replay's own pair and returning them after the save. On 0.95.0 they
+saved the living brain, loaded that file on the CPU and reset the copy, so a brain of many streams
+was read back whole only to drop them: at 256 streams of a wide brain the read held 12.9 GB of
+eligibility, past what a 30 GB host could hold with the brain beside it. The grown and grafted
+brains are as on 0.95.0 to the byte (on the CPU, the torch CPU device and MPS), and the brain they
+come from continues as it was. On MLX a recall memory that left the device between the pair's two
+calls comes home with its episodes' counts and its reads' focus as integers, as `leave_device`
+brings them; read as floats, they made the next checkpoint one that `load` refused.
+
+### Reward learning
+
+For long reward training, lower `actor_eta`: at the composed 1.0 a long life of rewards can drive
+the motor neurons to the limits of their activation, and the greedy answer is then the same
+whatever the observation. Train long lives at a tenth of the composed rate or less, with the bias
+rate a tenth of that ([actor rates](docs/reward.md#actor-rates)).
+
 ## 0.95.0 — 2026-11-07
 
 Every new brain holds the recall memory at one composition that reads sentences and sequences with no

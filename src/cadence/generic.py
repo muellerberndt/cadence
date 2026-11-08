@@ -3784,19 +3784,9 @@ class Brain:
             for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
         ):
             return phase
-        damped = NeuralGraph(
-            brain.connectome,
-            brain.neuron_model.replace(dt=brain.neuron_model.dt / 2),
-            backend=brain.backend,
-            efficacy=brain.efficacy,
-            log_gain=brain.log_gain,
-            bias=brain.bias,
-            device=str(brain._torch.device) if brain._torch is not None else None,
-            dense_limit=brain.dense_limit,
-            layout=brain.layout,
-            precision=brain.precision,
-            apical=brain.apical,
-        )
+        # the graph's own numerical copy at the half step (a subclass's override aside): on torch
+        # it settles on the kernel of that step the live kernel keeps
+        damped = NeuralGraph._with_dt(brain, brain.neuron_model.dt / 2)
         following = damped.equilibrate(
             drive, state=_copy_state(phase.state), budget=budget - phase.steps, tolerance=tolerance
         )
@@ -4024,7 +4014,14 @@ class Brain:
         return self.act(x)
 
     @_operation
-    def lesson(self, observations: Any, labels: Any) -> dict[str, float]:
+    def lesson(
+        self,
+        observations: Any,
+        labels: Any = None,
+        *,
+        targets: Any = None,
+        weights: Any = None,
+    ) -> dict[str, float]:
         """Teach the labels of the present observations without acting on them.
 
         This is the lesson ``step(..., teacher=labels)`` gives before its act: the drive reads
@@ -4046,11 +4043,57 @@ class Brain:
         are the live ones; an action whose sampled outcome is pending is refused, since its
         eligibility belongs to the parameters before the lesson: report the outcome first
         (``step`` or ``learn``).
+
+        ``targets``, in place of ``labels``, teaches a distribution over the actions per row,
+        ``(rows, actions)`` (with several motor slots each slot's columns side by side, each
+        slot's summing to one): the nudged phases pull the motor neurons toward it as they pull
+        toward a label, and a one-hot row teaches as its label does. Its use is distillation:
+        a search's visit shares, or a teacher brain's motor activations made a distribution. A
+        distribution has no single answer to agree with, so under ``learning_surprise`` every
+        row of targets is taught; an episodic memory records no demonstration from them, and
+        a brain with ``recall_tokens`` or ``learning_rehearsal`` refuses them. ``weights``, one
+        nonnegative number per row, scales each row's pull, and with it the row's share of the
+        update: a weight of one is the lesson without weights, a weight of zero teaches the row
+        nothing. Its use is balance: rare classes or critical positions weigh more. The
+        rehearsal replays its rows at weight one, so a brain with ``learning_rehearsal``
+        refuses weights other than one.
         """
         x = self._observations(observations)
-        labels = self.learner._labels(np.asarray(labels))
-        if len(labels) != len(x):
-            raise ValueError("labels must match the observation batch")
+        if (labels is None) == (targets is None):
+            raise ValueError("a lesson takes labels or targets, one of the two")
+        cfg = self.learner.config
+        if labels is not None:
+            labels = self.learner._labels(np.asarray(labels))
+            if len(labels) != len(x):
+                raise ValueError("labels must match the observation batch")
+        else:
+            targets = np.asarray(targets, dtype=float)
+            self.learner.soft_targets(targets)  # refused before anything changes
+            if len(targets) != len(x):
+                raise ValueError("targets must match the observation batch")
+            if cfg.rehearsal:
+                raise ValueError(
+                    "learning_rehearsal replays the labels of lessons; teach targets to a brain "
+                    "without it"
+                )
+            if self.recall is not None and self.recall.tokens is not None:
+                raise ValueError(
+                    "recall_tokens judges a lesson's rows by their labels; teach targets to a "
+                    "brain without declared tokens"
+                )
+        if weights is not None:
+            weights = np.asarray(weights, dtype=float)
+            if weights.shape != (len(x),) or not np.isfinite(weights).all() or (
+                weights < 0
+            ).any():
+                raise ValueError("weights must be one finite nonnegative number per row")
+            if np.all(weights == 1.0):
+                weights = None  # the lesson without weights, to the bit
+            elif cfg.rehearsal:
+                raise ValueError(
+                    "learning_rehearsal replays its rows at weight one; weigh the lessons of a "
+                    "brain without it"
+                )
         current = self.basal_ganglia.state
         if current is not None and _batch_of(current) != len(x):
             raise ValueError("lesson batch must match the live streams; reset for new streams")
@@ -4075,13 +4118,20 @@ class Brain:
                 stacklevel=3,  # the caller, past the operation wrapper
             )
         self.last_learning = {}
-        return dict(self._lesson(x, labels))
+        return dict(self._lesson(x, labels, targets=targets, weights=weights))
 
-    def _lesson(self, x: np.ndarray, labels: np.ndarray) -> dict[str, float]:
-        """The lesson of validated observations and labels; ``last_learning`` takes its report
-        with the ``demonstration_`` prefix."""
+    def _lesson(
+        self,
+        x: np.ndarray,
+        labels: np.ndarray | None,
+        *,
+        targets: np.ndarray | None = None,
+        weights: np.ndarray | None = None,
+    ) -> dict[str, float]:
+        """The lesson of validated observations and labels (or targets, and weights);
+        ``last_learning`` takes its report with the ``demonstration_`` prefix."""
         with self._code_attempt():
-            return self._teach(x, labels)
+            return self._teach(x, labels, targets=targets, weights=weights)
 
     def _token_rows(self, labels: np.ndarray) -> np.ndarray | None:
         """Per row, whether a label names an action that is a token (``recall_tokens``), or
@@ -4097,12 +4147,19 @@ class Brain:
         return np.asarray(tokens[chosen].any(axis=1))
 
     def _teach(
-        self, x: np.ndarray, labels: np.ndarray, *, replayed: bool = False
+        self,
+        x: np.ndarray,
+        labels: np.ndarray | None,
+        *,
+        replayed: bool = False,
+        targets: np.ndarray | None = None,
+        weights: np.ndarray | None = None,
     ) -> dict[str, float]:
         """The provisional code phase and the local demonstration consuming it. A ``replayed``
         lesson (``learning_rehearsal``) teaches the cortex and the recall read as any lesson
         does; the episodic records take no demonstration from it, since nothing was shown
-        again, and it rehearses nothing."""
+        again, and it rehearses nothing. ``targets`` (with ``labels`` None) teach every row
+        and show no single action; ``weights`` scale the rows' pulls (``lesson``)."""
         from .learning import LearningPhaseError
 
         batch = len(x)
@@ -4112,8 +4169,8 @@ class Brain:
         place = self._placed(x)
         key = self._decision_key(code)  # of the decision the lesson is shown for
         answer = None
-        tokens = self._token_rows(labels)
-        if self.learner.config.surprise:
+        tokens = None if labels is None else self._token_rows(labels)
+        if self.learner.config.surprise and labels is not None:
             # the brain's own answer, the act it would issue: its complete greedy choice on the
             # settle its act reads, warm from the stream, with the episodic vote under the
             # decision's own key; a row that answer already gives as shown is no surprise
@@ -4130,8 +4187,14 @@ class Brain:
                 )
         try:
             # the lesson's free phase starts from rest, with a learned code's phase in it
+            # the options only where named: a learner whose step predates them teaches as it did
+            options: dict[str, Any] = {}
+            if weights is not None:
+                options["weight"] = weights
+            if targets is not None:
+                options["targets"] = targets
             lesson, teaching = self.learner.step(
-                drive, labels, warm=self._warm(drive, None), answer=answer
+                drive, labels, warm=self._warm(drive, None), answer=answer, **options
             )
         except LearningPhaseError as error:
             self.last_learning.update(
@@ -4156,12 +4219,15 @@ class Brain:
         # lesson taught, those whose complete answer differed from the label.
         shown = np.ones(batch, bool) if lesson.taught is None else lesson.taught
         episodic = self._episodic
-        if episodic is not None and episodic.demonstrations and shown.any() and not replayed:
+        if (
+            episodic is not None and episodic.demonstrations and shown.any() and not replayed
+            and labels is not None
+        ):
             value = np.full(batch, episodic.demonstrations)
             episodic.remember(place, key, labels, value, shown)
         self._prepared = None
         self.basal_ganglia._drive = None
-        if not replayed:
+        if not replayed and labels is not None:
             # with ``learning_rehearsal``, rows of earlier lessons are replayed with their
             # episodes on fresh streams that leave the live ones as they are, and this lesson's
             # rows join the reservoir they are drawn from
@@ -5924,14 +5990,11 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-grow-") as folder:
         root = Path(folder)
-        # the trained brain through its checkpoint, on the CPU, whatever device it lives on;
-        # the grown brain starts its streams afresh, as after reset()
-        brain.save(root / "living.npz", compressed=False)
-        trained = type(brain).load(root / "living.npz", backend="cpu")
-        trained.reset()
-        trained.save(root / "trained.npz", compressed=False)
+        # the trained brain's checkpoint as after reset(): the grown brain starts its streams
+        # afresh
+        _saved_afresh(brain, root / "trained.npz")
         template.save(root / "template.npz", compressed=False)
-        del trained, template
+        del template
         with (
             np.load(root / "trained.npz", allow_pickle=False) as old,
             np.load(root / "template.npz", allow_pickle=False) as new,
@@ -5948,6 +6011,18 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
         if gains is not None:
             result._take_gains(gains)
         return result
+
+
+def _saved_afresh(brain: Brain, path: Path) -> None:
+    """``brain``'s checkpoint as after ``reset()``, and ``brain`` as it was: its streams are taken
+    aside and returned, as a replay does, so a brain of many streams is not read back from its file
+    only to drop them (at 256 streams of a wide brain that read held 12.9 GB on the host)."""
+    held = brain._streams()
+    try:
+        brain.reset()
+        brain.save(path, compressed=False)
+    finally:
+        brain._resume(held)
 
 
 def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
@@ -6397,12 +6472,8 @@ def _graft(
     device = None if graph._torch is None else str(graph._torch.device)
     with tempfile.TemporaryDirectory(prefix="cadence-graft-") as folder:
         root = Path(folder)
-        host.save(root / "living.npz", compressed=False)
-        fresh = type(host).load(root / "living.npz", backend="cpu")
-        fresh.reset()  # the grafted brain starts its streams afresh, as after reset()
-        fresh.save(root / "host.npz", compressed=False)
+        _saved_afresh(host, root / "host.npz")  # the grafted brain starts its streams afresh
         donor.save(root / "donor.npz", compressed=False)
-        del fresh
         with (
             np.load(root / "host.npz", allow_pickle=False) as mine,
             np.load(root / "donor.npz", allow_pickle=False) as theirs,

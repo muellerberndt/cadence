@@ -5,7 +5,7 @@ Short answers to the problems builders meet first, each linking the page that ow
 
 ## Install and run
 
-**`pip install cadence-net==0.95.0`, then `import cadence`.** Python 3.11 or newer and NumPy are
+**`pip install cadence-net==0.95.1`, then `import cadence`.** Python 3.11 or newer and NumPy are
 the only requirements.
 
 **Do I need a GPU?** No; everything runs on NumPy float64. `[fast]` adds Numba and SciPy,
@@ -109,6 +109,8 @@ the outcomes are symmetric before touching the rule.
 clipped at `dopamine_cap`) and `report["saturation"]`, compare `predict` with greedy `act`
 ([replaying a life](reward.md#replaying-a-life-through-step)), and tune through the
 [rate ownership table](tune.md#defaults-and-expert-overrides).
+After a long life of rewards at the composed `actor_eta` of 1.0 the motor neurons can sit at
+their limits; train long lives at a tenth of that rate or less ([actor rates](reward.md#actor-rates)).
 
 **Reward comes only at the end of an episode and the values sit in one band.** Read their
 spread across positions beside their mean, and their ranking of positions whose outcomes are

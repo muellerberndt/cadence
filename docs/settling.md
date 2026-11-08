@@ -417,8 +417,8 @@ Fit scaling and encodings on training data. The `Learner` operations:
 
 | call | what it does |
 |---|---|
-| `step(drive, labels, warm=None, weight=None, *, answer=None)` | free phase, nudged phase(s), one update; returns `(LearnedState, report)`. `labels` holds one output index per row, `(batch, slots)` when slotted; `weight` scales each row's pull (an advantage) |
-| `free(drive, warm=None)`, `nudged(drive, free, target, sign=1.0, weight=None)` | one phase; `sign=-1.0` is the opposite phase; `targets(labels)` builds the per-neuron target |
+| `step(drive, labels, warm=None, weight=None, *, answer=None, targets=None)` | free phase, nudged phase(s), one update; returns `(LearnedState, report)`. `labels` holds one output index per row, `(batch, slots)` when slotted; `weight` scales each row's pull (an advantage, or a row's weight in a lesson); `targets` with `labels=None` pulls each row toward a distribution over its outputs, every row taught |
+| `free(drive, warm=None)`, `nudged(drive, free, target, sign=1.0, weight=None)` | one phase; `sign=-1.0` is the opposite phase; `targets(labels)` builds the per-neuron target, `soft_targets(p)` that of a `(batch, outputs)` distribution |
 | `contrast(free, nudged, opposite=None)`, `contrast_rows(...)` | the per-synapse and per-neuron terms divided by `beta` or `2 beta`, batch mean or per row |
 | `update(free, nudged, opposite=None)` | momentum, normalization and the step from supplied states |
 | `apply(delta_scale, delta_bias)` | a precomputed step through masks, synapse rates, tying and the cap |

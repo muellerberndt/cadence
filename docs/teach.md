@@ -171,6 +171,39 @@ recall memory, the normalized point, each synapse's step scaled to its neuron's 
 - Without it every fresh life collapses at least once after 500 lessons (to 0.01 to 0.29) and
   ends at 0.93 to 0.99.
 
+## Teach a distribution, weigh the rows
+
+Both are opt-in; a lesson without them is the lesson above to the bit.
+
+**`targets=`, a distribution per row.** `lesson(observations, targets=p)` takes `p` of shape
+`(rows, actions)` in place of labels: nonnegative, each row summing to one (with several motor
+slots, each slot's columns side by side, each slot's summing to one). The nudged phases pull the
+motor neurons toward `p` as they pull toward a label's one-hot row, and a one-hot `p` teaches as
+its label does. Use it to distill: a search's visit shares at a position, or a teacher brain's
+motor activations made a distribution, as in AlphaZero's policy targets.
+
+- A distribution has no single answer to agree with: under `learning_surprise` every row of
+  targets is taught.
+- An episodic memory records no demonstration from targets.
+- A brain with `recall_tokens` or `learning_rehearsal` refuses them: both read a single label.
+
+**`weights=`, one per row.** A nonnegative number per row scales that row's pull, and with it the
+row's share of the update: weight one is the lesson without weights, weight zero teaches the row
+nothing. Use it to balance a curriculum, giving rare classes or critical positions more weight.
+Under the [normalized point](#many-lessons-the-normalized-point-for-imitation) a weight common to
+every row divides out, so the weights act through their ratios. Under `learning_surprise` the
+weights of the taught rows apply. The rehearsal replays its rows at weight one, so a brain with
+`learning_rehearsal` refuses weights other than one.
+
+```python
+student = Brain.compose(4, 3, modules=(16,), seed=2)
+visits = np.array([[0.6, 0.4, 0.0]])            # a search's visit shares at one position
+student.lesson(cues[[2]], targets=visits)        # pulls toward 0.6 on action 0, 0.4 on 1
+rare = np.array([0, 0, 0, 1])                    # the fourth row is the rare class
+student.lesson(cues, np.array([0, 1, 0, 2]), weights=np.where(rare, 3.0, 1.0))
+assert student.last_learning["demonstrations"] == 4.0
+```
+
 ## Teach several types in sequence: rehearsal
 
 Lessons on a new type move the same synapses the earlier types' answers rest on, so teaching

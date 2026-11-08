@@ -105,6 +105,14 @@ makes a policy whose greedy action ignores the observation. A named `actor_eta` 
 `eta / 10` again. Construction emits a `RuntimeWarning`, and changes nothing, when `eta_bias`
 exceeds a positive `eta`; the warning does not cover `eta_critic`.
 
+For long reward training, lower `actor_eta`. At the composed 1.0, a long life of rewards can
+drive the motor neurons to the limits of their activation, where a nudge has no slope: the
+greedy answer is then the same whatever the observation, and the contrast that would move it
+back is near zero. Train long lives at a tenth of the composed rate or less, with the bias rate a
+tenth of that, as the example at the top does. `report["saturation"]` near 1 and one greedy
+`act` across different observations show the pinned readout
+([troubleshooting](troubleshooting.md#learning-from-reward)).
+
 ## Maturity (opt-in)
 
 Maturity ([#253](https://github.com/muellerberndt/cadence/issues/253)) is for a brain that goes
