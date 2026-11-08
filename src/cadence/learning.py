@@ -965,22 +965,29 @@ class Learner:
         cfg = self.config
         if not (cfg.momentum or cfg.normalize):
             return edges, neurons
+        # the new history is written beside the old, which stays as it was for a refused update
+        # (``update``): each moment the rule moves is made out of place, the arithmetic of a
+        # copy moved in place without the copy, and one it does not move is the same tensor
         previous = self._moments_on_device(kernel)
-        held = {"holder": kernel, **{name: previous[name].clone() for name in _MOMENTS}}
+        held = {"holder": kernel, **{name: previous[name] for name in _MOMENTS}}
         self.__dict__["_device_moments"] = held
         count = self.contrast_updates + 1
         raw_edges, raw_neurons = edges, neurons
         if cfg.momentum:
             m = cfg.momentum
-            held["velocity"].mul_(m).add_(edges, alpha=1.0 - m)
-            held["velocity_bias"].mul_(m).add_(neurons, alpha=1.0 - m)
+            held["velocity"] = previous["velocity"].mul(m).add_(edges, alpha=1.0 - m)
+            held["velocity_bias"] = previous["velocity_bias"].mul(m).add_(neurons, alpha=1.0 - m)
             correction = 1.0 - m**count
             edges = held["velocity"] / correction
             neurons = held["velocity_bias"] / correction
         if cfg.normalize:
             rho = cfg.normalize
-            held["second_moment"].mul_(rho).addcmul_(raw_edges, raw_edges, value=1.0 - rho)
-            held["second_moment_bias"].mul_(rho).addcmul_(raw_neurons, raw_neurons, value=1.0 - rho)
+            held["second_moment"] = previous["second_moment"].mul(rho).addcmul_(
+                raw_edges, raw_edges, value=1.0 - rho
+            )
+            held["second_moment_bias"] = previous["second_moment_bias"].mul(rho).addcmul_(
+                raw_neurons, raw_neurons, value=1.0 - rho
+            )
             correction = 1.0 - rho**count
             if cfg.normalize_relative:
                 rms = (held["second_moment"] / correction).sqrt()

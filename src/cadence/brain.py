@@ -673,12 +673,16 @@ for _name, _key in (("v", "v"), ("activation", "s"), ("adaptation", "a")):
 
 
 def _lazy_change(self: BrainState) -> np.ndarray | None:
-    """``activity_change``, summed from what the launches made on first use on MLX."""
+    """``activity_change``, summed from what the launches made on first use on MLX, and on torch
+    the movement a settle left on the device, copied on first use."""
     value: np.ndarray | None = self.__dict__.get("activity_change")
     if value is None:
         handle = self.__dict__.get("device")
         if isinstance(handle, _MlxState):
             value = handle._fetch("change")
+            self.__dict__["activity_change"] = value
+        elif handle is not None and handle.get("change") is not None:
+            value = _host_copy(handle["change"])
             self.__dict__["activity_change"] = value
     return value
 
@@ -1086,8 +1090,20 @@ class Brain:
         """A numerical copy on current parameters; boundary subclasses must override.
 
         This does not change the live model. A subclass adding equation state
-        must carry that state into its numerical candidates too.
+        must carry that state into its numerical candidates too. On torch the copy settles on
+        the kernel of that step the live kernel keeps (``_TorchKernel.stepped``), on the
+        parameters on the device, and its states rest on the live kernel.
         """
+        if (
+            self._torch is not None
+            and type(self) is Brain
+            and "settle_batch" not in self.__dict__
+            and "residual" not in self.__dict__
+        ):
+            new = copy.copy(self)
+            new.neuron_model = self.neuron_model.replace(dt=dt)
+            new._torch = self._torch.stepped(new.neuron_model)
+            return new
         return Brain(
             self.connectome, self.neuron_model.replace(dt=dt), backend=self.backend,
             efficacy=self.efficacy, log_gain=self.log_gain, bias=self.bias,
@@ -1188,7 +1204,7 @@ class Brain:
         keys = ("v", "s", "a")
         old, new = previous.device, current.device
         if self._torch is not None and old is not None and new is not None and (
-            old.get("holder") is self._torch and new.get("holder") is self._torch
+            old.get("holder") is self._torch.root and new.get("holder") is self._torch.root
         ):
             torch = self._torch.torch
             rounding = 8 * torch.finfo(self._torch.dtype).eps
@@ -1407,7 +1423,7 @@ class Brain:
             and state.device is not None
             and self.backend in ("torch", "mlx")
             and state.device.get("holder")
-            is (self._torch if self.backend == "torch" else self._mlx.root)
+            is (self._torch if self.backend == "torch" else self._mlx).root
         )
         v: Any
         a: Any
@@ -1499,7 +1515,7 @@ class Brain:
         kernel = self._torch if self.backend == "torch" else self._mlx
         if kernel is None or plus.device is None or minus.device is None:
             return None
-        holder = kernel if self._mlx is None else kernel.root
+        holder = kernel.root
         if plus.device.get("holder") is not holder or minus.device.get("holder") is not holder:
             return None
         out: tuple[np.ndarray, np.ndarray] = kernel.contrast(plus.device["s"], minus.device["s"])
@@ -1573,7 +1589,7 @@ class Brain:
             and kernel is not None
             and kernel.float64_reference
             and handle is not None
-            and handle.get("holder") is kernel
+            and handle.get("holder") is kernel.root
             and state.__dict__.get("v") is None
             and state.__dict__.get("adaptation") is None
         ):
@@ -1697,7 +1713,7 @@ class Brain:
             kernel is not None
             and kernel.float64_reference
             and handle is not None
-            and handle.get("holder") is kernel
+            and handle.get("holder") is kernel.root
             and state.__dict__.get("activation") is None
             and state.__dict__.get("adaptation") is None
         ):  # the state never left the device: the gain is read there, one row per pool
@@ -3135,11 +3151,17 @@ class _TorchKernel:
         apical: Apical | None = None,
         *,
         reference: bool = False,
+        parent: _TorchKernel | None = None,
     ) -> None:
         import torch
 
         self.torch = torch
         self.backend_name = "torch"
+        # a kernel of another integration step on ``parent``'s parameters (``stepped``): the
+        # states it settles are ``parent``'s, so they continue on either kernel; held weakly, so
+        # the pair holds no reference cycle and the device memory goes with the last reference
+        self._parent = None if parent is None else weakref.ref(parent)
+        self._stepped: dict[NeuronModel, _TorchKernel] = {}  # its own of other steps, by rule
         # a float64 copy of a float32 kernel that only checks residuals and reads apical gains:
         # its workspaces hold the transport's output alone
         self._reference_only = reference
@@ -3169,9 +3191,7 @@ class _TorchKernel:
         # The parameters, kept on the device in the brain's precision, so a learner can move them
         # there without a host round trip per update.
         self.param_dtype = self.dtype
-        self.gain_pre = torch.from_numpy(np.ascontiguousarray(gain_pre)).to(
-            self.device, self.param_dtype
-        )
+        self.gain_pre = self._placed(gain_pre)
         self.neuron_model = neuron_model
         self.n = connectome.n
         self.layout = layout
@@ -3246,10 +3266,54 @@ class _TorchKernel:
              self._negative, 1.0 if adapt is None else adapt.tau_steps],
             dtype=self.dtype, device=self.device,
         )
-        self.set_parameters(
-            torch.from_numpy(np.ascontiguousarray(efficacy)).to(self.device, self.param_dtype),
-            torch.from_numpy(np.ascontiguousarray(bias)).to(self.device, self.param_dtype),
+        self.set_parameters(self._placed(efficacy), self._placed(bias))
+
+    def _placed(self, values: Any) -> Any:
+        """A parameter on this device in its precision: a host array is uploaded, and a tensor
+        already there in that precision is the same tensor."""
+        if isinstance(values, self.torch.Tensor):
+            return values.to(self.device, self.param_dtype)
+        return self.torch.from_numpy(np.ascontiguousarray(values)).to(
+            self.device, self.param_dtype
         )
+
+    @property
+    def root(self) -> _TorchKernel:
+        """The kernel whose states this one settles: itself, or for a kernel of another step the
+        kernel it was made from, while that kernel lives."""
+        parent = None if self._parent is None else self._parent()
+        return self if parent is None else parent
+
+    def stepped(self, neuron_model: NeuronModel) -> _TorchKernel:
+        """This kernel under ``neuron_model``, the same rule at another integration step: made
+        once per step from the parameters on the device and kept, its plan, workspaces and
+        captured graphs with it, and given this kernel's parameters again where they changed.
+        Its states rest on this kernel (``root``). A qualified solve's damping halves the step
+        (``Brain.equilibrate``); a kernel made at every halving would build its plan and read
+        every parameter back to the host each time. The live kernel keeps one per step it was
+        asked for (at most the damping's halvings), each holding the transport's weights once
+        on the device; a kernel of another step asks the live kernel."""
+        root = self.root
+        if root is not self:
+            return root.stepped(neuron_model)
+        try:
+            kernel = self._stepped.get(neuron_model)
+            kept = True
+        except TypeError:  # a rule whose fields are arrays is made at every call
+            kernel, kept = None, False
+        if kernel is None:
+            kernel = _TorchKernel(
+                self._connectome, self.scale, self.gain_pre, self.bias_param, neuron_model,
+                str(self.device), self.layout,
+                "float32" if self.dtype == self.torch.float32 else "float64", self.apical,
+                parent=self,
+            )
+            kernel._version = self._version
+            if kept:
+                self._stepped[neuron_model] = kernel
+        elif kernel._version != self._version or kernel.gain_pre is not self.gain_pre:
+            kernel.set_parameters_from(self)
+        return kernel
 
     def __deepcopy__(self, memo: dict[int, Any]) -> _TorchKernel:
         """A kernel of its own on the same device: a copy of a brain moves its own parameters, and
@@ -4142,7 +4206,7 @@ class _TorchKernel:
         def fetch(key: str) -> np.ndarray:
             return np.asarray(tensors[key].cpu().double().numpy())
 
-        return {"kernel": self.backend_name, "holder": self, "fetch": fetch, **tensors}
+        return {"kernel": self.backend_name, "holder": self.root, "fetch": fetch, **tensors}
 
     def contrast_tensors(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
         """The Gram contrast on the device, per synapse and per neuron, as tensors."""
@@ -4288,13 +4352,13 @@ class _TorchKernel:
         tolerance: float | None = None,
         state: BrainState | None = None,
         capture: _Capture | None = None,
-    ) -> tuple[Any, Any, Any, np.ndarray | None, int, np.ndarray, Any]:
+    ) -> tuple[Any, Any, Any, np.ndarray | None, int, np.ndarray | None, Any]:
         torch = self.torch
         batch = drive.shape[0]
         handle = state.device if state is not None and state.device is not None else None
         if (
             steps == 0 and not want and capture is None and handle is not None
-            and handle.get("holder") is self and handle.get("unmasked")
+            and handle.get("holder") is self.root and handle.get("unmasked")
             and not bool((np.asarray(keep) != 1.0).any())
         ):
             # no sweep and no mask: the state as it rests, which no solve writes
@@ -4303,7 +4367,7 @@ class _TorchKernel:
         with torch.no_grad():
             ws = self._workspace(batch)
             cfg = self._configure(ws, drive, keep, nudge, tolerance, batch)
-            if handle is not None and handle.get("holder") is self:
+            if handle is not None and handle.get("holder") is self.root:
                 a_in = handle["a"]  # the state never left the device
                 ws.v[0].copy_(handle["v"].T)
             elif v0 is None:  # from rest
@@ -4314,8 +4378,9 @@ class _TorchKernel:
                 ws.v[0].copy_(self._upload(v0).T)
             if ws.a is not None:
                 ws.a[0].copy_(a_in.T)
-            if handle is not None and handle.get("unmasked") and handle.get("holder") is self and (
-                not cfg.masked
+            if (
+                handle is not None and handle.get("unmasked")
+                and handle.get("holder") is self.root and not cfg.masked
             ):
                 ws.s[0].copy_(handle["s"].T)  # the state's own, published under no mask
             else:
@@ -4343,22 +4408,25 @@ class _TorchKernel:
                 "a": a_in if ws.a is None else ws.a[j].T.clone(memory_format=contiguous),
                 "s": ws.s[j].T.clone(memory_format=contiguous),
             }
-            activity_change = _host_copy(ws.change[j])
+            # the movement stays on the device until something reads it (``activity_change``): a
+            # copy at every settle would make the host wait for the device's sweeps there
+            change = ws.change[j].clone()
 
         def fetch(key: str) -> np.ndarray:  # the host copy, made when something reads it
             return np.asarray(tensors[key].cpu().double().numpy())
 
         # fetch closes over the tensors, never over the handle: a cycle there would hold the
         # device memory of every settled state until a garbage-collection pass
-        held = {"kernel": self.backend_name, "holder": self, "fetch": fetch,
-                "discarded_steps": ws.executed_steps - taken, "unmasked": not cfg.masked, **tensors}
+        held = {"kernel": self.backend_name, "holder": self.root, "fetch": fetch,
+                "discarded_steps": ws.executed_steps - taken, "unmasked": not cfg.masked,
+                "change": change, **tensors}
         return (
             None,
             None,
             None,
             (np.stack(traj) if traj else np.empty((0, batch, self.n))) if want else None,
             taken,
-            activity_change,
+            None,
             held,
         )
 

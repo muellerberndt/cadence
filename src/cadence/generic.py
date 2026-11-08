@@ -3784,19 +3784,9 @@ class Brain:
             for value in (phase.state.v, phase.state.activation, phase.state.adaptation)
         ):
             return phase
-        damped = NeuralGraph(
-            brain.connectome,
-            brain.neuron_model.replace(dt=brain.neuron_model.dt / 2),
-            backend=brain.backend,
-            efficacy=brain.efficacy,
-            log_gain=brain.log_gain,
-            bias=brain.bias,
-            device=str(brain._torch.device) if brain._torch is not None else None,
-            dense_limit=brain.dense_limit,
-            layout=brain.layout,
-            precision=brain.precision,
-            apical=brain.apical,
-        )
+        # the graph's own numerical copy at the half step (a subclass's override aside): on torch
+        # it settles on the kernel of that step the live kernel keeps
+        damped = NeuralGraph._with_dt(brain, brain.neuron_model.dt / 2)
         following = damped.equilibrate(
             drive, state=_copy_state(phase.state), budget=budget - phase.steps, tolerance=tolerance
         )
