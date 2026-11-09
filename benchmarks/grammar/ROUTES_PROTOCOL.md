@@ -59,3 +59,15 @@ heard as `X near Y end`, so the place after `X` is two moments on. The route is 
 the grammar chamber's paths say it, `start near a1 near ... near goal end`, and `first_hop` is the
 place after the first `near`. Nothing else changes; the development lives are read again before the
 declared run.
+
+## Second amendment before the declared run
+
+Read again with `near`, the development lives at 3,000 batches (held-out pairs, founders 0 and 1):
+word by word says a neighbour of the start on .74 and .80 of routes, the goal branch's on .32 and
+.45, so it chooses between the two neighbours near chance, as the chamber intends; the sliding window
+says a neighbour on .37 and .47 and is still rising (first hop .05, .14, .18 and .09, .19, .24 at
+1,000, 2,000 and 3,000 batches). The matched transformer online reads .32 and .54. So that the window
+is read once it has learned the routes' form, the declared life is 8,000 batches, read at 2,000,
+4,000, 6,000 and 8,000, and P1 and P2 read the reading at 8,000. The controls' online pass takes the
+same 8,000 batches. Development founders 0 and 1 live the declared life beside the declared founders
+and are reported apart.
