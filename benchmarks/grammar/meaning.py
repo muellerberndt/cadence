@@ -1856,6 +1856,162 @@ def read_lives(rows: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def read_retrieval(rows: list[dict[str, Any]]) -> list[str]:
+    """Retrieval by the code: per key width and cue, the share found by key and by state at
+    each number of stored records, mean over founders."""
+    lines = ["retrieval by the code (key / state), mean over founders"]
+    for units in sorted({r["units"] for r in rows}):
+        lives = [r["found"] for r in rows if r["units"] == units]
+        for cue in lives[0][next(iter(lives[0]))]:
+            cells = [f"{count}: " + "/".join(
+                _short([f[count][cue][kind] for f in lives]) for kind in ("key", "state"))
+                for count in lives[0]]
+            lines.append(f"  {units} units, {cue}: " + ", ".join(cells))
+    return lines
+
+
+def paired(with_it: list[float], without: list[float]) -> tuple[float, float]:
+    """The mean of the paired differences and its standard error."""
+    d = np.asarray(with_it, dtype=float) - np.asarray(without, dtype=float)
+    return float(d.mean()), float(d.std(ddof=1) / np.sqrt(len(d))) if len(d) > 1 else 0.0
+
+
+def verdict(brains: list[dict[str, Any]], controls: list[dict[str, Any]],
+            knock: list[dict[str, Any]]) -> list[str]:
+    """The declared gates of MEANING_PROTOCOL.md, read from the run's rows."""
+    arms: dict[str, list[dict[str, Any]]] = {}
+    for r in brains:
+        arms.setdefault(str(r.get("tag")), []).append(r)
+    for lives in arms.values():
+        lives.sort(key=lambda r: r["founder"])
+
+    def per(tag: str, get: Any) -> list[float | None]:
+        return [get(r) for r in arms.get(tag, [])]
+
+    def gate(name: str, values: list[float | None], bar: float) -> str:
+        count, held = passes(values, bar)
+        shown = " ".join("-" if v is None else f"{v:.2f}" for v in values)
+        return f"  {name}: {shown}  ({count} of {len(values)} at {bar:.2f}: " + (
+            "holds" if held else "fails") + ")"
+
+    lines = ["H1, said from the state (state)"]
+    for name in ("clause", "clause_held", "roles"):
+        lines.append(gate(name, per("state", lambda r, n=name: _score(r["panels"][n], n)), 0.90))
+    lines.append("H2, held: the least clause component's probe from the message")
+    for spot in ("go", "end"):
+        def least(r: dict[str, Any], spot: str = spot) -> float | None:
+            table = r.get("probes", {}).get("clause", {})
+            found = [table[c][spot]["message"]["accuracy"] for c in table
+                     if "message" in table[c].get(spot, {})]
+            return min(found) if found else None
+        lines.append(gate(f"at {spot}", per("state", least), 0.95))
+    lines.append("H2u, used: the least clause word kind said right")
+    lines.append(gate("said", per("state", lambda r: min(
+        v for k, v in r["said"].items() if k.startswith("clause"))), 0.95))
+    lines.append("H3, one meaning in two orders (state)")
+    lines.append(gate("key closer", per("state", lambda r: r["invariance"]["key"]["closer"]),
+                      0.95))
+    lines.append(gate("both said right", per("state", lambda r: r["invariance"]["both_right"]),
+                      0.90))
+    lines.append("H4, paraphrase")
+    for tag in ("paraphrase", "paraphrase_read"):
+        for name in ("para", "para_held"):
+            lines.append(gate(f"{tag} {name}", per(
+                tag, lambda r, n=name: r["paraphrase"][n]["exact"]), 0.80))
+    lines.append("H5, capacity: clauses said exactly at 0 to 4 distractors (mean)")
+    for tag in sorted(t for t in arms if t.startswith("capacity")):
+        lines.append(f"  {tag} ({arms[tag][0]['parameters']} parameters): " + " ".join(
+            _short([r["capacity"][n] for r in arms[tag]]) for n in arms[tag][0]["capacity"]))
+    lines.append("A1, held-out combinations and context twins")
+    for tag in ("default", "message", "state"):
+        for name in ("clause_held", "roles"):
+            lines.append(gate(f"{tag} {name}", per(
+                tag, lambda r, n=name: _score(r["panels"][n], n)), 0.90))
+        for name in gr.ERASED:
+            lines.append(gate(f"{tag} {name}", per(
+                tag, lambda r, n=name: r["twins"][n]["both"]), 0.90))
+            fallen = [f"{suffix} " + _short([r["twins"][name + "_" + suffix]["both"]
+                                             for r in arms.get(tag, [])
+                                             if name + "_" + suffix in r["twins"]])
+                      for suffix in ("removed", "erased_recall", "erased_trace",
+                                     "erased_message")]
+            lines.append(f"    {name}: " + ", ".join(fallen))
+    lines.append("A2, held-out lengths and depths")
+    for tag in arms:
+        if "panels" in arms[tag][0]:
+            for name in LONG:
+                lines.append(gate(f"{tag} {name}", per(
+                    tag, lambda r, n=name: r["panels"][n]["exact"]), 0.80))
+    lines.append("A3, persistence: the reading before the second grammar, after it, after 500 "
+                 "batches of the first; lives within .05 after the second")
+    for tag in ("default", "message", "state"):
+        for name in ("clause", "dyck", "path"):
+            lives = [r for r in arms.get(tag, []) if r.get("persistence")]
+            before = [_score(r["panels"][name], name) for r in lives]
+            after = [r["persistence"][0]["panels"][name]["exact"] for r in lives]
+            back = [r["persistence"][1]["panels"][name]["exact"] for r in lives]
+            kept = sum(1 for a, b in zip(after, before, strict=True) if a >= b - 0.05)
+            lines.append(f"  {tag} {name}: {_short(before)} / {_short(after)} / {_short(back)}"
+                         f"  ({kept} of {len(lives)})")
+        lines.append(f"  {tag} g2 after the second grammar: " + _short(
+            [r["persistence"][0]["panels"]["g2"]["exact"] for r in arms.get(tag, [])
+             if r.get("persistence")]))
+    lines.append("M1, beside the read: the arm less default, paired (mean, standard error)")
+    base = {r["founder"]: r for r in arms.get("default", [])}
+    for tag in ("message", "message_wide", "sham", "barred", "state", "state_default",
+                "restated"):
+        cells = []
+        for name in WHOLE + LONG:
+            lives = [r for r in arms.get(tag, []) if r["founder"] in base]
+            if not lives:
+                continue
+            mean, error = paired([_score(r["panels"][name], name) for r in lives],
+                                 [_score(base[r["founder"]]["panels"][name], name)
+                                  for r in lives])
+            mark = "*" if abs(mean) >= 0.05 and abs(mean) > 2 * error else ""
+            cells.append(f"{name} {mean:+.2f} ({error:.2f}){mark}")
+        lines.append(f"  {tag}: " + ", ".join(cells))
+    lines.append("controls: whole sentences after the first grammar, by parameter count")
+    groups: dict[tuple[str, str, int], list[dict[str, Any]]] = {}
+    for c in controls:
+        groups.setdefault((c["model"], c["mode"], int(c["brain_parameters"])), []).append(c)
+    for (model, mode, size), lives in sorted(groups.items(), key=lambda kv: (kv[0][2], kv[0])):
+        first = [c["readings"][0] for c in lives]
+        cells = [f"{n} " + _short([_score(rd["panels"][n], n) for rd in first])
+                 for n in WHOLE + LONG]
+        twins = [f"{n} " + _short([rd["panels"][n]["both"] for rd in first]) for n in gr.ERASED]
+        work = f"{np.mean([rd['work']['macs'] for rd in first]):.2e} multiply-accumulates, " \
+               f"{np.mean([rd['work']['seconds'] for rd in first]):.0f} s"
+        lines.append(f"  {model} {mode} at {size} ({lives[0]['parameters']}): "
+                     + ", ".join(cells + twins) + f"; {work}")
+        if mode == "online" and len(lives[0]["readings"]) > 1:
+            after = [c["readings"][1] for c in lives]
+            lines.append("    after the second grammar: " + ", ".join(
+                f"{n} " + _short([rd["panels"][n]["exact"] for rd in after])
+                for n in ("clause", "dyck", "path", "g2")))
+    lines.append("K, other chambers: with the message less without, paired")
+    tasks: dict[str, dict[str, dict[int, float]]] = {}
+    for r in knock:
+        if r["chamber"] == "battery":
+            name = r["task"] + ("" if r["task_settings"].get("unique", True) else " repeated")
+            value = r["test"]["accuracy"]
+        else:
+            name, value = "routes first hop, held-out", r["readings"][-1]["panels"]["held"][
+                "first_hop"]
+        tasks.setdefault(name, {}).setdefault(r["arm"], {})[int(r["founder"])] = float(value)
+    for name, by_arm in tasks.items():
+        shared = sorted(set(by_arm.get("message", {})) & set(by_arm.get("default", {})))
+        if not shared:
+            continue
+        with_it = [by_arm["message"][f] for f in shared]
+        without = [by_arm["default"][f] for f in shared]
+        mean, error = paired(with_it, without)
+        mark = " *" if mean <= -0.03 and abs(mean) > 2 * error else ""
+        lines.append(f"  {name}: {np.mean(with_it):.3f} against {np.mean(without):.3f}, "
+                     f"{mean:+.3f} ({error:.3f}){mark}")
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -1879,7 +2035,22 @@ def main(argv: list[str] | None = None) -> int:
     planner.add_argument("--founders", nargs="*", type=int, default=list(DECLARED))
     reader = sub.add_parser("read", help="print the tables of a results file")
     reader.add_argument("results", type=Path)
+    reader.add_argument("--controls", type=Path, help="with --knock: the declared gates")
+    reader.add_argument("--knock", type=Path)
+    finder = sub.add_parser("retrieval", help="retrieval by the code, no brain")
+    finder.add_argument("--founders", nargs="*", type=int, default=list(DECLARED))
+    finder.add_argument("--units", nargs="*", type=int, default=[70, 280])
+    finder.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
+    if args.command == "retrieval":
+        args.out.parent.mkdir(parents=True, exist_ok=True)
+        with args.out.open("a") as sink:
+            for f in args.founders:
+                for units in args.units:
+                    sink.write(json.dumps({"kind": "retrieval", "founder": f, "units": units,
+                                           "found": retrieval(f, {"units": units})}) + "\n")
+                    sink.flush()
+        return 0
     if args.command == "plan":
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
@@ -1889,8 +2060,15 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "read":
         rows = [json.loads(line) for line in args.results.read_text().splitlines() if line]
-        print("\n".join(read(rows) if any(r.get("kind") == "where" for r in rows)
-                        else read_lives(rows)))
+        if any(r.get("kind") == "retrieval" for r in rows):
+            print("\n".join(read_retrieval(rows)))
+        elif args.controls is not None:
+            others = [[json.loads(line) for line in path.read_text().splitlines() if line]
+                      if path is not None else [] for path in (args.controls, args.knock)]
+            print("\n".join(verdict(rows, *others)))
+        else:
+            print("\n".join(read(rows) if any(r.get("kind") == "where" for r in rows)
+                            else read_lives(rows)))
         return 0
     if args.command == "lives":
         specs, life = json.loads(args.plan.read_text()), run_life
