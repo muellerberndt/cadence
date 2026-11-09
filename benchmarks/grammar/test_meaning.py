@@ -423,3 +423,33 @@ def test_the_second_gates_read_a_small_run_of_the_brains_own_message():
     assert any(line.startswith("F, nothing barred") for line in lines)
     assert any("message_quiet, silent" in line for line in lines)
     assert any(line.startswith("C, the message less") for line in lines)
+
+
+def test_the_third_plan_and_its_gates_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.third_plan((0, 1), located=(2,))
+    assert {s["tag"] for s in plan["free"]} == {"default", "heard", "quiet", "quiet_24", "quiet_32",
+                                                "quiet_hold", "quiet_clear", "quiet_10"}
+    assert {s["tag"] for s in plan["roles_located"]} == {"own_256", "instrument_256", "fine_256"}
+    assert {s["tag"] for s in plan["roles"]} == {"own_256", "fine_256"}
+    assert mn.GO_CHANNEL == 33
+    rows = []
+    for spec in plan["free"]:
+        if spec["tag"] in ("default", "heard", "quiet_24", "quiet_hold", "quiet_clear"):
+            rows.append(mn.run_life({**spec, "batches": 2, "panel_batches": 1}))
+    by = {(r["tag"], r["founder"]): r for r in rows}
+    assert by[("quiet_24", 0)]["parameters"] > by[("default", 0)]["parameters"]
+    assert "panels_silent" in by[("quiet_hold", 0)]
+    lines = mn.third_free_verdict(rows)
+    assert lines[0].startswith("whole sentences") and any("-> " in line for line in lines)
+    assert any(line.startswith("by founder") for line in lines)
+    roles = [mn.run_life({**spec, "batches": 2, "panel_batches": 1, "module": 64})
+             for spec in plan["roles_located"]]
+    fresh = [mn.run_life({**spec, "batches": 2, "panel_batches": 1, "module": 64})
+             for spec in plan["roles"] if spec["founder"] == 0]
+    # the trace, the read and 4 message blocks; 32 carrier blocks; 32 groups of the message
+    assert sorted(len(r["gains"]) for r in roles) == [6, 34, 34]
+    lines = mn.third_roles_verdict(roles, fresh, [{**roles[0], 'tag': 'state_256'}])
+    assert any(line.startswith('| `state_256 (second run)`') for line in lines)
+    assert any(line.startswith("gate, fine_256") for line in lines)
+    assert any("less own_256, paired" in line for line in lines)

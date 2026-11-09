@@ -93,11 +93,39 @@ def test_a_branch_is_private_and_the_arrays_are_what_a_checkpoint_keeps():
     branch = message.branch()
     branch.hear(x[1:2])
     assert message.told.tolist() == [1] and branch.told.tolist() == [2]
-    assert set(message.arrays()) == {"trace", "told"}
+    assert set(message.arrays()) == {"trace", "told", "held"}
     again = cd.Message(**message.to_dict())
-    again.trace, again.told = (a.copy() for a in message.arrays().values())
+    again.trace, again.told, again.held = (a.copy() for a in message.arrays().values())
     again.hear(x[1:2])
     assert np.array_equal(again.state, branch.state)
+
+
+def test_a_boundary_channel_empties_the_message_or_holds_it():
+    x = _moments(np.random.default_rng(6), 4)
+    x[:, 33] = 0.0
+    x[2, 33] = 1.0  # the third moment marks a boundary
+    plain, cleared, held = (cd.Message(35, units=8, winners=2, seed=1, **k) for k in (
+        {}, {"boundary": 33}, {"boundary": 33, "boundary_holds": True}))
+    for m in (plain, cleared, held):
+        for moment in x:
+            m.hear(moment[None])
+    assert plain.told.tolist() == [4] and cleared.told.tolist() == [2] and held.told.tolist() == [2]
+    # cleared: the boundary moment and the one after, as a fresh message
+    fresh = cd.Message(35, units=8, winners=2, seed=1)
+    for moment in x[2:]:
+        fresh.hear(moment[None])
+    assert np.array_equal(cleared.state, fresh.state)
+    # held: the two moments before the boundary, nothing after
+    before = cd.Message(35, units=8, winners=2, seed=1)
+    for moment in x[:2]:
+        before.hear(moment[None])
+    assert np.array_equal(held.state, before.state) and held.held.tolist() == [True]
+    held.reset(1)
+    assert held.held.tolist() == [False] and not held.state.any()
+    with pytest.raises(ValueError):
+        cd.Message(35, boundary=35)
+    with pytest.raises(ValueError):
+        cd.Message(35, boundary=1, boundary_holds=2)  # type: ignore[arg-type]
 
 
 def test_the_fan_in_is_raised_until_every_channel_is_read():
@@ -192,6 +220,34 @@ def test_a_newborn_reads_the_mean_of_its_blocks_and_lessons_move_the_read():
     assert np.allclose(p.sum(axis=1), 1.0) and p.shape == (3, 4)
 
 
+def test_a_brain_holds_its_message_at_a_boundary_and_hears_a_gain_per_group():
+    brain = _brain(message=8, message_winners=2, message_boundary=3, message_boundary_holds=True,
+                   message_gains=2)
+    stream = _stream(np.random.default_rng(7), 4)
+    stream[:, :, 3] = 0.0
+    stream[2, :, 3] = 1.0  # the third moment is the boundary
+    alone = cd.Message(12, phases=4, units=8, winners=2, seed=5)
+    for moment in stream[:2]:
+        alone.hear(moment)
+    for moment in stream:
+        brain.act(moment, greedy=True)
+    assert np.array_equal(brain.message.state, alone.state) and brain.message.held.all()
+    genes = brain.describe()["genes"]
+    assert genes["message_boundary"] == 3 and genes["message_boundary_holds"] is True
+    assert genes["message_gains"] == 2
+    routes = {name for name in brain.carried_gains if name.startswith("message_")}
+    assert routes == {f"message_{k}_{g}" for k in range(4) for g in range(2)}
+    route = next(r for r in brain.hearing.routes if r["name"] == "message_0_1")
+    brain.hearing.set(route, 2.0)
+    drive = brain.stimulus(stream[0])[:, brain.connectome.populations["message"]]
+    loud = np.repeat(np.array([1.0, 2.0] + [1.0] * 6), 4)
+    assert np.allclose(drive, 1.5 * loud * alone.state)
+    with pytest.raises(ValueError):
+        _brain(message=8, message_gains=3)  # 3 does not divide 8
+    with pytest.raises(ValueError):
+        _brain(message=8, message_boundary=12)  # past the input channels
+
+
 def test_a_streams_message_ends_with_its_episode():
     brain = _brain(message=8)
     stream = _stream(np.random.default_rng(2), 3, rows=2)
@@ -218,6 +274,18 @@ def test_a_saved_brain_keeps_its_message_and_its_read(tmp_path):
     assert loaded.carried_gains == brain.carried_gains
     assert np.array_equal(loaded.act(stream[0], greedy=True), brain.act(stream[0], greedy=True))
     assert np.array_equal(loaded.message.state, brain.message.state)
+    # a boundary and gains per group travel with the checkpoint
+    marked = _brain(message=8, message_gains=2, message_boundary=3, message_boundary_holds=True)
+    stream[:, :, 3] = 0.0
+    stream[1, :, 3] = 1.0
+    for moment in stream:
+        marked.lesson(moment, [0, 1, 2])
+        marked.act(moment, greedy=True)
+    back = cd.Brain.load(marked.save(tmp_path / "marked"))
+    assert back.message.to_dict() == marked.message.to_dict()
+    assert back.carried_gains == marked.carried_gains and len(back.message.hearing) == 8
+    assert np.array_equal(back.message.held, marked.message.held) and marked.message.held.all()
+    assert np.array_equal(back.act(stream[0], greedy=True), marked.act(stream[0], greedy=True))
 
 
 def test_an_imagined_branch_leaves_the_message_as_it_was():

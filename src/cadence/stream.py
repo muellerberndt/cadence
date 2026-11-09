@@ -563,6 +563,11 @@ class Message:
     history's are, and holds no learned parameter; what a reader makes of the message is
     learned.
 
+    With ``boundary``, an input channel, a heard moment with that channel on marks a boundary
+    in the stream: the message is emptied and that moment begins it again, or with
+    ``boundary_holds`` the message keeps what it heard before the boundary and neither that
+    moment nor any after it joins, until the episode ends.
+
     The class stands alone: it holds no neurons and reads no brain. ``hear`` takes the
     observations one moment at a time, one row per stream; ``reset`` begins streams afresh.
     """
@@ -573,8 +578,11 @@ class Message:
     winners: int = 5
     fan_in: int = 16
     seed: int = 0
+    boundary: int | None = None
+    boundary_holds: bool = False
     trace: np.ndarray = field(init=False, repr=False)
     told: np.ndarray = field(init=False, repr=False)
+    held: np.ndarray = field(init=False, repr=False)
     separator: PatternSeparator = field(init=False, repr=False)
 
     COVER = 2  # code neurons that read each channel at least
@@ -593,6 +601,15 @@ class Message:
             raise ValueError("seed must be a nonnegative integer")
         if self.winners > self.units:
             raise ValueError("winners must not exceed the units")
+        if self.boundary is not None and (
+            isinstance(self.boundary, (bool, np.bool_))
+            or not isinstance(self.boundary, (int, np.integer))
+            or not 0 <= self.boundary < self.inputs
+        ):
+            raise ValueError("boundary must be an input channel, 0 to inputs - 1, or None")
+        if not isinstance(self.boundary_holds, (bool, np.bool_)):
+            raise ValueError("boundary_holds must be boolean")
+        self.boundary_holds = bool(self.boundary_holds)
         channels = 2 * int(self.inputs)
         cover = min(self.COVER, int(self.units))
         # every channel read by ``cover`` units: a fan-in too small for that is raised to it
@@ -625,13 +642,15 @@ class Message:
         if rows is None or len(self.trace) != batch:
             self.trace = np.zeros((batch, self.width))
             self.told = np.zeros(batch, dtype=np.int64)
+            self.held = np.zeros(batch, dtype=bool)
         else:
             self.trace[rows] = 0.0
             self.told[rows] = 0
+            self.held[rows] = False
 
     def keep(self, rows: np.ndarray) -> None:
         """Keep the messages of ``rows`` only (streams that ended are dropped)."""
-        self.trace, self.told = self.trace[rows], self.told[rows]
+        self.trace, self.told, self.held = self.trace[rows], self.told[rows], self.held[rows]
 
     def hear(self, observations: np.ndarray) -> None:
         """One heard moment per stream joins its phase's union; another batch size begins the
@@ -643,12 +662,19 @@ class Message:
             raise ValueError("observations must be finite")
         if len(self.trace) != len(x):
             self.reset(len(x))
+        if self.boundary is not None:
+            at = x[:, int(self.boundary)] > 0.0
+            if self.boundary_holds:
+                self.held = self.held | at  # the boundary moment and those after stay out
+            else:
+                self.trace[at] = 0.0  # emptied; the boundary moment begins the message again
+                self.told[at] = 0
         code = self.code(x)
         held = self.trace.reshape(len(x), int(self.phases), int(self.units))
-        rows = np.arange(len(x))
-        phase = self.told % int(self.phases)
-        held[rows, phase] = np.maximum(held[rows, phase], code)
-        self.told = self.told + 1
+        rows = np.flatnonzero(~self.held)
+        phase = self.told[rows] % int(self.phases)
+        held[rows, phase] = np.maximum(held[rows, phase], code[rows])
+        self.told[rows] += 1
 
     def key(self) -> np.ndarray:
         """The union over the phases, ``(streams, units)``: what the episode held, whatever the
@@ -660,11 +686,12 @@ class Message:
         """A private copy, its arrays its own."""
         branch = copy(self)
         branch.trace, branch.told = self.trace.copy(), self.told.copy()
+        branch.held = self.held.copy()
         return branch
 
     def arrays(self) -> dict[str, np.ndarray]:
         """The arrays a checkpoint keeps: the code is drawn again from the seed."""
-        return {"trace": self.trace, "told": self.told}
+        return {"trace": self.trace, "told": self.told, "held": self.held}
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -674,6 +701,8 @@ class Message:
             "winners": int(self.winners),
             "fan_in": int(self.separator.fan_in),
             "seed": int(self.seed),
+            "boundary": None if self.boundary is None else int(self.boundary),
+            "boundary_holds": bool(self.boundary_holds),
         }
 
 
@@ -685,8 +714,8 @@ class HeldMessage(Message):
     each moment the brain hears, the moment's winners in the block whose turn it is latch on
     and stay on until the stream's episode ends: the write is fixed, as the working trace's and
     the heard history's are. The association reads the region through plastic synapses at
-    ``amplitude`` times what it holds, and with ``carried_gain`` one learned gain per block
-    (``hearing``) sets how loudly.
+    ``amplitude`` times what it holds, and with ``carried_gain`` one learned gain per group of
+    ``units // gains`` neurons (``hearing``, ``gains`` groups per block) sets how loudly.
 
     With a ``port`` region the brain also reads its message one block at a time
     (``message_read``). The present moment addresses the blocks,
@@ -707,6 +736,7 @@ class HeldMessage(Message):
     read_amplitude: float = 3.0
     read_rate: float = 0.01
     read_temperature: float = 0.25
+    gains: int = 1
     target: str = "message"
     port: str = "message_read"
     hearing: np.ndarray = field(init=False, repr=False)
@@ -730,6 +760,14 @@ class HeldMessage(Message):
             setattr(self, name, float(value))
         if not np.isfinite(self.read_temperature) or self.read_temperature <= 0:
             raise ValueError("message read_temperature must be positive")
+        if (
+            isinstance(self.gains, (bool, np.bool_))
+            or not isinstance(self.gains, (int, np.integer))
+            or self.gains < 1
+            or self.units % self.gains
+        ):
+            raise ValueError("message gains must be a positive integer that divides the units")
+        self.gains = int(self.gains)
         populations = connectome.populations
         self.glow = np.asarray(populations[self.target], dtype=np.int64)
         self.association = np.asarray(populations["association"], dtype=np.int64)
@@ -741,7 +779,7 @@ class HeldMessage(Message):
                 f"message holds {self.width} (phases * units)"
             )
         self._glow_columns = columns(self.glow)
-        self.hearing = np.ones(int(self.phases))
+        self.hearing = np.ones(int(self.phases) * self.gains)
         # whether the association reads the whole message: a message composed silent beside
         # its read holds no synapse of its own
         self.direct = bool(np.isin(np.asarray(connectome.pre), self.glow).any())
@@ -798,7 +836,8 @@ class HeldMessage(Message):
 
     def streams(self) -> dict[str, np.ndarray]:
         """What the streams hold, the learned maps apart."""
-        return {"trace": self.trace, "told": self.told, "previous": self.previous}
+        return {"trace": self.trace, "told": self.told, "held": self.held,
+                "previous": self.previous}
 
     # -- the read
 
@@ -824,7 +863,7 @@ class HeldMessage(Message):
         another batch size reads silence."""
         out = np.array(_on_host(drive), dtype=float)
         present = len(self.trace) == len(out)
-        loud = self.amplitude * np.repeat(self.hearing, int(self.units))
+        loud = self.amplitude * np.repeat(self.hearing, int(self.units) // self.gains)
         if self.direct:
             out[:, self._glow_columns] = loud * self.trace if present else 0.0
         if self.reads:
@@ -932,6 +971,7 @@ class HeldMessage(Message):
         out = {
             **super().to_dict(),
             "amplitude": self.amplitude,
+            "gains": int(self.gains),
             "target": self.target,
             "neurons": int(len(self.glow)),
         }

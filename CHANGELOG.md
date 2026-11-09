@@ -50,6 +50,12 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   `key()`, `told`), and a member of `brain.memories`. `describe`, `retune`
   (`message_amplitude`), checkpoints and `imagine` carry it. `grow` and `graft` refuse a brain with
   a message, and a message needs a vector brain without a learned code.
+- **`message_gains`, `message_boundary`, `message_boundary_holds`** (the third declared run,
+  [`benchmarks/grammar/MEANING_PROTOCOL_3.md`](benchmarks/grammar/MEANING_PROTOCOL_3.md)). Under
+  `carried_gain`, `message_gains` learned gains per block in place of one. `message_boundary` names
+  an input channel: a heard moment with it on empties the message and begins it again, or with
+  `message_boundary_holds` the message keeps what it heard before and nothing after joins.
+  `cadence.Message` takes `boundary` and `boundary_holds` the same way.
 - **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
   present moment through learned maps (a content address over the block's units and a term per
   block). The maps start at zero and learn by the recall memory's address lesson on the message's

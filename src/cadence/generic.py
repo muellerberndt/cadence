@@ -635,8 +635,9 @@ _RECALL_SCALE = 1.2
 # founders of the message's settings (``message=units`` names the units of a block).
 _MESSAGE_SCALE = 1.2
 _MESSAGE_FOUNDERS: dict[str, Any] = {
-    "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "read": False,
+    "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "gains": 1, "read": False,
     "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
+    "boundary": None, "boundary_holds": False,
 }
 
 
@@ -656,11 +657,16 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
             )
         return {}
     out = {"units": _count("message", message, low=1), **_MESSAGE_FOUNDERS, **named}
-    for name in ("phases", "winners", "fan_in"):
+    for name in ("phases", "winners", "fan_in", "gains"):
         out[name] = _count(f"message_{name}", out[name], low=1)
-    if not isinstance(out["read"], (bool, np.bool_)):
-        raise ValueError("message_read must be boolean")
-    out["read"] = bool(out["read"])
+    for name in ("read", "boundary_holds"):
+        if not isinstance(out[name], (bool, np.bool_)):
+            raise ValueError(f"message_{name} must be boolean")
+        out[name] = bool(out[name])
+    if out["boundary"] is not None:
+        out["boundary"] = _count("message_boundary", out["boundary"], low=0)
+    if out["units"] % out["gains"]:
+        raise ValueError("message_gains must divide the units of a block")
     for name in ("amplitude", "read_amplitude", "read_rate"):
         out[name] = real(f"message_{name}", out[name], low=0)
     out["read_temperature"] = real("message_read_temperature", out["read_temperature"], low=1e-9)
@@ -1313,6 +1319,8 @@ def _validate_life_state(
         steps = array("message/told", (batch,))
         if steps.dtype.kind not in "iu" or (steps < 0).any():
             raise ValueError("invalid saved message counts")
+        if array("message/held", (batch,)).dtype.kind != "b":
+            raise ValueError("invalid saved message boundary flags")
         array("message/previous", (batch, association))
         if held["read"]:
             for kind, outputs in (("content", held["units"]), ("turn", held["phases"])):
@@ -2378,10 +2386,13 @@ class Brain:
                     raise ValueError(
                         f"message needs a {name!r} population; Brain.compose adds it"
                     )
+            if messaged["boundary"] is not None and messaged["boundary"] >= heard_width:
+                raise ValueError("message_boundary must be one of the brain's input channels")
             self.message = HeldMessage(
                 heard_width, phases=messaged["phases"], units=messaged["units"],
                 winners=messaged["winners"], fan_in=messaged["fan_in"], seed=seed,
-                connectome=connectome, amplitude=messaged["amplitude"],
+                boundary=messaged["boundary"], boundary_holds=messaged["boundary_holds"],
+                connectome=connectome, amplitude=messaged["amplitude"], gains=messaged["gains"],
                 read_amplitude=messaged["read_amplitude"], read_rate=messaged["read_rate"],
                 read_temperature=messaged["read_temperature"],
                 port="message_read" if messaged["read"] else "",
@@ -3081,7 +3092,8 @@ class Brain:
             "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
             "episodic", "backend", "device", "precision", "dense_limit", "connectome",
             "history_decays",
-            "message", "message_phases", "message_winners", "message_fan_in", "message_read",
+            "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
+            "message_boundary", "message_boundary_holds", "message_read",
             "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
@@ -3402,6 +3414,11 @@ class Brain:
                 message_winners=int(held.winners), message_fan_in=int(held.separator.fan_in),
                 message_amplitude=held.amplitude,
             )
+            if held.gains > 1:
+                genes["message_gains"] = int(held.gains)
+            if held.boundary is not None:
+                genes.update(message_boundary=int(held.boundary),
+                             message_boundary_holds=bool(held.boundary_holds))
             if held.reads:
                 genes.update(
                     message_read=True, message_read_amplitude=held.read_amplitude,
@@ -4424,12 +4441,17 @@ class Brain:
                     self.history.glow[k * width:(k + 1) * width],
                 )
         if self.message is not None and self.message.direct:
-            units = int(self.message.units)
+            # one gain per block, or per group of a block's neurons (``message_gains``)
+            groups, width = int(self.message.gains), int(self.message.units)
+            width //= groups
             for k in range(int(self.message.phases)):
-                hearing.add(
-                    f"message_{k}", self.message, k, k * units, (k + 1) * units,
-                    self.message.glow[k * units:(k + 1) * units],
-                )
+                for g in range(groups):
+                    slot = k * groups + g
+                    hearing.add(
+                        f"message_{k}" if groups == 1 else f"message_{k}_{g}", self.message,
+                        slot, slot * width, (slot + 1) * width,
+                        self.message.glow[slot * width:(slot + 1) * width],
+                    )
         recall = self.recall
         if recall is not None and recall.drive_gain:
             # the read can quiet and stays at or below its amplitude
@@ -5877,12 +5899,14 @@ class Brain:
                 message = HeldMessage(
                     built.inputs, phases=built.phases, units=built.units,
                     winners=built.winners, fan_in=int(told["fan_in"]), seed=int(told["seed"]),
-                    connectome=built.connectome, amplitude=built.amplitude,
+                    boundary=built.boundary, boundary_holds=built.boundary_holds,
+                    connectome=built.connectome, amplitude=built.amplitude, gains=built.gains,
                     read_amplitude=built.read_amplitude, read_rate=built.read_rate,
                     read_temperature=built.read_temperature, port=built.port,
                 )
                 message.trace = data["message/trace"].astype(float)
                 message.told = data["message/told"].astype(np.int64)
+                message.held = data["message/held"].astype(bool)
                 message.previous = data["message/previous"].astype(float)
                 if message.reads:
                     message.maps = [

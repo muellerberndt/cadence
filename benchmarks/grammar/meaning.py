@@ -1963,6 +1963,187 @@ def own_verdict(brains: list[dict[str, Any]], controls: list[dict[str, Any]]) ->
     return lines
 
 
+# ------------------------------------------- the third run: the cost beside a free read, roles
+
+THIRD = tuple(range(9828600, 9828606))  # fresh founders (MEANING_PROTOCOL_3.md)
+GO_CHANNEL = int(np.flatnonzero(gr.concept("GO"))[0])  # the boundary the brain can see
+SIX = WHOLE + ("path_long",)  # the six panels of the third run's first part
+WIDE_OWN = {"arm": "barred", "module": 256, "settings": {**OWN_MESSAGE, **EVERY},
+            "probe_scale": 0.0}  # the brain's own message, said from the state at 256
+
+
+def third_plan(founders: tuple[int, ...] = THIRD,
+               located: tuple[int, ...] = OWN) -> dict[str, list[dict[str, Any]]]:
+    """The third declared run. ``free``: the quiet message beside a free read, the arms that test
+    the located cost (the phase count scaled to the longest episode and past it, a message held
+    or cleared at ``GO``, the amplitude a notch lower), each beside ``default`` and ``heard``.
+    ``roles``: the brain's own message at 256 association neurons beside the instrument's
+    message on the same founders (``located``, the second run's) and the brain's own message
+    heard through one gain per 35 neurons, the instrument's read; then the same on fresh
+    founders."""
+    quiet = OWN_QUIET
+    free: dict[str, dict[str, Any]] = {
+        "default": {"arm": "default", "probe_scale": 0.0},
+        "heard": {"arm": "default", "settings": HEARD, "probe_scale": 0.0},
+        "quiet": {"arm": "default", "settings": quiet, "probe_scale": 0.0},
+        "quiet_24": {"arm": "default", "settings": {**quiet, "message_phases": 24},
+                     "probe_scale": 0.0},
+        "quiet_32": {"arm": "default", "settings": {**quiet, "message_phases": 32},
+                     "probe_scale": 0.0},
+        "quiet_hold": {"arm": "default", "probe_scale": 0.0,
+                       "settings": {**quiet, "message_boundary": GO_CHANNEL,
+                                    "message_boundary_holds": True}},
+        "quiet_clear": {"arm": "default", "probe_scale": 0.0,
+                        "settings": {**quiet, "message_boundary": GO_CHANNEL}},
+        "quiet_10": {"arm": "default", "settings": {**quiet, "message_amplitude": 0.10},
+                     "probe_scale": 0.0},
+    }
+    roles: dict[str, dict[str, Any]] = {
+        "own_256": WIDE_OWN,
+        "instrument_256": {"arm": "message_barred", "message": ALONE, "module": 256,
+                           "settings": EVERY, "probe_scale": 0.0},
+        "fine_256": {**WIDE_OWN, "settings": {**WIDE_OWN["settings"], "message_gains": 8}},
+    }
+    return {
+        "free": [{**spec, "founder": f, "tag": tag} for tag, spec in free.items()
+                 for f in founders],
+        "roles_located": [{**spec, "founder": f, "tag": tag} for tag, spec in roles.items()
+                          for f in located],
+        "roles": [{**spec, "founder": f, "tag": tag} for tag, spec in roles.items()
+                  for f in founders if tag != "instrument_256"],
+    }
+
+
+def _by_tag(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
+    arms: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        arms.setdefault(str(r.get("tag")), []).append(r)
+    for lives in arms.values():
+        lives.sort(key=lambda r: r["founder"])
+    return arms
+
+
+def _panel_table(arms: dict[str, list[dict[str, Any]]], shown: tuple[str, ...]) -> list[str]:
+    lines = ["| Arm | Parameters | Lives | " + " | ".join(shown) + " |",
+             "| --- | --- | --- | " + " | ".join("---" for _ in shown) + " |"]
+    for tag, lives in arms.items():
+        if "panels" in lives[0]:
+            lines.append(f"| `{tag}` | {lives[0]['parameters']} | {len(lives)} | " + " | ".join(
+                _mean([_score(r["panels"][n], n) for r in lives]) for n in shown) + " |")
+    return lines
+
+
+def third_free_verdict(rows: list[dict[str, Any]], floor: float = 0.03,
+                       of: int = 5) -> list[str]:
+    """The third run's first part: each message arm less ``default`` and less ``heard``, paired
+    by founder, on the six panels; the gate holds for an arm where every panel's paired
+    difference is at least ``-floor`` on ``of`` founders of six."""
+    arms = _by_tag(rows)
+    lines = ["whole sentences said exactly (roles: both twins), mean (least-greatest)", ""]
+    lines += _panel_table(arms, SIX) + [""]
+    for base in ("default", "heard"):
+        theirs = {r["founder"]: r for r in arms.get(base, [])}
+        lines.append(f"each arm less `{base}`, paired by founder: mean (standard error), "
+                     f"founders at or above -{floor:.2f}")
+        for tag, lives in arms.items():
+            if tag in ("default", "heard") or "panels" not in lives[0]:
+                continue
+            paired_lives = [r for r in lives if r["founder"] in theirs]
+            cells, held = [], True
+            for n in SIX:
+                diff = [(_score(r["panels"][n], n) or 0.0)
+                        - (_score(theirs[r["founder"]]["panels"][n], n) or 0.0)
+                        for r in paired_lives]
+                mean, error = paired([d for d in diff], [0.0 for _ in diff])
+                count = sum(d >= -floor for d in diff)
+                held = held and count >= of
+                cells.append(f"{n} {mean:+.2f} ({error:.2f}) {count}/{len(diff)}")
+            verdict = ("holds" if held else "fails") if base == "default" else ""
+            lines.append(f"  {tag}: " + ", ".join(cells) + (f"  -> {verdict}" if verdict else ""))
+        lines.append("")
+    lines.append("by founder: path / path_long")
+    for tag, lives in arms.items():
+        if "panels" in lives[0]:
+            lines.append(f"  {tag}: " + " ".join(
+                f"{_score(r['panels']['path'], 'path'):.2f}" for r in lives) + " / " + " ".join(
+                f"{_score(r['panels']['path_long'], 'path_long'):.2f}" for r in lives))
+    lines.append("the same lives read with the message silent, then with the read barred")
+    for tag, lives in arms.items():
+        for key in ("panels_silent", "panels_barred"):
+            with_it = [r for r in lives if key in r]
+            if with_it:
+                lines.append(f"  {tag}, {key[7:]}: " + ", ".join(
+                    f"{n} " + _mean([_score(r[key][n], n) for r in with_it])
+                    for n in SIX if n in with_it[0][key]))
+    lines.append("learned gains (mean over founders)")
+    for tag, lives in arms.items():
+        names = list(lives[0].get("gains", {}))
+        if names:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k} {np.mean([r['gains'][k] for r in lives]):.2f}" for k in names[:8])
+                + (" ..." if len(names) > 8 else ""))
+    return lines
+
+
+def third_roles_verdict(located: list[dict[str, Any]], fresh: list[dict[str, Any]],
+                        earlier: list[dict[str, Any]] | None = None) -> list[str]:
+    """The third run's second part. ``located``: the three arms on the second run's founders
+    (``earlier`` rows of that run's ``state_256`` beside them); ``fresh``: the brain's own
+    message with one gain per block and per 35 neurons on fresh founders. The gate: roles .90
+    on 5 of 6 with clause and held-out combinations kept at .90 on 5 of 6."""
+    lines = []
+    for title, rows in (("on the second run's founders", located), ("on fresh founders", fresh)):
+        arms = _by_tag(rows)
+        before = sorted([r for r in earlier or [] if r.get("tag") == "state_256"],
+                        key=lambda r: r["founder"])
+        if before and title.startswith("on the second"):
+            arms = {"state_256 (second run)": before, **arms}
+        lines += [f"{title}: whole sentences, mean (least-greatest)", ""]
+        lines += _panel_table(arms, ("clause", "clause_held", "roles", "dyck", "path")) + [""]
+        for tag, lives in arms.items():
+            if not lives:
+                continue
+            counts = []
+            for n in ("clause", "clause_held", "roles"):
+                values = [_score(r["panels"][n], n) for r in lives]
+                count, _ = passes(values, 0.9)
+                counts.append(f"{n} " + " ".join(f"{v:.2f}" for v in values if v is not None)
+                              + f" ({count} of {len(values)})")
+            lines.append(f"  {tag}: " + "; ".join(counts))
+            kinds = {k: v for k, v in lives[0]["said"].items() if k.startswith("clause")}
+            weakest = min(lives, key=lambda r: _score(r["panels"]["roles"], "roles") or 0.0)
+            lines.append(f"    weakest founder {weakest['founder']}: " + ", ".join(
+                f"{k} {weakest['said'][k]:.2f}" for k in kinds if weakest["said"][k] < 0.95)
+                or "    every word kind at .95")
+            gains = lives[0].get("gains", {})
+            if gains:
+                values = [np.mean([r["gains"][k] for r in lives]) for k in gains]
+                lines.append(f"    gains: {len(gains)} routes, trace "
+                             f"{np.mean([r['gains'].get('trace', 0) for r in lives]):.2f}, "
+                             f"the message's least {min(values[1:] or [0]):.2f} and greatest "
+                             f"{max(values[1:] or [0]):.2f}")
+        base = arms.get("own_256", [])
+        theirs = {r["founder"]: r for r in base}
+        for tag in ("instrument_256", "fine_256"):
+            lives = [r for r in arms.get(tag, []) if r["founder"] in theirs]
+            if lives:
+                cells = []
+                for n in ("clause", "clause_held", "roles"):
+                    mean, error = paired(
+                        [_score(r["panels"][n], n) or 0.0 for r in lives],
+                        [_score(theirs[r["founder"]]["panels"][n], n) or 0.0 for r in lives])
+                    cells.append(f"{n} {mean:+.2f} ({error:.2f})")
+                lines.append(f"  {tag} less own_256, paired: " + ", ".join(cells))
+        lines.append("")
+    fine = [r for r in fresh if r.get("tag") == "fine_256"]
+    if fine:
+        held = all(passes([_score(r["panels"][n], n) for r in fine], 0.9)[1]
+                   for n in ("clause", "clause_held", "roles"))
+        lines.append("gate, fine_256 on fresh founders (roles .90 on 5 of 6, clause and held-out "
+                     "kept): " + ("holds" if held else "fails"))
+    return lines
+
+
 def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     """One life of a plan: a message life, or by ``kind`` a diagnosis life (``"where"``) or a
     life that restates its message (``"notes"``) or a life of another chamber
@@ -2290,11 +2471,18 @@ def main(argv: list[str] | None = None) -> int:
     planner.add_argument("--founders", nargs="*", type=int)
     planner.add_argument("--own", action="store_true",
                          help="the second run: the brain's own message")
+    planner.add_argument("--third", action="store_true",
+                         help="the third run: the cost beside a free read, and roles")
     reader = sub.add_parser("read", help="print the tables of a results file")
     reader.add_argument("results", type=Path)
     reader.add_argument("--controls", type=Path, help="with --knock: the declared gates")
     reader.add_argument("--knock", type=Path)
     reader.add_argument("--own", action="store_true", help="the second run's gates")
+    reader.add_argument("--third", choices=("free", "roles"),
+                        help="the third run's gates: its first or its second part")
+    reader.add_argument("--fresh", type=Path, help="with --third roles: the fresh founders' rows")
+    reader.add_argument("--earlier", type=Path,
+                        help="with --third roles: the second run's brain rows")
     finder = sub.add_parser("retrieval", help="retrieval by the code, no brain")
     finder.add_argument("--founders", nargs="*", type=int, default=list(DECLARED))
     finder.add_argument("--units", nargs="*", type=int, default=[70, 280])
@@ -2312,8 +2500,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
-        founders = tuple(args.founders or (OWN if args.own else DECLARED))
-        plans = own_plan(founders) if args.own else declared_plan(founders)
+        founders = tuple(args.founders or (THIRD if args.third else OWN if args.own
+                                           else DECLARED))
+        plans = (third_plan(founders) if args.third else own_plan(founders) if args.own
+                 else declared_plan(founders))
         for name, specs in plans.items():
             (args.out / f"{name}.json").write_text(json.dumps(specs))
             print(f"{name}: {len(specs)} lives")
@@ -2322,6 +2512,12 @@ def main(argv: list[str] | None = None) -> int:
         rows = [json.loads(line) for line in args.results.read_text().splitlines() if line]
         if any(r.get("kind") == "retrieval" for r in rows):
             print("\n".join(read_retrieval(rows)))
+        elif args.third == "free":
+            print("\n".join(third_free_verdict(rows)))
+        elif args.third == "roles":
+            others = [[json.loads(line) for line in path.read_text().splitlines() if line]
+                      if path is not None else [] for path in (args.fresh, args.earlier)]
+            print("\n".join(third_roles_verdict(rows, *others)))
         elif args.controls is not None:
             others = [[json.loads(line) for line in path.read_text().splitlines() if line]
                       if path is not None else [] for path in (args.controls, args.knock)]

@@ -1464,7 +1464,10 @@ opt-in: without it a brain is built and settles as the founder does, to the bit.
 - **What is read.** The association reads the region through plastic synapses at
   `message_amplitude` times what it holds, so what the brain makes of its message is learned, and
   [a learned gain](#how-strongly-a-carried-region-is-heard) per block sets how loudly.
-- **When it ends.** `reset()` and the end of an episode (`done`) empty a stream's message.
+- **When it ends.** `reset()` and the end of an episode (`done`) empty a stream's message. With
+  `message_boundary=channel` a heard moment with that channel on is a boundary the brain can see:
+  the message is emptied and that moment begins it again, or with `message_boundary_holds=True`
+  the message keeps what it heard before the boundary and nothing from the boundary on joins.
 
 ```python
 speaker = Brain.compose(inputs=6, actions=3, modules=(16,), seed=0, message=12, message_winners=2)
@@ -1486,6 +1489,9 @@ assert not speaker.message.state.any()                    # a new stream starts 
 | `message_winners` | `5` | construction | Units set to one per moment |
 | `message_fan_in` | `16` | construction | Channels each unit reads, raised until two units read every channel |
 | `message_amplitude` | `1.5` | `retune` | Drive of a unit that is on; `0.0` at construction, beside `message_read`, builds no synapses from the region |
+| `message_gains` | `1` | construction | Learned gains per block under `carried_gain`: one per `units / gains` neurons |
+| `message_boundary` | `None` | construction | An input channel; a heard moment with it on empties the message and begins it again |
+| `message_boundary_holds` | `False` | construction | At the boundary the message keeps what it heard and nothing after joins, until the episode ends |
 | `message_read` | `False` | construction | The read of one block at a time, below |
 
 **A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
@@ -2158,6 +2164,9 @@ one slot per moment. It stands alone: it has no neurons and reads no brain.
 - **The key.** `key()` is the union over the blocks. One set of moments gives one key in whatever
   order it was heard, and episodes that share moments give keys that overlap. A memory of encoded
   meanings files a record under the key.
+- **A boundary.** `boundary=channel` names an input channel: a moment with it on empties the
+  message and begins it again, or with `boundary_holds=True` the message keeps what came before
+  and nothing from that moment on joins.
 
 ```python
 message = cd.Message(inputs=6, phases=4, units=24, winners=3, seed=0)
