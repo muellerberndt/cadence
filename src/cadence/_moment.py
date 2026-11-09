@@ -58,27 +58,29 @@ if njit is not None:
         (``Recall.position_term``): the table over its age bucket, the anchored term over its
         place in the episode, the relative term over its offset from the previous read's focus,
         the slope along its age and past the table the grid's residues."""
-        if not numbers[0]:
+        if numbers[0] == 0:
             return 0.0
         last = table.shape[0] - 1
-        term = z[b, columns[1] + table[min(age, last)]]
-        if numbers[1]:
+        row = _index(b)
+        term = z[row, _index(columns[1] + table[min(age, last)])]
+        if numbers[1] != 0:
             place = told - 1 - age
-            term += z[b, columns[2] + (numbers[7] if place < 0 else table[min(place, last)])]
-        if numbers[2]:
+            bucket = numbers[7] if place < 0 else table[min(place, last)]
+            term += z[row, _index(columns[2] + bucket)]
+        if numbers[2] != 0:
             reach = numbers[6]
             if focus < 0:
                 bucket = 2 * reach + 1
             else:
                 bucket = max(min(age - focus, reach), -reach) + reach
-            term += z[b, columns[3] + bucket]
-        if numbers[3]:
-            term += z[b, columns[4]] * (age / slope_unit)
-        if numbers[4] and age >= numbers[5]:
+            term += z[row, _index(columns[3] + bucket)]
+        if numbers[3] != 0:
+            term += z[row, _index(columns[4])] * (age / slope_unit)
+        if numbers[4] != 0 and age >= numbers[5]:
             total = 0.0
             start = 0
             for i in range(grid.shape[0]):
-                total += z[b, columns[5] + start + age % grid[i]]
+                total += z[row, _index(columns[5] + start + age % grid[i])]
                 start += grid[i]
             term += total
         return float(term)
