@@ -63,6 +63,11 @@ record loses `memory_fade / (1 + (depth / 2000) ** 4)` of itself. No count is ke
 0.0, and a brain without the setting is the founder's to the bit on `backend="cpu"`: its arrays,
 checkpoints, descriptions and parameter counts are unchanged. A fading store rests on the host.
 
+A brain with the setting saves checkpoint format `cadence-brain/3`, with a maturity or without.
+0.95.2 and earlier refuse the file ("unsupported Brain checkpoint format"), where they would
+load it with the fade off. `Brain.load` reads `cadence-brain/1`, `/2` and `/3`; a brain without
+the setting saves `cadence-brain/1`, or `/2` with maturity, as before.
+
 On 24 fresh founders of the competing-skills chamber, with `maturity=True`, a skill practised
 for 2,000 moments keeps .36 of itself over 40,000 blank moments and one practised for 40,000
 keeps 1.00, and relearning after disuse beats first learning by +4.3 and +4.9 points (s.e. 1.1).

@@ -114,6 +114,11 @@ BRAIN_FORMAT = "cadence-brain/1"
 # A brain with maturity (#253) saves under its own format name, which 0.93.1 and earlier refuse;
 # every other brain keeps BRAIN_FORMAT.
 MATURITY_FORMAT = "cadence-brain/2"
+# A brain whose store fades (``memory_fade``, #253) saves under a format name of its own, which
+# 0.95.2 and earlier refuse, with or without maturity: the highest name a file needs is its one
+# name, and a ``cadence-brain/3`` file with a maturity carries it as a ``cadence-brain/2`` file
+# does.
+FADE_FORMAT = "cadence-brain/3"
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -1425,6 +1430,14 @@ def _actor_config(values: Any) -> ActorCriticConfig:
         return ActorCriticConfig(**values)
     except TypeError as exc:
         raise ValueError("invalid saved actor config") from exc
+
+
+def _saved_fade(saved: Mapping[str, Any]) -> bool:
+    """Whether a checkpoint's metadata names a fading store (``memory_fade`` above zero): the
+    brains that save ``FADE_FORMAT``. The store's reader validates the value itself."""
+    memories = saved.get("memories")
+    store = memories.get("hippocampus") if isinstance(memories, dict) else None
+    return isinstance(store, dict) and bool(store.get("fade"))
 
 
 def _flat_layout(
@@ -5545,7 +5558,9 @@ class Brain:
         """Save the complete composition, including an action awaiting its real outcome.
 
         The file is ``cadence-brain/1`` (with maturity ``cadence-brain/2``, which adds the
-        maturity and the store's noise scales): the learner's checkpoint, the actor (its config,
+        maturity and the store's noise scales; with ``memory_fade`` ``cadence-brain/3``, which
+        adds the records' depths and recent traces, beside a maturity where the brain has
+        one): the learner's checkpoint, the actor (its config,
         critic, eligibility and random generator), the brain's random generator, the free
         phase, a pending action's nudged states, the state ``wait`` sensed since that action
         was chosen, the arousal, the observation code or the learned code, and one group
@@ -5563,8 +5578,11 @@ class Brain:
         agent = self.basal_ganglia
         data = _learner_data(self.learner)
         memories: dict[str, Any] = {}
+        store = self.hippocampus
+        fading = isinstance(store, SynapticMemory) and bool(store.fade)
         metadata: dict[str, Any] = {
-            "format": BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
+            "format": FADE_FORMAT if fading
+            else BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
             "actor": agent.config.to_dict(),
             "rng": self.rng.bit_generator.state,
             "actor_rng": agent.rng.bit_generator.state,
@@ -5704,7 +5722,8 @@ class Brain:
         chose takes it again at its first moment (``backend="auto"``), and any other runs on the
         CPU, portable inference and learning.
 
-        Reads ``cadence-brain/1`` and ``cadence-brain/2`` (a brain with maturity), the formats
+        Reads ``cadence-brain/1``, ``cadence-brain/2`` (a brain with maturity) and
+        ``cadence-brain/3`` (a brain whose store fades, ``memory_fade``), the formats
         of 0.85.0 on, and refuses the earlier ``cadence-generic/1`` to ``/10`` by name: cadence
         0.94.0 loads those and saves ``cadence-brain/1``. Keep the saved batch row identities, or
         call ``reset`` for new episodes. Cross-backend results are subject to floating-point
@@ -5723,10 +5742,14 @@ class Brain:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             saved = json.loads(str(archive["brain"]))
             if not isinstance(saved, dict) or saved.get("format") not in (
-                BRAIN_FORMAT, MATURITY_FORMAT
+                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT
             ):
                 raise ValueError("unsupported Brain checkpoint format")
-            if (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
+            fading = _saved_fade(saved)
+            if (saved["format"] == FADE_FORMAT) != fading:
+                raise ValueError(f"a fading store belongs to checkpoint format {FADE_FORMAT}")
+            # a fading store's file holds a maturity or none; any other file is named by it
+            if not fading and (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
                 raise ValueError(
                     f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
                 )
