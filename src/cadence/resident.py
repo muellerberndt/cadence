@@ -42,6 +42,8 @@ def _memory_on_device(kernel: Any, streams: int, width: int) -> bool:
     and on MLX from the size that pays for it. ``CADENCE_TORCH_MEMORY=1`` places them at any size
     on any torch device but MPS (float32 alone), ``CADENCE_MLX_MEMORY=1`` on MLX at any size, and
     ``=0`` keeps them on the host."""
+    if getattr(kernel, "lives", 0):  # lives keep their critic and memories on their device
+        return True
     if hasattr(kernel, "mx"):
         choice = os.environ.get("CADENCE_MLX_MEMORY", "")
         if choice == "0" or kernel.plain:
