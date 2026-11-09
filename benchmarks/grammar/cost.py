@@ -13,6 +13,11 @@ thread per library:
         python benchmarks/grammar/cost.py --founder 0 --out DIR/cost-f0.json
 
 ``torch`` is required for the transformer alone; ``--learners plain,compiled`` leaves it out.
+
+``--parts plain`` (or ``compiled``) lives one brain's pass alone and reads where its time goes: a
+thread samples the main thread's stack every 5 ms and charges the time since its previous sample
+to the part the stack is in (``PARTS``). A compiled kernel holds the interpreter until it returns,
+so its time is charged to the stack the kernel returns into, the function that called it.
 """
 
 from __future__ import annotations
@@ -20,8 +25,11 @@ from __future__ import annotations
 import argparse
 import copy
 import json
+import sys
+import threading
 import time
 import warnings
+from collections import Counter
 from pathlib import Path
 from typing import Any
 
@@ -84,13 +92,90 @@ def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
     return out
 
 
+# The kernels by the function that calls them, and the parts of a pass around them by the first
+# function of the sampled stack, from the inside out, that names one.
+KERNELS = {
+    "fused_fast_solve": "kernels: the solves", "fused_solve": "kernels: the solves",
+    "_launch": "kernels: the lessons' phases", "fused_residual": "kernels: the checks",
+}
+PARTS = {
+    "Brain._stimulus": "the read",
+    "Recall.learn": "the address lesson",
+    "Hearing.learn": "the carried gains' lesson",
+    "Learner.update": "the lessons' update",
+    "Learner.step": "the lessons' phases around their kernels",
+    "Brain._qualified": "the solves around their kernels",
+    "Brain._choose": "the choice and the write",
+    "Brain.lesson": "the rest of the lesson",
+    "Brain.act": "the rest of the act",
+}
+
+
+def _part(frame: Any) -> str:
+    """The part of the pass a sampled stack is in."""
+    if frame is not None and frame.f_code.co_qualname in KERNELS:
+        return KERNELS[frame.f_code.co_qualname]
+    while frame is not None:
+        part = PARTS.get(frame.f_code.co_qualname)
+        if part is not None:
+            return part
+        frame = frame.f_back
+    return "the chamber's own loop"
+
+
+def parts(name: str, founder: int, batches: int) -> dict[str, Any]:
+    """One brain's pass alone, its wall seconds charged to the parts of ``PARTS``."""
+    warnings.simplefilter("ignore")
+    brain = make(name, founder)
+    split = gr.Split.of(founder)
+    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
+    stream = [gr.train_batch(rng, split, "g1") for _ in range(batches)]
+    gr.speak(copy.deepcopy(brain), stream[0], teach=True)
+    main = threading.main_thread().ident
+    spent: Counter[str] = Counter()
+    done = threading.Event()
+
+    def sample() -> None:
+        last = time.perf_counter()
+        while not done.wait(0.005):
+            frame = sys._current_frames().get(main)
+            now = time.perf_counter()
+            if frame is not None:
+                spent[_part(frame)] += now - last
+            last = now
+
+    sampler = threading.Thread(target=sample, daemon=True)
+    started = time.perf_counter()
+    process = time.process_time()
+    sampler.start()
+    for batch in stream:
+        gr.speak(brain, batch, teach=True)
+    done.set()
+    sampler.join()
+    wall = time.perf_counter() - started
+    total = sum(spent.values()) or 1.0
+    return {"learner": name, "founder": founder, "batches": batches, "wall": wall,
+            "process": time.process_time() - process,
+            "parts": {part: wall * seconds / total for part, seconds in spent.most_common()}}
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--founder", type=int, default=0)
     parser.add_argument("--batches", type=int, default=4000)
     parser.add_argument("--learners", default=",".join(LEARNERS))
     parser.add_argument("--out", type=Path, default=None)
+    parser.add_argument("--parts", choices=("plain", "compiled"), default=None,
+                        help="one brain's pass alone, by part")
     args = parser.parse_args(argv)
+    if args.parts:
+        found = parts(args.parts, args.founder, args.batches)
+        if args.out is not None:
+            args.out.parent.mkdir(parents=True, exist_ok=True)
+            args.out.write_text(json.dumps(found, indent=1))
+        for part, seconds in found["parts"].items():
+            print(f"{seconds:8.1f} s  {part}")
+        return 0
     learners = tuple(name for name in args.learners.split(",") if name)
     unknown = set(learners) - set(LEARNERS)
     if unknown:

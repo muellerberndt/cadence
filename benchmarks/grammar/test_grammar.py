@@ -387,3 +387,7 @@ def test_the_cost_of_a_pass_is_read_per_learner(tmp_path):
     assert cost.main(["--batches", "1", "--learners", "plain,compiled",
                       "--out", str(tmp_path / "cost.json")]) == 0
     assert "against_transformer" not in (tmp_path / "cost.json").read_text()
+    found = cost.parts("compiled", 0, 2)
+    assert found["parts"] and abs(sum(found["parts"].values()) - found["wall"]) < 1e-6
+    assert set(found["parts"]) <= {*cost.KERNELS.values(), *cost.PARTS.values(),
+                                   "the chamber's own loop"}
