@@ -740,6 +740,8 @@ def make_brain(task: Task, arm: str, founder: int, settings: dict[str, Any] | No
 
     gx = _module("gradients", HERE.parent / "grammar" / "gradients.py")
     options = {**ARMS[arm], **(settings or {})}
+    if options.get("recall_tokens") == "task":  # the task's tokens declared without a gain
+        options["recall_tokens"] = task.tokens()
     if options.get("recall_gain"):
         options.setdefault("recall_tokens", task.tokens())
     options.setdefault("backend", "cpu")  # one backend for every life, as the grammar chamber's
