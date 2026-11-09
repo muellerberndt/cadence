@@ -187,3 +187,36 @@ kept out of the message the brain says its clauses through the read and lifts th
 message, and three hops fall to .01, so the held meaning is what it says a long path from.
 
 Part 2 did not run; its arms and gate stand declared for a later run.
+
+## Amendment 1: the held message on twelve founders
+
+Written after part 1 was read and before any life of these arms.
+
+**Why.** F3 asked every panel to sit within .03 of the default on 5 of 6 founders. A panel is 64
+sentences, so a per-founder bar of -.03 is two sentences, inside the panel's noise, and it read
+noise as failure: `quiet_hold` held three hops and every other panel at the mean and failed F3 on
+the founders' spread. The confirmatory run reads the same arm on twelve fresh founders with a gate
+on the paired mean and its standard error.
+
+**Founders.** 9928600 to 9928611 (no life in any lane), one online pass each (4,000 batches of
+the first grammar), the same panels.
+
+| Arm | The brain | Parameters |
+| --- | --- | --- |
+| `default` | the default composition: the reference | 28,716 |
+| `heard` | `default` with `history_decays=(0.0,)` | 30,992 |
+| `quiet_hold` | `default` with `message=70`, `message_amplitude=0.15`, `message_boundary=33`, `message_boundary_holds=True`: the message held from `GO` | 46,920 |
+| `quiet_hold_heard` | `quiet_hold` with `history_decays=(0.0,)`: the held meaning and the previous word together, two independent mechanisms | 49,196 |
+
+**Readings.** The six panels; `quiet_hold`, `quiet_hold_heard` and `heard` less `default`, and
+`quiet_hold_heard` less `heard`, paired by founder: the mean difference and its standard error;
+the learned gains; seconds.
+
+**Gate F3c.** An arm holds against `default` where, on each of the six panels, the paired mean
+difference is at or above -.03 and the default is not above the arm by two standard errors of
+the paired difference. A lift counts only where it clears two standard errors.
+
+**Expectations.** `quiet_hold` holds F3c: three hops and paths within .03 at the mean, clauses,
+roles and brackets lifted. `quiet_hold_heard` holds F3c and reads three hops at `heard`'s level
+(.7); against `heard` it is level or lifts brackets. `heard` lifts paths and three hops against
+`default` as in the second run.
