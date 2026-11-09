@@ -433,6 +433,62 @@ def test_a_lesson_in_one_call_keeps_the_bits_of_its_passes(name, monkeypatch) ->
     assert whole[0] == whole[1] >= 12, whole  # every taught lesson ran whole
 
 
+@pytest.mark.parametrize("streams", [9, 24])
+def test_a_lesson_of_many_rows_in_one_call_keeps_the_bits_of_its_passes(
+    streams, monkeypatch
+) -> None:
+    """Lessons that teach eight rows and more: the carried gains step on the mean of their
+    contrasts over the rows, summed row by row as NumPy sums two columns and more."""
+    lives = []
+    for one_lesson in (False, True):
+        _mode(monkeypatch, True, True, one_lesson)
+        subject = cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu",
+                                   learning_compiled_moment=True)
+        rng = np.random.default_rng(1)
+        actions, taught = [], 0
+        for t in range(10):
+            x = (rng.random((streams, 8)) < 0.3).astype(float)
+            actions.append(subject.act(x, greedy=True))
+            y = (rng.random((streams, 8)) < 0.3).astype(float)
+            wrong = (copy.deepcopy(subject).act(y, greedy=True) + 1 + t % 3) % 4
+            report = subject.lesson(y, wrong)  # every row's answer differs from its label
+            taught += report["accepted_presentations"] == streams
+            actions.append(subject.act(y, greedy=True))
+        assert taught == 10
+        lives.append((subject, actions))
+    _same_life(*lives)
+
+
+def test_a_lesson_in_one_call_leaves_the_packed_maps_a_read_would_make(monkeypatch) -> None:
+    """After a lesson in one call that stepped every map, the next read takes the packed maps
+    the call returned: the arrays ``packed_maps`` makes from the memory's maps, to the bit.
+    Where a map stays (the slope's, once the slots pass the position table) the next read packs
+    them again."""
+    from cadence import _moment
+
+    _mode(monkeypatch, True, True, True)
+    for options, kept_whole in zip(READS, (True, False), strict=True):
+        subject = brain(learning_compiled_moment=True, **options)
+        rng = lived(subject, moments=8)
+        x = rng.random((4, 8))
+        wrong = (copy.deepcopy(subject).act(x, greedy=True) + 1) % 4
+        report = subject.lesson(x, wrong)
+        assert report["address_rows"] > 0 and report["position_rows"] > 0
+        recall = subject.recall
+        kept = recall.__dict__["_packed"]
+        current = all(
+            a is b for a, b in zip(kept[2], _moment.packed_parts(recall), strict=True)
+        )
+        assert current == kept_whole
+        del recall.__dict__["_packed"]
+        made = _moment.packed_maps(recall)
+        if kept_whole:
+            for ours, theirs in zip(kept[1], made, strict=True):
+                assert ours.tobytes() == theirs.tobytes() and ours.shape == theirs.shape
+            for ours, theirs in zip(kept[3], recall.__dict__["_packed"][3], strict=True):
+                assert ours.tobytes() == theirs.tobytes() and ours.shape == theirs.shape
+
+
 def test_the_compiled_contrast_is_the_block_contrast() -> None:
     """The contrast's kernel against ``blocks.block_contrast`` and NumPy's mean: the same
     products and sums. The synapses' terms agree to the last place or two (one BLAS makes the

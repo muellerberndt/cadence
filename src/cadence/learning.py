@@ -738,6 +738,11 @@ class Learner:
 
     def _labels(self, labels: np.ndarray) -> np.ndarray:
         labels = np.asarray(labels)
+        if labels.dtype == np.int64 and labels.ndim == 1 and self.slot_count == 1 and labels.size:
+            # one slot's labels of the kind returned: the checks below in two reductions
+            if labels.min() < 0 or labels.max() >= self.slot_size:
+                raise ValueError("a label lies outside its output slot's choices")
+            return labels
         if self.slot_count > 1:
             if labels.ndim != 2 or labels.shape[1] != self.slot_count:
                 raise ValueError("a slotted learner takes labels shaped (batch, slots)")

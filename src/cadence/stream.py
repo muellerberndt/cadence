@@ -1995,19 +1995,29 @@ class Recall:
         bank array itself instead of a bitwise snapshot of it; they leave with the operation.
         A nested operation shares the outermost one's; a copy taken during one holds its
         token, which stops binding when the operation ends."""
-        if self._scope_token in _OPERATIONS:
+        token = self._enter()
+        try:
             yield
-            return
+        finally:
+            if token is not None:
+                self._leave(token)
+
+    def _enter(self) -> object | None:
+        """Begin an operation (``_scope``): its token, to ``_leave`` it with, or None within an
+        operation in progress, which this one shares."""
+        if self._scope_token in _OPERATIONS:
+            return None
         token = object()
         self._scope_token = token
         _OPERATIONS.add(token)
         self._contents, self._content_keys = [], None
-        try:
-            yield
-        finally:
-            _OPERATIONS.discard(token)
-            self._scope_token = None
-            self._contents, self._content_keys = [], None
+        return token
+
+    def _leave(self, token: object) -> None:
+        """End the operation ``_enter`` began with ``token``: its content products leave."""
+        _OPERATIONS.discard(token)
+        self._scope_token = None
+        self._contents, self._content_keys = [], None
 
     def _content(self, address: np.ndarray, keys: np.ndarray) -> np.ndarray:
         """Content logits with reusable raw dot products and the current temperature.
@@ -2663,16 +2673,20 @@ class Recall:
     def _learned_compiled(
         self, moved: int, error: float, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
         address_ok: bool, position_ok: bool, positions: bool, quiet: dict[str, float],
+        parts: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray]] | None = None,
     ) -> dict[str, float]:
         """What the compiled address lesson returns (``_moment._lesson_kernel``), taken: the
         packed maps ``(w_x, w_c, w)`` of the ``moved`` rows' step become head 0's maps, the
         address map where its step is finite (``address_ok``) and with ``positions`` every
-        position map where theirs is (``position_ok``); the lesson's report."""
+        position map where theirs is (``position_ok``); the lesson's report. ``parts`` are the
+        packed maps' six parts as arrays of their own, where the caller holds them."""
         if not moved:
             return quiet
         columns = _moment.packed_maps(self)[3]
 
         def part(k: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            if parts is not None:
+                return parts[k]
             start, stop = int(columns[k]), int(columns[k + 1])
             return (np.ascontiguousarray(w_x[:, start:stop]),
                     np.ascontiguousarray(w_c[:, start:stop]), w[start:stop].copy())

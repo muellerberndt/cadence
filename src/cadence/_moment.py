@@ -25,7 +25,10 @@ from typing import Any
 
 import numpy as np
 
-from .fused import _compiled, _inlined, _vectorized, compiled, njit
+from . import brain as _graphs
+from . import fused
+from .brain import BrainState, _keep_products
+from .fused import _compiled, _inlined, _vectorized, njit
 
 if njit is not None:
     from .fused import _index
@@ -46,8 +49,8 @@ ONE_CALL = True
 
 def available() -> bool:
     """Whether the compiled moment can run here: Numba is installed and the compiled passes of
-    ``cadence.fused`` are in use."""
-    return compiled()
+    ``cadence.fused`` are in use (``fused.compiled``, read at call time)."""
+    return njit is not None and bool(_graphs._FUSED)
 
 
 if njit is not None:
@@ -875,8 +878,7 @@ def free_solve(graph: Any, drive: np.ndarray, state: Any, budget: int, tolerance
     of a host state on the compiled path, in the kernels that path calls (the activations of the
     warm potentials, ``fused._fast_solve``): the same state, report and bits; None where the
     solve takes another path (a compartment, adaptation, another step, a wrapped settle)."""
-    from . import fused
-    from .brain import BrainState, Equilibrium, _keep_products
+    from .brain import Equilibrium
 
     model = graph.neuron_model
     if (
@@ -1064,18 +1066,24 @@ def _rooms(recall: Any, rows: int) -> tuple[Any, ...] | None:
     the slots dropped and the column of the new slot; None where the ordinary write runs."""
     if rows != recall.streams:
         return None
-    names = ("keys", "values", "nexts", "held")
-    held_rooms = [recall._rooms.get(name) for name in names]
-    for name, room in zip(names, held_rooms, strict=True):
-        old = getattr(recall, name)
-        if room is None or room[1] is not old or old.base is not room[0] or (
-            room[3] >= room[0].shape[1]
+    held = recall._rooms
+    keys, values = held.get("keys"), held.get("values")
+    nexts, slots = held.get("nexts"), held.get("held")
+    if keys is None or values is None or nexts is None or slots is None:
+        return None
+    # every slot array is the view of its room that the memory made, with room behind it, and
+    # the four share one history (the first slot and the column of the next)
+    history = keys[2:4]
+    for room, old in (
+        (keys, recall.keys), (values, recall.values), (nexts, recall.nexts),
+        (slots, recall.held),
+    ):
+        if (
+            room[1] is not old or old.base is not room[0] or room[3] >= room[0].shape[1]
+            or room[2:4] != history
         ):
             return None
-    if len({(room[2], room[3]) for room in held_rooms if room is not None}) != 1:
-        return None
-    kept = recall.keys.shape[1]
-    return (*held_rooms, max(kept + 1 - recall.capacity, 0))
+    return keys, values, nexts, slots, max(recall.keys.shape[1] + 1 - recall.capacity, 0)
 
 
 def act_after(brain: Any, x: np.ndarray, free: Any, spans: np.ndarray) -> tuple[np.ndarray, bool]:
@@ -1320,9 +1328,6 @@ def one_call(
     the moment before, the rooms a write went into (None without a compiled write), the blocks
     the solve read and the kernel's values; None where an array is not the kernel's kind (the
     caller takes the passes in turn). The caller installs what the kernel returns."""
-    from . import fused
-    from .stream import _of
-
     recall, trace, store = brain.recall, brain.working_memory, brain.hippocampus
     graph = brain.brain
     rows = len(x)
@@ -1344,7 +1349,8 @@ def one_call(
                 return None
         has_warm = True
         kept_in, has_kept = fused._held(state.__dict__.get("_products"))
-    c = np.ascontiguousarray(_of(recall.previous, rows))
+    c = recall.previous  # ``stream._of``: streams of another batch begin from a silent cortex
+    c = np.ascontiguousarray(c if len(c) == rows else np.zeros((rows, *c.shape[1:])))
     w_x, w_c, w, columns = packed_maps(recall)
     numbers, scalars, table, grid = _settings(recall)
     slots = recall.slots
@@ -1424,9 +1430,6 @@ def solved_state(
     kept: np.ndarray,
 ) -> Any:
     """The state a one-call solve ends on, with what it keeps, as ``free_solve`` returns it."""
-    from . import fused
-    from .brain import BrainState, _keep_products
-
     result = BrainState(v=v, activation=s, adaptation=a, steps=taken)
     _keep_products(result, fused._kept(flat, flat, rows, kept))
     return result
@@ -1538,8 +1541,6 @@ def lesson_phases(learner: Any, drive: Any, warm: Any, target: np.ndarray) -> An
     and each phase's residual, to the bit as ``Learner.free``, ``Learner._nudged`` and
     ``Brain.residual`` make them in turn; None where a phase takes another path (a device, a
     compartment, adaptation, a recording, a state that is not finite), which the caller takes."""
-    from . import fused
-    from .brain import BrainState, _keep_products
 
     cfg, graph = learner.config, learner.brain
     model = graph.neuron_model
@@ -1668,6 +1669,15 @@ if njit is not None:
         return raw, neuron
 
     @_vectorized
+    def _all_finite(a: np.ndarray) -> bool:
+        """Whether every entry of the vector ``a`` is finite (a finite number less itself is
+        zero), without a branch per entry: the loop vectorizes."""
+        bad = False
+        for i in range(a.shape[0]):
+            bad |= not (a[i] - a[i] == 0.0)
+        return not bad
+
+    @_vectorized
     def _update_kernel(
         raw: np.ndarray, raw_neuron: np.ndarray, velocity: np.ndarray, second: np.ndarray,
         velocity_bias: np.ndarray, second_bias: np.ndarray, group: np.ndarray, groups: int,
@@ -1695,7 +1705,7 @@ if njit is not None:
         count, n = raw.shape[0], raw_neuron.shape[0]
         has_momentum, has_normalize = momentum > 0, rho > 0
         status = 0
-        if not (_finite(raw) and _finite(raw_neuron)):
+        if not (_all_finite(raw) and _all_finite(raw_neuron)):
             status = 1
         # the neurons' momentum
         term_bias = np.empty(n)
@@ -1752,8 +1762,8 @@ if njit is not None:
             for j in range(n):
                 term_bias[j] = term_bias[j] / rms[j]
         if status == 0 and not (
-            _finite(new_velocity) and _finite(new_velocity_bias) and _finite(new_second)
-            and _finite(new_second_bias)
+            _all_finite(new_velocity) and _all_finite(new_velocity_bias) and _all_finite(new_second)
+            and _all_finite(new_second_bias)
         ):
             status = 2
         # the lesson's share of the steps, tied and bounded
@@ -1762,7 +1772,7 @@ if njit is not None:
         delta_bias = np.empty(n)
         for j in range(n):
             delta_bias[j] = share * (eta_bias * term_bias[j])
-        if status == 0 and not (_finite(step) and _finite(delta_bias)):
+        if status == 0 and not (_all_finite(step) and _all_finite(delta_bias)):
             status = 3
         delta, scale, weights = np.empty(count), np.empty(count), np.empty(count)
         bad = _tied(step, partner, efficacy, gain_pre, cap, delta, scale, weights)
@@ -1778,7 +1788,7 @@ if njit is not None:
             if not plastic[j]:
                 delta_bias[j] = 0.0
             new_bias[j] = bias[j] + delta_bias[j]
-        if status == 0 and not _finite(new_bias):
+        if status == 0 and not _all_finite(new_bias):
             status = 7
         # the blocks of the new weights, a synapse at each of its entries
         if order.shape[0] == size:
@@ -1799,13 +1809,18 @@ if njit is not None:
         s_plus: np.ndarray, s_minus: np.ndarray, rows: np.ndarray, heard: np.ndarray,
         span: float, weights: np.ndarray, routes: int, synapses: Any, sources: Any,
         targets: Any, traces: Any, live: np.ndarray, spans: np.ndarray, scales: np.ndarray,
-        rule: np.ndarray,
-    ) -> np.ndarray:
+        rule: np.ndarray, second: np.ndarray, gains: np.ndarray, bounds: np.ndarray,
+        stepping: np.ndarray,
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
         """The carried routes' ``c`` per taught row and route (``Hearing._contrast`` after a
         lesson, ``_route_kernel`` per route): the association's movement between the nudged
         phases over ``span`` read back through each route's synapses of ``weights``, against
         what the route's memory holds at the streams ``rows``. A route whose memory holds
-        another batch reads silence (``live``)."""
+        another batch reads silence (``live``). Then the gains' step on the mean of ``c`` over
+        the rows (``Hearing.step``), with ``stepping`` its forgetting factor, one less it, the
+        correction of this step's count, the rate and the floor: the new second moments and the
+        new gains within their ``bounds``. Returns ``c`` too; with one route the caller steps
+        (NumPy sums one column of eight rows and more in another order than row by row)."""
         count, width = rows.shape[0], heard.shape[0]
         movement = np.empty((count, width))
         for i in range(count):
@@ -1827,7 +1842,26 @@ if njit is not None:
             )
             for i in range(count):
                 out[i, k] = c[i]
-        return out
+        rho, rho_rest, correction, rate, floor = (
+            stepping[0], stepping[1], stepping[2], stepping[3], stepping[4]
+        )
+        new_second = np.empty(max(routes, 1))
+        new_gains = np.empty(max(routes, 1))
+        for k in range(routes):
+            total = out[0, k]
+            for i in range(1, count):
+                total += out[i, k]
+            mean = total / count
+            held_second = rho * second[k] + rho_rest * (mean * mean)
+            new_second[k] = held_second
+            gain = gains[k] + rate * mean / (np.sqrt(held_second / correction) + floor)
+            if gain == gain:  # ``np.clip``: the larger of it and zero, then the smaller of that
+                if not gain > 0.0:  # and the bound; a NaN stays
+                    gain = 0.0
+                if not gain < bounds[k]:
+                    gain = bounds[k]
+            new_gains[k] = gain
+        return out, new_second, new_gains
 
     @_vectorized
     def _peak(residual: np.ndarray) -> float:
@@ -1840,6 +1874,17 @@ if njit is not None:
             if r > best:
                 best = r
         return best
+
+    @_vectorized
+    def _cut(
+        w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray, columns: np.ndarray, k: int
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+        """Part ``k`` of the packed maps as arrays of its own (``packed_maps``'s columns)."""
+        start, stop = columns[k], columns[k + 1]
+        return (
+            np.ascontiguousarray(w_x[:, start:stop]), np.ascontiguousarray(w_c[:, start:stop]),
+            w[start:stop].copy(),
+        )
 
     @_compiled
     def _taught_kernel(
@@ -1854,7 +1899,7 @@ if njit is not None:
         w_c: np.ndarray, w: np.ndarray, columns: np.ndarray, numbers: np.ndarray,
         scalars: np.ndarray, told: np.ndarray, focus: np.ndarray, table: np.ndarray,
         grid: np.ndarray, positions: bool, routes: int, traces: Any, live: np.ndarray,
-        scales: np.ndarray,
+        scales: np.ndarray, heard_second: np.ndarray, gains: np.ndarray, stepping: np.ndarray,
         output_index: np.ndarray, pairs: np.ndarray, apical_pairs: np.ndarray,
         starts: np.ndarray, pair_pre: np.ndarray, pair_post: np.ndarray, offset: np.ndarray,
         freezable: np.ndarray, freezable_nudged: np.ndarray, keep: np.ndarray,
@@ -1870,17 +1915,20 @@ if njit is not None:
         value_synapses: np.ndarray, value_sources: np.ndarray, value_targets: np.ndarray,
         next_synapses: np.ndarray, next_sources: np.ndarray, next_targets: np.ndarray,
         heard: np.ndarray, route_synapses: Any, route_sources: Any, route_targets: Any,
-        route_spans: np.ndarray,
+        route_spans: np.ndarray, bounds: np.ndarray,
     ) -> tuple[Any, ...]:
         """A taught lesson from its judgment to its written efficacies, each part the kernel
         the passes in turn launch, in their order: the rows whose answer ``differs`` from their
         label and their targets (``Learner.step``), the free phase, the nudged phases and their
         checks (``_phases_kernel``), the contrast (``_contrast_kernel``), the update
         (``_update_kernel``), the address lesson through the new weights (``_lesson_kernel``)
-        and the carried routes' contrasts through them (``_gains_kernel``). Nothing is written
-        in place: the caller stores what comes back where the status is 0, and takes the passes
-        in turn where it is not (1: a taught row's drive or warm state is not finite; 10 and
-        above: the update refuses, ``_update_kernel``'s status plus 10)."""
+        and the carried routes' contrasts through them with the gains' step
+        (``_gains_kernel``). Nothing is written in place: the caller stores what comes back
+        where the status is 0, and takes the passes in turn where it is not (1: a taught row's
+        drive or warm state is not finite; 10 and above: the update refuses,
+        ``_update_kernel``'s status plus 10). The stepped maps come back packed, without the
+        grid's columns (``packed_maps``) and each of their six parts apart (``Recall``'s
+        maps)."""
         batch, n = drive.shape
         count = 0
         for b in range(batch):
@@ -1964,15 +2012,23 @@ if njit is not None:
                 inputs, cortex, address, key, w_x, w_c, w, columns, numbers, scalars, told,
                 focus, table, grid, positions,
             )
-        contrasts = _gains_kernel(
+        contrasts, new_heard_second, new_gains = _gains_kernel(
             s1, s2, rows, heard, span, weights, routes, route_synapses, route_sources,
-            route_targets, traces, live, route_spans, scales, rule,
+            route_targets, traces, live, route_spans, scales, rule, heard_second, gains, bounds,
+            stepping,
         )
+        end = columns[5]
         return (
             status, count, taken0, taken1, taken2, _peak(out0), _peak(out1), _peak(out2),
             new_velocity, new_second, new_velocity_bias, new_second_bias, delta, delta_bias,
             scale, weights, new_bias, new_flat, moved, error, new_x, new_c, new, address_ok,
-            position_ok, contrasts,
+            position_ok, contrasts, new_heard_second, new_gains,
+            np.ascontiguousarray(new_x[:, :end]), np.ascontiguousarray(new_c[:, :end]),
+            new[:end].copy(),
+        ) + (
+            _cut(new_x, new_c, new, columns, 0) + _cut(new_x, new_c, new, columns, 1)
+            + _cut(new_x, new_c, new, columns, 2) + _cut(new_x, new_c, new, columns, 3)
+            + _cut(new_x, new_c, new, columns, 4) + _cut(new_x, new_c, new, columns, 5)
         )
 
 
@@ -2026,10 +2082,10 @@ def _plain_lesson(kind: type) -> bool:
 def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
     """What ``_taught_kernel`` reads that a lesson does not change, made once per learner,
     layout, settings and wiring: the layout's tables, the nudge's arrays, the optimizer's
-    groups and pairs, the read's synapses and the carried routes'. None where the learner
-    teaches another way (a subclass, tied groups, a sparse or parallel layout, a budget of no
-    sweep)."""
-    from . import fused
+    groups and pairs, the read's synapses and the carried routes'; with them the arrays the
+    caller fills per lesson (the update's numbers, the routes' scales and gains). None where
+    the learner teaches another way (a subclass, tied groups, a sparse or parallel layout, a
+    budget of no sweep)."""
     from .learning import _RELATIVE_TINY
 
     learner, recall, hearing = brain.learner, brain.recall, brain.hearing
@@ -2039,14 +2095,17 @@ def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
     key = (
         cfg, layout, model, learner.output_mask, learner.output_groups, learner.output_index,
         learner.plastic_synapses, learner.plastic_neurons, learner._paired, learner._members,
-        recall, hearing, routes, None if routes is None else len(routes), type(learner),
+        recall, hearing, routes, type(learner),
     )
     held = brain.__dict__.get("_lesson_plan")
-    if held is not None and len(held[0]) == len(key) and all(
-        ours is theirs or (type(ours) is int and ours == theirs)
-        for ours, theirs in zip(held[0], key, strict=True)
-    ):
-        return held[1]  # type: ignore[no-any-return]
+    if held is not None:
+        made = held[0]  # the objects the plan was made from, held, so compared by identity
+        for k in range(14):
+            if key[k] is not made[k]:
+                break
+        else:
+            if held[1] == (0 if routes is None else len(routes)):
+                return held[2]  # type: ignore[no-any-return]
     plan: tuple[Any, ...] | None = None
     w = graph.connectome
     n = w.n
@@ -2092,7 +2151,9 @@ def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
             )
         else:
             association = v_syn = v_src = v_dst = n_syn = n_src = n_dst = _NO_INDEX
+        count = len(routes) if routes else 0
         if routes:
+            assert hearing is not None
             heard = np.ascontiguousarray(hearing.association, dtype=np.int64)
             carried = tuple(
                 tuple(np.ascontiguousarray(route[name], dtype=np.int64) for route in routes)
@@ -2100,10 +2161,12 @@ def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
             )
             spans = np.array([[route["start"], route["stop"]] for route in routes],
                              dtype=np.int64)
+            bounds = np.array([route["bound"] for route in routes], dtype=float)
         else:
             heard = _NO_INDEX
             carried = ((_NO_INDEX,), (_NO_INDEX,), (_NO_INDEX,))
             spans = np.zeros((1, 2), dtype=np.int64)
+            bounds = np.zeros(1)
         constants = (
             np.ascontiguousarray(learner.output_index, dtype=np.int64), pairs, apical_pairs,
             layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
@@ -2119,15 +2182,28 @@ def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
             partner, learner.plastic_neurons,
             _NO_INDEX if order is None or len(order[0]) != layout.size else order[0],
             association, v_syn, v_src, v_dst, n_syn, n_src, n_dst, heard, *carried, spans,
+            bounds,
         )
-        plan = (constants, rates, np.zeros((max(len(routes or ()), 1), 2)),
-                np.zeros(max(len(routes or ()), 1), dtype=np.bool_))
+        size = max(count, 1)
+        plan = (
+            constants, rates, np.zeros((size, 2)), np.zeros(size, dtype=np.bool_),
+            np.zeros(size), np.zeros(5),
+        )
     # the key's objects are held with the plan, so an identity is never a freed object's
-    brain.__dict__["_lesson_plan"] = (key, plan)
+    brain.__dict__["_lesson_plan"] = (key, 0 if routes is None else len(routes), plan)
     return plan
 
 
-_PHASES = ("free", "nudged", "opposite")
+# The report of a taught lesson's phases, in the order ``Learner.step`` writes it
+# (``learning._phase_report``, then the rows' counts).
+_PHASE_REPORT = tuple(
+    tuple(
+        f"{name}_{entry}"
+        for entry in ("steps", "residual", "residual_checks", "damping_halvings",
+                      "stagnation_checks", "row_sweeps", "row_residual_checks")
+    )
+    for name in ("free", "nudged", "opposite")
+)
 
 
 def taught_lesson(
@@ -2140,18 +2216,17 @@ def taught_lesson(
     the call returns is stored. The same parameters, moments, maps, gains and report to the bit
     as ``Learner.step``, ``Recall.learn`` and ``Hearing.learn`` in turn; None where the brain,
     the learner or the lesson takes those (nothing has changed then): another learner or
-    layout, synapses that are frozen, tied in groups or stepped at their own rates, a recall
-    memory or a carried route off the host, a lesson the update refuses."""
-    from . import fused
+    layout, synapses that are frozen, tied in groups or stepped at their own rates, a carried
+    route off the host, a lesson the update refuses."""
 
     plan = _lesson_plan(brain)
     learner = brain.learner
     if plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all():
         return None
-    constants, rates, scales, live = plan
+    constants, rates, scales, live, gains, stepping = plan
     graph, cfg = learner.brain, learner.config
     recall, hearing = brain.recall, brain.hearing
-    batch, n = drive.shape
+    batch = len(drive)
     flat = graph._fused_blocks()[0]
     if graph._efficacy is None or graph._torch is not None or graph._mlx is not None:
         return None
@@ -2164,14 +2239,13 @@ def taught_lesson(
             return None
     if not labels.flags.c_contiguous:
         labels = np.ascontiguousarray(labels)
-    whole = bool(differs.all())
     kept_in, has_kept = fused._NO_PRODUCTS
     has_given = False
     if state is None:
         warm_v = warm_a = _NO_ROWS
     else:
         warm_v, warm_a = state.v, state.adaptation
-        if whole:  # every row is taught: the phases start from the state itself
+        if differs.all():  # every row is taught: the phases start from the state itself
             products = state.__dict__.get("_products")
             kept_in, has_kept = fused._held(products)
             has_given = fused._given(products, flat, flat, batch)[1]
@@ -2179,14 +2253,15 @@ def taught_lesson(
     moment: Any = None if recall is None else recall.last
     positions = False
     addressed = False
-    if recall is not None and moment is not None:
+    if moment is not None:
         positions = bool(recall.position_maps) and (recall.position_rate > 0 or recall.slope > 0)
         addressed = bool(
             (recall.address or positions) and recall.slots
             and recall.streams == len(moment.address) == batch
         )
+    read: tuple[Any, ...] = _NO_READ
+    columns = None
     if addressed:
-        slots = recall.slots
         keys, first = _behind(recall, "keys")
         values, at_values = _behind(recall, "values")
         nexts, at_nexts = _behind(recall, "nexts") if recall.next else (values, at_values)
@@ -2199,15 +2274,15 @@ def taught_lesson(
             first = 0
         w_x, w_c, w, columns = packed_maps(recall)
         numbers, scalars, table, grid = _settings(recall)
-        read: tuple[Any, ...] = (
-            True, keys, values, nexts, held, first, slots, bool(recall.next), moment.inputs,
-            moment.cortex, moment.address, moment.key, w_x, w_c, w, columns, numbers, scalars,
-            recall.told, recall.focus, table, grid, positions,
+        read = (
+            True, keys, values, nexts, held, first, recall.slots, bool(recall.next),
+            moment.inputs, moment.cortex, moment.address, moment.key, w_x, w_c, w, columns,
+            numbers, scalars, recall.told, recall.focus, table, grid, positions,
         )
-    else:
-        read = _NO_READ
-    # the carried routes (``Hearing.learn``): what each holds at this batch
+    # the carried routes (``Hearing.learn``): what each holds at this batch, and its gain
     routes = hearing.routes if hearing is not None else ()
+    carried: tuple[Any, ...] = (_NO_TRACE,)
+    heard_second = gains
     if routes:
         traces = []
         for k, route in enumerate(routes):
@@ -2220,12 +2295,19 @@ def taught_lesson(
                 return None
             traces.append(trace)
             amplitude = float(memory.amplitude)
-            scales[k, 0] = amplitude * hearing.gain(route)
+            gain = hearing.gain(route)
+            gains[k] = gain
+            scales[k, 0] = amplitude * gain
             scales[k, 1] = amplitude
             live[k] = len(trace) == batch
-        carried: tuple[Any, ...] = tuple(traces)
-    else:
-        carried = (_NO_TRACE,)
+        carried = tuple(traces)
+        heard_second = hearing.second
+        if type(heard_second) is not np.ndarray or not heard_second.flags.c_contiguous:
+            return None
+        rho = hearing.RHO
+        stepping[0], stepping[1] = rho, 1.0 - rho
+        stepping[2] = 1.0 - rho ** (hearing.count + 1)
+        stepping[3], stepping[4] = hearing.rate, hearing.FLOOR
     m, rho = cfg.momentum, cfg.normalize
     count = learner.contrast_updates + 1  # only this optimizer's own history
     rates[2] = 1.0 - m**count if m > 0 else 1.0
@@ -2235,13 +2317,13 @@ def taught_lesson(
     out = kernel(
         differs, labels, drive, warm_v, warm_a, state is not None, kept_in, has_kept, has_given,
         graph.bias, flat, graph._efficacy, graph._gain_pre, *moments, rates, *read,
-        len(routes), carried, live, scales, *constants,
+        len(routes), carried, live, scales, heard_second, gains, stepping, *constants,
     )
     if out[0] != 0:
         return None
     (_, taught, taken0, taken1, taken2, peak0, peak1, peak2, velocity, second, velocity_bias,
      second_bias, delta, delta_bias, scale, weights, bias, new_flat, moved, error, new_x,
-     new_c, new, address_ok, position_ok, contrasts) = out
+     new_c, new, address_ok, position_ok, contrasts, new_heard_second, new_gains) = out[:28]
     # the update (``Learner._update``): the moments, then the graph of the new parameters
     if m > 0:
         learner.velocity_bias = velocity_bias
@@ -2254,31 +2336,31 @@ def taught_lesson(
     learner.brain = updated
     learner.updates += 1
     learner.contrast_updates += 1
+    rows = float(taught)
     report = {
         "scale_step": float(np.abs(delta).mean()),
         "bias_step": float(np.abs(delta_bias).mean()),
         "accepted": 1.0, "qualified": 0.0, "qualification_required": 0.0,
-        "attempted_presentations": float(taught), "accepted_presentations": float(taught),
+        "attempted_presentations": rows, "accepted_presentations": rows,
     }
-    steps = 0
-    for name, taken, peak in zip(_PHASES, (taken0, taken1, taken2), (peak0, peak1, peak2),
-                                 strict=True):
-        steps += taken
-        report[f"{name}_steps"] = float(taken)
-        report[f"{name}_residual"] = float(peak)
-        report[f"{name}_residual_checks"] = 1.0
-        report[f"{name}_damping_halvings"] = 0.0
-        report[f"{name}_stagnation_checks"] = 0.0
-        report[f"{name}_row_sweeps"] = float(taught * taken)
-        report[f"{name}_row_residual_checks"] = float(taught)
+    steps = taken0 + taken1 + taken2
+    for names, taken, peak in zip(_PHASE_REPORT, (taken0, taken1, taken2),
+                                  (peak0, peak1, peak2), strict=True):
+        report[names[0]] = float(taken)
+        report[names[1]] = peak
+        report[names[2]] = 1.0
+        report[names[3]] = 0.0
+        report[names[4]] = 0.0
+        report[names[5]] = float(taught * taken)
+        report[names[6]] = rows
     report["total_steps"] = float(steps)
     report["total_residual_checks"] = 3.0
     report["total_stagnation_checks"] = 0.0
     report["total_row_sweeps"] = float(taught * steps)
     report["total_row_residual_checks"] = float(3 * taught)
     report["attempted_presentations"] = float(batch)
-    report["accepted_presentations"] = float(taught)
-    report["agreed_presentations"] = float(batch) - float(taught)
+    report["accepted_presentations"] = rows
+    report["agreed_presentations"] = float(batch) - rows
     exhausted = taken0 >= cfg.free_steps > 0
     report["free_budget_exhausted"] = float(exhausted)
     learner._warn_exhausted(exhausted)
@@ -2287,14 +2369,35 @@ def taught_lesson(
         quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
         if recall.position_maps:
             quiet.update(position_rows=0.0, position_refused=0.0)
-        report.update(
-            recall._learned_compiled(
-                int(moved), error, new_x, new_c, new, address_ok, position_ok, positions, quiet
-            ) if addressed else quiet
-        )
+        if addressed:
+            parts = [out[k:k + 3] for k in range(31, 49, 3)]
+            report.update(recall._learned_compiled(
+                int(moved), error, new_x, new_c, new, address_ok, position_ok, positions,
+                quiet, parts,
+            ))
+            assert columns is not None
+            if (
+                moved and recall.address and address_ok and (
+                    columns[6] == columns[1] or (positions and position_ok and not (
+                        recall.slope_maps and recall.grid_maps and recall.slots > recall.position
+                    ))
+                )
+            ):
+                # every part of the packed maps was stepped and taken: the next read's packed
+                # maps are the kernel's, the arrays ``packed_maps`` would make from the parts
+                recall.__dict__["_packed"] = (
+                    None, (new_x, new_c, new, columns), packed_parts(recall), out[28:31],
+                )
+        else:
+            report.update(quiet)
     # the carried gains' step (``Hearing.learn``)
-    if routes:
+    if len(routes) == 1:
         hearing.step(contrasts.mean(axis=0))
+    elif routes:
+        hearing.count += 1
+        hearing.second = new_heard_second
+        for route, gain in zip(routes, new_gains.tolist(), strict=True):
+            hearing.set(route, gain)
     return report
 
 

@@ -205,10 +205,16 @@ def _operation(method: _Operation) -> _Operation:
     def operated(self: Brain, *args: Any, **kwargs: Any) -> Any:
         if self._unplaced:
             self._place_for(args[0] if args else kwargs.get("observations"))
-        if self.recall is None:
+        recall = self.recall
+        if recall is None:
             return method(self, *args, **kwargs)
-        with self.recall._scope():
+        token = recall._enter()
+        if token is None:  # within an operation in progress, which this one shares
             return method(self, *args, **kwargs)
+        try:
+            return method(self, *args, **kwargs)
+        finally:
+            recall._leave(token)
 
     return cast(_Operation, operated)
 
@@ -3996,6 +4002,10 @@ class Brain:
                 free = self._read_judged(held[1], state, "act")
                 if free is None:
                     return None
+                # the read's own observations, which these equal to the bit (the key): the
+                # write then takes the read's moment as it is, in the choice's pass
+                if held[2] is not None:
+                    x = held[2].event
                 self._coded_moment = (x, x, None, x, None)
                 return self._greedy_choice(x, held[1], free)
         if not self._unjudged(state):
@@ -4047,12 +4057,18 @@ class Brain:
         self._moment_code = None
         return chosen
 
-    def _judge_compiled(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
+    def _judge_compiled(
+        self, x: np.ndarray, labels: np.ndarray, whole: bool = False
+    ) -> tuple[np.ndarray, np.ndarray, np.ndarray | None] | None:
         """A surprise lesson's read and judging solve of the compiled moment in one compiled
-        call (``_moment.one_call``): the drive and the brain's own answer, each row's most
-        active motor neuron on the settle its act reads. The same drive, answer, report and
-        kept solve to the bit as ``_compiled_drive`` and ``_qualified`` in turn; None where the
-        brain, the moment or the solve takes those (nothing has changed then)."""
+        call (``_moment.one_call``): the drive, the brain's own answer, each row's most
+        active motor neuron on the settle its act reads, and the rows whose answer differs from
+        their ``labels`` (None for labels of another kind than the answer's). The same drive,
+        answer, report and kept solve to the bit as ``_compiled_drive`` and ``_qualified`` in
+        turn; None where the brain, the moment or the solve takes those (nothing has changed
+        then). With ``whole`` a lesson that teaches a row runs in one call next
+        (``_moment.taught_lesson``): it changes what the read and the solve were made from, so
+        neither is kept for the act that follows, which makes its own."""
         rows = len(x)
         recall, trace, store = self.recall, self.working_memory, self.hippocampus
         if (
@@ -4081,13 +4097,22 @@ class Brain:
         recall._head_reads = None
         if recall.drive_gain:
             recall.trace = ports
+        report = self._settlement("act", residual, used, checks, row_sweeps)
+        self._last_settlement = MappingProxyType(report)
+        self._coded_moment = (x, x, None, x, None)
+        differs = None
+        if (
+            isinstance(labels, np.ndarray) and labels.dtype == np.int64
+            and labels.shape == answer.shape
+        ):
+            differs = answer != labels  # ``Learner._differs`` of one slot
+            if whole and differs.any():
+                return drive, answer, differs
         self.__dict__["_read_held"] = (
             self._read_key(x, x, recall, trace, store), drive.copy(), recall.last,
             recall._attended, recall.trace, self._read_named(recall, trace, store),
         )
         free = _moment.solved_state(flat, rows, v, a, s, taken, kept)
-        report = self._settlement("act", residual, used, checks, row_sweeps)
-        self._last_settlement = MappingProxyType(report)
         graph = self.brain
         self._judged = (
             graph, graph._efficacy, graph._bias, self.learner.config, "act", state,
@@ -4095,8 +4120,7 @@ class Brain:
             None if state is None else (state.v.tobytes(), state.adaptation.tobytes()),
             free, report,
         )
-        self._coded_moment = (x, x, None, x, None)
-        return drive, answer
+        return drive, answer, differs
 
     @staticmethod
     def _read_named(recall: Recall, trace: Trace | None, store: Any) -> Any:
@@ -4454,6 +4478,13 @@ class Brain:
     ) -> dict[str, float]:
         """The lesson of validated observations and labels (or targets, and weights);
         ``last_learning`` takes its report with the ``demonstration_`` prefix."""
+        if self.learned_code is None:  # ``_code_attempt`` without a code: the moment alone
+            moment = self._coded_moment
+            try:
+                return self._teach(x, labels, targets=targets, weights=weights)
+            except BaseException:
+                self._coded_moment = moment
+                raise
         with self._code_attempt():
             return self._teach(x, labels, targets=targets, weights=weights)
 
@@ -4494,7 +4525,10 @@ class Brain:
             and self._compiled_moment()
         ):  # the compiled moment's read without the general path's layers (``_settled``)
             if _moment.ONE_CALL and labels is not None:
-                judged = self._judge_compiled(x)  # with the judging solve, in one call
+                # with the judging solve, in one call
+                judged = self._judge_compiled(
+                    x, labels, _moment.ONE_LESSON and weights is None
+                )
             if judged is not None:
                 drive = judged[0]
             else:
@@ -4527,16 +4561,13 @@ class Brain:
                 )
         agreed = None
         whole = None
-        if (
-            judged is not None and answer is not None and isinstance(labels, np.ndarray)
-            and labels.dtype == np.int64 and labels.shape == answer.shape
-        ):
+        differs = None if judged is None else judged[2]
+        if differs is not None:
             # the one call judged every row: where none differs the lesson is the learner's
             # lesson of no row (``Learner.step`` returns it for these validated labels)
-            differs = self.learner._differs(answer, labels)
             if not differs.any():
                 agreed = self.learner._untaught(differs)
-            elif _moment.ONE_LESSON and weights is None and targets is None:
+            elif _moment.ONE_LESSON and weights is None and labels is not None:
                 # the rows that differ are taught in one call, from the phases to the written
                 # efficacies, the read's maps and the carried gains
                 report = _moment.taught_lesson(self, drive, self._activity(), labels, differs)
