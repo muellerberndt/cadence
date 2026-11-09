@@ -3662,7 +3662,8 @@ class Brain:
         return (
             x.tobytes(), code is x or code.tobytes(), id(recall.keys), id(recall.values),
             id(recall.nexts), id(recall.held), id(recall.previous), id(recall.told),
-            id(recall.focus), _moment.packed_key(recall), recall.hearing, recall.amplitude,
+            id(recall.focus), *map(id, _moment.packed_parts(recall)), recall.hearing,
+            recall.amplitude,
             recall.heard, recall.temperature, recall.recency, recall.drive_gain,
             self.brain.neuron_model.stimulus_amplitude,
             None if trace is None else (id(trace.trace), trace.hearing, trace.amplitude),
@@ -3959,11 +3960,12 @@ class Brain:
             "row_sweeps": int(row_sweeps),
         }
 
-    def _one_call(self, rows: int) -> bool:
+    def _one_call(self, rows: int, begun: bool = True) -> bool:
         """Whether a greedy act and a lesson's judgment of ``rows`` streams each run as one
         compiled call (``_moment.one_call``): the compiled moment's brain as ``_compiled_drive``,
         ``_lean_qualified``, ``_moment.free_solve`` and ``_greedy_choice`` take it, each of its
-        memories on the host at this batch."""
+        memories on the host. Without ``begun`` the streams may begin at this moment: the recall
+        memory then holds no slot of this batch, reads silence and is begun by its write."""
         recall, trace, store = self.recall, self.working_memory, self.hippocampus
         agent, cfg, graph = self.basal_ganglia, self.learner.config, self.brain
         model = graph.neuron_model
@@ -3976,10 +3978,7 @@ class Brain:
             or self.learner.slot_count != 1 or type(agent).act is not ActorCritic.act
             or type(graph).equilibrate is not NeuralGraph.equilibrate
             or model.adaptation is not None or model.dt != 1.0
-            or (trace is not None and (
-                type(trace) is not Trace or trace._device is not None
-                or len(trace.trace) != rows
-            ))
+            or (trace is not None and (type(trace) is not Trace or trace._device is not None))
             or (store is not None and (
                 type(store) is not SynapticMemory or store._device is not None
                 or store.separator is not None or self._coded_keys
@@ -3987,7 +3986,7 @@ class Brain:
         ):
             return False
         recall.compiled_moment = True
-        if not recall._compiles(rows) or not graph._solves_compiled():
+        if not recall._compiles(rows, begun) or not graph._solves_compiled():
             return False
         if self.hearing is not None:
             self.hearing.compiled_moment = True
@@ -4021,7 +4020,7 @@ class Brain:
         has changed then). An act on what the latest read read (after a lesson) reads that
         read's drive and the lesson's solve, as those do."""
         rows = len(x)
-        if not self._one_call(rows):
+        if not self._one_call(rows, begun=False):
             return None
         recall, trace, agent = self.recall, self.working_memory, self.basal_ganglia
         assert recall is not None
@@ -4044,11 +4043,14 @@ class Brain:
         found = _moment.one_call(self, x, state, 0, spans, after)
         if found is None or found[3][0] != 0:
             return None
-        c, rooms, flat, out = found
+        c, rooms, flat, out, begun = found
         (_, drive, key, q, attention, ports, v, a, s, residual, used, checks, taken, row_sweeps,
          kept, action, clear, stepped, source, cortex, focus) = out
-        attention.flags.writeable = False
-        recall._attended = attention
+        if begun:
+            attention.flags.writeable = False
+            recall._attended = attention
+        else:  # streams that begin read nothing
+            recall._attended = None
         recall._head_reads = None
         if recall.drive_gain:
             recall.trace = ports
@@ -4069,13 +4071,15 @@ class Brain:
             action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
         action = np.asarray(action, dtype=np.int64)
         if trace is not None:
+            if len(trace.cold) != rows:  # a trace of another batch began at zero
+                trace.cold = np.ones(rows, dtype=bool)
             trace.trace = stepped
             trace.last = source
             trace.cold[:] = False
         if rooms is not None:
             _moment.written(recall, rooms, rows, focus, cortex)
-        else:
-            recall.last = _Moment(x, c, q, key, x)
+        else:  # the general write: it begins the streams, or makes the room behind the slots
+            recall.last = _Moment(x, c, q, key, x) if begun else None
             recall.witness(x, free, None)
         if self._episode_moments:
             self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
@@ -4108,7 +4112,7 @@ class Brain:
         found = _moment.one_call(self, x, state, 1, spans, motor)
         if found is None or found[3][0] != 0:
             return None
-        c, _, flat, out = found
+        c, _, flat, out, _ = found
         _, drive, key, q, attention, ports, v, a, s, residual, used, checks, taken = out[:13]
         row_sweeps, kept, answer = out[13:16]
         recall.last = _Moment(x, c, q, key, x)
@@ -4561,6 +4565,16 @@ class Brain:
                 answer = np.where(
                     tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
                 )
+        agreed = None
+        if (
+            judged is not None and answer is not None and isinstance(labels, np.ndarray)
+            and labels.dtype == np.int64 and labels.shape == answer.shape
+        ):
+            # the one call judged every row: where none differs the lesson is the learner's
+            # lesson of no row (``Learner.step`` returns it for these validated labels)
+            differs = self.learner._differs(answer, labels)
+            if not differs.any():
+                agreed = self.learner._untaught(differs)
         try:
             # the lesson's free phase starts where the act settles: warm from the stream's activity
             # (rest after a reset, and for streams that have not acted), with a learned code's
@@ -4572,7 +4586,7 @@ class Brain:
                 options["weight"] = weights
             if targets is not None:
                 options["targets"] = targets
-            lesson, teaching = self.learner.step(
+            lesson, teaching = agreed if agreed is not None else self.learner.step(
                 drive, labels, warm=self._warm(drive, self._activity()), answer=answer, **options
             )
         except LearningPhaseError as error:
@@ -4590,9 +4604,15 @@ class Brain:
         if self.hearing is not None:
             self.hearing.compiled_moment = self._compiled_moment()
             self.hearing.learn(self.learner.brain, lesson, self.learner.config.beta)
-        self.last_learning.update(
-            {"demonstration_" + name: value for name, value in teaching.items()}
-        )
+        named = self.__dict__.get("_agreed_report") if agreed is not None else None
+        if named is None or named[0] != teaching:
+            named = (
+                dict(teaching),
+                {"demonstration_" + name: value for name, value in teaching.items()},
+            )
+            if agreed is not None:  # a lesson of no row reports the same at every such lesson
+                self.__dict__["_agreed_report"] = named
+        self.last_learning.update(named[1])
         # A demonstration teaches the slow policy, not an invented reward value. An
         # episodic memory also records the shown action for the situation it was shown in,
         # under the observation code; under the learner's surprise rule, for the rows the

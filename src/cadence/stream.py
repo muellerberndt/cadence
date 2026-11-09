@@ -2100,16 +2100,17 @@ class Recall:
         )
         return out
 
-    def _compiles(self, rows: int) -> bool:
+    def _compiles(self, rows: int, begun: bool = True) -> bool:
         """Whether this read and its lesson run as the compiled moment
         (``learning_compiled_moment``, ``cadence._moment``): a brain's option, on the host, for one
         head of one event per moment without a command, the features of when or the gains, at
-        streams of the bank's batch that hold slots, with every map on the host."""
+        streams of the bank's batch that hold slots, with every map on the host. Without
+        ``begun`` the streams may also begin at this moment (no slot yet, or another batch)."""
         if not self.__dict__.get("compiled_moment", False):
             return False
         if (
             self.heads != 1 or self.window != 1 or self.action or self._whens or self.gain
-            or not self.slots or self.streams != rows
+            or (begun and (not self.slots or self.streams != rows))
             or not isinstance(self.head_maps[0][0], np.ndarray)
         ):
             return False

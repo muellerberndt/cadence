@@ -390,7 +390,8 @@ def test_the_cost_of_a_pass_is_read_per_learner(tmp_path):
     found = cost.parts("compiled", 0, 2)
     assert found["parts"] and abs(sum(found["parts"].values()) - found["wall"]) < 1e-6
     assert set(found["parts"]) <= {part for _, _, part in cost.PARTS} | {cost.OUTSIDE}
-    assert found["parts"]["kernels: the solves"] > 0
+    assert found["parts"]["kernels: a moment in one call"] > 0
+    assert cost.parts("plain", 0, 2)["parts"]["kernels: the solves"] > 0
     import cadence.fused as fused
 
     assert not hasattr(fused.fused_fast_solve, "__wrapped__")  # restored

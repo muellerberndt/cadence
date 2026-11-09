@@ -54,11 +54,30 @@ def make(name: str, founder: int) -> Any:
 
 
 def _warm(brain: Any, stream: list[Any], batches: int = WARM) -> None:
-    """A copy of ``brain`` lives the first batches, so every kernel the pass calls compiles or
-    loads from Numba's cache before the clock starts."""
+    """Copies of ``brain`` live the first batches, so every kernel the pass calls compiles or
+    loads from Numba's cache before the clock starts: one copy as the pass lives them, one
+    through the passes a moment falls back on (a compiled moment's general path), and one act
+    whose solve is refused after its rescue, which a pass meets only now and then."""
+    from cadence import _moment
+
     fork = copy.deepcopy(brain)
     for batch in stream[:batches]:
         gr.speak(fork, batch, teach=True)
+    flags = _moment.SHORTCUTS, _moment.ONE_CALL
+    try:
+        for shortcuts, one_call in ((True, False), (False, False)):
+            _moment.SHORTCUTS, _moment.ONE_CALL = shortcuts, one_call
+            fork = copy.deepcopy(brain)
+            for batch in stream[:2]:
+                gr.speak(fork, batch, teach=True)
+    finally:
+        _moment.SHORTCUTS, _moment.ONE_CALL = flags
+    fork = copy.deepcopy(brain)
+    fork.retune(learning_free_steps=2)
+    try:
+        fork.act(np.stack([row.pre[0] for row in stream[0]]), greedy=True)
+    except RuntimeError:
+        pass
 
 
 def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,

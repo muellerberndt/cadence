@@ -229,9 +229,9 @@ def test_the_shortcuts_keep_the_compiled_moments_bits(options, monkeypatch) -> N
         lives.append((subject, actions))
     for other in lives[1:]:
         _same_life(lives[0], other)
-    # most acts and every lesson's judgment ran as one call (the acts after a lesson that taught
-    # nothing read the lesson's solve, and a stream's first act writes through the general path)
-    assert whole[0] >= 36 and whole[1] >= 54, whole
+    # every act but those after a lesson that taught nothing (they read the lesson's solve) and
+    # every lesson's judgment ran as one call, the acts that begin the streams among them
+    assert whole[0] >= 44 and whole[1] >= 54, whole
 
 
 def _same_life(first, second) -> None:

@@ -512,12 +512,16 @@ _NO_TABLE = np.zeros(1, dtype=np.int64)
 PACKED = ("position_maps", "anchor_maps", "relative_maps", "slope_maps", "grid_maps")
 
 
-def packed_parts(recall: Any) -> list[Any]:
+def packed_parts(recall: Any) -> tuple[Any, ...]:
     """Head 0's address map and position maps, a tuple each (None for a map the memory does not
     hold), in their order in the packed columns."""
-    return [recall.head_maps[0]] + [
-        getattr(recall, name)[0] if getattr(recall, name) else None for name in PACKED
-    ]
+    position, anchor, relative = recall.position_maps, recall.anchor_maps, recall.relative_maps
+    slope, grid = recall.slope_maps, recall.grid_maps
+    return (
+        recall.head_maps[0], position[0] if position else None, anchor[0] if anchor else None,
+        relative[0] if relative else None, slope[0] if slope else None,
+        grid[0] if grid else None,
+    )
 
 
 def packed_key(recall: Any) -> tuple[int, ...]:
@@ -531,10 +535,15 @@ def packed_maps(recall: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.nda
     where each part starts (``columns``, with the end last), made again only where a map is
     replaced: a lesson replaces the maps it steps and never writes into them."""
     parts = packed_parts(recall)
-    identity = tuple(id(part) for part in parts)  # a lesson replaces a head's whole tuple
     held = recall.__dict__.get("_packed")
-    if held is not None and held[0] == identity:
-        return held[1]  # type: ignore[no-any-return]
+    if held is not None:
+        made = held[2]  # the maps the packed ones were made from, held, so compared by identity
+        if (
+            parts[0] is made[0] and parts[1] is made[1] and parts[2] is made[2]
+            and parts[3] is made[3] and parts[4] is made[4] and parts[5] is made[5]
+        ):
+            return held[1]  # type: ignore[no-any-return]
+    identity = None
     blocks_x, blocks_c, blocks, columns = [], [], [], [0]
     for part in parts:
         if part is None:
@@ -573,14 +582,18 @@ def address_lesson(
     ``rows`` with the association's ``movement``, through the synapses of ``graph``."""
     (v_syn, v_src, v_dst), (n_syn, n_src, n_dst) = recall._head_synapses[0]
     moment = recall.last
-    held = recall.held
+    # the slots as arrays of one kind, whether or not they are views of the room behind them:
+    # the kernel compiles once
+    held = np.ascontiguousarray(recall.held)
+    values = np.ascontiguousarray(recall.values)
     w_x, w_c, w, columns = packed_maps(recall)
     numbers, scalars, table, grid = _settings(recall)
     return _lesson_kernel(
         np.asarray(rows, dtype=np.int64), np.ascontiguousarray(movement, dtype=float),
         np.ascontiguousarray(graph._weights, dtype=float), v_syn, v_src, v_dst, n_syn, n_src,
-        n_dst, bool(recall.next), recall.values,
-        recall.nexts if recall.next else recall.values, recall.keys, held,
+        n_dst, bool(recall.next), values,
+        np.ascontiguousarray(recall.nexts) if recall.next else values,
+        np.ascontiguousarray(recall.keys), held,
         not bool(held.all()), moment.inputs, moment.cortex, moment.address, moment.key,
         w_x, w_c, w, columns, numbers, scalars, recall.told, recall.focus, table, grid,
         bool(positions),
@@ -807,23 +820,28 @@ if njit is not None:
             for b in range(rows):
                 for k in range(spans[3] - spans[2]):
                     drive[b, spans[2] + k] = gains[1] * trace[b, k]
-        key, q, attention, read, following = _packed_read(
-            x, c, w_x, w_c, w, columns, numbers, scalars, keys, values, nexts, has_next, held,
-            first, slots, told, focus, table, grid,
-        )
-        value_width = read.shape[1]
-        for b in range(rows):
-            for j in range(value_width):
-                drive[b, spans[4] + j] = gains[2] * read[b, j]
-            if has_next:
-                for j in range(value_width):
-                    drive[b, spans[5] + j] = gains[2] * following[b, j]
-        ports = np.empty((rows, spans[7] - spans[6]) if flags[1] else (rows, 0))
-        if flags[1]:
+        ports = np.zeros((rows, spans[7] - spans[6]) if flags[1] else (rows, 0))
+        if flags[5]:
+            key, q, attention, read, following = _packed_read(
+                x, c, w_x, w_c, w, columns, numbers, scalars, keys, values, nexts, has_next,
+                held, first, slots, told, focus, table, grid,
+            )
+            value_width = read.shape[1]
             for b in range(rows):
-                for j in range(spans[7] - spans[6]):
-                    ports[b, j] = drive[b, spans[6] + j]
-                    drive[b, spans[6] + j] = gains[3] * ports[b, j]
+                for j in range(value_width):
+                    drive[b, spans[4] + j] = gains[2] * read[b, j]
+                if has_next:
+                    for j in range(value_width):
+                        drive[b, spans[5] + j] = gains[2] * following[b, j]
+            if flags[1]:
+                for b in range(rows):
+                    for j in range(spans[7] - spans[6]):
+                        ports[b, j] = drive[b, spans[6] + j]
+                        drive[b, spans[6] + j] = gains[3] * ports[b, j]
+        else:  # streams that begin: no slot to read, the ports held silent
+            key = np.empty((0, 0))
+            q = np.empty((0, 0))
+            attention = np.empty((0, 0))
         if flags[2]:
             cue = np.empty((rows, spans[9] - spans[8]))
             for b in range(rows):
@@ -897,6 +915,7 @@ def free_solve(graph: Any, drive: np.ndarray, state: Any, budget: int, tolerance
 
 
 _NO_ROWS = np.zeros((1, 1))
+_NO_HELD = np.zeros((1, 1), dtype=np.bool_)
 _NO_STORE = np.zeros((1, 1, 1))
 _NO_MASS = np.zeros(1)
 
@@ -904,18 +923,20 @@ _NO_MASS = np.zeros(1)
 def drive_spans(brain: Any) -> np.ndarray | None:
     """The column ranges of a brain's moment drive (``_drive_kernel``): the sensory region, the
     working trace's, the recall read's ports and the place store's key and value; None where
-    one is not a contiguous range. Made once per brain."""
+    one is not a contiguous range. Made once per brain and its memories."""
     recall, trace, store = brain.recall, brain.working_memory, brain.hippocampus
+    held = brain.__dict__.get("_drive_spans")
+    if (
+        held is not None and held[0] is recall and held[1] is trace and held[2] is store
+        and held[3] is brain.sensory_index
+    ):
+        return held[4]  # type: ignore[no-any-return]
     parts = (
         brain._sensory_columns, None if trace is None else trace._glow_columns,
         *recall._head_columns[0], recall._port_columns,
         None if store is None else store._pre_columns,
         None if store is None else store._post_columns,
     )
-    identity = tuple(id(part) for part in parts)
-    held = brain.__dict__.get("_drive_spans")
-    if held is not None and held[0] == identity:
-        return held[1]  # type: ignore[no-any-return]
     spans: np.ndarray | None = np.zeros(12, dtype=np.int64)
     for k, part in enumerate(parts):
         if part is None:
@@ -928,7 +949,7 @@ def drive_spans(brain: Any) -> np.ndarray | None:
         else:
             at = {0: 0, 1: 2, 4: 6, 5: 8, 6: 10}[k]
             spans[at], spans[at + 1] = part.start, part.stop
-    brain.__dict__["_drive_spans"] = (identity, spans, parts)
+    brain.__dict__["_drive_spans"] = (recall, trace, store, brain.sensory_index, spans)
     return spans
 
 
@@ -973,7 +994,7 @@ def moment_drive(brain: Any, x: np.ndarray, spans: np.ndarray) -> np.ndarray:
     ])
     flags = np.array([
         has_trace, recall.drive_gain, store is not None, shared,
-        store is not None and bool(store.normalize),
+        store is not None and bool(store.normalize), True, has_trace,
     ], dtype=np.int64)
     drive, key, q, attention, ports = _drive_kernel(
         x, np.ascontiguousarray(c), w_x, w_c, w, columns, numbers, scalars, keys, values, nexts,
@@ -1125,9 +1146,11 @@ def after_spans(brain: Any) -> np.ndarray | None:
     trace = brain.working_memory
     output = brain.learner.output_index
     held = brain.__dict__.get("_after_spans")
-    key = (id(output), id(trace), id(brain.recall))
-    if held is not None and held[0] == key:
-        return held[1]  # type: ignore[no-any-return]
+    if (
+        held is not None and held[0] is output and held[1] is trace
+        and held[2] is brain.recall
+    ):
+        return held[3]  # type: ignore[no-any-return]
     parts: tuple[Any, ...] = (
         contiguous(np.asarray(output, dtype=np.int64)),
         trace._hidden_columns if trace is not None else slice(0, 0),
@@ -1136,7 +1159,7 @@ def after_spans(brain: Any) -> np.ndarray | None:
     spans: np.ndarray | None = None
     if all(isinstance(part, slice) for part in parts):
         spans = np.array([v for part in parts for v in (part.start, part.stop)], dtype=np.int64)
-    brain.__dict__["_after_spans"] = (key, spans, output, trace)
+    brain.__dict__["_after_spans"] = (output, trace, brain.recall, spans)
     return spans
 
 
@@ -1176,7 +1199,7 @@ if njit is not None:
         trace: np.ndarray, strength: np.ndarray, mass: np.ndarray, warm: np.ndarray,
         warm_a: np.ndarray, has_warm: bool, kept_in: np.ndarray, has_kept: bool,
         bias: np.ndarray, flat: np.ndarray, starts: np.ndarray, pair_pre: np.ndarray,
-        pair_post: np.ndarray, offset: np.ndarray, rule: np.ndarray, budget: int,
+        pair_post: np.ndarray, offset: np.ndarray, rule: np.ndarray, budget: int, chunk: int,
         tolerance: float, settled: float, mode: int, after: np.ndarray, temperature: float,
         decay: float, write: bool, ended: np.ndarray, drop: int, stop: int,
     ) -> tuple[Any, ...]:
@@ -1217,7 +1240,7 @@ if njit is not None:
             _publish(v, s, kept_in, has_kept, rule[0], rule[1], rule[2], rule[3])
             used, checks, taken, row_sweeps, kept = _fast_solve(
                 v, s, _standing(drive, bias), flat, starts, pair_pre, pair_post, offset,
-                rule[0], rule[1], rule[2], rule[3], budget, 16, tolerance, settled, out,
+                rule[0], rule[1], rule[2], rule[3], budget, chunk, tolerance, settled, out,
             )
             for b in range(rows):
                 if not out[b] <= tolerance:
@@ -1230,7 +1253,7 @@ if njit is not None:
         moved = focus
         if status == 0 and mode == 0:
             action, clear, stepped, source, cortex, moved = _after_kernel(
-                s, after, temperature, decay, trace, flags[0] != 0, write, key, x, ended,
+                s, after, temperature, decay, trace, flags[6] != 0, write, key, x, ended,
                 attention, slots > 0, focus, keys, values, nexts, held, first, slots, drop,
                 stop,
             )
@@ -1319,13 +1342,21 @@ def one_call(
     w_x, w_c, w, columns = packed_maps(recall)
     numbers, scalars, table, grid = _settings(recall)
     slots = recall.slots
+    begun = bool(slots) and recall.streams == rows
     if numbers[4] and slots <= recall.position:  # no slot reaches the grid's columns
         w_x, w_c, w = recall.__dict__["_packed"][3]
         numbers = recall.__dict__["_kernel_settings"][2]
-    rooms = _rooms(recall, rows) if mode == 0 else None
+    rooms = _rooms(recall, rows) if mode == 0 and begun else None
+    told, focus, ended = recall.told, recall.focus, recall.ended
     if rooms is not None:
         keys, values, nexts, held = rooms[0][0], rooms[1][0], rooms[2][0], rooms[3][0]
         first, stop, drop = rooms[0][2], rooms[0][3], rooms[4]
+    elif not begun:  # streams that begin read silence, and the general write begins them
+        stop = drop = first = slots = 0
+        keys = values = nexts = _NO_STORE
+        held = _NO_HELD
+        told = focus = np.zeros(rows, dtype=np.int64)
+        ended = np.zeros(rows, dtype=np.bool_)
     else:
         stop = drop = 0
         keys, first = _behind(recall, "keys")
@@ -1338,7 +1369,11 @@ def one_call(
             )
             nexts = np.ascontiguousarray(recall.nexts) if recall.next else values
             first = 0
-    has_trace = trace is not None
+    steps = trace is not None  # a trace of another batch reads silence and begins at zero
+    has_trace = steps and len(trace.trace) == rows
+    traced = _NO_ROWS
+    if steps:
+        traced = trace.trace if has_trace else np.zeros((rows, trace.trace.shape[1]))
     shared = store is not None and len(store.strength) != rows
     if store is None:
         strength, mass = _NO_STORE, _NO_MASS
@@ -1353,7 +1388,7 @@ def one_call(
         recall.amplitude * recall.hearing,
         0.0 if store is None else float(store.amplitude),
         has_trace, bool(recall.drive_gain), store is not None, shared,
-        store is not None and bool(store.normalize),
+        store is not None and bool(store.normalize), begun, steps,
     )
     made = brain.__dict__.get("_moment_scales")
     if made is None or made[0] != scales:
@@ -1366,15 +1401,16 @@ def one_call(
     layout = graph.layout
     out = _moment_kernel(
         x, c, w_x, w_c, w, columns, numbers, scalars, keys, values, nexts, bool(recall.next),
-        held, first, slots, recall.told, recall.focus, table, grid, n, spans, made[1], made[2],
-        trace.trace if has_trace else _NO_ROWS, strength, mass, warm, warm_a, has_warm,
+        held, first, slots, told, focus, table, grid, n, spans, made[1], made[2],
+        traced, strength, mass, warm, warm_a, has_warm,
         kept_in, has_kept, graph.bias, flat, layout.starts, layout.pair_pre, layout.pair_post,
-        layout.offset, _rule_array(graph.neuron_model), budget if budget < 2 else (budget + 1) // 2,
+        layout.offset, _rule_array(graph.neuron_model),
+        budget if budget < 2 else (budget + 1) // 2, 16,  # the fast solve's chunk
         tolerance, min(tolerance, fused._FAST_SETTLED), mode, after,
         float(cfg.temperature), 0.0 if trace is None else float(trace.decay),
-        rooms is not None, recall.ended, drop, stop,
+        rooms is not None, ended, drop, stop,
     )
-    return c, rooms, flat, out
+    return c, rooms, flat, out, begun
 
 
 def solved_state(
