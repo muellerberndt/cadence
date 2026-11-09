@@ -410,62 +410,6 @@ def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
     return {**founders, **Recall.options(), **settings}
 
 
-def _copy_identity(
-    connectome: Connectome, recalled: Mapping[str, Any], offset: int
-) -> Connectome:
-    """The connectome whose copy pathway starts from the declared tokens (``recall_tokens``).
-
-    For motor neuron ``j`` of token ``tokens[j]``: the synapse from every head's ``recall``
-    port at value coordinate ``offset + tokens[j]`` (the observation's own coordinates in the
-    value) starts at ``recall_copy``, so the token the read delivers drives its own action; and
-    the synapse from sensory neuron ``tokens[j]`` starts at ``-recall_copy``, so a token the
-    present observation holds, the read's echo of the moment that addressed it, is not
-    copied back. Every other synapse into the motor region from a read port, or from the sensory
-    region, starts at zero. The same connectome when it already starts so (a saved brain).
-    Every one of these synapses learns on its own, as every synapse does."""
-    populations = connectome.populations
-    n = connectome.n
-    value = np.full(n, -1, dtype=np.int64)  # each port neuron's value coordinate
-    names = [name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port]
-    for name in names:
-        neurons = np.asarray(populations[name], dtype=np.int64)
-        value[neurons] = np.arange(len(neurons))
-        if recalled["action"]:  # the command's part: no token, starts at zero
-            value[np.asarray(populations[f"{name}_action"], dtype=np.int64)] = -2
-    sensory = np.asarray(populations["sensory"], dtype=np.int64)
-    heard = np.full(n, -1, dtype=np.int64)
-    heard[sensory] = np.arange(len(sensory))
-    motor = np.asarray(populations["motor"], dtype=np.int64)
-    local_motor = np.full(n, -1, dtype=np.int64)
-    local_motor[motor] = np.arange(len(motor))
-    tokens = np.asarray(recalled["tokens"], dtype=np.int64)
-    pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
-    token = np.where(local_motor[post] >= 0, tokens[np.maximum(local_motor[post], 0)], -1)
-    pathway = (value[pre] != -1) & (local_motor[post] >= 0)
-    identity = pathway & (token >= 0) & (value[pre] == offset + token)
-    echoes = (heard[pre] >= 0) & (token >= 0) & (heard[pre] == token)
-    declared = int((tokens >= 0).sum())
-    if int(identity.sum()) != declared * len(names) or int(echoes.sum()) != declared:
-        raise ValueError(
-            "recall_tokens need a synapse from every read port's token coordinate and from the "
-            "token's sensory neuron into its motor neuron; Brain.compose adds them"
-        )
-    reading = np.isin(pre, np.concatenate([
-        np.asarray(populations[name], dtype=np.int64) for name in names
-        if name.startswith("recall")
-    ]))
-    copy = float(recalled["copy"])
-    sign = np.where(pathway | ((heard[pre] >= 0) & (local_motor[post] >= 0)), 0.0, connectome.sign)
-    sign[identity & reading] = copy
-    sign[echoes] = -copy
-    if np.array_equal(sign, connectome.sign):
-        return connectome
-    return Connectome(
-        n, connectome.pre, connectome.post, connectome.count, sign,
-        dict(populations), connectome.label,
-    )
-
-
 def _learned_code_units(value: Any) -> int:
     """The units of the brain's learned code: ``learned_code`` as given, 0 or None for none."""
     if value is None:
@@ -1859,29 +1803,9 @@ def _layout(
                 projections.append(
                     Projection(f"{name}_action", "association", scale=0.0, reciprocal=False)
                 )
-        if recalled["copy"]:
-            # the copy pathway from every read port into the motor region, appended last: the
-            # brain with it is the brain without it plus these synapses, drawn at the initial
-            # magnitude ``recall_copy`` (the command's part at zero); declared tokens start it
-            # as their identity once developed (``_copy_identity``)
-            for name in ports:
-                projections.append(
-                    Projection(name, "motor", scale=recalled["copy"], reciprocal=False)
-                )
-            if recalled["action"]:
-                for name in ports:
-                    projections.append(
-                        Projection(f"{name}_action", "motor", scale=0.0, reciprocal=False)
-                    )
-            if recalled["tokens"] is not None:
-                # the present observation's tokens into their actions, the copy's echo
-                # suppression, drawn at zero and started at ``-recall_copy`` once developed
-                projections.append(
-                    Projection(regions[0].name, "motor", scale=0.0, reciprocal=False)
-                )
         if recalled["when"]:
             # every head's read of when, two neurons of the age and with the anchor two of the
-            # place, appended after everything else (the copy pathway's draws included): the
+            # place, appended after everything else: the
             # brain that delivers when is the brain without it plus these regions, whose
             # synapses into the association start at zero
             for name in Recall.when_regions(recalled["heads"]):
@@ -1930,8 +1854,8 @@ class Brain:
     and, with ``recall=True``, ``recall`` and ``next`` (one neuron per value coordinate each)
     for the index memory of the stream's moments, and with ``recall_heads=k`` also
     ``recall_h`` and ``next_h`` for each further head (with ``recall_action`` each of them
-    with a ``<region>_action`` region of one neuron per motor neuron, and with
-    ``recall_copy`` synapses from them into ``motor``); ``Genome.composed`` lays one out. Without
+    with a ``<region>_action`` region of one neuron per motor neuron); ``Genome.composed`` lays
+    one out. Without
     ``recall=True`` populations of those names are ordinary ones. ``Brain.compose`` builds
     the default brain with working memory, and with ``connectome`` gives a custom anatomy
     its founders.
@@ -2073,10 +1997,8 @@ class Brain:
         # than on the observation itself
         self._coded_keys = bool(units) or bool(learned)
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
-        # declared tokens start the copy pathway as their identity, the echo included, and the
-        # gains read them (``recall_gain``)
-        tokened = bool(recalled.get("copy")) and recalled.get("tokens") is not None
-        if recalled.get("tokens") is not None and (tokened or recalled.get("gain")):
+        # the gains read the declared tokens (``recall_gain``)
+        if recalled.get("tokens") is not None and recalled.get("gain"):
             # the observation's own coordinates in the recall values: the observation itself,
             # or a learned code joined to it, after the code's units
             joined = bool(learned) and LearnedCode.joins(self.inputs, learned["units"])
@@ -2097,17 +2019,6 @@ class Brain:
                 raise ValueError(
                     f"recall_tokens name observation coordinates below {self.inputs}"
                 )
-            ports = [
-                name for port in Recall.ports(recalled["heads"], recalled["next"]) for name in port
-            ]
-            if recalled["action"]:
-                ports += [f"{name}_action" for name in ports]
-            # the pathway's identity needs its synapses (else the memory names them)
-            if tokened and all(name in populations for name in (*ports, "motor")):
-                connectome = _copy_identity(
-                    connectome, recalled, learned["units"] if learned else 0
-                )
-                self.connectome = connectome
         learning_genes, actor_genes, arousal_genes = split_genes(genes)
         learning = configured(_learning() if learning is None else learning, learning_genes,
                               "learning")
@@ -2197,15 +2108,7 @@ class Brain:
             # the first module reads the code alone: the sensory neurons project to the code
             # region and nowhere else
             pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
-            # the copy pathway's echo suppression (``recall_tokens``) is the one exception:
-            # the present observation's tokens reach their own actions
-            echo = (
-                np.isin(post, self.motor_index) if tokened
-                else np.zeros(len(post), dtype=bool)
-            )
-            if (
-                np.isin(pre, self.sensory_index) & ~np.isin(post, self.code_index) & ~echo
-            ).any():
+            if (np.isin(pre, self.sensory_index) & ~np.isin(post, self.code_index)).any():
                 raise ValueError(
                     "a learned code's sensory neurons project to the code region alone"
                 )
@@ -5928,9 +5831,8 @@ _GROW_PARTS = (
 )
 # settings of the brain's own loop: a new part there cannot start invisible and learn
 _GROW_TOKENS = (
-    "recall_tokens start the copy pathway as an identity onto the motor neurons, which grow "
-    "starts at zero on a trained brain: grow adds no recall memory with tokens and no heads to "
-    "a brain with them"
+    "recall_tokens are laid out per motor neuron and per read port: grow adds no recall memory "
+    "with tokens and no heads to a brain with them"
 )
 _GROW_EPISODIC = frozenset({"episodic", *_EPISODIC_SETTINGS})
 _GROW_LOOP = frozenset(
@@ -6612,7 +6514,7 @@ def _grafted_checkpoint(
     data = dict(host)
     # the donor's contact counts, efficacies and plasticity masks, so a grafted synapse drives
     # its neuron as it did in the donor; this brain's signs, the construction its efficacies
-    # started from, which a recall copy pathway's tokens lay out again on load; an optimizer
+    # started from; an optimizer
     # history afresh, as a new synapse's: the donor's moments belong to the donor's count of
     # lessons
     for name in ("count", "efficacy", "plastic_synapses"):

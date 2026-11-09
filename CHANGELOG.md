@@ -1,5 +1,35 @@
 # Changelog
 
+## Unreleased
+
+### Simplification: the candidates 0.95.0 kept (#281)
+
+- **`Learner.synapse_rate` of zero holds the whole unit.** A synapse at rate zero takes no step
+  and the optimizer keeps its running moments (`velocity`, `second_moment`) as they are, where
+  0.95.2 kept accumulating its contrast into them. A neuron whose every inbound synapse steps at
+  zero holds its bias and the bias's moments (`velocity_bias`, `second_moment_bias`) the same
+  way, where 0.95.2 stepped the bias. `Learner.held()` names the held synapses and neurons. The
+  rule holds for lessons and rewards on the CPU, torch and MLX. What changes: a learner with a
+  rate of exactly zero on some synapse saves those moments at the values they held when the rate
+  went to zero (a newborn's zeros), and the held neurons' biases and bias moments at theirs; every
+  other value of such a learner, and every learner whose rates are all above zero or absent, is
+  as on 0.95.2 to the bit. No test, benchmark or composed brain sets a rate of zero, so no
+  recorded bytes change.
+- **Removed: the copy pathway, `recall_copy`.** `recall_gain` (0.95.0, #262) is the learned
+  path from a read to its token's action, and the pathway needed the tokens' label, which cost
+  the reads only position finds (look back 0.25 to 0.33 against 0.99 to 1.00) and the grammar
+  chamber's paths (#259). Write `recall_gain=1.0, recall_tokens=...` in its place, or nothing
+  where the task needs no token no lesson used. `recall_copy` is refused at `compose` and
+  `retune` with that sentence, and a saved memory with the pathway is refused by name: cadence
+  0.95.2 runs it. A saved memory without it loads as before. `recall_tokens` stays, a declaration
+  of which answers are tokens that adds no synapse. `Recall.copy_synapses` and the sequence
+  battery's `heads_copy` arm left with it, and the copy-tokens instrument retired to its receipt,
+  which verifies with its archived checker. `recall_copy_next` left before any release (#273).
+- **Kept: `learning_surprise_share`, `teaching="normalized"`, `attention=True` and
+  `recall_next=False`.** Each was read against what a new brain composes, and each stays; the
+  readings are on #281. The sequence battery's `composed` arm (`--arms composed --settings ...`)
+  reads a one-out of the composition.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

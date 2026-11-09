@@ -51,3 +51,17 @@ def test_every_source_a_receipt_binds_is_archived(path: Path) -> None:
 def test_a_receipt_keeps_its_canonical_form_and_digest(path: Path) -> None:
     valid, message = cd.Receipt.verify(path)
     assert valid, message
+
+
+def test_the_copy_pathways_receipt_reads_with_its_archived_checker() -> None:
+    """The copy pathway left in 0.96.0 with its instrument; its registered receipt's recorded
+    arithmetic is read by the checker archived with it."""
+    import runpy
+
+    root = RESULTS.parents[2]
+    provenance = runpy.run_path(str(root / "benchmarks/provenance.py"))
+    receipt = RESULTS / "copy-tokens.json"
+    valid, message = provenance["verify_historical"](
+        root, receipt, "benchmarks/attention/results/copy-tokens.json"
+    )
+    assert valid, message

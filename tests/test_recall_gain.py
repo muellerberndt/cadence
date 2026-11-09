@@ -57,7 +57,7 @@ def test_it_is_an_option_that_needs_tokens_and_a_newborn_reads_as_without_it():
     np.testing.assert_array_equal(brain.recall.gains, np.zeros(2))
     assert brain.describe()["genes"]["recall_gain"] == RATE
     assert brain.parameters() == founder.parameters() + 2
-    assert not len(brain.recall.copy_synapses()[0])  # no synapse is added
+    assert brain.connectome.synapses == founder.connectome.synapses  # no synapse is added
     np.testing.assert_array_equal(founder.brain.efficacy, brain.brain.efficacy)
     rng = np.random.default_rng(1)
     for t in range(6):

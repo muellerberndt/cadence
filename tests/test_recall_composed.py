@@ -85,7 +85,6 @@ def test_a_new_memory_teaches_at_the_deep_point_with_no_apical():
     [{"recall_position": 0}, {"recall_position_rate": 0.0}, {"recall_heads": 2},
      {"recall_window": 2}, {"recall_next": False},
      {"recall_action": True}, {"recall_when": True}, {"recall_capacity": 8},
-     {"recall_copy": 2.0, "recall_tokens": [0, 1, 2, 3]},
      {"recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3]},
      {"recall_address": 0.0}, {"recall_address_reward": 1.0}, {"recall_position_reward": 1.0},
      {"recall_grid": ()}, {"recall_position": 64}, {"carried_gain": 0.0}, {"recall_drive_gain": False}],
@@ -465,7 +464,7 @@ def test_the_width_is_fixed_at_birth_so_growth_keeps_its_rates():
 
 @pytest.mark.parametrize(
     "options",
-    [{"observers": (8,)}, {"modules": (32, 96)}, {"recall_heads": 2}, {"recall_copy": 2.0, "recall_tokens": [0, 1, 2, 3]},
+    [{"observers": (8,)}, {"modules": (32, 96)}, {"recall_heads": 2}, {"recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3]},
      {"recall_when": True}, {"history_decays": (0.5,)}, {"efference_amplitude": 1.0}, {"learned_code": 16}, {"apical": 0.25},
      {"arousal": True, "maturity": True}, {"memory_choice": True}, {"learning_rehearsal": 1.0}, {"inputs": (6, 6)},
      {"inputs": 64, "code": 32}],

@@ -452,8 +452,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
-| `recall_copy` | `0.0` | construction | Above 0, plastic synapses from every read port into the motor region at that initial magnitude ([the copy pathway](#the-copy-pathway-opt-in)) |
-| `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none). With `recall_copy` the pathway starts as their identity, echo suppressed; without it no synapse is added, and a lesson whose answer has no token leaves the read's maps as they are |
+| `recall_tokens` | `None` | construction | Per action the observation coordinate of the same token (`-1` for none). No synapse is added: a lesson whose answer has no token leaves the read's maps as they are, and `recall_gain` reads the tokens ([declared tokens](#declared-tokens)) |
 | `recall_action` | `False` | construction | Every slot carries the executed command in its key and value, and the maps read the command of the moment before ([its own actions](#its-own-actions-in-the-slots-opt-in)) |
 
 The [API reference](api.md#recall-memory-genes) gives the `Recall` class signature.
@@ -1026,7 +1025,7 @@ for token in range(TOKENS):                          # no lesson used any of the
 - **A newborn is the founder.** The gains start at zero, so a newborn settles, acts and saves as one
   without the path: the motor drive gains exactly nothing. They are saved as the array `gains`,
   counted by `parameters()`, kept by `graft` and `grow`; `retune` refuses the setting. `grow` adds no
-  recall memory with tokens, as for the copy pathway.
+  recall memory with tokens.
 - **Limit.** The drive is a term held through the settle, which is sound for a held read. A read
   revised by the live association inside the settle would have to carry it in the reciprocal force,
   or the settle leaves the descent of one energy; the two are not composed.
@@ -1061,7 +1060,7 @@ recipe in the place of the composition):
   the path answers early. On copying repeated tokens the read's lesson takes 406 rows against 971 on a
   development founder, and each moves the association a third as far or less. The read then falls at
   positions no lesson reached, and the answer follows it. On a path's hop the read's delivery falls the
-  same way. This is the copy pathway's failure beside the recipe, smaller.
+  same way.
 - **An action no lesson taught loses the vote.** On look back the read names the held token
   (0.46 to 0.98) and the answer is 0.00. Lessons on other actions push the association's drive on that
   action down, and the read is spread over the slots it holds, so the path's edge for the right token
@@ -1071,53 +1070,13 @@ Use it for a brain that has to say tokens no lesson used where the answer is wha
 continuing, copying and inducing from what was heard. Leave it out of a brain that relies on repeated
 tokens at lengths no lesson reached, on Dyck sentences or on chained facts.
 
-### The copy pathway (opt-in)
+### Declared tokens
 
-A held read reaches the motor region only through the association region, which learns which
-answer each read deserves. A token taught as an answer is then produced from its read; a token
-never taught as an answer is read as well as any and never produced, because no lesson ever
-raised its action. `recall_copy` adds a direct pathway from every head's read ports (`recall`,
-and `next` where it is on) to the motor region: plastic synapses learned by the same settle
-contrast as every other synapse, inside the one settle.
+Where an observation coordinate and an action are the same token, declare it:
+`recall_tokens[j]` is the observation coordinate of action `j` (`-1` for none). The declaration
+adds no synapse. It tells the read's lessons which answers a slot can hold, and
+[the learned value path](#the-learned-value-path-opt-in) (`recall_gain`) reads it.
 
-```python
-TOKENS, HEAR, ASK, NOISE = 6, 6, 7, 8
-copier = Brain.compose(
-    inputs=9, actions=TOKENS, modules=(16,), seed=3, episodic=False, recall=True, recall_founder=True,
-    recall_copy=2.0, recall_tokens=range(TOKENS),   # observation i and action i: one token
-)
-for token in range(TOKENS):                          # no lesson: every token is untaught
-    copier.reset()
-    copier.act(np.eye(9)[[token]] + np.eye(9)[[HEAR]], greedy=True)  # a token is heard
-    copier.act(np.eye(9)[[NOISE]], greedy=True)                       # something else
-    cue = np.eye(9)[[HEAR]] + np.eye(9)[[ASK]]                        # asked for it back
-    assert copier.act(cue, greedy=True)[0] == token
-```
-
-- **Without tokens** (`recall_copy=s` alone) the synapses are drawn at magnitude `s` as every
-  projection is, appended last, so the brain with the pathway is the brain without it plus these
-  synapses. Learning shapes them like any synapse; nothing lets a read drive an action that was
-  never taught.
-- **Shared identities** (`recall_tokens`). Where an observation coordinate and an action are the
-  same token, declare it: `recall_tokens[j]` is the observation coordinate of action `j` (`-1`
-  for none). The pathway then starts as that identity: from each recall port, the read's own
-  value, at `recall_copy`; from each next port at zero; and from the present observation (the
-  sensory region) at `-recall_copy`, so a token the moment holds is not copied back.
-  Every other synapse of the pathway starts at zero. The tokens must be in the recall values: a
-  brain without a code, or a learned code joined to an observation no wider than it; a fixed
-  code is refused.
-- **Every synapse learns on its own.** A lesson moves the synapses of the tokens the read and
-  the observation held; the identity of a token never read stays where it started, so a token
-  never taught as an answer keeps its route to its action.
-- **Why the echo.** A read addressed by the present moment holds that moment's own token in its
-  value: in a succession task (a cue names a token, the answer is the token that followed it)
-  the recall port holds the cue's token and the next port the answer. Copying the recall port
-  alone answers the cue with itself; the echo removes what the observation holds.
-- **Why the next port starts at zero.** Which port holds the answer depends on the task: the
-  heard token is on the recall port in a copy-back question, the successor on the next port in
-  a succession. The pathway starts from the recall port, the token the read delivers, and the
-  next port's gain is learned. Started equal, the two ports would drive the heard token and the
-  distractor that followed it alike.
 - **Answers that are no token.** The read's lessons take their target from the slots'
   contents. With tokens declared, a lesson whose answer is an action without a token (`-1`: a
   yes or a no, a count) leaves the address and position maps as they are; the cortex learns
@@ -1128,45 +1087,11 @@ for token in range(TOKENS):                          # no lesson: every token is
   classes carry one class at a time and never the comparison that separates them ("before"
   stays at chance after 4,500 lessons, against 0.97 at every row). Lessons at every row collapse
   the token answers of induction, copying and two hops (0.11 to 0.68 on development founders),
-  so those stay judged by surprise. The tokens declare this without the pathway as well
-  (`recall_tokens` without `recall_copy`: no synapse is added), and an action list without any
-  token (`recall_tokens=[-1] * actions`) declares that no answer is a slot's content: no lesson
-  moves the read and every row is taught.
-- **Beside the positions recipe.** The address and position lessons name the slots to read by
-  the association's movement read back through the read port. With the pathway the answer
-  reaches the motor region directly, the association moves little toward it, and a read that
-  only position finds (look back) stops learning where to look: taught at 5 to 12 symbols and
-  read at 24 to 60, the recipe with the pathway answers 0.25 to 0.33 on five fresh founders of
-  six (the recipe alone 0.99 to 1.00), its position, anchored and slope maps at a third, a
-  quarter and a sixth of their norms. Reading the motor's movement back through the pathway
-  restores look back (0.99) and misdirects reads whose answer is a successor (two hops 0.27 to
-  0.28): the recall port's identity names the slot holding the answer itself, not the slot it
-  follows. Leave the pathway out of a brain that relies on the recipe.
-
-In the [copy-tokens benchmark](../benchmarks/attention/copy_tokens.py) a token is heard, two
-other tokens follow, and a cue asks for the heard token back; tokens 0 to 4 are taught as
-answers and 5 to 7 never are. A second task cues a token of a sequence of five heard once and
-asks for the token that followed it. On six founders of one module
-([receipt](../benchmarks/attention/results/copy-tokens.json)):
-
-| Arm | Untaught tokens produced | Taught answers | Succession | Read of the untaught |
-| --- | --- | --- | --- | --- |
-| founder memory | 0.00 | 0.72 to 0.98 | 0.95 to 0.99 | 0.32 to 1.00 |
-| `recall_copy=2.0` with tokens | 1.00 on every founder | 1.00 | 0.94 to 0.99 | 1.00 |
-| `recall_copy=1.0` with tokens | 0.17 to 1.00, mean 0.78 | 0.86 to 1.00 | 0.95 to 1.00 | 0.98 to 1.00 |
-| `recall_copy=0.5` without tokens | 0.00 | 0.57 to 0.99 | 0.93 to 1.00 | 0.58 to 1.00 |
-| `recall_copy=1.2` without tokens | 0.00 | 0.22 to 0.87 | 0.86 to 0.97 | 0.70 to 1.00 |
-
-Uniform random answers 0.125. Use `recall_copy=2.0` with tokens. With it the answer follows its
-read on every untaught and taught question, and a deep apical brain (`modules=(32, 24, 24)`,
-`apical=0.25`) reads the same. A weaker identity loses the untaught tokens on some founders, the
-association having learned the taught answers first; a pathway drawn without tokens costs taught
-answers and succession. A successor never taught as an answer stays at 0.00 in every arm, since
-the next port's gain grows slowly.
-
-Use it when the answer is a token the read can deliver, and compare it with the founder memory
-and with the pathway drawn without tokens on the task. The options are construction settings,
-described and saved only where they are on.
+  so those stay judged by surprise. An action list without any token
+  (`recall_tokens=[-1] * actions`) declares that no answer is a slot's content: no lesson moves
+  the read and every row is taught.
+- **The tokens must be in the recall values:** a brain without a code, or a learned code joined
+  to an observation no wider than it. A fixed code is refused where the gains read them.
 
 ### Its own actions in the slots (opt-in)
 
@@ -1268,10 +1193,7 @@ uniform random. Several facts in one answer take [several heads](#several-heads-
 The two regions add one neuron per value coordinate each: `compose(250, 2)` grows from 380 to
 880 neurons and from 20,352 to 52,352 synapses. `recall_action` adds one neuron per motor
 neuron to every read port region, their synapses into the association, and as many rows to the
-address and position maps and columns to the address; `recall_copy` adds the value width times
-the motor neurons per port region (and with tokens one synapse per sensory neuron and action):
-with two heads over a code of 128 and 323 actions the pathway adds 4 x 128 x 323 = 165,376
-synapses. Each further head adds its two regions, their projections and one more address map.
+address and position maps and columns to the address. Each further head adds its two regions, their projections and one more address map.
 The address map is `code` by `address_width` plus the association width by `address_width`;
 with compose's 64 association neurons it is 0.66 MB at 256 inputs, 1,322 MB at 12,824 inputs
 on the uncoded observation and 8.9 MB with `code=1024`. One stream's slots hold `capacity`
@@ -1288,9 +1210,7 @@ with `recall_next=False`), each with one neuron per value coordinate,
 `Genome.observation_width(inputs, code)`, and with `recall_heads=k` the regions `recall_h`
 and `next_h` for h from 1 to k - 1 (`Recall.ports(k)` names them). With `recall_action` each of
 those regions has a `<region>_action` region of one neuron per motor neuron
-(`Recall.action_ports(k)`); with `recall_copy` synapses from every read port neuron into
-`motor`, and with `recall_tokens` from every token's sensory neuron into its action, which the
-brain starts as the declared identity. Without `recall=True` populations of those names are
+(`Recall.action_ports(k)`). Without `recall=True` populations of those names are
 ordinary ones. `tests/test_recall_memory.py` checks that the library with `recall_position=0`
 reproduces the reference memory `benchmarks/binding/index_read.py` moment for moment. To check
 that the memory does the work, erase a copy's slots with `brain.recall.reset(batch)` before the
@@ -1303,11 +1223,6 @@ query ([ablation](#check-that-a-memory-does-the-work)).
   reaches the linear map only through conjunctions held in the cortex of the moment before.
 - The slots are a record within one stream. Nothing consolidates across streams except
   through the plastic synapses that read them.
-- The copy pathway's identity starts on the recall port. A task whose answer is on the next
-  port (a successor) has to learn that port's gain, which grows slowly; the association learns
-  the taught successors first. The identity reaches only tokens in the recall values: a learned
-  code narrower than the observation keys on the code alone, and there the pathway is drawn at
-  random.
 - With `recall_action` the commands reach the answer through synapses that start at zero; under
   reward alone the address and position maps do not learn (`recall_address_reward` 0), so only
   the values' commands are read.
