@@ -85,13 +85,13 @@ Read on one c7i.16xlarge, founders 9627000 to 9627005, 256-sentence panels. The 
 What keeps each panel apart:
 
 - **The rehearsal's cost.** A rehearsal replays each drawn row's whole episode on fresh streams, about
-  3.7 million replayed moments a pass against 50,000 acts, so a pass with it costs 5.7 times a pass
+  3.7 million replayed row moments a pass against the 0.8 million the life hears, so a pass with it costs 5.7 times a pass
   without; at the transformer's compute it has less than one pass.
 - **Paths under rehearsal: the read.** The recall read delivers a hop's fact on .78 to .89 of hops
   with the rehearsal against .98 to 1.00 without it, and says a delivered hop on .90 to .96; paths
   fall from .97 to .82 at pass 1 and stay under .93.
 - **Brackets: exposure.** Without rehearsal brackets rise with every pass, .84, .90, .96, .99, and
-  pass by the control at pass 3 (about twice its compute). A closing bracket is said right on .96 to
+  reach the control's .966 at pass 3 (about twice its compute). A closing bracket is said right on .96 to
   .99 while the read delivers its open bracket on .32 to .75, so brackets are carried by the trace
   and the cortex more than by the read.
 - **Held-out clauses: no exposure lever.** Without rehearsal they hold at .94 to .97 over four passes
