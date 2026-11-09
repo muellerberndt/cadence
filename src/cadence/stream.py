@@ -691,14 +691,15 @@ class HeldMessage(Message):
     With a ``port`` region the brain also reads its message one block at a time
     (``message_read``). The present moment addresses the blocks,
 
-        p = softmax((x W_x + c W_c + w) . block / temperature + x T_x + c T_c + t)
+        p = softmax((x W_x + c W_c + w) . block / temperature + turn_k)
 
     ``x`` the moment as heard and ``c`` the association's settled activity of the moment
-    before, and the port holds ``read_amplitude * sum_k p_k block_k``: the settle answers on
-    the block the address chose. Every map starts at zero, so a newborn reads the blocks'
-    mean. After a lesson the blocks are scored against the association's movement between
-    the nudged phases, read back through the port's synapses, and the maps step toward the
-    blocks the lesson names, the recall memory's address lesson on the message's own blocks.
+    before; ``turn = x T_x + c T_c + t`` is a term per block. The port holds
+    ``read_amplitude * sum_k p_k block_k``: the settle answers on the block the address chose.
+    Every map starts at zero, so a newborn reads the blocks' mean. After a lesson the blocks
+    are scored against the association's movement between the nudged phases, read back through
+    the port's synapses, and the maps step toward the blocks the lesson names, the recall
+    memory's address lesson on the message's own blocks.
     """
 
     connectome: Connectome | None = None
@@ -741,6 +742,9 @@ class HeldMessage(Message):
             )
         self._glow_columns = columns(self.glow)
         self.hearing = np.ones(int(self.phases))
+        # whether the association reads the whole message: a message composed silent beside
+        # its read holds no synapse of its own
+        self.direct = bool(np.isin(np.asarray(connectome.pre), self.glow).any())
         self.last: tuple[np.ndarray, ...] | None = None  # the latest read, for its lesson
         self.maps: list[_Maps] = []
         if self.reads:
@@ -759,7 +763,7 @@ class HeldMessage(Message):
             synapses = np.flatnonzero((source[pre] >= 0) & (cortex[post] >= 0))
             self._port_synapses = (synapses, source[pre[synapses]], cortex[post[synapses]])
             inputs, wide = int(self.inputs), len(self.association)
-            # the content address over a block's units, then the turn over the blocks
+            # the content address over a block's units and the turn per block
             self.maps = [
                 (np.zeros((inputs, outputs)), np.zeros((wide, outputs)), np.zeros(outputs))
                 for outputs in (int(self.units), int(self.phases))
@@ -821,7 +825,8 @@ class HeldMessage(Message):
         out = np.array(_on_host(drive), dtype=float)
         present = len(self.trace) == len(out)
         loud = self.amplitude * np.repeat(self.hearing, int(self.units))
-        out[:, self._glow_columns] = loud * self.trace if present else 0.0
+        if self.direct:
+            out[:, self._glow_columns] = loud * self.trace if present else 0.0
         if self.reads:
             self.last = None
             x = self._heard_of(moment) if present else None
@@ -831,7 +836,8 @@ class HeldMessage(Message):
                 blocks = self.trace.reshape(len(out), int(self.phases), int(self.units))
                 c = self.previous
                 p = self.attention(x, c, blocks)
-                out[:, self._port_columns] = self.read_amplitude * _einsum("bk,bku->bu", p, blocks)
+                out[:, self._port_columns] = self.read_amplitude * _einsum(
+                    "bk,bku->bu", p, blocks)
                 self.last = (x, c, p, blocks.copy())
         return out
 

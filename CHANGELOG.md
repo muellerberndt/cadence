@@ -36,6 +36,30 @@ No brain changes. Every founder, the default composition and `backend="cpu"` ari
   The key holds no order of moments of one kind, and a sentence heard as words and the same meaning
   heard as concepts give unrelated keys.
 
+### A message a brain holds: `Brain.compose(message=units)` (#286)
+
+Opt-in and off by default. Without `message` a brain holds no message region, and every founder,
+the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
+
+- **`message=units`** ([held message](docs/memory.md#held-message)). A region of
+  `message_phases * units` neurons the brain writes itself. After each moment it hears, the moment's
+  fixed sparse code latches onto block `t mod message_phases` and stays on until the episode ends
+  (`reset()` or `done`). The association reads the region through plastic synapses at
+  `message_amplitude`, and with `carried_gain` one learned gain per block sets how loudly.
+  `brain.message` is a `HeldMessage`, `cadence.Message` on the brain's own neurons (`state`,
+  `key()`, `told`), and a member of `brain.memories`. `describe`, `retune`
+  (`message_amplitude`), checkpoints and `imagine` carry it. `grow` and `graft` refuse a brain with
+  a message, and a message needs a vector brain without a learned code.
+- **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
+  present moment through learned maps (a content address over the block's units and a term per
+  block). The maps start at zero and learn by the recall memory's address lesson on the message's
+  own blocks: each block is scored against the association's movement between the nudged phases,
+  read back through the port's synapses. `message_amplitude=0.0` beside it builds no synapses from
+  the region itself.
+- **The declared run** is [`benchmarks/grammar/MEANING_PROTOCOL_2.md`](benchmarks/grammar/MEANING_PROTOCOL_2.md):
+  sentences said from the brain's own message with the recall read barred, each message arm beside
+  its previous-word control, and the message's cost beside a free read.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

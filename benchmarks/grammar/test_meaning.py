@@ -372,3 +372,54 @@ def test_the_gates_read_a_small_run():
     found = mn.read_retrieval([{"kind": "retrieval", "founder": 0, "units": 70,
                                 "found": mn.retrieval(0, stored=(16,), cues=4)}])
     assert found[0].startswith("retrieval") and "reordered" in found[1]
+
+
+def test_the_second_plan_sets_a_control_beside_every_message_arm():
+    plan = mn.own_plan((0, 1))
+    arms: dict[str, dict] = {}
+    for spec in plan["brains"]:
+        arms.setdefault(spec["tag"], spec)
+    assert len(plan["brains"]) == 2 * len(arms)
+    # the control is the same life with the previous-word signal in the message's place
+    for tag, control in (("state_256", "heard_256"), ("read_64", "heard_64"),
+                         ("paraphrase", "paraphrase_heard"),
+                         ("capacity_256", "capacity_heard")):
+        ours, theirs = arms[tag], arms[control]
+        held = {k: v for k, v in ours["settings"].items() if not k.startswith("message")}
+        assert theirs["settings"] == {**mn.HEARD, **held}
+        for name in ("arm", "module", "train", "batches"):
+            assert ours.get(name) == theirs.get(name)
+    assert arms["read_64"]["settings"]["message_read"] is True
+    assert "message_read" not in arms["direct_64"]["settings"]
+    assert arms["message_fixed"]["settings"] == {**arms["message_quiet"]["settings"],
+                                                 **arms["default_fixed"]["settings"]}
+    # the controls sit at the brains' parameter counts, past the matched width's 256
+    sizes = {c["parameters"] for c in plan["controls"]}
+    assert len(sizes) == 3 and len(plan["controls"]) == 3 * 2 * 2 * 2
+    ct = mn._controls()
+    for c in plan["controls"]:
+        assert abs(ct.count(ct.build(c["model"], c["width"], 0)) - c["parameters"]) < (
+            0.02 * c["parameters"])
+
+
+def test_the_second_gates_read_a_small_run_of_the_brains_own_message():
+    warnings.simplefilter("ignore")
+    plan = mn.own_plan((0,))
+    rows = []
+    for spec in plan["brains"]:
+        if spec["tag"] not in ("default", "default_fixed", "state_256", "heard_256", "read_64",
+                               "message_quiet", "message_fixed", "paraphrase", "capacity_256"):
+            continue
+        small = {**spec, "batches": 2, "panel_batches": 1, "module": 64}
+        if small.get("probe_scale", 0) > 0:
+            small["probe_scale"] = 0.05
+        rows.append(mn.run_life(small))
+    by = {r["tag"]: r for r in rows}
+    assert "panels_silent" in by["message_quiet"] and "panels_barred" in by["message_quiet"]
+    assert "panels_silent" not in by["default"] and "located" in by["default"]
+    assert "message" in next(iter(by["read_64"]["probes"]["clause"].values()))["go"]
+    lines = mn.own_verdict(rows, [])
+    assert lines[0].startswith("whole sentences") and "| `state_256` |" in "\n".join(lines)
+    assert any(line.startswith("F, nothing barred") for line in lines)
+    assert any("message_quiet, silent" in line for line in lines)
+    assert any(line.startswith("C, the message less") for line in lines)

@@ -1971,9 +1971,12 @@ def _layout(
                 "a message needs a vector brain without a learned code in this version"
             )
         regions.append(Region("message", messaged["phases"] * messaged["units"]))
-        projections.append(
-            Projection("message", "association", scale=_MESSAGE_SCALE, reciprocal=False)
-        )
+        if messaged["amplitude"] or not messaged["read"]:
+            # the association reads the whole message; a message composed silent beside its
+            # read (``message_amplitude=0.0``) is read through the port alone
+            projections.append(
+                Projection("message", "association", scale=_MESSAGE_SCALE, reciprocal=False)
+            )
         if messaged["read"]:
             regions.append(Region("message_read", messaged["units"]))
             projections.append(
@@ -2533,8 +2536,8 @@ class Brain:
                 "working_memory": self.working_memory,
                 "efference": self.efference,
                 "history": self.history,
-                "message": self.message,
                 "recall": self.recall,
+                "message": self.message,
                 "hippocampus": self.hippocampus,
                 "episodic": self._episodic,
             }
@@ -2853,7 +2856,8 @@ class Brain:
         ``brain.learner.synapse_rate`` holds the steps after that (docs/tune.md, wide brains).
         ``options`` takes the constructor's memory settings (``recall`` and its
         ``recall_<setting>``, ``episodic``, ``memory_choice`` and its settings,
-        ``efference_amplitude``, ``history_decays``, ``working_memory_*``) and every configuration
+        ``efference_amplitude``, ``history_decays``, ``working_memory_*``, ``message`` and its
+        ``message_<setting>``) and every configuration
         field as ``learning_<field>``, ``actor_<field>`` or ``arousal_<field>``; ``temperature``
         is the learner's softmax temperature. ``arousal=True`` enables the founder arousal, a
         mapping patches it, a configuration replaces it. A name the library retired is refused
@@ -3128,6 +3132,14 @@ class Brain:
                 component, SynapticMemory
             )):
                 raise ValueError(f"{name} requires its existing memory component")
+            if isinstance(component, HeldMessage):
+                if name == "message_amplitude" and not component.direct:
+                    raise ValueError(
+                        "message_amplitude needs the message's own synapses: this brain was "
+                        "composed with message_amplitude=0.0 beside its read"
+                    )
+                if name.startswith("message_read") and not component.reads:
+                    raise ValueError(f"{name} needs a brain composed with message_read=True")
             value = options.pop(name)
             if field == "decay":
                 value = real(name, value, low=0, high=1)
@@ -3314,7 +3326,7 @@ class Brain:
         different neuron model, apical compartment or apical role; a learned code's region, or
         a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
-        if self.message is not None or donor.message is not None:
+        if self.message is not None or getattr(donor, "message", None) is not None:
             raise ValueError("a brain with a message is not grafted in this version")
         return _graft(self, donor, regions, into, joints, freeze)
 
@@ -4411,7 +4423,7 @@ class Brain:
                     f"history_{k}", self.history, k, k * width, (k + 1) * width,
                     self.history.glow[k * width:(k + 1) * width],
                 )
-        if self.message is not None:
+        if self.message is not None and self.message.direct:
             units = int(self.message.units)
             for k in range(int(self.message.phases)):
                 hearing.add(
@@ -5492,9 +5504,9 @@ class Brain:
     def parameters(self) -> int:
         """Actor/critic and consolidated weights (the episodic records' paid store with
         ``memory_extinction``), the recall memory's address and position maps and the maps of
-        its options (anchor, relative, slope, gain), a learned code's tables, and with ``maturity``
-        its use and the place records' noise scales; per-stream transient storage is
-        additional."""
+        its options (anchor, relative, slope, gain), a learned code's tables, the maps of a
+        message's read, and with ``maturity`` its use and the place records' noise scales;
+        per-stream transient storage is additional."""
         recall = self.recall
         paid = None if self._episodic is None else self._episodic.paid
         return (
@@ -5522,6 +5534,10 @@ class Brain:
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
             + (0 if self.hearing is None else len(self.hearing.routes))
+            + (
+                0 if self.message is None
+                else sum(int(np.asarray(a).size) for maps in self.message.maps for a in maps)
+            )
         )
 
     def save(self, path: str | Path, *, compressed: bool = True) -> Path:

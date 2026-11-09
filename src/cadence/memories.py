@@ -2,8 +2,8 @@
 
 A composed brain's memories are the members of ``brain.memories``: an ordered, read-only
 mapping from a name to the memory, present memories only, in the order the brain reads and
-writes them (``working_memory``, ``efference``, ``history``, ``recall``, ``hippocampus``,
-``episodic``). Every member keeps one contract (``Memory``):
+writes them (``working_memory``, ``efference``, ``history``, ``recall``, ``message``,
+``hippocampus``, ``episodic``). Every member keeps one contract (``Memory``):
 
 - ``stimulus(drive, moment)``: the drive of a moment before the settle with what the memory
   adds to it; a memory that adds nothing returns the drive. ``Moment`` gives the moment's
@@ -20,7 +20,8 @@ writes them (``working_memory``, ``efference``, ``history``, ``recall``, ``hippo
 
 How a memory is written after the settle follows its own inputs: the working trace moves
 toward the settled state, the efference copy takes the issued command, the heard history the
-observation, the recall memory witnesses the moment, the stores record outcomes, the
+observation, the message joins the moment's code to its block, the recall memory witnesses the
+moment, the stores record outcomes, the
 episodic records take the decision into the stream's temporal context and path. The brain
 writes them in the order of the list.
 
@@ -75,7 +76,7 @@ class Memories(Mapping[str, Any]):
     """The present memories of a brain by name, in the order the brain reads them."""
 
     ORDER = (
-        "working_memory", "efference", "history", "message", "recall", "hippocampus", "episodic"
+        "working_memory", "efference", "history", "recall", "message", "hippocampus", "episodic"
     )
 
     def __init__(self, members: Mapping[str, Any]) -> None:

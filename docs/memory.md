@@ -23,8 +23,9 @@ follows.
 - **Learned weights: skill.** The synapses themselves, changed slowly by every lesson and
   outcome. They are the long-term memory and survive everything but learning.
 
-Two smaller carriers are opt-in: the **efference copy** of the actions the brain issued
-(`efference_amplitude`) and the **heard history** of the raw observations (`history_decays`).
+Three carriers are opt-in: the **efference copy** of the actions the brain issued
+(`efference_amplitude`), the **heard history** of the raw observations (`history_decays`) and
+the **held message**, the whole episode as one state (`message`).
 
 ## Which memory should I use?
 
@@ -1448,6 +1449,72 @@ assert trace.shape == (1, 6) and trace[0, 3] > 0          # the slow block holds
 magnitude 1.2 a constant; `history_amplitude` (3.0) can be retuned. On a coded vector brain the
 blocks hold the code. Three decays at 256 inputs and four actions add 768 neurons and 49,152
 synapses to a founder of 20,992 synapses.
+
+## Held message
+
+The recall memory keeps one slot per moment, and the brain looks each one up. `message=units` adds
+a region that holds the whole episode at once, so the brain can answer from what it holds. It is
+opt-in: without it a brain is built and settles as the founder does, to the bit.
+
+- **What is written.** After each moment the brain hears, the moment is given a fixed sparse code
+  of `units` units (the `message_winners` units that read most of the moment's active inputs are
+  set to one), and the code joins one of `message_phases` blocks of the region: block `t mod
+  phases` for the `t`-th moment of the episode. The units stay on until the episode ends. The
+  write is fixed, as the working trace's is, and holds no learned parameter.
+- **What is read.** The association reads the region through plastic synapses at
+  `message_amplitude` times what it holds, so what the brain makes of its message is learned, and
+  [a learned gain](#how-strongly-a-carried-region-is-heard) per block sets how loudly.
+- **When it ends.** `reset()` and the end of an episode (`done`) empty a stream's message.
+
+```python
+speaker = Brain.compose(inputs=6, actions=3, modules=(16,), seed=0, message=12, message_winners=2)
+for moment in np.eye(6)[[0, 3, 5]]:
+    speaker.act(moment[None], greedy=True)                # each moment joins its block
+held = speaker.message.state                              # four blocks of twelve units
+assert held.shape == (1, 48) and held.sum() == 6 and speaker.message.told.tolist() == [3]
+drive = speaker.stimulus(np.eye(6)[[1]])
+region = speaker.connectome.populations["message"]
+assert np.allclose(drive[0, region], 1.5 * held[0])       # held at the amplitude
+speaker.reset()
+assert not speaker.message.state.any()                    # a new stream starts without it
+```
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `message` | `None`, off | construction | Units of a block; the region holds `message_phases` times as many neurons |
+| `message_phases` | `4` | construction | Blocks: that many neighbouring moments stay apart |
+| `message_winners` | `5` | construction | Units set to one per moment |
+| `message_fan_in` | `16` | construction | Channels each unit reads, raised until two units read every channel |
+| `message_amplitude` | `1.5` | `retune` | Drive of a unit that is on; `0.0` at construction, beside `message_read`, builds no synapses from the region |
+| `message_read` | `False` | construction | The read of one block at a time, below |
+
+**A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
+message, chosen by the present moment: the moment as heard and the association's activity of the
+moment before address the blocks by their content and by a term per block. The maps start at zero,
+so a newborn reads the blocks' mean. After each lesson the blocks are scored against the
+association's movement between the nudged phases, read back through the port's synapses, and the
+maps step toward the blocks the scores name: the
+[recall memory's address lesson](#how-it-writes-and-how-the-address-learns) on the message's own
+blocks. `message_read_amplitude` (3.0), `message_read_rate` (0.01) and `message_read_temperature`
+(0.25) can be retuned.
+
+```python
+reader = Brain.compose(inputs=6, actions=3, modules=(16,), seed=0, message=12, message_winners=2,
+                       message_read=True, message_amplitude=0.0)
+for moment in np.eye(6)[[0, 3, 5]]:
+    reader.act(moment[None], greedy=True)
+drive = reader.stimulus(np.eye(6)[[1]])
+port = reader.connectome.populations["message_read"]
+blocks = reader.message.state.reshape(4, 12)
+assert np.allclose(drive[0, port], 3.0 * blocks.mean(axis=0))   # a newborn reads the mean
+report = reader.lesson(np.eye(6)[[1]], [2])                     # a lesson also steps the read
+assert "message_rows" in report
+```
+
+`brain.message` is a `HeldMessage` (the standalone [`cd.Message`](#a-held-message) on the brain's
+neurons): `state`, `key()`, `told`, and with the read `maps` and `last`. A checkpoint keeps the
+streams and the read's maps. `grow` and `graft` refuse a brain with a message, and a message needs
+a vector brain without a learned code.
 
 ## How strongly a carried region is heard
 

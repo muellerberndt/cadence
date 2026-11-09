@@ -111,7 +111,8 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
-      history_decays=(), history_amplitude=3.0, carried_gain=0.0, recall=False, learning=None,
+      history_decays=(), history_amplitude=3.0, message=None, carried_gain=0.0, recall=False,
+      learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
       dense_limit=None, **genes)
@@ -121,7 +122,9 @@ Wraps any connectome with populations `association`, `motor` and `sensory` (or
 `visual/input`). It uses `prefrontal` for a working trace, `efference` (one neuron per motor
 neuron) for an efference copy, `history` (one sensory-width block per entry of
 `history_decays`; one block of `learned_code` units with a learned code) for a heard
-history, with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
+history, with `message=units` a `message` population of `message_phases * units` neurons (and
+with `message_read=True` a `message_read` population of `units`) for a
+[held message](memory.md#held-message), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.

@@ -146,7 +146,7 @@ def test_the_brain_with_a_message_is_the_brain_without_it_plus_the_region():
     assert held.connectome.n == n + 32 and read.connectome.n == n + 40
     assert np.array_equal(plain.brain.dense(), held.brain.dense()[:n, :n])
     assert np.array_equal(held.brain.dense(), read.brain.dense()[:n + 32, :n + 32])
-    assert list(read.memories).index("message") < list(read.memories).index("recall")
+    assert list(read.memories).index("message") == list(read.memories).index("recall") + 1
     assert len(read.connectome.populations["message_read"]) == 8
     genes = read.describe()["genes"]
     assert genes["message"] == 8 and genes["message_read"] is True
@@ -180,6 +180,9 @@ def test_a_newborn_reads_the_mean_of_its_blocks_and_lessons_move_the_read():
     blocks = brain.message.state.reshape(3, 4, 8)
     assert np.allclose(drive[:, port], 3.0 * blocks.mean(axis=1))
     assert not drive[:, brain.connectome.populations["message"]].any()  # the amplitude is zero
+    assert not brain.message.direct and "message_0" not in brain.carried_gains
+    with pytest.raises(ValueError):
+        brain.retune(message_amplitude=1.0)  # composed silent: no synapse of its own
     assert not any(np.asarray(m).any() for maps in brain.message.maps for m in maps)
     moved = sum(brain.lesson(stream[0], labels)["message_rows"]
                 for labels in ([1, 2, 3], [0, 0, 0], [3, 1, 2], [2, 3, 0]))
@@ -236,6 +239,8 @@ def test_the_messages_drive_is_retuned_and_its_layout_is_fixed():
             brain.retune(**change)
     with pytest.raises(ValueError):
         _brain().retune(message_amplitude=1.0)
+    with pytest.raises(ValueError):
+        _brain(message=8).retune(message_read_rate=0.1)
     with pytest.raises(ValueError):
         brain.grow(modules=(24,))
     with pytest.raises(ValueError):
