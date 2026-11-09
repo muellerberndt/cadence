@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### The compiled moment (opt-in, #282)
+
+`learning_compiled_moment=True` (`Brain.compose`, `retune`, `LearnerConfig(compiled_moment=True)`)
+does the work around the solve kernels of a moment in compiled passes on the CPU: the recall
+memory's read (the address and every position term through one product of the maps, which stay
+packed until a lesson replaces one), the moment's drive in one array, the memory's write, its
+address lesson, the place store's read and the carried gains' contrast. The equations are the
+ordinary path's and the sums run in another order, so the bits are other ones. Off by default;
+off, every bit is as before: the identity, options and slots batteries read no difference and the
+founder parity reads 0 of 24 lives differing against the tree before the change, on one machine.
+Several read heads, a window, the command or when in the slots, the gains, a learned code or a
+separator take the ordinary path.
+
+On one Xeon 8488C core a grammar-chamber pass of the default brain takes .73 of its seconds with the
+option (74.2 to 77.4 s against 53.9 to 57.0 s over three founders) and 3.2 to 3.4 times the matched
+transformer's 16.7 s, where the default takes 4.4 to 4.6. The issue's 2.5 times is not reached. The
+kernels take 26 s of the compiled pass, about 1.6 times the transformer, and the rest about 26 s
+in many small calls: the read 7.1 s, the solves around their kernels 4.8 s, the choice and the
+write 3.9 s, the lessons' phases and update 3.7 s (`benchmarks/grammar/cost.py`, which reads both
+the seconds and the parts; [the compiled moment](docs/tune.md#the-compiled-moment-opt-in)).
+
+The panels, the option less the default:
+
+- The grammar chamber over 36 paired fresh lives (founders 0 to 2, seeds 2000 to 2011): clauses
+  -.021 (s.e. .013), two distractors -.017 (.021), held-out -.033 (.022), roles -.023 (.029),
+  brackets -.039 (.018), paths -.011 (.020), two hops -.020 (.033), three hops -.053 (.036). A
+  replica of the default (its newborn changed at the last bits) on the same seeds reads +.007,
+  +.017, -.004, +.025, -.002, -.030, -.033, -.053. Every difference is under .07; brackets lies at
+  2.2 standard errors, the rest within two.
+- The sequence battery (look back and n-back with and without held tokens, two hops, three
+  founders): -.0013 (s.e. .0042) over 15 paired lives.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

@@ -138,8 +138,8 @@ class LearnerConfig:
     # (``Brain.equilibrate``); the same equations, order and tolerance, other bits
     fast_settle: bool = False
     # opt-in, a composed brain's on the CPU (``cadence._moment``): the work around the solve
-    # kernels of a moment (the recall memory's read and its address lesson) in compiled passes;
-    # the same equations, other bits
+    # kernels of a moment (the recall memory's read, write and address lesson, the place store's
+    # read, the carried gains' contrast) in compiled passes; the same equations, other bits
     compiled_moment: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one

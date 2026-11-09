@@ -3,15 +3,20 @@ of a moment on the CPU in compiled passes.
 
 A moment's settle runs in the kernels of ``cadence.fused``. Around it the recall memory reads its
 slots, the brain chooses, the memory writes the moment and a lesson steps the read's maps. On the
-CPU each of these is many small NumPy operations at a few rows and slots, and at that size the
-interpreter's cost per operation is most of the moment. Here each is one compiled pass of the same
-equations: the read (the address, every position term, the attention and the reads of the values
-and the nexts) and the address lesson (the scores, the prior, the attention it names and the
-least-mean-squares steps of the address and position maps). The sums run in another order than
-NumPy's and BLAS's, so the bits differ from the ordinary path, which stays the default.
+CPU each of these is many small NumPy operations at a few rows and slots, and at that size the cost
+of a call is most of the moment. Here each is one compiled pass of the same equations:
 
-The kernels take the memory's arrays as they are and allocate their outputs; a caller checks
-what it keeps, as the ordinary path does.
+- the read (``recall_read``): the address and every position term of every row through one product
+  of the inputs with the maps packed side by side (``packed_maps``, made again only where a lesson
+  replaces a map), then each slot's logit, the attention and the reads of the values and nexts;
+- the address lesson (``address_lesson``): the scores of the slots against the lesson's movement,
+  the prior, the attention the lesson names and one least-mean-squares step of every packed column;
+- the place store's read (``store_read``) and the carried gains' contrast (``route_contrast``);
+- the write (``recall_write``) into the room behind the slots, with the ordinary write's bits.
+
+The sums of the read, the lesson and the contrasts run in another order than NumPy's and BLAS's, so
+those bits differ from the ordinary path, which stays the default. The kernels allocate their
+outputs; a caller checks what it keeps, as the ordinary path does.
 """
 
 from __future__ import annotations
@@ -22,7 +27,9 @@ import numpy as np
 
 from .fused import _compiled, _inlined, _vectorized, compiled, njit
 
-__all__ = ["available", "recall_read", "address_lesson"]
+__all__ = [
+    "address_lesson", "available", "recall_read", "recall_write", "route_contrast", "store_read",
+]
 
 
 def available() -> bool:

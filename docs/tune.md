@@ -55,7 +55,7 @@ step size. The defaults of a new brain suit most work; change one at a time and 
 | --- | --- | --- | --- |
 | Fewer neuron updates per answer, the same equations | `learning_fast_settle=True` | on (off with `recall=False`) | rows stop apart and the activation vectorizes; other bits than the ordinary solve ([settling](settling.md#settling-and-equilibrium)) |
 | The ordinary solve | `learning_fast_settle=False` | | every row runs to the slowest row's check |
-| The work around each solve compiled, the same equations | `learning_compiled_moment=True` | off | the memory's read, write and address lesson and the lesson's contrast in compiled passes on the CPU; other bits than the ordinary path ([what a moment costs](#what-a-moment-costs)) |
+| The work around each solve compiled, the same equations | `learning_compiled_moment=True` | off | the memory's read, write and address lesson, the place store's read and the carried gains' contrast in compiled passes on the CPU; other bits than the ordinary path ([the compiled moment](#the-compiled-moment-opt-in)) |
 | Fewer sweeps, looser answers | `learning_tolerance=0.01` | `0.003` | about a fifth fewer sweeps per act ([what a moment costs](#what-a-moment-costs)) |
 | Lessons refused unless every phase satisfies the equations | `learning_qualified=True, learning_nudged_steps=1024` | off | stricter and slower lessons ([qualified teaching](settling.md#qualified-teaching-budgets)) |
 | Larger or smaller lesson steps | `teaching="founder"`, `"normalized"` or `"deep"` | `"deep"` (`"founder"` with `recall=False`) | the size and form of each lesson's step ([which teaching point](teach.md#which-teaching-point)) |
@@ -148,7 +148,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False` (`True` in a new brain with the memory), `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |
-| `learning_compiled_moment` | `False` | retune | [what a moment costs](#what-a-moment-costs) |
+| `learning_compiled_moment` | `False` | retune | [the compiled moment](#the-compiled-moment-opt-in) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
@@ -338,21 +338,49 @@ take about three tenths and the memory's read a sixth, and most of the rest is P
 many small steps around the kernels that a network's compiled batch does not make. What a pass reads
 at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 
-| Work | Brain | One thread, Apple M4 |
-| --- | --- | ---: |
-| One stream of speech: 3,920 inputs, association 512, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
-| The same | the recipe | 10 ms, 190 ms |
-| The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
-| The same | a new brain | 14 ms, 291 ms |
-| Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
+### The compiled moment (opt-in)
 
-At the speech size the read's address map, 3,920 by 3,920 entries, is most of an act, and with
-thousands of slots the read is: at 4,096 slots it is 20 of the act's 21 ms, and the write 0.3 ms. A
-realtime loop's limit is the act: at the speech size a lesson that teaches costs about twenty times
-an act, and only the act has to keep up with the stream.
+`learning_compiled_moment=True` does the work around the solve kernels in compiled passes on the
+CPU: the memory's read (the address and every position term through one product of the maps, kept
+packed until a lesson replaces one), the moment's drive in one array, the memory's write, its
+address lesson, the place store's read and the carried gains' contrast. The equations are the
+same and the sums run in another order, so the bits are other ones; off, every bit is the ordinary
+path's. A brain with several read heads, a window, the command or when in its slots, the gains, a
+learned code or a separator reads through the ordinary path.
+
+[`cost.py`](../benchmarks/grammar/cost.py) times a pass of the default brain, the same brain with
+the option and the chamber's transformer in one process, batch by batch in turn, on one thread. On
+a Xeon 8488C, three founders, each process on a core of its own:
+
+| Founder | Default brain | With `learning_compiled_moment` | Transformer | Against the transformer: default, compiled |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 74.2 s | 53.9 s | 16.7 s | 4.4, 3.2 |
+| 1 | 77.1 s | 56.8 s | 16.7 s | 4.6, 3.4 |
+| 2 | 77.4 s | 57.0 s | 16.7 s | 4.6, 3.4 |
+
+`cost.py --parts` reads one brain's pass by part, each function's seconds less those of the timed
+functions inside it, the kernels at the functions that launch them (founder 0, alone on its core):
+
+| Part | Default brain | Compiled moment |
+| --- | ---: | ---: |
+| Kernels: the solves of acts and lessons | 21.3 s | 21.0 s |
+| Kernels: the lessons' free and nudged phases, and the checks | 5.2 s | 5.0 s |
+| The read, in acts and lessons | 20.4 s | 7.1 s |
+| The solves around their kernels | 5.6 s | 4.8 s |
+| The choice and the write | 5.2 s | 3.9 s |
+| The address lesson | 3.3 s | 1.0 s |
+| The lessons' phases around their kernels, and their update | 4.0 s | 3.7 s |
+| The rest of the act and the lesson, the carried gains' lesson | 4.0 s | 3.5 s |
+| The chamber's own loop | 1.9 s | 1.8 s |
+| The pass | 70.9 s | 51.8 s |
+
+The kernels take about 1.6 times the transformer's pass, the same with or without the option. The
+rest takes about 26 seconds with it, many calls of a few microseconds each in Python; a pass at 2.5
+times the transformer leaves about 16 seconds for it.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
+| The work around the solve | `learning_compiled_moment=True` | The read, the write, the address lesson and the stores' reads in compiled passes: .73 of a chamber pass of the default brain on one Xeon core, 3.2 to 3.4 times the transformer's seconds where the default takes 4.4 to 4.6 ([the compiled moment](#the-compiled-moment-opt-in)). Other bits. |
 | Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and .74 of one on an Apple M4 (229 to 169 CPU seconds, four pairs at the default brain on one thread of a shared machine), whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
