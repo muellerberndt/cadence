@@ -6,18 +6,18 @@ One online pass of the first grammar (4,000 batches of 16 rows by default): the 
 transformer takes one Adam step per batch (``controls.Learner``, online). The three learners
 take each batch in turn and every batch's CPU seconds (``time.thread_time``) are summed per
 learner, so they share whatever else the machine does. The kernels compile or load on copies
-before the clock starts. Pin the process to one core (``taskset -c 3`` on Linux) and set one
-thread per library:
+that live the first 20 batches before the clock starts. Pin the process to one core
+(``taskset -c 3`` on Linux) and set one thread per library:
 
     OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 NUMBA_NUM_THREADS=1 PYTHONPATH=src \\
         python benchmarks/grammar/cost.py --founder 0 --out DIR/cost-f0.json
 
 ``torch`` is required for the transformer alone; ``--learners plain,compiled`` leaves it out.
 
-``--parts plain`` (or ``compiled``) lives one brain's pass alone and reads where its time goes: a
-thread samples the main thread's stack every 5 ms and charges the time since its previous sample
-to the part the stack is in (``PARTS``). A compiled kernel holds the interpreter until it returns,
-so its time is charged to the stack the kernel returns into, the function that called it.
+``--parts plain`` (or ``compiled``) lives one brain's pass alone and reads where its time goes:
+the functions of ``PARTS`` are timed, each call's seconds less those of the timed calls inside it
+charged to its part; the kernels are timed at the functions that launch them. A timer costs about
+a microsecond a call, a few tenths of a second over a pass.
 """
 
 from __future__ import annotations
@@ -25,8 +25,6 @@ from __future__ import annotations
 import argparse
 import copy
 import json
-import sys
-import threading
 import time
 import warnings
 from collections import Counter
@@ -38,6 +36,7 @@ import numpy as np
 
 LEARNERS = ("plain", "compiled", "transformer")
 TARGET = 24384  # the parameters the chamber's controls match (the recipe's brain)
+WARM = 20  # the batches a copy of each brain lives before the clock starts
 
 
 def make(name: str, founder: int) -> Any:
@@ -52,6 +51,14 @@ def make(name: str, founder: int) -> Any:
     settings = {"learning_compiled_moment": True} if name == "compiled" else {}
     return cd.Brain.compose(gr.INPUTS, gr.ACTIONS, modules=(64,), seed=founder, backend="cpu",
                             **settings)
+
+
+def _warm(brain: Any, stream: list[Any], batches: int = WARM) -> None:
+    """A copy of ``brain`` lives the first batches, so every kernel the pass calls compiles or
+    loads from Numba's cache before the clock starts."""
+    fork = copy.deepcopy(brain)
+    for batch in stream[:batches]:
+        gr.speak(fork, batch, teach=True)
 
 
 def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
@@ -69,7 +76,7 @@ def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
     stream = [gr.train_batch(rng, split, "g1") for _ in range(batches)]
     for name, learner in made.items():  # the kernels compile or load outside the clock
         if name != "transformer":
-            gr.speak(copy.deepcopy(learner), stream[0], teach=True)
+            _warm(learner, stream)
     seconds = dict.fromkeys(learners, 0.0)
     work = {name: gr.new_work() for name in learners if name != "transformer"}
     marks = []
@@ -92,71 +99,82 @@ def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
     return out
 
 
-# The kernels by the function that calls them, and the parts of a pass around them by the first
-# function of the sampled stack, from the inside out, that names one.
-KERNELS = {
-    "fused_fast_solve": "kernels: the solves", "fused_solve": "kernels: the solves",
-    "_launch": "kernels: the lessons' phases", "fused_residual": "kernels: the checks",
-}
-PARTS = {
-    "Brain._stimulus": "the read",
-    "Recall.learn": "the address lesson",
-    "Hearing.learn": "the carried gains' lesson",
-    "Learner.update": "the lessons' update",
-    "Learner.step": "the lessons' phases around their kernels",
-    "Brain._qualified": "the solves around their kernels",
-    "Brain._choose": "the choice and the write",
-    "Brain.lesson": "the rest of the lesson",
-    "Brain.act": "the rest of the act",
-}
+# The timed functions, each with its part: the kernels at the functions that launch them, then the
+# parts of a pass around them.
+PARTS = (
+    ("cadence.fused", "fused_fast_solve", "kernels: the solves"),
+    ("cadence.fused", "fused_solve", "kernels: the solves"),
+    ("cadence.fused", "fused_settle", "kernels: the lessons' phases"),
+    ("cadence.fused", "fused_residual", "kernels: the checks"),
+    ("cadence.generic", "Brain._stimulus", "the read"),
+    ("cadence.stream", "Recall.learn", "the address lesson"),
+    ("cadence.stream", "Hearing.learn", "the carried gains' lesson"),
+    ("cadence.learning", "Learner.update", "the lessons' update"),
+    ("cadence.learning", "Learner.step", "the lessons' phases around their kernels"),
+    ("cadence.generic", "Brain._qualified", "the solves around their kernels"),
+    ("cadence.generic", "Brain._choose", "the choice and the write"),
+    ("cadence.generic", "Brain.lesson", "the rest of the lesson"),
+    ("cadence.generic", "Brain.act", "the rest of the act"),
+)
+OUTSIDE = "the chamber's own loop"
 
 
-def _part(frame: Any) -> str:
-    """The part of the pass a sampled stack is in."""
-    if frame is not None and frame.f_code.co_qualname in KERNELS:
-        return KERNELS[frame.f_code.co_qualname]
-    while frame is not None:
-        part = PARTS.get(frame.f_code.co_qualname)
-        if part is not None:
-            return part
-        frame = frame.f_back
-    return "the chamber's own loop"
+def _timed(spent: Counter[str], stack: list[float], part: str, function: Any) -> Any:
+    clock = time.perf_counter
+    # a settle of no sweeps publishes a solve's start and launches no kernel
+    publish = "the solves around their kernels" if function.__name__ == "fused_settle" else None
+
+    def timed(*args: Any, **kwargs: Any) -> Any:
+        stack.append(0.0)
+        started = clock()
+        try:
+            return function(*args, **kwargs)
+        finally:
+            took = clock() - started
+            inside = stack.pop()
+            spent[publish if publish and args[9] == 0 else part] += took - inside
+            if stack:
+                stack[-1] += took
+
+    timed.__wrapped__ = function  # type: ignore[attr-defined]
+    return timed
 
 
 def parts(name: str, founder: int, batches: int) -> dict[str, Any]:
-    """One brain's pass alone, its wall seconds charged to the parts of ``PARTS``."""
+    """One brain's pass alone, its seconds charged to the parts of ``PARTS``; the functions are
+    restored after it."""
+    import importlib
+
     warnings.simplefilter("ignore")
     brain = make(name, founder)
     split = gr.Split.of(founder)
     rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
     stream = [gr.train_batch(rng, split, "g1") for _ in range(batches)]
-    gr.speak(copy.deepcopy(brain), stream[0], teach=True)
-    main = threading.main_thread().ident
+    _warm(brain, stream)
     spent: Counter[str] = Counter()
-    done = threading.Event()
-
-    def sample() -> None:
-        last = time.perf_counter()
-        while not done.wait(0.005):
-            frame = sys._current_frames().get(main)
-            now = time.perf_counter()
-            if frame is not None:
-                spent[_part(frame)] += now - last
-            last = now
-
-    sampler = threading.Thread(target=sample, daemon=True)
+    stack: list[float] = []
+    held = []
+    for module_name, path, part in PARTS:
+        owner: Any = importlib.import_module(module_name)
+        *outer, attribute = path.split(".")
+        for step in outer:
+            owner = getattr(owner, step)
+        original = (
+            owner.__dict__[attribute] if isinstance(owner, type) else getattr(owner, attribute)
+        )
+        held.append((owner, attribute, original))
+        setattr(owner, attribute, _timed(spent, stack, part, original))
     started = time.perf_counter()
-    process = time.process_time()
-    sampler.start()
-    for batch in stream:
-        gr.speak(brain, batch, teach=True)
-    done.set()
-    sampler.join()
+    try:
+        for batch in stream:
+            gr.speak(brain, batch, teach=True)
+    finally:
+        for owner, attribute, original in held:
+            setattr(owner, attribute, original)
     wall = time.perf_counter() - started
-    total = sum(spent.values()) or 1.0
+    spent[OUTSIDE] += wall - sum(spent.values())
     return {"learner": name, "founder": founder, "batches": batches, "wall": wall,
-            "process": time.process_time() - process,
-            "parts": {part: wall * seconds / total for part, seconds in spent.most_common()}}
+            "parts": dict(spent.most_common())}
 
 
 def main(argv: list[str] | None = None) -> int:
