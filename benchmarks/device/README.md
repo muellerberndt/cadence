@@ -7,7 +7,8 @@ device:
   `live`, `step`, `lesson` or `act` makes, by the place in the library that made it, with its bytes and time,
   beside the seconds of the moment.
 - [`lives.py`](lives.py), seconds per life: many continuing lives of one topology, stepped in turn in one
-  process, in a process pool on the CPU, or as the streams of one brain in one call per moment.
+  process, in a process pool on the CPU, as the streams of one brain in one call per moment, or as
+  `cadence.Lives`, brains of their own in one call per moment.
 
 ```sh
 PYTHONPATH=src python benchmarks/device/ledger.py --backend mlx --brains chamber speech --rows 1 16
@@ -15,6 +16,8 @@ PYTHONPATH=src python benchmarks/device/ledger.py --backend torch:cuda --rows 1 
 PYTHONPATH=src python benchmarks/device/ledger.py --backend torch:cuda --depth 4 --brains chamber --rows 16
 PYTHONPATH=src python benchmarks/device/ledger.py --table ledger.jsonl
 PYTHONPATH=src python benchmarks/device/lives.py --ways serial pool streams --backend torch:cuda --lives 12 128
+PYTHONPATH=src python benchmarks/device/lives.py --composition lives --teach 4 --ways lives streams pool \
+    --backend torch:cuda --lives 12 128 1024
 ```
 
 The brains are the chamber's default brain, `Brain.compose(35, 18)` (251 neurons, 13,120 synapses), and the
@@ -94,7 +97,8 @@ brain moves to the device.
 
 ## Lives
 
-Seconds per life and moment of `lives.py` on the same machine, the chamber's brain, 20 moments after 3 to warm:
+Seconds per life and moment of `lives.py` on the same machine, the chamber's default brain with its store
+(`--composition default`), 20 moments after 3 to warm:
 
 | Way | 12 lives | 128 lives |
 | --- | ---: | ---: |
