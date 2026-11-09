@@ -885,15 +885,37 @@ class Support:
             self.focus = np.where(self.focus >= 0, self.focus + 1, -1)
 
 
+CORTEX_MAPS = ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps",
+               "grid_maps")
+
+
+def _cortex_columns(recall: Any) -> dict[str, list[np.ndarray]]:
+    """Every map's cortex columns, per kind and head (``w_c`` of ``(w_x, w_c, b)``)."""
+    return {name: [np.array(head[1]) for head in getattr(recall, name, None) or []]
+            for name in CORTEX_MAPS}
+
+
+def _scale_cortex_step(recall: Any, before: dict[str, list[np.ndarray]], rate: float) -> None:
+    """A lesson's step on the maps' cortex columns, times ``rate``: an emulation of a slower
+    rate on what every moment shares (``cortex_rate`` of a life's spec)."""
+    for name, columns in before.items():
+        maps = getattr(recall, name, None) or []
+        setattr(recall, name, [
+            (head[0], old + rate * (np.asarray(head[1]) - old), head[2])
+            for head, old in zip(maps, columns, strict=True)])
+
+
 def teach(brain: Any, moments: list[Moment], work: dict[str, float],
-          support: Support | None = None) -> None:
-    """One training batch on fresh streams: a lesson before the act at every answer moment."""
+          support: Support | None = None, cortex_rate: float | None = None) -> None:
+    """One training batch on fresh streams: a lesson before the act at every answer moment.
+    ``cortex_rate`` scales each lesson's step on the maps' cortex columns."""
     support = support or Support()
     brain.reset()
     support.reset()
     for m in moments:
         support.before(brain, teaching=True)
         if m.label is not None:
+            before = None if cortex_rate is None else _cortex_columns(brain.recall)
             try:
                 report = brain.lesson(m.x, m.label)
                 work["lessons"] += 1
@@ -903,6 +925,8 @@ def teach(brain: Any, moments: list[Moment], work: dict[str, float],
                 work["free_budget_exhausted"] += report.get("free_budget_exhausted", 0.0)
             except RuntimeError:
                 work["refused"] += 1
+            if before is not None:
+                _scale_cortex_step(brain.recall, before, float(cortex_rate))
             support.taught(brain)
         support.act(brain, m, m.x, work)
         support.after(brain, m)
@@ -1406,7 +1430,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     ``module``, ``init_seed`` (the brain's seed, on the founder's split, lessons and panels),
     ``replica``, ``settings`` over the arm's, ``checkpoints`` (batches with a lean reading),
     ``causal``, ``decode``, ``vote`` (what drives the motor neurons at the answers) and ``support``
-    (the oracle a diagnostic life is given)."""
+    (the oracle a diagnostic life is given), ``cortex_rate`` (each lesson's step on the maps' cortex
+    columns scaled, an emulation)."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -1427,7 +1452,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     curve = []
     support = Support(spec.get("support", ()), spec.get("cortex_scale"))
     for b in range(1, lessons + 1):
-        teach(brain, task.train(rng), work, support)
+        teach(brain, task.train(rng), work, support, spec.get("cortex_rate"))
         if b in checkpoints and b != lessons:
             curve.append({"batches": b, "panels": {
                 name: panel["conditions"]["all"]
@@ -1437,7 +1462,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         "task": task.name, "arm": arm, "founder": founder, "init_seed": init_seed,
         "replica": int(spec.get("replica", 0)), "tag": spec.get("tag"),
         "settings": {**ARMS[arm], **spec.get("settings", {})}, "cut": CUTS.get(arm, []),
-        "support": list(support.names), "cortex_scale": support.scale,
+        "support": list(support.names), "cortex_rate": spec.get("cortex_rate"),
+        "cortex_scale": support.scale,
         "lessons": lessons, "module": module, "inputs": task.inputs, "actions": task.actions,
         "parameters": int(brain.parameters()), "cadence": cd.__version__,
         "split": {"taught": list(task.split.taught), "new": list(task.split.new),

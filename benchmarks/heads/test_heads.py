@@ -524,6 +524,33 @@ def test_a_cut_keeps_the_address_maps_cortex_columns_at_zero():
         assert not w_c.any() and w_x.any()
 
 
+def _taught(cortex_rate, batches=4):
+    task = hd.IndirectObject(0)
+    brain = hd.make_brain(task, "Fd", 0, module=16)
+    rng = np.random.default_rng(0)
+    work = hd.new_work()
+    for _ in range(batches):
+        hd.teach(brain, task.train(rng), work, None, cortex_rate)
+    return brain
+
+
+def test_a_cortex_rate_of_one_is_the_life_without_it():
+    plain, scaled = _taught(None), _taught(1.0)
+    for name in hd.CORTEX_MAPS:
+        for a, b in zip(getattr(plain.recall, name) or [], getattr(scaled.recall, name) or [],
+                        strict=True):
+            for x, y in zip(a, b, strict=True):
+                np.testing.assert_array_equal(x, y)
+
+
+def test_a_cortex_rate_of_zero_keeps_every_maps_cortex_columns_at_birth():
+    brain = _taught(0.0)
+    assert brain.recall.head_map(0)[0].any()
+    for name in hd.CORTEX_MAPS:
+        for head in getattr(brain.recall, name) or []:
+            assert not np.asarray(head[1]).any()
+
+
 def test_a_cut_of_the_cortex_reads_zero_at_every_act():
     task = hd.IndirectObject(0)
     brain = hd.make_brain(task, "Fd", 0, module=16)
