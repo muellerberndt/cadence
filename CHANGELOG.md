@@ -56,6 +56,12 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   an input channel: a heard moment with it on empties the message and begins it again, or with
   `message_boundary_holds` the message keeps what it heard before and nothing after joins.
   `cadence.Message` takes `boundary` and `boundary_holds` the same way.
+  The third run (six fresh founders, the read free): the quiet message's three-hop cost comes
+  from the brain's own words joining the message as it speaks. Held from `GO` it costs three hops
+  nothing at the mean (+.00 paired against the default) and keeps its lifts (clauses +.06, held-out
+  +.05, roles +.10, brackets +.12); the phase count at 24 or 32 is not the cause (-.09, -.12). The
+  gate on 5 of 6 founders fails on the founders' spread, and the run's second part (roles) did not
+  run.
 - **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
   present moment through learned maps (a content address over the block's units and a term per
   block). The maps start at zero and learn by the recall memory's address lesson on the message's

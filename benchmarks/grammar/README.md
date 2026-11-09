@@ -1033,6 +1033,47 @@ the controls after one pass (online) or to the stopping rule (offline), at the p
 - **Work.** A `state_256` life takes 1,221 s and 2.4e13 multiply-accumulates; `default` 113 s and
   9.5e11; the LSTM offline at 430,602 parameters 2.3e13.
 
+### The quiet message's cost
+
+[MEANING_PROTOCOL_3.md](MEANING_PROTOCOL_3.md), declared before its run on founders 9828600 to
+9828605, tests where the quiet message's three-hop cost beside a free read comes from. Every arm
+has the read free and the default lessons at 64 association neurons: `quiet` (70 units a block at
+amplitude .15), the phase count at 24 and 32 (`message_phases`: no lesson's episode wraps at 24,
+and at 32 no episode read does), a message held from `GO` (`message_boundary=33`,
+`message_boundary_holds=True`: the brain's own words do not join), a message emptied at `GO`
+(`message_boundary=33`: it holds the words said), and the amplitude at .10; each against `default`
+and `heard` (`history_decays=(0.0,)`), paired by founder.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/meaning.py plan --third --out DIR/plans
+PYTHONPATH=src python benchmarks/grammar/meaning.py lives --plan DIR/plans/free.json --out DIR/free.jsonl --workers 32
+PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/free.jsonl --third free
+```
+
+| Arm | Parameters | clause | clause_held | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `default` | 28,716 | .93 | .84 | .81 | .77 | .98 | .35 |
+| `heard` | 30,992 | 1.00 | .97 | .99 | .86 | .98 | .71 |
+| `quiet` | 46,920 | 1.00 | .84 | .92 | .92 | .90 | .13 |
+| `quiet_24` | 137,940 | .99 | .89 | .89 | .91 | .90 | .26 |
+| `quiet_32` | 174,348 | .99 | .86 | .94 | .83 | .89 | .23 |
+| `quiet_hold` | 46,920 | .99 | .89 | .91 | .89 | .95 | .35 |
+| `quiet_clear` | 46,920 | 1.00 | .88 | .92 | .89 | .98 | .24 |
+| `quiet_10` | 46,920 | .99 | .82 | .93 | .84 | .96 | .18 |
+
+- **The cause is the brain's own words.** With them kept out of the message (`quiet_hold`) three
+  hops read the default's mean (+.00, paired) with the lifts kept (clauses +.06, held-out
+  combinations +.05, roles +.10, brackets +.12) and paths -.03; with the message holding the words
+  said alone (`quiet_clear`) three hops fall .11. The phase count is not the cause: at 24 and 32
+  phases three hops fall .09 and .12 and paths .08 and .09. The amplitude at .10 leaves the cost
+  (-.17).
+- **The gate fails on the founders' spread.** F3 asks every panel to sit within .03 of the default
+  on 5 of 6 founders; `quiet_hold` reaches that on clauses and held-out combinations and on three
+  of six founders for paths (+.02, -.06, -.03, -.02, -.11, +.05) and three hops (+.28, +.02, -.02,
+  -.03, -.09, -.14). No arm holds F3, and the protocol's second part (roles) did not run.
+- **Against the previous-word signal** every message arm is under `heard` on held-out
+  combinations, roles and three hops (-.36 to -.58).
+
 ### What the held-meaning readings establish
 
 - In the default composition a sentence's meaning lives in the recall memory's slots. The carried
@@ -1059,6 +1100,10 @@ the controls after one pass (online) or to the stopping rule (offline), at the p
   At the default width a read of one block of the message lifts new combinations by .26 and .44
   and stays under .90. Beside a free read a quiet message keeps paths and costs three hops; the wide
   message takes the clauses over and costs paths.
+- The quiet message's three-hop cost beside a free read comes from the brain's own words joining
+  the message as it speaks: held from `GO` the message costs three hops nothing at the mean and
+  keeps its lifts, and the phase count is not the cause. The gate on 5 of 6 founders fails on the
+  founders' spread.
 
 These readings are on one finite language with supplied meanings. Open in #286: role twins and the
 default width from the brain's own message, and a message beside a free read that costs no panel.

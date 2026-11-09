@@ -134,3 +134,56 @@ The step term, the learned map from words to concept codes, lengths, depths, per
 ## Compute
 
 One AWS c7i.8xlarge, one process per life, one BLAS thread per process.
+
+## Result
+
+Part 1 read on one c7i.8xlarge, founders 9828600 to 9828605, 48 lives on commit 79bb2c17. F3
+fails on every arm, so part 2 did not run. Every table is on the chamber's page
+([the quiet message's cost](README.md#the-quiet-messages-cost)).
+
+| Arm | Parameters | clause | clause_held | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `default` | 28,716 | .93 | .84 | .81 | .77 | .98 | .35 |
+| `heard` | 30,992 | 1.00 | .97 | .99 | .86 | .98 | .71 |
+| `quiet` | 46,920 | 1.00 | .84 | .92 | .92 | .90 | .13 |
+| `quiet_24` | 137,940 | .99 | .89 | .89 | .91 | .90 | .26 |
+| `quiet_32` | 174,348 | .99 | .86 | .94 | .83 | .89 | .23 |
+| `quiet_hold` | 46,920 | .99 | .89 | .91 | .89 | .95 | .35 |
+| `quiet_clear` | 46,920 | 1.00 | .88 | .92 | .89 | .98 | .24 |
+| `quiet_10` | 46,920 | .99 | .82 | .93 | .84 | .96 | .18 |
+
+Each arm less `default`, paired by founder, mean (standard error) and founders at or above -.03
+of 6 (a difference of two sentences in 64 is -.031 and counts as under):
+
+| Arm | clause | clause_held | roles | dyck | path | three hops | F3 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `quiet` | +.07 (.04) 6 | +.00 (.08) 4 | +.11 (.06) 5 | +.15 (.11) 5 | -.07 (.08) 5 | -.22 (.07) 1 | fails |
+| `quiet_24` | +.06 (.05) 5 | +.05 (.06) 5 | +.07 (.06) 4 | +.15 (.14) 5 | -.08 (.02) 1 | -.09 (.11) 2 | fails |
+| `quiet_32` | +.06 (.04) 5 | +.02 (.06) 3 | +.12 (.05) 5 | +.06 (.11) 4 | -.09 (.05) 1 | -.12 (.08) 1 | fails |
+| `quiet_hold` | +.06 (.04) 6 | +.05 (.07) 5 | +.10 (.07) 4 | +.12 (.08) 4 | -.03 (.02) 3 | +.00 (.06) 3 | fails |
+| `quiet_clear` | +.07 (.04) 6 | +.04 (.07) 5 | +.10 (.06) 5 | +.12 (.10) 4 | +.01 (.01) 5 | -.11 (.08) 2 | fails |
+| `quiet_10` | +.06 (.04) 5 | -.02 (.03) 4 | +.12 (.07) 5 | +.07 (.11) 4 | -.02 (.03) 5 | -.17 (.08) 1 | fails |
+
+Against `heard`: every message arm is under it on held-out combinations (-.08 to -.15), roles
+(-.06 to -.11) and three hops (-.36 to -.58), level on clauses and brackets.
+
+**Against the expectations.** `quiet` read as stated (paths -.07 with one founder at .53, three
+hops -.22). `quiet_24` and `quiet_32` cost three hops (-.09, -.12) and paths (-.08, -.09) as
+stated: the phase count is not the cause. `quiet_hold` was expected to cost paths and hold three
+hops no better; it held three hops at the default's mean (+.00: .56, .28, .41, .44, .22, .22
+against .28, .27, .42, .47, .31, .36) and cost paths .03 at the mean, with the lifts kept (clauses
++.06, held-out +.05, roles +.10, brackets +.12). `quiet_clear` kept paths (+.01) and cost three
+hops -.11 where a larger cost was expected. `quiet_10` cost three hops -.17 where less was
+expected.
+
+**What the failure names.** The cause of the three-hop cost is the brain's own words joining the
+message while it speaks: with them kept out (`quiet_hold`) three hops read the default's mean, and
+with the message holding them alone (`quiet_clear`) three hops fall .11. The phase count is not
+the cause (`quiet_24`, `quiet_32`), and the amplitude a notch lower leaves it (`quiet_10`). F3
+fails on `quiet_hold` by the founders' spread: three hops +.28, +.02, -.02, -.03, -.09, -.14, and
+paths +.02, -.06, -.03, -.02, -.11, +.05, three of six at or above -.03 on each. Read with the
+message silent, `quiet_hold` says clauses at .86 (the other arms .10 to .16): with its own words
+kept out of the message the brain says its clauses through the read and lifts them with the
+message, and three hops fall to .01, so the held meaning is what it says a long path from.
+
+Part 2 did not run; its arms and gate stand declared for a later run.

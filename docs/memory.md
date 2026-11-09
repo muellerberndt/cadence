@@ -1532,7 +1532,11 @@ the same brain with `history_decays=(0.0,)` in the message's place says .07, .00
 default composition's 64 association neurons the message alone reads .79, .47, .30 and the read of
 one block beside it .89, .72, .74. Beside a free recall read, a quiet message (70 units at
 amplitude .15) keeps paths and lifts clauses, brackets and roles, and costs three-hop paths .22;
-the wide message costs paths .26. None of these is a default.
+the wide message costs paths .26. The three-hop cost comes from the brain's own words joining the
+message as it speaks: held from `GO` (`message_boundary`, `message_boundary_holds`) the quiet
+message costs three hops nothing at the mean and keeps its lifts
+([the third run](../benchmarks/grammar/README.md#the-quiet-messages-cost)). None of these is a
+default.
 
 ## How strongly a carried region is heard
 
