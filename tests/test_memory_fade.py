@@ -69,6 +69,17 @@ def test_a_record_in_use_keeps_and_an_idle_one_fades():
     assert store.fade_depth[0] > store.fade_depth[1] > 0
 
 
+def test_only_a_row_that_writes_deepens_its_records():
+    store = SynapticMemory(np.arange(3), np.arange(3, 5), fade=0.01)
+    store.reset(2)
+    keys, values = np.eye(3)[[0, 1]], np.array([[1.0, 0.0], [0.0, 1.0]])
+    mask = np.array([[True, False], [False, False]])  # the second row observes no value: no write
+    store.observe(keys, values, value_mask=mask)
+    assert store.fade_depth.tolist() == [1.0, 0.0, 0.0]
+    store.observe(keys, values, np.array([False, True]))  # the first row is gated off
+    assert store.fade_depth.tolist() == [1.0, 1.0, 0.0]
+
+
 def test_a_deep_record_fades_far_more_slowly():
     shallow = SynapticMemory(np.arange(2), np.arange(2, 4), fade=1e-3)
     deep = SynapticMemory(np.arange(2), np.arange(2, 4), fade=1e-3)
