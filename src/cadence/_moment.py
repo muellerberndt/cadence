@@ -39,6 +39,9 @@ __all__ = [
 # drive, and an act and a lesson call their passes without the general path's layers. False runs
 # the compiled passes through the general path (the tests compare the two to the bit).
 SHORTCUTS = True
+# An act, and a lesson's judgment, each as one compiled call (``one_call``), with the bits of the
+# shortcuts above. False runs them as the passes they are made of (the tests compare the two).
+ONE_CALL = True
 
 
 def available() -> bool:
@@ -96,23 +99,6 @@ if njit is not None:
                 z[b, j] += w[j]
         return z
 
-    @_inlined
-    def _dot(q: np.ndarray, b: int, keys: np.ndarray, m: int, width: int) -> float:
-        """``q[b, :width] . keys[b, m, :width]`` in four running sums, which one sum cannot
-        overlap; indexed in place, since a view per slot costs its reference counts."""
-        s0 = s1 = s2 = s3 = 0.0
-        row, at = _index(b), _index(m)
-        quads = _index(width - width % 4)
-        for k in range(quads // _index(4)):
-            j = _index(4) * k
-            s0 += q[row, j] * keys[row, at, j]
-            s1 += q[row, j + _index(1)] * keys[row, at, j + _index(1)]
-            s2 += q[row, j + _index(2)] * keys[row, at, j + _index(2)]
-            s3 += q[row, j + _index(3)] * keys[row, at, j + _index(3)]
-        for j in range(quads, _index(width)):
-            s0 += q[row, j] * keys[row, at, j]
-        return float((s0 + s1) + (s2 + s3))
-
     @_vectorized
     def _packed_read(
         x: np.ndarray, c: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
@@ -123,33 +109,89 @@ if njit is not None:
         """Every row's key, address, attention over its slots and reads of the values and the
         nexts (``Recall.stimulate`` with one head), the maps packed (``packed_maps``): one
         product of the rows' inputs with every column, then each slot's logit. The slots are
-        ``slots`` entries of the arrays from ``first`` on (the room behind a memory's slots)."""
+        ``slots`` entries of the arrays from ``first`` on (the room behind a memory's slots).
+        A slot's dot product (four running sums, which one sum cannot overlap) and its position
+        term (``_term``'s arithmetic) are written in place: a helper's arrays cost their
+        reference counts per slot."""
         rows, width = x.shape
         address_width = columns[1]
         value_width = values.shape[2]
         heard, temperature, recency, slope_unit = scalars[0], scalars[1], scalars[2], scalars[3]
+        has_position, has_anchor = numbers[0] != 0, numbers[1] != 0
+        has_relative, has_slope, has_grid = numbers[2] != 0, numbers[3] != 0, numbers[4] != 0
+        position, reach, outside = numbers[5], numbers[6], numbers[7]
+        c2, c3, c4, c5 = columns[2], columns[3], columns[4], columns[5]
+        last = table.shape[0] - 1
+        moduli = grid.shape[0]
         z = _products(x, c, w_x, w_c, w)
         key = np.empty((rows, width))
         q = np.empty((rows, address_width))
         attention = np.empty((rows, slots))
         read = np.zeros((rows, value_width))
         following = np.zeros((rows, value_width if has_next else 0))
+        # per slot, the same in every row: its table column and its age over the slope's unit
+        column_of = np.zeros(slots, dtype=np.int64)
+        lean_of = np.empty(slots)
+        for m in range(slots):
+            age = slots - 1 - m
+            if has_position:
+                column_of[m] = columns[1] + table[min(age, last)]
+            lean_of[m] = age / slope_unit
+        quads = address_width - address_width % 4
         for b in range(rows):
             for k in range(width):
                 key[b, k] = heard * x[b, k]
             for j in range(address_width):
                 q[b, j] = key[b, j] + z[b, j]
+            episode, focused = told[b], focus[b]
             top = -np.inf
             for m in range(slots):
-                if not held[b, first + m]:
+                at = first + m
+                if not held[b, at]:
                     attention[b, m] = -np.inf
                     continue
                 age = slots - 1 - m
-                logit = _dot(q, b, keys, first + m, address_width) / temperature
+                s0 = 0.0
+                s1 = 0.0
+                s2 = 0.0
+                s3 = 0.0
+                j = 0
+                while j < quads:
+                    s0 += q[b, j] * keys[b, at, j]
+                    s1 += q[b, j + 1] * keys[b, at, j + 1]
+                    s2 += q[b, j + 2] * keys[b, at, j + 2]
+                    s3 += q[b, j + 3] * keys[b, at, j + 3]
+                    j += 4
+                while j < address_width:
+                    s0 += q[b, j] * keys[b, at, j]
+                    j += 1
+                logit = ((s0 + s1) + (s2 + s3)) / temperature
                 if recency != 0.0:
                     logit -= recency * age
-                logit += _term(z, b, age, columns, numbers, slope_unit, told[b], focus[b], table,
-                               grid)
+                term = 0.0
+                if has_position:
+                    term = z[b, column_of[m]]
+                    if has_anchor:
+                        place = episode - 1 - age
+                        if place < 0:
+                            term += z[b, c2 + outside]
+                        else:
+                            term += z[b, c2 + table[min(place, last)]]
+                    if has_relative:
+                        if focused < 0:
+                            term += z[b, c3 + 2 * reach + 1]
+                        else:
+                            term += z[b, c3 + max(min(age - focused, reach), -reach) + reach]
+                    if has_slope:
+                        term += z[b, c4] * lean_of[m]
+                    if has_grid and age >= position:
+                        total = 0.0
+                        start = 0
+                        for i in range(moduli):
+                            total += z[b, c5 + start + age % grid[i]]
+                            start += grid[i]
+                        term += total
+                logit += term
                 attention[b, m] = logit
                 top = max(top, logit)
             if top == -np.inf:  # a stream that holds no slot reads silence
@@ -421,7 +463,9 @@ def _settings(recall: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarr
     table = recall._age_buckets() if recall.position_maps else _NO_TABLE
     grid = np.asarray(recall.grid if recall.grid_maps else (1,), dtype=np.int64)
     settings = (numbers, scalars, np.ascontiguousarray(table, dtype=np.int64), grid)
-    recall.__dict__["_kernel_settings"] = (key, settings)
+    within = numbers.copy()
+    within[4] = 0  # the numbers of a read whose slots do not reach the grid's columns
+    recall.__dict__["_kernel_settings"] = (key, settings, within)
     return settings
 
 
@@ -1084,7 +1128,7 @@ def after_spans(brain: Any) -> np.ndarray | None:
     key = (id(output), id(trace), id(brain.recall))
     if held is not None and held[0] == key:
         return held[1]  # type: ignore[no-any-return]
-    parts = (
+    parts: tuple[Any, ...] = (
         contiguous(np.asarray(output, dtype=np.int64)),
         trace._hidden_columns if trace is not None else slice(0, 0),
         brain.recall._association_columns,
@@ -1094,3 +1138,253 @@ def after_spans(brain: Any) -> np.ndarray | None:
         spans = np.array([v for part in parts for v in (part.start, part.stop)], dtype=np.int64)
     brain.__dict__["_after_spans"] = (key, spans, output, trace)
     return spans
+
+
+def written(recall: Any, rooms: tuple[Any, ...], rows: int, focus: np.ndarray,
+            cortex: np.ndarray) -> None:
+    """The memory after a compiled write into ``rooms`` (``_rooms``), as ``Recall.witness``
+    leaves it: the slots one longer, the episode and the focus moved, the cortex carried."""
+    first, stop, drop = rooms[0][2], rooms[0][3], rooms[4]
+    if recall.ended.any():
+        recall.ended = np.zeros(rows, dtype=bool)
+    new_first = first + drop
+    for name, room in zip(("keys", "values", "nexts", "held"), rooms[:4], strict=True):
+        view = room[0][:, new_first : stop + 1]
+        recall._rooms[name] = (room[0], view, new_first, stop + 1)
+        setattr(recall, name, view)
+    recall._contents = []
+    recall._content_keys = None
+    recall.told = recall.told + 1
+    recall.focus = focus
+    recall.writes += rows
+    recall.previous = cortex
+    recall.last = None
+
+
+# -- an act, and a lesson's judgment, in one call
+
+if njit is not None:
+    from .fused import _fast_solve, _publish, _standing, rows_finite
+
+    @_compiled
+    def _moment_kernel(
+        x: np.ndarray, c: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
+        columns: np.ndarray, numbers: np.ndarray, scalars: np.ndarray, keys: np.ndarray,
+        values: np.ndarray, nexts: np.ndarray, has_next: bool, held: np.ndarray, first: int,
+        slots: int, told: np.ndarray, focus: np.ndarray, table: np.ndarray, grid: np.ndarray,
+        neurons: int, spans: np.ndarray, gains: np.ndarray, flags: np.ndarray,
+        trace: np.ndarray, strength: np.ndarray, mass: np.ndarray, warm: np.ndarray,
+        warm_a: np.ndarray, has_warm: bool, kept_in: np.ndarray, has_kept: bool,
+        bias: np.ndarray, flat: np.ndarray, starts: np.ndarray, pair_pre: np.ndarray,
+        pair_post: np.ndarray, offset: np.ndarray, rule: np.ndarray, budget: int,
+        tolerance: float, settled: float, mode: int, after: np.ndarray, temperature: float,
+        decay: float, write: bool, ended: np.ndarray, drop: int, stop: int,
+    ) -> tuple[Any, ...]:
+        """A moment in one call, each part the kernel the passes in turn call: the drive
+        (``_drive_kernel``), the free solve from the warm state (the activations of its
+        potentials, ``fused._fast_solve``) and, where every row qualifies, for an act (``mode``
+        0) its choice, trace step and write (``_after_kernel``), for a lesson's judgment
+        (``mode`` 1) each row's most active motor neuron. ``status`` is 0 where the moment is
+        whole, 1 where the drive or the warm state is not finite and 2 where a row does not
+        qualify; nothing of the memory is written then."""
+        rows = x.shape[0]
+        drive, key, q, attention, ports = _drive_kernel(
+            x, c, w_x, w_c, w, columns, numbers, scalars, keys, values, nexts, has_next, held,
+            first, slots, told, focus, table, grid, neurons, spans, gains, flags, trace,
+            strength, mass,
+        )
+        v = np.zeros((rows, neurons))
+        a = np.zeros((rows, neurons))
+        s = np.empty((rows, neurons))
+        out = np.empty(rows)
+        used = 0
+        checks = 0
+        taken = 0
+        row_sweeps = 0
+        kept = kept_in
+        status = 0
+        if not rows_finite(drive):
+            status = 1
+        if status == 0 and has_warm:
+            if rows_finite(warm) and rows_finite(warm_a):
+                for b in range(rows):
+                    for i in range(neurons):
+                        v[b, i] = warm[b, i]
+                        a[b, i] = warm_a[b, i]
+            else:
+                status = 1
+        if status == 0:
+            _publish(v, s, kept_in, has_kept, rule[0], rule[1], rule[2], rule[3])
+            used, checks, taken, row_sweeps, kept = _fast_solve(
+                v, s, _standing(drive, bias), flat, starts, pair_pre, pair_post, offset,
+                rule[0], rule[1], rule[2], rule[3], budget, 16, tolerance, settled, out,
+            )
+            for b in range(rows):
+                if not out[b] <= tolerance:
+                    status = 2
+        action = np.zeros(rows, dtype=np.int64)
+        clear = True
+        stepped = np.empty((0, 0))
+        source = np.empty((0, 0))
+        cortex = np.empty((0, 0))
+        moved = focus
+        if status == 0 and mode == 0:
+            action, clear, stepped, source, cortex, moved = _after_kernel(
+                s, after, temperature, decay, trace, flags[0] != 0, write, key, x, ended,
+                attention, slots > 0, focus, keys, values, nexts, held, first, slots, drop,
+                stop,
+            )
+        if status == 0 and mode == 1:
+            start, width = after[0], after[1] - after[0]
+            for b in range(rows):
+                best = s[b, start]
+                at = 0
+                for j in range(1, width):
+                    if s[b, start + j] > best:
+                        best = s[b, start + j]
+                        at = j
+                action[b] = at
+        return (
+            status, drive, key, q, attention, ports, v, a, s, out, used, checks, taken,
+            row_sweeps, kept, action, clear, stepped, source, cortex, moved,
+        )
+
+
+_RULE_ARRAYS: dict[int, tuple[Any, np.ndarray]] = {}
+
+
+def _rule_array(model: Any) -> np.ndarray:
+    """``_rule_of`` as the array the one-call kernel reads, made once per model."""
+    held = _RULE_ARRAYS.get(id(model))
+    if held is None or held[0] is not model:
+        held = (model, np.array(_rule_of(model), dtype=float))
+        if len(_RULE_ARRAYS) > 64:
+            _RULE_ARRAYS.clear()
+        _RULE_ARRAYS[id(model)] = held
+    return held[1]
+
+
+def motor_spans(brain: Any) -> np.ndarray | None:
+    """The motor region's range as the one-call kernel's judgment reads it (``after`` of
+    ``_moment_kernel``); None where it is not one contiguous range. Made once per brain."""
+    from .stream import columns as contiguous
+
+    index = brain.motor_index
+    held = brain.__dict__.get("_motor_spans")
+    if held is not None and held[0] is index:
+        return held[1]  # type: ignore[no-any-return]
+    part: Any = contiguous(np.asarray(index, dtype=np.int64))
+    spans = (
+        np.array([part.start, part.stop, 0, 0, 0, 0], dtype=np.int64)
+        if isinstance(part, slice) else None
+    )
+    brain.__dict__["_motor_spans"] = (index, spans)
+    return spans
+
+
+def one_call(
+    brain: Any, x: np.ndarray, state: Any, mode: int, spans: np.ndarray, after: np.ndarray
+) -> tuple[Any, ...] | None:
+    """A moment of ``brain`` at the observations ``x`` from the warm ``state`` in one compiled
+    call (``_moment_kernel``): for an act (``mode`` 0) with ``after`` from ``after_spans``, for
+    a lesson's judgment (``mode`` 1) with ``after`` from ``motor_spans``. Returns the cortex of
+    the moment before, the rooms a write went into (None without a compiled write), the blocks
+    the solve read and the kernel's values; None where an array is not the kernel's kind (the
+    caller takes the passes in turn). The caller installs what the kernel returns."""
+    from . import fused
+    from .stream import _of
+
+    recall, trace, store = brain.recall, brain.working_memory, brain.hippocampus
+    graph = brain.brain
+    rows = len(x)
+    n = graph.connectome.n
+    if not (x.flags.c_contiguous and x.flags.writeable):
+        return None
+    if state is None:
+        warm = warm_a = _NO_ROWS
+        has_warm = False
+        kept_in, has_kept = fused._NO_PRODUCTS
+    else:
+        warm, warm_a = state.v, state.adaptation
+        for array in (warm, warm_a):
+            if (
+                type(array) is not np.ndarray or array.shape != (rows, n)
+                or array.dtype != np.float64 or not array.flags.c_contiguous
+                or not array.flags.writeable
+            ):
+                return None
+        has_warm = True
+        kept_in, has_kept = fused._held(state.__dict__.get("_products"))
+    c = np.ascontiguousarray(_of(recall.previous, rows))
+    w_x, w_c, w, columns = packed_maps(recall)
+    numbers, scalars, table, grid = _settings(recall)
+    slots = recall.slots
+    if numbers[4] and slots <= recall.position:  # no slot reaches the grid's columns
+        w_x, w_c, w = recall.__dict__["_packed"][3]
+        numbers = recall.__dict__["_kernel_settings"][2]
+    rooms = _rooms(recall, rows) if mode == 0 else None
+    if rooms is not None:
+        keys, values, nexts, held = rooms[0][0], rooms[1][0], rooms[2][0], rooms[3][0]
+        first, stop, drop = rooms[0][2], rooms[0][3], rooms[4]
+    else:
+        stop = drop = 0
+        keys, first = _behind(recall, "keys")
+        values, at_values = _behind(recall, "values")
+        nexts, at_nexts = _behind(recall, "nexts") if recall.next else (values, at_values)
+        held, at_held = _behind(recall, "held")
+        if not first == at_values == at_nexts == at_held:
+            keys, values, held = (
+                np.ascontiguousarray(a) for a in (recall.keys, recall.values, recall.held)
+            )
+            nexts = np.ascontiguousarray(recall.nexts) if recall.next else values
+            first = 0
+    has_trace = trace is not None
+    shared = store is not None and len(store.strength) != rows
+    if store is None:
+        strength, mass = _NO_STORE, _NO_MASS
+    elif shared:
+        strength, mass = np.ascontiguousarray(store._baseline()[None, :, :]), store.mass
+    else:
+        strength, mass = store.strength, store.mass
+    scales = (
+        graph.neuron_model.stimulus_amplitude,
+        trace.amplitude * trace.hearing if has_trace else 0.0,
+        1.0 if recall.drive_gain else recall.amplitude,
+        recall.amplitude * recall.hearing,
+        0.0 if store is None else float(store.amplitude),
+        has_trace, bool(recall.drive_gain), store is not None, shared,
+        store is not None and bool(store.normalize),
+    )
+    made = brain.__dict__.get("_moment_scales")
+    if made is None or made[0] != scales:
+        made = (scales, np.array(scales[:5], dtype=float), np.array(scales[5:], dtype=np.int64))
+        brain.__dict__["_moment_scales"] = made
+    cfg = brain.learner.config
+    budget = cfg.free_steps
+    tolerance = float(cfg.tolerance)
+    flat = graph._fused_blocks()[0]
+    layout = graph.layout
+    out = _moment_kernel(
+        x, c, w_x, w_c, w, columns, numbers, scalars, keys, values, nexts, bool(recall.next),
+        held, first, slots, recall.told, recall.focus, table, grid, n, spans, made[1], made[2],
+        trace.trace if has_trace else _NO_ROWS, strength, mass, warm, warm_a, has_warm,
+        kept_in, has_kept, graph.bias, flat, layout.starts, layout.pair_pre, layout.pair_post,
+        layout.offset, _rule_array(graph.neuron_model), budget if budget < 2 else (budget + 1) // 2,
+        tolerance, min(tolerance, fused._FAST_SETTLED), mode, after,
+        float(cfg.temperature), 0.0 if trace is None else float(trace.decay),
+        rooms is not None, recall.ended, drop, stop,
+    )
+    return c, rooms, flat, out
+
+
+def solved_state(
+    flat: np.ndarray, rows: int, v: np.ndarray, a: np.ndarray, s: np.ndarray, taken: int,
+    kept: np.ndarray,
+) -> Any:
+    """The state a one-call solve ends on, with what it keeps, as ``free_solve`` returns it."""
+    from . import fused
+    from .brain import BrainState, _keep_products
+
+    result = BrainState(v=v, activation=s, adaptation=a, steps=taken)
+    _keep_products(result, fused._kept(flat, flat, rows, kept))
+    return result

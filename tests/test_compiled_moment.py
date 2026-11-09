@@ -181,32 +181,61 @@ def test_the_compiled_write_keeps_every_bit(began: bool, monkeypatch: pytest.Mon
     assert any(taken)  # the compiled write ran where the rooms had space
 
 
-def _chamber_life(subject: cd.Brain, seed: int, moments: int = 40) -> list[np.ndarray]:
-    """Taught and acted moments on fresh streams of four, as the grammar chamber lives them: a
-    lesson, then the act of the same observations; a reset every eight moments."""
+def _chamber_life(subject: cd.Brain, seed: int, moments: int = 66) -> list[np.ndarray]:
+    """Taught and acted moments on streams of four, as the grammar chamber lives them: a lesson,
+    then the act of the same observations. Every third lesson shows the brain's own answer, so
+    it teaches no row and the act after it reads the lesson's read and solve. The streams begin
+    again after 22 moments, past the first room behind the memory's slots."""
     rng = np.random.default_rng(seed)
     actions = []
     for t in range(moments):
-        if t % 8 == 0:
+        if t % 22 == 0:
             subject.reset()
         x = (rng.random((4, 8)) < 0.3).astype(float)
-        if t % 8 >= 2:
-            subject.lesson(x, rng.integers(0, 4, 4))
+        labels = rng.integers(0, 4, 4)
+        if t % 3 == 0:
+            labels = copy.deepcopy(subject).act(x, greedy=True)
+        if t % 22 >= 2:
+            subject.lesson(x, labels)
         actions.append(subject.act(x, greedy=True))
     return actions
+
+
+# the compiled passes through the general path, with the shortcuts, and with an act and a
+# lesson's judgment each as one compiled call
+MODES = [(False, False), (True, False), (True, True)]
 
 
 @pytest.mark.parametrize("options", READS)
 def test_the_shortcuts_keep_the_compiled_moments_bits(options, monkeypatch) -> None:
     from cadence import _moment
 
+    whole: dict[int, int] = {}
+    call = _moment.one_call
+
+    def counted(subject, x, state, mode, spans, after):
+        found = call(subject, x, state, mode, spans, after)
+        if found is not None and found[3][0] == 0:
+            whole[mode] = whole.get(mode, 0) + 1
+        return found
+
+    monkeypatch.setattr(_moment, "one_call", counted)
     lives = []
-    for shortcuts in (False, True):
+    for shortcuts, one_call in MODES:
         monkeypatch.setattr(_moment, "SHORTCUTS", shortcuts)
+        monkeypatch.setattr(_moment, "ONE_CALL", one_call)
         subject = brain(learning_compiled_moment=True, **options)
         actions = _chamber_life(subject, 5)
         lives.append((subject, actions))
-    (a, acts_a), (b, acts_b) = lives
+    for other in lives[1:]:
+        _same_life(lives[0], other)
+    # most acts and every lesson's judgment ran as one call (the acts after a lesson that taught
+    # nothing read the lesson's solve, and a stream's first act writes through the general path)
+    assert whole[0] >= 36 and whole[1] >= 54, whole
+
+
+def _same_life(first, second) -> None:
+    (a, acts_a), (b, acts_b) = first, second
     for x, y in zip(acts_a, acts_b, strict=True):
         np.testing.assert_array_equal(x, y)
     np.testing.assert_array_equal(a.brain.efficacy, b.brain.efficacy)
