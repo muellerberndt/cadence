@@ -146,6 +146,23 @@ def test_step_moments_fade_and_a_refused_moment_changes_nothing(monkeypatch):
         assert np.array_equal(getattr(brain.hippocampus, name), value), name
 
 
+def test_learn_on_its_own_cues_by_the_next_observations():
+    brain = cd.Brain.compose(6, 3, seed=2, memory_fade=0.01, recall=False)
+    x = np.eye(6)[[1]]
+    brain.act(x)
+    depth = brain.hippocampus.fade_depth.copy()
+    recent = brain.hippocampus.fade_recent.copy()
+    brain.learn(np.array([1.0]), np.array([False]), np.eye(6)[[4]])  # reward, done, next
+    kept = 1 - 1 / brain.hippocampus.FADE_IDLE  # the trace takes the cue, then decays a moment
+    moved = brain.hippocampus.fade_recent - recent * kept
+    assert moved[4] == pytest.approx(kept) and np.allclose(moved[[0, 1, 2, 3, 5]], 0.0)
+    assert brain.hippocampus.fade_depth[4] - depth[4] == pytest.approx(1.0)
+    one = cd.Brain.compose(1, 2, seed=2, memory_fade=0.01, recall=False)  # a key as wide as the reward
+    one.act(np.zeros((1, 1)))
+    one.learn(np.array([1.0]), np.array([False]), np.zeros((1, 1)))  # a blank moment cues nothing
+    assert not one.hippocampus.fade_recent.any()
+
+
 def test_grow_and_graft_keep_the_fade():
     brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, memory_fade=0.01, recall=False),
                  moments=120, idle=30)

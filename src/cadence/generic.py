@@ -228,7 +228,10 @@ def _moment_of_life(method: _Operation) -> _Operation:
                 maturity.relax()
             if fading:  # the moment's place key cues the records it uses (``memory_fade``)
                 assert isinstance(store, SynapticMemory)
-                x = args[0] if args else kwargs.get("observations")
+                if method.__name__ == "learn":  # ``learn(reward, done, next_observations)``
+                    x = args[2] if len(args) > 2 else kwargs.get("next_observations")
+                else:
+                    x = args[0] if args else kwargs.get("observations")
                 store.fade_moment(None if x is None else self._fade_key(x))
         return result
 
@@ -5042,9 +5045,9 @@ class Brain:
         the observation code where the store keys on it, else the observations."""
         try:
             raw = np.atleast_2d(np.asarray(_on_host(x), dtype=float))
-        except (TypeError, ValueError):
+            return np.atleast_2d(np.asarray(self._code(raw))) if self._coded_keys else raw
+        except (TypeError, ValueError):  # no key of this moment: it cues no record
             return None
-        return np.atleast_2d(np.asarray(self._code(raw))) if self._coded_keys else raw
 
     def _placed(self, x: np.ndarray) -> np.ndarray:
         """The code the place stores key on (the associative store, the episodic place
