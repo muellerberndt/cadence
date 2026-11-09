@@ -440,7 +440,9 @@ For modules of several hundred neurons and more
   `w`, with no setting: above 64 the projection from prefrontal to association and the association-motor pair step at
   `64 / w` (`Learner.synapse_rate`), and `recall_address` is .01 times `64 / w`. At 64 and under every step is whole.
   Every other projection keeps its step: the sensory one, a chain between modules, an observer's and the memory's reads.
-  The rate multiplies every step on those synapses, a lesson's and a reward's.
+  The rate multiplies every step on those synapses, a lesson's and a reward's. A rate of zero holds a synapse and its
+  optimizer history, and a neuron whose every inbound synapse steps at zero holds its bias too: zero on every synapse
+  into a region, both directions of each pair, freezes the region.
 
 A rate you name wins over its part:
 

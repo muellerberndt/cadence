@@ -1,5 +1,21 @@
 # Changelog
 
+## Unreleased
+
+### Simplification: the candidates 0.95.0 kept (#281)
+
+- **`Learner.synapse_rate` of zero holds the whole unit.** A synapse at rate zero takes no step
+  and the optimizer keeps its running moments (`velocity`, `second_moment`) as they are, where
+  0.95.2 kept accumulating its contrast into them. A neuron whose every inbound synapse steps at
+  zero holds its bias and the bias's moments (`velocity_bias`, `second_moment_bias`) the same
+  way, where 0.95.2 stepped the bias. `Learner.held()` names the held synapses and neurons. The
+  rule holds for lessons and rewards on the CPU, torch and MLX. What changes: a learner with a
+  rate of exactly zero on some synapse saves those moments at the values they held when the rate
+  went to zero (a newborn's zeros), and the held neurons' biases and bias moments at theirs; every
+  other value of such a learner, and every learner whose rates are all above zero or absent, is
+  as on 0.95.2 to the bit. No test, benchmark or composed brain sets a rate of zero, so no
+  recorded bytes change.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
