@@ -1275,7 +1275,9 @@ stream, so the event and the cortex weigh alike in the lesson and in the read. T
 and the settle are unchanged; the option keeps the memory off the device path.
 
 ```python
-brain = cd.Brain.compose(inputs, actions, recall=True, recall_cortex_norm=True)
+import cadence as cd
+
+brain = cd.Brain.compose(20, 12, recall=True, recall_cortex_norm=True)
 ```
 
 ### Recall cost
