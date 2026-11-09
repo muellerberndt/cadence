@@ -937,13 +937,15 @@ def twin_panels(brain: Any, tests: dict[str, list[list[gr.Row]]], message: Messa
 def invariance(brain: Any, founder: int, message: Message | None, bar: bool,
                pairs: int = 64) -> dict[str, Any]:
     """One meaning heard in the canonical and in the inverted order (the agent before the
-    patient, or after it): how close the two held states are beside the states of different
-    meanings, and whether the same sentence is said. ``closer`` is the share of meanings whose
+    patient, or after it), on combinations that training shows: how close the two held states
+    are beside the states of different meanings, and whether the same sentence is said.
+    ``closer`` is the share of meanings whose
     two orders are more alike (cosine) than the canonical order is to the nearest other
     meaning of the same shape; ``same`` the mean cosine of the two orders, ``other`` of
     different meanings. Read at ``GO`` on the message as written, on its key (the union over
     its phases) and on the settled association."""
     rng = np.random.default_rng(np.random.SeedSequence([int(founder), SEEDS["probe"], 3]))
+    split = gr.Split.of(founder)
     fork = copy.deepcopy(brain)
     association = fork.association_index
     places: dict[str, list[tuple[np.ndarray, np.ndarray]]] = {}
@@ -951,7 +953,8 @@ def invariance(brain: Any, founder: int, message: Message | None, bar: bool,
     said_same, both_right, n = 0, 0, 0
     for index in range(pairs // gr.BATCH):
         L = gr.TRAIN_L[index % len(gr.TRAIN_L)]
-        base = [gr.clause(rng, L, inverted=False) for _ in range(gr.BATCH)]
+        base = [gr.twin(gr.trained_clause(rng, split, L, False), inverted=False)
+                for _ in range(gr.BATCH)]
         other = [gr.twin(r, inverted=True) for r in base]
         identical.append(np.array([[a.target == b.target for b in base] for a in base]))
         states = []
@@ -1018,6 +1021,50 @@ def capacity_panels(founder: int, batches: int = 4) -> dict[str, list[list[gr.Ro
     rng = np.random.default_rng(np.random.SeedSequence([int(founder), gr.SEEDS["test"], 5]))
     return {f"L{L}": [[gr.trained_clause(rng, split, L, False) for _ in range(gr.BATCH)]
                       for _ in range(batches)] for L in CAPACITY_L}
+
+
+def paraphrase(row: gr.Row) -> gr.Row:
+    """A paraphrase episode of a clause: the world says the first grammar's sentence (heard
+    words, no flag), a ``DIALECT`` moment asks for the second grammar, and the sentence to say
+    is the second grammar's, the patient before the verb. No concept moment is given."""
+    said = gr.twin(row, dialect=True)
+    pre = [gr.heard(w) for w in gr.twin(row, dialect=False).target] + [gr.concept("DIALECT")]
+    return gr.Row("clause", pre, said.target, {**said.meta, "paraphrase": True})
+
+
+def paraphrase_batch(rng: np.random.Generator, split: gr.Split) -> list[gr.Row]:
+    """A paraphrase life's lesson batch: the first grammar's mix (one half), the second
+    grammar's clauses from concepts (one quarter) and paraphrases (one quarter), combinations
+    that training shows."""
+    kind = rng.random()
+    if kind < 0.5:
+        return gr.train_batch(rng, split, "g1")
+    L = int(rng.choice(gr.TRAIN_L))
+    rows = [gr.trained_clause(rng, split, L, True) for _ in range(gr.BATCH)]
+    return rows if kind < 0.75 else [paraphrase(r) for r in rows]
+
+
+def paraphrase_panels(founder: int, batches: int = 4) -> dict[str, list[list[gr.Row]]]:
+    """Paraphrases at trained lengths: ``para`` of combinations that training shows,
+    ``para_held`` each with a held-out triple or the held-out pair; ``g2`` the second
+    grammar's clauses from concepts."""
+    split = gr.Split.of(founder)
+    rng = np.random.default_rng(np.random.SeedSequence([int(founder), gr.SEEDS["test"], 9]))
+
+    def held(L: int) -> gr.Row:
+        while True:
+            row = gr.clause(rng, L, dialect=True)
+            m = row.meta
+            if split.held(tuple(m["agent"]), tuple(m["patient"]), m["verb"]):
+                return row
+
+    shape = [gr.TRAIN_L[i % len(gr.TRAIN_L)] for i in range(batches)]
+    return {
+        "para": [[paraphrase(gr.trained_clause(rng, split, L, True)) for _ in range(gr.BATCH)]
+                 for L in shape],
+        "para_held": [[paraphrase(held(L)) for _ in range(gr.BATCH)] for L in shape],
+        "g2": [[gr.trained_clause(rng, split, L, True) for _ in range(gr.BATCH)] for L in shape],
+    }
 
 
 def retrieval(founder: int, design: dict[str, Any] | None = None,
@@ -1133,7 +1180,9 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
     sentence is read barred; any other is read with the read free and again barred. ``twins``
     reads the context twins and ``invariance`` the two orders of a meaning; ``after`` continues
     the life through further phases (``[grammar, batches]``), each read; ``"train": "capacity"``
-    teaches clauses of zero to four distractors alone and reads each number apart."""
+    teaches clauses of zero to four distractors alone and reads each number apart;
+    ``"train": "paraphrase"`` teaches the first grammar's mix, the second grammar and
+    paraphrases (``paraphrase_batch``) and reads the paraphrase panels as well."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -1162,14 +1211,16 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
     work = gr.new_work()
     checks = set(int(c) for c in spec.get("checkpoints", ()))
     capacity = spec.get("train") == "capacity"
+    paraphrases = spec.get("train") == "paraphrase"
 
     def lessons(grammar: str, count: int, work: dict[str, float]) -> None:
         for b in range(1, count + 1):
             batch = (capacity_batch(rng, split) if capacity
+                     else paraphrase_batch(rng, split) if paraphrases
                      else gr.train_batch(rng, split, grammar))
             speak(brain, batch, teach=True, message=message,
                   bar=bool(barred.random() < rate), work=work)
-            if b in checks and grammar == "g1" and not capacity:
+            if b in checks and grammar == "g1" and not capacity and not paraphrases:
                 lean = message_panels(brain, tests, message, bar, ("clause", "dyck", "path"))
                 row["curve"].append({"batches": b, **{k: v["exact"] for k, v in lean.items()}})
 
@@ -1185,20 +1236,29 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
         row["seconds"] = round(time.monotonic() - started, 1)
         return row
     row["panels"] = message_panels(brain, tests, message, bar, WHOLE + LONG)
+    if paraphrases:
+        panels = paraphrase_panels(founder, int(spec.get("panel_batches", 4)))
+        row["paraphrase"] = message_panels(brain, panels, message, bar, tuple(panels))
+    if message is None and rate == 0.0 and brain.recall is not None:
+        row["located"] = {name: gr.locate(brain, tests[name])
+                          for name in ("clause", "clause_long", "dyck", "dyck_deep", "path",
+                                       "path_long")}
     if spec.get("twins"):
         row["twins"] = twin_panels(brain, tests, message, bar)
     if spec.get("invariance"):
         row["invariance"] = invariance(brain, founder, message, bar)
     if not bar:  # a life taught with the read free, read with it barred
         row["panels_barred"] = message_panels(brain, tests, message, True, WHOLE)
-    row["said"] = said_by_kind(brain, [b for name in ("clause", "dyck", "path")
-                                       for b in tests[name]], message, bar)
     scale = float(spec.get("probe_scale", 0.5))
-    if scale > 0:
+    fresh = probe_batches(founder, scale) if scale > 0 else None
+    # the readout by word kind: on the probes' fresh sentences where a life has them
+    row["said"] = said_by_kind(
+        brain, [b for name in ("clause", "dyck", "path")
+                for b in (tests if fresh is None else fresh)[name]], message, bar)
+    if fresh is not None:
         places = ("message", "carried", "settled") if message is not None else (
             "carried", "settled")
-        row["probes"] = probe_states(
-            founder, message_states(brain, probe_batches(founder, scale), message, bar), places)
+        row["probes"] = probe_states(founder, message_states(brain, fresh, message, bar), places)
     # persistence: further phases of lessons (the second grammar, then the first again), each
     # read on the first grammar's panels and the second's
     row["persistence"] = []
@@ -1298,6 +1358,85 @@ def read(rows: list[dict[str, Any]]) -> list[str]:
                          control_probe("transformer", family, name, spot, "settled")]
                 lines.append(f"| {name} | " + " | ".join(cells) + " |")
     return lines
+
+
+# ------------------------------------------------------------- the message on any chamber
+
+
+def message_class(design: dict[str, Any]) -> Any:
+    """``cadence.Brain`` with a ``cadence.Message`` on any chamber's own life loop: a class
+    whose ``compose`` adds the carrier neurons (heard-history blocks) and whose brains write
+    the message after every act and empty it at ``reset``. ``design`` holds the message's
+    ``phases``, ``units``, ``winners`` and ``fan_in`` and the ``scale`` the carrier is driven
+    at (times the history's amplitude of 3). The emulation of ``speak`` for chambers that
+    build and run their own brains; the library holds no such option."""
+    import cadence as cd
+
+    code = {k: int(design[k]) for k in ("phases", "units", "winners", "fan_in") if k in design}
+    scale = float(design.get("scale", 0.15))
+
+    class MessageBrain(cd.Brain):  # type: ignore[misc]
+        held: Any = None
+
+        @classmethod
+        def compose(cls, inputs: Any, actions: int, **options: Any) -> Any:
+            width = cd.Message(int(inputs), **code).width
+            blocks = -(-width // int(inputs))
+            brain = super().compose(inputs, actions,
+                                    **{**options, "history_decays": (0.0,) * blocks})
+            brain.held = cd.Message(int(inputs), seed=int(options.get("seed", 0)), **code)
+            return brain
+
+        def _choose(self, x: np.ndarray, *args: Any, **kwargs: Any) -> np.ndarray:
+            action = super()._choose(x, *args, **kwargs)
+            self.held.hear(np.asarray(x, dtype=float))
+            carried = np.zeros((len(x), len(self.history.glow)))
+            carried[:, :self.held.width] = scale * self.held.state
+            self.history.trace = carried
+            return np.asarray(action)
+
+        def reset(self, **kwargs: Any) -> None:
+            super().reset(**kwargs)
+            if self.held is not None:
+                self.held.reset(0)
+
+    return MessageBrain
+
+
+def knock_life(spec: dict[str, Any]) -> dict[str, Any]:
+    """One life of another chamber on the default composition, with a message or without:
+    ``chamber`` (``"battery"``, the sequence battery, with ``task`` and ``task_args``; or
+    ``"routes"``, the goal-route chamber where its file is present, with ``speaker``),
+    ``founder``, ``message`` (a design for ``message_class``, or None), and the chamber's own
+    settings (``lessons``, ``tests``, ``batches``, ``module``)."""
+    warnings.simplefilter("ignore")
+    import cadence as cd
+
+    design = spec.get("message")
+    brain_class = cd.Brain if design is None else message_class(design)
+    founder = int(spec["founder"])
+
+    def composed(inputs: int, actions: int, module: int, extra: dict[str, Any]) -> Any:
+        return brain_class.compose(inputs, actions, modules=(module,), seed=founder,
+                                   **{"backend": "cpu", "recall": True, **extra})
+
+    if spec["chamber"] == "battery":
+        battery = gr.BATTERY
+        battery.make_brain = lambda task, arm, f, settings=None, module=64: composed(
+            task.inputs, task.actions, module, settings or {})
+        row = battery.run_life({k: v for k, v in spec.items()
+                                if k not in ("chamber", "message", "tag")} | {"arm": "table"})
+        row["settings"] = spec.get("settings", {})
+    elif spec["chamber"] == "routes":
+        routes = gr._module("routes", HERE / "routes.py")
+        routes.make_brain = lambda speaker, f, settings=None, module=64: composed(
+            routes.INPUTS, routes.ACTIONS, module, settings or {})
+        row = routes.run_life({k: v for k, v in spec.items()
+                               if k not in ("chamber", "message", "tag")})
+    else:
+        raise ValueError(f"unknown chamber: {spec['chamber']!r}")
+    return {**row, "kind": "knock", "chamber": spec["chamber"], "tag": spec.get("tag"),
+            "message": design, "arm": "message" if design else "default"}
 
 
 # ------------------------------------------------------------------------- restated notes
@@ -1495,12 +1634,86 @@ def notes_life(spec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+# --------------------------------------------------------------------- the declared run
+
+DECLARED = tuple(range(9628600, 9628606))  # fresh founders (MEANING_PROTOCOL.md)
+PHASED = {"code": "separator", "blocks": ["phase:4"], "winners": 5}
+BESIDE = {**PHASED, "units": 70, "scales": [0.15]}  # the message beside a free read
+ALONE = {**PHASED, "units": 280, "scales": [0.5]}  # the message the sentence is said from
+STATE = {"module": 128, "settings": {"learning_surprise": False}}  # the state-only lives
+LATER = [["g2", 1500], ["g1", 500]]  # persistence and recovery
+KNOCK = (  # the sequence battery's tasks read with the message and without
+    ("lookback", {"lengths": [5, 12], "test_lengths": [24, 60]}),
+    ("repeat", {"lengths": [3, 6], "test_lengths": [8, 12]}),
+    ("repeat", {"unique": False, "lengths": [3, 6], "test_lengths": [8, 12]}),
+    ("induction", {"lengths": [8, 16], "test_lengths": [24, 60]}),
+    ("nback", {}),
+    ("twohop", {}),
+    ("periodic", {"periods": [40]}),
+)
+
+
+def declared_plan(founders: tuple[int, ...] = DECLARED) -> dict[str, list[dict[str, Any]]]:
+    """The declared run's lives: ``brains`` (this module's ``lives``), ``controls``
+    (``controls.py``'s plan, each control at one brain arm's parameter count) and ``knock``
+    (the other chambers, with the message and without)."""
+    full = {"twins": True, "invariance": True, "after": LATER, "probe_scale": 1.0}
+    arms: dict[str, dict[str, Any]] = {
+        "default": {"arm": "default", **full},
+        "barred": {"arm": "barred", "probe_scale": 0.0},
+        "message": {"arm": "message", "message": BESIDE, **full},
+        "message_wide": {"arm": "message", "message": {**ALONE, "scales": [0.05]},
+                         "probe_scale": 0.0},
+        "sham": {"arm": "message", "message": {**BESIDE, "sham": "present"},
+                 "probe_scale": 0.0},
+        "state": {"arm": "message_barred", "message": ALONE, **STATE, **full,
+                  "probe_scale": 3.0},
+        "state_default": {"arm": "message_barred", "message": ALONE, "probe_scale": 0.0},
+        "restated": {"kind": "notes", "module": 128},
+        "paraphrase": {"arm": "message_barred", **STATE, "train": "paraphrase",
+                       "batches": 6000, "probe_scale": 0.0,
+                       "message": {**PHASED, "blocks": ["phase:8"], "units": 140,
+                                   "scales": [0.5]}},
+    }
+    arms["paraphrase_read"] = {"arm": "default", "train": "paraphrase", "batches": 6000,
+                               "probe_scale": 0.0}
+    for units in (70, 140, 280):
+        arms[f"capacity_u{units}"] = {"arm": "message_barred", **STATE, "train": "capacity",
+                                      "message": {**ALONE, "units": units}}
+    for module in (64, 256):
+        arms[f"capacity_m{module}"] = {"arm": "message_barred", "module": module,
+                                       "settings": STATE["settings"], "train": "capacity",
+                                       "message": ALONE}
+    brains = [{**spec, "founder": f, "tag": tag} for tag, spec in arms.items() for f in founders]
+    controls = []
+    for tag in ("default", "message", "state"):
+        spec = arms[tag]
+        for f in founders:
+            parameters = int(message_brain(f, spec.get("message"), spec.get("settings"),
+                                           int(spec.get("module", 64))).parameters())
+            for model in ("lstm", "transformer"):
+                controls.append({"model": model, "mode": "online", "founder": f,
+                                 "phases": [["g1", BATCHES], *LATER], "parameters": parameters})
+                controls.append({"model": model, "mode": "offline", "founder": f,
+                                 "phases": [["g1", BATCHES]], "parameters": parameters})
+    knock = [{"kind": "knock", "chamber": "battery", "task": task, "task_args": args,
+              "founder": f, "message": design, "tag": "message" if design else "default"}
+             for task, args in KNOCK for f in founders
+             for design in (None, {"units": 70, "scale": 0.15})]
+    if (HERE / "routes.py").exists():
+        knock += [{"kind": "knock", "chamber": "routes", "speaker": "word", "founder": f,
+                   "message": design, "tag": "message" if design else "default"}
+                  for f in founders for design in (None, {"units": 70, "scale": 0.15})]
+    return {"brains": brains, "controls": controls, "knock": knock}
+
+
 def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     """One life of a plan: a message life, or by ``kind`` a diagnosis life (``"where"``) or a
-    life that restates its message (``"notes"``)."""
+    life that restates its message (``"notes"``) or a life of another chamber
+    (``"knock"``)."""
     kind = spec.get("kind")
     return (where_life if kind == "where" else notes_life if kind == "notes"
-            else message_life)(spec)
+            else knock_life if kind == "knock" else message_life)(spec)
 
 
 def macs(row: dict[str, Any]) -> float | None:
@@ -1615,6 +1828,15 @@ def read_lives(rows: list[dict[str, Any]]) -> list[str]:
                                  for r in lives]) for name in ("clause", "dyck", "path", "g2")]
                 lines.append(f"  {tag} after {phase['grammar']} x{phase['batches']}: "
                              + " / ".join(cells))
+    if any("paraphrase" in lives[0] for lives in groups.values()):
+        lines += ["", "paraphrase: the first grammar heard, the second said (by founder)"]
+        for tag, lives in groups.items():
+            if "paraphrase" in lives[0]:
+                for name in lives[0]["paraphrase"]:
+                    values = [r["paraphrase"][name]["exact"] for r in lives]
+                    lines.append(f"  {tag} {name}: {_mean(values)}  "
+                                 + " ".join(f"{v:.2f}" for v in values)
+                                 + f" ({passes(values, 0.80)[0]} of {len(values)} at .80)")
     if any("capacity" in lives[0] for lives in groups.values()):
         lines += ["", "capacity: clauses said exactly by distractors (0 to 4)"]
         for tag, lives in groups.items():
@@ -1651,9 +1873,19 @@ def main(argv: list[str] | None = None) -> int:
     lives.add_argument("--plan", type=Path, required=True)
     lives.add_argument("--out", type=Path, required=True)
     lives.add_argument("--workers", type=int, default=1)
+    planner = sub.add_parser("plan", help="write the declared run's plans into a folder")
+    planner.add_argument("--out", type=Path, required=True)
+    planner.add_argument("--founders", nargs="*", type=int, default=list(DECLARED))
     reader = sub.add_parser("read", help="print the tables of a results file")
     reader.add_argument("results", type=Path)
     args = parser.parse_args(argv)
+    if args.command == "plan":
+        warnings.simplefilter("ignore")
+        args.out.mkdir(parents=True, exist_ok=True)
+        for name, specs in declared_plan(tuple(args.founders)).items():
+            (args.out / f"{name}.json").write_text(json.dumps(specs))
+            print(f"{name}: {len(specs)} lives")
+        return 0
     if args.command == "read":
         rows = [json.loads(line) for line in args.results.read_text().splitlines() if line]
         print("\n".join(read(rows) if any(r.get("kind") == "where" for r in rows)
