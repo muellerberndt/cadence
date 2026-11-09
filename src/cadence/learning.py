@@ -1125,13 +1125,27 @@ class Learner:
 
     def _apply_device(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, float]:
         """``apply`` on the device: the same masks, tying, decay and bounds, no host array."""
+        candidate = self._device_candidate(kernel, delta_scale, delta_bias)
+        flags = kernel.torch.stack(
+            [flag.to(kernel.dtype) for flag in candidate["flags"]]
+            + [step.to(kernel.dtype) for step in candidate["steps"]]
+        ).cpu().numpy()
+        self._device_refusal(flags[:4])
+        return self._install_device(candidate, flags[4:])
+
+    def _device_candidate(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, Any]:
+        """The parameters ``_apply_device`` would install, with its checks and its report, all on
+        the device and none read: ``flags`` (the steps finite, the scaled and tied steps finite, the
+        parameters and weights finite, their summed values finite, in the order ``apply`` refuses
+        them) and ``steps`` (the report's synapse and bias steps). ``_device_refusal`` reads the
+        flags, ``_install_device`` installs."""
         torch, cfg = kernel.torch, self.config
         if (
             tuple(delta_scale.shape) != (self.brain.connectome.synapses,)
             or tuple(delta_bias.shape) != (self.brain.connectome.n,)
-            or not bool(torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all())
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        given = torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all()
         ix = self._device_indices(kernel)
         d = delta_scale.clone()
         if ix["synapses"] is not None:
@@ -1150,8 +1164,7 @@ class Learner:
             ]
         if ix["synapses"] is not None:  # tying never moves a frozen synapse
             d = d * ix["synapses"]
-        if not bool(torch.isfinite(d).all()):
-            raise ValueError("scaled and tied steps must remain finite")
+        tied = torch.isfinite(d).all()
         scale = kernel.scale + d
         db = delta_bias if ix["neurons"] is None else delta_bias * ix["neurons"]
         bias = kernel.bias_param + db
@@ -1161,12 +1174,33 @@ class Learner:
             if ix["synapses"] is None
             else torch.where(ix["synapses"].bool(), bounded, kernel.scale)
         )
-        self.brain = self.brain._with_device_parameters(scale, bias)
-        self.updates += 1
+        checked = kernel.parameter_check(scale, bias)
+        zero = torch.zeros((), dtype=d.dtype, device=d.device)
         return {
-            "scale_step": float(d.abs().mean()) if d.numel() else 0.0,
-            "bias_step": float(db.abs().mean()),
+            "scale": scale, "bias": bias, "checked": checked,
+            "flags": (given, tied, checked[3], checked[4]),
+            "steps": (d.abs().mean() if d.numel() else zero, db.abs().mean()),
         }
+
+    @staticmethod
+    def _device_refusal(flags: Any) -> None:
+        """The refusal of a ``_device_candidate`` whose four flags were read as ``flags``."""
+        if not flags[0]:
+            raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        if not flags[1]:
+            raise ValueError("scaled and tied steps must remain finite")
+        from .brain import _TorchKernel
+
+        _TorchKernel.parameter_refusal(bool(flags[2]), bool(flags[3]))
+
+    def _install_device(self, candidate: dict[str, Any], steps: Any) -> dict[str, float]:
+        """Install a ``_device_candidate`` whose flags read clear; ``steps`` its report's two
+        numbers, read."""
+        self.brain = self.brain._with_device_parameters(
+            candidate["scale"], candidate["bias"], candidate["checked"]
+        )
+        self.updates += 1
+        return {"scale_step": float(steps[0]), "bias_step": float(steps[1])}
 
     def _projections(self) -> tuple[np.ndarray, np.ndarray]:
         """Each synapse's projection (its block of the layout) and each neuron's range."""

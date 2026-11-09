@@ -139,10 +139,25 @@ of 12 to 1,024 inputs crosses over there, within about 10% on either side, and s
 inputs on an Apple M4. On MLX a moment's reads join the launch that settles on them, and a slot is written in
 place in unified memory.
 
-A memory with several heads, a window, `recall_action`, `recall_when`, `recall_gain` or
-`recall_tokens`, a store with a separator or a surprise gate, `memory_choice` and a learned code keep
-the moment's memories on the host at every size. On MLX a `maturity` reads the efficacies on the host at each
-outcome, since it measures the step applied.
+Some options keep the moment's memories on the host at every size. The device form in
+[`cadence/resident.py`](../src/cadence/resident.py) holds one read port over one bank of slots keyed on one
+event, and each of these adds a part that form does not hold, so the whole moment's memories stay with it on the
+host, where the same equations run in NumPy:
+
+| Option | What it adds that the device form does not hold |
+| --- | --- |
+| `recall_heads=2` or more | several read ports over the one bank, each reading in turn from the share of every slot the heads before it left, each with its own address map |
+| `recall_window=k` | a per-stream window of the last k events that the key and the address read in order |
+| `recall_action=True` | a bank of the executed commands beside the slots, written from the host's action choice |
+| `recall_when=True` | the read's age features, delivered on a region of their own |
+| `recall_tokens`, `recall_gain` | the tokens' identity map into the motor region and one learned gain per port, taught by the motor's movement |
+| a store with a separator, or a surprise gate | the separator's expanded code of each key, or the gate's noise over the consolidated strengths |
+| `memory_choice=True` | the episodic records: place and context records, their vote in the choice and the replay of a path |
+| `learned_code=units` | a region that settles to its code before the moment's settle, with its own lessons |
+
+These brains take a device from four times the work ([the default backend](#the-default-backend)), so their
+crossings count in the choice. On MLX a `maturity` reads the efficacies on the host at each outcome, since it
+measures the step applied.
 
 Reading one of these arrays on the host (`brain.recall.keys`, `brain.working_memory.trace`,
 `brain.hippocampus.strength`, `brain.basal_ganglia.w_critic`), saving a checkpoint, copying the brain,
@@ -154,10 +169,14 @@ but MPS, which is how the tests read this path on a machine without a GPU. `CADE
 same on MLX.
 
 Each moment crosses: to the device the observations, a sampled action's target, the outcome's
-reward, key and dopamine; to the host the motor columns, a value per stream, one number per stream and
+reward and key; to the host the motor columns, a value per stream, one number per stream and
 carried route, one small read per residual check and per settle, and one read of the lesson's or
-update's report and finite checks. The memories, the eligibility and the optimizer's state do not
-cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
+update's report and finite checks. On torch the dopamine is made on the device from the value the
+critic makes there, and an outcome reads its checks once before anything is installed: the dopamine's,
+the critic's, the recall memory's reward step and the update's, with the critic's bias step, the
+report's steps and the dopamine of every row, which the carried routes' gains take on the host. On MLX
+the dopamine is the host's and goes to the device. The memories, the eligibility and the optimizer's
+state do not cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
 
 A stream's synapse eligibility takes one float per synapse, 25 MB at the speech size in float32, so `step`
 takes its streams from the device's memory: 256 of them fit an A10G's 22 GB in float32 and in float64, and 22 GB
@@ -229,10 +248,23 @@ On an Apple M4, the same, single readings on a shared machine at a load of 12 to
 | The same | | 16 | 210, 938, 683 | 13.3, 89.2, 74.7 |
 
 MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
-have no reading; name them to use them. A CUDA card this table has not read takes the device from twice the
-work, a stated margin that no measurement sets. Options that keep the moment's memories on the
+have no reading; name them to use them. Options that keep the moment's memories on the
 host take a device from four times the work, and `precision="float64"` named on CUDA from four times, both
 reasoned from the readings above and not read at that size. A learned code stays off torch.
+
+A CUDA card this table has not read is measured once. The first brain whose work reaches a quarter of
+the table's crossing times the chamber's default brain on the card in float32 and on one core of the
+machine: a greedy `act`, a `lesson` and a `step` at 16, 64 and 256 rows, two of each after one to warm.
+Where the two cross, in `rows * synapses`, sets the card's crossings: the table's, scaled by that crossing over
+the A10G's, which the same reading of the A10G table puts at 573,568 (43.7 rows of the chamber's brain). A card
+half as fast as the A10G on that brain takes the device from twice the table's work, and a card twice as fast from
+half of it. The calibration composes six brains and times 54 moments: by the A10G table's timings about one
+second of moments, beside composing the brains and starting the device. Its result is kept beside the [stored transport plans](#choosing-kernels-by-measurement), in
+`CADENCE_PLAN_CACHE` or `~/.cache/cadence/transport_plans.json` under `card <name>`, so each card is calibrated
+once per machine. `cadence.resident.calibrate_card()` runs it by hand and returns the readings, the crossing
+and the seconds it took. `CADENCE_CALIBRATE=0` skips it, and a card without a calibration, or one whose
+calibration fails, takes the device from twice the table's work, a stated margin
+([`tests/test_default_backend.py`](../tests/test_default_backend.py)).
 
 A choice is made once, at the first moment: rows that grow later do not move the brain. `brain.placement` states
 the `backend`, `device`, `precision`, `chosen_by` (`"auto"`, `"named"` or `"environment"`), `why`, `refused` and

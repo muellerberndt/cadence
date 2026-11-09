@@ -53,15 +53,20 @@ SOURCE = str(Path(cd.__file__).resolve().parent)
 
 
 def _site() -> str:
-    """The innermost frame of the library on the stack: ``module.function``."""
+    """The innermost frames of the library on the stack, ``module.function`` each, the innermost
+    first: ``DEPTH`` of them."""
     frame = sys._getframe(2)
-    while frame is not None:
+    names: list[str] = []
+    while frame is not None and len(names) < DEPTH:
         name = frame.f_code.co_filename
         if name.startswith(SOURCE):
             module = Path(name).stem
-            return f"{module}.{getattr(frame.f_code, 'co_qualname', frame.f_code.co_name)}"
+            names.append(f"{module}.{getattr(frame.f_code, 'co_qualname', frame.f_code.co_name)}")
         frame = frame.f_back
-    return "outside"
+    return " < ".join(names) or "outside"
+
+
+DEPTH = 1
 
 
 class Ledger:
@@ -279,7 +284,7 @@ def _place(backend: str) -> dict[str, Any]:
 
 
 def _sync(brain: cd.Brain) -> None:
-    kernel = brain.brain._torch
+    kernel = getattr(brain.brain, "_torch", None)
     if kernel is not None and kernel.device.type == "cuda":
         kernel.torch.cuda.synchronize()
 
@@ -336,7 +341,10 @@ def read(name: str, backend: str, kind: str, rows: int, warm: int, count: int, s
             _sync(brain)
             if t >= warm:
                 seconds.append(time.perf_counter() - start)
-    out["placement"] = {k: brain.placement[k] for k in ("backend", "device", "precision")}
+    placement = getattr(brain, "placement", None)  # releases before 0.95.0 have none
+    out["placement"] = None if placement is None else {
+        k: placement[k] for k in ("backend", "device", "precision")
+    }
     out["synapses"] = int(brain.connectome.synapses)
     out["seconds"] = float(np.median(seconds))
     out["seconds_mean"] = float(np.mean(seconds))
@@ -345,7 +353,7 @@ def read(name: str, backend: str, kind: str, rows: int, warm: int, count: int, s
     book = Ledger()
     with warnings.catch_warnings(), _counting(backend, book):
         warnings.simplefilter("ignore")
-        for t, call in enumerate(_moments(brain, kind, rows, count, seed + 1)):
+        for call in _moments(brain, kind, rows, count, seed + 1):
             book.active = True
             call()
             _sync(brain)
@@ -397,7 +405,7 @@ def table(paths: list[str]) -> None:
                   f"{row['seconds'] * 1e3:9.2f} ms  crossings {count:7.1f}  waits {waits:5.1f}  "
                   f"{nbytes / 1e3:10.1f} kB  {spent * 1e3:8.2f} ms in them")
             for c in cross[:12]:
-                print(f"      {c['way']:9} {c['site']:60} {c['count']:7.2f} x "
+                print(f"      {c['way']:9} {c['site'][:100]:100} {c['count']:7.2f} x "
                       f"{c['bytes'] / 1e3:10.2f} kB {c['seconds'] * 1e3:8.3f} ms")
 
 
@@ -413,12 +421,16 @@ def main() -> None:
     parser.add_argument("--moments", type=int, default=20)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-ledger", action="store_true", help="seconds only")
+    parser.add_argument("--depth", type=int, default=1,
+                        help="library frames that name a crossing's site, the innermost first")
     parser.add_argument("--out")
     parser.add_argument("--table", nargs="+")
     args = parser.parse_args()
     if args.table:
         table(args.table)
         return
+    global DEPTH
+    DEPTH = args.depth
     sink = open(args.out, "a") if args.out else None
     env = environment()
     print(json.dumps({"environment": env}), file=sink or sys.stdout, flush=True)
