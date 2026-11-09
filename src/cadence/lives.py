@@ -184,6 +184,9 @@ class _LivesTorchKernel(_TorchKernel):
             ws.lives_met.zero_()
         else:
             ws.lives_met.copy_(hold)
+        # sweeps that hold a life are other operations than sweeps that hold none: another
+        # captured graph, and ``_update`` reads the mark
+        cfg.key = (cfg.key, hold is not None or tolerance is not None)
         return cfg
 
     def _update(
@@ -193,6 +196,8 @@ class _LivesTorchKernel(_TorchKernel):
         sweep held where it met it, as its lone brain's settle stops there: a stream's own
         movement under the tolerance meets it, and the settle meets it when every life has."""
         super()._update(ws, cfg, i, j, synaptic, stage, standing)
+        if not cfg.key[-1]:  # a fixed count of sweeps with no life settled: every life sweeps
+            return
         torch = self.torch
         met = ws.lives_met  # (lives,): met at an earlier sweep, or settled before the solve
         for slots in ((ws.v[i], ws.v[j]), (ws.s[i], ws.s[j]),
@@ -337,7 +342,8 @@ class _LivesGraph(NeuralGraph):
             ):
                 break
             previous = current
-            root._hold = kernel.torch.as_tensor(settled(error), device=kernel.device)
+            done = settled(error)
+            root._hold = kernel.torch.as_tensor(done, device=kernel.device) if done.any() else None
             try:
                 current = self.settle_batch(
                     drive, steps=min(chunk, budget - used), state=current, mask=mask, nudge=nudge
