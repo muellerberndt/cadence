@@ -5151,10 +5151,10 @@ class Brain:
                 action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
             action = np.asarray(action, dtype=np.int64)
         else:
-            action = agent._clear_greedy(free)
-            if action is None:
-                action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
-            action = np.asarray(action, dtype=np.int64)
+            cleared = agent._clear_greedy(free)
+            if cleared is None:
+                cleared = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
+            action = np.asarray(cleared, dtype=np.int64)
             if self.working_memory is not None:
                 self.working_memory.update(free)
             if self.recall is not None:

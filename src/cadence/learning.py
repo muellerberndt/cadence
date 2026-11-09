@@ -1502,15 +1502,16 @@ class Learner:
             if targets is None:
                 raise ValueError("a lesson needs labels or targets")
             target = self.soft_targets(targets)
+            batch = len(target)
         else:
             if targets is not None:
                 raise ValueError("a lesson takes labels or targets, not both")
             labels = self._labels(labels)
+            batch = len(labels)
         if not _resident(drive):
             drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
             drive = drive[None, :]
-        batch = len(labels) if target is None else len(target)
         if drive.ndim != 2 or drive.shape[0] != batch:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
@@ -1520,6 +1521,7 @@ class Learner:
             if not judged.any():
                 return self._untaught(judged)
         if target is None:  # the labels' targets, made where a phase reads them
+            assert labels is not None
             target = self.targets(labels)
         if judged is not None:
             drive, target, weight = self._lesson(judged, drive, target, weight)

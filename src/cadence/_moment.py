@@ -1090,7 +1090,8 @@ def after_spans(brain: Any) -> np.ndarray | None:
         brain.recall._association_columns,
     )
     spans: np.ndarray | None = None
-    if all(isinstance(part, slice) for part in parts):
-        spans = np.array([v for part in parts for v in (part.start, part.stop)], dtype=np.int64)
+    ranges = [part for part in parts if isinstance(part, slice)]
+    if len(ranges) == len(parts):
+        spans = np.array([v for part in ranges for v in (part.start, part.stop)], dtype=np.int64)
     brain.__dict__["_after_spans"] = (key, spans, output, trace)
     return spans
