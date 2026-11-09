@@ -1,4 +1,4 @@
-"""Regression gates for single-head learned-code contextual recall."""
+"""Regression gates for the public opt-in single-head attention recipe."""
 
 from __future__ import annotations
 
@@ -26,15 +26,10 @@ def test_final_question_is_literal_and_context_free() -> None:
     assert np.count_nonzero(first) == 2
 
 
-def test_constructor_uses_the_public_settings_without_an_episodic_vote() -> None:
+def test_constructor_uses_the_public_opt_in_without_an_episodic_vote() -> None:
     brain = subject.compose(101, solve=64, module=8)
+    assert brain.attention is True
     assert brain.recall is not None and brain.recall.window == 2
-    assert (brain.recall.address, brain.recall.temperature, brain.recall.recency) == (0.0, 0.1, 0.0)
-    assert brain.recall.position == 0 and brain.learner.config.normalize == 0.0  # the founder
-    composed = subject.compose(101, solve=64, module=8, composition=True)
-    assert composed.recall.window == 2 and composed.recall.address == 0.0
-    assert composed.recall.anchor and not composed.recall.boundary  # a new brain's, no boundary
-    assert subject.configuration(composition=True)["composition"] is True
     assert brain.hippocampus is None and brain._episodic is None  # noqa: SLF001
     assert brain.memory_choice is False
     assert subject.RANDOM_BASELINE == 0.5

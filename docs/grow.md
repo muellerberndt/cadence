@@ -211,10 +211,10 @@ feedback, as an association region does, settles in the larger brain without tha
   under other rates keeps those. `graft` leaves every synapse at this brain's rates, the grafted
   ones too.
 - **A new memory starts empty.** Every act writes a slot of a new recall memory; lessons teach
-  the brain to read the slots. A brain composed at the one-head contextual settings
-  (`recall_address=0.0`, `recall_temperature=0.1`) keeps them when it grows heads; retune
-  `recall_address` and `recall_temperature` to the founder's 0.01 and 0.25 if the new heads
-  should learn their own addresses.
+  the brain to read the slots. A brain composed with `attention=True` keeps its one-head
+  address settings when it grows heads; retune `recall_address` and `recall_temperature` to the
+  values `compose` gives several heads (0.01 and 0.25) if the new heads should learn their own
+  addresses.
 - **Living brains.** The arousal, its age included, carries over. A calm adult brain acts
   without learning in `live`, so its new parts learn on aroused moments; teach them with `step`
   or `lesson` to proceed faster.

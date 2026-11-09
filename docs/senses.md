@@ -8,7 +8,7 @@ reads them:
 | `inputs=(height, width)` | the image through a visual cortex | [image inputs](#image-inputs) |
 | `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
-| `recall_window=2` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [learned-code contextual recall](memory.md#learned-code-contextual-recall) |
+| `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
 
 ```python
 import numpy as np

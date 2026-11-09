@@ -70,14 +70,13 @@ def test_heads_must_be_a_positive_integer_and_a_construction_setting():
     assert brain.describe()["genes"]["recall_heads"] == 2
 
 
-def test_learned_code_heads_learn_their_addresses_at_the_founders():
-    one = cd.Brain.compose(4, 2, learned_code=4, recall_window=2, recall_address=0.0,
-                           recall_temperature=0.1, seed=1)
-    two = cd.Brain.compose(4, 2, learned_code=4, recall_window=2, recall_heads=2, seed=1)
+def test_the_attention_recipe_learns_addresses_with_several_heads():
+    one = cd.Brain.compose(4, 2, learned_code=4, attention=True, seed=1)
+    two = cd.Brain.compose(4, 2, learned_code=4, attention=True, recall_heads=2, seed=1)
     assert (one.recall.heads, one.recall.address, one.recall.temperature) == (1, 0.0, 0.1)
     assert (two.recall.heads, two.recall.address, two.recall.temperature) == (2, 0.01, 0.25)
     chosen = cd.Brain.compose(
-        4, 2, learned_code=4, recall_window=2, recall_heads=2, recall_temperature=0.5,
+        4, 2, learned_code=4, attention=True, recall_heads=2, recall_temperature=0.5,
         recall_address=0.02, seed=1,
     )
     assert (chosen.recall.temperature, chosen.recall.address) == (0.5, 0.02)

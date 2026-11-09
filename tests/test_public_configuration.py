@@ -56,38 +56,66 @@ def test_plain_compose_keeps_the_released_founders():
     assert brain.describe()["layout"]["composition"]["working_memory_scale"] == 1.2
 
 
-# the settings 0.95 composed for ``attention=True``: the founder memory over a learned code's
-# two-moment window, read by content alone
-CONTEXTUAL = {"recall": True, "recall_founder": True, "recall_window": 2, "recall_address": 0.0,
-              "recall_recency": 0.0, "recall_temperature": 0.1}
+def test_attention_is_an_explicit_learned_code_recall_recipe(tmp_path):
+    brain = cd.Brain.compose(12, 2, modules=(24,), learned_code=8, attention=True, seed=3)
+    assert brain.attention is True
+    assert brain.learned_code is not None and brain.learned_code.units == 8
+    assert brain.recall is not None
+    assert brain.recall.window == 2
+    assert brain.recall.next is True
+    assert brain.recall.address == 0.0
+    assert brain.recall.recency == 0.0
+    assert brain.recall.temperature == 0.1
+    assert brain.memory_choice is False
+    description = brain.describe()
+    assert description["genes"]["attention"] is True
+    assert description["layout"]["composition"]["attention"] is True
+
+    restored = cd.Brain.load(brain.save(tmp_path / "attention"))
+    assert restored.attention is True
+    assert restored.describe() == description
 
 
-def test_attention_is_refused_by_name_with_the_settings_that_replace_it():
-    for value in (True, False):
-        with pytest.raises(ValueError, match="attention was retired in 0.96.0.*recall_window=2"):
-            cd.Brain.compose(12, 2, modules=(24,), learned_code=8, attention=value, seed=3)
-        with pytest.raises(ValueError, match="attention was retired in 0.96.0"):
-            small().retune(attention=value)
-    brain = cd.Brain.compose(12, 2, modules=(24,), learned_code=8, seed=3, **CONTEXTUAL)
-    assert not hasattr(brain, "attention") and "attention" not in brain.describe()["genes"]
-    assert (brain.recall.window, brain.recall.address, brain.recall.temperature) == (2, 0.0, 0.1)
+@pytest.mark.parametrize(
+    "options",
+    [
+        {"attention": 1, "learned_code": 8},
+        {"attention": True},
+        {"attention": True, "learned_code": 8, "recall": False},
+        {"attention": True, "learned_code": 8, "recall_window": 1},
+        {"attention": True, "learned_code": 8, "recall_next": False},
+    ],
+)
+def test_attention_refuses_incomplete_or_conflicting_recipes(options):
+    with pytest.raises(ValueError):
+        cd.Brain.compose(12, 2, modules=(24,), **{"recall": False, **options})
 
 
-def test_a_brain_saved_with_the_attention_marker_loads_with_its_settings(tmp_path):
-    """0.95 saved ``attention=True`` as a marker beside the memory's settings; the settings are
-    the read, so a file with the marker loads as the same brain."""
-    brain = cd.Brain.compose(12, 2, modules=(24,), learned_code=8, seed=3, **CONTEXTUAL)
-    brain.act(np.eye(12)[[1]], greedy=True)
-    with np.load(brain.save(tmp_path / "plain.npz"), allow_pickle=False) as data:
-        arrays = {name: data[name].copy() for name in data.files}
-    meta = json.loads(str(arrays["brain"]))
-    meta["attention"] = True
-    meta["composition"]["attention"] = True
-    np.savez(tmp_path / "marked.npz", **{**arrays, "brain": np.array(json.dumps(meta))})
-    marked = cd.Brain.load(tmp_path / "marked.npz")
-    assert marked.describe() == brain.describe()
-    np.testing.assert_array_equal(marked.act(np.eye(12)[[2]], greedy=True),
-                                  brain.act(np.eye(12)[[2]], greedy=True))
+def test_attention_allows_expert_recall_tuning_without_changing_plain_defaults():
+    tuned = cd.Brain.compose(
+        12,
+        2,
+        modules=(24,),
+        learned_code=8,
+        attention=True,
+        recall_window=3,
+        recall_temperature=0.2,
+        recall_recency=0.1,
+    )
+    assert tuned.recall is not None
+    assert tuned.recall.window == 3
+    assert tuned.recall.temperature == 0.2
+    assert tuned.recall.recency == 0.1
+
+    plain = cd.Brain.compose(12, 2, modules=(24,), learned_code=8, recall=False)
+    assert plain.attention is False and plain.recall is None
+    assert "attention" not in plain.describe()["genes"]
+
+    combined = cd.Brain.compose(
+        12, 2, modules=(24,), learned_code=8, attention=True, memory_choice=True
+    )
+    assert combined.recall is not None
+    assert combined.hippocampus is not None and combined._episodic is not None
 
 
 @pytest.mark.parametrize("arousal", [True, {}, {"need": 2.0}])

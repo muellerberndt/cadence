@@ -139,6 +139,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `lateral`, `slots` | `0.0`, `1` | construction | [motor competition](#operating-point-and-motor-competition) |
 | `scales`: `"sensory"`, `"trace"` | `1.0`, `1.2` | construction | [image inputs](senses.md#image-inputs), [memory](memory.md#working-trace) |
 | `features`, `field`, `seed` | `8`, `3`, `0` | construction | [image inputs](senses.md#image-inputs) |
+| `attention` | `False`; `True` requires `learned_code=units` and supplies the contextual Recall recipe | construction | [single-head learned-code attention](memory.md#single-head-learned-code-attention-opt-in) |
 | `teaching` | `"deep"` in a new brain with the memory, else `"founder"`. `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
 | `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12` (`32` in a new brain with the memory, which `teaching="deep"` sets), `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
@@ -392,7 +393,7 @@ A deep brain with every memory and attention feature is one call:
 full = Brain.compose(
     inputs=16, actions=4, seed=0, arousal=True,
     modules=(64, 32, 32), apical=0.25, teaching="deep",  # three regions that learn in depth
-    learned_code=16, recall_window=2,                    # a learned code, read over two moments
+    learned_code=16, attention=True,                     # a learned code, read by attention
     recall_heads=2,                                      # two facts in one settle
     recall_boundary=True,                                # the start of an episode has a slot
     recall_action=True,                                  # the slots keep what it did
@@ -402,8 +403,8 @@ full = Brain.compose(
 assert full.live(np.eye(16)[[3]]).shape == (1,)
 ```
 
-- `learned_code=16, recall_window=2`: the recall memory attends over recent moments by two moments
-  of a learned code ([learned-code contextual recall](memory.md#learned-code-contextual-recall)).
+- `learned_code=16, attention=True`: the recall memory attends over recent moments by a learned
+  code of the observations ([single-head attention](memory.md#single-head-learned-code-attention-opt-in)).
 - `recall_heads=2`: two heads read with addresses of their own, so one settle can combine two
   remembered facts ([several heads](memory.md#several-heads-opt-in)).
 - `recall_boundary=True`: a question about the start of an episode has a slot to read

@@ -36,7 +36,7 @@ Two smaller carriers are opt-in: the **efference copy** of the actions the brain
 | Recall "when" | the time stamp of what was read | no | "how long ago?", "was A told before B?" | `recall_when=True` |
 | Recall value path | read a token, answer that token | no | the answer is the token the read found, tokens never taught included | `recall_tokens=..., recall_gain=1.0` |
 | Recall of own actions | the notebook keeps what I did | no | what the brain did matters, where the observations look alike | `recall_action=True` |
-| Learned-code contextual recall | a notebook indexed by meaning | no | keys should match where meanings do, beyond raw overlap | `learned_code=units, recall_window=2, recall_address=0.0, recall_temperature=0.1` |
+| Learned-code attention | a notebook indexed by meaning | no | keys should match where meanings do, beyond raw overlap | `learned_code=units, attention=True` |
 | Associative store | a ledger of what paid where | yes | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=0.2` for noisy pay |
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
@@ -80,7 +80,7 @@ timed = Brain.compose(6, 4, seed=0, recall_when=True)                   # when t
 tokens = Brain.compose(6, 4, seed=0, recall_tokens=[0, 1, 2, 3],        # inputs 0-3 name actions 0-3
                        recall_gain=1.0)
 doings = Brain.compose(6, 4, seed=0, recall_action=True)                # slots keep the actions taken
-meaning = Brain.compose(6, 4, seed=0, learned_code=16, recall_window=2)  # keys by a learned code
+meaning = Brain.compose(6, 4, seed=0, learned_code=16, attention=True)  # keys by a learned code
 assert len(two_facts.recall.head_maps) == 2
 ```
 
@@ -152,7 +152,7 @@ a training setting ([curriculum and rehearsal](teach.md#curriculum-and-rehearsal
 | The same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` | [heard history](#heard-history) |
 | An action paid a few moments later; a chain whose stage is observed | nothing: the actor's eligibility is on | [learned weights and eligibility](#learned-weights-and-eligibility) |
 | A wide observation | `code=units` bounds every key | [the observation code](senses.md#the-observation-code) |
-| Keys that overlap where meanings do | `learned_code=units, recall_window=2, recall_address=0.0, recall_temperature=0.1` | [learned-code contextual recall](#learned-code-contextual-recall) |
+| Keys that overlap where meanings do | `learned_code=units, attention=True` | [single-head attention](#single-head-learned-code-attention-opt-in) |
 | Types taught one after another | `learning_rehearsal=1.0` | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | A memory for a brain trained without it | `brain.grow(recall=True)` | [grow and combine brains](grow.md) |
 | Situations whose keys overlap strongly, outside a brain | a standalone store behind a centered, habituated separator | [pattern separation](#pattern-separation) |
@@ -174,7 +174,7 @@ The answer has to [qualify](start.md#qualification-and-refusal) whichever of the
 | Heard history | no | `history_decays=(0.2, 0.8)` | the observations as heard, one fading block per decay | none | after each act and each moment `wait` senses | no | [below](#heard-history) |
 | Associative store | yes | `episodic=False` removes it | one value per action per situation, in reward units | observation code | each outcome of the chosen action | yes | [below](#associative-store-the-hippocampus) |
 | Episodic memory | no | `memory_choice=True` | place and context records that vote in the choice | observation code, and code with the temporal context | known outcomes, demonstrations, replay of the path to a reward | records yes, context no | [below](#episodic-memory-what-happened-in-this-situation-before) |
-| Recall memory | yes | `recall=False` removes it; `learned_code=units, recall_window=2` keys it on two moments of a learned code | the stream's recent moments as slots, and a learned address map | observation code | a slot per moment; the map at lessons | map yes, slots no | [below](#the-recall-memory-in-full) |
+| Recall memory | yes | `recall=False` removes it; `attention=True` selects its learned-code contextual recipe | the stream's recent moments as slots, and a learned address map | observation code | a slot per moment; the map at lessons | map yes, slots no | [below](#the-recall-memory-in-full) |
 | Learned code | no | `learned_code=units` | a dictionary, a predictor and thresholds: the code region's synapses and biases | none | every accepted moment, by local rules | yes | [the learned code](senses.md#the-learned-code) |
 | Learned weights | yes | learning rates of zero freeze them | synapse scales and biases, actor and critic | none | lessons, and outcomes (aroused ones under `live`) | yes | [the free/nudged rule](settling.md#learning-the-freenudged-rule) |
 | Actor eligibility | yes | `actor_lam=0.0` credits the last action only | each synapse's credit for recent sampled acts | none | each sampled act | no | [reward.md](reward.md#eligibility-traces-and-dopamine) |
@@ -273,8 +273,8 @@ it starts at zero, so a new brain reads exactly as it would without it, and less
 head how far back to look, depending on what the moment hears
 ([position](#position-how-long-ago-a-moment-happened); `recall_position=0` turns it off).
 `reset()` empties the slots and keeps the learned address map; `reset(keep=("slots",))` keeps
-both. Over a learned code with `recall_window=2` it reads by meaning
-([learned-code contextual recall](#learned-code-contextual-recall)).
+both. `attention=True` selects the memory's learned-code recipe
+([single-head attention](#single-head-learned-code-attention-opt-in)).
 
 ```python
 import numpy as np
@@ -390,7 +390,7 @@ eligibility take that width; values, nexts and the two regions keep the value wi
 [the settings table](#recall-settings). Each is an ordinary setting: name its founder to opt out of
 one, or pass `recall_founder=True` for every founder at once. A saved brain keeps the values it was
 saved with, since a setting a file does not hold means its founder. `Brain(connectome, recall=True)` and
-`recall_founder=True` take none of these, and `learning=` keeps its whole
+`attention=True` name their settings and take none of these, and `learning=` keeps its whole
 configuration.
 
 | Setting | Founder | A new brain's | What it gives |
@@ -871,7 +871,7 @@ cortex has to untangle. `recall_heads=k` reads the same bank through k heads in 
 
 ```python
 heads_brain = Brain.compose(
-    inputs=12, actions=4, modules=(24,), learned_code=8, recall_window=2, recall_heads=2,
+    inputs=12, actions=4, modules=(24,), learned_code=8, attention=True, recall_heads=2,
     seed=0,
 )
 assert heads_brain.recall.heads == 2
@@ -1147,10 +1147,10 @@ The [episodic memory](#episodic-memory-what-happened-in-this-situation-before) k
 records on the issued commands: each decision's command joins the stream's temporal context at
 the share `1 - memory_context`, so the option does not change the vote.
 
-### Learned-code contextual recall
+### Single-head learned-code attention (opt-in)
 
-A learned code and the recall memory read by two moments of meaning together: the shortest
-supported path from learned meanings to contextual recall.
+`attention=True` is the shortest supported path from learned meanings to contextual recall. It
+combines the learned code and the recall memory:
 
 ```text
 observation -> learned meaning code -> two-moment Recall lookup
@@ -1160,43 +1160,40 @@ observation -> learned meaning code -> two-moment Recall lookup
 ```
 
 The learned code compresses the observation using experience. Recall joins the current and
-previous code into an ordered query (`recall_window=2`), compares it with stored two-moment keys
-and returns a weighted event and successor. That read drives its own regions while the rest of
-the brain settles. Name the settings:
+previous code into an ordered query, compares it with stored two-moment keys and returns a
+weighted event and successor. That read drives its own regions while the rest of the brain
+settles. Turn it on explicitly:
 
 ```python
-contextual = Brain.compose(
-    inputs=12, actions=2, modules=(24,), learned_code=8, seed=0,
-    recall_window=2, recall_address=0.0, recall_temperature=0.1,
+attention_brain = Brain.compose(
+    inputs=12, actions=2, modules=(24,), learned_code=8, attention=True, seed=0,
 )
-assert contextual.recall.window == 2 and contextual.recall.next
-assert contextual.recall.address == 0.0 and contextual.recall.temperature == 0.1
+assert attention_brain.attention
+assert attention_brain.recall.window == 2
+assert attention_brain.recall.next
+assert attention_brain.describe()["layout"]["composition"]["attention"]
 ```
 
-With several heads name `recall_window=2` and `recall_heads=k`, and the heads learn their own
-addresses at the founder's .01 and temperature .25 ([several heads](#several-heads-opt-in)).
-Choose the learned-code width for the task: eight is the capacity the small benchmark tests.
-Release 0.95 named these settings `attention=True`, over the founder memory; the name left in
-0.96.0, and a brain saved with it loads with the settings it saved.
+The preset supplies `recall=True`, `recall_window=2`, `recall_next=True`,
+`recall_address=0.0`, `recall_recency=0.0` and `recall_temperature=0.1` where they are not
+given. Other `recall_*` genes can be set beside it; the window must be at least two and the
+successor read must stay on. Choose the learned-code width for the task: eight is the capacity
+the small benchmark tests.
 
 The address map is frozen (`recall_address=0.0`), so selection comes from similarity between
 learned-code windows. The [position term](#position-how-long-ago-a-moment-happened) is built
 and learns as everywhere, so after the first lesson the read also weighs each slot's age.
-The settings neither enable nor disable the associative store or `memory_choice=True`.
+`attention` neither enables nor disables the associative store or `memory_choice=True`.
 
 In the [contextual-choice benchmark](../benchmarks/attention/contextual_choice.py) every final
 observation is the same literal ASK, and two stored episodes differ only in their earlier
 context and successor. Four founders answer 32 of 32 queries; present-only and memory-off
 controls answer 16 of 32, as does uniform random. Erasing the relevant record breaks the
-answer; erasing the other leaves it intact. The instrument's founder memory at these settings
-is what 0.95 composed for `attention=True`. With `--composition` it reads what a new brain
-composes at them (its boundary slot off, since the bank holds exactly the six moments written):
-every founder answers 32 of 32, passes every gate and holds the founder memory's share of the read,
-.82 to 1.00 of the read on the relevant record.
+answer; erasing the other leaves it intact.
 
 The head selects once before the neural settle, and the equilibrium interprets the read; the
 interpretation cannot revise the query while that settle forms. The benchmark establishes a
-bounded contextual lookup. Compare it on the task with the window of one, episodic memory alone and
+bounded contextual lookup. Compare it on the task with attention off, episodic memory alone and
 uniform random. Several facts in one answer take [several heads](#several-heads-opt-in).
 
 ### Recall cost
