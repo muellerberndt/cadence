@@ -71,3 +71,26 @@ is read once it has learned the routes' form, the declared life is 8,000 batches
 4,000, 6,000 and 8,000, and P1 and P2 read the reading at 8,000. The controls' online pass takes the
 same 8,000 batches. Development founders 0 and 1 live the declared life beside the declared founders
 and are reported apart.
+
+## Result
+
+Read on one c7i.16xlarge, founders 9625700 to 9625705, 8,000 batches, 256 episodes a panel.
+
+| Gate | Verdict | Reading |
+| --- | --- | --- |
+| P1, held-out pairs | fail | sliding minus word by word -.022 (s.e. .050): -.047 .090 -.105 -.184 .145 -.027 |
+| P2, trained pairs | reported | -.076 (s.e. .028) |
+
+| Speaker | First hop, held-out | The other neighbour | Exact routes | First hop, trained |
+| --- | --- | --- | --- | --- |
+| Word by word | .334 | .356 | .240 | .372 |
+| Sliding window of three | .312 | .319 | .203 | .296 |
+| LSTM online | .395 | .366 | .277 | .419 |
+| Transformer online | .540 | .374 | .518 | .548 |
+| LSTM offline (30 epochs) | .830 | .106 | .712 | .963 |
+| Transformer offline (14 to 30 epochs) | .754 | .246 | .753 | .755 |
+
+A measured negative: planning does not pay on this chamber. Both speakers say the goal branch's first
+place as often as the other neighbour's, so neither reads the goal at the first hop; the window adds no
+lookahead to the joint settle. The controls show the information suffices (offline .75 to .83 on
+held-out pairs).
