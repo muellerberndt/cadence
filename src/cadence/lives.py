@@ -49,6 +49,7 @@ from .brain import (
     Equilibrium,
     _check_ladder,
     _plan_structure,
+    _SweepConfig,
     _TorchKernel,
     _transport_override,
     _TransportPlan,
@@ -185,9 +186,19 @@ class _LivesTorchKernel(_TorchKernel):
         else:
             ws.lives_met.copy_(hold)
         # sweeps that hold a life are other operations than sweeps that hold none: another
-        # captured graph, and ``_update`` reads the mark
-        cfg.key = (cfg.key, hold is not None or tolerance is not None)
-        return cfg
+        # captured graph, and ``_update`` reads the mark. The kernel keeps one configuration per
+        # key; this is the lives' own of it, one per configuration and mark
+        holds = hold is not None or tolerance is not None
+        kept = ws.__dict__.setdefault("lives_configs", {})
+        mine = kept.get((id(cfg), holds))
+        if mine is None or mine[0] is not cfg:
+            if len(kept) >= 64:
+                kept.clear()
+            mine = kept[(id(cfg), holds)] = (cfg, _SweepConfig(
+                (cfg.key, holds), cfg.masked, cfg.keep, cfg.nudge, cfg.held, cfg.tolerance,
+                cfg.quiet,
+            ))
+        return mine[1]
 
     def _update(
         self, ws: Any, cfg: Any, i: int, j: int, synaptic: Any, stage: int, standing: Any,
