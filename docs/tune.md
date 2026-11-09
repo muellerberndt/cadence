@@ -341,46 +341,49 @@ at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 ### The compiled moment (opt-in)
 
 `learning_compiled_moment=True` does the work around the solve kernels in compiled passes on the
-CPU: the memory's read (the address and every position term through one product of the maps, kept
-packed until a lesson replaces one), the moment's drive in one array, the memory's write, its
-address lesson, the place store's read and the carried gains' contrast. The equations are the
-same and the sums run in another order, so the bits are other ones; off, every bit is the ordinary
-path's. A brain with several read heads, a window, the command or when in its slots, the gains, a
-learned code or a separator reads through the ordinary path.
+CPU: the moment's drive in one pass (the sensory part, the working trace, the memory's read, with
+the address and every position term through one product of the maps, kept packed until a lesson
+replaces one, and the place store's read), the free solve through its kernels without the general
+path's layers, a greedy act's choice, its trace's step and the memory's write in one pass, the
+address lesson and the carried gains' contrast. An act after a lesson that taught nothing takes
+the lesson's read and solve. The equations are the same and the sums run in another order, so the
+bits are other ones; off, every bit is the ordinary path's. A brain with several read heads, a
+window, the command or when in its slots, the gains, a learned code or a separator reads through
+the ordinary path.
 
 [`cost.py`](../benchmarks/grammar/cost.py) times a pass of the default brain, the same brain with
 the option and the chamber's transformer in one process, batch by batch in turn, on one thread. On
-a Xeon 8488C, three founders, each process on a core of its own:
+one core of a Xeon 8488C with nothing else running, one founder at a time:
 
 | Founder | Default brain | With `learning_compiled_moment` | Transformer | Against the transformer: default, compiled |
 | --- | ---: | ---: | ---: | ---: |
-| 0 | 74.2 s | 53.9 s | 16.7 s | 4.4, 3.2 |
-| 1 | 77.1 s | 56.8 s | 16.7 s | 4.6, 3.4 |
-| 2 | 77.4 s | 57.0 s | 16.7 s | 4.6, 3.4 |
+| 0 | 59.4 s | 39.2 s | 12.1 s | 4.9, 3.2 |
+| 1 | 62.3 s | 41.9 s | 11.8 s | 5.3, 3.6 |
+| 2 | 63.0 s | 42.2 s | 11.8 s | 5.3, 3.6 |
 
 `cost.py --parts` reads one brain's pass by part, each function's seconds less those of the timed
-functions inside it, the kernels at the functions that launch them (founder 0, alone on its core):
+functions inside it, the kernels at the functions that launch them (founder 0, alone on the core):
 
 | Part | Default brain | Compiled moment |
 | --- | ---: | ---: |
-| Kernels: the solves of acts and lessons | 21.3 s | 21.0 s |
-| Kernels: the lessons' free and nudged phases, and the checks | 5.2 s | 5.0 s |
-| The read, in acts and lessons | 20.4 s | 7.1 s |
-| The solves around their kernels | 5.6 s | 4.8 s |
-| The choice and the write | 5.2 s | 3.9 s |
-| The address lesson | 3.3 s | 1.0 s |
-| The lessons' phases around their kernels, and their update | 4.0 s | 3.7 s |
-| The rest of the act and the lesson, the carried gains' lesson | 4.0 s | 3.5 s |
-| The chamber's own loop | 1.9 s | 1.8 s |
-| The pass | 70.9 s | 51.8 s |
+| Kernels: the solves of acts and lessons | 16.0 s | 16.1 s |
+| Kernels: the lessons' free and nudged phases, and the checks | 4.6 s | 4.7 s |
+| The read, in acts and lessons | 17.7 s | 4.6 s |
+| The solves around their kernels | 5.1 s | 2.7 s |
+| The act's choice and write, and the rest of the act | 5.8 s | 3.6 s |
+| The address lesson | 3.0 s | 0.9 s |
+| The lessons' phases around their kernels, and their update | 2.9 s | 3.0 s |
+| The rest of the lesson and the carried gains' lesson | 2.3 s | 2.2 s |
+| The chamber's own loop | 1.6 s | 1.6 s |
+| The pass | 59.1 s | 39.3 s |
 
-The kernels take about 1.6 times the transformer's pass, the same with or without the option. The
-rest takes about 26 seconds with it, many calls of a few microseconds each in Python; a pass at 2.5
-times the transformer leaves about 16 seconds for it.
+The kernels take about 1.7 times the transformer's pass, with or without the option. The rest
+takes about 18.5 seconds with it, many calls of a few microseconds each in Python; a pass at 2.5
+times the transformer leaves about 9.4 seconds for it.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| The work around the solve | `learning_compiled_moment=True` | The read, the write, the address lesson and the stores' reads in compiled passes: .73 of a chamber pass of the default brain on one Xeon core, 3.2 to 3.4 times the transformer's seconds where the default takes 4.4 to 4.6 ([the compiled moment](#the-compiled-moment-opt-in)). Other bits. |
+| The work around the solve | `learning_compiled_moment=True` | The read, the solve's layers, the act's choice and write and the address lesson in compiled passes: .67 of a chamber pass of the default brain on one Xeon core, 3.2 to 3.6 times the transformer's seconds where the default takes 4.9 to 5.3 ([the compiled moment](#the-compiled-moment-opt-in)). Other bits. |
 | Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and .74 of one on an Apple M4 (229 to 169 CPU seconds, four pairs at the default brain on one thread of a shared machine), whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
