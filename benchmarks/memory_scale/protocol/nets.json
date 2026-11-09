@@ -1,0 +1,32 @@
+{
+ "founders": [
+  2880,
+  2881,
+  2882
+ ],
+ "device": "cuda",
+ "cells": [
+  {
+   "n": 128,
+   "width": 64,
+   "steps": 20000,
+   "rows": 64,
+   "model": 256,
+   "trials": 400,
+   "read_n": [
+    1000
+   ]
+  },
+  {
+   "n": 1000,
+   "width": 64,
+   "steps": 12000,
+   "rows": 16,
+   "model": 256,
+   "trials": 400,
+   "read_n": [
+    4000
+   ]
+  }
+ ]
+}

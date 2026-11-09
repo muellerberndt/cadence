@@ -70,6 +70,7 @@ testpaths = [
     "benchmarks/extinction",
     "benchmarks/grammar",
     "benchmarks/long_context",
+    "benchmarks/memory_scale",
 ]
 
 [tool.ruff]

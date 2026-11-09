@@ -1,0 +1,36 @@
+{
+ "founders": [
+  2880,
+  2881,
+  2882
+ ],
+ "n": [
+  1000,
+  10000,
+  100000
+ ],
+ "widths": [
+  256
+ ],
+ "trials": 1000,
+ "head_trials": 200,
+ "arms": [
+  "exact",
+  {
+   "name": "bank",
+   "settings": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256
+   }
+  },
+  {
+   "name": "bank-dense",
+   "settings": {
+    "temperature": 0.0,
+    "candidates": 0
+   }
+  }
+ ]
+}
