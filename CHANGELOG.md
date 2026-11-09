@@ -123,10 +123,12 @@ trace's step and the memory's write; the act that begins its streams is one too.
 surprise judges in one call, and where it teaches a row the lesson is one call more, from its
 phases to its written efficacies: the free phase, the two nudged phases and their checks, the
 contrast, the optimizer's step with the tied and bounded efficacies, the address lesson and the
-carried gains' contrast, and Python stores what the call returns (a learner with frozen or tied
-synapses or per-synapse rates, and an update that is refused, take the passes in turn). An act
-after a lesson that taught nothing takes the lesson's read as its own, as it takes
-the lesson's solve. The equations are the ordinary path's and the sums run in another order, so the
+carried gains' contrast and step, and Python stores what the call returns (a learner with frozen
+or tied synapses or per-synapse rates, and an update that is refused, take the passes in turn).
+With the option the lesson's contrast is one compiled pass in each of its paths, its block
+products through the BLAS that Numba calls. An act after a lesson that taught nothing takes the
+lesson's read as its own, as it takes the lesson's solve, and writes its moment in the choice's
+pass. The equations are the ordinary path's and the sums run in another order, so the
 bits are other ones. Off by default; off, every bit is as before: the identity, options and slots
 batteries read no difference and the founder parity reads 0 of 24 lives differing against the tree
 before the change on one machine, and twelve chamber lives of the default brain read the same
@@ -136,16 +138,21 @@ learned code or a separator take the ordinary path. Beside each other option of 
 of lessons, acts, sampled moments and outcomes keeps its bits through every compiled path and
 agrees with the ordinary path to rounding (`tests/test_compiled_moment.py`).
 
-On one Xeon 8488C core with nothing else running, a grammar-chamber pass of the default brain
-takes .61 to .62 of its seconds with the option (66.4 to 69.5 s against 40.2 to 43.4 s over three
-founders) and 2.9 to 3.0 times the matched transformer's 13.8 to 14.4 s, where the default takes
-4.8. The issue's 2.5 times is not reached. The kernels take 23.9 s of the compiled pass, 1.7 times
-the transformer, and what stands around them 12.4 s: 5.0 s around an act's one call and 7.4 s
-around a lesson's (`benchmarks/grammar/cost.py`, which reads both the seconds and the parts and
-warms every kernel before its clock; [the compiled moment](docs/tune.md#the-compiled-moment-opt-in)).
-Seconds differ by a tenth and more between runs and machines, the transformer's more than the
-brain's, so the ratio to the transformer read 2.7 to 3.0 across this round's runs; within a run the
-option's share of the default's seconds is steady.
+On one Xeon 8488C core with nothing else running, in one session, a grammar-chamber pass of the
+default brain takes .54 to .56 of its seconds with the option (67.6 to 70.8 s against 36.7 to
+39.5 s over three founders) and 2.3 to 2.4 times the matched transformer's 15.9 to 16.2 s, where
+the default takes 4.2 to 4.4: under the issue's 2.5 times in that session. The kernels take
+26.9 s of the compiled pass, 1.7 times the transformer: the act's and the judgment's call 20.8 s
+and the taught lesson's 6.0 s. What stands around them takes 7.2 s, 4.2 s around an act's one
+call (about 85 microseconds an act) and 3.0 s around a lesson's (about 130 a lesson), and the
+chamber's own loop 1.7 s (`benchmarks/grammar/cost.py`, which reads both the seconds and the
+parts and warms every kernel before its clock;
+[the compiled moment](docs/tune.md#the-compiled-moment-opt-in)). Seconds differ by a tenth and
+more between runs and machines, the transformer's more than the brain's: across sessions the
+default read 4.2 to 5.3 times the transformer, and at 4.8 the option's .54 to .56 is 2.6 to 2.7
+times. Within a run the option's share of the default's seconds is steady. The kernels and the
+chamber's loop are .42 of the default's seconds and the Python around the calls .11, so 2.5
+times at a default of 4.8 takes fewer calls per moment (#291).
 
 The panels, the option less the default:
 
@@ -154,15 +161,18 @@ The panels, the option less the default:
   brackets +.008 (.027), paths -.014 (.010), two hops -.031 (.017), three hops +.022 (.040); over
   36 (seeds 2000 to 2011): -.011 (.007), -.012 (.017), +.002 (.016), -.003 (.020), -.010 (.019),
   +.004 (.014), +.003 (.018), -.010 (.036). Every difference is under .07 and within two standard
-  errors. The one-call paths keep the option's bits: the twelve lives read the same panels and
-  work to the bit before and after them.
+  errors. The one-call paths keep the option's bits, the lesson in one call among them: the
+  twelve lives read the same panels and work to the bit before and after them.
 - The sequence battery (look back and n-back with and without held tokens, two hops, three
   founders): -.0013 (s.e. .0042) over 15 paired lives.
 
 ### The same bits in less time
 
 A settle of no sweeps makes no standing drive it would not read, and a lesson whose answer matches
-every label makes no targets and reports from one record per batch size.
+every label makes no targets and reports from one record per batch size. A public operation enters
+and leaves the recall memory's scope without a context manager, a lesson of a brain without a
+learned code keeps its moment without one, and the labels of one slot are checked in two
+reductions.
 
 ### The lifecycle on the device: the ledger, one read per outcome, an unseen card, batched lives (#274)
 

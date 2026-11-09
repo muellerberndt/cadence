@@ -12,7 +12,10 @@ of a call is most of the moment. Here each is one compiled pass of the same equa
 - the address lesson (``address_lesson``): the scores of the slots against the lesson's movement,
   the prior, the attention the lesson names and one least-mean-squares step of every packed column;
 - the place store's read (``store_read``) and the carried gains' contrast (``route_contrast``);
-- the write (``recall_write``) into the room behind the slots, with the ordinary write's bits.
+- the write (``recall_write``) into the room behind the slots, with the ordinary write's bits;
+- a greedy act and a lesson's judgment each as one call of these passes around the solve
+  (``one_call``), and a taught lesson as one more, from its phases to its written efficacies
+  (``taught_lesson``), each with the bits of its passes in turn.
 
 The sums of the read, the lesson and the contrasts run in another order than NumPy's and BLAS's, so
 those bits differ from the ordinary path, which stays the default. The kernels allocate their
