@@ -19,7 +19,8 @@ references against each other; they establish no default. The declared protocol 
 
 `world.py` holds the records, cues and streams, `references.py` the exact nearest-neighbour store
 and the eviction policies over exact keys, `library.py` the library's own recall memory as an arm,
-and `bank.py` the candidate by its declared name. The library holds the candidate as
+and `bank.py` the candidate by its declared name. `meanings.py` and `meaning_keys.py` hold the
+second declaration's facts, whose keys `cadence.Message` makes, and their retrieval reading. The library holds the candidate as
 [`cd.LongTermMemory`](../../docs/memory.md#a-long-term-memory-of-records). `summarize.py` recomputes
 every gate and table below from the receipts in [`results/`](results).
 
@@ -421,6 +422,7 @@ the fact's key; a noisy key (three in ten active units exchanged for silent ones
 | 100,000 | `exact` | .971 to .993 | .593 to .707 | .357 to .422 | .78 to .94 |  |
 | 100,000 | `memory` | .961 to .991 | .567 to .706 | .335 to .437 | .77 to .96 | .9670 to .9872 |
 | 100,000 | `memory-same` | .971 to .993 | .571 to .706 | .342 to .437 | .78 to .96 | .9812 to .9947 |
+| 100,000 | `memory-direct` | .961 to .991 | .567 to .706 | .336 to .437 | .80 to .96 | .9670 to .9872 |
 
 On the random stand-ins the candidate read 1.000, .999 to 1.000 and .998 to .999 at 10,000 records
 and 1.000, .986 to .997 and .984 to .993 at 100,000, with 4 heads at 1.00.
@@ -449,7 +451,9 @@ share of cues whose best overlap the right fact holds alone (the rest are ties).
   apart, and .981 to .995 where only the same key counts, which is the share of distinct keys.
 - **The address does not bind.** At 100,000 facts the store reads through its address, and on
   the mean of the six founders it reads within .01 of the exact store on every cue where only
-  the same key counts.
+  the same key counts. With every slot scored
+  (`memory-direct`, the declared code on all six founders) the exact key reads the same to the
+  digit on every founder, the noisy and partial keys within .002, and the agent cue within .035.
 - **The form binds wholly.** The same act and agent heard as their words find their fact on
   .000 to .010 of the cues at every size: a word's code and its concept's are unrelated draws.
   #286 located that limit, and a learned map from words to concept codes is its to build.
@@ -496,12 +500,15 @@ another slot, and leaves its old copy to tie with the new one.
 
 - Any default. The candidate is an instrument-level store and the library's `LongTermMemory` a
   standalone one; a default moves only under the preservation panel and every gate of #256.
-- A key that holds meaning. The addresses are random codes; what a learned code or the message
-  code of #286 does to the similarity between records is not read here. `world.codes` takes the
-  key source as a parameter.
-- A brain that writes its own long-term memory in a life: which moments are written, and a read
-  that enters the settle through a region of its own. In `used.py` the bank's read is held on
-  input coordinates and the instrument tells the bank the facts.
+- A key that two wordings share. The first declaration's addresses are random codes and the
+  second's are `cadence.Message`'s codes of concept moments, where a sentence heard as words has
+  another key; a learned code, and one lexicon and one shape of fact beyond those read, are not
+  read. `world.codes` and `meanings.py` take the key source as a parameter.
+- A brain that writes its own long-term memory in a life: which moments are written, where in
+  its message the key is taken, and a read that enters the settle through a region of its own.
+  In `used.py` the bank's read is held on input coordinates, and in every reading the instrument
+  tells the store the facts with their keys and values apart.
+- A brain that uses what a message-keyed read holds. `used` is read on the stand-ins alone.
 - Taught heads. The recall memory's heads come apart through lessons on their own address maps
   ([several heads](../../docs/memory.md#several-heads-opt-in)); those maps are at zero here, and
   untaught heads return different records only when each reads its first choice whole.

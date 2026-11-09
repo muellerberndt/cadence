@@ -155,7 +155,8 @@ with the receipts in [`results/`](results) and `summarize.py` (`gates2`) recompu
 **The first term that binds** is the key. An exact key finds its fact as the stand-ins did to
 10,000 facts. A noisy or partial key ties with the facts that share one of its two moments, on the
 exact store as on the memory, from the first thousand facts. The write's recognition at cosine
-.9 binds second, the address not at all on these cues, and the form wholly.
+.9 binds second, the address not at all on these cues (every slot scored reads the exact key the
+same to the digit on six founders), and the form wholly.
 
 **Against the expectations.** M1 held with more room than expected (.996 to 1.000 for .986 to
 .997). M2 failed as expected, and one founder passed it (.908). M3 read .825 to .925 for an
@@ -171,7 +172,9 @@ expected .983 to .994. The reworded cue read .000 to .010.
   start on a spot c7i.8xlarge, in three parts with the same cells and arms: 1,000 and 10,000
   facts, 100,000 facts, and `memory-direct` at 100,000 facts.
 - `memory-direct` fills 100,000 slots with every slot scored at each write, about half an hour a
-  cell. The README states the cells that were read.
+  cell. It was read for the declared code on all six founders, for the 70-unit code on all six,
+  and for the class's own fan-in on founders 2890 to 2892; the box was released before the other
+  three cells, since the arm had answered its question (the address does not bind).
 - Nothing in an instrument, a plan or a bar changed after the declaration. `retention.py` gained
   the `message-whole` keys of the development reading in [`after/`](after) after the declared
   retention plans had finished.
