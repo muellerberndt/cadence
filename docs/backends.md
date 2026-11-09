@@ -177,6 +177,9 @@ the critic's, the recall memory's reward step and the update's, with the critic'
 report's steps and the dopamine of every row, which the carried routes' gains take on the host. On MLX
 the dopamine is the host's and goes to the device. The memories, the eligibility and the optimizer's
 state do not cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
+[`benchmarks/device/ledger.py`](../benchmarks/device/ledger.py) lists every crossing of a moment by the place
+in the library that made it, with its bytes and time, and [its readings](../benchmarks/device/README.md) on an
+A10G and an M4 give what each moment pays: its bytes are small, and its synchronizations are what it pays for.
 
 A stream's synapse eligibility takes one float per synapse, 25 MB at the speech size in float32, so `step`
 takes its streams from the device's memory: 256 of them fit an A10G's 22 GB in float32 and in float64, and 22 GB
