@@ -63,15 +63,15 @@ def _warm(brain: Any, stream: list[Any], batches: int = WARM) -> None:
     fork = copy.deepcopy(brain)
     for batch in stream[:batches]:
         gr.speak(fork, batch, teach=True)
-    flags = _moment.SHORTCUTS, _moment.ONE_CALL
+    flags = _moment.SHORTCUTS, _moment.ONE_CALL, _moment.ONE_LESSON
     try:
-        for shortcuts, one_call in ((True, False), (False, False)):
-            _moment.SHORTCUTS, _moment.ONE_CALL = shortcuts, one_call
+        for modes in ((True, True, False), (True, False, False), (False, False, False)):
+            _moment.SHORTCUTS, _moment.ONE_CALL, _moment.ONE_LESSON = modes
             fork = copy.deepcopy(brain)
             for batch in stream[:2]:
                 gr.speak(fork, batch, teach=True)
     finally:
-        _moment.SHORTCUTS, _moment.ONE_CALL = flags
+        _moment.SHORTCUTS, _moment.ONE_CALL, _moment.ONE_LESSON = flags
     fork = copy.deepcopy(brain)
     fork.retune(learning_free_steps=2)
     try:
@@ -122,6 +122,7 @@ def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
 # parts of a pass around them.
 PARTS = (
     ("cadence._moment", "_moment_kernel", "kernels: a moment in one call"),
+    ("cadence._moment", "_taught_kernel", "kernels: a taught lesson in one call"),
     ("cadence._moment", "_phases_kernel", "kernels: the lessons' phases"),
     ("cadence.fused", "_fast_solve", "kernels: the solves"),
     ("cadence.fused", "fused_solve", "kernels: the solves"),

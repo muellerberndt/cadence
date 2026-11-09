@@ -2656,6 +2656,18 @@ class Recall:
         moved, error, w_x, w_c, w, address_ok, position_ok = _moment.address_lesson(
             self, graph, rows, movement, positions
         )
+        return self._learned_compiled(
+            moved, error, w_x, w_c, w, address_ok, position_ok, positions, quiet
+        )
+
+    def _learned_compiled(
+        self, moved: int, error: float, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
+        address_ok: bool, position_ok: bool, positions: bool, quiet: dict[str, float],
+    ) -> dict[str, float]:
+        """What the compiled address lesson returns (``_moment._lesson_kernel``), taken: the
+        packed maps ``(w_x, w_c, w)`` of the ``moved`` rows' step become head 0's maps, the
+        address map where its step is finite (``address_ok``) and with ``positions`` every
+        position map where theirs is (``position_ok``); the lesson's report."""
         if not moved:
             return quiet
         columns = _moment.packed_maps(self)[3]

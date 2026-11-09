@@ -826,6 +826,14 @@ class Learner:
             return edges / (batch * span), neurons / (batch * span)
         s_plus, s_minus = nudged.activation, minus_state.activation
         if self.brain._blocked and w.synapses > 4 * w.n:
+            if self.config.compiled_moment and _compiled_passes():
+                # the compiled moment's contrast: the same products in one compiled pass, which
+                # its lesson in one call makes too (``_moment.taught_lesson``)
+                from . import _moment
+
+                found = _moment.contrast(self.brain.layout, s_plus, s_minus, span)
+                if found is not None:
+                    return found
             gram = block_contrast(self.brain.layout, s_plus, s_minus, len(s_plus) * span)
             return gram, (s_plus - s_minus).mean(axis=0) / span
         if not self.brain._blocked:

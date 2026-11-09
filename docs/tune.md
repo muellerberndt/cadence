@@ -353,9 +353,11 @@ CPU. A greedy act is one call: the moment's drive (the sensory part, the working
 memory's read, with the address and every position term through one product of the maps, kept
 packed until a lesson replaces one, and the place store's read), the free solve, the choice, the
 trace's step and the memory's write. A lesson by surprise judges in one call, the read and the
-solve its answer is read from, and where it teaches a row its free phase, its two nudged phases
-and their checks are one call more; the address lesson and the carried gains' contrast are
-compiled passes. An act after a lesson that taught nothing takes the lesson's read and solve. The
+solve its answer is read from, and where it teaches a row the lesson is one call more, from its
+phases to its written efficacies: the free phase, the two nudged phases and their checks, the
+contrast, the optimizer's step with the tied and bounded efficacies, the address lesson and the
+carried gains' contrast; Python stores what the call returns. An act after a lesson that taught
+nothing takes the lesson's read and solve. The
 equations are the same and the sums run in another order, so the bits are other ones; off, every
 bit is the ordinary path's. A brain with several read heads, a window, the command or when in its
 slots, the gains, a learned code or a separator reads through the ordinary path, and a moment the
@@ -397,7 +399,7 @@ which take 14.1.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
-| The work around the solve | `learning_compiled_moment=True` | An act in one compiled call, a lesson's judgment in one and its phases in one more: .61 to .62 of a chamber pass of the default brain on one Xeon core, 2.9 to 3.0 times the transformer's seconds where the default takes 4.8 ([the compiled moment](#the-compiled-moment-opt-in)). Other bits. |
+| The work around the solve | `learning_compiled_moment=True` | An act in one compiled call, a lesson's judgment in one and a taught lesson in one more: .61 to .62 of a chamber pass of the default brain on one Xeon core, 2.9 to 3.0 times the transformer's seconds where the default takes 4.8 ([the compiled moment](#the-compiled-moment-opt-in)). Other bits. |
 | Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and .74 of one on an Apple M4 (229 to 169 CPU seconds, four pairs at the default brain on one thread of a shared machine), whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |

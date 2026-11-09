@@ -120,9 +120,12 @@ one compiled call: the moment's drive (the sensory part, the working trace, the 
 read, with the address and every position term through one product of the maps, which stay packed
 until a lesson replaces one, and the place store's read), the free solve, the choice, the working
 trace's step and the memory's write; the act that begins its streams is one too. A lesson by
-surprise judges in one call, and where it teaches a row its free phase, its two nudged phases and
-their checks are one call more; the address lesson and the carried gains' contrast are compiled
-passes. An act after a lesson that taught nothing takes the lesson's read as its own, as it takes
+surprise judges in one call, and where it teaches a row the lesson is one call more, from its
+phases to its written efficacies: the free phase, the two nudged phases and their checks, the
+contrast, the optimizer's step with the tied and bounded efficacies, the address lesson and the
+carried gains' contrast, and Python stores what the call returns (a learner with frozen or tied
+synapses or per-synapse rates, and an update that is refused, take the passes in turn). An act
+after a lesson that taught nothing takes the lesson's read as its own, as it takes
 the lesson's solve. The equations are the ordinary path's and the sums run in another order, so the
 bits are other ones. Off by default; off, every bit is as before: the identity, options and slots
 batteries read no difference and the founder parity reads 0 of 24 lives differing against the tree

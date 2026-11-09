@@ -1613,3 +1613,694 @@ def lesson_phases(learner: Any, drive: Any, warm: Any, target: np.ndarray) -> An
         states.append(state)
         checks.append(residual)
     return states[0], states[1], states[2], checks
+
+
+# -- a taught lesson in one call: its phases, the update, the address lesson, the carried gains
+
+# A taught lesson of the compiled moment as one compiled call from its judgment to its written
+# efficacies (``taught_lesson``), with the bits of the passes in turn. False runs them as those
+# passes (the tests compare the two).
+ONE_LESSON = True
+
+if njit is not None:
+    from .fused import _divisor, _group_power, _moments, _pick, _plain, _step, _tied, rows_finite
+
+    @_vectorized
+    def _contrast_kernel(
+        s_plus: np.ndarray, s_minus: np.ndarray, starts: np.ndarray, pair_pre: np.ndarray,
+        pair_post: np.ndarray, offset: np.ndarray, edge_index: np.ndarray, span: float,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """A lesson's contrast between two phases over ``span`` (``Learner.contrast`` by blocks,
+        ``blocks.block_contrast``): every synapse's ``sum_b s+[b, pre] s+[b, post] - s-[b, pre]
+        s-[b, post]`` over the rows times ``span``, and every neuron's mean movement over
+        ``span``. A block is ``A+.T (B+ - B-)``, plus ``(A+ - A-).T B-`` where its source range
+        moved, each one matrix product as ``block_contrast`` makes it."""
+        rows, n = s_plus.shape
+        g = np.empty(offset[offset.shape[0] - 1])
+        for k in range(pair_pre.shape[0]):
+            a0, a1 = starts[pair_pre[k]], starts[pair_pre[k] + 1]
+            b0, b1 = starts[pair_post[k]], starts[pair_post[k] + 1]
+            a_plus = np.ascontiguousarray(s_plus[:, a0:a1])
+            change = np.empty((rows, b1 - b0))
+            moved = False
+            for b in range(rows):
+                for j in range(b1 - b0):
+                    change[b, j] = s_plus[b, b0 + j] - s_minus[b, b0 + j]
+                for i in range(a1 - a0):
+                    if s_plus[b, a0 + i] != s_minus[b, a0 + i]:
+                        moved = True
+            block = np.dot(a_plus.T, change)
+            if moved:
+                source = np.empty((rows, a1 - a0))
+                for b in range(rows):
+                    for i in range(a1 - a0):
+                        source[b, i] = s_plus[b, a0 + i] - s_minus[b, a0 + i]
+                block = block + np.dot(source.T, np.ascontiguousarray(s_minus[:, b0:b1]))
+            g[offset[k]:offset[k + 1]] = block.ravel()
+        raw = np.empty(edge_index.shape[0])
+        _pick(g, edge_index, rows * span, raw)
+        neuron = np.empty(n)
+        for j in range(n):
+            total = s_plus[0, j] - s_minus[0, j]
+            for b in range(1, rows):
+                total += s_plus[b, j] - s_minus[b, j]
+            neuron[j] = total / rows / span
+        return raw, neuron
+
+    @_vectorized
+    def _update_kernel(
+        raw: np.ndarray, raw_neuron: np.ndarray, velocity: np.ndarray, second: np.ndarray,
+        velocity_bias: np.ndarray, second_bias: np.ndarray, group: np.ndarray, groups: int,
+        neuron_group: np.ndarray, neuron_groups: int, rates: np.ndarray, partner: np.ndarray,
+        efficacy: np.ndarray, gain_pre: np.ndarray, plastic: np.ndarray, bias: np.ndarray,
+        order: np.ndarray, edge_index: np.ndarray, size: int,
+    ) -> tuple[Any, ...]:
+        """A lesson's update from its contrasts (``Learner._update`` for an all-plastic learner
+        without per-synapse rates or tied groups): the optimizer's moments and steps
+        (``_compiled_step``: ``fused.optimizer_step``'s passes for the synapses, the same
+        arithmetic for the neurons), the tied and bounded step with the effective weights
+        (``_compiled_apply``: ``fused.tied_step``'s pass) and the flat blocks of the new weights
+        (``Layout.flat``). ``rates`` holds the momentum, one less it and its correction, the
+        same three of the second moment, the rates of the synapses and the biases, the absolute
+        floor, the relative floor's share and its tiny term, the lesson's share and the bound.
+        Returns a status (0, or which check of the passes in turn refuses the update: 1 the
+        contrasts, 2 the moments, 3 the steps, 4 the tied steps, 5 the efficacies, 6 the
+        weights, 7 the biases), the four moments, the synapses' tied steps, the neurons'
+        steps, the efficacies, the weights, the biases and the blocks. Nothing is written in
+        place."""
+        momentum, momentum_rest, momentum_correction = rates[0], rates[1], rates[2]
+        rho, rho_rest, rho_correction = rates[3], rates[4], rates[5]
+        eta, eta_bias, floor, relative, tiny = rates[6], rates[7], rates[8], rates[9], rates[10]
+        share, cap = rates[11], rates[12]
+        count, n = raw.shape[0], raw_neuron.shape[0]
+        has_momentum, has_normalize = momentum > 0, rho > 0
+        status = 0
+        if not (_finite(raw) and _finite(raw_neuron)):
+            status = 1
+        # the neurons' momentum
+        term_bias = np.empty(n)
+        new_velocity_bias = velocity_bias
+        if has_momentum:
+            new_velocity_bias = np.empty(n)
+            for j in range(n):
+                moving = momentum * velocity_bias[j] + momentum_rest * raw_neuron[j]
+                new_velocity_bias[j] = moving
+                term_bias[j] = moving / momentum_correction
+        else:
+            for j in range(n):
+                term_bias[j] = raw_neuron[j]
+        # the synapses' moments and steps
+        new_velocity = np.empty(count) if has_momentum else velocity
+        new_second = np.empty(count) if has_normalize else second
+        step = np.empty(count)
+        if not (has_normalize and relative != 0.0):
+            _plain(
+                raw, velocity, second, momentum, momentum_rest, momentum_correction, rho,
+                rho_rest, rho_correction, has_momentum, has_normalize, eta, floor, new_velocity,
+                new_second, step,
+            )
+        else:
+            term, root = np.empty(count), np.empty(count)
+            _moments(
+                raw, velocity, second, momentum, momentum_rest, momentum_correction, rho,
+                rho_rest, rho_correction, has_momentum, new_velocity, new_second, term, root,
+            )
+            power, members = _group_power(root, group, groups)
+            shared = np.empty(groups)
+            for k in range(groups):
+                shared[k] = np.sqrt(power[k] / members[k])
+            _step(term, root, group, shared, eta, relative, tiny, step)
+        # the neurons' second moment and steps
+        new_second_bias = second_bias
+        if has_normalize:
+            new_second_bias = np.empty(n)
+            root_bias = np.empty(n)
+            for j in range(n):
+                held = rho * second_bias[j] + rho_rest * (raw_neuron[j] * raw_neuron[j])
+                new_second_bias[j] = held
+                root_bias[j] = np.sqrt(held / rho_correction)
+            rms = np.empty(n)
+            if relative != 0.0:
+                power, members = _group_power(root_bias, neuron_group, neuron_groups)
+                shared = np.empty(neuron_groups)
+                for k in range(neuron_groups):
+                    shared[k] = np.sqrt(power[k] / members[k])
+                _divisor(root_bias, neuron_group, shared, relative, tiny, rms)
+            else:
+                for j in range(n):
+                    rms[j] = root_bias[j] + floor
+            for j in range(n):
+                term_bias[j] = term_bias[j] / rms[j]
+        if status == 0 and not (
+            _finite(new_velocity) and _finite(new_velocity_bias) and _finite(new_second)
+            and _finite(new_second_bias)
+        ):
+            status = 2
+        # the lesson's share of the steps, tied and bounded
+        for e in range(count):
+            step[e] = share * step[e]
+        delta_bias = np.empty(n)
+        for j in range(n):
+            delta_bias[j] = share * (eta_bias * term_bias[j])
+        if status == 0 and not (_finite(step) and _finite(delta_bias)):
+            status = 3
+        delta, scale, weights = np.empty(count), np.empty(count), np.empty(count)
+        bad = _tied(step, partner, efficacy, gain_pre, cap, delta, scale, weights)
+        if status == 0:
+            if bad[0] != 0:
+                status = 4
+            elif bad[1] != 0:
+                status = 5
+            elif bad[2] != 0:
+                status = 6
+        new_bias = np.empty(n)
+        for j in range(n):
+            if not plastic[j]:
+                delta_bias[j] = 0.0
+            new_bias[j] = bias[j] + delta_bias[j]
+        if status == 0 and not _finite(new_bias):
+            status = 7
+        # the blocks of the new weights, a synapse at each of its entries
+        if order.shape[0] == size:
+            flat = np.empty(size)
+            for i in range(size):
+                flat[i] = weights[order[i]]
+        else:
+            flat = np.zeros(size)
+            for e in range(count):
+                flat[edge_index[e]] = weights[e]
+        return (
+            status, new_velocity, new_second, new_velocity_bias, new_second_bias, delta,
+            delta_bias, scale, weights, new_bias, flat,
+        )
+
+    @_vectorized
+    def _gains_kernel(
+        s_plus: np.ndarray, s_minus: np.ndarray, rows: np.ndarray, heard: np.ndarray,
+        span: float, weights: np.ndarray, routes: int, synapses: Any, sources: Any,
+        targets: Any, traces: Any, live: np.ndarray, spans: np.ndarray, scales: np.ndarray,
+        rule: np.ndarray,
+    ) -> np.ndarray:
+        """The carried routes' ``c`` per taught row and route (``Hearing._contrast`` after a
+        lesson, ``_route_kernel`` per route): the association's movement between the nudged
+        phases over ``span`` read back through each route's synapses of ``weights``, against
+        what the route's memory holds at the streams ``rows``. A route whose memory holds
+        another batch reads silence (``live``)."""
+        count, width = rows.shape[0], heard.shape[0]
+        movement = np.empty((count, width))
+        for i in range(count):
+            for j in range(width):
+                movement[i, j] = (s_plus[i, heard[j]] - s_minus[i, heard[j]]) / span
+        out = np.zeros((count, max(routes, 1)))
+        for k in range(routes):
+            if not live[k]:
+                continue
+            start, stop = spans[k, 0], spans[k, 1]
+            trace = traces[k]
+            held = np.empty((count, stop - start))
+            for i in range(count):
+                for j in range(stop - start):
+                    held[i, j] = trace[rows[i], start + j]
+            c = _route_kernel(
+                movement, weights, synapses[k], sources[k], targets[k], held, scales[k, 0],
+                scales[k, 1], rule[1], rule[2], rule[3], rule[4],
+            )
+            for i in range(count):
+                out[i, k] = c[i]
+        return out
+
+    @_vectorized
+    def _peak(residual: np.ndarray) -> float:
+        """``np.max``: the largest entry, NaN where one is."""
+        best = float(residual[0])
+        for i in range(residual.shape[0]):
+            r = float(residual[i])
+            if r != r:
+                return r
+            if r > best:
+                best = r
+        return best
+
+    @_compiled
+    def _taught_kernel(
+        differs: np.ndarray, labels: np.ndarray, drive: np.ndarray, warm_v: np.ndarray,
+        warm_a: np.ndarray, has_warm: bool, kept_in: np.ndarray, has_kept: bool,
+        has_given: bool, bias: np.ndarray, flat: np.ndarray, efficacy: np.ndarray,
+        gain_pre: np.ndarray, velocity: np.ndarray, second: np.ndarray,
+        velocity_bias: np.ndarray, second_bias: np.ndarray, rates: np.ndarray,
+        addressed: bool, keys: np.ndarray, values: np.ndarray, nexts: np.ndarray,
+        held: np.ndarray, first: int, slots: int, has_next: bool, inputs: np.ndarray,
+        cortex: np.ndarray, address: np.ndarray, key: np.ndarray, w_x: np.ndarray,
+        w_c: np.ndarray, w: np.ndarray, columns: np.ndarray, numbers: np.ndarray,
+        scalars: np.ndarray, told: np.ndarray, focus: np.ndarray, table: np.ndarray,
+        grid: np.ndarray, positions: bool, routes: int, traces: Any, live: np.ndarray,
+        scales: np.ndarray,
+        output_index: np.ndarray, pairs: np.ndarray, apical_pairs: np.ndarray,
+        starts: np.ndarray, pair_pre: np.ndarray, pair_post: np.ndarray, offset: np.ndarray,
+        freezable: np.ndarray, freezable_nudged: np.ndarray, keep: np.ndarray,
+        rule: np.ndarray, target0: np.ndarray, nmask0: np.ndarray, gid0: np.ndarray,
+        softmax0: np.ndarray, anchor0: np.ndarray, gain0: np.ndarray, nmask: np.ndarray,
+        gid: np.ndarray, ngroups: int, beta: float, softmax_t: np.ndarray, anchor: np.ndarray,
+        anchor_gain: np.ndarray, pool_of: np.ndarray, pool_index: np.ndarray,
+        pool_starts: np.ndarray, pool_run: np.ndarray, no_held: np.ndarray, free_steps: int,
+        nudged_steps: int, tolerance: float, stops: bool, nudged_tolerance: float,
+        nudged_stops: bool, edge_index: np.ndarray, span: float, group: np.ndarray,
+        groups: int, neuron_group: np.ndarray, neuron_groups: int, partner: np.ndarray,
+        plastic: np.ndarray, order: np.ndarray, association: np.ndarray,
+        value_synapses: np.ndarray, value_sources: np.ndarray, value_targets: np.ndarray,
+        next_synapses: np.ndarray, next_sources: np.ndarray, next_targets: np.ndarray,
+        heard: np.ndarray, route_synapses: Any, route_sources: Any, route_targets: Any,
+        route_spans: np.ndarray,
+    ) -> tuple[Any, ...]:
+        """A taught lesson from its judgment to its written efficacies, each part the kernel
+        the passes in turn launch, in their order: the rows whose answer ``differs`` from their
+        label and their targets (``Learner.step``), the free phase, the nudged phases and their
+        checks (``_phases_kernel``), the contrast (``_contrast_kernel``), the update
+        (``_update_kernel``), the address lesson through the new weights (``_lesson_kernel``)
+        and the carried routes' contrasts through them (``_gains_kernel``). Nothing is written
+        in place: the caller stores what comes back where the status is 0, and takes the passes
+        in turn where it is not (1: a taught row's drive or warm state is not finite; 10 and
+        above: the update refuses, ``_update_kernel``'s status plus 10)."""
+        batch, n = drive.shape
+        count = 0
+        for b in range(batch):
+            if differs[b]:
+                count += 1
+        rows = np.empty(count, dtype=np.int64)
+        taught = np.empty((count, n))
+        v = np.zeros((count, n))
+        a = np.zeros((count, n))
+        target = np.zeros((count, n))
+        i = 0
+        for b in range(batch):
+            if differs[b]:
+                rows[i] = b
+                for j in range(n):
+                    taught[i, j] = drive[b, j]
+                if has_warm:
+                    for j in range(n):
+                        v[i, j] = warm_v[b, j]
+                        a[i, j] = warm_a[b, j]
+                target[i, output_index[labels[b]]] = 1.0
+                i += 1
+        status = 0
+        if not (rows_finite(taught) and rows_finite(v) and rows_finite(a)):
+            status = 1  # the passes in turn take this lesson: the phases here run from rest
+            for i in range(count):
+                for j in range(n):
+                    taught[i, j] = 0.0
+                    v[i, j] = 0.0
+                    a[i, j] = 0.0
+        weight = np.ones(count)
+        (
+            _, _, _, taken0, _, _, out0, _, _, s1, taken1, _, _, out1, _, _, s2, taken2, _, _,
+            out2,
+        ) = _phases_kernel(
+            v, a, kept_in, has_kept, has_given, taught, bias, flat, pairs, apical_pairs, starts,
+            pair_pre, pair_post, offset, freezable, freezable_nudged, keep, rule, target0,
+            nmask0, gid0, softmax0, weight, anchor0, gain0, target, nmask, gid, ngroups, beta,
+            softmax_t, weight, anchor, anchor_gain, pool_of, pool_index, pool_starts, pool_run,
+            no_held, free_steps, nudged_steps, tolerance, stops, nudged_tolerance, nudged_stops,
+        )
+        raw, raw_neuron = _contrast_kernel(
+            s1, s2, starts, pair_pre, pair_post, offset, edge_index, span
+        )
+        (
+            refused, new_velocity, new_second, new_velocity_bias, new_second_bias, delta,
+            delta_bias, scale, weights, new_bias, new_flat,
+        ) = _update_kernel(
+            raw, raw_neuron, velocity, second, velocity_bias, second_bias, group, groups,
+            neuron_group, neuron_groups, rates, partner, efficacy, gain_pre, plastic, bias,
+            order, edge_index, flat.shape[0],
+        )
+        if status == 0 and refused != 0:
+            status = 10 + refused
+        moved = 0
+        error = 0.0
+        new_x, new_c, new = w_x, w_c, w
+        address_ok = False
+        position_ok = False
+        if addressed and status == 0:
+            width = association.shape[0]
+            movement = np.empty((count, width))
+            for i in range(count):
+                for j in range(width):
+                    movement[i, j] = s1[i, association[j]] - s2[i, association[j]]
+            slot_held = np.ascontiguousarray(held[:, first:first + slots])
+            masked = False
+            for b in range(batch):
+                for m in range(slots):
+                    if not slot_held[b, m]:
+                        masked = True
+            slot_values = np.ascontiguousarray(values[:, first:first + slots, :])
+            slot_nexts = (
+                np.ascontiguousarray(nexts[:, first:first + slots, :]) if has_next
+                else slot_values
+            )
+            moved, error, new_x, new_c, new, address_ok, position_ok = _lesson_kernel(
+                rows, movement, weights, value_synapses, value_sources, value_targets,
+                next_synapses, next_sources, next_targets, has_next, slot_values, slot_nexts,
+                np.ascontiguousarray(keys[:, first:first + slots, :]), slot_held, masked,
+                inputs, cortex, address, key, w_x, w_c, w, columns, numbers, scalars, told,
+                focus, table, grid, positions,
+            )
+        contrasts = _gains_kernel(
+            s1, s2, rows, heard, span, weights, routes, route_synapses, route_sources,
+            route_targets, traces, live, route_spans, scales, rule,
+        )
+        return (
+            status, count, taken0, taken1, taken2, _peak(out0), _peak(out1), _peak(out2),
+            new_velocity, new_second, new_velocity_bias, new_second_bias, delta, delta_bias,
+            scale, weights, new_bias, new_flat, moved, error, new_x, new_c, new, address_ok,
+            position_ok, contrasts,
+        )
+
+
+def contrast(
+    layout: Any, s_plus: Any, s_minus: Any, span: float
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """``Learner.contrast`` by blocks between the activations of two phases on the host, in one
+    compiled pass (``_contrast_kernel``): the per-synapse and per-neuron terms over ``span``.
+    None where the arrays are not the kernel's kind (the caller reads them with NumPy)."""
+    if not available():
+        return None
+    for s in (s_plus, s_minus):
+        if (
+            type(s) is not np.ndarray or s.dtype != np.float64 or s.ndim != 2
+            or not s.flags.c_contiguous
+        ):
+            return None
+    if s_plus.shape != s_minus.shape or not len(s_plus):
+        return None
+    found: tuple[np.ndarray, np.ndarray] = _contrast_kernel(
+        s_plus, s_minus, layout.starts, layout.pair_pre, layout.pair_post, layout.offset,
+        layout.edge_index, float(span),
+    )
+    return found
+
+
+_NO_INDEX = np.zeros(0, dtype=np.int64)
+_NO_TRACE = np.zeros((1, 1))
+_PLAIN_LESSONS: dict[type, bool] = {}
+
+
+def _plain_lesson(kind: type) -> bool:
+    """Whether a learner of ``kind`` teaches a lesson by the passes ``_taught_kernel`` composes:
+    none of them is overridden."""
+    from .learning import Learner
+
+    plain = _PLAIN_LESSONS.get(kind)
+    if plain is None:
+        plain = all(
+            getattr(kind, name) is getattr(Learner, name)
+            for name in (
+                "step", "free", "_nudged", "_diagnostic", "nudge_for", "targets", "update",
+                "_update", "contrast", "apply", "_compiled_apply", "_compiled_step", "held",
+                "_share", "_differs", "_projections", "_mlx_update_tables", "_device_kernel",
+            )
+        )
+        _PLAIN_LESSONS[kind] = plain
+    return plain
+
+
+def _lesson_plan(brain: Any) -> tuple[Any, ...] | None:
+    """What ``_taught_kernel`` reads that a lesson does not change, made once per learner,
+    layout, settings and wiring: the layout's tables, the nudge's arrays, the optimizer's
+    groups and pairs, the read's synapses and the carried routes'. None where the learner
+    teaches another way (a subclass, tied groups, a sparse or parallel layout, a budget of no
+    sweep)."""
+    from . import fused
+    from .learning import _RELATIVE_TINY
+
+    learner, recall, hearing = brain.learner, brain.recall, brain.hearing
+    graph = learner.brain
+    cfg, layout, model = learner.config, graph.layout, graph.neuron_model
+    routes = hearing.routes if hearing is not None else None
+    key = (
+        cfg, layout, model, learner.output_mask, learner.output_groups, learner.output_index,
+        learner.plastic_synapses, learner.plastic_neurons, learner._paired, learner._members,
+        recall, hearing, routes, None if routes is None else len(routes), type(learner),
+    )
+    held = brain.__dict__.get("_lesson_plan")
+    if held is not None and len(held[0]) == len(key) and all(
+        ours is theirs or (type(ours) is int and ours == theirs)
+        for ours, theirs in zip(held[0], key, strict=True)
+    ):
+        return held[1]  # type: ignore[no-any-return]
+    plan: tuple[Any, ...] | None = None
+    w = graph.connectome
+    n = w.n
+    if (
+        _plain_lesson(type(learner)) and cfg.free_steps >= 1 and cfg.nudged_steps >= 1
+        and not cfg.qualified and cfg.tolerance is not None and learner.slot_count == 1
+        and learner.plastic_synapses is not None and learner.plastic_neurons is not None
+        and learner.plastic_neurons.flags.c_contiguous and not len(learner._members)
+        and graph._blocked and w.synapses > 4 * n and not layout.parallel_synapses
+        and not fused._elements_in_parallel(w.synapses)
+    ):
+        pull = learner.nudge_for(np.zeros((1, n)), cfg.beta, None, None)
+        _, nmask, gid, ngroups, beta, softmax_t, _, anchor, anchor_gain = fused._nudge_arrays(
+            pull, 1, n
+        )
+        target0, nmask0, gid0, _, _, softmax0, _, anchor0, gain0 = fused._no_nudge(1, n)
+        freezable = ~fused._fed_ranges(layout)
+        freezable_nudged = freezable.copy()
+        freezable_nudged[
+            np.searchsorted(
+                layout.starts, np.flatnonzero((nmask > 0) | (anchor_gain > 0)), side="right"
+            ) - 1
+        ] = False
+        compartment = fused._compartment(None, layout, np.zeros(0), None, 1, n)
+        pairs, apical_pairs, no_held = compartment[0], compartment[2], compartment[11]
+        pool_of, pool_index, pool_starts, pool_run = compartment[4:8]
+        tolerance = cfg.tolerance if cfg.tolerance else None  # a tolerance of zero never stops
+        nudged_tolerance = None if cfg.nudged_fixed else tolerance
+        group, neuron_group = learner._projections()
+        partner = np.full(w.synapses, -1, dtype=np.int64)
+        partner[learner._paired] = learner._paired_reverse
+        order = layout._flat_order
+        m, rho = cfg.momentum, cfg.normalize
+        rates = np.array([
+            m, 1 - m, 1.0, rho, 1 - rho, 1.0, cfg.eta, cfg.eta_bias, cfg.normalize_floor,
+            cfg.normalize_relative, _RELATIVE_TINY, 1.0, cfg.scale_cap,
+        ], dtype=float)
+        if recall is not None:
+            association = np.ascontiguousarray(recall.association, dtype=np.int64)
+            (v_syn, v_src, v_dst), (n_syn, n_src, n_dst) = (
+                tuple(np.ascontiguousarray(a, dtype=np.int64) for a in part)
+                for part in recall._head_synapses[0]
+            )
+        else:
+            association = v_syn = v_src = v_dst = n_syn = n_src = n_dst = _NO_INDEX
+        if routes:
+            heard = np.ascontiguousarray(hearing.association, dtype=np.int64)
+            carried = tuple(
+                tuple(np.ascontiguousarray(route[name], dtype=np.int64) for route in routes)
+                for name in ("synapses", "rows", "cols")
+            )
+            spans = np.array([[route["start"], route["stop"]] for route in routes],
+                             dtype=np.int64)
+        else:
+            heard = _NO_INDEX
+            carried = ((_NO_INDEX,), (_NO_INDEX,), (_NO_INDEX,))
+            spans = np.zeros((1, 2), dtype=np.int64)
+        constants = (
+            np.ascontiguousarray(learner.output_index, dtype=np.int64), pairs, apical_pairs,
+            layout.starts, layout.pair_pre, layout.pair_post, layout.offset, freezable,
+            freezable_nudged, fused._NO_MASK, np.array(fused._rule(model), dtype=float),
+            target0, nmask0, gid0, softmax0, anchor0, gain0, nmask, gid, int(ngroups),
+            float(beta), softmax_t, anchor, anchor_gain, pool_of, pool_index, pool_starts,
+            pool_run, no_held, int(cfg.free_steps), int(cfg.nudged_steps),
+            float(tolerance) if tolerance is not None else 0.0, tolerance is not None,
+            float(nudged_tolerance) if nudged_tolerance is not None else 0.0,
+            nudged_tolerance is not None, layout.edge_index, 2.0 * cfg.beta,
+            np.ascontiguousarray(group, dtype=np.int64), int(group.max()) + 1,
+            np.ascontiguousarray(neuron_group, dtype=np.int64), int(neuron_group.max()) + 1,
+            partner, learner.plastic_neurons,
+            _NO_INDEX if order is None or len(order[0]) != layout.size else order[0],
+            association, v_syn, v_src, v_dst, n_syn, n_src, n_dst, heard, *carried, spans,
+        )
+        plan = (constants, rates, np.zeros((max(len(routes or ()), 1), 2)),
+                np.zeros(max(len(routes or ()), 1), dtype=np.bool_))
+    # the key's objects are held with the plan, so an identity is never a freed object's
+    brain.__dict__["_lesson_plan"] = (key, plan)
+    return plan
+
+
+_PHASES = ("free", "nudged", "opposite")
+
+
+def taught_lesson(
+    brain: Any, drive: np.ndarray, state: Any, labels: np.ndarray, differs: np.ndarray
+) -> dict[str, float] | None:
+    """A taught lesson of the compiled moment in one compiled call (``_taught_kernel``), after
+    its judgment: the rows of ``drive`` whose answer ``differs`` from their ``labels`` settle
+    their phases from the stream's ``state``, the update steps the efficacies and the biases,
+    the address lesson steps the read's maps and the carried gains take their step, and what
+    the call returns is stored. The same parameters, moments, maps, gains and report to the bit
+    as ``Learner.step``, ``Recall.learn`` and ``Hearing.learn`` in turn; None where the brain,
+    the learner or the lesson takes those (nothing has changed then): another learner or
+    layout, synapses that are frozen, tied in groups or stepped at their own rates, a recall
+    memory or a carried route off the host, a lesson the update refuses."""
+    from . import fused
+
+    plan = _lesson_plan(brain)
+    learner = brain.learner
+    if plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all():
+        return None
+    constants, rates, scales, live = plan
+    graph, cfg = learner.brain, learner.config
+    recall, hearing = brain.recall, brain.hearing
+    batch, n = drive.shape
+    flat = graph._fused_blocks()[0]
+    if graph._efficacy is None or graph._torch is not None or graph._mlx is not None:
+        return None
+    moments = (
+        learner.velocity, learner.second_moment, learner.velocity_bias,
+        learner.second_moment_bias,
+    )
+    for array in moments:
+        if type(array) is not np.ndarray or not array.flags.c_contiguous:
+            return None
+    if not labels.flags.c_contiguous:
+        labels = np.ascontiguousarray(labels)
+    whole = bool(differs.all())
+    kept_in, has_kept = fused._NO_PRODUCTS
+    has_given = False
+    if state is None:
+        warm_v = warm_a = _NO_ROWS
+    else:
+        warm_v, warm_a = state.v, state.adaptation
+        if whole:  # every row is taught: the phases start from the state itself
+            products = state.__dict__.get("_products")
+            kept_in, has_kept = fused._held(products)
+            has_given = fused._given(products, flat, flat, batch)[1]
+    # the address lesson (``Recall.learn``): the moment the lesson's drive addressed
+    moment: Any = None if recall is None else recall.last
+    positions = False
+    addressed = False
+    if recall is not None and moment is not None:
+        positions = bool(recall.position_maps) and (recall.position_rate > 0 or recall.slope > 0)
+        addressed = bool(
+            (recall.address or positions) and recall.slots
+            and recall.streams == len(moment.address) == batch
+        )
+    if addressed:
+        slots = recall.slots
+        keys, first = _behind(recall, "keys")
+        values, at_values = _behind(recall, "values")
+        nexts, at_nexts = _behind(recall, "nexts") if recall.next else (values, at_values)
+        held, at_held = _behind(recall, "held")
+        if not first == at_values == at_nexts == at_held:
+            keys, values, held = (
+                np.ascontiguousarray(a) for a in (recall.keys, recall.values, recall.held)
+            )
+            nexts = np.ascontiguousarray(recall.nexts) if recall.next else values
+            first = 0
+        w_x, w_c, w, columns = packed_maps(recall)
+        numbers, scalars, table, grid = _settings(recall)
+        read: tuple[Any, ...] = (
+            True, keys, values, nexts, held, first, slots, bool(recall.next), moment.inputs,
+            moment.cortex, moment.address, moment.key, w_x, w_c, w, columns, numbers, scalars,
+            recall.told, recall.focus, table, grid, positions,
+        )
+    else:
+        read = _NO_READ
+    # the carried routes (``Hearing.learn``): what each holds at this batch
+    routes = hearing.routes if hearing is not None else ()
+    if routes:
+        traces = []
+        for k, route in enumerate(routes):
+            memory = route["memory"]
+            trace = memory.trace
+            if (
+                type(trace) is not np.ndarray or trace.dtype != np.float64 or trace.ndim != 2
+                or not trace.flags.c_contiguous or not trace.flags.writeable
+            ):
+                return None
+            traces.append(trace)
+            amplitude = float(memory.amplitude)
+            scales[k, 0] = amplitude * hearing.gain(route)
+            scales[k, 1] = amplitude
+            live[k] = len(trace) == batch
+        carried: tuple[Any, ...] = tuple(traces)
+    else:
+        carried = (_NO_TRACE,)
+    m, rho = cfg.momentum, cfg.normalize
+    count = learner.contrast_updates + 1  # only this optimizer's own history
+    rates[2] = 1.0 - m**count if m > 0 else 1.0
+    rates[5] = 1.0 - rho**count if rho > 0 else 1.0
+    rates[11] = learner._share(differs)
+    kernel: Any = _taught_kernel  # its arguments are the lesson's, the read's and the plan's
+    out = kernel(
+        differs, labels, drive, warm_v, warm_a, state is not None, kept_in, has_kept, has_given,
+        graph.bias, flat, graph._efficacy, graph._gain_pre, *moments, rates, *read,
+        len(routes), carried, live, scales, *constants,
+    )
+    if out[0] != 0:
+        return None
+    (_, taught, taken0, taken1, taken2, peak0, peak1, peak2, velocity, second, velocity_bias,
+     second_bias, delta, delta_bias, scale, weights, bias, new_flat, moved, error, new_x,
+     new_c, new, address_ok, position_ok, contrasts) = out
+    # the update (``Learner._update``): the moments, then the graph of the new parameters
+    if m > 0:
+        learner.velocity_bias = velocity_bias
+        learner.velocity = velocity
+    if rho > 0:
+        learner.second_moment = second
+        learner.second_moment_bias = second_bias
+    updated = graph._with_update(scale, weights, bias, (True, True))
+    updated._flat = new_flat
+    learner.brain = updated
+    learner.updates += 1
+    learner.contrast_updates += 1
+    report = {
+        "scale_step": float(np.abs(delta).mean()),
+        "bias_step": float(np.abs(delta_bias).mean()),
+        "accepted": 1.0, "qualified": 0.0, "qualification_required": 0.0,
+        "attempted_presentations": float(taught), "accepted_presentations": float(taught),
+    }
+    steps = 0
+    for name, taken, peak in zip(_PHASES, (taken0, taken1, taken2), (peak0, peak1, peak2),
+                                 strict=True):
+        steps += taken
+        report[f"{name}_steps"] = float(taken)
+        report[f"{name}_residual"] = float(peak)
+        report[f"{name}_residual_checks"] = 1.0
+        report[f"{name}_damping_halvings"] = 0.0
+        report[f"{name}_stagnation_checks"] = 0.0
+        report[f"{name}_row_sweeps"] = float(taught * taken)
+        report[f"{name}_row_residual_checks"] = float(taught)
+    report["total_steps"] = float(steps)
+    report["total_residual_checks"] = 3.0
+    report["total_stagnation_checks"] = 0.0
+    report["total_row_sweeps"] = float(taught * steps)
+    report["total_row_residual_checks"] = float(3 * taught)
+    report["attempted_presentations"] = float(batch)
+    report["accepted_presentations"] = float(taught)
+    report["agreed_presentations"] = float(batch) - float(taught)
+    exhausted = taken0 >= cfg.free_steps > 0
+    report["free_budget_exhausted"] = float(exhausted)
+    learner._warn_exhausted(exhausted)
+    # the address lesson's maps (``Recall.learn``)
+    if recall is not None:
+        quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
+        if recall.position_maps:
+            quiet.update(position_rows=0.0, position_refused=0.0)
+        report.update(
+            recall._learned_compiled(
+                int(moved), error, new_x, new_c, new, address_ok, position_ok, positions, quiet
+            ) if addressed else quiet
+        )
+    # the carried gains' step (``Hearing.learn``)
+    if routes:
+        hearing.step(contrasts.mean(axis=0))
+    return report
+
+
+_NO_READ: tuple[Any, ...] = (
+    False, _NO_STORE, _NO_STORE, _NO_STORE, _NO_HELD, 0, 0, False, _NO_TRACE, _NO_TRACE,
+    _NO_TRACE, _NO_TRACE, _NO_TRACE, _NO_TRACE, np.zeros(1), np.zeros(7, dtype=np.int64),
+    np.zeros(8, dtype=np.int64), np.zeros(8), _NO_INDEX, _NO_INDEX, np.zeros(1, dtype=np.int64),
+    np.zeros(0, dtype=np.int64), False,
+)

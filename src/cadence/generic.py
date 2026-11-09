@@ -75,6 +75,7 @@ from .code import LearnedCode
 from .connectome import Connectome
 from .genome import Genome, Projection, develop
 from .learning import (
+    LearnedState,
     Learner,
     LearnerConfig,
     _reservoir_cut,
@@ -4525,6 +4526,7 @@ class Brain:
                     tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
                 )
         agreed = None
+        whole = None
         if (
             judged is not None and answer is not None and isinstance(labels, np.ndarray)
             and labels.dtype == np.int64 and labels.shape == answer.shape
@@ -4534,6 +4536,12 @@ class Brain:
             differs = self.learner._differs(answer, labels)
             if not differs.any():
                 agreed = self.learner._untaught(differs)
+            elif _moment.ONE_LESSON and weights is None and targets is None:
+                # the rows that differ are taught in one call, from the phases to the written
+                # efficacies, the read's maps and the carried gains
+                report = _moment.taught_lesson(self, drive, self._activity(), labels, differs)
+                if report is not None:
+                    whole = (LearnedState(None, None, None, differs), report)
         try:
             # the lesson's free phase starts where the act settles: warm from the stream's activity
             # (rest after a reset, and for streams that have not acted), with a learned code's
@@ -4545,7 +4553,7 @@ class Brain:
                 options["weight"] = weights
             if targets is not None:
                 options["targets"] = targets
-            lesson, teaching = agreed if agreed is not None else self.learner.step(
+            lesson, teaching = agreed or whole or self.learner.step(
                 drive, labels, warm=self._warm(drive, self._activity()), answer=answer, **options
             )
         except LearningPhaseError as error:
@@ -4554,13 +4562,14 @@ class Brain:
             )
             self.last_learning["demonstrations"] = 0.0
             raise
-        if self.recall is not None:
+        # a lesson in one call taught the read's maps and the carried gains too
+        if whole is None and self.recall is not None:
             # the address lesson: the slots scored against the lesson's movement step the map,
             # with declared tokens at the rows whose answer is one
             teaching.update(self.recall.learn(self.learner.brain, lesson, tokens))
             # the gains' lesson (``recall_gain``): the motor's movement steps them
             teaching.update(self.recall.learn_gain(lesson))
-        if self.hearing is not None:
+        if whole is None and self.hearing is not None:
             self.hearing.compiled_moment = self._compiled_moment()
             self.hearing.learn(self.learner.brain, lesson, self.learner.config.beta)
         named = self.__dict__.get("_agreed_report") if agreed is not None else None
