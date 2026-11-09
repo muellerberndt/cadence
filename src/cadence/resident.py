@@ -175,10 +175,10 @@ def _crossing(rows: Sequence[int], ratios: Sequence[float]) -> float:
 
 def calibrate_card(rows: Sequence[int] = _CALIBRATION_ROWS) -> dict[str, Any]:
     """Time the chamber's default brain, ``Brain.compose(35, 18)``, on this machine's CUDA card in
-    float32 and on one CPU core, at each of ``rows``: a greedy ``act``, a ``lesson`` and a
-    ``step`` that learns from the outcome of the step before it, two of each after one to warm. Returns the card, the device's time over the core's
-    by rows (the geometric mean of the three), the rows where they cross, that crossing in
-    ``rows * synapses`` (``work``) and the seconds the calibration took."""
+    float32 and on one CPU core, at each of ``rows``: a greedy ``act``, a ``lesson`` and a ``step``
+    that learns from the outcome of the step before it, two of each after one to warm. Returns the
+    card, the device's time over the core's by rows (the geometric mean of the three), the rows
+    where they cross, that crossing in ``rows * synapses`` (``work``) and the seconds it took."""
     import time
     import warnings
 

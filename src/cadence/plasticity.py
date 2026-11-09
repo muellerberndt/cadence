@@ -1035,8 +1035,9 @@ class ActorCritic:
         self.updates += 1
         proposal = unread = None
         traced, memory = self.trace_memory, self.memory
-        on_device = getattr(memory, "_device", None) is not None
-        if resting is not None and traced is not None and on_device:
+        # the memory's trace on the device, as ``_memory_proposal`` finds it there
+        on_device = traced is not None and not isinstance(traced, np.ndarray)
+        if resting is not None and on_device:
             # the memory's step on the device too, its check read with the outcome's
             unread = memory._device.proposal_unread(memory._device.weighted(traced, delta_here))
         else:
@@ -1200,7 +1201,8 @@ class ActorCritic:
         else:
             critic = self._critic_candidate(delta)
         unread = None
-        if traced is not None and getattr(memory, "_device", None) is not None:
+        on_device = traced is not None and not isinstance(traced, np.ndarray)
+        if on_device:  # the memory's trace on the device, as ``_memory_proposal`` finds it there
             unread = memory._device.proposal_unread(memory._device.weighted(traced, delta))
             if unread is not None:
                 made += [unread[3], unread[4], *unread[5]]
@@ -1231,7 +1233,7 @@ class ActorCritic:
         )
         if resting is not None:
             critic = found["critic"]
-        if traced is not None and getattr(memory, "_device", None) is not None:
+        if on_device:
             proposal = found.get("proposal")
         # nothing refuses from here: what alone holds the eligibility lets it be written over
         old = None if held is None else list(held[0])
