@@ -781,6 +781,37 @@ development founders and 9 to 10 of 24 on fresh ones, at delay 5 reads 3 to 3 of
 wins 27 to 26 blocks of 30. Pass `recall=False` for a world paid by reward alone that gives the brain nothing to look up,
 and `recall_founder=True` for the founder memory.
 
+#### Where each fall comes from
+
+A declared run on fresh founders (#280; one machine, 0.95.2) silenced one part of the
+composition at a time and read the falls again. A part is a fall's cause when silencing it
+brings the composition back to its control:
+
+| Fall | Control | Composition | Cause | Composition with the cause silenced |
+| --- | --- | --- | --- | --- |
+| Key-door, delay 2, rule A acquired | 14 of 24 | 7 of 24 | the read's drive | 12 of 24; with the working trace silenced too, 14 |
+| Competing ring, hard nursery, skill A | .79 | .50 | the read's drive and the working trace, in part | .67 with both silenced |
+| Binding continuing, held-out | .98 | .78 | lessons teaching only the rows that surprise | .98 with every row taught |
+| Binding token, a name restated | .69 | .49 | the same | .83 |
+| "How long ago?" | .69 | .54 | the read's recency of 0 | .70 at the founder's .25 |
+| Hidden route, guided, sampled and greedy | .64, .58 | .19, .05 | none of the four parts alone or the two lesson parts together | at most .23, .15 |
+
+The control is `recall=False` on the first two rows and `recall_founder=True` on the rest. On
+these founders the observed chain (34 and 38 of 48), the odour nursery `step` at 1,000 (16 and
+18 of 30), the chain whose stages look alike (5 and 9 of 48) and binding token's held-out answers
+(.96 and .92) do not fall.
+
+No cause can be removed without a larger cost. Each of the three removals was read against the
+gates the composition holds:
+
+- **Every row taught** (`learning_surprise=False`) gives binding back and fails the grammar
+  chamber: paths .29 and two hops .05 against bars of .90 and .85.
+- **The founder's recency** (`recall_recency=0.25`) gives "how long ago?" back and fails induction
+  at unseen lengths (.66 to .73 against .90), "was A told before B?" and copying.
+- **The read starting closed**, its learned gain at 0 in place of 1, does not give the key-door
+  back (7 of 24). It costs the bandit (5 to 2 lives passing of 6) and the odour nursery `step`
+  at 300 (3 to 0).
+
 ### Two heads on this composition (opt-in)
 
 Two heads at about one head's parameters: width 33, the read's temperature at .15. The first block read this

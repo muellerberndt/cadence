@@ -18,6 +18,19 @@ keeps 1.00, and relearning after disuse beats first learning by +4.3 and +4.9 po
 Without the setting both keep 1.00. The chambers from birth, P4 with a mature skill and the short
 ring read as without it. See [records that fade with disuse](docs/memory.md#records-that-fade-with-disuse-opt-in).
 
+### Documentation
+
+- **Where the composition's falls come from** (#280). The memory guide lists each fall of the
+  default composition with the part that causes it, read on fresh founders by silencing one part
+  at a time:
+  - the key-door: the read's drive;
+  - binding: lessons teaching only the rows that surprise;
+  - "how long ago?": the read's recency of 0;
+  - the competing ring: the read's drive and the working trace, in part;
+  - the hidden route: no single part.
+
+  It also lists what removing each cause costs. No setting or default changes.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
