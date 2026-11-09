@@ -37,6 +37,21 @@ Declared on six fresh founders with records of random unit codes 64 coordinates 
   address takes .57 ms where the recall memory's own read takes 13.6, and on a device one product
   reads them in .4 ms.
 
+A second declaration ([protocol](benchmarks/memory_scale/PROTOCOL_2.md)) reads two more things:
+
+- **The cost gate for the store as it stands.** On three fresh founders a read with its value
+  among 10,000 records takes .084 to .093 ms on one core against a budget of .122, on 3 of 3; the
+  least a read that scores every slot does in NumPy is .071 to .079 ms. With the device's reading
+  the issue's cost gate is met.
+- **Keys made by `cadence.Message`** (#286) in place of the random stand-ins, on six fresh
+  founders: facts of an agent and a verb that say which patient, the key taken before the patient
+  is heard. An exact key finds its fact at .996 to 1.000 among 10,000 and .961 to .991 among
+  100,000. A noisy key reads .852 to .908 and .567 to .706, and an exact store over the same keys
+  reads the same: a key of ten active units in two groups shared with its siblings ties where it
+  loses units, so the key binds before the memory does. Retention reads as on the stand-ins (.968
+  to .978, changed facts current at .970 to .984). The same act and agent heard as words find
+  their fact on .00 to .01 of the cues.
+
 The same run reads the recall memory at scale ([a large memory](docs/memory.md#a-large-memory)):
 at a new brain's temperature the right record holds .27 of the read's mass at 128 records and .005
 at 10,000, and a taught default composition's position maps outvote the key past the distances its

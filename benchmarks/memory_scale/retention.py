@@ -16,6 +16,8 @@ over exact keys.
 **Keys.** The facts are ``world.records`` unless the plan names ``"keys": "message"``: then they
 are ``meanings.facts``, a key that says what the fact is about and a value that says it, both
 made by ``cadence.Message``; a fact that changes keeps its key and takes another patient.
+``"keys": "message-whole"`` tells each fact under the key of its whole episode, the patient's
+code in it, and asks it with what it is about: the key a message gives at an episode's end.
 
 **Readings**, at every checkpoint, by probes that count as no use:
 
@@ -60,10 +62,12 @@ class BankArm:
     address and content, and the instrument keeps which fact and version every slot holds."""
 
     def __init__(self, capacity: int, address: np.ndarray, settings: dict[str, Any],
-                 seed: int, value_width: int | None = None) -> None:
+                 seed: int, value_width: int | None = None,
+                 told: np.ndarray | None = None) -> None:
         from bank import Bank
 
-        self.address = address
+        self.address = address  # what a fact is asked with
+        self.told = address if told is None else told  # the key a fact is told under
         self.bank = Bank(address.shape[1], value_width or address.shape[1], capacity, seed=seed,
                          **settings)
         self.fact = np.full(capacity, -1, dtype=np.int64)
@@ -91,7 +95,7 @@ class BankArm:
         return self._state(fact, version, False)
 
     def tell(self, fact: int, version: int, content: np.ndarray) -> bool:
-        slot, _ = self.bank.write(self.address[fact], content)
+        slot, _ = self.bank.write(self.told[fact], content)
         fresh = self.fact[slot] != fact
         self.fact[slot], self.version[slot] = fact, version
         self.writes += int(fresh)
@@ -146,18 +150,26 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
                           change=float(spec.get("change", 0.05)), drift=drift)
     rng = np.random.default_rng(np.random.SeedSequence([founder, 288, 3]))
     fresh = np.random.default_rng(np.random.SeedSequence([founder, 288, 4]))
-    if spec.get("keys") == "message":
+    told_key: np.ndarray | None = None
+    if spec.get("keys") in ("message", "message-whole"):
         # facts keyed by held meanings: the key says what a fact is about, the value what it
-        # says, and a fact that changes keeps its key and takes another patient
+        # says, and a fact that changes keeps its key and takes another patient. With
+        # ``message-whole`` a fact is told under the key of its whole episode instead, the
+        # patient's code in it, and asked with what it is about: a change moves its key
         import meanings as mn
 
         coder = mn.Coder(mn.Lexicon(), int(spec.get("units", 280)), founder, spec.get("fan_in"))
         found = mn.facts(rng, coder, facts)
         address, content, width = found.key, found.value.copy(), coder.units
+        whole = spec.get("keys") == "message-whole"
+        if whole:
+            told_key = np.maximum(found.key, coder.patient[found.patient])
 
         def changed(fact: int) -> np.ndarray:
             at = np.array([fact])
             patient = fresh.integers(coder.lexicon.forms, size=1)
+            if told_key is not None:
+                told_key[fact] = np.maximum(found.key[fact], coder.patient[patient[0]])
             return np.asarray(coder.state(found.agent[at], found.verb[at], patient)[0])
     else:
         recs = world.records(rng, facts, width, width, spec.get("keys", "code"))
@@ -169,7 +181,7 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
         memory: Any = CacheArm(budget, name, facts, founder)
     else:
         memory = BankArm(budget, address, dict(arm.get("settings", {})), founder,
-                         value_width=content.shape[1])
+                         value_width=content.shape[1], told=told_key)
     version = np.zeros(facts, dtype=np.int64)
     told = np.zeros(facts, dtype=bool)  # the fact changed and its new content was stated
     marks = {int(round(moments * (i + 1) / CHECKPOINTS)) for i in range(CHECKPOINTS)}
@@ -179,7 +191,7 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     base = {"founder": founder, "budget": budget, "width": width, "facts": facts,
             "arm": name, "drift": drift, "zipf": stream.zipf, "change": stream.change,
             "keys": spec.get("keys", "code")}
-    if spec.get("keys") == "message":
+    if spec.get("keys") in ("message", "message-whole"):
         base["distinct_keys"] = round(len(np.unique(address.astype(np.uint8), axis=0)) / facts, 5)
     if not isinstance(arm, str):
         base["settings"] = arm.get("settings", {})

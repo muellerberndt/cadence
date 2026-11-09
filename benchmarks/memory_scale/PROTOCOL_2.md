@@ -138,3 +138,40 @@ facts about the cue's agent.
   key and value apart.
 - Other lexicons and fact shapes. One lexicon and one shape of fact are read; the share of the
   agent-verb pairs a store holds grows with N, to three in four at 100,000.
+
+## Outcome
+
+Read on the declared founders and recorded in [the README](README.md#the-second-declaration),
+with the receipts in [`results/`](results) and `summarize.py` (`gates2`) recomputing each gate.
+
+| Gate | Verdict |
+| --- | --- |
+| C1b | passes on 3 of 3: .084 to .093 ms against a budget of .122; the floor reads .071 to .079 |
+| M1 | passes on 6 of 6: .996 to 1.000 |
+| M2 | fails, 1 of 6: .852 to .908; the exact store reads .850 to .894 |
+| M3 | fails, 3 of 6: .825 to .925; the exact store reads .825 to .930, 4 of 6 |
+| M4, M5, M6 | pass on 6 of 6: top .968 to .978, revised .970 to .984, least-recently-used .780 to .833 |
+
+**The first term that binds** is the key. An exact key finds its fact as the stand-ins did to
+10,000 facts. A noisy or partial key ties with the facts that share one of its two moments, on the
+exact store as on the memory, from the first thousand facts. The write's recognition at cosine
+.9 binds second, the address not at all on these cues, and the form wholly.
+
+**Against the expectations.** M1 held with more room than expected (.996 to 1.000 for .986 to
+.997). M2 failed as expected, and one founder passed it (.908). M3 read .825 to .925 for an
+expected .66 to .85. M4 to M6 held. The store held .995 to .998 of 10,000 facts apart for an
+expected .983 to .994. The reworded cue read .000 to .010.
+
+**Departures from the plan of the runs.**
+
+- The box for C1b was a spot m7a.8xlarge, the first reading's processor (AMD EPYC 9R14): the
+  c7a.8xlarge first launched was reclaimed after five minutes, and its rows are not used.
+- That box was reclaimed in turn while the meaning-key plan ran, before any of its rows were
+  written; the retention plans and C1b were complete. The meaning-key plan was run again from its
+  start on a spot c7i.8xlarge, in three parts with the same cells and arms: 1,000 and 10,000
+  facts, 100,000 facts, and `memory-direct` at 100,000 facts.
+- `memory-direct` fills 100,000 slots with every slot scored at each write, about half an hour a
+  cell. The README states the cells that were read.
+- Nothing in an instrument, a plan or a bar changed after the declaration. `retention.py` gained
+  the `message-whole` keys of the development reading in [`after/`](after) after the declared
+  retention plans had finished.

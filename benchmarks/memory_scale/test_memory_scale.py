@@ -595,3 +595,51 @@ def test_the_floor_of_a_read_that_scores_every_slot_is_timed():
                         "arms": ["floor", "floor32"]})
     assert [r["arm"] for r in rows] == ["floor", "floor32"] and rows[0]["read_ms"] > 0
     assert rows[0]["bytes_per_record"] == 2 * rows[1]["bytes_per_record"]
+
+
+def test_a_fact_told_under_its_whole_episode_s_key_keeps_its_old_copy_when_it_changes():
+    import json
+
+    spec = {"founder": 2, "budget": 48, "moments_per_slot": 40, "units": 280,
+            "arm": {"name": "memory", "settings": {"direct": None}}}
+    turn = rn.run_cell({**spec, "keys": "message"})
+    whole = rn.run_cell({**spec, "keys": "message-whole"})
+    assert turn[-1]["stale"] == 0.0 and whole[-1]["stale"] > 0.2
+    assert whole[-1]["revised"] < turn[-1]["revised"] - 0.2
+    assert whole[-1]["writes"] > turn[-1]["writes"]  # every change takes a slot
+    plan = json.loads((HERE / "after" / "whole-keys.json").read_text())
+    assert plan["keys"] == "message-whole" and plan["founders"] == [0, 1, 2]
+    assert len(rn.cells(plan)) == 9
+
+
+def test_the_second_declaration_s_receipts_hold_the_verdicts_the_readme_states():
+    sm = _load("summarize")
+    gates = sm.gates2(HERE / "results")
+    passed = {name for name, gate in gates.items() if gate["passes"]}
+    assert passed == {"C1b", "M1", "M4", "M5", "M6"}
+    assert gates["C1b"]["founders"] == 3 and gates["M2"]["founders"] == 1
+    assert gates["M3"]["founders"] == 3
+    assert max(gates["C1b"]["values"]) < min(gates["C1b"]["budget"])
+    assert max(gates["C1b"]["floor"]) < min(gates["C1b"]["values"])  # the floor lies below
+    assert gates["M1"]["values"] == [0.998, 0.997, 0.996, 0.997, 0.997, 1.0]
+    assert gates["M2"]["values"] == [0.867, 0.908, 0.88, 0.852, 0.863, 0.891]
+    keys = sm.pick(sm.rows(HERE / "results" / "meaning-keys.jsonl"), units=280, fan_in=821)
+    assert {r["founder"] for r in keys} == set(sm.SECOND)
+    for n in (1000, 10_000, 100_000):  # the exact store misses with the memory: the key binds
+        store = sm.by_founder(keys, "found", sm.SECOND, arm="memory", n=n, cue="noisy", heads=1)
+        exact = sm.by_founder(keys, "found", sm.SECOND, arm="exact", n=n, cue="noisy", heads=1)
+        assert len(store) == len(exact) == 6
+        assert abs(float(np.mean(store)) - float(np.mean(exact))) < 0.02
+    reworded = [r["found"] for r in keys if r["cue"] == "reworded" and r["arm"] == "memory"]
+    assert max(reworded) <= 0.01
+    apart = sm.by_founder(keys, "held", sm.SECOND, arm="memory", n=100_000, cue="exact", heads=1)
+    same = sm.by_founder(keys, "held", sm.SECOND, arm="memory-same", n=100_000, cue="exact",
+                         heads=1)
+    assert all(b > a for a, b in zip(apart, same, strict=True))
+    readme = (HERE / "README.md").read_text()
+    for cell in (".852 to .908", ".961 to .991", ".968 to .978", ".084 to .093", ".593 to .707"):
+        assert cell in readme
+    whole = sm.rows(HERE / "results" / "dev-whole-keys.jsonl")
+    ends = [max(sm.pick(whole, arm="memory", founder=f), key=lambda r: r["moment"])
+            for f in (0, 1, 2)]
+    assert all(r["stale"] > 0.5 and r["revised"] < 0.3 for r in ends)

@@ -16,6 +16,7 @@ from typing import Any
 import numpy as np
 
 FOUNDERS = (2880, 2881, 2882, 2883, 2884, 2885)
+SECOND = (2890, 2891, 2892, 2893, 2894, 2895)  # the second declaration's founders
 NEEDED = 5  # founders a gate passes on
 
 
@@ -36,20 +37,22 @@ def pick(table: list[dict[str, Any]], **where: Any) -> list[dict[str, Any]]:
     return [r for r in table if all(r.get(k) == v for k, v in where.items())]
 
 
-def by_founder(table: list[dict[str, Any]], field: str, **where: Any) -> list[float]:
+def by_founder(table: list[dict[str, Any]], field: str,
+               founders: tuple[int, ...] = FOUNDERS, **where: Any) -> list[float]:
     """``field`` of the one row per declared founder that ``where`` selects, in founder order."""
     out = []
-    for founder in FOUNDERS:
+    for founder in founders:
         found = pick(table, founder=founder, **where)
         if len(found) == 1:
             out.append(float(found[0][field]))
     return out
 
 
-def last(table: list[dict[str, Any]], **where: Any) -> list[dict[str, Any]]:
+def last(table: list[dict[str, Any]], founders: tuple[int, ...] = FOUNDERS,
+         **where: Any) -> list[dict[str, Any]]:
     """Each declared founder's row at the stream's end."""
     out = []
-    for founder in FOUNDERS:
+    for founder in founders:
         found = pick(table, founder=founder, **where)
         if found:
             out.append(max(found, key=lambda r: r["moment"]))
@@ -108,6 +111,98 @@ def gates(folder: Path) -> dict[str, dict[str, Any]]:
                          "founders": int(sum(a <= b for a, b in zip(read, rest, strict=True))),
                          "passes": all(a <= b for a, b in zip(read, rest, strict=True))}
     return out
+
+
+def gates2(folder: Path) -> dict[str, dict[str, Any]]:
+    """The gates of the second declaration (``PROTOCOL_2.md``): C1b on the store as it stands,
+    and M1 to M6 on facts keyed by held meanings. A gate whose receipt is absent is left out."""
+    out: dict[str, dict[str, Any]] = {}
+
+    def gate(name: str, values: list[float], passes: list[bool], bar: str) -> None:
+        out[name] = {"values": [round(v, 4) for v in values], "bar": bar,
+                     "founders": int(sum(passes)), "passes": int(sum(passes)) >= NEEDED}
+
+    if held(folder, "second-cost.jsonl"):
+        table = rows(folder / "second-cost.jsonl")
+        founders = sorted({r["founder"] for r in table})
+        read = [pick(table, founder=f, arm="memory", n=10_000)[0]["read_ms"] for f in founders]
+        rest = [pick(table, founder=f, arm="moment", n=128)[0]["rest_ms"] for f in founders]
+        floor = [pick(table, founder=f, arm="floor", n=10_000)[0]["read_ms"] for f in founders]
+        within = [a <= b for a, b in zip(read, rest, strict=True)]
+        out["C1b"] = {"values": read, "budget": rest, "floor": floor,
+                      "bar": "at most the rest of the moment", "founders": int(sum(within)),
+                      "passes": all(within)}
+    if held(folder, "meaning-keys.jsonl"):
+        table = pick(rows(folder / "meaning-keys.jsonl"), units=280, fan_in=821)
+        for name, cue, heads, bar in (("M1", "exact", 1, 0.99), ("M2", "noisy", 1, 0.90),
+                                      ("M3", "agent", 4, 0.85)):
+            values = by_founder(table, "found", SECOND, arm="memory", n=10_000, cue=cue,
+                                heads=heads)
+            gate(name, values, [v >= bar for v in values], f"at least {bar}")
+    if held(folder, "meaning-retention.jsonl"):
+        table = rows(folder / "meaning-retention.jsonl")
+        store = last(table, SECOND, arm="memory", budget=1000, drift=False)
+        lru = last(table, SECOND, arm="lru", budget=1000, drift=False)
+        gate("M4", [r["top"] for r in store], [r["top"] >= 0.95 for r in store], "at least 0.95")
+        gate("M5", [r["revised"] for r in store], [r["revised"] >= 0.90 for r in store],
+             "at least 0.9")
+        gate("M6", [r["top"] for r in store],
+             [a["top"] > b["top"] for a, b in zip(store, lru, strict=True)],
+             "above least recently used")
+    return out
+
+
+def meaning_table(folder: Path, units: int = 280, fan_in: int = 821) -> str:
+    """Found by cue for facts keyed by held meanings, one code: each arm at each N."""
+    table = pick(rows(folder / "meaning-keys.jsonl"), units=units, fan_in=fan_in)
+    arms = list(dict.fromkeys(r["arm"] for r in table))
+    head = ["Facts", "Arm", "exact", "noisy", "partial", "reworded", "2 heads", "4 heads",
+            "8 heads", "held apart"]
+    lines = ["| " + " | ".join(head) + " |", "| ---" * len(head) + " |"]
+    for n in sorted({r["n"] for r in table}):
+        for arm in arms:
+            cells = [span(by_founder(table, "found", SECOND, arm=arm, n=n, cue=cue, heads=1))
+                     for cue in ("exact", "noisy", "partial", "reworded")]
+            if not cells[0]:
+                continue
+            cells += [span(by_founder(table, "found", SECOND, arm=arm, n=n, cue="agent",
+                                      heads=k), 2) for k in (2, 4, 8)]
+            kept = by_founder(table, "held", SECOND, arm=arm, n=n, cue="exact", heads=1) \
+                if arm != "exact" else []
+            cells.append(span(kept, 4))
+            lines.append(f"| {n:,} | `{arm}` | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def ties_table(folder: Path, units: int = 280, fan_in: int = 821) -> str:
+    """What the key holds per N on the exact store: distinct keys, and the share of cues whose
+    best overlap the right fact holds alone."""
+    table = pick(rows(folder / "meaning-keys.jsonl"), units=units, fan_in=fan_in, arm="exact")
+    head = ["Facts", "distinct keys", "single: exact", "noisy", "partial"]
+    lines = ["| " + " | ".join(head) + " |", "| ---" * len(head) + " |"]
+    for n in sorted({r["n"] for r in table}):
+        cells = [span(by_founder(table, "distinct_keys", SECOND, n=n, cue="exact", heads=1), 4)]
+        cells += [span(by_founder(table, "single", SECOND, n=n, cue=cue, heads=1))
+                  for cue in ("exact", "noisy", "partial")]
+        lines.append(f"| {n:,} | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
+
+
+def meaning_retention_table(folder: Path, name: str = "meaning-retention.jsonl") -> str:
+    table = rows(folder / name)
+    arms = list(dict.fromkeys(r["arm"] for r in table))
+    head = ("Arm", "top", "revised", "stale", "rare", "hits", "drifting: top", "left")
+    lines = ["| " + " | ".join(head) + " |", "| ---" * len(head) + " |"]
+    for arm in arms:
+        plain = last(table, SECOND, arm=arm, budget=1000, drift=False)
+        drift = last(table, SECOND, arm=arm, budget=1000, drift=True)
+        if not plain:
+            continue
+        cells = [span([r[f] for r in plain]) for f in ("top", "revised")]
+        cells += [span([r[f] for r in plain], 2) for f in ("stale", "rare", "hits")]
+        cells += [span([r["top"] for r in drift]), span([r["left"] for r in drift], 2)]
+        lines.append(f"| `{arm}` | " + " | ".join(cells) + " |")
+    return "\n".join(lines)
 
 
 def span(values: list[float], digits: int = 3) -> str:
@@ -236,7 +331,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--dir", type=Path, required=True)
     args = parser.parse_args(argv)
-    print(json.dumps(gates(args.dir), indent=1))
+    print(json.dumps({**gates(args.dir), **gates2(args.dir)}, indent=1))
     for title, table in (
         ("found, key width 64", lambda: retrieval_table(args.dir)),
         ("cost of the retrieval arms", lambda: cost_table(args.dir)),
@@ -246,6 +341,13 @@ def main(argv: list[str] | None = None) -> int:
         ("the default composition's margins", lambda: margins_table(args.dir)),
         ("retention, budget 1,000", lambda: retention_table(args.dir)),
         ("top by checkpoint, budget 1,000", lambda: checkpoints_table(args.dir)),
+        ("ms on one core, the second declaration",
+         lambda: moment_table(args.dir, "second-cost.jsonl")),
+        ("facts keyed by held meanings, 280 units", lambda: meaning_table(args.dir)),
+        ("what the key holds", lambda: ties_table(args.dir)),
+        ("the 70-unit code", lambda: meaning_table(args.dir, 70)),
+        ("the class's own fan-in", lambda: meaning_table(args.dir, 280, 26)),
+        ("retention with held-meaning keys", lambda: meaning_retention_table(args.dir)),
     ):
         try:
             print(f"\n{title}\n\n{table()}")

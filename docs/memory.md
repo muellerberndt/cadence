@@ -2245,6 +2245,61 @@ fails there: the address costs more than scoring 10,000 keys. That is why a memo
 `direct` slots scores every slot. Read after the declaration, the founder reads 10,000 records in
 .09 ms (.06 with `dtype="float32"`) and 100,000 through its address in .54 ms.
 
+**Keyed by a held message.** A record's key can be the key of a [held message](#a-held-message):
+what an episode was about, as zeros and ones. The key is taken at the turn where what the fact is
+about has been heard, and what it says goes to the value alone, so that a fact that changes keeps
+its key:
+
+```python
+def told(moments):
+    message = cd.Message(inputs=12, phases=4, units=280, winners=5, seed=0)
+    for moment in moments[:2]:
+        message.hear(moment[None])
+    about = message.key()[0].copy()                 # the act and the agent: what the fact is about
+    for moment in moments[2:]:
+        message.hear(moment[None])
+    return about, message.state[0].copy()           # the whole fact, the patient in the third block
+
+chase, dog = np.eye(12)[0], np.eye(12)[3] + np.eye(12)[9]
+owl, fox = np.eye(12)[4] + np.eye(12)[10], np.eye(12)[5] + np.eye(12)[10]
+facts = cd.LongTermMemory(width=280, value_width=4 * 280, capacity=64, revise=0.999)
+key, value = told([chase, dog, owl])                # the dog chases the owl
+slot, revised = facts.write(key, value)
+question, _ = told([chase, dog])                    # whom does the dog chase?
+assert np.array_equal(question, key)                # a question has its fact's key
+held = facts.value(facts.read(question))
+assert np.array_equal(held[560:840], value[560:840])           # the read holds the owl's code
+_, changed = told([chase, dog, fox])                # the dog chases the fox
+again, revised = facts.write(key, changed)
+assert revised and again == slot and facts.count == 1           # one record, revised
+```
+
+Read on six fresh founders with facts of a lexicon of 512 noun stems and 128 verbs (an agent and a
+verb say which patient; [memory-scale benchmark](../benchmarks/memory_scale/README.md#the-second-declaration),
+#288), beside an exact store over the same keys:
+
+| Facts | Exact key | Noisy key, three units in ten exchanged | Half of the key silent | 4 heads asked with the agent alone |
+| --- | --- | --- | --- | --- |
+| 1,000 | .998 to 1.000 | .963 to .989 | .809 to .855 | .83 to 1.00 |
+| 10,000 | .996 to 1.000 | .852 to .908 | .613 to .646 | .82 to .93 |
+| 100,000 | .961 to .991 | .567 to .706 | .335 to .437 | .77 to .96 |
+| 100,000, the exact store | .971 to .993 | .593 to .707 | .357 to .422 | .78 to .94 |
+
+- **The key binds first.** A key holds about ten active units in two groups of five, and each
+  group is shared with every fact about that agent or with that verb. An exact key finds its fact;
+  a key that lost units ties with the siblings, on the exact store as on the memory. Random codes
+  of 64 coordinates read 1.000, .986 to .997 and .984 to .993 at 100,000 records.
+- **Recognise the same key only.** At the founder `revise=0.9` two keys of ten units that differ
+  in one are one record: among 100,000 facts .967 to .987 keep a record of their own, and .981 to
+  .995 with `revise=0.999`.
+- **Kept and revised as before.** Under 1,000 slots, 4,000 such facts and 100,000 moments the 10%
+  most-used facts are retrievable at .968 to .978 and the changed ones current at .970 to .984.
+- **Take the key before the fact says what it says.** Told under the key of the whole episode, a
+  changed fact has another key and its old copy stays: on three development founders the changed
+  facts are current at .22 to .23 and stale at .58 to .61.
+- **Words and concepts do not share a key.** The same act and agent heard as words find their
+  fact on .00 to .01 of the cues ([a held message](#a-held-message)).
+
 **Limits.** The keys decide what is similar: with random codes two records are alike only where
 their codes are, and a learned code or a code of meaning ([learned codes](senses.md#the-observation-code))
 is what makes a reminder find a related record. A cue that superposes several unrelated keys

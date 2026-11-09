@@ -355,6 +355,143 @@ exact and noisy cues intact, and one taught at 1,000 reads 4,000 at .945 to .960
 400 MB in float32 at 10,000 records and 40 GB at 100,000, so it is not read there. The memories
 above are taught nothing: their read is fixed, and what they hold is written once.
 
+## The second declaration
+
+[`PROTOCOL_2.md`](PROTOCOL_2.md), declared at commit `cb3c5f1a` before its runs: the cost gate for
+the store as it stands, on founders 2886 to 2888, and facts whose keys and values
+`cadence.Message` makes (#286) in place of the stand-ins above, on founders 2890 to 2895.
+
+### The gates
+
+| Gate | Reading | Bar | Founders | Verdict |
+| --- | --- | --- | --- | --- |
+| C1b | ms per read with its value at 10,000 records, the store as it stands, one core | .122 | .084 to .093, 3 of 3 | **passes** |
+| M1 | found, exact key, 10,000 facts | .99 | .996 to 1.000, 6 of 6 | **passes** |
+| M2 | found, noisy key, 10,000 facts | .90 | .852 to .908, 1 of 6 | **fails**: the key, the exact store misses with it |
+| M3 | 4 heads return 4 different facts about the agent, 10,000 facts | .85 | .825 to .925, 3 of 6 | **fails**: the key, the exact store misses with it |
+| M4 | budget 1,000: the 10% most-used facts retrievable | .95 | .968 to .978, 6 of 6 | **passes** |
+| M5 | budget 1,000: revised facts current | .90 | .970 to .984, 6 of 6 | **passes** |
+| M6 | budget 1,000: above least-recently-used |  | .968 to .978, 6 of 6 | **passes** |
+
+### The cost gate for the store as it stands
+
+`cd.LongTermMemory` scores every slot up to 16,384 records and reads through its address past
+that. One process on a spot m7a.8xlarge that ran nothing else (the first reading's processor, an
+AMD EPYC 9R14; the c7a.8xlarge first launched was reclaimed after five minutes and its rows are
+not used), ms, mean of founders 2886 to 2888. `floor` is the keys' product with the cue and its
+first choice alone, the least a read that scores every slot does in NumPy.
+
+| Records | `moment`: read | rest | `memory`: read | write | `memory-float32`: read | `floor` | `floor32` | `exact`: read |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 128 | .142 | .122 | .008 | .019 | .009 | .003 | .003 | .006 |
+| 1,000 | .266 | .131 | .016 | .029 | .013 | .008 | .005 | .020 |
+| 10,000 | 1.496 | .188 | .088 | .117 | .055 | .074 | .038 | .158 |
+| 100,000 | 14.012 | .287 | .543 | .802 | .497 | 2.533 | .388 | 3.346 |
+
+At 10,000 records the store reads in .084 to .093 ms against a budget of .122, on 3 of 3
+founders: C1b passes, and with C2 the issue's cost box is met. The floor reads .071 to .079 ms,
+so the store's read is within a fifth of the least such a read does, and the margin under the
+budget is the floor's: by its growth with the records the product alone reaches the budget at
+about 16,000 records. Past 16,384 the store reads through its address, .543 ms at 100,000
+records where the product alone takes 2.533; that is above the budget, as the first
+declaration read it.
+
+### Facts keyed by held meanings
+
+`meanings.py` holds the facts. The lexicon is the grammar chamber's concept moments at 512 noun
+stems in two numbers and 128 verbs. A fact says of an agent and a verb which patient. Its key
+says what it is about: `Message.key()` after the act and the agent are heard, about ten active
+units of 280 in two groups of five. Its value says it: `Message.state` after the patient is heard
+too. The code is #286's (4 phases, 5 winners, 280 units), each unit reading the chamber's share
+of the channels. N facts are drawn about different agent-verb pairs of the lexicon's 131,072, so
+two facts about one agent, or with one verb, share a group of five units. `exact` is an exact
+store over the same keys, the ceiling; `memory` is `cd.LongTermMemory` as it stands;
+`memory-same` recognises a key told again only where it is the same key (`revise=0.999`). Cues:
+the fact's key; a noisy key (three in ten active units exchanged for silent ones); a partial key
+(half of the coordinates silent); for 4 heads, the agent's moment alone.
+
+| Facts | Arm | exact | noisy | partial | 4 heads | held apart |
+| --- | --- | --- | --- | --- | --- | --- |
+| 1,000 | `exact` | .998 to 1.000 | .950 to .984 | .796 to .870 | .91 to 1.00 |  |
+| 1,000 | `memory` | .998 to 1.000 | .963 to .989 | .809 to .855 | .83 to 1.00 | .9990 to 1.0000 |
+| 1,000 | `memory-same` | 1.000 | .963 to .989 | .809 to .855 | .83 to 1.00 | 1.0000 |
+| 10,000 | `exact` | .995 to 1.000 | .850 to .894 | .597 to .655 | .82 to .93 |  |
+| 10,000 | `memory` | .996 to 1.000 | .852 to .908 | .613 to .646 | .82 to .93 | .9951 to .9985 |
+| 10,000 | `memory-same` | .996 to .999 | .852 to .909 | .614 to .645 | .83 to .92 | .9986 to .9995 |
+| 100,000 | `exact` | .971 to .993 | .593 to .707 | .357 to .422 | .78 to .94 |  |
+| 100,000 | `memory` | .961 to .991 | .567 to .706 | .335 to .437 | .77 to .96 | .9670 to .9872 |
+| 100,000 | `memory-same` | .971 to .993 | .571 to .706 | .342 to .437 | .78 to .96 | .9812 to .9947 |
+
+On the random stand-ins the candidate read 1.000, .999 to 1.000 and .998 to .999 at 10,000 records
+and 1.000, .986 to .997 and .984 to .993 at 100,000, with 4 heads at 1.00.
+
+**What the key holds.** On the exact store: the share of facts whose key is their own, and the
+share of cues whose best overlap the right fact holds alone (the rest are ties).
+
+| Facts | distinct keys | the right fact alone at the best overlap: exact | noisy | partial |
+| --- | --- | --- | --- | --- |
+| 1,000 | 1.0000 | .998 to 1.000 | .926 to .974 | .720 to .799 |
+| 10,000 | .9986 to .9995 | .992 to .999 | .781 to .842 | .502 to .554 |
+| 100,000 | .9806 to .9947 | .950 to .986 | .451 to .586 | .250 to .318 |
+
+**The first term that binds is the key.**
+
+- **An exact key** finds its fact as the stand-ins did to 10,000 facts (M1 holds). At 100,000 it
+  reads .961 to .991, and the exact store .971 to .993: up to two facts in a hundred share their
+  key with another fact, since some agents' codes are one code.
+- **A noisy or a partial key** binds from the first thousand facts. A key holds two groups of
+  five units, and each group is every sibling's too. A cue that loses units of one group ties
+  with the siblings that share the other: among 10,000 facts the right fact holds the best overlap
+  alone on .78 to .84 of the noisy cues and .50 to .55 of the partial ones, and the exact store
+  finds no more than the memory does (M2 and M3 fail on both).
+- **The write** binds second. At cosine .9 the store takes a sibling for the fact told again
+  where two keys of ten units differ in one: among 100,000 facts it holds .967 to .987 of them
+  apart, and .981 to .995 where only the same key counts, which is the share of distinct keys.
+- **The address does not bind.** At 100,000 facts the store reads through its address, and on
+  the mean of the six founders it reads within .01 of the exact store on every cue where only
+  the same key counts.
+- **The form binds wholly.** The same act and agent heard as their words find their fact on
+  .000 to .010 of the cues at every size: a word's code and its concept's are unrelated draws.
+  #286 located that limit, and a learned map from words to concept codes is its to build.
+
+**Beside the declared code** (`memory`):
+
+| Code | Facts | exact | noisy | partial | 4 heads | distinct keys |
+| --- | --- | --- | --- | --- | --- | --- |
+| 280 units, the chamber's share of the channels (declared) | 10,000 | .996 to 1.000 | .852 to .908 | .613 to .646 | .82 to .93 | .9986 to .9995 |
+| 280 units, the chamber's share of the channels (declared) | 100,000 | .961 to .991 | .567 to .706 | .335 to .437 | .77 to .96 | .9806 to .9947 |
+| 70 units, the same share | 10,000 | .908 to .965 | .367 to .446 | .314 to .449 | .14 to .41 | .9716 to .9959 |
+| 70 units, the same share | 100,000 | .723 to .862 | .094 to .174 | .124 to .204 | .15 to .39 | .8648 to .9567 |
+| 280 units, the class's own fan-in | 10,000 | .942 to .995 | .468 to .583 | .369 to .443 | .42 to .80 | .9500 to .9988 |
+| 280 units, the class's own fan-in | 100,000 | .770 to .940 | .146 to .195 | .149 to .203 | .45 to .77 | .8287 to .9851 |
+
+A narrower code and a code whose units read one input each hold fewer distinct keys, and every
+cue falls with them.
+
+**Retention** (budget 1,000, 4,000 facts, 100,000 moments, a change of patient before one
+occurrence in twenty):
+
+| Arm | top | revised | stale | drifting: top | left |
+| --- | --- | --- | --- | --- | --- |
+| `memory`, the store as it stands | .968 to .978 | .970 to .984 | .00 | .938 to .970 | .27 to .31 |
+| `memory-same`, the same key only | .965 to .980 | .970 to .982 | .00 | .927 to .970 | .27 to .32 |
+| `lru` | .780 to .833 | .795 to .847 | .00 | .780 to .833 | .16 to .22 |
+| `fifo` | .675 to .728 | .682 to .739 | .00 | .677 to .725 | .16 to .21 |
+| `lfu`, exact counts | 1.000 | 1.000 | .00 | .843 to .890 | .99 to 1.00 |
+| `ring`, the fading off | .677 to .730 | .685 to .739 | .00 | .677 to .723 | .16 to .21 |
+| `append`, no revision | .190 to .215 | .160 to .189 | .60 to .62 | .290 to .367 | .25 to .33 |
+
+The store keeps and revises facts keyed by held meanings as it did the stand-ins (M4 to M6 hold;
+.963 to .980 and .971 to .981 there). With the 70-unit code it reads .938 to .973 and .943 to .973.
+
+**Where the key is taken** (development founders 0 to 2, receipt `results/dev-whole-keys.jsonl.gz`;
+nothing here is declared). A fact told under the key of its whole episode, the patient's code in
+it, and asked with what it is about: the top facts are retrievable at .25 to .28, the
+revised ones current at .22 to .23 and stale at .58 to .61, against .968 to
+.978, .970 to .984 and .00 on the declared founders with the key taken before the patient is
+heard. A changed fact has another key, takes
+another slot, and leaves its old copy to tie with the new one.
+
 ## What these readings do not establish
 
 - Any default. The candidate is an instrument-level store and the library's `LongTermMemory` a
