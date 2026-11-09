@@ -122,6 +122,9 @@ def lived(brain: cd.Brain) -> list[int]:
 # and checkpoint digests were re-recorded after every other value matched the recording.
 # Re-recorded with the unset motor lateral at 0.0 (issue 220) where a founder has at most
 # 8 motor neurons in a slot, and at the founder need scale 0.1 (issue 198) where it has arousal.
+# Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
+# settles from: the lives that teach after an act read new checkpoint digests (their efficacies
+# move by at most 0.0021) and the image life's twelfth act reads 1 where it read 0.
 FOUNDERS: dict[str, dict] = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3, "recall": False}),
@@ -130,7 +133,7 @@ FOUNDERS: dict[str, dict] = {
         "acts": [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1],
         "format": "cadence-brain/1",
         "names": "cf4f510fd7745ee140166219a1a6e0af36750c92b9eb41a38f9262d2272f7dda",
-        "checkpoint": "995ca55ca539707fc98e5d17c3132b091dcbdc070adeb5dbff229981072998fc",
+        "checkpoint": "dbc33a362fd9ececbb345250a557e7012fe3e301c6cbeefc54e0dab16af0d79d",
     },
     "episodic": {
         "build": (4, 2, {"modules": (8,), "seed": 7, "memory_choice": True, "arousal": True,
@@ -184,10 +187,10 @@ FOUNDERS: dict[str, dict] = {
         "builder": "single",
         "life": stepped,
         "parameters": "aecb598d8fbf5218c210bd2ad264206e9aae0e706105a6e1255a5c44316abe54",
-        "acts": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0, 1],
+        "acts": [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
         "format": "cadence-brain/1",
         "names": "5f1e68f8add8efd7df5ddde72592d0f57cc6dd16035815256ce47ee57a92ca83",
-        "checkpoint": "5d34dd5b915cfcc8e4161a951cfaad2a75eeff5fd6e6dcb890c04d8ae6773db8",
+        "checkpoint": "3186d899d314813649ea17d9e73f5ac866d03bb6194e983e432b38b2a6e03728",
     },
 }
 

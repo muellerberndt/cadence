@@ -1,5 +1,51 @@
 # Changelog
 
+## 0.95.2
+
+`Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
+where it started from rest. Lessons without a stream state (after `reset`, before a stream acts,
+and curricula of lessons alone) teach to the bit as on 0.95.1.
+
+### A lesson teaches the fixed point the act is taken from
+
+The act settles warm from the stream; the lesson's free phase settled from rest. In a deep
+reciprocal brain one observation can hold two stable states, one reached from the stream and one
+from rest. The lesson judged and corrected the rest state, which often gave the shown answer,
+while the act kept answering from the warm one, so lessons never reached the act and the warm
+state drifted. A deep brain of three regions continued for 4,000 moments on a game task read 0.016
+with the lesson from rest and 0.422 with the free phase warm from the stream. The free phase starts
+where the act's own settle starts, with a learned code's phase in it; under `learning_surprise` the rows it teaches restrict it, and a replay, the rehearsal and
+`step(..., teacher=)` teach from the state their act settles from.
+
+What changes, measured before and after on the CPU:
+
+- A deep brain of two regions whose cue holds two fixed points (the new test's fixture): ten
+  lessons from rest leave the act on the wrong answer; ten from the stream correct it.
+- Teaching inside a stream (`step(..., teacher=)`, 8 streams, 12 cues, 4 actions, 300 moments,
+  three seeds): with `recall=False` the share of sampled acts that matched the teacher over the last
+  100 moments rises from .68, .61, .87 to .78, .81, .94 at one region and from .61, .62, .49 to .74,
+  .73, .65 at two, and the parameters move apart by up to 0.12 and 0.28. The default composition,
+  with the recall memory at the deep point and lessons by surprise, reads the same acts and
+  predictions, its efficacies within 2.4e-8, and at two regions one seed of three moves by 0.043
+  and predicts 10 of 12 cues where it predicted 11.
+- The recorded lives of the test suite that teach after an act read new checkpoint digests, their
+  efficacies moved by at most 0.0021, and 2 of their 271 acts differ; they are re-recorded. The
+  instrument comparisons of the recall memory pass the instrument its new `warm=True`, as the
+  library teaches; its recorded runs keep the lesson from rest.
+
+### Notes
+
+- **The nudged phases near agreement.** At the founder and the normalized teaching points the
+  nudged phases stop at the movement tolerance, which near agreement comes after one or two sweeps
+  and at different counts in the two phases. In deep modules the contrast is then a distorted
+  gradient: a gradient check read cosines of 0.0 to 0.47 against the exact gradient on deep
+  modules, and 0.97 to 1.0 with the phases run their whole budget. `teaching="deep"` runs them
+  their whole budget (`LearnerConfig(nudged_fixed=True)` for a learner); a brain with the recall
+  memory teaches there by default. The defaults are unchanged.
+- **`Learner.synapse_rate` of zero.** A rate of zero holds a synapse's efficacy; the biases have no
+  rate and step as before, and the optimizer's running moments of a held synapse keep reading its
+  contrast, so a rate raised later steps on that history.
+
 ## 0.95.1
 
 Two opt-in options for `Brain.lesson`, faster qualified lessons on torch, and `grow` and `graft`

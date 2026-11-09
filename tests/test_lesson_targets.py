@@ -41,7 +41,9 @@ def streaming(place: dict, **settings) -> tuple[cd.Brain, np.ndarray, np.ndarray
     x = (rng.random((6, 12)) < 0.3).astype(float)
     labels = rng.integers(0, 5, 6)
     brain.act((rng.random((6, 12)) < 0.3).astype(float), greedy=True)
-    return brain, x, labels
+    # a copy, as its twins are: the block products a state keeps on the compiled CPU path are left
+    # out of a copy, and a lesson from the state reads them
+    return copy.deepcopy(brain), x, labels
 
 
 @pytest.mark.parametrize("place", PLACES)

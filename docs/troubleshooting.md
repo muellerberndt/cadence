@@ -5,7 +5,7 @@ Short answers to the problems builders meet first, each linking the page that ow
 
 ## Install and run
 
-**`pip install cadence-net==0.95.1`, then `import cadence`.** Python 3.11 or newer and NumPy are
+**`pip install cadence-net==0.95.2`, then `import cadence`.** Python 3.11 or newer and NumPy are
 the only requirements.
 
 **Do I need a GPU?** No; everything runs on NumPy float64. `[fast]` adds Numba and SciPy,

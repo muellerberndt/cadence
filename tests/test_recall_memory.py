@@ -198,6 +198,9 @@ def _taught(brain):
 # and checkpoint digests were re-recorded after every other value matched the recording.
 # Re-recorded with the unset motor lateral at 0.0 (issue 220) where a founder has at most
 # 8 motor neurons in a slot, and at the founder need scale 0.1 (issue 198) where it has arousal.
+# Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
+# settles from: the lives that teach after an act read new checkpoint digests (their efficacies
+# move by at most 0.0021).
 FOUNDERS = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3, "recall": False}),
@@ -206,7 +209,7 @@ FOUNDERS = {
         "acts": [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1, 1, 1],
         "format": "cadence-brain/1",
         "names": "cf4f510fd7745ee140166219a1a6e0af36750c92b9eb41a38f9262d2272f7dda",
-        "checkpoint": "67c4444f374b86a738469f0fa63fde0173456ed4c3a8f82f1dba51773c6fab00",
+        "checkpoint": "8e4290c0240f4e45d4207e33a81fef237e3dc497695de2ceadff96970de63b6d",
     },
     "lived": {
         "build": (4, 2, {"modules": (8,), "seed": 5, "arousal": True,
@@ -239,7 +242,7 @@ FOUNDERS = {
                  4, 0, 6, 4, 4, 0, 0, 4],
         "format": "cadence-brain/1",
         "names": "22097597c1a2febccbca3fd13f4eb304480cee327bc4ff19339470e9ea42b49d",
-        "checkpoint": "97738feb133fef97802d58d23778a410f18f5cec4a32293c0c6e00b5a11a7179",
+        "checkpoint": "eed3b31b120451fa8afd5c1c693c6c4d068f184018b71fd17068a2d39dcb7475",
     },
 }
 
@@ -433,7 +436,7 @@ def test_the_memory_is_the_instrument_index_memory_moment_for_moment(
             np.testing.assert_array_equal(
                 inst.basal_ganglia.state.activation, lib.basal_ganglia.state.activation
             )
-        ir.lesson(inst, seq[-1], answer, work)
+        ir.lesson(inst, seq[-1], answer, work, warm=True)  # as the library teaches
         lib.lesson(seq[-1], answer)
         np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
         for name, kept in zip(MAP, lib.recall.head_map(0), strict=True):
@@ -1150,7 +1153,7 @@ def _option_lives(extra, seed=2, rounds=8):
             np.testing.assert_array_equal(
                 inst.basal_ganglia.state.activation, lib.basal_ganglia.state.activation
             )
-        ir.lesson(inst, seq[-1], answer, work)
+        ir.lesson(inst, seq[-1], answer, work, warm=True)  # as the library teaches
         lib.lesson(seq[-1], answer)
         np.testing.assert_array_equal(inst.index.attended, lib.recall.attended_heads[0])
         np.testing.assert_array_equal(inst.brain.efficacy, lib.brain.efficacy)
