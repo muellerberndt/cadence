@@ -236,6 +236,33 @@ population, so action indices keep their meaning after loading. A saved maturity
 1e64), with the store's noise scales as nonnegative finite numbers under a boolean
 `surprise_gate`; anything else is refused with `ValueError` naming the field.
 
+## Lives (`cadence`)
+
+```python
+Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precision=None, **options)
+```
+
+Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, actions, seed=seeds[i],
+recall=False, episodic=False, **options)` (seeds `range(lives)` by default), stepped together, one stream each.
+Every life has its own parameters, optimizer, critic, eligibility, working trace and random state.
+`backend="cpu"` holds lone brains and steps them in turn; `backend="torch"` (CUDA, or `device="cpu"`) holds
+one brain whose parameters carry a lives axis, one call per moment for all of them
+([many lives at once](backends.md#many-lives-at-once)).
+
+| Method | Meaning |
+| --- | --- |
+| `act(observations, *, greedy=False)` | each life's `Brain.act` on its own row: `(lives, inputs)` in, `(lives,)` out |
+| `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label |
+| `learn(reward, done, next_observations)` | each life's `Brain.learn` |
+| `lesson(observations, labels)` | each life's `Brain.lesson` |
+| `parameters(i)` | life `i`'s `efficacy`, `bias`, `w_critic`, `b_critic`, `velocity` and `velocity_bias` on the host |
+| `life(i)` | life `i` as a lone `Brain` on the CPU with those parameters; its stream starts afresh |
+| `lives`, `seeds`, `brain`, `brains` | the count, the seeds, the batched brain (torch) or the lone brains (CPU) |
+
+A composition with the recall memory, the store, arousal, a maturity, a learned code, an apical compartment,
+carried gains, rehearsal, or normalized or surprise-judged teaching is refused with the part it names; so is
+MPS, which has no float64 for the settles' checks.
+
 ## Arousal (`cadence.arousal`)
 
 ```text

@@ -601,6 +601,11 @@ class Lives:
         graph = brain.brain
         kernel = graph._torch
         assert kernel is not None
+        if kernel.device.type == "mps":
+            raise ValueError(
+                "Lives checks its settles in float64 on its device: CUDA or the torch CPU device "
+                "(MPS has no float64)"
+            )
         efficacy = np.stack([b.brain.efficacy for b in lone])
         bias = np.stack([b.brain.bias for b in lone])
         lives_kernel = _LivesTorchKernel(
