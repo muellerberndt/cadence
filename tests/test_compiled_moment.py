@@ -264,3 +264,96 @@ def _same_life(first, second) -> None:
     assert a.carried_gains == b.carried_gains
     assert dict(a.last_settlement) == dict(b.last_settlement)
     assert a.last_learning == b.last_learning
+
+
+# The options of the other 0.96 lanes, each named beside the compiled moment.
+CROSS: dict[str, dict] = {
+    "cortex_norm": {"recall_cortex_norm": True},
+    "fade": {"memory_fade": 1.2e-4},
+    "maturity": {"maturity": True},
+    "fade+maturity": {"memory_fade": 1.2e-4, "maturity": True},
+    "cortex_norm+fade": {"recall_cortex_norm": True, "memory_fade": 1.2e-4},
+    "gains": {"recall_cortex_norm": True, "recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3],
+              "recall_gain_after": 5, "recall_gain_next": 2.0},
+    "rate_zero": {},
+}
+
+
+def _crossed(name: str, compiled: bool) -> cd.Brain:
+    subject = brain(learning_compiled_moment=compiled, **CROSS[name])
+    if name == "rate_zero":  # every synapse that touches the motor region is held
+        w = subject.connectome
+        motor = np.zeros(w.n, dtype=bool)
+        motor[np.asarray(w.populations["motor"])] = True
+        rate = np.ones(w.synapses)
+        rate[motor[w.post] | motor[w.pre]] = 0.0
+        subject.learner.synapse_rate = rate
+    return subject
+
+
+def _mixed_life(subject: cd.Brain, seed: int, rounds: int = 16) -> list[np.ndarray]:
+    """Every operation a life mixes, on streams of four: a lesson (every third shows the brain's
+    own answer and teaches no row), the greedy act of the same observations, a sampled moment of
+    life and its outcome, and an outcome reported on its own."""
+    rng = np.random.default_rng(seed)
+    actions = []
+    for t in range(rounds):
+        if t % 8 == 0:
+            subject.reset()
+        x = (rng.random((4, 8)) < 0.3).astype(float)
+        labels = rng.integers(0, 4, 4)
+        if t % 3 == 0:
+            labels = copy.deepcopy(subject).act(x, greedy=True)
+        if t % 8 >= 1:
+            subject.lesson(x, labels)
+        actions.append(subject.act(x, greedy=True))
+        y = (rng.random((4, 8)) < 0.3).astype(float)
+        actions.append(subject.step(y))
+        actions.append(subject.step(x, reward=rng.random(4)))
+        subject.learn(rng.random(4), np.zeros(4, dtype=bool), y)
+    return actions
+
+
+@pytest.mark.parametrize("name", CROSS)
+def test_each_compiled_path_keeps_its_bits_beside_another_lanes_option(name, monkeypatch) -> None:
+    from cadence import _moment
+
+    lives = []
+    for shortcuts, one_call in MODES:
+        monkeypatch.setattr(_moment, "SHORTCUTS", shortcuts)
+        monkeypatch.setattr(_moment, "ONE_CALL", one_call)
+        subject = _crossed(name, True)
+        lives.append((subject, _mixed_life(subject, 11)))
+    for other in lives[1:]:
+        _same_life(lives[0], other)
+        for attribute in ("consolidated", "fade_depth", "strength"):
+            ours = getattr(lives[0][0].hippocampus, attribute, None)
+            if ours is not None:
+                np.testing.assert_array_equal(getattr(other[0].hippocampus, attribute), ours)
+        np.testing.assert_array_equal(other[0].recall.gains, lives[0][0].recall.gains)
+
+
+@pytest.mark.parametrize("name", CROSS)
+def test_the_compiled_moment_agrees_with_the_ordinary_path_beside_another_lanes_option(
+    name,
+) -> None:
+    plain, compiled = _crossed(name, False), _crossed(name, True)
+    for ours, theirs in zip(_mixed_life(compiled, 11), _mixed_life(plain, 11), strict=True):
+        np.testing.assert_array_equal(ours, theirs)
+    np.testing.assert_allclose(compiled.brain.efficacy, plain.brain.efficacy, rtol=0, atol=1e-8)
+    np.testing.assert_allclose(compiled.brain.bias, plain.brain.bias, rtol=0, atol=1e-8)
+    np.testing.assert_allclose(compiled.recall.previous, plain.recall.previous, atol=1e-8)
+    for ours, theirs in zip(compiled.recall.head_map(0), plain.recall.head_map(0), strict=True):
+        np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-8)
+    store = plain.hippocampus
+    np.testing.assert_allclose(compiled.hippocampus.consolidated, store.consolidated, atol=1e-8)
+    if getattr(store, "fade", 0.0):
+        np.testing.assert_allclose(compiled.hippocampus.fade_depth, store.fade_depth, atol=1e-8)
+    if name == "rate_zero":
+        held = compiled.learner.synapse_rate == 0
+        fresh = _crossed(name, True)
+        np.testing.assert_array_equal(
+            compiled.brain.efficacy[held], fresh.brain.efficacy[held]
+        )
+    if name == "cortex_norm":
+        np.testing.assert_allclose(np.linalg.norm(compiled.recall.previous, axis=1), 1.0)
