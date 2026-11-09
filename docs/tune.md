@@ -275,6 +275,14 @@ sharing across positions is a second form, read only if this one holds. The foun
 and is unchanged. The [grammar chamber](../benchmarks/grammar/README.md#a-planning-window)
 reads the window on its sentences at `k` of 1, 3, 4 and 8.
 
+When to use it: the window pays where two actions inside it constrain each other and the trace
+alone does not carry the constraint. It is no lookahead. On
+[routes with a goal](../benchmarks/grammar/README.md#routes-with-a-goal-does-planning-pay-257),
+where the first step must lead to a goal two steps on, a sliding window of three (plan three, take
+the first, plan again) chooses the first step no better than word by word (.31 against .33 on
+held-out pairs; each says the wrong neighbour as often as the right one), so a plan that must search ahead needs
+more than a joint settle.
+
 Every bias starts at zero and is plastic: `brain.brain.bias` holds the learned values, and
 loading restores them. To start the processing neurons at a bias of your own, set
 `brain.learner.brain = brain.learner.brain.with_parameters(bias=bias)` before the first lesson.

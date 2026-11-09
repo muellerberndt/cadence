@@ -30,6 +30,29 @@
   readings are on #281. The sequence battery's `composed` arm (`--arms composed --settings ...`)
   reads a one-out of the composition.
 
+### Benchmarks: three bounded readings (#257, #258, #270)
+
+The library is unchanged. Each reading ran under a protocol declared before its first life, on fresh
+founders.
+
+- **The lesson's step** ([`lesson_step.py`](benchmarks/grammar/lesson_step.py), #258). The default
+  composition settles the grammar chamber's exact-clause reading within .05 over its last three
+  checkpoints on 4 of 6 lives at width 64 and 5 of 6 at width 128. A step scaled by the running
+  share of lesson rows answered wrong settles 4 and 3 of 6 and costs held-out clauses .10 to .13,
+  so it stays out of the library.
+- **Routes with a goal** ([`routes.py`](benchmarks/grammar/routes.py), #257). A chamber whose first
+  hop is said before the goal it must reach. A sliding planning window of three reads first hops on
+  held-out start-goal pairs at .312 against word by word's .334; neither reads the goal there, and
+  the offline controls read .75 to .83.
+- **Exposure parity** ([`exposure.py`](benchmarks/grammar/exposure.py), #270). Passes of the
+  chamber's 4,000 batches beside the transformer's offline control at equal compute. Without
+  rehearsal the default composition sits within .05 of the control on every reading but brackets
+  (.86 against .97), which reach .99 by the fourth pass. `learning_rehearsal=1.0` costs 5.7 times a
+  pass, since it replays each drawn row's whole episode, and lowers paths to .82: the recall read
+  delivers fewer hops.
+- The grammar chamber and the sequence battery take a `default` arm: `Brain.compose` with nothing
+  named but the backend. A chamber life's work counts the rehearsal's replayed moments and rows.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
