@@ -1,26 +1,37 @@
 """Independent lives over one topology, stepped together (cadence#274, #167).
 
 ``Lives`` holds many composed brains of one anatomy, each with its own parameters, optimizer,
-critic, eligibility, working trace and random state, one stream each. On the CPU each life is a
-lone ``Brain``, stepped in turn. On a torch device the lives are the streams of one brain whose
-parameters carry a lives axis: every settle reads each stream through its own life's synapses,
-and every update moves each life on its own contrast and dopamine, so one call per moment settles
-and teaches all of them. Each life follows the lone brain of its seed on the same device within
-the solver's tolerance.
+critic, eligibility, recall memory, carried gains, working trace and random state, one stream
+each. On the CPU each life is a lone ``Brain``, stepped in turn. On a torch device the lives are
+the streams of one brain whose parameters carry a lives axis: every settle reads each stream
+through its own life's synapses, and every update moves each life on its own contrast and
+dopamine, so one call per moment settles and teaches all of them. Each life follows the lone
+brain of its seed on the same device within the solver's tolerance.
 
 The lives run the composition's own equations through these parts:
 
 - ``_LivesTorchKernel``: the settle's transport as one batched product per block of the layout,
-  each life's dense block of its own synapses, and the contrast per stream;
-- ``_LivesLearner``: a lesson's update and a reward's update per life, the momentum per life;
+  each life's dense block of its own synapses, each life held where its own stream meets the
+  tolerance, and the contrast per stream;
+- ``_LivesGraph``: a solve that holds each life where its own equations hold, and a rescue on
+  the damping ladder life by life;
+- ``_LivesLearner``: a lesson's update and a reward's update per life; the momentum, the second
+  moments and the counts of their bias correction per life; a lesson judged by surprise updates
+  the lives whose own answer differed;
+- ``_LivesRecall``: the recall memory's address and position maps per life (a stream's slots are
+  its own already), the address lesson and the reward's step on each life's own row;
+- ``_LivesHearing``: the carried gains, their second moments and counts per life;
 - ``_LivesActorCritic`` and ``_LivesCritic``: the critic's weights and bias per life, the
   dopamine and the actor's step per stream;
 - ``_LivesRandom``: each life's own random generator, drawn as its lone brain draws it.
 
-A composition holds the parts these cover: ``recall=False`` and ``episodic=False`` (the recall
-memory's maps and the store's consolidated records are a brain's own and have no lives axis),
-no arousal, maturity, learned code, apical compartment, rehearsal, carried gains, normalized or
-surprise-judged teaching. ``Lives`` refuses any other.
+A composition holds the parts these cover: the default composition without the store
+(``episodic=False``: the store's consolidated records are a brain's own and have no lives axis),
+with or without the recall memory and the carried gains, at any teaching point. ``Lives`` refuses
+arousal, maturity, a learned or fixed code, an apical compartment, rehearsal, qualified teaching,
+the efference copy, the heard history and a recall memory with several heads, a window, the
+command, the read of when or tokens, each by name. A moment any life refuses is refused for
+every life.
 """
 
 from __future__ import annotations
@@ -102,32 +113,60 @@ class _LivesTorchKernel(_TorchKernel):
 
     # -- the blocks
 
-    def _blocks(self) -> list[tuple[int, int, int, int, Any]]:
-        """Each block's bounds and its view, ``(lives, pre, post)``, of the dense buffer the
-        parameters are written into in place (a captured sweep reads the same storage)."""
+    def _blocks(self) -> list[tuple[Any, int, int, Any]]:
+        """The layout's blocks grouped by the range they reach: per group the presynaptic neurons
+        of its blocks side by side (a slice where they are one run, else their indices), the
+        range reached and the group's view, ``(lives, pre, post)``, of the dense buffer the
+        parameters are written into in place (a captured sweep reads the same storage). A sweep
+        makes one batched product per range reached."""
         if self._dense is None:
             torch, lay = self.torch, self.layout
             assert lay is not None
-            self._dense = torch.zeros(self.lives, lay.size, dtype=self.dtype, device=self.device)
-            self._entry = torch.from_numpy(np.ascontiguousarray(lay.edge_index)).to(self.device)
-            views = []
+            connectome = self._connectome
+            by_post: dict[tuple[int, int], list[int]] = {}
             for k in range(lay.pairs):
-                a0, a1, b0, b1 = lay.bounds(k)
-                view = self._dense[:, int(lay.offset[k]) : int(lay.offset[k + 1])]
-                views.append((a0, a1, b0, b1, view.view(self.lives, a1 - a0, b1 - b0)))
+                _, _, b0, b1 = lay.bounds(k)
+                by_post.setdefault((b0, b1), []).append(k)
+            block_of = np.asarray(lay.block_of_edge)
+            entry = np.zeros(connectome.synapses, dtype=np.int64)
+            spans, at = [], 0
+            for (b0, b1), blocks in by_post.items():
+                width, row, pre = b1 - b0, 0, []
+                for k in blocks:
+                    a0, a1, _, _ = lay.bounds(k)
+                    inside = np.flatnonzero(block_of == k)
+                    entry[inside] = (
+                        at + (row + connectome.pre[inside] - a0) * width
+                        + connectome.post[inside] - b0
+                    )
+                    pre.append(np.arange(a0, a1))
+                    row += a1 - a0
+                index = np.concatenate(pre)
+                spans.append((index, b0, b1, at, row))
+                at += row * width
+            self._dense = torch.zeros(self.lives, at, dtype=self.dtype, device=self.device)
+            self._entry = torch.from_numpy(entry).to(self.device)
+            views = []
+            for index, b0, b1, first, rows in spans:
+                run = len(index) and bool((np.diff(index) == 1).all())
+                place = slice(int(index[0]), int(index[-1]) + 1) if run else torch.from_numpy(
+                    index
+                ).to(self.device)
+                view = self._dense[:, first : first + rows * (b1 - b0)]
+                views.append((place, b0, b1, view.view(self.lives, rows, b1 - b0)))
             self._views = views
         return self._views
 
     def _synaptic_input(self, s: Any, out: Any) -> Any:
-        """The transport of a neuron-major activation ``(neurons, lives)``: per block, every
-        life's presynaptic row through its own block."""
+        """The transport of a neuron-major activation ``(neurons, lives)``: per range reached,
+        every life's presynaptic row through its own blocks."""
         if s.shape[1] != self.lives:
             raise ValueError(f"a settle of these lives holds one stream per life ({self.lives})")
         torch = self.torch
         out.zero_()
         rows = s.T
-        for a0, a1, b0, b1, block in self._blocks():
-            product = torch.bmm(rows[:, a0:a1].unsqueeze(1), block).squeeze(1)
+        for place, b0, b1, block in self._blocks():
+            product = torch.bmm(rows[:, place].unsqueeze(1), block).squeeze(1)
             out[b0:b1].add_(product.T)
         return out
 
@@ -704,7 +743,7 @@ class _LivesRecall(_RecallOnDevice):
         lean = lean * xp.minimum(xp.ones_like(energy), 1.0 / (recall.slope * energy))
         new = self._lms(self.slope_maps[0], lean, recall.slope, x, c)
         short = xp.flags(recall.held.sum(axis=1) <= recall.position)
-        torch = self.xp.torch
+        torch = self.kernel.torch
         stepped["slope_maps"] = tuple(
             _chosen(torch, short, a, b) for a, b in zip(new, self.slope_maps[0], strict=True)
         )
@@ -714,7 +753,7 @@ class _LivesRecall(_RecallOnDevice):
         """``Recall.learn`` per life: the phases hold every life's row, each taught life whose
         row moves steps its own maps, and a step that is not finite is refused for that life."""
         recall, xp = self.recall, self.xp
-        torch = xp.torch
+        torch = self.kernel.torch
         quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
         if self.position_maps:
             quiet.update(position_rows=0.0, position_refused=0.0)
@@ -1126,18 +1165,19 @@ class Lives:
     """Many continuing lives of one composed anatomy, each a brain of its own, stepped together.
 
     ``Lives(inputs, actions, lives=128, backend="torch")`` composes ``lives`` brains of
-    ``Brain.compose(inputs, actions, seed=seeds[i], recall=False, episodic=False, **options)``,
-    one per seed (``range(lives)`` by default). Every operation takes one row of observations
-    per life and returns one answer per life: ``act``, ``step``, ``lesson`` and ``learn`` mean
-    what they mean on a lone brain with one stream, life by life. ``life(i)`` is life ``i`` as a
-    lone brain on the CPU, with its parameters, optimizer and critic.
+    ``Brain.compose(inputs, actions, seed=seeds[i], episodic=False, **options)``, the default
+    composition without the store, one per seed (``range(lives)`` by default). Every operation
+    takes one row of observations per life and returns one answer per life: ``act``, ``step``,
+    ``lesson`` and ``learn`` mean what they mean on a lone brain with one stream, life by life.
+    ``life(i)`` is life ``i`` as a lone brain on the CPU, with everything it learned.
 
     On ``backend="cpu"`` each life is its own ``Brain`` and the lives run in turn, to the bit as
     lone brains. On ``backend="torch"`` (CUDA where there is a card, else the torch CPU device, or
     the ``device`` named) they are the streams of one brain whose parameters carry a lives axis,
     and each moment of all of them is one settle and one update; each life agrees with its lone
     brain on that device within the solver's tolerance. The lives share their anatomy and nothing
-    they learn.
+    they learn. A moment any life refuses (a settle that does not qualify, a step that is not
+    finite) is refused for every life.
     """
 
     def __init__(
@@ -1229,7 +1269,9 @@ class Lives:
                 brain.recall, lives_kernel, [b.recall for b in lone]
             )
         if brain.hearing is not None:
-            _LivesHearing.take(brain.hearing, [b.hearing for b in lone], lives_kernel)
+            _LivesHearing.take(
+                brain.hearing, [cast(Hearing, b.hearing) for b in lone], lives_kernel
+            )
         self.brain = brain
 
     @property
