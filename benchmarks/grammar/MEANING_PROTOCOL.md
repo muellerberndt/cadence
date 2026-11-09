@@ -132,3 +132,20 @@ from the message say whether the brain used the message at all.
 ## Compute
 
 One AWS c7i.16xlarge, one process per life, one BLAS thread per process.
+
+## Amendment 1: the moment before, as heard
+
+Written after the first block's sentences were read and before any life of this arm on the declared
+founders.
+
+In the first block the `sham` arm, the code of the moment before alone on the message's neurons,
+read roles and three hops above `default` on the declared founders, and `default` read A1's
+held-out lines under their bar. The library holds the same carrier as an opt-in of its own, the
+heard history at decay 0 (`history_decays=(0.0,)`: the observation of the moment before, as heard,
+on a region the association reads). Development founders 0 to 5 read it at clauses 1.00, held-out
+clauses .97, roles .96, brackets .89, paths .98 and three hops .64, against the default's .98, .91,
+.96, .88, .95 and .40.
+
+**Arm `heard`:** `default` with `history_decays=(0.0,)`, founders 9628600 to 9628605, with the
+context twins. **Gates:** A1's five lines at .90 on 5 of 6 founders, and M1's paired difference
+against `default` per panel. **Expectation:** held-out clauses and three hops lift, and A1 holds.
