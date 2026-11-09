@@ -42,6 +42,8 @@ def _memory_on_device(kernel: Any, streams: int, width: int) -> bool:
     and on MLX from the size that pays for it. ``CADENCE_TORCH_MEMORY=1`` places them at any size
     on any torch device but MPS (float32 alone), ``CADENCE_MLX_MEMORY=1`` on MLX at any size, and
     ``=0`` keeps them on the host."""
+    if getattr(kernel, "lives", 0):  # lives keep their critic and memories on their device
+        return True
     if hasattr(kernel, "mx"):
         choice = os.environ.get("CADENCE_MLX_MEMORY", "")
         if choice == "0" or kernel.plain:
@@ -76,11 +78,22 @@ _MLX_LAUNCH_APICAL = 1360
 _MLX_SWEEP_ROWS = 32
 # Reasoned, not read at the rule's size. Float64 named on CUDA: that device does float64 at a small
 # part of its float32 rate. Memories that stay on the host (``Brain._memories_stay_on_host``): a
-# moment crosses. A card the table has not read: a stated, conservative margin.
+# moment crosses. A card the table has not read and that has no calibration: a stated margin.
 _AUTO_CUDA_FLOAT64 = 4
 _AUTO_HOST_MEMORY = 4
 _AUTO_UNSEEN = 2
 _AUTO_READ_CARDS = ("A10G",)
+# A card the table has not read is calibrated once (``_card_calibration``) where a brain's work
+# reaches this fraction of the table's crossing: the chamber's default brain is timed on the card
+# and on one core at these rows, and where the two cross, in ``rows * synapses``, scales the
+# table's crossings by its ratio to the A10G's crossing read by the same calibration.
+_CALIBRATION_FROM = 0.25
+_CALIBRATION_ROWS = (16, 64, 256)
+# The A10G's crossing on the chamber's brain, by the calibration's interpolation of the default
+# backend's table (docs/backends.md): 43.7 rows of 13,120 synapses.
+_CALIBRATION_A10G = 573_568.0
+_CALIBRATIONS: dict[str, dict[str, Any]] = {}  # by card, this process's
+_CALIBRATING = False  # a calibration in progress: its own brains name their backends
 
 
 class _Candidate(NamedTuple):
@@ -134,10 +147,11 @@ def _fastest_backends(
     needed = (_AUTO_CUDA_APICAL if apical else _AUTO_CUDA_WORK) * margin
     if floats == "float64":
         needed *= _AUTO_CUDA_FLOAT64
-    if not learned_code and work >= needed:
+    if not learned_code and work >= needed * _CALIBRATION_FROM:
         card = _cuda_card()
         if card is not None and not any(name in card for name in _AUTO_READ_CARDS):
-            needed *= _AUTO_UNSEEN
+            calibration = _card_calibration(card)
+            needed *= _AUTO_UNSEEN if calibration is None else calibration["scale"]
         if card is not None and work >= needed:
             out.append(_Candidate(
                 "torch", "cuda", floats, f"{said} are past where {card} passes one CPU core"
@@ -145,6 +159,100 @@ def _fastest_backends(
     why = "the next fastest" if out else f"one CPU core is the fastest here for {said}"
     out.append(_Candidate("cpu", None, None, why))
     return out
+
+
+def _crossing(rows: Sequence[int], ratios: Sequence[float]) -> float:
+    """The rows at which the device's time over the core's crosses one, by straight lines in the
+    logarithms of both between the readings, and past them along the nearest two."""
+    x, y = np.log(np.asarray(rows, dtype=float)), np.log(np.asarray(ratios, dtype=float))
+    for k in range(len(x) - 1):
+        if y[k] >= 0.0 >= y[k + 1] and y[k] != y[k + 1]:
+            return float(np.exp(x[k] + (x[k + 1] - x[k]) * y[k] / (y[k] - y[k + 1])))
+    k = 0 if y[0] < 0.0 else len(x) - 2
+    slope = (y[k + 1] - y[k]) / (x[k + 1] - x[k])
+    if slope >= 0.0:  # the device does not gain on the core with rows: it never passes it
+        return float("inf") if y[0] >= 0.0 else float(rows[0])
+    return float(np.exp(x[k] - y[k] / slope))
+
+
+def calibrate_card(rows: Sequence[int] = _CALIBRATION_ROWS) -> dict[str, Any]:
+    """Time the chamber's default brain, ``Brain.compose(35, 18)``, on this machine's CUDA card in
+    float32 and on one CPU core, at each of ``rows``: a greedy ``act``, a ``lesson`` and a ``step``
+    that learns from the outcome of the step before it, two of each after one to warm. Returns the
+    card, the device's time over the core's by rows (the geometric mean of the three), the rows
+    where they cross, that crossing in ``rows * synapses`` (``work``) and the seconds it took."""
+    import time
+    import warnings
+
+    from .generic import Brain
+
+    card = _cuda_card()
+    if card is None:
+        raise RuntimeError("no CUDA card to calibrate")
+    started = time.perf_counter()
+    rng = np.random.default_rng(0)
+    ratios = []
+    for count in rows:
+        x = rng.random((count, 35)) * (rng.random((count, 35)) < 0.3)
+        y = rng.integers(0, 18, count)
+        seconds = []
+        for on_card in (False, True):
+            with warnings.catch_warnings():
+                warnings.simplefilter("ignore")
+                brain = Brain.compose(
+                    35, 18, seed=0, backend="torch", device="cuda", precision="float32"
+                ) if on_card else Brain.compose(35, 18, seed=0, backend="cpu")
+                times: list[list[float]] = [[], [], []]
+                for t in range(3):
+                    for k in range(3):
+                        if k == 2:  # a step that learns: the outcome of a sampled action
+                            brain.step(x)
+                        start = time.perf_counter()
+                        if k == 0:
+                            brain.act(x, greedy=True)
+                        elif k == 1:
+                            brain.lesson(x, y)
+                        else:
+                            brain.step(x, reward=np.ones(count))
+                        if t:
+                            times[k].append(time.perf_counter() - start)
+            seconds.append(np.exp(np.mean([np.log(min(kind)) for kind in times])))
+        ratios.append(float(seconds[1] / seconds[0]))
+    crossing = _crossing(rows, ratios)
+    return {
+        "card": card, "rows": list(rows), "ratios": ratios, "crossing": crossing,
+        "work": crossing * 13_120, "seconds": time.perf_counter() - started,
+    }
+
+
+def _card_calibration(card: str) -> dict[str, Any] | None:
+    """The calibration of ``card``: this process's, the cache's (``CADENCE_PLAN_CACHE``), or made
+    here once and kept in both, with ``scale``, the factor on the table's crossings. None where
+    ``CADENCE_CALIBRATE=0`` or the calibration fails, and the stated margin holds."""
+    held = _CALIBRATIONS.get(card)
+    if held is not None:
+        return held
+    if os.environ.get("CADENCE_CALIBRATE", "") == "0":
+        return None
+    from .brain import _store_plan, _stored_plan
+
+    name = f"card {card}"
+    held = _stored_plan(name)
+    if held is None or "work" not in held:
+        global _CALIBRATING
+        if _CALIBRATING:
+            return None
+        _CALIBRATING = True
+        try:
+            held = {"name": name, **calibrate_card()}
+        except Exception:  # a calibration that fails is the stated margin's
+            return None
+        finally:
+            _CALIBRATING = False
+        _store_plan(held)
+    held = {**held, "scale": float(held["work"]) / _CALIBRATION_A10G}
+    _CALIBRATIONS[card] = held
+    return held
 
 
 def _backend_of_the_run() -> _Candidate | None:
@@ -1418,13 +1526,29 @@ class _RecallOnDevice:
         xp.settle(out)
         return out
 
-    def weighted(self, trace: Any, delta: np.ndarray) -> Any:
-        """The rows' eligibility weighted by the dopamine ``delta`` and averaged."""
-        d = self.xp.here(np.asarray(delta, dtype=float))
+    def weighted(self, trace: Any, delta: Any) -> Any:
+        """The rows' eligibility weighted by the dopamine ``delta`` (on the host or on the device)
+        and averaged."""
+        xp = self.xp
+        d = xp.floats(delta) if isinstance(delta, type(trace)) else xp.here(
+            np.asarray(delta, dtype=float)
+        )
         return (d[:, None, None] * trace).mean(axis=0)
 
     def propose(self, step: Any) -> tuple[Any, ...] | None:
         """``Recall.propose`` of a step on the event's rows and the blocks that step."""
+        unread = self.proposal_unread(step)
+        if unread is None:
+            return None
+        xp = self.xp
+        read = xp.read(unread[3], unread[4], also=unread[5])
+        if not read[0]:
+            raise ValueError("the address map's reward step must be finite")
+        return (*unread[:3], float(read[1]), *unread[6:])
+
+    def proposal_unread(self, step: Any) -> tuple[Any, ...] | None:
+        """``propose`` with nothing read: the maps, a flag of their and the step's finiteness, the
+        step's norm, what MLX makes with them, then the position and anchored maps."""
         recall, xp = self.recall, self.xp
         positions = bool(recall.position_reward) and bool(self.position_maps)
         if not (recall.address_reward or positions):
@@ -1454,10 +1578,7 @@ class _RecallOnDevice:
                 changed.append(anchor_maps[0][0])
         every = [*changed, *stepped]
         norm = xp.sqrt(sum((part * part).sum() for part in stepped))
-        read = xp.read(xp.all_finite(*every), norm, also=every)
-        if not read[0]:
-            raise ValueError("the address map's reward step must be finite")
-        return (w_x, w_c, b, float(read[1]), position_maps, anchor_maps)
+        return (w_x, w_c, b, xp.all_finite(*every), norm, every, position_maps, anchor_maps)
 
     def accept(self, proposal: tuple[Any, ...]) -> None:
         """``Recall.accept``."""
@@ -1596,6 +1717,23 @@ class _CriticOnDevice:
         trace[:, :-1] = trace[:, :-1] + xp.part(state, self.source)
         trace[:, -1] = trace[:, -1] + 1.0
         self.trace = trace  # made by the outcome's candidate, which reads it
+
+    def value_here(self, state: BrainState) -> Any:
+        """``ActorCritic.value`` left on the device, in the maps' floats."""
+        xp = self.xp
+        return xp.part(state, self.source) @ self.weights + self.owner.b_critic
+
+    def unread(self, delta: Any) -> tuple[Any, Any, Any]:
+        """``candidate`` with nothing read: the weights, a flag of their finiteness and the bias's
+        step, on the device, for a caller that reads them with the rest of an outcome."""
+        trace = self.trace
+        assert trace is not None
+        trace = trace / (1.0 + (trace * trace).sum(axis=1, keepdims=True))
+        xp = self.xp
+        d = xp.here(delta) if isinstance(delta, np.ndarray) else xp.floats(delta)
+        step = self.owner.config.eta_critic * (d[:, None] * trace).mean(axis=0)
+        weights = self.weights + step[:-1]
+        return weights, xp.all_finite(weights), step[-1]
 
     def candidate(self, delta: np.ndarray) -> tuple[Any, float]:
         """``ActorCritic._critic_candidate``: one read, of the checks and the bias's step."""

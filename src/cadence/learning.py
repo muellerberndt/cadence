@@ -480,7 +480,10 @@ class Learner:
     reciprocal: bool = True  # a synapse and its reverse share one efficacy: a reciprocal pair
     tie_groups: np.ndarray | None = None  # int per synapse (-1: none); a group shares one scale
     # float per synapse multiplying its step (default one): a fan-in scale, a per-projection
-    # rate; a wide population's inbound synapses need a smaller step than a narrow one's
+    # rate; a wide population's inbound synapses need a smaller step than a narrow one's. A rate
+    # of zero holds the synapse: it takes no step and the optimizer keeps its running moments as
+    # they are, and a neuron whose every inbound synapse steps at zero holds its bias the same way
+    # (``held``)
     synapse_rate: np.ndarray | None = None
     # the outputs as groups, each its own softmax choice, all nudged together: a count of
     # equal groups, or one size per group (a body's controller: a move of nine, a grip of two)
@@ -860,6 +863,36 @@ class Learner:
         hebb = a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
         return hebb / span, (s_plus - s_minus) / span
 
+    def held(self) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """What a rate of zero holds (``synapse_rate``): the synapses at rate zero, and the neurons
+        whose every inbound synapse steps at zero, whose biases take no step either. A neuron no
+        synapse reaches is held by none. A held synapse or bias keeps its optimizer moments as they
+        are. ``(None, None)`` where no rate is zero."""
+        rate = self.synapse_rate
+        if rate is None or not len(rate) or float(np.min(rate)) > 0:
+            return None, None
+        zero = np.asarray(rate) == 0
+        w = self.brain.connectome
+        inbound = np.bincount(w.post, minlength=w.n)
+        stopped = np.bincount(w.post[zero], minlength=w.n)
+        neurons = (inbound > 0) & (stopped == inbound)
+        return zero, (neurons if neurons.any() else None)
+
+    def _stepping_neurons(self) -> np.ndarray:
+        """The neurons whose biases move: the plastic ones a rate of zero does not hold."""
+        assert self.plastic_neurons is not None
+        neurons = self.held()[1]
+        return self.plastic_neurons if neurons is None else self.plastic_neurons & ~neurons
+
+    def _hold_moments(self, before: Mapping[str, np.ndarray]) -> None:
+        """Give the synapses and neurons a rate of zero holds (``held``) their moments of
+        ``before`` back, after an update wrote the others."""
+        synapses, neurons = self.held()
+        for name, mask in (("velocity", synapses), ("second_moment", synapses),
+                           ("velocity_bias", neurons), ("second_moment_bias", neurons)):
+            if mask is not None and getattr(self, name) is not before[name]:
+                setattr(self, name, np.where(mask, before[name], getattr(self, name)))
+
     def apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
         """Apply a per-synapse and per-neuron step: masks, tying, decay, bounds; then set the brain.
 
@@ -900,8 +933,7 @@ class Learner:
         if not np.isfinite(delta_scale).all():
             raise ValueError("scaled and tied steps must remain finite")
         scale = self.brain.efficacy + delta_scale
-        assert self.plastic_neurons is not None
-        delta_bias = np.where(self.plastic_neurons, delta_bias, 0.0)
+        delta_bias = np.where(self._stepping_neurons(), delta_bias, 0.0)
         bias = self.brain.bias + delta_bias
         cap = cfg.scale_cap
         scale = np.where(self.plastic_synapses, np.clip(scale, -cap, cap), scale)
@@ -1044,6 +1076,12 @@ class Learner:
                 neurons = neurons / (
                     (held["second_moment_bias"] / correction).sqrt() + cfg.normalize_floor
                 )
+        ix = self._device_indices(kernel)
+        for name, mask in (("velocity", "held_synapses"), ("second_moment", "held_synapses"),
+                           ("velocity_bias", "held_neurons"),
+                           ("second_moment_bias", "held_neurons")):
+            if ix[mask] is not None and held[name] is not previous[name]:
+                held[name] = kernel.torch.where(ix[mask], previous[name], held[name])
         if not bool(kernel.torch.stack([
             kernel.torch.isfinite(held[name]).all() for name in _MOMENTS
         ]).all()):
@@ -1112,7 +1150,9 @@ class Learner:
                 return torch.from_numpy(np.ascontiguousarray(x)).to(dev, dtype)
 
             all_synapses = bool(self.plastic_synapses.all())
-            all_neurons = bool(self.plastic_neurons.all())
+            held_synapses, held_neurons = self.held()
+            stepping = self._stepping_neurons()
+            all_neurons = bool(stepping.all())
             cache.clear()
             cache.update(
                 key=key,
@@ -1130,19 +1170,35 @@ class Learner:
                 if len(self._members)
                 else None,
                 synapses=None if all_synapses else to(self.plastic_synapses, kernel.param_dtype),
-                neurons=None if all_neurons else to(self.plastic_neurons, kernel.param_dtype),
+                neurons=None if all_neurons else to(stepping, kernel.param_dtype),
+                held_synapses=None if held_synapses is None else to(held_synapses),
+                held_neurons=None if held_neurons is None else to(held_neurons),
             )
         return cast(dict[str, Any], cache)
 
     def _apply_device(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, float]:
         """``apply`` on the device: the same masks, tying, decay and bounds, no host array."""
+        candidate = self._device_candidate(kernel, delta_scale, delta_bias)
+        flags = kernel.torch.stack(
+            [flag.to(kernel.dtype) for flag in candidate["flags"]]
+            + [step.to(kernel.dtype) for step in candidate["steps"]]
+        ).cpu().numpy()
+        self._device_refusal(flags[:4])
+        return self._install_device(candidate, flags[4:])
+
+    def _device_candidate(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, Any]:
+        """The parameters ``_apply_device`` would install, with its checks and its report, all on
+        the device and none read: ``flags`` (the steps finite, the scaled and tied steps finite, the
+        parameters and weights finite, their summed values finite, in the order ``apply`` refuses
+        them) and ``steps`` (the report's synapse and bias steps). ``_device_refusal`` reads the
+        flags, ``_install_device`` installs."""
         torch, cfg = kernel.torch, self.config
         if (
             tuple(delta_scale.shape) != (self.brain.connectome.synapses,)
             or tuple(delta_bias.shape) != (self.brain.connectome.n,)
-            or not bool(torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all())
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        given = torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all()
         ix = self._device_indices(kernel)
         d = delta_scale.clone()
         if ix["synapses"] is not None:
@@ -1161,8 +1217,7 @@ class Learner:
             ]
         if ix["synapses"] is not None:  # tying never moves a frozen synapse
             d = d * ix["synapses"]
-        if not bool(torch.isfinite(d).all()):
-            raise ValueError("scaled and tied steps must remain finite")
+        tied = torch.isfinite(d).all()
         scale = kernel.scale + d
         db = delta_bias if ix["neurons"] is None else delta_bias * ix["neurons"]
         bias = kernel.bias_param + db
@@ -1172,12 +1227,33 @@ class Learner:
             if ix["synapses"] is None
             else torch.where(ix["synapses"].bool(), bounded, kernel.scale)
         )
-        self.brain = self.brain._with_device_parameters(scale, bias)
-        self.updates += 1
+        checked = kernel.parameter_check(scale, bias)
+        zero = torch.zeros((), dtype=d.dtype, device=d.device)
         return {
-            "scale_step": float(d.abs().mean()) if d.numel() else 0.0,
-            "bias_step": float(db.abs().mean()),
+            "scale": scale, "bias": bias, "checked": checked,
+            "flags": (given, tied, checked[3], checked[4]),
+            "steps": (d.abs().mean() if d.numel() else zero, db.abs().mean()),
         }
+
+    @staticmethod
+    def _device_refusal(flags: Any) -> None:
+        """The refusal of a ``_device_candidate`` whose four flags were read as ``flags``."""
+        if not flags[0]:
+            raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        if not flags[1]:
+            raise ValueError("scaled and tied steps must remain finite")
+        from .brain import _TorchKernel
+
+        _TorchKernel.parameter_refusal(bool(flags[2]), bool(flags[3]))
+
+    def _install_device(self, candidate: dict[str, Any], steps: Any) -> dict[str, float]:
+        """Install a ``_device_candidate`` whose flags read clear; ``steps`` its report's two
+        numbers, read."""
+        self.brain = self.brain._with_device_parameters(
+            candidate["scale"], candidate["bias"], candidate["checked"]
+        )
+        self.updates += 1
+        return {"scale_step": float(steps[0]), "bias_step": float(steps[1])}
 
     def _projections(self) -> tuple[np.ndarray, np.ndarray]:
         """Each synapse's projection (its block of the layout) and each neuron's range."""
@@ -1263,13 +1339,21 @@ class Learner:
         ):
             tables = kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse)
             if tables is not None:
-                assert self.plastic_neurons is not None
                 tables["plastic_neurons"] = kernel.mx.array(
-                    np.asarray(self.plastic_neurons, dtype=np.float32)
+                    np.asarray(self._stepping_neurons(), dtype=np.float32)
                 )
                 if rate is not None:
                     rate.flags.writeable = False
                     tables["rates"] = kernel.block_rates(rate)
+                    synapses, neurons = self.held()
+                    if synapses is not None:  # by block, where a block holds any
+                        flat = kernel.layout.flat(synapses.astype(float))
+                        tables["held_blocks"] = [
+                            (k, kernel.mx.array(np.ascontiguousarray(part) > 0))
+                            for k, part in enumerate(kernel.layout.blocks(flat)) if part.any()
+                        ]
+                    if neurons is not None:
+                        tables["held_neurons"] = kernel.mx.array(neurons)
             held = (kernel.root, self._paired, tables, rate)
             self.__dict__["_mlx_tables"] = held
         return cast("dict[str, Any] | None", held[2])
@@ -1312,6 +1396,13 @@ class Learner:
             ),
             share * cfg.eta_bias, cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
         )
+        mx = kernel.mx
+        for k, mask in tables.get("held_blocks", ()):  # a rate of zero keeps the moments it held
+            for name in ("velocity", "second_moment"):
+                moments[name][k] = mx.where(mask, held[name][k], moments[name][k])
+        if "held_neurons" in tables:
+            for name in ("velocity_bias", "second_moment_bias"):
+                moments[name] = mx.where(tables["held_neurons"], held[name], moments[name])
         self.__dict__["_device_moments"] = moments
         self.brain = self.brain._with_mlx_parameters(new)
         self.updates += 1
@@ -1370,8 +1461,10 @@ class Learner:
             raise ValueError("phase contrasts must be finite")
         raw_synapse, raw_neuron = synapse_term, neuron_term
         count = self.contrast_updates + 1  # only this optimizer's own history
+        before = {name: getattr(self, name) for name in _MOMENTS}
         if len(raw_synapse) and _compiled_passes():
             delta_scale, delta_bias = self._compiled_step(raw_synapse, raw_neuron, count)
+            self._hold_moments(before)
             if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
                 raise ValueError("optimizer moments must remain finite")
             report = self.apply(share * delta_scale, share * delta_bias)
@@ -1399,6 +1492,7 @@ class Learner:
             synapse_term, neuron_term = synapse_term / rms, neuron_term / rms_bias
         delta_scale = share * cfg.eta * synapse_term
         delta_bias = share * cfg.eta_bias * neuron_term
+        self._hold_moments(before)
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
         report = self.apply(delta_scale, delta_bias)

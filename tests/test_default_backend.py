@@ -111,13 +111,104 @@ def test_a_brain_no_launch_takes_passes_one_core_at_its_rows_on_mlx(monkeypatch)
     assert choose(1, SPEECH, settling=3_000) == ("cpu",)
 
 
-def test_a_card_the_table_has_not_read_takes_a_stated_margin(monkeypatch):
+def test_a_card_the_table_has_not_read_takes_a_stated_margin_without_a_calibration(monkeypatch):
+    monkeypatch.setenv("CADENCE_CALIBRATE", "0")
+    monkeypatch.setattr(resident, "_CALIBRATIONS", {})
     work = resident._AUTO_CUDA_WORK
     on_a_machine(monkeypatch, card="NVIDIA A10G")
     assert choose(1, work) == ("torch", "cpu")
     on_a_machine(monkeypatch, card="Some Other Card")
     assert choose(1, work) == ("cpu",)
     assert choose(1, resident._AUTO_UNSEEN * work) == ("torch", "cpu")
+
+
+def _calibrated(monkeypatch, tmp_path, crossing_rows: float) -> list[int]:
+    """A machine with an unseen card whose calibration finds ``crossing_rows`` on the chamber's
+    brain; returns the calibrations made, one entry each."""
+    monkeypatch.delenv("CADENCE_CALIBRATE", raising=False)
+    monkeypatch.setenv("CADENCE_PLAN_CACHE", str(tmp_path / "plans.json"))
+    monkeypatch.setattr(resident, "_CALIBRATIONS", {})
+    from cadence import brain as graph
+
+    monkeypatch.setattr(graph, "_PLANS", {})
+    made: list[int] = []
+
+    def calibrate(rows=resident._CALIBRATION_ROWS):
+        made.append(1)
+        return {"card": "Some Other Card", "rows": list(rows), "ratios": [2.0, 1.0, 0.5],
+                "crossing": crossing_rows, "work": crossing_rows * CHAMBER, "seconds": 3.0}
+
+    monkeypatch.setattr(resident, "calibrate_card", calibrate)
+    on_a_machine(monkeypatch, card="Some Other Card")
+    return made
+
+
+def test_an_unseen_card_takes_the_crossing_its_calibration_reads(monkeypatch, tmp_path):
+    made = _calibrated(monkeypatch, tmp_path, crossing_rows=2 * 43.717106725290485)
+    work = resident._AUTO_CUDA_WORK
+    assert choose(1, work) == ("cpu",)  # half the A10G's speed: twice its crossings
+    assert choose(1, 2 * work + 64) == ("torch", "cpu")
+    assert choose(4, DEEP, apical=True) == ("cpu",)  # 4 rows pass the A10G's crossing there
+    assert choose(8, DEEP, apical=True) == ("torch", "cpu")
+    assert made == [1]  # once per process
+
+
+def test_a_faster_card_takes_the_device_sooner_than_the_margin(monkeypatch, tmp_path):
+    _calibrated(monkeypatch, tmp_path, crossing_rows=43.717106725290485 / 2)
+    work = resident._AUTO_CUDA_WORK
+    assert choose(1, work // 2 + 64) == ("torch", "cpu")
+    assert choose(1, work // 2 - 64) == ("cpu",)
+
+
+def test_a_calibration_is_kept_for_later_processes(monkeypatch, tmp_path):
+    made = _calibrated(monkeypatch, tmp_path, crossing_rows=43.717106725290485)
+    choose(1, resident._AUTO_CUDA_WORK)
+    monkeypatch.setattr(resident, "_CALIBRATIONS", {})
+    from cadence import brain as graph
+
+    monkeypatch.setattr(graph, "_PLANS", {})
+    assert choose(1, resident._AUTO_CUDA_WORK + 64) == ("torch", "cpu")
+    assert made == [1]  # the second process reads the cache
+    assert "card Some Other Card" in (tmp_path / "plans.json").read_text()
+
+
+def test_a_card_never_calibrated_below_a_quarter_of_the_tables_work(monkeypatch, tmp_path):
+    made = _calibrated(monkeypatch, tmp_path, crossing_rows=1.0)
+    assert choose(1, resident._AUTO_CUDA_WORK // 5) == ("cpu",)
+    assert made == []
+
+
+def test_a_failed_calibration_takes_the_stated_margin(monkeypatch, tmp_path):
+    _calibrated(monkeypatch, tmp_path, crossing_rows=1.0)
+
+    def broken(rows=resident._CALIBRATION_ROWS):
+        raise RuntimeError("the card refused")
+
+    monkeypatch.setattr(resident, "calibrate_card", broken)
+    work = resident._AUTO_CUDA_WORK
+    assert choose(1, work) == ("cpu",)
+    assert choose(1, resident._AUTO_UNSEEN * work) == ("torch", "cpu")
+
+
+@pytest.mark.parametrize(
+    ("ratios", "crossing"),
+    [((2.0, 1.0, 0.5), 64.0), ((4.0, 2.0, 1.0), 256.0), ((0.5, 0.25, 0.125), 4.0),
+     ((1.0, 1.0, 1.0), float("inf")), ((2.0, 3.0, 4.0), float("inf"))],
+)
+def test_the_calibration_crossing_is_read_between_and_past_its_rows(ratios, crossing):
+    assert resident._crossing((16, 64, 256), ratios) == pytest.approx(crossing)
+
+
+def test_the_a10g_reference_is_the_tables_crossing_read_by_the_calibration():
+    core = {16: (0.93, 6.82, 8.36), 64: (2.10, 23.1, 23.9), 256: (8.32, 77.3, 79.9)}
+    a10g = {16: (1.99, 9.49, 9.65), 64: (2.72, 17.0, 15.7), 256: (3.49, 16.2, 24.5)}
+
+    def mean(times):
+        return float(np.exp(np.mean(np.log(times))))
+
+    ratios = [mean(a10g[rows]) / mean(core[rows]) for rows in (16, 64, 256)]
+    work = resident._crossing((16, 64, 256), ratios) * CHAMBER
+    assert work == pytest.approx(resident._CALIBRATION_A10G, rel=1e-6)
 
 
 def test_memories_that_stay_on_the_host_need_more_work(monkeypatch):

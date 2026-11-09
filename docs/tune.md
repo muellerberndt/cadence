@@ -88,7 +88,7 @@ The composed graph, in the order its regions are developed:
 | `observer_0` ... | `observers` | Reciprocal with every module, `motor` and earlier observers | below |
 | `efference` | `actions` | With `efference_amplitude` above 0 | [memory](memory.md#efference-copy) |
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
-| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False`; with `recall_copy` also into `motor` | [recall memory](memory.md#the-recall-memory-in-full) |
+| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
 | `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#when-a-read-item-happened-opt-in) |
 
@@ -277,6 +277,14 @@ sharing across positions is a second form, read only if this one holds. The foun
 and is unchanged. The [grammar chamber](../benchmarks/grammar/README.md#a-planning-window)
 reads the window on its sentences at `k` of 1, 3, 4 and 8.
 
+When to use it: the window pays where two actions inside it constrain each other and the trace
+alone does not carry the constraint. It is no lookahead. On
+[routes with a goal](../benchmarks/grammar/README.md#routes-with-a-goal-does-planning-pay-257),
+where the first step must lead to a goal two steps on, a sliding window of three (plan three, take
+the first, plan again) chooses the first step no better than word by word (.31 against .33 on
+held-out pairs; each says the wrong neighbour as often as the right one), so a plan that must search ahead needs
+more than a joint settle.
+
 Every bias starts at zero and is plastic: `brain.brain.bias` holds the learned values, and
 loading restores them. To start the processing neurons at a bias of your own, set
 `brain.learner.brain = brain.learner.brain.with_parameters(bias=bias)` before the first lesson.
@@ -431,7 +439,7 @@ full = Brain.compose(
     recall_heads=2,                                      # two facts in one settle
     recall_boundary=True,                                # the start of an episode has a slot
     recall_action=True,                                  # the slots keep what it did
-    recall_copy=2.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
+    recall_gain=1.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
     observers=(16,),                                     # optional System 2
 )
 assert full.live(np.eye(16)[[3]]).shape == (1,)
@@ -445,10 +453,10 @@ assert full.live(np.eye(16)[[3]]).shape == (1,)
   ([the episode's boundary](memory.md#episodes-keys-and-windows)).
 - `recall_action=True`: every slot keeps the command executed at its moment
   ([its own actions](memory.md#its-own-actions-in-the-slots-opt-in)).
-- `recall_copy=2.0, recall_tokens=range(4)`: a token the read delivers drives the action of the
-  same token, including tokens never taught as answers
-  ([the copy pathway](memory.md#the-copy-pathway-opt-in)). Declare only identities the task
-  has; without shared tokens leave it out.
+- `recall_gain=1.0, recall_tokens=range(4)`: a learned gain per read port carries a token the read
+  delivers to the action of the same token, including tokens never taught as answers
+  ([the learned value path](memory.md#the-learned-value-path-opt-in)). Declare only identities the
+  task has; without shared tokens leave it out.
 - `observers=(16,)`: a System 2 region inside the same settle, bounded by the compartment.
 
 The recall memory reads into the top region;
@@ -473,7 +481,9 @@ For modules of several hundred neurons and more
   `w`, with no setting: above 64 the projection from prefrontal to association and the association-motor pair step at
   `64 / w` (`Learner.synapse_rate`), and `recall_address` is .01 times `64 / w`. At 64 and under every step is whole.
   Every other projection keeps its step: the sensory one, a chain between modules, an observer's and the memory's reads.
-  The rate multiplies every step on those synapses, a lesson's and a reward's.
+  The rate multiplies every step on those synapses, a lesson's and a reward's. A rate of zero holds a synapse and its
+  optimizer history, and a neuron whose every inbound synapse steps at zero holds its bias too: zero on every synapse
+  into a region, both directions of each pair, freezes the region.
 
 A rate you name wins over its part:
 

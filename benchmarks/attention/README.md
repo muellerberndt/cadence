@@ -7,19 +7,18 @@ ran, archived by content hash under `results/sources/`. A receipt states what wa
 code it binds, and a setting it names need not exist in this version. The scripts of a campaign
 (`admission.py`, `heads_admission.py`, the `*_campaign.py` files and their protocols, tests and
 `verify.py`) are in release 0.94.0, whose tree runs the commands below. Five instruments stay
-here, runnable and tested: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
+here, runnable and tested: `own_action.py`, `look_back.py`, `held_heads.py` and
 `contextual_choice.py`.
 
-## Retrieved content becomes the answer: the copy pathway (`recall_copy`, `recall_tokens`)
+## Retrieved content becomes the answer: the copy pathway (retired)
 
-The [copy-tokens benchmark](copy_tokens.py) asks two things of eight tokens. A token is heard,
-two other tokens follow, and a cue asks for the heard token back: the cue's key names the heard
-slot, so the read is right before any lesson, and tokens 5 to 7 are never taught as answers.
-And a cue names a token of a sequence of five heard once and asks for the token that followed
-it, which the read holds on its next port while its recall port holds the cue's own token.
-Lessons at the cue only, 300 and 600 per founder, `teaching="normalized"` with
-`learning_surprise=True`, `episodic=False`. Its [receipt](results/copy-tokens.json), six founders
-of one module of 24 neurons:
+The copy pathway (`recall_copy`) left the library in 0.96.0, and its instrument,
+`copy_tokens.py`, with it; [the learned value path](../../docs/memory.md#the-learned-value-path-opt-in)
+(`recall_gain`) is the library's path from a read to its token's action. Its
+[receipt](results/copy-tokens.json) stays, six founders of one module of 24 neurons, and verifies
+on archived bytes with its archived checker:
+`python benchmarks/provenance.py --historical benchmarks/attention/results/copy-tokens.json`.
+Release 0.95.2 runs the instrument.
 
 | Arm | Untaught produced | Taught | Succession | Untaught successor |
 | --- | --- | --- | --- | --- |
@@ -28,40 +27,6 @@ of one module of 24 neurons:
 | `recall_copy=1.0` with tokens | 0.17 to 1.00 (mean 0.78) | 0.86 to 1.00 | 0.95 to 1.00 | 0.00 |
 | `recall_copy=0.5`, no tokens | 0.00 | 0.57 to 0.99 | 0.93 to 1.00 | 0.00 |
 | `recall_copy=1.2`, no tokens | 0.00 | 0.22 to 0.87 | 0.86 to 0.97 | 0.00 |
-
-Uniform random answers 0.125. The founder's read names the untaught token at 0.32 to 1.00 (the
-founder of seed 2 moved its own read with its lessons) and never produces it. Two founders of a
-deep apical brain read the same: untaught 1.00, succession 0.94 and 0.98 against 0.97 and 0.99.
-Every declared gate passes; the result is recomputed by `test_copy_tokens.py`.
-
-The design was chosen on these tasks, and the alternatives read as follows (development
-readings, outside the receipt unless stated):
-
-- An identity on both ports at once (founder 0, identity 1.0 to 4.0): the next port of the heard
-  token's slot holds the distractor that followed it, and the newborn produced the heard token on
-  0.53 to 0.67 of untaught questions; 300 lessons took it to 0.00 to 0.13. The identity starts on
-  the recall port only.
-- No echo suppression (the echo synapses zeroed at birth, six founders): untaught 1.00, but
-  succession 0.79 to 0.95, mean 0.87, against 0.94 to 0.99 with it: the recall port answers a cue
-  with its own token.
-- Each port's identity tied into one learned gain (`Learner(tie_groups=...)`): on the receipt's
-  six founders it produced the untaught tokens at 1.00 as the untied pathway does, with succession
-  0.91 to 0.98 against 0.94 to 0.99, so the ties were left out.
-- The apical compartment as a bound was not needed: on the deep apical brain the pathway, which
-  lands basally, keeps succession, and a bound relative to the motor region's bottom-up drive would
-  cap the copy of a token whose action that drive never raised. It was not measured.
-
-The first run of this receipt declared a gate that the founder's read of the untaught tokens is
-0.80 or better on every founder; founder 2 read them at 0.32, and the gate was replaced by its
-production alone (0.00 on every founder), with the reads reported beside it.
-
-The receipt was recorded on the NumPy solver (`CADENCE_FUSED=0`); the compiled dense kernel gave
-the same answers, with the reported gains differing in their last digits.
-
-```sh
-CADENCE_FUSED=0 PYTHONPATH=src python benchmarks/attention/copy_tokens.py --workers 4 \
-  --out /tmp/copy-tokens.json
-```
 
 ## Its own actions in the slots (`recall_action`)
 
@@ -289,6 +254,44 @@ memory. The original admissions below failed; the separately declared
 teaching-policy repair now passes on both development
 and all twenty fresh confirmation founders. Numerical checks and that acquisition
 control alone cannot admit a library attention option.
+
+## The crossing: a question whose fact depends on the context (`crossing.py`)
+
+[`crossing.py`](crossing.py) reads [#267](https://github.com/muellerberndt/cadence/issues/267): two
+records (`dog V0`, `cat V1`, the order drawn per stream), a context `X_c` and a question `Q_k`; the
+answer, at a `GO` moment after the question, is the value of the fact `c xor k`. Neither bit names the
+fact alone, so a reader that adds what it reads says one of the two values, .50. A life teaches one
+lesson a batch on the answer and reads fresh rows; `decode` fits a ridge decoder of `c`, `k` and
+`c xor k` on the cortex the answer's read is addressed from, and measures the crossing term of the
+four cells' means against the spread of the rows around their cell. The supports `frozen_cortex` and
+`frozen_all` restore the synapses into the association and prefrontal regions after every lesson
+(the second the read's synapses as well), a diagnostic and no candidate. The matched LSTM and
+transformer hear the same rows, one Adam step a batch.
+
+Declared reading, six fresh founders (2670901 to 2670906), one 32-vCPU box, 30,000 batches, the
+grammar chamber's brain at the deep teaching point with a held read:
+
+| Learner | Answers at 30,000, per founder | At .90 | Decode of `c`, `k`, `c xor k` at 30,000 | Crossing term / spread: newborn; at 30,000 | Sweeps per act |
+| --- | --- | --- | --- | --- | --- |
+| The read's rule | .60 .54 .46 .49 .45 .45 | 0 of 6 | .63-.88, .98-1.00, .46-.58 | .02-.03 / .23-.30; .04-.18 / 2.83-3.02 | 50 to 100 |
+| The rule, `recall_cortex_norm` | .52 .51 .48 .57 .41 .51 | 0 of 6 | .58-.64, .86-1.00, .44-.55 | .03-.04 / .34-.42; .01-.03 / .54-.61 | 68 to 101 |
+| The rule, every synapse into the cortex held (`frozen_all`) | .58 .44 .55 .53 .42 .50 | 0 of 6 | 1.00, 1.00, .73-.90 | .02-.03 / .23-.30; .03-.07 / .46-.71 | 59 to 69 |
+| LSTM | 1.00 on 6 (from 10,000 on 5) | 6 of 6 | | | |
+| Transformer | .49 .95 .53 1.00 .51 .56 | 2 of 6 | | | |
+
+At every reading of every brain arm the answer sits at the floor; on the two plastic arms erasing the
+fact asked takes it to .00 and erasing the other leaves .60 to 1.00, so the answer is lost at the
+read's selection. Two terms meet there:
+
+- **The lessons bury the conjunction.** The newborn's cortex holds it linearly (decode .95 to 1.00 at
+  birth); under lessons the rows' spread around their cell grows about tenfold, from .23-.30 to
+  2.8-3.0, while the crossing term stays at .04 to .18, and the decode of `c xor k` falls to .46-.58.
+  The cortex at unit norm keeps the spread at .54-.61 and the term falls with it (.01-.03).
+- **A conjunction the cortex holds is not selected.** With every synapse into the cortex held, the
+  conjunction stays decodable (.73 to .90) at a term of .03 to .07 against a spread of .46 to .71, and
+  the held address reads .42 to .58: the address lesson's step on the cortex columns, a linear
+  map driven by the read's own error at `GO`, does not find a direction of that size within 30,000
+  batches.
 
 ## Equations and boundaries
 

@@ -262,6 +262,7 @@ def test_a_refused_outcome_leaves_the_memories_as_they_were(device, monkeypatch)
         raise ValueError("refused")
 
     monkeypatch.setattr(placed.learner, "_apply_device", refused)
+    monkeypatch.setattr(placed.learner, "_device_candidate", refused)
     monkeypatch.setattr(placed.learner, "apply", refused)
     with pytest.raises(ValueError, match="refused"):
         placed.learn(rng.random(2), np.zeros(2, dtype=bool), observations(rng, 2))

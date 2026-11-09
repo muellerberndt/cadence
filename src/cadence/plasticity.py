@@ -530,7 +530,7 @@ class ActorCritic:
         if self.trace_hearing is not None and self.hearing is not None:
             self.hearing.step((delta[:, None] * self.trace_hearing).mean(axis=0))
 
-    def _memory_proposal(self, delta: np.ndarray) -> Any:
+    def _memory_proposal(self, delta: Any) -> Any:
         """The memory's parameters stepped on their trace by the dopamine, as every synapse
         steps: proposed and checked by the memory, not installed. None without a trace, or
         when the memory takes no step."""
@@ -539,6 +539,8 @@ class ActorCritic:
             return None
         if not isinstance(trace, np.ndarray):  # the memory's on the device
             return self.memory.propose(self.memory._device.weighted(trace, delta))
+        if not isinstance(delta, np.ndarray):  # a dopamine made on the device, to the host's trace
+            delta = np.asarray(delta.detach().cpu().numpy(), dtype=float)
         weighted = delta.reshape(-1, *([1] * (trace.ndim - 1))) * trace
         return self.memory.propose(weighted.mean(axis=0))
 
@@ -987,23 +989,61 @@ class ActorCritic:
         self._memory_eligibility(batch, decay)
         self._hearing_eligibility(batch, decay)
         next_state = self._next_state(next_drive, done, warm)
-        next_value_raw = self.value(next_state)
-        next_value = np.where(
-            done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float), next_value_raw
-        )
-        raw_target = reward + cfg.gamma * next_value
-        td_error = raw_target - value
-        if not np.isfinite(td_error).all():
-            raise ValueError("TD errors must remain finite")
-        delta = td_error
-        capped = self._capped(delta, observed)
-        if cfg.dopamine_cap > 0:
-            delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
-        delta = np.where(observed, delta / observed.mean(), 0.0)
+        resting = self._critic_device
+        if resting is None:  # the critic on the host reads the dopamine there
+            next_value_raw = self.value(next_state)
+            next_value = np.where(
+                done, 0.0 if bootstrap is None else np.asarray(bootstrap, dtype=float),
+                next_value_raw,
+            )
+            raw_target = reward + cfg.gamma * next_value
+            td_error = raw_target - value
+            if not np.isfinite(td_error).all():
+                raise ValueError("TD errors must remain finite")
+            delta = td_error
+            capped = self._capped(delta, observed)
+            if cfg.dopamine_cap > 0:
+                delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
+            delta = np.where(observed, delta / observed.mean(), 0.0)
+            critic = self._critic_candidate(delta)
+            d = torch.as_tensor(
+                np.asarray(delta, dtype=float), dtype=trace.dtype, device=trace.device
+            )
+        else:
+            # the dopamine on the device, from the value the critic made there: the outcome's
+            # checks, the critic's and the update's, and the dopamine come to the host in one read
+            # before anything is installed
+            exact = torch.float32 if trace.device.type == "mps" else torch.float64
+
+            def here(values: Any) -> Any:
+                return torch.as_tensor(np.asarray(values, dtype=float), dtype=exact,
+                                       device=trace.device)
+
+            following = resting.value_here(next_state).to(exact)
+            ends = torch.as_tensor(np.asarray(done), device=trace.device)
+            boot = torch.zeros_like(following) if bootstrap is None else here(bootstrap)
+            td_here = here(reward) + cfg.gamma * torch.where(ends, boot, following) - here(value)
+            delta_here = td_here
+            if cfg.dopamine_cap > 0:
+                delta_here = torch.clamp(delta_here, -cfg.dopamine_cap, cfg.dopamine_cap)
+            shown = torch.as_tensor(np.asarray(observed), device=trace.device)
+            delta_here = torch.where(
+                shown, delta_here / float(observed.mean()), torch.zeros_like(delta_here)
+            )
+            critic_weights, critic_finite, critic_step = resting.unread(delta_here)
+            d = delta_here.to(trace.dtype)
         self.updates += 1
-        critic = self._critic_candidate(delta)
-        d = torch.as_tensor(np.asarray(delta, dtype=float), dtype=trace.dtype, device=trace.device)
-        proposal = self._memory_proposal(delta)  # checked before anything is installed
+        proposal = unread = None
+        traced, memory = self.trace_memory, self.memory
+        # the memory's trace on the device, as ``_memory_proposal`` finds it there
+        on_device = traced is not None and not isinstance(traced, np.ndarray)
+        if resting is not None and on_device:
+            # the memory's step on the device too, its check read with the outcome's
+            unread = memory._device.proposal_unread(memory._device.weighted(traced, delta_here))
+        else:
+            proposal = self._memory_proposal(  # checked before anything is installed
+                delta if resting is None else delta_here
+            )
         next_brain = self.learner.brain
         eta, eta_bias = self._rates()
         step_bias = eta_bias * (d[:, None] * trace_bias).mean(dim=0)
@@ -1020,7 +1060,33 @@ class ActorCritic:
             for first, stop, part in kernel.contrast_parts(s_plus, s_minus):
                 part = (part * salience[first:stop][:, kernel._row_index[0]]).div_(span)
                 step += torch.mv(part.T, d[first:stop])
-        report = self.learner._apply_device(kernel, eta * (step / batch), step_bias)
+        if resting is None:
+            report = self.learner._apply_device(kernel, eta * (step / batch), step_bias)
+        else:
+            update = self.learner._device_candidate(kernel, eta * (step / batch), step_bias)
+            one = torch.ones((), dtype=exact, device=trace.device)
+            mapped = (one, 0.0 * one) if unread is None else (unread[3], unread[4])
+            read = torch.cat([
+                torch.stack([torch.isfinite(td_here).all().to(exact), critic_finite.to(exact),
+                             critic_step.to(exact), mapped[0].to(exact), mapped[1].to(exact)]
+                            + [flag.to(exact) for flag in update["flags"]]
+                            + [number.to(exact) for number in update["steps"]]),
+                td_here, delta_here,
+            ]).cpu().numpy().astype(float)
+            if not read[0]:
+                raise ValueError("TD errors must remain finite")
+            critic_bias = self.b_critic + float(read[2])
+            if not read[1] or not np.isfinite(critic_bias):
+                raise ValueError("critic parameters must remain finite")
+            if not read[3]:
+                raise ValueError("the address map's reward step must be finite")
+            if unread is not None:
+                proposal = (*unread[:3], float(read[4]), *unread[6:])
+            self.learner._device_refusal(read[5:9])
+            td_error, delta = read[11 : 11 + batch], read[11 + batch :]
+            capped = self._capped(td_error, observed)
+            critic = (critic_weights, critic_bias)
+            report = self.learner._install_device(update, read[9:11])
         trace.mul_(decay)
         kernel.add_contrast(trace, s_plus, s_minus, span, salience)
         self._accept_critic(critic)
@@ -1127,8 +1193,35 @@ class ActorCritic:
             delta = np.clip(delta, -cfg.dopamine_cap, cfg.dopamine_cap)
         delta = np.where(observed, delta / observed.mean(), 0.0)
         self.updates += 1
-        critic = self._critic_candidate(delta)
-        proposal = self._memory_proposal(delta)  # checked before anything is installed
+        resting, traced, memory = self._critic_device, self.trace_memory, self.memory
+        made: list[Any] = []  # made in the update's launch, read after it
+        if resting is not None:
+            unread_critic = resting.unread(delta)
+            made += [unread_critic[1], unread_critic[2], unread_critic[0]]
+        else:
+            critic = self._critic_candidate(delta)
+        unread = None
+        on_device = traced is not None and not isinstance(traced, np.ndarray)
+        if on_device:  # the memory's trace on the device, as ``_memory_proposal`` finds it there
+            unread = memory._device.proposal_unread(memory._device.weighted(traced, delta))
+            if unread is not None:
+                made += [unread[3], unread[4], *unread[5]]
+        else:
+            proposal = self._memory_proposal(delta)  # checked before anything is installed
+        found: dict[str, Any] = {}
+
+        def checked() -> None:
+            """The critic's and the memory's checks, in their order, from the update's launch."""
+            if resting is not None:
+                bias = self.b_critic + float(unread_critic[2].item())
+                if not bool(unread_critic[1].item()) or not np.isfinite(bias):
+                    raise ValueError("critic parameters must remain finite")
+                found["critic"] = (unread_critic[0], bias)
+            if unread is not None:
+                if not bool(unread[3].item()):
+                    raise ValueError("the address map's reward step must be finite")
+                found["proposal"] = (*unread[:3], float(unread[4].item()), *unread[6:])
+
         next_brain = learner.brain
         eta, eta_bias = self._rates()
         scale = kernel.scale if kernel.scale is not None else kernel.to_blocks(next_brain.efficacy)
@@ -1136,8 +1229,12 @@ class ActorCritic:
         new, bias_trace, size, bias_size = kernel.rewarded(
             plus.device, minus.device, None if held is None else held[0],
             None if held is None else held[1], decays, span, delta, eta, eta_bias, scale, tables,
-            learner.config.scale_cap,
+            learner.config.scale_cap, also=made, before=checked,
         )
+        if resting is not None:
+            critic = found["critic"]
+        if on_device:
+            proposal = found.get("proposal")
         # nothing refuses from here: what alone holds the eligibility lets it be written over
         old = None if held is None else list(held[0])
         held = self._trace_mlx = None
