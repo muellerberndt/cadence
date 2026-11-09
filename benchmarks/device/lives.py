@@ -1,9 +1,10 @@
 """Seconds per life: many continuing lives of one topology, four ways.
 
 A life is ``Brain.compose(35, 18, seed=k)``, the chamber's default brain, stepping ``--moments``
-moments of ``step`` on observations and rewards of its own; ``--composition lives`` composes it
-with ``recall=False, episodic=False``, the composition ``cadence.Lives`` holds. Four ways to run
-``--lives`` of them:
+moments of ``step`` on observations and rewards of its own. ``--composition lives`` composes it
+with ``episodic=False``, the default composition without the store, which ``cadence.Lives`` holds;
+``--composition plain`` with ``recall=False`` as well. ``--teach N`` gives every N-th moment a
+teacher's label. Four ways to run ``--lives`` of them:
 
 * ``serial``: one process steps every life in turn on ``--backend``; each life is its own brain.
 * ``pool``: ``--workers`` processes on the CPU, one thread each, each stepping its share of the
@@ -13,7 +14,7 @@ with ``recall=False, episodic=False``, the composition ``cadence.Lives`` holds. 
   bound on what a batch of independent lives in one call could reach on that device, and not
   independent lives.
 * ``lives``: ``cadence.Lives`` on ``--backend``, every life a brain of its own with its own
-  parameters, one call per moment for all of them (``--composition lives`` alone).
+  parameters, one call per moment for all of them (``--composition lives`` or ``plain``).
 
 Each reading states the seconds to build the lives and the seconds per life and moment of the
 stepping that follows (after ``--warm`` moments of each life)::
@@ -47,7 +48,8 @@ from ledger import _place, _sync, environment  # noqa: E402
 import cadence as cd  # noqa: E402
 
 INPUTS, MOTOR = 35, 18
-COMPOSITION: dict[str, object] = {}  # ``--composition lives``: recall=False, episodic=False
+COMPOSITION: dict[str, object] = {}  # ``--composition``: lives episodic=False; plain no recall
+TEACH = 0  # every ``TEACH``-th moment a teacher's label, 0 none
 
 
 def _world(seed: int, rows: int, moments: int) -> tuple[list[np.ndarray], list[np.ndarray]]:
@@ -56,6 +58,13 @@ def _world(seed: int, rows: int, moments: int) -> tuple[list[np.ndarray], list[n
     xs = [rng.random((rows, INPUTS)) * (rng.random((rows, INPUTS)) < 0.3) for _ in range(moments)]
     rs = [(rng.random(rows) < 0.3).astype(float) for _ in range(moments)]
     return xs, rs
+
+
+def _teacher(t: int, rows: int) -> np.ndarray | None:
+    """The teacher's labels of moment ``t``, a function of the moment alone; None between."""
+    if not TEACH or t % TEACH:
+        return None
+    return np.asarray((np.arange(rows) * 7 + t) % MOTOR)
 
 
 def _compose(seed: int, backend: str) -> cd.Brain:
@@ -69,19 +78,24 @@ def _live(brain: cd.Brain, xs: list[np.ndarray], rs: list[np.ndarray], first: in
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for t in range(first, last):
+            teacher = _teacher(t, len(xs[t]))
+            taught = {} if teacher is None else {"teacher": teacher[row]}
             if t:
-                brain.step(xs[t][row], reward=rs[t][row])
+                brain.step(xs[t][row], reward=rs[t][row], **taught)
             else:
-                brain.step(xs[t][row])
+                brain.step(xs[t][row], **taught)
 
 
 def _share(
     lives: list[int], backend: str, moments: int, warm: int,
-    composition: dict[str, Any] | None = None,
+    composition: dict[str, Any] | None = None, teach: int | None = None,
 ) -> tuple[float, float]:
     """A worker's lives, in turn: seconds to build them and seconds of their measured moments."""
+    global TEACH
     if composition is not None:
         COMPOSITION.update(composition)
+    if teach is not None:
+        TEACH = teach
     start = time.perf_counter()
     brains = [_compose(k, backend) for k in lives]
     built = time.perf_counter() - start
@@ -113,7 +127,7 @@ def pool(lives: int, workers: int, moments: int, warm: int) -> dict[str, Any]:
         start = time.perf_counter()
         results = list(executor.map(_share, shares, ["cpu"] * len(shares),
                                     [moments] * len(shares), [warm] * len(shares),
-                                    [dict(COMPOSITION)] * len(shares)))
+                                    [dict(COMPOSITION)] * len(shares), [TEACH] * len(shares)))
         wall = time.perf_counter() - start
     built = max(r[0] for r in results)
     stepped = max(r[1] for r in results)
@@ -141,16 +155,18 @@ def batched(lives: int, backend: str, moments: int, warm: int) -> dict[str, Any]
     start = time.perf_counter()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        held = cd.Lives(INPUTS, MOTOR, lives, **place)
+        held = cd.Lives(INPUTS, MOTOR, lives, **place, **{
+            k: v for k, v in COMPOSITION.items() if k != "episodic"
+        })
     built = time.perf_counter() - start
     xs, rs = _world(1000, lives, moments + warm)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for t in range(warm):
-            held.step(xs[t], **({"reward": rs[t]} if t else {}))
+            held.step(xs[t], teacher=_teacher(t, lives), **({"reward": rs[t]} if t else {}))
         start = time.perf_counter()
         for t in range(warm, warm + moments):
-            held.step(xs[t], reward=rs[t])
+            held.step(xs[t], reward=rs[t], teacher=_teacher(t, lives))
     if held.brain is not None:
         _sync(held.brain)
     return {"built": built, "per_life_moment": (time.perf_counter() - start) / (lives * moments)}
@@ -160,7 +176,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--ways", nargs="+", default=["serial", "pool", "streams"],
                         choices=["serial", "pool", "streams", "lives"])
-    parser.add_argument("--composition", default="default", choices=["default", "lives"])
+    parser.add_argument("--composition", default="default",
+                        choices=["default", "lives", "plain"])
+    parser.add_argument("--teach", type=int, default=0,
+                        help="every N-th moment a teacher's label (0: none)")
     parser.add_argument("--backend", default="cpu")
     parser.add_argument("--lives", nargs="+", type=int, default=[12, 128])
     parser.add_argument("--workers", type=int, default=os.cpu_count() or 1)
@@ -168,10 +187,14 @@ def main() -> None:
     parser.add_argument("--warm", type=int, default=3)
     parser.add_argument("--out")
     args = parser.parse_args()
+    global TEACH
+    TEACH = args.teach
     if args.composition == "lives":
+        COMPOSITION.update(episodic=False)
+    elif args.composition == "plain":
         COMPOSITION.update(recall=False, episodic=False)
     elif "lives" in args.ways:
-        parser.error("the lives way holds --composition lives")
+        parser.error("the lives way holds --composition lives or plain")
     sink = open(args.out, "a") if args.out else sys.stdout
     print(json.dumps({"environment": environment()}), file=sink, flush=True)
     for lives in args.lives:
@@ -189,7 +212,7 @@ def main() -> None:
                 row = streams(lives, args.backend, args.moments, args.warm)
                 backend = args.backend
             row = {"way": way, "lives": lives, "backend": backend,
-                   "composition": args.composition, **row}
+                   "composition": args.composition, "teach": args.teach, **row}
             print(json.dumps(row), file=sink, flush=True)
             if sink is not sys.stdout:
                 print(f"{way:8} {backend:11} {lives:4} lives  "

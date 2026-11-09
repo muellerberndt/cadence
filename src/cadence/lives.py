@@ -1353,8 +1353,8 @@ class Lives:
 
     def life(self, i: int) -> Any:
         """Life ``i`` as a lone brain on the CPU: the composition of its seed with its learned
-        parameters, optimizer, critic, recall maps and carried gains; its stream starts afresh.
-        Save it as any brain."""
+        parameters, optimizer, critic, recall maps, carried gains and random state; its stream
+        starts afresh. Save it as any brain."""
         from .generic import Brain
 
         if self.brains is not None:
@@ -1374,6 +1374,9 @@ class Lives:
         lone.basal_ganglia.updates = self.brain.basal_ganglia.updates
         lone.basal_ganglia.w_critic = held["w_critic"]
         lone.basal_ganglia.b_critic = float(held["b_critic"])
+        lone.basal_ganglia.rng.bit_generator.state = (
+            self.brain.basal_ganglia.rng.generators[i].bit_generator.state
+        )
         if lone.recall is not None:
             for name, maps in held["recall"].items():
                 setattr(lone.recall, name, [maps])
