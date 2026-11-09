@@ -43,6 +43,17 @@
   with the settings it saved, and describes and saves without the marker. `Brain.attention`
   leaves. The contextual-choice and held-heads instruments name the settings and read as before
   to the bit, the founder memory at them being what 0.95 composed for `attention=True`.
+- **Removed: `recall_next=False`.** A one-out of what a new brain composes reads the next port as
+  the successor every sequence reading needs: on the sequence battery (founders 0 and 1) induction
+  falls from .99 to .17, copying unique tokens from 1.00 to .11 and .13, copying repeated tokens
+  from .90 to .94 to .14 and .15 and two hops from 1.00 to .27 and .29, and on the grammar chamber
+  (founders 0 to 2, 2,000 batches) paths from .97 to .04 and three hops from .61 to .00. Look back,
+  n-back and a period of 8 hold. Its one reading of its own, ordered recall from reward alone,
+  a new brain answers on 12 of 12 founders. Write nothing in its place. `recall_next=False` is
+  refused at `compose` and by `Brain(connectome, ...)`, and a saved memory without the next port
+  is refused by name: cadence 0.95.2 runs it. A custom anatomy holds a `next` region beside
+  `recall`. The ordered recall instrument's `reward_recipe` arm left with it. The standalone
+  `Recall(..., next=False)` stays for memories built outside a brain.
 
 ## 0.95.2 — 2026-11-09
 

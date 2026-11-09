@@ -84,7 +84,8 @@ arousal=True, learning_qualified=True, learning_free_steps=1024, learning_nudged
 learning_tolerance=0.003, working_memory_decay=0.0, working_memory_amplitude=0.3, recall=True)`
 with the arm's settings: `founder` (none), `position` (`recall_position_reward=4.0`),
 `reward_recipe` (`recall_position_reward=4.0, recall_address_reward=1.0, recall_anchor=True,
-recall_next=False`), `address` (`recall_address_reward=1.0`), `position_address` (both),
+recall_next=False`, which left with `recall_next=False` in 0.96.0; its readings below are
+historical), `address` (`recall_address_reward=1.0`), `position_address` (both),
 `position_address_anchor` (both, with `recall_anchor=True`), `slow`
 (`recall_position_rate=0.01`) and `recipe` (`recall_anchor=True, recall_slope=0.1,
 recall_position_rate=0.01, recall_recency=0.0, recall_boundary=True`).

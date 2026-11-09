@@ -78,9 +78,6 @@ BRAIN = {
 ARMS: dict[str, dict[str, Any]] = {
     "founder": {},
     "position": {"recall_position_reward": 4.0},
-    # reward on both maps, the first write found by its place in the episode, one port
-    "reward_recipe": {"recall_position_reward": 4.0, "recall_address_reward": 1.0,
-                      "recall_anchor": True, "recall_next": False},
     "address": {"recall_address_reward": 1.0},
     "position_address": {"recall_position_reward": 4.0, "recall_address_reward": 1.0},
     "position_address_anchor": {"recall_position_reward": 4.0, "recall_address_reward": 1.0,

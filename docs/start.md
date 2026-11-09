@@ -442,7 +442,7 @@ from reward):
 | A chain whose stages look alike and whose misses leave the observation as it was | `memory_choice=True, memory_context_hold="unchanged"` | [context key](../benchmarks/context_key/README.md); [stages that look alike](memory.md#stages-that-look-alike-the-context-hold) |
 | A choice that depends on a cue the answer does not show, from the terminal reward alone | `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True` | [credit](../benchmarks/credit/README.md); [a cue the answer does not show](reward.md#a-cue-the-answer-does-not-show) |
 | The same cue carried through distractors, taught by a lesson at the answer | nothing: a new brain's memory has no age charge (`recall_recency=0.0`) | the same chamber and section |
-| Which of two writes a read finds, from reward alone | nothing: a new brain holds `recall_position_reward=4.0` and the anchor; the chamber's recipe adds `recall_address_reward=1.0, recall_next=False` | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
+| Which of two writes a read finds, from reward alone | nothing: a new brain holds `recall_position_reward=4.0` and the anchor | [ordered recall](../benchmarks/sequence/README.md#ordered-recall-orderpy); [position](memory.md#position-how-long-ago-a-moment-happened) |
 
 The chambers' READMEs give each setting's readings and costs.
 
