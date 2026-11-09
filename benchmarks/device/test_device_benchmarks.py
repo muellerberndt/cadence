@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
+import importlib.util
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 import ledger  # noqa: E402
-import life  # noqa: E402
 import lives  # noqa: E402
+
+# by its path under its own name: benchmarks/vocabulary holds a ``life`` module too, and one
+# pytest process imports both
+_spec = importlib.util.spec_from_file_location("device_life", HERE / "life.py")
+assert _spec is not None and _spec.loader is not None
+life = importlib.util.module_from_spec(_spec)
+sys.modules["device_life"] = life
+_spec.loader.exec_module(life)
 
 
 def test_a_cpu_moment_has_no_crossing():
