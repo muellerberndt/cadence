@@ -543,6 +543,140 @@ class History:
         return {"trace": self.trace}
 
 
+@dataclass
+class Message:
+    """What a stream heard in its episode, held as one state: phased unions of a sparse code.
+
+    Every heard moment is given a fixed sparse code: ``units`` code neurons, each reading
+    ``fan_in`` of the observation's ON and OFF channels with positive weights
+    (``PatternSeparator`` with ``cover``), the ``winners`` largest sums set to one. A unit wins
+    where it reads several of the moment's active inputs at once, so the code binds what a
+    moment holds together (a noun with its number and its role). The ``t``-th moment of a
+    stream's episode joins the union of phase ``t mod phases``. The state is ``phases`` blocks
+    of ``units`` each: what a block holds is present or absent, neighbouring moments lie in
+    neighbouring blocks, and nothing fades while the episode lasts.
+
+    ``state`` is the held message, ``(streams, phases * units)``, zeros and ones. ``key()`` is
+    the union over the phases, ``(streams, units)``: the same for one set of moments heard in
+    any order, and close for episodes that share moments, which is what a memory of encoded
+    meanings addresses a record by. The write is fixed, as the working trace's and the heard
+    history's are, and holds no learned parameter; what a reader makes of the message is
+    learned.
+
+    The class stands alone: it holds no neurons and reads no brain. ``hear`` takes the
+    observations one moment at a time, one row per stream; ``reset`` begins streams afresh.
+    """
+
+    inputs: int
+    phases: int = 4
+    units: int = 70
+    winners: int = 5
+    fan_in: int = 16
+    seed: int = 0
+    trace: np.ndarray = field(init=False, repr=False)
+    told: np.ndarray = field(init=False, repr=False)
+    separator: PatternSeparator = field(init=False, repr=False)
+
+    COVER = 2  # code neurons that read each channel at least
+    STREAM = 286  # the code's own stream of the seed
+
+    def __post_init__(self) -> None:
+        for name in ("inputs", "phases", "units", "winners", "fan_in"):
+            value = getattr(self, name)
+            if isinstance(value, (bool, np.bool_)) or not isinstance(
+                value, (int, np.integer)
+            ) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if isinstance(self.seed, (bool, np.bool_)) or not isinstance(
+            self.seed, (int, np.integer)
+        ) or self.seed < 0:
+            raise ValueError("seed must be a nonnegative integer")
+        if self.winners > self.units:
+            raise ValueError("winners must not exceed the units")
+        channels = 2 * int(self.inputs)
+        cover = min(self.COVER, int(self.units))
+        # every channel read by ``cover`` units: a fan-in too small for that is raised to it
+        fan_in = min(channels, max(int(self.fan_in), -(-cover * channels // int(self.units))))
+        self.separator = PatternSeparator(
+            int(self.inputs), int(self.units), int(self.winners),
+            seed=int(np.random.SeedSequence([int(self.seed), self.STREAM]).generate_state(1)[0]),
+            fan_in=fan_in, cover=cover,
+        )
+        self.reset(0)
+
+    @property
+    def width(self) -> int:
+        """The neurons the state takes: ``phases * units``."""
+        return int(self.phases) * int(self.units)
+
+    @property
+    def state(self) -> np.ndarray:
+        """The held message, ``(streams, phases * units)``."""
+        return self.trace
+
+    def code(self, observations: np.ndarray) -> np.ndarray:
+        """The sparse code of ``(streams, inputs)`` observations: one at each row's winners,
+        ``(streams, units)``. A silent observation codes to zero."""
+        return np.asarray((self.separator.code(observations) > 0.0).astype(float))
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """An empty message for every stream, or for ``rows`` only (streams whose episode
+        begins again)."""
+        if rows is None or len(self.trace) != batch:
+            self.trace = np.zeros((batch, self.width))
+            self.told = np.zeros(batch, dtype=np.int64)
+        else:
+            self.trace[rows] = 0.0
+            self.told[rows] = 0
+
+    def keep(self, rows: np.ndarray) -> None:
+        """Keep the messages of ``rows`` only (streams that ended are dropped)."""
+        self.trace, self.told = self.trace[rows], self.told[rows]
+
+    def hear(self, observations: np.ndarray) -> None:
+        """One heard moment per stream joins its phase's union; another batch size begins the
+        streams afresh first."""
+        x = np.asarray(observations, dtype=float)
+        if x.ndim != 2 or x.shape[1] != self.inputs:
+            raise ValueError(f"observations are one row of {self.inputs} values per stream")
+        if not np.isfinite(x).all():
+            raise ValueError("observations must be finite")
+        if len(self.trace) != len(x):
+            self.reset(len(x))
+        code = self.code(x)
+        held = self.trace.reshape(len(x), int(self.phases), int(self.units))
+        rows = np.arange(len(x))
+        phase = self.told % int(self.phases)
+        held[rows, phase] = np.maximum(held[rows, phase], code)
+        self.told = self.told + 1
+
+    def key(self) -> np.ndarray:
+        """The union over the phases, ``(streams, units)``: what the episode held, whatever the
+        order it was heard in."""
+        held = self.trace.reshape(len(self.trace), int(self.phases), int(self.units))
+        return np.asarray(held.max(axis=1))
+
+    def branch(self) -> Message:
+        """A private copy, its arrays its own."""
+        branch = copy(self)
+        branch.trace, branch.told = self.trace.copy(), self.told.copy()
+        return branch
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """The arrays a checkpoint keeps: the code is drawn again from the seed."""
+        return {"trace": self.trace, "told": self.told}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "inputs": int(self.inputs),
+            "phases": int(self.phases),
+            "units": int(self.units),
+            "winners": int(self.winners),
+            "fan_in": int(self.separator.fan_in),
+            "seed": int(self.seed),
+        }
+
+
 # A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
 # inputs ``x`` and the cortex ``c`` of the moment before: the address map, the position table and
 # the maps beside it.

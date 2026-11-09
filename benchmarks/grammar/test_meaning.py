@@ -173,3 +173,126 @@ def test_a_short_diagnosis_life():
     assert set(control["panels"]) == {"intact", "floor"}
     assert "carried" in control["probes"]["clause"]["verb"]["go"]
     assert mn.read([row])[0].startswith("lives: 1")
+
+
+# ------------------------------------------------------------------ the message, emulated
+
+
+def _heard_into(message, rows):
+    message.reset(len(rows))
+    for t in range(len(rows[0].pre)):
+        message.hear(np.stack([r.pre[t] for r in rows]))
+
+
+def test_the_instruments_phased_message_is_the_librarys():
+    import cadence as cd
+
+    rng = np.random.default_rng(0)
+    rows = [gr.clause(rng, 2) for _ in range(6)]
+    emulated = mn.Message({"code": "separator", "blocks": ["phase:4"], "scales": [1.0]}, 3)
+    _heard_into(emulated, rows)
+    library = cd.Message(gr.INPUTS, phases=4, units=70, winners=5, fan_in=16, seed=3)
+    for t in range(len(rows[0].pre)):
+        library.hear(np.stack([r.pre[t] for r in rows]))
+    assert np.array_equal(emulated.state(scaled=False), library.state)
+
+
+def test_the_blocks_hold_an_episode_each_in_its_own_way():
+    rng = np.random.default_rng(1)
+    rows = [gr.clause(rng, 1) for _ in range(4)]
+    codes = mn.Message({"blocks": ["bag"]}, 0)
+    each = [codes.code(np.stack([r.pre[t] for r in rows])) for t in range(4)]
+    for blocks, want in (
+        (["bag"], sum(each)),
+        (["set"], np.maximum.reduce(each)),
+        (["primacy:0.5"], sum(0.5 ** t * c for t, c in enumerate(each))),
+        (["recent:0.5"], sum(0.5 ** (3 - t) * c for t, c in enumerate(each))),
+        (["phase:2"], np.concatenate([np.maximum(each[0], each[2]),
+                                      np.maximum(each[1], each[3])], axis=1)),
+        (["slots:2"], np.concatenate([each[3], each[2]], axis=1)),
+    ):
+        message = mn.Message({"blocks": blocks, "scales": [1.0]}, 0)
+        _heard_into(message, rows)
+        assert np.allclose(message.state(), want), blocks
+    register = mn.Message({"blocks": ["register:2"], "scales": [1.0]}, 0)
+    _heard_into(register, rows)
+    assert np.array_equal(register.state()[:, :gr.INPUTS], np.stack([r.pre[3] for r in rows]))
+    assert mn.carrier_blocks({"blocks": ["phase:4"]}) == 8 and mn.carrier_blocks(None) == 0
+    held = mn.Message({"hold": True}, 0)
+    _heard_into(held, rows)
+    before = held.state().copy()
+    held.hear(np.tile(gr.concept("GO"), (4, 1)), speaking=True)
+    assert np.array_equal(held.state(), before)
+
+
+def test_the_shams_drive_the_same_neurons_without_the_meaning():
+    rng = np.random.default_rng(2)
+    rows = [gr.clause(rng, 1) for _ in range(4)]
+    design = {"code": "separator", "blocks": ["phase:4"], "scales": [1.0]}
+    real, present, shuffled = (mn.Message({**design, **extra}, 0) for extra in (
+        {}, {"sham": "present"}, {"sham": "shuffled"}))
+    for message in (real, present, shuffled):
+        _heard_into(message, rows)
+    assert present.state().sum(axis=1).tolist() == [5.0] * 4  # the last moment's code alone
+    assert np.array_equal(shuffled.state(), np.roll(real.state(), 1, axis=0))
+
+
+def test_the_message_is_installed_on_its_carrier_and_the_bar_spares_the_given_words():
+    warnings.simplefilter("ignore")
+    design = {"code": "separator", "blocks": ["phase:4"], "scales": [0.5]}
+    brain = mn.message_brain(0, design)
+    message = mn.Message(design, 0)
+    rows = gr.panels(0, 1)["ctx_agent"][0]  # the agent and one distractor are given
+    assert rows[0].force == 3
+    seen = {}
+
+    def look(b, rs):
+        seen["values"] = np.array(b.recall.values)
+
+    mn.speak(brain, rows, teach=False, message=message, bar=True, intervene=look)
+    carried = brain.history.trace
+    assert carried.shape == (len(rows), 280) and set(np.unique(carried)) <= {0.0, 0.5}
+    heard = len(rows[0].pre)
+    values = seen["values"]  # at the continuation's start: a boundary, the meaning, GO, 2 words
+    assert values.shape[1] == 1 + heard + rows[0].force
+    assert not values[:, :1 + heard].any() and values[:, 1 + heard:].any(axis=2).all()
+
+
+def test_note_targets_fill_as_the_meaning_is_heard():
+    rng = np.random.default_rng(0)
+    row = gr.clause(rng, 2, agent=(1, 1), patient=(2, 0), v=1, mods=[(0, 0), (3, 1)],
+                    inverted=True)
+    assert [mn.note_targets(row, h) for h in range(6)] == [
+        [8, 2, 8, 8, 8], [8, 1, 8, 8, 8], [8, 1, 2, 8, 8], [5, 1, 2, 8, 8], [5, 1, 2, 0, 8],
+        [5, 1, 2, 0, 7]]
+    assert mn.note_targets(gr.path(rng, 1), 9) == [8, 2, 8, 8, 8]
+    assert mn.note_sizes() == (19, 9, 3, 9, 9, 9)
+
+
+def test_retrieval_by_the_code():
+    found = mn.retrieval(0, stored=(16,), cues=8)["16"]
+    assert found["reordered"]["key"] == 1.0 and found["swapped"]["key"] == 1.0
+    assert found["reordered"]["state"] < 1.0  # the phased state keeps the order heard
+    assert found["crossed"]["key"] <= 0.5  # words and concepts give unrelated keys
+    assert set(found) == {"reordered", "swapped", "partial", "words", "crossed"}
+
+
+def test_short_lives_of_every_kind():
+    warnings.simplefilter("ignore")
+    design = {"code": "separator", "blocks": ["phase:4"], "scales": [0.15]}
+    row = mn.message_life({"arm": "message", "message": design, "founder": 0, "batches": 2,
+                           "panel_batches": 1, "probe_scale": 0.05, "twins": True,
+                           "invariance": True, "after": [["g2", 1]]})
+    assert set(row["panels"]) == set(mn.WHOLE + mn.LONG) and "panels_barred" in row
+    assert row["invariance"]["key"]["same"] == 1.0 and row["invariance"]["n"] == 64
+    assert "ctx_verb_erased_message" in row["twins"] and row["persistence"][0]["grammar"] == "g2"
+    assert "message" in row["probes"]["clause"]["verb"]["go"]
+    assert mn.macs(row) > 0
+    barred = mn.message_life({"arm": "message_barred", "message": design, "founder": 0,
+                              "batches": 2, "panel_batches": 1, "train": "capacity"})
+    assert set(barred["capacity"]) == {"L0", "L1", "L2", "L3", "L4"} and barred["bar"] == 1.0
+    notes = mn.notes_life({"founder": 0, "batches": 2, "panel_batches": 1})
+    assert set(notes["notes"]["clause"]) == {"all_at_go", "all_at_end", *mn.NOTES}
+    lines = mn.read_lives([row, barred, notes])
+    assert any(line.startswith("capacity") for line in lines)
+    assert mn.passes([0.95, 0.91, 0.5, 0.9, 0.92, 0.99], 0.90) == (5, True)
