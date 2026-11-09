@@ -29,8 +29,11 @@ word's own coordinate, a concept per stem and the chamber's eleven flags make th
 Every brain is the read's rule, `Fd`: `Brain.compose(inputs, actions, modules=(64,), episodic=False,
 recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True, recall_anchor=True,
 recall_slope=0.1, recall_position_rate=0.01, recall_relative=True, teaching="deep",
-recall_address_contrast=True)`. The working trace is built in every arm. Its block is `w^2` synapses
-of `w^2 + (3 I + 2 A) w`, `I` the key width and `A` the motor neurons.
+backend="cpu")`, with the memory `Brain.compose` gives a new brain beside those settings (its grid,
+capacity of 128 and carried read) and the address lesson as a contrast, the library's one law. The
+readings of 6 November below were taken before the composed memory and the contrast law were the
+library's, with a capacity of 64 and no grid. The working trace is built in every arm. Its block is
+`w^2` synapses of `w^2 + (3 I + 2 A) w`, `I` the key width and `A` the motor neurons.
 
 | Arm | Key width | Setting |
 | --- | --- | --- |
@@ -111,8 +114,12 @@ python -m pytest benchmarks/vocabulary/test_vocabulary.py
 `recall_capacity=128` holds a path of long stems: at the founder's 64 slots a path of six-piece words
 drops its first fact before the sentence ends.
 
-`mapcode.py`, `chamber_gain` and `address_scale` in `life.py` are emulations on one process per life:
-they change no library file and a brain with them is not saved.
+`mapcode.py`, `chamber_gain`, `address_scale` and `cortex` (`install_cortex`) in `life.py` are
+emulations on one process per life: they change no library file and a brain with them is not saved.
+`terms` in a life's spec splits the first head's logits at every word whose content a heard moment
+holds by source (`logit_terms`): the event against a slot's key, the address map's event rows, cortex
+columns and bias, and the same three of the position maps, each at the right slot less the best
+other slot, per kind of word and over the words the read misses.
 
 ## Readings (6 November 2026)
 
