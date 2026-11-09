@@ -82,6 +82,10 @@ def test_the_compiled_lesson_steps_the_maps_as_the_ordinary_one() -> None:
     labels = np.array([0, 1, 2, 3])
     plain.lesson(x, labels)
     compiled.lesson(x, labels)
+    assert plain.last_learning["demonstration_accepted_presentations"] > 0
+    # the contrast and the update of every synapse and bias
+    np.testing.assert_allclose(compiled.brain.efficacy, plain.brain.efficacy, rtol=0, atol=1e-12)
+    np.testing.assert_allclose(compiled.brain.bias, plain.brain.bias, rtol=0, atol=1e-12)
     for name in ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps",
                  "grid_maps"):
         for ours, theirs in zip(getattr(compiled.recall, name), getattr(plain.recall, name),
@@ -124,3 +128,46 @@ def test_a_read_the_kernels_do_not_take_runs_the_ordinary_path() -> None:
     compiled.retune(learning_compiled_moment=True)
     x = rng.random((4, 8))
     np.testing.assert_array_equal(compiled.stimulus(x), plain.stimulus(x))
+
+
+def test_the_carried_gains_step_as_the_ordinary_ones() -> None:
+    plain, compiled, rng = _pair()
+    assert plain.hearing is not None
+    x = rng.random((4, 8))
+    labels = np.array([1, 0, 3, 2])
+    plain.lesson(x, labels)
+    compiled.lesson(x, labels)
+    for name, gain in plain.carried_gains.items():
+        assert compiled.carried_gains[name] == pytest.approx(gain, abs=1e-12), name
+
+
+@pytest.mark.parametrize("began", [False, True])
+def test_the_compiled_write_keeps_every_bit(began: bool, monkeypatch: pytest.MonkeyPatch) -> None:
+    from cadence import _moment
+
+    taken = []
+    write = _moment.recall_write
+
+    def counted(*args: object) -> bool:
+        taken.append(write(*args))  # type: ignore[arg-type]
+        return taken[-1]
+
+    monkeypatch.setattr(_moment, "recall_write", counted)
+    subject = brain(recall_capacity=6)
+    rng = lived(subject, moments=9)  # past the capacity: the oldest slots are dropped
+    recall = subject.recall
+    if began:  # two streams begin again, and one closed an episode
+        recall.reset(4, rows=np.array([1, 3]))
+        recall.end(4, rows=np.array([0]))
+    for _ in range(4):
+        subject.stimulus(rng.random((4, 8)))  # a read the write's focus follows
+        recall.compiled_moment = True
+        key = rng.random((4, recall.address_width))
+        value = rng.random((4, recall.value_width))
+        plain = copy.deepcopy(recall)  # its slots are no views of rooms: the ordinary write
+        plain.compiled_moment = False
+        plain._observe(key, value)
+        recall._observe(key, value)
+        for name in ("keys", "values", "nexts", "held", "told", "focus", "ended"):
+            np.testing.assert_array_equal(getattr(recall, name), getattr(plain, name), name)
+    assert any(taken)  # the compiled write ran where the rooms had space

@@ -817,6 +817,13 @@ class Learner:
             batch = int(nudged.device["s"].shape[0])
             return edges / (batch * span), neurons / (batch * span)
         s_plus, s_minus = nudged.activation, minus_state.activation
+        if self.config.compiled_moment and self.brain.backend == "cpu" and _compiled_passes():
+            from ._moment import synapse_contrast  # the compiled moment's: other bits
+
+            return (
+                synapse_contrast(w, s_plus, s_minus, len(s_plus) * span),
+                (s_plus - s_minus).mean(axis=0) / span,
+            )
         if self.brain._blocked and w.synapses > 4 * w.n:
             gram = block_contrast(self.brain.layout, s_plus, s_minus, len(s_plus) * span)
             return gram, (s_plus - s_minus).mean(axis=0) / span

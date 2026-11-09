@@ -646,3 +646,174 @@ def store_read(store: Any, cue: np.ndarray) -> np.ndarray:
     return _store_kernel(  # type: ignore[no-any-return]
         cue, store.strength, store.mass, bool(store.normalize), float(store.amplitude)
     )
+
+
+# -- the carried routes' gains
+
+if njit is not None:
+
+    @_numeric
+    def _route_kernel(
+        movement: np.ndarray, weights: np.ndarray, synapses: np.ndarray, sources: np.ndarray,
+        targets: np.ndarray, held: np.ndarray, scale: float, amplitude: float, slope: float,
+        threshold: float, rest: float, leak: float,
+    ) -> np.ndarray:
+        """One route's ``c`` per row (``Hearing._contrast``): the movement read back through the
+        route's synapses, weighed by the slope of the activation at the held potential
+        ``scale * held`` times ``amplitude * held``."""
+        rows, width = held.shape
+        out = np.zeros(rows)
+        back = np.empty(width)
+        for b in range(rows):
+            for j in range(width):
+                back[j] = 0.0
+            for e in range(synapses.shape[0]):
+                back[sources[e]] += weights[synapses[e]] * movement[b, targets[e]]
+            total = 0.0
+            for j in range(width):
+                v = scale * held[b, j]
+                sig = 1.0 / (1.0 + np.exp(-slope * (v - threshold)))
+                d = slope * sig * (1.0 - sig)
+                d = d / (1.0 - rest) if sig > rest else leak * d / rest
+                total += d * amplitude * held[b, j] * back[j]
+            out[b] = total
+        return out
+
+
+def route_contrast(
+    graph: Any, route: dict[str, Any], movement: np.ndarray, held: np.ndarray, scale: float,
+    amplitude: float, model: Any,
+) -> np.ndarray:
+    """``_route_kernel`` for one route of ``Hearing`` through the synapses of ``graph``."""
+    return _route_kernel(  # type: ignore[no-any-return]
+        np.ascontiguousarray(movement, dtype=float),
+        np.ascontiguousarray(graph._weights, dtype=float), route["synapses"], route["rows"],
+        route["cols"], np.ascontiguousarray(held, dtype=float), float(scale), float(amplitude),
+        float(model.slope), float(model.threshold), float(model.rest_emission),
+        float(model.leak),
+    )
+
+
+# -- the lesson's contrast
+
+if njit is not None:
+
+    @_numeric
+    def _contrast_kernel(
+        pre: np.ndarray, post: np.ndarray, s_plus: np.ndarray, s_minus: np.ndarray,
+        divisor: float,
+    ) -> np.ndarray:
+        """``sum_b s+[b, pre] s+[b, post] - s-[b, pre] s-[b, post]`` for every synapse over
+        ``divisor`` (``blocks.block_contrast``), in the form ``a+ (b+ - b-) + (a+ - a-) b-``."""
+        out = np.zeros(pre.shape[0])
+        for b in range(s_plus.shape[0]):
+            for e in range(pre.shape[0]):
+                i, j = pre[e], post[e]
+                a_plus, a_minus = s_plus[b, i], s_minus[b, i]
+                b_minus = s_minus[b, j]
+                out[e] += a_plus * (s_plus[b, j] - b_minus) + (a_plus - a_minus) * b_minus
+        for e in range(pre.shape[0]):
+            out[e] /= divisor
+        return out
+
+
+def synapse_contrast(
+    connectome: Any, s_plus: np.ndarray, s_minus: np.ndarray, divisor: float
+) -> np.ndarray:
+    """``_contrast_kernel`` over the synapses of ``connectome``."""
+    return _contrast_kernel(  # type: ignore[no-any-return]
+        np.asarray(connectome.pre, dtype=np.int64), np.asarray(connectome.post, dtype=np.int64),
+        np.ascontiguousarray(s_plus, dtype=float), np.ascontiguousarray(s_minus, dtype=float),
+        float(divisor),
+    )
+
+
+# -- the recall memory's write
+
+if njit is not None:
+
+    @_compiled
+    def _write_kernel(
+        key: np.ndarray, value: np.ndarray, held: np.ndarray, ended: np.ndarray,
+        attended: np.ndarray, has_attended: bool, focus: np.ndarray,
+        keys_room: np.ndarray, values_room: np.ndarray, nexts_room: np.ndarray,
+        held_room: np.ndarray, first: int, drop: int, stop: int,
+    ) -> np.ndarray:
+        """One moment per stream written into the rooms behind the slots (``Recall._observe``):
+        each stream's latest held slot that closed no episode learns ``value`` as its next where
+        it survives the drop, the new slot at column ``stop`` holds ``key`` and ``value`` and no
+        next, and the focus moves to the slot this moment's read attended most. Returns the
+        new focus."""
+        rows, slots = held.shape
+        out = np.empty(rows, dtype=np.int64)
+        for b in range(rows):
+            for j in range(nexts_room.shape[2]):
+                nexts_room[b, stop, j] = 0.0
+            if not ended[b]:
+                latest = -1
+                for m in range(slots):
+                    if held[b, m]:
+                        latest = m
+                if latest >= drop:
+                    for j in range(value.shape[1]):
+                        nexts_room[b, first + latest, j] = value[b, j]
+            for j in range(key.shape[1]):
+                keys_room[b, stop, j] = key[b, j]
+            for j in range(value.shape[1]):
+                values_room[b, stop, j] = value[b, j]
+            held_room[b, stop] = True
+            if has_attended:
+                best = attended[b, 0]
+                at = 0
+                for m in range(1, slots):
+                    if attended[b, m] > best:
+                        best = attended[b, m]
+                        at = m
+                out[b] = slots - 1 - at + 1 if best > 0 else -1
+            else:
+                out[b] = focus[b] + 1 if focus[b] >= 0 else -1
+        return out
+
+
+def recall_write(recall: Any, key: np.ndarray, value: np.ndarray) -> bool:
+    """``Recall._observe`` at the bank's own batch where every slot array has room behind it:
+    the write in one compiled pass, the same bits. False where it does not apply (the ordinary
+    write then runs)."""
+    if len(key) != recall.streams:
+        return False
+    rooms = recall._rooms
+    names = ("keys", "values", "nexts", "held")
+    held_rooms = [rooms.get(name) for name in names]
+    for name, room in zip(names, held_rooms, strict=True):
+        old = getattr(recall, name)
+        if room is None or room[1] is not old or old.base is not room[0] or (
+            room[3] >= room[0].shape[1]
+        ):
+            return False
+    if len({(room[2], room[3]) for room in held_rooms if room is not None}) != 1:
+        return False
+    kept = recall.keys.shape[1]
+    drop = max(kept + 1 - recall.capacity, 0)
+    first, stop = held_rooms[0][2], held_rooms[0][3]  # type: ignore[index]
+    attended = recall._attended
+    has_attended = (
+        attended is not None and attended.shape == (len(key), kept) and kept > 0
+    )
+    focus = _write_kernel(
+        key, value, recall.held, recall.ended, attended if has_attended else _NONE2,
+        has_attended, recall.focus, held_rooms[0][0], held_rooms[1][0],  # type: ignore[index]
+        held_rooms[2][0], held_rooms[3][0], first, drop, stop,  # type: ignore[index]
+    )
+    if recall.ended.any():
+        recall.ended = np.zeros(len(key), dtype=bool)
+    new_first = first + drop
+    for name, room in zip(names, held_rooms, strict=True):
+        assert room is not None
+        view = room[0][:, new_first : stop + 1]
+        rooms[name] = (room[0], view, new_first, stop + 1)
+        setattr(recall, name, view)
+    recall._contents = []
+    recall._content_keys = None
+    recall.told = recall.told + 1
+    recall.focus = focus
+    return True

@@ -741,6 +741,10 @@ class Hearing:
                 (route["synapses"], route["rows"], route["cols"], route["width"])
                 for route in self.routes
             ], movement)
+        compiled = (
+            backs is None and self.__dict__.get("compiled_moment", False)
+            and graph._efficacy is not None and not graph.layout.parallel_synapses
+        )
         for k, route in enumerate(self.routes):
             memory = route["memory"]
             if len(memory.trace) != batch:
@@ -748,6 +752,14 @@ class Hearing:
             trace = memory.trace if rows is None else memory.trace[rows]
             held = trace[:, route["start"]:route["stop"]]
             amplitude = float(memory.amplitude)
+            if compiled:  # the compiled moment's: the same equation, other bits
+                from ._moment import route_contrast
+
+                out[:, k] = route_contrast(
+                    graph, route, movement, held, amplitude * self.gain(route), amplitude,
+                    self.model,
+                )
+                continue
             v = amplitude * self.gain(route) * held
             if backs is None:
                 if graph.layout.parallel_synapses:  # the last of a pair holds the entry
@@ -2380,6 +2392,11 @@ class Recall:
         since the others (``reset`` of its rows) holds fewer slots: its latest held slot,
         wherever it lies, learns this moment as its next. A stream whose latest slot closed
         an episode (``end``) teaches it nothing, and its new slot is open again."""
+        if self.__dict__.get("compiled_moment", False) and self._compiles(len(key)):
+            from ._moment import recall_write
+
+            if recall_write(self, key, value):  # the compiled moment's write, the same bits
+                return
         if len(key) != self.streams:
             self._empty(len(key))
         successor: tuple[Any, ...] | None = None

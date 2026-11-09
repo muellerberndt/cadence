@@ -3602,6 +3602,8 @@ class Brain:
                 self.recall.compiled_moment = self._compiled_moment()
             if self.hippocampus is not None:
                 self.hippocampus.compiled_moment = self._compiled_moment()
+            if self.hearing is not None:
+                self.hearing.compiled_moment = self._compiled_moment()
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))
@@ -4222,6 +4224,7 @@ class Brain:
             # the gains' lesson (``recall_gain``): the motor's movement steps them
             teaching.update(self.recall.learn_gain(lesson))
         if self.hearing is not None:
+            self.hearing.compiled_moment = self._compiled_moment()
             self.hearing.learn(self.learner.brain, lesson, self.learner.config.beta)
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
