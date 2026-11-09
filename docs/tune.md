@@ -392,7 +392,8 @@ functions inside it, the kernels at the functions that launch them (founder 0, a
 
 The kernels take 23.9 seconds, 1.7 times the transformer's pass. What stands around them takes
 12.4 seconds with the option, each call a few tens of microseconds of Python between compiled
-calls; a pass at 2.5 times the transformer leaves about 9 seconds for it and the chamber's loop.
+calls; a pass at 2.5 times the transformer leaves 10.6 seconds for it and the chamber's loop,
+which take 14.1.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
