@@ -449,7 +449,8 @@ def make_brain(arm: str, founder: int, settings: dict[str, Any] | None = None,
 
 def new_work() -> dict[str, float]:
     return {"lessons": 0, "rows": 0, "agreed_rows": 0, "lesson_row_sweeps": 0, "acts": 0,
-            "act_sweeps": 0, "refused": 0, "exhausted": 0, "free_budget_exhausted": 0}
+            "act_sweeps": 0, "refused": 0, "exhausted": 0, "free_budget_exhausted": 0,
+            "rehearsal_moments": 0, "rehearsal_rows": 0}
 
 
 def speak(brain: Any, rows: list[Row], *, teach: bool, closed: bool = True,
@@ -496,6 +497,9 @@ def speak(brain: Any, rows: list[Row], *, teach: bool, closed: bool = True,
                 work["agreed_rows"] += report.get("agreed_presentations", 0.0)
                 work["lesson_row_sweeps"] += report.get("total_row_sweeps", 0.0)
                 work["free_budget_exhausted"] += report.get("free_budget_exhausted", 0.0)
+                replayed = brain.last_learning or {}  # with ``learning_rehearsal``
+                work["rehearsal_moments"] += replayed.get("rehearsal_moments", 0.0)
+                work["rehearsal_rows"] += replayed.get("rehearsal_accepted_presentations", 0.0)
             except RuntimeError:
                 work["refused"] += 1
         action = _act(brain, x, work)
