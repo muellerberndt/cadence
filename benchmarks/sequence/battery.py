@@ -8,7 +8,9 @@ task's answers are fed back (copying), the test runs in closed loop, the brain h
 previous answer, and once more teacher-forced.
 
 The brain is ``Brain.compose(inputs, actions, modules=(64,), seed=founder, episodic=False,
-teaching="normalized")`` with the arm's settings beside it (``ARMS``). The training episodes
+teaching="normalized")`` with the arm's settings beside it (``ARMS``); the arm ``composed`` is
+what a new brain composes, ``Brain.compose(inputs, actions, modules=(64,), seed=founder,
+episodic=False)`` with the recall memory and its own teaching point. The training episodes
 come from ``SeedSequence([founder, 11])`` and the test episodes from ``SeedSequence([founder,
 33])``, so every arm of a founder is taught and read on the same episodes.
 
@@ -68,7 +70,10 @@ ARMS: dict[str, dict[str, Any]] = {
     "when_sharp": {**WHEN, "recall_when": True, "recall_position_rate": 0.0,
                    "recall_temperature": 0.1},
     "rehearsal": {**BOUNDARY, "recall_anchor": True, "learning_rehearsal": 1.0},
+    # what a new brain composes: the memory at its composition and the composition's teaching
+    "composed": {"recall": True},
 }
+COMPOSED = ("composed",)  # the arms that take the composition's own teaching point
 
 
 @dataclass
@@ -390,9 +395,10 @@ def make_brain(task: Task, arm: str, founder: int, settings: dict[str, Any] | No
     """``Brain.compose`` for ``task`` with the arm's settings, and any ``settings`` over them."""
     import cadence as cd
 
+    point = {} if arm in COMPOSED else {"teaching": "normalized"}
     return cd.Brain.compose(task.inputs, task.actions, modules=(module,), seed=int(founder),
-                            episodic=False, teaching="normalized",
-                            **{"backend": "cpu", "recall": False,
+                            episodic=False,
+                            **{"backend": "cpu", "recall": False, **point,
                                **{**ARMS[arm], **(settings or {})}})
 
 
