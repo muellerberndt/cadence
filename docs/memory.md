@@ -500,10 +500,22 @@ a(x, c) = x P_x + c P_c + p        (one map per head)
 **Order from reward alone.** In the
 [ordered recall world](../benchmarks/sequence/README.md#ordered-recall-orderpy) (two values
 written, the first or the latest asked, reward through `live`) the founder answers at chance.
-A new brain answers it from reward alone on 12 of 12 founders
-([one composition](#one-composition-for-sequences)): `recall_position_reward=4.0` trains the
-position maps and the [anchor](#positions-at-lengths-no-lesson-reached) finds the first write at
-the same place in the episode whether a gap falls between the writes or not.
+The benchmark's `reward_recipe`:
+
+```text
+recall_position_reward=4, recall_address_reward=1, recall_anchor=True, recall_next=False
+```
+
+answers it at 1.00 of the last 256 answers on 11 of 12 fresh founders. The
+[anchor](#positions-at-lengths-no-lesson-reached) finds the first write at the same place in
+the episode whether a gap falls between the writes or not; `recall_next=False` holds each
+payload on one port, so the two cases of one question settle on the same port; the address
+reward finds the writes by what they hold. Its costs: in the recall world, where the latest of
+one or two values is asked, the two-write conditions fall below the founder (the latest of two
+adjacent writes 0.38 against 0.58), and it fails the
+[preservation panel](../benchmarks/credit/README.md#preservation): the odour nursery passes 9
+lives of 12 against 11 through `live` and 4 against 7 through `step`. Use it only where order
+must be learned from reward.
 
 ```python
 brain = Brain.compose(inputs=8, actions=3, modules=(16,), recall=True, seed=0)
@@ -1081,6 +1093,14 @@ adds no synapse. It tells the read's lessons which answers a slot can hold, and
 - **The tokens must be in the recall values:** a brain without a code, or a learned code joined
   to an observation no wider than it. A fixed code is refused where the gains read them.
 
+The copy pathway (`recall_copy`), plastic synapses from the read ports into the motor region,
+left in 0.96.0. It needed the tokens' identity to produce a token no lesson used, and beside the
+positions recipe it cost the reads that only position finds: look back fell to 0.25 to 0.33 from
+0.99 to 1.00, and on the grammar chamber the tokens' label cost the paths
+([#259](https://github.com/muellerberndt/cadence/issues/259)). `recall_gain` with `recall_tokens`
+is the learned path from a read to its token's action. A saved memory with the pathway is refused
+by name; cadence 0.95.2 runs it.
+
 ### Its own actions in the slots (opt-in)
 
 The recall slots hold what the stream sensed. What the brain did is in the working trace only
@@ -1156,6 +1176,8 @@ assert contextual.recall.address == 0.0 and contextual.recall.temperature == 0.1
 With several heads name `recall_window=2` and `recall_heads=k`, and the heads learn their own
 addresses at the founder's .01 and temperature .25 ([several heads](#several-heads-opt-in)).
 Choose the learned-code width for the task: eight is the capacity the small benchmark tests.
+Release 0.95 named these settings `attention=True`, over the founder memory; the name left in
+0.96.0, and a brain saved with it loads with the settings it saved.
 
 The address map is frozen (`recall_address=0.0`), so selection comes from similarity between
 learned-code windows. The [position term](#position-how-long-ago-a-moment-happened) is built
@@ -1166,8 +1188,8 @@ In the [contextual-choice benchmark](../benchmarks/attention/contextual_choice.p
 observation is the same literal ASK, and two stored episodes differ only in their earlier
 context and successor. Four founders answer 32 of 32 queries; present-only and memory-off
 controls answer 16 of 32, as does uniform random. Erasing the relevant record breaks the
-answer; erasing the other leaves it intact. The instrument reads the founder memory at these settings.
-With `--composition` it reads what a new brain
+answer; erasing the other leaves it intact. The instrument's founder memory at these settings
+is what 0.95 composed for `attention=True`. With `--composition` it reads what a new brain
 composes at them (its boundary slot off, since the bank holds exactly the six moments written):
 every founder answers 32 of 32, passes every gate and holds the founder memory's share of the read,
 .82 to 1.00 of the read on the relevant record.
@@ -1194,8 +1216,8 @@ code, so changing the code makes the stored keys inconsistent with new addresses
 
 ### In a custom anatomy
 
-`Brain(connectome, recall=True, ...)` needs a `recall` and a `next` region, each with one neuron
-per value coordinate,
+`Brain(connectome, recall=True, ...)` needs a `recall` and a `next` region (or `recall` alone
+with `recall_next=False`), each with one neuron per value coordinate,
 `Genome.observation_width(inputs, code)`, and with `recall_heads=k` the regions `recall_h`
 and `next_h` for h from 1 to k - 1 (`Recall.ports(k)` names them). With `recall_action` each of
 those regions has a `<region>_action` region of one neuron per motor neuron

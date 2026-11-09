@@ -84,7 +84,7 @@ The region map and the founder table are in
 `learned_code=units, recall_window=2, recall_address=0.0, recall_temperature=0.1` reads the
 recall memory by two moments of a learned code, through k heads with `recall_window=2,
 recall_heads=k` ([learned-code contextual recall](memory.md#learned-code-contextual-recall),
-[several heads](memory.md#several-heads-opt-in)).
+[several heads](memory.md#several-heads-opt-in)); `attention=True` named these settings in 0.95.
 
 Refusals: unknown names, the bare `eta` or `eta_bias`, and duplicate aliases raise
 `TypeError`; a `recall_` name with `recall=False`, a setting outside its range, and

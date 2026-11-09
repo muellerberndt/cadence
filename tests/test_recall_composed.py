@@ -83,7 +83,7 @@ def test_a_new_memory_teaches_at_the_deep_point_with_no_apical():
 @pytest.mark.parametrize(
     "options",
     [{"recall_position": 0}, {"recall_position_rate": 0.0}, {"recall_heads": 2},
-     {"recall_window": 2},
+     {"recall_window": 2}, {"recall_next": False},
      {"recall_action": True}, {"recall_when": True}, {"recall_capacity": 8},
      {"recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3]},
      {"recall_address": 0.0}, {"recall_address_reward": 1.0}, {"recall_position_reward": 1.0},

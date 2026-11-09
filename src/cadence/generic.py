@@ -382,15 +382,6 @@ def _projection_rates(connectome: Connectome, rate: np.ndarray) -> dict[str, Any
     return out
 
 
-# the recall memory's next port is part of every brain's memory (#281): a one-out on the sequence
-# battery and the grammar chamber read induction, copying, two hops and paths without it at chance
-_NEXT_RETIRED = (
-    "recall_next=False was retired in 0.96.0: a brain's recall memory delivers each slot's next "
-    "on its next port, which induction, copying, two hops and the grammar chamber's paths read; "
-    "cadence 0.95.2 takes it"
-)
-
-
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
     """The recall memory's settings, validated: its founders and options at their founders
     with every ``recall_<setting>`` of ``genes`` over them (those names are removed from
@@ -413,8 +404,6 @@ def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
         if setting not in founders and setting not in Recall.OPTIONS:
             raise TypeError(f"unknown brain setting: {name!r}")
         settings[setting] = Recall.setting(setting, genes.pop(name))
-    if settings.get("next") is False:
-        raise ValueError(_NEXT_RETIRED)
     if not recall:
         if settings:
             raise ValueError("recall settings need recall=True")
@@ -1239,8 +1228,6 @@ def _validate_recall_state(
         if name in recalled and recalled[name] != kept:
             raise ValueError(Recall.removed(name))
     settings = {name: Recall.setting(name, recalled[name]) for name in names}
-    if not settings["next"]:
-        raise ValueError(_NEXT_RETIRED)
     # an option is saved where it differs from its founder, and takes its founder where absent
     settings.update({name: Recall.setting(name, recalled[name]) for name in Recall.OPTIONS
                      if name in recalled})

@@ -70,6 +70,7 @@ def test_it_is_an_option_that_needs_tokens_and_a_newborn_reads_as_without_it():
 
 def test_each_read_port_has_its_gain():
     assert len(gained(recall_heads=2).recall.gains) == 4
+    assert len(gained(recall_next=False).recall.gains) == 1
     assert gained(recall_heads=2).parameters() == composed(
         recall_heads=2, recall_tokens=range(TOKENS)).parameters() + 4
 

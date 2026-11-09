@@ -86,7 +86,7 @@ The composed graph, in the order its regions are developed:
 | `observer_0` ... | `observers` | Reciprocal with every module, `motor` and earlier observers | below |
 | `efference` | `actions` | With `efference_amplitude` above 0 | [memory](memory.md#efference-copy) |
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
-| `recall`, `next` | observation-code width | With `recall=True` | [recall memory](memory.md#the-recall-memory-in-full) |
+| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
 | `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#when-a-read-item-happened-opt-in) |
 

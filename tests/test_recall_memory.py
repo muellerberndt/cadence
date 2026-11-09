@@ -343,8 +343,7 @@ def test_the_memory_adds_its_two_regions_and_their_projections_last():
     np.testing.assert_array_equal(control.predict(CUE), candidate.predict(CUE))
     heard = composed(history_decays=(0.5,))
     assert list(heard.connectome.populations)[-3:] == ["history", "recall", "next"]
-    with pytest.raises(ValueError, match="recall_next=False was retired in 0.96.0"):
-        composed(recall_next=False)
+    assert "next" not in composed(recall_next=False).connectome.populations
 
 
 def test_the_projections_start_at_their_constant_scale_like_the_working_trace():
@@ -372,9 +371,8 @@ def test_a_custom_connectome_needs_regions_of_the_value_width():
         cd.Brain(graph(3), episodic=False, recall=True, recall_founder=True)
     with pytest.raises(ValueError):
         cd.Brain(graph(2, following=False), episodic=False, recall=True, recall_founder=True)
-    with pytest.raises(ValueError, match="recall_next=False was retired in 0.96.0"):
-        cd.Brain(graph(2, following=False), episodic=False, recall=True, recall_founder=True,
-                 recall_next=False)
+    assert cd.Brain(graph(2, following=False), episodic=False, recall=True, recall_founder=True,
+                    recall_next=False).recall is not None
     # without the option, populations of those names are ordinary ones
     assert cd.Brain(graph(3), episodic=False).recall is None
 
@@ -394,6 +392,7 @@ def _declared(ir):
     [
         (0, 12, {}, False),
         (1, 12, {}, False),
+        (3, 6, {"next": False}, False),
         (4, 16, {"capacity": 12}, True),
     ],
 )
@@ -1205,18 +1204,6 @@ def test_the_null_slot_is_refused_by_name_and_a_file_with_one_too(tmp_path):
     write(tmp_path / "null.npz", arrays)
     with pytest.raises(ValueError, match="recall_null was retired in 0.95.0"):
         cd.Brain.load(tmp_path / "null.npz")
-
-
-def test_a_saved_memory_without_the_next_port_is_refused_by_name(tmp_path):
-    """``recall_next=False`` left in 0.96.0: a file saved with it is refused by name, and cadence
-    0.95.2 runs it."""
-    arrays = saved_arrays(composed().save(tmp_path / "founder"))
-    meta = metadata(arrays)
-    meta["recall"]["next"] = False
-    arrays["generic"] = np.array(json.dumps(meta))
-    write(tmp_path / "no_next.npz", arrays)
-    with pytest.raises(ValueError, match="recall_next=False was retired in 0.96.0.*0.95.2"):
-        cd.Brain.load(tmp_path / "no_next.npz")
 
 
 # -- the options in a checkpoint
