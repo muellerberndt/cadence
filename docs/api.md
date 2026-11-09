@@ -107,7 +107,7 @@ brain](anatomy.md#genome-development-brain)).
 Brain(connectome, *, episodic=True, consolidation=0.05,
       memory_rate=1.0, memory_amplitude=1.0, memory_choice=False,
       memory_context=0.0, memory_extinction=0.0,
-      memory_context_hold=None, maturity=False, maturity_scale=10.0,
+      memory_context_hold=None, memory_fade=0.0, maturity=False, maturity_scale=10.0,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
@@ -135,6 +135,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | Rule | Raised |
 | --- | --- |
 | `memory_choice` needs `episodic=True` | `ValueError` |
+| `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |

@@ -1660,6 +1660,61 @@ credit and demonstrations. The context records (`brain.context_memory`) and the 
 payments of `memory_extinction` write as without maturity. The noise scales are saved and
 loaded with the store and counted by `parameters()`; `clear()` erases them with the records.
 
+### Records that fade with disuse (opt-in)
+
+A memory nobody uses should fade, and a skill practised for a long time should fade far more
+slowly. `memory_fade` gives the store's place records that dynamic. It is off at the founder
+(0.0), and a brain without it is the founder's to the bit.
+
+```python
+brain = Brain.compose(inputs=6, actions=3, seed=0, recall=False, maturity=True, memory_fade=1.2e-4)
+assert brain.hippocampus.fade == 1.2e-4
+```
+
+Each key coordinate `k` of the consolidated records keeps two sums of activity, saved with the
+store (`brain.hippocampus.fade_depth`, `fade_recent`):
+
+- **its depth**, the magnitude of the unit cue on `k` summed over every moment that cues it and
+  every write that uses it;
+- **its recent use**, the same sum over the moments, kept at `1 - 1/2,000` each moment.
+
+Every moment of life (`live`, `step`) the records along `k` lose a share of themselves:
+
+```text
+idle_k = 1 / (1 + (recent_k / 0.01) ** 2)
+lost_k = memory_fade * idle_k / (1 + (depth_k / 2000) ** 4)
+```
+
+A record cued every few hundred moments has a recent use far above 0.01 and loses nothing. One
+left alone for about fifteen thousand moments starts to fade, at `memory_fade` a moment while it
+is shallow and far more slowly once its depth passes 2,000. Each stream keeps its residual
+around the shared records. No count is kept anywhere: both sums are leaky integrals of
+activity, as [maturity](reward.md#maturity-opt-in)'s use is. The constants are
+`SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. `memory_fade` is a
+construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
+its sums.
+
+**What it does** (#253's declared run, 24 fresh founders of the competing-skills chamber, with
+`maturity=True` on every arm). A brain practises skill A under the certain pay, lives 40,000
+blank moments with nothing paid, then returns to A. Retention is the right action's probability
+at the window's end, `(p - .25) / (p_end - .25)`; relearning is the return's first 500 moments
+less the first practice's:
+
+| Practice | Retention with `memory_fade=1.2e-4` | Without | Relearning with it, points (s.e.) |
+| --- | --- | --- | --- |
+| 2,000 moments (shallow) | .36 | 1.00 | +4.3 (1.1) |
+| 40,000 moments (deep) | 1.00 | 1.00 | +4.9 (1.1) |
+
+The shallow skill fades within the window and the deep one keeps it, and relearning after
+disuse is faster than first learning at both depths. On the same founders every chamber from
+birth reads as the brain without the fade (the key-door at delays 2 and 5, the odour nursery
+`live` and `step` at 300 and 1,000, the bandit, the contextual bandit and delayed response), and
+so do P4 with a mature skill A (A gains 2.4 points over the ring, B .24) and the short ring
+(A loses 28.8 points, B .35), each to the same counts and means as without it.
+
+Use it for a continuing brain whose skills come and go over long lives. In lives shorter than
+about fifteen thousand moments it changes nothing.
+
 ## Learned weights and eligibility
 
 The learned weights (synapse scales and biases, the actor's readout and the critic) are the

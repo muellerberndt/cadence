@@ -90,6 +90,7 @@ from .resident import (
     _Candidate,
     _fastest_backends,
     _memory_on_device,
+    _on_host,
     arrays_of,
 )
 from .stream import (
@@ -213,7 +214,9 @@ def _moment_of_life(method: _Operation) -> _Operation:
         if self._unplaced:  # before anything of this brain is held across the moment
             self._place_for(args[0] if args else kwargs.get("observations"))
         maturity = self.basal_ganglia.maturity
-        if maturity is None:
+        store = self.hippocampus
+        fading = isinstance(store, SynapticMemory) and bool(store.fade)
+        if maturity is None and not fading:
             return method(self, *args, **kwargs)
         self._life_depth += 1
         try:
@@ -221,7 +224,12 @@ def _moment_of_life(method: _Operation) -> _Operation:
         finally:
             self._life_depth -= 1
         if self._life_depth == 0:
-            maturity.relax()
+            if maturity is not None:
+                maturity.relax()
+            if fading:  # the moment's place key cues the records it uses (``memory_fade``)
+                assert isinstance(store, SynapticMemory)
+                x = args[0] if args else kwargs.get("observations")
+                store.fade_moment(None if x is None else self._fade_key(x))
         return result
 
     return cast(_Operation, lived)
@@ -611,7 +619,9 @@ _EPISODIC_FOUNDERS: dict[str, Any] = {
     # a known outcome moves a record halfway: remembered at once, revised by repetition
     "memory_rate": 0.5,
 }
-_EPISODIC_SETTINGS = ("memory_choice", "memory_context", "memory_extinction", "memory_context_hold")
+_EPISODIC_SETTINGS = (
+    "memory_choice", "memory_context", "memory_extinction", "memory_context_hold", "memory_fade",
+)
 # The constants of the stores the brain builds, the founders every reading used (``RETIRED``):
 # the share of a stream's record each later write keeps (``memory_decay``) and the cells of the
 # episodic separation and those active per key (``memory_expansion``, ``memory_winners``). A
@@ -947,6 +957,18 @@ def _load_memory(
                 memory.gate_noise = noise.astype(float)
             elif prefix + "gate_noise" in data:
                 raise ValueError("saved noise scales require the surprise gate's metadata")
+            fade = real("saved memory fade", metadata.get("fade", 0.0), low=0, high=1)
+            if fade:  # a fading store's depths and recent traces (``memory_fade``)
+                if fade >= 1:
+                    raise ValueError("saved memory fade must lie in [0, 1)")
+                memory.fade = fade
+                depth = array("fade_depth", (memory.key_width,))
+                recent = array("fade_recent", (memory.key_width,))
+                if (depth < 0).any() or (recent < 0).any():
+                    raise ValueError("saved fade depths and traces must be nonnegative")
+                memory.fade_depth, memory.fade_recent = depth.astype(float), recent.astype(float)
+            elif prefix + "fade_depth" in data or prefix + "fade_recent" in data:
+                raise ValueError("saved fade depths require the fade's metadata")
             if (
                 metadata.get("persistent_parameters", memory.consolidated.size)
                 != memory.consolidated.size
@@ -1986,6 +2008,7 @@ class Brain:
         memory_context: float = 0.0,
         memory_extinction: float = 0.0,
         memory_context_hold: str | None = None,
+        memory_fade: float = 0.0,
         maturity: bool = False,
         maturity_scale: float = _MATURITY_FOUNDERS["maturity_scale"],
         maturity_recovery: float = _MATURITY_FOUNDERS["maturity_recovery"],
@@ -2142,6 +2165,11 @@ class Brain:
             raise ValueError("memory_choice needs the episodic memory")
         if not memory_choice and (memory_context or memory_extinction):
             raise ValueError("memory_context and memory_extinction need memory_choice")
+        memory_fade = real("memory_fade", memory_fade, low=0, high=1)
+        if memory_fade >= 1:
+            raise ValueError("memory_fade must lie in [0, 1)")
+        if memory_fade and not episodic:
+            raise ValueError("memory_fade needs the episodic memory")
         working_memory_decay = real("working_memory_decay", working_memory_decay, low=0)
         efference_decay = real("efference_decay", efference_decay, low=0)
         if working_memory_decay >= 1 or efference_decay >= 1:
@@ -2318,6 +2346,10 @@ class Brain:
             coded = self._coded_keys
             places = np.arange(self.code_width) if coded else self.sensory_index
             self.hippocampus = records = store(places, 0)
+            if memory_fade:  # records nobody uses fade, slower the deeper their use (#253)
+                records.fade = memory_fade
+                records.fade_depth = np.zeros(records.key_width)
+                records.fade_recent = np.zeros(records.key_width)
             if maturity:  # surprise-gated writes engaged by the same maturity, noise from zero
                 records.gate_noise = np.zeros(records.consolidated.shape)
                 records.maturity = self.basal_ganglia.maturity
@@ -3251,6 +3283,8 @@ class Brain:
                 genes.update({f"{prefix}_{field}": getattr(component, field) for field in fields})
         if isinstance(self.hippocampus, SynapticMemory):
             genes["consolidation"] = self.hippocampus.consolidation
+            if self.hippocampus.fade:
+                genes["memory_fade"] = self.hippocampus.fade
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,
@@ -3628,13 +3662,14 @@ class Brain:
     def _memories_stay_on_host(self) -> bool:
         """Whether an option keeps the moment's memories on the host at every size: several heads,
         a window, the read of the command or of when, the gains, tokens, a separator, a surprise
-        gate, an episodic vote or a learned code."""
+        gate, a fade, an episodic vote or a learned code."""
         recall, store = self.recall, self.hippocampus
         return bool(
             self._episodic is not None or self.learned_code is not None
             or (recall is not None and not recall.resides)
             or (store is not None and (store.separator is not None
-                                       or getattr(store, "gate_noise", None) is not None))
+                                       or getattr(store, "gate_noise", None) is not None
+                                       or bool(getattr(store, "fade", 0.0))))
         )
 
     def _backends_at(self, rows: int) -> list[_Candidate]:
@@ -5002,6 +5037,15 @@ class Brain:
         coded = self._coded_moment
         return coded[1] if coded is not None and coded[0] is x else self._code(x)
 
+    def _fade_key(self, x: Any) -> np.ndarray | None:
+        """The place key a fading store's records are cued by this moment (``memory_fade``):
+        the observation code where the store keys on it, else the observations."""
+        try:
+            raw = np.atleast_2d(np.asarray(_on_host(x), dtype=float))
+        except (TypeError, ValueError):
+            return None
+        return np.atleast_2d(np.asarray(self._code(raw))) if self._coded_keys else raw
+
     def _placed(self, x: np.ndarray) -> np.ndarray:
         """The code the place stores key on (the associative store, the episodic place
         records): the moment's, kept by ``_prepare``; of any other observations, the
@@ -5305,8 +5349,8 @@ class Brain:
         """Actor/critic and consolidated weights (the episodic records' paid store with
         ``memory_extinction``), the recall memory's address and position maps and the maps of
         its options (anchor, relative, slope, gain), a learned code's tables, and with ``maturity``
-        its use and the place records' noise scales; per-stream transient storage is
-        additional."""
+        its use and the place records' noise scales, with ``memory_fade`` the records' depths and
+        recent traces; per-stream transient storage is additional."""
         recall = self.recall
         paid = None if self._episodic is None else self._episodic.paid
         return (
@@ -5314,6 +5358,7 @@ class Brain:
             + (
                 self.hippocampus.consolidated.size
                 + (0 if self.hippocampus.gate_noise is None else self.hippocampus.gate_noise.size)
+                + (2 * self.hippocampus.key_width if self.hippocampus.fade else 0)
                 if isinstance(self.hippocampus, SynapticMemory)
                 else 0
             )

@@ -42,6 +42,17 @@ class SynapticMemory(FastSynapses):
     without the gate. Every other stream keeps its residual. Each writing row moves the noise
     of the records its cue reads toward its squared error, at ``GATE_RATE`` times the cue's
     squared weight on the record relative to its largest.
+
+    With a fade (``fade`` above 0, ``Brain.compose(memory_fade=...)``), records nobody uses fade
+    (#253). Each key coordinate ``k`` keeps a depth, the sum of the unit cue's magnitude
+    ``|c_k|`` over every moment that cues it and every write that uses it, and a trace of its
+    recent cueing, the moments' sum kept at ``1 - 1 / FADE_IDLE`` a moment. Every moment of life
+    (``fade_moment``) the records along coordinate ``k`` keep
+    ``1 - fade * i_k / (1 + (depth_k / FADE_SCALE) ** FADE_ORDER)`` of themselves,
+    ``i_k = 1 / (1 + (recent_k / FADE_FLOOR) ** 2)`` the coordinate's idleness: a record in use
+    does not fade, one idle for some fifteen thousand moments starts to, and a deeply used one
+    fades far more slowly. Each stream keeps its residual around the shared records. No count is
+    kept: the depth and the trace are sums of activity, as maturity's use is.
     """
 
     decay: float = 0.9
@@ -50,9 +61,19 @@ class SynapticMemory(FastSynapses):
     consolidated: np.ndarray = field(init=False)
     gate_noise: np.ndarray | None = field(default=None, repr=False)
     maturity: Maturity | None = field(default=None, repr=False, compare=False)
+    fade: float = 0.0
+    fade_depth: np.ndarray | None = field(default=None, repr=False)
+    fade_recent: np.ndarray | None = field(default=None, repr=False)
 
     GATE_WIDTH = 2.0
     GATE_RATE = 0.05
+    # the fade's constants (``fade``): the depth at which a record fades at half the rate, the
+    # law's order, the moments the recent trace keeps ``1 - 1 / FADE_IDLE`` over, and the trace
+    # below which a coordinate counts as idle
+    FADE_SCALE = 2000.0
+    FADE_ORDER = 4.0
+    FADE_IDLE = 2000.0
+    FADE_FLOOR = 0.01
 
     def __post_init__(self) -> None:
         super().__post_init__()
@@ -66,11 +87,46 @@ class SynapticMemory(FastSynapses):
                 "set separator.center=0 and apply any fixed centering to the input"
             )
         self.consolidated = np.zeros((self.key_width, len(self.post)))
+        if not np.isfinite(self.fade) or not 0 <= self.fade < 1:
+            raise ValueError("memory_fade must lie in [0, 1)")
+        self.fade = float(self.fade)
+        if self.fade and self.fade_depth is None:
+            self.fade_depth = np.zeros(self.key_width)
+            self.fade_recent = np.zeros(self.key_width)
+
+    def fade_moment(self, key: np.ndarray | None) -> None:
+        """One moment of life of a fading store (``fade``): the coordinates ``key`` cues
+        (``(batch, pre)``, the moment's place key; None for a moment that cues none) deepen and
+        are marked recent, then every idle record fades by its depth's law and the recent trace
+        decays one moment."""
+        if not self.fade:
+            return
+        assert self.fade_depth is not None and self.fade_recent is not None
+        if key is not None:
+            k = np.atleast_2d(np.asarray(key, dtype=float))
+            if k.shape[1] == len(self.pre):
+                k = k[np.any(k != 0, axis=1)]
+                if len(k):
+                    cue = self.separator.code(k) if self.separator is not None else k
+                    used = np.abs(self._delta_unit(cue)).sum(axis=0)
+                    self.fade_depth = self.fade_depth + used
+                    self.fade_recent = self.fade_recent + used
+        idle = 1.0 / (1.0 + (self.fade_recent / self.FADE_FLOOR) ** 2)
+        lost = self.fade * idle / (1.0 + (self.fade_depth / self.FADE_SCALE) ** self.FADE_ORDER)
+        if self._device is not None:  # a fading store rests on the host (``reside``)
+            self.leave_device()
+        shed = self.consolidated * lost[:, None]
+        self.consolidated = self.consolidated - shed
+        self.strength = self.strength - shed  # each stream keeps its residual
+        self.fade_recent = self.fade_recent * (1.0 - 1.0 / self.FADE_IDLE)
 
     def reside(self, kernel: Any) -> None:
-        """The strengths on the device of a brain's ``kernel``, unless a separator or a surprise
-        gate keeps them on the host."""
-        if kernel is None or self.separator is not None or self.gate_noise is not None:
+        """The strengths on the device of a brain's ``kernel``, unless a separator, a surprise
+        gate or a fade keeps them on the host."""
+        if (
+            kernel is None or self.separator is not None or self.gate_noise is not None
+            or self.fade
+        ):
             self.leave_device()
             return
         held = self._device
@@ -108,6 +164,9 @@ class SynapticMemory(FastSynapses):
         """The arrays a checkpoint keeps, the consolidated records among them (and the
         records' noise scales, with a surprise gate)."""
         kept = {} if self.gate_noise is None else {"gate_noise": self.gate_noise}
+        if self.fade:
+            assert self.fade_depth is not None and self.fade_recent is not None
+            kept.update(fade_depth=self.fade_depth, fade_recent=self.fade_recent)
         return {**super().arrays(), "consolidated": self.consolidated, **kept}
 
     def clear(self) -> None:
@@ -115,6 +174,9 @@ class SynapticMemory(FastSynapses):
         self.consolidated.fill(0)
         if self.gate_noise is not None:
             self.gate_noise.fill(0)
+        if self.fade_depth is not None and self.fade_recent is not None:
+            self.fade_depth = np.zeros_like(self.fade_depth)
+            self.fade_recent = np.zeros_like(self.fade_recent)
         self.reset(len(self.strength))
 
     def _baseline(self) -> np.ndarray:
@@ -215,6 +277,14 @@ class SynapticMemory(FastSynapses):
         if noise is not None:
             self.gate_noise = noise
         self.writes += len(rows)
+        if self.fade:  # a write uses the records its cue reads (``fade``)
+            assert self.fade_depth is not None
+            written = np.ones(batch, bool) if write is None else np.asarray(write)
+            written = written & np.any(key != 0, axis=1)
+            cue = key[written]
+            if self.separator is not None:
+                cue = self.separator.code(cue)
+            self.fade_depth = self.fade_depth + np.abs(self._delta_unit(cue)).sum(axis=0)
 
     def _gate(
         self, cue: np.ndarray, value: np.ndarray, previous: np.ndarray, mask: np.ndarray
@@ -243,7 +313,9 @@ class SynapticMemory(FastSynapses):
         return gain, noise
 
     def to_dict(self) -> dict[str, float | int | str]:
-        gate = {} if self.gate_noise is None else {"surprise_gate": True}
+        gate: dict[str, Any] = {} if self.gate_noise is None else {"surprise_gate": True}
+        if self.fade:
+            gate["fade"] = self.fade
         return {
             **super().to_dict(),
             "kind": "consolidating",
