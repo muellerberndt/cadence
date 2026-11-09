@@ -290,6 +290,44 @@ teaching-policy repair now passes on both development
 and all twenty fresh confirmation founders. Numerical checks and that acquisition
 control alone cannot admit a library attention option.
 
+## The crossing: a question whose fact depends on the context (`crossing.py`)
+
+[`crossing.py`](crossing.py) reads [#267](https://github.com/muellerberndt/cadence/issues/267): two
+records (`dog V0`, `cat V1`, the order drawn per stream), a context `X_c` and a question `Q_k`; the
+answer, at a `GO` moment after the question, is the value of the fact `c xor k`. Neither bit names the
+fact alone, so a reader that adds what it reads says one of the two values, .50. A life teaches one
+lesson a batch on the answer and reads fresh rows; `decode` fits a ridge decoder of `c`, `k` and
+`c xor k` on the cortex the answer's read is addressed from, and measures the crossing term of the
+four cells' means against the spread of the rows around their cell. The supports `frozen_cortex` and
+`frozen_all` restore the synapses into the association and prefrontal regions after every lesson
+(the second the read's synapses as well), a diagnostic and no candidate. The matched LSTM and
+transformer hear the same rows, one Adam step a batch.
+
+Declared reading, six fresh founders (2670901 to 2670906), one 32-vCPU box, 30,000 batches, the
+grammar chamber's brain at the deep teaching point with a held read:
+
+| Learner | Answers at 30,000, per founder | At .90 | Decode of `c`, `k`, `c xor k` at 30,000 | Crossing term / spread: newborn; at 30,000 | Sweeps per act |
+| --- | --- | --- | --- | --- | --- |
+| The read's rule | .60 .54 .46 .49 .45 .45 | 0 of 6 | .63-.88, .98-1.00, .46-.58 | .02-.03 / .23-.30; .04-.18 / 2.83-3.02 | 50 to 100 |
+| The rule, `recall_cortex_norm` | .52 .51 .48 .57 .41 .51 | 0 of 6 | .58-.64, .86-1.00, .44-.55 | .03-.04 / .34-.42; .01-.03 / .54-.61 | 68 to 101 |
+| The rule, every synapse into the cortex held (`frozen_all`) | .58 .44 .55 .53 .42 .50 | 0 of 6 | 1.00, 1.00, .73-.90 | .02-.03 / .23-.30; .03-.07 / .46-.71 | 59 to 69 |
+| LSTM | 1.00 on 6 (from 10,000 on 5) | 6 of 6 | | | |
+| Transformer | .49 .95 .53 1.00 .51 .56 | 2 of 6 | | | |
+
+At every reading of every brain arm the answer sits at the floor; on the two plastic arms erasing the
+fact asked takes it to .00 and erasing the other leaves .60 to 1.00, so the answer is lost at the
+read's selection. Two terms meet there:
+
+- **The lessons bury the conjunction.** The newborn's cortex holds it linearly (decode .95 to 1.00 at
+  birth); under lessons the rows' spread around their cell grows about tenfold, from .23-.30 to
+  2.8-3.0, while the crossing term stays at .04 to .18, and the decode of `c xor k` falls to .46-.58.
+  The cortex at unit norm keeps the spread at .54-.61 and the term falls with it (.01-.03).
+- **A conjunction the cortex holds is not selected.** With every synapse into the cortex held, the
+  conjunction stays decodable (.73 to .90) at a term of .03 to .07 against a spread of .46 to .71, and
+  the held address still reads .42 to .58: the address lesson's step on the cortex columns, a linear
+  map driven by the read's own error at `GO`, does not find a direction of that size within 30,000
+  batches.
+
 ## Equations and boundaries
 
 With witnessed keys `K`, contents `V` and a zero-content null slot, let

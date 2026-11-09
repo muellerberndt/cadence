@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### Attention parity: composed heads, a large vocabulary, the crossing and answers no lesson used
+
+- `recall_cortex_norm=True` (opt-in): every map of the read reads the cortex of the moment before at
+  unit norm per stream, so a lesson's step on the cortex columns weighs no more than its step on the
+  event's rows. On the indirect-object chamber (`benchmarks/heads`) it moves the lives that form the
+  composed circuit from 2 to 7 of 12 fresh founders and keeps the taught second hop on 12 of 12. It
+  keeps the memory off the device path. The default and `backend="cpu"` lives are unchanged.
+- `recall_gain_after=n` and `recall_gain_next=g` (opt-in, with `recall_gain`): the learned gains drive
+  nothing and learn nothing through the first `n` lessons, then every next port's gain starts at `g`
+  and every recall port's at zero; `brain.recall.gain_lessons` counts the lessons and a saved brain
+  keeps it. With the cortex at unit norm, `n=1000` and `g=10`, never-taught names are said at .97 to
+  1.00 on 7 of 12 fresh founders with the taught second hop at .99 to 1.00 on 12 of 12, one life short
+  of #269's bar. At their founders (0 and 0.0) a brain lives as without them.
+- `benchmarks/heads`: the indirect-object chamber, the head-function panel, causality by silencing
+  and erasure and the matched controls, with its supports and the declared readings (#269).
+- `benchmarks/vocabulary`: the grammar chamber at 200, 1,000 and 5,000 words by class and by pieces,
+  one hearing, the matched controls, and the read's logits split by source at every word whose content
+  a heard moment holds (#266).
+- `benchmarks/attention/crossing.py`: the crossing on keyed rows, the conjunction's decoder, supports
+  that hold the cortex's synapses, and the matched LSTM and transformer (#267).
+- `benchmarks/sequence/held.py`: R1's six tasks at tokens no lesson used, with the read's prediction,
+  the vote at each miss and the answer with the association's vote silenced (#272).
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

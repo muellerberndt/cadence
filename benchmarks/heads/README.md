@@ -130,7 +130,10 @@ takes from a life, to name a term by what restores the composition.
 | `center_cortex` | the maps read the cortex less its running mean |
 | `raw_dup` (oracle) | the read at the duplicate's moment scores the event against the keys alone |
 | `gain_at_answer` (oracle) | the gains' drive reaches the motor at answer moments alone |
-| `gain_late` | the gains stay at zero through the first thousand lessons |
+| `gain_late` | the gains stay at zero through the first thousand lessons; with `gain_late_value` in a life's spec (one number, or one per port) they are set to it then |
+| `cortex_unit` | the maps read the cortex of the moment before at unit norm per stream (the emulation of `recall_cortex_norm`) |
+| `cortex_scale`, `cortex_rate` (a life's spec) | the maps read that cortex times a number; each lesson's step on every map's cortex columns times a number |
+| `gain_start` (a life's spec) | every port's gain at birth, one number or one per port |
 | `hold_focus`, `hold_cortex`, `hold_trace` (oracles) | what the duplicate's moment left stands in place up to the answer |
 
 ## Controls
@@ -348,6 +351,53 @@ Each failure, by the term that fails.
 **A cost of the cuts.** A read on a read goes through the cortex. `twohop`'s second hop at taught tokens reads 1.00, .99, 1.00 on `Fd`, .40, .42, .50 under the address cut and .27, .42, .44 under the cortex cut, with rows taught up from about 2,800 to about 14,300; the first hop holds at 1.00. So the columns that lose the duplicate are the path of a read on a read, and neither cut can be delivered as it stands. On the single functions the address cut costs nothing above noise: `previous` 1.00, `successor` 1.00 and .99, `induction` 1.00, forced `copying` 1.00, `duplicate` .99 and .91.
 
 **A read on a read at a never-taught key is lost on every arm.** `Fd`'s second hop reads .05 to .12 with the read's first choice at .00 to .02, and `Fdg` .01 to .03: the address reaches a slot through columns taught on taught tokens only. Where the key is taught and the answer new, `Fdg` reads .67 to .79 with the read at 1.00.
+
+## The cortex at the event's weight and a value path released late
+
+Two library opt-ins come from the first failure term and the gain's. `recall_cortex_norm=True` gives
+every map of the read the cortex of the moment before at unit norm, so the fixed slots a lesson at `to`
+names no longer take the step at every moment. `recall_gain_after=n` with `recall_gain_next=g` holds
+the learned gains at zero through the first `n` lessons and starts the next port's gain at `g` then,
+the recall port's at zero ([the memory guide](../../docs/memory.md#the-value-path-released-once-the-read-has-formed-opt-in)).
+On this chamber the harness's emulation of the second (`gain_late` with `gain_late_value`) and the
+option read the same panels and work to the bit (`ioi` and `twohop`, two founders each).
+
+The readings below are declared: a protocol written before any life, twelve fresh founders, each on
+its own newborn, one machine (a 32-vCPU box), `causal` readings off. A life passes the gate where
+never-taught names (`ioi_new`) are said at .80 or above and the taught second hop (`twohop`,
+`hop2_taught`) reads .90 or above on the same founder.
+
+| Reading | Arm | Taught `ioi` at .95 | The read's port at never-taught names, .80 | Never-taught names said, .80 | Taught second hop, .90 | Lives passing |
+| --- | --- | --- | --- | --- | --- | --- |
+| First (founders 2691001 to 2691012) | `Fd` | 2 | 2 | 0 | 12 | 0 |
+| | `Fd`, cortex at unit norm | 7 | 7 | 0 | 12 | 0 |
+| | `Fdg`, cortex at unit norm, both gains released at 30 after 1,000 lessons | 6 | 6 | 6 | 0 (.00 to .05) | 0 |
+| Second (founders 2691013 to 2691024) | `Fd`, cortex at unit norm | 7 | 7 | 0 | 12 | 0 |
+| | `Fdg`, cortex at unit norm, `recall_gain_after=1000`, `recall_gain_next=10` | 7 | 7 | 7 (.97 to 1.00) | 12 (.99 to 1.00) | 7 |
+
+The bar of 8 of 12 is missed by one life. What each reading shows:
+
+- **The cortex at unit norm moves the circuit from 2 to 7 lives of 12** and keeps the taught second hop
+  on every life (.98 to 1.00). On the lives that form it the read's port names never-taught names at
+  1.00; without a value path nothing says them.
+- **A gain on the recall port breaks the second hop.** In `twohop` the read lands on the slot of the
+  query, whose value is the query itself: a recall port's gain says it, and with both gains at 30 the
+  second hop reads .00 to .05 on all twelve lives and the first .52 to .86.
+- **The gain from birth stops the read from forming** (development, founders 0 to 5: the next port's
+  gain at 10 from birth forms the circuit on 1 or 2 lives of 6, and the second hop reads .00 to .45). A
+  gain that answers early takes the rows the read's lesson needs. Released after 1,000 lessons it
+  forms on 6 of 6 there, and on 7 of 12 declared.
+- **The five lives that miss fail at the read's selection.** On three of them, at the duplicate's moment
+  the position maps give the slot before the earlier mention +1.0 to +1.7 against the content's lead of
+  1.4 to 1.7 for the mention itself, so the read holds the earlier mention at .27 to .47 where passing
+  lives hold .53 to .86 (their content's lead 2.1 to 3.3). On the other two the read at `to` lands on the
+  names' own slots, the content (+2.5 to +3.0) and the position maps (+3.8 to +4.0) both favouring them
+  over the slot before. A passing life settles an act in 32 to 43 sweeps, a failing one in 39 to 67.
+
+On the library of this release the chamber reads the earlier rows above as they stand (development,
+founders 0 to 2): `ioi` on `Fd` .50, .51, 1.00 on taught sentences; the second hop 1.00, 1.00, .99; the
+single functions' cells within .05 of the table above on `Fd` and `Fdg` (copying read in closed
+loop).
 
 ## What this does and does not establish
 

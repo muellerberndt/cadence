@@ -118,6 +118,41 @@ its class. `--memory` adds the recall memory with surprise lessons. Arms: `found
 width 64 (`fan_in_rates` in `width.py`). `--settings` adds
 options, such as `{"learning_surprise_share": true}`.
 
+## Answers on tokens no lesson used (`held.py`)
+
+[`held.py`](held.py) reads R1 of the attention tracker
+([#272](https://github.com/muellerberndt/cadence/issues/272)): six of the battery's tasks with some
+tokens held out of every answer in training (look back, induction, n-back and two hops hear them and
+never answer them; copying and a period of 8 never hear them), on the default composition with the
+learned value path (`recall_gain=1.0`, every token declared). Each answer is read beside the read's own
+prediction; where the brain misses a held answer, `votes` reads what drives the answer's motor neuron
+and the chosen one (the association's synapses, the gains, the rest), and the support
+`no_association_vote` reads the test again with the association's synapses onto the tokens at zero.
+
+Declared reading, six fresh founders (2720901 to 2720906), one 32-vCPU box, 1,500 lessons, bar .80 on
+5 of 6 on every task:
+
+| Task | Held answers, per founder | At .80 | The read's best port at held answers | Association's drive where missed: answer / chosen | Held with the association silenced |
+| --- | --- | --- | --- | --- | --- |
+| Induction | 1.00 1.00 1.00 .98 .98 1.00 | 6 of 6 | 1.00 | -.23 to -.05 / .25 to .43 | 1.00 on 6 |
+| A period of 8 | .98 .97 .98 .99 .99 .98 | 6 of 6 | .98 to .99 | -.63 to -.05 / .88 to 1.22 | .98 to .99 |
+| Copying | .89 .83 .94 .88 .92 .93 | 6 of 6 | .89 to .96 | -.09 to .05 / .27 to .38 | 1.00 on 6 |
+| Two hops | .76 .78 .78 .79 .78 .72 | 0 of 6 | .89 to .91 | -1.70 to -1.25 / .79 to 1.12 | .90 to .91 |
+| N-back | .08 .03 .02 .08 .03 .04 | 0 of 6 | .47 to .65 | -3.25 to -.76 / .62 to .89 | .21 to .48 |
+| Look back | .00 on 6 | 0 of 6 | .35 to .97 | -4.85 to -.65 / .42 to 4.73 | .00 .99 .02 .03 .99 .36 |
+
+Taught answers read .99 to 1.00 on induction, the period and n-back, .86 to .94 on copying, .87 to
+.89 on two hops and .96 to 1.00 on look back on five founders (.37 on one). Three terms decide the misses:
+
+- **The vote.** Lessons on other actions push the association's drive on a held action down, to
+  -0.8 to -4.9 on n-back and look back, while the action it chooses takes +0.4 to +4.7. On two hops the
+  read names the held answer on .89 to .91 of moments and the vote keeps it at .72 to .79; silencing
+  the association's synapses onto the tokens lifts it to .90 and .91.
+- **The read on n-back** names the held token on .47 to .65 of moments, so silencing the vote reaches
+  .21 to .48 only.
+- **The read on look back** spreads from .35 to .97 by founder; on the two founders where it names
+  the held token on .89 and .97 of moments the silenced vote reads .99, and elsewhere .00 to .36.
+
 ## Run
 
 From the repository root, with one BLAS thread per process:

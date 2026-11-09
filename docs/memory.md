@@ -1097,6 +1097,12 @@ brain = cd.Brain.compose(
 
 `brain.recall.gain_lessons` counts the lessons the gains have seen, and a saved brain keeps it.
 
+Declared on the indirect-object chamber with `recall_cortex_norm`, twelve fresh founders: never-taught
+names are said at .97 to 1.00 on 7 lives of 12, every life whose circuit forms, and the taught second
+hop reads .99 to 1.00 on 12 of 12. With the gains from birth the circuit forms on 1 or 2 lives of 6 and
+the second hop reads .00 to .45 (development); with both ports released at 30 the second hop reads
+.00 to .05. The five lives that miss fail at the read's selection, before the gains are released.
+
 ### The copy pathway (opt-in)
 
 A held read reaches the motor region only through the association region, which learns which
@@ -1298,6 +1304,13 @@ the cortex columns, and what it teaches at the answer applies at every moment, s
 shares most of that cortex. `recall_cortex_norm=True` gives every map the cortex at unit norm per
 stream, so the event and the cortex weigh alike in the lesson and in the read. The keys, the values
 and the settle are unchanged; the option keeps the memory off the device path.
+
+On the [indirect-object chamber](../benchmarks/heads/README.md#the-cortex-at-the-events-weight-and-a-value-path-released-late)
+("when Mary and John went out, John gave a drink to"), declared on twelve fresh founders, the read's
+circuit forms on 7 lives of 12 with the option against 2 without it, and the taught second hop of a
+read on a read holds on 12 of 12. It does not carry the crossing of a question with a context
+([the crossing chamber](../benchmarks/attention/README.md#the-crossing-a-question-whose-fact-depends-on-the-context-crossingpy)),
+and at 1,000 raw words the read still falls ([the vocabulary chamber](../benchmarks/vocabulary/README.md)).
 
 ```python
 import cadence as cd
