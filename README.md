@@ -83,7 +83,7 @@ runs that loop through changed conditions and saved continuation.
 
 A teacher label changes graph parameters. The default associative memory
 ignores labels. Add `memory_choice=True` when remembered demonstrations and outcomes should
-vote in the choice. Add `learned_code=units, attention=True` when the brain should retrieve a
+vote in the choice. Add `learned_code=units, recall_window=2` when the brain should retrieve a
 relevant recent context and its successor, and `recall_heads=k` when one answer needs several
 witnessed facts at once. The options can be used together.
 [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#start-with-the-need)
@@ -190,13 +190,13 @@ or, opt-in, on a code the brain learns while it lives (`learned_code=units`,
 [the learned code](https://github.com/muellerberndt/cadence/blob/main/docs/senses.md#the-learned-code)),
 both described under *Code* in the glossary. `evolve` mutates and selects genomes across lives
 ([evolution](https://github.com/muellerberndt/cadence/blob/main/docs/anatomy.md#evolve-a-brain)).
-The opt-in `Brain.compose(..., learned_code=units, attention=True)` recipe uses that learned
+`Brain.compose(..., learned_code=units, recall_window=2)` uses that learned
 code as a two-moment Recall address and holds one selected memory read through the shared
 settle; with `recall_heads=k` it reads the same memories through k heads, each learning its
 own address
 ([several heads](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#several-heads-opt-in)).
 No read revises its query during that settle
-([memory guide](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#single-head-learned-code-attention-opt-in)).
+([memory guide](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md#learned-code-contextual-recall)).
 
 ### Where the learning signal comes from
 

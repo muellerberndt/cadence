@@ -1,4 +1,5 @@
-"""A minimal contextual choice for the public single-head attention recipe.
+"""A minimal contextual choice for single-head learned-code recall: the recall memory over a
+learned code's two-moment window, read by content alone (``CONTEXTUAL``).
 
 Every decision sees the same literal ``ASK`` observation. Two immutable Recall episodes
 contain ``context-0, ASK, value-0`` and ``context-1, ASK, value-1``. The learned-code window
@@ -82,15 +83,30 @@ class ContextChoiceBrain(cd.Brain):
             recall.past = past
 
 
-def compose(seed: int, *, solve: int = 1024, module: int = 24) -> ContextChoiceBrain:
-    """One opt-in attention brain with no hippocampus or episodic action vote; the protocol
-    predates the recall position term (0.89.0), which it leaves out."""
+# the recall memory over a learned code's two-moment window, read by content alone: the founder
+# memory at these settings is the recipe 0.95 named ``attention=True``; a new brain's composition
+# at them is ``composition`` (``--composition``), with the position term it composes
+CONTEXTUAL = {"recall_window": 2, "recall_address": 0.0, "recall_temperature": 0.1}
+
+
+def compose(
+    seed: int, *, solve: int = 1024, module: int = 24, composition: bool = False,
+) -> ContextChoiceBrain:
+    """One learned-code contextual brain with no hippocampus or episodic action vote: the founder
+    memory without the recall position term (0.89.0), which the protocol predates, or with
+    ``composition`` what a new brain composes at the contextual settings, its boundary slot left
+    out, since the bank holds exactly the six moments written."""
+    memory: dict[str, Any] = (
+        {"recall_boundary": False} if composition
+        else {"recall_founder": True, "recall_recency": 0.0, "recall_position": 0}
+    )
     brain = ContextChoiceBrain.compose(
         INPUTS,
         ACTIONS, backend="cpu",
         learned_code=CODE,
-        attention=True,
-        recall_position=0,
+        recall=True,
+        **CONTEXTUAL,
+        **memory,
         modules=(module,),
         episodic=False,
         memory_choice=False,
@@ -320,9 +336,9 @@ def evaluate(
 
 
 @evidence["record"](ROOT, "benchmarks/attention/contextual_choice.py")
-def run_founder(seed: int, *, trials: int = 32) -> dict[str, Any]:
+def run_founder(seed: int, *, trials: int = 32, composition: bool = False) -> dict[str, Any]:
     """Acquire and evaluate the frozen single-head gate for one founder."""
-    brain = compose(seed)
+    brain = compose(seed, composition=composition)
     warm_codes(brain)
     bank = build_bank(brain)
     training = train_policy(brain)
@@ -374,8 +390,10 @@ def run_founder(seed: int, *, trials: int = 32) -> dict[str, Any]:
     }
 
 
-def configuration(trials: int = 32, seeds: list[int] | None = None) -> dict[str, Any]:
-    settings = {
+def configuration(
+    trials: int = 32, seeds: list[int] | None = None, composition: bool = False,
+) -> dict[str, Any]:
+    settings: dict[str, Any] = {
         "inputs": INPUTS,
         "actions": ACTIONS,
         "learned_code": CODE,
@@ -390,6 +408,9 @@ def configuration(trials: int = 32, seeds: list[int] | None = None) -> dict[str,
     }
     settings["seeds"] = [0, 1, 2, 3] if seeds is None else seeds
     settings["trials"] = trials
+    if composition:  # a new brain's composition at the contextual settings, no boundary slot
+        del settings["recall_recency"], settings["recall_position"]
+        settings.update(composition=True, recall_boundary=False)
     return settings
 
 
@@ -436,7 +457,8 @@ def check(body: dict[str, Any]) -> str | None:
                 or not evidence["seeds"](declared, 2)):
             return "invalid trial or founder census"
         problem = evidence["metadata"](
-            body, "cadence-contextual-attention/1", configuration(trials, declared))
+            body, "cadence-contextual-attention/1",
+            configuration(trials, declared, cfg.get("composition", False)))
         if problem:
             return problem
         founders = body["founders"]
@@ -512,12 +534,15 @@ def main() -> None:
     parser.add_argument("--seeds", nargs="+", type=int, default=[0, 1, 2, 3])
     parser.add_argument("--trials", type=int, default=32)
     parser.add_argument("--out", type=Path)
+    parser.add_argument("--composition", action="store_true",
+                        help="what a new brain composes at the contextual settings")
     args = parser.parse_args()
-    founders = [run_founder(seed, trials=args.trials) for seed in args.seeds]
+    founders = [run_founder(seed, trials=args.trials, composition=args.composition)
+                for seed in args.seeds]
     result = {
         "schema": "cadence-contextual-attention/1",
         "scope": "single-head learned-code contextual choice; bounded component evidence",
-        "configuration": configuration(args.trials, args.seeds),
+        "configuration": configuration(args.trials, args.seeds, args.composition),
         "execution": evidence["environment"](),
         "founders": founders,
         "passed": len(founders) >= 2 and all(founder["passed"] for founder in founders),

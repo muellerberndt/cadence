@@ -33,6 +33,16 @@
   checkpoint whose learner was saved with `surprise_share=True` is refused by name: cadence 0.95.2
   runs it. `Learner.update` takes no `share`. The grammar gradient instrument's share arms
   (`Fd128s`, `FdT128s`, `Fd256s`, `FdT256s`) left with it.
+- **Folded: `attention=True`.** The name stood for settings of the recall memory over a learned
+  code, and a new brain reads the contextual-choice chamber at those settings as the recipe did:
+  four founders, 32 of 32 each, every gate, the same share of the read on the relevant record
+  (.82 to 1.00), `benchmarks/attention/contextual_choice.py --composition`. Write
+  `learned_code=units, recall_window=2, recall_address=0.0, recall_temperature=0.1` in its place,
+  and with several heads `learned_code=units, recall_window=2, recall_heads=k`. `attention` is
+  refused at `compose` and `retune` with that sentence; a brain saved with `attention=True` loads
+  with the settings it saved, and describes and saves without the marker. `Brain.attention`
+  leaves. The contextual-choice and held-heads instruments name the settings and read as before
+  to the bit, the founder memory at them being what 0.95 composed for `attention=True`.
 
 ## 0.95.2 — 2026-11-09
 

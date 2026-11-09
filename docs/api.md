@@ -23,7 +23,7 @@ keyword.
 ```text
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
-              learned_code=None, attention=False, seed=0, slots=1, **options) -> Brain
+              learned_code=None, seed=0, slots=1, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -81,19 +81,15 @@ The region map and the founder table are in
 [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) and
 [recall memory](memory.md#the-recall-memory-in-full).
 
-`attention=True` is the opt-in contextual-memory recipe: it requires a vector
-`learned_code=units`, enables the recall memory and supplies its learned-code settings where
-the caller did not, through k heads with `recall_heads=k`
-([single-head learned-code attention](memory.md#single-head-learned-code-attention-opt-in),
-[several heads](memory.md#several-heads-opt-in)). It changes no default and does not enable
-episodic action voting.
+`learned_code=units, recall_window=2, recall_address=0.0, recall_temperature=0.1` reads the
+recall memory by two moments of a learned code, through k heads with `recall_window=2,
+recall_heads=k` ([learned-code contextual recall](memory.md#learned-code-contextual-recall),
+[several heads](memory.md#several-heads-opt-in)); `attention=True` named these settings in 0.95.
 
 Refusals: unknown names, the bare `eta` or `eta_bias`, and duplicate aliases raise
 `TypeError`; a `recall_` name with `recall=False`, a setting outside its range, and
 `arousal_*` names without `arousal` raise `ValueError`. A retired setting is refused by name
-with a message naming its replacement ([CHANGELOG](../CHANGELOG.md)). `attention` must be boolean;
-`attention=True` without `learned_code`, with `recall=False`, with `recall_window < 2` or
-with `recall_next=False` raises `ValueError`.
+with a message naming its replacement ([CHANGELOG](../CHANGELOG.md)).
 
 `connectome` wraps a custom anatomy with the same founders, the episodic founders filled in
 under `memory_choice=True`: its `sensory` (or `visual/input`) population holds the inputs (the
@@ -187,7 +183,6 @@ their shape. Keep row identities fixed until `reset()`.
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
-| `attention` | whether `compose` applied the opt-in learned-code contextual-memory recipe; its effective mechanism is recorded by the learned-code and Recall settings |
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |
 | `memory_choice` | whether the episodic records vote; `memories["episodic"]` holds their settings (`share`, `extinction`, `hold`) |
 | `arousal` | the stream's `Arousal`, or `None` |

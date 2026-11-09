@@ -10,7 +10,8 @@ stands at an even position, else the position five steps from the predator.
 
 Roles 2 and 3 are distractors. Both orders of the value sets {0, 1}, {2, 3}, ... for roles
 (0, 1) are never taught (held out). Two held heads (``Brain.compose(..., learned_code=16,
-attention=True, recall_heads=2)``) are compared with one head that learns its address at the
+recall_window=2, recall_heads=2)``, the founder memory over a learned code's two-moment window,
+which 0.95 named ``attention=True``) are compared with one head that learns its address at the
 same settings, at the same lessons and readings, and with uniform random. Lessons teach every
 row while the running share of the brain's own wrong answers is at least 0.02 and only the
 wrong rows below it (``learning_surprise``), the calm teaching of a brain that already answers
@@ -90,7 +91,8 @@ class Task:
         """The opt-in recipe; one head learns its address at the heads' settings. The protocol
         predates the recall position term (0.89.0), which it leaves out."""
         return cd.Brain.compose(
-            INPUTS, self.actions, backend="cpu", learned_code=CODE, attention=True, recall_heads=heads,
+            INPUTS, self.actions, backend="cpu", learned_code=CODE, recall=True,
+            recall_founder=True, recall_window=2, recall_recency=0.0, recall_heads=heads,
             recall_address=0.01, recall_temperature=self.temperature,
             recall_position=0, modules=(MODULE,),
             slots=self.slots, seed=seed, episodic=False, teaching="normalized",

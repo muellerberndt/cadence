@@ -97,6 +97,11 @@ RETIRED: Mapping[str, tuple[str, Any, str]] = MappingProxyType({
     "history_scale": ("0.93.0", 1.2, "the heard history's projection starts at magnitude 1.2, "
                       "a constant (scales={'history': 1.2} alone is taken); cadence 0.92.1 "
                       "takes scales={'history': ...}"),
+    "attention": ("0.96.0", None, "write learned_code=units, recall_window=2, "
+                  "recall_address=0.0, recall_temperature=0.1 (several heads: learned_code=units, "
+                  "recall_window=2, recall_heads=k), which a new brain reads as the recipe did on "
+                  "the contextual-choice chamber; a brain saved with it loads; cadence 0.95.2 "
+                  "takes it"),
     "recall_scale": ("0.93.0", 1.2, "the recall and next projections start at magnitude 1.2, "
                      "a constant (scales={'recall': 1.2} alone is taken); cadence 0.92.1 "
                      "takes scales={'recall': ...}"),

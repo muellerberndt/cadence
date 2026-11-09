@@ -175,8 +175,9 @@ def test_a_new_memory_takes_the_fast_solve_until_a_word_names_another():
     for word in ({"recall_founder": True}, {"learning": cd.LearnerConfig()}):
         assert composed(**word).learner.config.fast_settle is False
     assert cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False).learner.config.fast_settle is False
-    attention = cd.Brain.compose(8, 4, modules=(16,), seed=0, learned_code=16, attention=True)
-    assert attention.learner.config.fast_settle is False
+    contextual = cd.Brain.compose(8, 4, modules=(16,), seed=0, learned_code=16, recall_founder=True,
+                                  recall_window=2)
+    assert contextual.learner.config.fast_settle is False
 
 
 def test_a_saved_brain_and_a_grown_brain_keep_the_solve_they_have(tmp_path):
@@ -190,14 +191,11 @@ def test_a_saved_brain_and_a_grown_brain_keep_the_solve_they_have(tmp_path):
     assert off.retune(learning_fast_settle=True).learner.config.fast_settle is True
 
 
-def test_the_constructor_and_the_attention_recipe_keep_their_own_settings():
+def test_the_constructor_keeps_its_own_settings():
     connectome = cd.develop(cd.Genome.composed(6, 4, modules=(16,), recall=True), seed=0)
     direct = cd.Brain(connectome, seed=0, recall=True)
-    attention = cd.Brain.compose(8, 4, modules=(16,), seed=0, learned_code=16, attention=True)
     for name in cd.Recall.COMPOSED:
         assert getattr(direct.recall, name) == founders()[name], name
-        if name not in ("recency",):  # the attention recipe names its own recency
-            assert getattr(attention.recall, name) == founders()[name], name
 
 
 # ---------------------------------------------------------------------- the width's rates
@@ -339,9 +337,10 @@ def test_the_opt_outs_keep_whole_steps(options):
     assert brain.recall is None or brain.recall.address == 0.01
 
 
-def test_the_attention_recipe_and_a_custom_anatomy_take_no_rates():
-    attention = cd.Brain.compose(8, 4, modules=(128,), seed=0, learned_code=16, attention=True)
-    assert attention.learner.synapse_rate is None and attention.recall.address == 0.0
+def test_the_founder_memory_and_a_custom_anatomy_take_no_rates():
+    founder = cd.Brain.compose(8, 4, modules=(128,), seed=0, learned_code=16, recall_founder=True,
+                               recall_window=2, recall_address=0.0)
+    assert founder.learner.synapse_rate is None and founder.recall.address == 0.0
     holding = cd.develop(cd.Genome.composed(6, 4, modules=(128,), recall=True), seed=0)
     custom = cd.Brain.compose(6, 4, connectome=holding, seed=0, recall=True)
     assert custom.learner.synapse_rate is None and custom.recall.address == 0.01

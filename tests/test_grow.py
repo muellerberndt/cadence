@@ -105,7 +105,7 @@ def test_a_brain_composed_from_its_own_construction_is_the_brain(name):
     [
         (40, dict(code=64)),
         (40, dict(learned_code=16)),
-        (40, dict(learned_code=16, attention=True, recall=True)),
+        (40, dict(learned_code=16, recall=True, recall_window=2, recall_address=0.0)),
         ((6, 6), dict(features=4, field=2)),
         ((5, 5, 2), dict(code=40)),
     ],

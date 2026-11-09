@@ -32,7 +32,7 @@ def test_held_out_pairs_are_both_orders_and_never_taught() -> None:
 def test_the_heads_arm_is_the_public_recipe() -> None:
     task = subject.Task("report")
     two, one = task.compose(0, 2), task.compose(0, 1)
-    assert two.attention and two.recall.heads == 2 and one.recall.heads == 1
+    assert two.recall.window == 2 and two.recall.heads == 2 and one.recall.heads == 1
     assert (two.recall.address, two.recall.temperature) == (0.01, 0.25)
     assert (one.recall.address, one.recall.temperature) == (0.01, 0.25)
     assert two.hippocampus is None and two._episodic is None  # noqa: SLF001

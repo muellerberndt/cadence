@@ -222,7 +222,8 @@ def test_a_lesson_on_the_moment_just_acted_on_warns_with_a_recall_memory():
     import warnings
 
     obs = np.array([[1.0, 0.0, 0.0]])
-    brain = cd.Brain.compose(3, 2, modules=(8,), seed=0, learned_code=4, attention=True)
+    brain = cd.Brain.compose(3, 2, modules=(8,), seed=0, learned_code=4, recall=True, recall_founder=True, recall_window=2, recall_recency=0.0,
+                             recall_address=0.0, recall_temperature=0.1)
     brain.act(obs, greedy=True)
     with pytest.warns(RuntimeWarning, match="Teach before acting"):
         brain.lesson(obs, [1])
