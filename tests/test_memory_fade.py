@@ -9,6 +9,7 @@ FADE_ORDER)`` of itself. Off (the founder) the brain is the founder's to the bit
 from __future__ import annotations
 
 import copy
+import json
 import tempfile
 from pathlib import Path
 
@@ -127,6 +128,56 @@ def test_save_and_load_continue_bit_for_bit():
         assert np.array_equal(getattr(loaded.hippocampus, name), getattr(brain.hippocampus, name))
 
 
+def saved_format(path):
+    with np.load(path) as archive:
+        return json.loads(str(archive["brain"]))["format"]
+
+
+def test_a_fading_brain_saves_a_format_of_its_own(monkeypatch):
+    def brain(**settings):
+        return life(cd.Brain.compose(6, 3, seed=2, arousal=True, recall=False, **settings),
+                    moments=40, idle=10)
+
+    with tempfile.TemporaryDirectory() as folder:
+        # without the fade: the founder's format, and maturity's, as before
+        for settings, name in (({}, "cadence-brain/1"), ({"maturity": True}, "cadence-brain/2")):
+            path = checkpoint(brain(**settings), folder)
+            assert saved_format(path) == name
+            loaded = cd.Brain.load(path)
+            assert loaded.hippocampus.fade == 0.0 and loaded.hippocampus.fade_depth is None
+            assert saved_format(checkpoint(loaded, folder)) == name
+        # with the fade: one name, with a maturity or without
+        for settings in ({"memory_fade": 0.01}, {"memory_fade": 0.01, "maturity": True}):
+            fading = brain(**settings)
+            path = checkpoint(fading, folder)
+            arrays = dict(np.load(path))
+            meta = json.loads(str(arrays["brain"]))
+            assert meta["format"] == "cadence-brain/3"  # which 0.95.2 and earlier refuse
+            assert ("maturity" in meta) == ("maturity" in settings)
+            loaded = cd.Brain.load(path)
+            assert loaded.hippocampus.fade == 0.01
+            for name in ("fade_depth", "fade_recent", "consolidated", "strength"):
+                assert np.array_equal(getattr(loaded.hippocampus, name), getattr(fading.hippocampus, name))
+            assert (loaded.basal_ganglia.maturity is None) == ("maturity" not in settings)
+            assert saved_format(checkpoint(loaded, folder)) == "cadence-brain/3"
+            # the name and the fade belong together
+            store = meta["memories"]["hippocampus"]
+            faded_out = {**meta, "memories": {**meta["memories"],
+                                              "hippocampus": {k: v for k, v in store.items() if k != "fade"}}}
+            for changed in ({**meta, "format": "cadence-brain/1"}, {**meta, "format": "cadence-brain/2"},
+                            faded_out):
+                np.savez(path, **{**arrays, "brain": np.array(json.dumps(changed))})
+                with pytest.raises(ValueError, match="belongs to checkpoint format cadence-brain/3"):
+                    cd.Brain.load(path)
+            # a loader that knows only the earlier names refuses the file, as 0.93.1 refuses maturity's
+            np.savez(path, **arrays)
+            with monkeypatch.context() as earlier:
+                earlier.setattr("cadence.generic.FADE_FORMAT", "cadence-brain/unknown")
+                with pytest.raises(ValueError, match="unsupported Brain checkpoint format"):
+                    cd.Brain.load(path)
+            assert cd.Brain.load(path).hippocampus.fade == 0.01
+
+
 def test_parameters_count_the_depths_and_traces():
     off = cd.Brain.compose(6, 3, seed=2, recall=False)
     on = cd.Brain.compose(6, 3, seed=2, memory_fade=0.01, recall=False)
@@ -178,6 +229,8 @@ def test_grow_and_graft_keep_the_fade():
     brain = life(cd.Brain.compose(6, 3, seed=2, arousal=True, memory_fade=0.01, recall=False),
                  moments=120, idle=30)
     grown = brain.grow(efference_amplitude=1.0)
+    with tempfile.TemporaryDirectory() as folder:
+        assert saved_format(checkpoint(grown, folder)) == "cadence-brain/3"
     assert grown.hippocampus.fade == brain.hippocampus.fade
     for name in ("fade_depth", "fade_recent"):
         assert np.array_equal(getattr(grown.hippocampus, name), getattr(brain.hippocampus, name))

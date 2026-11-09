@@ -1723,7 +1723,9 @@ around the shared records. No count is kept anywhere: both sums are leaky integr
 activity, as [maturity](reward.md#maturity-opt-in)'s use is. The constants are
 `SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. `memory_fade` is a
 construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
-its sums.
+its sums. A brain with the setting saves checkpoint format `cadence-brain/3`, which 0.95.2 and
+earlier refuse ([checkpoint format](api.md#checkpoint-format)); without it a brain saves the
+format it saved before.
 
 **What it does** (#253's declared run, 24 fresh founders of the competing-skills chamber, with
 `maturity=True` on every arm). A brain practises skill A under the certain pay, lives 40,000

@@ -205,7 +205,12 @@ their shape. Keep row identities fixed until `reset()`.
 writes `cadence-brain/2`, which 0.93.1 and earlier refuse: the same members, with the maturity
 (`scale`, `recovery`, `use`) under `maturity` in the metadata and the store's noise scales
 (`memories/hippocampus/gate_noise`). `Brain.load` refuses a `cadence-brain/1` file with a
-maturity and a `cadence-brain/2` file without one.
+maturity and a `cadence-brain/2` file without one. A brain whose store fades
+([`memory_fade`](memory.md#records-that-fade-with-disuse-opt-in)) writes `cadence-brain/3`, which
+0.95.2 and earlier refuse, with a maturity or without: the same members, with the fade under
+the store's settings and its two sums (`memories/hippocampus/fade_depth`, `fade_recent`).
+`Brain.load` refuses a `cadence-brain/3` file whose store does not fade, and a fading store
+under either other name.
 
 | Members | What they hold |
 | --- | --- |
@@ -218,10 +223,10 @@ maturity and a `cadence-brain/2` file without one.
 | `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata, the read's route among them with `recall_drive_gain` |
 | `memories/history/` | the heard history's `trace` |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
-| `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`) |
+| `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`); with `memory_fade` its depths and recent traces (`fade_depth`, `fade_recent`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
-`Brain.load` reads `cadence-brain/1` and `/2`, the formats of 0.85.0 on. It refuses the earlier
+`Brain.load` reads `cadence-brain/1`, `/2` and `/3`, the formats of 0.85.0 on. It refuses the earlier
 `cadence-generic/1` to `/10` by name: cadence 0.94.0 loads those and saves `cadence-brain/1`. A
 retired setting loads at the one value this version keeps for it and is refused by name at any
 other ([CHANGELOG](../CHANGELOG.md)).
