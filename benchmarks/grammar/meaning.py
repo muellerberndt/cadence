@@ -550,6 +550,401 @@ def where_life(spec: dict[str, Any]) -> dict[str, Any]:
     return row
 
 
+# ---------------------------------------------------------------------------- the message
+
+
+class Message:
+    """A message as the instrument writes it: an emulation of a held region, with no library
+    change. Every heard moment's observation is given a fixed sparse code (``units`` units, the
+    ``winners`` largest of a random projection drawn from the seed set to one; with
+    ``code="and"`` every unit reads ``fan`` inputs at weight one, so the units that read every
+    active input win), and each block holds the stream's episode in its own way:
+
+    - ``bag``: the codes summed, each at one; ``set``: their union.
+    - ``primacy:g``: the ``t``-th moment at ``g ** t``; ``recent:d``: decaying by ``d`` per
+      moment.
+    - ``pairs``: the codes of each moment joined to the moment before it, summed (which
+      moment followed which).
+    - ``phase:k``: ``k`` unions of ``units`` each, the ``t``-th moment's code joining the union
+      ``t mod k``, so neighbouring moments lie in neighbouring blocks and what a block holds
+      is present or absent, with no magnitude to compare.
+    - ``slots:k``: the last ``k`` codes, the latest first (an ordered buffer of codes).
+    - ``register:k``: the last ``k`` observations as heard, the latest first, ``k`` times the
+      observation's width (an ordered buffer with no code, the reference).
+
+    With ``again`` the code also reads, per input, whether the episode held it before.
+
+    The write is fixed, as the working trace's and the heard history's are; what the brain
+    makes of the message is learned. With ``hold`` nothing is written from ``GO`` on."""
+
+    def __init__(self, design: dict[str, Any], seed: int) -> None:
+        self.units = int(design.get("units", 70))
+        self.winners = int(design.get("winners", 5))
+        self.blocks = tuple(design.get("blocks", ("bag", "primacy:0.7")))
+        defaults = {"bag": 1.0 / 3.0, "pairs": 1.0 / 3.0, "register": 1.0 / 3.0}
+        self.scales = tuple(float(v) for v in design.get(
+            "scales", [defaults.get(kind.partition(":")[0], 1.0) for kind in self.blocks]))
+        self.hold = bool(design.get("hold", False))
+        self.kind = str(design.get("code", "sum"))
+        self.again = bool(design.get("again", False))
+        rng = np.random.default_rng(np.random.SeedSequence([int(seed), 286]))
+        heard = (2 if self.again else 1) * gr.INPUTS
+        self.weights = self._projection(rng, heard, int(design.get("fan", 8)))
+        self.pair_weights = self._projection(rng, 2 * gr.INPUTS, 2 * int(design.get("fan", 8)))
+        self.parts: list[np.ndarray] = []
+        self.before: np.ndarray | None = None
+        self.seen: np.ndarray | None = None
+        self.told = 0
+
+    def _projection(self, rng: np.random.Generator, inputs: int, fan: int) -> np.ndarray:
+        if self.kind == "sum":
+            return np.asarray(rng.normal(size=(inputs, self.units)))
+        if self.kind != "and":
+            raise ValueError(f"unknown code: {self.kind!r}")
+        # every unit reads ``fan`` inputs at one, with a small fixed preference to break ties
+        w = np.zeros((inputs, self.units))
+        for u in range(self.units):
+            w[rng.choice(inputs, size=min(fan, inputs), replace=False), u] = 1.0
+        return np.asarray(w + 1e-3 * rng.random((inputs, self.units)))
+
+    def _width(self, kind: str) -> int:
+        name, _, value = kind.partition(":")
+        if name == "register":
+            return int(value) * gr.INPUTS
+        return int(value) * self.units if name in ("phase", "slots") else self.units
+
+    @property
+    def width(self) -> int:
+        return sum(self._width(kind) for kind in self.blocks)
+
+    def code(self, x: np.ndarray, weights: np.ndarray | None = None) -> np.ndarray:
+        """The sparse code of observations: one at each row's ``winners`` largest sums."""
+        z = np.asarray(x, dtype=float) @ (self.weights if weights is None else weights)
+        out = np.zeros_like(z)
+        top = np.argpartition(-z, self.winners - 1, axis=1)[:, :self.winners]
+        np.put_along_axis(out, top, 1.0, axis=1)
+        return np.asarray(out * (np.abs(x).sum(axis=1, keepdims=True) > 0))
+
+    def reset(self, rows: int) -> None:
+        self.parts = [np.zeros((rows, self._width(kind))) for kind in self.blocks]
+        self.before = None
+        self.seen = np.zeros((rows, gr.INPUTS))
+        self.told = 0
+
+    def hear(self, x: np.ndarray, speaking: bool = False) -> None:
+        """One heard moment joins every block; with ``hold`` a moment from ``GO`` on joins
+        none."""
+        if speaking and self.hold:
+            return
+        x = np.asarray(x, dtype=float)
+        assert self.seen is not None
+        c = self.code(np.concatenate([x, x * self.seen], axis=1) if self.again else x)
+        self.seen = np.maximum(self.seen, (x != 0).astype(float))
+        for i, kind in enumerate(self.blocks):
+            name, _, value = kind.partition(":")
+            if name == "bag":
+                self.parts[i] = self.parts[i] + c
+            elif name == "set":
+                self.parts[i] = np.maximum(self.parts[i], c)
+            elif name == "primacy":
+                self.parts[i] = self.parts[i] + float(value) ** self.told * c
+            elif name == "recent":
+                self.parts[i] = float(value) * self.parts[i] + c
+            elif name == "pairs":
+                before = np.zeros_like(x) if self.before is None else self.before
+                self.parts[i] = self.parts[i] + self.code(
+                    np.concatenate([before, x], axis=1), self.pair_weights)
+            elif name == "phase":
+                at = (self.told % int(value)) * self.units
+                self.parts[i][:, at:at + self.units] = np.maximum(
+                    self.parts[i][:, at:at + self.units], c)
+            elif name == "slots":
+                self.parts[i] = np.concatenate([c, self.parts[i][:, :-self.units]], axis=1)
+            elif name == "register":
+                self.parts[i] = np.concatenate([x, self.parts[i][:, :-gr.INPUTS]], axis=1)
+            else:
+                raise ValueError(f"unknown block: {kind!r}")
+        self.before = x.copy()
+        self.told += 1
+
+    def state(self, scaled: bool = True) -> np.ndarray:
+        """The message, ``(rows, width)``; ``scaled`` as the region is driven."""
+        scales = self.scales if scaled else (1.0,) * len(self.blocks)
+        return np.concatenate([k * part for k, part in zip(scales, self.parts, strict=True)],
+                              axis=1)
+
+
+def carrier_blocks(design: dict[str, Any] | None) -> int:
+    """The heard-history blocks of sensory width that carry a message of ``design``."""
+    return 0 if design is None else -(-Message(design, 0).width // gr.INPUTS)
+
+
+def message_brain(founder: int, design: dict[str, Any] | None,
+                  settings: dict[str, Any] | None = None, module: int = 64) -> Any:
+    """The default composition with the neurons that carry the message: a heard-history
+    region the instrument writes (``install``), read through the history's plastic
+    projection. Without a design it is ``make_brain``."""
+    blocks = carrier_blocks(design)
+    extra = {"history_decays": (0.0,) * blocks} if blocks else {}
+    return make_brain(founder, {**extra, **(settings or {})}, module)
+
+
+def install(brain: Any, message: Message | None) -> None:
+    """The message onto its carrier, replacing what the history heard."""
+    if message is None or brain.history is None:
+        return
+    state = message.state()
+    held = np.zeros((len(state), len(brain.history.glow)))
+    held[:, :state.shape[1]] = state
+    brain.history.trace = held
+
+
+def bar_meaning(brain: Any, rows: list[gr.Row]) -> None:
+    """The read barred from the meaning's moments: their slots emptied at ``GO``. A clause's
+    and a bracket sentence's meaning is every moment heard; a path's is its start, and the
+    world's facts stay."""
+    if rows[0].family == "path":
+        _erase_slots(brain, lambda age: age > 0)
+    else:
+        _erase_slots(brain, lambda age: False)
+
+
+def speak(brain: Any, rows: list[gr.Row], *, teach: bool, message: Message | None = None,
+          bar: bool = False, work: dict[str, float] | None = None, cap: int = 4,
+          forced: bool = False, watch: Any = None) -> list[list[int]]:
+    """``grammar.speak`` with a message and a barred read. After every act the moment joins
+    ``message``, which is installed for the next settle; with ``bar`` the meaning's slots are
+    emptied at ``GO`` (``bar_meaning``), in lessons and in readings alike. ``forced`` gives
+    every previous word; ``watch(j, brain, action)`` is called after each said word."""
+    work = work if work is not None else gr.new_work()
+    n = len(rows)
+    if len({len(r.pre) for r in rows}) != 1:
+        raise ValueError("a batch's rows hear the same number of moments")
+    if (teach or forced) and len({len(r.target) for r in rows}) != 1:
+        raise ValueError("a taught batch's sentences have one length")
+    brain.reset()
+    if message is not None:
+        message.reset(n)
+    for t in range(len(rows[0].pre)):
+        x = np.stack([r.pre[t] for r in rows])
+        gr._act(brain, x, work)
+        if message is not None:
+            message.hear(x)
+            install(brain, message)
+    said: list[list[int]] = [[] for _ in rows]
+    done = [False] * n
+    longest = max(len(r.target) for r in rows) + (0 if teach or forced else cap)
+    for j in range(longest):
+        if j == 0:
+            x = np.tile(gr.concept("GO"), (n, 1))
+        else:
+            words = []
+            for i, r in enumerate(rows):
+                given = teach or forced or j <= r.force
+                words.append(r.target[j - 1] if given and j - 1 < len(r.target)
+                             else said[i][j - 1])
+            x = np.stack([gr.spoken(w) if w >= 0 else gr.concept("SPEAK") for w in words])
+        if bar and j == rows[0].force:
+            bar_meaning(brain, rows)
+        if teach:
+            labels = np.array([r.target[j] for r in rows])
+            try:
+                report = brain.lesson(x, labels)
+                work["lessons"] += 1
+                work["rows"] += report.get("attempted_presentations", 0.0)
+                work["agreed_rows"] += report.get("agreed_presentations", 0.0)
+                work["lesson_row_sweeps"] += report.get("total_row_sweeps", 0.0)
+                work["free_budget_exhausted"] += report.get("free_budget_exhausted", 0.0)
+            except RuntimeError:
+                work["refused"] += 1
+        action = gr._act(brain, x, work)
+        if watch is not None:
+            watch(j, brain, action)
+        if message is not None:
+            message.hear(x, speaking=True)
+            install(brain, message)
+        for i, r in enumerate(rows):
+            said[i].append(int(action[i]))
+            if j >= r.force and action[i] == gr.END:
+                done[i] = True
+        if not (teach or forced) and all(done):
+            break
+    out = []
+    for i, r in enumerate(rows):
+        words = said[i][r.force:]
+        out.append(words[:words.index(gr.END) + 1] if gr.END in words else words)
+    return out
+
+
+def said_by_kind(brain: Any, batches: list[list[gr.Row]], message: Message | None,
+                 bar: bool) -> dict[str, float]:
+    """Each word said right with every previous word given, by the word's kind
+    (``grammar._kind``, and ``near`` and ``end`` by family): where a sentence is lost."""
+    fork = copy.deepcopy(brain)
+    groups: dict[str, list[int]] = {}
+    for rows in batches:
+        hits: list[np.ndarray] = []
+        speak(fork, rows, teach=False, message=message, bar=bar, forced=True,
+              watch=lambda j, b, action, hits=hits: hits.append(np.array(action)))
+        for i, r in enumerate(rows):
+            for j, word in enumerate(r.target):
+                kind = (f"{r.family}_{gr.WORDS[word]}" if word in (gr.NEAR, gr.END)
+                        else gr._kind(r, j))
+                g = groups.setdefault(kind, [0, 0])
+                g[0] += int(hits[j][i] == word)
+                g[1] += 1
+    return {k: round(v[0] / v[1], 4) for k, v in sorted(groups.items())}
+
+
+def message_panels(brain: Any, tests: dict[str, list[list[gr.Row]]], message: Message | None,
+                   bar: bool, names: tuple[str, ...]) -> dict[str, Any]:
+    """Whole sentences on a fork, closed loop, with the life's message and bar."""
+    fork = copy.deepcopy(brain)
+    out = {}
+    for name in names:
+        panel = gr.read_speaker(
+            lambda rows: speak(fork, rows, teach=False, message=message, bar=bar), None,
+            tests[name], twins=name in gr.TWINS)
+        panel["examples"] = panel["examples"][:2]
+        out[name] = panel
+    return out
+
+
+def message_states(brain: Any, batches: dict[str, list[list[gr.Row]]],
+                   message: Message | None, bar: bool,
+                   ) -> dict[str, list[tuple[gr.Row, dict[str, Any]]]]:
+    """Every probe sentence's states at its named positions, teacher-forced, with the life's
+    message and bar: ``message`` (the region as written, unscaled), ``carried`` (the working
+    trace entering the settle) and ``settled`` (the association after it)."""
+    fork = copy.deepcopy(brain)
+    association = fork.association_index
+    out: dict[str, list[tuple[gr.Row, dict[str, Any]]]] = {}
+    for family, groups in batches.items():
+        items = []
+        for rows in groups:
+            moments: list[dict[str, np.ndarray]] = []
+            carried = {"trace": np.zeros((len(rows), len(association)))}
+
+            def watch(j: int, b: Any, action: np.ndarray, moments: Any = moments,
+                      carried: Any = carried) -> None:
+                state = np.asarray(b.basal_ganglia.state.activation)[:, association]
+                moment = {"carried": carried["trace"], "settled": np.array(state, dtype=float)}
+                if message is not None:
+                    moment["message"] = message.state(scaled=False).copy()
+                moments.append(moment)
+                carried["trace"] = np.array(b.working_memory.trace, dtype=float)
+
+            # the trace entering GO is the one the last heard moment left
+            def before(b: Any, carried: Any = carried) -> None:
+                carried["trace"] = np.array(b.working_memory.trace, dtype=float)
+
+            _speak_watched(fork, rows, message, bar, before, watch)
+            for i, row in enumerate(rows):
+                at = {name: {place: moments[j][place][i] for place in moments[j]}
+                      for name, j in positions(row).items()}
+                items.append((row, at))
+        out[family] = items
+    return out
+
+
+def _speak_watched(brain: Any, rows: list[gr.Row], message: Message | None, bar: bool,
+                   before: Any, watch: Any) -> None:
+    """One batch teacher-forced with the life's message and bar: ``before(brain)`` once the
+    meaning is heard, ``watch(j, brain, action)`` after each said word."""
+    n = len(rows)
+    brain.reset()
+    if message is not None:
+        message.reset(n)
+    work = gr.new_work()
+    for t in range(len(rows[0].pre)):
+        x = np.stack([r.pre[t] for r in rows])
+        gr._act(brain, x, work)
+        if message is not None:
+            message.hear(x)
+            install(brain, message)
+    if brain.working_memory is not None and len(brain.working_memory.trace) == n:
+        before(brain)
+    for j in range(len(rows[0].target)):
+        x = (np.tile(gr.concept("GO"), (n, 1)) if j == 0
+             else np.stack([gr.spoken(r.target[j - 1]) for r in rows]))
+        if bar and j == 0:
+            bar_meaning(brain, rows)
+        action = gr._act(brain, x, work)
+        watch(j, brain, action)
+        if message is not None:
+            message.hear(x, speaking=True)
+            install(brain, message)
+
+
+ARMS: dict[str, dict[str, Any]] = {
+    # the default composition, the read free: the reference
+    "default": {},
+    # the read barred from the meaning's moments and nothing added: the floor
+    "barred": {"bar": True},
+    # the message, the read barred from the meaning: the state must carry it
+    "message_barred": {"message": {}, "bar": True},
+    # the message and the read together
+    "message": {"message": {}},
+}
+
+
+def message_life(spec: dict[str, Any]) -> dict[str, Any]:
+    """One life of an arm: ``arm`` (``ARMS``) or its parts given outright (``message``, a
+    design or None; ``bar``, the share of lesson sentences taught with the read barred from the
+    meaning, True for every one; ``settings`` over the default composition), ``founder``,
+    ``batches``, ``module``, ``panel_batches``, ``probe_scale``, ``tag``. A life barred on every
+    sentence is read barred; any other is read with the read free and again barred."""
+    warnings.simplefilter("ignore")
+    import cadence as cd
+
+    arm = dict(ARMS.get(spec.get("arm", ""), {}))
+    for key in ("message", "bar", "settings"):
+        if key in spec:
+            arm[key] = spec[key]
+    founder = int(spec["founder"])
+    batches = int(spec.get("batches", BATCHES))
+    design = arm.get("message")
+    rate = float(arm.get("bar", 0.0))  # the share of lesson sentences taught with the read barred
+    bar = rate >= 1.0
+    barred = np.random.default_rng(np.random.SeedSequence([founder, 286, 1]))
+    started = time.monotonic()
+    brain = message_brain(founder, design, arm.get("settings"), int(spec.get("module", 64)))
+    message = None if design is None else Message(design, founder)
+    split = gr.Split.of(founder)
+    tests = gr.panels(founder, int(spec.get("panel_batches", 4)))
+    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
+    row: dict[str, Any] = {
+        "kind": "message", "arm": spec.get("arm"), "tag": spec.get("tag"), "founder": founder,
+        "batches": batches, "message": design, "bar": rate, "settings": arm.get("settings", {}),
+        "module": int(spec.get("module", 64)), "parameters": int(brain.parameters()),
+        "cadence": cd.__version__, "curve": [],
+    }
+    work = gr.new_work()
+    checks = set(int(c) for c in spec.get("checkpoints", ()))
+    for b in range(1, batches + 1):
+        speak(brain, gr.train_batch(rng, split, "g1"), teach=True, message=message,
+              bar=bool(barred.random() < rate), work=work)
+        if b in checks:
+            lean = message_panels(brain, tests, message, bar, ("clause", "dyck", "path"))
+            row["curve"].append({"batches": b, **{k: v["exact"] for k, v in lean.items()}})
+    work["seconds"] = round(time.monotonic() - started, 1)
+    row["work"] = work
+    row["gains"] = dict(brain.carried_gains) if brain.hearing is not None else {}
+    row["panels"] = message_panels(brain, tests, message, bar, WHOLE + LONG)
+    if not bar:  # a life taught with the read free, read with it barred
+        row["panels_barred"] = message_panels(brain, tests, message, True, WHOLE)
+    row["said"] = said_by_kind(brain, [b for name in ("clause", "dyck", "path")
+                                       for b in tests[name]], message, bar)
+    scale = float(spec.get("probe_scale", 0.5))
+    if scale > 0:
+        places = ("message", "carried", "settled") if message is not None else (
+            "carried", "settled")
+        row["probes"] = probe_states(
+            founder, message_states(brain, probe_batches(founder, scale), message, bar), places)
+    row["seconds"] = round(time.monotonic() - started, 1)
+    return row
+
+
 # -------------------------------------------------------------------------------- reading
 
 
@@ -635,6 +1030,58 @@ def read(rows: list[dict[str, Any]]) -> list[str]:
     return lines
 
 
+def run_life(spec: dict[str, Any]) -> dict[str, Any]:
+    """One life of a plan: a message life, or with ``"kind": "where"`` a diagnosis life."""
+    return where_life(spec) if spec.get("kind") == "where" else message_life(spec)
+
+
+def read_lives(rows: list[dict[str, Any]]) -> list[str]:
+    """Message lives by tag (or arm): whole sentences, the words lost and the probes."""
+    groups: dict[str, list[dict[str, Any]]] = {}
+    for r in rows:
+        if r.get("kind") == "message":
+            groups.setdefault(str(r.get("tag") or r.get("arm")), []).append(r)
+    names = WHOLE + LONG
+    lines = ["whole sentences said exactly (roles: both twins), mean (least-greatest)",
+             "| Arm | Lives | " + " | ".join(names) + " |", "| --- | --- |" + " --- |" * len(names)]
+    for tag, lives in groups.items():
+        cells = [_mean([_score(r["panels"][name], name) for r in lives]) for name in names]
+        lines.append(f"| {tag} | {len(lives)} | " + " | ".join(cells) + " |")
+        if "panels_barred" in lives[0]:
+            cells = [_mean([_score(r["panels_barred"][name], name) for r in lives])
+                     if name in lives[0]["panels_barred"] else "-" for name in names]
+            lines.append(f"| {tag}, read barred at the reading | {len(lives)} | "
+                         + " | ".join(cells) + " |")
+    lines += ["", "words said right with every previous word given"]
+    for tag, lives in groups.items():
+        kinds = sorted({k for r in lives for k in r["said"]})
+        lines.append(f"  {tag}: " + ", ".join(
+            f"{k} {_short([r['said'].get(k) for r in lives])}" for k in kinds))
+    lines += ["", "probes at GO, held-out accuracy (message / carried / settled)"]
+    for tag, lives in groups.items():
+        for family in ("clause", "dyck", "path"):
+            table = lives[0].get("probes", {}).get(family, {})
+            cells = []
+            for name in table:
+                if "go" not in table[name]:
+                    continue
+                parts = [_short([r["probes"][family][name]["go"][place]["accuracy"]
+                                 for r in lives
+                                 if place in r.get("probes", {}).get(family, {}).get(
+                                     name, {}).get("go", {})])
+                         for place in ("message", "carried", "settled")]
+                cells.append(f"{name} " + "/".join(parts))
+            lines.append(f"  {tag} {family}: " + ", ".join(cells))
+    lines += ["", "work"]
+    for tag, lives in groups.items():
+        lines.append(f"  {tag}: parameters {lives[0]['parameters']}, seconds "
+                     + _mean([r["work"]["seconds"] for r in lives]) + ", gains "
+                     + json.dumps({k: round(float(np.mean([r['gains'].get(k, np.nan)
+                                                            for r in lives])), 2)
+                                   for k in lives[0]["gains"]}))
+    return lines
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     sub = parser.add_subparsers(dest="command", required=True)
@@ -649,26 +1096,35 @@ def main(argv: list[str] | None = None) -> int:
     where.add_argument("--tag")
     where.add_argument("--out", type=Path, required=True)
     where.add_argument("--workers", type=int, default=1)
+    lives = sub.add_parser("lives", help="message lives from a plan (a JSON list of specs)")
+    lives.add_argument("--plan", type=Path, required=True)
+    lives.add_argument("--out", type=Path, required=True)
+    lives.add_argument("--workers", type=int, default=1)
     reader = sub.add_parser("read", help="print the tables of a results file")
     reader.add_argument("results", type=Path)
     args = parser.parse_args(argv)
     if args.command == "read":
         rows = [json.loads(line) for line in args.results.read_text().splitlines() if line]
-        print("\n".join(read(rows)))
+        print("\n".join(read(rows) if any(r.get("kind") == "where" for r in rows)
+                        else read_lives(rows)))
         return 0
-    specs = [{"founder": f, "batches": args.batches, "module": args.module,
-              "settings": args.settings, "probe_scale": args.probe_scale,
-              "controls": args.controls, "tag": args.tag,
-              "save": str(args.save) if args.save else None} for f in args.founders]
+    if args.command == "lives":
+        specs, life = json.loads(args.plan.read_text()), run_life
+    else:
+        life = where_life
+        specs = [{"founder": f, "batches": args.batches, "module": args.module,
+                  "settings": args.settings, "probe_scale": args.probe_scale,
+                  "controls": args.controls, "tag": args.tag,
+                  "save": str(args.save) if args.save else None} for f in args.founders]
     args.out.parent.mkdir(parents=True, exist_ok=True)
     with args.out.open("a") as sink:
         if args.workers <= 1:
-            for result in map(where_life, specs):
+            for result in map(life, specs):
                 sink.write(json.dumps(result) + "\n")
                 sink.flush()
         else:
             with get_context("spawn").Pool(min(args.workers, len(specs))) as pool:
-                for result in pool.imap_unordered(where_life, specs, chunksize=1):
+                for result in pool.imap_unordered(life, specs, chunksize=1):
                     sink.write(json.dumps(result) + "\n")
                     sink.flush()
     return 0
