@@ -39,7 +39,7 @@ bigger.step(x, teacher=labels)
 
 | Setting | Adds | Starts at zero |
 | --- | --- | --- |
-| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory) at [what a new brain's memory holds](memory.md#what-recalltrue-gives-a-new-brain) (`recall_founder=True` for its founders): its read ports, empty slots, and address and position maps at zero. The brain keeps its teaching point and its lesson settings, and the read's route comes only with the brain's own `carried_gain` | The ports' synapses into the association region (and a copy pathway's into the motor region) |
+| `recall=True`, with any `recall_*` setting `compose` takes but `recall_tokens` | The [recall memory](memory.md#recall-memory) at [what a new brain's memory holds](memory.md#what-recalltrue-gives-a-new-brain) (`recall_founder=True` for its founders): its read ports, empty slots, and address and position maps at zero. The brain keeps its teaching point and its lesson settings, and the read's route comes only with the brain's own `carried_gain` | The ports' synapses into the association region |
 | `recall_heads=k` | More read heads of the brain's recall memory, over its bank | The new ports' synapses |
 | `history_decays=(...)` | A heard history (with `history_amplitude`), or the brain's decays followed by new ones | The history's synapses into the association region |
 | `efference_amplitude=a` (above zero) | An efference copy (with `efference_decay`) | The copy's synapses into the association region |
@@ -277,8 +277,8 @@ What does not grow or graft:
   `lateral`, `apical`, other `inputs`); compose the larger layout and graft instead;
 - `arousal`, `maturity` or the episodic memory (`memory_choice`), choices of the brain's
   construction;
-- `recall_tokens`, which start the copy pathway as an identity onto the motor neurons: no recall
-  memory with them, and no heads or slots for a brain with them;
+- `recall_tokens`, laid out per motor neuron and per read port: no recall memory with them, and
+  no heads or slots for a brain with them;
 - new slots where a memory is laid out per action (`recall_action`, `memory_choice`), or where
   the motor region is a deep brain's [apical](tune.md#deep-brains) pool (observers above it): a
   new neuron would join the pool's normalization;

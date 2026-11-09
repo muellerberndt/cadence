@@ -58,7 +58,6 @@ what do the earlier cues keep?
 | `recipe64` | `recipe` with `recall_position=64`: the table exact to 64 ages |
 | `recipe_relative` | `recipe` with `recall_relative=True` |
 | `heads` | `table` with `recall_heads=2` |
-| `heads_copy` | `heads` with the copy pathway as the tokens' identity (`recall_copy=2.0, recall_tokens=range(16)`) |
 | `every_row` | `recall=True, recall_recency=0.0`: every row taught |
 | `when` | `every_row` with `recall_when=True` |
 | `when_anchor` | `when` with `recall_anchor=True` |
@@ -291,7 +290,8 @@ Copying repeated tokens (`repeat` with `unique` off) taught at 3 to 6 and read a
 | `recipe_relative` | 232100 to 232105 | 0.918 to 0.941 | 0.967 to 0.992 | 0.963 to 0.976 |
 
 Two hops asked in one moment (`twohop` without `think`; founders 0 to 2): `heads` 0.436 to
-0.469 after 1,500 lessons and, with the copy pathway, `heads_copy` 0.473 to 0.502 after 3,000.
+0.469 after 1,500 lessons and, with the copy pathway (`heads_copy`, which left with the pathway in
+0.96.0), 0.473 to 0.502 after 3,000.
 A chained second head (its address taking what the first head read), an option tried on the
 release branch and withdrawn before release, read 0.439 to 0.458 beside `heads` and 0.506 to
 0.533 beside `heads_copy` (0.03 higher on each founder). With a `THINK` moment the two heads

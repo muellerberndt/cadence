@@ -849,9 +849,9 @@ class Recall:
     read also delivers when its slots happened), ``action`` (each slot carries the command
     executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
     the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
-    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
-    ``copy`` (plastic synapses from the read ports into the motor region) and ``drive_gain``
-    (the read's drive is one more route of ``Hearing``: one learned gain on every port, at most 1).
+    actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens) and
+    ``drive_gain`` (the read's drive is one more route of ``Hearing``: one learned gain on every
+    port, at most 1).
 
     A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -880,7 +880,6 @@ class Recall:
     position: int = 32
     position_rate: float = 0.1
     boundary: bool = False
-    copy: float = 0.0
     tokens: tuple[int, ...] | None = None
     action: bool = False
     # several heads read in turn, each from the share of every slot the heads before it left
@@ -924,14 +923,14 @@ class Recall:
              "capacity", "next")
     # options beside the founder memory: a memory describes and saves an option only where it
     # differs from its founder, and a saved memory without one takes its founder; each is
-    # runtime except the window, the heads, the position term, the copy pathway and the
-    # executed command, which shape the memory or the anatomy
+    # runtime except the window, the heads, the position term, the tokens and the executed
+    # command, which shape the memory or the anatomy
     OPTIONS = (
         "address_reward", "position_reward", "window", "heads", "position",
-        "position_rate", "boundary", "copy", "tokens", "action", "anchor",
+        "position_rate", "boundary", "tokens", "action", "anchor",
         "relative", "slope", "when", "gain", "grid", "drive_gain",
     )
-    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens", "action", "anchor",
+    CONSTRUCTION_OPTIONS = ("window", "heads", "position", "tokens", "action", "anchor",
                             "relative", "slope", "when", "gain", "grid", "drive_gain")
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
@@ -981,6 +980,9 @@ class Recall:
                     "the share the heads before it left; cadence 0.94.0 takes it"),
         "null": ("0.95.0", None, "every moment's read takes its whole mass from the slots held; "
                  "cadence 0.94.0 takes it"),
+        "copy": ("0.96.0", 0.0, "the read reaches the motor region through the association, "
+                 "and recall_gain with recall_tokens is the learned path from a read to its "
+                 "token's action; cadence 0.95.2 takes it"),
     })
 
     @classmethod
@@ -1030,7 +1032,7 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope", "gain",
+            "position_rate", "slope", "gain",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -1144,43 +1146,13 @@ class Recall:
             )
         return np.concatenate([neurons, command])
 
-    def copy_synapses(self) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """The copy pathway's synapses: every synapse from a head's read port neuron into the
-        motor region, their indices, and for each the value coordinate it reads and the motor
-        neuron it drives (the motor population's order)."""
-        connectome = self.connectome
-        motor = np.asarray(connectome.populations.get("motor", ()), dtype=np.int64)
-        pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
-        value = -np.ones(connectome.n, dtype=np.int64)
-        for recall, following in self._heads:
-            value[recall] = np.arange(len(recall))
-            value[following] = np.arange(len(following))
-        local_motor = -np.ones(connectome.n, dtype=np.int64)
-        local_motor[motor] = np.arange(len(motor))
-        synapses = np.flatnonzero((value[pre] >= 0) & (local_motor[post] >= 0))
-        return synapses, value[pre[synapses]], local_motor[post[synapses]]
-
-    def _check_copy(self) -> None:
-        """With ``copy`` every read port reaches the motor region; ``tokens`` names one
-        coordinate per motor neuron within the event."""
+    def _check_tokens(self) -> None:
+        """``tokens`` names one coordinate per motor neuron."""
         motor = self.connectome.populations.get("motor", ())
         if self.tokens is not None and len(motor) and len(self.tokens) != len(motor):
             raise ValueError(
                 f"tokens name one observation coordinate per motor neuron ({len(motor)})"
             )
-        if not self.copy:
-            return
-        if not len(motor):
-            raise ValueError("a copy pathway needs a population named 'motor'")
-        synapses, _, _ = self.copy_synapses()
-        pre = np.asarray(self.connectome.pre)[synapses]
-        for recall, following in self._heads:
-            for region in (recall, following):
-                if len(region) and not np.isin(region[: self.key_width], pre).any():
-                    raise ValueError(
-                        "copy needs synapses from every read port into the motor region; "
-                        "Brain.compose adds them"
-                    )
 
     def _check_gain(self) -> None:
         """With ``gain`` every read port reaches the motor region through its gain on the declared
@@ -1320,7 +1292,7 @@ class Recall:
         # every head's grid maps ``(G_x, G_c, g)``, one column per residue of each modulus; none
         # without ``grid``
         self.grid_maps = self._zero_maps(self.heads if self.grid else 0, sum(self.grid))
-        self._check_copy()
+        self._check_tokens()
         # the motor region, which the gains drive (``gain``); empty where the anatomy has none
         self.motor: np.ndarray = np.asarray(populations.get("motor", ()), dtype=np.int64)
         self._motor_columns = columns(self.motor)

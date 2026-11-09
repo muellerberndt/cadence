@@ -7,19 +7,18 @@ ran, archived by content hash under `results/sources/`. A receipt states what wa
 code it binds, and a setting it names need not exist in this version. The scripts of a campaign
 (`admission.py`, `heads_admission.py`, the `*_campaign.py` files and their protocols, tests and
 `verify.py`) are in release 0.94.0, whose tree runs the commands below. Five instruments stay
-here, runnable and tested: `copy_tokens.py`, `own_action.py`, `look_back.py`, `held_heads.py` and
+here, runnable and tested: `own_action.py`, `look_back.py`, `held_heads.py` and
 `contextual_choice.py`.
 
-## Retrieved content becomes the answer: the copy pathway (`recall_copy`, `recall_tokens`)
+## Retrieved content becomes the answer: the copy pathway (retired)
 
-The [copy-tokens benchmark](copy_tokens.py) asks two things of eight tokens. A token is heard,
-two other tokens follow, and a cue asks for the heard token back: the cue's key names the heard
-slot, so the read is right before any lesson, and tokens 5 to 7 are never taught as answers.
-And a cue names a token of a sequence of five heard once and asks for the token that followed
-it, which the read holds on its next port while its recall port holds the cue's own token.
-Lessons at the cue only, 300 and 600 per founder, `teaching="normalized"` with
-`learning_surprise=True`, `episodic=False`. Its [receipt](results/copy-tokens.json), six founders
-of one module of 24 neurons:
+The copy pathway (`recall_copy`) left the library in 0.96.0, and its instrument,
+`copy_tokens.py`, with it; [the learned value path](../../docs/memory.md#the-learned-value-path-opt-in)
+(`recall_gain`) is the library's path from a read to its token's action. Its
+[receipt](results/copy-tokens.json) stays, six founders of one module of 24 neurons, and verifies
+on archived bytes with its archived checker:
+`python benchmarks/provenance.py --historical benchmarks/attention/results/copy-tokens.json`.
+Release 0.95.2 runs the instrument.
 
 | Arm | Untaught produced | Taught | Succession | Untaught successor |
 | --- | --- | --- | --- | --- |
@@ -28,40 +27,6 @@ of one module of 24 neurons:
 | `recall_copy=1.0` with tokens | 0.17 to 1.00 (mean 0.78) | 0.86 to 1.00 | 0.95 to 1.00 | 0.00 |
 | `recall_copy=0.5`, no tokens | 0.00 | 0.57 to 0.99 | 0.93 to 1.00 | 0.00 |
 | `recall_copy=1.2`, no tokens | 0.00 | 0.22 to 0.87 | 0.86 to 0.97 | 0.00 |
-
-Uniform random answers 0.125. The founder's read names the untaught token at 0.32 to 1.00 (the
-founder of seed 2 moved its own read with its lessons) and never produces it. Two founders of a
-deep apical brain read the same: untaught 1.00, succession 0.94 and 0.98 against 0.97 and 0.99.
-Every declared gate passes; the result is recomputed by `test_copy_tokens.py`.
-
-The design was chosen on these tasks, and the alternatives read as follows (development
-readings, outside the receipt unless stated):
-
-- An identity on both ports at once (founder 0, identity 1.0 to 4.0): the next port of the heard
-  token's slot holds the distractor that followed it, and the newborn produced the heard token on
-  0.53 to 0.67 of untaught questions; 300 lessons took it to 0.00 to 0.13. The identity starts on
-  the recall port only.
-- No echo suppression (the echo synapses zeroed at birth, six founders): untaught 1.00, but
-  succession 0.79 to 0.95, mean 0.87, against 0.94 to 0.99 with it: the recall port answers a cue
-  with its own token.
-- Each port's identity tied into one learned gain (`Learner(tie_groups=...)`): on the receipt's
-  six founders it produced the untaught tokens at 1.00 as the untied pathway does, with succession
-  0.91 to 0.98 against 0.94 to 0.99, so the ties were left out.
-- The apical compartment as a bound was not needed: on the deep apical brain the pathway, which
-  lands basally, keeps succession, and a bound relative to the motor region's bottom-up drive would
-  cap the copy of a token whose action that drive never raised. It was not measured.
-
-The first run of this receipt declared a gate that the founder's read of the untaught tokens is
-0.80 or better on every founder; founder 2 read them at 0.32, and the gate was replaced by its
-production alone (0.00 on every founder), with the reads reported beside it.
-
-The receipt was recorded on the NumPy solver (`CADENCE_FUSED=0`); the compiled dense kernel gave
-the same answers, with the reported gains differing in their last digits.
-
-```sh
-CADENCE_FUSED=0 PYTHONPATH=src python benchmarks/attention/copy_tokens.py --workers 4 \
-  --out /tmp/copy-tokens.json
-```
 
 ## Its own actions in the slots (`recall_action`)
 

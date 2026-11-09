@@ -15,6 +15,16 @@
   other value of such a learner, and every learner whose rates are all above zero or absent, is
   as on 0.95.2 to the bit. No test, benchmark or composed brain sets a rate of zero, so no
   recorded bytes change.
+- **Removed: the copy pathway, `recall_copy`.** `recall_gain` (0.95.0, #262) is the learned
+  path from a read to its token's action, and the pathway needed the tokens' label, which cost
+  the reads only position finds (look back 0.25 to 0.33 against 0.99 to 1.00) and the grammar
+  chamber's paths (#259). Write `recall_gain=1.0, recall_tokens=...` in its place, or nothing
+  where the task needs no token no lesson used. `recall_copy` is refused at `compose` and
+  `retune` with that sentence, and a saved memory with the pathway is refused by name: cadence
+  0.95.2 runs it. A saved memory without it loads as before. `recall_tokens` stays, a declaration
+  of which answers are tokens that adds no synapse. `Recall.copy_synapses` and the sequence
+  battery's `heads_copy` arm left with it, and the copy-tokens instrument retired to its receipt,
+  which verifies with its archived checker. `recall_copy_next` left before any release (#273).
 
 ## 0.95.2 — 2026-11-09
 

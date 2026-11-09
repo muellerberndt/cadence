@@ -48,7 +48,6 @@ TABLE = {"recall": True, "recall_founder": True, "recall_recency": 0.0, "learnin
 BOUNDARY = {**TABLE, "recall_boundary": True}
 RECIPE = {**BOUNDARY, "recall_anchor": True, "recall_slope": 0.1, "recall_position_rate": 0.01}
 HEADS = {**TABLE, "recall_heads": 2}
-COPY = {"recall_copy": 2.0, "recall_tokens": list(range(16))}  # two hops' 16 tokens
 WHEN = {"recall": True, "recall_founder": True, "recall_recency": 0.0}  # every-row lessons
 ARMS: dict[str, dict[str, Any]] = {
     "table": TABLE,
@@ -62,7 +61,6 @@ ARMS: dict[str, dict[str, Any]] = {
     "recipe64": {**RECIPE, "recall_position": 64},
     "recipe_relative": {**RECIPE, "recall_relative": True},
     "heads": HEADS,
-    "heads_copy": {**HEADS, **COPY},
     "every_row": WHEN,
     "when": {**WHEN, "recall_when": True},
     "when_anchor": {**WHEN, "recall_when": True, "recall_anchor": True},

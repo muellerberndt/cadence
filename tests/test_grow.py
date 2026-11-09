@@ -78,7 +78,7 @@ def check_identical(trained, grown, inputs=6, moments=8, atol=1e-12):
 LAYOUTS = {
     "founder": dict(),
     "recall heads": dict(recall=True, recall_founder=True, recall_heads=2, recall_temperature=0.4),
-    "recall action": dict(recall=True, recall_founder=True, recall_action=True, recall_copy=0.5, recall_capacity=16),
+    "recall action": dict(recall=True, recall_founder=True, recall_action=True, recall_capacity=16),
     "episodic": dict(memory_choice=True),
     "history": dict(history_decays=(0.5, 0.9), history_amplitude=2.0),
     "efference": dict(efference_amplitude=1.0, efference_decay=0.3),
@@ -519,14 +519,14 @@ def test_sampled_choices_follow_the_trained_brain_without_new_slots():
     [
         ({}, dict(efference_amplitude=0.0), "above zero"),
         ({}, dict(recall_temperature=0.3), "grow it with recall=True"),
-        ({}, dict(recall=True, recall_founder=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]), "tokens"),
+        ({}, dict(recall=True, recall_founder=True, recall_tokens=[0, 1, 2, 3]), "tokens"),
         (
-            dict(recall=True, recall_founder=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
+            dict(recall=True, recall_founder=True, recall_tokens=[0, 1, 2, 3]),
             dict(recall_heads=2),
             "tokens",
         ),
         (
-            dict(recall=True, recall_founder=True, recall_copy=1.0, recall_tokens=[0, 1, 2, 3]),
+            dict(recall=True, recall_founder=True, recall_tokens=[0, 1, 2, 3]),
             dict(slots=(4, 2)),
             "per action",
         ),

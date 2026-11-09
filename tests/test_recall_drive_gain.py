@@ -396,9 +396,9 @@ def test_the_value_path_reads_the_port_as_it_is_held():
 
 @pytest.mark.parametrize(
     "options",
-    [{"learned_code": 32}, {"recall_copy": 0.5, "recall_tokens": (0, 1, 2, 3)},
+    [{"learned_code": 32}, {"recall_gain": 1.0, "recall_tokens": (0, 1, 2, 3)},
      {"recall_window": 3}, {"recall_next": False}],
-    ids=["learned_code", "copy", "window", "no_next"],
+    ids=["learned_code", "gain", "window", "no_next"],
 )
 def test_it_composes_with_the_memorys_other_forms(tmp_path, options):
     brain = routed(**options)

@@ -87,7 +87,7 @@ The composed graph, in the order its regions are developed:
 | `observer_0` ... | `observers` | Reciprocal with every module, `motor` and earlier observers | below |
 | `efference` | `actions` | With `efference_amplitude` above 0 | [memory](memory.md#efference-copy) |
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
-| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False`; with `recall_copy` also into `motor` | [recall memory](memory.md#the-recall-memory-in-full) |
+| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
 | `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#when-a-read-item-happened-opt-in) |
 
@@ -398,7 +398,7 @@ full = Brain.compose(
     recall_heads=2,                                      # two facts in one settle
     recall_boundary=True,                                # the start of an episode has a slot
     recall_action=True,                                  # the slots keep what it did
-    recall_copy=2.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
+    recall_gain=1.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
     observers=(16,),                                     # optional System 2
 )
 assert full.live(np.eye(16)[[3]]).shape == (1,)
@@ -412,10 +412,10 @@ assert full.live(np.eye(16)[[3]]).shape == (1,)
   ([the episode's boundary](memory.md#episodes-keys-and-windows)).
 - `recall_action=True`: every slot keeps the command executed at its moment
   ([its own actions](memory.md#its-own-actions-in-the-slots-opt-in)).
-- `recall_copy=2.0, recall_tokens=range(4)`: a token the read delivers drives the action of the
-  same token, including tokens never taught as answers
-  ([the copy pathway](memory.md#the-copy-pathway-opt-in)). Declare only identities the task
-  has; without shared tokens leave it out.
+- `recall_gain=1.0, recall_tokens=range(4)`: a learned gain per read port carries a token the read
+  delivers to the action of the same token, including tokens never taught as answers
+  ([the learned value path](memory.md#the-learned-value-path-opt-in)). Declare only identities the
+  task has; without shared tokens leave it out.
 - `observers=(16,)`: a System 2 region inside the same settle, bounded by the compartment.
 
 The recall memory reads into the top region;
