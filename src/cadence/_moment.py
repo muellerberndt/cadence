@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from .fused import _compiled, compiled, njit
+from .fused import _compiled, _inlined, _vectorized, compiled, njit
 
 __all__ = ["available", "recall_read", "address_lesson"]
 
@@ -31,12 +31,9 @@ def available() -> bool:
     return compiled()
 
 
-_numeric: Any = None
 if njit is not None:
-    # NumPy's error model: a division by zero gives what NumPy's form gives, and loops vectorize
-    _numeric = njit(cache=True, error_model="numpy")
 
-    @njit(inline="always")
+    @_inlined
     def _term(
         z: np.ndarray, b: int, age: int, columns: np.ndarray, numbers: np.ndarray,
         slope_unit: float, told: int, focus: int, table: np.ndarray, grid: np.ndarray,
@@ -68,20 +65,20 @@ if njit is not None:
                 total += z[b, columns[5] + start + age % grid[i]]
                 start += grid[i]
             term += total
-        return term
+        return float(term)
 
-    @_numeric
+    @_vectorized
     def _products(
         x: np.ndarray, c: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray
     ) -> np.ndarray:
         """``x w_x + c w_c + w``: every row's inputs through every packed column."""
-        z = np.dot(x, w_x) + np.dot(c, w_c)
+        z: np.ndarray = np.dot(x, w_x) + np.dot(c, w_c)
         for b in range(z.shape[0]):
             for j in range(z.shape[1]):
                 z[b, j] += w[j]
         return z
 
-    @_numeric
+    @_vectorized
     def _packed_read(
         x: np.ndarray, c: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
         columns: np.ndarray, numbers: np.ndarray, scalars: np.ndarray, keys: np.ndarray,
@@ -143,7 +140,7 @@ if njit is not None:
                             following[b, j] += p * nexts[b, m, j]
         return key, q, attention, read, following
 
-    @_numeric
+    @_vectorized
     def _readback(
         movement: np.ndarray, weights: np.ndarray, synapses: np.ndarray, sources: np.ndarray,
         targets: np.ndarray, width: int,
@@ -157,14 +154,14 @@ if njit is not None:
                 out[b, sources[e]] += weights[synapses[e]] * movement[b, targets[e]]
         return out
 
-    @_numeric
+    @_vectorized
     def _finite(a: np.ndarray) -> bool:
         for v in a.ravel():
             if not (v - v == 0.0):
                 return False
         return True
 
-    @_numeric
+    @_vectorized
     def _lesson_kernel(
         rows: np.ndarray, movement: np.ndarray, weights: np.ndarray,
         value_synapses: np.ndarray, value_sources: np.ndarray, value_targets: np.ndarray,
@@ -406,7 +403,7 @@ def recall_read(
         w_x, w_c, w = recall.__dict__["_packed"][3]
         numbers = numbers.copy()
         numbers[4] = 0
-    return _packed_read(  # type: ignore[no-any-return]
+    return _packed_read(
         np.ascontiguousarray(x), np.ascontiguousarray(c), w_x, w_c, w, columns, numbers,
         scalars, recall.keys, recall.values, recall.nexts if recall.next else recall.values,
         bool(recall.next), recall.held, recall.told, recall.focus, table, grid,
@@ -471,7 +468,7 @@ def address_lesson(
     held = recall.held
     w_x, w_c, w, columns = packed_maps(recall)
     numbers, scalars, table, grid = _settings(recall)
-    return _lesson_kernel(  # type: ignore[no-any-return]
+    return _lesson_kernel(
         np.asarray(rows, dtype=np.int64), np.ascontiguousarray(movement, dtype=float),
         np.ascontiguousarray(graph._weights, dtype=float), v_syn, v_src, v_dst, n_syn, n_src,
         n_dst, bool(recall.next), recall.values,
@@ -486,7 +483,7 @@ def address_lesson(
 
 if njit is not None:
 
-    @_numeric
+    @_vectorized
     def _store_kernel(
         cue: np.ndarray, strength: np.ndarray, mass: np.ndarray, shared: bool, normalize: bool,
         amplitude: float,
@@ -529,7 +526,7 @@ def store_read(store: Any, cue: np.ndarray) -> np.ndarray:
     streams' strengths, at another the baseline every new stream reads (``_baseline``)."""
     shared = len(store.strength) != len(cue)
     strength = store._baseline()[None, :, :] if shared else store.strength
-    return _store_kernel(  # type: ignore[no-any-return]
+    return _store_kernel(
         cue, np.ascontiguousarray(strength, dtype=float), store.mass, shared,
         bool(store.normalize), float(store.amplitude),
     )
@@ -539,7 +536,7 @@ def store_read(store: Any, cue: np.ndarray) -> np.ndarray:
 
 if njit is not None:
 
-    @_numeric
+    @_vectorized
     def _route_kernel(
         movement: np.ndarray, weights: np.ndarray, synapses: np.ndarray, sources: np.ndarray,
         targets: np.ndarray, held: np.ndarray, scale: float, amplitude: float, slope: float,
@@ -572,7 +569,7 @@ def route_contrast(
     amplitude: float, model: Any,
 ) -> np.ndarray:
     """``_route_kernel`` for one route of ``Hearing`` through the synapses of ``graph``."""
-    return _route_kernel(  # type: ignore[no-any-return]
+    return _route_kernel(
         np.ascontiguousarray(movement, dtype=float),
         np.ascontiguousarray(graph._weights, dtype=float), route["synapses"], route["rows"],
         route["cols"], np.ascontiguousarray(held, dtype=float), float(scale), float(amplitude),
@@ -647,15 +644,15 @@ def recall_write(recall: Any, key: np.ndarray, value: np.ndarray) -> bool:
         return False
     kept = recall.keys.shape[1]
     drop = max(kept + 1 - recall.capacity, 0)
-    first, stop = held_rooms[0][2], held_rooms[0][3]  # type: ignore[index]
+    first, stop = held_rooms[0][2], held_rooms[0][3]
     attended = recall._attended
     has_attended = (
         attended is not None and attended.shape == (len(key), kept) and kept > 0
     )
     focus = _write_kernel(
         key, value, recall.held, recall.ended, attended if has_attended else _NONE2,
-        has_attended, recall.focus, held_rooms[0][0], held_rooms[1][0],  # type: ignore[index]
-        held_rooms[2][0], held_rooms[3][0], first, drop, stop,  # type: ignore[index]
+        has_attended, recall.focus, held_rooms[0][0], held_rooms[1][0],
+        held_rooms[2][0], held_rooms[3][0], first, drop, stop,
     )
     if recall.ended.any():
         recall.ended = np.zeros(len(key), dtype=bool)

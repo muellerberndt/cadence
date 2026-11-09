@@ -668,6 +668,7 @@ class Hearing:
         self.routes: list[dict[str, Any]] = []
         self.second = np.zeros(0)
         self.count = 0
+        self.compiled_moment = False  # the brain's ``learning_compiled_moment`` (``_contrast``)
 
     def add(self, name: str, memory: Any, slot: int | None, start: int, stop: int,
             neurons: np.ndarray, bound: float = BOUND) -> None:
@@ -1223,6 +1224,8 @@ class Recall:
 
     def __post_init__(self) -> None:
         self._device: _RecallOnDevice | None = None  # what rests on a device (``reside``)
+        # the brain's ``learning_compiled_moment``, set by the brain at each read (``_compiles``)
+        self.compiled_moment = False
         self._actor: Any = None  # the actor that keeps the read's eligibility
         for name in (*self.RUNTIME, *self.CONSTRUCTION, *self.OPTIONS):
             setattr(self, name, self.setting(name, getattr(self, name)))
@@ -3393,6 +3396,7 @@ class FastSynapses:
 
     def __post_init__(self) -> None:
         self._device: _StoreOnDevice | None = None  # what rests on a device (``reside``)
+        self.compiled_moment = False  # the brain's ``learning_compiled_moment`` (``recall``)
         for name in ("pre", "post"):
             raw = np.asarray(getattr(self, name))
             if (
