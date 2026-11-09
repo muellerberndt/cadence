@@ -258,7 +258,7 @@ machine: a greedy `act`, a `lesson` and a `step` at 16, 64 and 256 rows, two of 
 Where the two cross, in `rows * synapses`, sets the card's crossings: the table's, scaled by that crossing over
 the A10G's, which the same reading of the A10G table puts at 573,568 (43.7 rows of the chamber's brain). A card
 half as fast as the A10G on that brain takes the device from twice the table's work, and a card twice as fast from
-half of it. The calibration composes six brains and times 54 moments: by the A10G table's timings about one
+half of it. The calibration composes six brains and runs 72 moments, 54 of them timed: by the A10G table's timings about one
 second of moments, beside composing the brains and starting the device. Its result is kept beside the [stored transport plans](#choosing-kernels-by-measurement), in
 `CADENCE_PLAN_CACHE` or `~/.cache/cadence/transport_plans.json` under `card <name>`, so each card is calibrated
 once per machine. `cadence.resident.calibrate_card()` runs it by hand and returns the readings, the crossing

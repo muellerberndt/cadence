@@ -176,7 +176,7 @@ def _crossing(rows: Sequence[int], ratios: Sequence[float]) -> float:
 def calibrate_card(rows: Sequence[int] = _CALIBRATION_ROWS) -> dict[str, Any]:
     """Time the chamber's default brain, ``Brain.compose(35, 18)``, on this machine's CUDA card in
     float32 and on one CPU core, at each of ``rows``: a greedy ``act``, a ``lesson`` and a
-    ``step``, two of each after one to warm. Returns the card, the device's time over the core's
+    ``step`` that learns from the outcome of the step before it, two of each after one to warm. Returns the card, the device's time over the core's
     by rows (the geometric mean of the three), the rows where they cross, that crossing in
     ``rows * synapses`` (``work``) and the seconds the calibration took."""
     import time
@@ -203,15 +203,15 @@ def calibrate_card(rows: Sequence[int] = _CALIBRATION_ROWS) -> dict[str, Any]:
                 times: list[list[float]] = [[], [], []]
                 for t in range(3):
                     for k in range(3):
+                        if k == 2:  # a step that learns: the outcome of a sampled action
+                            brain.step(x)
                         start = time.perf_counter()
                         if k == 0:
                             brain.act(x, greedy=True)
                         elif k == 1:
                             brain.lesson(x, y)
-                        elif t:
-                            brain.step(x, reward=np.ones(count))
                         else:
-                            brain.step(x)
+                            brain.step(x, reward=np.ones(count))
                         if t:
                             times[k].append(time.perf_counter() - start)
             seconds.append(np.exp(np.mean([np.log(min(kind)) for kind in times])))
