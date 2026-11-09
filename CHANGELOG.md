@@ -53,6 +53,35 @@ founders.
 - The grammar chamber and the sequence battery take a `default` arm: `Brain.compose` with nothing
   named but the backend. A chamber life's work counts the rehearsal's replayed moments and rows.
 
+### Records that fade with disuse (opt-in, #253)
+
+`Brain.compose(..., memory_fade=1.2e-4)` gives the store's place records the dynamics of a habit:
+a record nobody uses fades, and a deeply used one fades far more slowly. Each key coordinate keeps
+its depth (the unit cue's magnitude summed over the moments that cue it and the writes that use
+it) and its recent use (the moments' sum at `1 - 1/2,000` a moment); every moment of life an idle
+record loses `memory_fade / (1 + (depth / 2000) ** 4)` of itself. No count is kept. The default is
+0.0, and a brain without the setting is the founder's to the bit on `backend="cpu"`: its arrays,
+checkpoints, descriptions and parameter counts are unchanged. A fading store rests on the host.
+
+On 24 fresh founders of the competing-skills chamber, with `maturity=True`, a skill practised
+for 2,000 moments keeps .36 of itself over 40,000 blank moments and one practised for 40,000
+keeps 1.00, and relearning after disuse beats first learning by +4.3 and +4.9 points (s.e. 1.1).
+Without the setting both keep 1.00. The chambers from birth, P4 with a mature skill and the short
+ring read as without it. See [records that fade with disuse](docs/memory.md#records-that-fade-with-disuse-opt-in).
+
+### Documentation
+
+- **Where the composition's falls come from** (#280). The memory guide lists each fall of the
+  default composition with the part that causes it, read on fresh founders by silencing one part
+  at a time:
+  - the key-door: the read's drive;
+  - binding: lessons teaching only the rows that surprise;
+  - "how long ago?": the read's recency of 0;
+  - the competing ring: the read's drive and the working trace, in part;
+  - the hidden route: no single part.
+
+  It also lists what removing each cause costs. No setting or default changes.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

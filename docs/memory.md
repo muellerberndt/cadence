@@ -780,6 +780,37 @@ development founders and 9 to 10 of 24 on fresh ones, at delay 5 reads 3 to 3 of
 wins 27 to 26 blocks of 30. Pass `recall=False` for a world paid by reward alone that gives the brain nothing to look up,
 and `recall_founder=True` for the founder memory.
 
+#### Where each fall comes from
+
+A declared run on fresh founders (#280; one machine, 0.95.2) silenced one part of the
+composition at a time and read the falls again. A part is a fall's cause when silencing it
+brings the composition back to its control:
+
+| Fall | Control | Composition | Cause | Composition with the cause silenced |
+| --- | --- | --- | --- | --- |
+| Key-door, delay 2, rule A acquired | 14 of 24 | 7 of 24 | the read's drive | 12 of 24; with the working trace silenced too, 14 |
+| Competing ring, hard nursery, skill A | .79 | .50 | the read's drive and the working trace, in part | .67 with both silenced |
+| Binding continuing, held-out | .98 | .78 | lessons teaching only the rows that surprise | .98 with every row taught |
+| Binding token, a name restated | .69 | .49 | the same | .83 |
+| "How long ago?" | .69 | .54 | the read's recency of 0 | .70 at the founder's .25 |
+| Hidden route, guided, sampled and greedy | .64, .58 | .19, .05 | none of the four parts alone or the two lesson parts together | at most .23, .15 |
+
+The control is `recall=False` on the first two rows and `recall_founder=True` on the rest. On
+these founders the observed chain (34 and 38 of 48), the odour nursery `step` at 1,000 (16 and
+18 of 30), the chain whose stages look alike (5 and 9 of 48) and binding token's held-out answers
+(.96 and .92) do not fall.
+
+No cause can be removed without a larger cost. Each of the three removals was read against the
+gates the composition holds:
+
+- **Every row taught** (`learning_surprise=False`) gives binding back and fails the grammar
+  chamber: paths .29 and two hops .05 against bars of .90 and .85.
+- **The founder's recency** (`recall_recency=0.25`) gives "how long ago?" back and fails induction
+  at unseen lengths (.66 to .73 against .90), "was A told before B?" and copying.
+- **The read starting closed**, its learned gain at 0 in place of 1, does not give the key-door
+  back (7 of 24). It costs the bandit (5 to 2 lives passing of 6) and the odour nursery `step`
+  at 300 (3 to 0).
+
 ### Two heads on this composition (opt-in)
 
 Two heads at about one head's parameters: width 33, the read's temperature at .15. The first block read this
@@ -1574,6 +1605,61 @@ Every write into the place records is gated: outcomes and, with `memory_choice`,
 credit and demonstrations. The context records (`brain.context_memory`) and the direct
 payments of `memory_extinction` write as without maturity. The noise scales are saved and
 loaded with the store and counted by `parameters()`; `clear()` erases them with the records.
+
+### Records that fade with disuse (opt-in)
+
+A memory nobody uses should fade, and a skill practised for a long time should fade far more
+slowly. `memory_fade` gives the store's place records that dynamic. It is off at the founder
+(0.0), and a brain without it is the founder's to the bit.
+
+```python
+brain = Brain.compose(inputs=6, actions=3, seed=0, recall=False, maturity=True, memory_fade=1.2e-4)
+assert brain.hippocampus.fade == 1.2e-4
+```
+
+Each key coordinate `k` of the consolidated records keeps two sums of activity, saved with the
+store (`brain.hippocampus.fade_depth`, `fade_recent`):
+
+- **its depth**, the magnitude of the unit cue on `k` summed over every moment that cues it and
+  every write that uses it;
+- **its recent use**, the same sum over the moments, kept at `1 - 1/2,000` each moment.
+
+Every moment of life (`live`, `step`) the records along `k` lose a share of themselves:
+
+```text
+idle_k = 1 / (1 + (recent_k / 0.01) ** 2)
+lost_k = memory_fade * idle_k / (1 + (depth_k / 2000) ** 4)
+```
+
+A record cued every few hundred moments has a recent use far above 0.01 and loses nothing. One
+left alone for about fifteen thousand moments starts to fade, at `memory_fade` a moment while it
+is shallow and far more slowly once its depth passes 2,000. Each stream keeps its residual
+around the shared records. No count is kept anywhere: both sums are leaky integrals of
+activity, as [maturity](reward.md#maturity-opt-in)'s use is. The constants are
+`SynapticMemory.FADE_SCALE`, `FADE_ORDER`, `FADE_IDLE` and `FADE_FLOOR`. `memory_fade` is a
+construction setting: `retune` refuses it, and `grow`, `graft`, `save` and `load` keep it with
+its sums.
+
+**What it does** (#253's declared run, 24 fresh founders of the competing-skills chamber, with
+`maturity=True` on every arm). A brain practises skill A under the certain pay, lives 40,000
+blank moments with nothing paid, then returns to A. Retention is the right action's probability
+at the window's end, `(p - .25) / (p_end - .25)`; relearning is the return's first 500 moments
+less the first practice's:
+
+| Practice | Retention with `memory_fade=1.2e-4` | Without | Relearning with it, points (s.e.) |
+| --- | --- | --- | --- |
+| 2,000 moments (shallow) | .36 | 1.00 | +4.3 (1.1) |
+| 40,000 moments (deep) | 1.00 | 1.00 | +4.9 (1.1) |
+
+The shallow skill fades within the window and the deep one keeps it, and relearning after
+disuse is faster than first learning at both depths. On the same founders every chamber from
+birth reads as the brain without the fade (the key-door at delays 2 and 5, the odour nursery
+`live` and `step` at 300 and 1,000, the bandit, the contextual bandit and delayed response), and
+so do P4 with a mature skill A (A gains 2.4 points over the ring, B .24) and the short ring
+(A loses 28.8 points, B .35), each to the same counts and means as without it.
+
+Use it for a continuing brain whose skills come and go over long lives. In lives shorter than
+about fifteen thousand moments it changes nothing.
 
 ## Learned weights and eligibility
 
