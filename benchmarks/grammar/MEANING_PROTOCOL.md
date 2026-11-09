@@ -164,3 +164,20 @@ lesson showed (`clause_held` 2 of 6, `roles` 0 of 6).
 and the two orders of a meaning. **Controls:** the chamber's LSTM and transformer online at its
 parameter count. **Gates:** H1's three panels at .90 and H2u at .95, on 5 of 6 founders.
 **Expectation:** `clause_held` and `roles` rise over `state`; whether they reach the bar is open.
+
+## Amendment 3: the wide message on other readings
+
+Written after `state_256` was read and before any life of these arms.
+
+`state_256` read H1's three panels at the bar. Its parts beside the default composition are the
+message at 280 units a block, 256 association neurons, every row taught and the barred read. This
+block reads the message at that width where nothing is barred.
+
+**Arms,** founders 9628600 to 9628605: `wide_256`, the default composition at 256 association
+neurons with the message at 280 units a block (`scale` .5), the read free; `plain_256`, the same
+without the message. **Other chambers:** the sequence battery's seven tasks and the goal route, the
+default composition at 256 association neurons with that message and without it. **Readings:**
+every panel of the chamber, three hops and the held-out lengths among them, and each task's
+accuracy, `wide_256` less `plain_256` paired by founder. A difference of .05 on the chamber or .03
+on a task, beyond two standard errors, is named. **Expectation:** three hops fall with the message,
+as at 70 units; nothing else is expected to move.
