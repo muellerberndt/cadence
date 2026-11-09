@@ -296,3 +296,75 @@ def test_short_lives_of_every_kind():
     lines = mn.read_lives([row, barred, notes])
     assert any(line.startswith("capacity") for line in lines)
     assert mn.passes([0.95, 0.91, 0.5, 0.9, 0.92, 0.99], 0.90) == (5, True)
+
+
+# ----------------------------------------------------------------------- the declared run
+
+
+def test_a_paraphrase_hears_the_first_grammar_and_says_the_second():
+    rng = np.random.default_rng(0)
+    base = gr.clause(rng, 1, agent=(0, 1), patient=(2, 0), v=0, mods=[(3, 0)])
+    row = mn.paraphrase(base)
+    heard = [int(np.argmax(x[:gr.ACTIONS])) for x in row.pre[:-1]]
+    assert gr.say(heard) == "dogs near owl see fox end"
+    assert row.pre[-1][gr.C["DIALECT"]] == 1.0 and not row.pre[0][gr.C["SPEAK"]]
+    assert gr.say(row.target) == "dogs near owl fox see end"
+    assert gr.score(row, row.target)["roles"] and row.meta["paraphrase"]
+    panels = mn.paraphrase_panels(0, 1)
+    split = gr.Split.of(0)
+    held = [split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+            for r in panels["para_held"][0]]
+    assert all(held) and set(panels) == {"para", "para_held", "g2"}
+
+
+def test_the_declared_plan_names_every_arm_and_matches_its_controls():
+    warnings.simplefilter("ignore")
+    plan = mn.declared_plan((9628600,))
+    tags = {spec["tag"] for spec in plan["brains"]}
+    assert {"default", "barred", "message", "message_wide", "sham", "state", "state_default",
+            "restated", "paraphrase", "paraphrase_read"} <= tags
+    assert {t for t in tags if t.startswith("capacity")} == {
+        "capacity_u70", "capacity_u140", "capacity_u280", "capacity_m64", "capacity_m256"}
+    state = next(s for s in plan["brains"] if s["tag"] == "state")
+    assert state["message"]["units"] == 280 and state["module"] == 128
+    assert state["settings"] == {"learning_surprise": False} and state["after"] == mn.LATER
+    sizes = sorted({c["parameters"] for c in plan["controls"]})
+    assert sizes[0] == mn.make_brain(9628600).parameters() and len(sizes) == 3
+    assert len(plan["controls"]) == 12 and {k["chamber"] for k in plan["knock"]} >= {"battery"}
+
+
+def test_a_message_brain_on_a_chambers_own_loop_is_the_instruments_speak():
+    warnings.simplefilter("ignore")
+    design = {"code": "separator", "blocks": ["phase:4"], "scales": [0.15]}
+    a, message = mn.message_brain(1, design), mn.Message(design, 1)
+    b = mn.message_class({"units": 70, "scale": 0.15}).compose(
+        gr.INPUTS, gr.ACTIONS, modules=(64,), seed=1, backend="cpu", recall=True)
+    rng, split = np.random.default_rng(0), gr.Split.of(1)
+    for _ in range(3):
+        rows = gr.train_batch(rng, split, "g1")
+        assert mn.speak(a, rows, teach=True, message=message) == gr.speak(b, rows, teach=True)
+    assert np.array_equal(a.brain.efficacy, b.brain.efficacy)
+    assert copy.deepcopy(b).held.told.tolist() == b.held.told.tolist()
+
+
+def test_the_gates_read_a_small_run():
+    warnings.simplefilter("ignore")
+    plan = mn.declared_plan((0,))
+    rows = []
+    for spec in plan["brains"]:
+        if spec["tag"] not in ("default", "message", "state", "paraphrase", "capacity_u70"):
+            continue
+        small = {**spec, "batches": 2, "panel_batches": 1}
+        if "after" in small:
+            small["after"] = [["g2", 1], ["g1", 1]]
+        if small.get("probe_scale", 0) > 0:
+            small["probe_scale"] = 0.05
+        rows.append(mn.run_life(small))
+    knock = [mn.run_life({**k, "lessons": 2, "tests": 1}) for k in plan["knock"][:2]]
+    lines = mn.verdict(rows, [], knock)
+    assert lines[0].startswith("H1") and any(line.startswith("K, other") for line in lines)
+    assert any("state clause_held" in line for line in lines)
+    assert mn.paired([0.9, 0.8, 1.0], [0.8, 0.8, 0.8])[0] == pytest.approx(0.1)
+    found = mn.read_retrieval([{"kind": "retrieval", "founder": 0, "units": 70,
+                                "found": mn.retrieval(0, stored=(16,), cues=4)}])
+    assert found[0].startswith("retrieval") and "reordered" in found[1]
