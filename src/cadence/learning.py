@@ -481,9 +481,10 @@ class Learner:
     tie_groups: np.ndarray | None = None  # int per synapse (-1: none); a group shares one scale
     # float per synapse multiplying its step (default one): a fan-in scale, a per-projection
     # rate; a wide population's inbound synapses need a smaller step than a narrow one's. A rate
-    # of zero holds the synapse: it takes no step and the optimizer keeps its running moments as
-    # they are, and a neuron whose every inbound synapse steps at zero holds its bias the same way
-    # (``held``)
+    # of zero holds the synapse: it takes no step of its own and the optimizer keeps its running
+    # moments as they are, and a neuron whose every inbound synapse steps at zero holds its bias
+    # the same way (``held``). A reciprocal pair steps by the mean of its two directions' steps,
+    # so the pair holds where both are at zero; one alone takes half its partner's step
     synapse_rate: np.ndarray | None = None
     # the outputs as groups, each its own softmax choice, all nudged together: a count of
     # equal groups, or one size per group (a body's controller: a move of nine, a grip of two)
@@ -880,7 +881,9 @@ class Learner:
         """What a rate of zero holds (``synapse_rate``): the synapses at rate zero, and the neurons
         whose every inbound synapse steps at zero, whose biases take no step either. A neuron no
         synapse reaches is held by none. A held synapse or bias keeps its optimizer moments as they
-        are. ``(None, None)`` where no rate is zero."""
+        are. A synapse is named by its rate alone: one direction of a reciprocal pair at zero is
+        named and keeps its moments, and takes half its partner's step through the pair's mean.
+        ``(None, None)`` where no rate is zero."""
         rate = self.synapse_rate
         if rate is None or not len(rate) or float(np.min(rate)) > 0:
             return None, None

@@ -493,7 +493,8 @@ For modules of several hundred neurons and more
   Every other projection keeps its step: the sensory one, a chain between modules, an observer's and the memory's reads.
   The rate multiplies every step on those synapses, a lesson's and a reward's. A rate of zero holds a synapse and its
   optimizer history, and a neuron whose every inbound synapse steps at zero holds its bias too: zero on every synapse
-  into a region, both directions of each pair, freezes the region.
+  into a region, both directions of each pair, freezes the region. A reciprocal pair shares one efficacy and steps by
+  the mean of its two directions' steps, so one direction alone at zero takes half its partner's step.
 
 A rate you name wins over its part:
 

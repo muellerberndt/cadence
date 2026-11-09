@@ -17,7 +17,7 @@ action is read from that equilibrium, and every synapse learns from the differen
 settles, with no backward pass and no training/inference switch.
 
 ```sh
-python -m pip install cadence-net==0.95.2
+python -m pip install cadence-net==0.96.0
 ```
 
 ```python
@@ -57,7 +57,7 @@ episodic memory, a learned code, images.
 The [documentation index](https://github.com/muellerberndt/cadence/blob/main/docs/README.md)
 lists the rest: wide inputs, growing and grafting, evaluation, your own anatomy, how the
 brain settles, backends; the
-[released documentation](https://github.com/muellerberndt/cadence/blob/v0.95.2/docs/README.md)
+[released documentation](https://github.com/muellerberndt/cadence/blob/v0.96.0/docs/README.md)
 describes the APIs of the installed package. Integrated learned world prediction, repair
 localized to what failed and cheap stable operation are work in progress; Cadence is alpha
 research software.
