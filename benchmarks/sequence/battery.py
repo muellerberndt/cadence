@@ -68,6 +68,9 @@ ARMS: dict[str, dict[str, Any]] = {
     "when_sharp": {**WHEN, "recall_when": True, "recall_position_rate": 0.0,
                    "recall_temperature": 0.1},
     "rehearsal": {**BOUNDARY, "recall_anchor": True, "learning_rehearsal": 1.0},
+    # what Brain.compose gives a new brain, nothing named (the battery's composition is not
+    # applied: ``make_brain`` names nothing but the backend and the arm's settings)
+    "default": {"recall": True},
 }
 
 
@@ -390,6 +393,9 @@ def make_brain(task: Task, arm: str, founder: int, settings: dict[str, Any] | No
     """``Brain.compose`` for ``task`` with the arm's settings, and any ``settings`` over them."""
     import cadence as cd
 
+    if arm == "default":
+        return cd.Brain.compose(task.inputs, task.actions, modules=(module,), seed=int(founder),
+                                **{"backend": "cpu", **ARMS[arm], **(settings or {})})
     return cd.Brain.compose(task.inputs, task.actions, modules=(module,), seed=int(founder),
                             episodic=False, teaching="normalized",
                             **{"backend": "cpu", "recall": False,
@@ -500,6 +506,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
 
     row: dict[str, Any] = {
         "task": spec["task"], "task_settings": task.settings, "arm": arm, "founder": founder,
+        "tag": spec.get("tag"),
         "settings": {**ARMS[arm], **spec.get("settings", {})}, "lessons": lessons,
         "tests": tests, "module": int(spec.get("module", MODULE)),
         "phases": [list(p) for p in phases], "batch": BATCH,

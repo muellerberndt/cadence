@@ -431,6 +431,7 @@ ARMS: dict[str, dict[str, Any]] = {
     "recipe": {**SEQUENCE, **RECIPE},
     "maturity": {**SEQUENCE, **RECIPE, "maturity": True},
     "frozen": {**SEQUENCE, **RECIPE},  # the newborn, never taught
+    "default": {"recall": True},  # what Brain.compose gives a new brain, nothing named
 }
 
 
@@ -928,7 +929,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     tests = panels(founder, int(spec.get("panel_batches", 4)))
     rng = np.random.default_rng(np.random.SeedSequence([founder, SEEDS["train"]]))
     row: dict[str, Any] = {
-        "arm": arm, "founder": founder, "settings": {**ARMS[arm], **spec.get("settings", {})},
+        "arm": arm, "founder": founder, "tag": spec.get("tag"),
+        "settings": {**ARMS[arm], **spec.get("settings", {})},
         "phases": [list(p) for p in phases], "forks": forks,
         "module": int(spec.get("module", 64)), "parameters": int(brain.parameters()),
         "cadence": cd.__version__,

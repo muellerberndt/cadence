@@ -62,6 +62,8 @@ def _learner_data(learner: Learner) -> dict[str, np.ndarray]:
         "precision": brain.precision,
         "dense_limit": int(brain.dense_limit),
     }
+    if learner.config.running_error:  # the running error the next lesson's step reads
+        meta["error_level"] = float(learner.error_level)
     compartment: dict[str, np.ndarray] = {}
     if learner.config.normalize_relative or learner.config.nudged_fixed:
         meta["format"] = APICAL_FORMAT
@@ -249,6 +251,10 @@ def load(
         )
         if learner.updates < 0 or not 0 <= learner.contrast_updates <= learner.updates:
             raise ValueError("checkpoint update count must be nonnegative")
+        level = float(meta.get("error_level", 1.0))
+        if not 0.0 <= level <= 1.0:
+            raise ValueError("checkpoint running error must lie in [0, 1]")
+        learner.error_level = level
         for name in ("velocity", "velocity_bias", "second_moment", "second_moment_bias"):
             value = data[name].astype(float)
             size = connectome.n if name.endswith("bias") else connectome.synapses

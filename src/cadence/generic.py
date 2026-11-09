@@ -6333,6 +6333,7 @@ def _grown_checkpoint(
         "reciprocal",
         "updates",
         "contrast_updates",
+        "error_level",
         "backend",
         "precision",
         "dense_limit",
