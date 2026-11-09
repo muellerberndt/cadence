@@ -12,7 +12,7 @@ copy of every moment of every panel holds gigabytes; ``dense`` gives a batch's a
 
 ``fresh`` stems stay out of training and out of the ordinary panels: the one-hearing reading
 (``hearing.py``) names them. ``verb_flag`` adds a ``VERB`` flag to the meaning's verb moment, the
-class flag the meaning's nouns already carry through their roles.
+class flag the meaning's nouns carry through their roles.
 
 Sizes by class, ``by_size``: the words are the chamber's mix, two noun stems to a verb.
 
@@ -136,7 +136,7 @@ class Language:
 
     def grown(self, nouns: int, verbs: int) -> None:
         """The stems and verbs a sentence draws from from here on: a vocabulary that grows in a
-        life, its words already on their coordinates."""
+        life, its words on their coordinates from the start."""
         self.trained = min(int(nouns), self.nouns - self.fresh)
         self.spoken_verbs = min(int(verbs), self.verbs)
 

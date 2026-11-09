@@ -324,7 +324,7 @@ read's selection. Two terms meet there:
   The cortex at unit norm keeps the spread at .54-.61 and the term falls with it (.01-.03).
 - **A conjunction the cortex holds is not selected.** With every synapse into the cortex held, the
   conjunction stays decodable (.73 to .90) at a term of .03 to .07 against a spread of .46 to .71, and
-  the held address still reads .42 to .58: the address lesson's step on the cortex columns, a linear
+  the held address reads .42 to .58: the address lesson's step on the cortex columns, a linear
   map driven by the read's own error at `GO`, does not find a direction of that size within 30,000
   batches.
 

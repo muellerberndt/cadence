@@ -15,8 +15,8 @@ Their size is the one whose parameter count is nearest the brain's ``parameters(
 output of a word is the dot product with its input row), the transformer's usual form for a
 language model. ``--pretrained`` (with the tied form, a labelled control) fixes the embedding of
 every word and concept to a table made before the life: a stem's words and concept share a
-vector, each class a vector of its own, so a word no sentence used already sits with its class
-and its concept. It is what a pretrained embedding would hand a network.
+vector, each class a vector of its own, so a word no sentence used sits with its class and its
+concept from the start. It is what a pretrained embedding would hand a network.
 
 They are independently scored controls and never part of the brain's answer path.
 

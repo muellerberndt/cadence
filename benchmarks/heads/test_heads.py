@@ -371,7 +371,7 @@ def test_erasing_the_answers_slot_takes_it_from_both_routes(taught_brain):
     rows = np.arange(hd.BATCH)
     assert fork.recall.values[rows, :, asked.label].any()
     hd.intervene(fork, asked, {"erase_source": ("answer",)}, t, np.random.default_rng(0))
-    # a name told once: nothing holds it now on either port
+    # a name told once: nothing holds it on either port at this moment
     assert not fork.recall.values[rows, :, asked.label].any()
     assert not fork.recall.nexts[rows, :, asked.label].any()
 

@@ -289,7 +289,7 @@ Lives on twelve brains (founders 0 to 2, each on its own newborn and three more 
 | --- | --- | --- | --- |
 | `A`, `and`, `B`, and `went`, `out` where heard | `when` | `when` | .47 to .66 |
 | the duplicate | the first name's slot | the second name's slot | .63 to .79 |
-| `gave` | `and`, or still the first name's slot | `when` | .30 to .45 |
+| `gave` | `and`, or the first name's slot as at the duplicate | `when` | .30 to .45 |
 | `a`, `drink` where heard | `and` | `when` | .55 to .67 |
 | `to` | `and`, whose next is the second name | `when`, whose next is the first name | .65 to .79 |
 
@@ -356,7 +356,7 @@ Each failure, by the term that fails.
 
 Two library opt-ins come from the first failure term and the gain's. `recall_cortex_norm=True` gives
 every map of the read the cortex of the moment before at unit norm, so the fixed slots a lesson at `to`
-names no longer take the step at every moment. `recall_gain_after=n` with `recall_gain_next=g` holds
+names take no step at every moment. `recall_gain_after=n` with `recall_gain_next=g` holds
 the learned gains at zero through the first `n` lessons and starts the next port's gain at `g` then,
 the recall port's at zero ([the memory guide](../../docs/memory.md#the-value-path-released-once-the-read-has-formed-opt-in)).
 On this chamber the harness's emulation of the second (`gain_late` with `gain_late_value`) and the

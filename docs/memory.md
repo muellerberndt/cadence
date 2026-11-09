@@ -1310,7 +1310,7 @@ On the [indirect-object chamber](../benchmarks/heads/README.md#the-cortex-at-the
 circuit forms on 7 lives of 12 with the option against 2 without it, and the taught second hop of a
 read on a read holds on 12 of 12. It does not carry the crossing of a question with a context
 ([the crossing chamber](../benchmarks/attention/README.md#the-crossing-a-question-whose-fact-depends-on-the-context-crossingpy)),
-and at 1,000 raw words the read still falls ([the vocabulary chamber](../benchmarks/vocabulary/README.md)).
+and at 1,000 raw words the read falls ([the vocabulary chamber](../benchmarks/vocabulary/README.md)).
 
 ```python
 import cadence as cd

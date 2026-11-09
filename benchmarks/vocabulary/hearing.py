@@ -11,7 +11,7 @@ fresh word takes as well as what one hearing does; zero exposures is the baselin
 - ``said``: the fresh word said in its place, closed loop.
 - ``exact``: the whole sentence.
 - ``rank``: teacher-forced, the fresh word's rank among all the motor neurons or output rows at its
-  place, 1 the best: what the reading moved when a word is not yet said.
+  place, 1 the best: what the reading moved where a word is unsaid.
 
 ``mention`` asks a fresh word in the episode it is first heard in: a path ``X near wug end`` whose
 fact the world says once. The word's own motor neuron or output row has had only the hearings of

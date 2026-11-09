@@ -86,7 +86,7 @@ place, closed loop; `exact` the whole sentence; `rank` the fresh word's rank amo
 teacher-forced. `mention` asks the word in the episode that first says it, a path `X near wug end`.
 A network hears the same batches: one Adam step per batch (equal exposure), or sixteen (nearer
 equal compute). The tied form shares its embedding with its output, and the pretrained form, a
-labelled control, is handed a table in which a stem's words and concept already share a vector.
+labelled control, is handed a table in which a stem's words and concept share a vector from the start.
 
 ## Controls
 
@@ -139,7 +139,7 @@ reads clauses 1.00 at the same exposure. At 5,000 raw words a life costs 11.4 s 
 nothing at 250 batches; the matched transformer reads .86 at 8,000 batches.
 
 **Words by their pieces.** With one motor neuron per piece the read holds on later and number pieces
-at every size read here (.98 to 1.00), on first pieces at 400 tokens and fewer, and not yet at 994 (.00
+at every size read here (.98 to 1.00), on first pieces at 400 tokens and fewer, and not at 994 (.00
 to .69 at 2,000 batches), and a word is said piece by piece in one composition. On six fresh founders, with half the training stems
 made up on the spot, later pieces of a word never taught are said at .97 to .98 and its first pieces
 at .93 to .98, teacher-forced. Whole sentences stand below the transformer on every panel but
@@ -209,7 +209,7 @@ at 8,000. Three causes were read, one life each, and none holds it:
 | a vocabulary that grows, 200 words for 2,000 batches, all by 5,000 | at 5,000: .00 .00 .00 .00 (.83 .73 .78 .00 at 2,000) |
 | the address lesson's temperature by the key width (`address_scale`) | .95 .35 .77 .00 (.39 .10 .75 .00 at 1,000; .14 .00 .73 .11 at 1,500) |
 
-Three more cuts, one life each: `teaching="normalized"`, no relative floor, holds the read still at
+Three more cuts, one life each: `teaching="normalized"`, no relative floor, holds the read fixed at
 1.00 .67 .20 .00 from 500 to 2,000 batches with words said at .00; a module of 128 (3.34 M) reads .53
 .02 .78 .00 at 1,000 with words said at .00; words named by their own coordinate, with no concept
 coordinates and 1,008 motor neurons, read .00 on the nouns at 1,000 with words said at .00, where the
@@ -342,7 +342,7 @@ place among 200 outputs after one hearing, from its place before any.
 Sixteen Adam steps a hearing is about the brain's compute for that hearing. A word mentioned in the
 episode that first says it, a path `X near wug end` with no lesson on the word, reads .00 for every
 speaker at no hearing. A pretrained table places a fresh word near its class (rank 18 against 130) and
-still does not say it at one hearing, so the embedding alone is not what is missing at this size.
+does not say it at one hearing either, so the embedding alone is not what is missing at this size.
 
 ### The learned code
 
