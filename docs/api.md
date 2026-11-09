@@ -237,6 +237,39 @@ population, so action indices keep their meaning after loading. A saved maturity
 1e64), with the store's noise scales as nonnegative finite numbers under a boolean
 `surprise_gate`; anything else is refused with `ValueError` naming the field.
 
+## Lives (`cadence`)
+
+```text
+Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precision=None, **options)
+```
+
+Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, actions, seed=seeds[i],
+episodic=False, **options)`, the default composition without the store (seeds `range(lives)` by default),
+stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
+memory (its slots, its address and position maps), carried gains, working trace and random state.
+`backend="cpu"` holds lone brains and steps them in turn; `backend="torch"` holds one brain whose parameters
+carry a lives axis, on CUDA where there is a card and else on the torch CPU device (or the `device` named),
+one call per moment for all of them ([many lives at once](backends.md#many-lives-at-once)).
+
+| Method | Meaning |
+| --- | --- |
+| `act(observations, *, greedy=False)` | each life's `Brain.act` on its own row: `(lives, inputs)` in, `(lives,)` out |
+| `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label |
+| `learn(reward, done, next_observations)` | each life's `Brain.learn` |
+| `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer |
+| `reset()` | every life's stream starts afresh; what the lives learned stays |
+| `parameters(i)` | life `i`'s learned state on the host: `efficacy`, `bias`, `w_critic`, `b_critic`, the optimizer's four moments and its counts `updates` and `contrast_updates`, with a recall memory `recall` (its maps by kind), with carried gains `carried_gains`, `carried_second` and `carried_count` |
+| `life(i)` | life `i` as a lone `Brain` on the CPU with all of that and its random state; its stream starts afresh |
+| `lives`, `seeds`, `brain`, `brains` | the count, the seeds, the batched brain (torch) or the lone brains (CPU) |
+
+`Lives` holds the default composition without the store, with or without the recall memory (`recall=False`)
+and the carried gains, at any teaching point, with one or several regions, observers and motor slots. It
+refuses, naming the part: the store (`episodic=True`) and `memory_choice`, arousal (so no `live`), a
+maturity, a learned or fixed code, an apical compartment, rehearsal, qualified teaching, the efference copy,
+the heard history, a recall memory with several heads, a window, the command, the read of when or tokens,
+image inputs, and MPS, which has no float64 for the settles' checks. A moment any life refuses is refused for
+every life.
+
 ## Arousal (`cadence.arousal`)
 
 ```text

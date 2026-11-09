@@ -72,6 +72,7 @@ testpaths = [
     "benchmarks/heads",
     "benchmarks/vocabulary",
     "benchmarks/long_context",
+    "benchmarks/device",
 ]
 
 [tool.ruff]

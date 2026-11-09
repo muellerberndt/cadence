@@ -148,6 +148,39 @@ The panels, the option less the default:
 A settle of no sweeps makes no standing drive it would not read, and a lesson whose answer matches
 every label makes no targets and reports from one record per batch size.
 
+### The lifecycle on the device: the ledger, one read per outcome, an unseen card, batched lives (#274)
+
+- **The ledger of a moment.** [`benchmarks/device/ledger.py`](benchmarks/device/ledger.py) lists every
+  crossing between the host and the device that a `live`, `step`, `lesson` or `act` makes, by the place in
+  the library that made it, with its bytes and time, beside the seconds of the moment, on torch and MLX.
+  A moment's bytes are small; its synchronizations are what it pays for.
+- **An outcome reads its checks once on torch.** Where the critic rests on the device, the dopamine is made
+  there from the critic's value, and an outcome's checks (the dopamine's, the critic's, the recall memory's
+  reward step and the update's), the critic's bias step, the report's steps and the dopamine of every row come
+  to the host in one read before anything is installed. A torch update and a lesson read their checks and
+  report in one read where they read five. On MLX the critic's and the recall memory's checks are made in the
+  update's launch. The CPU path keeps its bits; a device life agrees with the host's as before.
+- **A CUDA card the default backend's table has not read is calibrated** once per machine, in place of the
+  margin of twice the work: the chamber's brain is timed on the card and on one core, and the crossing scales
+  the table's ([the default backend](docs/backends.md#the-default-backend)); `CADENCE_CALIBRATE=0` keeps the
+  margin. On an NVIDIA L4 it reads 50 to 60 rows of the chamber's brain against the A10G's 44.
+- **`Lives`: independent lives over one topology, stepped together.** `cd.Lives(inputs, actions, lives,
+  backend="torch")` holds many brains of the default composition without the store (`episodic=False`), each
+  with its own synapses, optimizer, critic, eligibility, recall memory (slots, address and position maps),
+  carried gains, working trace and random generator, one stream each, and steps them in one call per moment.
+  Every settle reads each stream through its own life's synapses and stops each life where its own stream
+  meets the tolerance; a lesson judges each life by its own answer and updates the lives it taught; a reward
+  moves each life on its own dopamine. Each life follows the lone brain of its seed on that device: in float64
+  every action the same and every learned part within 1e-9 over 30 moments of rewards, endings and teaching;
+  on the CPU it is that lone brain. On an NVIDIA L4, 128 lives step at 0.118 ms a life and moment, the speed
+  of one brain's streams, against 0.876 ms in a four-process pool, and 1,024 lives at 0.049 ms. It holds one or
+  several regions, observers and motor slots at any teaching point, with or without the recall memory, on CUDA
+  and the torch CPU device, and refuses by name the store, arousal, a maturity, a code, an apical compartment,
+  rehearsal, the efference copy, the heard history and the recall options that keep it on the host; MLX has no
+  lives axis ([many lives at once](docs/backends.md#many-lives-at-once)).
+- The options that keep a moment's memories on the host each state what they add that the device form does
+  not hold ([memories on the device](docs/backends.md#memories-on-the-device)).
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
