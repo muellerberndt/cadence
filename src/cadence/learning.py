@@ -111,6 +111,10 @@ class LearnerConfig:
     # opt-in: a lesson teaches only the rows whose free answer differs from the label; a row the
     # net already answers as shown gets no nudged phase and no update: the lesson is the surprise
     surprise: bool = False
+    # with ``surprise``, opt-in: a lesson's step is scaled by the share of its rows it taught, so
+    # one wrong row of sixteen moves the net a sixteenth as far as sixteen do; the contrast and
+    # the optimizer's running moments still read the taught rows alone
+    surprise_share: bool = False
     # >0: in place of normalize_floor, each synapse's RMS gets this share of the RMS of its
     # projection (the block of synapses between its two neuron ranges) added, and each bias
     # this share of its range's; a constant floor binds where credit is faint (a deep module)
@@ -145,10 +149,6 @@ class LearnerConfig:
                   "0.84.3 takes it"),
         "initial_damping": ("0.93.0", 0, "every qualified phase starts at the full step of the "
                             "damping ladder; cadence 0.92.1 takes it"),
-        "surprise_share": ("0.96.0", False, "a surprise lesson takes its step over the rows it "
-                           "teaches, which the composition's battery reads best (copying unique "
-                           ".997 against .924, #258), and a wide brain steps at its width; "
-                           "cadence 0.95.2 takes it"),
     })
 
     def __post_init__(self) -> None:
@@ -241,6 +241,14 @@ class LearnerConfig:
                 RuntimeWarning,
                 stacklevel=3,
             )
+        if self.surprise_share and not self.surprise:
+            warnings.warn(
+                "LearnerConfig with surprise_share=True and surprise=False: the share scales "
+                "surprise lessons only, so it changes nothing here; set surprise=True "
+                "(learning_surprise) to teach by surprise.",
+                RuntimeWarning,
+                stacklevel=3,
+            )
         if self.qualified and self.nudged_steps < self.free_steps:
             warnings.warn(
                 f"LearnerConfig with qualified=True and nudged_steps ({self.nudged_steps}) "
@@ -264,7 +272,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
-    "fast_settle": False,
+    "surprise_share": False, "fast_settle": False,
 }
 
 
@@ -1306,7 +1314,7 @@ class Learner:
         return cast("dict[str, Any] | None", held[2])
 
     def _update_on_mlx(
-        self, plus: BrainState, minus: BrainState, span: float,
+        self, plus: BrainState, minus: BrainState, span: float, share: float,
         tables: dict[str, Any],
     ) -> dict[str, float]:
         """``_update`` on the MLX device, in float32: the contrast, the moments, the ties, the
@@ -1338,10 +1346,10 @@ class Learner:
             plus.device, minus.device, rows * span, held, tables,
             (
                 m, 1 - m, 1.0 - m**count if m > 0 else 1.0, rho, 1 - rho,
-                1.0 - rho**count if rho > 0 else 1.0, cfg.eta, cfg.normalize_floor,
+                1.0 - rho**count if rho > 0 else 1.0, share * cfg.eta, cfg.normalize_floor,
                 cfg.normalize_relative, _RELATIVE_TINY,
             ),
-            cfg.eta_bias, cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
+            share * cfg.eta_bias, cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
         )
         mx = kernel.mx
         for k, mask in tables.get("held_blocks", ()):  # a rate of zero keeps the moments it held
@@ -1361,14 +1369,18 @@ class Learner:
         free: BrainState,
         nudged: BrainState,
         opposite: BrainState | None = None,
+        *,
+        share: float = 1.0,
     ) -> dict[str, float]:
-        """Move every trainable synapse and every neuron on its own two-phase difference."""
+        """Move every trainable synapse and every neuron on its own two-phase difference.
+        ``share`` scales the step the optimizer takes (``surprise_share``: the share of the
+        lesson's rows it taught); the contrast and the running moments are read in full."""
         # Proposed optimizer history is part of the update transaction. A bad
         # contrast or an unrepresentable parameter step must not poison a retry.
         moments = {"_" + name: self.__dict__.get("_" + name) for name in _MOMENTS}
         held = self.__dict__.get("_device_moments")
         try:
-            return self._update(free, nudged, opposite)
+            return self._update(free, nudged, opposite, share)
         except Exception:
             self.__dict__.update(moments)
             self.__dict__["_device_moments"] = held
@@ -1379,6 +1391,7 @@ class Learner:
         free: BrainState,
         nudged: BrainState,
         opposite: BrainState | None = None,
+        share: float = 1.0,
     ) -> dict[str, float]:
         self._validate_phases(free, nudged, opposite)
         cfg = self.config
@@ -1386,7 +1399,7 @@ class Learner:
         minus_state, span = (free, cfg.beta) if opposite is None else (opposite, 2.0 * cfg.beta)
         tables = self._mlx_update_tables(nudged, minus_state)
         if tables is not None:
-            report = self._update_on_mlx(nudged, minus_state, span, tables)
+            report = self._update_on_mlx(nudged, minus_state, span, share, tables)
             return report
         kernel = self._device_kernel(nudged, minus_state)
         if kernel is not None:  # both phases rest on the torch device: the whole update stays there
@@ -1394,7 +1407,7 @@ class Learner:
             norm = float(nudged.device["s"].shape[0]) * span
             edges, neurons = self._adaptive_device(kernel, edges / norm, neurons / norm)
             report = self._apply_device(
-                kernel, cfg.eta * edges, cfg.eta_bias * neurons
+                kernel, share * cfg.eta * edges, share * cfg.eta_bias * neurons
             )
             self.contrast_updates += 1
             return report
@@ -1409,7 +1422,7 @@ class Learner:
             self._hold_moments(before)
             if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
                 raise ValueError("optimizer moments must remain finite")
-            report = self.apply(delta_scale, delta_bias)
+            report = self.apply(share * delta_scale, share * delta_bias)
             self.contrast_updates += 1
             return report
         if cfg.momentum > 0:  # local: a synapse accumulates only its own contrast
@@ -1432,8 +1445,8 @@ class Learner:
                 rms = np.sqrt(self.second_moment / correction) + cfg.normalize_floor
                 rms_bias = np.sqrt(self.second_moment_bias / correction) + cfg.normalize_floor
             synapse_term, neuron_term = synapse_term / rms, neuron_term / rms_bias
-        delta_scale = cfg.eta * synapse_term
-        delta_bias = cfg.eta_bias * neuron_term
+        delta_scale = share * cfg.eta * synapse_term
+        delta_bias = share * cfg.eta_bias * neuron_term
         self._hold_moments(before)
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
@@ -1519,7 +1532,7 @@ class Learner:
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
             opposite = replace(phases["opposite"].state, steps=phases["opposite"].steps)
-            report = self.update(free, nudged, opposite)
+            report = self.update(free, nudged, opposite, share=self._share(taught))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
@@ -1561,7 +1574,7 @@ class Learner:
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
-        report = self.update(free, nudged, opposite)
+        report = self.update(free, nudged, opposite, share=self._share(taught))
         report.update(_phase_report(phases, accepted=True, qualified=False))
         report.update(_taught_report(taught, batch))
         report["free_budget_exhausted"] = float(exhausted)
@@ -1574,6 +1587,12 @@ class Learner:
             raise ValueError("answer must have the labels' shape")
         differs = np.asarray(answer != labels, dtype=bool)
         return np.asarray(differs.any(axis=1)) if differs.ndim == 2 else differs
+
+    def _share(self, taught: np.ndarray | None) -> float:
+        """Under ``surprise_share``, the share of the lesson's rows it taught; else one."""
+        if taught is None or not (self.config.surprise and self.config.surprise_share):
+            return 1.0
+        return float(np.mean(taught))
 
     def _taught(self, free: BrainState, labels: np.ndarray | None) -> np.ndarray | None:
         """Under ``surprise``, True per row where the free answer differs from its label; None

@@ -40,7 +40,7 @@ assert action.shape == (1,)
 | Vector senses and several motors, a brain in a body | one motor slot per motor, `live` and `retune` across stages, as in the [Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) | [one experience step by hand](#one-experience-step-by-hand) |
 | Pixels and a teacher | image `inputs`, teaching through `step`, as in the [Atari demo](https://github.com/muellerberndt/cadence-demos/tree/main/atari-arcade) | [wide inputs](senses.md#image-inputs) |
 | Features of features | several `modules`, `apical`, `teaching="deep"` | [deep brains](#deep-brains) |
-| Modules of several hundred neurons | a new brain's rates follow its width | [wide brains](#wide-brains) |
+| Modules of several hundred neurons | a new brain's rates follow its width; surprise lessons with `learning_surprise_share=True` | [wide brains](#wide-brains) |
 | To time a body's own moments | `act` and `learn` | [one experience step by hand](#one-experience-step-by-hand) |
 | To draw what a brain does | `record_settlements` | [the brain in a browser page](#the-brain-in-a-browser-page) |
 | Which memory to use | the table of the memory guide | [memory](memory.md#which-memory-should-i-use) |
@@ -59,6 +59,7 @@ step size. The defaults of a new brain suit most work; change one at a time and 
 | Lessons refused unless every phase satisfies the equations | `learning_qualified=True, learning_nudged_steps=1024` | off | stricter and slower lessons ([qualified teaching](settling.md#qualified-teaching-budgets)) |
 | Larger or smaller lesson steps | `teaching="founder"`, `"normalized"` or `"deep"` | `"deep"` (`"founder"` with `recall=False`) | the size and form of each lesson's step ([which teaching point](teach.md#which-teaching-point)) |
 | Lessons only on rows answered wrong | `learning_surprise=True` | on (off with `recall=False`) | right rows are skipped ([surprise lessons](teach.md#lessons-only-where-the-answer-differs)) |
+| A surprise lesson's step in proportion to its wrong rows | `learning_surprise_share=True` | off | steadier wide brains ([in proportion](teach.md#in-proportion-to-the-surprise)) |
 | Earlier lessons replayed beside new ones | `learning_rehearsal=1.0` | off | types taught in sequence are kept ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) |
 | A sharper or softer choice | `temperature` | `0.2` | both the sampled policy and the lesson's softmax |
 
@@ -143,7 +144,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `teaching` | `"deep"` in a new brain with the memory, else `"founder"`. `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
 | `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
 | `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12` (`32` in a new brain with the memory, which `teaching="deep"` sets), `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
-| `learning_scale_cap`, `learning_surprise` | `8.0`, `False` (`True` in a new brain with the memory) | retune | [learning](settling.md#7-every-knob) |
+| `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False` (`True` in a new brain with the memory), `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
@@ -426,6 +427,10 @@ keeps and costs.
 For modules of several hundred neurons and more
 ([width sweep](../benchmarks/sequence/README.md#the-width-sweep-widthpy)):
 
+- **Surprise lessons.** With `learning_surprise`, set `learning_surprise_share=True` so a lesson's
+  step scales with the share of rows it taught
+  ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)); otherwise one wrong
+  row takes a whole lesson's step and a wide brain's answers swing.
 - **The trace's amplitude.** Beside a recall memory at `teaching="deep"` the founder's 3.0 falls with
   width, and `carried_gain=0.01` or `working_memory_amplitude=0.3` takes most of that back at whole steps
   ([the amplitude beside a read](memory.md#the-amplitude-beside-a-read)).

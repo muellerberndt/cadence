@@ -173,14 +173,17 @@ ARMS: dict[str, dict[str, Any]] = {
     "G2nop": {"rung": 2, "step": "normalized", "per_moment": True, "frozen_maps": True,
               "carry_address": False, "carry_trace": False},
 }
+SHARE = {"learning_surprise_share": True}
 for _width in (64, 80, 81):  # the composition without the trace's region, not silent but absent
     ARMS[f"FdA{_width}"] = {**ARMS["Fd"], "module": _width, "absent": True}
     ARMS[f"FdA{_width}f"] = {**ARMS["Fd"], "module": _width, "absent": True, "fan_in": True}
-for _width in (128, 256):  # wider association, on the composed steps and fan-in steps
+for _width in (128, 256):  # wider association, on the composed steps, fan-in steps, and the share
     for _name in ("Fd", "FdT"):
         _arm = ARMS[_name]
         ARMS[f"{_name}{_width}"] = {**_arm, "module": _width}
         ARMS[f"{_name}{_width}f"] = {**_arm, "module": _width, "fan_in": True}
+        ARMS[f"{_name}{_width}s"] = {**_arm, "module": _width, "fan_in": True,
+                                     "brain": {**_arm["brain"], **SHARE}}
 RATES = {"online": 0.003, "offline": 0.001}  # the controls'
 CLIP, PATIENCE, EPOCHS = 1.0, 3, 30  # the controls'
 ADAM = (0.9, 0.999, 1e-8)  # torch's defaults, the controls'
@@ -427,9 +430,10 @@ def install_exact(brain: Any, step: str, rate: float = RATES["online"]) -> None:
             out["nudged_steps"] = float(nudged.steps)
             return out
 
-        def update(self, free: Any, nudged: Any, opposite: Any = None) -> dict[str, float]:
+        def update(self, free: Any, nudged: Any, opposite: Any = None, *,
+                   share: float = 1.0) -> dict[str, float]:
             if step != "adam":
-                return dict(super().update(free, nudged, opposite))
+                return dict(super().update(free, nudged, opposite, share=share))
             grad, grad_bias, report = exact_gradient(self, free, self.exact_labels)
             self._note(report)
             grad_bias[self.exact_sources] = 0.0

@@ -116,7 +116,7 @@ keys and 16 values, and `lookup`, one noisy view of one of 256 fixed prototypes 
 its class. `--memory` adds the recall memory with surprise lessons. Arms: `founder`, and
 `relative`, every synapse's step scaled to its neuron's fan-in in the same brain composed at
 width 64 (`fan_in_rates` in `width.py`). `--settings` adds
-options, such as `{"learning_rehearsal": 1.0}`.
+options, such as `{"learning_surprise_share": true}`.
 
 ## Run
 
@@ -137,7 +137,7 @@ python benchmarks/sequence/battery.py --summary DIR/lookback.jsonl
 PYTHONPATH=src python benchmarks/sequence/order.py --arms founder position_address \
     --out DIR/order.jsonl --workers 5
 PYTHONPATH=src python benchmarks/sequence/width.py --task induction --memory --arms relative \
-    --widths 1024 --out DIR/width.jsonl
+    --widths 1024 --settings '{"learning_surprise_share": true}' --out DIR/width.jsonl
 python -m pytest -q benchmarks/sequence
 ```
 
@@ -473,10 +473,6 @@ beside it give most of it back.
 Induction over 128 tokens at 1,024 neurons with the recall memory and surprise lessons, each
 synapse's step scaled to its neuron's fan-in at width 64 (`relative`), 1,500 lessons, held-out
 accuracy every 100 lessons:
-
-`learning_surprise_share` left the library in 0.96.0 (#281): a new brain steps at its width
-([wide brains](../../docs/tune.md#wide-brains)), and on the composition's battery the share cost
-copying, induction and n-back (#258). Its readings at 1,024 neurons:
 
 | Founder | Without the share | With `learning_surprise_share=True` |
 | --- | --- | --- |

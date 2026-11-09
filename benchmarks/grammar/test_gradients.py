@@ -237,7 +237,7 @@ def test_the_moments_rung_replaces_the_step_and_nothing_else(step):
                                  "Ln", "Ld", "Lda", "Lb", "whole", "Fn", "Fn2", "Fd", "Fn3",
                                  "Fn100", "Lf", "FnT", "FnC", "FnR", "FnX", "Lf3", "Lf1", "Fu3",
                                  "Fu10", "Fcap", "FdT", "FdC", "FdR", "FdX", "Fd128", "FdT128f",
-                                 "FdT256f", "FdA64", "FdA80f", "Fd2", "FdL"])
+                                 "FdT256s", "FdA64", "FdA80f", "Fd2", "FdL"])
 def test_a_short_life_of_every_arm(arm):
     life = gx.run_life({"arm": arm, "founder": 0, "batches": 3, "module": 16, "panel_batches": 1,
                         "panels": ["clause", "path"]})
@@ -251,10 +251,13 @@ def test_a_short_life_of_every_arm(arm):
 def test_a_wide_arm_runs_the_steps_it_names():
     composed = gx.newborn(gx.ARMS["Fd128"], 0, {})
     fan_in = gx.newborn(gx.ARMS["Fd128f"], 0, {})
+    share = gx.newborn(gx.ARMS["FdT128s"], 0, {})
     narrow = gr.make_brain("recipe", 0, settings={"teaching": "deep"}, module=64)
     c = fan_in.connectome
     assert len(c.populations["association"]) == 128
     assert composed.learner.synapse_rate is None
+    assert not composed.learner.config.surprise_share and not fan_in.learner.config.surprise_share
+    assert share.learner.config.surprise_share
     rates = fan_in.learner.synapse_rate
     motor = np.isin(c.post, c.populations["motor"])
     association = np.isin(c.post, c.populations["association"])
