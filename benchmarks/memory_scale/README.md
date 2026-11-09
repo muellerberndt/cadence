@@ -113,9 +113,10 @@ The similar cue without noise reads 1.000 on every arm but `library` at every si
    .046 at 1,000, .005 at 10,000 and .001 at 100,000: the read holds a crowd. At .05 the mass on an
    exact cue is 1.000 to 10,000 and .996 at 100,000, and noisy and partial cues fall as the
    records grow.
-2. **Several heads.** Under the soft law every head's first choice is the same record: the share
-   of heads that return a new relevant record is 1/k at every size, on both soft arms. Reading the
-   first choice whole, k heads return k different records.
+2. **Several heads.** Nothing is taught here, so every head holds the same address. Under the
+   soft law every such head's first choice is the same record: the share of heads that return a
+   new relevant record is 1/k at every size, on both soft arms. Reading the first choice whole, k
+   heads return k different records.
 3. **The address code's width**, for a cue that superposes unrelated addresses. Two are found at
    1.00 to 10,000 records and .98 to 1.00 at 100,000. Four are found by the exact store itself at
    .85 to .89 among 128 records, .54 to .62 among 1,000, .21 to .27 among 10,000 and .04 to .07
@@ -123,11 +124,59 @@ The similar cue without noise reads 1.000 on every arm but `library` at every si
    `1 / sqrt(k)` of the cue, and no read by dot product finds more at 64 coordinates.
 4. **The coarse stage.** The right record is among the 256 candidates on .991 to .999 of the noisy
    cues and .989 to .995 of the partial ones at 100,000 records, and on .999 to 1.000 at 10,000.
-   Against the exact store the candidate loses at most .010 on any cue and founder at 100,000 and
-   .002 at 10,000.
+   Against the exact store the candidate loses at most .010 on any single cue and founder at
+   100,000 and .002 at 10,000. It binds for cues that superpose several addresses once the key is
+   wide enough for the exact store to find them ([key width 256](#key-width-256)).
 5. **Similar keys at the write.** A write that recognises a held key rewrites it. Among 10,000 and
    100,000 records with families at cosine .8, at most one record in 10,000 is taken for a sibling
    told again.
+
+### Key width 256
+
+Declared on founders 2880 to 2882 (`protocol/retrieval-wide.json`), the same records at 256
+coordinates. The exact cue reads 1.000 on every row.
+
+| Records | Arm | noisy | partial | similar, noisy | 4 superposed | 8 superposed | 8 heads |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1,000 | `exact` | 1.000 | 1.000 | 1.000 | 1.00 | .93 to .96 | 1.00 |
+| 1,000 | `bank` | 1.000 | 1.000 | 1.000 | .98 to .99 | .54 to .61 | 1.00 |
+| 10,000 | `exact` | 1.000 | 1.000 | 1.000 | 1.00 | .83 to .85 | 1.00 |
+| 10,000 | `bank` | 1.000 | 1.000 | 1.000 | .88 to .93 | .07 to .09 | 1.00 |
+| 100,000 | `exact` | 1.000 | 1.000 | 1.000 | 1.00 | .57 to .59 | 1.00 |
+| 100,000 | `bank` | 1.000 | 1.000 | 1.000 | .60 to .73 | .00 | 1.00 |
+
+A wider key holds more superposed addresses: the exact store finds four at 1.00 to 100,000
+records and eight at .83 to .85 among 10,000. The candidate's address does not follow it there. A
+record at cosine .5 or .35 to the cue shares too few of its winners with it, so for superposed cues
+the coarse stage binds: four are found at .88 to .93 among 10,000 records and .60 to .73 among
+100,000, eight at .07 to .09 and .00. A memory that scores every slot reads as the exact store
+does, which the library's founder does to 16,384 records. Single cues and heads over one family
+read 1.000 on both arms at every size. At this width a record takes 6.9 kB at 10,000 records and
+5.3 at 100,000 with its address.
+
+### Another key source (development)
+
+The key source is a parameter of `world.codes`. A development reading on founders 0 to 2 (receipt
+`results/dev-sparse.jsonl.gz`; nothing here is declared) draws sparse nonnegative codes with a
+tenth of their units active, the shape a fixed or a learned sparse code gives, with the same
+families.
+
+| Key | Records | Arm | exact | noisy | partial | similar | records held apart |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 64 units, 6 active | 10,000 | `exact` | 1.000 | .994 to .997 | .386 to .395 | 1.000 | |
+| 64 units, 6 active | 10,000 | `bank` | .999 to 1.000 | .994 to .997 | .386 to .395 | .966 to .977 | .9915 to .9922 |
+| 64 units, 6 active | 100,000 | `exact` | 1.000 | .958 to .978 | .219 to .247 | 1.000 | |
+| 64 units, 6 active | 100,000 | `bank` | .994 to .995 | .948 to .965 | .219 to .247 | .971 to .976 | .9891 to .9895 |
+| 256 units, 25 active | 10,000 | `exact` | 1.000 | 1.000 | .998 to 1.000 | 1.000 | |
+| 256 units, 25 active | 10,000 | `bank` | 1.000 | 1.000 | .997 to .998 | 1.000 | 1.0000 |
+| 256 units, 25 active | 100,000 | `exact` | 1.000 | 1.000 | .998 to .999 | 1.000 | |
+| 256 units, 25 active | 100,000 | `bank` | 1.000 | 1.000 | .990 to .996 | 1.000 | 1.0000 |
+
+With 6 active units the code itself binds: half of a cue silent leaves about 3 units, and the exact
+store finds the record on .39 of such cues among 10,000. Family members share most of their active
+units, so their keys pass the revision's cosine of .9 and about one record in a hundred is taken
+for a sibling told again. With 25 active units of 256 neither happens. What a key holds decides
+both readings before the memory does.
 
 ### Found and used
 
@@ -314,6 +363,7 @@ above are taught nothing: their read is fixed, and what they hold is written onc
 - A brain that writes its own long-term memory in a life: which moments are written, and a read
   that enters the settle through a region of its own. In `used.py` the bank's read is held on
   input coordinates and the instrument tells the bank the facts.
-- A soft read that returns several different records. Several heads return different records
-  only when each reads its first choice whole.
+- Taught heads. The recall memory's heads come apart through lessons on their own address maps
+  ([several heads](../../docs/memory.md#several-heads-opt-in)); those maps are at zero here, and
+  untaught heads return different records only when each reads its first choice whole.
 - The cost of a compiled read. Every reading is NumPy on one thread.

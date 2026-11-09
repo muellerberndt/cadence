@@ -205,12 +205,13 @@ The answer has to [qualify](start.md#qualification-and-refusal) whichever of the
 | Learned code | no | `learned_code=units` | a dictionary, a predictor and thresholds: the code region's synapses and biases | none | every accepted moment, by local rules | yes | [the learned code](senses.md#the-learned-code) |
 | Learned weights | yes | learning rates of zero freeze them | synapse scales and biases, actor and critic | none | lessons, and outcomes (aroused ones under `live`) | yes | [the free/nudged rule](settling.md#learning-the-freenudged-rule) |
 | Actor eligibility | yes | `actor_lam=0.0` credits the last action only | each synapse's credit for recent sampled acts | none | each sampled act | no | [reward.md](reward.md#eligibility-traces-and-dopamine) |
+| Long-term memory | no: a standalone store | `cd.LongTermMemory(width, value_width, capacity)` beside the brain | records, a key with a value, under a budget of slots | the caller's key | when the caller writes; a key told again revises its record | yes: the brain does not hold it | [below](#a-long-term-memory-of-records) |
 
 `predict`, `accuracy` and `fit` answer independent samples and read none of these except the
 learned weights; `fit` starts by resetting the streams and keeps the arousal state. Test a
-memory through `act`, `step` or `live` on a continuing stream. `save` keeps every memory in
-the table, per-stream traces included, and `Brain.load` continues the stream where it
-stopped.
+memory through `act`, `step` or `live` on a continuing stream. `save` keeps every memory the
+brain holds, per-stream traces included, and `Brain.load` continues the stream where it
+stopped. The long-term memory stands beside the brain, so its caller saves it (`arrays()`).
 
 `brain.memories` holds the present memories by name, in the order the brain reads them before
 a settle and writes them after it: `working_memory`, `efference`, `history`, `recall`,
@@ -2247,7 +2248,9 @@ fails there: the address costs more than scoring 10,000 keys. That is why a memo
 their codes are, and a learned code or a code of meaning ([learned codes](senses.md#the-observation-code))
 is what makes a reminder find a related record. A cue that superposes several unrelated keys
 holds each at `1 / sqrt(k)` of its strength, so the width of the key bounds how many such records
-several heads can return. Two different facts whose keys lie at cosine `revise` or above are one
+several heads can return, and past `direct` slots the address finds fewer of them than a search of
+every slot does: among 100,000 records at key width 256, all of four on .60 to .73 of the trials
+where an exact store finds them on 1.00. Two different facts whose keys lie at cosine `revise` or above are one
 record to the memory. The memory is one stream's; the caller decides which moments are written.
 
 ### Traces

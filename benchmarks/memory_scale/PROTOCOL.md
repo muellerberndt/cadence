@@ -163,3 +163,21 @@ one million moments. Cost: 12 cells and 4 widths, one at a time. About 20 core-h
   code of #286 does to similarity between records is not read here.
 - A brain that writes its own long-term memory in a life: which moments are written, and a read
   that enters the settle through a region of its own.
+
+## Outcome
+
+Read on the declared founders and recorded in [the README](README.md), with the receipts in
+[`results/`](results) and `summarize.py` recomputing each gate from them.
+
+| Gate | Verdict |
+| --- | --- |
+| R1, R2, R3 | pass on 6 of 6 |
+| U1 | passes on 6 of 6 |
+| K1, K2, K3 | pass on 6 of 6; every arm passes 14 budgets of writes or more |
+| C1 | fails on 3 of 3: .245 to .251 ms against a budget of .118 to .122; the address costs more than scoring 10,000 keys |
+| C2 | passes on 3 of 3: .119 to .123 ms against .199 to .207 |
+
+**Departures from the plan of the runs.** The CPU box was a spot c7a.8xlarge and the device box a
+spot g5.xlarge with one A10G. The device box was lost once while the transformer's plan ran, and
+that plan was run again from its start. Nothing in an instrument, a plan or a bar changed after the
+declaration. The reading in [`after/`](after) was taken after C1 failed and is marked as such.
