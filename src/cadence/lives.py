@@ -589,6 +589,12 @@ class _LivesLearner(Learner):
             else:
                 edges = edges / (rms + cfg.normalize_floor)
                 neurons = neurons / (rms_bias + cfg.normalize_floor)
+        ix = self._device_indices(kernel)  # a rate of zero keeps the moments it held (``held``)
+        for name, stopped in (("velocity", "held_synapses"), ("second_moment", "held_synapses"),
+                              ("velocity_bias", "held_neurons"),
+                              ("second_moment_bias", "held_neurons")):
+            if ix[stopped] is not None and held[name] is not previous[name]:
+                held[name] = torch.where(ix[stopped], previous[name], held[name])
         if not bool(torch.stack([torch.isfinite(held[name]).all() for name in _MOMENTS]).all()):
             raise ValueError("optimizer moments must remain finite")
         return edges, neurons

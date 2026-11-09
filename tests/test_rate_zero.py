@@ -103,6 +103,37 @@ def test_rate_zero_holds_on_mlx():
     check_held(brain, rate, motor, efficacy, bias)
 
 
+def test_rate_zero_holds_in_lives_on_torch():
+    """``Lives`` on a torch device keep each life's held synapses, biases and moments."""
+    pytest.importorskip("torch")
+    lives = cd.Lives(6, 3, 2, modules=(12,), backend="torch", device="cpu", precision="float64",
+                     recall=False, teaching="deep")
+    learner, w = lives.brain.learner, lives.brain.connectome
+    motor = np.zeros(w.n, dtype=bool)
+    motor[np.asarray(w.populations["motor"])] = True
+    rate = np.ones(w.synapses)
+    rate[motor[w.post] | motor[w.pre]] = 0.0
+    learner.synapse_rate = rate
+    before = [lives.parameters(i) for i in range(2)]
+    rng = np.random.default_rng(0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(3):
+            lives.lesson(rng.random((2, 6)), rng.integers(3, size=2))
+            lives.step(rng.random((2, 6)))
+            lives.learn(rng.random(2) - 0.5, np.zeros(2, dtype=bool), rng.random((2, 6)))
+    for i in range(2):
+        after = lives.parameters(i)
+        assert np.abs(after["efficacy"] - before[i]["efficacy"])[rate == 0].max() == 0.0
+        assert np.abs(after["efficacy"] - before[i]["efficacy"])[rate > 0].max() > 0
+        assert np.abs(after["bias"] - before[i]["bias"])[motor].max() == 0.0
+        for name in ("velocity", "second_moment"):
+            assert np.abs(after[name][rate == 0]).max() == 0.0
+            assert np.abs(after[name][rate > 0]).max() > 0
+        for name in ("velocity_bias", "second_moment_bias"):
+            assert np.abs(after[name][motor]).max() == 0.0
+
+
 def test_rates_above_zero_teach_as_before():
     """Without a rate of zero nothing is held, and lessons teach to the bit as with no rate."""
     plain, _, _ = held_motor()
