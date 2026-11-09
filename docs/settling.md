@@ -553,6 +553,7 @@ Select rates on development data and freeze them.
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
 | `surprise_share` | `LearnerConfig` | with `surprise`, scale a lesson's step by the share of its rows it taught ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)) | `False` |
 | `fast_settle` | `LearnerConfig` | a composed brain's free solves on the compiled CPU path: rows that stop apart, the activation in vectorizing arithmetic ([settling](#settling-and-equilibrium)) | `False`; `True` in a new brain with the memory |
+| `compiled_moment` | `LearnerConfig` | a composed brain's work around the solve on the CPU in compiled passes: the recall memory's read, write and address lesson, the place store's read and the carried gains' contrast; other bits ([the compiled moment](tune.md#the-compiled-moment-opt-in)) | `False` |
 | `rehearsal`, `rehearsal_capacity` | `LearnerConfig` | in a composed brain, after each lesson replay that many times its rows again, each with its episode, drawn from a reservoir of that many lesson rows ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) | 0.0 (off), 512 |
 | `outputs`, `config` | `Learner` | output neuron indices; the `LearnerConfig` | required, `LearnerConfig()` |
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |

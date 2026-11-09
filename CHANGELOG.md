@@ -105,6 +105,47 @@ ring read as without it. See [records that fade with disuse](docs/memory.md#reco
 - `benchmarks/sequence/held.py`: R1's six tasks at tokens no lesson used, with the read's prediction,
   the vote at each miss and the answer with the association's vote silenced (#272).
 
+### The compiled moment (opt-in, #282)
+
+`learning_compiled_moment=True` (`Brain.compose`, `retune`, `LearnerConfig(compiled_moment=True)`)
+does the work around the solve kernels of a moment in compiled passes on the CPU: the moment's
+drive in one pass (the sensory part, the working trace, the recall memory's read, with the address
+and every position term through one product of the maps, which stay packed until a lesson replaces
+one, and the place store's read), the free solve through its kernels without the general path's
+layers, a greedy act's choice, its working trace's step and the memory's write in one pass, the
+address lesson and the carried gains' contrast. An act after a lesson that taught nothing takes
+the lesson's read as its own, as it takes the lesson's solve. The equations are the ordinary
+path's and the sums run in another order, so the bits are other ones. Off by default; off, every
+bit is as before: the identity, options and slots batteries read no difference and the founder
+parity reads 0 of 24 lives differing against the tree before the change on one machine, and twelve
+chamber lives of the default brain read the same panels and work. Several read heads, a window,
+the command or when in the slots, the gains, a learned code or a separator take the ordinary path.
+
+On one Xeon 8488C core with nothing else running, a grammar-chamber pass of the default brain
+takes .67 of its seconds with the option (59.4 to 63.0 s against 39.2 to 42.2 s over three
+founders) and 3.2 to 3.6 times the matched transformer's 11.8 to 12.1 s, where the default takes
+4.9 to 5.3. The issue's 2.5 times is not reached. The kernels take 20.8 s of the compiled pass,
+about 1.7 times the transformer, and the rest 18.5 s in many small calls: the read 4.6 s, the act's
+choice and write 3.6 s, the lessons' phases and update 3.0 s, the solves around their kernels
+2.7 s (`benchmarks/grammar/cost.py`, which reads both the seconds and the parts;
+[the compiled moment](docs/tune.md#the-compiled-moment-opt-in)).
+
+The panels, the option less the default:
+
+- The grammar chamber over 12 paired fresh lives (founders 0 to 2, seeds 2000 to 2003): clauses
+  -.012 (s.e. .012), two distractors -.005 (.040), held-out +.004 (.015), roles +.010 (.032),
+  brackets +.008 (.027), paths -.014 (.010), two hops -.031 (.017), three hops +.022 (.040); over
+  36 (seeds 2000 to 2011): -.011 (.007), -.012 (.017), +.002 (.016), -.003 (.020), -.010 (.019),
+  +.004 (.014), +.003 (.018), -.010 (.036). Every difference is under .07 and within two standard
+  errors.
+- The sequence battery (look back and n-back with and without held tokens, two hops, three
+  founders): -.0013 (s.e. .0042) over 15 paired lives.
+
+### The same bits in less time
+
+A settle of no sweeps makes no standing drive it would not read, and a lesson whose answer matches
+every label makes no targets and reports from one record per batch size.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

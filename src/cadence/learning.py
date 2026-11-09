@@ -137,6 +137,10 @@ class LearnerConfig:
     # it qualifies and the activation is made in arithmetic that vectorizes
     # (``Brain.equilibrate``); the same equations, order and tolerance, other bits
     fast_settle: bool = False
+    # opt-in, a composed brain's on the CPU (``cadence._moment``): the work around the solve
+    # kernels of a moment (the recall memory's read, write and address lesson, the place store's
+    # read, the carried gains' contrast) in compiled passes; the same equations, other bits
+    compiled_moment: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one
     # value at which a saved config still loads (the law of this version) and what the learner
@@ -206,6 +210,8 @@ class LearnerConfig:
             raise ValueError("nudged_fixed must be boolean")
         if not isinstance(self.fast_settle, bool):
             raise ValueError("fast_settle must be boolean")
+        if not isinstance(self.compiled_moment, bool):
+            raise ValueError("compiled_moment must be boolean")
         if self.tolerance is not None and (not np.isfinite(self.tolerance) or self.tolerance < 0):
             raise ValueError("tolerance must be finite and nonnegative, or None")
         if not isinstance(self.qualified, bool):
@@ -272,7 +278,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
-    "surprise_share": False, "fast_settle": False,
+    "surprise_share": False, "fast_settle": False, "compiled_moment": False,
 }
 
 
@@ -365,6 +371,11 @@ def _restrict(state: BrainState, taught: np.ndarray | None, drive: Any = None) -
     """``state`` restricted to the taught rows, or itself when every row is taught; ``drive`` is
     those rows' own, where it is the one the state settled under."""
     return state if taught is None or bool(taught.all()) else _rows(state, taught, drive)
+
+
+# The report of a lesson whose caller-read answer matches every label, by batch size and
+# qualification (``Learner._untaught``): the same numbers at every such lesson.
+_UNTAUGHT: dict[tuple[int, bool], dict[str, float]] = {}
 
 
 def _taught_report(taught: np.ndarray | None, batch: int) -> dict[str, float]:
@@ -1486,6 +1497,7 @@ class Learner:
         label does. A distribution has no single answer to agree with: ``surprise`` judges
         labels, and every row of targets is taught.
         """
+        target: np.ndarray | None = None
         if labels is None:
             if targets is None:
                 raise ValueError("a lesson needs labels or targets")
@@ -1494,20 +1506,22 @@ class Learner:
             if targets is not None:
                 raise ValueError("a lesson takes labels or targets, not both")
             labels = self._labels(labels)
-            target = self.targets(labels)
         if not _resident(drive):
             drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
             drive = drive[None, :]
-        if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
+        batch = len(labels) if target is None else len(target)
+        if drive.ndim != 2 or drive.shape[0] != batch:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
-        batch = len(target)
         judged = None
         if cfg.surprise and answer is not None and labels is not None:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
                 return self._untaught(judged)
+        if target is None:  # the labels' targets, made where a phase reads them
+            target = self.targets(labels)
+        if judged is not None:
             drive, target, weight = self._lesson(judged, drive, target, weight)
             warm = None if warm is None else _restrict(warm, judged)
         if cfg.qualified:
@@ -1618,22 +1632,25 @@ class Learner:
         """The lesson of a batch whose caller-read answer matches every label: no phase runs,
         nothing changes; every phase counts zero work."""
         cfg = self.config
-        report = {
-            "accepted": 1.0,
-            "qualified": float(cfg.qualified),
-            "qualification_required": float(cfg.qualified),
-            "attempted_presentations": float(len(taught)),
-        }
-        for name in ("free", "nudged", "opposite"):
-            for key in _PHASE_KEYS:
-                report[f"{name}_{key}"] = 0.0
-        for key in ("steps", "residual_checks", "stagnation_checks", "row_sweeps",
-                    "row_residual_checks"):
-            report[f"total_{key}"] = 0.0
-        report.update(_taught_report(taught, len(taught)))
-        if not cfg.qualified:
-            report["free_budget_exhausted"] = 0.0
-        return LearnedState(None, None, None, taught), report
+        held = _UNTAUGHT.get((len(taught), cfg.qualified))
+        if held is None:
+            report = {
+                "accepted": 1.0,
+                "qualified": float(cfg.qualified),
+                "qualification_required": float(cfg.qualified),
+                "attempted_presentations": float(len(taught)),
+            }
+            for name in ("free", "nudged", "opposite"):
+                for key in _PHASE_KEYS:
+                    report[f"{name}_{key}"] = 0.0
+            for key in ("steps", "residual_checks", "stagnation_checks", "row_sweeps",
+                        "row_residual_checks"):
+                report[f"total_{key}"] = 0.0
+            report.update(_taught_report(taught, len(taught)))
+            if not cfg.qualified:
+                report["free_budget_exhausted"] = 0.0
+            held = _UNTAUGHT[(len(taught), cfg.qualified)] = report
+        return LearnedState(None, None, None, taught), dict(held)
 
     def _agreed(
         self, free: BrainState, phases: Mapping[str, Equilibrium], taught: np.ndarray
