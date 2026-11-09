@@ -43,7 +43,34 @@ assert action.shape == (1,)
 | Modules of several hundred neurons | a new brain's rates follow its width; surprise lessons with `learning_surprise_share=True` | [wide brains](#wide-brains) |
 | To time a body's own moments | `act` and `learn` | [one experience step by hand](#one-experience-step-by-hand) |
 | To draw what a brain does | `record_settlements` | [the brain in a browser page](#the-brain-in-a-browser-page) |
-| Which memory to use | the table of the memory guide | [memory](memory.md#start-with-the-need) |
+| Which memory to use | the table of the memory guide | [memory](memory.md#which-memory-should-i-use) |
+| Fewer sweeps, stricter lessons, another teaching step | the settle and learning settings | [which settle and learning options](#which-settle-and-learning-options) |
+
+## Which settle and learning options?
+
+Every answer is a settle, and every lesson is three. These settings trade speed, strictness and
+step size. The defaults of a new brain suit most work; change one at a time and compare.
+
+| You want | Setting | In a new brain | What changes |
+| --- | --- | --- | --- |
+| Fewer neuron updates per answer, the same equations | `learning_fast_settle=True` | on (off with `recall=False`) | rows stop apart and the activation vectorizes; other bits than the ordinary solve ([settling](settling.md#settling-and-equilibrium)) |
+| The ordinary solve | `learning_fast_settle=False` | | every row runs to the slowest row's check |
+| Fewer sweeps, looser answers | `learning_tolerance=0.01` | `0.003` | about a fifth fewer sweeps per act ([what a moment costs](#what-a-moment-costs)) |
+| Lessons refused unless every phase satisfies the equations | `learning_qualified=True, learning_nudged_steps=1024` | off | stricter and slower lessons ([qualified teaching](settling.md#qualified-teaching-budgets)) |
+| Larger or smaller lesson steps | `teaching="founder"`, `"normalized"` or `"deep"` | `"deep"` (`"founder"` with `recall=False`) | the size and form of each lesson's step ([which teaching point](teach.md#which-teaching-point)) |
+| Lessons only on rows answered wrong | `learning_surprise=True` | on (off with `recall=False`) | right rows are skipped ([surprise lessons](teach.md#lessons-only-where-the-answer-differs)) |
+| A surprise lesson's step in proportion to its wrong rows | `learning_surprise_share=True` | off | steadier wide brains ([in proportion](teach.md#in-proportion-to-the-surprise)) |
+| Earlier lessons replayed beside new ones | `learning_rehearsal=1.0` | off | types taught in sequence are kept ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) |
+| A sharper or softer choice | `temperature` | `0.2` | both the sampled policy and the lesson's softmax |
+
+```python
+fast = Brain.compose(4, 2, seed=0)                                   # the fast solve, by default
+assert fast.describe()["genes"]["learning_fast_settle"] is True
+ordinary = Brain.compose(4, 2, seed=0, learning_fast_settle=False)   # the ordinary solve
+looser = Brain.compose(4, 2, seed=0, learning_tolerance=0.01)        # fewer sweeps per answer
+strict = Brain.compose(4, 2, seed=0, learning_qualified=True, learning_nudged_steps=1024)
+ordinary.retune(learning_fast_settle=True, temperature=0.1)          # these change in a life
+```
 
 ## Brain
 
@@ -97,11 +124,12 @@ assert settings["genes"]["actor_eta"] == 0.1
 assert settings["layout"]["composition"]["sensory_scale"] == 2.0
 ```
 
-`describe()` returns four JSON-safe sections: `layout` (the regions; `code`, what the memories
-key on; `composition`, the construction choices, not current weights), `genes` (every setting
-by the name `compose` and `retune` take, `teaching` among them), `memories` (each member of
-`brain.memories` with its settings and counts) and `pending` (whether an issued action owns the
-next outcome). For an expert `LearnerConfig` outside the named teaching points,
+`describe()` returns JSON-safe sections: `layout` (the regions; `code`, what the memories
+key on; `composition`, the construction choices, not current weights; `projection_rates` where
+the brain steps some synapses at other rates), `genes` (every setting by the name `compose` and
+`retune` take, `teaching` among them), `memories` (each member of `brain.memories` with its
+settings and counts), `pending` (whether an issued action owns the next outcome) and
+`placement` (where the brain runs and why), which a brain placed on the CPU by name leaves out. For an expert `LearnerConfig` outside the named teaching points,
 `genes["teaching"]` is `"custom"` and `genes["learning"]` gives its effective `eta`, `eta_bias`,
 `normalize` and `normalize_floor`.
 
@@ -115,7 +143,7 @@ next outcome). For an expert `LearnerConfig` outside the named teaching points,
 | `attention` | `False`; `True` requires `learned_code=units` and supplies the contextual Recall recipe | construction | [single-head learned-code attention](memory.md#single-head-learned-code-attention-opt-in) |
 | `teaching` | `"deep"` in a new brain with the memory, else `"founder"`. `"founder"`: steps 0.5 and 0.05 on the raw contrast; `"normalized"`: 0.003 and 0.0003 under a running RMS (0.99, floor 1e-4); `"deep"`: the normalized point with the projection-relative floor 0.1 and nudged phases that run their whole budget, set to 32 sweeps on the way in (a brain keeps the budget it has) | retune | [learning](teach.md#many-lessons-the-normalized-point-for-imitation), [deep brains](#deep-brains) |
 | `temperature` | `0.2` | retune | [learning](settling.md#7-every-knob) |
-| `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12`, `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
+| `learning_free_steps`, `learning_nudged_steps`, `learning_tolerance`, `learning_qualified`, `learning_damping` | `1024`, `12` (`32` in a new brain with the memory, which `teaching="deep"` sets), `0.003`, `False`, `3` | retune | [learning](settling.md#qualified-teaching-budgets) |
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False` (`True` in a new brain with the memory), `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |

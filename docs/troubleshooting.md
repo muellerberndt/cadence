@@ -8,14 +8,17 @@ Short answers to the problems builders meet first, each linking the page that ow
 **`pip install cadence-net==0.95.2`, then `import cadence`.** Python 3.11 or newer and NumPy are
 the only requirements.
 
-**Do I need a GPU?** No; everything runs on NumPy float64. `[fast]` adds Numba and SciPy,
-`[accel]` torch and `[apple]` MLX for the settling brain ([backends](backends.md)).
+**Do I need a GPU?** No. A new brain runs on the CPU unless its size makes a GPU faster and one
+is installed (`[accel]` for CUDA, `[apple]` for MLX); then it takes the GPU in float32 by itself.
+`[fast]` adds Numba and SciPy for the CPU. `backend="cpu"` keeps a brain in NumPy float64
+([which backend](backends.md#which-backend-should-i-use)).
 
-**A run reads other numbers after an upgrade.** A new brain holds the recall memory and learns at
-another teaching point from 0.95.0 ([what it holds](memory.md#what-recalltrue-gives-a-new-brain)).
-`recall=False` composes the brain of 0.94.0 to the bit; a saved brain keeps what it was saved with. With
-a memory, 0.95.0 replaces the address lesson, so `recall_founder=True` restores the settings and not the
-bits.
+**Two runs read different numbers.** A run repeats to the bit on `backend="cpu"` with the same
+seeds. A brain on a device runs in float32, and a new brain chooses its backend by its size, so
+name `backend="cpu"` where the bits must repeat. A new brain also holds the recall memory with the
+settings of [what `recall=True` gives a new brain](memory.md#what-recalltrue-gives-a-new-brain):
+`recall=False` composes it without the memory, and `recall_founder=True` with the memory at its
+founders. A saved brain keeps what it was saved with.
 
 **A world paid by reward alone reads lower than without a memory.** That is a stated cost
 ([what the composition gives up](memory.md#what-the-composition-gives-up)): pass `recall=False`.
@@ -23,6 +26,28 @@ bits.
 **Which interface do I want?** `Brain.compose(..., arousal=True)` and `brain.live(...)` for one
 continuing stream; `step` for explicit teaching, batches or learning from every outcome. Other
 contracts are in the [specialist guides](README.md#by-situation).
+
+## Training
+
+**`ValueError: lesson batch must match the live streams`.** Once a brain has acted on a batch,
+lessons and acts take that many rows until `reset()`
+([observations, actions and streams](start.md#2-observations-actions-and-streams)).
+
+**`RuntimeError` from `lesson`.** A sampled action awaits its outcome: deliver the outcome with
+`step` or `live`, or replace the action with a greedy `act`
+([supervised lessons](teach.md#supervised-lessons)).
+
+**Every answer is the commoner class.** Class imbalance; weigh the rows and read per-class
+accuracy ([the fix](teach.md#every-answer-is-the-majority-class)).
+
+**A trained brain gets worse as training continues.** Its steps are too large for what it holds
+([the fix](teach.md#a-trained-brain-gets-worse-with-more-training)).
+
+**`predict` answers right, `act` answers wrong, and lessons do not help.** Teach inside the stream
+the brain acts in ([a deep brain whose lessons do not reach its act](teach.md#a-deep-brain-whose-lessons-do-not-reach-its-act)).
+
+**A `RuntimeWarning` about a lesson on the observations the brain just acted on.** Teach first,
+then act ([supervised lessons](teach.md#supervised-lessons)).
 
 ## Shapes and encodings
 

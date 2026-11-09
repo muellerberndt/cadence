@@ -1,10 +1,19 @@
 # Learning from reward
 
-A Cadence brain learns from reward with a three-factor rule: each synapse keeps an
-eligibility trace of its recent contrasts, and one broadcast prediction error (the
-dopamine) turns every trace into a weight change, with no backward computation graph.
-`Brain.step` and an aroused [`Brain.live`](start.md#routine-and-repair-live) take the
-reward of the preceding action and return the next one:
+Reward learning lets the world do the teaching. Nobody tells the brain the right action; the world
+scores the action it took, and the brain learns which actions pay in which situations. A food
+pellet, points in a game, a penalty for a miss: each is a reward, a number per stream, positive
+for good and negative for bad.
+
+How it works, in one paragraph: when the brain samples an action, every synapse keeps an
+**eligibility trace**, a fading note of how much it took part. When the reward arrives, the brain
+compares it with what it expected (its **critic** forecasts the value of each situation). The
+difference, one number broadcast to every synapse like dopamine, turns every trace into a weight
+change: actions that did better than expected become likelier, actions that did worse less
+likely. No error is sent backward through the network.
+
+`Brain.step` and an aroused [`Brain.live`](start.md#routine-and-repair-live) take the reward of the
+preceding action and return the next one:
 
 ```python
 import numpy as np
@@ -20,13 +29,19 @@ for _ in range(300):
     action = brain.step(cue, reward=reward)        # the reward belongs to the previous action
 ```
 
-Use it when outcomes pay actions: bandits, reversing rules, rewards a few choices later
+| Use | When | Learns |
+| --- | --- | --- |
+| `step(observations, reward=...)` | many streams, explicit control, every outcome should teach | from every outcome |
+| `live(observation, reward=...)` with `arousal=True` | one creature living one life | while young, surprised or wanting ([routine and repair](start.md#routine-and-repair-live)) |
+| `act` then `learn(reward, done, next_observations)` | your body times the two halves of a moment | from that outcome ([by hand](tune.md#one-experience-step-by-hand)) |
+
+Use reward when outcomes pay actions: bandits, reversing rules, rewards a few choices later
 ([reversal](../benchmarks/reversal/README.md), [key-door](../benchmarks/keydoor/README.md),
 [competing skills](../benchmarks/competing/README.md)). On one stream with signed, noisy
 outcomes and a cost per move, set `actor_eta` to a tenth of the composed 1.0, as above: the
 composed rate walks the policy to one held action, the tenth lets the cue decide
-([night-replay chamber](../benchmarks/replay/README.md)). Labelled lessons belong to
-[learning](settling.md#learning-the-freenudged-rule).
+([night-replay chamber](../benchmarks/replay/README.md)). Where you know the right answer, a
+lesson teaches faster ([train a brain](teach.md)).
 
 ## Eligibility traces and dopamine
 

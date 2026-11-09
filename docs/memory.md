@@ -1,13 +1,133 @@
 # Memory
 
 A memory is anything the brain keeps from an earlier moment and can use in a later answer.
-Everything else is computed again from the current observation. This page starts from the
-situation: find yours in the table, write what it says, and read the section for how that memory
-works, its settings, its readings and its limits.
+Everything else is computed again from the present observation. A new brain holds three
+memories, and more are a setting away. This page starts with what each memory is, in plain
+words, then helps you choose, with a minimal example of each; the reference for every memory
+follows.
+
+## The memories in plain words
+
+- **Working trace: what I was just thinking.** After each moment the brain copies its
+  interpretation and feels it again in the next settle. It carries a cue across a short delay. On
+  by default.
+- **Recall memory: a notebook of recent moments.** Every moment of a stream is written as a slot.
+  When the present asks for something heard before (a name stated with a value, the word after a
+  cue), the brain reads the matching slot back, and lessons teach it where to look. On by default.
+- **Associative store: what paid where.** For each situation it keeps one value per action, the
+  outcome that action brought, and feeds it to the motor neurons. It learns a payoff in one
+  experience. On by default.
+- **Episodic memory: one-shot records that vote.** Records of what happened in a situation and in
+  its history, including demonstrations shown once, vote in every choice beside the slow cortex.
+  Opt-in, `memory_choice=True`.
+- **Learned weights: skill.** The synapses themselves, changed slowly by every lesson and
+  outcome. They are the long-term memory and survive everything but learning.
+
+Two smaller carriers are opt-in: the **efference copy** of the actions the brain issued
+(`efference_amplitude`) and the **heard history** of the raw observations (`history_decays`).
+
+## Which memory should I use?
+
+| Memory | Think of it as | On in a new brain | Use it when | Switch |
+| --- | --- | --- | --- | --- |
+| Working trace | what I was just thinking | yes | a cue must last a few moments | `working_memory_amplitude=0.0` silences it |
+| Recall memory | a notebook of recent moments | yes | a moment heard once must come back by its content or its position: names and values, look back, copying, sentences | `recall=False` removes it |
+| Recall heads | several readers of the notebook | one head | one answer needs two or more remembered facts | `recall_heads=2` |
+| Recall "when" | the time stamp of what was read | no | "how long ago?", "was A told before B?" | `recall_when=True` |
+| Recall value path | read a token, answer that token | no | the answer is the token the read found, tokens never taught included | `recall_tokens=..., recall_gain=1.0` |
+| Recall of own actions | the notebook keeps what I did | no | what the brain did matters, where the observations look alike | `recall_action=True` |
+| Learned-code attention | a notebook indexed by meaning | no | keys should match where meanings do, beyond raw overlap | `learned_code=units, attention=True` |
+| Associative store | a ledger of what paid where | yes | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=0.2` for noisy pay |
+| Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
+| Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
+| Heard history | what I just heard | no | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` |
+| No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
+
+Start with the default brain. Add one memory at a time and compare it with the same brain
+without that memory, on held-out moments, through `act`, `step` or `live`: `predict` reads no
+memory ([check that a memory does the work](#check-that-a-memory-does-the-work)).
+
+One minimal example per memory follows. Each builds a brain of its own.
+
+**Working trace.** The settled interpretation of one moment is held in the next:
+
+```python
+import numpy as np
+from cadence import Brain
+
+thinker = Brain.compose(inputs=3, actions=2, seed=0)
+thinker.act(np.array([[1.0, 0.0, 0.0]]), greedy=True)      # a cue
+assert thinker.working_memory.trace.any()                   # carried into the next settle
+quiet = Brain.compose(inputs=3, actions=2, seed=0, working_memory_amplitude=0.0)
+```
+
+**Recall memory.** A moment heard once comes back when the present shares its content:
+
+```python
+notebook = Brain.compose(inputs=4, actions=2, modules=(16,), seed=1)
+notebook.act(np.array([[1.0, 0.0, 0.0, 1.0]]), greedy=True)   # a name (0) stated with a value (3)
+notebook.act(np.array([[0.0, 1.0, 0.0, 0.0]]), greedy=True)   # something else
+drive = notebook.stimulus(np.array([[1.0, 0.0, 0.0, 0.0]]))    # the name alone, later
+recalled = drive[0, notebook.connectome.populations["recall"]]
+assert recalled[3] > recalled[1]                               # the value comes back
+```
+
+**Recall options.** Each is one setting at `compose`:
+
+```python
+two_facts = Brain.compose(6, 4, seed=0, recall_heads=2)                 # two reads in one settle
+timed = Brain.compose(6, 4, seed=0, recall_when=True)                   # when the read item happened
+tokens = Brain.compose(6, 4, seed=0, recall_tokens=[0, 1, 2, 3],        # inputs 0-3 name actions 0-3
+                       recall_gain=1.0)
+doings = Brain.compose(6, 4, seed=0, recall_action=True)                # slots keep the actions taken
+meaning = Brain.compose(6, 4, seed=0, learned_code=16, attention=True)  # keys by a learned code
+assert len(two_facts.recall.head_maps) == 2
+```
+
+**Associative store.** One rewarded outcome is recorded under the situation:
+
+```python
+ledger = Brain.compose(inputs=4, actions=2, seed=7)
+here = np.array([[1.0, 0.0, 0.0, 0.0]])
+taken = ledger.step(here)                                  # a sampled act
+ledger.step(here, reward=[1.0])                            # its reward, recorded under `here`
+assert np.isclose(ledger.hippocampus.recall(here)[0, taken[0]], 1.0)
+noisy_pay = Brain.compose(inputs=4, actions=2, seed=7, memory_rate=0.2)   # averages outcomes
+```
+
+**Episodic memory.** A demonstration shown once votes in the next choice:
+
+```python
+episodic = Brain.compose(inputs=3, actions=2, arousal=True, memory_choice=True, seed=0)
+place = np.array([[1.0, 0.0, 0.0]])
+assert episodic.act(place, greedy=True)[0] == 0   # the newborn's answer
+episodic.step(place, teacher=[1])                 # shown once: recorded
+assert episodic.live(place)[0] == 1               # the record votes for the shown action
+```
+
+**Efference copy and heard history.** What the brain did, and what it heard:
+
+```python
+doer = Brain.compose(inputs=3, actions=2, seed=0, efference_amplitude=1.0)
+listener = Brain.compose(inputs=3, actions=2, seed=0, history_decays=(0.2, 0.8))
+assert doer.efference is not None and listener.history is not None
+```
+
+**No memory, the control.** The same brain with every memory removed or silenced:
+
+```python
+control = Brain.compose(inputs=3, actions=2, seed=0,
+                        recall=False, episodic=False, working_memory_amplitude=0.0)
+assert control.recall is None and control.hippocampus is None
+```
+
+A trained brain without a recall memory can be given one later: `brain.grow(recall=True)`
+([grow and combine brains](grow.md)). Types taught one after another are kept by rehearsal,
+a training setting ([curriculum and rehearsal](teach.md#curriculum-and-rehearsal)).
 
 <a id="start-with-the-need"></a>
 
-## What to use
+## Find your situation
 
 | The situation | Write | Section |
 | --- | --- | --- |
@@ -37,11 +157,10 @@ works, its settings, its readings and its limits.
 | A memory for a brain trained without it | `brain.grow(recall=True)` | [grow and combine brains](grow.md) |
 | Situations whose keys overlap strongly, outside a brain | a standalone store behind a centered, habituated separator | [pattern separation](#pattern-separation) |
 
-Add one mechanism at a time, and compare it with the same mechanism silenced or erased. Every
-memory changes the answer through the same composed brain: the working trace, the efference copy,
-the heard history and the recall memory drive neural regions the association region reads; the
-associative store drives motor neurons; the episodic records add a vote to the motor readout. The
-answer has to [qualify](start.md#qualification-and-refusal) whichever of them shaped it.
+Every memory changes the answer through the same composed brain: the working trace, the efference
+copy, the heard history and the recall memory drive neural regions the association region reads;
+the associative store drives motor neurons; the episodic records add a vote to the motor readout.
+The answer has to [qualify](start.md#qualification-and-refusal) whichever of them shaped it.
 
 <a id="memory-in-the-composed-brain"></a>
 <a id="complete-memory-inventory"></a>
@@ -198,7 +317,9 @@ synapses of initial magnitude 1.2 (a constant).
 
 After each act, and after each moment `wait` senses, every stream writes one slot and the
 slot before learns the new value as its next. Beyond `recall_capacity` the oldest slot is
-dropped. Imagination writes none.
+dropped. Imagination writes none. The slot arrays (`recall.keys`, `recall.values`, `recall.nexts` and the
+others) are views that a write changes in place; code that holds them across a write takes
+`recall.snapshot()`, whose arrays the next write leaves alone.
 
 The address lesson runs after each teacher lesson (`step(..., teacher=...)` or
 `brain.lesson`). It reads the association region's movement between the nudged phases back
@@ -294,10 +415,15 @@ Above an association of 64 a new brain also [steps at its width](tune.md#wide-br
 
 `recall_when=True` stays an opt-in, for tasks that ask "before?": it carries that question and it costs
 the grammar chamber's paths and two hops ([one composition](#one-composition-for-sequences)).
+
+A new brain with the memory also settles on dense blocks where it can: it names no `dense_limit`, so it
+takes a limit as wide as its blocks wherever at least half of their entries are synapses
+([implementation notes](backends.md#implementation-notes)).
+
 ### Recall settings
 
-Each gene is passed as `recall_<name>` beside `recall=True`; a `recall_` name without it is
-refused. Retune genes change in a life through `brain.retune`; construction genes are fixed
+Each gene is passed as `recall_<name>` to `compose`. A new brain holds the memory, so the names need no
+`recall=True` beside them; with `recall=False` every `recall_` name is refused. Retune genes change in a life through `brain.retune`; construction genes are fixed
 when the brain is built. The options from `recall_address_reward` on are described and saved
 only where they differ from their founder. A saved brain keeps its genes, slots and address map.
 
@@ -613,7 +739,7 @@ costs the place in a long story past the table ([long context](#reads-over-long-
 
 ### What the composition gives up
 
-Against the brain with no memory, `recall=False`, on this release's library:
+Against the brain with no memory, `recall=False`:
 
 | Chamber | Reading | `recall=False` | This composition |
 | --- | --- | --- | --- |
@@ -653,7 +779,7 @@ to 28 of 30), the contextual bandit (3 to 6 of 6) and delayed response (6 of 6).
 third block, with the fast solve, no chamber falls by the panel's rule: the key-door at delay 2 reads 5 to 5 of 8 on the
 development founders and 9 to 10 of 24 on fresh ones, at delay 5 reads 3 to 3 of 8 and 6 to 9 of 24, and the bandit
 wins 27 to 26 blocks of 30. Pass `recall=False` for a world paid by reward alone that gives the brain nothing to look up,
-and `recall_founder=True` for the founder memory; each reads as it read before this composition.
+and `recall_founder=True` for the founder memory.
 
 ### Two heads on this composition (opt-in)
 

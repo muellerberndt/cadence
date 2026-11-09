@@ -23,7 +23,43 @@ print(cd.available_backends())
 # e.g. {'cpu': 'numpy float64', 'torch': 'mps float32', 'mlx': 'gpu float32'} on an M-series Mac
 ```
 
-## Choose a backend
+## Which backend should I use?
+
+A backend is where a brain's arithmetic runs: NumPy on the CPU, PyTorch on a CUDA GPU or the CPU,
+or MLX on an Apple silicon GPU. The answer is usually the default: a new brain takes the fastest
+backend for its size at its first moment, by a rule measured on real machines.
+
+| Your situation | Do this | What you get |
+| --- | --- | --- |
+| Starting out, on any machine | nothing (`backend="auto"`) | small brains on the CPU, large ones on a GPU where one is installed and pays ([the rule](#the-default-backend)) |
+| Results that must repeat to the bit: receipts, numerical checks, tests | `backend="cpu"` | NumPy float64, the same bits on every run |
+| A Mac with Apple silicon, a wide brain or many streams | install `[apple]`; the default takes MLX past its size, or name `backend="mlx"` | float32 on the GPU |
+| An NVIDIA GPU | install `[accel]`; the default takes CUDA past its size, or name `backend="torch"` | float32 on the GPU |
+| float64 on a GPU | `backend="torch", precision="float64"` | slower: CUDA's float64 runs at a fraction of its float32 rate |
+| One backend for a whole run, without changing code | the environment variable `CADENCE_BACKEND=cpu` (or `mlx`, `torch`, `torch:cuda`, `torch:cuda:float64`) | every brain that names no backend takes it |
+| A brain trained on a GPU, read on a CPU | `Brain.load(path, backend="cpu")` | the same brain in float64 |
+
+One minimal example per choice:
+
+```python
+import numpy as np
+
+auto = cd.Brain.compose(8, 3)                                   # the default, "auto"
+auto.act(np.eye(8)[[0]])                                        # it chooses at its first moment
+print(auto.placement["backend"], auto.placement["precision"], auto.placement["why"])
+exact = cd.Brain.compose(8, 3, backend="cpu")                   # NumPy float64, repeatable
+on_torch = cd.Brain.compose(8, 3, backend="torch", device="cpu")  # torch; device="cuda" for a GPU
+if "mlx" in cd.available_backends():
+    apple = cd.Brain.compose(8, 3, backend="mlx")               # an Apple silicon GPU
+```
+
+`brain.placement` says where a brain runs and why. A float32 brain on a device learns another run
+than a float64 one on the CPU: compare them by means over seeds
+([precision matters](#precision-matters)).
+
+<a id="choose-a-backend"></a>
+
+### The backends
 
 | backend | where it runs | precision | extra | use it for |
 |---|---|---|---|---|
@@ -194,7 +230,7 @@ On an Apple M4, the same, single readings on a shared machine at a load of 12 to
 
 MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
 have no reading; name them to use them. A CUDA card this table has not read takes the device from twice the
-work, a stated margin with no calibration in this version. Options that keep the moment's memories on the
+work, a stated margin that no measurement sets. Options that keep the moment's memories on the
 host take a device from four times the work, and `precision="float64"` named on CUDA from four times, both
 reasoned from the readings above and not read at that size. A learned code stays off torch.
 
@@ -208,7 +244,7 @@ work neither torch nor MLX is imported where they are installed.
 A new brain's free solves take the fast form on the compiled CPU path alone, so by default the host and a
 device agree within the solver's tolerance per moment, and panels by a mean over seeds are the check; under
 `learning_fast_settle=False` a float64 device agrees with the float64 host within rounding. The default brain's
-chamber and battery panels on MLX read after 0.95.0, and `auto` keeps those sizes on the CPU at 16 rows. A run that must
+chamber and battery panels were read on the CPU, and `auto` keeps those sizes on the CPU at 16 rows. A run that must
 repeat names its backend. `backend="cpu"` keeps its bits, with `recall=False` or `recall_founder=True` as well.
 `CADENCE_BACKEND` names one for a whole run where none is named: `cpu`, `mlx`, `torch`, `torch:cuda` or
 `torch:cuda:float64`. This library's tests, benchmarks and examples name theirs.
