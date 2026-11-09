@@ -360,6 +360,55 @@ input, where the key joins the identity. It then reads about as raw does at 2,00
 times the seconds, and shows no class, so it gives a fresh word nothing. At this size and exposure the
 learned code adds cost and no gain, on words and on similar words.
 
+## Declared reading at 1,000 words (9 November 2026)
+
+Six fresh founders (2660901 to 2660906), one 32-vCPU box, 1,000 raw words by class, the first grammar,
+4,000 batches, the protocol written before any life. The brain is `Fd` on the composed memory, with
+and without `recall_cortex_norm`; the matched transformer (2,929,812 parameters against the brain's
+2,928,914) takes one Adam step per batch on the same batches. The gate, taught whole sentences within
+.05 of the transformer on 5 of 6, is not met:
+
+| Learner | Taught clauses at 4,000, per founder | Within .05 of the transformer |
+| --- | --- | --- |
+| Transformer | .80 .92 .83 .97 .61 .38 | |
+| `Fd` | .00 on 6 | 0 of 6 |
+| `Fd`, cortex at unit norm | .00 on 6 | 0 of 6 |
+
+`locate` and `terms` read every word whose content a heard moment holds, teacher-forced. The ranges are
+over the six founders; a term's gap is its logit at the right slot less at the best other slot, the
+mean over the words the read misses.
+
+| Arm | Batches | The read lands right: agent, mod, patient, verb | Said | Misses | The two terms that carry the misses | Sweeps per act |
+| --- | --- | --- | --- | --- | --- | --- |
+| `Fd` | 500 | .30-1.00, .10-.54, .02-.73, .00 | .00 | .43-.75 | the position maps' cortex columns -1.74, the address map's cortex columns -1.57 | 21-26 |
+| | 1,000 | .22-1.00, .25-.48, .64-.81, .00-.05 | .00 | .42-.68 | position cortex -2.46, cortex -.85 | 23-27 |
+| | 2,000 | .09-1.00, .00-.48, .55-.81, .00-.42 | .00-.02 | .43-.71 | position cortex -1.28, cortex -1.05 | 26-30 |
+| | 4,000 | .00-.80, .00-.40, .09-.70, .00-.81 | .00-.02 | .47-.83 | the raw key -1.40, cortex -1.09 | 28-38 |
+| `Fd`, unit norm | 500 | .88-1.00, .25-.48, .56-.81, .00 | .00 | .43-.49 | the position maps' bias -.99, position cortex -.80 | 22-29 |
+| | 1,000 | .06-.66, .00-.48, .44-.81, .00 | .00-.02 | .50-.85 | the position maps' event rows -.65, the raw key -.54 | 24-29 |
+| | 2,000 | .00-.03, .00-.38, .02-.70, .00-.50 | .00-.02 | .71-.85 | the raw key -1.39, position event -.58 | 28-31 |
+| | 4,000 | .00, .00, .00-.72, .00-.53 | .00 | .78-.87 | the raw key -1.42, position event -.50 | 30-33 |
+
+**The fall above 1,000 tokens, located.**
+
+- **No word is said.** Through 4,000 batches the brain says .00 to .02 of the words, on every founder
+  and both arms, where the read lands right on the agent's word on up to 1.00 of rows. An act settles in
+  21 to 38 sweeps, near a newborn's, against 116 to 128 at 200 words from 2,000 batches (development),
+  so the motor
+  readout of a one-hot word over 1,000 actions is not formed at this exposure.
+- **The read's selection falls to shared terms.** Each word's own rows of the address and position
+  maps learn only from that word's lessons, five times fewer at 1,000 words than at 200; the shared
+  columns learn from every lesson. The misses are carried first by the cortex columns of the position
+  and address maps (-1.6 to -2.5), and from 2,000 batches by the raw key itself: the event heard matches
+  an earlier slot of the same word (-1.4), which the word's own rows would have to outweigh. The cortex
+  at unit norm moves the early misses to the position maps' bias and event rows and the late ones to the
+  raw key, and the read falls faster: the agent's word lands right at .88 to 1.00 at 500 batches and at
+  .00 to .03 at 2,000.
+
+At 200 words (development, one life) the cortex at unit norm brings the verb's read to 1.00 by 2,000
+batches, where the read at raw codes reads .00 there, and clauses to .61 at 4,000 batches, against
+.62 at raw codes at 8,000 in the readings of 6 November.
+
 ## What this does and does not establish
 
 It establishes, on six fresh founders, that a word never taught is said piece by piece with its
