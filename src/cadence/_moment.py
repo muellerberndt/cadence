@@ -1424,3 +1424,186 @@ def solved_state(
     result = BrainState(v=v, activation=s, adaptation=a, steps=taken)
     _keep_products(result, fused._kept(flat, flat, rows, kept))
     return result
+
+
+# -- a taught lesson's phases and their checks in one call
+
+if njit is not None:
+    from .fused import _kernel, _residual_kernel
+
+    @_compiled
+    def _phases_kernel(
+        warm_v: np.ndarray, warm_a: np.ndarray, kept_in: np.ndarray, has_kept: bool,
+        has_given: bool, drive: np.ndarray, bias: np.ndarray, flat: np.ndarray,
+        pairs: np.ndarray, apical_pairs: np.ndarray, starts: np.ndarray, pair_pre: np.ndarray,
+        pair_post: np.ndarray, offset: np.ndarray, freezable: np.ndarray,
+        freezable_nudged: np.ndarray, keep: np.ndarray, rule: np.ndarray, target0: np.ndarray,
+        nmask0: np.ndarray, gid0: np.ndarray, softmax0: np.ndarray, weight0: np.ndarray,
+        anchor0: np.ndarray, gain0: np.ndarray, target: np.ndarray, nmask: np.ndarray,
+        gid: np.ndarray, ngroups: int, beta: float, softmax_t: np.ndarray, weight: np.ndarray,
+        anchor: np.ndarray, anchor_gain: np.ndarray, pool_of: np.ndarray,
+        pool_index: np.ndarray, pool_starts: np.ndarray, pool_run: np.ndarray,
+        no_held: np.ndarray, free_steps: int, nudged_steps: int, tolerance: float,
+        stops: bool, nudged_tolerance: float, nudged_stops: bool,
+    ) -> tuple[Any, ...]:
+        """A finite lesson's three phases and their checks, each the kernel ``Brain.settle_batch``
+        and ``Brain.residual`` launch, in their order: the free phase from the warm state and its
+        check, the phases nudged toward and away from the target from the free state, and their
+        checks. A phase starts from a copy of its state's potentials, publishes them from what
+        the state keeps and reads its products; a check reads and renews them."""
+        dt, slope, threshold, rest, leak = rule[0], rule[1], rule[2], rule[3], rule[4]
+        strength, tau = rule[5], rule[6]
+        rows = drive.shape[0]
+        v0 = warm_v.copy()
+        a0 = warm_a.copy()
+        s0 = np.empty_like(v0)
+        _publish(v0, s0, kept_in, has_kept, slope, threshold, rest, leak)
+        taken0, change0, kept0 = _kernel(
+            v0, a0, s0, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
+            pair_pre, pair_post, offset, freezable, keep, False, dt, slope, threshold, rest,
+            leak, False, strength, tau, False, target0, nmask0, gid0, 0, 0.0, softmax0, weight0,
+            anchor0, gain0, False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0,
+            no_held, False, free_steps, tolerance, stops, kept_in, has_given,
+        )
+        read = np.empty_like(v0)
+        published = _publish(v0, read, kept0, True, slope, threshold, rest, leak)
+        out0 = np.empty(rows)
+        kept0 = _residual_kernel(
+            v0, a0, read, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
+            pair_pre, pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False,
+            strength, False, target0, nmask0, gid0, 0, 0.0, softmax0, weight0, anchor0, gain0,
+            False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0, no_held, False,
+            out0, kept0, True, published,
+        )
+        v1 = v0.copy()
+        a1 = a0.copy()
+        s1 = np.empty_like(v1)
+        _publish(v1, s1, kept0, True, slope, threshold, rest, leak)
+        taken1, change1, kept1 = _kernel(
+            v1, a1, s1, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
+            pair_pre, pair_post, offset, freezable_nudged, keep, False, dt, slope, threshold,
+            rest, leak, False, strength, tau, True, target, nmask, gid, ngroups, beta,
+            softmax_t, weight, anchor, anchor_gain, False, pool_of, pool_index, pool_starts,
+            pool_run, 1.0, 1.0, 0.0, no_held, False, nudged_steps, nudged_tolerance,
+            nudged_stops, kept0, True,
+        )
+        v2 = v0.copy()
+        a2 = a0.copy()
+        s2 = np.empty_like(v2)
+        _publish(v2, s2, kept0, True, slope, threshold, rest, leak)
+        taken2, change2, kept2 = _kernel(
+            v2, a2, s2, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
+            pair_pre, pair_post, offset, freezable_nudged, keep, False, dt, slope, threshold,
+            rest, leak, False, strength, tau, True, target, nmask, gid, ngroups, -beta,
+            softmax_t, weight, anchor, anchor_gain, False, pool_of, pool_index, pool_starts,
+            pool_run, 1.0, 1.0, 0.0, no_held, False, nudged_steps, nudged_tolerance,
+            nudged_stops, kept0, True,
+        )
+        read = np.empty_like(v1)
+        published = _publish(v1, read, kept1, True, slope, threshold, rest, leak)
+        out1 = np.empty(rows)
+        kept1 = _residual_kernel(
+            v1, a1, read, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
+            pair_pre, pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False,
+            strength, True, target, nmask, gid, ngroups, beta, softmax_t, weight, anchor,
+            anchor_gain, False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0,
+            no_held, False, out1, kept1, True, published,
+        )
+        read = np.empty_like(v2)
+        published = _publish(v2, read, kept2, True, slope, threshold, rest, leak)
+        out2 = np.empty(rows)
+        kept2 = _residual_kernel(
+            v2, a2, read, _standing(drive, bias), flat, pairs, flat, apical_pairs, starts,
+            pair_pre, pair_post, offset, keep, False, dt, slope, threshold, rest, leak, False,
+            strength, True, target, nmask, gid, ngroups, -beta, softmax_t, weight, anchor,
+            anchor_gain, False, pool_of, pool_index, pool_starts, pool_run, 1.0, 1.0, 0.0,
+            no_held, False, out2, kept2, True, published,
+        )
+        return (
+            v0, a0, s0, taken0, change0, kept0, out0, v1, a1, s1, taken1, change1, kept1, out1,
+            v2, a2, s2, taken2, change2, kept2, out2,
+        )
+
+
+def lesson_phases(learner: Any, drive: Any, warm: Any, target: np.ndarray) -> Any:
+    """The free phase, the two nudged phases and their checks of a finite lesson of ``learner``
+    at the rows of ``drive`` from the ``warm`` state toward ``target``, in one compiled call
+    (``_phases_kernel``): ``(free, nudged, opposite, checks)``, the states with what they keep
+    and each phase's residual, to the bit as ``Learner.free``, ``Learner._nudged`` and
+    ``Brain.residual`` make them in turn; None where a phase takes another path (a device, a
+    compartment, adaptation, a recording, a state that is not finite), which the caller takes."""
+    from . import fused
+    from .brain import BrainState, _keep_products
+
+    cfg, graph = learner.config, learner.brain
+    model = graph.neuron_model
+    if (
+        graph.backend != "cpu" or graph.apical is not None or model.adaptation is not None
+        or not graph._solves_alone() or cfg.free_steps < 1 or cfg.nudged_steps < 1
+        or cfg.qualified or type(drive) is not np.ndarray or drive.ndim != 2
+        or drive.dtype != np.float64 or not drive.flags.c_contiguous
+    ):
+        return None
+    blocks = graph._fused_blocks()
+    rows, n = drive.shape
+    if blocks is None or blocks[1] is not None or n != graph.connectome.n or not rows:
+        return None
+    flat = blocks[0]
+    if not fused.rows_finite(drive):
+        return None
+    if warm is None:
+        warm_v = warm_a = np.zeros((rows, n))
+        products = None
+    else:
+        if warm.device is not None:
+            return None
+        warm_v, warm_a = warm.v, warm.adaptation
+        for array in (warm_v, warm_a):
+            if (
+                type(array) is not np.ndarray or array.shape != (rows, n)
+                or array.dtype != np.float64 or not fused.rows_finite(array)
+            ):
+                return None
+        warm_v, warm_a = np.ascontiguousarray(warm_v), np.ascontiguousarray(warm_a)
+        products = warm.__dict__.get("_products")
+    kept_in, has_kept = fused._held(products)
+    has_given = fused._given(products, flat, flat, rows)[1]
+    layout = graph.layout
+    pull = learner.nudge_for(target, cfg.beta, None, None)
+    target_k, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = (
+        fused._nudge_arrays(pull, rows, n)
+    )
+    target0, nmask0, gid0, _, _, softmax0, weight0, anchor0, gain0 = fused._no_nudge(rows, n)
+    freezable = ~fused._fed_ranges(layout)
+    freezable_nudged = freezable.copy()
+    freezable_nudged[
+        np.searchsorted(
+            layout.starts, np.flatnonzero((nmask > 0) | (anchor_gain > 0)), side="right"
+        ) - 1
+    ] = False
+    pairs, _, apical_pairs, _, pool_of, pool_index, pool_starts, pool_run, _, _, _, no_held, _ = (
+        fused._compartment(None, layout, flat, None, rows, n)
+    )
+    tolerance = cfg.tolerance if cfg.tolerance else None  # a tolerance of zero never stops
+    nudged_tolerance = None if cfg.nudged_fixed else tolerance
+    out = _phases_kernel(
+        warm_v, warm_a, kept_in, has_kept, has_given, drive, graph.bias, flat, pairs,
+        apical_pairs, layout.starts, layout.pair_pre, layout.pair_post, layout.offset,
+        freezable, freezable_nudged, fused._NO_MASK, np.array(fused._rule(model), dtype=float),
+        target0, nmask0, gid0, softmax0, weight0, anchor0, gain0, target_k, nmask, gid,
+        int(ngroups), float(beta), softmax_t, weight, anchor, anchor_gain, pool_of, pool_index,
+        pool_starts, pool_run, no_held, int(cfg.free_steps), int(cfg.nudged_steps),
+        float(tolerance) if tolerance is not None else 0.0, tolerance is not None,
+        float(nudged_tolerance) if nudged_tolerance is not None else 0.0,
+        nudged_tolerance is not None,
+    )
+    states, checks = [], []
+    for k in range(3):
+        v, a, s, taken, change, kept, residual = out[7 * k : 7 * k + 7]
+        state = BrainState(
+            v=v, activation=s, adaptation=a, steps=int(taken), activity_change=change,
+        )
+        _keep_products(state, fused._kept(flat, flat, rows, kept))
+        states.append(state)
+        checks.append(residual)
+    return states[0], states[1], states[2], checks

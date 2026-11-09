@@ -122,6 +122,7 @@ def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
 # parts of a pass around them.
 PARTS = (
     ("cadence._moment", "_moment_kernel", "kernels: a moment in one call"),
+    ("cadence._moment", "_phases_kernel", "kernels: the lessons' phases"),
     ("cadence.fused", "_fast_solve", "kernels: the solves"),
     ("cadence.fused", "fused_solve", "kernels: the solves"),
     ("cadence.fused", "fused_settle", "kernels: the lessons' phases"),

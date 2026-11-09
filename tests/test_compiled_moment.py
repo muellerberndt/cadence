@@ -220,6 +220,15 @@ def test_the_shortcuts_keep_the_compiled_moments_bits(options, monkeypatch) -> N
         return found
 
     monkeypatch.setattr(_moment, "one_call", counted)
+    phases = _moment.lesson_phases
+
+    def counted_phases(*args):
+        found = phases(*args)
+        if found is not None:
+            whole[2] = whole.get(2, 0) + 1
+        return found
+
+    monkeypatch.setattr(_moment, "lesson_phases", counted_phases)
     lives = []
     for shortcuts, one_call in MODES:
         monkeypatch.setattr(_moment, "SHORTCUTS", shortcuts)
@@ -232,6 +241,7 @@ def test_the_shortcuts_keep_the_compiled_moments_bits(options, monkeypatch) -> N
     # every act but those after a lesson that taught nothing (they read the lesson's solve) and
     # every lesson's judgment ran as one call, the acts that begin the streams among them
     assert whole[0] >= 44 and whole[1] >= 54, whole
+    assert whole[2] >= 30, whole  # and the phases of every lesson that taught a row
 
 
 def _same_life(first, second) -> None:

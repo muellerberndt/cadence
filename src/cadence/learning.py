@@ -1492,6 +1492,18 @@ class Learner:
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
+        if judged is not None and weight is None and cfg.compiled_moment:
+            # the compiled moment's lesson: the three phases and their checks in one call
+            found = self._phases_compiled(drive, warm, target)
+            if found is not None:
+                free, nudged, opposite, phases = found
+                exhausted = cfg.tolerance is not None and free.steps >= cfg.free_steps > 0
+                report = self.update(free, nudged, opposite, share=self._share(judged))
+                report.update(_phase_report(phases, accepted=True, qualified=False))
+                report.update(_taught_report(judged, batch))
+                report["free_budget_exhausted"] = float(exhausted)
+                self._warn_exhausted(exhausted)
+                return LearnedState(free, nudged, opposite, judged), report
         free = self.free(drive, warm)
         # Finite phases get post-solve residual diagnostics. They count additional
         # work and do not certify the lesson.
@@ -1536,6 +1548,36 @@ class Learner:
         report["free_budget_exhausted"] = float(exhausted)
         self._warn_exhausted(exhausted)
         return LearnedState(free, nudged, opposite, taught), report
+
+    def _phases_compiled(
+        self, drive: Any, warm: BrainState | None, target: np.ndarray
+    ) -> tuple[BrainState, BrainState, BrainState, dict[str, Equilibrium]] | None:
+        """A finite lesson's free phase, nudged phases and their residual checks in one compiled
+        call (``_moment.lesson_phases``, under ``compiled_moment``): the states and the phases'
+        records ``step`` makes through ``free``, ``_nudged`` and ``_diagnostic``, to the bit; None
+        where a phase takes another path or one of them is overridden."""
+        from . import _moment
+
+        kind = type(self)
+        if (
+            not (_moment.ONE_CALL and _moment.SHORTCUTS) or not _compiled_passes()
+            or kind.free is not Learner.free or kind._nudged is not Learner._nudged
+            or kind._diagnostic is not Learner._diagnostic
+            or kind.nudge_for is not Learner.nudge_for
+        ):
+            return None
+        found = _moment.lesson_phases(self, drive, warm, target)
+        if found is None:
+            return None
+        free, nudged, opposite, checks = found
+        tolerance = self.config.tolerance if self.config.tolerance is not None else 0.0
+        phases = {
+            name: Equilibrium(state, check, state.steps, tolerance, residual_checks=1)
+            for name, state, check in zip(
+                ("free", "nudged", "opposite"), (free, nudged, opposite), checks, strict=True
+            )
+        }
+        return free, nudged, opposite, phases
 
     def _differs(self, answer: np.ndarray, labels: np.ndarray) -> np.ndarray:
         """True per row where an answer differs from its label in any slot."""
