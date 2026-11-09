@@ -553,10 +553,11 @@ class Lives:
     lone brain on the CPU, with its parameters, optimizer and critic.
 
     On ``backend="cpu"`` each life is its own ``Brain`` and the lives run in turn, to the bit as
-    lone brains. On ``backend="torch"`` (CUDA, or a torch CPU device) they are the streams of one
-    brain whose parameters carry a lives axis, and each moment of all of them is one settle and
-    one update; each life agrees with its lone brain on that device within the solver's
-    tolerance. The lives share their anatomy and nothing they learn.
+    lone brains. On ``backend="torch"`` (CUDA where there is a card, else the torch CPU device, or
+    the ``device`` named) they are the streams of one brain whose parameters carry a lives axis,
+    and each moment of all of them is one settle and one update; each life agrees with its lone
+    brain on that device within the solver's tolerance. The lives share their anatomy and nothing
+    they learn.
     """
 
     def __init__(
@@ -592,8 +593,11 @@ class Lives:
             return
         self.brains = None
         place: dict[str, Any] = {"backend": "torch"}
-        if device is not None:
-            place["device"] = device
+        if device is None:  # CUDA where there is a card, else the torch CPU device (never MPS)
+            import torch
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        place["device"] = device
         if precision is not None:
             place["precision"] = precision
         with warnings.catch_warnings():

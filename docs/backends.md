@@ -398,10 +398,13 @@ they are one brain's streams, sharing what they learn, or brains of their own.
 | Many brains of their own on a Mac or a CPU machine | a process pool, one thread per process, or `Lives(..., backend="cpu")` in one process |
 
 ```python
-lives = cd.Lives(35, 18, 128, backend="torch")       # 128 brains of seeds 0 to 127, on CUDA
-actions = lives.step(observations)                   # (128, 35) in, one action per life out
-actions = lives.step(observations, reward=rewards)   # each life learns from its own outcome
-lone = lives.life(5)                                 # life 5 as a lone Brain on the CPU, to save
+import numpy as np
+
+lives = cd.Lives(35, 18, 8, backend="torch")            # 8 brains of seeds 0 to 7, on CUDA where there is one
+observations = np.random.default_rng(0).random((8, 35))
+actions = lives.step(observations)                      # one row per life in, one action per life out
+actions = lives.step(observations, reward=np.ones(8))   # each life learns from its own outcome
+lone = lives.life(5)                                    # life 5 as a lone Brain on the CPU, to save
 ```
 
 `Lives` composes each life as `Brain.compose(inputs, actions, seed=s, recall=False, episodic=False,

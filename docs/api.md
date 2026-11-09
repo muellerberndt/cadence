@@ -238,7 +238,7 @@ population, so action indices keep their meaning after loading. A saved maturity
 
 ## Lives (`cadence`)
 
-```python
+```text
 Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precision=None, **options)
 ```
 
@@ -246,7 +246,8 @@ Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, a
 recall=False, episodic=False, **options)` (seeds `range(lives)` by default), stepped together, one stream each.
 Every life has its own parameters, optimizer, critic, eligibility, working trace and random state.
 `backend="cpu"` holds lone brains and steps them in turn; `backend="torch"` (CUDA, or `device="cpu"`) holds
-one brain whose parameters carry a lives axis, one call per moment for all of them
+one brain whose parameters carry a lives axis, on CUDA where there is a card and else on the torch CPU device,
+one call per moment for all of them
 ([many lives at once](backends.md#many-lives-at-once)).
 
 | Method | Meaning |
