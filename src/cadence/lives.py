@@ -1168,7 +1168,7 @@ def _supported(brain: Any) -> None:
     if recall is not None and not recall.resides:
         raise refuse(
             "a recall memory of one head, without a window, the command, the read of when, "
-            "tokens or their gain"
+            "tokens, their gain or the cortex at unit norm"
         )
     hearing = brain.hearing
     if hearing is not None and any(route["slot"] is not None for route in hearing.routes):

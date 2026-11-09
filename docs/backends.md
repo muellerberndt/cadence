@@ -151,7 +151,8 @@ host, where the same equations run in NumPy:
 | `recall_action=True` | a bank of the executed commands beside the slots, written from the host's action choice |
 | `recall_when=True` | the read's age features, delivered on a region of their own |
 | `recall_tokens`, `recall_gain` | the tokens' identity map into the motor region and one learned gain per port, taught by the motor's movement |
-| a store with a separator, or a surprise gate | the separator's expanded code of each key, or the gate's noise over the consolidated strengths |
+| a store with a separator, a surprise gate or `memory_fade` | the separator's expanded code of each key, the gate's noise over the consolidated strengths, or the fade's depth and recent use per key coordinate, read at every moment |
+| `recall_cortex_norm=True` | the cortex of the moment before set to unit norm per stream before the maps read it |
 | `memory_choice=True` | the episodic records: place and context records, their vote in the choice and the replay of a path |
 | `learned_code=units` | a region that settles to its code before the moment's settle, with its own lessons |
 

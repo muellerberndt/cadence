@@ -326,7 +326,8 @@ def test_the_lives_recall_memory_rests_on_the_device_alone():
     ("options", "named"),
     [({"episodic": True}, "episodic=False"), ({"arousal": True}, "no arousal"),
      ({"apical": 0.25, "modules": (16, 8)}, "apical"), ({"recall_heads": 2}, "one head"),
-     ({"efference_amplitude": 1.0}, "efference"), ({"learning_rehearsal": 0.5}, "rehearsal")],
+     ({"efference_amplitude": 1.0}, "efference"), ({"learning_rehearsal": 0.5}, "rehearsal"),
+     ({"recall_cortex_norm": True}, "cortex at unit norm")],
 )
 def test_lives_refuse_a_part_their_axis_does_not_cover(options, named):
     with pytest.raises(ValueError, match=named):
