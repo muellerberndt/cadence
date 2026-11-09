@@ -140,13 +140,13 @@ Declare component versus integrated scope in the
 [roadmap](https://github.com/muellerberndt/cadence/issues/109) and its goal epics keep these
 targets distinct from implementation claims.
 
-## What the current interface provides
+## What the interface provides
 
 The `Brain` provides a continuing equilibrium interpretation, action and memory. It integrates no
 learned model of environmental transitions. For one creature, compose a brain with arousal and
 use `live` throughout its life: it receives the preceding action's measured outcome and chooses
 the next action, with arousal deciding when to explore and learn. This small loop keeps one
-stream and both memory pathways active:
+stream and its memories (the working trace, the recall memory and the associative store) active:
 
 ```python
 import numpy as np

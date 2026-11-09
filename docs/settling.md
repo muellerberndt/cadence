@@ -334,6 +334,17 @@ a phase solved to sup-norm error `eps` adds at most `A·(eps⁺ + eps⁻)/beta` 
 bound), so a smaller nudge needs a tighter solve. A nudge across the kink at zero or into
 another attractor loses this accuracy; `leak=1` gives the smooth `tanh(v/2)`.
 
+Finite nudged phases stop at the movement `tolerance`. Near agreement that comes after one or two
+sweeps, and at different counts in the two phases, so in deep modules the contrast is a distorted
+estimate of the gradient. `LearnerConfig(nudged_fixed=True)` runs both phases their whole
+`nudged_steps` budget, and the estimate holds down to the lowest region; the teaching point
+`"deep"`, a new brain's, sets it with a budget of 32 sweeps. The phases also start where the
+answer they correct was settled: a composed brain's lesson starts its free phase from the
+stream's activity, the state its act settles from, and a standalone learner takes that state as
+`warm=`. A deep reciprocal brain can hold two stable states for one observation, and a lesson
+started from rest would correct the other one
+([a deep brain whose lessons do not reach its act](teach.md#a-deep-brain-whose-lessons-do-not-reach-its-act)).
+
 `Learner.contrast` returns the statistic. Where `c[e] = gain · count[e] · exp(log_gain[pre[e]])`
 is not one, multiply by `c[e]` to get minus the gradient for a tied `efficacy`, and divide by `T`
 for ordinary cross-entropy. Tie groups (`Learner(tie_groups=...)`) and reciprocal pairs combine
@@ -354,7 +365,8 @@ nothing.
 
 Under `qualified=True` both budgets are settle budgets, and a nudged phase needs about as many
 sweeps as the free one. Raise `nudged_steps` to match `free_steps`: at the composed
-`free_steps=1024`, `nudged_steps=12` a qualified brain refuses lessons on realistic input.
+`free_steps=1024` and a nudged budget of 12 (`recall=False`) or 32 (a new brain with the memory)
+a qualified brain refuses lessons on realistic input.
 `qualified=True` with `nudged_steps < free_steps` warns, and a refusal names the mismatch in
 its `hint`. Opt in with named overrides, which keep the composed rates:
 
@@ -513,8 +525,8 @@ print(calibration["final_means"], calibration["target_gaps"])
 ### 7. Every knob
 
 `LearnerConfig()` holds the standalone defaults below. In a composed brain each field is the
-`learning_<field>` override of `compose` and `retune`, except `eta`, `eta_bias`, `normalize`
-and `normalize_floor`, which the teaching point sets (`teaching="founder"`, `"normalized"` or
+`learning_<field>` override of `compose` and `retune`, except `eta`, `eta_bias`, `normalize`,
+`normalize_floor`, `normalize_relative` and `nudged_fixed`, which the teaching point sets (`teaching="founder"`, `"normalized"` or
 `"deep"`); the composed founders are in
 [defaults and expert overrides](tune.md#defaults-and-expert-overrides).
 `learning=LearnerConfig(...)` replaces the composed config whole.
@@ -535,6 +547,7 @@ Select rates on development data and freeze them.
 | `momentum` | `LearnerConfig` | in `[0, 1)`: step on a bias-corrected running mean of each contrast | 0.0 |
 | `normalize`, `normalize_floor` | `LearnerConfig` | forgetting factor in `[0, 1)` of a running RMS that divides each step, plus a floor ([below](teach.md#rates-under-normalization)) | 0.0 (off), 1e-3 |
 | `normalize_relative` | `LearnerConfig` | above zero, in place of `normalize_floor`, that share of the RMS of the synapse's projection (a bias: its range) ([rates](teach.md#rates-under-normalization)) | 0.0 (off) |
+| `nudged_fixed` | `LearnerConfig` | nudged phases run their whole `nudged_steps` budget instead of stopping at the movement `tolerance` ([why](#5-why-the-contrast-is-a-gradient)); `teaching="deep"` sets it | `False` |
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
@@ -545,7 +558,7 @@ Select rates on development data and freeze them.
 | `plastic_synapses`, `plastic_neurons` | `Learner` | bool masks of moving efficacies and biases | all |
 | `reciprocal` | `Learner` | tie each synapse and its reverse into one efficacy | `True` |
 | `tie_groups` | `Learner` | int per synapse, `-1` untied; a group shares one step | `None` |
-| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying | `None` (1); a new brain's [width](tune.md#wide-brains) sets it above 64 |
+| `synapse_rate` | `Learner` | nonnegative step multiplier per synapse, before tying. A rate of zero holds that synapse's efficacy; the biases have no rate and step, and the optimizer's running moments of a held synapse keep reading its contrast, so a rate raised later steps on that history | `None` (1); a new brain's [width](tune.md#wide-brains) sets it above 64 |
 | `slots` | `Learner` | outputs split into softmax groups: a count of equal groups or a size per group | 1 |
 | `gain`, `slope`, `leak`, `dt`, `stimulus_amplitude` | `learning_neuron_model` | synaptic gain, activation slope, sub-rest response, integration step, input scale | 1.0, 1.0, 0.1, 0.5 (`Brain.compose` uses 1.0), 1.0 |
 | `density`, `feedback`, `lateral`, `seed` | `layered` | input-to-hidden density, feedback scale, output-to-output weight, wiring seed | 0.3, 1.0, 0.0, 0 |
