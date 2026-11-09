@@ -2063,3 +2063,57 @@ population through `stimulate(drive)`; decays lie in `[0, 1)`.
 
 Inside a composed brain the working trace, efference copy and heard history are owned by
 [Memory](#working-trace).
+
+### A held message
+
+`cd.Message` holds what a stream heard in its episode as one state, where the recall memory keeps
+one slot per moment. It stands alone: it has no neurons and reads no brain.
+
+- **The code.** Each heard moment is given a fixed sparse code: `units` code units, each reading
+  `fan_in` of the observation's ON and OFF channels, and the `winners` units with the largest sums
+  are set to one. A unit wins where it reads several of the moment's active inputs at once, so the
+  code binds what one moment holds together.
+- **The state.** The `t`-th moment of the episode joins the union of block `t mod phases`. The
+  state is `phases * units` zeros and ones. Nothing fades while the episode lasts, neighbouring
+  moments lie in neighbouring blocks, and what a block holds is present or absent.
+- **The key.** `key()` is the union over the blocks. One set of moments gives one key in whatever
+  order it was heard, and episodes that share moments give keys that overlap. A memory of encoded
+  meanings files a record under the key.
+
+```python
+message = cd.Message(inputs=6, phases=4, units=24, winners=3, seed=0)
+heard = np.eye(6)[[0, 3, 5]]                             # three moments, one input each
+for moment in heard:
+    message.hear(moment[None])                           # one row per stream
+assert message.state.shape == (1, 96) and message.state.sum() == 9   # three codes, three units each
+again = cd.Message(inputs=6, phases=4, units=24, winners=3, seed=0)
+for moment in heard[::-1]:                               # the same moments in the other order
+    again.hear(moment[None])
+assert np.array_equal(message.key(), again.key())        # one key for one content
+assert not np.array_equal(message.state, again.state)    # the state keeps the order
+message.reset(1)                                         # a new episode begins empty
+assert not message.state.any()
+```
+
+| Setting | Default | What it sets |
+|---|---|---|
+| `inputs` | | The width of an observation |
+| `phases` | `4` | Blocks of the state: that many neighbouring moments stay apart |
+| `units` | `70` | Code units per block; the key has this width |
+| `winners` | `5` | Units set to one per moment |
+| `fan_in` | `16` | Channels each unit reads, raised until two units read every channel |
+| `seed` | `0` | The code's draw; one seed gives one code |
+
+`hear(observations)` takes one row per stream, `reset(batch, rows=None)` begins streams afresh,
+`keep(rows)` drops streams, `branch()` copies, and `arrays()` gives `trace` and `told` for a
+checkpoint (the code is drawn again from the seed). The write is fixed and holds no learned
+parameter.
+
+What it holds and what it does not, measured on the grammar chamber
+([a held meaning](../benchmarks/grammar/README.md#a-held-meaning)):
+
+- Every part of a clause's meaning is decodable from the state by a linear probe.
+- The key is the same for a meaning heard in either order, and it tells a clause from the clause
+  with its roles exchanged.
+- The key does not hold the order of two moments of the same kind, and a sentence heard as words
+  and the same meaning heard as concepts give unrelated keys.

@@ -1,5 +1,39 @@
 # Changelog
 
+## Unreleased
+
+### A held message: `cadence.Message`, and where a sentence's meaning lives (#286)
+
+No brain changes. Every founder, the default composition and `backend="cpu"` arithmetic are as on
+0.95.2; the one addition to the library is a class no brain reads by itself.
+
+- **`cadence.Message`** ([a held message](docs/memory.md#a-held-message)). A stream's episode held
+  as one state, with no neurons and no learned parameter. Each heard moment is given a fixed sparse
+  code, and the `t`-th moment joins the union of block `t mod phases`. `state` keeps the order
+  heard; `key()`, the union over the blocks, is the same for one set of moments in any order.
+- **Where the meaning lives** ([`meaning.py where`](benchmarks/grammar/meaning.py), development
+  founders). In the default composition a sentence is looked up: with the recall slots emptied at
+  `GO` every panel of the grammar chamber reads .00, and with the working trace emptied nothing
+  moves. The carried state holds a partial copy of the meaning that the readout does not use.
+- **Said from a held state** ([the declared run](benchmarks/grammar/README.md#the-declared-run), six
+  fresh founders, the message written by the instrument onto neurons the association reads, the
+  read barred from the meaning in every lesson). The brain says clauses from the message alone at
+  .98, as the matched LSTM does online, and paraphrases a heard sentence into the second grammar at
+  .94. On combinations no lesson showed it reads under the bar: held-out clauses .84 and role twins
+  .81 at 128 association neurons. Clauses of four distractors are said at .94 with 256 association
+  neurons, where 128 read .66.
+- **What a message needs.** Moments bound by a sparse code, order held as presence in separate
+  blocks, and width. The working trace at any decay, the heard history of raw moments, sums with
+  primacy or recency weights, and a message restated in motor slots each fail one of them.
+- **Beside a free read.** The episode-long message lifts brackets (+.12) and the context twins and
+  costs three hops (.36 to .12). The moment before alone, the library's `history_decays=(0.0,)`,
+  lifts roles (.91 to .98), paths (.94 to .99) and three hops (.36 to .74) on six fresh founders,
+  paired, beyond two standard errors. Neither is a default.
+- **The key as a record's address.** At 280 units a cue of the same meaning in the other order finds
+  its record among 256 on .98 of cues and among 1,024 on .91, and a role-swapped cue finds the twin's.
+  The key holds no order of moments of one kind, and a sentence heard as words and the same meaning
+  heard as concepts give unrelated keys.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
