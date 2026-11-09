@@ -102,11 +102,12 @@ def run(founder: int, batches: int, learners: tuple[str, ...] = LEARNERS,
 # The timed functions, each with its part: the kernels at the functions that launch them, then the
 # parts of a pass around them.
 PARTS = (
-    ("cadence.fused", "fused_fast_solve", "kernels: the solves"),
+    ("cadence.fused", "_fast_solve", "kernels: the solves"),
     ("cadence.fused", "fused_solve", "kernels: the solves"),
     ("cadence.fused", "fused_settle", "kernels: the lessons' phases"),
     ("cadence.fused", "fused_residual", "kernels: the checks"),
     ("cadence.generic", "Brain._stimulus", "the read"),
+    ("cadence.generic", "Brain._compiled_drive", "the read"),
     ("cadence.stream", "Recall.learn", "the address lesson"),
     ("cadence.stream", "Hearing.learn", "the carried gains' lesson"),
     ("cadence.learning", "Learner.update", "the lessons' update"),

@@ -179,3 +179,49 @@ def test_the_compiled_write_keeps_every_bit(began: bool, monkeypatch: pytest.Mon
         for name in ("keys", "values", "nexts", "held", "told", "focus", "ended"):
             np.testing.assert_array_equal(getattr(recall, name), getattr(plain, name), name)
     assert any(taken)  # the compiled write ran where the rooms had space
+
+
+def _chamber_life(subject: cd.Brain, seed: int, moments: int = 40) -> list[np.ndarray]:
+    """Taught and acted moments on fresh streams of four, as the grammar chamber lives them: a
+    lesson, then the act of the same observations; a reset every eight moments."""
+    rng = np.random.default_rng(seed)
+    actions = []
+    for t in range(moments):
+        if t % 8 == 0:
+            subject.reset()
+        x = (rng.random((4, 8)) < 0.3).astype(float)
+        if t % 8 >= 2:
+            subject.lesson(x, rng.integers(0, 4, 4))
+        actions.append(subject.act(x, greedy=True))
+    return actions
+
+
+@pytest.mark.parametrize("options", READS)
+def test_the_shortcuts_keep_the_compiled_moments_bits(options, monkeypatch) -> None:
+    from cadence import _moment
+
+    lives = []
+    for shortcuts in (False, True):
+        monkeypatch.setattr(_moment, "SHORTCUTS", shortcuts)
+        subject = brain(learning_compiled_moment=True, **options)
+        actions = _chamber_life(subject, 5)
+        lives.append((subject, actions))
+    (a, acts_a), (b, acts_b) = lives
+    for x, y in zip(acts_a, acts_b, strict=True):
+        np.testing.assert_array_equal(x, y)
+    np.testing.assert_array_equal(a.brain.efficacy, b.brain.efficacy)
+    np.testing.assert_array_equal(a.brain.bias, b.brain.bias)
+    for name in ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps",
+                 "grid_maps"):
+        for ours, theirs in zip(getattr(a.recall, name), getattr(b.recall, name), strict=True):
+            for u, v in zip(ours, theirs, strict=True):
+                np.testing.assert_array_equal(u, v)
+    for name in ("keys", "values", "nexts", "held", "told", "focus", "previous", "ended"):
+        np.testing.assert_array_equal(getattr(a.recall, name), getattr(b.recall, name), name)
+    assert a.recall.writes == b.recall.writes
+    np.testing.assert_array_equal(a.working_memory.trace, b.working_memory.trace)
+    np.testing.assert_array_equal(a.working_memory.last, b.working_memory.last)
+    np.testing.assert_array_equal(a.basal_ganglia.state.v, b.basal_ganglia.state.v)
+    assert a.carried_gains == b.carried_gains
+    assert dict(a.last_settlement) == dict(b.last_settlement)
+    assert a.last_learning == b.last_learning

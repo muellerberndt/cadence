@@ -373,6 +373,11 @@ def _restrict(state: BrainState, taught: np.ndarray | None, drive: Any = None) -
     return state if taught is None or bool(taught.all()) else _rows(state, taught, drive)
 
 
+# The report of a lesson whose caller-read answer matches every label, by batch size and
+# qualification (``Learner._untaught``): the same numbers at every such lesson.
+_UNTAUGHT: dict[tuple[int, bool], dict[str, float]] = {}
+
+
 def _taught_report(taught: np.ndarray | None, batch: int) -> dict[str, float]:
     """How many rows were offered, how many the lesson taught, and how many it agreed with."""
     count = float(batch if taught is None else int(taught.sum()))
@@ -1432,6 +1437,7 @@ class Learner:
         label does. A distribution has no single answer to agree with: ``surprise`` judges
         labels, and every row of targets is taught.
         """
+        target: np.ndarray | None = None
         if labels is None:
             if targets is None:
                 raise ValueError("a lesson needs labels or targets")
@@ -1440,20 +1446,22 @@ class Learner:
             if targets is not None:
                 raise ValueError("a lesson takes labels or targets, not both")
             labels = self._labels(labels)
-            target = self.targets(labels)
         if not _resident(drive):
             drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
             drive = drive[None, :]
-        if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
+        batch = len(labels) if target is None else len(target)
+        if drive.ndim != 2 or drive.shape[0] != batch:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
-        batch = len(target)
         judged = None
         if cfg.surprise and answer is not None and labels is not None:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
                 return self._untaught(judged)
+        if target is None:  # the labels' targets, made where a phase reads them
+            target = self.targets(labels)
+        if judged is not None:
             drive, target, weight = self._lesson(judged, drive, target, weight)
             warm = None if warm is None else _restrict(warm, judged)
         if cfg.qualified:
@@ -1564,22 +1572,25 @@ class Learner:
         """The lesson of a batch whose caller-read answer matches every label: no phase runs,
         nothing changes; every phase counts zero work."""
         cfg = self.config
-        report = {
-            "accepted": 1.0,
-            "qualified": float(cfg.qualified),
-            "qualification_required": float(cfg.qualified),
-            "attempted_presentations": float(len(taught)),
-        }
-        for name in ("free", "nudged", "opposite"):
-            for key in _PHASE_KEYS:
-                report[f"{name}_{key}"] = 0.0
-        for key in ("steps", "residual_checks", "stagnation_checks", "row_sweeps",
-                    "row_residual_checks"):
-            report[f"total_{key}"] = 0.0
-        report.update(_taught_report(taught, len(taught)))
-        if not cfg.qualified:
-            report["free_budget_exhausted"] = 0.0
-        return LearnedState(None, None, None, taught), report
+        held = _UNTAUGHT.get((len(taught), cfg.qualified))
+        if held is None:
+            report = {
+                "accepted": 1.0,
+                "qualified": float(cfg.qualified),
+                "qualification_required": float(cfg.qualified),
+                "attempted_presentations": float(len(taught)),
+            }
+            for name in ("free", "nudged", "opposite"):
+                for key in _PHASE_KEYS:
+                    report[f"{name}_{key}"] = 0.0
+            for key in ("steps", "residual_checks", "stagnation_checks", "row_sweeps",
+                        "row_residual_checks"):
+                report[f"total_{key}"] = 0.0
+            report.update(_taught_report(taught, len(taught)))
+            if not cfg.qualified:
+                report["free_budget_exhausted"] = 0.0
+            held = _UNTAUGHT[(len(taught), cfg.qualified)] = report
+        return LearnedState(None, None, None, taught), dict(held)
 
     def _agreed(
         self, free: BrainState, phases: Mapping[str, Equilibrium], taught: np.ndarray

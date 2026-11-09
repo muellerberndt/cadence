@@ -1300,6 +1300,54 @@ class Brain:
             stagnation_checks=stagnation_checks,
         )
 
+    def _published(self, drive: np.ndarray, state: BrainState | None) -> BrainState:
+        """``settle_batch(drive, steps=0, state=state)`` on the compiled CPU path of a graph
+        that solves in one compiled call (``_solves_compiled``), without the checks of a mask, a
+        nudge, a trajectory or a device: the same arrays and refusals of the drive and the
+        state."""
+        from .fused import fused_settle
+
+        drive = np.asarray(drive, float)
+        if drive.ndim == 1:
+            drive = drive[None, :]
+        batch, n = drive.shape
+        if n != self.connectome.n:
+            raise ValueError("drive must have one column per neuron")
+        if n == 0 or not _rows_finite(drive):
+            raise ValueError("drive must be finite and the brain must contain neurons")
+        if state is None:
+            v, a = np.zeros((batch, n)), np.zeros((batch, n))
+        else:
+            v = np.array(state.v, dtype=np.float64, copy=True, ndmin=2)
+            a = np.array(state.adaptation, dtype=np.float64, copy=True, ndmin=2)
+            if v.shape != (batch, n) or a.shape != (batch, n):
+                raise ValueError("state batch does not match the drive batch")
+            if not (_rows_finite(v) and _rows_finite(a)):
+                raise ValueError("warm potentials and adaptation must be finite")
+        compiled = self._fused_blocks()
+        assert compiled is not None
+        s, taken, change, products = fused_settle(
+            v, a, drive, self.bias, self.layout, compiled[0], None, self.neuron_model, None, 0,
+            None, apical=compiled[1],
+            products=None if state is None else state.__dict__.get("_products"),
+        )
+        result = BrainState(v=v, activation=s, adaptation=a, steps=taken, activity_change=change)
+        _keep_products(result, products)
+        return result
+
+    def _fast_equilibrate(
+        self, drive: np.ndarray, state: BrainState | None, budget: int, tolerance: float
+    ) -> Equilibrium | None:
+        """``equilibrate(drive, state=state, budget=budget, tolerance=tolerance, fast=True)`` in
+        the calls its compiled path makes (``_published``, ``_solve_compiled``): the same
+        arrays to the bit; None where it takes another path (the caller then calls it)."""
+        if self.backend != "cpu" or not self._solves_compiled() or budget < 0:
+            return None
+        if _resident(drive):
+            return None
+        return self._solve_compiled(drive, self._published(drive, state), budget, 32,
+                                    tolerance, True)
+
     def _solves_compiled(self) -> bool:
         """Whether a free solve can run in one compiled call: no compartment, no recording, on
         the compiled CPU path. A wrapped ``settle_batch`` or ``residual`` sees every launch, and

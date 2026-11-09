@@ -3584,7 +3584,9 @@ class Brain:
         in one array: the sensory part, the working trace, the recall memory's compiled read and
         the place store's, each as ``memories.stimulus`` reads them in turn; None where the brain
         holds another memory or a part the compiled read does not take (``_stimulus`` then reads
-        them in turn)."""
+        them in turn). A read of the same observations from the same memories as the latest read
+        (a lesson's, and the act that follows a lesson that taught nothing) is that read's drive,
+        and the memories hold that read."""
         recall, trace, store = self.recall, self.working_memory, self.hippocampus
         if recall is not None:
             recall.compiled_moment = True
@@ -3601,23 +3603,78 @@ class Brain:
             return None
         if self.hearing is not None:
             self.hearing.compiled_moment = True
-        self.basal_ganglia.reside(None)
-        drive = np.zeros((len(x), self.connectome.n))
-        drive[:, self.sensory_index] = (
-            self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
-        )
-        if trace is not None:
-            drive[:, trace._glow_columns] = (
-                trace.amplitude * trace.hearing * trace.trace if len(trace.trace) == len(x)
-                else 0.0
-            )
-        recall._stimulate_compiled(drive, x, inplace=True)
         if store is not None:
             store.compiled_moment = True
-            drive[:, store._post_columns] += _moment.store_read(
-                store, np.ascontiguousarray(drive[:, store._pre_columns])
+        self.basal_ganglia.reside(None)
+        key = self._read_key(x, code, recall, trace, store) if _moment.SHORTCUTS else None
+        held = self.__dict__.get("_read_held")
+        if (
+            key is not None and held is not None and held[0] == key and recall.last is held[2]
+            and recall._attended is held[3] and recall.trace is held[4]
+        ):
+            return cast(np.ndarray, held[1].copy())
+        spans = (
+            _moment.drive_spans(self)
+            if _moment.SHORTCUTS and code is x and not self.coded_cortex else None
+        )
+        if spans is not None:  # every part in one pass, as the parts below read in turn
+            drive = _moment.moment_drive(self, np.ascontiguousarray(x), spans)
+        else:
+            drive = np.zeros((len(x), self.connectome.n))
+            drive[:, self._sensory_columns] = (
+                self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
             )
+            if trace is not None:
+                drive[:, trace._glow_columns] = (
+                    trace.amplitude * trace.hearing * trace.trace if len(trace.trace) == len(x)
+                    else 0.0
+                )
+            recall._stimulate_compiled(drive, x, inplace=True)
+            if store is not None:
+                drive[:, store._post_columns] += _moment.store_read(
+                    store, np.ascontiguousarray(drive[:, store._pre_columns])
+                )
+        # what the key names is held with it, so an identity is never a freed object's
+        named = (
+            recall.keys, recall.values, recall.nexts, recall.held, recall.previous, recall.told,
+            recall.focus, _moment.packed_parts(recall), None if trace is None else trace.trace,
+            None if store is None else (store.strength, store.mass, store.consolidated),
+        )
+        self.__dict__["_read_held"] = (
+            key, drive.copy(), recall.last, recall._attended, recall.trace, named
+        )
         return drive
+
+    @property
+    def _sensory_columns(self) -> slice | np.ndarray:
+        """The sensory neurons as a slice where they are one range (``stream.columns``)."""
+        held = self.__dict__.get("_sensory_held")
+        if held is None or held[0] is not self.sensory_index:
+            from .stream import columns as contiguous
+
+            held = (self.sensory_index, contiguous(self.sensory_index))
+            self.__dict__["_sensory_held"] = held
+        return held[1]
+
+    def _read_key(
+        self, x: np.ndarray, code: np.ndarray, recall: Recall, trace: Trace | None,
+        store: SynapticMemory | None,
+    ) -> tuple[Any, ...]:
+        """What a compiled read reads, by value or by the identity of arrays the memories replace
+        when they change: the observations and their code, the slots, the cortex of the moment
+        before, the episode and the focus, the maps (``_moment.packed_maps``) and the settings,
+        the working trace and the place store."""
+        return (
+            x.tobytes(), code is x or code.tobytes(), id(recall.keys), id(recall.values),
+            id(recall.nexts), id(recall.held), id(recall.previous), id(recall.told),
+            id(recall.focus), _moment.packed_key(recall), recall.hearing, recall.amplitude,
+            recall.heard, recall.temperature, recall.recency, recall.drive_gain,
+            self.brain.neuron_model.stimulus_amplitude,
+            None if trace is None else (id(trace.trace), trace.hearing, trace.amplitude),
+            None if store is None else (
+                id(store.strength), id(store.mass), id(store.consolidated), store.amplitude
+            ),
+        )
 
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
@@ -3828,10 +3885,14 @@ class Brain:
         # torch state stays apart, as it is
         own = type(brain).equilibrate is not NeuralGraph.equilibrate  # a subclass's own solve
         options: dict[str, Any] = {"fast": True} if cfg.fast_settle and not own else {}
-        phase = brain.equilibrate(
-            drive, state=state if brain.backend != "torch" else _copy_state(state),
-            budget=first_budget, tolerance=tolerance, **options,
-        )
+        phase = None
+        if options and _moment.SHORTCUTS and self._compiled_moment():
+            phase = brain._fast_equilibrate(drive, state, first_budget, tolerance)
+        if phase is None:
+            phase = brain.equilibrate(
+                drive, state=state if brain.backend != "torch" else _copy_state(state),
+                budget=first_budget, tolerance=tolerance, **options,
+            )
         if np.all(phase.qualified) or phase.steps >= budget:
             return phase
         if not all(
@@ -3881,6 +3942,54 @@ class Brain:
             return cast(BrainState, held[8])
         return None
 
+    def _lean_qualified(
+        self, drive: np.ndarray, state: BrainState | None, operation: str, judges: bool = False
+    ) -> BrainState | None:
+        """``_qualified`` of the compiled moment where its first solve qualifies every row, in
+        the calls its compiled path makes (``_moment.free_solve``): the same state, report and
+        bits; None where the solve takes another path or a row needs the rescue (the caller
+        then qualifies the drive, whose first solve is this one)."""
+        cfg = self.learner.config
+        graph = self.brain
+        if (
+            cfg.tolerance is None or cfg.qualified or not cfg.fast_settle
+            or self.learned_code is not None
+            or type(graph).equilibrate is not NeuralGraph.equilibrate
+        ):
+            return None
+        read = self._read_judged(drive, state, operation)
+        if read is not None:
+            return read
+        budget = cfg.free_steps
+        phase = _moment.free_solve(
+            graph, drive, state, budget if budget < 2 else (budget + 1) // 2, cfg.tolerance
+        )
+        if phase is None or not (phase.residual <= phase.tolerance).all():
+            return None
+        residual = tuple(phase.residual.tolist())
+        report: dict[str, Any] = {
+            "operation": operation,
+            "qualified": True,
+            "row_qualified": (True,) * len(residual),
+            "residual": residual,
+            "max_residual": max(residual),
+            "steps": int(phase.steps),
+            "budget": int(budget),
+            "tolerance": float(phase.tolerance),
+            "residual_checks": int(phase.residual_checks),
+            "damping_halvings": 0,
+            "stagnation_checks": 0,
+            "row_sweeps": int(phase.row_sweeps),
+        }
+        self._last_settlement = MappingProxyType(report)
+        if judges:
+            self._judged = (
+                graph, graph._efficacy, graph._bias, cfg, operation, state, drive.tobytes(),
+                None if state is None else (state.v.tobytes(), state.adaptation.tobytes()),
+                phase.state, report,
+            )
+        return cast(BrainState, phase.state)
+
     def _qualified(
         self, drive: np.ndarray, state: BrainState | None = None, *, operation: str = "answer",
         judges: bool = False,
@@ -3899,6 +4008,10 @@ class Brain:
         cfg = self.learner.config
         if cfg.tolerance is None:
             raise ValueError("Brain answers require a finite residual tolerance")
+        if _moment.SHORTCUTS and self._compiled_moment():
+            lean = self._lean_qualified(drive, state, operation, judges)
+            if lean is not None:
+                return lean
         read = self._read_judged(drive, state, operation)
         if read is not None:
             return read
@@ -4220,8 +4333,16 @@ class Brain:
         from .learning import LearningPhaseError
 
         batch = len(x)
-        self._prepare(x)
-        drive = self._moment_drive(x)
+        drive = None
+        if (
+            _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
+            and self._compiled_moment()
+        ):  # the compiled moment's read without the general path's layers (``_settled``)
+            self._coded_moment = (x, x, None, x, None)
+            drive = self._compiled_drive(x, x)
+        if drive is None:
+            self._prepare(x)
+            drive = self._moment_drive(x)
         code = self._coded(x)
         place = self._placed(x)
         key = self._decision_key(code)  # of the decision the lesson is shown for
@@ -5039,14 +5160,88 @@ class Brain:
         if temperature is not None:
             temperature = self.basal_ganglia._temperature(temperature)
         drive, free = self._settled(x)
-        action = self._choose(x, drive, free, greedy=greedy, temperature=temperature)
+        action = None
+        if greedy and temperature is None and _moment.SHORTCUTS and self._compiled_moment():
+            action = self._greedy_choice(x, drive, free)
+        if action is None:
+            action = self._choose(x, drive, free, greedy=greedy, temperature=temperature)
         self._acted = (x.copy(), self.basal_ganglia.state)
+        return action
+
+    def _greedy_choice(
+        self, x: np.ndarray, drive: np.ndarray, free: BrainState
+    ) -> np.ndarray | None:
+        """``_choose(x, drive, free, greedy=True)`` of the compiled moment in the calls it makes
+        for a brain of one motor slot without an episodic vote, a learned code, an efference
+        copy, a heard history or rehearsal: the same action and state to the bit; None for any
+        other brain (the caller then chooses)."""
+        agent = self.basal_ganglia
+        if (
+            self._episodic is not None or self.learned_code is not None
+            or self.efference is not None or self.history is not None
+            or self.learner.slot_count != 1 or self.learner.config.rehearsal
+            or type(agent).act is not ActorCritic.act or _resident(drive)
+            or not np.isfinite(drive).all()
+        ):
+            return None
+        agent._free = free
+        agent._free_brain = self.brain
+        agent._drive = drive.copy()
+        self._prepared = None
+        self._awaiting = None
+        code = self._coded(x)
+        # the actor's greedy act on the free state it holds (``ActorCritic.act``)
+        agent._pending = None
+        agent._pending_memory = None
+        agent._pending_hearing = None
+        spans = (
+            _moment.after_spans(self)
+            if self.recall is not None and not self.recall.action and code is x
+            and self.recall._compiles(len(x)) and isinstance(free.activation, np.ndarray)
+            and (self.working_memory is None or self.working_memory._device is None)
+            else None
+        )
+        if spans is not None:  # the choice, the trace's step and the write in one pass
+            action, clear = _moment.act_after(self, x, free, spans)
+            if not clear:
+                action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
+            action = np.asarray(action, dtype=np.int64)
+        else:
+            action = agent._clear_greedy(free)
+            if action is None:
+                action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
+            action = np.asarray(action, dtype=np.int64)
+            if self.working_memory is not None:
+                self.working_memory.update(free)
+            if self.recall is not None:
+                self.recall.witness(
+                    code, free, self._command(action) if self.recall.action else None
+                )
+        if self._episode_moments:
+            self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
+        self._moment = None
+        self._moment_code = None
         return action
 
     def _settled(self, x: np.ndarray) -> tuple[np.ndarray, BrainState]:
         """The drive of validated observations and its qualified free state, warm from the
         stream's last state; the observations' code is computed here once for the moment.
         Refusal raises before anything changes."""
+        if (
+            _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
+            and self._compiled_moment()
+        ):
+            # the compiled moment's read and solve without the general path's layers: the code
+            # of the moment is the observations, and the drive the compiled read's
+            held = self._coded_moment
+            self._coded_moment = (x, x, None, x, None)
+            try:
+                drive = self._compiled_drive(x, x)
+                if drive is not None:
+                    return drive, self._qualified(drive, self._activity(), operation="act")
+            except BaseException:
+                self._coded_moment = held
+                raise
         with self._code_attempt():
             self._prepare(x)
             drive = self._moment_drive(x)
