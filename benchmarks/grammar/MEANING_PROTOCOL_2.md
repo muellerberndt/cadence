@@ -173,3 +173,54 @@ second grammar, and the previous-word signal as a default candidate.
 ## Compute
 
 One AWS c7i.8xlarge, one process per life, one BLAS thread per process.
+
+## Result
+
+Read on one c7i.8xlarge, founders 9728600 to 9728605, 114 brain lives and 72 control lives on
+commit 38c1d8d2. Every table is on the chamber's page
+([the brain's own message](README.md#the-brains-own-message)); the verdicts:
+
+| Gate | Verdict | Reading |
+| --- | --- | --- |
+| B, the opt-out | holds | the recorded-lives tests pass (206); a default life hashes the same on the branch and on its base |
+| H1, said from the state, `state_256` | holds on `clause` and `clause_held`, fails on `roles` | 6, 5 and 4 of 6 at .90 (means .99, .95, .90; roles .66 and .81 on two founders) |
+| H1w, at the default width, `read_64` | fails on `clause_held` and `roles` | 5, 0 and 1 of 6 (means .89, .72, .74); `direct_64` .79, .47, .30 and `state_128` .97, .92, .86 (6, 4, 4 of 6) beside it |
+| H2, held | holds on both arms | `state_256`: every component 1.00 from the message at `GO` and at the last word; `read_64`: 5 and 6 of 6, one founder's least component .63 at `GO` |
+| H2u, used | fails on both | `state_256` 4 of 6 at .95 (the least word kind .90 to 1.00: a clause's patient at two distractors .90 on one founder); `read_64` 0 of 6 (.63 to .88: a clause's agents and distractors) |
+| H3, one meaning in two orders | holds on `state_256`, fails on `read_64` | the key closer 1.00 and both orders said right .98 (6 and 5 of 6); .98 and .84 (5 and 1 of 6) |
+| H4, paraphrase | holds | `para` .97, `para_held` .92 (6 and 6 of 6); `paraphrase_read` .99 and .95; `paraphrase_heard` .10 and .01 |
+| H5, capacity | reported | four distractors at .90 with 256 association neurons (1.00, .99, .99, .99, .90), three at 128 (1.00, .99, .96, .96, .74); the control .15, .02, .00, .00, .00 |
+| C, the previous-word control | holds on every reading | `state_256` +.91, +.95, +.90; `read_64` +.85, +.72, +.74; paraphrase +.88, +.91; capacity +.85 to +.99; each beyond two standard errors |
+| F, beside a free read | fails on `message_free` and `message_quiet`, holds on `message_fixed` against its own reference | `message_free`: paths -.26, three hops -.26. `message_quiet`: paths +.04, three hops -.22. `message_fixed` less `default_fixed`: paths +.13, three hops +.08, where `default_fixed` itself reads paths .79 and three hops .11 against the default composition's .91 and .26 |
+
+**Against the expectations.** H1 was expected to hold and failed on `roles` (4 of 6): the brain's
+own message says held-out clauses at .95 and role twins at .90, where the instrument's message
+read .95 on both. H1w failed as stated, further under the bar than development (one founder at .72,
+.22, .34). The read of one block lifted the message alone by .10, .26 and .44, paired, as stated.
+H2 held on both arms; H2u failed on `state_256` where it was expected to hold, by two founders at
+.90 and .91. H3 held on `state_256` and failed on `read_64` on both orders said right. H4 held on
+both panels, over the first protocol's held-out .84. C held as stated. F failed on `message_free`
+and on `message_quiet`'s three hops as stated; `message_quiet` kept paths and lifted clauses (+.03),
+brackets (+.15) and roles (+.08, within two standard errors), and `message_fixed` was expected to
+lose .1 to .2 and lost nothing against its reference.
+
+**Where the negatives sit.**
+
+- `roles` on `state_256`: founder 9728600 reads .66 and 9728602 .81, with the weakest founder's
+  readout losing the clause's patient at two distractors (.90) and the verb (.94) with every
+  previous word given, and held-out clauses .84: the readout of a superposed state on new
+  combinations, as in the first protocol at 128 association neurons.
+- `read_64`: on founder 9728604 the least clause component is read from the message itself at .63
+  at `GO` (.98 to 1.00 on the other founders) and the agents are said at .63: the code at 70 units
+  a block holds that founder's agents apart less well, and the block read finds nothing the code
+  does not hold. On the other five founders held-out clauses read .75 to .88 and roles .78 to .91,
+  the distractors (.88, .89) and the agents (.93) the failing kinds.
+- Beside a free read: with `message_free` the clauses are said from the message (read with it
+  silent .01) and the learned gains settle at 1.2 to 5.2 per block, and paths fall .26; with
+  `message_quiet` paths hold and three hops fall .22 (the three-hop sentence holds more moments
+  than any lesson's message did; read with the message silent three hops read .16 against .05 with
+  it); with the gains fixed the message is a lesser partner of the read (silent .65) and costs
+  nothing against a reference that is itself under the default composition.
+- Controls: the LSTM offline reads .99, .99, .98 at 28,398 parameters and 1.00 on every trained
+  panel at 430,602; online, one pass, .98, .95, .94 and 1.00, .95, .91. Three hops: .00 for every
+  control, .26 for the default composition, .71 with the moment before as heard.

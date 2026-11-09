@@ -56,9 +56,17 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   own blocks: each block is scored against the association's movement between the nudged phases,
   read back through the port's synapses. `message_amplitude=0.0` beside it builds no synapses from
   the region itself.
-- **The declared run** is [`benchmarks/grammar/MEANING_PROTOCOL_2.md`](benchmarks/grammar/MEANING_PROTOCOL_2.md):
-  sentences said from the brain's own message with the recall read barred, each message arm beside
-  its previous-word control, and the message's cost beside a free read.
+- **The declared run**, [`benchmarks/grammar/MEANING_PROTOCOL_2.md`](benchmarks/grammar/MEANING_PROTOCOL_2.md),
+  six fresh founders, the recall read barred from the meaning at `GO`. With `message=280` and 256
+  association neurons the brain says trained clauses from its own message at .99, held-out
+  combinations at .95 and role twins at .90 (6, 5 and 4 of 6 at .90: H1 holds on two panels and
+  fails on roles), reads every clause component from the message at 1.00, says both orders of one
+  meaning right at .98, paraphrases into a second grammar at .97 (.92 held out) and says clauses of
+  four distractors at .90. Its previous-word control (`history_decays=(0.0,)` in the message's
+  place) says .07, .00, .00. At 64 association neurons the message alone reads .79, .47, .30 and
+  the read of one block beside it .89, .72, .74: under the bar. Beside a free read the quiet
+  message keeps paths and costs three hops (-.22); the wide message costs paths (-.26). The LSTM at
+  the brain's parameter count reads 1.00 on every trained panel offline.
 
 ## 0.95.2 — 2026-11-09
 

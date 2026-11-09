@@ -1516,6 +1516,18 @@ neurons): `state`, `key()`, `told`, and with the read `maps` and `last`. A check
 streams and the read's maps. `grow` and `graft` refuse a brain with a message, and a message needs
 a vector brain without a learned code.
 
+**What it reads.** In the grammar chamber's
+[second declared run](../benchmarks/grammar/README.md#the-brains-own-message) (six fresh founders,
+the recall memory's slots of the meaning emptied at `GO`, every row taught), a brain with
+`message=280` and 256 association neurons says trained clauses from its message at .99, held-out
+combinations at .95 and role twins at .90 (6, 5 and 4 founders of 6 at .90), paraphrases a heard
+sentence into a second grammar at .97 (.92 held out) and says clauses of four distractors at .90;
+the same brain with `history_decays=(0.0,)` in the message's place says .07, .00 and .00. At the
+default composition's 64 association neurons the message alone reads .79, .47, .30 and the read of
+one block beside it .89, .72, .74. Beside a free recall read, a quiet message (70 units at
+amplitude .15) keeps paths and lifts clauses, brackets and roles, and costs three-hop paths .22;
+the wide message costs paths .26. None of these is a default.
+
 ## How strongly a carried region is heard
 
 The trace, the copy and the history each drive the settle at a fixed amplitude, and no one
