@@ -450,6 +450,8 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
+| `recall_gain_after` | `0` | construction | With `recall_gain`, the gains drive nothing and learn nothing through the memory's first this many lessons, and start then ([the value path released late](#the-value-path-released-once-the-read-has-formed-opt-in)) |
+| `recall_gain_next` | `0.0` | construction | With `recall_gain`, every next port's gain starts at this value when the gains start, every recall port's at zero ([the value path released late](#the-value-path-released-once-the-read-has-formed-opt-in)) |
 | `recall_cortex_norm` | `False` | construction | Every map reads the cortex of the moment before at unit norm per stream, so what every moment shares cannot outweigh the event in the address lesson ([the cortex at the event's weight](#the-cortex-at-the-events-weight-opt-in)) |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
@@ -1071,6 +1073,29 @@ recipe in the place of the composition):
 Use it for a brain that has to say tokens no lesson used where the answer is what the read holds:
 continuing, copying and inducing from what was heard. Leave it out of a brain that relies on repeated
 tokens at lengths no lesson reached, on Dyck sentences or on chained facts.
+
+### The value path released once the read has formed (opt-in)
+
+The learned gains answer for the read from the first lesson. A gain that answers early takes the
+lessons the read itself needs: a surprise lesson teaches only rows that are wrong, so once the gain
+says the answer the read is taught less, and a read that depends on a read (a second hop) never forms.
+`recall_gain_after=n` holds the gains at zero through the memory's first `n` lessons: they drive
+nothing and learn nothing, and the read is taught on every row it gets wrong. At the `n`-th lesson
+every next port's gain starts at `recall_gain_next` and every recall port's at zero, and they learn at
+`recall_gain` from there. The next port is the one that carries a successor, which is what a read
+lands one slot before; a recall port's gain would say the token the read is addressed by.
+
+```python
+import cadence as cd
+
+brain = cd.Brain.compose(
+    20, 12, recall=True, recall_cortex_norm=True,
+    recall_gain=1.0, recall_tokens=list(range(12)),
+    recall_gain_after=1000, recall_gain_next=10.0,
+)
+```
+
+`brain.recall.gain_lessons` counts the lessons the gains have seen, and a saved brain keeps it.
 
 ### The copy pathway (opt-in)
 

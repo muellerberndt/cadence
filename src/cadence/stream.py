@@ -908,6 +908,13 @@ class Recall:
     # every map reads the cortex of the moment before at unit norm per stream, the event's
     # energy, so a lesson's step on its columns weighs no more than the step on the event's rows
     cortex_norm: bool = False
+    # with ``gain``: the gains drive nothing and learn nothing through the memory's first
+    # ``gain_after`` lessons, so the read forms before the value path answers for it; at that
+    # lesson (at birth with 0) every next port's gain starts at ``gain_next`` and every recall
+    # port's at zero. ``gain_lessons`` counts the lessons the gains have seen
+    gain_after: int = 0
+    gain_next: float = 0.0
+    gain_lessons: int = 0
     keys: np.ndarray = field(init=False, repr=False)
     values: np.ndarray = field(init=False, repr=False)
     nexts: np.ndarray = field(init=False, repr=False)
@@ -934,10 +941,11 @@ class Recall:
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "anchor",
         "relative", "slope", "when", "gain", "grid", "drive_gain", "cortex_norm",
+        "gain_after", "gain_next",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens", "action", "anchor",
                             "relative", "slope", "when", "gain", "grid", "drive_gain",
-                            "cortex_norm")
+                            "cortex_norm", "gain_after", "gain_next")
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
     # the setting means, so a saved brain keeps the values it was saved with
@@ -1035,7 +1043,7 @@ class Recall:
             raise ValueError(Recall.removed(name))
         if name in (
             "amplitude", "recency", "address", "address_reward", "position_reward",
-            "position_rate", "copy", "slope", "gain",
+            "position_rate", "copy", "slope", "gain", "gain_next",
         ):
             return real(name, value, low=0)
         if name == "temperature":
@@ -1050,6 +1058,14 @@ class Recall:
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
             return value
+        if name == "gain_after":
+            if (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, np.integer))
+                or value < 0
+            ):
+                raise ValueError("gain_after must be a nonnegative integer: lessons")
+            return int(value)
         if name in ("capacity", "window", "heads", "position"):
             low = 0 if name == "position" else 1  # no position term at 0
             if (
@@ -1190,9 +1206,14 @@ class Recall:
 
     def _check_gain(self) -> None:
         """With ``gain`` every read port reaches the motor region through its gain on the declared
-        tokens, whose coordinates lie in the value."""
+        tokens, whose coordinates lie in the value; ``gain_after`` and ``gain_next`` are
+        settings of those gains."""
         if not self.gain:
+            if self.gain_after or self.gain_next:
+                raise ValueError("gain_after and gain_next are settings of gain: they need gain")
             return
+        if self.gain_next and not self.next:
+            raise ValueError("gain_next starts the next ports' gains: it needs next")
         if self.tokens is None:
             raise ValueError("gain multiplies the declared tokens' identity: it needs tokens")
         if not len(self.motor):
@@ -1336,6 +1357,8 @@ class Recall:
         self.gains: np.ndarray = np.zeros(
             self.heads * (2 if self.next else 1) if self.gain else 0
         )
+        if self.gain and not self.gain_after and self.gain_lessons == 0:
+            self.gains = self._released()
         pairs = [(token, j) for j, token in enumerate(self.tokens or ()) if token >= 0]
         offset = self.key_width - len(self.observed)
         self._token_values = np.array([offset + t for t, _ in pairs], dtype=np.int64)
@@ -2163,6 +2186,14 @@ class Recall:
             "bt,bt->b", read[:, self._token_values], movement[:, self._token_motors]
         ))
 
+    def _released(self) -> np.ndarray:
+        """The gains as ``gain_after`` releases them: ``gain_next`` on every next port, zero on
+        every recall port."""
+        gains = np.zeros(self.heads * (2 if self.next else 1))
+        if self.next:
+            gains[1::2] = self.gain_next
+        return gains
+
     def learn_gain(self, learned: LearnedState) -> dict[str, float]:
         """The gains' lesson after a teacher lesson whose phases are ``learned``, at its taught
         rows: each port's gain takes the mean over the rows of the row's rate (``_gain_rates``)
@@ -2174,6 +2205,12 @@ class Recall:
         if not self.gain:
             return {}
         quiet = {"gain_rows": 0.0, "gain_refused": 0.0}
+        if self.gain_after:
+            self.gain_lessons += 1
+            if self.gain_lessons <= self.gain_after:  # held at zero, released at the last
+                if self.gain_lessons == self.gain_after:
+                    self.gains = self._released()
+                return quiet
         moment = self.last
         if (
             moment is None
@@ -3043,6 +3080,8 @@ class Recall:
             "neurons": self.neurons,
             "writes": int(self.writes),
         }
+        if self.gain_after:  # the lessons the delayed gains have seen
+            out["gain_lessons"] = int(self.gain_lessons)
         if self.inputs:  # only a memory keyed on a code of the observation records its width
             out["inputs"] = self.inputs
         # an option at its founder is left out of the description
