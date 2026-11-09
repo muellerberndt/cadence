@@ -1,5 +1,9 @@
 # Evaluate a brain
 
+New to evaluation? [Evaluate without fooling yourself](teach.md#evaluate-without-fooling-yourself)
+covers the basics: held-out data, enough samples, seeds, per-class accuracy and a control. This
+page is the full method for a capability claim.
+
 This method applies to any task, demo or capability claim. Test one acquired
 brain through bootstrap, routine use, disturbance, repair and saved
 continuation ([the continuing life](world-model.md#bootstrap-use-repair-continue));
