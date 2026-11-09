@@ -1068,6 +1068,9 @@ def act_after(brain: Any, x: np.ndarray, free: Any, spans: np.ndarray) -> tuple[
     recall.told = recall.told + 1
     recall.focus = focus
     recall.writes += rows
+    if recall.cortex_norm:  # as ``Recall.witness``: the maps read it at unit norm
+        norm = np.linalg.norm(cortex, axis=1, keepdims=True)
+        cortex = np.where(norm > 0, cortex / np.where(norm > 0, norm, 1.0), cortex)
     recall.previous = cortex
     recall.last = None
     return action, clear
