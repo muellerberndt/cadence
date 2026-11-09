@@ -74,7 +74,9 @@ class Memory(Protocol):
 class Memories(Mapping[str, Any]):
     """The present memories of a brain by name, in the order the brain reads them."""
 
-    ORDER = ("working_memory", "efference", "history", "recall", "hippocampus", "episodic")
+    ORDER = (
+        "working_memory", "efference", "history", "message", "recall", "hippocampus", "episodic"
+    )
 
     def __init__(self, members: Mapping[str, Any]) -> None:
         unknown = set(members) - set(self.ORDER)

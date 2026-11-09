@@ -121,3 +121,135 @@ def test_observations_are_checked():
         message.hear(np.zeros((1, 34)))
     with pytest.raises(ValueError):
         message.hear(np.full((1, 35), np.nan))
+
+
+# ------------------------------------------------- the message a brain holds (compose opt-in)
+
+
+def _brain(**settings):
+    return cd.Brain.compose(12, 4, modules=(16,), seed=5, backend="cpu", **settings)
+
+
+def _stream(rng: np.random.Generator, moments: int, rows: int = 3) -> np.ndarray:
+    return _moments(rng, moments * rows, inputs=12, active=2).reshape(moments, rows, 12)
+
+
+def test_a_brain_without_the_option_holds_no_message():
+    brain = _brain()
+    assert brain.message is None and "message" not in brain.connectome.populations
+    assert "message" not in brain.memories and "message" not in brain.describe()["genes"]
+
+
+def test_the_brain_with_a_message_is_the_brain_without_it_plus_the_region():
+    plain, held, read = _brain(), _brain(message=8), _brain(message=8, message_read=True)
+    n = plain.connectome.n
+    assert held.connectome.n == n + 32 and read.connectome.n == n + 40
+    assert np.array_equal(plain.brain.dense(), held.brain.dense()[:n, :n])
+    assert np.array_equal(held.brain.dense(), read.brain.dense()[:n + 32, :n + 32])
+    assert list(read.memories).index("message") < list(read.memories).index("recall")
+    assert len(read.connectome.populations["message_read"]) == 8
+    genes = read.describe()["genes"]
+    assert genes["message"] == 8 and genes["message_read"] is True
+    assert genes["message_phases"] == 4 and genes["message_amplitude"] == 1.5
+    assert {f"message_{k}" for k in range(4)} <= set(read.carried_gains)
+
+
+def test_the_brain_writes_its_message_as_the_standalone_class_does():
+    brain = _brain(message=8, message_winners=2)
+    alone = cd.Message(12, phases=4, units=8, winners=2, seed=5)
+    stream = _stream(np.random.default_rng(0), 6)
+    for moment in stream:
+        brain.act(moment, greedy=True)
+        alone.hear(moment)
+    assert np.array_equal(brain.message.state, alone.state)
+    assert np.array_equal(brain.message.key(), alone.key())
+    drive = brain.stimulus(stream[0])
+    region = brain.connectome.populations["message"]
+    assert np.allclose(drive[:, region], 1.5 * alone.state)  # the gains start at one
+    brain.reset()
+    assert not brain.message.state.any()
+
+
+def test_a_newborn_reads_the_mean_of_its_blocks_and_lessons_move_the_read():
+    brain = _brain(message=8, message_winners=2, message_read=True, message_amplitude=0.0)
+    stream = _stream(np.random.default_rng(1), 5)
+    for moment in stream:
+        brain.act(moment, greedy=True)
+    drive = brain.stimulus(stream[0])
+    port = brain.connectome.populations["message_read"]
+    blocks = brain.message.state.reshape(3, 4, 8)
+    assert np.allclose(drive[:, port], 3.0 * blocks.mean(axis=1))
+    assert not drive[:, brain.connectome.populations["message"]].any()  # the amplitude is zero
+    assert not any(np.asarray(m).any() for maps in brain.message.maps for m in maps)
+    moved = sum(brain.lesson(stream[0], labels)["message_rows"]
+                for labels in ([1, 2, 3], [0, 0, 0], [3, 1, 2], [2, 3, 0]))
+    assert moved > 0  # rows the lesson taught step the read's maps
+    assert any(np.asarray(m).any() for maps in brain.message.maps for m in maps)
+    x, c, p, held = brain.message.last
+    assert np.allclose(p.sum(axis=1), 1.0) and p.shape == (3, 4)
+
+
+def test_a_streams_message_ends_with_its_episode():
+    brain = _brain(message=8)
+    stream = _stream(np.random.default_rng(2), 3, rows=2)
+    for moment in stream[:2]:
+        brain.step(moment)
+    brain.learn(np.zeros(2), np.array([True, False]), stream[2])
+    assert not brain.message.state[0].any() and brain.message.state[1].any()
+    assert brain.message.told.tolist() == [0, 2]
+
+
+def test_a_saved_brain_keeps_its_message_and_its_read(tmp_path):
+    brain = _brain(message=8, message_read=True)
+    stream = _stream(np.random.default_rng(3), 4)
+    for moment in stream:
+        brain.lesson(moment, [0, 1, 2])
+        brain.act(moment, greedy=True)
+    loaded = cd.Brain.load(brain.save(tmp_path / "brain"))
+    assert np.array_equal(loaded.message.state, brain.message.state)
+    assert np.array_equal(loaded.message.told, brain.message.told)
+    assert np.array_equal(loaded.message.previous, brain.message.previous)
+    for mine, theirs in zip(brain.message.maps, loaded.message.maps, strict=True):
+        assert all(np.array_equal(a, b) for a, b in zip(mine, theirs, strict=True))
+    assert loaded.message.to_dict() == brain.message.to_dict()
+    assert loaded.carried_gains == brain.carried_gains
+    assert np.array_equal(loaded.act(stream[0], greedy=True), brain.act(stream[0], greedy=True))
+    assert np.array_equal(loaded.message.state, brain.message.state)
+
+
+def test_an_imagined_branch_leaves_the_message_as_it_was():
+    brain = _brain(message=8)
+    stream = _stream(np.random.default_rng(4), 3, rows=1)
+    brain.act(stream[0], greedy=True)
+    before = brain.message.state.copy()
+    brain.imagine([stream[1], stream[2]])
+    assert np.array_equal(brain.message.state, before) and brain.message.told.tolist() == [1]
+
+
+def test_the_messages_drive_is_retuned_and_its_layout_is_fixed():
+    brain = _brain(message=8, message_read=True)
+    brain.retune(message_amplitude=0.4, message_read_amplitude=2.0, message_read_rate=0.0)
+    assert (brain.message.amplitude, brain.message.read_amplitude) == (0.4, 2.0)
+    assert brain.message.read_rate == 0.0
+    for change in ({"message": 16}, {"message_phases": 2}, {"message_read": False}):
+        with pytest.raises(ValueError):
+            brain.retune(**change)
+    with pytest.raises(ValueError):
+        _brain().retune(message_amplitude=1.0)
+    with pytest.raises(ValueError):
+        brain.grow(modules=(24,))
+    with pytest.raises(ValueError):
+        brain.graft(_brain(), regions=["association"])
+
+
+@pytest.mark.parametrize("settings, error", [
+    ({"message_phases": 3}, ValueError),  # a setting without the message
+    ({"message": 4, "message_winners": 9}, ValueError),
+    ({"message": 4, "message_unknown": 1}, TypeError),
+    ({"message": 4, "message_read": 1}, ValueError),
+    ({"message": -1}, ValueError),
+    ({"message": 4, "learned_code": 8}, ValueError),
+])
+def test_message_refusals(settings, error):
+    with pytest.raises(error):
+        _brain(**settings)

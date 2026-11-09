@@ -677,6 +677,264 @@ class Message:
         }
 
 
+@dataclass
+class HeldMessage(Message):
+    """A ``Message`` on a region of a brain's own neurons (``Brain.compose(message=units)``).
+
+    The region ``target`` holds one neuron per unit of the message, block after block. After
+    each moment the brain hears, the moment's winners in the block whose turn it is latch on
+    and stay on until the stream's episode ends: the write is fixed, as the working trace's and
+    the heard history's are. The association reads the region through plastic synapses at
+    ``amplitude`` times what it holds, and with ``carried_gain`` one learned gain per block
+    (``hearing``) sets how loudly.
+
+    With a ``port`` region the brain also reads its message one block at a time
+    (``message_read``). The present moment addresses the blocks,
+
+        p = softmax((x W_x + c W_c + w) . block / temperature + x T_x + c T_c + t)
+
+    ``x`` the moment as heard and ``c`` the association's settled activity of the moment
+    before, and the port holds ``read_amplitude * sum_k p_k block_k``: the settle answers on
+    the block the address chose. Every map starts at zero, so a newborn reads the blocks'
+    mean. After a lesson the blocks are scored against the association's movement between
+    the nudged phases, read back through the port's synapses, and the maps step toward the
+    blocks the lesson names, the recall memory's address lesson on the message's own blocks.
+    """
+
+    connectome: Connectome | None = None
+    amplitude: float = 1.5
+    read_amplitude: float = 3.0
+    read_rate: float = 0.01
+    read_temperature: float = 0.25
+    target: str = "message"
+    port: str = "message_read"
+    hearing: np.ndarray = field(init=False, repr=False)
+    previous: np.ndarray = field(init=False, repr=False)
+
+    SCORE_TEMPERATURE = 0.1  # of the blocks' scores in the read's lesson, the recall memory's
+
+    def __post_init__(self) -> None:
+        connectome = self.connectome
+        if connectome is None:
+            raise ValueError("a held message needs the brain's connectome")
+        for name in ("amplitude", "read_amplitude", "read_rate"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, float, np.integer, np.floating))
+                or not np.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(f"message {name} must be a finite nonnegative real scalar")
+            setattr(self, name, float(value))
+        if not np.isfinite(self.read_temperature) or self.read_temperature <= 0:
+            raise ValueError("message read_temperature must be positive")
+        populations = connectome.populations
+        self.glow = np.asarray(populations[self.target], dtype=np.int64)
+        self.association = np.asarray(populations["association"], dtype=np.int64)
+        self.reads = self.port in populations
+        super().__post_init__()
+        if len(self.glow) != self.width:
+            raise ValueError(
+                f"the {self.target} population holds {len(self.glow)} neurons, where the "
+                f"message holds {self.width} (phases * units)"
+            )
+        self._glow_columns = columns(self.glow)
+        self.hearing = np.ones(int(self.phases))
+        self.last: tuple[np.ndarray, ...] | None = None  # the latest read, for its lesson
+        self.maps: list[_Maps] = []
+        if self.reads:
+            port = np.asarray(populations[self.port], dtype=np.int64)
+            if len(port) != self.units:
+                raise ValueError(
+                    f"the {self.port} population holds {len(port)} neurons, where a block of "
+                    f"the message holds {self.units}"
+                )
+            self._port_columns = columns(port)
+            pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
+            source = -np.ones(connectome.n, dtype=np.int64)
+            source[port] = np.arange(len(port))
+            cortex = -np.ones(connectome.n, dtype=np.int64)
+            cortex[self.association] = np.arange(len(self.association))
+            synapses = np.flatnonzero((source[pre] >= 0) & (cortex[post] >= 0))
+            self._port_synapses = (synapses, source[pre[synapses]], cortex[post[synapses]])
+            inputs, wide = int(self.inputs), len(self.association)
+            # the content address over a block's units, then the turn over the blocks
+            self.maps = [
+                (np.zeros((inputs, outputs)), np.zeros((wide, outputs)), np.zeros(outputs))
+                for outputs in (int(self.units), int(self.phases))
+            ]
+
+    # -- the streams
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """An empty message for every stream, or for ``rows`` only."""
+        wide = len(self.__dict__.get("association", ()))
+        whole = rows is None or len(self.trace) != batch
+        super().reset(batch, rows)
+        if whole:
+            self.previous = np.zeros((batch, wide))
+        else:
+            self.previous[rows] = 0.0
+        self.last = None
+
+    def keep(self, rows: np.ndarray) -> None:
+        super().keep(rows)
+        self.previous = self.previous[rows]
+        self.last = None
+
+    def hear(self, observations: np.ndarray, cortex: np.ndarray | None = None) -> None:
+        """One heard moment per stream joins its block; ``cortex`` is the association's settled
+        activity at that moment, which the next moment's read addresses with."""
+        super().hear(observations)
+        if cortex is not None and np.shape(cortex) == self.previous.shape:
+            self.previous = np.array(cortex, dtype=float)
+        else:
+            self.previous = np.zeros((len(self.trace), len(self.association)))
+
+    def streams(self) -> dict[str, np.ndarray]:
+        """What the streams hold, the learned maps apart."""
+        return {"trace": self.trace, "told": self.told, "previous": self.previous}
+
+    # -- the read
+
+    def _heard_of(self, moment: Any) -> np.ndarray | None:
+        """The moment as the message hears it: the observations, or their code where that is
+        what the cortex reads."""
+        for x in (getattr(moment, "observations", None), getattr(moment, "code", None)):
+            if x is not None and np.ndim(x) == 2 and np.shape(x)[1] == self.inputs:
+                return np.asarray(x, dtype=float)
+        return None
+
+    def attention(self, x: np.ndarray, c: np.ndarray, blocks: np.ndarray) -> np.ndarray:
+        """``p`` over each stream's blocks for the moments ``x`` and the cortex ``c``."""
+        content, turn = self.maps
+        logits = _einsum("bu,bku->bk", _term(content, x, c), blocks) / self.read_temperature
+        logits = logits + _term(turn, x, c)
+        logits -= logits.max(axis=1, keepdims=True)
+        p = np.exp(logits)
+        return np.asarray(p / p.sum(axis=1, keepdims=True))
+
+    def stimulate(self, drive: np.ndarray, moment: Any = None) -> np.ndarray:
+        """The message read into a drive copy, and with a port the block the moment addresses;
+        another batch size reads silence."""
+        out = np.array(_on_host(drive), dtype=float)
+        present = len(self.trace) == len(out)
+        loud = self.amplitude * np.repeat(self.hearing, int(self.units))
+        out[:, self._glow_columns] = loud * self.trace if present else 0.0
+        if self.reads:
+            self.last = None
+            x = self._heard_of(moment) if present else None
+            if x is None or len(x) != len(out):
+                out[:, self._port_columns] = 0.0
+            else:
+                blocks = self.trace.reshape(len(out), int(self.phases), int(self.units))
+                c = self.previous
+                p = self.attention(x, c, blocks)
+                out[:, self._port_columns] = self.read_amplitude * _einsum("bk,bku->bu", p, blocks)
+                self.last = (x, c, p, blocks.copy())
+        return out
+
+    def stimulus(self, drive: np.ndarray, moment: Any = None) -> np.ndarray:
+        """The memory contract's read (``stimulate``)."""
+        return self.stimulate(drive, moment)
+
+    def learn(self, graph: Any, learned: Any) -> dict[str, float]:
+        """The read's lesson after a lesson whose phases are ``learned``, at its taught rows:
+        each block is scored against the association's movement read back through the port's
+        synapses, and the maps step toward the blocks the scores name. Returns how many rows
+        moved (``message_rows``) and how many a refused step left as they were."""
+        quiet = {"message_rows": 0.0, "message_refused": 0.0}
+        read = self.last
+        if (
+            not self.reads
+            or not self.read_rate
+            or read is None
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return quiet
+        x, c, p, blocks = read
+        taught = learned.taught
+        rows = (
+            np.arange(len(x)) if taught is None
+            else np.flatnonzero(np.asarray(taught, dtype=bool))
+        )
+        plus = np.atleast_2d(learned.nudged.activation)
+        if not len(rows) or len(plus) != len(x):
+            return quiet
+        minus = np.atleast_2d(
+            learned.free.activation if learned.opposite is None else learned.opposite.activation
+        )
+        movement = (plus - minus)[:, self.association][rows]
+        synapses, sources, targets = self._port_synapses
+        kernel = getattr(graph, "_mlx", None)
+        back = None
+        if kernel is not None and graph._efficacy is None:  # the synapses rest on the device
+            found = kernel.read_back([(synapses, sources, targets, int(self.units))], movement)
+            back = None if found is None else np.asarray(found[0])
+        if back is None:
+            w = np.zeros((int(self.units), len(self.association)))
+            np.add.at(w, (sources, targets), np.asarray(graph._weights)[synapses])
+            back = movement @ w.T
+        x, c, p, blocks = x[rows], c[rows], p[rows], blocks[rows]
+        norm = np.sqrt(np.sum(back * back, axis=1))
+        moving = norm > 1e-12
+        if not moving.any():
+            return quiet
+        x, c, p, blocks, back, norm = (a[moving] for a in (x, c, p, blocks, back, norm))
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            score = _einsum("bu,bku->bk", back, blocks) / norm[:, None]
+            logits = score / self.SCORE_TEMPERATURE + np.log(np.maximum(p, 1e-300))
+            logits -= logits.max(axis=1, keepdims=True)
+            named = np.exp(logits)
+            named /= named.sum(axis=1, keepdims=True)
+            turn = named - p
+            content = _einsum("bk,bku->bu", turn, blocks)
+            # each row's step bounded by its own energy, as the recall memory's is
+            energy = np.sum(x * x, axis=1) + np.sum(c * c, axis=1) + 1.0
+            bound = np.minimum(1.0, 1.0 / (self.read_rate * energy))[:, None]
+            stepped = [
+                _lms(maps, step * bound, self.read_rate, x, c)
+                for maps, step in zip(self.maps, (content, turn), strict=True)
+            ]
+        if not all(_finite(a) for maps in stepped for a in maps):
+            return {"message_rows": 0.0, "message_refused": float(len(x))}
+        self.maps = stepped
+        return {"message_rows": float(len(x)), "message_refused": 0.0}
+
+    # -- the memory contract
+
+    def branch(self) -> HeldMessage:
+        """A private copy for an imagined branch: its streams its own, its maps shared."""
+        branch = copy(self)
+        branch.trace, branch.told = self.trace.copy(), self.told.copy()
+        branch.previous = self.previous.copy()
+        branch.last = None
+        return branch
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """The arrays a checkpoint keeps: the streams and the read's maps."""
+        out = dict(self.streams())
+        for kind, maps in zip(("content", "turn"), self.maps, strict=False):
+            for name, value in zip(("x", "c", "b"), maps, strict=True):
+                out[f"{kind}_{name}"] = np.asarray(value)
+        return out
+
+    def to_dict(self) -> dict[str, Any]:
+        out = {
+            **super().to_dict(),
+            "amplitude": self.amplitude,
+            "target": self.target,
+            "neurons": int(len(self.glow)),
+        }
+        if self.reads:
+            out.update(read=True, read_amplitude=self.read_amplitude, read_rate=self.read_rate,
+                       read_temperature=self.read_temperature)
+        return out
+
+
 # A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
 # inputs ``x`` and the cortex ``c`` of the moment before: the address map, the position table and
 # the maps beside it.

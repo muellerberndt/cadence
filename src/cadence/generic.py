@@ -96,6 +96,7 @@ from .stream import (
     Efference,
     FastSynapses,
     Hearing,
+    HeldMessage,
     History,
     PatternSeparator,
     Recall,
@@ -118,6 +119,7 @@ _MEMORY_PREFIXES = {
     "working_memory": "working/",
     "efference": "efference/",
     "history": "history/",
+    "message": "message/",
     "recall": "recall/",
     "hippocampus": "episodic/",
 }
@@ -629,6 +631,42 @@ _MATURITY_FOUNDERS: dict[str, float] = {"maturity_scale": 10.0, "maturity_recove
 # records them as 0.92.1 did.
 _HISTORY_SCALE = 1.2
 _RECALL_SCALE = 1.2
+# The initial magnitude of the projections from a held message and from its read port, and the
+# founders of the message's settings (``message=units`` names the units of a block).
+_MESSAGE_SCALE = 1.2
+_MESSAGE_FOUNDERS: dict[str, Any] = {
+    "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "read": False,
+    "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
+}
+
+
+def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
+    """The settings of a held message: ``message`` the units of a block (0 or None for none)
+    and every ``message_<setting>`` among ``genes`` over its founder. Empty without one; a
+    ``message_`` setting without the message is refused."""
+    named = {name[len("message_"):]: value for name, value in genes.items()
+             if name.startswith("message_")}
+    unknown = set(named) - set(_MESSAGE_FOUNDERS)
+    if unknown:
+        raise TypeError(f"unknown message setting: message_{sorted(unknown)[0]}")
+    if message is None or (not isinstance(message, (bool, np.bool_)) and message == 0):
+        if named:
+            raise ValueError(
+                f"message_{sorted(named)[0]} needs a message: pass message=units"
+            )
+        return {}
+    out = {"units": _count("message", message, low=1), **_MESSAGE_FOUNDERS, **named}
+    for name in ("phases", "winners", "fan_in"):
+        out[name] = _count(f"message_{name}", out[name], low=1)
+    if not isinstance(out["read"], (bool, np.bool_)):
+        raise ValueError("message_read must be boolean")
+    out["read"] = bool(out["read"])
+    for name in ("amplitude", "read_amplitude", "read_rate"):
+        out[name] = real(f"message_{name}", out[name], low=0)
+    out["read_temperature"] = real("message_read_temperature", out["read_temperature"], low=1e-9)
+    if out["winners"] > out["units"]:
+        raise ValueError("message_winners must not exceed the units of a block")
+    return out
 
 
 def _load_code(
@@ -1245,6 +1283,42 @@ def _validate_life_state(
         if not decays or width != len(decays) * heard_width or heard["neurons"] != width:
             raise ValueError("a saved history needs one block of sensory width per decay")
         array("history/trace", (batch, width))
+    told = meta.get("message")
+    if told is None and (
+        "message" in populations and any(name.startswith("message/") for name in data)
+    ):
+        raise ValueError("saved message state requires message metadata")
+    if told is not None:
+        if not isinstance(told, dict) or "message" not in populations or learned:
+            raise ValueError("invalid saved message")
+        try:
+            held = _message_genes(
+                told["units"],
+                {f"message_{name}": told[name] for name in _MESSAGE_FOUNDERS if name in told},
+            )
+            seed = told["seed"]
+        except (KeyError, TypeError) as exc:
+            raise ValueError("invalid saved message") from exc
+        if isinstance(seed, bool) or not isinstance(seed, int) or seed < 0:
+            raise ValueError("invalid saved message seed")
+        width = held["phases"] * held["units"]
+        if (
+            told.get("inputs") != sensory
+            or len(populations["message"]) != width
+            or told.get("neurons") != width
+            or (held["read"] and len(populations.get("message_read", ())) != held["units"])
+        ):
+            raise ValueError("a saved message needs one neuron per unit of every block")
+        array("message/trace", (batch, width))
+        steps = array("message/told", (batch,))
+        if steps.dtype.kind not in "iu" or (steps < 0).any():
+            raise ValueError("invalid saved message counts")
+        array("message/previous", (batch, association))
+        if held["read"]:
+            for kind, outputs in (("content", held["units"]), ("turn", held["phases"])):
+                array(f"message/{kind}_x", (sensory, outputs))
+                array(f"message/{kind}_c", (association, outputs))
+                array(f"message/{kind}_b", (outputs,))
     _validate_recall_state(meta, data, learner, batch, sensory, code_width)
     _validate_episodic_state(meta, data, learner, code_width)
 
@@ -1468,7 +1542,7 @@ def _flat_layout(
     meta["reward"] = saved["actor"]
     meta["working_memory"] = memories.get("working_memory")
     meta["hippocampus"] = memories.get("hippocampus")
-    for name in ("efference", "history", "recall", "episodic"):
+    for name in ("efference", "history", "message", "recall", "episodic"):
         if name in memories:
             meta[name] = memories[name]
     arrays: dict[str, Any] = {}
@@ -1887,6 +1961,24 @@ def _layout(
             for name in Recall.when_regions(recalled["heads"]):
                 regions.append(Region(name, 4 if recalled["anchor"] else 2))
                 projections.append(Projection(name, "association", scale=0.0, reciprocal=False))
+    messaged = _message_genes(options.get("message"), options)
+    if messaged:
+        # Appended last, after every memory: the brain with the message is the brain without
+        # it plus one neuron per unit of every block and their one projection; the read's
+        # port, one neuron per unit of a block, follows with its own
+        if learned or image is not None:
+            raise ValueError(
+                "a message needs a vector brain without a learned code in this version"
+            )
+        regions.append(Region("message", messaged["phases"] * messaged["units"]))
+        projections.append(
+            Projection("message", "association", scale=_MESSAGE_SCALE, reciprocal=False)
+        )
+        if messaged["read"]:
+            regions.append(Region("message_read", messaged["units"]))
+            projections.append(
+                Projection("message_read", "association", scale=_MESSAGE_SCALE, reciprocal=False)
+            )
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
         "inputs": inputs,
@@ -1904,6 +1996,7 @@ def _layout(
         "heard": heard,
         "recall_scale": recall_scale,
         "recalled": recalled,
+        "messaged": messaged,
     }
 
 
@@ -1995,6 +2088,7 @@ class Brain:
         efference_amplitude: float = 0.0,
         history_decays: Sequence[float] = (),
         history_amplitude: float = 3.0,
+        message: int | None = None,
         carried_gain: float = 0.0,
         recall: bool = False,
         learning: LearnerConfig | None = None,
@@ -2073,6 +2167,9 @@ class Brain:
         # than on the observation itself
         self._coded_keys = bool(units) or bool(learned)
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
+        messaged = _message_genes(message, genes)  # and the message_* genes here
+        for name in [name for name in genes if name.startswith("message_")]:
+            del genes[name]
         # declared tokens start the copy pathway as their identity, the echo included, and the
         # gains read them (``recall_gain``)
         tokened = bool(recalled.get("copy")) and recalled.get("tokens") is not None
@@ -2264,6 +2361,28 @@ class Brain:
             )
         elif history_decays:
             raise ValueError("history_decays need a history population; Brain.compose adds it")
+        # the held message (``message=units``): the stream's episode as phased unions of a
+        # sparse code on a region of its own, and with ``message_read`` the read of one block
+        self.message: HeldMessage | None = None
+        if messaged:
+            if learned or sensory != "sensory":
+                raise ValueError(
+                    "a message needs a vector brain without a learned code in this version"
+                )
+            wanted = ("message", "message_read") if messaged["read"] else ("message",)
+            for name in wanted:
+                if name not in populations:
+                    raise ValueError(
+                        f"message needs a {name!r} population; Brain.compose adds it"
+                    )
+            self.message = HeldMessage(
+                heard_width, phases=messaged["phases"], units=messaged["units"],
+                winners=messaged["winners"], fan_in=messaged["fan_in"], seed=seed,
+                connectome=connectome, amplitude=messaged["amplitude"],
+                read_amplitude=messaged["read_amplitude"], read_rate=messaged["read_rate"],
+                read_temperature=messaged["read_temperature"],
+                port="message_read" if messaged["read"] else "",
+            )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
         self.recall: Recall | None = None
@@ -2414,6 +2533,7 @@ class Brain:
                 "working_memory": self.working_memory,
                 "efference": self.efference,
                 "history": self.history,
+                "message": self.message,
                 "recall": self.recall,
                 "hippocampus": self.hippocampus,
                 "episodic": self._episodic,
@@ -2957,6 +3077,7 @@ class Brain:
             "inputs", "actions", "modules", "observers", "lateral", "scales", "slots", "seed",
             "episodic", "backend", "device", "precision", "dense_limit", "connectome",
             "history_decays",
+            "message", "message_phases", "message_winners", "message_fan_in", "message_read",
             "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
@@ -2991,6 +3112,10 @@ class Brain:
             "efference_decay": (self.efference, "decay"),
             "efference_amplitude": (self.efference, "amplitude"),
             "history_amplitude": (self.history, "amplitude"),
+            "message_amplitude": (self.message, "amplitude"),
+            "message_read_amplitude": (self.message, "read_amplitude"),
+            "message_read_rate": (self.message, "read_rate"),
+            "message_read_temperature": (self.message, "read_temperature"),
             "memory_rate": (self.hippocampus, "rate"),
             "memory_amplitude": (self.hippocampus, "amplitude"),
             "consolidation": (self.hippocampus, "consolidation"),
@@ -3013,8 +3138,11 @@ class Brain:
                 value = real(name, value, low=0, high=1 if component.rule == "delta" else np.inf)
             elif field == "consolidation":
                 value = real(name, value, low=0, high=1)
-            elif name in ("efference_amplitude", "history_amplitude"):
+            elif name in ("efference_amplitude", "history_amplitude", "message_amplitude",
+                          "message_read_amplitude", "message_read_rate"):
                 value = real(name, value, low=0)
+            elif name == "message_read_temperature":
+                value = real(name, value, low=1e-9)
             else:
                 value = real(name, value)
             memory_changes.append((component, field, value))
@@ -3142,6 +3270,8 @@ class Brain:
         ``memory_choice``) or would join a deep brain's apical pool; tied synapses and rates set by
         hand. See ``docs/grow.md``.
         """
+        if self.message is not None:
+            raise ValueError("a brain with a message is not grown in this version")
         return _grow(self, parts)
 
     def graft(
@@ -3184,6 +3314,8 @@ class Brain:
         different neuron model, apical compartment or apical role; a learned code's region, or
         a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
+        if self.message is not None or donor.message is not None:
+            raise ValueError("a brain with a message is not grafted in this version")
         return _graft(self, donor, regions, into, joints, freeze)
 
     def describe(self) -> dict[str, Any]:
@@ -3251,6 +3383,19 @@ class Brain:
                 genes.update({f"{prefix}_{field}": getattr(component, field) for field in fields})
         if isinstance(self.hippocampus, SynapticMemory):
             genes["consolidation"] = self.hippocampus.consolidation
+        if self.message is not None:
+            held = self.message
+            genes.update(
+                message=int(held.units), message_phases=int(held.phases),
+                message_winners=int(held.winners), message_fan_in=int(held.separator.fan_in),
+                message_amplitude=held.amplitude,
+            )
+            if held.reads:
+                genes.update(
+                    message_read=True, message_read_amplitude=held.read_amplitude,
+                    message_read_rate=held.read_rate,
+                    message_read_temperature=held.read_temperature,
+                )
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,
@@ -3632,6 +3777,7 @@ class Brain:
         recall, store = self.recall, self.hippocampus
         return bool(
             self._episodic is not None or self.learned_code is not None
+            or self.message is not None
             or (recall is not None and not recall.resides)
             or (store is not None and (store.separator is not None
                                        or getattr(store, "gate_noise", None) is not None))
@@ -4215,6 +4361,9 @@ class Brain:
             teaching.update(self.recall.learn_gain(lesson))
         if self.hearing is not None:
             self.hearing.learn(self.learner.brain, lesson, self.learner.config.beta)
+        if self.message is not None and self.message.reads:
+            # the read's lesson: the message's blocks scored against the lesson's movement
+            teaching.update(self.message.learn(self.learner.brain, lesson))
         self.last_learning.update(
             {"demonstration_" + name: value for name, value in teaching.items()}
         )
@@ -4261,6 +4410,13 @@ class Brain:
                 hearing.add(
                     f"history_{k}", self.history, k, k * width, (k + 1) * width,
                     self.history.glow[k * width:(k + 1) * width],
+                )
+        if self.message is not None:
+            units = int(self.message.units)
+            for k in range(int(self.message.phases)):
+                hearing.add(
+                    f"message_{k}", self.message, k, k * units, (k + 1) * units,
+                    self.message.glow[k * units:(k + 1) * units],
                 )
         recall = self.recall
         if recall is not None and recall.drive_gain:
@@ -4401,11 +4557,16 @@ class Brain:
         """The working trace, the efference copy and the heard history with copies of their
         arrays (``arrays()``), for ``_restore_traces`` after settling a moment that is not the
         stream's own."""
-        return [
+        held: list[tuple[Any, dict[str, np.ndarray]]] = [
             (trace, {name: value.copy() for name, value in trace.arrays().items()})
             for trace in (self.working_memory, self.efference, self.history)
             if trace is not None
         ]
+        if self.message is not None:  # its streams; the read's maps keep what they learn
+            held.append(
+                (self.message, {n: v.copy() for n, v in self.message.streams().items()})
+            )
+        return held
 
     def _streams(self) -> tuple[Any, ...]:
         """Every stream's state, for ``_resume`` after a replay: the actor's (its free phase,
@@ -4598,6 +4759,8 @@ class Brain:
                     self.efference.reset(1, rows=np.array([0]))
                 if ended[0] and self.history is not None:
                     self.history.reset(1, rows=np.array([0]))
+                if ended[0] and self.message is not None:
+                    self.message.reset(1, rows=np.array([0]))
                 if ended[0] and self.recall is not None:
                     # the forecast read the stream as this end leaves it; once the end is
                     # committed that read is the moment's, for the act's eligibility and write
@@ -4761,6 +4924,11 @@ class Brain:
             self.working_memory.update(state)
         if self.history is not None:
             self.history.hear(self._heard(x, code))  # what was sensed joins the heard past
+        if self.message is not None:
+            self.message.hear(
+                self._heard(x, code),
+                None if self.working_memory is None else self.working_memory.last,
+            )
         if self.recall is not None:
             self.recall.witness(code, state)  # the sensed moment joins the stream's slots
         self._hear_episode(x)
@@ -4897,6 +5065,7 @@ class Brain:
         branch = Memories({name: memory.branch() for name, memory in self.memories.items()})
         trace, echo = branch.get("working_memory"), branch.get("efference")
         heard, recalled = branch.get("history"), branch.get("recall")
+        told = branch.get("message")
         # the branch issues the act the brain would issue where the act is heard, by the copy
         # of the command or by a recall memory that keeps it; the episodic vote is read under
         # the branch's own temporal context, the stream's moved on privately by the branch's
@@ -4945,6 +5114,8 @@ class Brain:
                 if heard is not None:
                     # the imagined observation, as the cortex read it, joins the private history
                     heard.hear(self._heard(value, code))
+                if told is not None:
+                    told.hear(self._heard(value, code), None if trace is None else trace.last)
                 if recalled is not None:
                     # the branch's cortex moves on, and with ``recall_action`` its command
                     recalled.witness(code, phase.state, command if recalled.action else None)
@@ -5050,6 +5221,13 @@ class Brain:
             # the observation acted on, as the cortex read it, joins the heard past; the next
             # drive holds the present
             self.history.hear(self._heard(x, code))
+        if self.message is not None:
+            # the moment acted on joins the message, and its settled cortex addresses the
+            # next moment's read of it
+            self.message.hear(
+                self._heard(x, code),
+                None if self.working_memory is None else self.working_memory.last,
+            )
         if self.recall is not None:
             # the moment acted on joins the stream's slots, with ``recall_action`` with the
             # command executed on it; its settled cortex enters the next moment's address
@@ -5175,6 +5353,11 @@ class Brain:
         )
         heard = self.history
         heard_trace = None if heard is None or not done.any() else heard.trace.copy()
+        told = self.message
+        told_streams = (
+            None if told is None or not done.any()
+            else {name: value.copy() for name, value in told.streams().items()}
+        )
         recalled = self.recall
         recalled_state = None if recalled is None or not done.any() else recalled.snapshot()
         episodic = self._episodic  # its context records, temporal contexts and paths
@@ -5200,6 +5383,8 @@ class Brain:
                 echo.reset(len(done), rows=np.flatnonzero(done))
             if heard is not None and done.any():
                 heard.reset(len(done), rows=np.flatnonzero(done))
+            if told is not None and done.any():
+                told.reset(len(done), rows=np.flatnonzero(done))
             if recalled is not None and done.any():
                 recalled.reset(len(done), rows=np.flatnonzero(done))
             next_drive = self._moment_drive(following)
@@ -5221,6 +5406,9 @@ class Brain:
                     setattr(echo, name, value)
             if heard is not None and heard_trace is not None:
                 heard.trace = heard_trace
+            if told is not None and told_streams is not None:
+                for name, value in told_streams.items():
+                    setattr(told, name, value)
             if recalled is not None and recalled_state is not None:
                 recalled.restore(recalled_state)
             if episodic is not None and episode_values is not None:
@@ -5565,6 +5753,7 @@ class Brain:
                 coded = None if code is None else code[1].expansion
             memory = _load_memory(meta["hippocampus"], data, neurons, keys=coded, gate=True)
             heard = meta.get("history")
+            told = meta.get("message")
             recalled = meta.get("recall")
             attention = meta.get("attention", False)
             if not isinstance(attention, bool):
@@ -5602,6 +5791,15 @@ class Brain:
                     else {
                         "history_decays": heard["decays"],
                         "history_amplitude": heard["amplitude"],
+                    }
+                ),
+                **(
+                    {}
+                    if told is None
+                    else {
+                        "message": told["units"],
+                        **{f"message_{name}": told[name] for name in _MESSAGE_FOUNDERS
+                           if name in told},
                     }
                 ),
                 **(
@@ -5656,6 +5854,29 @@ class Brain:
             if heard is not None:
                 assert result.history is not None  # validated above: the population is there
                 result.history.trace = data["history/trace"].astype(float)
+            if told is not None:
+                # the message's code is drawn from its saved seed, its streams and maps taken
+                built = result.message
+                assert built is not None  # validated above: the population is there
+                message = HeldMessage(
+                    built.inputs, phases=built.phases, units=built.units,
+                    winners=built.winners, fan_in=int(told["fan_in"]), seed=int(told["seed"]),
+                    connectome=built.connectome, amplitude=built.amplitude,
+                    read_amplitude=built.read_amplitude, read_rate=built.read_rate,
+                    read_temperature=built.read_temperature, port=built.port,
+                )
+                message.trace = data["message/trace"].astype(float)
+                message.told = data["message/told"].astype(np.int64)
+                message.previous = data["message/previous"].astype(float)
+                if message.reads:
+                    message.maps = [
+                        tuple(data[f"message/{kind}_{name}"].astype(float)
+                              for name in ("x", "c", "b"))
+                        for kind in ("content", "turn")
+                    ]
+                result.message = message
+                if result.hearing is not None:
+                    result._wire_hearing()
             if recalled is not None:
                 recall = result.recall
                 assert recall is not None  # validated above: the populations are there

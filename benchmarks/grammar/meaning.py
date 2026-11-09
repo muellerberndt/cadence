@@ -856,6 +856,9 @@ def message_states(brain: Any, batches: dict[str, list[list[gr.Row]]],
                 moment = {"carried": carried["trace"], "settled": np.array(state, dtype=float)}
                 if message is not None:
                     moment["message"] = message.state(scaled=False).copy()
+                elif getattr(b, "message", None) is not None:
+                    # the brain's own message, the settle's moment joined
+                    moment["message"] = np.array(b.message.state, dtype=float)
                 moments.append(moment)
                 carried["trace"] = np.array(b.working_memory.trace, dtype=float)
 
@@ -911,6 +914,9 @@ def twin_panels(brain: Any, tests: dict[str, list[list[gr.Row]]], message: Messa
         if message is not None:
             message.reset(len(rows))
             install(b, message)
+        elif getattr(b, "message", None) is not None:  # the brain's own
+            b.message.trace = np.zeros_like(b.message.trace)
+            b.message.told = np.zeros_like(b.message.told)
 
     erasures = {"recall": gr.erase("recall"), "trace": gr.erase("trace"),
                 "message": empty_message}
@@ -928,7 +934,7 @@ def twin_panels(brain: Any, tests: dict[str, list[list[gr.Row]]], message: Messa
         out[name] = read(name)
         out[name + "_removed"] = read(name + "_removed")
         for where, act in erasures.items():
-            if where == "message" and message is None:
+            if where == "message" and message is None and getattr(brain, "message", None) is None:
                 continue
             out[f"{name}_erased_{where}"] = read(name, act)
     return out
@@ -973,6 +979,9 @@ def invariance(brain: Any, founder: int, message: Message | None, bar: bool,
                     seen["message"] = state.copy()
                     if len(message.blocks) == 1 and message.blocks[0].startswith("phase"):
                         seen["key"] = state.reshape(len(state), -1, message.units).max(axis=1)
+                elif getattr(b, "message", None) is not None:  # the brain's own
+                    seen["message"] = np.array(b.message.state, dtype=float)
+                    seen["key"] = np.array(b.message.key(), dtype=float)
 
             _speak_watched(fork, rows, message, bar, before, watch)
             states.append(seen)
@@ -1239,7 +1248,8 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
     if paraphrases:
         panels = paraphrase_panels(founder, int(spec.get("panel_batches", 4)))
         row["paraphrase"] = message_panels(brain, panels, message, bar, tuple(panels))
-    if message is None and rate == 0.0 and brain.recall is not None:
+    if (message is None and getattr(brain, "message", None) is None and rate == 0.0
+            and brain.recall is not None):
         row["located"] = {name: gr.locate(brain, tests[name])
                           for name in ("clause", "clause_long", "dyck", "dyck_deep", "path",
                                        "path_long")}
@@ -1256,7 +1266,8 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
         brain, [b for name in ("clause", "dyck", "path")
                 for b in (tests if fresh is None else fresh)[name]], message, bar)
     if fresh is not None:
-        places = ("message", "carried", "settled") if message is not None else (
+        own = getattr(brain, "message", None) is not None
+        places = ("message", "carried", "settled") if message is not None or own else (
             "carried", "settled")
         row["probes"] = probe_states(founder, message_states(brain, fresh, message, bar), places)
     # persistence: further phases of lessons (the second grammar, then the first again), each
