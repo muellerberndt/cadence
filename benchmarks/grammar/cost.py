@@ -57,7 +57,7 @@ def _warm(brain: Any, stream: list[Any], batches: int = WARM) -> None:
     """Copies of ``brain`` live the first batches, so every kernel the pass calls compiles or
     loads from Numba's cache before the clock starts: one copy as the pass lives them, one
     through the passes a moment falls back on (a compiled moment's general path), and one act
-    whose solve is refused after its rescue, which a pass meets only now and then."""
+    whose solve is refused after its rescue, which a pass meets at a few batches of thousands."""
     from cadence import _moment
 
     fork = copy.deepcopy(brain)

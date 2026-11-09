@@ -115,27 +115,34 @@ hold every gate that maturity alone holds (#253). See
 ### The compiled moment (opt-in, #282)
 
 `learning_compiled_moment=True` (`Brain.compose`, `retune`, `LearnerConfig(compiled_moment=True)`)
-does the work around the solve kernels of a moment in compiled passes on the CPU: the moment's
-drive in one pass (the sensory part, the working trace, the recall memory's read, with the address
-and every position term through one product of the maps, which stay packed until a lesson replaces
-one, and the place store's read), the free solve through its kernels without the general path's
-layers, a greedy act's choice, its working trace's step and the memory's write in one pass, the
-address lesson and the carried gains' contrast. An act after a lesson that taught nothing takes
-the lesson's read as its own, as it takes the lesson's solve. The equations are the ordinary
-path's and the sums run in another order, so the bits are other ones. Off by default; off, every
-bit is as before: the identity, options and slots batteries read no difference and the founder
-parity reads 0 of 24 lives differing against the tree before the change on one machine, and twelve
-chamber lives of the default brain read the same panels and work. Several read heads, a window,
-the command or when in the slots, the gains, a learned code or a separator take the ordinary path.
+does the work around the solve kernels of a moment in compiled calls on the CPU. A greedy act is
+one compiled call: the moment's drive (the sensory part, the working trace, the recall memory's
+read, with the address and every position term through one product of the maps, which stay packed
+until a lesson replaces one, and the place store's read), the free solve, the choice, the working
+trace's step and the memory's write; the act that begins its streams is one too. A lesson by
+surprise judges in one call, and where it teaches a row its free phase, its two nudged phases and
+their checks are one call more; the address lesson and the carried gains' contrast are compiled
+passes. An act after a lesson that taught nothing takes the lesson's read as its own, as it takes
+the lesson's solve. The equations are the ordinary path's and the sums run in another order, so the
+bits are other ones. Off by default; off, every bit is as before: the identity, options and slots
+batteries read no difference and the founder parity reads 0 of 24 lives differing against the tree
+before the change on one machine, and twelve chamber lives of the default brain read the same
+panels and work. Several read heads, a window, the command or when in the slots, the gains, a
+learned code or a separator take the ordinary path. Beside each other option of this release
+(`recall_cortex_norm`, `memory_fade`, `maturity`, the delayed gains, a synapse rate of zero) a life
+of lessons, acts, sampled moments and outcomes keeps its bits through every compiled path and
+agrees with the ordinary path to rounding (`tests/test_compiled_moment.py`).
 
 On one Xeon 8488C core with nothing else running, a grammar-chamber pass of the default brain
-takes .67 of its seconds with the option (59.4 to 63.0 s against 39.2 to 42.2 s over three
-founders) and 3.2 to 3.6 times the matched transformer's 11.8 to 12.1 s, where the default takes
-4.9 to 5.3. The issue's 2.5 times is not reached. The kernels take 20.8 s of the compiled pass,
-about 1.7 times the transformer, and the rest 18.5 s in many small calls: the read 4.6 s, the act's
-choice and write 3.6 s, the lessons' phases and update 3.0 s, the solves around their kernels
-2.7 s (`benchmarks/grammar/cost.py`, which reads both the seconds and the parts;
-[the compiled moment](docs/tune.md#the-compiled-moment-opt-in)).
+takes .61 to .62 of its seconds with the option (66.4 to 69.5 s against 40.2 to 43.4 s over three
+founders) and 2.9 to 3.0 times the matched transformer's 13.8 to 14.4 s, where the default takes
+4.8. The issue's 2.5 times is not reached. The kernels take 23.9 s of the compiled pass, 1.7 times
+the transformer, and what stands around them 12.4 s: 5.0 s around an act's one call and 7.4 s
+around a lesson's (`benchmarks/grammar/cost.py`, which reads both the seconds and the parts and
+warms every kernel before its clock; [the compiled moment](docs/tune.md#the-compiled-moment-opt-in)).
+Seconds differ by a tenth and more between runs and machines, the transformer's more than the
+brain's, so the ratio to the transformer read 2.7 to 3.0 across this round's runs; within a run the
+option's share of the default's seconds is steady.
 
 The panels, the option less the default:
 
@@ -144,7 +151,8 @@ The panels, the option less the default:
   brackets +.008 (.027), paths -.014 (.010), two hops -.031 (.017), three hops +.022 (.040); over
   36 (seeds 2000 to 2011): -.011 (.007), -.012 (.017), +.002 (.016), -.003 (.020), -.010 (.019),
   +.004 (.014), +.003 (.018), -.010 (.036). Every difference is under .07 and within two standard
-  errors.
+  errors. The one-call paths keep the option's bits: the twelve lives read the same panels and
+  work to the bit before and after them.
 - The sequence battery (look back and n-back with and without held tokens, two hops, three
   founders): -.0013 (s.e. .0042) over 15 paired lives.
 
