@@ -46,8 +46,9 @@ episodic memory, a learned code, images.
 
 | You want to | Read |
 | --- | --- |
-| run a creature that lives, acts and learns | [Start a continuing brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md) |
-| teach by demonstration | [Teach by demonstration](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md) |
+| learn the ideas step by step | [The documentation](https://github.com/muellerberndt/cadence/blob/main/docs/README.md) |
+| run a creature that lives, acts and learns | [Start here: your first brain](https://github.com/muellerberndt/cadence/blob/main/docs/start.md) |
+| train a brain on data, a teacher, rewards or another brain | [Train a brain](https://github.com/muellerberndt/cadence/blob/main/docs/teach.md) |
 | let the world pay for good acts | [Learning from reward](https://github.com/muellerberndt/cadence/blob/main/docs/reward.md) |
 | give the brain a memory for a task | [Memory](https://github.com/muellerberndt/cadence/blob/main/docs/memory.md) |
 | read or change a living brain | [Tune and read a living brain](https://github.com/muellerberndt/cadence/blob/main/docs/tune.md) |
@@ -226,7 +227,7 @@ No read revises its query during that settle
 | Exact-gradient conditions | A differentiable computation | For the contrast: a stable smooth equilibrium, symmetric effective weights, converged phases and a vanishing nudge |
 | Work | A forward and a backward pass | Every step of the free and nudged phases plus the update |
 | Memory of one event | A replay buffer or fine-tuning | One write into the store, read back at the same reading |
-| Hardware | GPU tensors | NumPy float64 on the CPU; optional torch, MLX or Numba for the settling brain's graph transport ([backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md)) |
+| Hardware | GPU tensors | NumPy float64 on the CPU, with Numba where installed; a new brain takes a CUDA (torch) or Apple (MLX) GPU in float32 where its size makes the device faster ([backends](https://github.com/muellerberndt/cadence/blob/main/docs/backends.md)) |
 
 The table compares update mechanisms. Networks trained by backprop can also be
 recurrent, online, model-based and memory-using, so a fair comparison measures

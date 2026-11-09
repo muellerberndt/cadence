@@ -1,96 +1,228 @@
-# Start a continuing brain
+# Start here: your first brain
 
-A Cadence brain lives in a body: it senses, acts, learns from what its actions bring and keeps
-living. `Brain.compose(inputs, actions, arousal=True)` builds it, and `brain.live(...)` runs its
-life one moment per call.
+This page builds a brain and explains, one idea at a time, what it does: observations and actions,
+settling, acting, the two ways it learns, the state it carries from moment to moment, resetting
+and saving. Every example runs as written. Install Cadence first
+([install](README.md#install)).
 
-Install Cadence as described in [the documentation's install section](README.md#install), then
-build one **System 1** brain and give it its first observation:
-
-```python
-from cadence import Brain
-
-brain = Brain.compose(inputs=4, actions=2, arousal=True)
-action = brain.live([[1.0, 0.0, 0.0, 0.0]])
-```
-
-Five settings meet you first:
-
-| Setting | What it sets |
-| --- | --- |
-| `inputs` | the observation's width, or an image shape ([senses](senses.md#image-inputs)) |
-| `actions` | the number of motor choices |
-| `arousal` | `True` for a brain that `live` drives |
-| `seed` | the founder's random draw |
-| `code` | a sparse code for wide observations ([senses](senses.md#the-observation-code)) |
-
-Six calls carry a life: `compose` builds the brain, `live` runs one moment, `wait` senses a frame
-while an outcome is pending, `reset` starts a new stream, and `save` with `Brain.load`
-continues the life later. [Teach](teach.md), [reward](reward.md), [memory](memory.md) and
-[tune](tune.md) take each part further.
-
-The composed brain has one association region (`modules=(64,)`) between the sensory and motor
-neurons, a working trace that carries the last interpretation into the next settle, a recall
-memory that gives back an earlier moment when the present asks for it, and an associative memory
-that consolidates what it writes. Every region settles together into one
-equilibrium, and that equilibrium is the answer
-([one continuing equilibrium brain](#one-continuing-equilibrium-brain)).
-
-## Observe, act and learn
-
-Execute the returned action, then report its actual outcome as `reward` together with the next
-observation:
+## Your first brain
 
 ```python
 import numpy as np
+from cadence import Brain
 
-observation = np.array([[1.0, 0.0, 0.0, 0.0]])
-
-# Execute the choice in a tiny environment: action 0 earns one unit.
-reward = (action == 0).astype(float)
+brain = Brain.compose(inputs=4, actions=2, arousal=True)  # 4 senses, 2 possible actions
+observation = np.array([[1.0, 0.0, 0.0, 0.0]])            # what it senses at this moment
+action = brain.live(observation)                          # it settles and chooses an action
+reward = (action == 0).astype(float)                      # your world scores that action
 next_observation = np.array([[0.0, 1.0, 0.0, 0.0]])
-action = brain.live(next_observation, reward=reward)
-assert action.shape == (1,)
+action = brain.live(next_observation, reward=reward)      # it learns from the score, then acts again
 assert brain.learner.updates > 0
 ```
 
-`live` follows one continuing stream, one observation row per call. A young brain (its first 100
-moments, `arousal_youth`) or an aroused one samples its action, learns from the outcome and
-writes memory. A calm brain answers greedily from one settle and learns nothing.
-`brain.last_arousal` holds the readings of the latest moment. Call `reset()` before starting a
-different stream.
+That is a whole life in miniature: the brain senses, acts, hears how the action went and acts
+again, a little changed. The sections below take each step apart.
 
-For batches, teaching labels or learning from every outcome, use
-[`step`](teach.md#explicit-learning-with-step). Named overrides such as `actor_eta=0.1` set a
-rate at construction, and `brain.retune(...)` changes settings without losing what the brain
-has acquired. `brain.describe()` and [the defaults table](tune.md#defaults-and-expert-overrides)
-show what is running.
+## 1. A brain has senses and actions
 
-## Inspect the work of answering
+`Brain.compose(inputs, actions)` builds a brain with `inputs` sensory neurons and one motor
+neuron per action. Between them sits an **association region** of 64 neurons, where the
+brain forms its interpretation of what it senses. Around that core the brain holds three
+memories, all on by default:
+
+- a **working trace**, which carries the last moment's interpretation into the next one;
+- a **recall memory**, a notebook of the stream's recent moments that gives one back when the
+  present asks for it;
+- an **associative store**, which remembers which action paid in which situation.
+
+All of these settle together into one state, and that state is the brain's answer. This default
+brain is called **System 1**. Optional **System 2** observer regions can be added to the same
+brain ([observers](#add-optional-observers)). `arousal=True` gives the brain the arousal that
+`live` needs: it decides from moment to moment whether the brain learns.
+
+| Setting | What it sets |
+| --- | --- |
+| `inputs` | the observation's width, or an image shape ([wide inputs](senses.md#image-inputs)) |
+| `actions` | the number of actions to choose from |
+| `arousal` | `True` for a brain that `live` drives |
+| `seed` | the random draw of the newborn brain; the same seed gives the same brain |
+| `modules` | the sizes of the processing regions, `(64,)` by default ([larger brains](tune.md#larger-brains)) |
+
+`brain.describe()` lists every setting a brain holds, and
+[tune and read a living brain](tune.md#defaults-and-expert-overrides) explains them.
+
+## 2. Observations, actions and streams
+
+An **observation** is one row of numbers, one per input: what the brain senses at one moment.
+An **action** is an integer from `0` to `actions - 1`. Calls take a batch of rows,
+shape `(rows, inputs)`, and return one action per row.
+
+Each row is a **stream**: one continuing life, such as one game or one conversation. Row 0 at
+this moment and row 0 at the next moment are the same stream, so keep every row's identity fixed.
+A brain that has acted on a batch of a given size answers batches of that size until `reset()`
+starts new streams. `live` drives one stream; `act`, `step` and `lesson` take any number.
+
+```python
+streams = Brain.compose(inputs=4, actions=2, seed=0)
+both = streams.act(np.eye(4)[:2])           # two streams, one observation each
+assert both.shape == (2,)
+again = streams.act(np.eye(4)[2:])          # the same two streams, one moment later
+streams.reset()                             # new streams may have another count
+assert streams.act(np.eye(4)[:3]).shape == (3,)
+```
+
+<a id="inspect-the-work-of-answering"></a>
+
+## 3. Settling: how a brain answers
+
+A Cadence brain answers by settling. Its neurons drive each other back and forth, senses to
+association to motor and back, until their activity stops changing: the brain **settles** into an
+equilibrium, and the action is read from the motor neurons of that settled state. Each
+repetition of the update is a **sweep**. The settled state also shapes the next moment, since
+the brain starts its next settle from it.
+
+`brain.last_settlement` reports the latest settle:
 
 ```python
 report = brain.last_settlement
 assert report is not None and report["qualified"]
 assert report["max_residual"] <= report["tolerance"]
-print("free-answer sweeps:", report["steps"], "residual:", report["max_residual"])
+print("sweeps:", report["steps"], "residual:", report["max_residual"])
 ```
 
-`last_settlement` reports the latest free-answer solve, refused attempts included: sweeps,
-residual, residual checks and damping halvings. Reward eligibility, teaching and memory work are
-outside it. A small
-residual means the network agrees with itself; whether the action was good is measured by the
-task's outcomes. The [continuing example](../examples/continuing_brain.py) tracks these counters
-through bootstrap, unchanged conditions, disruption and correction, and
-[qualification and refusal](#qualification-and-refusal) lists every field.
+The **residual** measures how far the state is from satisfying the brain's equations. A settle
+**qualifies** when the residual is below the tolerance; the brain only acts from a qualified
+state, and refuses an answer that does not qualify within its budget
+([qualification and refusal](#qualification-and-refusal)). A small residual means the network
+agrees with itself; whether the action was good is for the task's outcomes to say. Reward
+learning, lessons and memory work are outside this report. The
+[continuing example](../examples/continuing_brain.py) tracks these counters through a whole life.
+
+## 4. Two ways to learn: lessons and outcomes
+
+A brain changes its connections from two signals:
+
+- **A lesson** shows the right answer: `brain.lesson(observations, labels)`. Use it when you know
+  the answer.
+- **An outcome** scores the brain's own action: the `reward` passed to `live` or `step` belongs to
+  the action returned on the call before. Use it when the world, and no teacher, says what is good.
+
+```python
+pupil = Brain.compose(inputs=4, actions=2, seed=0)
+cues, answers = np.eye(4), np.array([1, 0, 0, 1])
+for lesson in range(100):
+    pupil.lesson(cues, answers)                # here is the right answer for each cue
+    if (pupil.predict(cues) == answers).all():
+        break
+assert (pupil.predict(cues) == answers).all()
+```
+
+Both kinds of learning are local: each synapse changes from the activity of the two neurons it
+joins, while the brain keeps running. Animal and human brains learn from experience and not by
+backpropagation with gradient descent. Cadence is designed the same way: its connections change
+locally while the brain keeps running. [Train a brain](teach.md) covers every way to train,
+including distillation, rare classes, curricula and what to do when training goes wrong.
+
+## 5. Which call should I use?
+
+| Call | What it does | Learns | Use it for |
+| --- | --- | --- | --- |
+| `live(observation, reward=...)` | one moment of one creature: takes the last outcome, answers | while young or aroused | a single agent in a world ([routine and repair](#routine-and-repair-live)) |
+| `step(observations, reward=..., teacher=...)` | one moment of many streams: takes the last outcomes and labels, answers | from every outcome and label | batches, teaching inside a stream, learning from every outcome ([train](teach.md#explicit-learning-with-step)) |
+| `act(observations, greedy=...)` | answers, without learning | nothing | evaluation, or the first half of a moment you time yourself |
+| `learn(reward, done, next_observations)` | the outcome of the last sampled `act` | from that outcome | the second half of a moment you time yourself ([by hand](tune.md#one-experience-step-by-hand)) |
+| `lesson(observations, labels)` | teaches the right answers, without acting | from the labels | supervised training ([train](teach.md#supervised-lessons)) |
+| `predict(observations)` | each row's answer from rest, without memories | nothing | testing what the weights hold ([evaluate](teach.md#evaluate-without-fooling-yourself)) |
+
+One minimal example of each:
+
+```python
+creature = Brain.compose(4, 2, seed=1, arousal=True)
+a = creature.live(cues[[0]])                         # live: one creature
+a = creature.live(cues[[1]], reward=[1.0])           # ... the reward of the action before
+
+school = Brain.compose(4, 2, seed=1)
+a = school.step(cues[:2], teacher=answers[:2])       # step: teach the present rows, then act
+a = school.step(cues[2:], reward=[1.0, 0.0])         # ... the rewards of the actions before
+
+body = Brain.compose(4, 2, seed=1)
+a = body.act(cues[[0]])                              # act: a sampled answer
+body.learn([1.0], [False], cues[[1]])                # learn: its outcome and the next observation
+greedy = body.act(cues[[1]], greedy=True)            # a greedy answer learns nothing
+
+school.act(cues[:2], greedy=True)                    # a greedy answer replaces the waiting action
+school.lesson(cues[2:], answers[2:])                 # lesson: answers shown, no act
+guesses = school.predict(cues)                       # predict: from rest, no memories
+```
+
+A sampled action (from `live`, `step` or `act` without `greedy`) waits for its outcome. The next
+`live` or `step` call delivers it as `reward`; a reward you leave out counts as a real zero. A
+greedy `act` takes nothing and replaces any action that was waiting.
+
+## 6. The stream state: what carries from moment to moment
+
+Between two calls a brain keeps, for every stream:
+
+- its **neural activity**, the settled state the next settle starts from;
+- the **working trace** of its last interpretation;
+- the **recall slots**, the moments the recall memory holds;
+- an **action awaiting its outcome**, if it sampled one.
+
+This is why the same observation can get different answers at different moments: what came
+before is part of the present settle. `predict` reads none of this state; `act`, `step` and
+`live` read all of it.
+
+```python
+before = brain.recall.slots
+brain.live(observation, reward=[0.0])
+assert brain.recall.slots > before          # the moment was written to the recall memory
+assert brain.working_memory.trace.any()     # the last interpretation is carried
+assert brain.pending_feedback               # this action waits for its outcome
+```
+
+## 7. Reset: start a new stream
+
+`brain.reset()` ends every stream and starts fresh ones: activity, traces, recall slots and any
+waiting action are cleared. What the brain has learned stays: its weights, the associative
+records, the recall memory's learned addresses and, by default, its arousal. Reset between
+independent episodes, such as two separate games, and when the number of streams changes.
+
+```python
+brain.reset()
+assert not brain.pending_feedback and brain.recall.slots == 0
+```
+
+[Reset and save](#reset-and-save) gives the details, including `keep=("slots",)` and resetting
+the arousal.
+
+## 8. Save and load
+
+`brain.save(path)` writes the whole brain, streams and all; `Brain.load(path)` continues the
+same life, an action awaiting its outcome included.
+
+```python
+brain.live(observation)
+brain.save("first-brain.npz")
+same = Brain.load("first-brain.npz")
+assert same.pending_feedback                 # the loaded brain awaits the same outcome
+```
+
+## Where to go next
+
+- [Train a brain](teach.md): every way to train, rates, evaluation and failure modes.
+- [Memory](memory.md): which memory to use for which task.
+- [Learning from reward](reward.md): eligibility traces, the actor's rates, delayed credit.
+- [Tune and read a living brain](tune.md): every setting, and changing them in a living brain.
+- [Backends](backends.md): where a brain runs, CPU or GPU.
+
+The rest of this page is the reference for a continuing life: how `live` decides when to learn,
+qualification and refusal, outcomes that arrive later, resetting and saving in full.
 
 ## Continuous interaction
 
-A composed brain lives one continuing life with no separate training and inference modes. Each
-call is one moment: the body reports the outcome of the preceding action, and the brain settles
-on the present observation and issues the next action. Observations have shape
-`(streams, inputs)` and every other vector one entry per stream; each row stays the same stream
-until `reset()`. Use `live` for one creature whose arousal decides when to learn, and `step` for
-batches, teacher labels or learning from every outcome.
+Each call is one moment: the body reports the outcome of the preceding action, and the brain
+settles on the present observation and issues the next action
+([which call](#5-which-call-should-i-use)). This part of the page gives the full contracts.
 
 ### Routine and repair: `live`
 
@@ -432,8 +564,9 @@ covers modules and observers.
 | Arousal | off unless `arousal=True` | each outcome `live` receives |
 | Observers | none unless requested | the same neural solve |
 | Imagination | explicit call | supplied hypothetical observations |
+| Backend | `backend="auto"`: the fastest the machine has for the brain's size, chosen at its first moment; float32 on a device | once, at the first moment ([the default backend](backends.md#the-default-backend)) |
 
-No hidden thread drives the brain; the application owns scheduling. A `step` consumes a real
+A run that must repeat to the bit names `backend="cpu"`. No hidden thread drives the brain; the application owns scheduling. A `step` consumes a real
 transition, so never call it per UI frame; frames before a `live` outcome go to `wait`.
 [Memory](memory.md) describes each store.
 
