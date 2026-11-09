@@ -4028,7 +4028,7 @@ class Brain:
         agent._pending_hearing = None
         if not clear:
             action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
-        action = np.asarray(action, dtype=np.int64)
+        chosen: np.ndarray = np.asarray(action, dtype=np.int64)
         if trace is not None:
             if len(trace.cold) != rows:  # a trace of another batch began at zero
                 trace.cold = np.ones(rows, dtype=bool)
@@ -4044,7 +4044,7 @@ class Brain:
             self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
         self._moment = None
         self._moment_code = None
-        return cast(np.ndarray, action)
+        return chosen
 
     def _judge_compiled(self, x: np.ndarray) -> tuple[np.ndarray, np.ndarray] | None:
         """A surprise lesson's read and judging solve of the compiled moment in one compiled
