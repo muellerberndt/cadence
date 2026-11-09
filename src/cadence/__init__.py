@@ -38,6 +38,7 @@ from .learning import (
     preflight,
     seam_report,
 )
+from .longterm import LongTermMemory, LongTermRead
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
@@ -80,6 +81,8 @@ __all__ = [
     "LearnedCode",
     "FastSynapses",
     "SynapticMemory",
+    "LongTermMemory",
+    "LongTermRead",
     "NeuronModel",
     "GraphHolder",
     "Learner",

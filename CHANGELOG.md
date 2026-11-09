@@ -1,5 +1,48 @@
 # Changelog
 
+## Unreleased
+
+### A long-term memory of records (opt-in, #288)
+
+`cd.LongTermMemory(width, value_width, capacity)` is a standalone store beside the brain: records
+(a key with a value) under a fixed budget of slots. No `Brain.compose` setting builds it, and a
+brain without it is the same brain to the bit.
+
+- **Read in two stages.** A sparse address (a fixed random projection onto 8,192 units, 64
+  winners, as pattern separation codes a key) picks 256 candidate slots without reading a key,
+  and the recall memory's read picks among them. A memory of at most `direct` slots (twice the
+  address's units) scores every slot.
+- **Several heads.** Each head reads its first choice among the slots the heads before it left,
+  whole, so k heads return k different records.
+- **Kept by use.** Every slot keeps a depth, a recent use and how far it has faded: three leaky
+  sums, no count and no time stamp. A full memory replaces the most faded slot.
+- **Revised.** A write that recognises a held key (cosine .9) rewrites that record.
+
+Declared on six fresh founders with records of random unit codes 64 coordinates wide
+([memory-scale benchmark](benchmarks/memory_scale/README.md)):
+
+- Among 10,000 records the right one is found from its exact key at 1.000 and from a key with
+  noise of its own energy at .999 to 1.000; among 100,000 at 1.000 and .986 to .997, where an
+  exact nearest-neighbour store reads .991 to .999. Four heads return four different records of
+  one family at 1.00.
+- A brain taught to answer from the read answers on records no lesson taught at .99 to 1.00 among
+  10,000 and 100,000 records, as among 128.
+- Under 1,000 slots, 4,000 facts used by a Zipf law and 100,000 moments, the 10% most-used facts
+  are retrievable at .963 to .980 against .782 to .823 for least-recently-used over exact keys,
+  and the facts that changed are current at .971 to .981 with none stale.
+- A read among 10,000 records through the address takes .25 ms on one core, 2.1 times the rest
+  of the default composition's moment: the declared cost gate fails there, since the address
+  costs more than scoring 10,000 keys. The founder therefore scores every slot up to 16,384
+  records: .09 ms among 10,000, read after the declaration. Among 100,000 a read through the
+  address takes .57 ms where the recall memory's own read takes 13.6, and on a device one product
+  reads them in .4 ms.
+
+The same run reads the recall memory at scale ([a large memory](docs/memory.md#a-large-memory)):
+at a new brain's temperature the right record holds .27 of the read's mass at 128 records and .005
+at 10,000, and a taught default composition's position maps outvote the key past the distances its
+lessons reached. `recall_position=0, recall_temperature=0.05` reads and answers at 1.00 to 100,000
+records, with every slot scored. No setting or default changes.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

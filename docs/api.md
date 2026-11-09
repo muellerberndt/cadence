@@ -8,7 +8,7 @@ keyword.
 | --- | --- |
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
-| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator` |
+| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
 | [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
@@ -402,6 +402,34 @@ constants.
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
 and `center` outside `[0, 1)`. All three: [standalone memory stores](memory.md#standalone-memory-stores); the
 associative store: [memory](memory.md#associative-store-the-hippocampus).
+
+```text
+LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
+               winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
+               direct=None, dtype=float64)
+LongTermRead(slots, weights)
+```
+
+`LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
+budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value) -> (slot,
+revised)` rewrites the record whose key it recognises (cosine `revise`), else takes an empty slot,
+else the most faded one (`fade=False`: the slot written longest ago). `read(cue, heads=1,
+credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
+`expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
+head reads its first choice among the slots left, whole); a memory of at most `direct` slots
+(twice the expansion unless given) scores every slot, and `credit=False` is a probe that deepens
+nothing. `value(read, head=0)` is what a head holds, and `moment()` one moment of the stream:
+every slot fades by `idle / (1 + (deep / depth) ** 4)`, and the recent use and the depth decay
+over `idle` (a sixteenth of the capacity) and `hold` (8 capacities) moments. `to_dict()` gives the
+settings, `arrays()` the state and `restore(arrays)` takes it back; `address(key)` is a key's
+units; `keys`, `values`, `deep`, `recent`, `faded`, `count`, `writes`, `coarse` and `nbytes` are
+its state. `LongTermRead` holds the candidate `slots` and each head's `weights`, with
+`first(head=0)` (-1 for a read of nothing) and `mass(slot, head=0)`. It raises `ValueError` for a
+nonpositive size, a negative `temperature`, `candidates` or `direct`, `revise` outside `[0, 1]`, a
+nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `expansion`, a
+`dtype` that is no floating type, and a key, value or cue of another shape or with a nonfinite
+entry.
+[A long-term memory of records](memory.md#a-long-term-memory-of-records).
 
 ```text
 cadence.stream.columns(index) -> slice | ndarray

@@ -435,3 +435,41 @@ def test_the_declared_plans_parse_into_cells_on_the_declared_founders():
     assert (bank.depth, bank.hold, bank.idle, bank.revise) == (2.0, 8000.0, 62.5, 0.9)
     for name in ("temperature", "candidates", "expansion", "winners", "depth", "hold", "idle"):
         assert getattr(bk.Bank(64, 64, 1000), name) == getattr(bank, name)  # the defaults
+
+
+def test_the_plan_read_after_the_declaration_names_the_library_founder():
+    import json
+
+    plan = json.loads((HERE / "after" / "cost.json").read_text())
+    assert len(ct.cells(plan)) == 12
+    arms = {a["name"]: a["settings"] for a in plan["arms"] if not isinstance(a, str)}
+    memory = bk.Bank(64, 64, 10_000, **arms["memory"])
+    declared = bk.Bank(64, 64, 10_000, **arms["bank"])
+    assert memory.direct == 16_384 and memory.coarse is False  # every slot scored
+    assert declared.direct == 0 and declared.coarse is True  # the declared arm keeps its address
+    assert bk.Bank(64, 64, 100_000, **arms["memory"]).coarse is True
+    assert bk.Bank(64, 64, 100, **arms["memory-float32"]).keys.dtype == np.float32
+
+
+def test_the_declared_receipts_hold_the_verdicts_the_readme_states():
+    sm = _load("summarize")
+    gates = sm.gates(HERE / "results")
+    passed = {name for name, gate in gates.items() if gate["passes"]}
+    assert passed == {"R1", "R2", "R3", "U1", "K1", "K2", "K3", "writes", "C2"}
+    assert gates["C1"]["passes"] is False and gates["C1"]["founders"] == 0
+    assert all(gates[name]["founders"] == 6 for name in ("R1", "R2", "R3", "U1", "K1", "K2", "K3"))
+    assert gates["R2"]["values"] == [1.0, 1.0, 1.0, 0.999, 1.0, 1.0]
+    assert gates["K1"]["values"] == [0.98, 0.965, 0.97, 0.9625, 0.9675, 0.9725]
+    assert min(gates["K2"]["values"]) >= 0.97 and gates["writes"]["least"] >= 14
+    assert max(gates["C2"]["values"]) < min(gates["C2"]["budget"])
+    assert min(gates["C1"]["values"]) > 2 * max(gates["C1"]["budget"])
+    readme = (HERE / "README.md").read_text()
+    for cell in (".963 to .980", ".971 to .981", ".782 to .823", ".986 to .997", ".245 to .251"):
+        assert cell in readme
+    retrieval = sm.rows(HERE / "results" / "retrieval.jsonl")
+    assert len(retrieval) == 24 * 66 and {r["founder"] for r in retrieval} == set(sm.FOUNDERS)
+    library = sm.by_founder(retrieval, "first", arm="library", n=10_000, cue="exact", heads=1)
+    spread = sm.by_founder(retrieval, "mass", arm="library", n=10_000, cue="exact", heads=1)
+    assert library == [1.0] * 6 and max(spread) < 0.01  # the right first choice in a crowd
+    assert "| `fade`, the candidate | .963 to .980 |" in readme
+    assert sm.span([0.963, 0.98]) == "0.963 to 0.980" and sm.span([1.0, 1.0], 2) == "1.00"
