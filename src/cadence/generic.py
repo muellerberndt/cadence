@@ -4025,10 +4025,12 @@ class Brain:
         """Teach the labels of the present observations without acting on them.
 
         This is the lesson ``step(..., teacher=labels)`` gives before its act: the drive reads
-        every memory the act reads, under ``learning_surprise`` the rows are judged by the act
-        the brain would issue, its complete greedy choice on the settle the act reads (with
-        ``memory_choice`` the readout with the episodic vote), and with a recall memory the
-        address lesson follows at the taught rows. A row the brain would answer as shown is
+        every memory the act reads, the free phase starts from the stream's activity the act
+        settles from (rest after ``reset`` and for streams that have not acted), under
+        ``learning_surprise`` the rows are judged by the act the brain would issue, its
+        complete greedy choice on the settle the act reads (with ``memory_choice`` the readout
+        with the episodic vote), and with a recall memory the address lesson follows at the
+        taught rows. A row the brain would answer as shown is
         no surprise and gets no lesson, also where its episodic memory turns a wrong cortical
         answer into the right act: consolidating the cortex under an answer the memory
         supports is another objective than teaching by surprise, and a lesson-only curriculum
@@ -4186,7 +4188,10 @@ class Brain:
                     tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
                 )
         try:
-            # the lesson's free phase starts from rest, with a learned code's phase in it
+            # the lesson's free phase starts where the act settles: warm from the stream's activity
+            # (rest after a reset, and for streams that have not acted), with a learned code's
+            # phase in it. A graph with several fixed points for one drive would otherwise learn
+            # at the one rest reaches while it acts at the one the stream reaches
             # the options only where named: a learner whose step predates them teaches as it did
             options: dict[str, Any] = {}
             if weights is not None:
@@ -4194,7 +4199,7 @@ class Brain:
             if targets is not None:
                 options["targets"] = targets
             lesson, teaching = self.learner.step(
-                drive, labels, warm=self._warm(drive, None), answer=answer, **options
+                drive, labels, warm=self._warm(drive, self._activity()), answer=answer, **options
             )
         except LearningPhaseError as error:
             self.last_learning.update(

@@ -145,6 +145,8 @@ def taught(brain: cd.Brain) -> list[int]:
 # The taught life was re-recorded once more when the distance lesson left (0.95.0, by the owner's
 # ruling): its acts and arrays are those of the commit before with recall_address_contrast=True,
 # which stepped this lesson, and with recall_address=0.0 the two commits read one digest.
+# Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
+# settles from: new checkpoint digests, the acts as recorded (efficacies move by at most 0.0006).
 FOUNDERS: dict[str, dict] = {
     "stepped": {
         "build": (4, 2, {"modules": (8,), "seed": 3}),
@@ -153,7 +155,7 @@ FOUNDERS: dict[str, dict] = {
         "acts": [0, 0, 1, 1, 0, 1, 0, 0, 1, 0, 1, 1, 1],
         "format": "cadence-brain/1",
         "names": "cf4f510fd7745ee140166219a1a6e0af36750c92b9eb41a38f9262d2272f7dda",
-        "checkpoint": "995ca55ca539707fc98e5d17c3132b091dcbdc070adeb5dbff229981072998fc",
+        "checkpoint": "dbc33a362fd9ececbb345250a557e7012fe3e301c6cbeefc54e0dab16af0d79d",
         "describe": "a80424edb7491028f605098d8dea02c63e7075f56beefeddd8e7aa5c40141490",
     },
     "episodic": {
@@ -188,7 +190,7 @@ FOUNDERS: dict[str, dict] = {
         "acts": [4, 7, 1, 0, 0, 4, 4, 4, 0, 4, 4, 4, 0, 0, 7, 3, 0, 0, 7, 4, 0, 0, 7, 4, 1, 0, 0, 4, 3, 0, 0, 1, 0, 6, 0, 5, 0, 0, 0, 1],
         "format": "cadence-brain/1",
         "names": "0aab0d179b44428d742d358f48b22b0571e9fd78c4cefa76ad52551d9920c16e",
-        "checkpoint": "014bb869ce4d9692b37a65446e79cb4755b26712f5fe8081fd7b9c6d06af3556",
+        "checkpoint": "1a034e0970a01cb3980c381e1c8db0f7d0a425f8fe16aca8d3a8b2503e512fad",
         "describe": "cc8ab01bf4d13f18c5a4053a6e5ad23b0affb3679b08ec32f05a96df72703f5a",
     },
     "wide": {
@@ -265,12 +267,15 @@ def region_digest(brain: cd.Brain, acts: list[int], path: Path) -> str:
 # The first was re-recorded when the distance lesson left (0.95.0, by the owner's ruling): the commit
 # before with recall_address_contrast=True, which stepped this lesson, reads this digest, and with
 # recall_address=0.0 the two commits read one digest.
+# Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
+# settles from: the lives that teach after an act read new checkpoint digests (their efficacies
+# move by at most 0.0021), and the region life's acts differ at one of its 40.
 REGION_FOUNDERS: dict[str, dict] = {
     "region": {
         "build": (16, 8, {"modules": (24,), "seed": 5, "learned_code": 16, "recall": True, "recall_founder": True,
                           "recall_position": 0}),  # recorded before the position term
         "life": taught,
-        "digest": "52ba1f45633c71b7ab6b7d2e21de9b4d60ce42e2ca4cc15c16e90dc704a2473d",
+        "digest": "f7019d387eb314a73bfca192288d684a18b947dd99e14992ebc26b6e2db91c93",
     },
     "region_fields": {
         "build": (16, 4, {"modules": (24,), "seed": 6, "learned_code": 16,

@@ -464,6 +464,9 @@ def _compact(state: dict[str, Any]) -> list[float]:
 # Re-recorded with the unset motor lateral at 0.0 (issue 220), which every founder here meets,
 # and at the founder need scale 0.1 (issue 198) where a founder has arousal.
 # Re-recorded with the default reset keeping the arousal (issue 213).
+# Re-recorded at 0.95.2, where a lesson's free phase starts from the stream's activity the act
+# settles from: the lives that teach after an act read new checkpoint digests (their efficacies
+# move by at most 0.0021).
 FOUNDERS: dict[str, dict[str, Any]] = {
     "adult": {
         "build": (1, 2, {"modules": (16,), "seed": 0, "arousal": True}),
@@ -519,7 +522,7 @@ FOUNDERS: dict[str, dict[str, Any]] = {
         "left": [],
         "format": "cadence-brain/1",
         "names": "cf4f510fd7745ee140166219a1a6e0af36750c92b9eb41a38f9262d2272f7dda",
-        "checkpoint": "9c82f870c93d816e173d4ab03e59005439d347068f2f0337b273f3a9049f9f4a",
+        "checkpoint": "be33cac231046736901e98a9ef4fe60952bcdbe4edb2e6cb14ebbde8ee61ce20",
     },
 }
 

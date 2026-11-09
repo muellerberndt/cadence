@@ -610,8 +610,12 @@ def address_lesson(brain: IndexBrain, learned: Any, rows: np.ndarray) -> dict[st
                        float(genes["address_temperature"]))
 
 
-def lesson(brain: Any, x: np.ndarray, target: np.ndarray, work: dict[str, Any]) -> np.ndarray:
-    """``token_binding.lesson`` plus the address lesson; returns the answer judged."""
+def lesson(
+    brain: Any, x: np.ndarray, target: np.ndarray, work: dict[str, Any], *, warm: bool = False
+) -> np.ndarray:
+    """``token_binding.lesson`` plus the address lesson; returns the answer judged. The free phase
+    starts from rest, as the recorded runs taught; ``warm`` starts it from the stream's activity,
+    as ``Brain.lesson`` does from 0.95.2."""
     from cadence.learning import LearningPhaseError
 
     drive = brain.stimulus(x)
@@ -620,7 +624,9 @@ def lesson(brain: Any, x: np.ndarray, target: np.ndarray, work: dict[str, Any]) 
     work["lessons"] += 1
     work["lesson_rows"] += len(target)
     try:
-        learned, report = brain.learner.step(drive, target, answer=judged)
+        learned, report = brain.learner.step(
+            drive, target, warm=brain._activity() if warm else None, answer=judged
+        )
     except LearningPhaseError:
         work["lesson_refusals"] += 1
         return np.asarray(answer)

@@ -64,11 +64,13 @@ issued action with a greedy `act`, which learns nothing from it, and teach the s
 `lesson(observations, labels)`; the next `step` takes no reward. A reward reported for the shown
 action would credit an action that did not run.
 
-`lesson` reads every memory the act reads, keeps its report in `last_learning` under
-`demonstration_*` keys and refuses while a sampled action awaits its outcome. In a brain with a
-recall memory an act writes the moment to it, so a lesson after an act on the same observations
-reads the moment itself, its successor empty, and warns. Teach first, then act, where the order
-is yours to choose.
+`lesson` reads every memory the act reads and starts its free phase from the stream's activity, the
+state the act settles from (rest after `reset` and for streams that have not acted), so a deep
+brain whose observation holds two fixed points is taught at the one it acts from. It keeps its
+report in `last_learning` under `demonstration_*` keys and refuses while a sampled action awaits
+its outcome. In a brain with a recall memory an act writes the moment to it, so a lesson after an
+act on the same observations reads the moment itself, its successor empty, and warns. Teach first,
+then act, where the order is yours to choose.
 
 ## Teach on the brain's own path
 
