@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.95.2
+## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,
 where it started from rest. Lessons without a stream state (after `reset`, before a stream acts,
@@ -46,7 +46,7 @@ What changes, measured before and after on the CPU:
   rate and step as before, and the optimizer's running moments of a held synapse keep reading its
   contrast, so a rate raised later steps on that history.
 
-## 0.95.1
+## 0.95.1 — 2026-11-08
 
 Two opt-in options for `Brain.lesson`, faster qualified lessons on torch, and `grow` and `graft`
 without reading a brain's streams back. On `backend="cpu"` every array, answer, report and
