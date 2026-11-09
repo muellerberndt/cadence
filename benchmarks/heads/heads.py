@@ -1453,8 +1453,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     brain = make_brain(task, arm, init_seed, spec.get("settings"), module,
                        int(spec.get("replica", 0)))
     if spec.get("gain_start") is not None:  # an emulation: every port's gain at birth
-        brain.recall.gains = np.full_like(np.asarray(brain.recall.gains),
-                                          float(spec["gain_start"]))
+        brain.recall.gains = np.broadcast_to(np.asarray(spec["gain_start"], dtype=float),
+                                             np.shape(brain.recall.gains)).copy()
     tests = task.panels(int(spec.get("panel_batches", 10 if task.twins else 24)))
     rng = np.random.default_rng(np.random.SeedSequence([founder, SEEDS["train"]]))
     checkpoints = {int(c) for c in spec.get("checkpoints", [])}
