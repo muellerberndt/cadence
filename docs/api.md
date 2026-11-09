@@ -8,7 +8,7 @@ keyword.
 | --- | --- |
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
-| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
+| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Message`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
 | [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
@@ -333,6 +333,19 @@ One block of `source` width per decay in `target`; `hear(observations)` moves bl
 `h <- d h + (1 - d) x`, and `stimulate(drive)` writes `amplitude * h` into the `target`
 columns of a copy (another batch size reads silence). `reset(batch, rows=None)`, `keep(rows)`, `trace` `(batch, blocks * source)`,
 `to_dict()`. In the brain: [heard history](memory.md#heard-history).
+
+```text
+Message(inputs, phases=4, units=70, winners=5, fan_in=16, seed=0)
+```
+
+A stream's episode held as one state, with no neurons of its own: `hear(observations)` gives each
+row's moment a fixed sparse code (`code(observations)`, one at the `winners` of `units`) and joins
+it to the union of block `told mod phases`; `state` (`trace`) is `(batch, phases * units)`, `key()`
+the union over the blocks, `(batch, units)`, `told` the moments heard per stream.
+`reset(batch, rows=None)`, `keep(rows)`, `branch()`, `arrays()` (`trace`, `told`), `width`,
+`to_dict()`. It raises `ValueError` for nonpositive sizes, `winners > units`, a negative `seed`
+and observations of another width or with a non-finite value. Behaviour:
+[a held message](memory.md#a-held-message).
 
 <a id="recall-memory-genes"></a>
 
