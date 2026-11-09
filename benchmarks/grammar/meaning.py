@@ -1702,7 +1702,8 @@ def declared_plan(founders: tuple[int, ...] = DECLARED) -> dict[str, list[dict[s
              for design in (None, {"units": 70, "scale": 0.15})]
     if (HERE / "routes.py").exists():
         knock += [{"kind": "knock", "chamber": "routes", "speaker": "word", "founder": f,
-                   "message": design, "tag": "message" if design else "default"}
+                   "batches": 8000, "message": design,
+                   "tag": "message" if design else "default"}
                   for f in founders for design in (None, {"units": 70, "scale": 0.15})]
     return {"brains": brains, "controls": controls, "knock": knock}
 
