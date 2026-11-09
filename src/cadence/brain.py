@@ -1089,6 +1089,9 @@ class Brain:
         _keep_products(single, out.__dict__.get("_products"))  # the same row
         return single
 
+    # a subclass whose numerical copies settle on the kernel of their step, as this class's do
+    _steps_on_kernel = False
+
     def _with_dt(self, dt: float) -> Brain:
         """A numerical copy on current parameters; boundary subclasses must override.
 
@@ -1099,7 +1102,7 @@ class Brain:
         """
         if (
             self._torch is not None
-            and type(self) is Brain
+            and (type(self) is Brain or self._steps_on_kernel)
             and "settle_batch" not in self.__dict__
             and "residual" not in self.__dict__
         ):
