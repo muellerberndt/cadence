@@ -2014,6 +2014,69 @@ def third_plan(founders: tuple[int, ...] = THIRD,
     }
 
 
+CONFIRM = tuple(range(9928600, 9928612))  # twelve fresh founders (protocol 3, Amendment 1)
+HOLD = {**OWN_QUIET, "message_boundary": GO_CHANNEL, "message_boundary_holds": True}
+
+
+def third_confirm_plan(founders: tuple[int, ...] = CONFIRM) -> list[dict[str, Any]]:
+    """Protocol 3, Amendment 1: the message held from ``GO`` on twelve founders, beside the
+    default composition, the previous-word signal, and both together."""
+    arms: dict[str, dict[str, Any]] = {
+        "default": {"arm": "default", "probe_scale": 0.0},
+        "heard": {"arm": "default", "settings": HEARD, "probe_scale": 0.0},
+        "quiet_hold": {"arm": "default", "settings": HOLD, "probe_scale": 0.0},
+        "quiet_hold_heard": {"arm": "default", "settings": {**HOLD, **HEARD}, "probe_scale": 0.0},
+    }
+    return [{**spec, "founder": f, "tag": tag} for tag, spec in arms.items() for f in founders]
+
+
+def third_confirm_verdict(rows: list[dict[str, Any]], floor: float = 0.03) -> list[str]:
+    """Gate F3c: for each of the six panels the paired mean difference against ``default`` is at
+    or above ``-floor`` and the default is not above the arm by two standard errors; a lift
+    counts where it clears two standard errors. ``quiet_hold_heard`` is read against ``heard``
+    as well."""
+    arms = _by_tag(rows)
+    lines = ["whole sentences said exactly (roles: both twins), mean (least-greatest)", ""]
+    lines += _panel_table(arms, SIX) + [""]
+    for base, tags in (("default", ("quiet_hold", "quiet_hold_heard", "heard")),
+                       ("heard", ("quiet_hold_heard",))):
+        theirs = {r["founder"]: r for r in arms.get(base, [])}
+        lines.append(f"each arm less `{base}`, paired by founder: mean (standard error); "
+                     "* a lift beyond two standard errors, - a cost beyond them")
+        for tag in tags:
+            lives = [r for r in arms.get(tag, []) if r["founder"] in theirs]
+            if not lives:
+                continue
+            cells, held = [], True
+            for n in SIX:
+                mean, error = paired(
+                    [_score(r["panels"][n], n) or 0.0 for r in lives],
+                    [_score(theirs[r["founder"]]["panels"][n], n) or 0.0 for r in lives])
+                cost = mean < 0 and -mean > 2 * error
+                lift = mean > 0 and mean > 2 * error
+                held = held and mean >= -floor and not cost
+                cells.append(f"{n} {mean:+.2f} ({error:.2f})" + ("*" if lift else "-" if cost
+                                                                  else ""))
+            verdict = f"  -> F3c {'holds' if held else 'fails'}" if base == "default" else ""
+            lines.append(f"  {tag}: " + ", ".join(cells) + verdict)
+        lines.append("")
+    lines.append("by founder: path / path_long")
+    for tag, lives in arms.items():
+        lines.append(f"  {tag}: " + " ".join(
+            f"{_score(r['panels']['path'], 'path'):.2f}" for r in lives) + " / " + " ".join(
+            f"{_score(r['panels']['path_long'], 'path_long'):.2f}" for r in lives))
+    lines.append("learned gains (mean over founders)")
+    for tag, lives in arms.items():
+        names = list(lives[0].get("gains", {}))
+        if names:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k} {np.mean([r['gains'][k] for r in lives]):.2f}" for k in names))
+    lines.append("work: seconds per life")
+    lines.append("  " + ", ".join(f"{tag} {np.mean([r['seconds'] for r in lives]):.0f} s"
+                                  for tag, lives in arms.items()))
+    return lines
+
+
 def _by_tag(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     arms: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -2473,13 +2536,15 @@ def main(argv: list[str] | None = None) -> int:
                          help="the second run: the brain's own message")
     planner.add_argument("--third", action="store_true",
                          help="the third run: the cost beside a free read, and roles")
+    planner.add_argument("--confirm", action="store_true",
+                         help="protocol 3, Amendment 1: the held message on twelve founders")
     reader = sub.add_parser("read", help="print the tables of a results file")
     reader.add_argument("results", type=Path)
     reader.add_argument("--controls", type=Path, help="with --knock: the declared gates")
     reader.add_argument("--knock", type=Path)
     reader.add_argument("--own", action="store_true", help="the second run's gates")
-    reader.add_argument("--third", choices=("free", "roles"),
-                        help="the third run's gates: its first or its second part")
+    reader.add_argument("--third", choices=("free", "roles", "confirm"),
+                        help="the third run's gates: its first part, its second, or Amendment 1")
     reader.add_argument("--fresh", type=Path, help="with --third roles: the fresh founders' rows")
     reader.add_argument("--earlier", type=Path,
                         help="with --third roles: the second run's brain rows")
@@ -2500,9 +2565,10 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
-        founders = tuple(args.founders or (THIRD if args.third else OWN if args.own
-                                           else DECLARED))
-        plans = (third_plan(founders) if args.third else own_plan(founders) if args.own
+        founders = tuple(args.founders or (CONFIRM if args.confirm else THIRD if args.third
+                                           else OWN if args.own else DECLARED))
+        plans = ({"confirm": third_confirm_plan(founders)} if args.confirm
+                 else third_plan(founders) if args.third else own_plan(founders) if args.own
                  else declared_plan(founders))
         for name, specs in plans.items():
             (args.out / f"{name}.json").write_text(json.dumps(specs))
@@ -2514,6 +2580,8 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(read_retrieval(rows)))
         elif args.third == "free":
             print("\n".join(third_free_verdict(rows)))
+        elif args.third == "confirm":
+            print("\n".join(third_confirm_verdict(rows)))
         elif args.third == "roles":
             others = [[json.loads(line) for line in path.read_text().splitlines() if line]
                       if path is not None else [] for path in (args.fresh, args.earlier)]

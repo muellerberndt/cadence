@@ -453,3 +453,15 @@ def test_the_third_plan_and_its_gates_read_small_lives():
     assert any(line.startswith('| `state_256 (second run)`') for line in lines)
     assert any(line.startswith("gate, fine_256") for line in lines)
     assert any("less own_256, paired" in line for line in lines)
+
+
+def test_the_confirmatory_plan_and_its_gate_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.third_confirm_plan((0, 1))
+    assert [s["tag"] for s in plan[::2]] == ["default", "heard", "quiet_hold", "quiet_hold_heard"]
+    assert plan[-1]["settings"] == {**mn.HOLD, **mn.HEARD} and len(mn.CONFIRM) == 12
+    rows = [mn.run_life({**spec, "batches": 2, "panel_batches": 1}) for spec in plan]
+    lines = mn.third_confirm_verdict(rows)
+    assert sum("-> F3c" in line for line in lines) == 3
+    assert any(line.startswith("each arm less `heard`") for line in lines)
+    assert any(line.startswith("  quiet_hold_heard:") for line in lines)
