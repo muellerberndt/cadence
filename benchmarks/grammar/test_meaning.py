@@ -331,6 +331,10 @@ def test_the_declared_plan_names_every_arm_and_matches_its_controls():
     sizes = sorted({c["parameters"] for c in plan["controls"]})
     assert sizes[0] == mn.make_brain(9628600).parameters() and len(sizes) == 3
     assert len(plan["controls"]) == 12 and {k["chamber"] for k in plan["knock"]} >= {"battery"}
+    assert {s["tag"] for s in plan["amendments"]} == {"heard", "state_256", "wide_256",
+                                                     "plain_256"}
+    assert all(k["module"] == 256 for k in plan["amendments_knock"])
+    assert len(plan["amendments_knock"]) == len(plan["knock"])
 
 
 def test_a_message_brain_on_a_chambers_own_loop_is_the_instruments_speak():

@@ -794,9 +794,10 @@ Three properties of a message the brain can say a sentence from follow:
 
 Founders 9628600 to 9628605, one c7i.16xlarge, one online pass of the first grammar's 4,000 batches
 per life, no refused lesson and no exhausted act. `state` is the message at 280 units a block with
-the read barred from the meaning, 128 association neurons and every row taught; `message` is the
-message at 70 units a block beside a free read; `sham` holds the code of the moment before alone on
-the message's neurons; `heard` (the protocol's amendment) is the default composition with the
+the read barred from the meaning, 128 association neurons and every row taught, and `state_256` (the
+protocol's second amendment, declared after the capacity arms were read) the same with 256
+association neurons; `message` is the message at 70 units a block beside a free read; `sham` holds the code of the moment before alone on
+the message's neurons; `heard` (the protocol's first amendment) is the default composition with the
 library's heard history at decay 0, `history_decays=(0.0,)`. Whole sentences said exactly, mean
 with least and greatest; the controls take one online pass at the arm's parameter count.
 
@@ -805,6 +806,7 @@ with least and greatest; the controls take one online pass at the arm's paramete
 | `default` | 28,716 | .97 (.88-1.00) | .90 (.72-1.00) | .91 (.81-1.00) | .84 (.69-1.00) | .94 (.84-.98) | .36 (.02-.61) |
 | `barred`, the floor | 28,716 | .01 | .00 | .00 | .11 | .19 | .01 |
 | `state`, the read barred | 203,692 | .98 (.94-1.00) | .84 (.61-.98) | .81 (.62-.88) | .85 (.64-1.00) | .57 (.38-.72) | .00 |
+| `state_256`, the read barred | 432,556 | .99 (.97-1.00) | .95 (.86-.98) | .95 (.84-1.00) | .89 (.64-1.00) | .56 (.36-.86) | .00 |
 | `state_default`, the read barred | 101,548 | .92 (.75-.98) | .80 (.64-.91) | .75 (.53-.94) | .67 (.44-.92) | .35 (.28-.42) | .00 |
 | `restated`, the read barred from clauses | 73,223 | .76 (.59-.81) | .11 (.02-.17) | .03 (.00-.09) | .55 (.00-.89) | .06 (.03-.09) | .00 |
 | `message` | 46,924 | 1.00 (.98-1.00) | .93 (.78-1.00) | .95 (.88-1.00) | .96 (.89-1.00) | .84 (.23-.98) | .12 (.00-.30) |
@@ -815,6 +817,8 @@ with least and greatest; the controls take one online pass at the arm's paramete
 | LSTM, online | 203,958 | .98 (.91-1.00) | .97 (.92-1.00) | .89 (.81-1.00) | .79 (.47-1.00) | .28 (.22-.36) | .00 |
 | Transformer, online | 28,658 | 1.00 | 1.00 | 1.00 | .55 (.41-.89) | .32 (.22-.41) | .00 |
 | Transformer, online | 201,978 | .99 (.97-1.00) | .99 (.94-1.00) | .98 (.94-1.00) | .32 (.09-.64) | .26 (.17-.33) | .00 |
+| LSTM, online, the widest its search holds | 304,658 | .95 (.72-1.00) | .95 (.84-.98) | .89 (.66-.97) | .89 (.77-1.00) | .29 (.20-.41) | .00 |
+| Transformer, online | 432,234 | .87 (.28-1.00) | .85 (.28-1.00) | .80 (.06-1.00) | .21 (.00-.50) | .13 (.06-.23) | .00 |
 | LSTM, offline (30 epochs) | 28,398 | 1.00 | .98 (.89-1.00) | .95 (.81-1.00) | .99 | .73 (.53-.86) | .00 |
 | Transformer, offline (13 to 14 epochs) | 28,658 | 1.00 | .99 (.92-1.00) | .99 (.94-1.00) | 1.00 | 1.00 | .00 |
 
@@ -825,8 +829,12 @@ with least and greatest; the controls take one online pass at the arm's paramete
 | H1, said from the state: `clause` at .90 | 1.00 .98 1.00 1.00 .97 .94 | 6 of 6, holds |
 | H1: `clause_held` at .90 | .80 .83 .86 .98 .61 .94 | 2 of 6, fails |
 | H1: `roles`, both twins, at .90 | .88 .88 .81 .84 .62 .81 | 0 of 6, fails |
+| H1 on `state_256`: `clause` | 1.00 1.00 1.00 1.00 1.00 .97 | 6 of 6, holds |
+| H1 on `state_256`: `clause_held` | .98 .92 .98 .97 .86 .98 | 5 of 6, holds |
+| H1 on `state_256`: `roles`, both twins | 1.00 1.00 .84 .94 .97 .97 | 5 of 6, holds |
 | H2, held: the least component's probe from the message, at `GO` and at the last word, at .95 | 1.00 on every founder at both | holds |
 | H2u, used: the least clause word kind said right, at .95 | .96 .96 .95 .98 .95 .94 | 3 of 6, fails |
+| H2u on `state_256` | .99 .98 .99 .98 .98 .98 | 6 of 6, holds |
 | H3: the key of one meaning's two orders closer than any other meaning's, at .95 | 1.00 on every founder | holds |
 | H3: both orders said right, at .90 | 1.00 1.00 .98 .97 .92 .95 | 6 of 6, holds |
 | H4, paraphrase from the state: trained combinations at .80 | .94 .95 1.00 1.00 .81 .94 | 6 of 6, holds |
@@ -841,22 +849,28 @@ with least and greatest; the controls take one online pass at the arm's paramete
 | M1, `sham` less `default` | roles +.06 (.03), three hops +.31 (.09) | holds on both |
 | M1, `heard` less `default` | roles +.07 (.02), paths +.05 (.02), three hops +.38 (.07), held-out clauses +.05 (.04) | holds on roles, paths and three hops |
 | K, the message on other chambers | look back -.023 (.014), copying -.011 (.004), repeated tokens +.017 (.004), induction -.017 (.020), n-back -.003, two hops +.001, a period of 40 .000, the goal route's first hop -.016 (.054) | no fall beyond .03 |
+| K at 256 association neurons, the wide message (the third amendment) | the chamber: paths -.40 (.11), three hops -.27 (.10), every other panel inside two standard errors. The battery: look back -.020 (.013), copying -.014 (.002), repeated tokens +.002, induction -.029 (.012), n-back -.003, two hops +.003, a period of 40 .000, the goal route's first hop -.029 (.043) | paths and three hops fall |
 
 **Said from the state alone.** With the read barred from the meaning the brain says clauses from the
 message at .98, as the LSTM at its parameter count does online (.98), brackets at .85 against .79,
 and paths at .57 against .28, the facts read from the memory and the start from the message. On new
-combinations it reads under the LSTM: held-out clauses .84 against .97, and both role twins .81
-against .89. With the message emptied at the continuation's start the context twins read .00, .00
-and .09: the state is what the sentence is said from.
+combinations the arm at 128 association neurons reads under the LSTM: held-out clauses .84 against
+.97, and both role twins .81 against .89. At 256 association neurons H1 holds: clauses .99, held-out
+clauses .95 and both role twins .95, on 6, 5 and 5 founders of 6, beside an LSTM of 304,658
+parameters at .95, .95 and .89 and a transformer of 432,234 at .87, .85 and .80 (one of its lives
+at .28). With the message emptied at the continuation's start the context twins read .00 to .09 in
+both arms: the state is what the sentence is said from.
 
 **Held, and where the readout stops.** Every component of a clause's meaning is decodable from the
 message at 1.00, at `GO` and at the last word. The carried trace holds less (the second distractor's
 noun .60, the patient's .72) and the settled association at `GO` holds .87 to 1.00. Every clause
-word kind is said right at .97 to 1.00 with the previous words given. The fall is on combinations no
-lesson showed: on `clause_held` the verb's agreement reads .89 and the distractors .94, on `roles`
-the patient .93. A sum of codes shares units between a noun as agent and the same noun as patient,
-and the readout that tells a taught pair apart confuses a new one. The read does not have this
-term: it brings one moment at a time.
+word kind is said right at .97 to 1.00 with the previous words given. At 128 association neurons the
+fall is on combinations no lesson showed: on `clause_held` the verb's agreement reads .89 and the
+distractors .94, on `roles` the patient .93. A sum of codes shares units between a noun as agent and
+the same noun as patient, and a narrow readout that tells a taught pair apart confuses a new one.
+The read does not have this term: it brings one moment at a time. At 256 association neurons the
+term closes (agreement .97, the patient .98; held-out clauses +.11 and role twins +.15 over 128,
+paired, s.e. .04).
 
 **One meaning in two orders.** The key is the same for the canonical and the inverted order (cosine
 1.00, against .40 for different meanings), and both orders are said right at .97. The phased state
@@ -912,6 +926,13 @@ heard words, and each block is a union of three or four of them. The moment befo
 the whole episode costs: `sham` reads three hops at .67 and `heard`, an option the library holds, at
 .74, with roles at .98 and paths at .99.
 
+**The wide message where nothing is barred** (the third amendment). At 256 association neurons the
+message at 280 units a block and the state arm's drive, beside a free read, reads paths at .44
+against .85 without it and three hops at .00 against .27; clauses, held-out clauses, roles and
+brackets move by +.01 to +.05, inside two standard errors. On the sequence battery every task reads
+within .03 of the brain without it. The message that H1 is said from is a cost on paths and hops
+where the read is free: it suits the turn in which a sentence is said from it.
+
 **Lengths and persistence.** No learner says `clause_long`, `dyck_deep` or `path_long` at .80.
 `located` on `default` names the read: at three distractors the second distractor is delivered on
 .25 of sentences and the verb on .09, at depths four and five a close's open bracket on .11 to .12,
@@ -921,19 +942,22 @@ bring the brains' clauses back (.97 to .99).
 
 **Work.** The first grammar, per life, analytic multiply-accumulates (every lesson row sweep and
 every act's sweeps times its rows, over every synapse): `default` 9.5e11, `heard` 1.1e12, `message`
-2.1e12, `state` 1.3e13; the controls online 6.7e10 at 28,000 parameters and 4.9e11 at 204,000,
-offline 1.1e12 to 2.0e12 and 9.1e12 to 1.2e13. A `heard` life takes 69 seconds on an idle core; the
-first block's lives ran on a shared box (a `default` life 215 seconds, a `state` life 1,093).
+2.1e12, `state` 1.3e13, `state_256` 2.5e13; the controls online 6.7e10 at 28,000 parameters and
+4.9e11 at 204,000, offline 1.1e12 to 2.0e12 and 9.1e12 to 1.2e13. A `heard` life takes 69 seconds
+and a `state_256` life 787 on an idle core; the first block's lives ran on a shared box (a
+`default` life 215 seconds, a `state` life 1,093).
 
 ### What the held-meaning readings establish
 
 - In the default composition a sentence's meaning lives in the recall memory's slots. The carried
   state holds a partial copy and the readout does not use it.
 - A held message the brain can say a sentence from needs bound moments, presence in place of
-  magnitude, and width. With all three the brain says trained clauses from its state alone as the
-  matched LSTM does, and reads .08 to .13 under it on combinations no lesson showed: H1 fails on
-  `clause_held` and `roles`, with the failing term the readout of a superposed state on new
-  combinations.
+  magnitude, and width in the code and in the association. At 128 association neurons the brain says
+  trained clauses from its state alone as the matched LSTM does and reads .08 to .13 under it on
+  combinations no lesson showed: H1 as first declared fails on `clause_held` and `roles`, with the
+  failing term the readout of a superposed state on new combinations. At 256 association neurons,
+  declared as an amendment before its lives, H1 holds: clauses .99, held-out clauses .95, role
+  twins .95, with the meaning's memory emptied at `GO`.
 - The message's key is the same for a meaning heard in any order and tells a clause from its
   role-swapped twin. It holds no order of moments of one kind, and words and concepts do not share
   a code.

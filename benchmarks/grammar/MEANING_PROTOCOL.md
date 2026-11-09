@@ -181,3 +181,32 @@ every panel of the chamber, three hops and the held-out lengths among them, and 
 accuracy, `wide_256` less `plain_256` paired by founder. A difference of .05 on the chamber or .03
 on a task, beyond two standard errors, is named. **Expectation:** three hops fall with the message,
 as at 70 units; nothing else is expected to move.
+
+## Result
+
+Read on one c7i.16xlarge, founders 9628600 to 9628605. Every table is on the chamber's page
+([a held meaning](README.md#a-held-meaning)); the verdicts:
+
+| Gate | Verdict | Reading |
+| --- | --- | --- |
+| H1, said from the state, `state` (128 association neurons) | holds on `clause`, fails on `clause_held` and `roles` | 6, 2 and 0 of 6 at .90 (means .98, .84, .81) |
+| H1, `state_256` (Amendment 2) | holds | 6, 5 and 5 of 6 at .90 (means .99, .95, .95) |
+| H2, held | holds | every component 1.00 from the message at `GO` and at the last word |
+| H2u, used | fails on `state` (3 of 6 at .95), holds on `state_256` (6 of 6) | the least word kind .94 to .98; .98 to .99 |
+| H3, one meaning in two orders | holds | the key identical; both orders said right .97 |
+| H4, paraphrase | holds on trained combinations (6 of 6 at .80, mean .94), fails on held-out ones (4 of 6, mean .84) | `paraphrase_read` .99 and .95 |
+| H5, capacity | reported | four distractors at .30, .61, .66 with 70, 140, 280 units a block at 128 association neurons; .30, .66, .94 with 64, 128, 256 association neurons at 280 units |
+| R, retrieval by the code | holds at 280 units (6 of 6), fails at 70 (3 and 4 of 6) | 256 records: .98 and .98; .89 and .90 |
+| A1 | fails on `default` (4, 3, 5, 5, 4 of 6) and `heard` (4, 6, 6, 6, 4); holds on `message` (5, 5, 6, 6, 6) | |
+| A2 | fails for every arm and control | located at the read on `default` |
+| A3 | fails for every arm and control | the first grammar's clauses .00 after the second |
+| M1 | `message`: brackets +.12, three hops -.24. `sham`: roles +.06, three hops +.31. `heard`: roles +.07, paths +.05, three hops +.38 | each beyond two standard errors |
+| K | no task falls beyond .03 with the message at 70 units | at 256 association neurons with the wide message the chamber's paths fall by .40 and three hops by .27 |
+
+**Against the expectations.** H1 on `state` fell as stated, and `clause_held` and `roles` both failed
+where one was named. H2 and H3 held as stated. `restated` failed held-out clauses (.11). M1 was
+expected to fail on every panel and held on brackets; three hops fell as stated. `sham` lifted three
+hops as stated. A2 and A3 failed for every learner as stated. Amendment 1's A1 was expected to hold
+on `heard` and failed on `clause_held` (two founders at .89) and `ctx_dyck`. Amendment 2's panels
+rose as stated and reached the bar. Amendment 3's three hops fell as stated, and paths fell where
+nothing was expected to move.

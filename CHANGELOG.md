@@ -19,9 +19,11 @@ No brain changes. Every founder, the default composition and `backend="cpu"` ari
   fresh founders, the message written by the instrument onto neurons the association reads, the
   read barred from the meaning in every lesson). The brain says clauses from the message alone at
   .98, as the matched LSTM does online, and paraphrases a heard sentence into the second grammar at
-  .94. On combinations no lesson showed it reads under the bar: held-out clauses .84 and role twins
-  .81 at 128 association neurons. Clauses of four distractors are said at .94 with 256 association
-  neurons, where 128 read .66.
+  .94. On combinations no lesson showed it reads under the bar at 128 association neurons
+  (held-out clauses .84, role twins .81) and at the bar at 256, an arm declared as an amendment
+  before its lives (clauses .99, held-out clauses .95, role twins .95; 5 or 6 founders of 6 at
+  .90). Clauses of four distractors are said at .94 with 256 association neurons, where 128 read
+  .66.
 - **What a message needs.** Moments bound by a sparse code, order held as presence in separate
   blocks, and width. The working trace at any decay, the heard history of raw moments, sums with
   primacy or recency weights, and a message restated in motor slots each fail one of them.

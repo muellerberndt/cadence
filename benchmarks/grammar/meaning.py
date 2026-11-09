@@ -1655,8 +1655,10 @@ KNOCK = (  # the sequence battery's tasks read with the message and without
 
 def declared_plan(founders: tuple[int, ...] = DECLARED) -> dict[str, list[dict[str, Any]]]:
     """The declared run's lives: ``brains`` (this module's ``lives``), ``controls``
-    (``controls.py``'s plan, each control at one brain arm's parameter count) and ``knock``
-    (the other chambers, with the message and without)."""
+    (``controls.py``'s plan, each control at one brain arm's parameter count), ``knock`` (the
+    other chambers, with the message and without), and the protocol's amendments
+    (``amendments``, and ``amendments_knock`` for the other chambers at 256 association
+    neurons)."""
     full = {"twins": True, "invariance": True, "after": LATER, "probe_scale": 1.0}
     arms: dict[str, dict[str, Any]] = {
         "default": {"arm": "default", **full},
@@ -1705,7 +1707,26 @@ def declared_plan(founders: tuple[int, ...] = DECLARED) -> dict[str, list[dict[s
                    "batches": 8000, "message": design,
                    "tag": "message" if design else "default"}
                   for f in founders for design in (None, {"units": 70, "scale": 0.15})]
-    return {"brains": brains, "controls": controls, "knock": knock}
+    # the protocol's amendments, each declared before its lives: the moment before as heard,
+    # the state alone at 256 association neurons, and the wide message where nothing is barred
+    wide = {"units": ALONE["units"], "scale": ALONE["scales"][0]}
+    later: dict[str, dict[str, Any]] = {
+        "heard": {"arm": "default", "settings": {"history_decays": [0.0]}, "twins": True,
+                  "probe_scale": 1.0},
+        "state_256": {"arm": "message_barred", "message": ALONE, "module": 256,
+                      "settings": STATE["settings"], "twins": True, "invariance": True,
+                      "probe_scale": 1.0},
+        "wide_256": {"arm": "message", "message": ALONE, "module": 256, "probe_scale": 0.0},
+        "plain_256": {"arm": "default", "module": 256, "probe_scale": 0.0},
+    }
+    amendments = [{**spec, "founder": f, "tag": tag} for tag, spec in later.items()
+                  for f in founders]
+    amendments_knock = [{**spec, "module": 256, "message": design,
+                         "tag": "message" if design else "default"}
+                        for spec in knock if spec["message"] is None
+                        for design in (None, wide)]
+    return {"brains": brains, "controls": controls, "knock": knock, "amendments": amendments,
+            "amendments_knock": amendments_knock}
 
 
 def run_life(spec: dict[str, Any]) -> dict[str, Any]:
