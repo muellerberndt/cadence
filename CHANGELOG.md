@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-### The lifecycle on the device: the ledger, one read per outcome, an unseen card, many lives (#274)
+### The lifecycle on the device: the ledger, one read per outcome, an unseen card, batched lives (#274)
 
 - **The ledger of a moment.** [`benchmarks/device/ledger.py`](benchmarks/device/ledger.py) lists every
   crossing between the host and the device that a `live`, `step`, `lesson` or `act` makes, by the place in
@@ -17,11 +17,16 @@
 - **A CUDA card the default backend's table has not read is calibrated** once per machine, in place of the
   margin of twice the work: the chamber's brain is timed on the card and on one core, and the crossing scales
   the table's ([the default backend](docs/backends.md#the-default-backend)); `CADENCE_CALIBRATE=0` keeps the
-  margin.
-- **Many lives at once**: seconds per life of one brain's streams, a process pool and brains in turn, and what
-  each is for ([many lives at once](docs/backends.md#many-lives-at-once);
-  [`benchmarks/device/lives.py`](benchmarks/device/lives.py)). A batch of brains of their own over one
-  topology in one device call is not in the library.
+  margin. On an NVIDIA L4 it reads 50 to 60 rows of the chamber's brain against the A10G's 44.
+- **`Lives`: independent lives over one topology, stepped together.** `cd.Lives(inputs, actions, lives,
+  backend="torch")` holds many brains of one composition, each with its own parameters, momentum, critic,
+  eligibility, working trace and random generator, one stream each, and steps them in one call per moment:
+  every settle reads each stream through its own life's synapses and stops each life where its own stream meets
+  the tolerance. Each life follows the lone brain of its seed on that device (float64 within 1e-10 over 24
+  moments, every action the same) and on the CPU it is that lone brain. On an NVIDIA L4, 128 lives step at
+  0.063 ms a life and moment against 0.411 ms in a four-process pool, and 1,024 lives at 0.021 ms. It holds the
+  composition without the recall memory and the store (`recall=False, episodic=False`), on CUDA and the torch CPU
+  device; MLX has no lives axis ([many lives at once](docs/backends.md#many-lives-at-once)).
 - The options that keep a moment's memories on the host each state what they add that the device form does
   not hold ([memories on the device](docs/backends.md#memories-on-the-device)).
 

@@ -42,7 +42,7 @@ from .brain import (
 )
 from .brain import Brain as NeuralGraph
 from .learning import Learner
-from .plasticity import ActorCritic
+from .plasticity import ActorCritic, _held_drive
 from .resident import _CriticOnDevice
 
 __all__ = ["Lives"]
@@ -96,6 +96,7 @@ class _LivesTorchKernel(_TorchKernel):
         parameters are written into in place (a captured sweep reads the same storage)."""
         if self._dense is None:
             torch, lay = self.torch, self.layout
+            assert lay is not None
             self._dense = torch.zeros(self.lives, lay.size, dtype=self.dtype, device=self.device)
             self._entry = torch.from_numpy(np.ascontiguousarray(lay.edge_index)).to(self.device)
             views = []
@@ -258,7 +259,7 @@ class _LivesGraph(NeuralGraph):
     ) -> Equilibrium:
         kernel = self._torch
         assert isinstance(kernel, _LivesTorchKernel)
-        root = kernel.root
+        root: Any = kernel.root
         current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
         reference: dict[str, bool] = (
             {"own_precision": True} if tolerance >= _MLX_CHECK_FLOOR else {}
@@ -484,7 +485,7 @@ class _LivesActorCritic(ActorCritic):
         self._trace_device = (trace, trace_bias)
         self._free = next_state
         self._free_brain = next_brain
-        self._drive = next_drive
+        self._drive = _held_drive(next_drive)
         self._pending = None
         self._pending_memory = None
         self._pending_hearing = None
@@ -629,8 +630,12 @@ class Lives:
         agent.leave_device()
         agent.__class__ = _LivesActorCritic
         agent.w_critic = np.stack([b.basal_ganglia.w_critic for b in lone])
-        agent.b_critic = np.array([b.basal_ganglia.b_critic for b in lone], dtype=float)
-        agent.rng = _LivesRandom([b.basal_ganglia.rng for b in lone])
+        agent.b_critic = np.array(  # type: ignore[assignment]  # one bias per life
+            [b.basal_ganglia.b_critic for b in lone], dtype=float
+        )
+        agent.rng = _LivesRandom(  # type: ignore[assignment]  # each life's own generator
+            [b.basal_ganglia.rng for b in lone]
+        )
         self.brain = brain
 
     @property
@@ -691,6 +696,14 @@ class Lives:
                 b.lesson(x[i : i + 1], y[i : i + 1])
             return
         self.brain.lesson(x, y)
+
+    def reset(self) -> None:
+        """Every life's stream starts afresh, as ``Brain.reset``; what the lives learned stays."""
+        if self.brains is not None:
+            for brain in self.brains:
+                brain.reset()
+            return
+        self.brain.reset()
 
     def parameters(self, i: int) -> dict[str, np.ndarray]:
         """Life ``i``'s learned parameters on the host, as a lone brain holds them: its

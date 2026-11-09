@@ -103,6 +103,24 @@ Seconds per life and moment of `lives.py` on the same machine, the chamber's bra
 | `serial`, one core | 2.91 ms | 2.92 ms |
 | `serial`, each brain on the A10G in turn | 7.75 ms | 7.59 ms |
 
+## Lives of their own, on an NVIDIA L4
+
+`--composition lives` (`recall=False, episodic=False`, the composition `cadence.Lives` holds), one AWS
+g6.xlarge (an L4 and four vCPUs of an AMD EPYC 7R13), 20 moments after 3 to warm, 10 after 3 at 512 and
+1,024 lives:
+
+| Way | 12 lives | 128 lives | 512 lives | 1,024 lives |
+| --- | ---: | ---: | ---: | ---: |
+| `lives`, `cadence.Lives` on the L4 | 0.638 ms | 0.063 ms | 0.024 ms | 0.021 ms |
+| `streams`, one brain on the L4 | 0.468 ms | 0.069 ms | 0.033 ms | 0.027 ms |
+| `pool`, four CPU processes | 0.414 ms | 0.411 ms | | |
+| `serial`, one core | 1.12 ms | 1.12 ms | | |
+| `serial`, each brain on the L4 in turn | 4.89 ms | 5.02 ms | | |
+
+On an Apple M4 at a load of 3, the same composition: one brain's streams on MLX 0.270 and 0.049 ms, a pool of
+two processes 0.201 and 0.239 ms, each brain in turn on one core 0.363 ms (12 lives), each brain in turn on MLX
+2.51 and 2.82 ms, and `cadence.Lives` on the torch CPU device 0.628 and 0.494 ms, at 12 and 128 lives.
+
 ## On an Apple M4
 
 The same ledger on MLX, on an M4 that other work shared at a load of 7 to 10: a speech-size `step` or `live`

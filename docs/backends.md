@@ -262,7 +262,10 @@ Where the two cross, in `rows * synapses`, sets the card's crossings: the table'
 the A10G's, which the same reading of the A10G table puts at 573,568 (43.7 rows of the chamber's brain). A card
 half as fast as the A10G on that brain takes the device from twice the table's work, and a card twice as fast from
 half of it. The calibration composes six brains and runs 72 moments, 54 of them timed. On an A10G it took
-2.6 seconds and read the crossing at 43.8 and at 44.3 rows in two runs, within 1.4% of the table's.
+2.6 seconds and read the crossing at 43.8 and at 44.3 rows in two runs, within 1.4% of the table's. On an NVIDIA
+L4, a card the table has not read, it read 59.8, 53.6 and 50.4 rows in three runs, 2.2 seconds each after the first,
+whose 8.0 seconds held the device's start; the cached reading puts the L4's crossings at 1.15 times the table's, so
+the chamber's brain takes the CPU at 64 rows and the L4 at 256 there.
 Its result is kept beside the [stored transport plans](#choosing-kernels-by-measurement), in
 `CADENCE_PLAN_CACHE` or `~/.cache/cadence/transport_plans.json` under `card <name>`, so each card is calibrated
 once per machine. `cadence.resident.calibrate_card()` runs it by hand and returns the readings, the crossing
@@ -386,21 +389,54 @@ around each timed call, and compare residuals and states too.
 ## Many lives at once
 
 Search and self-play settle many positions or games each second. Which way to run them depends on whether
-they are one brain's streams or brains of their own. Seconds per life and moment of the chamber's default
-brain stepping its own observations and rewards, on one AWS g5.xlarge (an NVIDIA A10G and four vCPUs of an
-AMD EPYC 7R32), read with [`benchmarks/device/lives.py`](../benchmarks/device/lives.py):
+they are one brain's streams, sharing what they learn, or brains of their own.
 
-| You want | Do this | 12 lives | 128 lives |
-| --- | --- | ---: | ---: |
-| Many streams of one brain: one player in many games, a search over positions | one brain, one row per stream in `step` or `act`, on the device | 0.77 ms | 0.156 ms |
-| Many brains of their own | a process pool on the CPU, one thread per process (four here) | 1.25 ms | 1.28 ms |
-| The same, in one process | each brain in turn on one core | 2.91 ms | 2.92 ms |
-| The same, each brain on the device in turn | slower than one core: each moment pays the device's launches | 7.75 ms | 7.59 ms |
+| You want | Use |
+| --- | --- |
+| One player in many games, a search over positions: one brain, many streams | `Brain.compose`, one row per stream in `step` or `act`, on a device |
+| Many brains of their own on a CUDA card: a population, a league, independent seeds | `Lives(inputs, actions, lives, backend="torch")` |
+| Many brains of their own on a Mac or a CPU machine | a process pool, one thread per process, or `Lives(..., backend="cpu")` in one process |
 
-The streams of one brain share its parameters and its learning, so they are one brain's lives, and an outcome in
-one game teaches the player of every game. Brains of their own, each with its own parameters, optimizer, memories
-and random state, run as separate brains: the library has no batch of them over one topology in one device call.
-The streams' row bounds what such a batch could reach on this device, eight times the pool's speed at 128 lives.
+```python
+lives = cd.Lives(35, 18, 128, backend="torch")       # 128 brains of seeds 0 to 127, on CUDA
+actions = lives.step(observations)                   # (128, 35) in, one action per life out
+actions = lives.step(observations, reward=rewards)   # each life learns from its own outcome
+lone = lives.life(5)                                 # life 5 as a lone Brain on the CPU, to save
+```
+
+`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, recall=False, episodic=False,
+**options)`. On a torch device the lives are the streams of one brain whose parameters carry a lives axis:
+each settle reads every stream through its own life's synapses and holds each life where its own stream meets
+the tolerance, and each update moves each life on its own contrast and dopamine, its own momentum, critic and
+random generator with it. Each life follows the lone brain of its seed on that device: in float64 to within
+1e-10 over 24 moments of rewards, endings and teaching, every action the same; in float32 within its rounding
+([`tests/test_lives.py`](../tests/test_lives.py)). On the CPU each life is the lone brain itself, to the bit.
+
+Seconds per life and moment of that composition stepping its own observations and rewards, read with
+[`benchmarks/device/lives.py`](../benchmarks/device/lives.py) on one AWS g6.xlarge (an NVIDIA L4 and four vCPUs
+of an AMD EPYC 7R13) and on an Apple M4 at a load of 3:
+
+| Way | Machine | 12 lives | 128 lives | 512 | 1,024 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `Lives`, `backend="torch"` | L4 | 0.638 ms | 0.063 ms | 0.024 ms | 0.021 ms |
+| One brain's streams (shared parameters) | L4 | 0.468 ms | 0.069 ms | 0.033 ms | 0.027 ms |
+| Process pool, four CPU processes | L4 box | 0.414 ms | 0.411 ms | | |
+| Each brain in turn, one core | L4 box | 1.12 ms | 1.12 ms | | |
+| Each brain in turn on the L4 | L4 | 4.89 ms | 5.02 ms | | |
+| One brain's streams on MLX (shared parameters) | M4 | 0.270 ms | 0.049 ms | | |
+| Process pool, two CPU processes | M4 | 0.201 ms | 0.239 ms | | |
+| Each brain in turn, one core | M4 | 0.363 ms | | | |
+| Each brain in turn on MLX | M4 | 2.51 ms | 2.82 ms | | |
+| `Lives` on the torch CPU device | M4 | 0.628 ms | 0.494 ms | | |
+
+On the L4, `Lives` at 128 brains runs at the streams' speed and 6.5 times the four-process pool, and at 1,024
+brains 20 times the pool. At 12 lives the pool is faster. MLX has no lives axis in the library; one brain's
+streams there bound what one could reach, 0.049 ms a life at 128.
+
+What `Lives` holds is the composition without the recall memory and the store, whose maps and consolidated
+records are a brain's own: `recall=False, episodic=False`, no arousal (so no `live`), maturity, learned code,
+apical compartment, carried gains, rehearsal, or normalized or surprise-judged teaching. Every other composition
+is refused with the part it names, and runs as lone brains in a pool.
 
 ## Precision matters
 

@@ -158,3 +158,17 @@ def test_a_moment_of_lives_takes_one_row_per_life():
         lives.step(np.eye(INPUTS)[[1, 2]])
     with pytest.raises(ValueError, match="one seed per life"):
         cd.Lives(INPUTS, ACTIONS, 3, seeds=[1, 2], **OPTIONS)
+
+
+def test_a_reset_starts_every_stream_afresh_and_keeps_what_the_lives_learned():
+    place = {"backend": "torch", "device": "cpu", "precision": "float64"}
+    lives = cd.Lives(INPUTS, ACTIONS, 3, **place, **OPTIONS)
+    brains = [lone(s, **place) for s in range(3)]
+    a_life(lives, brains, 6)
+    learned = lives.parameters(2)["efficacy"]
+    lives.reset()
+    for brain in brains:
+        brain.reset()
+    np.testing.assert_array_equal(lives.parameters(2)["efficacy"], learned)
+    assert a_life(lives, brains, 6, seed=1) == 0
+    assert gaps(lives, brains)["efficacy"] < 1e-10
