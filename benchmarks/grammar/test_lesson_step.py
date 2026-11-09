@@ -77,9 +77,8 @@ def test_the_gates_count_settled_founders():
     assert g["C2 levels hold, width 128"]["pass"]
 
 
-def test_a_candidate_lives_with_its_settings():
+def test_the_control_lives_with_its_tag():
     spec = {"arm": "default", "founder": 0, "phases": [["g1", 3]], "panel_batches": 1,
-            "settings": ls.ARMS["e99p5"], "tag": "smoke/e99p5/w64/f0"}
+            "settings": ls.ARMS["control"], "tag": "smoke/control/w64/f0"}
     row = gr.run_life(spec)
-    assert row["tag"] == spec["tag"]
-    assert row["settings"]["learning_running_error"] == 0.99
+    assert row["tag"] == spec["tag"] and row["settings"] == {"recall": True}

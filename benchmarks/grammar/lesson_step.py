@@ -4,8 +4,11 @@ running error settle a life, with no count of lessons?
 Every life is ``grammar.run_life`` on the default composition (the ``default`` arm: what
 ``Brain.compose`` gives a new brain, nothing named), the first grammar for 4,000 batches at width
 64 or 128, with 256-sentence panels (``panel_batches=16``) read at every 500 batches and in full
-at 4,000. The candidate step is ``learning_running_error``: the lesson's step scaled by the
-running share of lesson rows answered wrong, to the power ``learning_running_error_power``.
+at 4,000. The candidates read for #258 (``CANDIDATES``) were ``learning_running_error``: the
+lesson's step scaled by the running share of lesson rows answered wrong, to the power
+``learning_running_error_power``. That option failed the declared confirmation
+(``LESSON_STEP_PROTOCOL.md``) and is not in the library; its lives run on the lane's commit
+968a02b. The ``control`` arm, the swing reading and the gates run on any library.
 
 Readings per life:
 
@@ -41,7 +44,8 @@ LATE = (2000, 2500, 3000, 3500, 4000)
 WIDTHS = (64, 128)
 PANEL_BATCHES = 16
 
-# the candidate steps: the forgetting factor of the running error and its power
+# the candidate steps read for #258 (on commit 968a02b, whose library held the option): the
+# forgetting factor of the running error and its power
 ARMS: dict[str, dict[str, Any]] = {
     "control": {},
     "e99p5": {"learning_running_error": 0.99, "learning_running_error_power": 0.5},

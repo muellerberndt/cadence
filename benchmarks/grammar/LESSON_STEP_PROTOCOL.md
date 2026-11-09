@@ -75,3 +75,21 @@ no reading.
 `battery.py`'s n-back task takes no test lengths, so its battery lives raised before reading; the
 n-back row reads the lengths it teaches (6 to 12), as the battery reads it. The chamber's lives had
 finished; no other row changes.
+
+## Result
+
+Read on one c7i.16xlarge. Development selected `e999p5` with the flag (no candidate held brackets
+within .05 of the control at width 64). Confirmation, founders 9625800 to 9625805:
+
+| Gate | Verdict | Reading |
+| --- | --- | --- |
+| C0, the control | read | swing .042 at 64 (4 of 6 within .05), .024 at 128 (5 of 6) |
+| C1 (64) | fail | swing .042, 4 of 6 within |
+| C1 (128) | fail | swing .039, 3 of 6 within |
+| C2 (64) | fail | held-out -.101, brackets -.113, roles -.060 |
+| C2 (128) | fail | held-out -.128, roles -.053 |
+| C3 | pass | every battery task within .03 of the control, no bar lost |
+
+A measured negative for a step that follows the running error: it settles no more lives than the
+default composition and costs held-out clauses. `learning_running_error` is withdrawn and the library
+is unchanged; the candidate's lives run on commit 968a02b.

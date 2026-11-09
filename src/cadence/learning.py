@@ -115,13 +115,6 @@ class LearnerConfig:
     # one wrong row of sixteen moves the net a sixteenth as far as sixteen do; the contrast and
     # the optimizer's running moments still read the taught rows alone
     surprise_share: bool = False
-    # opt-in, >0: the forgetting factor of the learner's running error, the share of each
-    # lesson's rows whose answer differs from the label (every lesson counts, one the net
-    # answers right as zero); a lesson's step is scaled by that running error to the power
-    # ``running_error_power``. It starts at one, so a newborn steps in full, and it rises again
-    # when the world changes; it keeps no count of lessons
-    running_error: float = 0.0
-    running_error_power: float = 0.5
     # >0: in place of normalize_floor, each synapse's RMS gets this share of the RMS of its
     # projection (the block of synapses between its two neuron ranges) added, and each bias
     # this share of its range's; a constant floor binds where credit is faint (a deep module)
@@ -201,10 +194,6 @@ class LearnerConfig:
             raise ValueError("normalize is a forgetting factor in [0, 1)")
         if not 0 <= self.momentum < 1:
             raise ValueError("momentum lies in [0, 1)")
-        if not 0 <= self.running_error < 1:
-            raise ValueError("running_error is a forgetting factor in [0, 1)")
-        if not np.isfinite(self.running_error_power) or self.running_error_power <= 0:
-            raise ValueError("running_error_power must be finite and positive")
         if not np.isfinite(self.temperature) or self.temperature <= 0:
             raise ValueError("temperature must be finite and positive")
         if not np.isfinite(self.normalize_floor) or self.normalize_floor <= 0:
@@ -283,8 +272,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
-    "surprise_share": False, "fast_settle": False, "running_error": 0.0,
-    "running_error_power": 0.5,
+    "surprise_share": False, "fast_settle": False,
 }
 
 
@@ -488,8 +476,6 @@ class Learner:
     slots: int | Sequence[int] = 1
     updates: int = 0
     contrast_updates: int = 0  # optimizer history excludes externally applied reward updates
-    # under ``running_error``: the running share of lesson rows answered wrong, one at birth
-    error_level: float = 1.0
     velocity: np.ndarray = field(init=False, repr=False)
     velocity_bias: np.ndarray = field(init=False, repr=False)
     second_moment: np.ndarray = field(init=False, repr=False)
@@ -1461,7 +1447,6 @@ class Learner:
         if cfg.surprise and answer is not None and labels is not None:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
-                self.error_level = self._running(0.0)
                 return self._untaught(judged)
             drive, target, weight = self._lesson(judged, drive, target, weight)
             warm = None if warm is None else _restrict(warm, judged)
@@ -1473,9 +1458,7 @@ class Learner:
             free = replace(phases["free"].state, steps=phases["free"].steps)
             taught = judged if judged is not None else self._taught(free, labels)
             if taught is not None and not taught.any():
-                self.error_level = self._running(0.0)
                 return self._agreed(free, phases, taught)
-            level = self._running(self._wrong(taught, free, labels))
             if judged is None:
                 drive, target, weight = self._lesson(taught, drive, target, weight)
                 free = _restrict(free, taught, drive)
@@ -1489,8 +1472,7 @@ class Learner:
                     raise LearningPhaseError(name, phases, self._nudged_budget_hint())
             nudged = replace(phases["nudged"].state, steps=phases["nudged"].steps)
             opposite = replace(phases["opposite"].state, steps=phases["opposite"].steps)
-            report = self.update(free, nudged, opposite, share=self._share(taught, level))
-            self.error_level = level
+            report = self.update(free, nudged, opposite, share=self._share(taught))
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
@@ -1509,12 +1491,10 @@ class Learner:
         exhausted = cfg.tolerance is not None and free.steps >= cfg.free_steps > 0
         taught = judged if judged is not None else self._taught(free, labels)
         if taught is not None and not taught.any():
-            self.error_level = self._running(0.0)
             state, report = self._agreed(free, phases, taught)
             report["free_budget_exhausted"] = float(exhausted)
             self._warn_exhausted(exhausted)
             return state, report
-        level = self._running(self._wrong(taught, free, labels))
         if judged is None:
             drive, target, weight = self._lesson(taught, drive, target, weight)
             free = _restrict(free, taught, drive)
@@ -1534,8 +1514,7 @@ class Learner:
             opposite.steps, cfg.tolerance if cfg.tolerance is not None else 0.0,
             residual_checks=1,
         )
-        report = self.update(free, nudged, opposite, share=self._share(taught, level))
-        self.error_level = level
+        report = self.update(free, nudged, opposite, share=self._share(taught))
         report.update(_phase_report(phases, accepted=True, qualified=False))
         report.update(_taught_report(taught, batch))
         report["free_budget_exhausted"] = float(exhausted)
@@ -1549,39 +1528,11 @@ class Learner:
         differs = np.asarray(answer != labels, dtype=bool)
         return np.asarray(differs.any(axis=1)) if differs.ndim == 2 else differs
 
-    def _share(self, taught: np.ndarray | None, level: float | None = None) -> float:
-        """The factor on the lesson's step: under ``surprise_share`` the share of the lesson's
-        rows it taught, under ``running_error`` the running error ``level`` to its power; else
-        one."""
-        cfg = self.config
-        share = 1.0
-        if taught is not None and cfg.surprise and cfg.surprise_share:
-            share = float(np.mean(taught))
-        if cfg.running_error and level is not None:
-            share *= float(level) ** cfg.running_error_power
-        return share
-
-    def _running(self, wrong: float | None) -> float:
-        """Under ``running_error``, the running error after a lesson whose share of rows
-        answered wrong is ``wrong`` (None: a lesson of targets, which has no answer to judge,
-        leaves it); else the level as it is."""
-        rate = self.config.running_error
-        if not rate or wrong is None:
-            return self.error_level
-        return rate * self.error_level + (1.0 - rate) * float(wrong)
-
-    def _wrong(
-        self, taught: np.ndarray | None, free: BrainState, labels: np.ndarray | None
-    ) -> float | None:
-        """Under ``running_error``, the share of the lesson's rows answered wrong: the rows a
-        surprise lesson taught, else the free phase's answers judged against the labels."""
-        if not self.config.running_error:
-            return None
-        if taught is not None:
-            return float(np.mean(taught))
-        if labels is None:
-            return None
-        return float(np.mean(self._differs(self._answer(free), labels)))
+    def _share(self, taught: np.ndarray | None) -> float:
+        """Under ``surprise_share``, the share of the lesson's rows it taught; else one."""
+        if taught is None or not (self.config.surprise and self.config.surprise_share):
+            return 1.0
+        return float(np.mean(taught))
 
     def _taught(self, free: BrainState, labels: np.ndarray | None) -> np.ndarray | None:
         """Under ``surprise``, True per row where the free answer differs from its label; None
