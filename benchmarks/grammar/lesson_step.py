@@ -155,7 +155,8 @@ BATTERY: dict[str, tuple[str, dict[str, Any], str, float]] = {
     "before": ("before", {}, "accuracy", .90),
     "twohop": ("twohop", {"think": True}, "accuracy", .90),
     "induction": ("induction", {"lengths": [8, 16], "test_lengths": [24, 60]}, "accuracy", .90),
-    "nback": ("nback", {"lengths": [6, 12], "test_lengths": [24, 60]}, "accuracy", .90),
+    # the battery's n-back reads the lengths it teaches (its task takes no test lengths)
+    "nback": ("nback", {"lengths": [6, 12]}, "accuracy", .90),
 }
 BATTERY_FOUNDERS = tuple(range(9625810, 9625816))
 

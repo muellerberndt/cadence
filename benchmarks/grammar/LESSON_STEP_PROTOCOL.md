@@ -69,3 +69,9 @@ the step. A failed C2 or C3 with C1 passing records the cost that keeps the form
 
 One AWS c7i.16xlarge, one process per life, one BLAS thread per process; the count of workers enters
 no reading.
+
+## Amendment during the confirmation
+
+`battery.py`'s n-back task takes no test lengths, so its battery lives raised before reading; the
+n-back row reads the lengths it teaches (6 to 12), as the battery reads it. The chamber's lives had
+finished; no other row changes.
