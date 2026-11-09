@@ -785,16 +785,20 @@ class Support:
     motor at answer moments alone. ``gain_late``: the gains stay at zero through the life's first
     ``LATE`` lessons (a schedule the harness keeps). ``center_cortex``: the maps read the cortex
     less its running mean over the life's moments, so that what moments share is not read (no
-    oracle)."""
+    oracle). ``cortex_unit``: the maps read the cortex of the moment before at unit norm per
+    stream, the event's energy (no oracle, an emulation of a balanced read). ``cortex_scale``
+    (a number, ``Support(names, scale)``): the maps read that cortex times the number (no oracle;
+    0 is ``no_cortex``)."""
 
     NAMES = ("raw_dup", "hold_focus", "hold_cortex", "hold_trace", "no_address_cortex",
-             "no_cortex", "gain_at_answer", "gain_late", "center_cortex")
+             "no_cortex", "gain_at_answer", "gain_late", "center_cortex", "cortex_unit")
     LATE = 1000
     CENTER_DECAY = 0.999
     MAPS = ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps")
 
-    def __init__(self, names: Any = ()) -> None:
+    def __init__(self, names: Any = (), scale: float | None = None) -> None:
         self.names = tuple(names)
+        self.scale = None if scale is None else float(scale)
         if not set(self.names) <= set(self.NAMES):
             raise ValueError(f"unknown support: {self.names}")
         self.lessons = 0
@@ -812,6 +816,12 @@ class Support:
         recall = brain.recall
         if "no_cortex" in self.names:
             recall.previous = np.zeros_like(recall.previous)
+        if "cortex_unit" in self.names:
+            raw = np.atleast_2d(np.asarray(recall.previous, dtype=float))
+            norm = np.linalg.norm(raw, axis=1, keepdims=True)
+            recall.previous = np.where(norm > 0, raw / np.where(norm > 0, norm, 1.0), raw)
+        if self.scale is not None:
+            recall.previous = self.scale * np.asarray(recall.previous)
         if "center_cortex" in self.names:
             raw = np.atleast_2d(np.asarray(recall.previous))
             active = raw.any(axis=1)
@@ -1415,7 +1425,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     checkpoints = {int(c) for c in spec.get("checkpoints", [])}
     work = new_work()
     curve = []
-    support = Support(spec.get("support", ()))
+    support = Support(spec.get("support", ()), spec.get("cortex_scale"))
     for b in range(1, lessons + 1):
         teach(brain, task.train(rng), work, support)
         if b in checkpoints and b != lessons:
@@ -1427,7 +1437,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         "task": task.name, "arm": arm, "founder": founder, "init_seed": init_seed,
         "replica": int(spec.get("replica", 0)), "tag": spec.get("tag"),
         "settings": {**ARMS[arm], **spec.get("settings", {})}, "cut": CUTS.get(arm, []),
-        "support": list(support.names),
+        "support": list(support.names), "cortex_scale": support.scale,
         "lessons": lessons, "module": module, "inputs": task.inputs, "actions": task.actions,
         "parameters": int(brain.parameters()), "cadence": cd.__version__,
         "split": {"taught": list(task.split.taught), "new": list(task.split.new),

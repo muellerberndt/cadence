@@ -538,6 +538,26 @@ def test_a_cut_of_the_cortex_reads_zero_at_every_act():
         assert np.any(brain.recall.previous)  # what the act leaves, cleared before the next
 
 
+@pytest.mark.parametrize("names, scale", [(["cortex_unit"], None), ([], 0.25)])
+def test_a_balanced_cortex_is_read_at_unit_norm_or_scaled(names, scale):
+    task = hd.IndirectObject(0)
+    brain = hd.make_brain(task, "Fd", 0, module=16)
+    support = hd.Support(names, scale)
+    moments = task.train(np.random.default_rng(0))
+    work = hd.new_work()
+    brain.reset()
+    support.act(brain, moments[0], moments[0].x, work)
+    raw = np.array(brain.recall.previous)
+    assert np.linalg.norm(raw, axis=1).min() > 0
+    support.before(brain)
+    read = np.array(brain.recall.previous)
+    if scale is None:
+        assert np.allclose(np.linalg.norm(read, axis=1), 1.0)
+        assert np.allclose(read * np.linalg.norm(raw, axis=1, keepdims=True), raw)
+    else:
+        assert np.allclose(read, scale * raw)
+
+
 def test_a_centered_cortex_is_read_less_its_mean_and_a_reading_leaves_the_mean():
     task = hd.IndirectObject(0)
     brain = hd.make_brain(task, "Fd", 0, module=16)
