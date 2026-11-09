@@ -345,11 +345,13 @@ than `found`: a read whose mass is spread can decode right.
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | 128 | 128 | 3 | 1.000 | .993 to .998 | .996 to 1.000 | 1.000 | .855 to .877 | 20,000 | 634 to 641 |
 | 128 | 1,000 | 3 | 1.000 | .987 to .996 | .969 to .984 | 1.000 | .864 to .875 | 20,000 | 634 to 641 |
+| 1,000 | 1,000 | 3 | 1.000 | .980 to .988 | .953 to .960 | 1.000 | .767 to .797 | 12,000 | 518 to 519 |
+| 1,000 | 4,000 | 3 | 1.000 | .945 to .960 | .902 to .920 | 1.000 | .785 to .830 | 12,000 | 518 to 519 |
 
-The device box was lost once during this plan and the plan was run again from its start; the rows above are the ones it completed. The windows taught at 1,000 records were not read.
-
-The transformer holds the windows it reads, and a network taught at 128 records reads 1,000 with
-its exact and noisy cues intact. Full self-attention keeps N squared weights per head and layer:
+The transformer holds the windows it reads. A network taught at 128 records reads 1,000 with its
+exact and noisy cues intact, and one taught at 1,000 reads 4,000 at .945 to .960 on noisy cues and
+.902 to .920 on partial ones, where the candidate bank, by the stricter `found`, reads 10,000 at
+.999 to 1.000 and .998 to .999. Full self-attention keeps N squared weights per head and layer:
 400 MB in float32 at 10,000 records and 40 GB at 100,000, so it is not read there. The memories
 above are taught nothing: their read is fixed, and what they hold is written once.
 

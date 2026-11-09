@@ -901,8 +901,8 @@ it binds in three places. The readings are declared on six fresh founders, with 
 unit codes 64 coordinates wide ([memory-scale benchmark](../benchmarks/memory_scale/README.md),
 #288).
 
-- **The read's spread.** The read's first choice is the right record at every size read, to
-  100,000 records. At the temperature .25 and keys of unit length the right record holds .27 of
+- **The read's spread.** For an exact cue the read's first choice is the right record at every
+  size read, to 100,000 records. At the temperature .25 and keys of unit length the right record holds .27 of
   the read's mass at 128 records, .05 at 1,000 and .005 at 10,000, and the settle answers on the
   mixture the read holds. At `recall_temperature=0.05` an exact cue holds its record whole to
   100,000.
@@ -931,8 +931,9 @@ assert content.recall.temperature == 0.05 and content.recall.capacity == 10_001
 ```
 
 Read by content alone, the notebook gives up what the position code reads: a place in an episode,
-a distance, an order ([position](#position-how-long-ago-a-moment-happened)). On a device one
-product scores 100,000 slots in .4 ms ([backends](backends.md)). The long-term memory is a
+a distance, an order ([position](#position-how-long-ago-a-moment-happened)). On a device the
+read as one product in float32 scores 100,000 slots in .4 ms, read by the benchmark on one A10G
+([backends](backends.md)). The long-term memory is a
 [standalone store](#a-long-term-memory-of-records): the caller tells it the records and holds its
 read on the moment's input.
 
