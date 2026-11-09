@@ -149,3 +149,18 @@ clauses .97, roles .96, brackets .89, paths .98 and three hops .64, against the 
 **Arm `heard`:** `default` with `history_decays=(0.0,)`, founders 9628600 to 9628605, with the
 context twins. **Gates:** A1's five lines at .90 on 5 of 6 founders, and M1's paired difference
 against `default` per panel. **Expectation:** held-out clauses and three hops lift, and A1 holds.
+
+## Amendment 2: the state alone at 256 association neurons
+
+Written after the first block's capacity arms were read and before any life of this arm.
+
+The capacity arms read the association's width as a term of its own: at 280 units a block, clauses
+of four distractors are said from the state at .30 with 64 association neurons, .66 with 128 and
+.94 with 256, and clauses of three at .83, .97 and 1.00. H1 failed at 128 neurons on combinations no
+lesson showed (`clause_held` 2 of 6, `roles` 0 of 6).
+
+**Arm `state_256`:** `state` with 256 association neurons (the message at 280 units a block,
+`scale` .5, the read barred, every row taught), founders 9628600 to 9628605, with the context twins
+and the two orders of a meaning. **Controls:** the chamber's LSTM and transformer online at its
+parameter count. **Gates:** H1's three panels at .90 and H2u at .95, on 5 of 6 founders.
+**Expectation:** `clause_held` and `roles` rise over `state`; whether they reach the bar is open.
