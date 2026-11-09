@@ -799,6 +799,8 @@ class Support:
     def __init__(self, names: Any = (), scale: float | None = None) -> None:
         self.names = tuple(names)
         self.scale = None if scale is None else float(scale)
+        # with ``gain_late``: every port's gain set to this value once the gains are released
+        self.late_value: float | None = None
         if not set(self.names) <= set(self.NAMES):
             raise ValueError(f"unknown support: {self.names}")
         self.lessons = 0
@@ -870,6 +872,8 @@ class Support:
         self.lessons += 1
         if "gain_late" in self.names and self.lessons <= self.LATE:
             brain.recall.gains = np.zeros_like(brain.recall.gains)
+        if self.late_value is not None and self.lessons == self.LATE:
+            brain.recall.gains = np.full_like(brain.recall.gains, self.late_value)
 
     def after(self, brain: Any, m: Moment) -> None:
         """After the moment's act: the duplicate's moment gives what is held, and a held focus
@@ -1454,6 +1458,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     work = new_work()
     curve = []
     support = Support(spec.get("support", ()), spec.get("cortex_scale"))
+    if spec.get("gain_late_value") is not None:
+        support.late_value = float(spec["gain_late_value"])
     for b in range(1, lessons + 1):
         teach(brain, task.train(rng), work, support, spec.get("cortex_rate"))
         if b in checkpoints and b != lessons:
