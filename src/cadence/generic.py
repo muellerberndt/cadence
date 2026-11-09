@@ -3573,6 +3573,11 @@ class Brain:
             raise ValueError("drive must be finite and the brain must contain neurons")
         return cast(np.ndarray, kernel.observed(drive))
 
+    def _compiled_moment(self) -> bool:
+        """Whether the moment's work around the solve runs compiled (``learning_compiled_moment``):
+        the option, on the CPU backend."""
+        return bool(self.learner.config.compiled_moment) and self.brain.backend == "cpu"
+
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
         kernel = self._memories_kernel(len(x)) if memory else None
@@ -3594,6 +3599,9 @@ class Brain:
             self.basal_ganglia.reside(kernel)
             if self.recall is not None:
                 self.recall.place(self.brain._mlx)
+                self.recall.compiled_moment = self._compiled_moment()
+            if self.hippocampus is not None:
+                self.hippocampus.compiled_moment = self._compiled_moment()
             # every memory in order; the recall memory's address, before the settle, reads the
             # stream's slots
             drive = self.memories.stimulus(drive, self._read_moment(x, code))

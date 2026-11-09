@@ -137,6 +137,10 @@ class LearnerConfig:
     # it qualifies and the activation is made in arithmetic that vectorizes
     # (``Brain.equilibrate``); the same equations, order and tolerance, other bits
     fast_settle: bool = False
+    # opt-in, a composed brain's on the CPU (``cadence._moment``): the work around the solve
+    # kernels of a moment (the recall memory's read and its address lesson) in compiled passes;
+    # the same equations, other bits
+    compiled_moment: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one
     # value at which a saved config still loads (the law of this version) and what the learner
@@ -206,6 +210,8 @@ class LearnerConfig:
             raise ValueError("nudged_fixed must be boolean")
         if not isinstance(self.fast_settle, bool):
             raise ValueError("fast_settle must be boolean")
+        if not isinstance(self.compiled_moment, bool):
+            raise ValueError("compiled_moment must be boolean")
         if self.tolerance is not None and (not np.isfinite(self.tolerance) or self.tolerance < 0):
             raise ValueError("tolerance must be finite and nonnegative, or None")
         if not isinstance(self.qualified, bool):
@@ -272,7 +278,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
-    "surprise_share": False, "fast_settle": False,
+    "surprise_share": False, "fast_settle": False, "compiled_moment": False,
 }
 
 

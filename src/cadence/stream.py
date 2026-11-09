@@ -2057,6 +2057,8 @@ class Recall:
         into its own port."""
         if self._device is not None:
             return cast(np.ndarray, self._device.stimulate(drive, observations))
+        if self._compiles(len(observations)):
+            return self._stimulate_compiled(drive, self._port(observations))
         moment = self._moment(self._port(observations))
         self.last = moment
         out = np.array(_on_host(drive), dtype=float)
@@ -2082,6 +2084,44 @@ class Recall:
         self._head_reads = (
             (tuple(addresses), tuple(attended), self.writes) if self.heads > 1 else None
         )
+        return out
+
+    def _compiles(self, rows: int) -> bool:
+        """Whether this read and its lesson run as the compiled moment
+        (``learning_compiled_moment``, ``cadence._moment``): a brain's option, on the host, for one
+        head of one event per moment without a command, the features of when or the gains, at
+        streams of the bank's batch that hold slots, with every map on the host."""
+        if not self.__dict__.get("compiled_moment", False):
+            return False
+        if (
+            self.heads != 1 or self.window != 1 or self.action or self._whens or self.gain
+            or not self.slots or self.streams != rows
+            or not isinstance(self.head_maps[0][0], np.ndarray)
+        ):
+            return False
+        from . import _moment
+
+        return _moment.available()
+
+    def _stimulate_compiled(self, drive: np.ndarray, x: np.ndarray) -> np.ndarray:
+        """``stimulate`` as one compiled pass (``_compiles``): the same equations, other bits."""
+        from ._moment import recall_read
+
+        c = _of(self.previous, len(x))
+        key, q, p, read, following = recall_read(self, x, c)
+        self.last = _Moment(x, c, q, key, x)
+        out = np.array(_on_host(drive), dtype=float)
+        p.flags.writeable = False
+        amplitude = 1.0 if self.drive_gain else self.amplitude
+        recall_columns, next_columns = self._head_columns[0]
+        out[:, recall_columns] = amplitude * read
+        if self.next:
+            out[:, next_columns] = amplitude * following
+        if self.drive_gain:
+            self.trace = out[:, self._port_columns].copy()
+            out[:, self._port_columns] = self.amplitude * self.hearing * self.trace
+        self._attended = p
+        self._head_reads = None
         return out
 
     def _reads(self, moment: _Moment) -> tuple[list[np.ndarray], list[np.ndarray | None]]:
@@ -2539,6 +2579,8 @@ class Recall:
             learned.free.activation if learned.opposite is None else learned.opposite.activation
         )
         movement = (plus - minus)[:, self.association]
+        if self._compiles(len(moment.address)) and graph._efficacy is not None:
+            return self._learn_compiled(graph, rows, movement, positions, quiet)
         reports = []
         moved_positions = refused_positions = 0
         # the attention every competing head read with, taken before any head's lesson steps
@@ -2567,6 +2609,42 @@ class Recall:
         if self.position_maps:
             report["position_rows"] = float(moved_positions)
             report["position_refused"] = float(refused_positions)
+        return report
+
+    def _learn_compiled(
+        self, graph: NeuralGraph, rows: np.ndarray, movement: np.ndarray, positions: bool,
+        quiet: dict[str, float],
+    ) -> dict[str, float]:
+        """``learn`` of one head as one compiled pass (``_compiles``): the same equations, other
+        bits."""
+        from ._moment import address_lesson
+
+        (moved, error, a_x, a_c, a, address_ok, *stepped, position_ok) = address_lesson(
+            self, graph, rows, movement, positions
+        )
+        if not moved:
+            return quiet
+        report = dict(quiet)
+        if self.address:
+            if address_ok:
+                self._set_map(0, a_x, a_c, a)
+                report["address_rows"] = float(moved)
+                report["address_error"] = float(error)
+            else:
+                report["address_refused"] = float(moved)
+        if positions:
+            if position_ok:
+                for name, maps in zip(
+                    ("position_maps", "anchor_maps", "relative_maps", "slope_maps", "grid_maps"),
+                    stepped, strict=True,
+                ):
+                    if getattr(self, name) and not (
+                        name == "slope_maps" and self.grid_maps and self.slots > self.position
+                    ):
+                        setattr(self, name, _with_head(getattr(self, name), 0, tuple(maps)))
+                report["position_rows"] = float(moved)
+            else:
+                report["position_refused"] = float(moved)
         return report
 
     def _position_step(
@@ -3414,6 +3492,14 @@ class FastSynapses:
         """
         cue = self._port(key, len(self.pre), "key")
         same_batch = len(self.strength) == len(cue)
+        if (
+            same_batch and self.separator is None and self.rule == "delta"
+            and self.__dict__.get("compiled_moment", False)
+        ):
+            from . import _moment
+
+            if _moment.available():  # the compiled moment's read: the same equation, other bits
+                return _moment.store_read(self, cue)
         strength = self.strength if same_batch else self._baseline()[None, :, :]
         if self.separator is not None:
             cue = self.separator.code(cue)
