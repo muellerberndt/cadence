@@ -25,6 +25,10 @@
   of which answers are tokens that adds no synapse. `Recall.copy_synapses` and the sequence
   battery's `heads_copy` arm left with it, and the copy-tokens instrument retired to its receipt,
   which verifies with its archived checker. `recall_copy_next` left before any release (#273).
+- **Kept: `learning_surprise_share`, `teaching="normalized"`, `attention=True` and
+  `recall_next=False`.** Each was read against what a new brain composes, and each stays; the
+  readings are on #281. The sequence battery's `composed` arm (`--arms composed --settings ...`)
+  reads a one-out of the composition.
 
 ## 0.95.2 — 2026-11-09
 

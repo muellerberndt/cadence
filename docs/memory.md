@@ -1093,14 +1093,6 @@ adds no synapse. It tells the read's lessons which answers a slot can hold, and
 - **The tokens must be in the recall values:** a brain without a code, or a learned code joined
   to an observation no wider than it. A fixed code is refused where the gains read them.
 
-The copy pathway (`recall_copy`), plastic synapses from the read ports into the motor region,
-left in 0.96.0. It needed the tokens' identity to produce a token no lesson used, and beside the
-positions recipe it cost the reads that only position finds: look back fell to 0.25 to 0.33 from
-0.99 to 1.00, and on the grammar chamber the tokens' label cost the paths
-([#259](https://github.com/muellerberndt/cadence/issues/259)). `recall_gain` with `recall_tokens`
-is the learned path from a read to its token's action. A saved memory with the pathway is refused
-by name; cadence 0.95.2 runs it.
-
 ### Its own actions in the slots (opt-in)
 
 The recall slots hold what the stream sensed. What the brain did is in the working trace only
