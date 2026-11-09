@@ -1,5 +1,30 @@
 # Changelog
 
+## Unreleased
+
+### The lifecycle on the device: the ledger, one read per outcome, an unseen card, many lives (#274)
+
+- **The ledger of a moment.** [`benchmarks/device/ledger.py`](benchmarks/device/ledger.py) lists every
+  crossing between the host and the device that a `live`, `step`, `lesson` or `act` makes, by the place in
+  the library that made it, with its bytes and time, beside the seconds of the moment, on torch and MLX.
+  A moment's bytes are small; its synchronizations are what it pays for.
+- **An outcome reads its checks once on torch.** Where the critic rests on the device, the dopamine is made
+  there from the critic's value, and an outcome's checks (the dopamine's, the critic's, the recall memory's
+  reward step and the update's), the critic's bias step, the report's steps and the dopamine of every row come
+  to the host in one read before anything is installed. A torch update and a lesson read their checks and
+  report in one read where they read five. On MLX the critic's and the recall memory's checks are made in the
+  update's launch. The CPU path keeps its bits; a device life agrees with the host's as before.
+- **A CUDA card the default backend's table has not read is calibrated** once per machine, in place of the
+  margin of twice the work: the chamber's brain is timed on the card and on one core, and the crossing scales
+  the table's ([the default backend](docs/backends.md#the-default-backend)); `CADENCE_CALIBRATE=0` keeps the
+  margin.
+- **Many lives at once**: seconds per life of one brain's streams, a process pool and brains in turn, and what
+  each is for ([many lives at once](docs/backends.md#many-lives-at-once);
+  [`benchmarks/device/lives.py`](benchmarks/device/lives.py)). A batch of brains of their own over one
+  topology in one device call is not in the library.
+- The options that keep a moment's memories on the host each state what they add that the device form does
+  not hold ([memories on the device](docs/backends.md#memories-on-the-device)).
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

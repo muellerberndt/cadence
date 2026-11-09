@@ -258,8 +258,9 @@ machine: a greedy `act`, a `lesson` and a `step` at 16, 64 and 256 rows, two of 
 Where the two cross, in `rows * synapses`, sets the card's crossings: the table's, scaled by that crossing over
 the A10G's, which the same reading of the A10G table puts at 573,568 (43.7 rows of the chamber's brain). A card
 half as fast as the A10G on that brain takes the device from twice the table's work, and a card twice as fast from
-half of it. The calibration composes six brains and runs 72 moments, 54 of them timed: by the A10G table's timings about one
-second of moments, beside composing the brains and starting the device. Its result is kept beside the [stored transport plans](#choosing-kernels-by-measurement), in
+half of it. The calibration composes six brains and runs 72 moments, 54 of them timed. On an A10G it took
+2.6 seconds and read the crossing at 43.8 and at 44.3 rows in two runs, within 1.4% of the table's.
+Its result is kept beside the [stored transport plans](#choosing-kernels-by-measurement), in
 `CADENCE_PLAN_CACHE` or `~/.cache/cadence/transport_plans.json` under `card <name>`, so each card is calibrated
 once per machine. `cadence.resident.calibrate_card()` runs it by hand and returns the readings, the crossing
 and the seconds it took. `CADENCE_CALIBRATE=0` skips it, and a card without a calibration, or one whose
@@ -378,6 +379,25 @@ at the speech size has read twice its quiet time.
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
 dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize
 around each timed call, and compare residuals and states too.
+
+## Many lives at once
+
+Search and self-play settle many positions or games each second. Which way to run them depends on whether
+they are one brain's streams or brains of their own. Seconds per life and moment of the chamber's default
+brain stepping its own observations and rewards, on one AWS g5.xlarge (an NVIDIA A10G and four vCPUs of an
+AMD EPYC 7R32), read with [`benchmarks/device/lives.py`](../benchmarks/device/lives.py):
+
+| You want | Do this | 12 lives | 128 lives |
+| --- | --- | ---: | ---: |
+| Many streams of one brain: one player in many games, a search over positions | one brain, one row per stream in `step` or `act`, on the device | 0.77 ms | 0.156 ms |
+| Many brains of their own | a process pool on the CPU, one thread per process (four here) | 1.25 ms | 1.28 ms |
+| The same, in one process | each brain in turn on one core | 2.91 ms | 2.92 ms |
+| The same, each brain on the device in turn | slower than one core: each moment pays the device's launches | 7.75 ms | 7.59 ms |
+
+The streams of one brain share its parameters and its learning, so they are one brain's lives, and an outcome in
+one game teaches the player of every game. Brains of their own, each with its own parameters, optimizer, memories
+and random state, run as separate brains: the library has no batch of them over one topology in one device call.
+The streams' row bounds what such a batch could reach on this device, eight times the pool's speed at 128 lives.
 
 ## Precision matters
 
