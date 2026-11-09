@@ -34,6 +34,9 @@ no option of the library:
 - ``frozen_cortex``: the synapses into the association and prefrontal regions from anything but
   the read's ports, and those regions' biases, are restored after every lesson, so the lessons
   move the readout, the read's synapses and the read's maps alone;
+- ``frozen_all``: the same with the read's synapses into those regions restored as well, so the
+  cortex the question settles to stays the newborn's and the lessons move the readout and the
+  read's maps alone;
 - ``cortex_unit``: the maps read the cortex of the moment before at unit norm per stream.
 
 The matched transformer and LSTM (``run_control``) hear the same rows, one Adam step per batch,
@@ -81,7 +84,7 @@ ARMS: dict[str, dict[str, Any]] = {
     "recipe": {},
     "Fd": {"teaching": "deep"},
 }
-SUPPORTS = ("frozen_cortex", "cortex_unit")
+SUPPORTS = ("frozen_cortex", "frozen_all", "cortex_unit")
 FOUNDERS = (0, 1, 2)
 BATCH = 16
 SEED = 228
@@ -150,7 +153,7 @@ class Support:
             raise ValueError(f"unknown support: {self.names}")
         self.mask: np.ndarray | None = None
         self.neurons: np.ndarray | None = None
-        if "frozen_cortex" in self.names:
+        if "frozen_cortex" in self.names or "frozen_all" in self.names:
             populations = brain.connectome.populations
             inside = np.zeros(brain.connectome.n, dtype=bool)
             for region in FROZEN_REGIONS:
@@ -160,7 +163,7 @@ class Support:
                 if region in populations:
                     ports[np.asarray(populations[region])] = True
             pre, post = brain.connectome.pre, brain.connectome.post
-            self.mask = inside[post] & ~ports[pre]
+            self.mask = inside[post] & (~ports[pre] | ("frozen_all" in self.names))
             self.neurons = inside
 
     def before(self, brain: Any) -> None:

@@ -89,3 +89,10 @@ def test_a_life_reads_its_panels_and_leaves_the_brain_as_taught() -> None:
     assert 0.0 <= intact["right"] <= 1.0 and set(intact["conditions"]) <= {
         "c0k0", "c0k1", "c1k0", "c1k1"}
     assert {"erase_relevant", "erase_other", "memory_off", "direct"} <= set(last["panels"])
+
+
+def test_frozen_all_keeps_the_reads_synapses_into_the_cortex_as_well() -> None:
+    brain = cr.make_brain("Fd", 0)
+    cortex, every = cr.Support(brain, ["frozen_cortex"]), cr.Support(brain, ["frozen_all"])
+    assert every.mask.sum() > cortex.mask.sum()
+    assert np.array_equal(every.mask & cortex.mask, cortex.mask)
