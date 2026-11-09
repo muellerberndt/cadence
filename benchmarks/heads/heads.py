@@ -1431,7 +1431,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     ``replica``, ``settings`` over the arm's, ``checkpoints`` (batches with a lean reading),
     ``causal``, ``decode``, ``vote`` (what drives the motor neurons at the answers) and ``support``
     (the oracle a diagnostic life is given), ``cortex_rate`` (each lesson's step on the maps' cortex
-    columns scaled, an emulation)."""
+    columns scaled, an emulation), ``gain_start`` (every port's gain at birth, an emulation)."""
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -1445,6 +1445,9 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     started = time.monotonic()
     brain = make_brain(task, arm, init_seed, spec.get("settings"), module,
                        int(spec.get("replica", 0)))
+    if spec.get("gain_start") is not None:  # an emulation: every port's gain at birth
+        brain.recall.gains = np.full_like(np.asarray(brain.recall.gains),
+                                          float(spec["gain_start"]))
     tests = task.panels(int(spec.get("panel_batches", 10 if task.twins else 24)))
     rng = np.random.default_rng(np.random.SeedSequence([founder, SEEDS["train"]]))
     checkpoints = {int(c) for c in spec.get("checkpoints", [])}
@@ -1463,6 +1466,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         "replica": int(spec.get("replica", 0)), "tag": spec.get("tag"),
         "settings": {**ARMS[arm], **spec.get("settings", {})}, "cut": CUTS.get(arm, []),
         "support": list(support.names), "cortex_rate": spec.get("cortex_rate"),
+        "gain_start": spec.get("gain_start"),
         "cortex_scale": support.scale,
         "lessons": lessons, "module": module, "inputs": task.inputs, "actions": task.actions,
         "parameters": int(brain.parameters()), "cadence": cd.__version__,
