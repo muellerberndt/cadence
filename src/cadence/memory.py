@@ -277,14 +277,9 @@ class SynapticMemory(FastSynapses):
         if noise is not None:
             self.gate_noise = noise
         self.writes += len(rows)
-        if self.fade:  # a write uses the records its cue reads (``fade``)
+        if self.fade:  # a write uses the records its cue reads: the writing rows' unit cues
             assert self.fade_depth is not None
-            written = np.ones(batch, bool) if write is None else np.asarray(write)
-            written = written & np.any(key != 0, axis=1)
-            cue = key[written]
-            if self.separator is not None:
-                cue = self.separator.code(cue)
-            self.fade_depth = self.fade_depth + np.abs(self._delta_unit(cue)).sum(axis=0)
+            self.fade_depth = self.fade_depth + np.abs(cue).sum(axis=0)
 
     def _gate(
         self, cue: np.ndarray, value: np.ndarray, previous: np.ndarray, mask: np.ndarray

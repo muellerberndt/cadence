@@ -1713,6 +1713,14 @@ birth reads as the brain without the fade (the key-door at delays 2 and 5, the o
 so do P4 with a mature skill A (A gains 2.4 points over the ring, B .24) and the short ring
 (A loses 28.8 points, B .35), each to the same counts and means as without it.
 
+A sense that is active at every moment keeps its records in use. In a body whose senses stay
+busy, only the records of the senses that fall silent fade. Twelve brains of the
+[Robot Arena demo](https://github.com/muellerberndt/cadence-demos/tree/main/robot-arena) read
+this way ([#253](https://github.com/muellerberndt/cadence/issues/253)): over a nursery the
+fade takes records of "outside the ring", a sense that falls silent as a brain learns to stay
+inside, and little else. The fights, the acquisition from birth and the revision test there
+hold every gate that maturity alone holds.
+
 Use it for a continuing brain whose skills come and go over long lives. In lives shorter than
 about fifteen thousand moments it changes nothing.
 

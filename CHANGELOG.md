@@ -67,7 +67,9 @@ On 24 fresh founders of the competing-skills chamber, with `maturity=True`, a sk
 for 2,000 moments keeps .36 of itself over 40,000 blank moments and one practised for 40,000
 keeps 1.00, and relearning after disuse beats first learning by +4.3 and +4.9 points (s.e. 1.1).
 Without the setting both keep 1.00. The chambers from birth, P4 with a mature skill and the short
-ring read as without it. See [records that fade with disuse](docs/memory.md#records-that-fade-with-disuse-opt-in).
+ring read as without it, and in the robot arena the fights, the acquisition and the revision test
+hold every gate that maturity alone holds (#253). See
+[records that fade with disuse](docs/memory.md#records-that-fade-with-disuse-opt-in).
 
 ### Documentation
 
