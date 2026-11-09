@@ -1686,8 +1686,8 @@ idle_k = 1 / (1 + (recent_k / 0.01) ** 2)
 lost_k = memory_fade * idle_k / (1 + (depth_k / 2000) ** 4)
 ```
 
-A record cued every few hundred moments has a recent use far above 0.01 and loses nothing. One
-left alone for about fifteen thousand moments starts to fade, at `memory_fade` a moment while it
+A record cued every few hundred moments has a recent use far above 0.01 and loses under a
+billionth of itself a moment. One left alone for about fifteen thousand moments starts to fade, at `memory_fade` a moment while it
 is shallow and far more slowly once its depth passes 2,000. Each stream keeps its residual
 around the shared records. No count is kept anywhere: both sums are leaky integrals of
 activity, as [maturity](reward.md#maturity-opt-in)'s use is. The constants are
