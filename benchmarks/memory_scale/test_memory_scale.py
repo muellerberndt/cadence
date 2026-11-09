@@ -473,3 +473,125 @@ def test_the_declared_receipts_hold_the_verdicts_the_readme_states():
     assert library == [1.0] * 6 and max(spread) < 0.01  # the right first choice in a crowd
     assert "| `fade`, the candidate | .963 to .980 |" in readme
     assert sm.span([0.963, 0.98]) == "0.963 to 0.980" and sm.span([1.0, 1.0], 2) == "1.00"
+
+
+# -- the second round: keys made by ``cadence.Message``
+
+
+def test_a_fact_s_key_and_value_are_what_a_message_hears():
+    mn = _load("meanings")
+    lexicon = mn.Lexicon(nouns=32, verbs=8)
+    assert (lexicon.forms, lexicon.abouts, lexicon.inputs) == (64, 512, 64 + 8 + 32 + 8 + 3)
+    assert mn.Lexicon().abouts == 131_072 and mn.fan_in(mn.Lexicon()) == 821
+    agent = lexicon.noun(np.array([3, 35]), "AGENT")  # one stem, singular and plural
+    assert agent.sum(axis=1).tolist() == [2.0, 3.0] and agent[1, lexicon.inputs - 3] == 1.0
+    assert lexicon.noun_word(np.array([35]))[0, 35] == 1.0
+    assert lexicon.act(np.array([5])).sum() == 1
+    coder = mn.Coder(lexicon, 280, seed=3)
+    assert coder.message.to_dict()["units"] == 280 and coder.message.to_dict()["phases"] == 4
+    assert coder.message.separator.fan_in == mn.fan_in(lexicon) == round(2 * 115 * 16 / 70)
+    rng = np.random.default_rng(0)
+    found = mn.facts(rng, coder, 300)
+    assert len(set(zip(found.agent.tolist(), found.verb.tolist(), strict=True))) == 300
+    moments = [lexicon.act(found.verb), lexicon.noun(found.agent, "AGENT")]
+    key, _ = mn.held(coder.message, moments)
+    _, state = mn.held(coder.message, [*moments, lexicon.noun(found.patient, "PATIENT")])
+    np.testing.assert_array_equal(key, found.key)  # the union of the act's and the agent's codes
+    np.testing.assert_array_equal(state, found.value)  # the held message of the whole fact
+    other, _ = mn.held(coder.message, moments[::-1])  # one meaning in the other order
+    np.testing.assert_array_equal(other, found.key)
+    assert found.key.shape == (300, 280) and found.value.shape == (300, 1120)
+    assert set(np.unique(found.key)) <= {0.0, 1.0} and found.key.sum(axis=1).max() <= 10
+    assert np.mean(coder.said(found.value) == found.patient) > 0.9
+    assert coder.said(np.zeros((1, 1120)))[0] == -1
+    with pytest.raises(ValueError, match="agent-verb pairs"):
+        mn.facts(rng, coder, 513)
+
+
+def test_cues_of_a_held_meaning_do_what_they_say():
+    mn = _load("meanings")
+    coder = mn.Coder(mn.Lexicon(nouns=32, verbs=8), 280, seed=1)
+    rng = np.random.default_rng(1)
+    found = mn.facts(rng, coder, 200)
+    key = found.key[7]
+    np.testing.assert_array_equal(mn.cue(rng, coder, found, 7, "exact"), key)
+    noisy = mn.cue(rng, coder, found, 7, "noisy")
+    assert noisy.sum() == key.sum() and noisy @ key == key.sum() - round(mn.NOISE * key.sum())
+    partial = mn.cue(rng, coder, found, 7, "partial")
+    assert (partial <= key).all() and partial.sum() < key.sum()
+    reworded = mn.cue(rng, coder, found, 7, "reworded")
+    assert reworded.sum() > 0 and reworded @ key < key.sum() / 2  # a word's code is its own
+    alone = coder.about_agent(found.agent[[7]])[0]
+    assert alone.sum() <= 5 and alone @ key == alone.sum()  # the agent's code lies in the key
+    siblings = np.flatnonzero((found.agent == found.agent[7]) & (np.arange(200) != 7))
+    assert all(found.key[s] @ alone == alone.sum() for s in siblings)
+    with pytest.raises(ValueError, match="cue"):
+        mn.cue(rng, coder, found, 7, "similar")
+    narrow = mn.Coder(mn.Lexicon(nouns=32, verbs=8), 70, seed=1, fan=16)
+    assert narrow.agent.shape == (64, 70) and narrow.message.separator.fan_in >= 16
+
+
+def test_a_meaning_key_cell_scores_the_exact_store_and_the_memory():
+    mk = _load("meaning_keys")
+    np.testing.assert_array_equal(mk.latest_best(np.array([1.0, 3.0, 3.0, 2.0]), 3), [2, 1, 3])
+    rows = mk.run_cell({
+        "founder": 0, "n": 400, "units": 280, "nouns": 32, "verbs": 16, "trials": 60,
+        "head_trials": 20,
+        "arms": ["exact", "memory", {"name": "memory-same", "settings": {"revise": 0.999}},
+                 {"name": "memory-direct", "settings": {"direct": "all"}}],
+    })
+    by = {(r["arm"], r["cue"], r["heads"]): r for r in rows}
+    assert {r["arm"] for r in rows} == {"exact", "memory", "memory-same", "memory-direct"}
+    assert by["exact", "exact", 1]["found"] >= 0.95 and by["exact", "reworded", 1]["found"] <= 0.1
+    assert by["exact", "noisy", 1]["single"] <= by["exact", "noisy", 1]["found"] + 1e-9
+    assert by["memory", "exact", 1]["found"] >= 0.9 and by["memory", "exact", 1]["coarse"] is False
+    assert by["memory-direct", "exact", 1]["settings"]["direct"] == 400
+    # a key recognised only where it is the same key keeps every fact whose key is its own
+    assert by["memory-same", "exact", 1]["held"] >= by["memory", "exact", 1]["held"]
+    same = by["memory-same", "exact", 1]["held"]
+    assert same == pytest.approx(rows[0]["distinct_keys"], abs=1e-4)
+    assert ("exact", "agent", 4) in by and 0.0 <= by["memory", "agent", 4]["found"] <= 1.0
+    assert rows[0]["keys"] == "message" and rows[0]["fan_in"] == round(2 * 131 * 16 / 70)
+
+
+def test_retention_takes_facts_keyed_by_held_meanings():
+    spec = {"founder": 1, "budget": 48, "moments_per_slot": 40, "keys": "message", "units": 280}
+    memory = rn.run_cell({**spec, "arm": {"name": "memory", "settings": {"direct": None}}})
+    lru = rn.run_cell({**spec, "arm": "lru"})
+    assert memory[-1]["keys"] == "message" and memory[-1]["width"] == 280
+    assert 0.9 < memory[-1]["distinct_keys"] <= 1.0 and memory[-1]["stale"] == 0.0
+    assert memory[-1]["top"] >= lru[-1]["top"] - 0.1 and memory[-1]["revised_facts"] > 0
+    append = rn.run_cell({**spec, "arm": {"name": "append",
+                                          "settings": {"direct": None, "revise": 0.0}}})
+    assert append[-1]["writes"] > memory[-1]["writes"]  # every statement takes a slot
+
+
+def test_the_second_round_s_plans_parse_on_their_declared_founders():
+    import json
+
+    mk = _load("meaning_keys")
+    plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "protocol-2").glob("*.json")}
+    assert set(plans) == {"cost", "meaning-keys", "meaning-retention", "meaning-retention-70"}
+    assert plans["cost"]["founders"] == [2886, 2887, 2888]
+    assert all(plans[name]["founders"] == list(range(2890, 2896)) for name in plans
+               if name != "cost")
+    assert len(ct.cells(plans["cost"])) == 12
+    store = next(a for a in plans["cost"]["arms"] if not isinstance(a, str)
+                 and a["name"] == "memory")["settings"]
+    as_it_stands = bk.Bank(64, 64, 10_000, **store)
+    assert as_it_stands.direct == 16_384 and as_it_stands.coarse is False
+    todo = mk.cells(plans["meaning-keys"])
+    assert len(todo) == 54 and {c["units"] for c in todo} == {280, 70}
+    names = [[a if isinstance(a, str) else a["name"] for a in c["arms"]] for c in todo]
+    assert all(("memory-direct" in n) == (c["n"] == 100_000)
+               for n, c in zip(names, todo, strict=True))
+    assert len(rn.cells(plans["meaning-retention"])) == 96
+    assert plans["meaning-retention"]["units"] == 280
+    assert plans["meaning-retention-70"]["units"] == 70
+
+
+def test_the_floor_of_a_read_that_scores_every_slot_is_timed():
+    rows = ct.run_cell({"founder": 0, "n": 64, "width": 16, "acts": 5, "reads": 10,
+                        "arms": ["floor", "floor32"]})
+    assert [r["arm"] for r in rows] == ["floor", "floor32"] and rows[0]["read_ms"] > 0
+    assert rows[0]["bytes_per_record"] == 2 * rows[1]["bytes_per_record"]

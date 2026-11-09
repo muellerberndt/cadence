@@ -13,6 +13,10 @@ With ``drift`` the ranks are reshuffled at the midpoint.
 (``references.Cache``): least recently used, first in first out, random and least frequently used
 over exact keys.
 
+**Keys.** The facts are ``world.records`` unless the plan names ``"keys": "message"``: then they
+are ``meanings.facts``, a key that says what the fact is about and a value that says it, both
+made by ``cadence.Message``; a fact that changes keeps its key and takes another patient.
+
 **Readings**, at every checkpoint, by probes that count as no use:
 
 * ``top``: the share of the 10% most-used facts that are retrievable: a read with the fact's
@@ -56,11 +60,12 @@ class BankArm:
     address and content, and the instrument keeps which fact and version every slot holds."""
 
     def __init__(self, capacity: int, address: np.ndarray, settings: dict[str, Any],
-                 seed: int) -> None:
+                 seed: int, value_width: int | None = None) -> None:
         from bank import Bank
 
         self.address = address
-        self.bank = Bank(address.shape[1], address.shape[1], capacity, seed=seed, **settings)
+        self.bank = Bank(address.shape[1], value_width or address.shape[1], capacity, seed=seed,
+                         **settings)
         self.fact = np.full(capacity, -1, dtype=np.int64)
         self.version = np.full(capacity, -1, dtype=np.int64)
         self.writes = 0
@@ -140,21 +145,42 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     stream = world.Stream(facts, moments, founder, zipf=float(spec.get("zipf", 1.0)),
                           change=float(spec.get("change", 0.05)), drift=drift)
     rng = np.random.default_rng(np.random.SeedSequence([founder, 288, 3]))
-    recs = world.records(rng, facts, width, width, spec.get("keys", "code"))
+    fresh = np.random.default_rng(np.random.SeedSequence([founder, 288, 4]))
+    if spec.get("keys") == "message":
+        # facts keyed by held meanings: the key says what a fact is about, the value what it
+        # says, and a fact that changes keeps its key and takes another patient
+        import meanings as mn
+
+        coder = mn.Coder(mn.Lexicon(), int(spec.get("units", 280)), founder, spec.get("fan_in"))
+        found = mn.facts(rng, coder, facts)
+        address, content, width = found.key, found.value.copy(), coder.units
+
+        def changed(fact: int) -> np.ndarray:
+            at = np.array([fact])
+            patient = fresh.integers(coder.lexicon.forms, size=1)
+            return np.asarray(coder.state(found.agent[at], found.verb[at], patient)[0])
+    else:
+        recs = world.records(rng, facts, width, width, spec.get("keys", "code"))
+        address, content = recs.address, recs.content.copy()
+
+        def changed(fact: int) -> np.ndarray:
+            return np.asarray(world.codes(fresh, 1, width)[0])
     if name in POLICIES:
         memory: Any = CacheArm(budget, name, facts, founder)
     else:
-        memory = BankArm(budget, recs.address, dict(arm.get("settings", {})), founder)
+        memory = BankArm(budget, address, dict(arm.get("settings", {})), founder,
+                         value_width=content.shape[1])
     version = np.zeros(facts, dtype=np.int64)
     told = np.zeros(facts, dtype=bool)  # the fact changed and its new content was stated
-    content = recs.content.copy()
-    fresh = np.random.default_rng(np.random.SeedSequence([founder, 288, 4]))
     marks = {int(round(moments * (i + 1) / CHECKPOINTS)) for i in range(CHECKPOINTS)}
     top_early, rare_early = stream.top(late=False), stream.bottom(late=False)
     top_late, rare_late = stream.top(late=True), stream.bottom(late=True)
     left = np.setdiff1d(top_early, top_late)
     base = {"founder": founder, "budget": budget, "width": width, "facts": facts,
-            "arm": name, "drift": drift, "zipf": stream.zipf, "change": stream.change}
+            "arm": name, "drift": drift, "zipf": stream.zipf, "change": stream.change,
+            "keys": spec.get("keys", "code")}
+    if spec.get("keys") == "message":
+        base["distinct_keys"] = round(len(np.unique(address.astype(np.uint8), axis=0)) / facts, 5)
     if not isinstance(arm, str):
         base["settings"] = arm.get("settings", {})
     rows: list[dict[str, Any]] = []
@@ -164,7 +190,7 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
         fact = int(stream.fact[t])
         if stream.changed[t]:
             version[fact] += 1
-            content[fact] = world.codes(fresh, 1, width)[0]
+            content[fact] = changed(fact)
             told[fact] = True
         hits += int(memory.ask(fact, int(version[fact])))
         memory.tell(fact, int(version[fact]), content[fact])
@@ -204,7 +230,8 @@ def cells(plan: dict[str, Any]) -> list[dict[str, Any]]:
                     out.append({
                         "founder": founder, "budget": budget, "drift": drift, "arm": arm,
                         **{k: plan[k] for k in ("width", "facts_per_slot", "moments_per_slot",
-                                                "zipf", "change", "keys") if k in plan},
+                                                "zipf", "change", "keys", "units", "fan_in")
+                           if k in plan},
                     })
     return sorted(out, key=lambda c: -c["budget"])
 

@@ -10,6 +10,8 @@ One process per cell (a founder, N, a key width), one row per arm:
 * a candidate bank per plan entry (``bank.Bank``): ``read_ms`` and ``write_ms`` of a full bank,
   the write with its recognition read and its moment of fading.
 * ``exact``: the exact nearest-neighbour store's read.
+* ``floor`` and ``floor32``: the keys' product with the cue and its first choice alone, in
+  float64 and float32: the least a read that scores every slot does in NumPy.
 * ``device``: the recall memory's read as one product on a device (``--device cuda`` or
   ``mps``), float32: every slot scored, the softmax, the weights over the values and the nexts,
   timed after the device has finished each read.
@@ -121,6 +123,18 @@ def _exact(recs: Any, reads: int) -> dict[str, Any]:
             "bytes_per_record": round(store.nbytes / recs.n, 1)}
 
 
+def _floor(recs: Any, reads: int, dtype: str) -> dict[str, Any]:
+    """The least a read that scores every slot does in NumPy: one product of the keys with
+    the cue and the first choice, with no candidate list, no weights and no value."""
+    keys = np.ascontiguousarray(recs.address.astype(dtype))
+    cues = recs.address.astype(dtype)
+    t0 = time.perf_counter()
+    for i in range(reads):
+        int(np.argmax(keys @ cues[i % recs.n]))
+    return {"read_ms": round(1e3 * (time.perf_counter() - t0) / reads, 4),
+            "bytes_per_record": round(keys.nbytes / recs.n, 1)}
+
+
 def _device(recs: Any, reads: int, device: str, temperature: float) -> dict[str, Any]:
     """The recall memory's read as one product on ``device``, float32: every slot's key against
     the cue, the softmax, and the weights over the values and the nexts."""
@@ -174,6 +188,8 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
             row = _moment(founder, recs, acts, options)
         elif name == "exact":
             row = _exact(recs, reads)
+        elif name.startswith("floor"):
+            row = _floor(recs, reads, "float32" if name.endswith("32") else "float64")
         elif name == "device":
             row = _device(recs, reads, spec.get("device", "cuda"),
                           float(spec.get("temperature", 0.25)))
