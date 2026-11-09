@@ -50,6 +50,7 @@ from typing import Any, Literal, TypeVar, cast
 
 import numpy as np
 
+from . import _moment
 from ._configuration import (
     CONSTANTS,
     POINT,
@@ -3578,9 +3579,53 @@ class Brain:
         the option, on the CPU backend."""
         return bool(self.learner.config.compiled_moment) and self.brain.backend == "cpu"
 
+    def _compiled_drive(self, x: np.ndarray, code: np.ndarray) -> np.ndarray | None:
+        """The drive of the compiled moment (``learning_compiled_moment``) on the host, written
+        in one array: the sensory part, the working trace, the recall memory's compiled read and
+        the place store's, each as ``memories.stimulus`` reads them in turn; None where the brain
+        holds another memory or a part the compiled read does not take (``_stimulus`` then reads
+        them in turn)."""
+        recall, trace, store = self.recall, self.working_memory, self.hippocampus
+        if recall is not None:
+            recall.compiled_moment = True
+        if (
+            self.learned_code is not None or recall is None or type(recall) is not Recall
+            or recall._device is not None or not recall._compiles(len(x))
+            or self.efference is not None or self.history is not None or self.memory_choice
+            or (trace is not None and (type(trace) is not Trace or trace._device is not None))
+            or (store is not None and (
+                type(store) is not SynapticMemory or store._device is not None
+                or store.separator is not None or self.memory_choice or self._coded_keys
+            ))
+        ):
+            return None
+        if self.hearing is not None:
+            self.hearing.compiled_moment = True
+        self.basal_ganglia.reside(None)
+        drive = np.zeros((len(x), self.connectome.n))
+        drive[:, self.sensory_index] = (
+            self._sensed(x, code) * self.brain.neuron_model.stimulus_amplitude
+        )
+        if trace is not None:
+            drive[:, trace._glow_columns] = (
+                trace.amplitude * trace.hearing * trace.trace if len(trace.trace) == len(x)
+                else 0.0
+            )
+        recall._stimulate_compiled(drive, x, inplace=True)
+        if store is not None:
+            store.compiled_moment = True
+            drive[:, store._post_columns] += _moment.store_read(
+                store, np.ascontiguousarray(drive[:, store._pre_columns])
+            )
+        return drive
+
     def _stimulus(self, x: np.ndarray, code: np.ndarray, *, memory: bool = True) -> np.ndarray:
         """The drive of validated observations and their code."""
         kernel = self._memories_kernel(len(x)) if memory else None
+        if memory and kernel is None and self._compiled_moment():
+            fused = self._compiled_drive(x, code)
+            if fused is not None:
+                return fused
         drive: Any
         if kernel is not None:
             drive = self._resident_drive(kernel, x, code)

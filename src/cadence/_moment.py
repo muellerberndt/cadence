@@ -20,7 +20,7 @@ from typing import Any
 
 import numpy as np
 
-from .fused import _compiled, njit
+from .fused import _compiled, compiled, njit
 
 __all__ = ["available", "recall_read", "address_lesson"]
 
@@ -28,244 +28,120 @@ __all__ = ["available", "recall_read", "address_lesson"]
 def available() -> bool:
     """Whether the compiled moment can run here: Numba is installed and the compiled passes of
     ``cadence.fused`` are in use."""
-    from .fused import compiled
-
     return compiled()
 
 
+_numeric: Any = None
 if njit is not None:
+    # NumPy's error model: a division by zero gives what NumPy's form gives, and loops vectorize
+    _numeric = njit(cache=True, error_model="numpy")
 
-    @_compiled
-    def _map_row(
-        x: np.ndarray, c: np.ndarray, b: int, w_x: np.ndarray, w_c: np.ndarray, m: np.ndarray,
-        out: np.ndarray,
-    ) -> None:
-        """``out = x[b] @ w_x + c[b] @ w_c + m`` for one row: a map of the moment's term."""
-        width = out.shape[0]
-        for j in range(width):
-            out[j] = 0.0
-        for k in range(x.shape[1]):
-            v = x[b, k]
-            if v != 0.0:
-                for j in range(width):
-                    out[j] += v * w_x[k, j]
-        for a in range(c.shape[1]):
-            v = c[b, a]
-            if v != 0.0:
-                for j in range(width):
-                    out[j] += v * w_c[a, j]
-        for j in range(width):
-            out[j] += m[j]
-
-    @_compiled
-    def _lean_row(
-        x: np.ndarray, c: np.ndarray, b: int, s_x: np.ndarray, s_c: np.ndarray, s: np.ndarray
+    @njit(inline="always")
+    def _term(
+        z: np.ndarray, b: int, age: int, columns: np.ndarray, numbers: np.ndarray,
+        slope_unit: float, told: int, focus: int, table: np.ndarray, grid: np.ndarray,
     ) -> float:
-        """The slope map's one number for one row: ``x[b] @ s_x + c[b] @ s_c + s``."""
-        total = 0.0
-        for k in range(x.shape[1]):
-            total += x[b, k] * s_x[k]
-        for a in range(c.shape[1]):
-            total += c[b, a] * s_c[a]
-        return total + s[0]
-
-    @_compiled
-    def _position_row(
-        x: np.ndarray, c: np.ndarray, b: int, slots: int,
-        has_position: bool, p_x: np.ndarray, p_c: np.ndarray, p: np.ndarray,
-        buckets: np.ndarray,
-        has_anchor: bool, e_x: np.ndarray, e_c: np.ndarray, e: np.ndarray,
-        told: np.ndarray, table: np.ndarray, outside: int,
-        has_relative: bool, r_x: np.ndarray, r_c: np.ndarray, r: np.ndarray,
-        focus: np.ndarray, reach: int,
-        has_slope: bool, s_x: np.ndarray, s_c: np.ndarray, s: np.ndarray, slope_unit: float,
-        has_grid: bool, g_x: np.ndarray, g_c: np.ndarray, g: np.ndarray, residues: np.ndarray,
-        position: int,
-        scratch: np.ndarray, term: np.ndarray,
-    ) -> None:
-        """Row ``b``'s position term at every slot into ``term`` (``Recall.position_term``): the
-        table over the age buckets, the anchored term over each slot's place in the episode, the
-        relative term over its offset from the previous read's focus, the slope along its age
-        and the grid's residues past the table."""
-        for m in range(slots):
-            term[m] = 0.0
-        if not has_position:
-            return
-        _map_row(x, c, b, p_x, p_c, p, scratch[: p.shape[0]])
-        for m in range(slots):
-            term[m] = scratch[buckets[m]]
+        """A slot's position term from row ``b`` of the packed products ``z``
+        (``Recall.position_term``): the table over its age bucket, the anchored term over its
+        place in the episode, the relative term over its offset from the previous read's focus,
+        the slope along its age and past the table the grid's residues."""
+        if not numbers[0]:
+            return 0.0
         last = table.shape[0] - 1
-        if has_anchor:
-            _map_row(x, c, b, e_x, e_c, e, scratch[: e.shape[0]])
-            t = told[b]
-            for m in range(slots):
-                place = t - 1 - (slots - 1 - m)
-                if place < 0:
-                    bucket = outside
-                else:
-                    bucket = table[place] if place <= last else table[last]
-                term[m] += scratch[bucket]
-        if has_relative:
-            _map_row(x, c, b, r_x, r_c, r, scratch[: r.shape[0]])
-            f = focus[b]
-            for m in range(slots):
-                if f < 0:
-                    bucket = 2 * reach + 1
-                else:
-                    offset = min(slots - 1 - m - f, reach)
-                    bucket = max(offset, -reach) + reach
-                term[m] += scratch[bucket]
-        if has_slope:
-            lean = _lean_row(x, c, b, s_x, s_c, s)
-            for m in range(slots):
-                term[m] += lean * ((slots - 1 - m) / slope_unit)
-        if has_grid:
-            _map_row(x, c, b, g_x, g_c, g, scratch[: g.shape[0]])
-            for m in range(slots):
-                if slots - 1 - m >= position:
-                    total = 0.0
-                    for i in range(residues.shape[0]):
-                        total += scratch[residues[i, m]]
-                    term[m] += total
+        term = z[b, columns[1] + table[min(age, last)]]
+        if numbers[1]:
+            place = told - 1 - age
+            term += z[b, columns[2] + (numbers[7] if place < 0 else table[min(place, last)])]
+        if numbers[2]:
+            reach = numbers[6]
+            if focus < 0:
+                bucket = 2 * reach + 1
+            else:
+                bucket = max(min(age - focus, reach), -reach) + reach
+            term += z[b, columns[3] + bucket]
+        if numbers[3]:
+            term += z[b, columns[4]] * (age / slope_unit)
+        if numbers[4] and age >= numbers[5]:
+            total = 0.0
+            start = 0
+            for i in range(grid.shape[0]):
+                total += z[b, columns[5] + start + age % grid[i]]
+                start += grid[i]
+            term += total
+        return term
 
-    @_compiled
-    def _read_kernel(
-        x: np.ndarray, c: np.ndarray, heard: float,
-        w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
-        keys: np.ndarray, values: np.ndarray, nexts: np.ndarray, has_next: bool,
-        held: np.ndarray, temperature: float, recency: float,
-        has_position: bool, p_x: np.ndarray, p_c: np.ndarray, p: np.ndarray,
-        buckets: np.ndarray,
-        has_anchor: bool, e_x: np.ndarray, e_c: np.ndarray, e: np.ndarray,
-        told: np.ndarray, table: np.ndarray, outside: int,
-        has_relative: bool, r_x: np.ndarray, r_c: np.ndarray, r: np.ndarray,
-        focus: np.ndarray, reach: int,
-        has_slope: bool, s_x: np.ndarray, s_c: np.ndarray, s: np.ndarray, slope_unit: float,
-        has_grid: bool, g_x: np.ndarray, g_c: np.ndarray, g: np.ndarray, residues: np.ndarray,
-        position: int, widest: int,
+    @_numeric
+    def _products(
+        x: np.ndarray, c: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray
+    ) -> np.ndarray:
+        """``x w_x + c w_c + w``: every row's inputs through every packed column."""
+        z = np.dot(x, w_x) + np.dot(c, w_c)
+        for b in range(z.shape[0]):
+            for j in range(z.shape[1]):
+                z[b, j] += w[j]
+        return z
+
+    @_numeric
+    def _packed_read(
+        x: np.ndarray, c: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
+        columns: np.ndarray, numbers: np.ndarray, scalars: np.ndarray, keys: np.ndarray,
+        values: np.ndarray, nexts: np.ndarray, has_next: bool, held: np.ndarray,
+        told: np.ndarray, focus: np.ndarray, table: np.ndarray, grid: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """Every row's key, address, attention over its slots and reads of the values and the
-        nexts (``Recall.stimulate`` with one head)."""
+        nexts (``Recall.stimulate`` with one head), the maps packed (``packed_maps``): one
+        product of the rows' inputs with every column, then each slot's logit."""
         rows, width = x.shape
         slots = keys.shape[1]
-        address_width = w.shape[0]
+        address_width = columns[1]
         value_width = values.shape[2]
+        heard, temperature, recency, slope_unit = scalars[0], scalars[1], scalars[2], scalars[3]
+        z = _products(x, c, w_x, w_c, w)
         key = np.empty((rows, width))
         q = np.empty((rows, address_width))
         attention = np.empty((rows, slots))
         read = np.zeros((rows, value_width))
         following = np.zeros((rows, value_width if has_next else 0))
-        scratch = np.empty(max(widest, address_width, 1))
-        term = np.empty(slots)
         for b in range(rows):
             for k in range(width):
                 key[b, k] = heard * x[b, k]
-            _map_row(x, c, b, w_x, w_c, w, scratch[:address_width])
             for j in range(address_width):
-                q[b, j] = key[b, j] + scratch[j]
-            _position_row(
-                x, c, b, slots, has_position, p_x, p_c, p, buckets, has_anchor, e_x, e_c, e,
-                told, table, outside, has_relative, r_x, r_c, r, focus, reach, has_slope, s_x,
-                s_c, s, slope_unit, has_grid, g_x, g_c, g, residues, position, scratch, term,
-            )
+                q[b, j] = key[b, j] + z[b, j]
             top = -np.inf
             for m in range(slots):
-                if held[b, m]:
-                    dot = 0.0
-                    for j in range(address_width):
-                        dot += q[b, j] * keys[b, m, j]
-                    z = dot / temperature
-                    if recency != 0.0:
-                        z -= recency * (slots - 1 - m)
-                    z += term[m]
-                    if z > top:
-                        top = z
-                    attention[b, m] = z
-                else:
+                if not held[b, m]:
                     attention[b, m] = -np.inf
+                    continue
+                age = slots - 1 - m
+                dot = 0.0
+                for j in range(address_width):
+                    dot += q[b, j] * keys[b, m, j]
+                logit = dot / temperature
+                if recency != 0.0:
+                    logit -= recency * age
+                logit += _term(z, b, age, columns, numbers, slope_unit, told[b], focus[b], table,
+                               grid)
+                attention[b, m] = logit
+                top = max(top, logit)
             if top == -np.inf:  # a stream that holds no slot reads silence
                 for m in range(slots):
                     attention[b, m] = 0.0
                 continue
             total = 0.0
             for m in range(slots):
-                v = np.exp(attention[b, m] - top)
-                attention[b, m] = v
-                total += v
+                p = np.exp(attention[b, m] - top)
+                attention[b, m] = p
+                total += p
             for m in range(slots):
-                a = attention[b, m] / total
-                attention[b, m] = a
-                if a != 0.0:
+                p = attention[b, m] / total
+                attention[b, m] = p
+                if p != 0.0:
                     for j in range(value_width):
-                        read[b, j] += a * values[b, m, j]
+                        read[b, j] += p * values[b, m, j]
                     if has_next:
                         for j in range(value_width):
-                            following[b, j] += a * nexts[b, m, j]
+                            following[b, j] += p * nexts[b, m, j]
         return key, q, attention, read, following
-
-
-_NONE2 = np.zeros((1, 1))
-_NONE1 = np.zeros(1)
-_NONE_INT2 = np.zeros((1, 1), dtype=np.int64)
-
-
-def _maps(maps: list[Any], head: int) -> tuple[bool, np.ndarray, np.ndarray, np.ndarray]:
-    """A head's maps as the kernels take them, or placeholders without them."""
-    if not maps:
-        return False, _NONE2, _NONE2, _NONE1
-    m_x, m_c, m = maps[head]
-    return True, m_x, m_c, m
-
-
-def _slope(maps: list[Any], head: int) -> tuple[bool, np.ndarray, np.ndarray, np.ndarray]:
-    if not maps:
-        return False, _NONE1, _NONE1, _NONE1
-    s_x, s_c, s = maps[head]
-    return True, s_x, s_c, np.atleast_1d(s)
-
-
-def position_arguments(recall: Any, head: int) -> tuple[Any, ...]:
-    """The position maps and tables of ``recall``'s head ``head`` in the kernels' order."""
-    has_position, p_x, p_c, p = _maps(recall.position_maps, head)
-    has_anchor, e_x, e_c, e = _maps(recall.anchor_maps, head)
-    has_relative, r_x, r_c, r = _maps(recall.relative_maps, head)
-    has_slope, s_x, s_c, s = _slope(recall.slope_maps, head)
-    has_grid, g_x, g_c, g = _maps(recall.grid_maps, head)
-    slots = recall.slots
-    buckets = recall.buckets() if has_position else np.zeros(slots, dtype=np.int64)
-    table = recall._age_buckets() if has_position else np.zeros(1, dtype=np.int64)
-    residues = recall.grid_buckets() if has_grid else _NONE_INT2
-    widest = max(len(p), len(e), len(r), len(g))
-    return (
-        has_position, p_x, p_c, p, np.ascontiguousarray(buckets, dtype=np.int64),
-        has_anchor, e_x, e_c, e, np.asarray(recall.told, dtype=np.int64),
-        np.ascontiguousarray(table, dtype=np.int64), int(recall.position_buckets),
-        has_relative, r_x, r_c, r, np.asarray(recall.focus, dtype=np.int64),
-        int(recall.RELATIVE),
-        has_slope, s_x, s_c, s, float(recall.SLOPE),
-        has_grid, g_x, g_c, g, np.ascontiguousarray(residues, dtype=np.int64),
-        int(recall.position), widest,
-    )
-
-
-def recall_read(
-    recall: Any, x: np.ndarray, c: np.ndarray
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
-    """``(key, address, attention, read of the values, read of the nexts)`` of head 0 at the
-    moments ``x`` with the cortex ``c`` of the moment before."""
-    w_x, w_c, w = recall.head_maps[0]
-    return _read_kernel(  # type: ignore[no-any-return]
-        x, c, float(recall.heard), w_x, w_c, w, recall.keys, recall.values,
-        recall.nexts if recall.next else recall.values, bool(recall.next), recall.held,
-        float(recall.temperature), float(recall.recency), *position_arguments(recall, 0),
-    )
-
-
-# -- the address lesson
-
-if njit is not None:
-
-    _numeric = njit(cache=True, error_model="numpy")
 
     @_numeric
     def _readback(
@@ -282,43 +158,6 @@ if njit is not None:
         return out
 
     @_numeric
-    def _lms_into(
-        w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray, step: np.ndarray, rate: float,
-        x: np.ndarray, c: np.ndarray,
-    ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
-        """A map of the moment after the least-mean-squares ``step`` ``(rows, columns)`` at
-        ``rate`` on each row's inputs ``[x, c, 1]``, averaged over the rows (``_lms``)."""
-        rows, columns = step.shape
-        s_x = np.zeros((x.shape[1], columns))
-        s_c = np.zeros((c.shape[1], columns))
-        s = np.zeros(columns)
-        for b in range(rows):
-            for k in range(x.shape[1]):
-                v = x[b, k]
-                if v != 0.0:
-                    for j in range(columns):
-                        s_x[k, j] += v * step[b, j]
-            for a in range(c.shape[1]):
-                v = c[b, a]
-                if v != 0.0:
-                    for j in range(columns):
-                        s_c[a, j] += v * step[b, j]
-            for j in range(columns):
-                s[j] += step[b, j]
-        new_x = np.empty_like(s_x)
-        new_c = np.empty_like(s_c)
-        new = np.empty(columns)
-        for k in range(x.shape[1]):
-            for j in range(columns):
-                new_x[k, j] = w_x[k, j] + rate * s_x[k, j] / rows
-        for a in range(c.shape[1]):
-            for j in range(columns):
-                new_c[a, j] = w_c[a, j] + rate * s_c[a, j] / rows
-        for j in range(columns):
-            new[j] = w[j] + rate * (s[j] / rows)
-        return new_x, new_c, new
-
-    @_numeric
     def _finite(a: np.ndarray) -> bool:
         for v in a.ravel():
             if not (v - v == 0.0):
@@ -332,28 +171,23 @@ if njit is not None:
         next_synapses: np.ndarray, next_sources: np.ndarray, next_targets: np.ndarray,
         has_next: bool, values: np.ndarray, nexts: np.ndarray, keys: np.ndarray,
         held: np.ndarray, masked: bool, inputs: np.ndarray, cortex: np.ndarray,
-        address: np.ndarray, key: np.ndarray,
-        address_temperature: float, temperature: float, recency: float,
-        has_position: bool, p_x: np.ndarray, p_c: np.ndarray, p: np.ndarray,
-        buckets: np.ndarray,
-        has_anchor: bool, e_x: np.ndarray, e_c: np.ndarray, e: np.ndarray,
-        told: np.ndarray, table: np.ndarray, outside: int,
-        has_relative: bool, r_x: np.ndarray, r_c: np.ndarray, r: np.ndarray,
-        focus: np.ndarray, reach: int,
-        has_slope: bool, s_x: np.ndarray, s_c: np.ndarray, s: np.ndarray, slope_unit: float,
-        has_grid: bool, g_x: np.ndarray, g_c: np.ndarray, g: np.ndarray, residues: np.ndarray,
-        position: int, widest: int,
-        w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray, address_rate: float,
-        position_rate: float, slope_rate: float,
-    ) -> tuple[Any, ...]:
-        """The address lesson of one head (``Recall.learn``): the rows' scores of the slots
-        against the lesson's movement, the attention the lesson names, the prior and the steps of
-        the address and the position maps. Returns ``(moved, error, address maps, address
-        finite, position maps, position finite)``; ``moved`` counts the rows that move and the
-        maps are new arrays."""
+        address: np.ndarray, key: np.ndarray, w_x: np.ndarray, w_c: np.ndarray, w: np.ndarray,
+        columns: np.ndarray, numbers: np.ndarray, scalars: np.ndarray, told: np.ndarray,
+        focus: np.ndarray, table: np.ndarray, grid: np.ndarray, positions: bool,
+    ) -> tuple[int, float, np.ndarray, np.ndarray, np.ndarray, bool, bool]:
+        """The address lesson of head 0 (``Recall.learn``), the maps packed (``packed_maps``):
+        the scores of each moving row's slots against the lesson's movement, the prior its
+        address gave, the attention the lesson names, and one least-mean-squares step of every
+        packed column: the address columns at the address rate, the table, anchored, relative
+        and grid columns at the position rate and the slope column at its own. Returns the rows
+        that moved, the address error, the new packed maps and whether the address step and the
+        position step are finite (the candidate addresses with the address step)."""
         slots = keys.shape[1]
         key_width = keys.shape[2]
         value_width = values.shape[2]
+        temperature, recency, slope_unit = scalars[1], scalars[2], scalars[3]
+        address_temperature, address_rate = scalars[4], scalars[5]
+        position_rate, slope_rate = scalars[6], scalars[7]
         d_value = _readback(movement, weights, value_synapses, value_sources, value_targets,
                             value_width)
         d_next = (
@@ -363,6 +197,7 @@ if njit is not None:
         count = rows.shape[0]
         moving = np.zeros(count, dtype=np.bool_)
         norms = np.zeros(count)
+        moved = 0
         for i in range(count):
             total = 0.0
             for j in range(value_width):
@@ -371,46 +206,41 @@ if njit is not None:
                 for j in range(value_width):
                     total += d_next[i, j] * d_next[i, j]
             norms[i] = np.sqrt(total)
-            moving[i] = norms[i] > 1e-12
-            if masked and moving[i]:
-                anything = False
+            go = norms[i] > 1e-12
+            if masked and go:
+                go = False
                 for m in range(slots):
-                    anything = anything or held[rows[i], m]
-                moving[i] = anything
-        moved = 0
-        for i in range(count):
-            if moving[i]:
-                moved += 1
+                    go = go or held[rows[i], m]
+            moving[i] = go
+            moved += go
+        width = columns[6]
+        if moved == 0:
+            return 0, 0.0, w_x, w_c, w, False, False
+        streams = np.empty(moved, dtype=np.int64)
         x = np.empty((moved, inputs.shape[1]))
         c = np.empty((moved, cortex.shape[1]))
-        error = np.zeros((moved, key_width))
-        step = np.empty((moved, key_width))
-        gradient = np.zeros((moved, slots))
-        target = np.zeros((moved, slots))
-        prior = np.empty((moved, slots))
-        energy = np.empty(moved)
-        scratch = np.empty(max(widest, 1))
-        term = np.empty(slots)
-        logits = np.empty(slots)
         k = 0
         for i in range(count):
-            if not moving[i]:
-                continue
+            if moving[i]:
+                streams[k] = i
+                x[k] = inputs[rows[i]]
+                c[k] = cortex[rows[i]]
+                k += 1
+        z = _products(x, c, w_x, w_c, w)
+        step = np.zeros((moved, width))  # every packed column's step, rate aside
+        prior = np.empty(slots)
+        logits = np.empty(slots)
+        absolute = 0.0
+        stepped_slope = numbers[3] and not (numbers[4] and slots > numbers[5])
+        reach = numbers[6]
+        last = table.shape[0] - 1
+        for k in range(moved):
+            i = streams[k]
             b = rows[i]
-            for j in range(inputs.shape[1]):
-                x[k, j] = inputs[b, j]
-            for j in range(cortex.shape[1]):
-                c[k, j] = cortex[b, j]
-            _position_row(
-                inputs, cortex, b, slots, has_position, p_x, p_c, p, buckets, has_anchor, e_x,
-                e_c, e, told, table, outside, has_relative, r_x, r_c, r, focus, reach, has_slope,
-                s_x, s_c, s, slope_unit, has_grid, g_x, g_c, g, residues, position, scratch, term,
-            )
             top = -np.inf
-            best = -np.inf
             for m in range(slots):
                 if masked and not held[b, m]:
-                    prior[k, m] = -np.inf
+                    prior[m] = -np.inf
                     logits[m] = -np.inf
                     continue
                 score = 0.0
@@ -423,161 +253,212 @@ if njit is not None:
                 dot = 0.0
                 for j in range(key_width):
                     dot += address[b, j] * keys[b, m, j]
-                z = dot / temperature
+                logit = dot / temperature
                 if recency != 0.0:
-                    z -= recency * (slots - 1 - m)
-                z += term[m]
-                prior[k, m] = z
-                if z > top:
-                    top = z
+                    logit -= recency * (slots - 1 - m)
+                logit += _term(z, k, slots - 1 - m, columns, numbers, slope_unit, told[b],
+                               focus[b], table, grid)
+                prior[m] = logit
+                top = max(top, logit)
             total = 0.0
             for m in range(slots):
-                prior[k, m] -= top
-                total += np.exp(prior[k, m])
+                prior[m] -= top
+                total += np.exp(prior[m])
             shift = np.log(total)
+            best = -np.inf
             for m in range(slots):
-                prior[k, m] -= shift
-                logits[m] += prior[k, m]
-                if logits[m] > best:
-                    best = logits[m]
+                prior[m] -= shift
+                logits[m] += prior[m]
+                best = max(best, logits[m])
             total = 0.0
             for m in range(slots):
-                v = np.exp(logits[m] - best)
-                target[k, m] = v
-                total += v
-            for m in range(slots):
-                target[k, m] /= total
-                attended = np.exp(prior[k, m]) if prior[k, m] > -np.inf else 0.0
-                gradient[k, m] = target[k, m] - attended
-                if gradient[k, m] != 0.0:
-                    for j in range(key_width):
-                        error[k, j] += gradient[k, m] * keys[b, m, j]
-            total = 1.0
+                logits[m] = np.exp(logits[m] - best)
+                total += logits[m]
+            energy = 1.0
             for j in range(x.shape[1]):
-                total += x[k, j] * x[k, j]
+                energy += x[k, j] * x[k, j]
             for j in range(c.shape[1]):
-                total += c[k, j] * c[k, j]
-            energy[k] = total
-            bound = min(1.0, 1.0 / (address_rate * total))
-            for j in range(key_width):
-                step[k, j] = error[k, j] * bound
-            k += 1
-        absolute = 0.0
-        for k in range(moved):
-            for j in range(key_width):
-                absolute += abs(error[k, j])
-        mean_error = absolute / max(moved * key_width, 1)
-        # the address step, its candidate addresses checked with it
-        a_x, a_c, a = _lms_into(w_x, w_c, w, step, address_rate, x, c)
-        address_ok = _finite(a_x) and _finite(a_c) and _finite(a)
-        if address_ok:
-            scratch_q = np.empty(a.shape[0])
-            k = 0
-            for i in range(count):
-                if not moving[i]:
+                energy += c[k, j] * c[k, j]
+            bound = min(1.0, 1.0 / (address_rate * energy))
+            near = min(1.0, 1.0 / (position_rate * energy))
+            peak = 0.0
+            for m in range(slots):
+                logits[m] /= total  # the attention the lesson names
+                peak = max(peak, logits[m], np.exp(prior[m]) if prior[m] > -np.inf else 0.0)
+            lean = 0.0
+            for m in range(slots):
+                attended = np.exp(prior[m]) if prior[m] > -np.inf else 0.0
+                gradient = logits[m] - attended
+                if gradient == 0.0:
                     continue
-                _map_row(x, c, k, a_x, a_c, a, scratch_q)
-                for j in range(a.shape[0]):
-                    if not ((key[rows[i], j] + scratch_q[j]) - (key[rows[i], j] + scratch_q[j])
-                            == 0.0):
-                        address_ok = False
-                k += 1
-        # the position steps: the same gradient over the buckets of the table, the anchored and
-        # relative maps, the slope along the ages and the grid's residues past the table
-        position_ok = True
-        n_p = (p_x, p_c, p)
-        n_e = (e_x, e_c, e)
-        n_r = (r_x, r_c, r)
-        n_s = (s_x, s_c, s)
-        n_g = (g_x, g_c, g)
-        if has_position:
-            bounds = np.empty(moved)
+                for j in range(key_width):
+                    step[k, j] += gradient * keys[b, m, j]  # the error, bounded below
+                if not numbers[0]:
+                    continue
+                age = slots - 1 - m
+                step[k, columns[1] + table[min(age, last)]] += gradient * near
+                if numbers[1]:
+                    place = told[b] - 1 - age
+                    bucket = numbers[7] if place < 0 else table[min(place, last)]
+                    step[k, columns[2] + bucket] += gradient * near
+                if numbers[2]:
+                    if focus[b] < 0:
+                        bucket = 2 * reach + 1
+                    else:
+                        bucket = max(min(age - focus[b], reach), -reach) + reach
+                    step[k, columns[3] + bucket] += gradient * near
+                lean += gradient * (age / slope_unit)
+                if numbers[4] and age >= numbers[5]:
+                    far = gradient / peak if peak > 0 else gradient
+                    start = 0
+                    for i2 in range(grid.shape[0]):
+                        step[k, columns[5] + start + age % grid[i2]] += far * near
+                        start += grid[i2]
+            for j in range(key_width):
+                absolute += abs(step[k, j])
+                step[k, j] *= bound
+            if stepped_slope:
+                step[k, columns[4]] = lean * min(1.0, 1.0 / (slope_rate * energy))
+        mean_error = absolute / (moved * key_width)
+        # one least-mean-squares step of every column, each at its part's rate, averaged
+        s_x = np.dot(x.T.copy(), step)
+        s_c = np.dot(c.T.copy(), step)
+        rates = np.empty(width)
+        for j in range(width):
+            rates[j] = position_rate if positions else 0.0
+        for j in range(columns[1]):
+            rates[j] = address_rate
+        if numbers[3]:
+            rates[columns[4]] = slope_rate if (positions and stepped_slope) else 0.0
+        new_x = np.empty_like(w_x)
+        new_c = np.empty_like(w_c)
+        new = np.empty_like(w)
+        for j in range(width):
+            mean = 0.0
             for k in range(moved):
-                bounds[k] = min(1.0, 1.0 / (position_rate * energy[k]))
-            buckets_count = p.shape[0]
-            step_p = np.zeros((moved, buckets_count))
-            for k in range(moved):
-                for m in range(slots):
-                    step_p[k, buckets[m]] += gradient[k, m]
-                for j in range(buckets_count):
-                    step_p[k, j] *= bounds[k]
-            n_p = _lms_into(p_x, p_c, p, step_p, position_rate, x, c)
-            last = table.shape[0] - 1
-            if has_anchor:
-                step_e = np.zeros((moved, e.shape[0]))
-                k = 0
-                for i in range(count):
-                    if not moving[i]:
-                        continue
-                    t = told[rows[i]]
-                    for m in range(slots):
-                        place = t - 1 - (slots - 1 - m)
-                        if place < 0:
-                            bucket = outside
-                        else:
-                            bucket = table[place] if place <= last else table[last]
-                        step_e[k, bucket] += gradient[k, m]
-                    for j in range(e.shape[0]):
-                        step_e[k, j] *= bounds[k]
-                    k += 1
-                n_e = _lms_into(e_x, e_c, e, step_e, position_rate, x, c)
-            if has_relative:
-                step_r = np.zeros((moved, r.shape[0]))
-                k = 0
-                for i in range(count):
-                    if not moving[i]:
-                        continue
-                    f = focus[rows[i]]
-                    for m in range(slots):
-                        if f < 0:
-                            bucket = 2 * reach + 1
-                        else:
-                            offset = min(slots - 1 - m - f, reach)
-                            bucket = max(offset, -reach) + reach
-                        step_r[k, bucket] += gradient[k, m]
-                    for j in range(r.shape[0]):
-                        step_r[k, j] *= bounds[k]
-                    k += 1
-                n_r = _lms_into(r_x, r_c, r, step_r, position_rate, x, c)
-            if has_slope and not (has_grid and slots > position):
-                lean = np.zeros((moved, 1))
-                for k in range(moved):
-                    total = 0.0
-                    for m in range(slots):
-                        total += gradient[k, m] * ((slots - 1 - m) / slope_unit)
-                    lean[k, 0] = total * min(1.0, 1.0 / (slope_rate * energy[k]))
-                l_x, l_c, l_b = _lms_into(
-                    s_x.reshape((s_x.shape[0], 1)), s_c.reshape((s_c.shape[0], 1)), s, lean,
-                    slope_rate, x, c,
-                )
-                n_s = (l_x.reshape(s_x.shape[0]), l_c.reshape(s_c.shape[0]), l_b)
-            if has_grid:
-                width = g.shape[0]
-                step_g = np.zeros((moved, width))
-                for k in range(moved):
-                    peak = 0.0
-                    for m in range(slots):
-                        attended = np.exp(prior[k, m]) if prior[k, m] > -np.inf else 0.0
-                        peak = max(peak, target[k, m], attended)
-                    for m in range(slots):
-                        if slots - 1 - m < position:
-                            continue
-                        far = gradient[k, m] / peak if peak > 0 else gradient[k, m]
-                        for i in range(residues.shape[0]):
-                            step_g[k, residues[i, m]] += far
-                    for j in range(width):
-                        step_g[k, j] *= bounds[k]
-                n_g = _lms_into(g_x, g_c, g, step_g, position_rate, x, c)
-            position_ok = (
-                _finite(n_p[0]) and _finite(n_p[1]) and _finite(n_p[2])
-                and _finite(n_e[0]) and _finite(n_e[1]) and _finite(n_e[2])
-                and _finite(n_r[0]) and _finite(n_r[1]) and _finite(n_r[2])
-                and _finite(n_s[0]) and _finite(n_s[1]) and _finite(n_s[2])
-                and _finite(n_g[0]) and _finite(n_g[1]) and _finite(n_g[2])
-            )
-        return (
-            moved, mean_error, a_x, a_c, a, address_ok, n_p, n_e, n_r, n_s, n_g, position_ok,
+                mean += step[k, j]
+            new[j] = w[j] + rates[j] * (mean / moved)
+        for a in range(w_x.shape[0]):
+            for j in range(width):
+                new_x[a, j] = w_x[a, j] + rates[j] * s_x[a, j] / moved
+        for a in range(w_c.shape[0]):
+            for j in range(width):
+                new_c[a, j] = w_c[a, j] + rates[j] * s_c[a, j] / moved
+        address_ok = (
+            _finite(new_x[:, : columns[1]]) and _finite(new_c[:, : columns[1]])
+            and _finite(new[: columns[1]])
         )
+        if address_ok:  # the candidate addresses of the moving rows
+            candidate = _products(x, c, new_x[:, : columns[1]].copy(),
+                                  new_c[:, : columns[1]].copy(), new[: columns[1]].copy())
+            for k in range(moved):
+                b = rows[streams[k]]
+                for j in range(columns[1]):
+                    v = key[b, j] + candidate[k, j]
+                    if not (v - v == 0.0):
+                        address_ok = False
+        position_ok = (
+            _finite(new_x[:, columns[1]:]) and _finite(new_c[:, columns[1]:])
+            and _finite(new[columns[1]:])
+        )
+        return moved, mean_error, new_x, new_c, new, address_ok, position_ok
+
+
+_NONE2 = np.zeros((1, 1))
+
+
+def _settings(recall: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """The read's settings as the kernels take them: which position terms it has and their
+    sizes, its scalars, the age buckets' table and the grid's moduli; made again where one
+    changes."""
+    key = (
+        bool(recall.position_maps), bool(recall.anchor_maps), bool(recall.relative_maps),
+        bool(recall.slope_maps), bool(recall.grid_maps), recall.position, recall.capacity,
+        recall.heard, recall.temperature, recall.recency, recall.address_temperature,
+        recall.address, recall.position_rate, recall.slope, tuple(recall.grid or ()),
+    )
+    held = recall.__dict__.get("_kernel_settings")
+    if held is not None and held[0] == key:
+        return held[1]  # type: ignore[no-any-return]
+    numbers = np.array([
+        *key[:5], int(recall.position), int(recall.RELATIVE), int(recall.position_buckets),
+    ], dtype=np.int64)
+    scalars = np.array([
+        float(recall.heard), float(recall.temperature), float(recall.recency), float(recall.SLOPE),
+        float(recall.address_temperature), float(recall.address), float(recall.position_rate),
+        float(recall.slope),
+    ])
+    table = recall._age_buckets() if recall.position_maps else _NO_TABLE
+    grid = np.asarray(recall.grid if recall.grid_maps else (1,), dtype=np.int64)
+    settings = (numbers, scalars, np.ascontiguousarray(table, dtype=np.int64), grid)
+    recall.__dict__["_kernel_settings"] = (key, settings)
+    return settings
+
+
+def recall_read(
+    recall: Any, x: np.ndarray, c: np.ndarray
+) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """``(key, address, attention, read of the values, read of the nexts)`` of head 0 at the
+    moments ``x`` with the cortex ``c`` of the moment before (``_packed_read``)."""
+    w_x, w_c, w, columns = packed_maps(recall)
+    numbers, scalars, table, grid = _settings(recall)
+    if numbers[4] and recall.slots <= recall.position:  # no slot reaches the grid's columns
+        w_x, w_c, w = recall.__dict__["_packed"][3]
+        numbers = numbers.copy()
+        numbers[4] = 0
+    return _packed_read(  # type: ignore[no-any-return]
+        np.ascontiguousarray(x), np.ascontiguousarray(c), w_x, w_c, w, columns, numbers,
+        scalars, recall.keys, recall.values, recall.nexts if recall.next else recall.values,
+        bool(recall.next), recall.held, recall.told, recall.focus, table, grid,
+    )
+
+
+_NO_TABLE = np.zeros(1, dtype=np.int64)
+# the maps of a read in their order in the packed columns: the address map, then the position term's
+PACKED = ("position_maps", "anchor_maps", "relative_maps", "slope_maps", "grid_maps")
+
+
+def packed_maps(recall: Any) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Head 0's address map and position maps as one map ``(P_x, P_c, p)`` of every column in
+    turn (the address, the table, the anchored, the relative, the slope and the grid columns) and
+    where each part starts (``columns``, with the end last), made again only where a map is
+    replaced: a lesson replaces the maps it steps and never writes into them."""
+    parts = [recall.head_maps[0]] + [
+        getattr(recall, name)[0] if getattr(recall, name) else None for name in PACKED
+    ]
+    identity = tuple(id(a) for part in parts if part is not None for a in part)
+    held = recall.__dict__.get("_packed")
+    if held is not None and held[0] == identity:
+        return held[1]  # type: ignore[no-any-return]
+    blocks_x, blocks_c, blocks, columns = [], [], [], [0]
+    for part in parts:
+        if part is None:
+            columns.append(columns[-1])
+            continue
+        m_x, m_c, m = part
+        m_x, m_c = np.asarray(m_x, dtype=float), np.asarray(m_c, dtype=float)
+        if m_x.ndim == 1:  # the slope maps: one column
+            m_x, m_c = m_x[:, None], m_c[:, None]
+        blocks_x.append(m_x)
+        blocks_c.append(m_c)
+        blocks.append(np.atleast_1d(np.asarray(m, dtype=float)))
+        columns.append(columns[-1] + m_x.shape[1])
+    packed = (
+        np.ascontiguousarray(np.concatenate(blocks_x, axis=1)),
+        np.ascontiguousarray(np.concatenate(blocks_c, axis=1)),
+        np.concatenate(blocks), np.asarray(columns, dtype=np.int64),
+    )
+    end = columns[-2]  # without the grid's columns, which only slots past the table read
+    within = (
+        np.ascontiguousarray(packed[0][:, :end]), np.ascontiguousarray(packed[1][:, :end]),
+        packed[2][:end].copy(),
+    )
+    # the arrays are held with their identities, so an identity is never a freed array's
+    recall.__dict__["_packed"] = (identity, packed, parts, within)
+    return packed
+
+
+# -- the address lesson
 
 
 def address_lesson(
@@ -588,16 +469,16 @@ def address_lesson(
     (v_syn, v_src, v_dst), (n_syn, n_src, n_dst) = recall._head_synapses[0]
     moment = recall.last
     held = recall.held
-    w_x, w_c, w = recall.head_maps[0]
+    w_x, w_c, w, columns = packed_maps(recall)
+    numbers, scalars, table, grid = _settings(recall)
     return _lesson_kernel(  # type: ignore[no-any-return]
         np.asarray(rows, dtype=np.int64), np.ascontiguousarray(movement, dtype=float),
         np.ascontiguousarray(graph._weights, dtype=float), v_syn, v_src, v_dst, n_syn, n_src,
         n_dst, bool(recall.next), recall.values,
         recall.nexts if recall.next else recall.values, recall.keys, held,
         not bool(held.all()), moment.inputs, moment.cortex, moment.address, moment.key,
-        float(recall.address_temperature), float(recall.temperature), float(recall.recency),
-        *position_arguments(recall, 0), w_x, w_c, w, float(recall.address),
-        float(recall.position_rate) if positions else 0.0, float(recall.slope),
+        w_x, w_c, w, columns, numbers, scalars, recall.told, recall.focus, table, grid,
+        bool(positions),
     )
 
 
@@ -607,17 +488,19 @@ if njit is not None:
 
     @_numeric
     def _store_kernel(
-        cue: np.ndarray, strength: np.ndarray, mass: np.ndarray, normalize: bool,
+        cue: np.ndarray, strength: np.ndarray, mass: np.ndarray, shared: bool, normalize: bool,
         amplitude: float,
     ) -> np.ndarray:
         """``FastSynapses.recall`` of the delta rule: each row's cue scaled by its largest entry
-        and set to unit length, read through the row's strengths, over the decayed count of
-        writes with ``normalize``, at ``amplitude``."""
+        and set to unit length, read through the row's strengths (``shared``: one baseline for
+        every row, with no writes), over the decayed count of writes with ``normalize``, at
+        ``amplitude``."""
         rows, width = cue.shape
         post = strength.shape[2]
         out = np.zeros((rows, post))
         unit = np.empty(width)
         for b in range(rows):
+            held = 0 if shared else b
             scale = 0.0
             for k in range(width):
                 scale = max(scale, abs(cue[b, k]))
@@ -634,17 +517,21 @@ if njit is not None:
                 v = unit[k] / norm
                 if v != 0.0:
                     for j in range(post):
-                        out[b, j] += v * strength[b, k, j]
-            divisor = max(mass[b], 1e-12) if normalize else 1.0
+                        out[b, j] += v * strength[held, k, j]
+            divisor = max(0.0 if shared else mass[b], 1e-12) if normalize else 1.0
             for j in range(post):
                 out[b, j] = amplitude * (out[b, j] / divisor)
         return out
 
 
 def store_read(store: Any, cue: np.ndarray) -> np.ndarray:
-    """``FastSynapses.recall`` of a delta-rule store without a separator at its own batch."""
+    """``FastSynapses.recall`` of a delta-rule store without a separator: at its own batch the
+    streams' strengths, at another the baseline every new stream reads (``_baseline``)."""
+    shared = len(store.strength) != len(cue)
+    strength = store._baseline()[None, :, :] if shared else store.strength
     return _store_kernel(  # type: ignore[no-any-return]
-        cue, store.strength, store.mass, bool(store.normalize), float(store.amplitude)
+        cue, np.ascontiguousarray(strength, dtype=float), store.mass, shared,
+        bool(store.normalize), float(store.amplitude),
     )
 
 
@@ -691,40 +578,6 @@ def route_contrast(
         route["cols"], np.ascontiguousarray(held, dtype=float), float(scale), float(amplitude),
         float(model.slope), float(model.threshold), float(model.rest_emission),
         float(model.leak),
-    )
-
-
-# -- the lesson's contrast
-
-if njit is not None:
-
-    @_numeric
-    def _contrast_kernel(
-        pre: np.ndarray, post: np.ndarray, s_plus: np.ndarray, s_minus: np.ndarray,
-        divisor: float,
-    ) -> np.ndarray:
-        """``sum_b s+[b, pre] s+[b, post] - s-[b, pre] s-[b, post]`` for every synapse over
-        ``divisor`` (``blocks.block_contrast``), in the form ``a+ (b+ - b-) + (a+ - a-) b-``."""
-        out = np.zeros(pre.shape[0])
-        for b in range(s_plus.shape[0]):
-            for e in range(pre.shape[0]):
-                i, j = pre[e], post[e]
-                a_plus, a_minus = s_plus[b, i], s_minus[b, i]
-                b_minus = s_minus[b, j]
-                out[e] += a_plus * (s_plus[b, j] - b_minus) + (a_plus - a_minus) * b_minus
-        for e in range(pre.shape[0]):
-            out[e] /= divisor
-        return out
-
-
-def synapse_contrast(
-    connectome: Any, s_plus: np.ndarray, s_minus: np.ndarray, divisor: float
-) -> np.ndarray:
-    """``_contrast_kernel`` over the synapses of ``connectome``."""
-    return _contrast_kernel(  # type: ignore[no-any-return]
-        np.asarray(connectome.pre, dtype=np.int64), np.asarray(connectome.post, dtype=np.int64),
-        np.ascontiguousarray(s_plus, dtype=float), np.ascontiguousarray(s_minus, dtype=float),
-        float(divisor),
     )
 
 

@@ -31,6 +31,7 @@ from typing import Any, ClassVar, cast
 
 import numpy as np
 
+from . import _moment
 from ._configuration import real
 from .brain import _MLX_MAP_ENTRIES, BrainState, _MlxMatrix, _resident
 from .brain import Brain as NeuralGraph
@@ -753,9 +754,7 @@ class Hearing:
             held = trace[:, route["start"]:route["stop"]]
             amplitude = float(memory.amplitude)
             if compiled:  # the compiled moment's: the same equation, other bits
-                from ._moment import route_contrast
-
-                out[:, k] = route_contrast(
+                out[:, k] = _moment.route_contrast(
                     graph, route, movement, held, amplitude * self.gain(route), amplitude,
                     self.model,
                 )
@@ -2111,18 +2110,17 @@ class Recall:
             or not isinstance(self.head_maps[0][0], np.ndarray)
         ):
             return False
-        from . import _moment
-
         return _moment.available()
 
-    def _stimulate_compiled(self, drive: np.ndarray, x: np.ndarray) -> np.ndarray:
-        """``stimulate`` as one compiled pass (``_compiles``): the same equations, other bits."""
-        from ._moment import recall_read
-
+    def _stimulate_compiled(
+        self, drive: np.ndarray, x: np.ndarray, inplace: bool = False
+    ) -> np.ndarray:
+        """``stimulate`` as one compiled pass (``_compiles``): the same equations, other bits.
+        ``inplace`` writes the read into ``drive``, a host array of the caller's own."""
         c = _of(self.previous, len(x))
-        key, q, p, read, following = recall_read(self, x, c)
+        key, q, p, read, following = _moment.recall_read(self, x, c)
         self.last = _Moment(x, c, q, key, x)
-        out = np.array(_on_host(drive), dtype=float)
+        out = drive if inplace else np.array(_on_host(drive), dtype=float)
         p.flags.writeable = False
         amplitude = 1.0 if self.drive_gain else self.amplitude
         recall_columns, next_columns = self._head_columns[0]
@@ -2393,9 +2391,7 @@ class Recall:
         wherever it lies, learns this moment as its next. A stream whose latest slot closed
         an episode (``end``) teaches it nothing, and its new slot is open again."""
         if self.__dict__.get("compiled_moment", False) and self._compiles(len(key)):
-            from ._moment import recall_write
-
-            if recall_write(self, key, value):  # the compiled moment's write, the same bits
+            if _moment.recall_write(self, key, value):  # the compiled moment's write, the same bits
                 return
         if len(key) != self.streams:
             self._empty(len(key))
@@ -2634,31 +2630,37 @@ class Recall:
     ) -> dict[str, float]:
         """``learn`` of one head as one compiled pass (``_compiles``): the same equations, other
         bits."""
-        from ._moment import address_lesson
-
-        (moved, error, a_x, a_c, a, address_ok, *stepped, position_ok) = address_lesson(
+        moved, error, w_x, w_c, w, address_ok, position_ok = _moment.address_lesson(
             self, graph, rows, movement, positions
         )
         if not moved:
             return quiet
+        columns = _moment.packed_maps(self)[3]
+
+        def part(k: int) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+            start, stop = int(columns[k]), int(columns[k + 1])
+            return (np.ascontiguousarray(w_x[:, start:stop]),
+                    np.ascontiguousarray(w_c[:, start:stop]), w[start:stop].copy())
+
         report = dict(quiet)
         if self.address:
             if address_ok:
-                self._set_map(0, a_x, a_c, a)
+                self._set_map(0, *part(0))
                 report["address_rows"] = float(moved)
                 report["address_error"] = float(error)
             else:
                 report["address_refused"] = float(moved)
         if positions:
             if position_ok:
-                for name, maps in zip(
-                    ("position_maps", "anchor_maps", "relative_maps", "slope_maps", "grid_maps"),
-                    stepped, strict=True,
-                ):
-                    if getattr(self, name) and not (
+                for k, name in enumerate(_moment.PACKED, start=1):
+                    if not getattr(self, name) or (
                         name == "slope_maps" and self.grid_maps and self.slots > self.position
                     ):
-                        setattr(self, name, _with_head(getattr(self, name), 0, tuple(maps)))
+                        continue
+                    m_x, m_c, m = part(k)
+                    if name == "slope_maps":  # one number each
+                        m_x, m_c = m_x[:, 0].copy(), m_c[:, 0].copy()
+                    setattr(self, name, _with_head(getattr(self, name), 0, (m_x, m_c, m)))
                 report["position_rows"] = float(moved)
             else:
                 report["position_refused"] = float(moved)
@@ -3510,11 +3512,9 @@ class FastSynapses:
         cue = self._port(key, len(self.pre), "key")
         same_batch = len(self.strength) == len(cue)
         if (
-            same_batch and self.separator is None and self.rule == "delta"
+            self.separator is None and self.rule == "delta"
             and self.__dict__.get("compiled_moment", False)
         ):
-            from . import _moment
-
             if _moment.available():  # the compiled moment's read: the same equation, other bits
                 return _moment.store_read(self, cue)
         strength = self.strength if same_batch else self._baseline()[None, :, :]

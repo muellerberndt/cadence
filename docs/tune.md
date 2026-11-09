@@ -55,6 +55,7 @@ step size. The defaults of a new brain suit most work; change one at a time and 
 | --- | --- | --- | --- |
 | Fewer neuron updates per answer, the same equations | `learning_fast_settle=True` | on (off with `recall=False`) | rows stop apart and the activation vectorizes; other bits than the ordinary solve ([settling](settling.md#settling-and-equilibrium)) |
 | The ordinary solve | `learning_fast_settle=False` | | every row runs to the slowest row's check |
+| The work around each solve compiled, the same equations | `learning_compiled_moment=True` | off | the memory's read, write and address lesson and the lesson's contrast in compiled passes on the CPU; other bits than the ordinary path ([what a moment costs](#what-a-moment-costs)) |
 | Fewer sweeps, looser answers | `learning_tolerance=0.01` | `0.003` | about a fifth fewer sweeps per act ([what a moment costs](#what-a-moment-costs)) |
 | Lessons refused unless every phase satisfies the equations | `learning_qualified=True, learning_nudged_steps=1024` | off | stricter and slower lessons ([qualified teaching](settling.md#qualified-teaching-budgets)) |
 | Larger or smaller lesson steps | `teaching="founder"`, `"normalized"` or `"deep"` | `"deep"` (`"founder"` with `recall=False`) | the size and form of each lesson's step ([which teaching point](teach.md#which-teaching-point)) |
@@ -147,6 +148,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False` (`True` in a new brain with the memory), `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |
+| `learning_compiled_moment` | `False` | retune | [what a moment costs](#what-a-moment-costs) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |

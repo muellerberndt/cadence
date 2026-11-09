@@ -57,16 +57,23 @@ def test_without_the_option_a_life_keeps_its_bits() -> None:
     assert "compiled_moment" not in vars(plain.recall) or not plain.recall.compiled_moment
 
 
-def _pair() -> tuple[cd.Brain, cd.Brain, np.random.Generator]:
-    subject = brain()
+# the default read, and one whose slots pass its position table, where the grid's terms read and
+# the slope's lean stays
+READS = [{}, {"recall_position": 2}]
+
+
+def _pair(**options) -> tuple[cd.Brain, cd.Brain, np.random.Generator]:
+    subject = brain(**options)
     rng = lived(subject)
     other = copy.deepcopy(subject)
     other.retune(learning_compiled_moment=True)
     return subject, other, rng
 
 
-def test_the_compiled_read_is_the_reads_equation() -> None:
-    plain, compiled, rng = _pair()
+@pytest.mark.parametrize("options", READS)
+def test_the_compiled_read_is_the_reads_equation(options) -> None:
+    plain, compiled, rng = _pair(**options)
+    assert plain.recall.slots > (2 if options else 0)
     x = rng.random((4, 8))
     a, b = plain.stimulus(x), compiled.stimulus(x)
     np.testing.assert_allclose(b, a, rtol=0, atol=1e-12)
@@ -76,8 +83,9 @@ def test_the_compiled_read_is_the_reads_equation() -> None:
     np.testing.assert_allclose(compiled.recall.trace, plain.recall.trace, atol=1e-12)
 
 
-def test_the_compiled_lesson_steps_the_maps_as_the_ordinary_one() -> None:
-    plain, compiled, rng = _pair()
+@pytest.mark.parametrize("options", READS)
+def test_the_compiled_lesson_steps_the_maps_as_the_ordinary_one(options) -> None:
+    plain, compiled, rng = _pair(**options)
     x = rng.random((4, 8))
     labels = np.array([0, 1, 2, 3])
     plain.lesson(x, labels)
