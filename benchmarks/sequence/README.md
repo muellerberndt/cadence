@@ -63,6 +63,7 @@ what do the earlier cues keep?
 | `when_anchor` | `when` with `recall_anchor=True` |
 | `when_sharp` | `when` with `recall_position_rate=0.0, recall_temperature=0.1`: the position term not taught and a sharp softmax, so the read lands on the item heard and stays there |
 | `rehearsal` | `anchor` with `learning_rehearsal=1.0`: the lessons' episodes replayed |
+| `composed` | what a new brain composes: `Brain.compose(inputs, actions, modules=(64,), seed=founder, episodic=False)` with the recall memory at its composition and the composition's teaching point; `--settings` names a one-out, such as `{"teaching": "normalized"}` |
 
 ## Ordered recall (`order.py`)
 
