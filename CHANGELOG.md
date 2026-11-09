@@ -19,14 +19,19 @@
   the table's ([the default backend](docs/backends.md#the-default-backend)); `CADENCE_CALIBRATE=0` keeps the
   margin. On an NVIDIA L4 it reads 50 to 60 rows of the chamber's brain against the A10G's 44.
 - **`Lives`: independent lives over one topology, stepped together.** `cd.Lives(inputs, actions, lives,
-  backend="torch")` holds many brains of one composition, each with its own parameters, momentum, critic,
-  eligibility, working trace and random generator, one stream each, and steps them in one call per moment:
-  every settle reads each stream through its own life's synapses and stops each life where its own stream meets
-  the tolerance. Each life follows the lone brain of its seed on that device (float64 within 1e-10 over 24
-  moments, every action the same) and on the CPU it is that lone brain. On an NVIDIA L4, 128 lives step at
-  0.063 ms a life and moment against 0.411 ms in a four-process pool, and 1,024 lives at 0.021 ms. It holds the
-  composition without the recall memory and the store (`recall=False, episodic=False`), on CUDA and the torch CPU
-  device; MLX has no lives axis ([many lives at once](docs/backends.md#many-lives-at-once)).
+  backend="torch")` holds many brains of the default composition without the store (`episodic=False`), each
+  with its own synapses, optimizer, critic, eligibility, recall memory (slots, address and position maps),
+  carried gains, working trace and random generator, one stream each, and steps them in one call per moment.
+  Every settle reads each stream through its own life's synapses and stops each life where its own stream
+  meets the tolerance; a lesson judges each life by its own answer and updates the lives it taught; a reward
+  moves each life on its own dopamine. Each life follows the lone brain of its seed on that device: in float64
+  every action the same and every learned part within 1e-9 over 30 moments of rewards, endings and teaching;
+  on the CPU it is that lone brain. On an NVIDIA L4, 128 lives step at 0.118 ms a life and moment, the speed
+  of one brain's streams, against 0.876 ms in a four-process pool, and 1,024 lives at 0.049 ms. It holds one or
+  several regions, observers and motor slots at any teaching point, with or without the recall memory, on CUDA
+  and the torch CPU device, and refuses by name the store, arousal, a maturity, a code, an apical compartment,
+  rehearsal, the efference copy, the heard history and the recall options that keep it on the host; MLX has no
+  lives axis ([many lives at once](docs/backends.md#many-lives-at-once)).
 - The options that keep a moment's memories on the host each state what they add that the device form does
   not hold ([memories on the device](docs/backends.md#memories-on-the-device)).
 

@@ -404,42 +404,75 @@ lives = cd.Lives(35, 18, 8, backend="torch")            # 8 brains of seeds 0 to
 observations = np.random.default_rng(0).random((8, 35))
 actions = lives.step(observations)                      # one row per life in, one action per life out
 actions = lives.step(observations, reward=np.ones(8))   # each life learns from its own outcome
+actions = lives.step(observations, reward=np.ones(8), teacher=np.arange(8))  # and from its own label
 lone = lives.life(5)                                    # life 5 as a lone Brain on the CPU, to save
 ```
 
-`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, recall=False, episodic=False,
-**options)`. On a torch device the lives are the streams of one brain whose parameters carry a lives axis:
-each settle reads every stream through its own life's synapses and holds each life where its own stream meets
-the tolerance, and each update moves each life on its own contrast and dopamine, its own momentum, critic and
-random generator with it. Each life follows the lone brain of its seed on that device: in float64 to within
-1e-10 over 24 moments of rewards, endings and teaching, every action the same; in float32 within its rounding
-([`tests/test_lives.py`](../tests/test_lives.py)). On the CPU each life is the lone brain itself, to the bit.
+`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, episodic=False, **options)`: the default
+composition without the store. Each life has its own synapses and biases, its own optimizer (momentum, second
+moments and their counts), critic, eligibility, recall memory (its slots, its address and position maps), carried
+gains, working trace and random generator. On a torch device the lives are the streams of one brain whose
+parameters carry a lives axis:
+
+- a settle reads every stream through its own life's synapses and holds each life where its own stream meets the
+  tolerance, and a rescue on the damping ladder runs life by life;
+- a lesson judges each life by its own answer under `learning_surprise`, runs its phases on every life and
+  updates the lives it taught, each at its own optimizer's count;
+- the recall memory's address and position lessons, the carried gains' steps and a reward's update move each life
+  on its own row and its own dopamine.
+
+Each life follows the lone brain of its seed on that device ([`tests/test_lives.py`](../tests/test_lives.py)). In
+float64 every action is the same and every learned part (synapses, biases, critic, optimizer, recall maps, carried
+gains) agrees within 1e-9 over 30 moments of rewards, endings and teaching, and over 160 moments of the chamber's
+composition within 1e-8; on an NVIDIA L4 over 48 moments within 1e-10. In float32 every action is the same over
+those moments and the parts agree within the spread float32 gives a lone brain's own two memory paths (its
+memories on the host against on the device: 1e-2 in the recall maps over 48 moments, where a float32 life on the
+L4 reads 4e-3). On the CPU each life is the lone brain itself, to the bit.
 
 Seconds per life and moment of that composition stepping its own observations and rewards, read with
 [`benchmarks/device/lives.py`](../benchmarks/device/lives.py) on one AWS g6.xlarge (an NVIDIA L4 and four vCPUs
-of an AMD EPYC 7R13) and on an Apple M4 at a load of 3:
+of an AMD EPYC 7R13) and on an Apple M4 at a load of 4:
 
 | Way | Machine | 12 lives | 128 lives | 512 | 1,024 |
 | --- | --- | ---: | ---: | ---: | ---: |
-| `Lives`, `backend="torch"` | L4 | 0.638 ms | 0.063 ms | 0.024 ms | 0.021 ms |
-| One brain's streams (shared parameters) | L4 | 0.468 ms | 0.069 ms | 0.033 ms | 0.027 ms |
-| Process pool, four CPU processes | L4 box | 0.414 ms | 0.411 ms | | |
-| Each brain in turn, one core | L4 box | 1.12 ms | 1.12 ms | | |
-| Each brain in turn on the L4 | L4 | 4.89 ms | 5.02 ms | | |
-| One brain's streams on MLX (shared parameters) | M4 | 0.270 ms | 0.049 ms | | |
-| Process pool, two CPU processes | M4 | 0.201 ms | 0.239 ms | | |
-| Each brain in turn, one core | M4 | 0.363 ms | | | |
-| Each brain in turn on MLX | M4 | 2.51 ms | 2.82 ms | | |
-| `Lives` on the torch CPU device | M4 | 0.628 ms | 0.494 ms | | |
+| `Lives`, `backend="torch"` | L4 | 1.18 ms | 0.118 ms | 0.043 ms | 0.049 ms |
+| One brain's streams (shared parameters) | L4 | 0.619 ms | 0.119 ms | 0.045 ms | 0.034 ms |
+| Process pool, four CPU processes | L4 box | 0.874 ms | 0.876 ms |  |  |
+| Each brain in turn, one core | L4 box | 2.35 ms | 2.37 ms |  |  |
+| Each brain in turn on the L4 | L4 | 6.52 ms | 6.66 ms |  |  |
+| One brain's streams on MLX (shared parameters) | M4 | 0.690 ms | 0.156 ms |  |  |
+| Process pool, two CPU processes | M4 | 0.595 ms | 0.662 ms |  |  |
+| Each brain in turn, one core | M4 | 1.42 ms | 0.979 ms |  |  |
+| `Lives` on the torch CPU device | M4 | 1.17 ms | 1.21 ms |  |  |
 
-On the L4, `Lives` at 128 brains runs at the streams' speed and 6.5 times the four-process pool, and at 1,024
-brains 20 times the pool. At 12 lives the pool is faster. MLX has no lives axis in the library; one brain's
-streams there bound what one could reach, 0.049 ms a life at 128.
+The same with a teacher's label at every fourth moment (`--teach 4`):
 
-What `Lives` holds is the composition without the recall memory and the store, whose maps and consolidated
-records are a brain's own: `recall=False, episodic=False`, no arousal (so no `live`), maturity, learned code,
-apical compartment, carried gains, rehearsal, or normalized or surprise-judged teaching. Every other composition
-is refused with the part it names, and runs as lone brains in a pool.
+| Way | Machine | 12 lives | 128 lives | 512 | 1,024 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `Lives`, `backend="torch"` | L4 | 1.45 ms | 0.147 ms | 0.056 ms | 0.067 ms |
+| One brain's streams (shared parameters) | L4 | 0.789 ms | 0.153 ms | 0.056 ms | 0.040 ms |
+| Process pool, four CPU processes | L4 box | 1.12 ms | 1.13 ms |  |  |
+| Each brain in turn, one core | L4 box | 2.97 ms | 3.03 ms |  |  |
+| Each brain in turn on the L4 | L4 | 7.86 ms | 7.98 ms |  |  |
+| One brain's streams on MLX (shared parameters) | M4 | 0.572 ms | 0.128 ms |  |  |
+| Process pool, two CPU processes | M4 | 0.808 ms | 0.727 ms |  |  |
+| Each brain in turn, one core | M4 | 1.56 ms | 1.48 ms |  |  |
+| `Lives` on the torch CPU device | M4 | 1.48 ms | 1.32 ms |  |  |
+
+On the L4, `Lives` runs at the speed of one brain's streams at 128 and 512 brains and at 1.4 times their time at
+1,024, where every life updates synapses of its own and the streams share one update. Against the four-process pool
+it is 7.4 times as fast at 128 brains and 17.8 times at 1,024 (7.7 and 17.0 times with the teacher). At 12 lives
+the pool is faster. A lesson of lives runs its phases on every life, where one brain's streams run them on the rows
+it teaches. MLX has no lives axis in the library; one brain's streams there bound what one could reach.
+
+`Lives` holds the default composition without the store, with or without the recall memory and the carried
+gains, at any teaching point, with one or several regions, observers and motor slots. It refuses, naming the
+part: the store (`episodic=True`, whose consolidated records have no lives axis) and `memory_choice`; arousal, so
+`live` stays a lone brain's; a maturity; a learned or fixed code and image inputs; an apical compartment;
+rehearsal and qualified teaching; the efference copy and the heard history; a recall memory with several heads, a
+window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
+life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
+of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.
 
 ## Precision matters
 
