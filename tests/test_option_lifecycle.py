@@ -123,8 +123,7 @@ def taught(brain: cd.Brain) -> np.ndarray:
 
 @pytest.mark.parametrize(
     ("name", "value", "base"),
-    [("learning_surprise_share", True, {"learning_surprise": True}),
-     ("learning_rehearsal", 1.0, {}),
+    [("learning_rehearsal", 1.0, {}),
      ("recall_position_reward", 1.0, {"recall": True, "recall_founder": True})],
 )
 def test_a_retuned_setting_acts_as_built_and_is_saved(tmp_path, name, value, base):

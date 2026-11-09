@@ -551,7 +551,6 @@ Select rates on development data and freeze them.
 | `scale_cap` | `LearnerConfig` | largest plastic efficacy magnitude; smaller keeps readouts out of saturation | 8.0 |
 | `qualified`, `damping` | `LearnerConfig` | require full-equation phases; most `dt` halvings per phase | `False`, 3 |
 | `surprise` | `LearnerConfig` | [teach only differing rows](teach.md#lessons-only-where-the-answer-differs) | `False` |
-| `surprise_share` | `LearnerConfig` | with `surprise`, scale a lesson's step by the share of its rows it taught ([in proportion to the surprise](teach.md#in-proportion-to-the-surprise)) | `False` |
 | `fast_settle` | `LearnerConfig` | a composed brain's free solves on the compiled CPU path: rows that stop apart, the activation in vectorizing arithmetic ([settling](#settling-and-equilibrium)) | `False`; `True` in a new brain with the memory |
 | `rehearsal`, `rehearsal_capacity` | `LearnerConfig` | in a composed brain, after each lesson replay that many times its rows again, each with its episode, drawn from a reservoir of that many lesson rows ([rehearsal](teach.md#teach-several-types-in-sequence-rehearsal)) | 0.0 (off), 512 |
 | `outputs`, `config` | `Learner` | output neuron indices; the `LearnerConfig` | required, `LearnerConfig()` |

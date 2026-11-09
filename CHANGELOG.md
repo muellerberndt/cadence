@@ -25,6 +25,14 @@
   of which answers are tokens that adds no synapse. `Recall.copy_synapses` and the sequence
   battery's `heads_copy` arm left with it, and the copy-tokens instrument retired to its receipt,
   which verifies with its archived checker. `recall_copy_next` left before any release (#273).
+- **Removed: `learning_surprise_share`.** On the composition's sequence battery (founders 0 to 2,
+  #258) the share cost copying unique tokens (.924 against .997), induction (.939 against .976)
+  and n-back (.952 against .988), and whole nudged phases did not rescue it; the wide brains it
+  served step at their width by default (0.95.0). Write nothing in its place: a surprise lesson
+  takes its step over the rows it teaches. The name is refused at `compose` and `retune`, and a
+  checkpoint whose learner was saved with `surprise_share=True` is refused by name: cadence 0.95.2
+  runs it. `Learner.update` takes no `share`. The grammar gradient instrument's share arms
+  (`Fd128s`, `FdT128s`, `Fd256s`, `FdT256s`) left with it.
 
 ## 0.95.2 — 2026-11-09
 

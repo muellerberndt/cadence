@@ -443,8 +443,7 @@ many.retune(teaching="deep")                                     # move a living
 - **How many lessons.** Stop when held-out accuracy stops rising. More lessons on rows the brain
   answers right add nothing under surprise lessons and can harm without them.
 - **Wide brains.** Above an association of 64 neurons a new brain scales its steps to its width by
-  itself ([wide brains](tune.md#wide-brains)). With surprise lessons in a wide brain add
-  `learning_surprise_share=True` ([in proportion to the surprise](#in-proportion-to-the-surprise)).
+  itself ([wide brains](tune.md#wide-brains)).
 - **Reward rates.** `actor_eta` and `actor_eta_bias` belong to outcomes, the teaching point to
   lessons, and `temperature` to both ([actor rates](reward.md#actor-rates)).
 
@@ -476,27 +475,6 @@ moving it. A lapse then leaves the answers on one action with no contrast left t
 reports show `scale_step` falling toward zero while answers stay wrong. Surprise from the first
 lesson prevents that collapse (measured on a two-fact conjunction task,
 [EXP-72](https://github.com/WGlynn/cadence-teachers/blob/main/experiments/EXP-72.md), Will Glynn).
-
-### In proportion to the surprise
-
-**Opt-in, `learning_surprise_share=True`.** A surprise lesson's contrast is read over the rows it
-teaches, so a lesson with one wrong row of sixteen takes as large a step as a lesson with sixteen.
-Under the normalized point that step does not shrink as the answers become right, and a few wrong
-rows can undo what the others hold. With the share the step is scaled by the share of the
-lesson's rows it taught: three wrong rows of eight move the net three eighths as far as eight
-would. The contrast and the optimizer's running moments read the taught rows alone; the scale
-applies to the normalized step, since the normalization would divide a scaled contrast out.
-
-The share scales surprise lessons only; set it with `learning_surprise=True` at the normalized
-point. On induction over a vocabulary of 128 at
-width 1,024 in the [width sweep](../benchmarks/sequence/README.md#the-width-sweep-widthpy) (the
-recall memory, the normalized point, each synapse's step scaled to its neuron's fan-in at width
-64 through `Learner.synapse_rate`, 1,500 lessons, three development and six fresh founders):
-
-- With the share every life ends at 0.95 to 0.99 held-out, and seven of nine keep every reading
-  from 500 lessons on above 0.80; two dip once (to 0.18 and 0.77) and recover.
-- Without it every fresh life collapses at least once after 500 lessons (to 0.01 to 0.29) and
-  ends at 0.93 to 0.99.
 
 ### Many lessons: the normalized point for imitation
 
@@ -640,7 +618,6 @@ are right.
 
 - Keep surprise lessons on, so right answers are not taught again.
 - Move to smaller steps: `retune(teaching="normalized")`, or `"deep"` for a deep brain.
-- At the normalized point in a wide brain, add `learning_surprise_share=True`.
 - Fine-tune from rewards at a smaller `actor_eta` than the brain was raised with.
 - Keep the last good checkpoint and compare against it.
 
