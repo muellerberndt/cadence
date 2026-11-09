@@ -49,3 +49,13 @@ chamber, recorded on the issue.
 ## Compute
 
 One AWS c7i.16xlarge, one process per life, one BLAS thread per process.
+
+## Amendment before the declared run
+
+The first development lives (founders 0 and 1, both speakers, the route said as `start a1 ... goal
+end`) read first-hop accuracy .17 to .27 on both panels, below the .5 of a speaker that only picks a
+neighbour of the start, so the chamber was not learnable within the life in that form. Each fact is
+heard as `X near Y end`, so the place after `X` is two moments on. The route is said as the facts and
+the grammar chamber's paths say it, `start near a1 near ... near goal end`, and `first_hop` is the
+place after the first `near`. Nothing else changes; the development lives are read again before the
+declared run.

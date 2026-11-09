@@ -4,11 +4,11 @@ earlier word settles.
 The world says the facts of a small graph, one fact ``X near Y end`` at a time, heard words with
 no ``SPEAK`` flag: from a start, two branches of the same length (two or three hops), each a chain
 of distinct places. The meaning names the start (``FROM``) and the goal (``TO``), the last place of
-one branch. At ``GO`` the brain says the route, ``start a1 ... goal end``, one word per moment,
-hearing its previous word with ``SPEAK``. The first hop is the decision: the start has two
-neighbours, and only one of them leads to the goal, which the brain names only at the route's
-end. A speaker word by word says the first hop before the goal; a planning window of three settles
-the first hop with the words after it.
+one branch. At ``GO`` the brain says the route as the facts say it, ``start near a1 near ...
+near goal end``, one word per moment, hearing its previous word with ``SPEAK``. The first hop is
+the decision: the start has two neighbours, and only one of them leads to the goal, which the
+brain names only at the route's end. A speaker word by word says the first hop before the
+goal; a planning window of three settles the first hop with the words after it.
 
 Held out (``Split.of``): eight ordered start-goal pairs per founder that no training episode
 joins, so ``held`` panels are routes between places training never joined, on graphs drawn
@@ -27,7 +27,8 @@ Speakers:
   architectures and rates), taught teacher-forced on the same episodes, online in the brain's
   order or offline to convergence, read greedy and closed loop by the same scorer.
 
-Scores: ``first_hop`` (the second word said is the goal branch's first place), ``exact`` (the
+Scores: ``first_hop`` (the place said after the first ``near`` is the goal branch's first place),
+``exact`` (the
 whole route through ``end``) and ``valid`` (every word said after the start follows the one
 before it by a fact, the last is the goal, then ``end``).
 
@@ -116,7 +117,8 @@ def episode(rng: np.random.Generator, hops: int, start: int, goal: int) -> Row:
         a, b = edges[int(i)]
         pre += [heard(a), heard(NEAR), heard(b), heard(END)]
     pre += [vector(CONCEPTS[start], "FROM"), vector(CONCEPTS[goal], "TO")]
-    return Row(pre, [*good, END], set(edges),
+    route = [w for place in good for w in (place, NEAR)][:-1]
+    return Row(pre, [*route, END], set(edges),
                {"hops": hops, "start": start, "goal": goal, "first": good[1], "other": bad[1]})
 
 
@@ -146,12 +148,14 @@ def panels(founder: int, batches: int = 4) -> dict[str, list[list[Row]]]:
 
 def score(row: Row, said: list[int]) -> dict[str, Any]:
     words = said[: said.index(END) + 1] if END in said else said
-    valid = (len(words) >= 3 and words[0] == row.meta["start"] and words[-1] == END
-             and words[-2] == row.meta["goal"]
-             and all((a, b) in row.edges for a, b in zip(words[:-1], words[1:-1], strict=False)))
-    return {"exact": words == row.target, "first_hop": len(words) > 1
-            and words[1] == row.meta["first"], "other_hop": len(words) > 1
-            and words[1] == row.meta["other"], "valid": bool(valid)}
+    places = words[0:-1:2]
+    valid = (len(words) >= 4 and len(words) % 2 == 0 and words[-1] == END
+             and all(w == NEAR for w in words[1:-1:2]) and places[0] == row.meta["start"]
+             and places[-1] == row.meta["goal"]
+             and all((a, b) in row.edges for a, b in zip(places, places[1:], strict=False)))
+    hop = words[2] if len(words) > 2 and words[1] == NEAR else None
+    return {"exact": words == row.target, "first_hop": hop == row.meta["first"],
+            "other_hop": hop == row.meta["other"], "valid": bool(valid)}
 
 
 def tally(rows: list[Row], said: list[list[int]]) -> dict[str, Any]:

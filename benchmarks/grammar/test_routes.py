@@ -45,7 +45,7 @@ def solve(row) -> list[int]:
         while route[-1] in nxt:
             route.append(nxt[route[-1]][0])
         if route[-1] == goal:
-            return [*route, rt.END]
+            return [w for place in route for w in (place, rt.NEAR)][:-1] + [rt.END]
     raise AssertionError("no branch reaches the goal")
 
 
@@ -55,7 +55,7 @@ def test_one_first_hop_reaches_the_goal_and_the_heard_moments_answer_it():
     for hops in rt.HOPS:
         for _ in range(50):
             row = rt.draw(rng, split, hops, held=False)
-            assert len(row.target) == hops + 2 and row.target[-2] == row.meta["goal"]
+            assert len(row.target) == 2 * hops + 2 and row.target[-2] == row.meta["goal"]
             assert row.meta["first"] != row.meta["other"]
             assert len({a for a, _ in row.edges} | {b for _, b in row.edges}) == 2 * hops + 1
             assert solve(row) == row.target
@@ -76,7 +76,7 @@ def test_the_scorer():
     row = rt.episode(np.random.default_rng(1), 2, 0, 1)
     assert rt.score(row, row.target) == {"exact": True, "first_hop": True, "other_hop": False,
                                          "valid": True}
-    wrong = [0, row.meta["other"], 1, rt.END]
+    wrong = [0, rt.NEAR, row.meta["other"], rt.NEAR, 1, rt.END]
     s = rt.score(row, wrong)
     assert not s["exact"] and s["other_hop"] and not s["valid"]
 
@@ -86,7 +86,7 @@ def test_a_short_life_of_each_speaker(speaker):
     row = rt.run_life({"speaker": speaker, "founder": 0, "batches": 2, "panel_batches": 1})
     assert row["k"] == (3 if speaker == "sliding" else 1)
     reading = row["readings"][-1]
-    assert reading["work"]["lessons"] == 4 + 5  # routes of two and three hops, each and end
+    assert reading["work"]["lessons"] == 6 + 8  # routes of two and three hops with near, end
     assert set(reading["panels"]) == {"trained", "held"}
 
 
