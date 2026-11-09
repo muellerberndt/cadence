@@ -343,7 +343,7 @@ Recall(connectome, amplitude=3.0, temperature=0.25, recency=0.25,
        address_reward=0.0, position_reward=0.0,
        window=1, heads=1,
        source="sensory", target="recall", inputs=0, writes=0, position=32, position_rate=0.1,
-       boundary=False, copy=0.0, tokens=None, action=False, anchor=False,
+       boundary=False, tokens=None, action=False, anchor=False,
        relative=False, slope=0.0, when=False, gain=0.0, grid=(), actions=0, drive_gain=False,
        hearing=1.0, cortex_norm=False, gain_after=0, gain_next=0.0, gain_lessons=0)
 ```
