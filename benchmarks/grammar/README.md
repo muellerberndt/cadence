@@ -707,6 +707,22 @@ The step scaled by the running share of lesson rows answered wrong (forgetting .
 settles no more lives and costs held-out clauses by .10 to .13; the battery holds. It is not in the
 library, and its lives run on commit 968a02b.
 
+## Exposure parity with rehearsal (#270)
+
+[`exposure.py`](exposure.py) reads [#270](https://github.com/muellerberndt/cadence/issues/270) under
+[its declared protocol](EXPOSURE_PROTOCOL.md): the `default` arm with and without
+`learning_rehearsal=1.0` taught the chamber's 4,000 batches in passes (the first in the stream's
+order, the later ones in the transformer's offline epoch order), every first-grammar panel read
+after each pass, beside `controls.py`'s transformer offline at the brain's parameter count. Compute
+is an analytic count of the row sweeps times the synapses.
+
+On founders 9627000 to 9627005 the default composition at the transformer's compute (one pass,
+0.95e12 against 1.30e12) reads clauses .996, held-out .953, roles .964, brackets .862, paths .969
+and three hops .475, against the control's 1.000, .999, .995, .966, .997 and .000. Brackets rise
+with passes to .99 at the fourth; held-out clauses hold at .94 to .97. The rehearsal costs 5.7 times
+a pass and lowers paths to .82 at the first pass, where the recall read delivers .78 to .89 of hops
+against .98 to 1.00 without it.
+
 ## Routes with a goal: does planning pay? (#257)
 
 [`routes.py`](routes.py) reads [#257](https://github.com/muellerberndt/cadence/issues/257) under
