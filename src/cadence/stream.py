@@ -850,8 +850,9 @@ class Recall:
     executed), ``address_reward`` and ``position_reward`` (reward trains the maps through
     the actor's eligibility, ``contrast_rows``, ``propose``, ``accept``), ``tokens`` (which
     actions are tokens a slot can hold), ``gain`` (a learned gain per port on those tokens),
-    ``copy`` (plastic synapses from the read ports into the motor region) and ``drive_gain``
-    (the read's drive is one more route of ``Hearing``: one learned gain on every port, at most 1).
+    ``copy`` (plastic synapses from the read ports into the motor region), ``drive_gain``
+    (the read's drive is one more route of ``Hearing``: one learned gain on every port, at most 1)
+    and ``cortex_norm`` (every map reads the cortex of the moment before at unit norm).
 
     A retired setting (``RETIRED``) is refused at construction, under
     ``Brain.retune`` and on load with one sentence naming the release that retired it and what
@@ -904,6 +905,9 @@ class Recall:
     # on every port and ``trace`` keeps what the ports held at the latest read, at amplitude one
     drive_gain: bool = False
     hearing: float = 1.0
+    # every map reads the cortex of the moment before at unit norm per stream, the event's
+    # energy, so a lesson's step on its columns weighs no more than the step on the event's rows
+    cortex_norm: bool = False
     keys: np.ndarray = field(init=False, repr=False)
     values: np.ndarray = field(init=False, repr=False)
     nexts: np.ndarray = field(init=False, repr=False)
@@ -929,10 +933,11 @@ class Recall:
     OPTIONS = (
         "address_reward", "position_reward", "window", "heads", "position",
         "position_rate", "boundary", "copy", "tokens", "action", "anchor",
-        "relative", "slope", "when", "gain", "grid", "drive_gain",
+        "relative", "slope", "when", "gain", "grid", "drive_gain", "cortex_norm",
     )
     CONSTRUCTION_OPTIONS = ("window", "heads", "position", "copy", "tokens", "action", "anchor",
-                            "relative", "slope", "when", "gain", "grid", "drive_gain")
+                            "relative", "slope", "when", "gain", "grid", "drive_gain",
+                            "cortex_norm")
     # what ``Brain.compose(..., recall=True)`` gives a new brain's memory over the founders above,
     # ordinary settings a caller's value overrides. The founder stays what a saved memory without
     # the setting means, so a saved brain keeps the values it was saved with
@@ -1040,6 +1045,7 @@ class Recall:
             return number
         if name in (
             "next", "boundary", "action", "anchor", "relative", "when", "drive_gain",
+            "cortex_norm",
         ):
             if not isinstance(value, bool):
                 raise ValueError(f"{name} must be boolean")
@@ -1371,6 +1377,7 @@ class Recall:
         return (
             self.heads == 1 and self.window == 1 and not self.action and not self.when
             and not self.gain and self.tokens is None and self.target == "recall"
+            and not self.cortex_norm
         )
 
     def reside(self, kernel: Any) -> None:
@@ -2328,6 +2335,9 @@ class Recall:
             self.writes += len(x)
         if self.action:  # after the write, which begins streams of another batch afresh
             self.acted = done.copy()
+        if self.cortex_norm:  # the maps read it at unit norm (a silent cortex stays silent)
+            norm = np.linalg.norm(cortex, axis=1, keepdims=True)
+            cortex = np.where(norm > 0, cortex / np.where(norm > 0, norm, 1.0), cortex)
         self.previous = cortex
         if self.window > 1:  # this moment enters the window, the oldest leaves it
             past = _of(self.past, len(x))

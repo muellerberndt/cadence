@@ -450,6 +450,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
+| `recall_cortex_norm` | `False` | construction | Every map reads the cortex of the moment before at unit norm per stream, so what every moment shares cannot outweigh the event in the address lesson ([the cortex at the event's weight](#the-cortex-at-the-events-weight-opt-in)) |
 | `recall_anchor` | `False` | construction | Every head's position term also reads each slot's place in its episode, so "the first told" holds at every story length ([the anchor](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_boundary` | `False` | retune | Each stream that begins holds a silent boundary slot whose next the first event teaches ([the episode's boundary](#episodes-keys-and-windows)); a retune applies from the next stream that begins |
 | `recall_copy` | `0.0` | construction | Above 0, plastic synapses from every read port into the motor region at that initial magnitude ([the copy pathway](#the-copy-pathway-opt-in)) |
@@ -1262,6 +1263,20 @@ The head selects once before the neural settle, and the equilibrium interprets t
 interpretation cannot revise the query while that settle forms. The benchmark establishes a
 bounded contextual lookup. Compare it on the task with attention off, episodic memory alone and
 uniform random. Several facts in one answer take [several heads](#several-heads-opt-in).
+
+### The cortex at the event's weight (opt-in)
+
+The read's address and position maps step on what they read: the event heard and the cortex of the
+moment before, `z = [x, c, 1]`. A one-hot event has an energy of 1, and the cortex can hold twenty
+times that while it changes little from one moment to the next. A lesson's step then lands mostly on
+the cortex columns, and what it teaches at the answer applies at every moment, since every moment
+shares most of that cortex. `recall_cortex_norm=True` gives every map the cortex at unit norm per
+stream, so the event and the cortex weigh alike in the lesson and in the read. The keys, the values
+and the settle are unchanged; the option keeps the memory off the device path.
+
+```python
+brain = cd.Brain.compose(inputs, actions, recall=True, recall_cortex_norm=True)
+```
 
 ### Recall cost
 
