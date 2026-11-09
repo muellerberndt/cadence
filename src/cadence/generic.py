@@ -1236,7 +1236,7 @@ def _validate_recall_state(
     names = {*Recall.RUNTIME, *Recall.CONSTRUCTION}
     # a retired setting is saved where the format of its release wrote it: like the options,
     # only where it differed from its founder
-    optional = {"inputs", "hearing", *Recall.OPTIONS, *Recall.RETIRED}
+    optional = {"inputs", "hearing", "gain_lessons", *Recall.OPTIONS, *Recall.RETIRED}
     if (
         not isinstance(recalled, dict)
         or set(recalled) - optional
@@ -1265,6 +1265,9 @@ def _validate_recall_state(
     writes = recalled["writes"]
     if isinstance(writes, bool) or not isinstance(writes, int) or writes < 0:
         raise ValueError("invalid saved recall write count")
+    seen = recalled.get("gain_lessons", 0)
+    if isinstance(seen, bool) or not isinstance(seen, int) or seen < 0:
+        raise ValueError("invalid saved recall gain lesson count")
     inputs = recalled.get("inputs", sensory)
     if isinstance(inputs, bool) or not isinstance(inputs, int) or inputs != width:
         raise ValueError(
@@ -5643,6 +5646,7 @@ class Brain:
                 if recall.action:  # validated above: saved with the command
                     recall.acted = data["recall/acted"].astype(float)
                 recall.writes = int(recalled["writes"])
+                recall.gain_lessons = int(recalled.get("gain_lessons", 0))
             result.learner = learner
             result._composition = composition
             result.attention = attention

@@ -69,6 +69,8 @@ testpaths = [
     "benchmarks/sequence",
     "benchmarks/extinction",
     "benchmarks/grammar",
+    "benchmarks/heads",
+    "benchmarks/vocabulary",
     "benchmarks/long_context",
 ]
 
