@@ -343,8 +343,8 @@ than `found`: a read whose mass is spread can decode right.
 
 | Taught at | Read at | Founders | exact | noisy | partial | similar | similar, noisy | Lessons | Seconds to teach |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| 128 | 128 | 1 | 1.000 | .998 | .998 | 1.000 | .857 | 20,000 | 641 |
-| 128 | 1,000 | 1 | 1.000 | .996 | .969 | 1.000 | .864 | 20,000 | 641 |
+| 128 | 128 | 3 | 1.000 | .993 to .998 | .996 to 1.000 | 1.000 | .855 to .877 | 20,000 | 634 to 641 |
+| 128 | 1,000 | 3 | 1.000 | .987 to .996 | .969 to .984 | 1.000 | .864 to .875 | 20,000 | 634 to 641 |
 
 The device box was lost once during this plan and the plan was run again from its start; the rows above are the ones it completed. The windows taught at 1,000 records were not read.
 
