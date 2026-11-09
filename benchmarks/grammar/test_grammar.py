@@ -372,3 +372,18 @@ def test_a_window_of_one_is_the_chambers_life_and_wider_windows_say_k_words():
 
 def test_settings_name_a_lifes_backend():
     assert gr.make_brain("recipe", 0, {"backend": "cpu"}, module=16).brain.backend == "cpu"
+
+
+def test_the_cost_of_a_pass_is_read_per_learner(tmp_path):
+    pytest.importorskip("torch")
+    _load("controls")
+    cost = _load("cost")
+    result = cost.run(0, 2, every=1)
+    assert set(result["seconds"]) == set(cost.LEARNERS)
+    assert all(seconds > 0 for seconds in result["seconds"].values())
+    assert result["work"]["plain"]["acts"] == result["work"]["compiled"]["acts"] > 0
+    assert [mark["batches"] for mark in result["marks"]] == [1, 2]
+    assert result["against_transformer"]["transformer"] == 1.0
+    assert cost.main(["--batches", "1", "--learners", "plain,compiled",
+                      "--out", str(tmp_path / "cost.json")]) == 0
+    assert "against_transformer" not in (tmp_path / "cost.json").read_text()
