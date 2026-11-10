@@ -1,6 +1,78 @@
 # Changelog
 
-## Unreleased
+## 0.97.0 — 2026-11-11
+
+A new brain hears the moment before (`history_decays=(0.0,)`), the recall memory's slope steps on
+each stream's own slots, and `Lives` composes the store, as a lone brain does. These three
+defaults change; `history_decays=()` composes the brain of 0.96.1, and a brain of one stream, or
+of streams that hold equal slots, lives, saves and describes to the bit as on 0.96.1 on
+`backend="cpu"` with `history_decays=()` named. Seven opt-ins join them: a message the brain
+holds (`message`), long-term records keyed by it (`longterm`), the actor's own eligibility decay
+(`actor_hold`), the policy's entropy in the actor's step (`actor_entropy`), receptive fields a
+local rule shapes for a screen (`learned_fields`) with a body's senses beside them (`ports`), and
+`Brain.value` for a truncated episode's bootstrap. `Lives` continues lives (`live`), lets a life
+leave and another join, and holds the store. Every opt-in off leaves a brain as the brain that
+does not name it; a checkpoint that holds one of them is refused by 0.96.1.
+
+### Changed defaults
+
+- **The recall memory's slope steps on each stream's own slots** (#292). With the grid
+  (`recall_grid`, in the default composition) the slope maps step only on a lesson's rows whose
+  slots fit the position table. The rule read the width of the slot bank, which the streams of
+  one brain share and which is as wide as the longest stream's slots, so a stream that began
+  later took no slope step beside a longer one and did alone: its lesson depended on another
+  stream's length. Each row's own slots (`held`) decide (`Recall.within_table`); a row past the
+  table leans nowhere and counts in the lesson's mean, as the grid term's per-slot mask does.
+  The host's path, the device's and the compiled moment's read the same rule (the compiled
+  lesson takes the host's path where a row's rule and the bank's part). A brain of one stream,
+  and a brain whose streams hold equal slots, keeps every bit (the founders' recorded lives on
+  the CPU, and every action and parameter of one, three equal and compiled-moment brains over 70
+  moments against 0.96.1). Streams of unequal length change from the first lesson that teaches a
+  row within the table while the bank is past it: on two streams, one beginning again at moment
+  45 of 70, the slope maps part by 0.24 and the efficacies by 0.025, every action the same.
+
+- **A new brain hears the moment before** (`history_decays=(0.0,)`, #256). A new brain with the
+  memory holds a heard history of one block of decay 0: the observation of the moment before,
+  as heard, read through its own plastic projection at its own carried gain (`history_0`).
+  `history_decays=()` composes the brain of 0.96.1; `recall=False`, the founder word and an
+  anatomy of one's own hold a history by name alone. On the grammar chamber's words the brain
+  holds 30,992 parameters where it held 28,716. `Lives` holds the history and its gains per
+  block. The compiled moment (`learning_compiled_moment`) carries the history: its drive, its
+  write after the act and its gains per block run in the one-call act and the taught lesson, a
+  brain without a history keeps the option's bits, and on the new default the option agrees with
+  the ordinary path to rounding. On fresh founders, paired against the brain
+  without it: the grammar chamber reads held-out .995 against .868 and three hops .656 against
+  .397, every panel at or above it; ordered recall 12 of 12 in both; every battery gate holds on
+  6 of 6 founders but "was A told before B?" on the `recall_when` arm, 4 of 6 against 5 of 6;
+  the n-back read less answer rises by .008 and the last cue in sequence by .005 of the mixed,
+  each far inside its bar; the credit and key-door chambers move inside two standard errors
+  ([the heard history in a new brain](docs/memory.md#the-heard-history-in-a-new-brain)).
+
+  | Reading (#256, fresh founders, paired) | With the history | Without | Paired, ± two standard errors |
+  | --- | --- | --- | --- |
+  | Grammar chamber: held-out | .995 | .868 | +.126 ± .070 |
+  | Grammar chamber: three hops | .656 | .397 | +.259 ± .140 |
+  | Grammar chamber: roles | .987 | .904 | +.083 ± .069 |
+  | Grammar chamber: clauses | .997 | .964 | +.034 ± .045 |
+  | Ordered recall under `live`, 12 founders at .90 | 12 of 12 | 12 of 12 | .000 |
+  | "Was A told before B?" (S7), `recall_when=True`, 6 founders at .90 | 4 of 6, against a bar of 5 | 5 of 6 | -.059 ± .147 |
+
+  Held-out and three hops rise beyond two standard errors; S7 on the `recall_when` arm misses its
+  bar of 5 of 6 with the history.
+
+- **`Lives` composes the store by default** (#293). `Lives(inputs, actions, lives)` composes each
+  life as `Brain.compose(inputs, actions, seed=s, **options)`, the default composition with its
+  store of place records, as a lone brain composes; `episodic=False` composes without it, as
+  `Lives` did in 0.96. `Lives(..., episodic=False, history_decays=())` keeps every action and
+  every life's parameters of 0.96.1 on the CPU and the torch CPU device in float64 and float32.
+
+- **What the new default costs a skill met by a competing one** (#169,
+  [Amendment 3](https://github.com/muellerberndt/cadence/issues/169#issuecomment-6768998711)).
+  Read on the 0.97 default, retention fails two gates: in the short competing ring the first
+  skill's loss is 46.6 points against a bar of 42.7, and in the twenty-fight league 8 of 24 runs
+  fail against a bar of 2 (runs one winner takes, 7 of them in one league), where the 0.96.0
+  default read 0 of 24. `memory_rate=0.2` beside the new default holds every gate but recovery,
+  which no arm meets. `memory_rate` and the actor's rate keep their defaults.
 
 ### New
 
@@ -34,11 +106,6 @@
   life where it left. `join(i, brain)` puts a lone brain of the lives' anatomy and composition in
   life `i`'s place with its stream afresh, so a finished episode makes room for another life
   without holding the batch. `life(i)` without `stream` starts the stream afresh, as in 0.96.0.
-- **What lives on MLX would cost.** `benchmarks/device/lives_mlx_cost.py` times one sweep's
-  transport with each life's own blocks on the Apple GPU against one brain's shared blocks: 1.26,
-  1.45 and 3.34 times at 12, 128 and 1,024 lives on an M4. With one brain's streams on MLX as the
-  bound, a lives axis there would read at most 0.34 ms per life and moment at 128 lives and 0.57
-  ms at 1,024 (docs/backends.md, many lives at once). The library has no lives axis on MLX.
 
 #### The value of a state (#298)
 
@@ -68,13 +135,8 @@
   moments after the choice on 6 of 6 (2 of 6 without the hold, 0 of 6 at the default), at the
   level of an LSTM actor-critic; on the key-door at 50 it reads 3 of 6 against 5 of 6 without the
   hold, the readout latched (#296), and at 200 moments 3 and 0 of 6. The default is unchanged.
-- **The delayed-credit chamber** ([`benchmarks/delayed_credit`](benchmarks/delayed_credit/README.md)):
-  a delayed T-maze and a delayed key-door paid only at the end of an episode, delays of 10, 50
-  and 200 moments with distractors, an exact solver, yoked, shuffled, frozen and ablated controls,
-  and an LSTM actor-critic with generalized advantage estimation and the online TD(lambda)
-  actor-critic sized to the brain's parameter count, with tests.
 
-#### Learned receptive fields for a screen (#284)
+#### Learned receptive fields for a screen (#284, #297)
 
 - **`learned_fields=features` (opt-in, an image brain).** `Brain.compose(inputs=(84, 84), actions,
   learned_fields=64)` reads the image through 64 receptive fields of 8 by 8 pixels in place of the
@@ -104,70 +166,102 @@
   observation row is the flattened image followed by `k` values; `k` sensory neurons read them
   beside the pools, and every memory keys on both. `describe()` reports them and a checkpoint
   keeps them ([ports beside the screen](docs/senses.md#ports-beside-the-screen)).
-- **The pixel chamber** (`benchmarks/pixels/`): a screen-dependent policy on rendered 84 by 84
-  frames in grey and colour and on 160 by 120 frames (approach food, avoid a hazard, aim at a
-  target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
-  frozen, uniform and fields-at-their-draw controls, and a two-convolution actor-critic at the
-  brain's parameter count trained online on the same frames.
 
-#### The value of an observation, for a truncated episode (#298)
+#### A message a brain holds: `Brain.compose(message=units)` (#286)
 
-- **`Brain.value(observations)`: the value a truncated episode bootstraps from** (#298). The
-  critic's value of each row, `(batch,)`: the drive the brain reads for the row, with the working
-  trace, the efference copy, the heard history, the recall memory's slots and the place records
-  as they stand, settled from the stream's activity (from rest before the brain has acted). It is
-  what `learn` settles for the next state of a stream that goes on, so a row cut by a time limit
-  passes `done=True` with `bootstrap=brain.value(last)`; without the store such a row takes the
-  dopamine of a row that goes on, to the bit, and with the store the two part by the outcome's own
-  record, which `learn` writes before it reads the next state. The read writes nothing: on
-  `backend="cpu"` every array of the brain is the same after it, and a brain that reads lives on
-  to the bit as one that does not. `Lives.values(observations)` reads each life's.
+Opt-in and off by default. Without `message` a brain holds no message region, and every founder,
+the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
 
-### Fixed
+- **`message=units`** ([held message](docs/memory.md#held-message)). A region of
+  `message_phases * units` neurons the brain writes itself. After each moment it hears, the moment's
+  fixed sparse code latches onto block `t mod message_phases` and stays on until the episode ends
+  (`reset()` or `done`). The association reads the region through plastic synapses at
+  `message_amplitude`, and with `carried_gain` one learned gain per block sets how loudly.
+  `brain.message` is a `HeldMessage`, `cadence.Message` on the brain's own neurons (`state`,
+  `key()`, `told`), and a member of `brain.memories`. `describe`, `retune`
+  (`message_amplitude`), checkpoints and `imagine` carry it. `grow` and `graft` refuse a brain with
+  a message, and a message needs a vector brain without a learned code.
 
-- **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`
-  asks Cholesky factorizations whether the present halvings hold. NumPy signals a failed
-  factorization through the floating-point status, which WebAssembly does not keep: in Pyodide
-  `np.linalg.cholesky` of a matrix that is not positive definite returns NaN and raises nothing,
-  so every test held and a one-input world kept a step its dictionary does not allow (0 halvings
-  where 3 are needed). A factorization holds where it raises nothing and its factor is finite,
-  the answer every platform gives alike; the four tests that read another answer in Pyodide
-  0.29.3 pass there. Where `cholesky` raises, as on every 64-bit platform, nothing changes: every
-  bit is as on 0.96.1.
-- **Where the new options meet** (found when the lanes joined). `Lives.live` in a moment where no
-  life learns faded the actor's eligibility by `gamma * lam` under `actor_hold`; it fades the
-  actor's traces by the hold and the critic's by `gamma * lam`, as a lone brain's `fade`. One
-  life with `actor_hold=0.97` on a torch device had left its lone brain by .025 in its
-  parameters over 40 moments. `Brain.value` read the long-term records as a live read does,
-  deepening the record it held, and counted the learned fields' work; it credits no record and
-  counts nothing, so the checkpoint after a read is the one before it. A life that left with its
-  pending action (`life(i, stream=True)`) saved a file `Brain.load` refused; it carries the drive
-  its free state was settled for. `Lives` refuses a held message and long-term records by name.
+- **`message_gains`, `message_boundary`, `message_boundary_holds`** (the third declared run,
+  [`benchmarks/grammar/MEANING_PROTOCOL_3.md`](benchmarks/grammar/MEANING_PROTOCOL_3.md)). Under
+  `carried_gain`, `message_gains` learned gains per block in place of one. `message_boundary` names
+  an input channel: a heard moment with it on empties the message and begins it again, or with
+  `message_boundary_holds` the message keeps what it heard before and nothing after joins.
+  `cadence.Message` takes `boundary` and `boundary_holds` the same way.
+  The third run (the read free): the phase count at 24 or 32 is not the cause of the quiet
+  message's three-hop cost (-.09, -.12 on six founders). Held from `GO`, the message costs three
+  hops nothing at the mean on six founders and costs paths -.20 and three hops -.24 on twelve; held
+  from `GO` beside `history_decays=(0.0,)` it costs no panel on twelve founders and lifts clauses
+  (+.03). At 256 association neurons with the read barred, the instrument's message reads roles
+  .05 over the brain's own on the same founders, inside two standard errors; `message_gains=8`
+  reads roles .95 on fresh founders and held-out combinations .89 (4 of 6 at .90).
+  The fourth run ([`benchmarks/grammar/MEANING_PROTOCOL_4.md`](benchmarks/grammar/MEANING_PROTOCOL_4.md),
+  twelve fresh founders, the read barred): with `message_read=True` and `history_decays=(0.0,)`
+  beside `message=280` at 256 association neurons the brain says clauses, held-out combinations
+  and role twins from its held state at .90 on 12, 11 and 11 founders (596,412 parameters), where
+  the message alone reaches 12, 9 and 9; on twelve more founders 11, 7 and 9, so over 24 the
+  held-out bar of 20 is not met (18). Longer clauses, deeper brackets and three hops read .00 from
+  the state, and .00 to .02 for the LSTM and the transformer at the same parameter count; a block
+  for every moment of the longest clause (`message_phases` 7, 8 or 16) leaves longer clauses at
+  .00 to .02.
+- **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
+  present moment through learned maps (a content address over the block's units and a term per
+  block). The maps start at zero and learn by the recall memory's address lesson on the message's
+  own blocks: each block is scored against the association's movement between the nudged phases,
+  read back through the port's synapses. `message_amplitude=0.0` beside it builds no synapses from
+  the region itself.
 
-- **The torch backend on CUDA under Triton 3.1 and 3.3 (#299).** The small-group kernel's
-  `tl.dot` does not compile there with a tile below 16 on a side, which a float64 tile of 8 rows
-  and a batch below 16 always have, so the first settle raised `CompilationError`. Each tile
-  shape now takes `tl.dot` where the installed Triton compiles it, and otherwise sums the same
-  products over the presynaptic axis, chosen once per shape at its first launch. Under Triton
-  3.6 every shape keeps its dot and every bit; under 3.1 and 3.3 the settled states match the
-  cuBLAS path (`CADENCE_TRITON=0`) within float32 rounding and within 1e-13 in float64.
+- **The declared run**, [`benchmarks/grammar/MEANING_PROTOCOL_2.md`](benchmarks/grammar/MEANING_PROTOCOL_2.md),
+  six fresh founders, the recall read barred from the meaning at `GO`. With `message=280` and 256
+  association neurons the brain says trained clauses from its own message at .99, held-out
+  combinations at .95 and role twins at .90 (6, 5 and 4 of 6 at .90: H1 holds on two panels and
+  fails on roles), reads every clause component from the message at 1.00, says both orders of one
+  meaning right at .98, paraphrases into a second grammar at .97 (.92 held out) and says clauses of
+  four distractors at .90. Its previous-word control (`history_decays=(0.0,)` in the message's
+  place) says .07, .00, .00. At 64 association neurons the message alone reads .79, .47, .30 and
+  the read of one block beside it .89, .72, .74: under the bar. Beside a free read the quiet
+  message keeps paths and costs three hops (-.22); the wide message costs paths (-.26). The LSTM at
+  the brain's parameter count reads 1.00 on every trained panel offline.
 
-### The Doom body (#285)
+#### A held message as a class: `cadence.Message` (#286)
 
-- **A VizDoom adapter in `benchmarks/doom/`**, the Body stage of the Doom player (#118). A player
-  receives the rendered RGB screen (84 by 84 or 160 by 120), the HUD's health, armour and
-  ammunition as declared own-body ports and the episode's previous action as a history port,
-  and nothing else. It answers with one button of the scenario's declared set per moment, held
-  for declared game tics. A scorer per scenario (basic, defend the center, health gathering, on
-  the Freedoom IWAD the VizDoom wheel carries) keeps completion, death, deadline and truncation
-  distinct and credits each outcome once; custody records the tic, the events and the outcome
-  of every moment; a checkpoint of game, body and brain resumes the same life at the same tic,
-  the brain to the bit on `backend="cpu"`. VizDoom is optional, and its tests skip without it.
-  The brain (`Brain.compose`), its blind and frozen controls, a random player and a small
-  convolutional actor-critic run every scenario through it
-  ([the Doom body](benchmarks/doom/README.md)). The library is unchanged.
+A class no brain reads by itself: it changes no brain.
 
-### Long-term records a brain keeps itself (opt-in, #288)
+- **`cadence.Message`** ([a held message](docs/memory.md#a-held-message)). A stream's episode held
+  as one state, with no neurons and no learned parameter. Each heard moment is given a fixed sparse
+  code, and the `t`-th moment joins the union of block `t mod phases`. `state` keeps the order
+  heard; `key()`, the union over the blocks, is the same for one set of moments in any order.
+
+- **Where the meaning lives** ([`meaning.py where`](benchmarks/grammar/meaning.py), development
+  founders). In the default composition a sentence is looked up: with the recall slots emptied at
+  `GO` every panel of the grammar chamber reads .00, and with the working trace emptied nothing
+  moves. The carried state holds a partial copy of the meaning that the readout does not use.
+
+- **Said from a held state** ([the declared run](benchmarks/grammar/README.md#the-declared-run), six
+  fresh founders, the message written by the instrument onto neurons the association reads, the
+  read barred from the meaning in every lesson). The brain says clauses from the message alone at
+  .98, as the matched LSTM does online, and paraphrases a heard sentence into the second grammar at
+  .94. On combinations no lesson showed it reads under the bar at 128 association neurons
+  (held-out clauses .84, role twins .81) and at the bar at 256, an arm declared as an amendment
+  before its lives (clauses .99, held-out clauses .95, role twins .95; 5 or 6 founders of 6 at
+  .90). Clauses of four distractors are said at .94 with 256 association neurons, where 128 read
+  .66.
+
+- **What a message needs.** Moments bound by a sparse code, order held as presence in separate
+  blocks, and width. The working trace at any decay, the heard history of raw moments, sums with
+  primacy or recency weights, and a message restated in motor slots each fail one of them.
+
+- **Beside a free read.** The episode-long message lifts brackets (+.12) and the context twins and
+  costs three hops (.36 to .12). The moment before alone, the library's `history_decays=(0.0,)`,
+  lifts roles (.91 to .98), paths (.94 to .99) and three hops (.36 to .74) on six fresh founders,
+  paired, beyond two standard errors. Neither is a default.
+
+- **The key as a record's address.** At 280 units a cue of the same meaning in the other order finds
+  its record among 256 on .98 of cues and among 1,024 on .91, and a role-swapped cue finds the twin's.
+  The key holds no order of moments of one kind, and a sentence heard as words and the same meaning
+  heard as concepts give unrelated keys.
+
+#### Long-term records a brain keeps itself (opt-in, #288)
 
 `Brain.compose(longterm=records)` gives each stream records of its own, keyed by the brain's held
 message (`message=units`) from a turn (`message_boundary=channel`, `message_boundary_holds=True`).
@@ -207,7 +301,7 @@ records a stream costs 1.3 times a moment without them over one stream and 1.7 t
 streams (a declared amendment, 1.66 to 1.69 against a bar of 2); on a GPU, with the stores read
 one by one, 1.7 times over one stream.
 
-### A long-term memory of records (opt-in, #288)
+#### A long-term memory of records: `cd.LongTermMemory` (opt-in, #288)
 
 `cd.LongTermMemory(width, value_width, capacity)` is a standalone store beside the brain: records
 (a key with a value) under a fixed budget of slots. No `Brain.compose` setting builds it, and a
@@ -273,102 +367,7 @@ at 10,000, and a taught default composition's position maps outvote the key past
 lessons reached. `recall_position=0, recall_temperature=0.05` reads and answers at 1.00 to 100,000
 records, with every slot scored. No setting or default changes.
 
-### A held message: `cadence.Message`, and where a sentence's meaning lives (#286)
-
-No brain changes. Every founder, the default composition and `backend="cpu"` arithmetic are as on
-0.95.2; the one addition to the library is a class no brain reads by itself.
-
-- **`cadence.Message`** ([a held message](docs/memory.md#a-held-message)). A stream's episode held
-  as one state, with no neurons and no learned parameter. Each heard moment is given a fixed sparse
-  code, and the `t`-th moment joins the union of block `t mod phases`. `state` keeps the order
-  heard; `key()`, the union over the blocks, is the same for one set of moments in any order.
-
-- **Where the meaning lives** ([`meaning.py where`](benchmarks/grammar/meaning.py), development
-  founders). In the default composition a sentence is looked up: with the recall slots emptied at
-  `GO` every panel of the grammar chamber reads .00, and with the working trace emptied nothing
-  moves. The carried state holds a partial copy of the meaning that the readout does not use.
-
-- **Said from a held state** ([the declared run](benchmarks/grammar/README.md#the-declared-run), six
-  fresh founders, the message written by the instrument onto neurons the association reads, the
-  read barred from the meaning in every lesson). The brain says clauses from the message alone at
-  .98, as the matched LSTM does online, and paraphrases a heard sentence into the second grammar at
-  .94. On combinations no lesson showed it reads under the bar at 128 association neurons
-  (held-out clauses .84, role twins .81) and at the bar at 256, an arm declared as an amendment
-  before its lives (clauses .99, held-out clauses .95, role twins .95; 5 or 6 founders of 6 at
-  .90). Clauses of four distractors are said at .94 with 256 association neurons, where 128 read
-  .66.
-
-- **What a message needs.** Moments bound by a sparse code, order held as presence in separate
-  blocks, and width. The working trace at any decay, the heard history of raw moments, sums with
-  primacy or recency weights, and a message restated in motor slots each fail one of them.
-
-- **Beside a free read.** The episode-long message lifts brackets (+.12) and the context twins and
-  costs three hops (.36 to .12). The moment before alone, the library's `history_decays=(0.0,)`,
-  lifts roles (.91 to .98), paths (.94 to .99) and three hops (.36 to .74) on six fresh founders,
-  paired, beyond two standard errors. Neither is a default.
-
-- **The key as a record's address.** At 280 units a cue of the same meaning in the other order finds
-  its record among 256 on .98 of cues and among 1,024 on .91, and a role-swapped cue finds the twin's.
-  The key holds no order of moments of one kind, and a sentence heard as words and the same meaning
-  heard as concepts give unrelated keys.
-
-### A message a brain holds: `Brain.compose(message=units)` (#286)
-
-Opt-in and off by default. Without `message` a brain holds no message region, and every founder,
-the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
-
-- **`message=units`** ([held message](docs/memory.md#held-message)). A region of
-  `message_phases * units` neurons the brain writes itself. After each moment it hears, the moment's
-  fixed sparse code latches onto block `t mod message_phases` and stays on until the episode ends
-  (`reset()` or `done`). The association reads the region through plastic synapses at
-  `message_amplitude`, and with `carried_gain` one learned gain per block sets how loudly.
-  `brain.message` is a `HeldMessage`, `cadence.Message` on the brain's own neurons (`state`,
-  `key()`, `told`), and a member of `brain.memories`. `describe`, `retune`
-  (`message_amplitude`), checkpoints and `imagine` carry it. `grow` and `graft` refuse a brain with
-  a message, and a message needs a vector brain without a learned code.
-
-- **`message_gains`, `message_boundary`, `message_boundary_holds`** (the third declared run,
-  [`benchmarks/grammar/MEANING_PROTOCOL_3.md`](benchmarks/grammar/MEANING_PROTOCOL_3.md)). Under
-  `carried_gain`, `message_gains` learned gains per block in place of one. `message_boundary` names
-  an input channel: a heard moment with it on empties the message and begins it again, or with
-  `message_boundary_holds` the message keeps what it heard before and nothing after joins.
-  `cadence.Message` takes `boundary` and `boundary_holds` the same way.
-  The third run (the read free): the phase count at 24 or 32 is not the cause of the quiet
-  message's three-hop cost (-.09, -.12 on six founders). Held from `GO`, the message costs three
-  hops nothing at the mean on six founders and costs paths -.20 and three hops -.24 on twelve; held
-  from `GO` beside `history_decays=(0.0,)` it costs no panel on twelve founders and lifts clauses
-  (+.03). At 256 association neurons with the read barred, the instrument's message reads roles
-  .05 over the brain's own on the same founders, inside two standard errors; `message_gains=8`
-  reads roles .95 on fresh founders and held-out combinations .89 (4 of 6 at .90).
-  The fourth run ([`benchmarks/grammar/MEANING_PROTOCOL_4.md`](benchmarks/grammar/MEANING_PROTOCOL_4.md),
-  twelve fresh founders, the read barred): with `message_read=True` and `history_decays=(0.0,)`
-  beside `message=280` at 256 association neurons the brain says clauses, held-out combinations
-  and role twins from its held state at .90 on 12, 11 and 11 founders (596,412 parameters), where
-  the message alone reaches 12, 9 and 9; on twelve more founders 11, 7 and 9, so over 24 the
-  held-out bar of 20 is not met (18). Longer clauses, deeper brackets and three hops read .00 from
-  the state, and .00 to .02 for the LSTM and the transformer at the same parameter count; a block
-  for every moment of the longest clause (`message_phases` 7, 8 or 16) leaves longer clauses at
-  .00 to .02.
-- **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
-  present moment through learned maps (a content address over the block's units and a term per
-  block). The maps start at zero and learn by the recall memory's address lesson on the message's
-  own blocks: each block is scored against the association's movement between the nudged phases,
-  read back through the port's synapses. `message_amplitude=0.0` beside it builds no synapses from
-  the region itself.
-
-- **The declared run**, [`benchmarks/grammar/MEANING_PROTOCOL_2.md`](benchmarks/grammar/MEANING_PROTOCOL_2.md),
-  six fresh founders, the recall read barred from the meaning at `GO`. With `message=280` and 256
-  association neurons the brain says trained clauses from its own message at .99, held-out
-  combinations at .95 and role twins at .90 (6, 5 and 4 of 6 at .90: H1 holds on two panels and
-  fails on roles), reads every clause component from the message at 1.00, says both orders of one
-  meaning right at .98, paraphrases into a second grammar at .97 (.92 held out) and says clauses of
-  four distractors at .90. Its previous-word control (`history_decays=(0.0,)` in the message's
-  place) says .07, .00, .00. At 64 association neurons the message alone reads .79, .47, .30 and
-  the read of one block beside it .89, .72, .74: under the bar. Beside a free read the quiet
-  message keeps paths and costs three hops (-.22); the wide message costs paths (-.26). The LSTM at
-  the brain's parameter count reads 1.00 on every trained panel offline.
-
-### Exploration over long reward lives (#296)
+#### Exploration over long reward lives (#296)
 
 - **`actor_entropy`: the policy's entropy in the actor's step.** `Brain.compose(...,
   actor_entropy=k)` (or `ActorCriticConfig(entropy=k)`) adds to each outcome's step the sampled
@@ -379,11 +378,112 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   setting by name. A brain that names no entropy keeps every bit on `backend="cpu"` and saves
   its configuration without the field ([exploration over long reward
   lives](docs/reward.md#exploration-over-long-reward-lives-opt-in)).
+
+### Fixes
+
+- **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`
+  asks Cholesky factorizations whether the present halvings hold. NumPy signals a failed
+  factorization through the floating-point status, which WebAssembly does not keep: in Pyodide
+  `np.linalg.cholesky` of a matrix that is not positive definite returns NaN and raises nothing,
+  so every test held and a one-input world kept a step its dictionary does not allow (0 halvings
+  where 3 are needed). A factorization holds where it raises nothing and its factor is finite,
+  the answer every platform gives alike; the four tests that read another answer in Pyodide
+  0.29.3 pass there. Where `cholesky` raises, as on every 64-bit platform, nothing changes: every
+  bit is as on 0.96.1.
+- **Where the new options meet** (found when the lanes joined). `Lives.live` in a moment where no
+  life learns faded the actor's eligibility by `gamma * lam` under `actor_hold`; it fades the
+  actor's traces by the hold and the critic's by `gamma * lam`, as a lone brain's `fade`. One
+  life with `actor_hold=0.97` on a torch device had left its lone brain by .025 in its
+  parameters over 40 moments. `Brain.value` read the long-term records as a live read does,
+  deepening the record it held, and counted the learned fields' work; it credits no record and
+  counts nothing, so the checkpoint after a read is the one before it. A life that left with its
+  pending action (`life(i, stream=True)`) saved a file `Brain.load` refused; it carries the drive
+  its free state was settled for. `Lives` refuses a held message and long-term records by name.
+  The compiled moment (`learning_compiled_moment`) left a held message's and long-term records'
+  drive out of the moment (the drive 3.1 from the general path's) and raised on learned fields
+  without the store; such a brain reads its drive on the general path, within 1e-12 of the brain
+  without the option.
+
+- **The torch backend on CUDA under Triton 3.1 and 3.3 (#299).** The small-group kernel's
+  `tl.dot` does not compile there with a tile below 16 on a side, which a float64 tile of 8 rows
+  and a batch below 16 always have, so the first settle raised `CompilationError`. Each tile
+  shape takes `tl.dot` where the installed Triton compiles it, and otherwise sums the same
+  products over the presynaptic axis, chosen once per shape at its first launch. Under Triton
+  3.6 every shape keeps its dot and every bit; under 3.1 and 3.3 the settled states match the
+  cuBLAS path (`CADENCE_TRITON=0`) within float32 rounding and within 1e-13 in float64.
+
+### Instruments
+
+- **A VizDoom adapter in `benchmarks/doom/`**, the Body stage of the Doom player (#118). A player
+  receives the rendered RGB screen (84 by 84 or 160 by 120), the HUD's health, armour and
+  ammunition as declared own-body ports and the episode's previous action as a history port,
+  and nothing else. It answers with one button of the scenario's declared set per moment, held
+  for declared game tics. A scorer per scenario (basic, defend the center, health gathering, on
+  the Freedoom IWAD the VizDoom wheel carries) keeps completion, death, deadline and truncation
+  distinct and credits each outcome once; custody records the tic, the events and the outcome
+  of every moment; a checkpoint of game, body and brain resumes the same life at the same tic,
+  the brain to the bit on `backend="cpu"`. VizDoom is optional, and its tests skip without it.
+  The brain (`Brain.compose`), its blind and frozen controls, a random player and a small
+  convolutional actor-critic run every scenario through it
+  ([the Doom body](benchmarks/doom/README.md)). The library is unchanged.
+
+- **The delayed-credit chamber** ([`benchmarks/delayed_credit`](benchmarks/delayed_credit/README.md)):
+  a delayed T-maze and a delayed key-door paid only at the end of an episode, delays of 10, 50
+  and 200 moments with distractors, an exact solver, yoked, shuffled, frozen and ablated controls,
+  and an LSTM actor-critic with generalized advantage estimation and the online TD(lambda)
+  actor-critic sized to the brain's parameter count, with tests.
+
+- **The pixel chamber** (`benchmarks/pixels/`): a screen-dependent policy on rendered 84 by 84
+  frames in grey and colour and on 160 by 120 frames (approach food, avoid a hazard, aim at a
+  target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
+  frozen, uniform and fields-at-their-draw controls, and a two-convolution actor-critic at the
+  brain's parameter count trained online on the same frames.
+
 - **The long reward life chamber** ([`benchmarks/actor_latch`](benchmarks/actor_latch/README.md)):
   three worlds with a Doom player's observation (a bandit, aiming in the shape of Doom basic,
   survival in the shape of health gathering), its frozen and random controls, and the reading of
   the actor's hold by quarters of a life. `benchmarks/doom/doom_life.py` takes `--set` for the
   brain players' settings.
+
+- **What lives on MLX would cost.** `benchmarks/device/lives_mlx_cost.py` times one sweep's
+  transport with each life's own blocks on the Apple GPU against one brain's shared blocks: 1.26,
+  1.45 and 3.34 times at 12, 128 and 1,024 lives on an M4. With one brain's streams on MLX as the
+  bound, a lives axis there would read at most 0.34 ms per life and moment at 128 lives and 0.57
+  ms at 1,024 (docs/backends.md, many lives at once). The library has no lives axis on MLX.
+
+### Measured negatives
+
+- **#286, sentences said from a held state: held-out combinations miss their bar.** With
+  `message_read=True` and `history_decays=(0.0,)` beside `message=280` at 256 association
+  neurons, the first twelve fresh founders read clauses, held-out combinations and role twins at
+  .90 on 12, 11 and 11; twelve more read 11, 7 and 9. Pooled over 24 founders the brain says
+  clauses on 23, held-out combinations on 18 and role twins on 20, so gate H1c (20 of 24 on
+  each) fails on held-out combinations
+  ([the replication](https://github.com/muellerberndt/cadence/issues/286#issuecomment-6768846248)).
+  Longer clauses, deeper brackets and three hops read .00 from the state, and .00 to .02 for the
+  LSTM and the transformer at the same parameter count.
+- **#283, a reward many moments after the decision: the key-door at 50 moments reads 3 of 6.**
+  At a tenth of the actor step, `actor_hold=1.0` learns the T-maze at 50 on 6 of 6 fresh
+  founders and the key-door at 50 on 3 of 6 (5 of 6 without the hold, the readout latched); at
+  200 moments 3 and 0 of 6. With `memory_choice=True` beside the hold the key-door at 50 reads 5
+  of 6 ([the delayed-credit chamber](benchmarks/delayed_credit/README.md)).
+- **#296, exploration over long reward lives: no setting meets the Doom gate.**
+  `actor_entropy=0.1` ends the latch: no button exceeds .40 of a life's last quarter in any of
+  its 30 lives, and aim reads +0.918 on 6 of 6 fresh founders. In the Doom body it passes 2 of
+  6 founders in basic and none in defend the center or health gathering, and survival is its
+  cost (1 of 6, +0.644 against a newborn's +0.810). The located term is the motor operating
+  point: the entropy settles every motor output below rest, where a faint preference cannot
+  lift a button; a longer critic horizon (`actor_gamma=0.99`) leaves it as it is. No arm passes
+  ([the declared run](benchmarks/actor_latch/README.md#the-declared-run)).
+- **#284, perception from pixels: colour invariance is not gated.** Grey 84 by 84 frames read
+  .974 on fresh frames and .947 to .975 on three untrained panels on six fresh founders; each
+  founder reads all three within .05 of its fresh frames on 4 of 6. Colour frames read .953 on
+  four development founders, and no declared gate reads invariance to hue.
+- **#288, memory at scale: two facts that share one key are one record.** At 10,000 records a
+  stream, found over every unrevised fact reads .9875 to 1.000 (5 of 6 at .99; gate B6 fails at
+  one founder where 2.43% of the facts share their key); over the facts whose key is their own,
+  1.000 on 6 of 6 (B7 passes).
+- `memory_rate` and the actor's rate keep their defaults (#169).
 
 ### Documentation
 
@@ -394,45 +494,6 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   difference; `memory_rate=0.2` brings it to 41.6, with `maturity=True` to 37.8, and leaves the
   chambers from birth and the robot arena's gates where the default reads them. No setting or
   default changes.
-
-### Changed defaults
-
-- **The recall memory's slope steps on each stream's own slots** (#292). With the grid
-  (`recall_grid`, in the default composition) the slope maps step only on a lesson's rows whose
-  slots fit the position table. The rule read the width of the slot bank, which the streams of
-  one brain share and which is as wide as the longest stream's slots, so a stream that began
-  later took no slope step beside a longer one and did alone: its lesson depended on another
-  stream's length. Each row's own slots (`held`) decide (`Recall.within_table`); a row past the
-  table leans nowhere and counts in the lesson's mean, as the grid term's per-slot mask does.
-  The host's path, the device's and the compiled moment's read the same rule (the compiled
-  lesson takes the host's path where a row's rule and the bank's part). A brain of one stream,
-  and a brain whose streams hold equal slots, keeps every bit (the founders' recorded lives on
-  the CPU, and every action and parameter of one, three equal and compiled-moment brains over 70
-  moments against 0.96.1). Streams of unequal length change from the first lesson that teaches a
-  row within the table while the bank is past it: on two streams, one beginning again at moment
-  45 of 70, the slope maps part by 0.24 and the efficacies by 0.025, every action the same.
-
-- **A new brain hears the moment before** (`history_decays=(0.0,)`, #256). A new brain with the
-  memory holds a heard history of one block of decay 0: the observation of the moment before,
-  as heard, read through its own plastic projection at its own carried gain (`history_0`).
-  `history_decays=()` composes the brain of 0.96.1; `recall=False`, the founder word and an
-  anatomy of one's own hold a history by name alone. On the grammar chamber's words the brain
-  holds 30,992 parameters where it held 28,716. `Lives` holds the history and its gains per
-  block. The compiled moment (`learning_compiled_moment`) carries the history: its drive, its
-  write after the act and its gains per block run in the one-call act and the taught lesson, a
-  brain without a history keeps the option's bits, and on the new default the option agrees with
-  the ordinary path to rounding. On fresh founders, paired against the brain
-  without it: the grammar chamber reads held-out .995 against .868 and three hops .656 against
-  .397, every panel at or above it; ordered recall 12 of 12 in both; every battery gate holds on
-  6 of 6 founders but "was A told before B?" on the `recall_when` arm, 4 of 6 against 5 of 6;
-  the n-back read less answer rises by .008 and the last cue in sequence by .005 of the mixed,
-  each far inside its bar; the credit and key-door chambers move inside two standard errors
-  (memory.md, the heard history in a new brain).
-- **`Lives` composes the store by default** (#293). `Lives(inputs, actions, lives)` composes each
-  life as `Brain.compose(inputs, actions, seed=s, **options)`, the default composition with its
-  store of place records, as a lone brain composes; `episodic=False` composes without it, as
-  `Lives` did in 0.96. `Lives(..., episodic=False)` keeps every bit of 0.96.0 on the CPU, the
-  torch CPU device in float64 and float32 and CUDA.
 
 ## 0.96.1 — 2026-11-10
 
