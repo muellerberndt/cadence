@@ -3523,6 +3523,45 @@ class Brain:
             drive = self._stimulus(x, self._code(x), memory=memory)
         return drive if self._settling or not _resident(drive) else _host_copy(drive)
 
+    @_operation
+    def value(self, observations: Any) -> np.ndarray:
+        """The critic's value of each row of ``observations``, ``(batch,)``: the value a
+        truncated episode bootstraps from, ``step(..., done=done, bootstrap=brain.value(last))``.
+
+        It is the value ``learn`` settles for the next state of a stream that goes on: the drive
+        the brain reads for the row (its sensory part with the working trace, the efference
+        copy, the heard history, the recall memory's slots and the place records as they
+        stand), settled from the stream's activity, or from rest for a brain that has not
+        acted, and read by the critic. The memories enter as they stand because the episode
+        was cut, not ended: had it gone on, the next state would have read them. A pure read:
+        the recall memory addresses the moment and writes nothing, and the streams, traces,
+        pending action, records, parameters and random generators are as they were. Once the
+        brain has acted, the rows are its live streams; another batch is refused with
+        ``ValueError``, as malformed observations are, before anything changes."""
+        x = self._observations(observations)
+        agent = self.basal_ganglia
+        current = agent.state
+        if current is not None and _batch_of(current) != len(x):
+            raise ValueError("value reads the live streams: one row per stream")
+        held = self._streams()
+        recall = self.recall
+        # what the recall memory's ports held at the latest read, for its route's lesson
+        ports = None if recall is None else (recall._device or recall).__dict__.get("trace")
+        try:
+            with self._code_attempt():
+                self._prepare(x)
+                drive = self._moment_drive(x)
+            warm = self._awaited()
+            if self.learned_code is not None:
+                warm = self._warm(drive, agent.state if warm is None else warm)
+            elif warm is None:
+                warm = agent.state
+            return np.asarray(agent.value(self.learner.free(drive, warm=warm)), dtype=float)
+        finally:
+            self._resume(held)
+            if recall is not None and ports is not None:
+                (recall._device or recall).__dict__["trace"] = ports
+
     def _moment_drive(self, x: np.ndarray) -> np.ndarray:
         """The drive a moment's settles read, ``stimulus`` where it rests. On a torch device it
         stays or goes there here, once: every settle of the moment and its checks read it there."""

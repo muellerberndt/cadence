@@ -889,6 +889,37 @@ def test_the_step_is_the_one_the_eigenvalues_give_from_any_step_it_held():
     assert len(answers) >= 2 and settled
 
 
+def test_a_factorization_that_returns_nan_in_place_of_raising_holds_nothing(monkeypatch):
+    """Where a platform keeps no floating-point status (WebAssembly, NumPy in Pyodide), a failed
+    Cholesky factorization returns NaN and raises nothing (#295): the step reads the same
+    answer as where it raises."""
+    factorize = np.linalg.cholesky
+
+    def quiet(matrix):  # a failed factorization as Pyodide's NumPy returns it
+        try:
+            return factorize(matrix)
+        except np.linalg.LinAlgError:
+            return np.full(np.shape(matrix), np.nan)
+
+    rng = np.random.default_rng(12)
+    code = composed(seed=1).learned_code
+    cases = [(held, rng.normal(code.model.threshold, scale, (rows, code.units)))
+             for held in (0, 1, 3) for scale, rows in ((1.0, 1), (3.0, 4), (8.0, 16))]
+    answers = []
+    for held, v in cases:
+        code.restep(held)
+        answers.append(code.stability(v))
+    monkeypatch.setattr(np.linalg, "cholesky", quiet)
+    for (held, v), answer in zip(cases, answers, strict=True):
+        code.restep(held)
+        assert code.stability(v) == answer == eigenvalue_halvings(code, v)
+    code.restep(1)
+    bound = 1.0 - code.STEP_MARGIN * 2.0 / code.model.dt
+    coupling = np.diag(np.full(code.units, bound))[None, :, :]
+    assert code._held_halvings(coupling) is None
+    assert code._held_halvings(coupling + 1e-6 * np.eye(code.units)) == 1
+
+
 def test_a_step_a_hair_from_its_bound_goes_to_the_eigenvalues():
     """Within ``BOUND_MARGIN`` of a bound the factorizations do not answer."""
     code = composed(seed=2).learned_code

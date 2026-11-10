@@ -2298,6 +2298,14 @@ class Lives:
         self._last_arousal = tuple(readings)
         return np.asarray(action)
 
+    def values(self, observations: Any) -> np.ndarray:
+        """Each life's ``Brain.value`` of its own row: the value a truncated episode of that life
+        bootstraps from, read without changing anything, ``(lives,)``."""
+        x = self._rows(observations)
+        if self.brains is not None:
+            return np.concatenate([b.value(x[i : i + 1]) for i, b in enumerate(self.brains)])
+        return np.asarray(self.brain.value(x), dtype=float)
+
     def lesson(self, observations: Any, labels: Any) -> None:
         """Each life's ``Brain.lesson`` of its own label on its own row."""
         x = self._rows(observations)

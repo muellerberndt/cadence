@@ -44,6 +44,31 @@
   bound, a lives axis there would read at most 0.34 ms per life and moment at 128 lives and 0.57
   ms at 1,024 (docs/backends.md, many lives at once). The library has no lives axis on MLX.
 
+#### The value of a state (#298)
+
+- **`Brain.value(observations)`: the value a truncated episode bootstraps from** (#298). The
+  critic's value of each row, `(batch,)`: the drive the brain reads for the row, with the working
+  trace, the efference copy, the heard history, the recall memory's slots and the place records
+  as they stand, settled from the stream's activity (from rest before the brain has acted). It is
+  what `learn` settles for the next state of a stream that goes on, so a row cut by a time limit
+  passes `done=True` with `bootstrap=brain.value(last)`; without the store such a row takes the
+  dopamine of a row that goes on, to the bit, and with the store the two part by the outcome's own
+  record, which `learn` writes before it reads the next state. The read writes nothing: on
+  `backend="cpu"` every array of the brain is the same after it, and a brain that reads lives on
+  to the bit as one that does not. `Lives.values(observations)` reads each life's.
+
+### Fixed
+
+- **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`
+  asks Cholesky factorizations whether the present halvings hold. NumPy signals a failed
+  factorization through the floating-point status, which WebAssembly does not keep: in Pyodide
+  `np.linalg.cholesky` of a matrix that is not positive definite returns NaN and raises nothing,
+  so every test held and a one-input world kept a step its dictionary does not allow (0 halvings
+  where 3 are needed). A factorization holds where it raises nothing and its factor is finite,
+  the answer every platform gives alike; the four tests that read another answer in Pyodide
+  0.29.3 pass there. Where `cholesky` raises, as on every 64-bit platform, nothing changes: every
+  bit is as on 0.96.1.
+
 ## 0.96.1 — 2026-11-10
 
 A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is

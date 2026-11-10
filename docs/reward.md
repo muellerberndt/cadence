@@ -182,7 +182,32 @@ Drives are nonempty finite `(batch, neurons)` arrays, rewards and bootstrap valu
 `(batch,)`, `done` boolean; validation precedes every update. Each row keeps its own
 potential, adaptation and eligibility. `done` rows restart from rest and
 bootstrap from `bootstrap`, or zero without it. A time limit is not terminal: mark the
-truncated row `done` and pass its value, `value_of(next_drive)`, as `bootstrap`. `learn`
+truncated row `done` and pass the value of its last observation as `bootstrap`. On a composed
+brain that value is `brain.value(last)`:
+
+```python
+import numpy as np
+import cadence as cd
+
+timed = cd.Brain.compose(4, 2, seed=0)
+timed.step(np.eye(4)[[0, 1]])                     # two streams; each sampled action awaits
+last = np.eye(4)[[2, 3]]                          # the observations at the cut
+cut = np.array([True, False])                     # the time limit cuts stream 0 here
+bootstrap = timed.value(last)                     # (streams,), read before the outcome
+timed.step(last, reward=np.array([0.5, 0.0]), done=cut, bootstrap=bootstrap)
+```
+
+`Brain.value` reads what `learn` settles for the next state of a stream that goes on: the drive of
+the row with the working trace, the efference copy, the heard history, the recall memory's slots
+and the place records as they stand, settled from the stream's activity (from rest before the
+brain has acted), and the critic's value of that state. The memories enter because the episode
+was cut, not ended: had it gone on, its next state would have read them. The read writes nothing
+and leaves the streams, traces, pending action, records, parameters and random generators as they
+were. Without the store a truncated row bootstrapped this way takes the dopamine of a row that goes
+on, to the bit. With the store the two part by the outcome's own record: `learn` writes the
+outcome to the place records before it settles the next state, and `value`, read before the
+outcome, reads the records without it. On an `ActorCritic` built by hand the value of a drive is
+`value_of(next_drive)`, settled cold. `learn`
 settles the next state before the update, and the next `act` settles again from it under
 the new parameters (the cached phase is reused only for an unchanged drive and
 parameters): two free and two nudged phases per decision.
