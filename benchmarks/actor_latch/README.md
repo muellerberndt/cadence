@@ -143,15 +143,18 @@ Returns are the mean over founders with their standard deviation. The chamber:
   fresh founder against an aimer's .97. In the Doom body it holds every policy near even: basic
   reads +0.250 (random buttons +0.250), and defend the center and health gathering read below
   their newborns.
-- **The failing term is the reward's preference within the critic's horizon against the pull
-  toward an even policy.** The entropy's step vanishes at an even policy and grows with the
-  departure from it, so a policy departs only as far as the outcomes within a few moments
-  prefer one button: the critic's discount, .9 a moment, carries a medkit's or a kill's value
-  about ten moments. A good policy in health gathering (forward) and defend the center (turn and
-  fire) presses one button far more than the others; their newborns' skewed policies score
-  +0.290 and +0.627 (founder 3's newborn +1.96) where an even policy scores +0.227 and +0.573. In
-  survival the same holds at every weight from 0.01 to 0.1 on the development founders, where the
-  composed actor without the entropy learns the paying button on 3 of 4.
+- **The failing term: the entropy reaches its even policy with every motor output at rest.** In
+  every survival life under the entropy the three motor neurons sit below rest (mean activations
+  -0.02 to -0.07, `saturation` 1.00 in the last quarter) and the mean synapse step falls from
+  1.3e-6 to 4e-7 to 8e-7; in aim, whose kills pay +1, they rise into the sensitive band (+0.04 to
+  +0.51, `saturation` .22 to .76). The entropy's step lowers an active output easily (below rest
+  the leak keeps a slope) and raises a resting one hardly at all, so the even policy it settles
+  in is the one at the 0 rail, where a nudge has little slope and a faint preference cannot lift
+  a button: the resting button's contrast of .01 to .04 measured at birth. A longer critic horizon
+  leaves it (`actor_gamma=0.99` beside the entropy: shares .32 to .35 and saturation 1.00 on
+  development founders 100 and 101). Where a good policy presses one button far more (forward in
+  health gathering, turning and firing in defend the center, whose newborns score +0.290 and
+  +0.627 against an even policy's +0.227 and +0.573), the brain stays at the even return.
 - **`actor_eta=0.1, actor_eta_bias=0.01`** lifts aim on every fresh founder (+0.654) and holds a
   non-paying survival button on 2 of 6 and attack in defend the center on 4 of 6: a tenth of the
   step slows the hold and does not remove it.
