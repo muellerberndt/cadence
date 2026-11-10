@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import importlib.util
 import json
 import sys
 from pathlib import Path
@@ -9,8 +10,21 @@ from pathlib import Path
 import numpy as np
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
-import chamber  # noqa: E402
+
+def _load(name: str):
+    """This chamber's module under a name of its own: other benchmarks have a chamber.py."""
+    key = f"actor_latch_{name}"
+    if key in sys.modules:
+        return sys.modules[key]
+    spec = importlib.util.spec_from_file_location(key, Path(__file__).with_name(f"{name}.py"))
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[key] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+chamber = _load("chamber")
 
 
 def episodes(world: chamber.Bandit, policy, count: int) -> list[tuple[int, float, str]]:

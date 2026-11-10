@@ -15,12 +15,13 @@ HERE = Path(__file__).resolve().parent
 
 
 def _load(name: str):
-    if name in sys.modules:
-        return sys.modules[name]
-    spec = importlib.util.spec_from_file_location(name, HERE / f"{name}.py")
+    key = f"pixels_{name}"  # a name of this chamber's own: other benchmarks have a chamber.py
+    if key in sys.modules:
+        return sys.modules[key]
+    spec = importlib.util.spec_from_file_location(key, HERE / f"{name}.py")
     assert spec is not None and spec.loader is not None
     module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
+    sys.modules[key] = module
     spec.loader.exec_module(module)
     return module
 
