@@ -60,7 +60,9 @@ from .brain import (
 )
 from .brain import Brain as NeuralGraph
 from .learning import _MOMENTS, _RELATIVE_TINY, LearnedState, Learner, _taught_report
-from .plasticity import ActorCritic, _held_drive
+from .memories import record_action
+from .memory import SynapticMemory
+from .plasticity import ActorCritic, Maturity, _held_drive
 from .resident import (
     _MAP_KINDS,
     TorchArrays,
@@ -68,6 +70,7 @@ from .resident import (
     _forgotten,
     _Moment,
     _RecallOnDevice,
+    _StoreOnDevice,
     arrays_of,
 )
 from .stream import Hearing
@@ -185,6 +188,9 @@ class _LivesTorchKernel(_TorchKernel):
         if held is None or held.shape[0] != batch:
             ws.lives_met = self.torch.zeros(batch, dtype=self.torch.bool, device=self.device)
         hold = getattr(self.root, "_hold", None)  # the lives a solve found settled already
+        outer = getattr(self.root, "_hold_outer", None)  # the lives a moment leaves where they are
+        if outer is not None:
+            hold = outer if hold is None else hold | outer
         if hold is None:
             ws.lives_met.zero_()
         else:
@@ -1103,6 +1109,21 @@ class _LivesActorCritic(ActorCritic):
     # the lives whose pending action keeps its eligibility; None: every life's, as ``act`` keeps
     _lives_eligible: np.ndarray | None = None
 
+    def _rates(self) -> tuple[Any, Any]:
+        """``ActorCritic._rates``; with maturity each life's own, ``(lives, 1)`` on the device."""
+        maturity = self.__dict__.get("_lives_maturity")
+        if maturity is None:
+            return super()._rates()
+        cfg = self.config
+        assert cfg.eta_bias is not None
+        kernel = self.learner.brain._torch
+        factor = maturity.factor()
+        rate = kernel.torch.as_tensor(factor * cfg.eta, dtype=kernel.dtype, device=kernel.device)
+        bias = kernel.torch.as_tensor(
+            factor * cfg.eta_bias, dtype=kernel.dtype, device=kernel.device
+        )
+        return rate[:, None], bias[:, None]
+
     def _rows_kept(self, decay: float, old: Any, added: Any = None) -> Any:
         """Each life's eligibility after an outcome: ``decay old + added`` where it learns,
         ``decay old`` where it fades, ``old`` where it keeps it."""
@@ -1349,11 +1370,11 @@ class _LivesActorCritic(ActorCritic):
         self._hearing_eligibility(batch, decay)
         root: Any = kernel.root
         if learning is not None:  # a life that does not learn keeps its state, rested if it ended
-            root._hold = torch.as_tensor(~learning, device=s_plus.device)
+            root._hold_outer = torch.as_tensor(~learning, device=s_plus.device)
         try:
             next_state = self._next_state(next_drive, done, warm)
         finally:
-            root._hold = None
+            root._hold_outer = None
         resting = self._critic_device
         assert isinstance(resting, _LivesCritic)
         exact = torch.float32 if trace.device.type == "mps" else torch.float64
@@ -1410,10 +1431,17 @@ class _LivesActorCritic(ActorCritic):
         self.__dict__["lives_td_error"] = td_error  # each life's own, for its arousal
         capped = self._capped(td_error, observed)
         self.learner.__dict__["_lives_rows"] = learning
+        before = kernel.scale  # an update replaces the scale tensor
         try:
             report = self.learner._install_device(update, read[8:10])
         finally:
             self.learner.__dict__["_lives_rows"] = None
+        maturity = self.__dict__.get("_lives_maturity")
+        if maturity is not None and cfg.eta > 0:  # each life's use grows by its own step
+            moved = (kernel.scale - before).abs().sum(dim=1).double().cpu().numpy()
+            maturity.use = np.minimum(
+                maturity.use + moved / (float(cfg.eta) * self.synapses), Maturity.LIMIT
+            )
         if learning is None:
             trace.mul_(decay)
         else:
@@ -1453,6 +1481,266 @@ class _LivesActorCritic(ActorCritic):
         return report
 
 
+# -- the store and maturity
+
+class _LivesMaturity:
+    """Each life's ``Maturity``: one use per life, its factor and its relaxation life by life."""
+
+    ORDER = Maturity.ORDER
+    LIMIT = Maturity.LIMIT
+
+    def __init__(self, lone: Sequence[Maturity]) -> None:
+        self.scale, self.recovery = float(lone[0].scale), float(lone[0].recovery)
+        self.use = np.array([m.use for m in lone], dtype=float)
+
+    def factor(self) -> np.ndarray:
+        """``Maturity.factor`` of every life."""
+        with np.errstate(over="ignore"):
+            return np.asarray(1.0 / (1.0 + (self.use / self.scale) ** self.ORDER))
+
+    def relax(self, rows: np.ndarray | None = None) -> None:
+        """``Maturity.relax`` of the lives ``rows`` marks, every life without it."""
+        relaxed = self.use * (1.0 - 1.0 / self.recovery)
+        self.use = relaxed if rows is None else np.where(rows, relaxed, self.use)
+
+    def of(self, i: int) -> Maturity:
+        return Maturity(self.scale, self.recovery, float(self.use[i]))
+
+
+class _LivesStore(_StoreOnDevice):
+    """The place records of every life on the device: each life's consolidated records, its
+    stream's residual and decayed count of writes, with ``memory_fade`` each life's depths and
+    recent trace, with maturity each life's records' noise scales and its own surprise gate
+    (``SynapticMemory``'s equations, life by life). A write moves the records of the lives that
+    write and decays the residual of the lives whose outcome is written, as their lone stores."""
+
+    HELD = ("strength", "mass", "consolidated", "noise", "depth", "recent")
+
+    def __init__(self, owner: SynapticMemory, kernel: Any, lone: Sequence[SynapticMemory],
+                 maturity: _LivesMaturity | None) -> None:
+        xp = arrays_of(kernel)
+        self.owner, self.kernel, self.xp = owner, kernel, xp
+        self.torch = kernel.torch
+        for name in _StoreOnDevice.OWNED:
+            owner.__dict__.pop(name, None)
+        self.consolidated = xp.here(np.stack([m.consolidated for m in lone]))
+        # a life's stream begins at its records: the read and the decay of a stream that has
+        # not written are the records' own
+        self.strength = self.consolidated.clone()
+        self.mass = xp.zeros(len(lone))
+        self.writes = np.array([m.writes for m in lone], dtype=np.int64)
+        self.noise: Any = (
+            None if lone[0].gate_noise is None
+            else xp.here(np.stack([cast(np.ndarray, m.gate_noise) for m in lone]))
+        )
+        self.maturity = maturity
+        self.fade = float(lone[0].fade)
+        self.depth: Any = None
+        self.recent: Any = None
+        if self.fade:
+            self.depth = xp.here(np.stack([cast(np.ndarray, m.fade_depth) for m in lone]))
+            self.recent = xp.here(np.stack([cast(np.ndarray, m.fade_recent) for m in lone]))
+        self.pre = xp.columns(kernel.index_of(owner.pre))
+        self.post = xp.columns(owner._post_columns)
+
+    def give_back(self) -> None:
+        raise RuntimeError(
+            "the lives' place records rest on their device; read a life's with "
+            "Lives.parameters(i) or Lives.life(i)"
+        )
+
+    def records_of(self, i: int) -> dict[str, np.ndarray | int]:
+        """Life ``i``'s records on the host, as its lone store holds them."""
+        host = self.xp.host
+        out: dict[str, np.ndarray | int] = {
+            "consolidated": host(self.consolidated[i]), "writes": int(self.writes[i]),
+        }
+        if self.noise is not None:
+            out["gate_noise"] = host(self.noise[i])
+        if self.fade:
+            out["fade_depth"] = host(self.depth[i])
+            out["fade_recent"] = host(self.recent[i])
+        return out
+
+    def observe_rows(
+        self, key: np.ndarray, value: np.ndarray, calling: np.ndarray, gate: np.ndarray,
+        salience: np.ndarray, observed: np.ndarray,
+    ) -> None:
+        """``SynapticMemory.observe`` of the lives ``calling`` marks, each its own store of one
+        stream: their residuals decay, and the rows of ``gate`` among them write their own
+        records."""
+        owner, xp, torch = self.owner, self.xp, self.torch
+        decay = owner.decay
+        consolidated = self.consolidated
+        previous = self.strength
+        decayed = consolidated + decay * (previous - consolidated)
+        calls = xp.flags(calling)[:, None, None]
+        strength = torch.where(calls, decayed, previous)
+        mass = torch.where(xp.flags(calling), self.mass * decay, self.mass)
+        rows = np.flatnonzero(gate)
+        noise, depth = self.noise, self.depth
+        if len(rows):
+            index = xp.long(rows)
+            cue = self._unit(xp.upload(key[rows]))
+            value_t = xp.upload(value[rows])
+            mask = xp.upload(observed[rows].astype(np.float64))
+            rate = owner.consolidation + np.minimum(1.0, owner.consolidation * salience[rows])
+            rate = xp.upload(np.minimum(1.0, rate))
+            mine = consolidated[index]
+            error = (value_t - (cue[:, None, :] @ mine)[:, 0, :]) * mask
+            change = (rate[:, None] * cue)[:, :, None] * error[:, None, :]  # one row: no mean
+            base = strength[index]
+            moved = base + change
+            prediction = (cue[:, None, :] @ moved)[:, 0, :]
+            correction = (value_t - prediction) * mask
+            fast = owner.rate * cue[:, :, None] * correction[:, None, :]
+            if noise is None:
+                written, kept = mine + change, moved + fast
+            else:  # the write multiplied per action by each life's surprise gate
+                assert self.maturity is not None
+                gain, noise = self._gate(rows, cue, value_t, previous[index], mask)
+                written = mine + (rate[:, None] * cue)[:, :, None] * (error * gain)[:, None, :]
+                kept = base + gain[:, None, :] * (change + fast)
+            consolidated = consolidated.clone()
+            consolidated[index] = written
+            strength = strength.clone()
+            strength[index] = kept
+            mass = mass.clone()
+            mass[index] = mass[index] + owner.rate
+            if depth is not None:  # a write uses the records its cue reads
+                depth = depth.clone()
+                depth[index] = depth[index] + cue.abs()
+        finite = [torch.isfinite(strength).all(), torch.isfinite(consolidated).all()]
+        if noise is not None:
+            finite.append(torch.isfinite(noise).all())
+        if not bool(torch.stack(finite).all()):
+            raise ValueError("synaptic update overflowed; scale the observed values")
+        self.consolidated, self.strength, self.mass = consolidated, strength, mass
+        self.noise, self.depth = noise, depth
+        self.writes[rows] += 1
+        owner.writes += len(rows)
+
+    def _gate(self, rows: np.ndarray, cue: Any, value: Any, previous: Any,
+              mask: Any) -> tuple[Any, Any]:
+        """``SynapticMemory._gate`` of each writing life: its gain per action at its own
+        maturity and its records' noise scales moved toward its own squared error."""
+        torch = self.torch
+        assert self.noise is not None and self.maturity is not None
+        index = self.xp.long(rows)
+        noise = self.noise.clone()
+        mine = noise[index]
+        engaged = self.xp.upload(1.0 - self.maturity.factor()[rows])[:, None]
+        error = value - (cue[:, None, :] @ previous)[:, 0, :]
+        square = cue * cue
+        spread = torch.sqrt((square[:, None, :] @ mine)[:, 0, :])
+        size = error.abs()
+        one = torch.ones_like(size)
+        ratio = SynapticMemory.GATE_WIDTH * spread / torch.where(size > 0, size, one)
+        surprise = torch.where(size > 0, torch.clamp(1.0 - ratio, min=0.0), 0.0 * one)
+        seen = mask > 0
+        gain = torch.where(seen, 1.0 - engaged * (1.0 - surprise), one)
+        weight = square / torch.clamp(square.amax(dim=1, keepdim=True), min=1e-30)
+        moved = mine + SynapticMemory.GATE_RATE * weight[:, :, None] * (
+            (error * error)[:, None, :] - mine
+        )
+        noise[index] = torch.where(seen[:, None, :], moved, mine)
+        return gain, noise
+
+    def fade_moment(self, key: Any, rows: np.ndarray | None = None) -> None:
+        """``SynapticMemory.fade_moment`` life by life: each life's own row of ``key`` marks
+        its recent records, then each life's idle records fade by its own depths; with
+        ``rows`` the lives it marks alone, as the others live no moment."""
+        xp, owner, torch = self.xp, self.owner, self.torch
+        before = (self.consolidated, self.strength, self.depth, self.recent)
+        assert self.depth is not None and self.recent is not None
+        depth, recent = self.depth, self.recent
+        if key is not None:
+            k = np.atleast_2d(np.asarray(key, dtype=float))
+            if k.shape == (len(self.writes), len(owner.pre)):
+                cued = np.flatnonzero(
+                    np.any(k != 0, axis=1) & (True if rows is None else np.asarray(rows))
+                )
+                if len(cued):
+                    index = xp.long(cued)
+                    used = self._unit(xp.upload(k[cued])).abs()
+                    depth, recent = depth.clone(), recent.clone()
+                    depth[index] = depth[index] + used
+                    recent[index] = recent[index] + used
+        idle = 1.0 / (1.0 + (recent / SynapticMemory.FADE_FLOOR) ** 2)
+        lost = self.fade * idle / (
+            1.0 + (depth / SynapticMemory.FADE_SCALE) ** SynapticMemory.FADE_ORDER
+        )
+        shed = self.consolidated * lost[:, :, None]
+        self.consolidated = self.consolidated - shed
+        self.strength = self.strength - shed  # each stream keeps its residual
+        self.depth = depth
+        self.recent = recent * (1.0 - 1.0 / SynapticMemory.FADE_IDLE)
+        if rows is not None:  # a life that lived no moment keeps its records as they were
+            kept = xp.flags(~np.asarray(rows, bool))
+            for name, old in zip(("consolidated", "strength", "depth", "recent"), before,
+                                 strict=True):
+                new = getattr(self, name)
+                shape = (-1,) + (1,) * (new.ndim - 1)
+                setattr(self, name, torch.where(kept.reshape(shape), old, new))
+
+
+class _LivesSynapticMemory(SynapticMemory):
+    """The place records of ``Lives``: a ``SynapticMemory`` whose arrays rest on the device as
+    ``_LivesStore``, one store per life."""
+
+    def observe(
+        self, key: np.ndarray, value: np.ndarray, write: np.ndarray | None = None, *,
+        salience: np.ndarray | None = None, value_mask: np.ndarray | None = None,
+    ) -> None:
+        key = self._port(key, len(self.pre), "key")
+        value = self._port(value, len(self.post), "value")
+        batch = len(key)
+        salience = self.salience_vector(salience, batch)
+        calling = np.ones(batch, bool) if write is None else np.asarray(write, bool)
+        observed = np.ones(value.shape, bool) if value_mask is None else np.asarray(value_mask)
+        gate = calling & np.any(key != 0, axis=1) & observed.any(axis=1)
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        held.observe_rows(key, value, calling, gate, salience, observed)
+
+    def fade_moment(self, key: np.ndarray | None) -> None:
+        if self.fade:
+            held = self._device
+            assert isinstance(held, _LivesStore)
+            held.fade_moment(key)
+
+    def reside(self, kernel: Any) -> None:
+        """The records stay where the lives rest."""
+
+    def held_values(self) -> dict[str, Any]:
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        return {
+            **{name: getattr(held, name) for name in _LivesStore.HELD},
+            "writes": self.writes, "lives_writes": held.writes.copy(),
+        }
+
+    def take_values(self, values: Any) -> None:
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        for name in _LivesStore.HELD:
+            setattr(held, name, values[name])
+        self.writes = values["writes"]
+        held.writes = values["lives_writes"]
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        index = slice(None) if rows is None else held.xp.long(rows)
+        held.strength = held.strength.clone()
+        held.strength[index] = held.consolidated[index]
+        held.mass = held.mass.clone()
+        held.mass[index] = 0.0
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        raise RuntimeError("save a life with Lives.life(i): the lives' records have a lives axis")
+
+
 class _LivesRandom:
     """Each life's own generator, drawn as its lone brain draws it: one row per life."""
 
@@ -1476,10 +1764,6 @@ def _supported(brain: Any) -> None:
     def refuse(what: str) -> ValueError:
         return ValueError(f"Lives holds the parts its lives axis covers: {what}")
 
-    if brain.hippocampus is not None:
-        raise refuse(
-            "compose with episodic=False (the store's consolidated records have no lives axis)"
-        )
     for name, what in (
         ("learned_code", "no learned code"),
         ("_episodic", "no memory_choice"),
@@ -1488,6 +1772,13 @@ def _supported(brain: Any) -> None:
     ):
         if getattr(brain, name, None) is not None:
             raise refuse(what)
+    store = brain.hippocampus
+    if store is not None and (
+        type(store) is not SynapticMemory or store.separator is not None
+        or len(brain.memories) - (brain.recall is not None) - (brain.working_memory is not None)
+        != 1
+    ):
+        raise refuse("a store of place records keyed on the observations, without a separator")
     if getattr(brain, "_coded_keys", False):
         raise refuse("no code of the observation (a code is drawn from a brain's seed)")
     recall = brain.recall
@@ -1506,8 +1797,8 @@ def _supported(brain: Any) -> None:
     if graph.apical is not None:
         raise refuse("no apical compartment")
     agent = brain.basal_ganglia
-    if agent.maturity is not None or agent.salience is not None:
-        raise refuse("no maturity and no salience")
+    if agent.salience is not None:
+        raise refuse("no salience")
 
 
 def _takes_outcome(brain: Any) -> bool:
@@ -1588,6 +1879,7 @@ class Lives:
             if not (np.array_equal(other.connectome.pre, topology.pre)
                     and np.array_equal(other.connectome.post, topology.post)):
                 raise ValueError("the lives' seeds compose different anatomies")
+        self._maturity: _LivesMaturity | None = None
         self._lived: tuple[Any, ...] | None = None  # the batch's record of its last ``live``
         self._last_arousal: tuple[Any, ...] | None = None
         if backend == "cpu":
@@ -1655,6 +1947,29 @@ class Lives:
             _LivesHearing.take(
                 brain.hearing, [cast(Hearing, b.hearing) for b in lone], lives_kernel
             )
+        maturity = None
+        if agent.maturity is not None:  # each life's own use, its own steps and gate
+            maturity = _LivesMaturity([cast(Maturity, b.basal_ganglia.maturity) for b in lone])
+            agent.maturity = None
+            agent.__dict__["_lives_maturity"] = maturity
+        self._maturity = maturity
+        store: Any = brain.hippocampus
+        if store is not None:  # each life's place records, on the device
+            store.leave_device()
+            store.__class__ = _LivesSynapticMemory
+            store._device = _LivesStore(
+                store, lives_kernel, [cast(SynapticMemory, b.hippocampus) for b in lone], maturity
+            )
+            store.gate_noise, store.maturity = None, None  # each life's, on the device
+
+            def record(keys: Any, action: Any, reward: Any, importance: Any) -> None:
+                # the lives an outcome teaches write it; a life holding its moment writes none
+                record_action(store, keys, action, reward, importance, agent._lives_learning,
+                              brain.learner.slot_offsets)
+
+            brain.__dict__["_record"] = record
+        # the lives' memories rest on their device, a fading or gated store's among them
+        brain.__dict__["_memories_stay_on_host"] = lambda: False
         self.brain = brain
 
     @property
@@ -1726,8 +2041,32 @@ class Lives:
             # no life has an action pending: a zero outcome is none, as for each lone brain
             _refuse_without_action(np.zeros(self.lives, bool), *self._outcome(reward, done))
             reward = done = None
-        with self._pending_lives(reward, done):
+        with self._moment_of_lives(x), self._pending_lives(reward, done):
             return np.asarray(self.brain.step(x, reward=reward, done=done, teacher=teacher))
+
+    def _moment_of_lives(self, x: np.ndarray, rows: np.ndarray | None = None) -> Any:
+        """A moment of the lives ``rows`` marks (every life without it), as ``live``, ``step``
+        and ``learn`` are of a lone brain: once it returns, each of their maturities relaxes and
+        their fading records fade, cued by their own rows of ``x``."""
+        from contextlib import contextmanager
+
+        brain = self.brain
+        store = brain.hippocampus
+        fading = store is not None and bool(store.fade)
+
+        @contextmanager
+        def moment() -> Any:
+            brain._life_depth += 1  # the brain's own moments within it neither relax nor fade
+            try:
+                yield
+            finally:
+                brain._life_depth -= 1
+            if self._maturity is not None:
+                self._maturity.relax(rows)
+            if fading:
+                store._device.fade_moment(brain._fade_key(x), rows)
+
+        return moment()
 
     def _outcome(self, reward: Any, done: Any) -> tuple[np.ndarray, np.ndarray]:
         r = np.zeros(self.lives) if reward is None else np.asarray(reward, dtype=float)
@@ -1766,7 +2105,10 @@ class Lives:
                 if held[i] or not held.any():  # with none pending, each refuses as alone
                     b.learn(r[i : i + 1], ended[i : i + 1], x[i : i + 1])
             return
-        with self._pending_lives(reward, done):
+        agent = self.brain.basal_ganglia
+        eligible = agent._lives_eligible
+        rows = None if agent._pending is None or eligible is None else np.asarray(eligible, bool)
+        with self._moment_of_lives(x, rows), self._pending_lives(reward, done):
             self.brain.learn(reward, done, x)
 
     def live(self, observations: Any, *, reward: Any = None, done: Any = None) -> np.ndarray:
@@ -1797,7 +2139,8 @@ class Lives:
                        done=ended[i : i + 1] if takes[i] else None)
                 for i, b in enumerate(self.brains)
             ])
-        return self._live_batched(x, r, ended)
+        with self._moment_of_lives(x):
+            return self._live_batched(x, r, ended)
 
     def _live_batched(self, x: np.ndarray, r: np.ndarray, ended: np.ndarray) -> np.ndarray:
         from types import MappingProxyType
@@ -1881,6 +2224,29 @@ class Lives:
                 "retry live(observations) without reward or done"
             ) from exc
         self._lived = None
+        woken = routine & np.array([a.aroused for a in arousals], dtype=bool)
+        recorded = np.zeros(lives, bool)
+        if woken.any() and brain.hippocampus is not None:
+            # the outcome that woke a calm life is written to its records for the situation it
+            # was chosen in, at its size; the record can change the moment's read, so the woken
+            # lives settle again under it, warm, while every other life holds its answer
+            assert lived is not None
+            record_action(
+                brain.hippocampus, brain._key_of(lived[4], None), lived[5], r,
+                SynapticMemory.salience_vector(np.abs(r), lives), woken,
+                learner.slot_offsets,
+            )
+            recorded = woken
+            agent._free, agent._free_brain, agent._drive = answer[1], brain.brain, answer[0]
+            root = brain.brain._torch.root
+            root._hold_outer = brain.brain._torch.torch.as_tensor(
+                ~woken, device=brain.brain._torch.device
+            )
+            try:
+                answer = brain._settled(x)
+            finally:
+                root._hold_outer = None
+            sweeps += int(brain._last_settlement["steps"])
         base = float(learner.config.temperature)
         slots = learner.slot_count
         aroused = np.array([a.aroused for a in arousals], dtype=bool)
@@ -1909,7 +2275,8 @@ class Lives:
             learning_sweeps += int(agent._pending[1].steps) + int(agent._pending[2].steps)
         chosen = action.reshape(lives, -1) == best.reshape(lives, -1)
         self._lived = (
-            state, np.asarray(agent.value(state), dtype=float).copy(), aroused, chosen.all(axis=1)
+            state, np.asarray(agent.value(state), dtype=float).copy(), aroused, chosen.all(axis=1),
+            x.copy(), np.asarray(action).copy(),
         )
         readings = []
         for i, arousal in enumerate(arousals):
@@ -1920,7 +2287,8 @@ class Lives:
                 "temperature": temperature,
                 "temperatures": None if temperature is None
                 else tuple(float(t) for t in temperatures[i]),
-                "heated_slot": heated[i], "learned": bool(sampled[i]), "recorded": False,
+                "heated_slot": heated[i], "learned": bool(sampled[i]),
+                "recorded": bool(recorded[i]),
                 "sweeps": int(sweeps), "learning_sweeps": int(learning_sweeps),
             }))
             arousal.lived(sweeps, learning_sweeps)
@@ -1953,7 +2321,9 @@ class Lives:
         ``velocity``, ``velocity_bias``, ``second_moment`` and ``second_moment_bias`` and its
         counts ``updates`` and ``contrast_updates``; with a recall memory ``recall``, its maps
         by kind; with carried gains ``carried_gains`` by route, their ``carried_second`` and
-        ``carried_count``."""
+        ``carried_count``; with the store ``store``, its ``consolidated`` records and their
+        ``writes`` (with maturity their ``gate_noise``, with ``memory_fade`` their
+        ``fade_depth`` and ``fade_recent``); with maturity ``maturity_use``."""
         if self.brains is not None:
             b = self.brains[i]
             learner = b.learner
@@ -1974,6 +2344,18 @@ class Lives:
                 out["carried_gains"] = b.hearing.gains()
                 out["carried_second"] = np.array(b.hearing.second, dtype=float)
                 out["carried_count"] = int(b.hearing.count)
+            store: Any = b.hippocampus
+            if store is not None:
+                records: dict[str, Any] = {"consolidated": np.array(store.consolidated),
+                                           "writes": int(store.writes)}
+                if store.gate_noise is not None:
+                    records["gate_noise"] = np.array(store.gate_noise)
+                if store.fade:
+                    records["fade_depth"] = np.array(store.fade_depth)
+                    records["fade_recent"] = np.array(store.fade_recent)
+                out["store"] = records
+            if b.basal_ganglia.maturity is not None:
+                out["maturity_use"] = float(b.basal_ganglia.maturity.use)
             return out
         brain = self.brain
         kernel = brain.brain._torch
@@ -1997,6 +2379,10 @@ class Lives:
             out["carried_gains"] = brain.hearing.gains_of(i)
             out["carried_second"] = brain.hearing.lives_second[i].copy()
             out["carried_count"] = int(brain.hearing.lives_count[i])
+        if brain.hippocampus is not None:
+            out["store"] = brain.hippocampus._device.records_of(i)
+        if self._maturity is not None:
+            out["maturity_use"] = float(self._maturity.use[i])
         return out
 
     def life(self, i: int) -> Any:
@@ -2039,4 +2425,17 @@ class Lives:
             lone.hearing.count = held["carried_count"]
         if self._arousals[i] is not None:
             lone.arousal = type(self._arousals[i]).from_dict(self._arousals[i].to_dict())
+        if "store" in held:
+            store: Any = lone.hippocampus
+            records = held["store"]
+            store.consolidated = records["consolidated"]
+            store.writes = records["writes"]
+            if "gate_noise" in records:
+                store.gate_noise = records["gate_noise"]
+            if "fade_depth" in records:
+                store.fade_depth = records["fade_depth"]
+                store.fade_recent = records["fade_recent"]
+        if "maturity_use" in held:
+            mature = cast(Maturity, lone.basal_ganglia.maturity)
+            mature.use = held["maturity_use"]  # the store's own as well
         return lone

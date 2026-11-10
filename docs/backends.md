@@ -426,6 +426,11 @@ parameters carry a lives axis:
   updates the lives it taught, each at its own optimizer's count;
 - the recall memory's address and position lessons, the carried gains' steps and a reward's update move each life
   on its own row and its own dopamine;
+- with the store (`episodic=True`) each life's place records rest on the device with a lives axis: an outcome
+  writes the records of the lives it teaches and decays the residual of those whose outcome it is, the outcome that
+  wakes a calm life writes that life's records and settles it again under them while the others hold, with
+  `memory_fade` each life's records fade by its own depths and recent use at each of its moments, and with
+  `maturity` each life's use scales its own actor steps and engages its own surprise gate on its records;
 - in `live` each life keeps its own `Arousal` on the host: the lives whose action was sampled learn from their
   outcomes while the others hold their state and parameters, the calm lives' eligibility fades by one moment and
   their ended streams start from rest, one qualified settle answers every life (a calm life's forecast is its
@@ -442,7 +447,10 @@ L4 reads 4e-3). On the CPU each life is the lone brain itself, to the bit. Conti
 `live` 30 moments of sparse rewards and endings, with a teacher's step at every fifth, keep every action, every
 mood and heated slot of their lone brains, and every learned part and every arousal reading within 1e-9, with one
 or two motor slots, with the recall memory and without; a life that `live` leaves calm takes no outcome in a
-`step` or `learn`, as its lone brain takes none.
+`step` or `learn`, as its lone brain takes none. With the store, alone, fading, under maturity and with both, the
+same holds over 30 moments of `live` in which an occasional outcome wakes a calm life and writes its records, and
+over 24 moments of `step`: every action and mood its lone brain's, every learned part, record, noise scale, depth
+and use within 1e-9.
 
 Seconds per life and moment of that composition stepping its own observations and rewards, read with
 [`benchmarks/device/lives.py`](../benchmarks/device/lives.py) on one AWS g6.xlarge (an NVIDIA L4 and four vCPUs
@@ -495,9 +503,10 @@ it is 7.4 times as fast at 128 brains and 17.8 times at 1,024 (7.7 and 17.0 time
 the pool is faster. A lesson of lives runs its phases on every life, where one brain's streams run them on the rows
 it teaches. MLX has no lives axis in the library; one brain's streams there bound what one could reach.
 
-`Lives` holds the default composition without the store, with or without the recall memory, the carried gains
-and arousal, at any teaching point, with one or several regions, observers and motor slots. It refuses, naming the
-part: the store (`episodic=True`, whose consolidated records have no lives axis) and `memory_choice`; a maturity; a learned or fixed code and image inputs; an apical compartment;
+`Lives` holds the default composition without the store and with it (`episodic=True`), with or without the
+recall memory, the carried gains, arousal, `memory_fade` and maturity, at any teaching point, with one or several
+regions, observers and motor slots. It refuses, naming the part: `memory_choice` and a store with a separator; a
+learned or fixed code and image inputs; an apical compartment;
 rehearsal and qualified teaching; the efference copy and the heard history; a recall memory with several heads, a
 window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
 life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays

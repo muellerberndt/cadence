@@ -19,6 +19,15 @@
   every action, mood and heated slot is its lone brain's and every learned part and arousal
   reading agrees within 1e-9 over 30 moments of sparse rewards, endings and teaching. Lives that
   never call `live` keep every bit of 0.96.0.
+- **The store in `Lives`.** `Lives(..., episodic=True)` holds each life's place records on the
+  device with a lives axis: an outcome writes the records of the lives it teaches, the outcome
+  that wakes a calm life writes that life's records and settles it again under them, and with
+  `memory_fade` and `maturity` each life fades its own records, scales its own actor steps by its
+  own use and gates its own writes by its own surprise. `parameters(i)` and `life(i)` carry each
+  life's records, their noise scales, depths and use. In float64 every action and mood is the
+  lone brain's and every learned part and record agrees within 1e-9 over 30 moments; on the CPU
+  each life is its lone brain to the bit. `Lives` composes without the store unless
+  `episodic=True` is named, as in 0.96.0.
 
 ## 0.96.0 — 2026-11-10
 

@@ -2,12 +2,14 @@
 
 A life is ``Brain.compose(35, 18, seed=k)``, the chamber's default brain, stepping ``--moments``
 moments of ``step`` on observations and rewards of its own. ``--composition lives`` composes it
-with ``episodic=False``, the default composition without the store, which ``cadence.Lives`` holds;
-``--composition plain`` with ``recall=False`` as well. ``--teach N`` gives every N-th moment a
-teacher's label. ``--live`` composes each life with arousal (``arousal=True``, its youth
-``--youth`` moments) and runs ``live`` in place of ``step``: each life's own rewards and episode
-ends (one moment in ``--ends``), calm and aroused moments mixing once its youth is over. Four ways
-to run ``--lives`` of them (``streams`` holds no ``--live``, which follows one stream a brain):
+with ``episodic=False``, the default composition without the store; ``--composition plain`` with
+``recall=False`` as well; ``--composition default`` holds the store (``episodic=True``), with
+``--fade`` its ``memory_fade`` and with ``--maturity`` each life's maturity. ``--teach N`` gives
+every N-th moment a teacher's label. ``--live`` composes each life with arousal (``arousal=True``,
+its youth ``--youth`` moments) and runs ``live`` in place of ``step``: each life's own rewards and
+episode ends (one moment in ``--ends``), calm and aroused moments mixing once its youth is over.
+Four ways to run ``--lives`` of them (``streams`` holds no ``--live``, which follows one stream a
+brain):
 
 * ``serial``: one process steps every life in turn on ``--backend``; each life is its own brain.
 * ``pool``: ``--workers`` processes on the CPU, one thread each, each stepping its share of the
@@ -176,9 +178,7 @@ def batched(lives: int, backend: str, moments: int, warm: int) -> dict[str, Any]
     start = time.perf_counter()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        held = cd.Lives(INPUTS, MOTOR, lives, **place, **{
-            k: v for k, v in COMPOSITION.items() if k != "episodic"
-        })
+        held = cd.Lives(INPUTS, MOTOR, lives, **place, **COMPOSITION)
     built = time.perf_counter() - start
     xs, rs = _world(1000, lives, moments + warm)
     if LIVE:  # each life's own world, as the serial and pool ways give it
@@ -229,6 +229,8 @@ def main() -> None:
     parser.add_argument("--youth", type=int, default=10, help="--live: the arousal's youth")
     parser.add_argument("--ends", type=float, default=0.05,
                         help="--live: the share of moments that end an episode")
+    parser.add_argument("--fade", type=float, default=0.0, help="memory_fade of the store")
+    parser.add_argument("--maturity", action="store_true", help="each life's maturity")
     parser.add_argument("--out")
     args = parser.parse_args()
     global TEACH
@@ -244,8 +246,12 @@ def main() -> None:
         COMPOSITION.update(episodic=False)
     elif args.composition == "plain":
         COMPOSITION.update(recall=False, episodic=False)
-    elif "lives" in args.ways:
-        parser.error("the lives way holds --composition lives or plain")
+    else:  # the default composition, its store named for ``Lives``, which composes without it
+        COMPOSITION.update(episodic=True)
+    if args.fade:
+        COMPOSITION.update(memory_fade=args.fade)
+    if args.maturity:
+        COMPOSITION.update(maturity=True)
     sink = open(args.out, "a") if args.out else sys.stdout
     print(json.dumps({"environment": environment()}), file=sink, flush=True)
     for lives in args.lives:
@@ -264,6 +270,7 @@ def main() -> None:
                 backend = args.backend
             row = {"way": way, "lives": lives, "backend": backend,
                    "composition": args.composition, "teach": args.teach,
+                   "fade": args.fade, "maturity": args.maturity,
                    **({"live": True, "youth": args.youth, "ends": args.ends} if args.live else {}),
                    **row}
             print(json.dumps(row), file=sink, flush=True)

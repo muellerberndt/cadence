@@ -22,8 +22,8 @@ MAPS = ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_map
 def lone(seed: int, composition: dict | None = None, **place) -> cd.Brain:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return cd.Brain.compose(INPUTS, ACTIONS, seed=seed, episodic=False, **OPTIONS,
-                                **(composition or {}), **place)
+        return cd.Brain.compose(INPUTS, ACTIONS, seed=seed,
+                                **{"episodic": False, **OPTIONS, **(composition or {})}, **place)
 
 
 def some_lives(count: int, composition: dict | None = None, **place) -> cd.Lives:
@@ -82,6 +82,18 @@ def gaps(lives: cd.Lives, brains: list[cd.Brain]) -> dict[str, float]:
                 widen("gain " + name, gain, brain.carried_gains[name])
             widen("carried_second", held["carried_second"], brain.hearing.second)
             assert held["carried_count"] == brain.hearing.count
+        store = brain.hippocampus
+        if store is not None:
+            records = held["store"]
+            widen("store", records["consolidated"], store.consolidated)
+            assert records["writes"] == store.writes
+            if store.gate_noise is not None:
+                widen("gate_noise", records["gate_noise"], store.gate_noise)
+            if store.fade:
+                widen("fade_depth", records["fade_depth"], store.fade_depth)
+                widen("fade_recent", records["fade_recent"], store.fade_recent)
+        if agent.maturity is not None:
+            widen("maturity_use", held["maturity_use"], agent.maturity.use)
     return out
 
 
@@ -324,7 +336,7 @@ def test_the_lives_recall_memory_rests_on_the_device_alone():
 
 @pytest.mark.parametrize(
     ("options", "named"),
-    [({"episodic": True}, "episodic=False"),
+    [({"episodic": True, "memory_choice": True}, "memory_choice"),
      ({"apical": 0.25, "modules": (16, 8)}, "apical"), ({"recall_heads": 2}, "one head"),
      ({"efference_amplitude": 1.0}, "efference"), ({"learning_rehearsal": 0.5}, "rehearsal"),
      ({"recall_cortex_norm": True}, "cortex at unit norm")],
@@ -355,18 +367,21 @@ AROUSED = {"arousal": True, "arousal_youth": 6}  # a short youth: calm and arous
 
 
 def lived(lives: cd.Lives, brains: list[cd.Brain], moments: int, seed: int = 0,
-          teaches: int = 5, slots: int = 1) -> dict[str, int]:
+          teaches: int = 5, slots: int = 1, jolts: float = 0.0) -> dict[str, int]:
     """Live the lives and the lone brains alike: sparse rewards, endings, and every ``teaches``
     moments a step with a teacher in place of ``live``. Returns the count of differing actions
     and moods, and of the calm, aroused and heated moments seen."""
     rng = np.random.default_rng(seed)
     count = lives.lives
-    seen = {"actions": 0, "moods": 0, "calm": 0, "aroused": 0, "heated": 0, "taught": 0}
+    seen = {"actions": 0, "moods": 0, "calm": 0, "aroused": 0, "heated": 0, "taught": 0,
+            "recorded": 0}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         for t in range(moments):
             x = np.eye(INPUTS)[rng.integers(INPUTS, size=count)] * rng.random((count, INPUTS))
             reward = rng.random(count) * (rng.random(count) < 0.5)
+            if jolts:  # an occasional outcome far from the usual: it wakes a calm life
+                reward = np.where(rng.random(count) < jolts, -20.0 * rng.random(count), reward)
             done = rng.random(count) < 0.15
             labels = lives.actions // slots
             teacher = rng.integers(labels, size=(count, slots) if slots > 1 else count)
@@ -392,9 +407,11 @@ def lived(lives: cd.Lives, brains: list[cd.Brain], moments: int, seed: int = 0,
                 ours, theirs = lives.last_arousal[i], brain.last_arousal
                 seen["moods"] += int(ours["mode"] != theirs["mode"]
                                      or ours["heated_slot"] != theirs["heated_slot"]
+                                     or ours["recorded"] != theirs["recorded"]
                                      or abs(ours["level"] - theirs["level"]) > 1e-9)
                 seen["calm" if theirs["mode"] == "routine" else "aroused"] += 1
                 seen["heated"] += int(theirs["heated_slot"] is not None)
+                seen["recorded"] += int(theirs["recorded"])
     return seen
 
 
@@ -415,7 +432,7 @@ def test_living_lives_on_the_cpu_are_lone_brains_to_the_bit(composition):
     composition = {**composition, **AROUSED}
     lives = cd.Lives(INPUTS, ACTIONS, 3, seeds=[4, 5, 6], **OPTIONS, **composition)
     brains = [lone(s, composition, backend="cpu") for s in (4, 5, 6)]
-    seen = lived(lives, brains, 16)
+    seen = lived(lives, brains, 16, jolts=0.05)
     assert seen["actions"] == seen["moods"] == 0, seen
     assert max(gaps(lives, brains).values()) == 0.0
     assert mood_gaps(lives, brains) == 0.0
@@ -465,3 +482,56 @@ def test_live_needs_each_life_composed_with_arousal():
     lives = some_lives(2, backend="torch", device="cpu")
     with pytest.raises(ValueError, match="arousal"):
         lives.live(np.eye(INPUTS)[[1, 2]])
+
+
+# -- the store of place records, its fade and maturity (cadence#293)
+
+STORES = {
+    "store": {"episodic": True},
+    "fading store": {"episodic": True, "memory_fade": 0.05},
+    "maturity": {"episodic": True, "maturity": True, "maturity_scale": 0.002},
+    "all": {"episodic": True, "memory_fade": 0.05, "maturity": True, "maturity_scale": 0.002},
+}
+
+
+@pytest.mark.parametrize("composition", STORES.values(), ids=STORES)
+def test_lives_with_the_store_on_the_cpu_are_lone_brains_to_the_bit(composition):
+    composition = {**composition, **AROUSED}
+    lives = cd.Lives(INPUTS, ACTIONS, 3, seeds=[4, 5, 6], **OPTIONS, **composition)
+    brains = [lone(s, composition, backend="cpu") for s in (4, 5, 6)]
+    seen = lived(lives, brains, 16, jolts=0.05)
+    assert seen["actions"] == seen["moods"] == 0, seen
+    assert max(gaps(lives, brains).values()) == 0.0
+
+
+@pytest.mark.parametrize("composition", STORES.values(), ids=STORES)
+@pytest.mark.parametrize("device", DEVICES)
+def test_each_life_with_the_store_follows_its_lone_brain_in_float64(device, composition):
+    composition = {**composition, **AROUSED}
+    place = {"backend": "torch", "device": device, "precision": "float64"}
+    lives = some_lives(6, composition, **place)
+    brains = [lone(s, composition, **place) for s in range(6)]
+    seen = lived(lives, brains, 30, jolts=0.05)
+    assert seen["actions"] == seen["moods"] == 0, seen
+    assert seen["calm"] > 20 and seen["aroused"] > 20 and seen["recorded"] > 0, seen
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
+    assert mood_gaps(lives, brains) < 1e-9
+    for i, brain in enumerate(brains):
+        assert int(lives.parameters(i)["store"]["writes"]) == brain.hippocampus.writes
+    assert sum(b.hippocampus.writes for b in brains) > 20  # the records were written
+    if composition.get("maturity"):  # matured: the gate engaged, the steps slowed
+        assert max(b.basal_ganglia.maturity.factor() for b in brains) < 0.5
+    copy = lives.life(2)  # life 2 alone carries its records and its maturity
+    np.testing.assert_allclose(copy.hippocampus.consolidated,
+                               brains[2].hippocampus.consolidated, atol=1e-9)
+
+
+@pytest.mark.parametrize("composition", STORES.values(), ids=STORES)
+def test_stepping_lives_with_the_store_follow_their_lone_brains(composition):
+    place = {"backend": "torch", "device": "cpu", "precision": "float64"}
+    lives = some_lives(4, composition, **place)
+    brains = [lone(s, composition, **place) for s in range(4)]
+    assert a_life(lives, brains, 24) == 0
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
