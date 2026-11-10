@@ -250,8 +250,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     readings: list[dict[str, Any]] = []
     decay = 1.0
     if kind == "brain":
-        cfg = brain.basal_ganglia.config
-        decay = float(cfg.gamma * cfg.lam)
+        decay = float(brain.basal_ganglia.config.decay)  # the actor's, with a hold its own
     episodes = [] if control == "frozen" else tk.schedule(task, founder, delay, budgets[-1])
     if control == "frozen":  # the newborn, read at every budget
         newborn = read()
