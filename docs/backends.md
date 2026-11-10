@@ -474,6 +474,21 @@ The same with a teacher's label at every fourth moment (`--teach 4`):
 | Each brain in turn, one core | M4 | 1.56 ms | 1.48 ms |  |  |
 | `Lives` on the torch CPU device | M4 | 1.48 ms | 1.32 ms |  |  |
 
+Continuing lives that `live` (`--live`: `arousal=True` with a youth of 10 moments, each life's own rewards and
+episode ends, one moment in 20 ending one), over 20 moments after 12, past the youth, where 52 to 54 in 100 of
+the lives' moments are calm:
+
+| Way | Machine | 12 lives | 128 lives | 1,024 |
+| --- | --- | ---: | ---: | ---: |
+| `Lives`, `backend="torch"` | L4 | 1.31 ms | 0.163 ms | 0.090 ms |
+| Process pool, four CPU processes | L4 box | 0.422 ms | 0.390 ms | 0.408 ms |
+| Each brain in turn, one core | L4 box | 1.03 ms | 1.03 ms |  |
+
+A lone brain's calm moment skips the eligibility phases and the update, so `live` in the pool costs about half a
+`step`. A batch with any aroused life runs the phases for every life and holds the calm ones, so `Lives` pays
+for its aroused lives across the batch: 2.4 times as fast as the pool at 128 lives and 4.5 times at 1,024, and
+the pool is faster at 12.
+
 On the L4, `Lives` runs at the speed of one brain's streams at 128 and 512 brains and at 1.4 times their time at
 1,024, where every life updates synapses of its own and the streams share one update. Against the four-process pool
 it is 7.4 times as fast at 128 brains and 17.8 times at 1,024 (7.7 and 17.0 times with the teacher). At 12 lives
