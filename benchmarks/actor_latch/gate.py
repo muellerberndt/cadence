@@ -39,10 +39,15 @@ def doom_lives(directory: Path) -> dict[tuple[str, str, int], dict[str, Any]]:
             continue
         lines = [json.loads(line) for line in path.read_text().splitlines() if line]
         rows = [line for line in lines[1:] if "episode" in line]
+        last = rows[-max(len(rows) // 4, 1):]
+        shares = None
+        if last and "buttons" in last[0]:
+            buttons = np.array([r["buttons"] for r in last]).sum(axis=0)
+            shares = (buttons / buttons.sum()).tolist()
         out[(match[1], match[2], int(match[3]))] = {
             "returns": [r["return"] for r in rows],
             "parameters": lines[0]["run"]["parameters"],
-            "shares": None,
+            "shares": shares,
         }
     return out
 
