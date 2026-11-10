@@ -20,13 +20,13 @@ CASES = {
     "efference and history": {"efference_amplitude": 1.0, "history_decays": (0.5, 0.9),
                               "apical": 0.25},
     "torch": {"apical": 0.25, "recall": True, "recall_founder": True, "backend": "torch"},
-    "copy and own actions": {"recall": True, "recall_founder": True, "recall_copy": 1.0, "recall_tokens": [0, 1, 2],
+    "tokens and own actions": {"recall": True, "recall_founder": True, "recall_tokens": [0, 1, 2],
                              "recall_action": True, "apical": 0.25},
-    "held heads, copy and own actions": {
-        "learned_code": 8, "attention": True, "recall": True, "recall_heads": 2, "recall_copy": 1.0,
+    "held heads, tokens and own actions": {
+        "learned_code": 8, "attention": True, "recall": True, "recall_heads": 2,
         "recall_tokens": [0, 1, 2], "recall_action": True, "apical": 0.25,
     },
-    "torch copy and own actions": {"apical": 0.25, "recall": True, "recall_founder": True, "recall_copy": 1.0,
+    "torch tokens and own actions": {"apical": 0.25, "recall": True, "recall_founder": True,
                                    "recall_tokens": [0, 1, 2], "recall_action": True,
                                    "backend": "torch"},
 }

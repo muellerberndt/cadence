@@ -1,5 +1,253 @@
 # Changelog
 
+## 0.96.0 — 2026-11-10
+
+Many brains of the default composition run as one on a device, and one brain runs its moment in
+compiled calls on the CPU: `cadence.Lives(inputs, actions, lives, backend="torch")` steps up to
+a thousand independent lives of one anatomy in one call per moment, each life the lone brain of
+its seed, and `learning_compiled_moment=True` does the work around a moment's solve in compiled
+calls, a grammar-chamber pass in .54 to .56 of the default's seconds on one core. Both leave every
+bit of a brain that names neither as it was. Three opt-ins join them: `memory_fade`, under which
+place records nobody uses fade and deeply used ones keep, and `recall_cortex_norm`,
+`recall_gain_after` and `recall_gain_next`, which let the composed attention circuit form on more
+founders. The copy pathway (`recall_copy`) leaves, a `synapse_rate` of zero holds a synapse's
+optimizer moments and its neuron's bias, and a brain whose store fades saves its own checkpoint
+format. Every default is unchanged: a brain that names none of the new options lives, saves and
+describes to the bit as on 0.95.2 on `backend="cpu"`, with `recall_copy` the one refusal.
+
+### New
+
+#### Many lives at once, and the lifecycle on the device (#274)
+
+- **`Lives`: independent lives over one topology, stepped together.** `cd.Lives(inputs, actions,
+  lives, backend="torch")` holds many brains of the default composition without the store
+  (`episodic=False`), each with its own synapses, optimizer, critic, eligibility, recall memory
+  (slots, address and position maps), carried gains, working trace and random generator, one stream
+  each, and steps them in one call per moment. Every settle reads each stream through its own
+  life's synapses and stops each life where its own stream meets the tolerance; a lesson judges
+  each life by its own answer and updates the lives it taught; a reward moves each life on its own
+  dopamine. Each life follows the lone brain of its seed on that device: in float64 every action
+  the same and every learned part within 1e-9 over 30 moments of rewards, endings and teaching; on
+  the CPU it is that lone brain to the bit. On an NVIDIA L4, 128 lives step at 0.118 ms a life and
+  moment, the speed of one brain's streams, against 0.876 ms in a four-process pool, and 1,024
+  lives at 0.049 ms. It holds one or several regions, observers and motor slots at any teaching
+  point, with or without the recall memory, on CUDA and the torch CPU device, and refuses by name
+  the store, arousal, a maturity, a code, an apical compartment, rehearsal, the efference copy, the
+  heard history and the recall options that keep the memory on the host, the cortex at unit norm
+  among them; MLX has no lives axis ([many lives at
+  once](docs/backends.md#many-lives-at-once)). A rate of zero holds each life's synapses, biases
+  and optimizer moments as it holds a lone brain's.
+- **An outcome reads its checks once on torch.** Where the critic rests on the device, the
+  dopamine is made there from the critic's value, and an outcome's checks (the dopamine's, the
+  critic's, the recall memory's reward step and the update's), the critic's bias step, the
+  report's steps and the dopamine of every row come to the host in one read before anything is
+  installed. A torch update and a lesson read their checks and report in one read where they read
+  five. On MLX the critic's and the recall memory's checks are made in the update's launch. The
+  CPU path keeps its bits; a device life agrees with the host's as before.
+- **A CUDA card the default backend's table has not read is calibrated** once per machine, in
+  place of the margin of twice the work: the chamber's brain is timed on the card and on one core,
+  and the crossing scales the table's ([the default
+  backend](docs/backends.md#the-default-backend)); `CADENCE_CALIBRATE=0` keeps the margin. On an
+  NVIDIA L4 it reads 50 to 60 rows of the chamber's brain against the A10G's 44.
+- **The ledger of a moment.** [`benchmarks/device/ledger.py`](benchmarks/device/ledger.py) lists
+  every crossing between the host and the device that a `live`, `step`, `lesson` or `act` makes,
+  by the place in the library that made it, with its bytes and time, beside the seconds of the
+  moment, on torch and MLX. A moment's bytes are small; its synchronizations are what it pays for.
+- The options that keep a moment's memories on the host each state what they add that the device
+  form does not hold, `memory_fade` and `recall_cortex_norm` among them ([memories on the
+  device](docs/backends.md#memories-on-the-device)).
+
+#### The compiled moment (opt-in, #282)
+
+`learning_compiled_moment=True` (`Brain.compose`, `retune`, `LearnerConfig(compiled_moment=True)`)
+does the work around the solve kernels of a moment in compiled calls on the CPU. A greedy act is
+one compiled call: the moment's drive (the sensory part, the working trace, the recall memory's
+read, with the address and every position term through one product of the maps, which stay packed
+until a lesson replaces one, and the place store's read), the free solve, the choice, the working
+trace's step and the memory's write; the act that begins its streams is one too. A lesson by
+surprise judges in one call, and where it teaches a row the lesson is one call more, from its
+phases to its written efficacies: the free phase, the two nudged phases and their checks, the
+contrast, the optimizer's step with the tied and bounded efficacies, the address lesson and the
+carried gains' contrast and step, and Python stores what the call returns (a learner with frozen
+or tied synapses or per-synapse rates, and an update that is refused, take the passes in turn).
+With the option the lesson's contrast is one compiled pass in each of its paths, its block
+products through the BLAS that Numba calls. An act after a lesson that taught nothing takes the
+lesson's read as its own, as it takes the lesson's solve, and writes its moment in the choice's
+pass. The equations are the ordinary path's and the sums run in another order, so the bits are
+other ones. Off by default; off, every bit is as before: the identity, options and slots batteries
+read no difference and the founder parity reads 0 of 24 lives differing against the tree before
+the change on one machine, and twelve chamber lives of the default brain read the same panels and
+work. Several read heads, a window, the command or when in the slots, the gains, a learned code or
+a separator take the ordinary path. Beside each other option of this release
+(`recall_cortex_norm`, `memory_fade`, `maturity`, the delayed gains, a synapse rate of zero) a life
+of lessons, acts, sampled moments and outcomes keeps its bits through every compiled path and
+agrees with the ordinary path to rounding (`tests/test_compiled_moment.py`); with
+`recall_cortex_norm` the compiled act carries the cortex at unit norm as `Recall.witness` does.
+
+On one Xeon 8488C core with nothing else running, in one session, a grammar-chamber pass of the
+default brain takes .54 to .56 of its seconds with the option (67.6 to 70.8 s against 36.7 to
+39.5 s over three founders) and 2.3 to 2.4 times the matched transformer's 15.9 to 16.2 s, where
+the default takes 4.2 to 4.4: under the issue's 2.5 times in that session. The kernels take
+26.9 s of the compiled pass, 1.7 times the transformer: the act's and the judgment's call 20.8 s
+and the taught lesson's 6.0 s. What stands around them takes 7.2 s, 4.2 s around an act's one
+call (about 85 microseconds an act) and 3.0 s around a lesson's (about 130 a lesson), and the
+chamber's own loop 1.7 s (`benchmarks/grammar/cost.py`, which reads both the seconds and the
+parts and warms every kernel before its clock;
+[the compiled moment](docs/tune.md#the-compiled-moment-opt-in)). Seconds differ by a tenth and
+more between runs and machines, the transformer's more than the brain's: across sessions the
+default read 4.2 to 5.3 times the transformer, and at 4.8 the option's .54 to .56 is 2.6 to 2.7
+times. Within a run the option's share of the default's seconds is steady, and it is the number to
+read. The kernels and the chamber's loop are .42 of the default's seconds and the Python around
+the calls .11, so 2.5 times at a default of 4.8 takes fewer calls per moment (#291).
+
+The panels, the option less the default:
+
+- The grammar chamber over 12 paired fresh lives (founders 0 to 2, seeds 2000 to 2003): clauses
+  -.012 (s.e. .012), two distractors -.005 (.040), held-out +.004 (.015), roles +.010 (.032),
+  brackets +.008 (.027), paths -.014 (.010), two hops -.031 (.017), three hops +.022 (.040); over
+  36 (seeds 2000 to 2011): -.011 (.007), -.012 (.017), +.002 (.016), -.003 (.020), -.010 (.019),
+  +.004 (.014), +.003 (.018), -.010 (.036). Every difference is under .07 and within two standard
+  errors. The one-call paths keep the option's bits, the lesson in one call among them: the
+  twelve lives read the same panels and work to the bit before and after them.
+- The sequence battery (look back and n-back with and without held tokens, two hops, three
+  founders): -.0013 (s.e. .0042) over 15 paired lives.
+
+#### Records that fade with disuse (opt-in, #253)
+
+`Brain.compose(..., memory_fade=1.2e-4)` gives the store's place records the dynamics of a habit:
+a record nobody uses fades, and a deeply used one fades far more slowly. Each key coordinate keeps
+its depth (the unit cue's magnitude summed over the moments that cue it and the writes that use
+it) and its recent use (the moments' sum at `1 - 1/2,000` a moment); every moment of life an idle
+record loses `memory_fade / (1 + (depth / 2000) ** 4)` of itself. No count is kept. The default is
+0.0, and a brain without the setting is the founder's to the bit on `backend="cpu"`: its arrays,
+checkpoints, descriptions and parameter counts are unchanged. A fading store rests on the host.
+
+A brain with the setting saves checkpoint format `cadence-brain/3`, with a maturity or without.
+0.95.2 and earlier refuse the file ("unsupported Brain checkpoint format"), where they would
+load it with the fade off. `Brain.load` reads `cadence-brain/1`, `/2` and `/3`; a brain without
+the setting saves `cadence-brain/1`, or `/2` with maturity, as before.
+
+On 24 fresh founders of the competing-skills chamber, with `maturity=True`, a skill practised
+for 2,000 moments keeps .36 of itself over 40,000 blank moments and one practised for 40,000
+keeps 1.00, and relearning after disuse beats first learning by +4.3 and +4.9 points (s.e. 1.1).
+Without the setting both keep 1.00. The chambers from birth, P4 with a mature skill and the short
+ring read as without it, and in the robot arena (48 nurseries from birth, 140 fight runs, 48
+revision lives) the fights, the acquisition and the revision test hold every gate that maturity
+alone holds (#253). See
+[records that fade with disuse](docs/memory.md#records-that-fade-with-disuse-opt-in).
+
+#### The composed attention circuit: the cortex at the event's weight, the gains released late (#269)
+
+- `recall_cortex_norm=True` (opt-in): every map of the read reads the cortex of the moment before
+  at unit norm per stream, so a lesson's step on the cortex columns weighs no more than its step
+  on the event's rows. On the indirect-object chamber (`benchmarks/heads`) it moves the lives that
+  form the composed circuit from 2 to 7 of 12 fresh founders and keeps the taught second hop on 12
+  of 12. It keeps the memory off the device path. The default and `backend="cpu"` lives are
+  unchanged.
+- `recall_gain_after=n` and `recall_gain_next=g` (opt-in, with `recall_gain`): the learned gains
+  drive nothing and learn nothing through the first `n` lessons, then every next port's gain
+  starts at `g` and every recall port's at zero; `brain.recall.gain_lessons` counts the lessons
+  and a saved brain keeps it. With the cortex at unit norm, `n=1000` and `g=10`, never-taught
+  names are said at .97 to 1.00 on 7 of 12 fresh founders with the taught second hop at .99 to
+  1.00 on 12 of 12, one life short of #269's bar. At their founders (0 and 0.0) a brain lives as
+  without them.
+
+### Changed and removed: the candidates 0.95.0 kept (#281)
+
+- **`Learner.synapse_rate` of zero holds the whole unit.** A synapse at rate zero takes no step of
+  its own and the optimizer keeps its running moments (`velocity`, `second_moment`) as they are,
+  where 0.95.2 kept accumulating its contrast into them. A neuron whose every inbound synapse
+  steps at zero holds its bias and the bias's moments (`velocity_bias`, `second_moment_bias`) the
+  same way, where 0.95.2 stepped the bias. `Learner.held()` names the held synapses and neurons by
+  their rates. A reciprocal pair shares one efficacy and steps by the mean of its two directions'
+  steps, so the pair holds where both directions are at rate zero; one direction alone at zero
+  takes half its partner's step (measured: 1.6e-3 on both after three lessons), while `held()`
+  names it and its moments stay. The rule holds for lessons and rewards on the CPU, torch and MLX,
+  and in `Lives`. What changes: a learner with a rate of exactly zero on some synapse saves those
+  moments at the values they held when the rate went to zero (a newborn's zeros), and the held
+  neurons' biases and bias moments at theirs; every other value of such a learner, and every
+  learner whose rates are all above zero or absent, is as on 0.95.2 to the bit. No test, benchmark
+  or composed brain sets a rate of zero, so no recorded bytes change.
+- **Removed: the copy pathway, `recall_copy`.** `recall_gain` (0.95.0, #262) is the learned path
+  from a read to its token's action, and the pathway needed the tokens' label, which cost the
+  reads only position finds (look back 0.25 to 0.33 against 0.99 to 1.00) and the grammar
+  chamber's paths (#259). Write `recall_gain=1.0, recall_tokens=...` in its place, or nothing
+  where the task needs no token no lesson used. `recall_copy` is refused at `compose` and `retune`
+  with that sentence, and a saved memory with the pathway is refused by name: cadence 0.95.2 runs
+  it. A saved memory without it loads as before. `recall_tokens` stays, a declaration of which
+  answers are tokens that adds no synapse. `Recall.copy_synapses` and the sequence battery's
+  `heads_copy` arm left with it, and the copy-tokens instrument retired to its receipt, which
+  verifies with its archived checker. `recall_copy_next` left before any release (#273).
+- **Kept: `learning_surprise_share`, `teaching="normalized"`, `attention=True` and
+  `recall_next=False`.** Each was read against what a new brain composes, and each stays; the
+  readings are on #281. The sequence battery's `composed` arm (`--arms composed --settings ...`)
+  reads a one-out of the composition.
+
+### Fixes and the same bits in less time
+
+- A settle of no sweeps makes no standing drive it would not read, and a lesson whose answer
+  matches every label makes no targets and reports from one record per batch size. A public
+  operation enters and leaves the recall memory's scope without a context manager, a lesson of a
+  brain without a learned code keeps its moment without one, and the labels of one slot are
+  checked in two reductions.
+- **Where the composition's falls come from** (#280). The memory guide lists each fall of the
+  default composition with the part that causes it, read on fresh founders by silencing one part
+  at a time: the key-door, the read's drive; binding, lessons teaching only the rows that
+  surprise; "how long ago?", the read's recency of 0; the competing ring, the read's drive and the
+  working trace, in part; the hidden route, no single part. It also lists what removing each cause
+  costs. No setting or default changes.
+- The API reference lists the `Recall` signature as the class takes it, and AGENTS.md names the
+  second goal epic by its title (#173).
+
+### Instruments
+
+The library is unchanged by these. Each reading ran under a protocol declared before its first
+life, on fresh founders.
+
+- **The lesson's step** ([`lesson_step.py`](benchmarks/grammar/lesson_step.py), #258). The default
+  composition settles the grammar chamber's exact-clause reading within .05 over its last three
+  checkpoints on 4 of 6 lives at width 64 and 5 of 6 at width 128.
+- **Routes with a goal** ([`routes.py`](benchmarks/grammar/routes.py), #257). A chamber whose first
+  hop is said before the goal it must reach, with a sliding planning window beside word by word.
+- **Exposure parity** ([`exposure.py`](benchmarks/grammar/exposure.py), #270). Passes of the
+  chamber's 4,000 batches beside the transformer's offline control at equal compute. Without
+  rehearsal the default composition sits within .05 of the control on every reading but brackets
+  (.86 against .97), which reach .99 by the fourth pass.
+- The grammar chamber and the sequence battery take a `default` arm: `Brain.compose` with nothing
+  named but the backend. A chamber life's work counts the rehearsal's replayed moments and rows.
+- `benchmarks/heads`: the indirect-object chamber, the head-function panel, causality by silencing
+  and erasure and the matched controls, with its supports and the declared readings (#269).
+- `benchmarks/vocabulary`: the grammar chamber at 200, 1,000 and 5,000 words by class and by
+  pieces, one hearing, the matched controls, and the read's logits split by source at every word
+  whose content a heard moment holds (#266).
+- `benchmarks/attention/crossing.py`: the crossing on keyed rows, the conjunction's decoder,
+  supports that hold the cortex's synapses, and the matched LSTM and transformer (#267).
+- `benchmarks/sequence/held.py`: R1's six tasks at tokens no lesson used, with the read's
+  prediction, the vote at each miss and the answer with the association's vote silenced (#272).
+- `benchmarks/device`: the ledger, a life's seconds on a device and the lives' per-life cost
+  against a process pool (#274); `benchmarks/grammar/cost.py`: a pass's seconds and parts for the
+  default brain, the compiled moment and the transformer on one thread (#282).
+
+### Measured negatives
+
+- A lesson's step scaled by the running share of lesson rows answered wrong settles 4 and 3 of 6
+  lives and costs held-out clauses .10 to .13, so it stays out of the library (#258).
+- A sliding planning window of three reads first hops on held-out start-goal pairs at .312 against
+  word by word's .334; neither reads the goal there, and the offline controls read .75 to .83:
+  planning does not pay on that chamber (#257).
+- `learning_rehearsal=1.0` costs 5.7 times a pass, since it replays each drawn row's whole
+  episode, and lowers paths to .82: the recall read delivers fewer hops (#270).
+- Recovery after quiet with `memory_fade`: over 40,000 quiet moments after twenty arena fights a
+  store sheds 12 % of its mass (23 % at most) and the carried change reads 0.134 against 0.139
+  right after the fights, a gain of +0.005 (s.e. 0.003), under two standard errors; the routine
+  does not return (#253).
+- The compiled moment reaches 2.3 to 2.4 times the transformer's pass in one session and 2.6 to
+  2.7 at a default of 4.8 times across sessions; the issue's 2.5 holds in one session and not
+  across them (#282, #291).
+- With the cortex at unit norm and the gains released at the thousandth lesson the composed
+  circuit forms on 7 of 12 fresh founders, one life short of #269's bar; the five that miss fail at
+  the read's selection, before the gains are released.
+
 ## 0.95.2 — 2026-11-09
 
 `Brain.lesson` starts its free phase from the stream's activity, the state the act settles from,

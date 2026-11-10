@@ -17,6 +17,9 @@ torch = pytest.importorskip("torch")
 
 
 DEVICES = ["cpu", *(["cuda"] if torch.cuda.is_available() else [])]
+# an outcome's one read where the critic rests on the device: its eleven checks and numbers, then
+# the TD error and the dopamine of every row
+OUTCOME_READ = 11
 
 
 def brain_on_torch(seed: int = 3) -> cd.Brain:
@@ -377,7 +380,7 @@ def test_a_refused_outcome_leaves_the_resting_critic_as_it_was(monkeypatch):
         raise ValueError("refused")
 
     with monkeypatch.context() as patch:
-        patch.setattr(brain.learner, "_apply_device", refused)
+        patch.setattr(brain.learner, "_device_candidate", refused)  # the update's, refused
         with pytest.raises(ValueError, match="refused"):
             brain.learn(np.ones(3), np.zeros(3, dtype=bool), x)
     assert agent._critic_device is held and "trace_critic" not in agent.__dict__
@@ -540,7 +543,7 @@ def test_a_moment_brings_nothing_wider_than_its_action_to_the_host(monkeypatch, 
         brain.lesson(x, np.arange(rows) % motor)
     brain.step(x)
     brain.step(observed(), reward=reward)
-    assert reads and max(reads) <= rows * motor
+    assert reads and max(reads) <= max(rows * motor, OUTCOME_READ + 2 * rows)
 
 
 @pytest.mark.parametrize("device", DEVICES)
@@ -567,7 +570,7 @@ def test_a_lived_moment_brings_nothing_wider_than_its_action_to_the_host(monkeyp
             brain.wait(x)
         else:
             brain.live(x, reward=np.array([float(t % 3 == 0)]))
-    assert reads and max(reads) <= motor
+    assert reads and max(reads) <= max(motor, OUTCOME_READ + 2)
 
 
 @pytest.mark.parametrize("device", ["cpu", "torch"])
@@ -606,3 +609,69 @@ def test_a_brain_grown_while_it_streams_is_the_brain_grown_after_a_reset(device,
         assert set(a.files) == set(b.files)
         for name in a.files:
             np.testing.assert_array_equal(a[name], b[name], err_msg=name)
+
+
+# -- an outcome's reads (cadence#274: the critic and the dopamine on the device)
+
+
+def _reads_of(monkeypatch, call) -> list[str]:
+    """Every read of a torch tensor's numbers on the host that ``call`` makes, by kind."""
+    reads: list[str] = []
+    for name in ("cpu", "item", "tolist", "__bool__", "__float__", "__int__"):
+        original = getattr(torch.Tensor, name)
+
+        def counted(self, *args, _original=original, _name=name, **kwargs):
+            reads.append(_name)
+            return _original(self, *args, **kwargs)
+
+        monkeypatch.setattr(torch.Tensor, name, counted)
+    call()
+    monkeypatch.undo()
+    return reads
+
+
+@pytest.mark.parametrize("precision", ["float32", "float64"])
+def test_an_outcome_reads_its_checks_and_dopamine_once(monkeypatch, precision):
+    """Where the critic rests on the device the dopamine is made there: the outcome's checks (the
+    dopamine's, the critic's and the update's), the critic's bias step, the report's steps and the
+    dopamine itself come to the host in one read before anything is installed."""
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, backend="torch", device="cpu",
+                             precision=precision, recall=False)
+    _a_life_of_rewards(brain, moments=5)
+    x = np.eye(12)[[1, 7, 3]]
+    brain.act(x)
+    assert brain.basal_ganglia._critic_device is not None
+    with monkeypatch.context() as patch:
+        patch.setenv("CADENCE_TORCH_MEMORY", "1")
+        reads = _reads_of(
+            patch, lambda: brain.learn(np.ones(3), np.array([False, True, False]), x)
+        )
+    # the next state's settle (its stop, one sweep behind, and its residual check), the store's
+    # write, the one read of the outcome and the report's trace
+    settle = reads.count("item") + 1
+    assert len(reads) - settle <= 4, reads
+
+
+def test_a_refused_dopamine_leaves_the_outcome_pending(monkeypatch):
+    monkeypatch.setenv("CADENCE_TORCH_MEMORY", "1")
+    brain = brain_on_torch()
+    _a_life_of_rewards(brain, moments=5)
+    x = np.eye(12)[[1, 7, 3]]
+    brain.act(x)
+    agent = brain.basal_ganglia
+    held = agent._critic_device
+    weights, scale = held.weights.clone(), brain.brain._torch.scale.clone()
+    updates = brain.learner.updates
+
+    def unbounded(state):
+        return torch.full((3,), float("inf"), dtype=held.weights.dtype)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(held, "value_here", unbounded)
+        with pytest.raises(ValueError, match="TD errors must remain finite"):
+            brain.learn(np.ones(3), np.zeros(3, dtype=bool), x)
+    assert agent._pending is not None and brain.learner.updates == updates
+    assert torch.equal(held.weights, weights) and torch.equal(brain.brain._torch.scale, scale)
+    brain.learn(np.ones(3), np.zeros(3, dtype=bool), x)  # the same outcome, accepted
+    assert brain.learner.updates == updates + 1

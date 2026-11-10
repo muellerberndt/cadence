@@ -137,6 +137,10 @@ class LearnerConfig:
     # it qualifies and the activation is made in arithmetic that vectorizes
     # (``Brain.equilibrate``); the same equations, order and tolerance, other bits
     fast_settle: bool = False
+    # opt-in, a composed brain's on the CPU (``cadence._moment``): the work around the solve
+    # kernels of a moment (the recall memory's read, write and address lesson, the place store's
+    # read, the carried gains' contrast) in compiled passes; the same equations, other bits
+    compiled_moment: bool = False
 
     # Fields this library no longer takes, each with the release that retired it, the one
     # value at which a saved config still loads (the law of this version) and what the learner
@@ -206,6 +210,8 @@ class LearnerConfig:
             raise ValueError("nudged_fixed must be boolean")
         if not isinstance(self.fast_settle, bool):
             raise ValueError("fast_settle must be boolean")
+        if not isinstance(self.compiled_moment, bool):
+            raise ValueError("compiled_moment must be boolean")
         if self.tolerance is not None and (not np.isfinite(self.tolerance) or self.tolerance < 0):
             raise ValueError("tolerance must be finite and nonnegative, or None")
         if not isinstance(self.qualified, bool):
@@ -272,7 +278,7 @@ class LearnerConfig:
 
 _NEUTRAL: dict[str, Any] = {
     "normalize_relative": 0.0, "nudged_fixed": False, "rehearsal": 0.0, "rehearsal_capacity": 512,
-    "surprise_share": False, "fast_settle": False,
+    "surprise_share": False, "fast_settle": False, "compiled_moment": False,
 }
 
 
@@ -365,6 +371,11 @@ def _restrict(state: BrainState, taught: np.ndarray | None, drive: Any = None) -
     """``state`` restricted to the taught rows, or itself when every row is taught; ``drive`` is
     those rows' own, where it is the one the state settled under."""
     return state if taught is None or bool(taught.all()) else _rows(state, taught, drive)
+
+
+# The report of a lesson whose caller-read answer matches every label, by batch size and
+# qualification (``Learner._untaught``): the same numbers at every such lesson.
+_UNTAUGHT: dict[tuple[int, bool], dict[str, float]] = {}
 
 
 def _taught_report(taught: np.ndarray | None, batch: int) -> dict[str, float]:
@@ -469,7 +480,11 @@ class Learner:
     reciprocal: bool = True  # a synapse and its reverse share one efficacy: a reciprocal pair
     tie_groups: np.ndarray | None = None  # int per synapse (-1: none); a group shares one scale
     # float per synapse multiplying its step (default one): a fan-in scale, a per-projection
-    # rate; a wide population's inbound synapses need a smaller step than a narrow one's
+    # rate; a wide population's inbound synapses need a smaller step than a narrow one's. A rate
+    # of zero holds the synapse: it takes no step of its own and the optimizer keeps its running
+    # moments as they are, and a neuron whose every inbound synapse steps at zero holds its bias
+    # the same way (``held``). A reciprocal pair steps by the mean of its two directions' steps,
+    # so the pair holds where both are at zero; one alone takes half its partner's step
     synapse_rate: np.ndarray | None = None
     # the outputs as groups, each its own softmax choice, all nudged together: a count of
     # equal groups, or one size per group (a body's controller: a move of nine, a grip of two)
@@ -724,6 +739,11 @@ class Learner:
 
     def _labels(self, labels: np.ndarray) -> np.ndarray:
         labels = np.asarray(labels)
+        if labels.dtype == np.int64 and labels.ndim == 1 and self.slot_count == 1 and labels.size:
+            # one slot's labels of the kind returned: the checks below in two reductions
+            if labels.min() < 0 or labels.max() >= self.slot_size:
+                raise ValueError("a label lies outside its output slot's choices")
+            return labels
         if self.slot_count > 1:
             if labels.ndim != 2 or labels.shape[1] != self.slot_count:
                 raise ValueError("a slotted learner takes labels shaped (batch, slots)")
@@ -812,6 +832,14 @@ class Learner:
             return edges / (batch * span), neurons / (batch * span)
         s_plus, s_minus = nudged.activation, minus_state.activation
         if self.brain._blocked and w.synapses > 4 * w.n:
+            if self.config.compiled_moment and _compiled_passes():
+                # the compiled moment's contrast: the same products in one compiled pass, which
+                # its lesson in one call makes too (``_moment.taught_lesson``)
+                from . import _moment
+
+                found = _moment.contrast(self.brain.layout, s_plus, s_minus, span)
+                if found is not None:
+                    return found
             gram = block_contrast(self.brain.layout, s_plus, s_minus, len(s_plus) * span)
             return gram, (s_plus - s_minus).mean(axis=0) / span
         if not self.brain._blocked:
@@ -848,6 +876,38 @@ class Learner:
         b_plus, b_minus = s_plus[:, w.post], s_minus[:, w.post]
         hebb = a_plus * (b_plus - b_minus) + (a_plus - a_minus) * b_minus
         return hebb / span, (s_plus - s_minus) / span
+
+    def held(self) -> tuple[np.ndarray | None, np.ndarray | None]:
+        """What a rate of zero holds (``synapse_rate``): the synapses at rate zero, and the neurons
+        whose every inbound synapse steps at zero, whose biases take no step either. A neuron no
+        synapse reaches is held by none. A held synapse or bias keeps its optimizer moments as they
+        are. A synapse is named by its rate alone: one direction of a reciprocal pair at zero is
+        named and keeps its moments, and takes half its partner's step through the pair's mean.
+        ``(None, None)`` where no rate is zero."""
+        rate = self.synapse_rate
+        if rate is None or not len(rate) or float(np.min(rate)) > 0:
+            return None, None
+        zero = np.asarray(rate) == 0
+        w = self.brain.connectome
+        inbound = np.bincount(w.post, minlength=w.n)
+        stopped = np.bincount(w.post[zero], minlength=w.n)
+        neurons = (inbound > 0) & (stopped == inbound)
+        return zero, (neurons if neurons.any() else None)
+
+    def _stepping_neurons(self) -> np.ndarray:
+        """The neurons whose biases move: the plastic ones a rate of zero does not hold."""
+        assert self.plastic_neurons is not None
+        neurons = self.held()[1]
+        return self.plastic_neurons if neurons is None else self.plastic_neurons & ~neurons
+
+    def _hold_moments(self, before: Mapping[str, np.ndarray]) -> None:
+        """Give the synapses and neurons a rate of zero holds (``held``) their moments of
+        ``before`` back, after an update wrote the others."""
+        synapses, neurons = self.held()
+        for name, mask in (("velocity", synapses), ("second_moment", synapses),
+                           ("velocity_bias", neurons), ("second_moment_bias", neurons)):
+            if mask is not None and getattr(self, name) is not before[name]:
+                setattr(self, name, np.where(mask, before[name], getattr(self, name)))
 
     def apply(self, delta_scale: np.ndarray, delta_bias: np.ndarray) -> dict[str, float]:
         """Apply a per-synapse and per-neuron step: masks, tying, decay, bounds; then set the brain.
@@ -889,8 +949,7 @@ class Learner:
         if not np.isfinite(delta_scale).all():
             raise ValueError("scaled and tied steps must remain finite")
         scale = self.brain.efficacy + delta_scale
-        assert self.plastic_neurons is not None
-        delta_bias = np.where(self.plastic_neurons, delta_bias, 0.0)
+        delta_bias = np.where(self._stepping_neurons(), delta_bias, 0.0)
         bias = self.brain.bias + delta_bias
         cap = cfg.scale_cap
         scale = np.where(self.plastic_synapses, np.clip(scale, -cap, cap), scale)
@@ -1033,6 +1092,12 @@ class Learner:
                 neurons = neurons / (
                     (held["second_moment_bias"] / correction).sqrt() + cfg.normalize_floor
                 )
+        ix = self._device_indices(kernel)
+        for name, mask in (("velocity", "held_synapses"), ("second_moment", "held_synapses"),
+                           ("velocity_bias", "held_neurons"),
+                           ("second_moment_bias", "held_neurons")):
+            if ix[mask] is not None and held[name] is not previous[name]:
+                held[name] = kernel.torch.where(ix[mask], previous[name], held[name])
         if not bool(kernel.torch.stack([
             kernel.torch.isfinite(held[name]).all() for name in _MOMENTS
         ]).all()):
@@ -1101,7 +1166,9 @@ class Learner:
                 return torch.from_numpy(np.ascontiguousarray(x)).to(dev, dtype)
 
             all_synapses = bool(self.plastic_synapses.all())
-            all_neurons = bool(self.plastic_neurons.all())
+            held_synapses, held_neurons = self.held()
+            stepping = self._stepping_neurons()
+            all_neurons = bool(stepping.all())
             cache.clear()
             cache.update(
                 key=key,
@@ -1119,19 +1186,35 @@ class Learner:
                 if len(self._members)
                 else None,
                 synapses=None if all_synapses else to(self.plastic_synapses, kernel.param_dtype),
-                neurons=None if all_neurons else to(self.plastic_neurons, kernel.param_dtype),
+                neurons=None if all_neurons else to(stepping, kernel.param_dtype),
+                held_synapses=None if held_synapses is None else to(held_synapses),
+                held_neurons=None if held_neurons is None else to(held_neurons),
             )
         return cast(dict[str, Any], cache)
 
     def _apply_device(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, float]:
         """``apply`` on the device: the same masks, tying, decay and bounds, no host array."""
+        candidate = self._device_candidate(kernel, delta_scale, delta_bias)
+        flags = kernel.torch.stack(
+            [flag.to(kernel.dtype) for flag in candidate["flags"]]
+            + [step.to(kernel.dtype) for step in candidate["steps"]]
+        ).cpu().numpy()
+        self._device_refusal(flags[:4])
+        return self._install_device(candidate, flags[4:])
+
+    def _device_candidate(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, Any]:
+        """The parameters ``_apply_device`` would install, with its checks and its report, all on
+        the device and none read: ``flags`` (the steps finite, the scaled and tied steps finite, the
+        parameters and weights finite, their summed values finite, in the order ``apply`` refuses
+        them) and ``steps`` (the report's synapse and bias steps). ``_device_refusal`` reads the
+        flags, ``_install_device`` installs."""
         torch, cfg = kernel.torch, self.config
         if (
             tuple(delta_scale.shape) != (self.brain.connectome.synapses,)
             or tuple(delta_bias.shape) != (self.brain.connectome.n,)
-            or not bool(torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all())
         ):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        given = torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all()
         ix = self._device_indices(kernel)
         d = delta_scale.clone()
         if ix["synapses"] is not None:
@@ -1150,8 +1233,7 @@ class Learner:
             ]
         if ix["synapses"] is not None:  # tying never moves a frozen synapse
             d = d * ix["synapses"]
-        if not bool(torch.isfinite(d).all()):
-            raise ValueError("scaled and tied steps must remain finite")
+        tied = torch.isfinite(d).all()
         scale = kernel.scale + d
         db = delta_bias if ix["neurons"] is None else delta_bias * ix["neurons"]
         bias = kernel.bias_param + db
@@ -1161,12 +1243,33 @@ class Learner:
             if ix["synapses"] is None
             else torch.where(ix["synapses"].bool(), bounded, kernel.scale)
         )
-        self.brain = self.brain._with_device_parameters(scale, bias)
-        self.updates += 1
+        checked = kernel.parameter_check(scale, bias)
+        zero = torch.zeros((), dtype=d.dtype, device=d.device)
         return {
-            "scale_step": float(d.abs().mean()) if d.numel() else 0.0,
-            "bias_step": float(db.abs().mean()),
+            "scale": scale, "bias": bias, "checked": checked,
+            "flags": (given, tied, checked[3], checked[4]),
+            "steps": (d.abs().mean() if d.numel() else zero, db.abs().mean()),
         }
+
+    @staticmethod
+    def _device_refusal(flags: Any) -> None:
+        """The refusal of a ``_device_candidate`` whose four flags were read as ``flags``."""
+        if not flags[0]:
+            raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
+        if not flags[1]:
+            raise ValueError("scaled and tied steps must remain finite")
+        from .brain import _TorchKernel
+
+        _TorchKernel.parameter_refusal(bool(flags[2]), bool(flags[3]))
+
+    def _install_device(self, candidate: dict[str, Any], steps: Any) -> dict[str, float]:
+        """Install a ``_device_candidate`` whose flags read clear; ``steps`` its report's two
+        numbers, read."""
+        self.brain = self.brain._with_device_parameters(
+            candidate["scale"], candidate["bias"], candidate["checked"]
+        )
+        self.updates += 1
+        return {"scale_step": float(steps[0]), "bias_step": float(steps[1])}
 
     def _projections(self) -> tuple[np.ndarray, np.ndarray]:
         """Each synapse's projection (its block of the layout) and each neuron's range."""
@@ -1252,13 +1355,21 @@ class Learner:
         ):
             tables = kernel.update_tables(self.brain._gain_pre, self._paired, self._paired_reverse)
             if tables is not None:
-                assert self.plastic_neurons is not None
                 tables["plastic_neurons"] = kernel.mx.array(
-                    np.asarray(self.plastic_neurons, dtype=np.float32)
+                    np.asarray(self._stepping_neurons(), dtype=np.float32)
                 )
                 if rate is not None:
                     rate.flags.writeable = False
                     tables["rates"] = kernel.block_rates(rate)
+                    synapses, neurons = self.held()
+                    if synapses is not None:  # by block, where a block holds any
+                        flat = kernel.layout.flat(synapses.astype(float))
+                        tables["held_blocks"] = [
+                            (k, kernel.mx.array(np.ascontiguousarray(part) > 0))
+                            for k, part in enumerate(kernel.layout.blocks(flat)) if part.any()
+                        ]
+                    if neurons is not None:
+                        tables["held_neurons"] = kernel.mx.array(neurons)
             held = (kernel.root, self._paired, tables, rate)
             self.__dict__["_mlx_tables"] = held
         return cast("dict[str, Any] | None", held[2])
@@ -1301,6 +1412,13 @@ class Learner:
             ),
             share * cfg.eta_bias, cfg.scale_cap, m > 0, rho > 0, bool(cfg.normalize_relative),
         )
+        mx = kernel.mx
+        for k, mask in tables.get("held_blocks", ()):  # a rate of zero keeps the moments it held
+            for name in ("velocity", "second_moment"):
+                moments[name][k] = mx.where(mask, held[name][k], moments[name][k])
+        if "held_neurons" in tables:
+            for name in ("velocity_bias", "second_moment_bias"):
+                moments[name] = mx.where(tables["held_neurons"], held[name], moments[name])
         self.__dict__["_device_moments"] = moments
         self.brain = self.brain._with_mlx_parameters(new)
         self.updates += 1
@@ -1359,8 +1477,10 @@ class Learner:
             raise ValueError("phase contrasts must be finite")
         raw_synapse, raw_neuron = synapse_term, neuron_term
         count = self.contrast_updates + 1  # only this optimizer's own history
+        before = {name: getattr(self, name) for name in _MOMENTS}
         if len(raw_synapse) and _compiled_passes():
             delta_scale, delta_bias = self._compiled_step(raw_synapse, raw_neuron, count)
+            self._hold_moments(before)
             if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
                 raise ValueError("optimizer moments must remain finite")
             report = self.apply(share * delta_scale, share * delta_bias)
@@ -1388,6 +1508,7 @@ class Learner:
             synapse_term, neuron_term = synapse_term / rms, neuron_term / rms_bias
         delta_scale = share * cfg.eta * synapse_term
         delta_bias = share * cfg.eta_bias * neuron_term
+        self._hold_moments(before)
         if not all(np.isfinite(getattr(self, name)).all() for name in _MOMENTS):
             raise ValueError("optimizer moments must remain finite")
         report = self.apply(delta_scale, delta_bias)
@@ -1426,28 +1547,33 @@ class Learner:
         label does. A distribution has no single answer to agree with: ``surprise`` judges
         labels, and every row of targets is taught.
         """
+        target: np.ndarray | None = None
         if labels is None:
             if targets is None:
                 raise ValueError("a lesson needs labels or targets")
             target = self.soft_targets(targets)
+            batch = len(target)
         else:
             if targets is not None:
                 raise ValueError("a lesson takes labels or targets, not both")
             labels = self._labels(labels)
-            target = self.targets(labels)
+            batch = len(labels)
         if not _resident(drive):
             drive = np.asarray(drive, dtype=float)
         if drive.ndim == 1:
             drive = drive[None, :]
-        if drive.ndim != 2 or drive.shape[0] != target.shape[0]:
+        if drive.ndim != 2 or drive.shape[0] != batch:
             raise ValueError("drive and labels must have the same batch size")
         cfg = self.config
-        batch = len(target)
         judged = None
         if cfg.surprise and answer is not None and labels is not None:
             judged = self._differs(np.asarray(answer), labels)
             if not judged.any():
                 return self._untaught(judged)
+        if target is None:  # the labels' targets, made where a phase reads them
+            assert labels is not None
+            target = self.targets(labels)
+        if judged is not None:
             drive, target, weight = self._lesson(judged, drive, target, weight)
             warm = None if warm is None else _restrict(warm, judged)
         if cfg.qualified:
@@ -1476,6 +1602,18 @@ class Learner:
             report.update(_phase_report(phases, accepted=True, qualified=True))
             report.update(_taught_report(taught, batch))
             return LearnedState(free, nudged, opposite, taught), report
+        if judged is not None and weight is None and cfg.compiled_moment:
+            # the compiled moment's lesson: the three phases and their checks in one call
+            found = self._phases_compiled(drive, warm, target)
+            if found is not None:
+                free, nudged, opposite, phases = found
+                exhausted = cfg.tolerance is not None and free.steps >= cfg.free_steps > 0
+                report = self.update(free, nudged, opposite, share=self._share(judged))
+                report.update(_phase_report(phases, accepted=True, qualified=False))
+                report.update(_taught_report(judged, batch))
+                report["free_budget_exhausted"] = float(exhausted)
+                self._warn_exhausted(exhausted)
+                return LearnedState(free, nudged, opposite, judged), report
         free = self.free(drive, warm)
         # Finite phases get post-solve residual diagnostics. They count additional
         # work and do not certify the lesson.
@@ -1521,6 +1659,36 @@ class Learner:
         self._warn_exhausted(exhausted)
         return LearnedState(free, nudged, opposite, taught), report
 
+    def _phases_compiled(
+        self, drive: Any, warm: BrainState | None, target: np.ndarray
+    ) -> tuple[BrainState, BrainState, BrainState, dict[str, Equilibrium]] | None:
+        """A finite lesson's free phase, nudged phases and their residual checks in one compiled
+        call (``_moment.lesson_phases``, under ``compiled_moment``): the states and the phases'
+        records ``step`` makes through ``free``, ``_nudged`` and ``_diagnostic``, to the bit; None
+        where a phase takes another path or one of them is overridden."""
+        from . import _moment
+
+        kind = type(self)
+        if (
+            not (_moment.ONE_CALL and _moment.SHORTCUTS) or not _compiled_passes()
+            or kind.free is not Learner.free or kind._nudged is not Learner._nudged
+            or kind._diagnostic is not Learner._diagnostic
+            or kind.nudge_for is not Learner.nudge_for
+        ):
+            return None
+        found = _moment.lesson_phases(self, drive, warm, target)
+        if found is None:
+            return None
+        free, nudged, opposite, checks = found
+        tolerance = self.config.tolerance if self.config.tolerance is not None else 0.0
+        phases = {
+            name: Equilibrium(state, check, state.steps, tolerance, residual_checks=1)
+            for name, state, check in zip(
+                ("free", "nudged", "opposite"), (free, nudged, opposite), checks, strict=True
+            )
+        }
+        return free, nudged, opposite, phases
+
     def _differs(self, answer: np.ndarray, labels: np.ndarray) -> np.ndarray:
         """True per row where an answer differs from its label in any slot."""
         if answer.shape != labels.shape:
@@ -1558,22 +1726,25 @@ class Learner:
         """The lesson of a batch whose caller-read answer matches every label: no phase runs,
         nothing changes; every phase counts zero work."""
         cfg = self.config
-        report = {
-            "accepted": 1.0,
-            "qualified": float(cfg.qualified),
-            "qualification_required": float(cfg.qualified),
-            "attempted_presentations": float(len(taught)),
-        }
-        for name in ("free", "nudged", "opposite"):
-            for key in _PHASE_KEYS:
-                report[f"{name}_{key}"] = 0.0
-        for key in ("steps", "residual_checks", "stagnation_checks", "row_sweeps",
-                    "row_residual_checks"):
-            report[f"total_{key}"] = 0.0
-        report.update(_taught_report(taught, len(taught)))
-        if not cfg.qualified:
-            report["free_budget_exhausted"] = 0.0
-        return LearnedState(None, None, None, taught), report
+        held = _UNTAUGHT.get((len(taught), cfg.qualified))
+        if held is None:
+            report = {
+                "accepted": 1.0,
+                "qualified": float(cfg.qualified),
+                "qualification_required": float(cfg.qualified),
+                "attempted_presentations": float(len(taught)),
+            }
+            for name in ("free", "nudged", "opposite"):
+                for key in _PHASE_KEYS:
+                    report[f"{name}_{key}"] = 0.0
+            for key in ("steps", "residual_checks", "stagnation_checks", "row_sweeps",
+                        "row_residual_checks"):
+                report[f"total_{key}"] = 0.0
+            report.update(_taught_report(taught, len(taught)))
+            if not cfg.qualified:
+                report["free_budget_exhausted"] = 0.0
+            held = _UNTAUGHT[(len(taught), cfg.qualified)] = report
+        return LearnedState(None, None, None, taught), dict(held)
 
     def _agreed(
         self, free: BrainState, phases: Mapping[str, Equilibrium], taught: np.ndarray

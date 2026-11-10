@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.95.2"
+python -m pip install "cadence-net[fast]==0.96.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -139,10 +139,26 @@ of 12 to 1,024 inputs crosses over there, within about 10% on either side, and s
 inputs on an Apple M4. On MLX a moment's reads join the launch that settles on them, and a slot is written in
 place in unified memory.
 
-A memory with several heads, a window, `recall_action`, `recall_when`, `recall_gain` or
-`recall_tokens`, a store with a separator or a surprise gate, `memory_choice` and a learned code keep
-the moment's memories on the host at every size. On MLX a `maturity` reads the efficacies on the host at each
-outcome, since it measures the step applied.
+Some options keep the moment's memories on the host at every size. The device form in
+[`cadence/resident.py`](../src/cadence/resident.py) holds one read port over one bank of slots keyed on one
+event, and each of these adds a part that form does not hold, so the whole moment's memories stay with it on the
+host, where the same equations run in NumPy:
+
+| Option | What it adds that the device form does not hold |
+| --- | --- |
+| `recall_heads=2` or more | several read ports over the one bank, each reading in turn from the share of every slot the heads before it left, each with its own address map |
+| `recall_window=k` | a per-stream window of the last k events that the key and the address read in order |
+| `recall_action=True` | a bank of the executed commands beside the slots, written from the host's action choice |
+| `recall_when=True` | the read's age features, delivered on a region of their own |
+| `recall_tokens`, `recall_gain` | the tokens' identity map into the motor region and one learned gain per port, taught by the motor's movement |
+| a store with a separator, a surprise gate or `memory_fade` | the separator's expanded code of each key, the gate's noise over the consolidated strengths, or the fade's depth and recent use per key coordinate, read at every moment |
+| `recall_cortex_norm=True` | the cortex of the moment before set to unit norm per stream before the maps read it |
+| `memory_choice=True` | the episodic records: place and context records, their vote in the choice and the replay of a path |
+| `learned_code=units` | a region that settles to its code before the moment's settle, with its own lessons |
+
+These brains take a device from four times the work ([the default backend](#the-default-backend)), so their
+crossings count in the choice. On MLX a `maturity` reads the efficacies on the host at each outcome, since it
+measures the step applied.
 
 Reading one of these arrays on the host (`brain.recall.keys`, `brain.working_memory.trace`,
 `brain.hippocampus.strength`, `brain.basal_ganglia.w_critic`), saving a checkpoint, copying the brain,
@@ -154,10 +170,17 @@ but MPS, which is how the tests read this path on a machine without a GPU. `CADE
 same on MLX.
 
 Each moment crosses: to the device the observations, a sampled action's target, the outcome's
-reward, key and dopamine; to the host the motor columns, a value per stream, one number per stream and
+reward and key; to the host the motor columns, a value per stream, one number per stream and
 carried route, one small read per residual check and per settle, and one read of the lesson's or
-update's report and finite checks. The memories, the eligibility and the optimizer's state do not
-cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
+update's report and finite checks. On torch the dopamine is made on the device from the value the
+critic makes there, and an outcome reads its checks once before anything is installed: the dopamine's,
+the critic's, the recall memory's reward step and the update's, with the critic's bias step, the
+report's steps and the dopamine of every row, which the carried routes' gains take on the host. On MLX
+the dopamine is the host's and goes to the device. The memories, the eligibility and the optimizer's
+state do not cross ([`tests/test_moment_on_device.py`](../tests/test_moment_on_device.py)).
+[`benchmarks/device/ledger.py`](../benchmarks/device/ledger.py) lists every crossing of a moment by the place
+in the library that made it, with its bytes and time, and [its readings](../benchmarks/device/README.md) on an
+A10G and an M4 give what each moment pays: its bytes are small, and its synchronizations are what it pays for.
 
 A stream's synapse eligibility takes one float per synapse, 25 MB at the speech size in float32, so `step`
 takes its streams from the device's memory: 256 of them fit an A10G's 22 GB in float32 and in float64, and 22 GB
@@ -229,10 +252,27 @@ On an Apple M4, the same, single readings on a shared machine at a load of 12 to
 | The same | | 16 | 210, 938, 683 | 13.3, 89.2, 74.7 |
 
 MPS and other torch devices are not on the list: MPS reads slower than MLX and the CPU, and the others
-have no reading; name them to use them. A CUDA card this table has not read takes the device from twice the
-work, a stated margin that no measurement sets. Options that keep the moment's memories on the
+have no reading; name them to use them. Options that keep the moment's memories on the
 host take a device from four times the work, and `precision="float64"` named on CUDA from four times, both
 reasoned from the readings above and not read at that size. A learned code stays off torch.
+
+A CUDA card this table has not read is measured once. The first brain whose work reaches a quarter of
+the table's crossing times the chamber's default brain on the card in float32 and on one core of the
+machine: a greedy `act`, a `lesson` and a `step` at 16, 64 and 256 rows, two of each after one to warm.
+Where the two cross, in `rows * synapses`, sets the card's crossings: the table's, scaled by that crossing over
+the A10G's, which the same reading of the A10G table puts at 573,568 (43.7 rows of the chamber's brain). A card
+half as fast as the A10G on that brain takes the device from twice the table's work, and a card twice as fast from
+half of it. The calibration composes six brains and runs 72 moments, 54 of them timed. On an A10G it took
+2.6 seconds and read the crossing at 43.8 and at 44.3 rows in two runs, within 1.4% of the table's. On an NVIDIA
+L4, a card the table has not read, it read 59.8, 53.6 and 50.4 rows in three runs, 2.2 seconds each after the first,
+whose 8.0 seconds held the device's start; the cached reading puts the L4's crossings at 1.15 times the table's, so
+the chamber's brain takes the CPU at 64 rows and the L4 at 256 there.
+Its result is kept beside the [stored transport plans](#choosing-kernels-by-measurement), in
+`CADENCE_PLAN_CACHE` or `~/.cache/cadence/transport_plans.json` under `card <name>`, so each card is calibrated
+once per machine. `cadence.resident.calibrate_card()` runs it by hand and returns the readings, the crossing
+and the seconds it took. `CADENCE_CALIBRATE=0` skips it, and a card without a calibration, or one whose
+calibration fails, takes the device from twice the table's work, a stated margin
+([`tests/test_default_backend.py`](../tests/test_default_backend.py)).
 
 A choice is made once, at the first moment: rows that grow later do not move the brain. `brain.placement` states
 the `backend`, `device`, `precision`, `chosen_by` (`"auto"`, `"named"` or `"environment"`), `why`, `refused` and
@@ -346,6 +386,94 @@ at the speech size has read twice its quiet time.
 Cap BLAS and Numba threads for parallel workers. To compare two implementations, use identical
 dtype, steps and tolerances over several seeds, warm up, alternate the order, synchronize
 around each timed call, and compare residuals and states too.
+
+## Many lives at once
+
+Search and self-play settle many positions or games each second. Which way to run them depends on whether
+they are one brain's streams, sharing what they learn, or brains of their own.
+
+| You want | Use |
+| --- | --- |
+| One player in many games, a search over positions: one brain, many streams | `Brain.compose`, one row per stream in `step` or `act`, on a device |
+| Many brains of their own on a CUDA card: a population, a league, independent seeds | `Lives(inputs, actions, lives, backend="torch")` |
+| Many brains of their own on a Mac or a CPU machine | a process pool, one thread per process, or `Lives(..., backend="cpu")` in one process |
+
+```python
+import numpy as np
+
+lives = cd.Lives(35, 18, 8, backend="torch")            # 8 brains of seeds 0 to 7, on CUDA where there is one
+observations = np.random.default_rng(0).random((8, 35))
+actions = lives.step(observations)                      # one row per life in, one action per life out
+actions = lives.step(observations, reward=np.ones(8))   # each life learns from its own outcome
+actions = lives.step(observations, reward=np.ones(8), teacher=np.arange(8))  # and from its own label
+lone = lives.life(5)                                    # life 5 as a lone Brain on the CPU, to save
+```
+
+`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, episodic=False, **options)`: the default
+composition without the store. Each life has its own synapses and biases, its own optimizer (momentum, second
+moments and their counts), critic, eligibility, recall memory (its slots, its address and position maps), carried
+gains, working trace and random generator. On a torch device the lives are the streams of one brain whose
+parameters carry a lives axis:
+
+- a settle reads every stream through its own life's synapses and holds each life where its own stream meets the
+  tolerance, and a rescue on the damping ladder runs life by life;
+- a lesson judges each life by its own answer under `learning_surprise`, runs its phases on every life and
+  updates the lives it taught, each at its own optimizer's count;
+- the recall memory's address and position lessons, the carried gains' steps and a reward's update move each life
+  on its own row and its own dopamine.
+
+Each life follows the lone brain of its seed on that device ([`tests/test_lives.py`](../tests/test_lives.py)). In
+float64 every action is the same and every learned part (synapses, biases, critic, optimizer, recall maps, carried
+gains) agrees within 1e-9 over 30 moments of rewards, endings and teaching, and over 160 moments of the chamber's
+composition within 1e-8; on an NVIDIA L4 over 48 moments within 1e-10. In float32 every action is the same over
+those moments and the parts agree within the spread float32 gives a lone brain's own two memory paths (its
+memories on the host against on the device: 1e-2 in the recall maps over 48 moments, where a float32 life on the
+L4 reads 4e-3). On the CPU each life is the lone brain itself, to the bit.
+
+Seconds per life and moment of that composition stepping its own observations and rewards, read with
+[`benchmarks/device/lives.py`](../benchmarks/device/lives.py) on one AWS g6.xlarge (an NVIDIA L4 and four vCPUs
+of an AMD EPYC 7R13) and on an Apple M4 at a load of 4:
+
+| Way | Machine | 12 lives | 128 lives | 512 | 1,024 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `Lives`, `backend="torch"` | L4 | 1.18 ms | 0.118 ms | 0.043 ms | 0.049 ms |
+| One brain's streams (shared parameters) | L4 | 0.619 ms | 0.119 ms | 0.045 ms | 0.034 ms |
+| Process pool, four CPU processes | L4 box | 0.874 ms | 0.876 ms |  |  |
+| Each brain in turn, one core | L4 box | 2.35 ms | 2.37 ms |  |  |
+| Each brain in turn on the L4 | L4 | 6.52 ms | 6.66 ms |  |  |
+| One brain's streams on MLX (shared parameters) | M4 | 0.690 ms | 0.156 ms |  |  |
+| Process pool, two CPU processes | M4 | 0.595 ms | 0.662 ms |  |  |
+| Each brain in turn, one core | M4 | 1.42 ms | 0.979 ms |  |  |
+| `Lives` on the torch CPU device | M4 | 1.17 ms | 1.21 ms |  |  |
+
+The same with a teacher's label at every fourth moment (`--teach 4`):
+
+| Way | Machine | 12 lives | 128 lives | 512 | 1,024 |
+| --- | --- | ---: | ---: | ---: | ---: |
+| `Lives`, `backend="torch"` | L4 | 1.45 ms | 0.147 ms | 0.056 ms | 0.067 ms |
+| One brain's streams (shared parameters) | L4 | 0.789 ms | 0.153 ms | 0.056 ms | 0.040 ms |
+| Process pool, four CPU processes | L4 box | 1.12 ms | 1.13 ms |  |  |
+| Each brain in turn, one core | L4 box | 2.97 ms | 3.03 ms |  |  |
+| Each brain in turn on the L4 | L4 | 7.86 ms | 7.98 ms |  |  |
+| One brain's streams on MLX (shared parameters) | M4 | 0.572 ms | 0.128 ms |  |  |
+| Process pool, two CPU processes | M4 | 0.808 ms | 0.727 ms |  |  |
+| Each brain in turn, one core | M4 | 1.56 ms | 1.48 ms |  |  |
+| `Lives` on the torch CPU device | M4 | 1.48 ms | 1.32 ms |  |  |
+
+On the L4, `Lives` runs at the speed of one brain's streams at 128 and 512 brains and at 1.4 times their time at
+1,024, where every life updates synapses of its own and the streams share one update. Against the four-process pool
+it is 7.4 times as fast at 128 brains and 17.8 times at 1,024 (7.7 and 17.0 times with the teacher). At 12 lives
+the pool is faster. A lesson of lives runs its phases on every life, where one brain's streams run them on the rows
+it teaches. MLX has no lives axis in the library; one brain's streams there bound what one could reach.
+
+`Lives` holds the default composition without the store, with or without the recall memory and the carried
+gains, at any teaching point, with one or several regions, observers and motor slots. It refuses, naming the
+part: the store (`episodic=True`, whose consolidated records have no lives axis) and `memory_choice`; arousal, so
+`live` stays a lone brain's; a maturity; a learned or fixed code and image inputs; an apical compartment;
+rehearsal and qualified teaching; the efference copy and the heard history; a recall memory with several heads, a
+window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
+life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
+of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.
 
 ## Precision matters
 
