@@ -22,7 +22,7 @@ held-out range that no training frame shows:
 | vertical place ``v`` (share of the height) | 0.20 to 0.38 and 0.62 to 0.80 | 0.45 to 0.55 |
 | scale (of a radius of 0.11 of the shorter side) | 0.75 to 0.90 and 1.10 to 1.25 | 0.95 to 1.05 |
 | lighting (background, object) | 0.05 to 0.25, 0.75 to 1.00 | 0.35 to 0.45, 0.55 to 0.65 |
-| distractor shapes | a horizontal bar, a filled square, in half the frames | a triangle, in every frame |
+| distractors | a horizontal bar, a filled square, in half the frames | a triangle, in every frame |
 
 The horizontal place ``u`` is drawn within the side's zone (left 0.14 to 0.30, centre 0.44 to
 0.56, right 0.70 to 0.86) in training and on every panel. Distractors are smaller (0.6 of the

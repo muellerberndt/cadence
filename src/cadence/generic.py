@@ -73,6 +73,7 @@ from .brain import Apical, Backend, BrainState, Equilibrium, _host_copy, _reside
 from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
+from .fields import LearnedFields
 from .genome import Genome, Projection, develop
 from .learning import (
     LearnedState,
@@ -469,6 +470,22 @@ _LEARNED_CODE_TOGETHER = (
 )
 
 
+def _learned_fields_features(value: Any) -> int:
+    """The fields of the brain's learned receptive fields: ``learned_fields`` as given, 0 or None
+    for none."""
+    if value is None:
+        return 0
+    features = _count("learned_fields", value)
+    if features < 2:
+        raise ValueError("learned fields hold at least 2 fields")
+    return features
+
+
+def _learned_fields_width(features: int) -> int:
+    """The width of the learned fields' output, the sensory region and the memories' key."""
+    return features * LearnedFields.POOLS * LearnedFields.POOLS
+
+
 def _image_shape(inputs: Any) -> tuple[int, int, int] | None:
     """``(height, width, channels)`` of an image shape, or None for a vector length."""
     if isinstance(inputs, (bool, np.bool_, int, np.integer)):
@@ -693,7 +710,8 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
     expected = {"inputs", "actions", "modules", "observers", "slots", "lateral",
                 "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
-        "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical"
+        "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical",
+        "learned_fields",
     } != expected:
         raise ValueError("invalid saved composition provenance")
     compartment = learner.brain.apical
@@ -740,9 +758,20 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
             or len(image) not in (2, 3)
             or any(isinstance(k, bool) or not isinstance(k, int) or k < 1 for k in image)
             or int(np.prod(image)) != value["inputs"]
-            or sensory != "visual/input"
+            or sensory != ("sensory" if "learned_fields" in value else "visual/input")
         ):
             raise ValueError("invalid saved composition image")
+    if "learned_fields" in value:
+        # the image read through that many learned fields, the sensory region their pools
+        features = value["learned_fields"]
+        if (
+            isinstance(features, bool)
+            or not isinstance(features, int)
+            or features < 2
+            or _learned_fields_width(features) != width
+            or "image" not in value
+        ):
+            raise ValueError("invalid saved composition learned_fields")
     if "code" in value:
         # the sensory region is the code of the observations, of that many units
         units = value["code"]
@@ -773,7 +802,7 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
     modules = _region_widths(populations, "module_") + [len(populations.get("association", ()))]
     observers = _region_widths(populations, "observer_")
     if (
-        ("code" not in value and value["inputs"] != width)
+        ("code" not in value and "learned_fields" not in value and value["inputs"] != width)
         or value["actions"] != len(learner.output_index)
         or value["modules"] != modules
         or value["observers"] != observers
@@ -958,6 +987,41 @@ def _load_maturity(saved: Any) -> Maturity:
     return Maturity(scale, recovery, use)
 
 
+def _load_fields(meta: dict[str, Any], data: Mapping[str, Any], sensory: int,
+                 ) -> LearnedFields | None:
+    """The learned fields a checkpoint names, with their saved tables, checked against the
+    sensory region; None for a brain without them."""
+    spec = meta.get("learned_fields")
+    if spec is None:
+        if any(name.startswith("learned_fields/") for name in data):
+            raise ValueError("saved learned field tables require learned_fields metadata")
+        return None
+    names = {"height", "width", "channels", "features", "seed", "learning", "work"}
+    if not isinstance(spec, dict) or set(spec) != names or not isinstance(spec["learning"], bool):
+        raise ValueError("invalid saved learned_fields metadata")
+    try:
+        fields = LearnedFields(
+            spec["height"], spec["width"], spec["channels"], spec["features"], seed=spec["seed"]
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError("invalid saved learned_fields metadata") from exc
+    if fields.outputs != sensory:
+        raise ValueError(
+            f"the sensory region of {sensory} neurons is not the saved fields' "
+            f"{fields.outputs} pooled responses"
+        )
+    for name in ("dictionary", "thresholds"):
+        if "learned_fields/" + name not in data:
+            raise ValueError(f"missing saved learned field table: {name}")
+    fields.take(data["learned_fields/dictionary"], data["learned_fields/thresholds"])
+    fields.learning = spec["learning"]
+    work = spec["work"]
+    if not isinstance(work, dict) or set(work) != set(fields.work):
+        raise ValueError("invalid saved learned_fields metadata")
+    fields.work.update({name: int(value) for name, value in work.items()})
+    return fields
+
+
 def _validate_learned_code(meta: dict[str, Any], data: Mapping[str, Any], learner: Learner) -> int:
     """The learned code a checkpoint names, validated against the connectome and its saved
     tables: its units, or 0 for a brain without one."""
@@ -1035,6 +1099,7 @@ def _validate_life_state(
     learner: Learner,
     code: tuple[int, PatternSeparator, bool] | None,
     learned: int = 0,
+    fields: LearnedFields | None = None,
 ) -> None:
     """Reject corrupt continuation state before exposing a resumed agent. ``code`` is the
     brain's sparse code the checkpoint names, validated: the observations are saved at their
@@ -1048,6 +1113,8 @@ def _validate_life_state(
     code_width = sensory if code is None else code[1].expansion
     if learned:  # the memories' key: the code, joined to an observation no wider than it
         code_width = learned + (sensory if LearnedCode.joins(sensory, learned) else 0)
+    if fields is not None:  # the frames are saved whole, the keys at the pools' width
+        observed, code_width = fields.inputs, fields.outputs
 
     def array(name: str, shape: tuple[int, ...] | None = None) -> np.ndarray:
         if name not in data:
@@ -1672,9 +1739,13 @@ def _load_episodes(brain: Brain, meta: dict[str, Any], data: Mapping[str, Any]) 
 
 def _observation_width(
     inputs: int | Sequence[int], code: int | None = None, learned_code: int | None = None,
+    learned_fields: int | None = None,
 ) -> int:
     """``Genome.observation_width``: the key width of the memories of a brain with these
     settings."""
+    fields = _learned_fields_features(learned_fields)
+    if fields:  # the key: the fields' pooled responses
+        return _learned_fields_width(fields)
     image = _image_shape(inputs)
     width = int(np.prod(image)) if image is not None else _count("inputs", inputs, low=1)
     units = _learned_code_units(learned_code)
@@ -1698,6 +1769,7 @@ def _layout(
     learned_code: int | None = None,
     seed: int = 0,
     slots: int | Sequence[int] = 1,
+    learned_fields: int | None = None,
 ) -> tuple[Genome, dict[str, Any]]:
     """The layout ``Brain.compose`` develops (``Genome.composed``) and the settings it resolved.
     ``options`` are compose's other settings; the efference copy, the heard history, the recall
@@ -1727,11 +1799,24 @@ def _layout(
             "a learned code needs a vector brain: an image brain's sensory region is its "
             "visual cortex"
         )
-    # the sensory region is the code when a vector brain asks for one
+    fields = _learned_fields_features(learned_fields)
+    if fields and image is None:
+        raise ValueError("learned fields need an image: inputs=(height, width[, channels])")
+    if fields and (units or learned):
+        raise ValueError(
+            "learned fields are the image brain's code: code and learned_code are not built "
+            "beside them"
+        )
+    # the sensory region is the code when a vector brain asks for one, and the fields' pooled
+    # responses when an image brain learns its fields
     coded_cortex = bool(units) and image is None
     sensory_width = units if coded_cortex else inputs
+    if fields:
+        sensory_width = _learned_fields_width(fields)
     if learned:  # the key: the code, joined to an observation no wider than it
         code_width = learned + (inputs if LearnedCode.joins(inputs, learned) else 0)
+    elif fields:
+        code_width = sensory_width
     else:
         code_width = units or inputs
     heard_width = learned or sensory_width  # what the history hears: the code it reads
@@ -1770,7 +1855,7 @@ def _layout(
     if not widths:
         raise ValueError("at least one processing module is required")
     names = [f"module_{index}" for index in range(len(widths) - 1)] + ["association"]
-    if image is None:
+    if image is None or fields:
         regions = [Region("sensory", sensory_width)]
     else:
         height, width, channels = image
@@ -1867,6 +1952,7 @@ def _layout(
         "actions": actions,
         "units": units,
         "learned": learned,
+        "fields": fields,
         "coded_cortex": coded_cortex,
         "image": image,
         "lateral": lateral,
@@ -1985,6 +2071,8 @@ class Brain:
         learned_code: int | None = None,
         apical: float = 0.0,
         dense_limit: int | None = None,
+        learned_fields: int | None = None,
+        image: Sequence[int] | None = None,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2002,10 +2090,32 @@ class Brain:
         # sparse code of it, which with ``inputs`` the sensory region is
         if inputs is not None:
             inputs = _count("inputs", inputs, low=1)
+        # learned receptive fields: the image is read through fields a local rule shapes,
+        # and the sensory region holds their pooled responses
+        features = _learned_fields_features(learned_fields)
+        self.fields: LearnedFields | None = None
+        if features:
+            shape = None if image is None else _image_shape(image)
+            if shape is None:
+                raise ValueError("learned fields need image=(height, width[, channels])")
+            if code or learned_code:
+                raise ValueError(
+                    "learned fields are the image brain's code: code and learned_code are not "
+                    "built beside them"
+                )
+            if sensory != "sensory" or len(self.sensory_index) != _learned_fields_width(features):
+                raise ValueError(
+                    "learned fields need a 'sensory' population of their "
+                    f"{_learned_fields_width(features)} pooled responses; Brain.compose adds it"
+                )
+            self.fields = LearnedFields(*shape, features=features, seed=int(seed))
+            inputs = self.fields.inputs
+        elif image is not None:
+            raise ValueError("image names the picture learned fields read: learned_fields=features")
         self.inputs = len(self.sensory_index) if inputs is None else inputs
         self.coded_cortex = inputs is not None
         units = _code_units(code)
-        if self.coded_cortex and units != len(self.sensory_index):
+        if self.coded_cortex and self.fields is None and units != len(self.sensory_index):
             raise ValueError(
                 f"with inputs the sensory region is the code: {len(self.sensory_index)} "
                 f"neurons for a code of {units} units"
@@ -2014,6 +2124,8 @@ class Brain:
             _sparse_code(self.inputs, units, _code_seed(seed)) if units else None
         )
         self.code_width = units or self.inputs
+        if self.fields is not None:
+            self.code_width = self.fields.outputs
         # the learned code: a region of the brain's own neurons that settles to a sparse
         # code of the observation; explicit acts and aroused live moments learn it
         learned = _learned_code_genes(learned_code, genes)  # its genes leave ``genes`` here
@@ -2046,7 +2158,7 @@ class Brain:
             self.code_width = learned["units"] + (self.inputs if joined else 0)
         # whether the memories key on a code of the observation (fixed or learned) rather
         # than on the observation itself
-        self._coded_keys = bool(units) or bool(learned)
+        self._coded_keys = bool(units) or bool(learned) or self.fields is not None
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
         # the gains read the declared tokens (``recall_gain``)
         if recalled.get("tokens") is not None and recalled.get("gain"):
@@ -2661,6 +2773,7 @@ class Brain:
         attention: bool = False,
         seed: int = 0,
         slots: int | Sequence[int] = 1,
+        learned_fields: int | None = None,
         **options: Any,
     ) -> Brain:
         """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
@@ -2680,6 +2793,9 @@ class Brain:
         vector brain, makes the sensory region that code. ``learned_code=units`` places a region
         between the senses and the first module that settles to a learned sparse code, which the
         cortex reads and the memories key on; ``attention=True`` is the recall recipe for it.
+        ``learned_fields=features`` (an image brain) reads the image through that many receptive
+        fields that a local rule shapes, pooled over overlapping regions, in place of the visual
+        cortex: the first module reads the pools and the memories key on them.
         ``teaching`` is the teaching point of the lesson's learner (``"founder"``,
         ``"normalized"`` or ``"deep"``); ``learning=LearnerConfig(...)`` replaces the whole
         configuration instead. ``connectome`` wraps a custom anatomy with these founders;
@@ -2726,7 +2842,7 @@ class Brain:
             options.setdefault("recall_temperature", 0.1 if single else 0.25)
         if connectome is None and "recall" not in options:
             # a new brain holds the memory, up to the width where its map should not arrive silently
-            width = _observation_width(inputs, code, learned_code)
+            width = _observation_width(inputs, code, learned_code, learned_fields)
             if width > Recall.WIDE:
                 raise ValueError(
                     "a new brain's recall memory keeps a map of about "
@@ -2754,7 +2870,7 @@ class Brain:
         genome, layout = _layout(
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
             scales=scales, features=features, field=field, code=code,
-            learned_code=learned_code, seed=seed, slots=slots,
+            learned_code=learned_code, seed=seed, slots=slots, learned_fields=learned_fields,
         )
         units, learned = layout["units"], layout["learned"]
         association = layout["widths"][-1]
@@ -2799,6 +2915,8 @@ class Brain:
             populations = connectome.populations
             sensory = populations.get("sensory", populations.get("visual/input", ()))
             needed = units if layout["coded_cortex"] else layout["inputs"]
+            if layout["fields"]:
+                needed = _learned_fields_width(layout["fields"])
             motor = len(populations.get("motor", ()))
             if len(sensory) != needed or motor != layout["actions"]:
                 raise ValueError(
@@ -2810,6 +2928,8 @@ class Brain:
                  if name in options}
 
         def built(**place: Any) -> Brain:
+            if layout["fields"]:  # the image the fields read; the sensory region is their pools
+                place = {**place, "learned_fields": layout["fields"], "image": layout["image"]}
             return cls(
                 connectome, seed=seed, slots=slots, code=units,
                 inputs=layout["inputs"] if layout["coded_cortex"] else None,
@@ -2879,6 +2999,8 @@ class Brain:
             result._composition["code"] = units
         if learned:
             result._composition["learned_code"] = learned
+        if layout["fields"]:
+            result._composition["learned_fields"] = layout["fields"]
         if attention:
             result._composition["attention"] = True
         if result.brain.apical is not None:
@@ -3105,6 +3227,8 @@ class Brain:
         ``memory_choice``) or would join a deep brain's apical pool; tied synapses and rates set by
         hand. See ``docs/grow.md``.
         """
+        if self.fields is not None:
+            raise ValueError("grow and graft take a brain without learned fields in this version")
         return _grow(self, parts)
 
     def graft(
@@ -3147,6 +3271,8 @@ class Brain:
         different neuron model, apical compartment or apical role; a learned code's region, or
         a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
+        if self.fields is not None or donor.fields is not None:
+            raise ValueError("grow and graft take a brain without learned fields in this version")
         return _graft(self, donor, regions, into, joints, freeze)
 
     def describe(self) -> dict[str, Any]:
@@ -3253,6 +3379,7 @@ class Brain:
                 # uncoded key
                 "code": {
                     "kind": "learned" if learned is not None
+                    else "fields" if self.fields is not None
                     else ("observation" if self.sparse_code is None else "code"),
                     "inputs": int(self.inputs),
                     "width": int(self.code_width),
@@ -3267,6 +3394,7 @@ class Brain:
                     else ("sparse" if self.hippocampus.separator.fan_in else "dense"),
                 },
                 **({} if learned is None else {"learned_code": learned.to_dict()}),
+                **({} if self.fields is None else {"learned_fields": self.fields.to_dict()}),
                 "composition": self._composition,
                 **(
                     {} if self.learner.synapse_rate is None else {
@@ -3310,6 +3438,8 @@ class Brain:
         """The observation code of validated observations; the observations themselves,
         the same array, without a code. A learned code settles here on the observations
         alone: the cortex and the memories read the context-free code."""
+        if self.fields is not None:
+            return self.fields.code(x)
         if self.learned_code is None:
             return x if self.sparse_code is None else _unit_rows(self.sparse_code.code(x))
         phase = self._settle_code(x, context=False)
@@ -4466,7 +4596,10 @@ class Brain:
                 stacklevel=3,  # the caller, past the operation wrapper
             )
         self.last_learning = {}
-        return dict(self._lesson(x, labels, targets=targets, weights=weights))
+        report = dict(self._lesson(x, labels, targets=targets, weights=weights))
+        if self.fields is not None:
+            self.fields.learn(x)  # the fields learn from the frames a lesson shows
+        return report
 
     def _lesson(
         self,
@@ -4522,7 +4655,7 @@ class Brain:
         judged = None
         if (
             _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
-            and self._compiled_moment()
+            and self.fields is None and self._compiled_moment()
         ):  # the compiled moment's read without the general path's layers (``_settled``)
             if _moment.ONE_CALL and labels is not None:
                 # with the judging solve, in one call
@@ -5151,6 +5284,8 @@ class Brain:
         routine = lived is not None and lived[4] is current and not lived[3]
         if self.learned_code is not None and not routine:
             self._learn_code(state)  # routine live moments keep the region's tables still
+        if self.fields is not None and not routine:
+            self.fields.learn(x)
         if self.working_memory is not None:
             self.working_memory.update(state)
         if self.history is not None:
@@ -5453,7 +5588,7 @@ class Brain:
         Refusal raises before anything changes."""
         if (
             _moment.SHORTCUTS and self.learned_code is None and self.sparse_code is None
-            and self._compiled_moment()
+            and self.fields is None and self._compiled_moment()
         ):
             # the compiled moment's read and solve without the general path's layers: the code
             # of the moment is the observations, and the drive the compiled read's
@@ -5526,6 +5661,8 @@ class Brain:
         state = self.basal_ganglia.state
         if learn_code and self.learned_code is not None and state is not None:
             self._learn_code(state)  # the region's step at every accepted moment
+        if learn_code and self.fields is not None:
+            self.fields.learn(x)  # the fields' step from every frame of an accepted moment
         if self.working_memory is not None and state is not None:
             self.working_memory.update(state)
         if self.efference is not None:
@@ -5818,6 +5955,7 @@ class Brain:
                 + recall.gains.size
             )
             + (0 if self.learned_code is None else self.learned_code.parameters())
+            + (0 if self.fields is None else self.fields.parameters())
             + (0 if self.hearing is None else len(self.hearing.routes))
         )
 
@@ -5907,6 +6045,11 @@ class Brain:
             metadata["code"] = {**self.sparse_code.to_dict(), "cortex": self.coded_cortex}
             tables = self.sparse_code.arrays()
             data["code/index"], data["code/weight"] = tables["index"], tables["weight"]
+        if self.fields is not None:
+            # the fields read the frames and give the sensory region and the keys their pools
+            metadata["learned_fields"] = self.fields.to_dict()
+            for name, value in self.fields.arrays().items():
+                data["learned_fields/" + name] = value
         if self.learned_code is not None:
             # its tables are the brain's synapses and the memories' keys
             metadata["learned_code"] = self.learned_code.to_dict()
@@ -6046,8 +6189,11 @@ class Brain:
                 meta, data, len(populations.get("sensory", populations.get("visual/input", ())))
             )
             learned = _validate_learned_code(meta, data, learner)
+            fields = _load_fields(
+                meta, data, len(populations.get("sensory", populations.get("visual/input", ())))
+            )
             try:
-                _validate_life_state(meta, data, learner, code, learned)
+                _validate_life_state(meta, data, learner, code, learned, fields)
             except (KeyError, TypeError, OverflowError) as exc:
                 raise ValueError("invalid or incomplete saved continuation state") from exc
             # a memory keyed on the code numbers its key coordinates from zero: the code's
@@ -6056,6 +6202,8 @@ class Brain:
             coded: int | None
             if learned:  # the key width: the units, joined to the observation's identity
                 coded = learned + len(populations["sensory"])
+            elif fields is not None:
+                coded = fields.outputs
             else:
                 coded = None if code is None else code[1].expansion
             memory = _load_memory(meta["hippocampus"], data, neurons, keys=coded, gate=True)
@@ -6083,6 +6231,14 @@ class Brain:
                 code=0 if code is None else code[1].expansion,
                 inputs=code[0] if code is not None and code[2] else None,
                 learned_code=learned or None,
+                **(
+                    {}
+                    if fields is None
+                    else {
+                        "learned_fields": fields.features,
+                        "image": (fields.height, fields.width, fields.channels),
+                    }
+                ),
                 **(
                     {}
                     if not learned
@@ -6123,6 +6279,8 @@ class Brain:
                 # the saved code as validated, its settings, seed and tables: the construction
                 # above drew a code from the default seed
                 result.sparse_code = code[1]
+            if fields is not None:  # the saved fields, never ones drawn anew
+                result.fields = fields
             if learned:
                 # the saved tables, never ones drawn anew, and the saved synapses must be the
                 # ones the tables give (the learner below carries them)
