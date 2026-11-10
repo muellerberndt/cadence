@@ -245,28 +245,3 @@ def test_the_colour_controls_and_other_channel_counts():
         LearnedFields(16, 16, 3, 8, colour="grey")
     with pytest.raises(ValueError, match="at least 3 fields"):
         LearnedFields(16, 16, 3, 2, colour="channels")
-
-
-def test_a_field_steps_less_the_more_it_has_been_used(tmp_path):
-    frames = np.stack([_frame(16, 16, at=(k, k)) for k in (2, 4, 6, 8)]).reshape(4, -1)
-    young, settled = LearnedFields(16, 16, 1, 4, seed=0), LearnedFields(16, 16, 1, 4, seed=0)
-    assert young.maturity == LearnedFields.MATURITY > 0
-    settled.use[:] = 100 * settled.maturity  # as after a long life
-    start = young.dictionary.copy()
-    young.learn(frames)
-    settled.learn(frames)
-    moved = np.abs(young.dictionary - start).sum(axis=0)
-    slow = np.abs(settled.dictionary - start).sum(axis=0)
-    used = moved > 0
-    assert used.any() and (slow[used] < 0.02 * moved[used]).all()
-    assert (young.use[used] == 1).all() and (young.use[~used] == 0).all()
-    whole = LearnedFields(16, 16, 1, 4, seed=0)
-    whole.maturity = 0.0  # every step whole: the control
-    whole.use[:] = 1e6
-    whole.learn(frames)
-    np.testing.assert_allclose(whole.dictionary, young.dictionary, atol=1e-12)
-    brain = Brain.compose(inputs=(16, 16), actions=2, seed=0, learned_fields=4, recall=False)
-    brain.lesson(frames[:2], [0, 1])
-    twin = Brain.load(brain.save(tmp_path / "used"))
-    np.testing.assert_array_equal(twin.fields.use, brain.fields.use)
-    assert twin.fields.use.any() and twin.fields.maturity == brain.fields.maturity

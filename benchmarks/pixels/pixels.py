@@ -73,9 +73,6 @@ ARMS: dict[str, dict[str, Any]] = {
     # the same brain with its fields held at their draw from birth
     "fields_drawn": {"sees": "image", "hold": True,
                      "compose": {"learned_fields": 64, "teaching": "normalized"}},
-    # the fields without their maturity: every step whole for the whole life
-    "fields_restless": {"sees": "image", "restless": True,
-                        "compose": {"learned_fields": 64, "teaching": "normalized"}},
     # colour controls of the fields: every field reads all three channels, or one channel each
     "fields_joint": {"sees": "image", "colour": "joint",
                      "compose": {"learned_fields": 64, "teaching": "normalized"}},
@@ -140,8 +137,6 @@ class Life:
             self.learner = compose(arm, shape, founder, condition, extra)
             if ARMS[arm].get("hold"):
                 self.learner.fields.learning = False
-            if ARMS[arm].get("restless"):
-                self.learner.fields.maturity = 0.0
             if ARMS[arm].get("colour"):  # the same stage reading colour another way, from birth
                 held = self.learner.fields
                 self.learner.fields = type(held)(

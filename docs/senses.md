@@ -110,14 +110,6 @@ square of at least 0.5 after the retina):
 | --- | --- | --- |
 | dictionary | `Phi += rate * mean_patches (x - Phi a) a^T`, each column scaled back to unit length: Hebbian on the residual of the patch the fields reconstruct, the learned code's rule | `RATE` 0.01 |
 | thresholds | `t += threshold_rate * (share - target)`, `share` the share of the structured patches the field responds to, floored at zero | `THRESHOLD` 0.3 at birth, `THRESHOLD_RATE` 0.01, `TARGET` 0.1 |
-| use | both steps of a field are scaled by `1 / (1 + use / maturity)`, `use` the learning steps in which the field has responded: a field settles as it is used | `MATURITY` 2,048 |
-
-A field that kept its whole step for a whole life would keep moving among codes that fit
-equally well, and the cortex that reads the pools would have to follow it: what it learned
-about objects where it was taught them would not hold where it was not. A field that settles
-gives the cortex a code that stays. `brain.fields.maturity = 0` keeps every step whole (the
-control), and `brain.fields.use[:] = 0` makes every field young again, for a world whose
-screens change.
 
 `predict`, `fit`, `imagine`, `observation_code` and readings take no step, and
 `brain.fields.learning = False` holds both tables still (the control with fields held at their
@@ -158,9 +150,9 @@ the stage a new brain holds the recall memory: its key is `features * 9` wide (5
 fields), where an 84 by 84 frame's own 7,056 coordinates are refused.
 
 A checkpoint saves the fields' settings and work counts under `learned_fields` and their
-tables as `learned_fields/dictionary`, `learned_fields/thresholds` and `learned_fields/use`;
-`describe()` reports them, the code's kind as `"fields"`, and `parameters()` counts the three
-tables (`64 * channels * features + 2 * features`). At 84 by 84 the map holds 39 by 39 positions: a
+tables as `learned_fields/dictionary` and `learned_fields/thresholds`; `describe()` reports
+them, the code's kind as `"fields"`, and `parameters()` counts both tables
+(`64 * channels * features + features`). At 84 by 84 the map holds 39 by 39 positions: a
 frame's responses take `1,521 * 64 * channels * features` multiply-adds, and a learning step
 about three times that on a frame whose every patch carries structure.
 

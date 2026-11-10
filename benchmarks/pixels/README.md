@@ -111,6 +111,32 @@ Uniform random actions read 1/3. The shuffled control as first declared permuted
 labels among its frames, which keeps a frame's own label in one draw of eight; it read .582 and
 was replaced by labels of independent scenes before its re-read.
 
+### Where the first run's invariance fell short, located
+
+The first run's six founders, their lives replayed with the pools cached and the brain's read of
+them varied one term at a time (panels of 2,048 frames, 65,536 frames; "within .05": founders
+whose band, scale and distractor panels all read within .05 of fresh frames):
+
+| What was varied | Fresh frames | Band | Scale | Distractor | Within .05 |
+| --- | --- | --- | --- | --- | --- |
+| nothing | .965 | .949 | .976 | .944 | 4 of 6 |
+| the association at 128 | .965 | .941 | .980 | .954 | 6 of 6 (5 of 6 at 131,072 frames) |
+| the association at 256 | .965 | .936 | .976 | .948 | 4 of 6 |
+| the pools' scale into the cortex, 4 times | .978 | .942 | .991 | .961 | 3 of 6 |
+| the lesson's step at a third | .963 | .963 | .974 | .937 | 4 of 6 |
+| the lesson's step at three times | .966 | .905 | .974 | .948 | 2 of 6 |
+| 32 rows per lesson | .967 | .969 | .981 | .944 | 4 of 6 |
+| twice the exposure | .973 | .934 | .982 | .957 | 4 of 6 |
+| every synapse's step at a tenth from 49,152 frames on | .956 | .892 | .969 | .924 | 1 of 6 |
+| the fields held still from 16,384 frames on | .969 | .967 | .977 | .955 | 6 of 6 |
+| fields that settle with use (`MATURITY` 2,048) | .973 | .973 | .982 | .970 | 6 of 6 |
+
+The failing term is the code under the read: fields that keep their whole step keep moving
+among codes that fit equally well, and the cortex follows them. Fields that settle with use
+are the mechanism the second run reads.
+
+ROUND2
+
 ### Seconds per frame (`timing.py`, the `fields` brain, median of 32 moments)
 
 | Where | Frame | `act`, 1 stream | `lesson`, 1 stream | `act`, 16 streams | `lesson`, 16 streams | One stream within 28.6 ms |

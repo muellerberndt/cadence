@@ -1007,8 +1007,7 @@ def _load_fields(meta: dict[str, Any], data: Mapping[str, Any], sensory: int,
         if ports:
             raise ValueError("saved ports need learned fields")
         return None
-    names = {"height", "width", "channels", "features", "seed", "colour", "maturity",
-             "learning", "work"}
+    names = {"height", "width", "channels", "features", "seed", "colour", "learning", "work"}
     if not isinstance(spec, dict) or set(spec) != names or not isinstance(spec["learning"], bool):
         raise ValueError("invalid saved learned_fields metadata")
     try:
@@ -1023,14 +1022,10 @@ def _load_fields(meta: dict[str, Any], data: Mapping[str, Any], sensory: int,
             f"the sensory region of {sensory} neurons is not the saved fields' "
             f"{fields.outputs} pooled responses and {ports} ports"
         )
-    for name in ("dictionary", "thresholds", "use"):
+    for name in ("dictionary", "thresholds"):
         if "learned_fields/" + name not in data:
             raise ValueError(f"missing saved learned field table: {name}")
-    fields.take(
-        data["learned_fields/dictionary"], data["learned_fields/thresholds"],
-        data["learned_fields/use"],
-    )
-    fields.maturity = real("saved learned_fields maturity", spec["maturity"], low=0)
+    fields.take(data["learned_fields/dictionary"], data["learned_fields/thresholds"])
     fields.learning = spec["learning"]
     work = spec["work"]
     if not isinstance(work, dict) or set(work) != set(fields.work):
