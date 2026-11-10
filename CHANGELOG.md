@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+#### Credit for a reward many moments after the decision (#283)
+
+- **`actor_hold`: the actor's eligibility decay apart from the critic's.** `Brain.compose(...,
+  actor_hold=1.0)` (or `ActorCriticConfig(hold=1.0)`) keeps each sampled act's contrast in the
+  actor's synapse, bias, recall and hearing traces until the episode ends, while the critic's
+  eligibility keeps `actor_gamma * actor_lam`. A hold below 1 sets the actor's decay per moment.
+  It applies in `learn` on the host, on a torch device, on MLX and in `Lives`, and in `fade`. A
+  brain that names no hold keeps `gamma * lam` for every trace and lives, saves and describes to
+  the bit as on 0.96.0 on `backend="cpu"`; a configuration without the hold saves without the
+  field ([a reward many moments after the
+  decision](docs/reward.md#a-reward-many-moments-after-the-decision)).
+- **The delayed-credit chamber** ([`benchmarks/delayed_credit`](benchmarks/delayed_credit/README.md)):
+  a delayed T-maze and a delayed key-door paid only at the end of an episode, delays of 10, 50
+  and 200 moments with distractors, an exact solver, yoked, shuffled, frozen and ablated controls,
+  and an LSTM actor-critic with generalized advantage estimation and the online TD(lambda)
+  actor-critic sized to the brain's parameter count, with tests.
+
 ## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in
