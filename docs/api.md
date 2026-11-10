@@ -237,13 +237,15 @@ the records' settings under `memories/longterm` in the metadata and, under
 without them.
 
 A brain with a [held message](memory.md#held-message) (`message`), [learned
-fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`) or an actor's hold
-([`actor_hold`](reward.md#a-reward-many-moments-after-the-decision)) saves under the name its
-maturity, fade and records give it, with the part's own members: the message under
-`memories/message`, the fields under `learned_fields` and the hold in the actor's config. 0.96.1 and
-earlier refuse each such file by the part they do not read: `invalid saved memories` for a message,
-`invalid saved composition provenance` for learned fields and `invalid saved actor config` for a
-hold. A brain that names none of them saves the file 0.96.1 saves.
+fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`), an actor's hold
+([`actor_hold`](reward.md#a-reward-many-moments-after-the-decision)) or the policy's entropy in the
+actor's step ([`actor_entropy`](reward.md#exploration-over-long-reward-lives-opt-in)) saves under
+the name its maturity, fade and records give it, with the part's own members: the message under
+`memories/message`, the fields under `learned_fields`, the hold and the entropy in the actor's
+config, and with the entropy a pending act's surprise (`pending/surprise`, `pending/entropy`).
+0.96.1 and earlier refuse each such file by the part they do not read: `invalid saved memories` for
+a message, `invalid saved composition provenance` for learned fields and `invalid saved actor
+config` for a hold or an entropy. A brain that names none of them saves the file 0.96.1 saves.
 
 | Members | What they hold |
 | --- | --- |
