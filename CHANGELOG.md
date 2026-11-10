@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.97.0 — 2026-11-11
+## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it
 records (`memory_rate=0.2`), the recall memory's slope steps on each stream's own slots, and
