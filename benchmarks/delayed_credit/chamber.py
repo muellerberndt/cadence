@@ -443,7 +443,7 @@ def _one(spec: dict[str, Any]) -> dict[str, Any]:
 
 def specs_of(args: argparse.Namespace) -> list[dict[str, Any]]:
     out = []
-    for kind in args.kinds:
+    for kind, control in [(k, c) for c in args.control for k in args.kinds]:
         arms = args.arms if kind == "brain" else [None]
         for arm in arms:
             for task in args.tasks:
@@ -451,7 +451,7 @@ def specs_of(args: argparse.Namespace) -> list[dict[str, Any]]:
                     for founder in args.founders:
                         spec: dict[str, Any] = {
                             "kind": kind, "task": task, "delay": delay, "founder": founder,
-                            "control": args.control, "budgets": args.budgets,
+                            "control": control, "budgets": args.budgets,
                         }
                         if arm is not None:
                             spec["arm"] = arm
@@ -510,7 +510,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--tasks", nargs="+", default=list(tk.TASKS), choices=tk.TASKS)
     parser.add_argument("--delays", nargs="+", type=int, default=list(tk.DELAYS))
     parser.add_argument("--founders", nargs="+", type=int, default=list(FOUNDERS))
-    parser.add_argument("--control", default="none", choices=CONTROLS)
+    parser.add_argument("--control", nargs="+", default=["none"], choices=CONTROLS)
     parser.add_argument("--budgets", nargs="+", type=int, default=list(BUDGETS))
     parser.add_argument("--settings", help="JSON settings over the brain arm's")
     parser.add_argument("--learner", help="JSON settings of a conventional learner")
