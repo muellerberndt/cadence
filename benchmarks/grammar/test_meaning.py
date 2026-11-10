@@ -453,3 +453,71 @@ def test_the_third_plan_and_its_gates_read_small_lives():
     assert any(line.startswith('| `state_256 (second run)`') for line in lines)
     assert any(line.startswith("gate, fine_256") for line in lines)
     assert any("less own_256, paired" in line for line in lines)
+
+
+def test_the_confirmatory_plan_and_its_gate_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.third_confirm_plan((0, 1))
+    assert [s["tag"] for s in plan[::2]] == ["default", "heard", "quiet_hold", "quiet_hold_heard"]
+    assert plan[-1]["settings"] == {**mn.HOLD, **mn.HEARD} and len(mn.CONFIRM) == 12
+    rows = [mn.run_life({**spec, "batches": 2, "panel_batches": 1}) for spec in plan]
+    lines = mn.third_confirm_verdict(rows)
+    assert sum("-> F3c" in line for line in lines) == 3
+    assert any(line.startswith("each arm less `heard`") for line in lines)
+    assert any(line.startswith("  quiet_hold_heard:") for line in lines)
+
+
+def test_the_fourth_plan_reads_held_out_combinations_and_their_probes():
+    warnings.simplefilter("ignore")
+    plan = mn.fourth_plan((0, 1))
+    assert [s["tag"] for s in plan[::2]] == ["own_256", "read_256", "heard_own_256", "both_256"]
+    assert len(mn.FOURTH) == 12 and all(s["module"] == 256 for s in plan)
+    both = mn.split_batches(0, 1)
+    split = gr.Split.of(0)
+    assert all(split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+               for rows in both["held"] for r in rows)
+    assert not any(split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+                   for rows in both["trained"] for r in rows)
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 2}) for spec in plan]
+    assert "said_held" in rows[0] and "probes_held" in rows[0]
+    some = next(iter(rows[0]["probes_held"].values()))
+    assert "message" in some["go"]
+    lines = mn.fourth_verdict(rows, of=2)
+    assert sum("-> H1c" in line for line in lines) == 4
+    assert any("Multiply-accumulates" in line for line in lines)
+
+
+def test_the_long_plan_reads_lengths_and_depths_from_the_state():
+    warnings.simplefilter("ignore")
+    plan = mn.fourth_long_plan((0,))
+    assert [s["tag"] for s in plan["long"]] == ["both_256", "default"]
+    assert len(plan["long_controls"]) == 4 and len(mn.FOURTH_LONG) == 6
+    assert all(len(r.pre) > 5 for rows in mn.long_batches(0, 1) for r in rows)
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "long_probes": 2}) for spec in plan["long"]]
+    by = {r["tag"]: r for r in rows}
+    assert any(k.startswith("clause_L3") for k in by["both_256"]["said_long"])
+    assert "message" in next(iter(by["both_256"]["probes_long"].values()))["go"]
+    assert "located" in by["default"]
+    lines = mn.fourth_long_verdict(rows, [])
+    assert sum("-> A2s" in line for line in lines) == 2
+    assert any(line.startswith("  default clause_long:") for line in lines)
+
+
+def test_the_winners_and_fifth_plans_and_their_gates_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.winners_plan((0,))
+    assert [s["tag"] for s in plan] == ["both_256", "both_256_w10"]
+    assert plan[1]["settings"] == {**mn.BOTH, "message_winners": 10}
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1})
+            for spec in plan]
+    lines = mn.fourth_verdict(rows, of=1, base="both_256")
+    assert any("less both_256" in line for line in lines)
+    fifth = mn.fifth_plan((0,))
+    assert [s["settings"].get("message_phases", 4) for s in fifth] == [4, 7, 8, 16]
+    small = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                          "long_probes": 2}) for spec in fifth[:2]]
+    lines = mn.fifth_verdict(small, of=1)
+    assert sum("-> A2c" in line for line in lines) == 2
+    assert any("dyck_d4" in line for line in lines)

@@ -1074,6 +1074,55 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/free.jsonl --third 
   -.03, -.09, -.14). No arm holds F3, and the protocol's second part (roles) did not run.
 - **Against the previous-word signal** every message arm is under `heard` on held-out
   combinations, roles and three hops (-.36 to -.58).
+- **On twelve founders** (the protocol's Amendment 1, gate on the paired mean and two standard
+  errors) the held message alone costs paths .20 and three hops .24: on four founders it loses its
+  place in the path, the first hop said at .41 to .81 with every previous word given. The held
+  message beside the previous word (`quiet_hold_heard`, 49,196 parameters) holds the gate on every
+  panel, lifts clauses (+.03) and reads three hops at the default's .42, under the previous word
+  alone (.64).
+- **Roles at 256 association neurons** (the protocol's second part): the instrument's message reads
+  roles .05 over the brain's own on the same founders, inside two standard errors, so the gap is
+  the founders' spread. One gain per 35 neurons (`message_gains=8`) reads roles .95 on fresh
+  founders (6 of 6) and fails the gate on held-out combinations (4 of 6).
+
+### Held-out combinations said from the state
+
+[MEANING_PROTOCOL_4.md](MEANING_PROTOCOL_4.md), declared before its run on twelve fresh founders
+(10028600 to 10028611), reads clauses said from the brain's own message (`message=280`) at 256
+association neurons with the recall read barred from the meaning, and three additions beside it.
+The gate H1c asks held-out combinations, clauses and role twins at .90 on 10 of 12 founders, and
+brackets, paths and three hops no more than .03 under the message alone, paired.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/meaning.py plan --fourth --out DIR/plans
+PYTHONPATH=src python benchmarks/grammar/meaning.py lives --plan DIR/plans/fourth.json --out DIR/fourth.jsonl --workers 48
+PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/fourth.jsonl --fourth
+```
+
+| Arm | Parameters | Multiply-accumulates | clause | clause_held | roles | dyck | path | at .90 of 12 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `own_256` | 432,528 | 2.42e13 | 1.00 | .94 | .93 | .93 | .51 | 12, 9, 9 |
+| `read_256` (`message_read=True`) | 587,416 | 2.54e13 | .98 | .91 | .93 | .92 | .48 | 12, 8, 10 |
+| `heard_own_256` (`history_decays=(0.0,)`) | 441,524 | 2.40e13 | 1.00 | .95 | .90 | .91 | .66 | 12, 11, 8 |
+| `both_256` (both) | 596,412 | 2.54e13 | .99 | .94 | .96 | .91 | .51 | 12, 11, 11 |
+
+- **H1c holds on `both_256`**: the brain says clauses, held-out combinations and role twins from
+  its held state at .90 on 12, 11 and 11 founders of twelve, with the meaning's recall slots
+  emptied at `GO`. The gain is in the weakest founders and not at the mean (held-out +.00, roles
+  +.02, paired against `own_256`).
+- **Where held-out combinations are lost.** With the previous words given every word kind of a
+  held-out clause is said at .96 to 1.00 but the verb, whose agreeing form is wrong on the weakest
+  founders (.74 to .88). A probe fitted on trained combinations reads the verb and the agent's
+  number of a held-out clause from the message at .99 to 1.00 and from the settled association at
+  .96 to 1.00 at the last word: the meaning is held and the readout of the verb's form fails on a
+  combination no lesson showed.
+- **Longer clauses, deeper brackets and three hops** (the protocol's Amendment 1, six fresh
+  founders) are lost from the state as by every learner beside it: `both_256` reads .00 on all
+  three, the LSTM and the transformer at its parameter count .00 to .02, the default composition
+  with its read free .00, .03 and .22. In a clause of three or four distractors the verb and the
+  patient are held in the message (1.00 and .92 to 1.00 by the probe) and the distractors that
+  share a block with an earlier moment are lost; brackets are lost past depth three, and a path's
+  hops are said from the read.
 
 ### What the held-meaning readings establish
 
@@ -1101,13 +1150,18 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/free.jsonl --third 
   At the default width a read of one block of the message lifts new combinations by .26 and .44
   and stays under .90. Beside a free read a quiet message keeps paths and costs three hops; the wide
   message takes the clauses over and costs paths.
-- The quiet message's three-hop cost beside a free read comes from the brain's own words joining
-  the message as it speaks: held from `GO` the message costs three hops nothing at the mean and
-  keeps its lifts, and the phase count is not the cause. The gate on 5 of 6 founders fails on the
-  founders' spread.
+- The quiet message's three-hop cost beside a free read is not the phase count. Held from `GO` it
+  costs nothing at the mean on six founders and costs paths and three hops on twelve, where some
+  brains lose their place in a path; beside the previous word it costs no panel on twelve
+  founders and lifts clauses.
 
-These readings are on one finite language with supplied meanings. Open in #286: role twins and the
-default width from the brain's own message, and a message beside a free read that costs no panel.
+- With the read of one block and the previous word beside it (`both_256`), the brain says clauses,
+  held-out combinations and role twins from its held state at .90 on 12, 11 and 11 founders of
+  twelve. Longer and deeper sentences are lost from the state, as by the LSTM and the transformer.
+
+These readings are on one finite language with supplied meanings. Open in #286: longer and deeper
+sentences from the state, the default width, and a message beside a free read that beats the
+previous word.
 
 ## Does a life settle? The lesson's step (#258)
 

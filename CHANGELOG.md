@@ -250,13 +250,19 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   an input channel: a heard moment with it on empties the message and begins it again, or with
   `message_boundary_holds` the message keeps what it heard before and nothing after joins.
   `cadence.Message` takes `boundary` and `boundary_holds` the same way.
-  The third run (six fresh founders, the read free): the quiet message's three-hop cost comes
-  from the brain's own words joining the message as it speaks. Held from `GO` it costs three hops
-  nothing at the mean (+.00 paired against the default) and keeps its lifts (clauses +.06, held-out
-  +.05, roles +.10, brackets +.12); the phase count at 24 or 32 is not the cause (-.09, -.12). The
-  gate on 5 of 6 founders fails on the founders' spread, and the run's second part (roles) did not
-  run.
-
+  The third run (the read free): the phase count at 24 or 32 is not the cause of the quiet
+  message's three-hop cost (-.09, -.12 on six founders). Held from `GO`, the message costs three
+  hops nothing at the mean on six founders and costs paths -.20 and three hops -.24 on twelve; held
+  from `GO` beside `history_decays=(0.0,)` it costs no panel on twelve founders and lifts clauses
+  (+.03). At 256 association neurons with the read barred, the instrument's message reads roles
+  .05 over the brain's own on the same founders, inside two standard errors; `message_gains=8`
+  reads roles .95 on fresh founders and held-out combinations .89 (4 of 6 at .90).
+  The fourth run ([`benchmarks/grammar/MEANING_PROTOCOL_4.md`](benchmarks/grammar/MEANING_PROTOCOL_4.md),
+  twelve fresh founders, the read barred): with `message_read=True` and `history_decays=(0.0,)`
+  beside `message=280` at 256 association neurons the brain says clauses, held-out combinations
+  and role twins from its held state at .90 on 12, 11 and 11 founders (596,412 parameters), where
+  the message alone reaches 12, 9 and 9. Longer clauses, deeper brackets and three hops read .00
+  from the state, and .00 to .02 for the LSTM and the transformer at the same parameter count.
 - **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
   present moment through learned maps (a content address over the block's units and a term per
   block). The maps start at zero and learn by the recall memory's address lesson on the message's

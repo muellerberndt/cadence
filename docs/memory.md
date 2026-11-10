@@ -1607,11 +1607,15 @@ the same brain with `history_decays=(0.0,)` in the message's place says .07, .00
 default composition's 64 association neurons the message alone reads .79, .47, .30 and the read of
 one block beside it .89, .72, .74. Beside a free recall read, a quiet message (70 units at
 amplitude .15) keeps paths and lifts clauses, brackets and roles, and costs three-hop paths .22;
-the wide message costs paths .26. The three-hop cost comes from the brain's own words joining the
-message as it speaks: held from `GO` (`message_boundary`, `message_boundary_holds`) the quiet
-message costs three hops nothing at the mean and keeps its lifts
-([the third run](../benchmarks/grammar/README.md#the-quiet-messages-cost)). None of these is a
-default.
+the wide message costs paths .26. Held from `GO` (`message_boundary`, `message_boundary_holds`)
+the quiet message costs paths and three hops on twelve founders, and beside the previous word
+(`history_decays=(0.0,)`) it costs no panel and lifts clauses
+([the third run](../benchmarks/grammar/README.md#the-quiet-messages-cost)). With `message_read=True`
+and `history_decays=(0.0,)` beside `message=280` at 256 association neurons, the brain says
+clauses, held-out combinations and role twins from its held state at .90 on 12, 11 and 11 of
+twelve fresh founders, and longer or deeper sentences at .00
+([the fourth run](../benchmarks/grammar/README.md#held-out-combinations-said-from-the-state)).
+None of these is a default.
 
 ## Long-term records
 

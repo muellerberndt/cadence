@@ -197,6 +197,60 @@ def probe_batches(founder: int, scale: float = 1.0) -> dict[str, list[list[gr.Ro
     return out
 
 
+def split_batches(founder: int, per_shape: int = 16) -> dict[str, list[list[gr.Row]]]:
+    """Clauses at trained shapes, ``trained`` of the combinations the lessons teach and
+    ``held`` of the held-out ones, ``per_shape`` batches of each per shape."""
+    split = gr.Split.of(int(founder))
+    rng = np.random.default_rng(np.random.SeedSequence([int(founder), SEEDS["probe"], 2]))
+    out: dict[str, list[list[gr.Row]]] = {"trained": [], "held": []}
+    for L in gr.TRAIN_L:
+        for _ in range(per_shape):
+            out["trained"].append([gr.trained_clause(rng, split, L, False)
+                                   for _ in range(gr.BATCH)])
+            rows = []
+            while len(rows) < gr.BATCH:
+                row = gr.clause(rng, L)
+                m = row.meta
+                if split.held(tuple(m["agent"]), tuple(m["patient"]), m["verb"]):
+                    rows.append(row)
+            out["held"].append(rows)
+    return out
+
+
+def long_batches(founder: int, per_shape: int = 8) -> list[list[gr.Row]]:
+    """Clauses of trained combinations at the longer shapes no lesson shows (``TEST_L``)."""
+    split = gr.Split.of(int(founder))
+    rng = np.random.default_rng(np.random.SeedSequence([int(founder), SEEDS["probe"], 3]))
+    return [[gr.trained_clause(rng, split, L, False) for _ in range(gr.BATCH)]
+            for L in gr.TEST_L for _ in range(per_shape)]
+
+
+def transfer_probes(founder: int, trained: list[tuple[gr.Row, dict[str, Any]]],
+                    held: list[tuple[gr.Row, dict[str, Any]]],
+                    places: tuple[str, ...]) -> dict[str, Any]:
+    """Probes fitted on the trained combinations' states and scored on the held-out ones':
+    whether a reading the lessons could set up reads new combinations. Per component, position
+    and place, the held-out accuracy and its chance."""
+    items = list(trained) + list(held)
+    scored = np.arange(len(items)) >= len(trained)
+    labels = [components(row) for row, _ in items]
+    names = sorted({k for label in labels for k in label})
+    spots = sorted({k for _, at in items for k in at})
+    table: dict[str, Any] = {}
+    for name in names:
+        has = np.array([name in label for label in labels])
+        for spot in spots:
+            there = has & np.array([spot in at for _, at in items])
+            if (there & scored).sum() < 20 or (there & ~scored).sum() < 20:
+                continue
+            y = np.array([labels[i][name] for i in np.flatnonzero(there)])
+            for place in places:
+                x = np.stack([items[i][1][spot][place] for i in np.flatnonzero(there)])
+                table.setdefault(name, {}).setdefault(spot, {})[place] = fit_probe(
+                    x, y, scored[there])
+    return table
+
+
 def capture(brain: Any, rows: list[gr.Row], condition: str = "intact") -> list[dict[str, Any]]:
     """One batch, teacher-forced, on ``brain`` (a fork): for every said word, what each place
     holds at its settle. ``carried`` is the working trace entering the settle, ``settled`` the
@@ -1271,6 +1325,30 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
     row["said"] = said_by_kind(
         brain, [b for name in ("clause", "dyck", "path")
                 for b in (tests if fresh is None else fresh)[name]], message, bar)
+    if spec.get("held_probes"):
+        # where held-out combinations are lost: each word kind said on them with the previous
+        # words given, and probes fitted on trained combinations, scored on held-out ones
+        both = split_batches(founder, int(spec.get("held_probes")))
+        row["said_held"] = said_by_kind(brain, both["held"], message, bar)
+        own = getattr(brain, "message", None) is not None
+        places = ("message", "carried", "settled") if message is not None or own else (
+            "carried", "settled")
+        states = message_states(brain, {"trained": both["trained"], "held": both["held"]},
+                                message, bar)
+        row["probes_held"] = transfer_probes(founder, states["trained"], states["held"], places)
+    if spec.get("long_probes"):
+        # where longer and deeper sentences are lost: each word kind said on the long panels
+        # with the previous words given, and probes fitted on trained shapes, scored on longer
+        row["said_long"] = said_by_kind(brain, [b for name in LONG for b in tests[name]],
+                                        message, bar)
+        own = getattr(brain, "message", None) is not None
+        places = ("message", "carried", "settled") if message is not None or own else (
+            "carried", "settled")
+        count = int(spec.get("long_probes"))
+        states = message_states(
+            brain, {"trained": split_batches(founder, count)["trained"],
+                    "long": long_batches(founder, count)}, message, bar)
+        row["probes_long"] = transfer_probes(founder, states["trained"], states["long"], places)
     if fresh is not None:
         own = getattr(brain, "message", None) is not None
         places = ("message", "carried", "settled") if message is not None or own else (
@@ -2014,6 +2092,338 @@ def third_plan(founders: tuple[int, ...] = THIRD,
     }
 
 
+CONFIRM = tuple(range(9928600, 9928612))  # twelve fresh founders (protocol 3, Amendment 1)
+HOLD = {**OWN_QUIET, "message_boundary": GO_CHANNEL, "message_boundary_holds": True}
+
+
+def third_confirm_plan(founders: tuple[int, ...] = CONFIRM) -> list[dict[str, Any]]:
+    """Protocol 3, Amendment 1: the message held from ``GO`` on twelve founders, beside the
+    default composition, the previous-word signal, and both together."""
+    arms: dict[str, dict[str, Any]] = {
+        "default": {"arm": "default", "probe_scale": 0.0},
+        "heard": {"arm": "default", "settings": HEARD, "probe_scale": 0.0},
+        "quiet_hold": {"arm": "default", "settings": HOLD, "probe_scale": 0.0},
+        "quiet_hold_heard": {"arm": "default", "settings": {**HOLD, **HEARD}, "probe_scale": 0.0},
+    }
+    return [{**spec, "founder": f, "tag": tag} for tag, spec in arms.items() for f in founders]
+
+
+def third_confirm_verdict(rows: list[dict[str, Any]], floor: float = 0.03) -> list[str]:
+    """Gate F3c: for each of the six panels the paired mean difference against ``default`` is at
+    or above ``-floor`` and the default is not above the arm by two standard errors; a lift
+    counts where it clears two standard errors. ``quiet_hold_heard`` is read against ``heard``
+    as well."""
+    arms = _by_tag(rows)
+    lines = ["whole sentences said exactly (roles: both twins), mean (least-greatest)", ""]
+    lines += _panel_table(arms, SIX) + [""]
+    for base, tags in (("default", ("quiet_hold", "quiet_hold_heard", "heard")),
+                       ("heard", ("quiet_hold_heard",))):
+        theirs = {r["founder"]: r for r in arms.get(base, [])}
+        lines.append(f"each arm less `{base}`, paired by founder: mean (standard error); "
+                     "* a lift beyond two standard errors, - a cost beyond them")
+        for tag in tags:
+            lives = [r for r in arms.get(tag, []) if r["founder"] in theirs]
+            if not lives:
+                continue
+            cells, held = [], True
+            for n in SIX:
+                mean, error = paired(
+                    [_score(r["panels"][n], n) or 0.0 for r in lives],
+                    [_score(theirs[r["founder"]]["panels"][n], n) or 0.0 for r in lives])
+                cost = mean < 0 and -mean > 2 * error
+                lift = mean > 0 and mean > 2 * error
+                held = held and mean >= -floor and not cost
+                cells.append(f"{n} {mean:+.2f} ({error:.2f})" + ("*" if lift else "-" if cost
+                                                                  else ""))
+            verdict = f"  -> F3c {'holds' if held else 'fails'}" if base == "default" else ""
+            lines.append(f"  {tag}: " + ", ".join(cells) + verdict)
+        lines.append("")
+    lines.append("by founder: path / path_long")
+    for tag, lives in arms.items():
+        lines.append(f"  {tag}: " + " ".join(
+            f"{_score(r['panels']['path'], 'path'):.2f}" for r in lives) + " / " + " ".join(
+            f"{_score(r['panels']['path_long'], 'path_long'):.2f}" for r in lives))
+    lines.append("learned gains (mean over founders)")
+    for tag, lives in arms.items():
+        names = list(lives[0].get("gains", {}))
+        if names:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k} {np.mean([r['gains'][k] for r in lives]):.2f}" for k in names))
+    lines.append("work: seconds per life")
+    lines.append("  " + ", ".join(f"{tag} {np.mean([r['seconds'] for r in lives]):.0f} s"
+                                  for tag, lives in arms.items()))
+    return lines
+
+
+FOURTH = tuple(range(10028600, 10028612))  # twelve fresh founders (MEANING_PROTOCOL_4.md)
+
+
+def fourth_plan(founders: tuple[int, ...] = FOURTH) -> list[dict[str, Any]]:
+    """Protocol 4, part 1: the brain's own message at 256 association neurons, the read barred,
+    every row taught, with the read of one block, the previous word, or both beside it."""
+    base = {"arm": "barred", "module": 256, "probe_scale": 0.0, "held_probes": 8}
+    arms: dict[str, dict[str, Any]] = {
+        "own_256": {**OWN_MESSAGE, **EVERY},
+        "read_256": {**OWN_MESSAGE, "message_read": True, **EVERY},
+        "heard_own_256": {**OWN_MESSAGE, **HEARD, **EVERY},
+        "both_256": {**OWN_MESSAGE, "message_read": True, **HEARD, **EVERY},
+    }
+    return [{**base, "settings": settings, "founder": f, "tag": tag}
+            for tag, settings in arms.items() for f in founders]
+
+
+def fourth_verdict(rows: list[dict[str, Any]], floor: float = 0.03, of: int = 10,
+                   base: str = "own_256") -> list[str]:
+    """Gate H1c: ``clause_held`` at .90 on ``of`` founders of twelve, ``clause`` and ``roles``
+    at .90 on as many, and on ``dyck``, ``path`` and three hops the paired mean against
+    ``base`` at or above ``-floor`` and not under it by two standard errors."""
+    arms = _by_tag(rows)
+    shown = ("clause", "clause_held", "roles", "dyck", "path", "path_long")
+    lines = ["whole sentences said from the state (roles: both twins), mean (least-greatest)", "",
+             "| Arm | Parameters | Multiply-accumulates | Seconds | Lives | "
+             + " | ".join(shown) + " |",
+             "| --- | --- | --- | --- | --- | " + " | ".join("---" for _ in shown) + " |"]
+    for tag, lives in arms.items():
+        work = [macs(r) or 0.0 for r in lives]
+        lines.append(f"| `{tag}` | {lives[0]['parameters']} | {np.mean(work):.2e} | "
+                     f"{np.mean([r['seconds'] for r in lives]):.0f} | {len(lives)} | "
+                     + " | ".join(_mean([_score(r["panels"][n], n) for r in lives])
+                                  for n in shown) + " |")
+    lines.append("")
+    theirs = {r["founder"]: r for r in arms.get(base, [])}
+    for tag, lives in arms.items():
+        cells, held = [], True
+        for n in ("clause", "clause_held", "roles"):
+            values = [_score(r["panels"][n], n) for r in lives]
+            count, _ = passes(values, 0.9, of)
+            held = held and count >= of
+            cells.append(f"{n} {count} of {len(values)} at .90 ("
+                         + " ".join(f"{v:.2f}" for v in values if v is not None) + ")")
+        paired_lives = [r for r in lives if r["founder"] in theirs]
+        if tag != base and paired_lives:
+            for n in shown:
+                mean, error = paired(
+                    [_score(r["panels"][n], n) or 0.0 for r in paired_lives],
+                    [_score(theirs[r["founder"]]["panels"][n], n) or 0.0
+                     for r in paired_lives])
+                cost = mean < 0 and -mean > 2 * error
+                lift = mean > 0 and mean > 2 * error
+                if n in ("dyck", "path", "path_long"):
+                    held = held and mean >= -floor and not cost
+                cells.append(f"{n} less {base} {mean:+.2f} ({error:.2f})"
+                             + ("*" if lift else "-" if cost else ""))
+        lines.append(f"  {tag}: " + "; ".join(cells) + f"  -> H1c {'holds' if held else 'fails'}")
+    lines.append("")
+    lines.append("held-out clauses with the previous words given, by word kind (least founder)")
+    for tag, lives in arms.items():
+        said = [r["said_held"] for r in lives if "said_held" in r]
+        if said:
+            kinds = sorted(k for k in said[0] if k.startswith("clause"))
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k[7:]} {np.mean([d[k] for d in said]):.2f} ({min(d[k] for d in said):.2f})"
+                for k in kinds))
+    lines.append("probes fitted on trained combinations, scored on held-out ones, at GO: "
+                 "the least component per place, by founder")
+    for tag, lives in arms.items():
+        for place in ("message", "settled"):
+            cells = []
+            for r in lives:
+                table = r.get("probes_held", {})
+                found = [(table[c]["go"][place]["accuracy"], c) for c in table
+                         if place in table[c].get("go", {})]
+                if found:
+                    low = min(found)
+                    cells.append(f"{low[0]:.2f} {low[1]}")
+            if cells:
+                lines.append(f"  {tag} {place}: " + "; ".join(cells))
+    return lines
+
+
+FOURTH_LONG = tuple(range(10128600, 10128606))  # six fresh founders (protocol 4, Amendment 1)
+
+
+def fourth_long_plan(founders: tuple[int, ...] = FOURTH_LONG) -> dict[str, list[dict[str, Any]]]:
+    """Protocol 4, Amendment 1: longer clauses, deeper brackets and longer paths from the state
+    on ``both_256``, the default composition with its read free beside it, and the chamber's
+    LSTM and transformer at ``both_256``'s parameter count."""
+    winner = {**OWN_MESSAGE, "message_read": True, **HEARD, **EVERY}
+    arms: dict[str, dict[str, Any]] = {
+        "both_256": {"arm": "barred", "module": 256, "settings": winner, "probe_scale": 0.0,
+                     "long_probes": 8},
+        "default": {"arm": "default", "probe_scale": 0.0, "long_probes": 8},
+    }
+    brains = [{**spec, "founder": f, "tag": tag} for tag, spec in arms.items() for f in founders]
+    parameters = int(make_brain(founders[0], winner, 256).parameters())
+    controls = [{"model": model, "mode": mode, "founder": f, "phases": [["g1", BATCHES]],
+                 "parameters": parameters, "width": wide_width(model, parameters)}
+                for model in ("lstm", "transformer") for mode in ("online", "offline")
+                for f in founders]
+    return {"long": brains, "long_controls": controls}
+
+
+def fourth_long_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]],
+                        bar: float = 0.8, of: int = 5) -> list[str]:
+    """Gate A2s: ``clause_long``, ``dyck_deep`` and ``path_long`` at ``bar`` on ``of`` founders
+    of six, said from the state; the controls and the located terms beside it."""
+    arms = _by_tag(rows)
+    shown = ("clause", "clause_held", "roles") + LONG
+    lines = ["whole sentences (roles: both twins), mean (least-greatest)", "",
+             "| Learner | Parameters | Multiply-accumulates | Lives | " + " | ".join(shown) + " |",
+             "| --- | --- | --- | --- | " + " | ".join("---" for _ in shown) + " |"]
+    for tag, lives in arms.items():
+        lines.append(f"| `{tag}` | {lives[0]['parameters']} | "
+                     f"{np.mean([macs(r) or 0.0 for r in lives]):.2e} | {len(lives)} | "
+                     + " | ".join(_mean([_score(r["panels"][n], n) for r in lives])
+                                  for n in shown) + " |")
+    groups: dict[tuple[str, str], list[dict[str, Any]]] = {}
+    for c in controls:
+        groups.setdefault((c["model"], c["mode"]), []).append(c)
+    for (model, mode), lives in sorted(groups.items()):
+        first = [c["readings"][0] for c in lives]
+        lines.append(f"| {model}, {mode} | {lives[0]['parameters']} | "
+                     f"{np.mean([rd['work']['macs'] for rd in first]):.2e} | {len(lives)} | "
+                     + " | ".join(_mean([_score(rd["panels"][n], n) for rd in first])
+                                  for n in shown) + " |")
+    lines.append("")
+    for tag, lives in arms.items():
+        cells, held = [], True
+        for n in LONG:
+            values = [_score(r["panels"][n], n) for r in lives]
+            count, _ = passes(values, bar, of)
+            held = held and count >= of
+            cells.append(f"{n} {count} of {len(values)} at {bar:.2f}")
+        lines.append(f"  {tag}: " + ", ".join(cells) + f"  -> A2s {'holds' if held else 'fails'}")
+    lines.append("the long panels with the previous words given, by word kind: mean (least)")
+    for tag, lives in arms.items():
+        said = [r["said_long"] for r in lives if "said_long" in r]
+        if said:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k} {np.mean([d[k] for d in said]):.2f} ({min(d[k] for d in said):.2f})"
+                for k in sorted(said[0])))
+    lines.append("probes fitted on trained shapes, scored on longer clauses, at GO "
+                 "(message / settled), mean")
+    for tag, lives in arms.items():
+        tables = [r["probes_long"] for r in lives if r.get("probes_long")]
+        if tables:
+            cells = []
+            for c in sorted(tables[0]):
+                at = [t[c]["go"] for t in tables if c in t and "go" in t[c]]
+                if at:
+                    cells.append(f"{c} " + " / ".join(
+                        f"{np.mean([a[place]['accuracy'] for a in at]):.2f}"
+                        for place in ("message", "settled") if place in at[0]))
+            lines.append(f"  {tag}: " + ", ".join(cells))
+    lines.append("the default composition's read on the long panels (delivered, said when "
+                 "delivered), mean")
+    for r_tag, lives in arms.items():
+        found = [r["located"] for r in lives if "located" in r]
+        if found:
+            for name in ("clause_long", "dyck_deep", "path_long"):
+                terms = sorted(found[0][name])
+                lines.append(f"  {r_tag} {name}: " + ", ".join(
+                    f"{t} " + _short([f[name][t]["delivered"] for f in found]) + " "
+                    + _short([f[name][t]["said_when_delivered"] for f in found])
+                    for t in terms))
+    return lines
+
+
+WINNERS = tuple(range(10228600, 10228612))  # twelve fresh founders (protocol 4, Amendment 2)
+FIFTH = tuple(range(10328600, 10328606))  # six fresh founders (MEANING_PROTOCOL_5.md)
+BOTH = {**OWN_MESSAGE, "message_read": True, **HEARD, **EVERY}  # the fourth run's both_256
+
+
+def winners_plan(founders: tuple[int, ...] = WINNERS) -> list[dict[str, Any]]:
+    """Protocol 4, Amendment 2: ``both_256`` at 10 winners a moment beside 5."""
+    base = {"arm": "barred", "module": 256, "probe_scale": 0.0}
+    arms = {"both_256": BOTH, "both_256_w10": {**BOTH, "message_winners": 10}}
+    return [{**base, "settings": settings, "founder": f, "tag": tag}
+            for tag, settings in arms.items() for f in founders]
+
+
+def fifth_plan(founders: tuple[int, ...] = FIFTH) -> list[dict[str, Any]]:
+    """Protocol 5: ``both_256`` with as many blocks as a four-distractor clause holds heard
+    moments (7), one past it (8), and as many as its whole episode (16), beside four."""
+    base = {"arm": "barred", "module": 256, "probe_scale": 0.0, "long_probes": 8}
+    arms = {"both_256": BOTH, "both_p7": {**BOTH, "message_phases": 7},
+            "both_p8": {**BOTH, "message_phases": 8},
+            "both_p16": {**BOTH, "message_phases": 16}}
+    return [{**base, "settings": settings, "founder": f, "tag": tag}
+            for tag, settings in arms.items() for f in founders]
+
+
+def fifth_verdict(rows: list[dict[str, Any]], floor: float = 0.03, of: int = 5,
+                  base: str = "both_256") -> list[str]:
+    """Gate A2c: ``clause_long`` at .80 on ``of`` founders of six, ``clause``,
+    ``clause_held`` and ``roles`` at .90 on as many, and on ``dyck``, ``path`` and three hops
+    the paired mean against ``base`` at or above ``-floor`` and not under it by two standard
+    errors. Deeper brackets and three hops are read and located beside it."""
+    arms = _by_tag(rows)
+    shown = ("clause", "clause_held", "roles", "dyck", "path", "path_long", "clause_long",
+             "dyck_deep")
+    lines = ["whole sentences said from the state (roles: both twins), mean (least-greatest)", "",
+             "| Arm | Parameters | Multiply-accumulates | Seconds | Lives | "
+             + " | ".join(shown) + " |",
+             "| --- | --- | --- | --- | --- | " + " | ".join("---" for _ in shown) + " |"]
+    for tag, lives in arms.items():
+        lines.append(f"| `{tag}` | {lives[0]['parameters']} | "
+                     f"{np.mean([macs(r) or 0.0 for r in lives]):.2e} | "
+                     f"{np.mean([r['seconds'] for r in lives]):.0f} | {len(lives)} | "
+                     + " | ".join(_mean([_score(r["panels"][n], n) for r in lives])
+                                  for n in shown) + " |")
+    lines.append("")
+    theirs = {r["founder"]: r for r in arms.get(base, [])}
+    for tag, lives in arms.items():
+        cells, held = [], True
+        for n, bar in (("clause_long", 0.8), ("clause", 0.9), ("clause_held", 0.9),
+                       ("roles", 0.9)):
+            values = [_score(r["panels"][n], n) for r in lives]
+            count, _ = passes(values, bar, of)
+            held = held and count >= of
+            cells.append(f"{n} {count} of {len(values)} at {bar:.2f} ("
+                         + " ".join(f"{v:.2f}" for v in values if v is not None) + ")")
+        paired_lives = [r for r in lives if r["founder"] in theirs]
+        if tag != base and paired_lives:
+            for n in shown:
+                mean, error = paired(
+                    [_score(r["panels"][n], n) or 0.0 for r in paired_lives],
+                    [_score(theirs[r["founder"]]["panels"][n], n) or 0.0
+                     for r in paired_lives])
+                cost = mean < 0 and -mean > 2 * error
+                lift = mean > 0 and mean > 2 * error
+                if n in ("dyck", "path", "path_long"):
+                    held = held and mean >= -floor and not cost
+                cells.append(f"{n} less {base} {mean:+.2f} ({error:.2f})"
+                             + ("*" if lift else "-" if cost else ""))
+        lines.append(f"  {tag}: " + "; ".join(cells) + f"  -> A2c {'holds' if held else 'fails'}")
+    lines.append("")
+    lines.append("the long panels with the previous words given, by word kind: mean (least)")
+    for tag, lives in arms.items():
+        said = [r["said_long"] for r in lives if "said_long" in r]
+        if said:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k} {np.mean([d[k] for d in said]):.2f} ({min(d[k] for d in said):.2f})"
+                for k in sorted(said[0])))
+    lines.append("probes fitted on trained shapes, scored on longer clauses, at GO "
+                 "(message / settled), mean")
+    for tag, lives in arms.items():
+        tables = [r["probes_long"] for r in lives if r.get("probes_long")]
+        if tables:
+            cells = []
+            for c in sorted(tables[0]):
+                at = [t[c]["go"] for t in tables if c in t and "go" in t[c]]
+                if at:
+                    cells.append(f"{c} " + " / ".join(
+                        f"{np.mean([a[place]['accuracy'] for a in at]):.2f}"
+                        for place in ("message", "settled") if place in at[0]))
+            lines.append(f"  {tag}: " + ", ".join(cells))
+    lines.append("learned gains (mean over founders)")
+    for tag, lives in arms.items():
+        names = list(lives[0].get("gains", {}))
+        lines.append(f"  {tag}: " + ", ".join(
+            f"{k} {np.mean([r['gains'][k] for r in lives]):.2f}" for k in names))
+    return lines
+
+
 def _by_tag(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     arms: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -2473,13 +2883,29 @@ def main(argv: list[str] | None = None) -> int:
                          help="the second run: the brain's own message")
     planner.add_argument("--third", action="store_true",
                          help="the third run: the cost beside a free read, and roles")
+    planner.add_argument("--fourth", action="store_true",
+                         help="protocol 4: held-out combinations from the state at 256")
+    planner.add_argument("--long", action="store_true",
+                         help="protocol 4, Amendment 1: lengths and depths from the state")
+    planner.add_argument("--winners", action="store_true",
+                         help="protocol 4, Amendment 2: ten winners a moment beside five")
+    planner.add_argument("--fifth", action="store_true",
+                         help="protocol 5: blocks enough for the longest clause")
+    planner.add_argument("--confirm", action="store_true",
+                         help="protocol 3, Amendment 1: the held message on twelve founders")
     reader = sub.add_parser("read", help="print the tables of a results file")
     reader.add_argument("results", type=Path)
     reader.add_argument("--controls", type=Path, help="with --knock: the declared gates")
     reader.add_argument("--knock", type=Path)
     reader.add_argument("--own", action="store_true", help="the second run's gates")
-    reader.add_argument("--third", choices=("free", "roles"),
-                        help="the third run's gates: its first or its second part")
+    reader.add_argument("--fourth", action="store_true", help="protocol 4's gate")
+    reader.add_argument("--winners", action="store_true",
+                        help="protocol 4, Amendment 2's gate, against both_256")
+    reader.add_argument("--fifth", action="store_true", help="protocol 5's gate")
+    reader.add_argument("--long", action="store_true",
+                        help="protocol 4, Amendment 1's gate; --controls beside it")
+    reader.add_argument("--third", choices=("free", "roles", "confirm"),
+                        help="the third run's gates: its first part, its second, or Amendment 1")
     reader.add_argument("--fresh", type=Path, help="with --third roles: the fresh founders' rows")
     reader.add_argument("--earlier", type=Path,
                         help="with --third roles: the second run's brain rows")
@@ -2500,9 +2926,16 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
-        founders = tuple(args.founders or (THIRD if args.third else OWN if args.own
-                                           else DECLARED))
-        plans = (third_plan(founders) if args.third else own_plan(founders) if args.own
+        founders = tuple(args.founders or (
+            WINNERS if args.winners else FIFTH if args.fifth
+            else FOURTH_LONG if args.long else FOURTH if args.fourth else CONFIRM if args.confirm
+            else THIRD if args.third else OWN if args.own else DECLARED))
+        plans = ({"winners": winners_plan(founders)} if args.winners
+                 else {"fifth": fifth_plan(founders)} if args.fifth
+                 else fourth_long_plan(founders) if args.long
+                 else {"fourth": fourth_plan(founders)} if args.fourth
+                 else {"confirm": third_confirm_plan(founders)} if args.confirm
+                 else third_plan(founders) if args.third else own_plan(founders) if args.own
                  else declared_plan(founders))
         for name, specs in plans.items():
             (args.out / f"{name}.json").write_text(json.dumps(specs))
@@ -2514,6 +2947,18 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(read_retrieval(rows)))
         elif args.third == "free":
             print("\n".join(third_free_verdict(rows)))
+        elif args.long:
+            print("\n".join(fourth_long_verdict(rows, [
+                json.loads(line) for line in args.controls.read_text().splitlines() if line]
+                if args.controls is not None else [])))
+        elif args.fourth:
+            print("\n".join(fourth_verdict(rows)))
+        elif args.winners:
+            print("\n".join(fourth_verdict(rows, base="both_256")))
+        elif args.fifth:
+            print("\n".join(fifth_verdict(rows)))
+        elif args.third == "confirm":
+            print("\n".join(third_confirm_verdict(rows)))
         elif args.third == "roles":
             others = [[json.loads(line) for line in path.read_text().splitlines() if line]
                       if path is not None else [] for path in (args.fresh, args.earlier)]
