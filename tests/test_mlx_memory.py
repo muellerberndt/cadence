@@ -237,10 +237,18 @@ def test_a_moment_reads_nothing_wider_than_its_action(monkeypatch):
         def forbidden(*_, **__):
             raise AssertionError("a whole array came to the host")
 
+        fetch = plan.fetch
+
+        def change_alone(handle, key):
+            # a lesson that teaches some rows reads each row's movement, a value per stream
+            if key != "change":
+                forbidden()
+            return fetch(handle, key)
+
         monkeypatch.setattr(resident.MlxArrays, "host", read)
         monkeypatch.setattr(resident.MlxArrays, "host_long", forbidden)
         monkeypatch.setattr(plan, "part", read_part)
-        monkeypatch.setattr(plan, "fetch", forbidden)
+        monkeypatch.setattr(plan, "fetch", change_alone)
         monkeypatch.setattr(kernel, "to_edges", forbidden)
         monkeypatch.setattr(kernel, "rows_to_edges", forbidden)
         monkeypatch.setattr(kernel, "host_scale", forbidden)
