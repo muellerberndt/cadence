@@ -768,8 +768,8 @@ rises by .008 (at most .013 against .05), the answer .006 to .013 below the read
 cues taught one after another read .005 less of the mixed reading on the last cue (.984 and above against .9).
 The chamber's pass takes about the seconds it took (195 against 194 on a shared machine); a battery life takes
 85 seconds against 69. The credit and key-door chambers move inside two standard errors (the key-door at delay 2,
-9 against 7 of 24 lives, and at 5, 13 against 10). The compiled moment (`learning_compiled_moment`) covers the
-composition without the history, so a brain with it runs the ordinary path.
+9 against 7 of 24 lives, and at 5, 13 against 10). The compiled moment (`learning_compiled_moment`) carries the
+history, its write and its gains per block, in its one-call act and lesson ([the compiled moment](tune.md#the-compiled-moment-opt-in)).
 
 ### What the composition gives up
 

@@ -76,8 +76,10 @@
   `history_decays=()` composes the brain of 0.96.1; `recall=False`, the founder word and an
   anatomy of one's own hold a history by name alone. On the grammar chamber's words the brain
   holds 30,992 parameters where it held 28,716. `Lives` holds the history and its gains per
-  block. The compiled moment (`learning_compiled_moment`) covers the composition without the
-  history: a brain with it runs the ordinary path. On fresh founders, paired against the brain
+  block. The compiled moment (`learning_compiled_moment`) carries the history: its drive, its
+  write after the act and its gains per block run in the one-call act and the taught lesson, a
+  brain without a history keeps the option's bits, and on the new default the option agrees with
+  the ordinary path to rounding. On fresh founders, paired against the brain
   without it: the grammar chamber reads held-out .995 against .868 and three hops .656 against
   .397, every panel at or above it; ordered recall 12 of 12 in both; every battery gate holds on
   6 of 6 founders but "was A told before B?" on the `recall_when` arm, 4 of 6 against 5 of 6;

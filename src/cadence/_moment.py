@@ -807,16 +807,18 @@ if njit is not None:
         values: np.ndarray, nexts: np.ndarray, has_next: bool, held: np.ndarray, first: int,
         slots: int, told: np.ndarray, focus: np.ndarray, table: np.ndarray, grid: np.ndarray,
         neurons: int, spans: np.ndarray, gains: np.ndarray, flags: np.ndarray,
-        trace: np.ndarray, strength: np.ndarray, mass: np.ndarray,
+        trace: np.ndarray, strength: np.ndarray, mass: np.ndarray, heard: np.ndarray,
     ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
         """The drive of a moment in the order ``Memories.stimulus`` reads the memories: the
-        sensory part, the working trace, the recall read (``_packed_read``) at its gain and the
-        place store's read of the sensory part (``_store_kernel``). ``spans`` are the column
-        ranges (sensory, trace, recall, next, ports, the store's key and value), ``gains`` the
-        scales (the stimulus amplitude, the trace's, the read's, the ports' and the store's
-        amplitude) and ``flags`` which parts there are (a trace of this batch, the read's drive
-        gain, a store, a store read at its baseline, a normalized store). Returns the drive,
-        the read's key, address and attention, and what the ports held at the read's gain."""
+        sensory part, the working trace, the heard history, the recall read (``_packed_read``)
+        at its gain and the place store's read of the sensory part (``_store_kernel``).
+        ``spans`` are the column ranges (sensory, trace, recall, next, ports, the store's key
+        and value, the history), ``gains`` the scales (the stimulus amplitude, the trace's, the
+        read's, the ports' and the store's amplitude), ``heard`` the history's stimulus as the
+        host makes it (``heard_drive``) and ``flags`` which parts there are (a trace of this
+        batch, the read's drive gain, a store, a store read at its baseline, a normalized
+        store, a read, a stepping trace, a history). Returns the drive, the read's key, address
+        and attention, and what the ports held at the read's gain."""
         rows = x.shape[0]
         drive = np.zeros((rows, neurons))
         for b in range(rows):
@@ -826,6 +828,10 @@ if njit is not None:
             for b in range(rows):
                 for k in range(spans[3] - spans[2]):
                     drive[b, spans[2] + k] = gains[1] * trace[b, k]
+        if flags[7]:
+            for b in range(rows):
+                for k in range(spans[13] - spans[12]):
+                    drive[b, spans[12] + k] = heard[b, k]
         ports = np.zeros((rows, spans[7] - spans[6]) if flags[1] else (rows, 0))
         if flags[5]:
             key, q, attention, read, following = _packed_read(
@@ -930,10 +936,11 @@ def drive_spans(brain: Any) -> np.ndarray | None:
     working trace's, the recall read's ports and the place store's key and value; None where
     one is not a contiguous range. Made once per brain and its memories."""
     recall, trace, store = brain.recall, brain.working_memory, brain.hippocampus
+    history = brain.history
     held = brain.__dict__.get("_drive_spans")
     if (
         held is not None and held[0] is recall and held[1] is trace and held[2] is store
-        and held[3] is brain.sensory_index
+        and held[3] is brain.sensory_index and held[5] is history
     ):
         return held[4]  # type: ignore[no-any-return]
     parts = (
@@ -941,8 +948,9 @@ def drive_spans(brain: Any) -> np.ndarray | None:
         *recall._head_columns[0], recall._port_columns,
         None if store is None else store._pre_columns,
         None if store is None else store._post_columns,
+        None if history is None else history._glow_columns,
     )
-    spans: np.ndarray | None = np.zeros(12, dtype=np.int64)
+    spans: np.ndarray | None = np.zeros(14, dtype=np.int64)
     for k, part in enumerate(parts):
         if part is None:
             continue
@@ -952,10 +960,24 @@ def drive_spans(brain: Any) -> np.ndarray | None:
         if k in (2, 3):  # the recall and next ports: their first column
             spans[4 + (k - 2)] = part.start
         else:
-            at = {0: 0, 1: 2, 4: 6, 5: 8, 6: 10}[k]
+            at = {0: 0, 1: 2, 4: 6, 5: 8, 6: 10, 7: 12}[k]
             spans[at], spans[at + 1] = part.start, part.stop
-    brain.__dict__["_drive_spans"] = (recall, trace, store, brain.sensory_index, spans)
+    brain.__dict__["_drive_spans"] = (recall, trace, store, brain.sensory_index, spans, history)
     return spans
+
+
+def heard_drive(history: Any, rows: int) -> np.ndarray:
+    """The heard history's stimulus of ``rows`` streams as ``History.stimulate`` makes it (its
+    amplitude times each block's gain, times what it holds), for the compiled drive; silence
+    for a history of another batch, and a placeholder without a history."""
+    if history is None:
+        return _NO_ROWS
+    if len(history.trace) != rows:
+        return np.zeros((rows, len(history.glow)))
+    amplitude: Any = history.amplitude
+    if history.hearing is not None:
+        amplitude = amplitude * np.repeat(history.hearing, history.width, axis=-1)
+    return np.ascontiguousarray(amplitude * history.trace, dtype=np.float64)
 
 
 def moment_drive(brain: Any, x: np.ndarray, spans: np.ndarray) -> np.ndarray:
@@ -997,15 +1019,16 @@ def moment_drive(brain: Any, x: np.ndarray, spans: np.ndarray) -> np.ndarray:
         recall.amplitude * recall.hearing,
         0.0 if store is None else float(store.amplitude),
     ])
+    history = brain.history
     flags = np.array([
         has_trace, recall.drive_gain, store is not None, shared,
-        store is not None and bool(store.normalize), True, has_trace,
+        store is not None and bool(store.normalize), True, has_trace, history is not None,
     ], dtype=np.int64)
     drive, key, q, attention, ports = _drive_kernel(
         x, np.ascontiguousarray(c), w_x, w_c, w, columns, numbers, scalars, keys, values, nexts,
         bool(recall.next), held, first, slots, recall.told, recall.focus, table, grid,
         brain.connectome.n, spans, gains, flags, trace.trace if has_trace else _NO_ROWS,
-        strength, _NO_MASS if store is None else store.mass,
+        strength, _NO_MASS if store is None else store.mass, heard_drive(history, rows),
     )
     recall.last = _Moment(x, c, q, key, x)
     attention.flags.writeable = False
@@ -1218,7 +1241,7 @@ if njit is not None:
         bias: np.ndarray, flat: np.ndarray, starts: np.ndarray, pair_pre: np.ndarray,
         pair_post: np.ndarray, offset: np.ndarray, rule: np.ndarray, budget: int, chunk: int,
         tolerance: float, settled: float, mode: int, after: np.ndarray, temperature: float,
-        decay: float, write: bool, ended: np.ndarray, drop: int, stop: int,
+        decay: float, write: bool, ended: np.ndarray, drop: int, stop: int, heard: np.ndarray,
     ) -> tuple[Any, ...]:
         """A moment in one call, each part the kernel the passes in turn call: the drive
         (``_drive_kernel``), the free solve from the warm state (the activations of its
@@ -1231,7 +1254,7 @@ if njit is not None:
         drive, key, q, attention, ports = _drive_kernel(
             x, c, w_x, w_c, w, columns, numbers, scalars, keys, values, nexts, has_next, held,
             first, slots, told, focus, table, grid, neurons, spans, gains, flags, trace,
-            strength, mass,
+            strength, mass, heard,
         )
         v = np.zeros((rows, neurons))
         a = np.zeros((rows, neurons))
@@ -1403,7 +1426,7 @@ def one_call(
         recall.amplitude * recall.hearing,
         0.0 if store is None else float(store.amplitude),
         has_trace, bool(recall.drive_gain), store is not None, shared,
-        store is not None and bool(store.normalize), begun, steps,
+        store is not None and bool(store.normalize), begun, steps, brain.history is not None,
     )
     made = brain.__dict__.get("_moment_scales")
     if made is None or made[0] != scales:
@@ -1423,7 +1446,7 @@ def one_call(
         budget if budget < 2 else (budget + 1) // 2, 16,  # the fast solve's chunk
         tolerance, min(tolerance, fused._FAST_SETTLED), mode, after,
         float(cfg.temperature), 0.0 if trace is None else float(trace.decay),
-        rooms is not None, ended, drop, stop,
+        rooms is not None, ended, drop, stop, heard_drive(brain.history, rows),
     )
     return c, rooms, flat, out, begun
 

@@ -349,8 +349,8 @@ at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 ### The compiled moment (opt-in)
 
 `learning_compiled_moment=True` does the work around the solve kernels in compiled calls on the
-CPU. A greedy act is one call: the moment's drive (the sensory part, the working trace, the
-memory's read, with the address and every position term through one product of the maps, kept
+CPU. A greedy act is one call: the moment's drive (the sensory part, the working trace, the heard
+history at its gains per block, the memory's read, with the address and every position term through one product of the maps, kept
 packed until a lesson replaces one, and the place store's read), the free solve, the choice, the
 trace's step and the memory's write. A lesson by surprise judges in one call, the read and the
 solve its answer is read from, and where it teaches a row the lesson is one call more, from its
@@ -367,13 +367,23 @@ that is refused.
 
 [`cost.py`](../benchmarks/grammar/cost.py) times a pass of the default brain, the same brain with
 the option and the chamber's transformer in one process, batch by batch in turn, on one thread. On
-one core of a Xeon 8488C with nothing else running, one founder at a time, in one session:
+one core of a Xeon 8488C with nothing else running, one founder at a time, in one session, the
+brain of 0.96 (before the heard history joined the default):
 
 | Founder | Default brain | With `learning_compiled_moment` | Transformer | Against the transformer: default, compiled |
 | --- | ---: | ---: | ---: | ---: |
 | 0 | 67.6 s | 36.7 s | 16.0 s | 4.2, 2.3 |
 | 1 | 70.5 s | 38.5 s | 15.9 s | 4.4, 2.4 |
 | 2 | 70.8 s | 39.5 s | 16.2 s | 4.4, 2.4 |
+
+On the default with the heard history, in another session on one core of the same processor,
+nothing else running, one founder at a time:
+
+| Founder | Default brain | With `learning_compiled_moment` | Share |
+| --- | ---: | ---: | ---: |
+| 0 | 59.7 s | 32.1 s | .54 |
+| 1 | 57.1 s | 31.7 s | .55 |
+| 2 | 60.6 s | 33.1 s | .55 |
 
 The option takes .54 to .56 of the default's seconds. The seconds of one machine differ from run
 to run and from machine to machine by a tenth and more, the transformer's more than the brain's:
