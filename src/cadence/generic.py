@@ -3622,9 +3622,7 @@ class Brain:
 
     def _sensed(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:
         """What the sensory neurons are given: the observations, or with a coded cortex their
-        code; with learned fields their pools at the fields' gain."""
-        if self.fields is not None:
-            return code * self.fields.GAIN
+        code."""
         return code if self.coded_cortex else x
 
     def _heard(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:

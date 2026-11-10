@@ -69,11 +69,10 @@ class LearnedFields:
     OVERLAP = 1.5
     RETINA = 0.01
     STRUCTURE = 0.5
-    RATE = 0.05
+    RATE = 0.01
     THRESHOLD = 0.3
     THRESHOLD_RATE = 0.01
     TARGET = 0.1
-    GAIN = 1.0
 
     def __post_init__(self) -> None:
         for name in ("height", "width", "channels", "features"):

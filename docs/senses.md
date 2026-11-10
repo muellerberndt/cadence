@@ -77,7 +77,7 @@ square of at least 0.5 after the retina):
 
 | Table | Rule | Constant |
 | --- | --- | --- |
-| dictionary | `Phi += rate * mean_patches (x - Phi a) a^T`, each column scaled back to unit length: Hebbian on the residual of the patch the fields reconstruct, the learned code's rule | `RATE` 0.05 |
+| dictionary | `Phi += rate * mean_patches (x - Phi a) a^T`, each column scaled back to unit length: Hebbian on the residual of the patch the fields reconstruct, the learned code's rule | `RATE` 0.01 |
 | thresholds | `t += threshold_rate * (share - target)`, `share` the share of the structured patches the field responds to, floored at zero | `THRESHOLD` 0.3 at birth, `THRESHOLD_RATE` 0.01, `TARGET` 0.1 |
 
 `predict`, `fit`, `imagine`, `observation_code` and readings take no step, and
