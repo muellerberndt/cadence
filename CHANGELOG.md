@@ -29,8 +29,9 @@ does not name it; a checkpoint that holds one of them is refused by 0.96.1.
   the digit (lessons write nothing to the store); seconds per pass the same; the credit and
   key-door chambers move inside two standard errors but the bandit with reversal, 1 of 6 lives
   passing against 4 of 6, where the averaged record of the arm that paid holds through a block
-  of 30 after the reversal (memory.md, associative store). The recorded-lives fixtures hold as
-  recorded (their brains compose `recall=False`).
+  of 30 after the reversal (memory.md, associative store): in a world whose payoffs change often,
+  name `memory_rate=1.0`. The recorded-lives fixtures hold as recorded (their brains compose
+  `recall=False`).
 - **The recall memory's slope steps on each stream's own slots** (#292). With the grid
   (`recall_grid`, in the default composition) the slope maps step only on a lesson's rows whose
   slots fit the position table. The rule read the width of the slot bank, which the streams of
@@ -81,13 +82,13 @@ does not name it; a checkpoint that holds one of them is refused by 0.96.1.
   `Lives` did in 0.96. `Lives(..., episodic=False, history_decays=())` keeps every action and
   every life's parameters of 0.96.1 on the CPU and the torch CPU device in float64 and float32.
 
-- **What the new default costs a skill met by a competing one** (#169,
+- **A skill met by a competing one, on the new default** (#169,
   [Amendment 3](https://github.com/muellerberndt/cadence/issues/169#issuecomment-6768998711)).
-  Read on the 0.97 default, retention fails two gates: in the short competing ring the first
-  skill's loss is 46.6 points against a bar of 42.7, and in the twenty-fight league 8 of 24 runs
-  fail against a bar of 2 (runs one winner takes, 7 of them in one league), where the 0.96.0
-  default read 0 of 24. `memory_rate=0.2` beside the new default holds every gate but recovery,
-  which no arm meets. `memory_rate` and the actor's rate keep their defaults.
+  With the heard history and `memory_rate=1.0`, retention failed two gates: in the short competing
+  ring the first skill's loss read 46.6 points against a bar of 42.7, and in the twenty-fight
+  league 8 of 24 runs failed against a bar of 2 (runs one winner takes, 7 of them in one league),
+  where the 0.96.0 default read 0 of 24. The default `memory_rate=0.2` holds both: 39.4 points and
+  2 of 24. Recovery is a measured negative for every arm. The actor's rate keeps its default.
 
 ### New
 
@@ -505,7 +506,9 @@ records, with every slot scored. No setting or default changes.
   stream, found over every unrevised fact reads .9875 to 1.000 (5 of 6 at .99; gate B6 fails at
   one founder where 2.43% of the facts share their key); over the facts whose key is their own,
   1.000 on 6 of 6 (B7 passes).
-- `memory_rate` and the actor's rate keep their defaults (#169).
+- **The bandit with reversal under `memory_rate=0.2`: 1 of 6 lives pass against 4 of 6 at 1.0**
+  (#169, #256); the averaged record of the arm that paid holds through a block of 30 after the
+  reversal. Recovery in the competing ring is a measured negative for every arm (#169).
 
 ### Documentation
 
