@@ -486,3 +486,20 @@ def test_the_fourth_plan_reads_held_out_combinations_and_their_probes():
     lines = mn.fourth_verdict(rows, of=2)
     assert sum("-> H1c" in line for line in lines) == 4
     assert any("Multiply-accumulates" in line for line in lines)
+
+
+def test_the_long_plan_reads_lengths_and_depths_from_the_state():
+    warnings.simplefilter("ignore")
+    plan = mn.fourth_long_plan((0,))
+    assert [s["tag"] for s in plan["long"]] == ["both_256", "default"]
+    assert len(plan["long_controls"]) == 4 and len(mn.FOURTH_LONG) == 6
+    assert all(len(r.pre) > 5 for rows in mn.long_batches(0, 1) for r in rows)
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "long_probes": 2}) for spec in plan["long"]]
+    by = {r["tag"]: r for r in rows}
+    assert any(k.startswith("clause_L3") for k in by["both_256"]["said_long"])
+    assert "message" in next(iter(by["both_256"]["probes_long"].values()))["go"]
+    assert "located" in by["default"]
+    lines = mn.fourth_long_verdict(rows, [])
+    assert sum("-> A2s" in line for line in lines) == 2
+    assert any(line.startswith("  default clause_long:") for line in lines)
