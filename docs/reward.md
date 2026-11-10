@@ -86,6 +86,7 @@ the composed founders are `gamma=0.9, lam=0.8, eta=1.0, eta_bias=0.05, eta_criti
 | `eta_critic` | `0.05` | Critic step |
 | `dopamine_cap` | `1.0` | Clip of the actor's signal; `0` for none |
 | `eligibility_steps` | `None` | Steps of each reward-nudged phase; `None` uses the learner's `nudged_steps` |
+| `hold` | `None` | The actor's eligibility decay per moment apart from the critic's; `None` uses `gamma * lam` ([a reward many moments after the decision](#a-reward-many-moments-after-the-decision)) |
 
 `beta`, the base `temperature` and `tolerance` come from the learner's `LearnerConfig`
 (composed: `temperature`; `beta` is 0.1, a constant); the teaching point (`teaching`) sets the steps
@@ -479,6 +480,51 @@ Teach the outcome slot 1 for a moment of a game that was won and 0 for one lost 
 
 The composed critic reads the association region, not the slot; `probabilities` reads the
 slot's choice among its two outcomes.
+
+## A reward many moments after the decision
+
+A reward paid when an episode ends reaches the decision that earned it through the actor's
+eligibility, and the composed eligibility fades by `actor_gamma * actor_lam`, .72 a moment: ten
+moments after a decision .04 of its contrast is left, fifty moments after it one part in ten
+million. The critic carries credit across the gap only where the brain senses the coming outcome
+on the way (a key in a pouch, a score on a screen); where the moments in between look the same
+after a right and a wrong decision, the eligibility is the one path. Raising `actor_gamma` and
+`actor_lam` to 1 keeps the contrast and makes the critic's value diverge, since the critic shares
+that discount. `actor_hold` sets the actor's decay apart from the critic's:
+
+```python
+import numpy as np
+from cadence import Brain
+
+held = Brain.compose(9, 2, seed=0, arousal=True, actor_eta=0.1, actor_eta_bias=0.01,
+                     actor_hold=1.0)
+config = held.basal_ganglia.config
+assert config.decay == 1.0 and config.gamma * config.lam == 0.9 * 0.8  # the critic's own
+rng = np.random.default_rng(0)
+owed = None
+for episode in range(4):                    # a T-maze: the cue at the junction, 10 moments, the outcome
+    cue = int(rng.integers(2))
+    junction = np.eye(9)[[cue]]
+    choice = held.step(junction) if owed is None else held.step(junction, reward=[owed], done=[True])
+    for _ in range(10):                     # the corridor looks the same after either choice
+        held.step(np.eye(9)[[2]], reward=[0.0])
+    owed = 1.0 if int(choice[0]) == cue else -1.0  # paid with the next episode's first moment
+```
+
+With `actor_hold=1.0` each act's contrast stays in the actor's synapse, bias, recall and hearing
+traces until the episode ends (`done`, or `reset`), and the step a decision gets is the
+episode's dopamine summed over the moments from the decision on: the outcome less a baseline
+of the critic's values, `V(s_0) + (1 - gamma) * (V(s_1) + ... + V(s_k))`. A hold below 1 gives a horizon of about `1 / (1 - hold)` moments; in a life with no
+episode ends, choose one, since a hold of 1 there sums every act since the last `done`. The
+critic keeps `actor_gamma` and `actor_lam`. `None`, the founder, keeps `gamma * lam` for every
+trace and every bit of a brain that names no hold.
+
+Take a tenth of the actor step with the hold. A held trace sums the contrast of every act of the
+episode into each outcome's step, and at the composed `actor_eta` of 1.0 the readout goes to a
+rail within the first quarter of a life ([the saturation latch](#traps-with-their-measurements),
+[issue 296](https://github.com/muellerberndt/cadence/issues/296)): in the
+[delayed-credit chamber](../benchmarks/delayed_credit/README.md) the hold at the composed step
+learns a 50-moment T-maze on 2 of 6 development founders, and at a tenth of the step on 6 of 6.
 
 ## Replaying a life through `step`
 
