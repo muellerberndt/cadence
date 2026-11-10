@@ -503,3 +503,21 @@ def test_the_long_plan_reads_lengths_and_depths_from_the_state():
     lines = mn.fourth_long_verdict(rows, [])
     assert sum("-> A2s" in line for line in lines) == 2
     assert any(line.startswith("  default clause_long:") for line in lines)
+
+
+def test_the_winners_and_fifth_plans_and_their_gates_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.winners_plan((0,))
+    assert [s["tag"] for s in plan] == ["both_256", "both_256_w10"]
+    assert plan[1]["settings"] == {**mn.BOTH, "message_winners": 10}
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1})
+            for spec in plan]
+    lines = mn.fourth_verdict(rows, of=1, base="both_256")
+    assert any("less both_256" in line for line in lines)
+    fifth = mn.fifth_plan((0,))
+    assert [s["settings"].get("message_phases", 4) for s in fifth] == [4, 7, 8, 16]
+    small = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                          "long_probes": 2}) for spec in fifth[:2]]
+    lines = mn.fifth_verdict(small, of=1)
+    assert sum("-> A2c" in line for line in lines) == 2
+    assert any("dyck_d4" in line for line in lines)
