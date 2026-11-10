@@ -101,7 +101,10 @@ def test_the_controls_blank_the_screen_or_shuffle_the_labels():
     plain = next(ch.Schedule(5, shape, rows=16).batches(1))
     shuffled = next(ch.Schedule(5, shape, rows=16, control="shuffled").batches(1))
     np.testing.assert_array_equal(plain[0], shuffled[0])
-    assert sorted(plain[1]) == sorted(shuffled[1])
+    many = ch.Schedule(5, shape, rows=16, control="shuffled")
+    plain_many = ch.Schedule(5, shape, rows=16)
+    agree = [np.mean(a[1] == b[1]) for a, b in zip(many.batches(40), plain_many.batches(40))]
+    assert abs(np.mean(agree) - (2 * 0.375**2 + 0.25**2)) < 0.05  # independent of the frames
     with pytest.raises(ValueError):
         ch.Schedule(0, shape, control="dark")
 

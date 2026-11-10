@@ -244,7 +244,10 @@ def panel(founder: int, name: str, shape: tuple[int, int, int], size: int,
 class Schedule:
     """The training stream of a life: batches of fresh frames at the trained ranges.
     ``control`` names a control's change to what the life sees: ``blank`` (the background
-    alone, labels as drawn), ``shuffled`` (each batch's labels permuted among its frames)."""
+    alone, labels as drawn), ``shuffled`` (every frame's label the label of an independently
+    drawn scene: the labels keep their shares and carry nothing of the frames). A permutation
+    within a batch would keep a frame's own label among the batch's, so each frame would still
+    meet its own label about one time in eight more often than chance."""
 
     founder: int
     shape: tuple[int, int, int]
@@ -265,8 +268,9 @@ class Schedule:
         for _ in range(count):
             scenes = [draw_scene(self.rng, conditions, aspect) for _ in range(self.rows)]
             labels = np.array([s.label for s in scenes])
-            if self.control == "shuffled":  # the same frames, their labels permuted
-                labels = labels[self.shuffle.permutation(len(labels))]
+            if self.control == "shuffled":  # the same frames, labels of other scenes
+                labels = np.array([draw_scene(self.shuffle, conditions, aspect).label
+                                   for _ in range(self.rows)])
             yield frames(scenes, self.shape, self.rng), labels
 
 
