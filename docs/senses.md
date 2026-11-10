@@ -71,6 +71,8 @@ fields held at their draw reads .832. Each founder reads its untrained band, sca
 distractor within .05 of its fresh frames on 4 of 6 founders; on the other two the pools read
 those panels at .988 to 1.000 for a linear readout, and the brain's readout of them trails.
 Under reward alone the brain reads .673 against .372 for the same brain on a blank screen.
+On twelve further fresh founders, read on panels of 2,048 frames, the brain answers fresh frames
+at .963 (11 of 12 at .90 or above), and 10 of 12 read all three untrained panels within .05.
 
 | Frame (one stream) | `act` per frame, one CPU core | `lesson` per frame | the visual cortex's `act` |
 | --- | --- | --- | --- |
