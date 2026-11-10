@@ -741,6 +741,36 @@ parameters, and costs the chamber's paths. `recall_grid` with 128 slots earns a 
 fresh founders against .870 with a table of 64 at 64 slots, the other sequence gates to the digit, and it
 costs the place in a long story past the table ([long context](#reads-over-long-context)).
 
+### The heard history in a new brain
+
+A new brain also hears the moment before: `history_decays=(0.0,)`, one block that holds the last observation as
+heard, read through its own plastic projection at its own gain (`history_0`). A fourth block of fresh founders
+read it paired against the same brain without it (`history_decays=()`), on one machine, with no refused lesson
+and no exhausted act. On the grammar chamber's words the brain holds 30,992 parameters against 28,716.
+
+| Reading | With the history | Without | With less without, paired, ± two standard errors |
+| --- | --- | --- | --- |
+| Clauses, twelve lives | .997 (.97) | .964 (.73) | +.034 ± .045 |
+| Two distractors | .995 (.94) | .943 (.75) | +.052 ± .048 |
+| Held-out | .995 (.97) | .868 (.61) | +.126 ± .070 |
+| Roles | .987 (.94) | .904 (.56) | +.083 ± .069 |
+| Brackets | .882 (.56) | .794 (.47) | +.087 ± .094 |
+| Paths | .978 (.94) | .904 (.23) | +.074 ± .127 |
+| Two hops | .958 (.91) | .872 (.03) | +.086 ± .162 |
+| Three hops | .656 (.44) | .397 (.00) | +.259 ± .140 |
+| Ordered recall under `live`, twelve founders at .90 | 12 of 12 | 12 of 12 | .000 |
+| "Was A told before B?", `recall_when=True`, six founders at .90 | 4 of 6 (.55 and .82) | 5 of 6 | -.059 ± .147 |
+| "How long ago?", `recall_when=True` | .72 to .88 | .56 to .76 | +.097 ± .093 |
+
+Every other gate of the sequence battery holds on 6 of 6 founders in both forms, within two standard errors of each
+other. Two readings fall past two standard errors, each far inside its bar: the read less the answer on n-back
+rises by .008 (at most .013 against .05), the answer .006 to .013 below the read on five founders, and
+cues taught one after another read .005 less of the mixed reading on the last cue (.984 and above against .9).
+The chamber's pass takes about the seconds it took (195 against 194 on a shared machine); a battery life takes
+85 seconds against 69. The credit and key-door chambers move inside two standard errors (the key-door at delay 2,
+9 against 7 of 24 lives, and at 5, 13 against 10). The compiled moment (`learning_compiled_moment`) covers the
+composition without the history, so a brain with it runs the ordinary path.
+
 ### What the composition gives up
 
 Against the brain with no memory, `recall=False`:

@@ -77,7 +77,13 @@
   anatomy of one's own hold a history by name alone. On the grammar chamber's words the brain
   holds 30,992 parameters where it held 28,716. `Lives` holds the history and its gains per
   block. The compiled moment (`learning_compiled_moment`) covers the composition without the
-  history: a brain with it runs the ordinary path.
+  history: a brain with it runs the ordinary path. On fresh founders, paired against the brain
+  without it: the grammar chamber reads held-out .995 against .868 and three hops .656 against
+  .397, every panel at or above it; ordered recall 12 of 12 in both; every battery gate holds on
+  6 of 6 founders but "was A told before B?" on the `recall_when` arm, 4 of 6 against 5 of 6;
+  the n-back read less answer rises by .008 and the last cue in sequence by .005 of the mixed,
+  each far inside its bar; the credit and key-door chambers move inside two standard errors
+  (memory.md, the heard history in a new brain).
 - **`Lives` composes the store by default** (#293). `Lives(inputs, actions, lives)` composes each
   life as `Brain.compose(inputs, actions, seed=s, **options)`, the default composition with its
   store of place records, as a lone brain composes; `episodic=False` composes without it, as
