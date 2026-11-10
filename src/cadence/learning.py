@@ -524,8 +524,10 @@ class Learner:
             sizes = [int(k) for k in self.slots]
             if not sizes or min(sizes) < 1 or sum(sizes) != len(self.output_index):
                 raise ValueError("slot sizes must be positive and add up to the output neurons")
-        self.slot_sizes = np.asarray(sizes, dtype=np.int64)
-        self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.int64)
+        # The platform's index type: a 32-bit NumPy (a browser's Python) refuses int64 counts and
+        # offsets in ``np.repeat`` and ``reduceat``; on a 64-bit platform it is int64.
+        self.slot_sizes = np.asarray(sizes, dtype=np.intp)
+        self.slot_offsets = np.concatenate([[0], np.cumsum(self.slot_sizes)[:-1]]).astype(np.intp)
         self.slot_count = len(sizes)  # ``slots`` keeps what was asked for
         self.slot_size = int(self.slot_sizes[0]) if len(set(sizes)) == 1 else 0  # equal, or not
         self.output_groups: np.ndarray | None = None
