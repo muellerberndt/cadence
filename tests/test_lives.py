@@ -133,9 +133,10 @@ def test_each_life_on_a_device_follows_its_lone_brain_in_float64(device, composi
     ("actions", "options"),
     [(5, {"recall_address_reward": 0.01}), (6, {"slots": 2}), (5, {"modules": (16, 8)}),
      (5, {"carried_gain": 0.0}), (5, {"recall_position": 0}), (5, {"observers": (8,)}),
-     (5, {"teaching": "founder"}), (5, {"learning_surprise": False})],
+     (5, {"teaching": "founder"}), (5, {"learning_surprise": False}),
+     (5, {"history_decays": (0.3, 0.8)}), (5, {"history_decays": ()})],
     ids=["address reward", "two slots", "two regions", "no carried gain", "no position term",
-         "an observer", "founder teaching", "every row taught"],
+         "an observer", "founder teaching", "every row taught", "two heard blocks", "no history"],
 )
 def test_variants_of_the_composition_follow_their_lone_brains(actions, options):
     place = {"backend": "torch", "device": "cpu", "precision": "float64"}

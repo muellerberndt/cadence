@@ -493,8 +493,8 @@ class History:
     def stimulate(self, drive: np.ndarray) -> np.ndarray:
         """Read the history into a drive copy; another batch size reads silence."""
         amplitude: Any = self.amplitude
-        if self.hearing is not None:
-            amplitude = amplitude * np.repeat(self.hearing, self.width)
+        if self.hearing is not None:  # one gain per block, or per stream and block (``Lives``)
+            amplitude = amplitude * np.repeat(self.hearing, self.width, axis=-1)
         if _resident(drive):  # a resident drive reads what the host holds
             if len(self.trace) == len(drive):
                 _set_columns(drive, self._glow_columns, amplitude * self.trace)

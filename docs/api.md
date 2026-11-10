@@ -274,10 +274,10 @@ one call per moment for all of them ([many lives at once](backends.md#many-lives
 
 `Lives` holds the default composition without the store, and with it (`episodic=True`: each life's place
 records, with `memory_fade` and `maturity` where named), with or without the recall memory (`recall=False`), the
-carried gains and arousal (`arousal=True`, for `live`), at any teaching point, with one or several regions,
-observers and motor slots. It refuses, naming the part: `memory_choice`, a store with a separator, a learned or
-fixed code, an apical compartment, rehearsal, qualified teaching, the efference copy,
-the heard history, a recall memory with several heads, a window, the command, the read of when or tokens,
+heard history and its gains per block, the carried gains and arousal (`arousal=True`, for `live`), at any
+teaching point, with one or several regions, observers and motor slots. It refuses, naming the part:
+`memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
+teaching, the efference copy, a recall memory with several heads, a window, the command, the read of when or tokens,
 image inputs, and MPS, which has no float64 for the settles' checks. A moment any life refuses is refused for
 every life.
 

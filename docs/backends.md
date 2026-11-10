@@ -540,11 +540,11 @@ of `Lives` on one L4. It would take MLX versions of the per-life transport and s
 carried gains, store and nudges, and somewhere for the settles' float64 checks: the Apple GPU has no float64, so
 they would run on the host or MLX's CPU stream.
 
-`Lives` holds the default composition, its store among it, and the same without the store (`episodic=False`),
-with or without the recall memory, the carried gains, arousal, `memory_fade` and maturity, at any teaching point, with one or several
-regions, observers and motor slots. It refuses, naming the part: `memory_choice` and a store with a separator; a
-learned or fixed code and image inputs; an apical compartment;
-rehearsal and qualified teaching; the efference copy and the heard history; a recall memory with several heads, a
+`Lives` holds the default composition, its store and its heard history among it, and the same without the store
+(`episodic=False`) or the history (`history_decays=()`), with or without the recall memory, the carried gains, arousal,
+`memory_fade` and maturity, at any teaching point, with one or several regions, observers and motor slots. It refuses,
+naming the part: `memory_choice` and a store with a separator; a learned or fixed code and image inputs; an apical
+compartment; rehearsal and qualified teaching; the efference copy; a recall memory with several heads, a
 window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
 life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
 of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.

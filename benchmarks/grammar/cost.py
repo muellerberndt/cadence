@@ -2,7 +2,8 @@
 ``learning_compiled_moment=True`` and the chamber's matched transformer, in one process.
 
 One online pass of the first grammar (4,000 batches of 16 rows by default): the brains are
-``Brain.compose`` at the library's defaults on the CPU backend, taught by ``grammar.speak``; the
+``Brain.compose`` at the library's defaults on the CPU backend without the heard history
+(``history_decays=()``, the composition the compiled moment covers), taught by ``grammar.speak``; the
 transformer takes one Adam step per batch (``controls.Learner``, online). The three learners
 take each batch in turn and every batch's CPU seconds (``time.thread_time``) are summed per
 learner, so they share whatever else the machine does. The kernels compile or load on copies
@@ -48,9 +49,10 @@ def make(name: str, founder: int) -> Any:
                           ct.RATES["online"])
     import cadence as cd
 
+    # the compiled moment covers the composition without the heard history: both brains name it
     settings = {"learning_compiled_moment": True} if name == "compiled" else {}
     return cd.Brain.compose(gr.INPUTS, gr.ACTIONS, modules=(64,), seed=founder, backend="cpu",
-                            **settings)
+                            history_decays=(), **settings)
 
 
 def _warm(brain: Any, stream: list[Any], batches: int = WARM) -> None:

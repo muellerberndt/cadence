@@ -23,7 +23,9 @@ pytestmark = pytest.mark.skipif(
 
 
 def brain(**options) -> cd.Brain:
-    return cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu", **options)
+    # the compiled moment covers the composition without the heard history
+    return cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu",
+                            **{"history_decays": (), **options})
 
 
 def lived(subject: cd.Brain, moments: int = 6, seed: int = 0) -> np.random.Generator:
@@ -443,7 +445,7 @@ def test_a_lesson_of_many_rows_in_one_call_keeps_the_bits_of_its_passes(
     for one_lesson in (False, True):
         _mode(monkeypatch, True, True, one_lesson)
         subject = cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu",
-                                   learning_compiled_moment=True)
+                                   learning_compiled_moment=True, history_decays=())
         rng = np.random.default_rng(1)
         actions, taught = [], 0
         for t in range(10):

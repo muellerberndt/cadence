@@ -342,6 +342,8 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 _COMPOSED_TEACHING = "deep"
 _COMPOSED_SETTINGS: dict[str, Any] = {
     "learning_surprise": True, "learning_fast_settle": True, "carried_gain": 0.01,
+    # the observations as heard, one block that holds the moment before (``History``)
+    "history_decays": (0.0,),
 }
 # the association's width those lessons hold at: past it the two projections that grow with the
 # width (``_width_rates``) and the read's address map each step at this over the width
@@ -2746,6 +2748,8 @@ class Brain:
             for name, value in Recall.composed(options).items():
                 options.setdefault(f"recall_{name}", value)
             for name, value in _COMPOSED_SETTINGS.items():
+                if name == "history_decays" and connectome is not None:
+                    continue  # an anatomy of its own holds a history by name alone
                 if not (name.startswith("learning_") and "learning" in options):
                     options.setdefault(name, value)
             if teaching is None and "learning" not in options:

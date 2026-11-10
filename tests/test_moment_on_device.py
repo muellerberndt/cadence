@@ -204,7 +204,7 @@ def test_retune_grow_and_graft_read_as_on_the_host(monkeypatch, tmp_path, option
     assert placed.basal_ganglia.trace_memory.shape == host.basal_ganglia.trace_memory.shape
     _both_live(host, placed, rng)
     np.testing.assert_allclose(placed.brain.efficacy, host.brain.efficacy, rtol=0, atol=atol)
-    grown = host.grow(history_decays=(0.5,)), placed.grow(history_decays=(0.5,))
+    grown = host.grow(history_decays=(0.0, 0.5)), placed.grow(history_decays=(0.0, 0.5))
     assert grown[1].brain.backend == placed.brain.backend
     _both_live(*grown, rng)
     np.testing.assert_allclose(grown[1].brain.efficacy, grown[0].brain.efficacy, rtol=0, atol=atol)
@@ -582,7 +582,7 @@ def test_grow_and_graft_leave_a_living_brain_as_it_was(device):
     x = np.eye(12)[[1, 7, 3]]
     brain.act(x)
     before = copy.deepcopy(brain)
-    grown = brain.grow(history_decays=(0.5,))
+    grown = brain.grow(history_decays=(0.0, 0.5))
     assert grown.basal_ganglia._pending is None
     twin = cd.Brain.compose(12, 5, modules=(16,), seed=4, **place)
     grafted = twin.graft(brain, regions=("association", "motor"), joints="kept")
@@ -600,10 +600,10 @@ def test_a_brain_grown_while_it_streams_is_the_brain_grown_after_a_reset(device,
     brain = cd.Brain.compose(12, 5, modules=(16,), seed=3, **place)
     _a_life_of_rewards(brain, moments=5)
     brain.act(np.eye(12)[[1, 7, 3]])
-    streaming = brain.grow(history_decays=(0.5,))
+    streaming = brain.grow(history_decays=(0.0, 0.5))
     twin = copy.deepcopy(brain)
     twin.reset()
-    afresh = twin.grow(history_decays=(0.5,))
+    afresh = twin.grow(history_decays=(0.0, 0.5))
     ours, theirs = streaming.save(tmp_path / "a.npz"), afresh.save(tmp_path / "b.npz")
     with np.load(ours) as a, np.load(theirs) as b:
         assert set(a.files) == set(b.files)

@@ -23,8 +23,9 @@ follows.
 - **Learned weights: skill.** The synapses themselves, changed slowly by every lesson and
   outcome. They are the long-term memory and survive everything but learning.
 
-Two smaller carriers are opt-in: the **efference copy** of the actions the brain issued
-(`efference_amplitude`) and the **heard history** of the raw observations (`history_decays`).
+Two smaller carriers: the **heard history** of the raw observations (`history_decays`), whose one
+block of the moment before a new brain holds, and the opt-in **efference copy** of the actions the
+brain issued (`efference_amplitude`).
 
 ## Which memory should I use?
 
@@ -40,7 +41,7 @@ Two smaller carriers are opt-in: the **efference copy** of the actions the brain
 | Associative store | a ledger of what paid where | yes | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=0.2` for noisy pay |
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
-| Heard history | what I just heard | no | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` |
+| Heard history | what I just heard | one block, the moment before | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` for slower blocks; `history_decays=()` removes it |
 | No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
 
 Start with the default brain. Add one memory at a time and compare it with the same brain
@@ -171,7 +172,7 @@ The answer has to [qualify](start.md#qualification-and-refusal) whichever of the
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Working trace | yes | `working_memory_amplitude=0.0` silences it | the settled association activity of the moment before | none | after each act and each moment `wait` senses | no | [below](#working-trace) |
 | Efference copy | no | `efference_amplitude=1.0` | a fading one-hot of the commands issued | none | after each issued act | no | [below](#efference-copy) |
-| Heard history | no | `history_decays=(0.2, 0.8)` | the observations as heard, one fading block per decay | none | after each act and each moment `wait` senses | no | [below](#heard-history) |
+| Heard history | yes, one block of decay 0 | `history_decays=()` removes it; `history_decays=(0.2, 0.8)` | the observations as heard, one fading block per decay | none | after each act and each moment `wait` senses | no | [below](#heard-history) |
 | Associative store | yes | `episodic=False` removes it | one value per action per situation, in reward units | observation code | each outcome of the chosen action | yes | [below](#associative-store-the-hippocampus) |
 | Episodic memory | no | `memory_choice=True` | place and context records that vote in the choice | observation code, and code with the temporal context | known outcomes, demonstrations, replay of the path to a reward | records yes, context no | [below](#episodic-memory-what-happened-in-this-situation-before) |
 | Recall memory | yes | `recall=False` removes it; `attention=True` selects its learned-code contextual recipe | the stream's recent moments as slots, and a learned address map | observation code | a slot per moment; the map at lessons | map yes, slots no | [below](#the-recall-memory-in-full) |
@@ -408,6 +409,7 @@ configuration.
 | `recall_capacity` | `64` | `128` | Slots that hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
 | `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
 | `carried_gain` | `0.0` | `0.01` | [A learned gain per carried route](#how-strongly-a-carried-region-is-heard), from the trace's 3.0 |
+| `history_decays` | `()` | `(0.0,)` | [A heard history](#heard-history) of one block: the observation of the moment before, heard as it was, with its own gain (`history_0`) |
 | `recall_drive_gain` | `False` | `True` | [The read's route](#the-reads-drive-as-a-route): the read quiets where it does not pay and stays at or below its amplitude |
 
 Above an association of 64 a new brain also [steps at its width](tune.md#wide-brains): `recall_address` is .01 times
@@ -817,12 +819,12 @@ gates the composition holds:
 ### Two heads on this composition (opt-in)
 
 Two heads at about one head's parameters: width 33, the read's temperature at .15. The first block read this
-form without the read's route:
+form without the read's route and without the heard history:
 
 ```python
 two = Brain.compose(
     inputs=35, actions=18, modules=(33,), seed=0, recall=True, recall_heads=2, recall_temperature=0.15,
-    recall_drive_gain=False,
+    recall_drive_gain=False, history_decays=(),
 )
 assert two.recall.heads == 2 and two.parameters() == 30186
 ```
@@ -1445,7 +1447,9 @@ trace = brain.history.trace                               # two blocks of three 
 assert trace.shape == (1, 6) and trace[0, 3] > 0          # the slow block holds the cue
 ```
 
-`history_decays` (`()`, each in [0, 1)) is a construction setting and the projection's initial
+`history_decays` (each in [0, 1); `()` at the founders, `(0.0,)` in [a new brain with the
+memory](#what-recalltrue-gives-a-new-brain): one block that holds the moment before, heard as it was;
+`history_decays=()` removes it) is a construction setting and the projection's initial
 magnitude 1.2 a constant; `history_amplitude` (3.0) can be retuned. On a coded vector brain the
 blocks hold the code. Three decays at 256 inputs and four actions add 768 neurons and 49,152
 synapses to a founder of 20,992 synapses.
@@ -1520,7 +1524,7 @@ or `carried_gain=0.0` builds a memory without the route.
 routed = Brain.compose(
     inputs=3, actions=2, seed=0, recall=True, carried_gain=0.01, recall_drive_gain=True
 )
-assert routed.carried_gains == {"trace": 1.0, "read": 1.0}
+assert routed.carried_gains == {"trace": 1.0, "history_0": 1.0, "read": 1.0}
 assert routed.describe()["genes"]["recall_drive_gain"] is True
 routed.step(np.array([[1.0, 0.0, 0.0]]), teacher=[1])
 assert routed.describe()["memories"]["recall"]["hearing"] == routed.carried_gains["read"]

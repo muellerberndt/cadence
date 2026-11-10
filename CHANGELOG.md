@@ -70,6 +70,14 @@
   row within the table while the bank is past it: on two streams, one beginning again at moment
   45 of 70, the slope maps part by 0.24 and the efficacies by 0.025, every action the same.
 
+- **A new brain hears the moment before** (`history_decays=(0.0,)`, #256). A new brain with the
+  memory holds a heard history of one block of decay 0: the observation of the moment before,
+  as heard, read through its own plastic projection at its own carried gain (`history_0`).
+  `history_decays=()` composes the brain of 0.96.1; `recall=False`, the founder word and an
+  anatomy of one's own hold a history by name alone. On the grammar chamber's words the brain
+  holds 30,992 parameters where it held 28,716. `Lives` holds the history and its gains per
+  block. The compiled moment (`learning_compiled_moment`) covers the composition without the
+  history: a brain with it runs the ordinary path.
 - **`Lives` composes the store by default** (#293). `Lives(inputs, actions, lives)` composes each
   life as `Brain.compose(inputs, actions, seed=s, **options)`, the default composition with its
   store of place records, as a lone brain composes; `episodic=False` composes without it, as
