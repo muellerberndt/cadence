@@ -202,3 +202,31 @@ multiply-accumulates and seconds per life.
 -.03 and not under it by two standard errors.
 
 **Expectations.** H1c-w holds; every panel within .03 of `both_256` at the mean.
+
+## Result of Amendment 2
+
+Read on one c7i.16xlarge, founders 10228600 to 10228611, 24 lives on commit d3977b61.
+
+| Arm | Parameters | Multiply-accumulates | clause | clause_held | roles | dyck | path | three hops | at .90 of 12 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `both_256` (5 winners) | 596,412 | 2.54e13 | .97 | .91 | .94 | .90 | .56 | .00 | 11, 7, 9 |
+| `both_256_w10` | 596,412 | 2.41e13 | .98 | .97 | .92 | .93 | .53 | .00 | 12, 12, 9 |
+
+`both_256_w10` less `both_256`, paired: clause +.02 (.02), held-out +.05 (.02), beyond two
+standard errors, roles -.02 (.04), brackets +.03 (.02), paths -.04 (.03), three hops +.00.
+
+**H1c-w fails**: roles reach .90 on 9 of 12 and paths fall .04 at the mean. Ten winners lift
+held-out combinations to 12 of 12.
+
+**Part 1 does not replicate.** `both_256` at 5 winners fails H1c on these founders (held-out
+combinations 7 of 12, roles 9 of 12), where part 1 read 11 and 11. Pooled over part 1's and this
+amendment's founders (24 lives, one library version), mean (standard error over founders) and
+founders at .90:
+
+| Arm | Founders | Parameters | clause | clause_held | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `both_256`, pooled | 24 | 596,412 | .98 (.01) 23 | .93 (.01) 18 | .95 (.01) 20 | .91 (.02) 14 | .54 (.02) 0 | .00 (.00) 0 |
+| `both_256_w10` | 12 | 596,412 | .98 (.00) 12 | .97 (.01) 12 | .92 (.03) 9 | .93 (.02) 8 | .53 (.04) 0 | .00 (.00) 0 |
+
+At 20 of 24, the pooled reading holds on clauses (23) and role twins (20) and fails on held-out
+combinations (18): part 1's pass of H1c is not confirmed.

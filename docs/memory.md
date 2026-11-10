@@ -1538,8 +1538,8 @@ the quiet message costs paths and three hops on twelve founders, and beside the 
 (`history_decays=(0.0,)`) it costs no panel and lifts clauses
 ([the third run](../benchmarks/grammar/README.md#the-quiet-messages-cost)). With `message_read=True`
 and `history_decays=(0.0,)` beside `message=280` at 256 association neurons, the brain says
-clauses, held-out combinations and role twins from its held state at .90 on 12, 11 and 11 of
-twelve fresh founders, and longer or deeper sentences at .00
+clauses, held-out combinations and role twins from its held state at .90 on 23, 18 and 20 of 24
+fresh founders, and longer or deeper sentences at .00
 ([the fourth run](../benchmarks/grammar/README.md#held-out-combinations-said-from-the-state)).
 None of these is a default.
 
