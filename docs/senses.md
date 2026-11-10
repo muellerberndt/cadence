@@ -93,7 +93,7 @@ grey founders above.
 
 | Part | What it does |
 | --- | --- |
-| the retina | every 8 by 8 patch (every channel), one at every second pixel, is centred on its own mean and divided by its own contrast, `x = (p - mean(p)) / sqrt(var(p) + 0.01)`: a uniform patch of any brightness reads near zero |
+| the retina | every 8 by 8 patch, one at every second pixel, is centred on its own mean and divided by its own contrast, `x = (p - mean(p)) / sqrt(var(p) + 0.01)`: a uniform patch of any brightness reads near zero. A three-channel image is first turned into opponent channels, luminance `(R + G + B) / sqrt(3)`, red against green `(R - G) / sqrt(2)` and blue against yellow `(2B - R - G) / sqrt(6)`; three fields in four read the luminance patches, where a shape is the same whatever its hue, and the rest read the two colour channels together |
 | the fields | field `j` is a unit-length column `Phi_j` of the dictionary; it responds to a patch by `a_j = max(0, Phi_j . x - t_j)` above its own threshold `t_j`; the same synapses read every position |
 | the pools | each field's responses averaged over 3 by 3 regions of the map, each region 1.5 times its share of the map wide, so neighbouring regions overlap; the row of `features * 9` values at unit length is what the sensory region holds and every memory keys on |
 
@@ -110,6 +110,14 @@ square of at least 0.5 after the retina):
 | --- | --- | --- |
 | dictionary | `Phi += rate * mean_patches (x - Phi a) a^T`, each column scaled back to unit length: Hebbian on the residual of the patch the fields reconstruct, the learned code's rule | `RATE` 0.01 |
 | thresholds | `t += threshold_rate * (share - target)`, `share` the share of the structured patches the field responds to, floored at zero | `THRESHOLD` 0.3 at birth, `THRESHOLD_RATE` 0.01, `TARGET` 0.1 |
+| use | both steps of a field are scaled by `1 / (1 + use / maturity)`, `use` the learning steps in which the field has responded: a field settles as it is used | `MATURITY` 2,048 |
+
+A field that kept its whole step for a whole life would keep moving among codes that fit
+equally well, and the cortex that reads the pools would have to follow it: what it learned
+about objects where it was taught them would not hold where it was not. A field that settles
+gives the cortex a code that stays. `brain.fields.maturity = 0` keeps every step whole (the
+control), and `brain.fields.use[:] = 0` makes every field young again, for a world whose
+screens change.
 
 `predict`, `fit`, `imagine`, `observation_code` and readings take no step, and
 `brain.fields.learning = False` holds both tables still (the control with fields held at their
@@ -143,16 +151,16 @@ width.
 ### Settings, refusals and cost
 
 `learned_fields` is the one setting (at least 2). The rest are constants of `LearnedFields`:
-`FIELD` 8, `STRIDE` 2, `POOLS` 3, `OVERLAP` 1.5, `RETINA` 0.01, `STRUCTURE` 0.5 and the rates
-above. Refused with `ValueError`: a vector brain, `code` or `learned_code` beside it, fewer than
+`FIELD` 8, `STRIDE` 2, `POOLS` 3, `OVERLAP` 1.5, `RETINA` 0.01, `STRUCTURE` 0.5, `LUMINANCE`
+0.75 (the share of a colour image's fields that read luminance) and the rates above. Refused with `ValueError`: a vector brain, `code` or `learned_code` beside it, fewer than
 2 fields, an image smaller than 8 by 8, and `grow` or `graft` of a brain that holds them. With
 the stage a new brain holds the recall memory: its key is `features * 9` wide (576 at 64
 fields), where an 84 by 84 frame's own 7,056 coordinates are refused.
 
 A checkpoint saves the fields' settings and work counts under `learned_fields` and their
-tables as `learned_fields/dictionary` and `learned_fields/thresholds`; `describe()` reports
-them, the code's kind as `"fields"`, and `parameters()` counts both tables
-(`64 * channels * features + features`). At 84 by 84 the map holds 39 by 39 positions: a
+tables as `learned_fields/dictionary`, `learned_fields/thresholds` and `learned_fields/use`;
+`describe()` reports them, the code's kind as `"fields"`, and `parameters()` counts the three
+tables (`64 * channels * features + 2 * features`). At 84 by 84 the map holds 39 by 39 positions: a
 frame's responses take `1,521 * 64 * channels * features` multiply-adds, and a learning step
 about three times that on a frame whose every patch carries structure.
 

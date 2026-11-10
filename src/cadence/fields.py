@@ -36,7 +36,13 @@ moves nothing):
   length: the same rule as the learned code's dictionary, with every position of a field
   reading the same synapses;
 * the thresholds, homeostatic, ``t += THRESHOLD_RATE * (share_j - TARGET)``, ``share_j`` the
-  share of the structured patches field ``j`` responds to, floored at zero.
+  share of the structured patches field ``j`` responds to, floored at zero;
+* maturity: both steps of field ``j`` are scaled by ``1 / (1 + use_j / MATURITY)``, ``use_j``
+  the learning steps in which the field has responded. A field that keeps its whole step for
+  a whole life keeps moving among codes that fit equally well, and the cortex that reads the
+  pools has to follow it: what the cortex learned about places it was taught does not hold on
+  places it was not. A field that settles with use gives the cortex a code that stays.
+  ``maturity`` 0 keeps every step whole (the control).
 
 A field is one set of synapses repeated across the image (a convolution): what it learns
 where objects appear it reads everywhere else, including places no object of the life has
@@ -84,8 +90,7 @@ class LearnedFields:
     THRESHOLD = 0.3
     THRESHOLD_RATE = 0.01
     TARGET = 0.1
-    MATURITY = 512.0
-    MATURE_THRESHOLDS = True
+    MATURITY = 2048.0
     # how a three-channel image is read: ``"opponent"`` (luminance fields and colour fields),
     # ``"channels"`` (the fields shared among the three channels, each reading one) or
     # ``"joint"`` (every field reads all three); the last two are controls
@@ -250,9 +255,9 @@ class LearnedFields:
             if self.maturity:  # a field's steps fall with its use
                 settled = 1.0 / (1.0 + self.use[fields] / self.maturity)
                 step = held + self.RATE * settled * ((residual.T @ a) / len(structured))
-                homeostasis = self.THRESHOLD_RATE * (settled if self.MATURE_THRESHOLDS else 1.0)
                 moved = np.maximum(
-                    self.thresholds[fields] + homeostasis * (share - self.TARGET), 0.0
+                    self.thresholds[fields]
+                    + self.THRESHOLD_RATE * settled * (share - self.TARGET), 0.0,
                 )
             else:
                 step = held + self.RATE * (residual.T @ a) / len(structured)
