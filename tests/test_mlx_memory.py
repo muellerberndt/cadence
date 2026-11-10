@@ -93,7 +93,7 @@ def test_a_life_at_the_speech_size_rests_on_the_device(form, tmp_path):
             mlx.learn(np.zeros(2), np.zeros(2, dtype=bool), rows_of(rng, 2))
         mlx.retune(recall_amplitude=2.5)
         mlx.act(rows_of(rng, 2), greedy=True)
-        grown = mlx.grow(history_decays=(0.5,))
+        grown = mlx.grow(history_decays=(0.0, 0.5))  # the default block, then a new one
         assert grown.brain.backend == "mlx"
         grown.lesson(rows_of(rng, 2), rng.integers(SPEECH[1], size=2))
         donor = cd.Brain.compose(*SPEECH, seed=3, **options)
