@@ -84,6 +84,7 @@ ARMS: dict[str, dict[str, Any]] = {
     "slow_held": {**SLOW, "actor_hold": 1.0},
     "slow_episodic_held": {**SLOW, "memory_choice": True, "actor_hold": 1.0},
     "slow_held_far": {**SLOW, "actor_hold": 1.0, "actor_gamma": 0.99},
+    "slower_held": {"actor_eta": 0.03, "actor_eta_bias": 0.003, "actor_hold": 1.0},
 }
 
 
