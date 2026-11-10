@@ -344,7 +344,8 @@ action that pays most often. The readings below come from the
   ([memory](memory.md#working-trace)).
 - **Continued learning.** A policy acquired at the nursery's actor step can erode under its own
   continued learning when the later pay is signed and noisy: the noisy pay overwrites the
-  associative store's one-shot record of the chosen action's reward (`memory_rate` 1.0). A
+  associative store's one-shot record of the chosen action's reward (`memory_rate` 1.0; a new
+  brain composes 0.2, which averages it, #169). A
   smaller actor step does not prevent it (item 3 below). More drilling past acquisition moves
   the policy instead of consolidating it.
 

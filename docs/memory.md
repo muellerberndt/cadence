@@ -44,7 +44,7 @@ the brain issued (`efference_amplitude`) and the **held message**, the whole epi
 | Recall value path | read a token, answer that token | no | the answer is the token the read found, tokens never taught included | `recall_tokens=..., recall_gain=1.0` |
 | Recall of own actions | the notebook keeps what I did | no | what the brain did matters, where the observations look alike | `recall_action=True` |
 | Learned-code attention | a notebook indexed by meaning | no | keys should match where meanings do, beyond raw overlap | `learned_code=units, attention=True` |
-| Associative store | a ledger of what paid where | yes | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=0.2` for noisy pay |
+| Associative store | a ledger of what paid where | yes, averaging its outcomes (`memory_rate=0.2`) | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=1.0` keeps the last outcome |
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `longterm=records` with a held message ([long-term records](#long-term-records)), or `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
@@ -99,8 +99,8 @@ ledger = Brain.compose(inputs=4, actions=2, seed=7)
 here = np.array([[1.0, 0.0, 0.0, 0.0]])
 taken = ledger.step(here)                                  # a sampled act
 ledger.step(here, reward=[1.0])                            # its reward, recorded under `here`
-assert np.isclose(ledger.hippocampus.recall(here)[0, taken[0]], 1.0)
-noisy_pay = Brain.compose(inputs=4, actions=2, seed=7, memory_rate=0.2)   # averages outcomes
+assert np.isclose(ledger.hippocampus.recall(here)[0, taken[0]], 0.28)  # a fifth of the way, and C
+last_only = Brain.compose(inputs=4, actions=2, seed=7, memory_rate=1.0)  # keeps the last outcome
 ```
 
 **Episodic memory.** A demonstration shown once votes in the next choice:
@@ -175,7 +175,7 @@ a training setting ([curriculum and rehearsal](teach.md#curriculum-and-rehearsal
 | A cue carried across a short delay | nothing: the working trace is on, with or without a recall memory | [working trace](#working-trace) |
 | One cue held over a delay and replaced by a later one | no measured memory: the trace alone does not serve it | [working trace](#working-trace) |
 | Which action pays in a situation, with quick reversal | nothing: the associative store is on | [associative store](#associative-store-the-hippocampus) |
-| Noisy or signed pay | `memory_rate=0.2` | [associative store](#associative-store-the-hippocampus) |
+| Noisy or signed pay | nothing: a new brain's store averages its outcomes (`memory_rate=0.2`) | [associative store](#associative-store-the-hippocampus) |
 | A demonstration remembered once, or a chain paid at its end | `memory_choice=True` | [episodic memory](#episodic-memory-what-happened-in-this-situation-before) |
 | A paid action stops paying and its failures pay 0 | the store alone: leave `memory_choice` off; beside the vote, `memory_extinction=0.5` | [extinction](#a-paid-action-that-stops-paying-extinction) |
 | Stages that look alike, where a miss changes nothing | `memory_context_hold="unchanged"` beside `memory_choice=True` | [the context hold](#stages-that-look-alike-the-context-hold) |
@@ -440,6 +440,7 @@ configuration.
 | `recall_capacity` | `64` | `128` | Slots that hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
 | `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
 | `carried_gain` | `0.0` | `0.01` | [A learned gain per carried route](#how-strongly-a-carried-region-is-heard), from the trace's 3.0 |
+| `memory_rate` | `1.0` | `0.2` | [The store's write](#associative-store-the-hippocampus) a fifth of the way toward each outcome: its records average over the outcomes they see (#169); `memory_choice` keeps its own 0.5 |
 | `history_decays` | `()` | `(0.0,)` | [A heard history](#heard-history) of one block: the observation of the moment before, heard as it was, with its own gain (`history_0`) |
 | `recall_drive_gain` | `False` | `True` | [The read's route](#the-reads-drive-as-a-route): the read quiets where it does not pay and stays at or below its amplitude |
 
@@ -1893,7 +1894,7 @@ x = np.array([[1.0, 0.0, 0.0, 0.0]])
 action = brain.step(x)                                    # a sampled act
 brain.step(x, reward=[1.0])                               # its reward is recorded under x
 memory = brain.hippocampus
-assert np.isclose(memory.recall(x)[0, action[0]], 1.0)    # memory_rate 1.0: the last outcome
+assert np.isclose(memory.recall(x)[0, action[0]], 0.28)   # memory_rate 0.2: a fifth of the way
 brain.reset()                                             # a new stream keeps F and C
 memory.reset(1)                                           # clear the fast residual F only
 assert 0.0 < memory.recall(x)[0, action[0]] < 0.2         # what consolidation kept in C
@@ -1904,7 +1905,7 @@ assert not memory.recall(x).any()
 | Setting | Founder | Changed by | What it does |
 | --- | --- | --- | --- |
 | `episodic` | `True` | construction | `False` builds the brain without a store |
-| `memory_rate` | 1.0, in [0, 1] | `retune` | how far a write moves `F` toward the outcome; 1.0 keeps the last one |
+| `memory_rate` | 1.0, in [0, 1]; 0.2 in [a new brain with the memory](#what-recalltrue-gives-a-new-brain) | `retune` | how far a write moves `F` toward the outcome; 1.0 keeps the last one, 0.2 averages over the outcomes a record sees |
 | `memory_amplitude` | 1.0 | `retune` | the strength of the read as drive |
 | `consolidation` | 0.05, in [0, 1] | `retune` | the slow rate into the shared `C` |
 
@@ -1925,7 +1926,7 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
   the odour nursery passes 0 lives of 6 without the store against 5 and 6 with it, a bandit with
   reversal 0 against 4, and a contextual bandit reads .45 against 1.00.
 - **Noisy or signed pay.** `memory_rate=1.0` keeps only the last outcome, so one bad outcome
-  overwrites the record. Use `memory_rate=0.2`; in the
+  overwrites the record. A new brain composes `memory_rate=0.2`; in the
   [competing ring](../benchmarks/competing/README.md) it acquires as fast and takes about 0.10
   off the loss, and most of the loss stays.
 - **A skill that a competing one meets later, on the default composition.** In the competing
@@ -1935,7 +1936,15 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
   difference: with `memory_rate=0.2` the default loses 41.6 and learns B as well (.394 against
   .369), and with `maturity=True` beside it 37.8 (#169). The same setting leaves every chamber
   from birth, the robot arena's fights, its acquisition and its revision test where the default
-  reads them.
+  reads them. On 0.97's composition with the heard history the ring reads 46.6 at `memory_rate=1.0`
+  against a bar of 42.7 and 39.4 at 0.2, and the twenty-fight league fails 8 of 24 runs against 2
+  ([#169, Amendment 3](https://github.com/muellerberndt/cadence/issues/169#issuecomment-6768998711)),
+  so a new brain composes `memory_rate=0.2`. Paired on six fresh founders against 1.0, the
+  grammar chamber, the sequence battery and ordered recall read the same to the digit, since
+  lessons write nothing to the store. The averaged record costs quick reversal: the bandit with
+  reversal passes 1 of 6 lives against 4 of 6, the lives at 0.2 keeping the arm that paid
+  through a block of 30 after the reversal or reversing later (4 to 163 moments after a reversal
+  against 0 to 33); `memory_rate=1.0` keeps the last outcome and reverses sooner.
 
 ### Maturity and surprise-gated writes
 

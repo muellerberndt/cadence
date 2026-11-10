@@ -2,11 +2,12 @@
 
 ## 0.97.0 — 2026-11-11
 
-A new brain hears the moment before (`history_decays=(0.0,)`), the recall memory's slope steps on
-each stream's own slots, and `Lives` composes the store, as a lone brain does. These three
-defaults change; `history_decays=()` composes the brain of 0.96.1, and a brain of one stream, or
+A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it
+records (`memory_rate=0.2`), the recall memory's slope steps on each stream's own slots, and
+`Lives` composes the store, as a lone brain does. These four defaults change;
+`history_decays=()` with `memory_rate=1.0` composes the brain of 0.96.1, and a brain of one stream, or
 of streams that hold equal slots, lives, saves and describes to the bit as on 0.96.1 on
-`backend="cpu"` with `history_decays=()` named. Seven opt-ins join them: a message the brain
+`backend="cpu"` with those two named. Seven opt-ins join them: a message the brain
 holds (`message`), long-term records keyed by it (`longterm`), the actor's own eligibility decay
 (`actor_hold`), the policy's entropy in the actor's step (`actor_entropy`), receptive fields a
 local rule shapes for a screen (`learned_fields`) with a body's senses beside them (`ports`), and
@@ -16,6 +17,20 @@ does not name it; a checkpoint that holds one of them is refused by 0.96.1.
 
 ### Changed defaults
 
+- **A new brain's store averages its outcomes** (`memory_rate=0.2`, #169). A new brain with the
+  memory and the store composes `memory_rate=0.2`: a write moves the stream's record a fifth of
+  the way toward the outcome, so a record averages over the outcomes it sees where 1.0 kept the
+  last one. On 0.97's default the competing ring's short life read 46.6 of A lost at 1.0 against
+  a bar of 42.7 and 39.4 at 0.2, and the twenty-fight league failed 8 of 24 runs at 1.0 against 2
+  ([#169, Amendment 3](https://github.com/muellerberndt/cadence/issues/169#issuecomment-6768998711)).
+  `memory_rate=1.0` writes as 0.96 did; `memory_choice` keeps its episodic records' 0.5, and a
+  brain without the store or the memory takes no rate. Paired on fresh founders against 1.0 (#256):
+  the grammar chamber, the sequence battery, every #256 gate and ordered recall read the same to
+  the digit (lessons write nothing to the store); seconds per pass the same; the credit and
+  key-door chambers move inside two standard errors but the bandit with reversal, 1 of 6 lives
+  passing against 4 of 6, where the averaged record of the arm that paid holds through a block
+  of 30 after the reversal (memory.md, associative store). The recorded-lives fixtures hold as
+  recorded (their brains compose `recall=False`).
 - **The recall memory's slope steps on each stream's own slots** (#292). With the grid
   (`recall_grid`, in the default composition) the slope maps step only on a lesson's rows whose
   slots fit the position table. The rule read the width of the slot bank, which the streams of
@@ -411,6 +426,10 @@ records, with every slot scored. No setting or default changes.
   products over the presynaptic axis, chosen once per shape at its first launch. Under Triton
   3.6 every shape keeps its dot and every bit; under 3.1 and 3.3 the settled states match the
   cuBLAS path (`CADENCE_TRITON=0`) within float32 rounding and within 1e-13 in float64.
+- **A lesson that teaches some rows keeps a torch state on the device.** A surprise lesson whose
+  answer differs from the labels on some rows only restricted its warm state to those rows by
+  copying the whole state to the host, `(rows, neurons)` per array. The rows are taken on the
+  device, and every saved array and action is identical to the host path's.
 
 ### Instruments
 
