@@ -214,3 +214,15 @@ def test_the_summary_counts_founders_at_the_gate(tmp_path):
     path.write_text("\n".join(__import__("json").dumps(r) for r in rows))
     table = ch.summary(str(path))
     assert "| 2 of 3 |" in table
+
+
+
+def test_the_ablated_control_empties_the_decisions_eligibility_after_its_first_transition():
+    spec = {"kind": "brain", "arm": "held", "task": "tmaze", "delay": 3, "founder": 0,
+            "budgets": [4]}
+    intact = ch.run_life(spec)
+    ablated = ch.run_life({**spec, "control": "ablated"})
+    assert "error" not in ablated
+    # the decision's share of the eligibility when the outcome arrives
+    assert intact["diagnostics"]["share"][0] > 0.05
+    assert ablated["diagnostics"]["share"][0] == 0.0

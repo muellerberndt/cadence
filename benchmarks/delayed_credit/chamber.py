@@ -11,7 +11,9 @@ settings), ``lstm`` and ``tdlambda`` (sized to the brain's parameter count), ``r
 (uniform actions) and ``solver`` (the exact solver). Controls on any learner: ``yoked`` (the
 outcome a uniform-random partner earned on the same episode, whatever the learner did),
 ``shuffled`` (one of the learner's own earlier outcomes, drawn uniformly), ``frozen`` (the
-newborn read at every budget, nothing learned).
+newborn read at every budget, nothing learned), and for the brain ``ablated`` (the decision's
+eligibility zeroed after its first transition in every episode: the actor's synapse, bias and
+memory traces then hold the decision's contrast alone, and are emptied).
 
 Readings at every budget, on a copy that never changes the life: each panel episode from a
 fresh stream, every act greedy. ``choice``: the share of panel episodes whose decision (the
@@ -60,7 +62,7 @@ tk = _sibling("tasks")
 baselines = _sibling("baselines")
 
 KINDS = ("brain", "lstm", "tdlambda", "random", "solver")
-CONTROLS = ("none", "yoked", "shuffled", "frozen")
+CONTROLS = ("none", "yoked", "shuffled", "frozen", "ablated")
 BUDGETS = (256, 1024, 2048)
 WINDOW = 128
 FOUNDERS = tuple(range(6))
@@ -75,6 +77,7 @@ ARMS: dict[str, dict[str, Any]] = {
     "slow_undecayed": {**SLOW, **UNDECAYED},
     "slow_episodic_undecayed": {**SLOW, "memory_choice": True, **UNDECAYED},
     "critic_raised": {"actor_eta_critic": 5.0},
+    "slow": dict(SLOW),
     # the actor's eligibility held through the episode, the critic's decay unchanged (#283)
     "held": {"actor_hold": 1.0},
     "recall_off_held": {"recall": False, "actor_hold": 1.0},
@@ -297,6 +300,12 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
                 if moment == 0:
                     log["p_right"].append(_probability(brain, right_action))
                 trace = brain.basal_ganglia.trace
+                if moment == 1 and control == "ablated":
+                    agent = brain.basal_ganglia
+                    for name in ("trace", "trace_bias", "trace_memory", "trace_hearing"):
+                        held = getattr(agent, name)
+                        if isinstance(held, np.ndarray):
+                            held[...] = 0.0
                 if moment == 1:
                     log["value_decision"].append(brain.last_learning.get("value"))
                     log["dopamine_decision"].append(brain.last_learning.get("dopamine"))
