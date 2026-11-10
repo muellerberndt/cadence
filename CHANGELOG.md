@@ -57,6 +57,27 @@
   `backend="cpu"` every array of the brain is the same after it, and a brain that reads lives on
   to the bit as one that does not. `Lives.values(observations)` reads each life's.
 
+#### Credit for a reward many moments after the decision (#283)
+
+- **`actor_hold`: the actor's eligibility decay apart from the critic's.** `Brain.compose(...,
+  actor_hold=1.0)` (or `ActorCriticConfig(hold=1.0)`) keeps each sampled act's contrast in the
+  actor's synapse, bias, recall and hearing traces until the episode ends, while the critic's
+  eligibility keeps `actor_gamma * actor_lam`. A hold below 1 sets the actor's decay per moment.
+  It applies in `learn` on the host, on a torch device, on MLX and in `Lives`, and in `fade`. A
+  brain that names no hold keeps `gamma * lam` for every trace and lives, saves and describes to
+  the bit as on 0.96.1 on `backend="cpu"`; a configuration without the hold saves without the
+  field ([a reward many moments after the
+  decision](docs/reward.md#a-reward-many-moments-after-the-decision)). On six fresh founders, with
+  a tenth of the actor step and `memory_choice=True`, it learns a T-maze whose reward comes 50
+  moments after the choice on 6 of 6 (2 of 6 without the hold, 0 of 6 at the default), at the
+  level of an LSTM actor-critic; on the key-door at 50 it reads 3 of 6 against 5 of 6 without the
+  hold, the readout latched (#296), and at 200 moments 3 and 0 of 6. The default is unchanged.
+- **The delayed-credit chamber** ([`benchmarks/delayed_credit`](benchmarks/delayed_credit/README.md)):
+  a delayed T-maze and a delayed key-door paid only at the end of an episode, delays of 10, 50
+  and 200 moments with distractors, an exact solver, yoked, shuffled, frozen and ablated controls,
+  and an LSTM actor-critic with generalized advantage estimation and the online TD(lambda)
+  actor-critic sized to the brain's parameter count, with tests.
+
 ### Fixed
 
 - **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`

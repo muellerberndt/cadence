@@ -67,6 +67,7 @@ testpaths = [
     "benchmarks/depth",
     "benchmarks/context_key",
     "benchmarks/credit",
+    "benchmarks/delayed_credit",
     "benchmarks/sequence",
     "benchmarks/extinction",
     "benchmarks/grammar",

@@ -1341,7 +1341,7 @@ class _LivesActorCritic(ActorCritic):
         torch = kernel.torch
         cfg = self.config
         span = 2.0 * self.learner.config.beta
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         batch = len(reward)
         if batch != kernel.lives or not observed.all():
             raise ValueError("an outcome of these lives has one observed stream per life")

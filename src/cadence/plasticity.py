@@ -113,6 +113,9 @@ class ActorCriticConfig:
     # settle steps of the two nudged phases that score a sampled action; None uses the
     # learner's nudged_steps
     eligibility_steps: int | None = None
+    # the actor's eligibility decay per moment, apart from the critic's; None: gamma * lam,
+    # the critic's (cadence#283)
+    hold: float | None = None
 
     def __post_init__(self) -> None:
         # Use the same scalar arithmetic before and after JSON checkpointing.
@@ -138,6 +141,12 @@ class ActorCriticConfig:
         for name in ("gamma", "lam"):
             if not 0 <= getattr(self, name) <= 1:
                 raise ValueError(f"{name} must lie in [0, 1]")
+        if self.hold is not None and (
+            isinstance(self.hold, (bool, np.bool_))
+            or not isinstance(self.hold, (int, float))
+            or not 0 <= self.hold <= 1
+        ):
+            raise ValueError("hold must lie in [0, 1], or be None")
         for name in ("eta", "eta_bias", "eta_critic", "dopamine_cap"):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0:
@@ -157,7 +166,15 @@ class ActorCriticConfig:
         values = {k: getattr(self, k) for k in self.__slots__}
         if self.eligibility_steps is not None:
             values["eligibility_steps"] = int(self.eligibility_steps)
+        if self.hold is None:  # a configuration without the hold saves as one without the field
+            del values["hold"]
         return values
+
+    @property
+    def decay(self) -> float:
+        """The actor's eligibility decay per moment: ``hold``, or ``gamma * lam``. The critic's
+        eligibility decays by ``gamma * lam`` whatever the hold."""
+        return self.gamma * self.lam if self.hold is None else float(self.hold)
 
 
 class ActorCritic:
@@ -688,7 +705,7 @@ class ActorCritic:
         free = self._free
         assert free is not None
         batch = len(reward)
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         device_kernel = None
         if kind == "states":  # the two phases as states: on the device when they settled there
             device_kernel = self.learner._device_kernel(first, second)
@@ -963,7 +980,7 @@ class ActorCritic:
         cfg = self.config
         torch = kernel.torch
         span = 2.0 * self.learner.config.beta
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         batch = len(reward)
         s_plus, s_minus = plus.device["s"], minus.device["s"]
         neurons = s_plus - s_minus  # the eligibility in the brain's precision, and the step with it
@@ -1160,7 +1177,7 @@ class ActorCritic:
         cfg = self.config
         learner = self.learner
         span = 2.0 * learner.config.beta
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         batch = len(reward)
         kernel = learner.brain._mlx
         assert kernel is not None
@@ -1283,10 +1300,13 @@ class ActorCritic:
 
         Every eligibility trace decays by ``gamma * lam``, the step ``learn`` applies
         between two sampled actions, so the credit of earlier actions keeps fading with
-        time while nothing is learned; a memory's trace decays with them. ``done`` rows
-        forget their traces, as in ``learn``. Parameters and the critic are unchanged.
+        time while nothing is learned; a memory's trace decays with them. With a ``hold``
+        the actor's traces and a memory's decay by it, and the critic's by ``gamma * lam``.
+        ``done`` rows forget their traces, as in ``learn``. Parameters and the critic are
+        unchanged.
         """
-        decay = self.config.gamma * self.config.lam
+        decay = self.config.decay
+        critic_decay = self.config.gamma * self.config.lam
         ended = None if done is None else np.asarray(done)
         if ended is not None and (ended.ndim != 1 or ended.dtype != np.bool_):
             raise ValueError("done must be a boolean vector")
@@ -1321,10 +1341,10 @@ class ActorCritic:
                 trace[gone] = 0.0
                 trace_bias[gone] = 0.0
         if critic is not None:
-            critic.fade(decay, ended)
+            critic.fade(critic_decay, ended)
         for name in present:
             value = getattr(self, name)
-            value *= decay
+            value *= critic_decay if name == "trace_critic" else decay
             if ended is not None and ended.any():
                 setattr(self, name, _forgotten(value, ended))
 
