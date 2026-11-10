@@ -187,6 +187,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--tics", type=int, default=4)
     parser.add_argument("--backend", default="cpu", help="the brain's backend")
     parser.add_argument("--device", default="cpu", help="the convolutional player's device")
+    parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
+                        help="a named setting of the brain players' Brain.compose")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--table", nargs="*", type=Path, help="summarise these output files")
     args = parser.parse_args(argv)
@@ -197,8 +199,11 @@ def main(argv: list[str] | None = None) -> None:
         args.scenario, resolution=args.resolution, tics=args.tics, seed=args.seed
     )
     options: dict[str, Any] = {"device": args.device}
+    settings = {k: _setting(v) for k, v in (s.split("=", 1) for s in args.set)}
+    if settings and not args.player.startswith("brain"):
+        parser.error("--set names a setting of the brain players")
     if args.player.startswith("brain"):
-        options = {"backend": args.backend}
+        options = {"backend": args.backend, **settings}
     player = make_player(args.player, body, args.seed, **options)
     header = {
         "run": {
@@ -215,6 +220,7 @@ def main(argv: list[str] | None = None) -> None:
         }
     }
     if args.player.startswith("brain"):
+        header["run"]["settings"] = settings
         header["run"]["inputs"] = player.width
         header["run"]["placement"] = {
             k: str(v) for k, v in dict(player.brain.placement).items() if k in
@@ -234,6 +240,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.out is not None:
         args.out.write_text("\n".join(lines) + "\n")
     print(json.dumps({"run": header["run"]["player"], "score": score(args.scenario, rows)}))
+
+
+def _setting(text: str) -> Any:
+    """A ``--set`` value: a JSON number, boolean or list, else the text itself."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
 
 def print_table(paths: list[Path]) -> None:
