@@ -2226,6 +2226,11 @@ def taught_lesson(
     learner = brain.learner
     if plan is None or learner.synapse_rate is not None or not learner.plastic_synapses.all():
         return None
+    recall = brain.recall
+    if recall is not None and recall.slope_maps and not recall._slope_as_bank(
+        np.flatnonzero(differs)
+    ):
+        return None  # a stream of fewer slots beside a longer one: the host's path (#292)
     constants, rates, scales, live, gains, stepping = plan
     graph, cfg = learner.brain, learner.config
     recall, hearing = brain.recall, brain.hearing

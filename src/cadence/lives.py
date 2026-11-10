@@ -839,7 +839,7 @@ class _LivesRecall(_RecallOnDevice):
         stepped = super()._position_step(found)
         if not (self.slope_maps and self.grid_maps and self.slots > recall.position):
             return stepped
-        _, x, c, _, _, _, target, prior, _, _ = found
+        _, x, c, _, _, _, target, prior, _, _, _ = found
         finite = xp.isfinite(prior)
         gradient = xp.where(finite, target - xp.where(finite, xp.exp(prior), 0.0), 0.0)
         energy = (x * x).sum(axis=1) + (c * c).sum(axis=1) + 1.0

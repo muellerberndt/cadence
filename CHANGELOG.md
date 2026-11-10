@@ -54,6 +54,23 @@
   bound, a lives axis there would read at most 0.34 ms per life and moment at 128 lives and 0.57
   ms at 1,024 (docs/backends.md, many lives at once). The library has no lives axis on MLX.
 
+### Changed defaults
+
+- **The recall memory's slope steps on each stream's own slots** (#292). With the grid
+  (`recall_grid`, in the default composition) the slope maps step only on a lesson's rows whose
+  slots fit the position table. The rule read the width of the slot bank, which the streams of
+  one brain share and which is as wide as the longest stream's slots, so a stream that began
+  later took no slope step beside a longer one and did alone: its lesson depended on another
+  stream's length. Each row's own slots (`held`) decide (`Recall.within_table`); a row past the
+  table leans nowhere and counts in the lesson's mean, as the grid term's per-slot mask does.
+  The host's path, the device's and the compiled moment's read the same rule (the compiled
+  lesson takes the host's path where a row's rule and the bank's part). A brain of one stream,
+  and a brain whose streams hold equal slots, keeps every bit (the founders' recorded lives on
+  the CPU, and every action and parameter of one, three equal and compiled-moment brains over 70
+  moments against 0.96.1). Streams of unequal length change from the first lesson that teaches a
+  row within the table while the bank is past it: on two streams, one beginning again at moment
+  45 of 70, the slope maps part by 0.24 and the efficacies by 0.025, every action the same.
+
 ### Fixed
 
 - **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`

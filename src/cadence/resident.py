@@ -1284,6 +1284,11 @@ class _RecallOnDevice:
         told, focus = self.told, self.focus
         q, x, c, key = moment.address, moment.inputs, moment.cortex, moment.key
         held = recall.held
+        # each row's slope rule (``Recall.within_table``): its own slots against the table
+        own = (
+            held[rows].sum(axis=1) <= recall.position if self.grid_maps
+            else np.ones(len(rows), dtype=bool)
+        )
         if not whole:
             index = xp.long(rows)
             shared = values is keys
@@ -1310,6 +1315,7 @@ class _RecallOnDevice:
             )
             q, x, c, key = q[index], x[index], c[index], key[index]
             held = held[moved]
+            own = own[moved]
         logits = score / norm[:, None] / recall.address_temperature
         held_t = None
         if masked:
@@ -1327,7 +1333,7 @@ class _RecallOnDevice:
         energy = (x * x).sum(axis=1) + (c * c).sum(axis=1) + 1.0
         bound = xp.minimum(xp.ones_like(energy), 1.0 / (recall.address * energy))
         step = error * bound[:, None]
-        return moving, x, c, key, error, step, p, attention, told, focus
+        return moving, x, c, key, error, step, p, attention, told, focus, own
 
     def learn(self, graph: Any, learned: Any) -> dict[str, float]:
         """``Recall.learn``: the address step and the position step checked in one read."""
@@ -1437,7 +1443,7 @@ class _RecallOnDevice:
     def _position_step(self, found: tuple[Any, ...]) -> dict[str, Any]:
         """``Recall._position_step``: the maps it would keep, by name."""
         recall, xp = self.recall, self.xp
-        _, x, c, _, _, _, target, prior, told, focus = found
+        _, x, c, _, _, _, target, prior, told, focus, within = found
         rate = recall.position_rate
         count = recall.position_buckets
         whole = self._whole_ages()
@@ -1457,9 +1463,11 @@ class _RecallOnDevice:
             width = 2 * recall.RELATIVE + 2
             step = xp.per_bucket(gradient, self._relative(focus), width) * bound
             stepped["relative_maps"] = self._lms(self.relative_maps[0], step, rate, x, c)
-        if self.slope_maps and not (self.grid_maps and self.slots > recall.position):
+        if self.slope_maps and within.any():  # the streams whose own slots fit the table
             lean = gradient @ (ages / recall.SLOPE)
             lean = lean * xp.minimum(one, 1.0 / (recall.slope * energy))
+            if not within.all():
+                lean = xp.where(xp.flags(within), lean, 0.0 * lean)
             stepped["slope_maps"] = self._lms(self.slope_maps[0], lean, recall.slope, x, c)
         if self.grid_maps:
             peak = xp.maximum(
@@ -1494,7 +1502,7 @@ class _RecallOnDevice:
         if moment is None or not self.slots or self.streams != batch or len(moment.key) != batch:
             return xp.zeros((batch, width, columns_))
         d_value, d_next = self._readbacks(graph, movement)
-        moving, x, _, _, error, _, target, prior, told, _ = self._row_steps(
+        moving, x, _, _, error, _, target, prior, told, _, _ = self._row_steps(
             moment, np.arange(batch), d_value, d_next
         )
         energy = (x * x).sum(axis=1)
