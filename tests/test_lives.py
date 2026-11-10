@@ -339,7 +339,9 @@ def test_the_lives_recall_memory_rests_on_the_device_alone():
     [({"episodic": True, "memory_choice": True}, "memory_choice"),
      ({"apical": 0.25, "modules": (16, 8)}, "apical"), ({"recall_heads": 2}, "one head"),
      ({"efference_amplitude": 1.0}, "efference"), ({"learning_rehearsal": 0.5}, "rehearsal"),
-     ({"recall_cortex_norm": True}, "cortex at unit norm")],
+     ({"recall_cortex_norm": True}, "cortex at unit norm"), ({"message": 8}, "held message"),
+     ({"message": 8, "message_boundary": 0, "message_boundary_holds": True, "longterm": 4},
+      "held message")],
 )
 def test_lives_refuse_a_part_their_axis_does_not_cover(options, named):
     with pytest.raises(ValueError, match=named):
@@ -476,6 +478,22 @@ def test_a_life_without_a_preceding_action_takes_no_outcome():
     lives.live(x, reward=np.zeros(3), done=np.zeros(3, bool))  # a zero outcome is none
     assert [a.age for a in lives.arousals] == [1, 1, 1]
     assert lives.last_arousal is not None and not any(r["learned"] for r in lives.last_arousal)
+
+
+@pytest.mark.parametrize("hold", [None, 0.97], ids=["no hold", "hold"])
+def test_a_calm_moment_of_every_life_fades_the_actors_credit_by_its_hold(hold):
+    # one life: every calm moment is a moment where no life learns, which fades the lives'
+    # eligibility on its own (``fade_rows``); the actor's by actor_hold, the critic's by
+    # gamma * lam, as the lone brain's ``ActorCritic.fade``
+    composition = {**AROUSED, "actor_hold": hold}
+    place = {"backend": "torch", "device": "cpu", "precision": "float64"}
+    lives = cd.Lives(INPUTS, ACTIONS, 1, **OPTIONS, **composition, **place)
+    brains = [lone(0, composition, **place)]
+    seen = lived(lives, brains, 40, jolts=0.05)
+    assert seen["calm"] > 10, seen
+    assert seen["actions"] == seen["moods"] == 0, seen
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
 
 
 def test_live_needs_each_life_composed_with_arousal():

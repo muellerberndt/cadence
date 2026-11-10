@@ -27,13 +27,13 @@ The lives run the composition's own equations through these parts:
   greedily or samples at the temperatures its own arousal sets;
 - ``_LivesRandom``: each life's own random generator, drawn as its lone brain draws it.
 
-A composition holds the parts these cover: the default composition without the store
-(``episodic=False``: the store's consolidated records are a brain's own and have no lives axis),
-with or without the recall memory, the carried gains and arousal, at any teaching point.
-``Lives`` refuses maturity, a learned or fixed code, an apical compartment, rehearsal, qualified
-teaching, the efference copy, the heard history and a recall memory with several heads, a
-window, the command, the read of when or tokens, each by name. A moment any life refuses is
-refused for every life.
+A composition holds the parts these cover: the default composition, without the store
+(``episodic=False``, the default of ``Lives``) or with each life's place records
+(``episodic=True``), with or without the recall memory, the carried gains, arousal, maturity and
+``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
+compartment, rehearsal, qualified teaching, the efference copy, the heard history, a held
+message, long-term records and a recall memory with several heads, a window, the command, the
+read of when or tokens, each by name. A moment any life refuses is refused for every life.
 """
 
 from __future__ import annotations
@@ -1193,8 +1193,10 @@ class _LivesActorCritic(ActorCritic):
 
     def fade_rows(self, decaying: np.ndarray, done: np.ndarray) -> None:
         """``ActorCritic.fade`` of the lives ``decaying`` marks: their eligibility decays by one
-        moment, those ``done`` marks forget theirs, every other life keeps its own."""
-        decay = self.config.gamma * self.config.lam
+        moment, those ``done`` marks forget theirs, every other life keeps its own. The actor's
+        traces and a memory's decay by ``config.decay`` (the ``actor_hold``), the critic's by
+        ``gamma * lam``, as ``ActorCritic.fade``."""
+        decay = self.config.decay
         self._lives_learning = np.zeros(len(decaying), dtype=bool)
         self._lives_decaying = np.asarray(decaying, dtype=bool)
         try:
@@ -1204,7 +1206,9 @@ class _LivesActorCritic(ActorCritic):
                 )
             critic = self._critic_device
             if critic is not None and critic.trace is not None:
-                critic.trace = self._rows_kept(decay, critic.trace)
+                critic.trace = self._rows_kept(
+                    self.config.gamma * self.config.lam, critic.trace
+                )
             for name in ("trace_memory", "trace_hearing"):
                 held = getattr(self, name)
                 if held is not None:
@@ -1769,6 +1773,8 @@ def _supported(brain: Any) -> None:
         ("_episodic", "no memory_choice"),
         ("efference", "no efference copy"),
         ("history", "no heard history"),
+        ("message", "no held message"),
+        ("longterm", "no long-term records"),
     ):
         if getattr(brain, name, None) is not None:
             raise refuse(what)
