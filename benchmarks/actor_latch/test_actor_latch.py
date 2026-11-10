@@ -105,3 +105,29 @@ def test_the_controls_learn_nothing() -> None:
     assert all(r["saturation"] is None for r in frozen["episodes"])
     random = chamber.live(3, 1, player="random", world={"width": 6, "length": 10})
     assert random["parameters"] == 0
+
+
+def test_the_gate_compares_each_life_with_its_own_newborn(tmp_path: Path) -> None:
+    import gate
+
+    doom = tmp_path / "doom"
+    doom.mkdir()
+    rng = np.random.default_rng(0)
+
+    def write(name: str, mean: float, buttons: list[int]) -> None:
+        lines = [json.dumps({"run": {"parameters": 7}})]
+        for e in range(40):
+            lines.append(json.dumps({"episode": e, "return": float(mean + rng.normal(0, 0.1)),
+                                     "buttons": buttons}))
+        (doom / f"{name}.jsonl").write_text("\n".join(lines) + "\n")
+
+    for founder in range(6):
+        write(f"basic-frozen-s{founder}", 0.0, [1, 1, 1])
+        write(f"basic-better-s{founder}", 1.0, [8, 1, 1])
+        write(f"basic-same-s{founder}", 0.0, [1, 1, 1])
+    rows = gate.compare(gate.doom_lives(doom))
+    better = [r for r in rows if r["arm"] == "better"]
+    assert len(better) == 6 and all(r["passes"] for r in better)
+    assert better[0]["shares"] == pytest.approx([0.8, 0.1, 0.1])
+    assert not any(r["passes"] for r in rows if r["arm"] == "same")
+    assert gate.quarter(list(range(40))) == list(range(30, 40))
