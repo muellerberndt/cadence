@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.96.0 — 2026-11-11
+## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in
 compiled calls on the CPU: `cadence.Lives(inputs, actions, lives, backend="torch")` steps up to
