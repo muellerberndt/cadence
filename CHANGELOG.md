@@ -91,6 +91,50 @@ No brain changes. Every founder, the default composition and `backend="cpu"` ari
   The key holds no order of moments of one kind, and a sentence heard as words and the same meaning
   heard as concepts give unrelated keys.
 
+### A message a brain holds: `Brain.compose(message=units)` (#286)
+
+Opt-in and off by default. Without `message` a brain holds no message region, and every founder,
+the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
+
+- **`message=units`** ([held message](docs/memory.md#held-message)). A region of
+  `message_phases * units` neurons the brain writes itself. After each moment it hears, the moment's
+  fixed sparse code latches onto block `t mod message_phases` and stays on until the episode ends
+  (`reset()` or `done`). The association reads the region through plastic synapses at
+  `message_amplitude`, and with `carried_gain` one learned gain per block sets how loudly.
+  `brain.message` is a `HeldMessage`, `cadence.Message` on the brain's own neurons (`state`,
+  `key()`, `told`), and a member of `brain.memories`. `describe`, `retune`
+  (`message_amplitude`), checkpoints and `imagine` carry it. `grow` and `graft` refuse a brain with
+  a message, and a message needs a vector brain without a learned code.
+- **`message_gains`, `message_boundary`, `message_boundary_holds`** (the third declared run,
+  [`benchmarks/grammar/MEANING_PROTOCOL_3.md`](benchmarks/grammar/MEANING_PROTOCOL_3.md)). Under
+  `carried_gain`, `message_gains` learned gains per block in place of one. `message_boundary` names
+  an input channel: a heard moment with it on empties the message and begins it again, or with
+  `message_boundary_holds` the message keeps what it heard before and nothing after joins.
+  `cadence.Message` takes `boundary` and `boundary_holds` the same way.
+  The third run (six fresh founders, the read free): the quiet message's three-hop cost comes
+  from the brain's own words joining the message as it speaks. Held from `GO` it costs three hops
+  nothing at the mean (+.00 paired against the default) and keeps its lifts (clauses +.06, held-out
+  +.05, roles +.10, brackets +.12); the phase count at 24 or 32 is not the cause (-.09, -.12). The
+  gate on 5 of 6 founders fails on the founders' spread, and the run's second part (roles) did not
+  run.
+- **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
+  present moment through learned maps (a content address over the block's units and a term per
+  block). The maps start at zero and learn by the recall memory's address lesson on the message's
+  own blocks: each block is scored against the association's movement between the nudged phases,
+  read back through the port's synapses. `message_amplitude=0.0` beside it builds no synapses from
+  the region itself.
+- **The declared run**, [`benchmarks/grammar/MEANING_PROTOCOL_2.md`](benchmarks/grammar/MEANING_PROTOCOL_2.md),
+  six fresh founders, the recall read barred from the meaning at `GO`. With `message=280` and 256
+  association neurons the brain says trained clauses from its own message at .99, held-out
+  combinations at .95 and role twins at .90 (6, 5 and 4 of 6 at .90: H1 holds on two panels and
+  fails on roles), reads every clause component from the message at 1.00, says both orders of one
+  meaning right at .98, paraphrases into a second grammar at .97 (.92 held out) and says clauses of
+  four distractors at .90. Its previous-word control (`history_decays=(0.0,)` in the message's
+  place) says .07, .00, .00. At 64 association neurons the message alone reads .79, .47, .30 and
+  the read of one block beside it .89, .72, .74: under the bar. Beside a free read the quiet
+  message keeps paths and costs three hops (-.22); the wide message costs paths (-.26). The LSTM at
+  the brain's parameter count reads 1.00 on every trained panel offline.
+
 ## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in

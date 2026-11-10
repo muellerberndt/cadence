@@ -372,3 +372,84 @@ def test_the_gates_read_a_small_run():
     found = mn.read_retrieval([{"kind": "retrieval", "founder": 0, "units": 70,
                                 "found": mn.retrieval(0, stored=(16,), cues=4)}])
     assert found[0].startswith("retrieval") and "reordered" in found[1]
+
+
+def test_the_second_plan_sets_a_control_beside_every_message_arm():
+    plan = mn.own_plan((0, 1))
+    arms: dict[str, dict] = {}
+    for spec in plan["brains"]:
+        arms.setdefault(spec["tag"], spec)
+    assert len(plan["brains"]) == 2 * len(arms)
+    # the control is the same life with the previous-word signal in the message's place
+    for tag, control in (("state_256", "heard_256"), ("read_64", "heard_64"),
+                         ("paraphrase", "paraphrase_heard"),
+                         ("capacity_256", "capacity_heard")):
+        ours, theirs = arms[tag], arms[control]
+        held = {k: v for k, v in ours["settings"].items() if not k.startswith("message")}
+        assert theirs["settings"] == {**mn.HEARD, **held}
+        for name in ("arm", "module", "train", "batches"):
+            assert ours.get(name) == theirs.get(name)
+    assert arms["read_64"]["settings"]["message_read"] is True
+    assert "message_read" not in arms["direct_64"]["settings"]
+    assert arms["message_fixed"]["settings"] == {**arms["message_quiet"]["settings"],
+                                                 **arms["default_fixed"]["settings"]}
+    # the controls sit at the brains' parameter counts, past the matched width's 256
+    sizes = {c["parameters"] for c in plan["controls"]}
+    assert len(sizes) == 3 and len(plan["controls"]) == 3 * 2 * 2 * 2
+    ct = mn._controls()
+    for c in plan["controls"]:
+        assert abs(ct.count(ct.build(c["model"], c["width"], 0)) - c["parameters"]) < (
+            0.02 * c["parameters"])
+
+
+def test_the_second_gates_read_a_small_run_of_the_brains_own_message():
+    warnings.simplefilter("ignore")
+    plan = mn.own_plan((0,))
+    rows = []
+    for spec in plan["brains"]:
+        if spec["tag"] not in ("default", "default_fixed", "state_256", "heard_256", "read_64",
+                               "message_quiet", "message_fixed", "paraphrase", "capacity_256"):
+            continue
+        small = {**spec, "batches": 2, "panel_batches": 1, "module": 64}
+        if small.get("probe_scale", 0) > 0:
+            small["probe_scale"] = 0.05
+        rows.append(mn.run_life(small))
+    by = {r["tag"]: r for r in rows}
+    assert "panels_silent" in by["message_quiet"] and "panels_barred" in by["message_quiet"]
+    assert "panels_silent" not in by["default"] and "located" in by["default"]
+    assert "message" in next(iter(by["read_64"]["probes"]["clause"].values()))["go"]
+    lines = mn.own_verdict(rows, [])
+    assert lines[0].startswith("whole sentences") and "| `state_256` |" in "\n".join(lines)
+    assert any(line.startswith("F, nothing barred") for line in lines)
+    assert any("message_quiet, silent" in line for line in lines)
+    assert any(line.startswith("C, the message less") for line in lines)
+
+
+def test_the_third_plan_and_its_gates_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.third_plan((0, 1), located=(2,))
+    assert {s["tag"] for s in plan["free"]} == {"default", "heard", "quiet", "quiet_24", "quiet_32",
+                                                "quiet_hold", "quiet_clear", "quiet_10"}
+    assert {s["tag"] for s in plan["roles_located"]} == {"own_256", "instrument_256", "fine_256"}
+    assert {s["tag"] for s in plan["roles"]} == {"own_256", "fine_256"}
+    assert mn.GO_CHANNEL == 33
+    rows = []
+    for spec in plan["free"]:
+        if spec["tag"] in ("default", "heard", "quiet_24", "quiet_hold", "quiet_clear"):
+            rows.append(mn.run_life({**spec, "batches": 2, "panel_batches": 1}))
+    by = {(r["tag"], r["founder"]): r for r in rows}
+    assert by[("quiet_24", 0)]["parameters"] > by[("default", 0)]["parameters"]
+    assert "panels_silent" in by[("quiet_hold", 0)]
+    lines = mn.third_free_verdict(rows)
+    assert lines[0].startswith("whole sentences") and any("-> " in line for line in lines)
+    assert any(line.startswith("by founder") for line in lines)
+    roles = [mn.run_life({**spec, "batches": 2, "panel_batches": 1, "module": 64})
+             for spec in plan["roles_located"]]
+    fresh = [mn.run_life({**spec, "batches": 2, "panel_batches": 1, "module": 64})
+             for spec in plan["roles"] if spec["founder"] == 0]
+    # the trace, the read and 4 message blocks; 32 carrier blocks; 32 groups of the message
+    assert sorted(len(r["gains"]) for r in roles) == [6, 34, 34]
+    lines = mn.third_roles_verdict(roles, fresh, [{**roles[0], 'tag': 'state_256'}])
+    assert any(line.startswith('| `state_256 (second run)`') for line in lines)
+    assert any(line.startswith("gate, fine_256") for line in lines)
+    assert any("less own_256, paired" in line for line in lines)
