@@ -2621,7 +2621,8 @@ class Lives:
             return BrainState(row(handle["v"]), row(handle["s"]), row(handle["a"]), held.steps)
 
         free = state(agent._free)
-        alone._free, alone._free_brain, alone._drive = free, lone.learner.brain, None
+        # the drive the free state was settled for, which a checkpoint of a pending action keeps
+        alone._free, alone._free_brain, alone._drive = free, lone.learner.brain, row(agent._drive)
         eligible = agent._lives_eligible
         pending = agent._pending
         if pending is not None and (eligible is None or eligible[i]):

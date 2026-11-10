@@ -615,6 +615,27 @@ def test_a_life_leaves_with_its_stream_and_its_pending_outcome(composition):
             assert float(np.abs(np.asarray(ours) - np.asarray(theirs)).max()) < 1e-9
 
 
+def test_a_life_that_leaves_with_its_pending_action_saves_and_loads(tmp_path):
+    # a checkpoint of a pending action keeps the drive its free state was settled for
+    composition = {**AROUSED, "actor_hold": 0.97}
+    lives = some_lives(4, composition, **PLACE)
+    brains = [lone(s, composition, **PLACE) for s in range(4)]
+    rng = np.random.default_rng(5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(14):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+        left = [lives.life(i, stream=True, **PLACE) for i in range(4)]
+        assert any(b.basal_ganglia._pending is not None for b in left)
+        loaded = [cd.Brain.load(b.save(tmp_path / f"life{i}.npz"), **PLACE)
+                  for i, b in enumerate(left)]
+        for _ in range(6):
+            x, reward, done = moments(rng, 4)
+            for i in range(4):
+                assert live_one(loaded[i], x[i : i + 1], reward[i : i + 1], done[i : i + 1]) \
+                    == live_one(left[i], x[i : i + 1], reward[i : i + 1], done[i : i + 1])
+
+
 @pytest.mark.parametrize("composition", LEAVING.values(), ids=LEAVING)
 def test_a_life_joins_where_another_finished_and_lives_on_as_alone(composition):
     composition = {**composition, **AROUSED}
