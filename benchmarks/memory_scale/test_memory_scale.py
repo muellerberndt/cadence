@@ -671,6 +671,23 @@ def test_the_brain_records_chamber_tells_asks_and_scores():
     assert "records" not in plain[0] and plain[0]["unrevised"]["found"] == 0.0
 
 
+def test_a_fact_s_key_is_its_own_unless_another_fact_of_the_reading_has_it():
+    br = _load("brain_records")
+    world = br.World(0)
+    brain = br.make_brain(world, 0, 8)
+    about = np.concatenate([world.pool[:5], world.pool[:1]])
+    assert br.own_keys(brain, world, about).tolist() == [False, True, True, True, True, False]
+    rows = br.run_cell({"founder": 0, "arm": "records", "n": [12], "rounds": 2, "questions": 2,
+                        "capacity": 64})
+    assert rows[0]["shared_keys"] == 0.0
+    for kind in ("unrevised", "revised"):
+        assert rows[0][kind]["own"] == rows[0][kind]["questions"]
+        assert rows[0][kind]["found_own"] == rows[0][kind]["found"]
+    store = br.store_cell({"founder": 0, "n": 40, "streams": 2})
+    assert [r["stream"] for r in store] == [0, 1]
+    assert all(r["distinct"] == r["held_cosine"] and r["cosine"] == 1.0 for r in store)
+
+
 def test_the_cost_cell_fills_records_with_the_keys_the_brain_s_message_gives():
     import cadence as cd
 
@@ -698,11 +715,16 @@ def test_the_third_declaration_s_plans_parse():
 
     br = _load("brain_records")
     plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "protocol-3").glob("*.json")}
-    assert set(plans) == {"records", "cost", "cost-device", "cost-amended"}
+    assert set(plans) == {"records", "cost", "cost-device", "cost-amended", "records-amended",
+                          "store-development"}
+    assert plans["store-development"]["founders"] == [2905, 0, 2901]  # read, or development
     assert plans["records"]["founders"] == list(range(2900, 2906))
     assert plans["cost"]["founders"] == plans["cost-device"]["founders"] == [2906, 2907, 2908]
     assert plans["cost-amended"]["founders"] == [2909, 2910, 2911]  # Amendment 1
     assert plans["cost-amended"]["fill"] == "record"
+    amended = br.cells(plans["records-amended"])  # Amendment 2: the records arm alone
+    assert [c["founder"] for c in amended] == list(range(2912, 2918))
+    assert {c["arm"] for c in amended} == {"records"} and amended[0]["n"] == [1000, 10_000]
     todo = br.cells(plans["records"])
     assert len(todo) == 18 and {c["arm"] for c in todo} == {"records", "plain", "records_h2"}
     assert plans["cost-device"]["device"] == "cuda"

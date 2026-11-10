@@ -13,7 +13,8 @@ Off by default: without it a brain is the brain without it, to the bit on `backe
   another revises that record, and a silent moment (a question) writes nothing.
 - **Read.** Before every settle after a turn, `longterm_heads` heads read in turn, each holding
   its record on a region the association reads through plastic synapses, as it reads the recall
-  memory's ports.
+  memory's ports. The read scores each record by the cosine of its key with the message's key,
+  so a key that another record's key contains reads its own record.
 - **What stays.** Each stream's records are a `cd.LongTermMemory`: usage-protected under its
   budget, revised, and kept across `reset()` and episodes.
 - Settings: `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match` (.75),
@@ -49,6 +50,8 @@ brain without it is the same brain to the bit.
 - **Kept by use.** Every slot keeps a depth, a recent use and how far it has faded: three leaky
   sums, no count and no time stamp. A full memory replaces the most faded slot.
 - **Revised.** A write that recognises a held key (cosine .9) rewrites that record.
+- **Scored by cosine** with `cosine=True`: the fine read and a write's recognition score each
+  candidate by the cosine of its key with the cue (the founder scores by the dot product).
 
 Declared on six fresh founders with records of random unit codes 64 coordinates wide
 ([memory-scale benchmark](benchmarks/memory_scale/README.md)):

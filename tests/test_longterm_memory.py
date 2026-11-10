@@ -36,6 +36,7 @@ def test_the_class_is_exported_with_its_declared_founders():
         "width": 64, "value_width": 8, "capacity": 1000, "temperature": 0.0, "candidates": 256,
         "expansion": 8192, "winners": 64, "depth": 2.0, "idle": 62.5, "hold": 8000.0,
         "revise": 0.9, "fade": True, "seed": 0, "direct": 16384, "dtype": "float64",
+        "cosine": False,
     }
     assert memory.count == 0 and memory.writes == 0
     assert LongTermMemory(**memory.to_dict()).to_dict() == memory.to_dict()
@@ -215,7 +216,10 @@ def test_a_saved_memory_continues_as_the_one_it_was_saved_from():
     rng = np.random.default_rng(8)
     keys, values = codes(rng, 300, 32), codes(rng, 300, 6)
     for settings in ({"candidates": 16, "expansion": 256, "winners": 12, "direct": 0},
-                     {"candidates": 0}, {"candidates": 0, "fade": False}):
+                     {"candidates": 0}, {"candidates": 0, "fade": False},
+                     {"candidates": 0, "cosine": True},
+                     {"candidates": 16, "expansion": 256, "winners": 12, "direct": 0,
+                      "cosine": True}):
         first = LongTermMemory(32, 6, 80, seed=3, **settings)
         for i in range(150):
             first.read(keys[rng.integers(i + 1)])
@@ -235,6 +239,7 @@ def test_a_saved_memory_continues_as_the_one_it_was_saved_from():
             second.moment()
         for name, array in first.arrays().items():
             np.testing.assert_array_equal(array, second.arrays()[name], err_msg=name)
+        np.testing.assert_array_equal(first.norms, second.norms)  # as their writes gave them
         assert saved["keys"] is not first.keys and first.nbytes == second.nbytes
         with pytest.raises(ValueError, match="hold"):
             second.restore({"keys": saved["keys"]})
@@ -335,3 +340,24 @@ def test_a_brain_answers_from_what_the_memory_beside_it_reads():
     for _ in range(150):
         episode(teach=True)
     assert np.mean([episode(teach=False) for _ in range(10)]) >= 0.9
+
+
+def test_a_key_another_holds_reads_its_own_record_by_cosine():
+    small, large = np.zeros(12), np.zeros(12)
+    small[:4], large[:6] = 1.0, 1.0
+    for cosine, first in ((False, 0), (True, 1)):
+        memory = LongTermMemory(12, 3, 8, revise=0.999, cosine=cosine)
+        memory.write(large, np.array([1.0, 0.0, 0.0]))
+        memory.write(small, np.array([0.0, 1.0, 0.0]))
+        assert memory.count == 2  # at cosine .82 another record
+        # the dot product ties the contained key with the key that holds it, the lowest slot
+        # first; the cosine reads the key's own record
+        assert memory.read(small, credit=False).first() == first
+        assert memory.read(large, credit=False).first() == 0
+    told = LongTermMemory(12, 3, 8, revise=0.999, cosine=True)
+    told.write(large, np.array([1.0, 0.0, 0.0]))
+    told.write(small, np.array([0.0, 1.0, 0.0]))
+    assert told.write(small, np.array([0.0, 0.0, 1.0])) == (1, True)  # its own record revised
+    np.testing.assert_array_equal(told.values[0], [1.0, 0.0, 0.0])
+    np.testing.assert_allclose(told.norms[:2], [np.sqrt(6.0), 2.0])
+    assert LongTermMemory(12, 3, 8).norms.shape == (0,)  # held by a cosine memory alone

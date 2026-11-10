@@ -153,12 +153,13 @@ def gates2(folder: Path) -> dict[str, dict[str, Any]]:
 
 
 THIRD = (2900, 2901, 2902, 2903, 2904, 2905)  # the third declaration's founders
+AMENDED = (2912, 2913, 2914, 2915, 2916, 2917)  # its Amendment 2's
 
 
 def gates3(folder: Path) -> dict[str, dict[str, Any]]:
     """The gates of the third declaration (``PROTOCOL_3.md``): B1 to B5 on the brain's own
-    records, C3, D1 on its cost and Amendment 1's C4. A gate whose receipt is absent is left
-    out."""
+    records, C3, D1 on its cost, Amendment 1's C4 and Amendment 2's B6 and B7 (with B1, B3
+    and B4's main readings again). A gate whose receipt is absent is left out."""
     out: dict[str, dict[str, Any]] = {}
 
     def gate(name: str, values: list[float], passes: list[bool], bar: str) -> None:
@@ -205,6 +206,30 @@ def gates3(folder: Path) -> dict[str, dict[str, Any]]:
             out[name] = {"values": [round(r, 3) for r in ratios], "bar": "at most 2",
                          "founders": int(sum(r <= 2 for r in ratios)),
                          "passes": all(r <= 2 for r in ratios)}
+    if held(folder, "third-records-amended.jsonl"):  # Amendment 2: the read by cosine
+        table = rows(folder / "third-records-amended.jsonl")
+
+        def read(n: int, kind: str, field: str) -> list[float]:
+            return [float(r[kind][field]) for f in AMENDED
+                    for r in pick(table, founder=f, arm="records", n=n)]
+
+        for name, field in (("B6", "found"), ("B7", "found_own")):
+            values = read(10_000, "unrevised", field)
+            out[name] = {"values": [round(v, 4) for v in values], "bar": "at least 0.99",
+                         "founders": int(sum(v >= 0.99 for v in values)),
+                         "passes": len(values) == 6 and all(v >= 0.99 for v in values)}
+        # B1, B3 and B4 read again on these founders, with their bars (5 of 6)
+        small, large = read(1000, "unrevised", "found"), read(10_000, "unrevised", "used")
+        gate("B1, Amendment 2", small, [v >= 0.99 for v in small], "at least 0.99")
+        gate("B3, Amendment 2", large,
+             [b >= 0.90 and b >= a - 0.05
+              for a, b in zip(read(1000, "unrevised", "used"), large, strict=True)],
+             "at least 0.9 and within .05 of 1,000")
+        current, stale = read(10_000, "revised", "found"), read(10_000, "revised", "stale")
+        gate("B4, Amendment 2", current,
+             [c >= 0.95 and s <= 0.02 and u >= 0.90 for c, s, u in
+              zip(current, stale, read(10_000, "revised", "used"), strict=True)],
+             "found at least .95, stale at most .02, used at least .9")
     if held(folder, "third-cost-amended.jsonl"):  # Amendment 1: C4, and C3 read again
         table = rows(folder / "third-cost-amended.jsonl")
         for name, streams, fields in (("C4", 16, ("fact_ms",)),

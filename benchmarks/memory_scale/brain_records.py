@@ -29,11 +29,16 @@ revised ones, without lessons. Scores per question:
 * **found**: the record the read held at the answer (``longterm.read_slots``) holds the
   question's key and the fact's current patient;
 * **stale**: it holds the patient the fact had before;
-* **used**: the brain's answer is the current patient.
+* **used**: the brain's answer is the current patient;
+* **found, own key** (Amendment 2): found over the questions whose fact's key is its own, no
+  other fact of the stream's reading having that key.
 
 The control ``plain`` is the same brain without ``longterm`` through the same nursery and reading.
 
     PYTHONPATH=src python benchmarks/memory_scale/brain_records.py --plan plan.json --out rows.jsonl
+
+``--cost`` reads the plan's cost cells (``cost_cell``) and ``--store`` the reading's facts in a
+store without the brain (``store_cell``).
 """
 
 from __future__ import annotations
@@ -141,6 +146,23 @@ def nursery(brain: Any, world: World, founder: int, rounds: int) -> dict[str, fl
     return {"nursery": round(float(np.mean(right)), 4)}
 
 
+def own_keys(brain: Any, world: World, about: np.ndarray) -> np.ndarray:
+    """Whether each fact's key is its own among the facts ``about``: the keys the brain's held
+    message gives at the turn (a ``cadence.Message`` of its settings, which hears the act and
+    the agent), and no other fact with the same key."""
+    import cadence as cd
+
+    fields = ("inputs", "phases", "units", "winners", "fan_in", "seed")
+    coder = cd.Message(**{k: brain.message.to_dict()[k] for k in fields})
+    moments = world.episode(about, None)
+    coder.reset(len(about))
+    coder.hear(moments[0])
+    coder.hear(moments[1])
+    keys = np.asarray(coder.key()).astype(np.uint8)
+    _, inverse, counts = np.unique(keys, axis=0, return_inverse=True, return_counts=True)
+    return np.asarray(counts[np.ravel(inverse)] == 1)
+
+
 def read_at(brain: Any, world: World, founder: int, n: int,
             questions: int = QUESTIONS) -> dict[str, Any]:
     """The reading at ``n`` records per stream; the brain is changed by it."""
@@ -162,10 +184,13 @@ def read_at(brain: Any, world: World, founder: int, n: int,
         tell(brain, world.episode(abouts[:, i], current[:, i]))
     plain = np.setdiff1d(np.arange(n), revised)
     out: dict[str, Any] = {"n": n, "tell_ms": round(1e3 * tell_seconds / (4 * n), 4)}
+    own = np.ones((STREAMS, n), dtype=bool)
     if kept is not None:
         out.update(records=[s.count for s in kept.stores[:STREAMS]], counts=dict(kept.counts))
+        own = np.stack([own_keys(brain, world, abouts[s]) for s in range(STREAMS)])
+        out["shared_keys"] = round(float(1.0 - own.mean()), 4)  # facts whose key another has
     for kind, pool in (("unrevised", plain), ("revised", revised)):
-        found, stale, used = [], [], []
+        found, stale, used, found_own = [], [], [], []
         for _ in range(questions):
             at = pool[rng.integers(len(pool), size=STREAMS)]
             rows = np.arange(STREAMS)
@@ -185,9 +210,13 @@ def read_at(brain: Any, world: World, founder: int, n: int,
                     was = same and kind == "revised" and np.array_equal(value, old)
                 found.append(hit)
                 stale.append(was)
+                if own[s, at[s]]:
+                    found_own.append(hit)
         out[kind] = {"found": round(float(np.mean(found)), 4),
                      "used": round(float(np.mean(used)), 4),
-                     "stale": round(float(np.mean(stale)), 4), "questions": len(used)}
+                     "stale": round(float(np.mean(stale)), 4), "questions": len(used),
+                     "found_own": round(float(np.mean(found_own)), 4) if found_own else None,
+                     "own": len(found_own)}
     return out
 
 
@@ -274,6 +303,55 @@ def cost_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     return rows
 
 
+def store_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
+    """The reading's facts at ``n`` records without the brain (Amendment 2's development
+    reading): each of the first ``streams`` streams' facts and revisions written to a store as
+    the records write them (``revise=0.999``), and every unrevised fact read by its key; found
+    as in the reading, by the dot product and by cosine."""
+    import cadence as cd
+
+    founder, n = int(spec["founder"]), int(spec.get("n", 10_000))
+    world = World(founder)
+    brain = make_brain(world, founder, 8)
+    fields = ("inputs", "phases", "units", "winners", "fan_in", "seed")
+    rng = np.random.default_rng(np.random.SeedSequence([founder, 288, 3, 3, n]))
+    abouts = np.stack([rng.choice(world.pool, size=n, replace=False) for _ in range(STREAMS)])
+    first = rng.integers(PATIENTS, size=(STREAMS, n))
+    current = first.copy()
+    revised = rng.choice(n, size=max(int(n * REVISED), 1), replace=False)
+    for i in revised:  # the reading's draws, in its order
+        shift = rng.integers(1, PATIENTS, size=STREAMS)
+        current[:, i] = (first[:, i] + shift) % PATIENTS
+    plain = np.setdiff1d(np.arange(n), revised)
+    rows = []
+    for s in range(int(spec.get("streams", 4))):
+        coder = cd.Message(**{k: brain.message.to_dict()[k] for k in fields})
+        moments = world.episode(abouts[s], first[s])
+        coder.reset(n)
+        coder.hear(moments[0])
+        coder.hear(moments[1])
+        keys = np.asarray(coder.key(), dtype=float)
+        now = world.pad(world.lexicon.noun(current[s], "PATIENT"))
+        row: dict[str, Any] = {"founder": founder, "n": n, "stream": s,
+                               "distinct": len({k.tobytes() for k in keys})}
+        for name, cosine in (("dot", False), ("cosine", True)):
+            store = cd.LongTermMemory(keys.shape[1], moments[3].shape[1], n, revise=0.999,
+                                      cosine=cosine)
+            for i in range(n):
+                store.write(keys[i], moments[3][i])
+            for i in revised:
+                store.write(keys[i], now[i])
+            found = []
+            for i in plain:
+                slot = store.read(keys[i], credit=False).first()
+                found.append(slot >= 0 and np.array_equal(store.keys[slot], keys[i])
+                             and np.array_equal(store.values[slot], now[i]))
+            row[name] = round(float(np.mean(found)), 4)
+            row[f"held_{name}"] = store.count
+        rows.append(row)
+    return rows
+
+
 def cells(plan: dict[str, Any]) -> list[dict[str, Any]]:
     return [{**{k: v for k, v in plan.items() if k not in ("founders", "arms")},
              "founder": f, **arm} for f in plan["founders"] for arm in plan["arms"]]
@@ -285,13 +363,18 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out", type=Path, required=True)
     parser.add_argument("--workers", type=int, default=2)
     parser.add_argument("--cost", action="store_true")
+    parser.add_argument("--store", action="store_true")
     args = parser.parse_args(argv)
     plan = json.loads(args.plan.read_text())
-    todo = cells(plan) if not args.cost else [
-        {**{k: v for k, v in plan.items() if k not in ("founders", "settings")}, "founder": f, **s}
-        for f in plan["founders"] for s in plan["settings"]]
+    if args.store:
+        todo = [{**{k: v for k, v in plan.items() if k != "founders"}, "founder": f}
+                for f in plan["founders"]]
+    else:
+        todo = cells(plan) if not args.cost else [
+            {**{k: v for k, v in plan.items() if k not in ("founders", "settings")},
+             "founder": f, **s} for f in plan["founders"] for s in plan["settings"]]
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    job = cost_cell if args.cost else run_cell
+    job = store_cell if args.store else cost_cell if args.cost else run_cell
     with args.out.open("a") as sink, get_context("spawn").Pool(args.workers,
                                                                maxtasksperchild=1) as pool:
         for rows in pool.imap_unordered(job, todo, chunksize=1):

@@ -1629,9 +1629,10 @@ bit.
   nothing, another value revises that record, and a key no record holds takes a slot. A silent
   moment after the turn writes nothing, so a question (the turn, then the brain's answer) leaves
   the records as they are.
-- **What is read.** Before every settle after a turn the key reads the stream's records, and the
-  record found is held on a region the association reads through plastic synapses, as it reads
-  the recall memory's ports. `longterm_heads=k` reads k records in turn, each on a region of its
+- **What is read.** Before every settle after a turn the key reads the stream's records by
+  cosine, so a record whose key holds the message's and more scores below the message's own, and
+  the record found is held on a region the association reads through plastic synapses, as it
+  reads the recall memory's ports. `longterm_heads=k` reads k records in turn, each on a region of its
   own. A head holds a record only where the record's key lies at cosine `longterm_match` or above
   to the message's key; before a turn the regions are silent.
 - **What stays.** Each stream's records are a [`cd.LongTermMemory`](#a-long-term-memory-of-records):
@@ -2413,7 +2414,9 @@ assert memory.deep[40] > memory.deep[41]           # the read deepened the recor
   temperature)`, and the read is `sum p V`. At the founder `temperature=0` the first choice is
   read whole. Several heads read in turn, as the [recall memory's heads](#several-heads-opt-in)
   do: a slot is read in full once per moment, and at temperature 0 each head reads its first
-  choice among the slots the heads before it left.
+  choice among the slots the heads before it left. `cosine=True` scores each candidate by the
+  cosine of its key with the cue: a key that holds the cue's units and more scores below the
+  cue's own key, where the dot product ties them.
 
 **What stays.** Every slot keeps three leaky sums and no count or time stamp, in the form #253
 gives the fading of the associative store's records:
@@ -2449,6 +2452,7 @@ copy stays behind to split the read.
 | `fade` | `True` | `False` replaces the slot written longest ago, as the recall memory drops its oldest |
 | `seed` | `0` | Draws the address's projection |
 | `dtype` | `float64` | The type the keys and values are held in; `"float32"` halves their bytes |
+| `cosine` | `False` | Scores the fine read and a write's recognition by the cosine in place of the dot product |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the

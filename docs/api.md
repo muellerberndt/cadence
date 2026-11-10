@@ -478,14 +478,15 @@ longest ago); `recognised` is a caller's recognition from its own read (the slot
 and the write then reads nothing itself. `read(cue, heads=1,
 credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
 `expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
-head reads its first choice among the slots left, whole); a memory of at most `direct` slots
+head reads its first choice among the slots left, whole), scoring each by its key's dot product
+with the cue or, with `cosine=True`, their cosine; a memory of at most `direct` slots
 (twice the expansion unless given) scores every slot, and `credit=False` is a probe that deepens
 nothing. `value(read, head=0)` is what a head holds, and `moment()` one moment of the stream:
 every slot fades by `idle / (1 + (deep / depth) ** 4)`, and the recent use and the depth decay
 over `idle` (a sixteenth of the capacity) and `hold` (8 capacities) moments. `to_dict()` gives the
 settings, `arrays()` the state and `restore(arrays)` takes it back; `address(key)` is a key's
-units; `keys`, `values`, `deep`, `recent`, `faded`, `count`, `writes`, `coarse` and `nbytes` are
-its state. `LongTermRead` holds the candidate `slots` and each head's `weights`, with
+units; `keys`, `values`, `deep`, `recent`, `faded`, `norms` (each key's length, held where
+`cosine`), `count`, `writes`, `coarse` and `nbytes` are its state. `LongTermRead` holds the candidate `slots` and each head's `weights`, with
 `first(head=0)` (-1 for a read of nothing) and `mass(slot, head=0)`. It raises `ValueError` for a
 nonpositive size, a negative `temperature`, `candidates` or `direct`, `revise` outside `[0, 1]`, a
 nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `expansion`, a
@@ -502,7 +503,8 @@ record at the latest read (-1 for none), `counts` the writes, revisions, stateme
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
 regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
 bank (`batched`) where every key is of zeros and ones and every store scores every slot;
-`BATCHED = False` reads them store by store, the reference the bank equals to the bit. A brain with records saves `cadence-brain/4`
+`BATCHED = False` reads them store by store, the reference the bank equals to the bit. The
+records read and recognise by cosine (`LongTermRecords.STORE`). A brain with records saves `cadence-brain/4`
 ([checkpoint format](#checkpoint-format)); `grow` and `graft` refuse it in this version. [Long-term records](memory.md#long-term-records).
 
 ```text

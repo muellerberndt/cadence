@@ -353,3 +353,21 @@ def test_a_write_reads_its_store_once():
         LongTermMemory.read = original
     assert calls["read"] == 0  # the bank reads; no store reads one by one
     assert b.longterm.counts["revisions"] == 1 and b.longterm.stores[0].count == 2
+
+
+def test_the_records_read_a_contained_key_s_own_record_as_a_bank_and_one_by_one():
+    picks = []
+    for batched in (True, False):
+        kept = brain(longterm=8).longterm
+        kept.BATCHED = batched
+        kept._streams(1)
+        small, large = np.zeros(kept.width), np.zeros(kept.width)
+        small[:4], large[:6] = 1.0, 1.0
+        kept.record(0, large, moment(10)[0])
+        kept.record(0, small, moment(11)[0])
+        assert kept.stores[0].count == 2 and kept.batched == batched
+        if batched:
+            picks.append(int(kept._choices(np.array([0]), small[None, :], 1)[0, 0]))
+        else:
+            picks.append(kept.stores[0].read(small, credit=False).first())
+    assert picks == [1, 1]  # by cosine; the dot product ties them and reads slot 0

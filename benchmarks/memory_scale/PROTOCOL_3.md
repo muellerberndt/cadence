@@ -185,3 +185,53 @@ Read on founders 2909 to 2911 and recorded in
 
 **Against the expectation.** C4 reads above the expected 1.5 and within its bar. **Departures from
 the plan of the run.** None.
+
+## Amendment 2: the read scored by cosine (declared 10 November 2026, before its run)
+
+The outcome above and Amendment 1's stand. On every founder of the reading .2% to .6% of the facts
+have a key that another record's key contains: the read scored each record by its key's dot
+product with the message's key, so a record whose key holds the message's and more tied with the
+fact's own, and the lower slot won. The records' read and the write's recognition score each
+record by the cosine of its key with the message's key (`LongTermMemory(cosine=True)`; the
+standalone store's default scores by the dot product). A key read with itself scores 1 and a key
+that holds it and more scores below 1, so a contained key reads its own record; the bank scores
+as the stores do (a contract test). What is written, the match (.75) and the revision (.999) are
+as declared.
+
+**The gates**, on founders 2912 to 2917 (in no run of any lane), the third declaration's chamber,
+nursery and reading, the `records` arm alone (`protocol-3/records-amended.json`):
+
+| Gate | Arm | Reading | Bar |
+| --- | --- | --- | --- |
+| B6 | `records`, read by cosine | found, unrevised, 10,000 records | .99, on 6 of 6 |
+| B7 | the same | found, unrevised, 10,000 records, over the questions whose fact's key is its own | .99, on 6 of 6 |
+
+A fact's key is its own where no other fact of the stream's reading has the same key
+(`brain_records.own_keys`, the keys a `cadence.Message` of the brain's settings gives, which a
+contract test holds equal to the brain's). The receipt reports, per founder, the share of facts
+whose key another fact has. B1, B3 and B4 are read again on these founders and reported with
+their bars; `plain` and `records_h2` are not run.
+
+**Reasons for the bars.** B6 is B2's bar on all six founders. B7 separates the read's term from the
+key's: a key that two facts share whole is one record, which the second fact revises, and no
+score of the read tells the two facts apart.
+
+**Expectation, stated before the run.** The reading's facts at 10,000 records written to and read
+from a store as the records do, without the brain (`brain_records.py --store`,
+`protocol-3/store-development.json`, receipt `results/third-store-development.jsonl`; four streams
+each, development readings on founder 0 and on founders the third declaration read):
+
+| Founder | Distinct keys of 10,000 facts | found by the dot product | found by cosine |
+| --- | --- | --- | --- |
+| 2905 | 10,000 | .9961 to .9979 | 1.000 |
+| 0 | 9,932 to 9,937 | .9913 to .9928 | .9936 to .9943 |
+| 2901 | 9,807 to 9,813 | .9804 to .9808 | .9816 to .9822 |
+
+By the dot product a write can also miss its own record, tied with a key that holds it, and
+write a second copy (founder 0 holds up to five records more than it has distinct keys); by cosine
+the records held equal the distinct keys on every stream. B7 holds on every founder (.9975 to
+1.000). B6 holds on a founder whose facts' keys are distinct or nearly so, and fails on one like
+2901, where 3.8% of the facts share their key with another fact. Of the nine founders of the
+third declaration and Amendment 1, 2901 and 2909 (9,873 records for 10,000 facts) hold shared keys
+near that share, so on six fresh founders B6 is more likely than not to fail on one; such a
+failure is the key's term, located by the receipt's share of shared keys.

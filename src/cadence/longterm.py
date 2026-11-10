@@ -17,8 +17,10 @@ less than the address up to about twice the address's units; so does ``candidate
 
     p_i = softmax_i(cue . K_i / temperature)
 
-and the read is ``sum_i p_i V_i``, as ``Recall`` reads its slots. The founder ``temperature=0``
-reads the first choice whole. Several heads read in turn under the recall memory's law: a slot
+and the read is ``sum_i p_i V_i``, as ``Recall`` reads its slots. With ``cosine=True`` the score
+is the cosine, ``cue . K_i / (|cue| |K_i|)``, so a key that holds the cue and more scores below the
+cue's own key where the dot product ties them. The founder ``temperature=0`` reads the first
+choice whole. Several heads read in turn under the recall memory's law: a slot
 is read in full once per moment, so each head takes of every candidate at most the share the
 heads before it left; at temperature 0 each head reads its first choice among the slots left.
 
@@ -60,6 +62,12 @@ from .stream import columns as _columns
 __all__ = ["LongTermMemory", "LongTermRead", "LongTermRecords"]
 
 
+def _norms(keys: np.ndarray) -> np.ndarray:
+    """The length of each row of ``keys``, the same for a row read alone as among many."""
+    rows = np.asarray(keys, dtype=np.float64)
+    return np.asarray(np.sqrt((rows * rows).sum(axis=1)))
+
+
 @dataclass
 class LongTermRead:
     """One read of a ``LongTermMemory``: the candidate slots, and each head's weights over
@@ -86,7 +94,8 @@ class LongTermMemory:
     gives the laws).
 
     ``width`` and ``value_width`` are the widths of a key and a value, ``capacity`` the slots.
-    ``temperature`` is the fine read's (0 reads the first choice whole). ``candidates``,
+    ``temperature`` is the fine read's (0 reads the first choice whole), and ``cosine`` scores
+    the fine read by the cosine in place of the dot product. ``candidates``,
     ``expansion`` and ``winners`` shape the coarse stage; a memory of at most ``direct`` slots
     (twice the expansion unless given), or one whose capacity the candidates hold, reads every
     slot. ``depth`` is the depth at which a record fades at half the rate,
@@ -112,6 +121,7 @@ class LongTermMemory:
     seed: int = 0
     direct: int | None = None
     dtype: Any = np.float64
+    cosine: bool = False
     count: int = field(init=False, default=0)
     writes: int = field(init=False, default=0)
 
@@ -121,7 +131,8 @@ class LongTermMemory:
     FLOOR = 0.01
     # the settings a description holds, and the arrays a memory keeps
     SETTINGS = ("width", "value_width", "capacity", "temperature", "candidates", "expansion",
-                "winners", "depth", "idle", "hold", "revise", "fade", "seed", "direct", "dtype")
+                "winners", "depth", "idle", "hold", "revise", "fade", "seed", "direct", "dtype",
+                "cosine")
     ARRAYS = ("keys", "values", "deep", "recent", "faded")
     ADDRESS = ("units", "places", "lists", "counts")
 
@@ -158,6 +169,9 @@ class LongTermMemory:
         self.deep: np.ndarray = np.zeros(n)
         self.recent: np.ndarray = np.zeros(n)
         self.faded: np.ndarray = np.zeros(n)
+        # each key's length, which a cosine read divides by (held where ``cosine``)
+        self.cosine = bool(self.cosine)
+        self.norms: np.ndarray = np.zeros(n if self.cosine else 0)
         self._work = np.zeros((2, n))  # the fading's scratch
         self._cursor = 0  # the slot written longest ago (``fade=False``)
         for name in ("expansion", "winners"):
@@ -263,6 +277,8 @@ class LongTermMemory:
             return LongTermRead(np.zeros(0, dtype=np.int64), [np.zeros(0) for _ in range(heads)])
         slots, keys = self._candidates(cue)
         scores = np.asarray(keys @ cue.astype(self.dtype), dtype=np.float64)
+        if self.cosine:
+            scores = self._cosines(slots, scores, cue)
         weights = self._weights(scores, int(heads))
         if credit:
             for w in weights:  # the slots a head attends; the others keep their sums
@@ -272,6 +288,14 @@ class LongTermMemory:
                 self.recent[held] += share
                 self.faded[held] *= 1.0 - np.minimum(share, 1.0)
         return LongTermRead(slots, weights)
+
+    def _cosines(self, slots: np.ndarray, dots: np.ndarray, cue: np.ndarray) -> np.ndarray:
+        """The candidates' dot products with ``cue`` over their keys' lengths and the cue's: their
+        cosines, 0 where a key or the cue is zeros."""
+        lengths = self.norms[slots] * _norms(cue.astype(self.dtype)[None, :])[0]
+        out = np.zeros(len(dots))
+        np.divide(dots, lengths, out=out, where=lengths > 0)
+        return out
 
     def _weights(self, scores: np.ndarray, heads: int) -> list[np.ndarray]:
         if self.temperature == 0:  # each head reads its first choice among the slots left, whole
@@ -339,7 +363,7 @@ class LongTermMemory:
         elif self.revise and self.count:
             slots, keys = self._candidates(key, units)
             scores = np.asarray(keys @ key.astype(self.dtype), dtype=np.float64)
-            best = int(np.argmax(scores))
+            best = int(np.argmax(self._cosines(slots, scores, key) if self.cosine else scores))
             norm = float(np.linalg.norm(key) * np.linalg.norm(self.keys[slots[best]]))
             if norm > 0 and scores[best] / norm >= self.revise:
                 slot, revised = int(slots[best]), True
@@ -359,6 +383,8 @@ class LongTermMemory:
             assert units is not None
             self._file(slot, units)
         self.keys[slot], self.values[slot] = key, value
+        if self.cosine:
+            self.norms[slot] = _norms(self.keys[slot : slot + 1])[0]
         self.deep[slot] += 1.0  # a write deepens; only a read marks recent use
         self.faded[slot] = 0.0
         self.writes += 1
@@ -418,11 +444,13 @@ class LongTermMemory:
                 raise ValueError(f"{name} has another shape: a memory of other settings")
             setattr(self, name, np.array(given, dtype=held.dtype))
         self.count, self.writes, self._cursor = (int(v) for v in np.asarray(arrays["state"]))
+        if self.cosine:  # the keys' lengths, as their writes gave them
+            self.norms = _norms(self.keys)
 
     @property
     def nbytes(self) -> int:
         """The bytes the memory holds: records, sums and, with a coarse stage, its address."""
-        held = [self.keys, self.values, self.deep, self.recent, self.faded]
+        held = [self.keys, self.values, self.deep, self.recent, self.faded, self.norms]
         if self.coarse:
             held += [self.units, self.places, self.lists, self.counts, self.projection]
         return int(sum(a.nbytes for a in held))
@@ -447,12 +475,13 @@ class LongTermRecords:
     leaves the records as they are.
 
     **The read.** Before every settle after a turn the key addresses the stream's records:
-    ``heads`` heads read in turn, each its first choice among the records the heads before it
-    left, and a head holds its record only where the record's key lies at cosine ``match`` or
-    above to the message's key. Head ``h`` holds ``amplitude`` times the record's value on the
-    region ``longterm`` (head 0) or ``longterm_h``, which the association reads through
-    plastic synapses, as it reads the recall memory's ports. Before a turn the regions are
-    silent.
+    ``heads`` heads read in turn, each its first choice by cosine to the message's key among the
+    records the heads before it left (a record whose key holds the message's and more scores
+    below the message's own), and a head holds its record only where the record's key lies at
+    cosine ``match`` or above to the message's key. Head ``h`` holds ``amplitude`` times the
+    record's value on the region ``longterm`` (head 0) or ``longterm_h``, which the association
+    reads through plastic synapses, as it reads the recall memory's ports. Before a turn the
+    regions are silent.
 
     **What stays.** Each stream keeps its records in a ``LongTermMemory`` of ``capacity``
     slots: a read deepens the records it holds, every moment the brain lives fades the idle
@@ -460,9 +489,9 @@ class LongTermRecords:
     records survive ``Brain.reset`` and every episode's end; ``clear()`` empties them.
     """
 
-    # the store's settings that the brain does not name: the library store's founders, and a
-    # first choice read whole
-    STORE: ClassVar[dict[str, Any]] = {"temperature": 0.0}
+    # the store's settings that the brain does not name: the library store's founders, a first
+    # choice read whole, and the read scored by cosine
+    STORE: ClassVar[dict[str, Any]] = {"temperature": 0.0, "cosine": True}
     # the streams' records as one bank where they allow it (``batched``); False reads, writes
     # and fades them store by store, the reference the bank equals
     BATCHED: ClassVar[bool] = True
@@ -502,8 +531,9 @@ class LongTermRecords:
             self.columns.append(_columns(neurons))
         self.stores: list[LongTermMemory] = []
         # whether a store reads through an address (past ``direct`` slots): then the stores
-        # are read one by one
-        self._store_coarse = self._store().coarse
+        # are read one by one; and whether it reads by cosine
+        probe = self._store()
+        self._store_coarse, self._cosine = probe.coarse, probe.cosine
         self._binary = True
         self._bank()
         self.since = np.full(0, -1, dtype=np.int64)  # moments since each stream's turn
@@ -534,17 +564,18 @@ class LongTermRecords:
         that hold each unit, ``(streams, units, slots)``: a read sums the rows of the cue's
         units, one product over every stream."""
         streams, capacity = len(self.stores), self.capacity
-        sums = [np.zeros((streams, capacity)) for _ in range(3)]
+        names = ("deep", "recent", "faded", *(("norms",) if self._cosine else ()))
+        sums = [np.zeros((streams, capacity)) for _ in range(4)]
         index = np.zeros((streams, self.width, capacity), dtype=np.uint8)
         binary = True
         for s, store in enumerate(self.stores):
-            for shared, name in zip(sums, ("deep", "recent", "faded"), strict=True):
+            for shared, name in zip(sums, names, strict=False):
                 shared[s] = getattr(store, name)
                 setattr(store, name, shared[s])
             held = np.asarray(store.keys[: store.count])
             binary = binary and bool(np.isin(held, (0.0, 1.0)).all())
             index[s, :, : store.count] = held.T.astype(np.uint8)
-        self._deep, self._recent, self._faded = sums
+        self._deep, self._recent, self._faded, self._norms = sums
         self._index = index
         self._binary = binary
         self._cache: dict[int, tuple[int, np.ndarray, int]] = {}
@@ -578,15 +609,20 @@ class LongTermRecords:
     def _choices(self, rows: np.ndarray, cues: np.ndarray, heads: int) -> np.ndarray:
         """Each stream's first choices among its records, ``(rows, heads)`` (-1 for none), as
         the store's read at temperature 0 makes them: the slot whose key shares the most of
-        the cue's units, the lowest among equals, and each head the best the heads before it
-        left. One product over every stream: the index rows of the cues' units, summed per
-        stream."""
+        the cue's units (over the key's length and the cue's, by cosine), the lowest among
+        equals, and each head the best the heads before it left. One product over every
+        stream: the index rows of the cues' units, summed per stream."""
         counts = np.array([self.stores[int(r)].count for r in rows])
         active = [np.flatnonzero(cue) for cue in cues]
         lengths = np.array([len(units) for units in active])
         gathered = self._index[np.repeat(rows, lengths), np.concatenate(active)]
         starts = np.concatenate([[0], np.cumsum(lengths)[:-1]])
-        scores = np.add.reduceat(gathered, starts, axis=0, dtype=np.int64)
+        shared = np.add.reduceat(gathered, starts, axis=0, dtype=np.int64)
+        scores = np.asarray(shared, dtype=np.float64)
+        if self._cosine:  # over each key's length and the cue's, as the store's read divides
+            norm = self._norms[rows] * np.sqrt(lengths.astype(np.float64))[:, None]
+            scores = np.zeros(shared.shape)
+            np.divide(shared, norm, out=scores, where=norm > 0)
         scores[np.arange(self.capacity)[None, :] >= counts[:, None]] = -1
         out = np.full((len(rows), heads), -1, dtype=np.int64)
         each = np.arange(len(rows))
