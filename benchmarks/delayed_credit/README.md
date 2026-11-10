@@ -122,6 +122,7 @@ A tenth of the step is `actor_eta=0.1, actor_eta_bias=0.01`.
   On the failing lives one action answers both cues and the eligibility's norm falls 15 to 20
   times within the first quarter of the life. A trace held through the episode at the composed
   step sums every act's contrast into each outcome's step, and the readout reaches a rail sooner.
-  At a tenth of the step the hold learns the T-maze at 50; on the key-door the door's act, credited
-  one moment before its outcome, latches on three founders. The episodic memory's records of the
-  door's outcome keep it there.
+  At a tenth of the step the hold learns the T-maze at 50; on the key-door three founders miss,
+  each answering one reach for both keys, and on two of them the door's act, credited one moment
+  before its outcome, reads .50 as well. With the episodic memory's vote beside the hold
+  (`memory_choice=True`) the key-door at 50 reads 5 of 6.
