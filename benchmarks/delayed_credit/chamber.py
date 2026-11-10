@@ -209,7 +209,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     started, cpu = time.monotonic(), time.process_time()
     row: dict[str, Any] = {
         "kind": kind, "task": task, "delay": delay, "founder": founder, "control": control,
-        "arm": arm if kind == "brain" else None, "budgets": budgets,
+        "arm": arm if kind == "brain" else spec.get("tag"), "budgets": budgets,
     }
     inputs = tk.INPUTS[task]
     learner: Any = None
@@ -415,6 +415,8 @@ def specs_of(args: argparse.Namespace) -> list[dict[str, Any]]:
                             spec["settings"] = json.loads(args.settings)
                         if args.learner:
                             spec["learner"] = json.loads(args.learner)
+                        if args.tag:
+                            spec["tag"] = args.tag
                         out.append(spec)
     return out
 
@@ -464,6 +466,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--budgets", nargs="+", type=int, default=list(BUDGETS))
     parser.add_argument("--settings", help="JSON settings over the brain arm's")
     parser.add_argument("--learner", help="JSON settings of a conventional learner")
+    parser.add_argument("--tag", help="a conventional learner's name for its settings in the table")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--out")
     parser.add_argument("--summary")
