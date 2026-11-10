@@ -65,9 +65,11 @@ class Bandit:
         length: int = 75,
         noise: float = 0.025,
         seed: int = 0,
+        history: bool = True,
     ) -> None:
         if not 0 <= paying < actions:
             raise ValueError("the paying button is one of the buttons")
+        self.history = history  # False: the history port stays dark
         self.actions, self.paying, self.width = actions, paying, width
         self.pay, self.cost, self.length, self.noise = pay, cost, length, noise
         self.rng = np.random.default_rng([seed, 296])
@@ -83,7 +85,7 @@ class Bandit:
     def observe(self) -> np.ndarray:
         seen = np.clip(self.scene + self.rng.normal(0.0, self.noise, self.width), 0.0, 1.0)
         history = np.zeros(self.actions)
-        if self.previous >= 0:
+        if self.previous >= 0 and self.history:
             history[self.previous] = 1.0
         return np.concatenate([seen, self.ports, history])
 
@@ -107,7 +109,7 @@ class Bandit:
 class Survival(Bandit):
     """Health gathering's shape: every moment alive pays ``alive``, health drains by ``drain``
     a moment and the paying button finds a medkit (``+heal`` health, at most 1) with
-    probability ``pay``; at no health the episode ends in death (``-1``), and at ``length``
+    probability ``pay``; at no health the episode ends in death (``death``), and at ``length``
     moments in completion. Health is the first body port. At the founders uniform random
     buttons live about 190 moments and die, and the paying button held lives to the length."""
 
@@ -121,15 +123,17 @@ class Survival(Bandit):
         heal: float = 0.25,
         drain: float = 0.0104,
         alive: float = 0.01,
+        death: float = -1.0,
         length: int = 525,
         noise: float = 0.025,
         seed: int = 0,
+        history: bool = True,
     ) -> None:
         super().__init__(actions=actions, paying=paying, width=width, pay=pay, cost=-alive,
-                         length=length, noise=noise, seed=seed)
+                         length=length, noise=noise, seed=seed, history=history)
         # a health gathering screen's mean and spread per pixel
         self.scene = np.clip(self.rng.normal(0.112, 0.092, width), 0.0, 1.0)
-        self.heal, self.drain, self.alive = heal, drain, alive
+        self.heal, self.drain, self.alive, self.death = heal, drain, alive, death
         self.ports = np.array([1.0, 0.0, 0.0])
 
     def reset(self) -> np.ndarray:
@@ -146,13 +150,69 @@ class Survival(Bandit):
             health = min(1.0, health + self.heal)
         self.ports = np.array([max(health, 0.0), 0.0, 0.0])
         if health <= 0.0:
-            return Transition(-1.0, True, "death", self.observe())
+            return Transition(self.death, True, "death", self.observe())
         if self.moment >= self.length:
             return Transition(self.alive, True, "completion", self.observe())
         return Transition(self.alive, False, None, self.observe())
 
 
-CHAMBERS = {"bandit": Bandit, "survival": Survival}
+class Aim(Bandit):
+    """Doom basic's shape: a target at an offset from the crosshair, drawn per episode in
+    ``-reach..reach``; button 0 strafes left, button 1 right (the offset moves by one, within
+    the reach), button 2 attacks, which completes the episode with ``+1`` on target and misses
+    otherwise. Each moment costs ``cost``; ``length`` moments end the episode at its deadline.
+    The retina shows the target as a bright band of columns whose place follows the offset. The
+    paying button is the one the offset asks for: strafing toward the target, then attacking."""
+
+    def __init__(
+        self,
+        *,
+        actions: int = 3,
+        paying: int = 2,
+        width: int = RETINA,
+        reach: int = 6,
+        cost: float = 0.01,
+        length: int = 75,
+        noise: float = 0.025,
+        seed: int = 0,
+        history: bool = True,
+    ) -> None:
+        if actions != 3:
+            raise ValueError("the aim chamber has three buttons: left, right, attack")
+        super().__init__(actions=3, paying=2, width=width, pay=1.0, cost=cost, length=length,
+                         noise=noise, seed=seed, history=history)
+        self.reach = reach
+        self.offset = 0
+        columns = 21
+        self._column = np.arange(width) // 3 % columns  # the retina's block column of a value
+
+    def observe(self) -> np.ndarray:
+        x = super().observe()
+        band = np.abs(self._column - (10 + self.offset)) <= 1
+        x[: self.width][band] = np.minimum(x[: self.width][band] + 0.5, 1.0)
+        return x
+
+    def reset(self) -> np.ndarray:
+        self.offset = int(self.rng.integers(-self.reach, self.reach + 1))
+        return super().reset()
+
+    def step(self, action: int) -> Transition:
+        if not 0 <= action < self.actions:
+            raise ValueError("an action is one of the buttons")
+        self.moment += 1
+        self.previous = action
+        if action == 0:
+            self.offset = min(self.offset + 1, self.reach)
+        elif action == 1:
+            self.offset = max(self.offset - 1, -self.reach)
+        elif self.offset == 0:
+            return Transition(1.0 - self.cost, True, "completion", self.observe())
+        if self.moment >= self.length:
+            return Transition(-self.cost, True, "deadline", self.observe())
+        return Transition(-self.cost, False, None, self.observe())
+
+
+CHAMBERS = {"bandit": Bandit, "survival": Survival, "aim": Aim}
 
 
 def compose(
@@ -201,7 +261,8 @@ def live(
     settings = dict(settings or {})
     world = dict(world or {})
     actions = int(world.pop("actions", 3))
-    bandit = CHAMBERS[chamber](actions=actions, paying=seed % actions, seed=seed, **world)
+    paying = {} if chamber == "aim" else {"paying": seed % actions}
+    bandit = CHAMBERS[chamber](actions=actions, seed=seed, **paying, **world)
     brain = None if player == "random" else compose(
         bandit.inputs, actions, seed, settings, rates
     )
@@ -263,8 +324,9 @@ def live(
         "rates": dict(rates or {}),
         "world": {"actions": actions, "paying": bandit.paying, "width": bandit.width,
                   "pay": bandit.pay, "length": bandit.length, "noise": bandit.noise,
-                  **({"cost": bandit.cost} if chamber == "bandit" else {
-                      "heal": bandit.heal, "drain": bandit.drain, "alive": bandit.alive})},
+                  **({"cost": bandit.cost} if chamber != "survival" else {
+                      "heal": bandit.heal, "drain": bandit.drain, "alive": bandit.alive,
+                      "death": bandit.death})},
         "inputs": bandit.inputs,
         "parameters": 0 if brain is None else int(brain.parameters()),
         "seconds": time.perf_counter() - started,
