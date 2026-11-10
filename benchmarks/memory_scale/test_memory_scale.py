@@ -643,3 +643,64 @@ def test_the_second_declaration_s_receipts_hold_the_verdicts_the_readme_states()
     ends = [max(sm.pick(whole, arm="memory", founder=f), key=lambda r: r["moment"])
             for f in (0, 1, 2)]
     assert all(r["stale"] > 0.5 and r["revised"] < 0.3 for r in ends)
+
+
+# -- the third round: the brain writes and reads its own records
+
+
+def test_the_brain_records_chamber_tells_asks_and_scores():
+    br = _load("brain_records")
+    world = br.World(0)
+    assert world.inputs == 388 and world.turn == 387 and world.fan_in() == 177
+    assert len(world.nursery) == br.NURSERY and not set(world.nursery) & set(world.pool)
+    about = world.pool[:3]
+    fact = world.episode(about, np.array([1, 2, 3]))
+    question = world.episode(about, None)
+    assert len(fact) == len(question) == 4 and fact[2][:, 387].all() and not question[3].any()
+    for a, b in zip(fact[:3], question[:3], strict=True):
+        np.testing.assert_array_equal(a, b)  # a question hears what its fact did, to the turn
+    rows = br.run_cell({"founder": 0, "arm": "records", "n": [12], "rounds": 4, "questions": 2,
+                        "capacity": 64})
+    row = rows[0]
+    assert row["records"] == [12] * br.STREAMS and row["counts"]["revisions"] >= br.STREAMS
+    for kind in ("unrevised", "revised"):
+        assert row[kind]["questions"] == 2 * br.STREAMS and 0 <= row[kind]["used"] <= 1
+    assert row["unrevised"]["found"] == 1.0 and row["revised"]["found"] == 1.0
+    assert row["revised"]["stale"] == 0.0
+    plain = br.run_cell({"founder": 0, "arm": "plain", "n": [12], "rounds": 2, "questions": 1})
+    assert "records" not in plain[0] and plain[0]["unrevised"]["found"] == 0.0
+
+
+def test_the_cost_cell_fills_records_with_the_keys_the_brain_s_message_gives():
+    import cadence as cd
+
+    br = _load("brain_records")
+    world = br.World(1)
+    brain = br.make_brain(world, 1, 8)
+    about = world.pool[:4]
+    episode = world.episode(about, np.array([0, 1, 2, 3]))
+    brain.reset()
+    for x in episode:
+        brain.act(x, greedy=True)
+    fields = ("inputs", "phases", "units", "winners", "fan_in", "seed")
+    coder = cd.Message(**{k: brain.message.to_dict()[k] for k in fields})
+    coder.reset(4)
+    coder.hear(episode[0])
+    coder.hear(episode[1])
+    np.testing.assert_array_equal(coder.key(), brain.message.key())
+    rows = br.cost_cell({"founder": 1, "n": [0, 20], "streams": 2, "episodes": 2})
+    assert [r["n"] for r in rows] == [0, 20] and rows[0]["records"] is None
+    assert rows[1]["records"][0] >= 19 and rows[1]["question_ms"] > 0
+
+
+def test_the_third_declaration_s_plans_parse():
+    import json
+
+    br = _load("brain_records")
+    plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "protocol-3").glob("*.json")}
+    assert set(plans) == {"records", "cost", "cost-device"}
+    assert plans["records"]["founders"] == list(range(2900, 2906))
+    assert plans["cost"]["founders"] == plans["cost-device"]["founders"] == [2906, 2907, 2908]
+    todo = br.cells(plans["records"])
+    assert len(todo) == 18 and {c["arm"] for c in todo} == {"records", "plain", "records_h2"}
+    assert plans["cost-device"]["device"] == "cuda"
