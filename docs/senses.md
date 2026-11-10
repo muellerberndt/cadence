@@ -6,6 +6,7 @@ reads them:
 | Setting | What the brain reads | Section |
 | --- | --- | --- |
 | `inputs=(height, width)` | the image through a visual cortex | [image inputs](#image-inputs) |
+| `inputs=(height, width)` with `learned_fields=features` (opt-in) | the image through receptive fields a local rule shapes, pooled over overlapping regions | [learned receptive fields](#learned-receptive-fields) |
 | `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
@@ -32,6 +33,73 @@ assert eyes.act(np.random.default_rng(0).random((1, 8, 8))).shape == (1,)
 
 The memories key on the pixels. With `code=units` they key on a fixed sparse code
 and the cortex reads the pixels ([the observation code](#the-observation-code)).
+
+## Learned receptive fields
+
+`learned_fields=features` (opt-in, an image brain) reads the image through that many receptive
+fields that a local rule shapes while the brain lives, in place of the visual cortex. Use it for
+a policy that depends on what a rendered screen shows, at the size of an Atari or VizDoom frame:
+the fields learn the parts the screen is made of, one set of synapses reads them at every place,
+and the first module reads them pooled over a few overlapping regions, so an object is read the
+same where it appears.
+
+```python
+import numpy as np
+from cadence import Brain
+
+eyes = Brain.compose(inputs=(84, 84), actions=3, seed=0, learned_fields=16, recall=False)
+frame = np.zeros((1, 84, 84))
+frame[0, 30:42, 20:32] = 1.0                         # a square on a dark screen
+eyes.lesson(frame, [1])                              # the fields learn from what is shown
+assert eyes.fields.work["updates"] == 1
+assert len(eyes.connectome.populations["sensory"]) == 16 * 9   # 16 fields, 3 by 3 pools
+key = eyes.observation_code(frame)                   # what the cortex reads and memories key on
+assert key.shape == (1, 144) and np.isclose(np.linalg.norm(key), 1.0)
+assert not eyes.observation_code(np.full((1, 84, 84), 0.7)).any()  # a uniform screen: nothing
+```
+
+### What the stage is
+
+| Part | What it does |
+| --- | --- |
+| the retina | every 8 by 8 patch (every channel), one at every second pixel, is centred on its own mean and divided by its own contrast, `x = (p - mean(p)) / sqrt(var(p) + 0.01)`: a uniform patch of any brightness reads near zero |
+| the fields | field `j` is a unit-length column `Phi_j` of the dictionary; it responds to a patch by `a_j = max(0, Phi_j . x - t_j)` above its own threshold `t_j`; the same synapses read every position |
+| the pools | each field's responses averaged over 3 by 3 regions of the map, each region 1.5 times its share of the map wide, so neighbouring regions overlap; the row of `features * 9` values at unit length is what the sensory region holds and every memory keys on |
+
+The stage reads the image before the settle, and nothing leads back into it: the lesson's
+contrast and the dopamine never reach it.
+
+### How it learns
+
+At every accepted `act`, `step` and `wait`, in `live` while aroused, and at every `lesson`, the
+fields take one step from the frames of the moment, on the patches that carry structure (a mean
+square of at least 0.5 after the retina):
+
+| Table | Rule | Constant |
+| --- | --- | --- |
+| dictionary | `Phi += rate * mean_patches (x - Phi a) a^T`, each column scaled back to unit length: Hebbian on the residual of the patch the fields reconstruct, the learned code's rule | `RATE` 0.05 |
+| thresholds | `t += threshold_rate * (share - target)`, `share` the share of the structured patches the field responds to, floored at zero | `THRESHOLD` 0.3 at birth, `THRESHOLD_RATE` 0.01, `TARGET` 0.1 |
+
+`predict`, `fit`, `imagine`, `observation_code` and readings take no step, and
+`brain.fields.learning = False` holds both tables still (the control with fields held at their
+draw). A field learns where objects appear and reads the same synapses everywhere else, places
+no object of the life has appeared included.
+
+### Settings, refusals and cost
+
+`learned_fields` is the one setting (at least 2). The rest are constants of `LearnedFields`:
+`FIELD` 8, `STRIDE` 2, `POOLS` 3, `OVERLAP` 1.5, `RETINA` 0.01, `STRUCTURE` 0.5 and the rates
+above. Refused with `ValueError`: a vector brain, `code` or `learned_code` beside it, fewer than
+2 fields, an image smaller than 8 by 8, and `grow` or `graft` of a brain that holds them. With
+the stage a new brain holds the recall memory: its key is `features * 9` wide (576 at 64
+fields), where an 84 by 84 frame's own 7,056 coordinates are refused.
+
+A checkpoint saves the fields' settings and work counts under `learned_fields` and their
+tables as `learned_fields/dictionary` and `learned_fields/thresholds`; `describe()` reports
+them, the code's kind as `"fields"`, and `parameters()` counts both tables
+(`64 * channels * features + features`). At 84 by 84 the map holds 39 by 39 positions: a
+frame's responses take `1,521 * 64 * channels * features` multiply-adds, and a learning step
+about three times that on a frame whose every patch carries structure.
 
 ## The observation code
 

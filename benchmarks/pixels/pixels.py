@@ -68,8 +68,15 @@ ARMS: dict[str, dict[str, Any]] = {
     "random_code": {"sees": "flat", "compose": {"code": 1024}},
     # the learned code of 128 units over the pixels at unit length
     "learned_code": {"sees": "unit", "compose": {"learned_code": 128}},
+    # learned receptive fields (``learned_fields``), at the normalized teaching point
+    "fields": {"sees": "image", "compose": {"learned_fields": 64, "teaching": "normalized"}},
+    # the same brain with its fields held at their draw from birth
+    "fields_drawn": {"sees": "image", "hold": True,
+                     "compose": {"learned_fields": 64, "teaching": "normalized"}},
     # the baseline at the hidden width of the Atari network
     "conv": {"sees": "image", "conv": {"hidden": 256}},
+    # the baseline at the parameter count of the ``fields`` arm's brain
+    "conv_matched": {"sees": "image", "conv": {"hidden": "fields"}},
 }
 
 
@@ -114,10 +121,17 @@ class Life:
         self.arm, self.shape, self.condition = arm, shape, condition
         self.conv = "conv" in ARMS[arm]
         if self.conv:
-            hidden = int(ARMS[arm]["conv"]["hidden"])
-            self.learner: Any = cn.ConvActorCritic(shape, ch.ACTIONS, hidden, founder, condition)
+            hidden = ARMS[arm]["conv"]["hidden"]
+            if isinstance(hidden, str):  # matched to that arm's brain
+                count = compose(hidden, shape, founder, condition).parameters()
+                hidden = cn.hidden_for(shape, ch.ACTIONS, count)
+            self.learner: Any = cn.ConvActorCritic(
+                shape, ch.ACTIONS, int(hidden), founder, condition
+            )
         else:
             self.learner = compose(arm, shape, founder, condition, extra)
+            if ARMS[arm].get("hold"):
+                self.learner.fields.learning = False
         self.pending: np.ndarray | None = None  # the last actions awaiting their reward
         self.labels: np.ndarray | None = None
         self.paid: list[float] = []
@@ -179,7 +193,8 @@ class Life:
         if self.arm == "visual":
             return self.states(batch, ("visual/output",))["visual/output"]
         brain = self.learner
-        if brain.learned_code is not None or brain.sparse_code is not None:
+        if (brain.learned_code is not None or brain.sparse_code is not None
+                or brain.fields is not None):
             return np.concatenate([
                 np.asarray(brain.observation_code(seen(self.arm, batch[s : s + CHUNK])))
                 for s in range(0, len(batch), CHUNK)
