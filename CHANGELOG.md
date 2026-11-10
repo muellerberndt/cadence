@@ -63,6 +63,12 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   (+.03). At 256 association neurons with the read barred, the instrument's message reads roles
   .05 over the brain's own on the same founders, inside two standard errors; `message_gains=8`
   reads roles .95 on fresh founders and held-out combinations .89 (4 of 6 at .90).
+  The fourth run ([`benchmarks/grammar/MEANING_PROTOCOL_4.md`](benchmarks/grammar/MEANING_PROTOCOL_4.md),
+  twelve fresh founders, the read barred): with `message_read=True` and `history_decays=(0.0,)`
+  beside `message=280` at 256 association neurons the brain says clauses, held-out combinations
+  and role twins from its held state at .90 on 12, 11 and 11 founders (596,412 parameters), where
+  the message alone reaches 12, 9 and 9. Longer clauses, deeper brackets and three hops read .00
+  from the state, and .00 to .02 for the LSTM and the transformer at the same parameter count.
 - **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
   present moment through learned maps (a content address over the block's units and a term per
   block). The maps start at zero and learn by the recall memory's address lesson on the message's

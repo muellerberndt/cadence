@@ -137,3 +137,42 @@ a clause of three or four distractors the message's blocks (`t mod 4`) hold a di
 patient where no lesson put one, so the words from the third distractor on are lost and the
 agent and the verb are said; in deeper brackets the closes past depth three; in a longer path
 the third hop.
+
+## Result of Amendment 1
+
+Read on the same box, founders 10128600 to 10128605, 12 brain lives and 24 control lives on
+commit 2575a6ec.
+
+| Learner | Parameters | Multiply-accumulates | clause | clause_held | roles | clause_long | dyck_deep | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `both_256`, from the state | 596,412 | 2.49e13 | .98 | .94 | .94 | .00 | .00 | .00 |
+| `default`, the read free | 28,716 | 9.70e11 | .95 | .87 | .87 | .00 | .03 | .22 |
+| LSTM, offline | 596,598 | 3.24e13 | 1.00 | .99 | .92 | .00 | .02 | .00 |
+| LSTM, online | 596,598 | 1.42e12 | 1.00 | .96 | .84 | .00 | .00 | .00 |
+| transformer, offline | 592,058 | 3.77e13 | 1.00 | .98 | .99 | .00 | .00 | .00 |
+| transformer, online | 592,058 | 1.42e12 | .88 | .85 | .77 | .00 | .00 | .00 |
+
+**A2s fails** on all three long panels, 0 of 6 founders at .80 on each, as stated; every control
+reads .00 to .02 on them. On the trained shapes the six `both_256` lives read clauses .98,
+held-out combinations .94 and roles .94, as part 1's twelve did.
+
+**Where the long panels are lost, from the state.** With the previous words given:
+
+- **Longer clauses.** The verb is said at .84 and .68 (three and four distractors), the agent at
+  .79 and .67, and the words from the second distractor on at .14 to .51; the patient at .57 and
+  .37. Probes fitted on trained shapes and scored on longer clauses read, at `GO`, the verb from
+  the message at 1.00, the patient's noun at .92 to 1.00, the agent's at .89 to 1.00, and the
+  first and second distractors' nouns at .74 to .78 and .56 to .65; from the settled association
+  the verb at 1.00 and the patient's noun at .58 to .70. A clause of three or four distractors
+  puts a fifth and sixth moment in blocks 1 and 2 (`t mod 4`), beside the agent's and the first
+  distractor's: the patient and the verb are held, and the distractors share their blocks with
+  the moments a lesson put there.
+- **Deeper brackets.** Opens at depths four and five are said at .63 and .56 and closes at .48
+  and .55: the brackets past depth three are the term.
+- **Three hops.** The start is said at .99 and the hops at .45, .37 and .42: a path's hops are
+  said from the read, which is barred.
+
+**The default composition with its read free** loses the same panels at the read: on longer
+clauses the read delivers the verb's moment at .13 and .22, and the distractors from the second on
+at .30 to .59; on deeper brackets the closes at .07 to .13; on three hops it delivers the hops at
+.88, .65 and .53 and says them at .90 to .97 when delivered.
