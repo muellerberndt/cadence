@@ -84,7 +84,10 @@ One Intel Xeon 8488C core; at 16 streams a frame costs about the same, as the fi
 frame on the host. On an NVIDIA L4 one stream acts in 3.6 ms (grey) and 15.3 ms (colour), with
 MLX on an Apple M4 in 6.7 ms and 23.0 ms; each within a VizDoom tic of 28.6 ms.
 
-Colour frames and wider frames read less: at 84 by 84 in colour .767 on fresh frames, and at 160
+With the opponent retina, colour frames read .953 on fresh frames and .907 on the untrained
+band (four development founders, 65,536 frames); the first run's fields over the three channels
+jointly read .762 and .741. Colour frames and wider frames read less: at 84 by 84 in colour,
+read with every field over all three channels, .767 on fresh frames, and at 160
 by 120 .965 on fresh frames with the untrained band at .827. In colour the pools hold less (a
 linear readout of one founder's pools after 16,384 frames reads .914 on fresh frames and .715 on
 the band): the 64 fields divide among the six hues an object takes. At 160 by 120 the pools read
@@ -95,7 +98,7 @@ grey founders above.
 
 | Part | What it does |
 | --- | --- |
-| the retina | every 8 by 8 patch, one at every second pixel, is centred on its own mean and divided by its own contrast, `x = (p - mean(p)) / sqrt(var(p) + 0.01)`: a uniform patch of any brightness reads near zero. A three-channel image is first turned into opponent channels, luminance `(R + G + B) / sqrt(3)`, red against green `(R - G) / sqrt(2)` and blue against yellow `(2B - R - G) / sqrt(6)`; three fields in four read the luminance patches, where a shape is the same whatever its hue, and the rest read the two colour channels together |
+| the retina | every 8 by 8 patch, one at every second pixel, is centred on its own mean and divided by its own contrast, `x = (p - mean(p)) / sqrt(var(p) + 0.01)`: a uniform patch of any brightness reads near zero. A three-channel image is first turned into opponent channels, luminance `(R + G + B) / sqrt(3)`, red against green `(R - G) / sqrt(2)` and blue against yellow `(2B - R - G) / sqrt(6)`; nine fields in ten read the luminance patches, where a shape is the same whatever its hue, and the rest read the two colour channels together |
 | the fields | field `j` is a unit-length column `Phi_j` of the dictionary; it responds to a patch by `a_j = max(0, Phi_j . x - t_j)` above its own threshold `t_j`; the same synapses read every position |
 | the pools | each field's responses averaged over 3 by 3 regions of the map, each region 1.5 times its share of the map wide, so neighbouring regions overlap; the row of `features * 9` values at unit length is what the sensory region holds and every memory keys on |
 
@@ -146,7 +149,7 @@ width.
 
 `learned_fields` is the one setting (at least 2). The rest are constants of `LearnedFields`:
 `FIELD` 8, `STRIDE` 2, `POOLS` 3, `OVERLAP` 1.5, `RETINA` 0.01, `STRUCTURE` 0.5, `LUMINANCE`
-0.75 (the share of a colour image's fields that read luminance) and the rates above. Refused with `ValueError`: a vector brain, `code` or `learned_code` beside it, fewer than
+0.9 (the share of a colour image's fields that read luminance) and the rates above. Refused with `ValueError`: a vector brain, `code` or `learned_code` beside it, fewer than
 2 fields, an image smaller than 8 by 8, and `grow` or `graft` of a brain that holds them. With
 the stage a new brain holds the recall memory: its key is `features * 9` wide (576 at 64
 fields), where an 84 by 84 frame's own 7,056 coordinates are refused.

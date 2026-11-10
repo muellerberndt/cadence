@@ -87,7 +87,7 @@ class LearnedFields:
     # ``"channels"`` (the fields shared among the three channels, each reading one) or
     # ``"joint"`` (every field reads all three); the last two are controls
     COLOURS = ("opponent", "channels", "joint")
-    LUMINANCE = 0.75
+    LUMINANCE = 0.9
     OPPONENT = np.array([[1.0, 1.0, 1.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 2.0]]) / np.sqrt(
         np.array([[3.0], [2.0], [6.0]])
     )

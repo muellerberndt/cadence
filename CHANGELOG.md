@@ -26,6 +26,10 @@
   two the pools hold the panels and the readout trails. One stream acts in 2.6 ms per grey frame
   and 9.0 ms per colour frame on one Xeon core, against 163 ms and 220 ms through the visual
   cortex; colour frames read .767.
+- **Colour through opponent channels.** A three-channel image is read as luminance, red against
+  green and blue against yellow; nine fields in ten read luminance, where a shape is the same
+  whatever its hue. Colour 84 by 84 frames read .953 on fresh frames (four development founders)
+  against .762 with every field over the three channels jointly; the untrained band reads .907.
 - **`ports=k`: a body's own senses beside the screen (opt-in, with `learned_fields`, #297).** An
   observation row is the flattened image followed by `k` values; `k` sensory neurons read them
   beside the pools, and every memory keys on both. `describe()` reports them and a checkpoint

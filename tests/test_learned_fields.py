@@ -210,9 +210,9 @@ def test_a_colour_image_is_read_through_luminance_fields_and_colour_fields():
     fields = LearnedFields(16, 16, 3, features=8, seed=0)
     assert fields.colour == "opponent"
     groups = [(list(m), d.stop - d.start, f.stop - f.start) for m, d, f in fields._groups]
-    assert groups == [([0], 64, 6), ([1, 2], 128, 2)]  # three fields in four read luminance
+    assert groups == [([0], 64, 7), ([1, 2], 128, 1)]  # nine fields in ten read luminance
     # a field reads its own group's channels alone
-    assert not fields.dictionary[64:, :6].any() and not fields.dictionary[:64, 6:].any()
+    assert not fields.dictionary[64:, :7].any() and not fields.dictionary[:64, 7:].any()
     np.testing.assert_allclose(np.linalg.norm(fields.dictionary, axis=0), 1.0)
     # the opponent channels are orthonormal: luminance, red against green, blue against yellow
     np.testing.assert_allclose(fields.OPPONENT @ fields.OPPONENT.T, np.eye(3), atol=1e-12)
@@ -224,16 +224,16 @@ def test_a_colour_image_is_read_through_luminance_fields_and_colour_fields():
     red, blue = np.full((16, 16, 3), 0.1), np.full((16, 16, 3), 0.1)
     red[4:10, 4:10] = (0.9, 0.3, 0.3)
     blue[4:10, 4:10] = (0.3, 0.3, 0.9)
-    a = fields.responses(fields.retina(red.reshape(1, -1)))[..., :6]
-    b = fields.responses(fields.retina(blue.reshape(1, -1)))[..., :6]
+    a = fields.responses(fields.retina(red.reshape(1, -1)))[..., :7]
+    b = fields.responses(fields.retina(blue.reshape(1, -1)))[..., :7]
     np.testing.assert_allclose(a, b, atol=1e-9)
     assert a.any()
     # each group learns from its own patches
     before = fields.dictionary.copy()
     assert fields.learn(red.reshape(1, -1))
-    assert not np.array_equal(fields.dictionary[:64, :6], before[:64, :6])
-    assert not np.array_equal(fields.dictionary[64:, 6:], before[64:, 6:])
-    assert not fields.dictionary[64:, :6].any() and not fields.dictionary[:64, 6:].any()
+    assert not np.array_equal(fields.dictionary[:64, :7], before[:64, :7])
+    assert not np.array_equal(fields.dictionary[64:, 7:], before[64:, 7:])
+    assert not fields.dictionary[64:, :7].any() and not fields.dictionary[:64, 7:].any()
 
 
 def test_the_colour_controls_and_other_channel_counts():
