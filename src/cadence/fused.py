@@ -2026,7 +2026,6 @@ def fused_settle(
     """
     assert njit is not None
     batch, n = v.shape
-    standing = _standing(np.ascontiguousarray(drive), bias)
     if keep is None:
         masked = False
         keep = _NO_MASK
@@ -2043,6 +2042,7 @@ def fused_settle(
         if apical is not None:  # a held gain's shape is checked at no sweeps too
             _compartment(apical, layout, flat, nudge, batch, n)
         return s, 0, np.zeros(batch), products
+    standing = _standing(np.ascontiguousarray(drive), bias)
     has_adapt = neuron_model.adaptation is not None
     target, nmask, gid, ngroups, beta, softmax_t, weight, anchor, anchor_gain = _nudge_arrays(
         nudge, batch, n

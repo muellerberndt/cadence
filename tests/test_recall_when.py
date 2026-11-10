@@ -64,8 +64,8 @@ def test_the_read_drives_the_when_region_with_its_attention():
 
 @pytest.mark.parametrize(
     "options",
-    [{}, {"recall_copy": 0.5}, {"recall_copy": 0.5, "recall_heads": 2}],
-    ids=["recall", "copy", "copy_heads"],
+    [{}, {"recall_heads": 2}],
+    ids=["recall", "heads"],
 )
 def test_a_newborn_when_channel_settles_as_the_memory_without_it(options):
     rng = np.random.default_rng(2)

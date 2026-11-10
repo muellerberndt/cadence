@@ -55,6 +55,7 @@ step size. The defaults of a new brain suit most work; change one at a time and 
 | --- | --- | --- | --- |
 | Fewer neuron updates per answer, the same equations | `learning_fast_settle=True` | on (off with `recall=False`) | rows stop apart and the activation vectorizes; other bits than the ordinary solve ([settling](settling.md#settling-and-equilibrium)) |
 | The ordinary solve | `learning_fast_settle=False` | | every row runs to the slowest row's check |
+| The work around each solve compiled, the same equations | `learning_compiled_moment=True` | off | a greedy act in one compiled call on the CPU, a lesson's judgment in one and its phases in one more; other bits than the ordinary path ([the compiled moment](#the-compiled-moment-opt-in)) |
 | Fewer sweeps, looser answers | `learning_tolerance=0.01` | `0.003` | about a fifth fewer sweeps per act ([what a moment costs](#what-a-moment-costs)) |
 | Lessons refused unless every phase satisfies the equations | `learning_qualified=True, learning_nudged_steps=1024` | off | stricter and slower lessons ([qualified teaching](settling.md#qualified-teaching-budgets)) |
 | Larger or smaller lesson steps | `teaching="founder"`, `"normalized"` or `"deep"` | `"deep"` (`"founder"` with `recall=False`) | the size and form of each lesson's step ([which teaching point](teach.md#which-teaching-point)) |
@@ -87,7 +88,7 @@ The composed graph, in the order its regions are developed:
 | `observer_0` ... | `observers` | Reciprocal with every module, `motor` and earlier observers | below |
 | `efference` | `actions` | With `efference_amplitude` above 0 | [memory](memory.md#efference-copy) |
 | `history` | sensory width per decay | With a nonempty `history_decays` | [memory](memory.md#heard-history) |
-| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False`; with `recall_copy` also into `motor` | [recall memory](memory.md#the-recall-memory-in-full) |
+| `recall`, `next` | observation-code width | With `recall=True`; `next` unless `recall_next=False` | [recall memory](memory.md#the-recall-memory-in-full) |
 | `recall_action`, `next_action` | `actions` each | With `recall_action=True`, one per read port region; synapses into the association start at zero | [its own actions](memory.md#its-own-actions-in-the-slots-opt-in) |
 | `recall_when`, `recall_1_when` ... | 2 each, 4 with `recall_anchor` | With `recall_when=True`, one per head; synapses into the association start at zero | [when a read item happened](memory.md#when-a-read-item-happened-opt-in) |
 
@@ -147,6 +148,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `learning_scale_cap`, `learning_surprise`, `learning_surprise_share` | `8.0`, `False` (`True` in a new brain with the memory), `False` | retune | [learning](settling.md#7-every-knob) |
 | `learning_rehearsal` | `0.0` (off) | retune | [rehearsal](teach.md#teach-several-types-in-sequence-rehearsal) |
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |
+| `learning_compiled_moment` | `False` | retune | [the compiled moment](#the-compiled-moment-opt-in) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
@@ -275,6 +277,14 @@ sharing across positions is a second form, read only if this one holds. The foun
 and is unchanged. The [grammar chamber](../benchmarks/grammar/README.md#a-planning-window)
 reads the window on its sentences at `k` of 1, 3, 4 and 8.
 
+When to use it: the window pays where two actions inside it constrain each other and the trace
+alone does not carry the constraint. It is no lookahead. On
+[routes with a goal](../benchmarks/grammar/README.md#routes-with-a-goal-does-planning-pay-257),
+where the first step must lead to a goal two steps on, a sliding window of three (plan three, take
+the first, plan again) chooses the first step no better than word by word (.31 against .33 on
+held-out pairs; each says the wrong neighbour as often as the right one), so a plan that must search ahead needs
+more than a joint settle.
+
 Every bias starts at zero and is plastic: `brain.brain.bias` holds the learned values, and
 loading restores them. To start the processing neurons at a bias of your own, set
 `brain.learner.brain = brain.learner.brain.with_parameters(bias=bias)` before the first lesson.
@@ -336,21 +346,62 @@ take about three tenths and the memory's read a sixth, and most of the rest is P
 many small steps around the kernels that a network's compiled batch does not make. What a pass reads
 at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 
-| Work | Brain | One thread, Apple M4 |
-| --- | --- | ---: |
-| One stream of speech: 3,920 inputs, association 512, one act per 500 ms of audio | founder settings | 0.9 ms an act, 25 ms a taught lesson |
-| The same | the recipe | 10 ms, 190 ms |
-| The same | the recipe with `history_decays=(0.5, 0.9)` | 14 ms, 270 ms |
-| The same | a new brain | 14 ms, 291 ms |
-| Long context: 16 streams, 256 inputs, 64, 1,024 and 4,096 slots | the chamber's recipe | 1, 6 and 21 ms an act, 7, 27 and 99 ms a moment with its lesson |
+### The compiled moment (opt-in)
 
-At the speech size the read's address map, 3,920 by 3,920 entries, is most of an act, and with
-thousands of slots the read is: at 4,096 slots it is 20 of the act's 21 ms, and the write 0.3 ms. A
-realtime loop's limit is the act: at the speech size a lesson that teaches costs about twenty times
-an act, and only the act has to keep up with the stream.
+`learning_compiled_moment=True` does the work around the solve kernels in compiled calls on the
+CPU. A greedy act is one call: the moment's drive (the sensory part, the working trace, the
+memory's read, with the address and every position term through one product of the maps, kept
+packed until a lesson replaces one, and the place store's read), the free solve, the choice, the
+trace's step and the memory's write. A lesson by surprise judges in one call, the read and the
+solve its answer is read from, and where it teaches a row the lesson is one call more, from its
+phases to its written efficacies: the free phase, the two nudged phases and their checks, the
+contrast, the optimizer's step with the tied and bounded efficacies, the address lesson and the
+carried gains' contrast and step; Python stores what the call returns. An act after a lesson that
+taught nothing takes the lesson's read and solve and writes its moment in the choice's pass. The
+equations are the same and the sums run in another order, so the bits are other ones; off, every
+bit is the ordinary path's. A brain with several read heads, a window, the command or when in its
+slots, the gains, a learned code or a separator reads through the ordinary path, and a moment the
+one call does not take whole runs as the passes it is made of: a solve that needs its rescue, a
+sampled act, a lesson of a learner with frozen or tied synapses or per-synapse rates, an update
+that is refused.
+
+[`cost.py`](../benchmarks/grammar/cost.py) times a pass of the default brain, the same brain with
+the option and the chamber's transformer in one process, batch by batch in turn, on one thread. On
+one core of a Xeon 8488C with nothing else running, one founder at a time, in one session:
+
+| Founder | Default brain | With `learning_compiled_moment` | Transformer | Against the transformer: default, compiled |
+| --- | ---: | ---: | ---: | ---: |
+| 0 | 67.6 s | 36.7 s | 16.0 s | 4.2, 2.3 |
+| 1 | 70.5 s | 38.5 s | 15.9 s | 4.4, 2.4 |
+| 2 | 70.8 s | 39.5 s | 16.2 s | 4.4, 2.4 |
+
+The option takes .54 to .56 of the default's seconds. The seconds of one machine differ from run
+to run and from machine to machine by a tenth and more, the transformer's more than the brain's:
+across sessions the default read 4.2 to 5.3 times the transformer, so compare within one run. At
+a default of 4.8, .54 to .56 of its seconds is 2.6 to 2.7 times the transformer.
+
+`cost.py --parts` reads one brain's pass by part, each function's seconds less those of the timed
+functions inside it, the kernels at the functions that launch them (founder 0, alone on the core):
+
+| Part | Default brain | Compiled moment |
+| --- | ---: | ---: |
+| Kernels: the solves; with the option the act's and the judgment's one call (read, solve, choice, write) | 18.0 s | 20.8 s |
+| Kernels: the lessons' free and nudged phases and their checks; with the option a taught lesson's one call (phases, checks, contrast, update, address lesson, gains) | 5.3 s | 6.0 s |
+| The read, as a pass of its own | 20.8 s | 0.0 s |
+| Around the kernels of an act: the solve's layers, the choice and the write, the rest | 12.5 s | 4.2 s |
+| Around the kernels of a lesson: the phases, the update, the address lesson, the gains, the rest | 9.3 s | 3.0 s |
+| The chamber's own loop | 2.0 s | 1.7 s |
+| The pass | 67.9 s | 35.9 s |
+
+The kernels take 26.9 seconds, 1.7 times the transformer's pass. What stands around them takes
+7.2 seconds with the option: about 85 microseconds of Python around an act's call and 130 around
+a lesson's, which check the public call's arguments, hand the compiled call its arrays and store
+what it returns. The kernels and the chamber's loop are .42 of the default's seconds and the
+Python around the calls .11, which fewer calls per moment would lower.
 
 | To spend less | Setting | What changes |
 | --- | --- | --- |
+| The work around the solve | `learning_compiled_moment=True` | An act in one compiled call, a lesson's judgment in one and a taught lesson in one more: .54 to .56 of a chamber pass of the default brain on one Xeon core, 2.3 to 2.4 times the transformer's seconds where the default takes 4.2 to 4.4 ([the compiled moment](#the-compiled-moment-opt-in)). Other bits. |
 | Sweeps per solve | `learning_fast_settle=True`, a new brain's | Another solve of the same equations, in which rows stop apart and the activation vectorizes: about half of a chamber pass on the Xeon above, and .74 of one on an Apple M4 (229 to 169 CPU seconds, four pairs at the default brain on one thread of a shared machine), whose exponential costs less. `learning_fast_settle=False` names the ordinary solve, with other bits. |
 | Sweeps per solve | a larger `learning_tolerance` | At 0.01 in place of 0.003, about a fifth fewer sweeps per act and an eighth of a chamber pass. |
 | Slots | a smaller `recall_capacity` | A read grows with the slots a stream holds; a write does not. |
@@ -398,7 +449,7 @@ full = Brain.compose(
     recall_heads=2,                                      # two facts in one settle
     recall_boundary=True,                                # the start of an episode has a slot
     recall_action=True,                                  # the slots keep what it did
-    recall_copy=2.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
+    recall_gain=1.0, recall_tokens=range(4),             # observations 0-3 name the 4 actions
     observers=(16,),                                     # optional System 2
 )
 assert full.live(np.eye(16)[[3]]).shape == (1,)
@@ -412,10 +463,10 @@ assert full.live(np.eye(16)[[3]]).shape == (1,)
   ([the episode's boundary](memory.md#episodes-keys-and-windows)).
 - `recall_action=True`: every slot keeps the command executed at its moment
   ([its own actions](memory.md#its-own-actions-in-the-slots-opt-in)).
-- `recall_copy=2.0, recall_tokens=range(4)`: a token the read delivers drives the action of the
-  same token, including tokens never taught as answers
-  ([the copy pathway](memory.md#the-copy-pathway-opt-in)). Declare only identities the task
-  has; without shared tokens leave it out.
+- `recall_gain=1.0, recall_tokens=range(4)`: a learned gain per read port carries a token the read
+  delivers to the action of the same token, including tokens never taught as answers
+  ([the learned value path](memory.md#the-learned-value-path-opt-in)). Declare only identities the
+  task has; without shared tokens leave it out.
 - `observers=(16,)`: a System 2 region inside the same settle, bounded by the compartment.
 
 The recall memory reads into the top region;
@@ -440,7 +491,10 @@ For modules of several hundred neurons and more
   `w`, with no setting: above 64 the projection from prefrontal to association and the association-motor pair step at
   `64 / w` (`Learner.synapse_rate`), and `recall_address` is .01 times `64 / w`. At 64 and under every step is whole.
   Every other projection keeps its step: the sensory one, a chain between modules, an observer's and the memory's reads.
-  The rate multiplies every step on those synapses, a lesson's and a reward's.
+  The rate multiplies every step on those synapses, a lesson's and a reward's. A rate of zero holds a synapse and its
+  optimizer history, and a neuron whose every inbound synapse steps at zero holds its bias too: zero on every synapse
+  into a region, both directions of each pair, freezes the region. A reciprocal pair shares one efficacy and steps by
+  the mean of its two directions' steps, so one direction alone at zero takes half its partner's step.
 
 A rate you name wins over its part:
 

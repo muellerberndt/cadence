@@ -880,14 +880,17 @@ class Brain:
             raise ValueError("a transport plan belongs to the torch backend")
         return cast("dict[str, Any]", self._torch.calibrate(batches, name))
 
-    def _with_device_parameters(self, scale: Any, bias: Any) -> Brain:
-        """The brain with new parameters that stay on the torch device.
+    def _with_device_parameters(
+        self, scale: Any, bias: Any, checked: tuple[Any, ...] | None = None
+    ) -> Brain:
+        """The brain with new parameters that stay on the torch device; ``checked`` is their
+        ``parameter_check``, read finite by the caller.
 
         The kernel is shared and updated in place, so a state settled on it continues on it;
         the brain this was called on is superseded (its host copies, if any, are stale).
         """
         assert self._torch is not None
-        self._torch.set_parameters(scale, bias)
+        self._torch.set_parameters(scale, bias, checked=checked)
         new = copy.copy(self)
         new._efficacy = None
         new._bias = None
@@ -1086,6 +1089,9 @@ class Brain:
         _keep_products(single, out.__dict__.get("_products"))  # the same row
         return single
 
+    # a subclass whose numerical copies settle on the kernel of their step, as this class's do
+    _steps_on_kernel = False
+
     def _with_dt(self, dt: float) -> Brain:
         """A numerical copy on current parameters; boundary subclasses must override.
 
@@ -1096,7 +1102,7 @@ class Brain:
         """
         if (
             self._torch is not None
-            and type(self) is Brain
+            and (type(self) is Brain or self._steps_on_kernel)
             and "settle_batch" not in self.__dict__
             and "residual" not in self.__dict__
         ):
@@ -1299,6 +1305,54 @@ class Brain:
             current, error, used, tolerance, residual_checks=checks,
             stagnation_checks=stagnation_checks,
         )
+
+    def _published(self, drive: np.ndarray, state: BrainState | None) -> BrainState:
+        """``settle_batch(drive, steps=0, state=state)`` on the compiled CPU path of a graph
+        that solves in one compiled call (``_solves_compiled``), without the checks of a mask, a
+        nudge, a trajectory or a device: the same arrays and refusals of the drive and the
+        state."""
+        from .fused import fused_settle
+
+        drive = np.asarray(drive, float)
+        if drive.ndim == 1:
+            drive = drive[None, :]
+        batch, n = drive.shape
+        if n != self.connectome.n:
+            raise ValueError("drive must have one column per neuron")
+        if n == 0 or not _rows_finite(drive):
+            raise ValueError("drive must be finite and the brain must contain neurons")
+        if state is None:
+            v, a = np.zeros((batch, n)), np.zeros((batch, n))
+        else:
+            v = np.array(state.v, dtype=np.float64, copy=True, ndmin=2)
+            a = np.array(state.adaptation, dtype=np.float64, copy=True, ndmin=2)
+            if v.shape != (batch, n) or a.shape != (batch, n):
+                raise ValueError("state batch does not match the drive batch")
+            if not (_rows_finite(v) and _rows_finite(a)):
+                raise ValueError("warm potentials and adaptation must be finite")
+        compiled = self._fused_blocks()
+        assert compiled is not None
+        s, taken, change, products = fused_settle(
+            v, a, drive, self.bias, self.layout, compiled[0], None, self.neuron_model, None, 0,
+            None, apical=compiled[1],
+            products=None if state is None else state.__dict__.get("_products"),
+        )
+        result = BrainState(v=v, activation=s, adaptation=a, steps=taken, activity_change=change)
+        _keep_products(result, products)
+        return result
+
+    def _fast_equilibrate(
+        self, drive: np.ndarray, state: BrainState | None, budget: int, tolerance: float
+    ) -> Equilibrium | None:
+        """``equilibrate(drive, state=state, budget=budget, tolerance=tolerance, fast=True)`` in
+        the calls its compiled path makes (``_published``, ``_solve_compiled``): the same
+        arrays to the bit; None where it takes another path (the caller then calls it)."""
+        if self.backend != "cpu" or not self._solves_compiled() or budget < 0:
+            return None
+        if _resident(drive):
+            return None
+        return self._solve_compiled(drive, self._published(drive, state), budget, 32,
+                                    tolerance, True)
 
     def _solves_compiled(self) -> bool:
         """Whether a free solve can run in one compiled call: no compartment, no recording, on
@@ -3329,23 +3383,44 @@ class _TorchKernel:
 
     # -- parameters
 
-    def set_parameters(self, scale: Any, bias: Any) -> None:
-        """New parameters, as device tensors: the transport weights follow, in place."""
+    def parameter_check(self, scale: Any, bias: Any) -> tuple[Any, ...]:
+        """What ``set_parameters`` checks before it writes, not read: the transport's weights, the
+        bias in the kernel's precision, the plan's summed values (None for a plan without them)
+        and two device flags, the parameters and weights finite, and the summed values finite."""
         torch = self.torch
         if tuple(scale.shape) != tuple(self.gain_pre.shape) or tuple(bias.shape) != (self.n,):
             raise ValueError("device parameters must match synapse and neuron shapes")
         weights = (self.gain_pre * scale).to(self.dtype)
         live_bias = bias.to(self.dtype)
         values = self.plan.scatter(weights) if self.plan.parallel else None
-        checked = [scale, bias, weights, live_bias] + ([values] if self.plan.parallel else [])
-        if not bool(torch.stack([torch.isfinite(value).all() for value in checked]).all()):
-            if self.plan.parallel and bool(
-                torch.stack([torch.isfinite(v).all() for v in checked[:4]]).all()
-            ):
-                raise ValueError("summed effective synaptic weights must be finite")
-            raise ValueError(
-                "device parameters and effective weights must be finite at runtime precision"
-            )
+        finite = torch.stack(
+            [torch.isfinite(value).all() for value in (scale, bias, weights, live_bias)]
+        ).all()
+        summed = torch.isfinite(values).all() if values is not None else finite
+        return weights, live_bias, values, finite, summed
+
+    @staticmethod
+    def parameter_refusal(finite: bool, summed: bool) -> None:
+        """The refusal of a ``parameter_check`` whose flags read ``finite`` and ``summed``."""
+        if finite and summed:
+            return
+        if finite:
+            raise ValueError("summed effective synaptic weights must be finite")
+        raise ValueError(
+            "device parameters and effective weights must be finite at runtime precision"
+        )
+
+    def set_parameters(
+        self, scale: Any, bias: Any, *, checked: tuple[Any, ...] | None = None
+    ) -> None:
+        """New parameters, as device tensors: the transport weights follow, in place. ``checked``
+        is the ``parameter_check`` of these parameters whose flags the caller read finite."""
+        torch = self.torch
+        if checked is None:
+            checked = self.parameter_check(scale, bias)
+            flags = torch.stack([checked[3], checked[4]]).cpu().numpy()
+            self.parameter_refusal(bool(flags[0]), bool(flags[1]))
+        weights, live_bias, values = checked[:3]
         # Validation precedes every write to the shared live kernel and its weights.
         self.scale = scale
         self.bias_param = bias
@@ -5907,6 +5982,7 @@ class _MlxKernel:
         self, plus: Mapping[str, Any], minus: Mapping[str, Any], trace: Sequence[Any] | None,
         trace_bias: Any, decay: np.ndarray, span: float, delta: np.ndarray, eta: float,
         eta_bias: float, scale: Sequence[Any], tables: dict[str, Any], cap: float,
+        also: Sequence[Any] = (), before: Any = None,
     ) -> tuple[_MlxKernel, Any, float, float]:
         """A reward's step, all of it on the device: the dopamine ``delta``'s mean over the rows of
         each row's eligibility after this moment's contrast (``decay`` its own factor), at ``eta``
@@ -5914,7 +5990,9 @@ class _MlxKernel:
         synapses' eligibility itself moves after it, with nothing left to refuse (``eligible``): a
         row's contrast is an outer product, so the step needs no array of them. Returns the new
         kernel, the neurons' eligibility and the mean steps' sizes; a value that is not finite
-        raises ``ValueError`` with nothing changed."""
+        raises ``ValueError`` with nothing changed. ``also`` is made in the same launch and
+        ``before()`` runs after it, before this step's own check, for the checks a caller reads
+        of what ``also`` made (the critic's and the memory's, refused first)."""
         mx, lay = self.mx, self.layout
         rows = len(delta)
         plus_of, minus_of = self._ranges_of(plus), self._ranges_of(minus)
@@ -5954,8 +6032,10 @@ class _MlxKernel:
         ok = mx.isfinite(total) & mx.isfinite(mx.sum(bias_step))
         mx.eval(
             new.blocks, new.scale, total, ok, new_bias_trace, new.bias, bias_size,
-            new.w if plan else [],
+            new.w if plan else [], *also,
         )
+        if before is not None:
+            before()
         if not bool(ok.item()):
             raise ValueError("steps must be finite vectors, one per synapse and one per neuron")
         return (

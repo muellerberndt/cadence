@@ -1110,9 +1110,9 @@ def test_the_options_at_their_founders_build_the_founder_memory(tmp_path):
         "address_reward": 0.0, "position_reward": 0.0,
         "window": 1,
         "heads": 1, "position": 32, "position_rate": 0.1,
-        "boundary": False, "copy": 0.0, "tokens": None, "action": False,
+        "boundary": False, "tokens": None, "action": False,
         "anchor": False, "relative": False, "slope": 0.0, "when": False, "drive_gain": False,
-        "gain": 0.0, "grid": (),
+        "gain": 0.0, "grid": (), "cortex_norm": False, "gain_after": 0, "gain_next": 0.0,
     }
     founder = composed(seed=5, arousal=True, learning_surprise=True)
     explicit = composed(

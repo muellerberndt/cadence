@@ -38,6 +38,7 @@ from .learning import (
     preflight,
     seam_report,
 )
+from .lives import Lives
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
@@ -71,6 +72,7 @@ __all__ = [
     "Adaptation",
     "Region",
     "Brain",
+    "Lives",
     "regions",
     "Projection",
     "Genome",
@@ -113,4 +115,4 @@ __all__ = [
     "save",
 ]
 
-__version__ = "0.95.2"
+__version__ = "0.96.0"

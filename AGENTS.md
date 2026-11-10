@@ -291,8 +291,8 @@ The plan lives on GitHub; no local plan documents are kept.
 
 - **The roadmap, [#109](https://github.com/muellerberndt/cadence/issues/109):** the two goals, the release line, the order of
   work and the parked research.
-- **Two goal epics:** [#118](https://github.com/muellerberndt/cadence/issues/118), a Doom player, and [#173](https://github.com/muellerberndt/cadence/issues/173), a
-  language model that understands sequences and grammar. Each states its definition of
+- **Two goal epics:** [#118](https://github.com/muellerberndt/cadence/issues/118), a Doom player, and [#173](https://github.com/muellerberndt/cadence/issues/173),
+  saying sentences formed in the brain, as a person does. Each states its definition of
   done, its stages and the capability contracts folded into it.
 - **A milestone per release**, holding the library issues that release delivers, each
   with its gate.

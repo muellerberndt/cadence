@@ -58,12 +58,12 @@ what do the earlier cues keep?
 | `recipe64` | `recipe` with `recall_position=64`: the table exact to 64 ages |
 | `recipe_relative` | `recipe` with `recall_relative=True` |
 | `heads` | `table` with `recall_heads=2` |
-| `heads_copy` | `heads` with the copy pathway as the tokens' identity (`recall_copy=2.0, recall_tokens=range(16)`) |
 | `every_row` | `recall=True, recall_recency=0.0`: every row taught |
 | `when` | `every_row` with `recall_when=True` |
 | `when_anchor` | `when` with `recall_anchor=True` |
 | `when_sharp` | `when` with `recall_position_rate=0.0, recall_temperature=0.1`: the position term not taught and a sharp softmax, so the read lands on the item heard and stays there |
 | `rehearsal` | `anchor` with `learning_rehearsal=1.0`: the lessons' episodes replayed |
+| `composed` | what a new brain composes: `Brain.compose(inputs, actions, modules=(64,), seed=founder, episodic=False)` with the recall memory at its composition and the composition's teaching point; `--settings` names a one-out, such as `{"teaching": "normalized"}` |
 
 ## Ordered recall (`order.py`)
 
@@ -117,6 +117,41 @@ its class. `--memory` adds the recall memory with surprise lessons. Arms: `found
 `relative`, every synapse's step scaled to its neuron's fan-in in the same brain composed at
 width 64 (`fan_in_rates` in `width.py`). `--settings` adds
 options, such as `{"learning_surprise_share": true}`.
+
+## Answers on tokens no lesson used (`held.py`)
+
+[`held.py`](held.py) reads R1 of the attention tracker
+([#272](https://github.com/muellerberndt/cadence/issues/272)): six of the battery's tasks with some
+tokens held out of every answer in training (look back, induction, n-back and two hops hear them and
+never answer them; copying and a period of 8 never hear them), on the default composition with the
+learned value path (`recall_gain=1.0`, every token declared). Each answer is read beside the read's own
+prediction; where the brain misses a held answer, `votes` reads what drives the answer's motor neuron
+and the chosen one (the association's synapses, the gains, the rest), and the support
+`no_association_vote` reads the test again with the association's synapses onto the tokens at zero.
+
+Declared reading, six fresh founders (2720901 to 2720906), one 32-vCPU box, 1,500 lessons, bar .80 on
+5 of 6 on every task:
+
+| Task | Held answers, per founder | At .80 | The read's best port at held answers | Association's drive where missed: answer / chosen | Held with the association silenced |
+| --- | --- | --- | --- | --- | --- |
+| Induction | 1.00 1.00 1.00 .98 .98 1.00 | 6 of 6 | 1.00 | -.23 to -.05 / .25 to .43 | 1.00 on 6 |
+| A period of 8 | .98 .97 .98 .99 .99 .98 | 6 of 6 | .98 to .99 | -.63 to -.05 / .88 to 1.22 | .98 to .99 |
+| Copying | .89 .83 .94 .88 .92 .93 | 6 of 6 | .89 to .96 | -.09 to .05 / .27 to .38 | 1.00 on 6 |
+| Two hops | .76 .78 .78 .79 .78 .72 | 0 of 6 | .89 to .91 | -1.70 to -1.25 / .79 to 1.12 | .90 to .91 |
+| N-back | .08 .03 .02 .08 .03 .04 | 0 of 6 | .47 to .65 | -3.25 to -.76 / .62 to .89 | .21 to .48 |
+| Look back | .00 on 6 | 0 of 6 | .35 to .97 | -4.85 to -.65 / .42 to 4.73 | .00 .99 .02 .03 .99 .36 |
+
+Taught answers read .99 to 1.00 on induction, the period and n-back, .86 to .94 on copying, .87 to
+.89 on two hops and .96 to 1.00 on look back on five founders (.37 on one). Three terms decide the misses:
+
+- **The vote.** Lessons on other actions push the association's drive on a held action down, to
+  -0.8 to -4.9 on n-back and look back, while the action it chooses takes +0.4 to +4.7. On two hops the
+  read names the held answer on .89 to .91 of moments and the vote keeps it at .72 to .79; silencing
+  the association's synapses onto the tokens lifts it to .90 and .91.
+- **The read on n-back** names the held token on .47 to .65 of moments, so silencing the vote reaches
+  .21 to .48 only.
+- **The read on look back** spreads from .35 to .97 by founder; on the two founders where it names
+  the held token on .89 and .97 of moments the silenced vote reads .99, and elsewhere .00 to .36.
 
 ## Run
 
@@ -291,7 +326,8 @@ Copying repeated tokens (`repeat` with `unique` off) taught at 3 to 6 and read a
 | `recipe_relative` | 232100 to 232105 | 0.918 to 0.941 | 0.967 to 0.992 | 0.963 to 0.976 |
 
 Two hops asked in one moment (`twohop` without `think`; founders 0 to 2): `heads` 0.436 to
-0.469 after 1,500 lessons and, with the copy pathway, `heads_copy` 0.473 to 0.502 after 3,000.
+0.469 after 1,500 lessons and, with the copy pathway (`heads_copy`, which left with the pathway in
+0.96.0), 0.473 to 0.502 after 3,000.
 A chained second head (its address taking what the first head read), an option tried on the
 release branch and withdrawn before release, read 0.439 to 0.458 beside `heads` and 0.506 to
 0.533 beside `heads_copy` (0.03 higher on each founder). With a `THINK` moment the two heads
