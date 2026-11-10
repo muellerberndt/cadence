@@ -6,6 +6,7 @@ reads them:
 | Setting | What the brain reads | Section |
 | --- | --- | --- |
 | `inputs=(height, width)` | the image through a visual cortex | [image inputs](#image-inputs) |
+| `inputs=(height, width)` with `learned_fields=features` (opt-in) | the image through receptive fields a local rule shapes, pooled over overlapping regions | [learned receptive fields](#learned-receptive-fields) |
 | `code=units` | a fixed sparse code of the observation, which the memories key on and a vector brain's cortex reads | [the observation code](#the-observation-code) |
 | `learned_code=units` (opt-in) | a code that a region of the brain's own neurons learns while the brain lives | [the learned code](#the-learned-code) |
 | `attention=True` with `learned_code` | Recall selects a recent event and its successor by an ordered pair of learned codes | [single-head attention](memory.md#single-head-learned-code-attention-opt-in) |
@@ -32,6 +33,133 @@ assert eyes.act(np.random.default_rng(0).random((1, 8, 8))).shape == (1,)
 
 The memories key on the pixels. With `code=units` they key on a fixed sparse code
 and the cortex reads the pixels ([the observation code](#the-observation-code)).
+
+## Learned receptive fields
+
+`learned_fields=features` (opt-in, an image brain) reads the image through that many receptive
+fields that a local rule shapes while the brain lives, in place of the visual cortex. Use it for
+a policy that depends on what a rendered screen shows, at the size of an Atari or VizDoom frame:
+the fields learn the parts the screen is made of, one set of synapses reads them at every place,
+and the first module reads them pooled over a few overlapping regions, so an object is read the
+same where it appears.
+
+```python
+import numpy as np
+from cadence import Brain
+
+eyes = Brain.compose(inputs=(84, 84), actions=3, seed=0, learned_fields=16, recall=False)
+frame = np.zeros((1, 84, 84))
+frame[0, 30:42, 20:32] = 1.0                         # a square on a dark screen
+eyes.lesson(frame, [1])                              # the fields learn from what is shown
+assert eyes.fields.work["updates"] == 1
+assert len(eyes.connectome.populations["sensory"]) == 16 * 9   # 16 fields, 3 by 3 pools
+key = eyes.observation_code(frame)                   # what the cortex reads and memories key on
+assert key.shape == (1, 144) and np.isclose(np.linalg.norm(key), 1.0)
+assert not eyes.observation_code(np.full((1, 84, 84), 0.7)).any()  # a uniform screen: nothing
+```
+
+### What the fields are for
+
+In the pixel chamber (`benchmarks/pixels/`), a policy that approaches, avoids or aims at an
+object by its kind and its side, `Brain.compose(inputs=(84, 84), actions=3, learned_fields=64,
+recall=False, teaching="normalized")` answers fresh grey frames at .974 (.930 to .992) after
+65,536 frames of lessons on six fresh founders, every founder at .90 or above. Objects in a band
+of places no training frame showed read .948, at an untrained scale .975 and beside an untrained
+distractor .947, where a convolutional actor-critic of the same size trained by gradient on the
+same frames reads 1.000 on fresh frames and .145 on the untrained band. The same brain with its
+fields held at their draw reads .832. Each founder reads its untrained band, scale and
+distractor within .05 of its fresh frames on 4 of 6 founders; on the other two the pools read
+those panels at .988 to 1.000 for a linear readout, and the brain's readout of them trails.
+Under reward alone the brain reads .673 against .372 for the same brain on a blank screen.
+On twelve further fresh founders, read on panels of 2,048 frames, the brain answers fresh frames
+at .963 (11 of 12 at .90 or above), and 10 of 12 read all three untrained panels within .05.
+
+| Frame (one stream) | `act` per frame, one CPU core | `lesson` per frame | the visual cortex's `act` |
+| --- | --- | --- | --- |
+| 84 by 84 grey | 2.6 ms | 3.3 ms | 163 ms |
+| 84 by 84 colour | 9.0 ms | 10.0 ms | 220 ms |
+| 160 by 120 grey | 8.5 ms | 9.5 ms | |
+
+One Intel Xeon 8488C core; at 16 streams a frame costs about the same, as the fields read every
+frame on the host. On an NVIDIA L4 one stream acts in 3.6 ms (grey) and 15.3 ms (colour), with
+MLX on an Apple M4 in 6.7 ms and 23.0 ms; each within a VizDoom tic of 28.6 ms.
+
+With the opponent retina, colour frames read .953 on fresh frames and .907 on the untrained
+band (four development founders, 65,536 frames); the first run's fields over the three channels
+jointly read .762 and .741. Colour frames and wider frames read less: at 84 by 84 in colour,
+read with every field over all three channels, .767 on fresh frames, and at 160
+by 120 .965 on fresh frames with the untrained band at .827. In colour the pools hold less (a
+linear readout of one founder's pools after 16,384 frames reads .914 on fresh frames and .715 on
+the band): the 64 fields divide among the six hues an object takes. At 160 by 120 the pools read
+the band at .996 for a linear readout, and the brain's readout of them trails, as on the two
+grey founders above.
+
+### What the stage is
+
+| Part | What it does |
+| --- | --- |
+| the retina | every 8 by 8 patch, one at every second pixel, is centred on its own mean and divided by its own contrast, `x = (p - mean(p)) / sqrt(var(p) + 0.01)`: a uniform patch of any brightness reads near zero. A three-channel image is first turned into opponent channels, luminance `(R + G + B) / sqrt(3)`, red against green `(R - G) / sqrt(2)` and blue against yellow `(2B - R - G) / sqrt(6)`; nine fields in ten read the luminance patches, where a shape is the same whatever its hue, and the rest read the two colour channels together |
+| the fields | field `j` is a unit-length column `Phi_j` of the dictionary; it responds to a patch by `a_j = max(0, Phi_j . x - t_j)` above its own threshold `t_j`; the same synapses read every position |
+| the pools | each field's responses averaged over 3 by 3 regions of the map, each region 1.5 times its share of the map wide, so neighbouring regions overlap; the row of `features * 9` values at unit length is what the sensory region holds and every memory keys on |
+
+The stage reads the image before the settle, and nothing leads back into it: the lesson's
+contrast and the dopamine never reach it.
+
+### How it learns
+
+At every accepted `act`, `step` and `wait`, in `live` while aroused, and at every `lesson`, the
+fields take one step from the frames of the moment, on the patches that carry structure (a mean
+square of at least 0.5 after the retina):
+
+| Table | Rule | Constant |
+| --- | --- | --- |
+| dictionary | `Phi += rate * mean_patches (x - Phi a) a^T`, each column scaled back to unit length: Hebbian on the residual of the patch the fields reconstruct, the learned code's rule | `RATE` 0.01 |
+| thresholds | `t += threshold_rate * (share - target)`, `share` the share of the structured patches the field responds to, floored at zero | `THRESHOLD` 0.3 at birth, `THRESHOLD_RATE` 0.01, `TARGET` 0.1 |
+
+`predict`, `fit`, `imagine`, `observation_code` and readings take no step, and
+`brain.fields.learning = False` holds both tables still (the control with fields held at their
+draw). A field learns where objects appear and reads the same synapses everywhere else, places
+no object of the life has appeared included.
+
+### Ports beside the screen
+
+A creature that sees a screen also senses its own body: health, ammunition, the action it just
+took. `ports=k` (opt-in, with `learned_fields`) reads `k` further values per row beside the
+pools. An observation row is the flattened image followed by the ports, the sensory region
+holds the pools followed by `k` port neurons, and every memory keys on both.
+
+```python
+body = Brain.compose(inputs=(84, 84, 3), actions=3, seed=0, learned_fields=16, ports=4,
+                     recall=False)
+screen = np.random.default_rng(0).random((1, 84 * 84 * 3))   # the frame, flattened
+senses = np.array([[0.8, 0.5, 1.0, 0.0]])                    # health, armour, ammunition, ...
+row = np.concatenate([screen, senses], axis=1)                # the image, then the ports
+assert body.inputs == 84 * 84 * 3 + 4 and body.act(row, greedy=True).shape == (1,)
+key = body.observation_code(row)
+assert key.shape == (1, 16 * 9 + 4) and (key[:, -4:] == senses).all()  # the ports as given
+```
+
+The pools arrive at unit length over the whole row of pools, so one pool is small against a
+port at 1: scale a port to the range its meaning needs, about 0 to 1. The fields learn from the
+image part alone. `describe()` reports `ports` in the layout, and a checkpoint keeps them.
+Refused with `ValueError`: `ports` without `learned_fields`, and a negative or non-integer
+width.
+
+### Settings, refusals and cost
+
+`learned_fields` is the one setting (at least 2). The rest are constants of `LearnedFields`:
+`FIELD` 8, `STRIDE` 2, `POOLS` 3, `OVERLAP` 1.5, `RETINA` 0.01, `STRUCTURE` 0.5, `LUMINANCE`
+0.9 (the share of a colour image's fields that read luminance) and the rates above. Refused with `ValueError`: a vector brain, `code` or `learned_code` beside it, fewer than
+2 fields, an image smaller than 8 by 8, and `grow` or `graft` of a brain that holds them. With
+the stage a new brain holds the recall memory: its key is `features * 9` wide (576 at 64
+fields), where an 84 by 84 frame's own 7,056 coordinates are refused.
+
+A checkpoint saves the fields' settings and work counts under `learned_fields` and their
+tables as `learned_fields/dictionary` and `learned_fields/thresholds`; `describe()` reports
+them, the code's kind as `"fields"`, and `parameters()` counts both tables
+(`64 * channels * features + features`). At 84 by 84 the map holds 39 by 39 positions: a
+frame's responses take `1,521 * 64 * channels * features` multiply-adds, and a learning step
+about three times that on a frame whose every patch carries structure.
 
 ## The observation code
 

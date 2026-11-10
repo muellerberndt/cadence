@@ -78,6 +78,42 @@
   and an LSTM actor-critic with generalized advantage estimation and the online TD(lambda)
   actor-critic sized to the brain's parameter count, with tests.
 
+#### Learned receptive fields for a screen (#284)
+
+- **`learned_fields=features` (opt-in, an image brain).** `Brain.compose(inputs=(84, 84), actions,
+  learned_fields=64)` reads the image through 64 receptive fields of 8 by 8 pixels in place of the
+  visual cortex: a retina that centres each patch and divides it by its contrast, one set of
+  synapses per field read at every second pixel, rectified above a homeostatic threshold, and the
+  responses pooled over 3 by 3 regions that overlap by half. The first module reads the pools and
+  every memory keys on them (576 coordinates at 64 fields), so a new brain holds the recall memory
+  at 84 by 84. The fields learn from the frames of every accepted moment and lesson by the learned
+  code's local rule, Hebbian on the residual of the patch they reconstruct; nothing leads back into
+  them and no gradient reaches them. `brain.fields` holds them (`LearnedFields`), a checkpoint saves
+  them, `describe()` and `parameters()` report them; `grow` and `graft` refuse a brain that holds
+  them ([learned receptive fields](docs/senses.md#learned-receptive-fields)). A brain that names
+  no `learned_fields` is unchanged to the bit.
+- **Readings** (six fresh founders, 65,536 frames of lessons, grey 84 by 84): fresh frames at
+  .974 (every founder at .90 or above), an untrained band of places at .948, an untrained scale at
+  .975 and an untrained distractor at .947, against 1.000 and .145 on the band for a convolutional
+  actor-critic of the same size; under reward alone .673 against .372 on a blank screen. Each
+  founder reads all three untrained panels within .05 of its fresh frames on 4 of 6; on the other
+  two the pools hold the panels and the readout trails. One stream acts in 2.6 ms per grey frame
+  and 9.0 ms per colour frame on one Xeon core, against 163 ms and 220 ms through the visual
+  cortex; colour frames read .767.
+- **Colour through opponent channels.** A three-channel image is read as luminance, red against
+  green and blue against yellow; nine fields in ten read luminance, where a shape is the same
+  whatever its hue. Colour 84 by 84 frames read .953 on fresh frames (four development founders)
+  against .762 with every field over the three channels jointly; the untrained band reads .907.
+- **`ports=k`: a body's own senses beside the screen (opt-in, with `learned_fields`, #297).** An
+  observation row is the flattened image followed by `k` values; `k` sensory neurons read them
+  beside the pools, and every memory keys on both. `describe()` reports them and a checkpoint
+  keeps them ([ports beside the screen](docs/senses.md#ports-beside-the-screen)).
+- **The pixel chamber** (`benchmarks/pixels/`): a screen-dependent policy on rendered 84 by 84
+  frames in grey and colour and on 160 by 120 frames (approach food, avoid a hazard, aim at a
+  target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
+  frozen, uniform and fields-at-their-draw controls, and a two-convolution actor-critic at the
+  brain's parameter count trained online on the same frames.
+
 ### Fixed
 
 - **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`
