@@ -58,6 +58,37 @@ assert key.shape == (1, 144) and np.isclose(np.linalg.norm(key), 1.0)
 assert not eyes.observation_code(np.full((1, 84, 84), 0.7)).any()  # a uniform screen: nothing
 ```
 
+### What the fields are for
+
+In the pixel chamber (`benchmarks/pixels/`), a policy that approaches, avoids or aims at an
+object by its kind and its side, `Brain.compose(inputs=(84, 84), actions=3, learned_fields=64,
+recall=False, teaching="normalized")` answers fresh grey frames at .974 (.930 to .992) after
+65,536 frames of lessons on six fresh founders, every founder at .90 or above. Objects in a band
+of places no training frame showed read .948, at an untrained scale .975 and beside an untrained
+distractor .947, where a convolutional actor-critic of the same size trained by gradient on the
+same frames reads 1.000 on fresh frames and .145 on the untrained band. The same brain with its
+fields held at their draw reads .832. Each founder reads its untrained band, scale and
+distractor within .05 of its fresh frames on 4 of 6 founders; on the other two the pools read
+those panels at .988 to 1.000 for a linear readout, and the brain's readout of them trails.
+Under reward alone the brain reads .673 against .372 for the same brain on a blank screen.
+
+| Frame (one stream) | `act` per frame, one CPU core | `lesson` per frame | the visual cortex's `act` |
+| --- | --- | --- | --- |
+| 84 by 84 grey | 2.6 ms | 3.3 ms | 163 ms |
+| 84 by 84 colour | 9.0 ms | 10.0 ms | 220 ms |
+| 160 by 120 grey | 8.5 ms | 9.5 ms | |
+
+One Intel Xeon 8488C core; at 16 streams a frame costs about the same, as the fields read every
+frame on the host. On an NVIDIA L4 one stream acts in 3.6 ms (grey) and 15.3 ms (colour), with
+MLX on an Apple M4 in 6.7 ms and 23.0 ms; each within a VizDoom tic of 28.6 ms.
+
+Colour frames and wider frames read less: at 84 by 84 in colour .767 on fresh frames, and at 160
+by 120 .965 on fresh frames with the untrained band at .827. In colour the pools hold less (a
+linear readout of one founder's pools after 16,384 frames reads .914 on fresh frames and .715 on
+the band): the 64 fields divide among the six hues an object takes. At 160 by 120 the pools read
+the band at .996 for a linear readout, and the brain's readout of them trails, as on the two
+grey founders above.
+
 ### What the stage is
 
 | Part | What it does |

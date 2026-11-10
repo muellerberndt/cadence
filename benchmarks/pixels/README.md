@@ -64,4 +64,70 @@ PYTHONPATH=src python benchmarks/pixels/timing.py --backend cpu --out results/ti
 
 ## Readings
 
-READINGS
+### Step 0: what the brain gets from the frame (development founders 0 and 1)
+
+Grey 84 by 84, lessons of 8 frames, 4,096 frames, every brain `recall=False`. The probe is the
+ridge readout of the representation the cortex reads (`--probe`).
+
+| What the cortex reads | Parameters | Brain, fresh frames | Brain, held-out band | Probe, fresh frames and band | Probe of the association |
+| --- | --- | --- | --- | --- | --- |
+| the visual cortex (8 maps of 3 by 3 fields, 53,792 neurons) | 4,013,316 | .734, .777 | .723, .664 | .742 .699, .805 .617 | .766, .789 |
+| raw pixels, 7,056 inputs | 484,292 | .750, .781 | .734, .727 | .746 .676, .801 .598 | .754, .781 |
+| 4 by 4 block means, 441 inputs | 34,472 | .723, .746 | .707, .508 | .758 .676, .801 .586 | .754, .773 |
+| fixed random code, `code=1024` | 74,116 | .711, .746 | .555, .547 | .746 .652, .770 .586 | .746, .762 |
+| learned code, `learned_code=128` | 931,604 | .391, .355 | .406, .344 | no unit active | .391, .320 |
+| convolutional baseline, 256 hidden | 674,100 | .820, .824 | .672, .629 | .957 .297, .957 .281 | .859, .867 |
+
+The learned code is silent at 7,056 inputs; the untaught fields and the fixed codes hold the
+answer up to about .75 to .80 for a linear readout, and the brain reaches that level; a
+representation that keeps every place apart leaves the held-out band unread.
+
+### The declared run (cadence#284, fresh founders 2840 to 2845, 65,536 frames)
+
+| Condition | Frame | Arm | Parameters | Fresh frames (range) | Band | Scale | Lighting | Distractor | At .90 | Within .05 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| lesson | 84 by 84 | `fields` | 47,812 | .974 (.930 to .992) | .948 | .975 | .832 | .947 | 6 of 6 | 4 of 6 |
+| lesson | 84 by 84 | `fields_drawn` | 47,812 | .832 (.770 to .910) | .857 | .860 | .801 | .837 | 1 of 6 | 6 of 6 |
+| lesson | 84 by 84 | `conv_matched` | 50,820 | 1.000 | .145 | 1.000 | .934 | .998 | 6 of 6 | 0 of 6 |
+| lesson | 84 by 84 | `conv` | 674,100 | .995 (.973 to 1.000) | .270 | 1.000 | .913 | .995 | 6 of 6 | 0 of 6 |
+| lesson | 84 by 84 | `fields`, blank screen | 47,812 | .386 | .352 | .380 | .404 | .379 | | |
+| lesson | 84 by 84 | `fields`, labels of independent scenes | 47,812 | .357 | .337 | .363 | .374 | .349 | | |
+| lesson | 84 by 84 | `fields`, frozen | 47,812 | .352 | .381 | .371 | .359 | .362 | | |
+| reward | 84 by 84 | `fields` | 47,812 | .673 (.574 to .758) | .690 | .676 | .648 | .647 | | |
+| reward | 84 by 84 | `fields`, blank screen | 47,812 | .372 | .352 | .377 | .400 | .376 | | |
+| reward | 84 by 84 | `conv_matched` | 50,820 | .894 (.758 to .988) | .506 | .915 | .634 | .888 | | |
+| lesson | 84 by 84 by 3 | `fields` | 56,004 | .767 (.734 to .809) | .772 | .756 | .657 | .755 | 0 of 6 | 4 of 6 |
+| lesson | 84 by 84 by 3 | `conv_matched` | 55,465 | 1.000 | .083 | .999 | .786 | .998 | 6 of 6 | 0 of 6 |
+| lesson | 160 by 120 | `fields` | 47,812 | .965 (.934 to .992) | .827 | .968 | .904 | .925 | 6 of 6 | 0 of 6 |
+| lesson | 160 by 120 | `conv_matched` | 129,156 | 1.000 | .141 | 1.000 | .738 | .998 | 6 of 6 | 0 of 6 |
+
+Where the readings fall short (ridge probes): on the two grey founders outside .05 (2841 on the
+distractor, 2843 on the band) the pools read those panels at .988 to 1.000 and the association
+at .914 and .949: the brain's readout trails what its pools hold. At 160 by 120 the pools of
+founder 2843 after 16,384 frames read the band at .996: the same. In colour the pools of founder
+2840 read .914 on fresh frames and .715 on the band: the 64 fields divide among the six hues.
+
+Uniform random actions read 1/3. The shuffled control as first declared permuted each batch's
+labels among its frames, which keeps a frame's own label in one draw of eight; it read .582 and
+was replaced by labels of independent scenes before its re-read.
+
+### Seconds per frame (`timing.py`, the `fields` brain, median of 32 moments)
+
+| Where | Frame | `act`, 1 stream | `lesson`, 1 stream | `act`, 16 streams | `lesson`, 16 streams | One stream within 28.6 ms |
+| --- | --- | --- | --- | --- | --- | --- |
+| one Intel Xeon 8488C core (c7i) | 84 by 84 grey | 2.6 ms | 3.3 ms | 3.1 ms | 3.2 ms | yes |
+| one Intel Xeon 8488C core | 84 by 84 colour | 9.0 ms | 10.0 ms | 10.9 ms | 11.1 ms | yes |
+| one Intel Xeon 8488C core | 160 by 120 grey | 8.5 ms | 9.5 ms | 12.1 ms | 12.2 ms | yes |
+| NVIDIA L4, float32 (`CADENCE_TRITON=0`) | 84 by 84 grey | 3.6 ms | 6.5 ms | 3.3 ms | 3.5 ms | yes |
+| NVIDIA L4, float32 (`CADENCE_TRITON=0`) | 84 by 84 colour | 15.3 ms | 18.1 ms | 10.3 ms | 10.5 ms | yes |
+| MLX, Apple M4 (shared, load 17 to 33) | 84 by 84 grey | 6.7 ms | 13.5 ms | 5.6 ms | 6.0 ms | yes |
+| MLX, Apple M4 (shared) | 84 by 84 colour | 23.0 ms | 29.6 ms | 25.9 ms | 26.5 ms | yes |
+| one Apple M4 core (shared) | 84 by 84 grey | 5.9 ms | 7.6 ms | 6.2 ms | 6.0 ms | yes |
+| one Apple M4 core (shared) | 84 by 84 colour | 20.4 ms | 22.5 ms | 24.5 ms | 24.8 ms | yes |
+
+The default visual cortex on the same Xeon core: `act` 163 ms and `lesson` 185 ms per frame at
+84 by 84 grey (4,013,316 parameters), 220 ms and 251 ms in colour (5,038,020). The fields read
+every frame on the host, so 16 streams cost about 16 frames; on the M4 the fields alone take 2.6
+ms per grey frame to read and 1.5 ms to learn. On the L4 the small-group Triton kernel of the
+torch backend does not compile under Triton 3.3 with fewer than 16 rows; the readings above take
+the torch path without it.

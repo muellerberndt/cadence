@@ -246,7 +246,7 @@ class Schedule:
     ``control`` names a control's change to what the life sees: ``blank`` (the background
     alone, labels as drawn), ``shuffled`` (every frame's label the label of an independently
     drawn scene: the labels keep their shares and carry nothing of the frames). A permutation
-    within a batch would keep a frame's own label among the batch's, so each frame would still
+    within a batch would keep a frame's own label among the batch's, so each frame would
     meet its own label about one time in eight more often than chance."""
 
     founder: int
