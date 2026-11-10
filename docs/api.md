@@ -236,6 +236,15 @@ the records' settings under `memories/longterm` in the metadata and, under
 `store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
 without them.
 
+A brain with a [held message](memory.md#held-message) (`message`), [learned
+fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`) or an actor's hold
+([`actor_hold`](reward.md#a-reward-many-moments-after-the-decision)) saves under the name its
+maturity, fade and records give it, with the part's own members: the message under
+`memories/message`, the fields under `learned_fields` and the hold in the actor's config. 0.96.1 and
+earlier refuse each such file by the part they do not read: `invalid saved memories` for a message,
+`invalid saved composition provenance` for learned fields and `invalid saved actor config` for a
+hold. A brain that names none of them saves the file 0.96.1 saves.
+
 | Members | What they hold |
 | --- | --- |
 | `meta` and the unprefixed arrays | the learner's checkpoint ([checkpoints](#checkpoints-cadencecheckpoint)) |
@@ -246,11 +255,13 @@ without them.
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
 | `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata, the read's route among them with `recall_drive_gain` |
 | `memories/history/` | the heard history's `trace` |
+| `memories/message/` | with `message`: the held message's `trace`, the moments it has heard (`told`), the boundary flags (`held`) and the `previous` association state; with `message_read` the read's maps (`content_x`, `content_c`, `content_b`, `turn_x`, `turn_c`, `turn_b`) |
+| `memories/longterm/` | with `longterm` (`cadence-brain/4`): the streams' turns (`since`, `read_slots`) and every stream's records (`store/<s>/...`) |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`); with `memory_fade` its depths and recent traces (`fade_depth`, `fade_recent`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
-`Brain.load` reads `cadence-brain/1`, `/2` and `/3`, the formats of 0.85.0 on. It refuses the earlier
+`Brain.load` reads `cadence-brain/1` to `/4`, the formats of 0.85.0 on. It refuses the earlier
 `cadence-generic/1` to `/10` by name: cadence 0.94.0 loads those and saves `cadence-brain/1`. A
 retired setting loads at the one value this version keeps for it and is refused by name at any
 other ([CHANGELOG](../CHANGELOG.md)).
