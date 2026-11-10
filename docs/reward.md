@@ -211,6 +211,16 @@ it credits no earlier decision. `report["policy_entropy"]` reads the entropy of 
 | --- | --- | --- | --- |
 | `actor_entropy` | `0.0` | `retune` | the weight of the entropy term; 0 is the composed actor |
 
+What it gives, on six fresh founders each ([the declared run](../benchmarks/actor_latch/README.md#the-declared-run)):
+`actor_entropy=0.1` removes the hold in every life of the chamber and of the Doom body (no
+button above .40) and reads +0.918 in the aiming world against the default's -0.350. Where a good
+policy presses one button far more than the others and the outcomes that favour it lie beyond
+the critic's horizon (`actor_gamma` .9), it holds the policy near even: in Doom's defend the
+center and health gathering the brain reads below its frozen newborn. Use it where the reward
+decides between actions within a few moments and the right action depends on the situation; a
+tenth of the actor's step slows the hold there too and leaves it in a third of the long
+survival lives. A moment costs about a third more.
+
 It learns on the host: `backend="cpu"` and `"mlx"` (whose update it takes on the host, as a
 maturity does); a brain on a torch device refuses the outcome, and `Lives` refuses the setting by
 name. A pending act's surprise is saved with the brain. A brain that names no entropy, or 0,

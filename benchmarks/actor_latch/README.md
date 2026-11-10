@@ -84,3 +84,76 @@ survival. Return over each life's last quarter, the mean over founders; *held*: 
 - At birth one or two motor neurons are active and the others sit at rest at the 0 rail: `saturation`
   reads .67 to 1.00 from the first moment. An active button's contrast is .28 to .43, a resting
   one's .01 to .04.
+
+## The declared run
+
+Declared on [issue 296](https://github.com/muellerberndt/cadence/issues/296#issuecomment-6767730132)
+before its first life, at commit 94fb1233 (0.96.1 with the Doom body). Arms: `entropy`
+(`actor_entropy=0.1`, the smallest weight that removed the hold on every development founder in
+aim), `rate` (`actor_eta=0.1, actor_eta_bias=0.01`) and `default`, every brain
+`Brain.compose(1329, 3, seed=founder, backend="cpu")` through `step`; the frozen newborn, random
+buttons and, in the Doom body, the convolutional actor-critic beside them. Fresh founders: 3 to 8
+in the Doom body (84 by 84, 4 tics a moment, 300 episodes of basic and 100 of each survival),
+200 to 205 in the chamber (300 episodes of aim, 100 of survival). One AWS c7i.8xlarge (Ubuntu
+24.04, Python 3.13, NumPy 2.5.4, VizDoom 1.3.2), one thread per process; four Doom lives that
+VizDoom refused at launch (a race over its `./_vizdoom` directory, no episode played) ran again as
+the same lives. The gate: a founder passes a world when its mean return over the life's last
+quarter of episodes exceeds its own frozen newborn's by two standard errors of the difference; a
+world passes at 5 of 6 founders, and an arm passes when two of the three Doom scenarios do.
+[`gate.py`](gate.py) prints these tables from the lives.
+
+The Doom body:
+
+| Arm | Scenario | Parameters | Founders above the newborn by 2 SE | Return, last quarter | Newborn | Largest button share per founder, last quarter |
+| --- | --- | ---: | ---: | --- | ---: | --- |
+| default | basic | 2,291,716 | 0 of 6 | -0.077 ± 0.051 | +0.101 | .98, .99, .99, .98, .96, .51 |
+| default | defend the center | 2,291,716 | 0 of 6 | +0.527 ± 0.198 | +0.627 | .99, .99, .99, .99, .37, .99 |
+| default | health gathering | 2,291,716 | 0 of 6 | +0.107 ± 0.106 | +0.290 | .38, .97, .98, .36, .96, .99 |
+| entropy | basic | 2,291,716 | 2 of 6 | +0.250 ± 0.074 | +0.101 | .35, .35, .36, .34, .36, .34 |
+| entropy | defend the center | 2,291,716 | 0 of 6 | +0.380 ± 0.208 | +0.627 | .34, .35, .36, .34, .38, .35 |
+| entropy | health gathering | 2,291,716 | 0 of 6 | +0.180 ± 0.049 | +0.290 | .34, .35, .35, .35, .35, .34 |
+| rate | basic | 2,291,716 | 1 of 6 | +0.117 ± 0.129 | +0.101 | .72, .98, .86, .64, .47, .84 |
+| rate | defend the center | 2,291,716 | 1 of 6 | +0.713 ± 1.188 | +0.627 | .98, .98, .65, .97, .37, .98 |
+| rate | health gathering | 2,291,716 | 2 of 6 | +0.294 ± 0.370 | +0.290 | .55, .79, .57, .41, .35, .86 |
+| conv | basic | 677,684 | 2 of 6 | +0.211 ± 0.044 | +0.101 | .39, .47, .59, .48, .46, .47 |
+| conv | defend the center | 677,684 | 2 of 6 | +0.753 ± 0.398 | +0.627 | .40, .40, .46, .45, .45, .42 |
+| conv | health gathering | 677,684 | 2 of 6 | +0.313 ± 0.116 | +0.290 | .35, .42, .38, .34, .37, .38 |
+| random | basic | 0 | 3 of 6 | +0.250 ± 0.095 | +0.101 | .34 each |
+| random | defend the center | 0 | 1 of 6 | +0.573 ± 0.231 | +0.627 | .34 to .36 |
+| random | health gathering | 0 | 0 of 6 | +0.227 ± 0.050 | +0.290 | .34 each |
+
+Returns are the mean over founders with their standard deviation. The chamber:
+
+| Arm | World | Parameters | Founders above the newborn by 2 SE | Return, last quarter | Newborn | Largest button share per founder, last quarter |
+| --- | --- | ---: | ---: | --- | ---: | --- |
+| default | aim | 2,291,716 | 2 of 6 | -0.350 ± 0.326 | -0.370 | .57, .50, .99, .99, .69, .49 |
+| default | survival | 2,291,716 | 2 of 6 | +1.456 ± 1.796 | +0.810 | .99 (not paying), .95, .35, .98 (not paying), .81, .35 |
+| entropy | aim | 2,291,716 | **6 of 6** | **+0.918 ± 0.021** | -0.370 | .37, .36, .34, .40, .37, .38 |
+| entropy | survival | 2,291,716 | 1 of 6 | +0.644 ± 0.154 | +0.810 | .34 to .35 |
+| rate | aim | 2,291,716 | **6 of 6** | +0.654 ± 0.322 | -0.370 | .83, .78, .72, .74, .44, .38 |
+| rate | survival | 2,291,716 | 2 of 6 | +1.608 ± 2.249 | +0.810 | .93 (not paying), .95, .37, .87, .91 (not paying), .94 |
+| random | aim | 0 | 5 of 6 | +0.149 ± 0.060 | -0.370 | .33 to .34 |
+| random | survival | 0 | 2 of 6 | +0.620 ± 0.075 | +0.810 | .33 to .35 |
+
+**No arm passes the gate.** The default holds one button at .96 to .99 in 14 of 18 Doom lives
+(attack in basic and in defend the center) and passes no founder.
+
+- **`actor_entropy=0.1` removes the hold everywhere.** No button exceeds .40 in any of its 30
+  lives. In aim, whose right answer depends on what the retina shows, it reads +0.918 on every
+  fresh founder against an aimer's .97. In the Doom body it holds every policy near even: basic
+  reads +0.250 (random buttons +0.250), and defend the center and health gathering read below
+  their newborns.
+- **The failing term is the reward's preference within the critic's horizon against the pull
+  toward an even policy.** The entropy's step vanishes at an even policy and grows with the
+  departure from it, so a policy departs only as far as the outcomes within a few moments
+  prefer one button: the critic's discount, .9 a moment, carries a medkit's or a kill's value
+  about ten moments. A good policy in health gathering (forward) and defend the center (turn and
+  fire) presses one button far more than the others; their newborns' skewed policies score
+  +0.290 and +0.627 (founder 3's newborn +1.96) where an even policy scores +0.227 and +0.573. In
+  survival the same holds at every weight from 0.01 to 0.1 on the development founders, where the
+  composed actor without the entropy learns the paying button on 3 of 4.
+- **`actor_eta=0.1, actor_eta_bias=0.01`** lifts aim on every fresh founder (+0.654) and holds a
+  non-paying survival button on 2 of 6 and attack in defend the center on 4 of 6: a tenth of the
+  step slows the hold and does not remove it.
+- A moment with `actor_entropy` costs 36.5 ms against the default's 27.6 on the box (its step
+  forms each act's contrast on the host, where the composed actor fuses it into the trace).
