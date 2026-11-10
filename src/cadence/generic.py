@@ -3271,7 +3271,7 @@ class Brain:
         different neuron model, apical compartment or apical role; a learned code's region, or
         a joint landing on it; tied synapses and rates set by hand. See ``docs/grow.md``.
         """
-        if self.fields is not None or donor.fields is not None:
+        if self.fields is not None or getattr(donor, "fields", None) is not None:
             raise ValueError("grow and graft take a brain without learned fields in this version")
         return _graft(self, donor, regions, into, joints, freeze)
 
@@ -3622,7 +3622,9 @@ class Brain:
 
     def _sensed(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:
         """What the sensory neurons are given: the observations, or with a coded cortex their
-        code."""
+        code; with learned fields their pools at the fields' gain."""
+        if self.fields is not None:
+            return code * self.fields.GAIN
         return code if self.coded_cortex else x
 
     def _heard(self, x: np.ndarray, code: np.ndarray) -> np.ndarray:
