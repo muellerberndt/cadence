@@ -109,7 +109,7 @@ def _probability(brain: Any, action: int) -> float:
 
 def _read_brain(brain: Any, task: str, founder: int, delay: int) -> dict[str, Any]:
     fork = copy.deepcopy(brain)
-    choice, door, outcome, p_right = [], [], [], []
+    choice, door, outcome, p_right, decisions = [], [], [], [], []
     for cue, corridor in tk.panel(task, founder, delay):
         fork.reset()
         episode = tk.Episode(task, founder, delay, cue, corridor)
@@ -121,16 +121,21 @@ def _read_brain(brain: Any, task: str, founder: int, delay: int) -> dict[str, An
             if task == "tmaze":
                 break
         choice.append(episode.right)
+        decisions.append(episode.choice)
         if task == "keydoor":
             door.append(episode.door == (tk.open_action(founder) if episode.key
                                          else 1 - tk.open_action(founder)))
             outcome.append(episode.reward)
-    return _reading(choice, door, outcome, p_right)
+    return _reading(choice, door, outcome, p_right, decisions)
 
 
-def _reading(choice: list, door: list, outcome: list, p_right: list) -> dict[str, Any]:
+def _reading(choice: list, door: list, outcome: list, p_right: list,
+             decisions: list | None = None) -> dict[str, Any]:
     return {
         "choice": float(np.mean(choice)),
+        # the share of panel decisions taking action 1: 0 or 1 where one action answers every
+        # cue (a latched readout), .5 where the cues take the two actions
+        "decision_one": float(np.mean(decisions)) if decisions else None,
         "door": float(np.mean(door)) if door else None,
         "outcome": float(np.mean(outcome)) if outcome else None,
         "p_right": float(np.mean(p_right)) if p_right else None,
@@ -251,7 +256,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     log: dict[str, list[Any]] = {k: [] for k in (
         "right", "reward", "p_right", "value_decision", "dopamine_decision", "value_after",
         "dopamine_outcome", "value_last", "share", "cosine", "trace", "aroused_decision",
-        "aroused_corridor")}
+        "aroused_corridor", "saturation", "decision_one", "corridor_one")}
     readings: list[dict[str, Any]] = []
     decay = 1.0
     if kind == "brain":
@@ -269,6 +274,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         if kind == "lstm":
             learner.begin()
         first_trace = None
+        saturation: list[Any] = []
+        corridor_acts: list[int] = []
         while not episode.done:
             x = episode.observation()
             moment = episode.moment
@@ -317,6 +324,12 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
                 action = tk.solve(task, founder, x)
             else:
                 action = int(rng.integers(tk.ACTIONS))
+            if kind == "brain":
+                saturation.append(brain.last_learning.get("saturation"))
+            if moment == 0:
+                log["decision_one"].append(float(action))
+            elif not (task == "keydoor" and moment == episode.moments - 1):
+                corridor_acts.append(action)
             episode.act(action)
             work["moments"] += 1
         delivered = deliver(episode)
@@ -328,6 +341,9 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         work["episodes"] += 1
         log["right"].append(bool(episode.right))
         log["reward"].append(float(episode.reward))
+        log["corridor_one"].append(float(np.mean(corridor_acts)) if corridor_acts else None)
+        known = [v for v in saturation if v is not None]
+        log["saturation"].append(float(np.mean(known)) if known else None)
     if episodes and len(episodes) in budgets:
         readings.append({"episodes": len(episodes), **read()})
     if learner is not None:
@@ -340,6 +356,9 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         "right": _windows(log["right"]),
         "reward": _windows(log["reward"]),
         "p_right": _windows(log["p_right"]),
+        # the choice distribution: action 1's share at the decision and over the delay's acts
+        "decision_one": _windows(log["decision_one"]),
+        "corridor_one": _windows(log["corridor_one"]),
     }
     if kind == "brain" and log["right"]:
         right = log["right"]
@@ -358,6 +377,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
             "trace": _windows(log["trace"]),
             "aroused_decision": _windows(log["aroused_decision"]),
             "aroused_corridor": _windows(log["aroused_corridor"]),
+            # the share of motor outputs within .02 of a rail, per episode (the latch, #296)
+            "saturation": _windows(log["saturation"]),
         }
     row["work"] = {**work, "seconds": time.monotonic() - started,
                    "cpu_seconds": time.process_time() - cpu}
@@ -371,7 +392,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
 
 def _read_other(kind: str, learner: Any, task: str, founder: int,
                 delay: int) -> dict[str, Any]:
-    choice, door, outcome, p_right = [], [], [], []
+    choice, door, outcome, p_right, decisions = [], [], [], [], []
     rng = np.random.default_rng(np.random.SeedSequence([founder, delay, 2830]))
     for cue, corridor in tk.panel(task, founder, delay):
         episode = tk.Episode(task, founder, delay, cue, corridor)
@@ -391,11 +412,12 @@ def _read_other(kind: str, learner: Any, task: str, founder: int,
                 episode.act(tk.solve(task, founder, x) if kind == "solver"
                             else int(rng.integers(tk.ACTIONS)))
         choice.append(episode.right)
+        decisions.append(episode.choice)
         if task == "keydoor":
             door.append(episode.door == (tk.open_action(founder) if episode.key
                                          else 1 - tk.open_action(founder)))
             outcome.append(episode.reward)
-    return _reading(choice, door, outcome, p_right)
+    return _reading(choice, door, outcome, p_right, decisions)
 
 
 # ------------------------------------------------------------------------------------- run
