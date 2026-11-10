@@ -6231,14 +6231,8 @@ class Brain:
                 code=0 if code is None else code[1].expansion,
                 inputs=code[0] if code is not None and code[2] else None,
                 learned_code=learned or None,
-                **(
-                    {}
-                    if fields is None
-                    else {
-                        "learned_fields": fields.features,
-                        "image": (fields.height, fields.width, fields.channels),
-                    }
-                ),
+                learned_fields=None if fields is None else fields.features,
+                image=None if fields is None else (fields.height, fields.width, fields.channels),
                 **(
                     {}
                     if not learned
