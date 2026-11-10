@@ -27,10 +27,10 @@ The lives run the composition's own equations through these parts:
   greedily or samples at the temperatures its own arousal sets;
 - ``_LivesRandom``: each life's own random generator, drawn as its lone brain draws it.
 
-A composition holds the parts these cover: the default composition without the store
-(``episodic=False``: the store's consolidated records are a brain's own and have no lives axis),
-with or without the recall memory, the carried gains and arousal, at any teaching point.
-``Lives`` refuses maturity, a learned or fixed code, an apical compartment, rehearsal, qualified
+A composition holds the parts these cover: the default composition, its store of place records
+among them, with or without the store (``episodic=False``), the recall memory, the carried gains,
+arousal, ``memory_fade`` and maturity, at any teaching point. ``Lives`` refuses a learned or fixed
+code, an apical compartment, rehearsal, qualified
 teaching, the efference copy, the heard history and a recall memory with several heads, a
 window, the command, the read of when or tokens, each by name. A moment any life refuses is
 refused for every life.
@@ -1835,8 +1835,8 @@ class Lives:
     """Many continuing lives of one composed anatomy, each a brain of its own, stepped together.
 
     ``Lives(inputs, actions, lives=128, backend="torch")`` composes ``lives`` brains of
-    ``Brain.compose(inputs, actions, seed=seeds[i], episodic=False, **options)``, the default
-    composition without the store, one per seed (``range(lives)`` by default). Every operation
+    ``Brain.compose(inputs, actions, seed=seeds[i], **options)``, the default composition with
+    its store of place records unless ``episodic=False`` is named, one per seed (``range(lives)`` by default). Every operation
     takes one row of observations per life and returns one answer per life: ``act``, ``step``,
     ``lesson`` and ``learn`` mean what they mean on a lone brain with one stream, life by life.
     ``life(i)`` is life ``i`` as a lone brain on the CPU, with everything it learned.
@@ -1866,7 +1866,7 @@ class Lives:
             raise ValueError("Lives runs on backend='cpu' or backend='torch'")
         if not isinstance(inputs, (int, np.integer)):
             raise ValueError("Lives takes a vector of inputs, its length")
-        options = {"episodic": False, **options}
+        options = dict(options)  # the default composition, the store among it (``Brain.compose``)
         self.inputs, self.actions, self.backend = int(inputs), int(actions), backend
         self._options = options
         with warnings.catch_warnings():

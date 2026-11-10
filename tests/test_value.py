@@ -183,7 +183,7 @@ def test_each_lifes_value_is_its_lone_brains(backend):
     place = {"backend": "torch", "device": "cpu", "precision": "float64"} if backend == "torch" \
         else {"backend": "cpu"}
     lives = cd.Lives(INPUTS, ACTIONS, 3, modules=(16,), **place)
-    brains = [composed(s, episodic=False, **place) for s in range(3)]
+    brains = [composed(s, **place) for s in range(3)]
     feed = world(4, 3)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")

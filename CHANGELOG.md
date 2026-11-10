@@ -32,15 +32,14 @@
   every action, mood and heated slot is its lone brain's and every learned part and arousal
   reading agrees within 1e-9 over 30 moments of sparse rewards, endings and teaching. Lives that
   never call `live` keep every bit of 0.96.0.
-- **The store in `Lives`.** `Lives(..., episodic=True)` holds each life's place records on the
+- **The store in `Lives`.** `Lives` holds each life's place records on the
   device with a lives axis: an outcome writes the records of the lives it teaches, the outcome
   that wakes a calm life writes that life's records and settles it again under them, and with
   `memory_fade` and `maturity` each life fades its own records, scales its own actor steps by its
   own use and gates its own writes by its own surprise. `parameters(i)` and `life(i)` carry each
   life's records, their noise scales, depths and use. In float64 every action and mood is the
   lone brain's and every learned part and record agrees within 1e-9 over 30 moments; on the CPU
-  each life is its lone brain to the bit. `Lives` composes without the store unless
-  `episodic=True` is named, as in 0.96.0.
+  each life is its lone brain to the bit. `Lives` composes the store by default (below).
 - **A life leaves and joins.** `life(i, stream=True)` carries life `i`'s stream as it stands
   into the lone brain (its activity, its pending sampled action and that action's eligibility,
   its traces, working trace, recall slots, store residual and the record of its last `live`),
@@ -71,6 +70,11 @@
   row within the table while the bank is past it: on two streams, one beginning again at moment
   45 of 70, the slope maps part by 0.24 and the efficacies by 0.025, every action the same.
 
+- **`Lives` composes the store by default** (#293). `Lives(inputs, actions, lives)` composes each
+  life as `Brain.compose(inputs, actions, seed=s, **options)`, the default composition with its
+  store of place records, as a lone brain composes; `episodic=False` composes without it, as
+  `Lives` did in 0.96. `Lives(..., episodic=False)` keeps every bit of 0.96.0 on the CPU, the
+  torch CPU device in float64 and float32 and CUDA.
 ### Fixed
 
 - **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`

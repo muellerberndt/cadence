@@ -250,8 +250,8 @@ Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precisi
 ```
 
 Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, actions, seed=seeds[i],
-episodic=False, **options)`, the default composition without the store (seeds `range(lives)` by default),
-stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
+**options)`, the default composition with its store of place records (`episodic=False` composes without it;
+seeds `range(lives)` by default), stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
 memory (its slots, its address and position maps), carried gains, working trace and random state.
 `backend="cpu"` holds lone brains and steps them in turn; `backend="torch"` holds one brain whose parameters
 carry a lives axis, on CUDA where there is a card and else on the torch CPU device (or the `device` named),

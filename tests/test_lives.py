@@ -1,8 +1,8 @@
-"""Independent lives over one topology (cadence#274, #167): each life follows the lone brain of its
-seed, on the CPU to the bit and on a torch device within its rounding, and nothing one life learns
-reaches another. Two compositions: the default one without the store (the recall memory, the
-carried gains, the deep teaching point judged by surprise) and the plain one without the recall
-memory."""
+"""Independent lives over one topology (cadence#274, #167, #293): each life follows the lone brain of
+its seed, on the CPU to the bit and on a torch device within its rounding, and nothing one life learns
+reaches another. Three compositions: the default one (the store of place records, the recall memory,
+the carried gains, the deep teaching point judged by surprise), the same without the store, and the
+plain one without the store and the recall memory."""
 
 from __future__ import annotations
 
@@ -15,7 +15,10 @@ import cadence as cd
 
 INPUTS, ACTIONS = 12, 5
 OPTIONS = {"modules": (16,)}
-COMPOSITIONS = {"default": {}, "plain": {"recall": False}}
+COMPOSITIONS = {
+    "default": {}, "without the store": {"episodic": False},
+    "plain": {"recall": False, "episodic": False},
+}
 MAPS = ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_maps", "grid_maps")
 
 
@@ -23,7 +26,7 @@ def lone(seed: int, composition: dict | None = None, **place) -> cd.Brain:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         return cd.Brain.compose(INPUTS, ACTIONS, seed=seed,
-                                **{"episodic": False, **OPTIONS, **(composition or {})}, **place)
+                                **{**OPTIONS, **(composition or {})}, **place)
 
 
 def some_lives(count: int, composition: dict | None = None, **place) -> cd.Lives:
@@ -142,7 +145,7 @@ def test_variants_of_the_composition_follow_their_lone_brains(actions, options):
     slots = options.get("slots", 1)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        brains = [cd.Brain.compose(INPUTS, actions, seed=s, episodic=False, **place, **composed)
+        brains = [cd.Brain.compose(INPUTS, actions, seed=s, **place, **composed)
                   for s in range(3)]
         for t in range(18):
             x = np.eye(INPUTS)[rng.integers(INPUTS, size=3)] * rng.random((3, INPUTS))
@@ -452,7 +455,7 @@ def test_each_living_life_on_a_device_follows_its_lone_brain_in_float64(
     lives = cd.Lives(INPUTS, actions, 6, **OPTIONS, **composition, **place)
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        brains = [cd.Brain.compose(INPUTS, actions, seed=s, episodic=False, **OPTIONS,
+        brains = [cd.Brain.compose(INPUTS, actions, seed=s, **OPTIONS,
                                    **composition, **place) for s in range(6)]
     seen = lived(lives, brains, 30, slots=composition.get("slots", 1))
     assert seen["actions"] == seen["moods"] == 0, seen
