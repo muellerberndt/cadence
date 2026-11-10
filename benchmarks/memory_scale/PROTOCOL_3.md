@@ -235,3 +235,21 @@ the records held equal the distinct keys on every stream. B7 holds on every foun
 third declaration and Amendment 1, 2901 and 2909 (9,873 records for 10,000 facts) hold shared keys
 near that share, so on six fresh founders B6 is more likely than not to fail on one; such a
 failure is the key's term, located by the receipt's share of shared keys.
+
+### Outcome of Amendment 2
+
+Read on founders 2912 to 2917 and recorded in
+[the README](README.md#amendment-2-the-read-scored-by-cosine), with the receipt
+`results/third-records-amended.jsonl` and `summarize.py` (`gates3`) recomputing each gate.
+
+| Gate | Verdict |
+| --- | --- |
+| B6 | fails, 5 of 6: .9875 to 1.000; founder 2917 reads .9875, where 2.43% of its facts share their key with another |
+| B7 | passes, 6 of 6: 1.000 |
+| B1, read again | passes, 6 of 6: .995 to 1.000 |
+| B3, read again | passes, 6 of 6: .9875 to 1.000 |
+| B4, read again | passes, 6 of 6: found current .9975 to 1.000, stale .000, used .9925 to 1.000 |
+
+**Against the expectation.** As expected: B7 holds on every founder, the founders with distinct
+keys read 1.000, and B6 fails on the one founder of six whose code gives 2.43% of the facts a key
+another fact has. The failure is the key's term. **Departures from the plan of the run.** None.

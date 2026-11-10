@@ -734,7 +734,15 @@ def test_the_third_declaration_s_receipts_hold_the_verdicts_the_readme_states():
     sm = _load("summarize")
     gates = sm.gates3(HERE / "results")
     assert {name for name, gate in gates.items() if gate["passes"]} == {
-        "B1", "B2", "B3", "B4", "B5", "C3", "D1", "C4", "C3, Amendment 1"}
+        "B1", "B2", "B3", "B4", "B5", "C3", "D1", "C4", "C3, Amendment 1", "B7",
+        "B1, Amendment 2", "B3, Amendment 2", "B4, Amendment 2"}
+    # Amendment 2: B6 fails on the key's term at 2917, and the read over own keys is whole
+    assert gates["B6"]["founders"] == 5 and gates["B6"]["values"][-1] == 0.9875
+    assert gates["B7"]["values"] == [1.0] * 6
+    amended = sm.rows(HERE / "results" / "third-records-amended.jsonl")
+    assert len(amended) == 12 and {r["founder"] for r in amended} == set(sm.AMENDED)
+    worst = sm.pick(amended, founder=2917, n=10_000)[0]
+    assert worst["shared_keys"] == 0.0243 and worst["unrevised"]["own"] == 389
     assert gates["B2"]["founders"] == 5 and min(gates["B2"]["values"]) == 0.98
     assert max(gates["C3"]["values"]) < 2 and max(gates["D1"]["values"]) < 2
     assert gates["C4"]["values"] == [1.688, 1.685, 1.661]  # Amendment 1, founders 2909 to 2911
@@ -748,5 +756,6 @@ def test_the_third_declaration_s_receipts_hold_the_verdicts_the_readme_states():
     readme = (HERE / "README.md").read_text()
     for cell in ("| B2 | found, unrevised facts, 10,000 records | .99 | .980 to 1.000, 5 of 6 |",
                  "1.82 to 1.83", "| one core | 16 | 10,000 | 11.675 | 27.043 |",
-                 "| 1.661 to 1.688, 3 of 3 | **passes** |", "| 16 | 10,000 | 4.322 | 4.453 |"):
+                 "| 1.661 to 1.688, 3 of 3 | **passes** |", "| 16 | 10,000 | 4.322 | 4.453 |",
+                 "| .9875 to 1.000, 5 of 6 | **fails** |", "| 1.000, 6 of 6 | **passes** |"):
         assert cell in readme

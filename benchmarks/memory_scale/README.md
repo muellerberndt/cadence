@@ -605,6 +605,48 @@ moment, against 24.5 and 9.1 store by store; over one stream they add .20 and .1
 .30. Founder 2909 holds 9,873 records for 10,000 facts: facts whose key another fact shares are one
 record, the term the reading located at 2901.
 
+### Amendment 2: the read scored by cosine
+
+[Amendment 2](PROTOCOL_3.md#amendment-2-the-read-scored-by-cosine-declared-10-november-2026-before-its-run),
+declared at commit `4049414e` before its run: the records' read and the write's recognition score
+each record by the cosine of its key with the message's key, so a key that another record's key
+contains reads its own record. Founders 2912 to 2917, the `records` arm alone, on a spot
+c7i.8xlarge.
+
+| Gate | Reading | Bar | Founders | Verdict |
+| --- | --- | --- | --- | --- |
+| B6 | found, unrevised facts, 10,000 records | .99, 6 of 6 | .9875 to 1.000, 5 of 6 | **fails** |
+| B7 | the same over the questions whose fact's key is its own | .99, 6 of 6 | 1.000, 6 of 6 | **passes** |
+| B1, read again | found, unrevised facts, 1,000 records | .99 | .995 to 1.000, 6 of 6 | passes |
+| B3, read again | used, unrevised, 10,000 records, and within .05 of 1,000 | .90 | .9875 to 1.000, 6 of 6 | passes |
+| B4, read again | revised facts at 10,000: found current, stale, used | .95, .02, .90 | .9975 to 1.000, .000, .9925 to 1.000; 6 of 6 | passes |
+
+At 10,000 records a stream; 400 questions of each kind per founder, parameters 413,082, every
+nursery ending at .9988 to 1.000:
+
+| Founder | Facts whose key another fact has | Records held per stream | Unrevised: found | found, own key (questions) | used | Revised: found current | stale | used |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| 2912 | 1.20% | 9,938 to 9,943 | .995 | 1.000 (398) | .995 | .9975 | .000 | .9925 |
+| 2913 | 0 | 10,000 | 1.000 | 1.000 (400) | 1.000 | 1.000 | .000 | .9975 |
+| 2914 | 0 | 10,000 | 1.000 | 1.000 (400) | 1.000 | 1.000 | .000 | 1.000 |
+| 2915 | 0 | 10,000 | 1.000 | 1.000 (400) | 1.000 | 1.000 | .000 | 1.000 |
+| 2916 | .02% | 9,999 | 1.000 | 1.000 (400) | 1.000 | 1.000 | .000 | 1.000 |
+| 2917 | 2.43% | 9,873 to 9,885 | .9875 | 1.000 (389) | .9875 | 1.000 | .000 | 1.000 |
+
+At 1,000 records found reads .995 to 1.000 and 1.000 over the facts whose key is their own.
+
+**B6 fails on the key's term, at founder 2917.** There 2.43% of a stream's 10,000 facts share their
+whole key with another fact (two agents' or two verbs' codes are one code at 280 units over this
+lexicon), so each such pair is one record, which the fact told last wrote. Eleven of its 400
+unrevised questions ask about such a fact, and its 5 misses are among them; the 389 questions
+about facts whose key is their own all find their record (B7). No score of the read tells two
+facts with one key apart: the term is the key's, as at 2901 in the third declaration.
+
+**The read's term is closed.** Over the facts whose key is their own every founder finds 1.000,
+and the four founders with distinct keys or nearly so find 1.000 over all facts, where the third
+declaration's reading by the dot product found .9925 to 1.000 on its two such founders. Used lies
+within .005 of found on every founder and kind, and no revised fact is stale.
+
 ## What these readings do not establish
 
 - Any default. The candidate is an instrument-level store and the library's `LongTermMemory` a

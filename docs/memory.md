@@ -1702,10 +1702,12 @@ another patient, and answers 400 questions of each kind without lessons:
 | 1,000 | .9975 to 1.000, .9975 to 1.000 | .9975 to 1.000, .000 | .1025 to .155 (chance .125) |
 | 10,000 | .980 to 1.000, .980 to 1.000 | .990 to 1.000, .000 | .1025 to .1425 |
 
-The misses are keys that name two facts: two facts whose key is one key, or a key another
-contains. On one core a moment with 10,000 records a stream costs 1.3 times a moment without them
-over one stream and 1.7 times over 16 streams; on a GPU, with the stores read one by one, 1.7
-times over one stream.
+The misses are keys that name two facts: two facts whose key is one key, or, scored by the dot
+product, a key another contains. Read by cosine (a declared amendment on six more founders),
+found at 10,000 records reads 1.000 on every founder over the facts whose key is their own and
+.9875 to 1.000 over all facts: two facts whose key is one key are one record. On one core a
+moment with 10,000 records a stream costs 1.3 times a moment without them over one stream and 1.7
+times over 16 streams; on a GPU, with the stores read one by one, 1.7 times over one stream.
 
 ## How strongly a carried region is heard
 
