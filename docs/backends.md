@@ -414,8 +414,8 @@ done = np.array([False, True, False, False, False, False, False, False])
 actions = living.live(observations, reward=np.ones(8), done=done)  # life 1's episode ends
 ```
 
-`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, episodic=False, **options)`: the default
-composition without the store. Each life has its own synapses and biases, its own optimizer (momentum, second
+`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, **options)`: the default composition, its
+store of place records among it (`episodic=False` composes without the store, as `Lives` did in 0.96). Each life has its own synapses and biases, its own optimizer (momentum, second
 moments and their counts), critic, eligibility, recall memory (its slots, its address and position maps), carried
 gains, working trace and random generator. On a torch device the lives are the streams of one brain whose
 parameters carry a lives axis:
@@ -540,11 +540,11 @@ of `Lives` on one L4. It would take MLX versions of the per-life transport and s
 carried gains, store and nudges, and somewhere for the settles' float64 checks: the Apple GPU has no float64, so
 they would run on the host or MLX's CPU stream.
 
-`Lives` holds the default composition without the store and with it (`episodic=True`), with or without the
-recall memory, the carried gains, arousal, `memory_fade` and maturity, at any teaching point, with one or several
-regions, observers and motor slots. It refuses, naming the part: `memory_choice` and a store with a separator; a
-learned or fixed code and image inputs; an apical compartment;
-rehearsal and qualified teaching; the efference copy and the heard history; a recall memory with several heads, a
+`Lives` holds the default composition, its store and its heard history among it, and the same without the store
+(`episodic=False`) or the history (`history_decays=()`), with or without the recall memory, the carried gains, arousal,
+`memory_fade` and maturity, at any teaching point, with one or several regions, observers and motor slots. It refuses,
+naming the part: `memory_choice` and a store with a separator; a learned or fixed code and image inputs; an apical
+compartment; rehearsal and qualified teaching; the efference copy; a recall memory with several heads, a
 window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
 life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
 of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.

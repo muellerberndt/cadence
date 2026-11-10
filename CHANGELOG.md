@@ -19,17 +19,14 @@
   every action, mood and heated slot is its lone brain's and every learned part and arousal
   reading agrees within 1e-9 over 30 moments of sparse rewards, endings and teaching. Lives that
   never call `live` keep every bit of 0.96.0.
-
-- **The store in `Lives`.** `Lives(..., episodic=True)` holds each life's place records on the
+- **The store in `Lives`.** `Lives` holds each life's place records on the
   device with a lives axis: an outcome writes the records of the lives it teaches, the outcome
   that wakes a calm life writes that life's records and settles it again under them, and with
   `memory_fade` and `maturity` each life fades its own records, scales its own actor steps by its
   own use and gates its own writes by its own surprise. `parameters(i)` and `life(i)` carry each
   life's records, their noise scales, depths and use. In float64 every action and mood is the
   lone brain's and every learned part and record agrees within 1e-9 over 30 moments; on the CPU
-  each life is its lone brain to the bit. `Lives` composes without the store unless
-  `episodic=True` is named, as in 0.96.0.
-
+  each life is its lone brain to the bit. `Lives` composes the store by default (below).
 - **A life leaves and joins.** `life(i, stream=True)` carries life `i`'s stream as it stands
   into the lone brain (its activity, its pending sampled action and that action's eligibility,
   its traces, working trace, recall slots, store residual and the record of its last `live`),
@@ -37,7 +34,6 @@
   life where it left. `join(i, brain)` puts a lone brain of the lives' anatomy and composition in
   life `i`'s place with its stream afresh, so a finished episode makes room for another life
   without holding the batch. `life(i)` without `stream` starts the stream afresh, as in 0.96.0.
-
 - **What lives on MLX would cost.** `benchmarks/device/lives_mlx_cost.py` times one sweep's
   transport with each life's own blocks on the Apple GPU against one brain's shared blocks: 1.26,
   1.45 and 3.34 times at 12, 128 and 1,024 lives on an M4. With one brain's streams on MLX as the
@@ -113,6 +109,19 @@
   target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
   frozen, uniform and fields-at-their-draw controls, and a two-convolution actor-critic at the
   brain's parameter count trained online on the same frames.
+
+#### The value of an observation, for a truncated episode (#298)
+
+- **`Brain.value(observations)`: the value a truncated episode bootstraps from** (#298). The
+  critic's value of each row, `(batch,)`: the drive the brain reads for the row, with the working
+  trace, the efference copy, the heard history, the recall memory's slots and the place records
+  as they stand, settled from the stream's activity (from rest before the brain has acted). It is
+  what `learn` settles for the next state of a stream that goes on, so a row cut by a time limit
+  passes `done=True` with `bootstrap=brain.value(last)`; without the store such a row takes the
+  dopamine of a row that goes on, to the bit, and with the store the two part by the outcome's own
+  record, which `learn` writes before it reads the next state. The read writes nothing: on
+  `backend="cpu"` every array of the brain is the same after it, and a brain that reads lives on
+  to the bit as one that does not. `Lives.values(observations)` reads each life's.
 
 ### Fixed
 
@@ -382,6 +391,45 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   difference; `memory_rate=0.2` brings it to 41.6, with `maturity=True` to 37.8, and leaves the
   chambers from birth and the robot arena's gates where the default reads them. No setting or
   default changes.
+
+### Changed defaults
+
+- **The recall memory's slope steps on each stream's own slots** (#292). With the grid
+  (`recall_grid`, in the default composition) the slope maps step only on a lesson's rows whose
+  slots fit the position table. The rule read the width of the slot bank, which the streams of
+  one brain share and which is as wide as the longest stream's slots, so a stream that began
+  later took no slope step beside a longer one and did alone: its lesson depended on another
+  stream's length. Each row's own slots (`held`) decide (`Recall.within_table`); a row past the
+  table leans nowhere and counts in the lesson's mean, as the grid term's per-slot mask does.
+  The host's path, the device's and the compiled moment's read the same rule (the compiled
+  lesson takes the host's path where a row's rule and the bank's part). A brain of one stream,
+  and a brain whose streams hold equal slots, keeps every bit (the founders' recorded lives on
+  the CPU, and every action and parameter of one, three equal and compiled-moment brains over 70
+  moments against 0.96.1). Streams of unequal length change from the first lesson that teaches a
+  row within the table while the bank is past it: on two streams, one beginning again at moment
+  45 of 70, the slope maps part by 0.24 and the efficacies by 0.025, every action the same.
+
+- **A new brain hears the moment before** (`history_decays=(0.0,)`, #256). A new brain with the
+  memory holds a heard history of one block of decay 0: the observation of the moment before,
+  as heard, read through its own plastic projection at its own carried gain (`history_0`).
+  `history_decays=()` composes the brain of 0.96.1; `recall=False`, the founder word and an
+  anatomy of one's own hold a history by name alone. On the grammar chamber's words the brain
+  holds 30,992 parameters where it held 28,716. `Lives` holds the history and its gains per
+  block. The compiled moment (`learning_compiled_moment`) carries the history: its drive, its
+  write after the act and its gains per block run in the one-call act and the taught lesson, a
+  brain without a history keeps the option's bits, and on the new default the option agrees with
+  the ordinary path to rounding. On fresh founders, paired against the brain
+  without it: the grammar chamber reads held-out .995 against .868 and three hops .656 against
+  .397, every panel at or above it; ordered recall 12 of 12 in both; every battery gate holds on
+  6 of 6 founders but "was A told before B?" on the `recall_when` arm, 4 of 6 against 5 of 6;
+  the n-back read less answer rises by .008 and the last cue in sequence by .005 of the mixed,
+  each far inside its bar; the credit and key-door chambers move inside two standard errors
+  (memory.md, the heard history in a new brain).
+- **`Lives` composes the store by default** (#293). `Lives(inputs, actions, lives)` composes each
+  life as `Brain.compose(inputs, actions, seed=s, **options)`, the default composition with its
+  store of place records, as a lone brain composes; `episodic=False` composes without it, as
+  `Lives` did in 0.96. `Lives(..., episodic=False)` keeps every bit of 0.96.0 on the CPU, the
+  torch CPU device in float64 and float32 and CUDA.
 
 ## 0.96.1 — 2026-11-10
 

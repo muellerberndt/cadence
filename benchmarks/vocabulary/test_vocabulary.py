@@ -70,7 +70,7 @@ def test_the_life_at_the_chamber_size_is_the_chamber_life() -> None:
     gr.ARMS["vocab_fd"] = settings
     ours = life.make_brain(lang, "Fd", 3)
     theirs = gr.make_brain("vocab_fd", 3)
-    assert ours.parameters() == theirs.parameters() == 28086
+    assert ours.parameters() == theirs.parameters() == 30362
     split_ours, split_theirs = lang.split(3), gr.Split.of(3)
     r1 = np.random.default_rng(np.random.SeedSequence([3, 11]))
     r2 = np.random.default_rng(np.random.SeedSequence([3, 11]))

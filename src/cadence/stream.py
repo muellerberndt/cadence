@@ -493,8 +493,8 @@ class History:
     def stimulate(self, drive: np.ndarray) -> np.ndarray:
         """Read the history into a drive copy; another batch size reads silence."""
         amplitude: Any = self.amplitude
-        if self.hearing is not None:
-            amplitude = amplitude * np.repeat(self.hearing, self.width)
+        if self.hearing is not None:  # one gain per block, or per stream and block (``Lives``)
+            amplitude = amplitude * np.repeat(self.hearing, self.width, axis=-1)
         if _resident(drive):  # a resident drive reads what the host holds
             if len(self.trace) == len(drive):
                 _set_columns(drive, self._glow_columns, amplitude * self.trace)
@@ -1950,6 +1950,23 @@ class Recall:
         """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest."""
         return np.arange(self.slots - 1, -1, -1, dtype=float)
 
+    def within_table(self, rows: np.ndarray) -> np.ndarray:
+        """Per stream of ``rows``, whether the slope maps step on its lesson: its own slots
+        (``held``) fit the position table, where the grid maps (``recall_grid``) take over past
+        it; every stream without the grid. A stream's own slots decide, so a stream's lesson
+        does not depend on how long another stream of the bank is (#292)."""
+        rows = np.asarray(rows)
+        if not self.grid_maps:
+            return np.ones(len(rows), dtype=bool)
+        return np.asarray(self.held[rows].sum(axis=1) <= self.position)
+
+    def _slope_as_bank(self, rows: np.ndarray) -> bool:
+        """Whether every stream of ``rows`` takes the slope step the bank's width gives, the
+        rule the compiled lesson reads (``_moment``): a stream of fewer slots than a longer
+        one beside it is taught on the host's path."""
+        bank = not (self.grid_maps and self.slots > self.position)
+        return bool((self.within_table(rows) == bank).all())
+
     def _whole_ages(self) -> np.ndarray:
         """``ages`` as whole numbers."""
         return np.arange(self.slots - 1, -1, -1, dtype=np.int64)
@@ -3063,7 +3080,10 @@ class Recall:
             learned.free.activation if learned.opposite is None else learned.opposite.activation
         )
         movement = (plus - minus)[:, self.association]
-        if self._compiles(len(moment.address)) and graph._efficacy is not None:
+        if (
+            self._compiles(len(moment.address)) and graph._efficacy is not None
+            and (not self.slope_maps or self._slope_as_bank(rows))
+        ):
             return self._learn_compiled(graph, rows, movement, positions, quiet)
         reports = []
         moved_positions = refused_positions = 0
@@ -3182,10 +3202,14 @@ class Recall:
                 width = 2 * self.RELATIVE + 2
                 step = _per_bucket(gradient, self.relative_buckets(streams), width) * bound
                 stepped["relative_maps"] = _lms(self.relative_maps[head], step, rate, x, c)
-            # the same gradient, read along each slot's age; with ``grid`` only within the table
-            if self.slope_maps and not (self.grid_maps and self.slots > self.position):
+            # the same gradient, read along each slot's age; with ``grid`` only for the streams
+            # whose own slots fit the table, a stream past it leaning nowhere (``within_table``)
+            within = self.within_table(streams) if self.slope_maps else None
+            if within is not None and within.any():
                 lean = gradient @ (self.ages() / self.SLOPE)
                 lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
+                if not within.all():
+                    lean = np.where(within, lean, 0.0)
                 stepped["slope_maps"] = _lms(self.slope_maps[head], lean, self.slope, x, c)
             if self.grid_maps:  # past the table, the gradient over its peak, on the residues
                 attended = np.where(np.isfinite(prior), np.exp(prior), 0.0)

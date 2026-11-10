@@ -27,12 +27,12 @@ The lives run the composition's own equations through these parts:
   greedily or samples at the temperatures its own arousal sets;
 - ``_LivesRandom``: each life's own random generator, drawn as its lone brain draws it.
 
-A composition holds the parts these cover: the default composition, without the store
-(``episodic=False``, the default of ``Lives``) or with each life's place records
-(``episodic=True``), with or without the recall memory, the carried gains, arousal, maturity and
-``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
-compartment, rehearsal, qualified teaching, the efference copy, the heard history, a held
-message, long-term records and a recall memory with several heads, a window, the command, the
+A composition holds the parts these cover: the default composition, its store of place records
+and its heard history among them, with or without the store (``episodic=False``), the history
+(``history_decays=()``), the recall memory, the carried gains, arousal, ``memory_fade``, maturity
+and ``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
+compartment, rehearsal, qualified teaching, the efference copy, a held message, long-term
+records, ``actor_entropy`` and a recall memory with several heads, a window, the command, the
 read of when or tokens, each by name. A moment any life refuses is refused for every life.
 """
 
@@ -839,7 +839,7 @@ class _LivesRecall(_RecallOnDevice):
         stepped = super()._position_step(found)
         if not (self.slope_maps and self.grid_maps and self.slots > recall.position):
             return stepped
-        _, x, c, _, _, _, target, prior, _, _ = found
+        _, x, c, _, _, _, target, prior, _, _, _ = found
         finite = xp.isfinite(prior)
         gradient = xp.where(finite, target - xp.where(finite, xp.exp(prior), 0.0), 0.0)
         energy = (x * x).sum(axis=1) + (c * c).sum(axis=1) + 1.0
@@ -979,9 +979,6 @@ class _LivesHearing(Hearing):
     def take(cls, hearing: Hearing, lone: Sequence[Hearing], kernel: Any) -> None:
         """Make ``hearing`` the lives': each life's gains, second moments and count from its
         lone brain's."""
-        for route in hearing.routes:
-            if route["slot"] is not None:
-                raise ValueError("Lives holds the carried gains of the working trace and the read")
         hearing.__class__ = cls
         assert isinstance(hearing, cls)
         hearing.kernel = kernel
@@ -993,13 +990,30 @@ class _LivesHearing(Hearing):
         hearing._place()
 
     def _place(self) -> None:
-        """The gains where the device paths read them: ``(lives, 1)`` per route."""
+        """The gains where the paths read them: ``(lives, 1)`` on the device per route of one
+        gain; for a memory of one gain per block (the heard history) ``(lives, blocks)`` on the
+        host, where its drive reads them, and each block's column on the device for its route's
+        contrast."""
         here = arrays_of(self.kernel).here
+        blocks: dict[int, tuple[Any, np.ndarray]] = {}
         for k, route in enumerate(self.routes):
-            route["memory"].hearing = here(self.lives_gains[:, k : k + 1])
+            column = here(self.lives_gains[:, k : k + 1])
+            if route["slot"] is None:
+                route["memory"].hearing = column
+                continue
+            route["lives_gain"] = column
+            memory = route["memory"]
+            held = blocks.get(id(memory))
+            if held is None:
+                held = blocks[id(memory)] = (
+                    memory, np.zeros((len(self.lives_gains), np.shape(memory.hearing)[-1]))
+                )
+            held[1][:, route["slot"]] = self.lives_gains[:, k]
+        for memory, gains in blocks.values():
+            memory.hearing = gains
 
     def gain(self, route: dict[str, Any]) -> Any:
-        return route["memory"].hearing
+        return route["memory"].hearing if route["slot"] is None else route["lives_gain"]
 
     def gains_of(self, life: int) -> dict[str, float]:
         """Life ``life``'s gains by route."""
@@ -1772,7 +1786,6 @@ def _supported(brain: Any) -> None:
         ("learned_code", "no learned code"),
         ("_episodic", "no memory_choice"),
         ("efference", "no efference copy"),
-        ("history", "no heard history"),
         ("message", "no held message"),
         ("longterm", "no long-term records"),
     ):
@@ -1782,7 +1795,7 @@ def _supported(brain: Any) -> None:
     if store is not None and (
         type(store) is not SynapticMemory or store.separator is not None
         or len(brain.memories) - (brain.recall is not None) - (brain.working_memory is not None)
-        != 1
+        - (brain.history is not None) != 1
     ):
         raise refuse("a store of place records keyed on the observations, without a separator")
     if getattr(brain, "_coded_keys", False):
@@ -1793,9 +1806,6 @@ def _supported(brain: Any) -> None:
             "a recall memory of one head, without a window, the command, the read of when, "
             "tokens, their gain or the cortex at unit norm"
         )
-    hearing = brain.hearing
-    if hearing is not None and any(route["slot"] is not None for route in hearing.routes):
-        raise refuse("the carried gains of the working trace and the read")
     learner, graph = brain.learner, brain.brain
     cfg = learner.config
     if cfg.rehearsal or cfg.qualified:
@@ -1843,10 +1853,11 @@ class Lives:
     """Many continuing lives of one composed anatomy, each a brain of its own, stepped together.
 
     ``Lives(inputs, actions, lives=128, backend="torch")`` composes ``lives`` brains of
-    ``Brain.compose(inputs, actions, seed=seeds[i], episodic=False, **options)``, the default
-    composition without the store, one per seed (``range(lives)`` by default). Every operation
-    takes one row of observations per life and returns one answer per life: ``act``, ``step``,
-    ``lesson`` and ``learn`` mean what they mean on a lone brain with one stream, life by life.
+    ``Brain.compose(inputs, actions, seed=seeds[i], **options)``, the default composition with
+    its store of place records unless ``episodic=False`` is named, one per seed (``range(lives)``
+    by default). Every operation takes one row of observations per life and returns one answer
+    per life: ``act``, ``step``, ``lesson`` and ``learn`` mean what they mean on a lone brain with
+    one stream, life by life.
     ``life(i)`` is life ``i`` as a lone brain on the CPU, with everything it learned.
 
     On ``backend="cpu"`` each life is its own ``Brain`` and the lives run in turn, to the bit as
@@ -1874,7 +1885,7 @@ class Lives:
             raise ValueError("Lives runs on backend='cpu' or backend='torch'")
         if not isinstance(inputs, (int, np.integer)):
             raise ValueError("Lives takes a vector of inputs, its length")
-        options = {"episodic": False, **options}
+        options = dict(options)  # the default composition, the store among it (``Brain.compose``)
         self.inputs, self.actions, self.backend = int(inputs), int(actions), backend
         self._options = options
         with warnings.catch_warnings():
@@ -2196,6 +2207,8 @@ class Lives:
                 gone = np.flatnonzero(done)
                 if brain.working_memory is not None:
                     brain.working_memory.reset(lives, rows=gone)
+                if brain.history is not None:
+                    brain.history.reset(lives, rows=gone)
                 if brain.recall is not None:
                     brain.recall.reset(lives, rows=gone)
                 kernel = brain.brain._torch
@@ -2593,6 +2606,8 @@ class Lives:
         agent.fade_rows(np.zeros(lives, bool), gone)  # its eligibility forgotten
         if brain.working_memory is not None:
             brain.working_memory.reset(lives, rows=np.array([i]))
+        if brain.history is not None:
+            brain.history.reset(lives, rows=np.array([i]))
         if brain.recall is not None:
             brain.recall.reset(lives, rows=np.array([i]))
         if lived is not None and current:  # its record of the last ``live`` is none
@@ -2646,6 +2661,8 @@ class Lives:
             lone.working_memory.trace = row(source.trace)
             lone.working_memory.last = row(source.last)
             lone.working_memory.cold = np.array(trace.cold[i : i + 1])
+        if brain.history is not None:
+            lone.history.trace = np.array(brain.history.trace[i : i + 1])
         recall = brain.recall
         if recall is not None:
             snapshot = recall._device.snapshot()

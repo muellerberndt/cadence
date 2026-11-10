@@ -23,7 +23,9 @@ pytestmark = pytest.mark.skipif(
 
 
 def brain(**options) -> cd.Brain:
-    return cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu", **options)
+    # the compiled moment covers the composition without the heard history
+    return cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu",
+                            **{"history_decays": (), **options})
 
 
 def lived(subject: cd.Brain, moments: int = 6, seed: int = 0) -> np.random.Generator:
@@ -58,9 +60,9 @@ def test_without_the_option_a_life_keeps_its_bits() -> None:
     assert "compiled_moment" not in vars(plain.recall) or not plain.recall.compiled_moment
 
 
-# the default read, and one whose slots pass its position table, where the grid's terms read and
-# the slope's lean stays
-READS = [{}, {"recall_position": 2}]
+# the default read, one whose slots pass its position table, where the grid's terms read and the
+# slope's lean stays, and the heard history of a new brain and of two blocks
+READS = [{}, {"recall_position": 2}, {"history_decays": (0.0,)}, {"history_decays": (0.3, 0.8)}]
 
 
 def _pair(**options) -> tuple[cd.Brain, cd.Brain, np.random.Generator]:
@@ -74,7 +76,7 @@ def _pair(**options) -> tuple[cd.Brain, cd.Brain, np.random.Generator]:
 @pytest.mark.parametrize("options", READS)
 def test_the_compiled_read_is_the_reads_equation(options) -> None:
     plain, compiled, rng = _pair(**options)
-    assert plain.recall.slots > (2 if options else 0)
+    assert plain.recall.slots > (2 if "recall_position" in options else 0)
     x = rng.random((4, 8))
     a, b = plain.stimulus(x), compiled.stimulus(x)
     np.testing.assert_allclose(b, a, rtol=0, atol=1e-12)
@@ -292,6 +294,9 @@ def _same_life(first, second) -> None:
     if a.hearing is not None:
         np.testing.assert_array_equal(a.hearing.second, b.hearing.second)
         assert a.hearing.count == b.hearing.count
+        assert a.carried_gains == b.carried_gains
+    if a.history is not None:  # the heard past and its gains per block
+        np.testing.assert_array_equal(a.history.trace, b.history.trace)
     np.testing.assert_array_equal(a.brain._blocks, b.brain._blocks)
 
 
@@ -305,6 +310,8 @@ CROSS: dict[str, dict] = {
     "gains": {"recall_cortex_norm": True, "recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3],
               "recall_gain_after": 5, "recall_gain_next": 2.0},
     "rate_zero": {},
+    "history": {"history_decays": (0.0,)},
+    "history+fade+maturity": {"history_decays": (0.3, 0.8), "memory_fade": 1.2e-4, "maturity": True},
 }
 
 
@@ -369,6 +376,10 @@ def test_the_compiled_moment_agrees_with_the_ordinary_path_beside_another_lanes_
     np.testing.assert_allclose(compiled.brain.efficacy, plain.brain.efficacy, rtol=0, atol=1e-8)
     np.testing.assert_allclose(compiled.brain.bias, plain.brain.bias, rtol=0, atol=1e-8)
     np.testing.assert_allclose(compiled.recall.previous, plain.recall.previous, atol=1e-8)
+    if plain.history is not None:
+        np.testing.assert_allclose(compiled.history.trace, plain.history.trace, atol=1e-8)
+        for route, gain in plain.carried_gains.items():
+            assert compiled.carried_gains[route] == pytest.approx(gain, abs=1e-8), route
     for ours, theirs in zip(compiled.recall.head_map(0), plain.recall.head_map(0), strict=True):
         np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-8)
     store = plain.hippocampus
@@ -398,6 +409,8 @@ LESSONS: dict[str, dict] = {
     "one_route": {"recall_drive_gain": False},
     "no_gains": {"carried_gain": 0.0, "recall_drive_gain": False},
     "position": {"recall_position": 2},
+    "history": {"history_decays": (0.0,)},
+    "two_blocks": {"history_decays": (0.3, 0.8)},
 }
 
 
@@ -443,7 +456,7 @@ def test_a_lesson_of_many_rows_in_one_call_keeps_the_bits_of_its_passes(
     for one_lesson in (False, True):
         _mode(monkeypatch, True, True, one_lesson)
         subject = cd.Brain.compose(8, 4, modules=(32,), seed=3, backend="cpu",
-                                   learning_compiled_moment=True)
+                                   learning_compiled_moment=True, history_decays=())
         rng = np.random.default_rng(1)
         actions, taught = [], 0
         for t in range(10):
@@ -467,7 +480,7 @@ def test_a_lesson_in_one_call_leaves_the_packed_maps_a_read_would_make(monkeypat
     from cadence import _moment
 
     _mode(monkeypatch, True, True, True)
-    for options, kept_whole in zip(READS, (True, False), strict=True):
+    for options, kept_whole in zip(READS[:2], (True, False), strict=True):
         subject = brain(learning_compiled_moment=True, **options)
         rng = lived(subject, moments=8)
         x = rng.random((4, 8))

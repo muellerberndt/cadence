@@ -28,9 +28,10 @@ follows.
   `cd.LongTermMemory`, a standalone store, or `longterm=records`, the brain's own records keyed by
   its held message.
 
-Three carriers are opt-in: the **efference copy** of the actions the brain issued
-(`efference_amplitude`), the **heard history** of the raw observations (`history_decays`) and
-the **held message**, the whole episode as one state (`message`).
+Three smaller carriers: the **heard history** of the raw observations (`history_decays`), whose one
+block of the moment before a new brain holds, and two opt-ins, the **efference copy** of the actions
+the brain issued (`efference_amplitude`) and the **held message**, the whole episode as one state
+(`message`).
 
 ## Which memory should I use?
 
@@ -47,7 +48,7 @@ the **held message**, the whole episode as one state (`message`).
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
 | Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `longterm=records` with a held message ([long-term records](#long-term-records)), or `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
-| Heard history | what I just heard | no | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` |
+| Heard history | what I just heard | one block, the moment before | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` for slower blocks; `history_decays=()` removes it |
 | No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
 
 Start with the default brain. Add one memory at a time and compare it with the same brain
@@ -200,7 +201,7 @@ The answer has to [qualify](start.md#qualification-and-refusal) whichever of the
 | --- | --- | --- | --- | --- | --- | --- | --- |
 | Working trace | yes | `working_memory_amplitude=0.0` silences it | the settled association activity of the moment before | none | after each act and each moment `wait` senses | no | [below](#working-trace) |
 | Efference copy | no | `efference_amplitude=1.0` | a fading one-hot of the commands issued | none | after each issued act | no | [below](#efference-copy) |
-| Heard history | no | `history_decays=(0.2, 0.8)` | the observations as heard, one fading block per decay | none | after each act and each moment `wait` senses | no | [below](#heard-history) |
+| Heard history | yes, one block of decay 0 | `history_decays=()` removes it; `history_decays=(0.2, 0.8)` | the observations as heard, one fading block per decay | none | after each act and each moment `wait` senses | no | [below](#heard-history) |
 | Associative store | yes | `episodic=False` removes it | one value per action per situation, in reward units | observation code | each outcome of the chosen action | yes | [below](#associative-store-the-hippocampus) |
 | Episodic memory | no | `memory_choice=True` | place and context records that vote in the choice | observation code, and code with the temporal context | known outcomes, demonstrations, replay of the path to a reward | records yes, context no | [below](#episodic-memory-what-happened-in-this-situation-before) |
 | Recall memory | yes | `recall=False` removes it; `attention=True` selects its learned-code contextual recipe | the stream's recent moments as slots, and a learned address map | observation code | a slot per moment; the map at lessons | map yes, slots no | [below](#the-recall-memory-in-full) |
@@ -439,6 +440,7 @@ configuration.
 | `recall_capacity` | `64` | `128` | Slots that hold the first period of a stream that repeats ([how many slots](#reads-over-long-context)) |
 | `recall_position_reward` | `0.0` | `4.0` | Reward trains the position maps, which ordered recall under `live` needs |
 | `carried_gain` | `0.0` | `0.01` | [A learned gain per carried route](#how-strongly-a-carried-region-is-heard), from the trace's 3.0 |
+| `history_decays` | `()` | `(0.0,)` | [A heard history](#heard-history) of one block: the observation of the moment before, heard as it was, with its own gain (`history_0`) |
 | `recall_drive_gain` | `False` | `True` | [The read's route](#the-reads-drive-as-a-route): the read quiets where it does not pay and stays at or below its amplitude |
 
 Above an association of 64 a new brain also [steps at its width](tune.md#wide-brains): `recall_address` is .01 times
@@ -479,7 +481,7 @@ only where they differ from their founder. A saved brain keeps its genes, slots 
 | `recall_founder` | `False` | `compose` | `True` composes the memory at the founders of this table, whatever `recall=True` gives a new brain; no setting of the memory, so neither described nor saved |
 | `recall_drive_gain` | `False` | construction | The read's drive is one more route of `carried_gain`: one learned gain over every read port, from the amplitude and no higher ([the read's route](#the-reads-drive-as-a-route)); needs `carried_gain` |
 | `recall_slope` | `0.0` | construction | Above 0, every head's position term also leans by age at every length, taught at that rate ([the slope](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
-| `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step ([long context](#reads-over-long-context)); needs `recall_position` |
+| `recall_grid` | `()` | construction | Past `recall_position`, every head's position term also reads each slot's age modulo each of these coprime numbers, and the slope takes no step on a stream whose own slots pass the table (a shorter stream beside it steps it) ([long context](#reads-over-long-context)); needs `recall_position` |
 | `recall_relative` | `False` | construction | Every head's position term also reads each slot's age relative to the slot the previous read attended most ([the relative read](#positions-at-lengths-no-lesson-reached)); needs `recall_position` |
 | `recall_gain_after` | `0` | construction | With `recall_gain`, the gains drive nothing and learn nothing through the memory's first this many lessons, and start then ([the value path released late](#the-value-path-released-once-the-read-has-formed-opt-in)) |
 | `recall_gain_next` | `0.0` | construction | With `recall_gain`, every next port's gain starts at this value when the gains start, every recall port's at zero ([the value path released late](#the-value-path-released-once-the-read-has-formed-opt-in)) |
@@ -770,6 +772,36 @@ parameters, and costs the chamber's paths. `recall_grid` with 128 slots earns a 
 fresh founders against .870 with a table of 64 at 64 slots, the other sequence gates to the digit, and it
 costs the place in a long story past the table ([long context](#reads-over-long-context)).
 
+### The heard history in a new brain
+
+A new brain also hears the moment before: `history_decays=(0.0,)`, one block that holds the last observation as
+heard, read through its own plastic projection at its own gain (`history_0`). A fourth block of fresh founders
+read it paired against the same brain without it (`history_decays=()`), on one machine, with no refused lesson
+and no exhausted act. On the grammar chamber's words the brain holds 30,992 parameters against 28,716.
+
+| Reading | With the history | Without | With less without, paired, ± two standard errors |
+| --- | --- | --- | --- |
+| Clauses, twelve lives | .997 (.97) | .964 (.73) | +.034 ± .045 |
+| Two distractors | .995 (.94) | .943 (.75) | +.052 ± .048 |
+| Held-out | .995 (.97) | .868 (.61) | +.126 ± .070 |
+| Roles | .987 (.94) | .904 (.56) | +.083 ± .069 |
+| Brackets | .882 (.56) | .794 (.47) | +.087 ± .094 |
+| Paths | .978 (.94) | .904 (.23) | +.074 ± .127 |
+| Two hops | .958 (.91) | .872 (.03) | +.086 ± .162 |
+| Three hops | .656 (.44) | .397 (.00) | +.259 ± .140 |
+| Ordered recall under `live`, twelve founders at .90 | 12 of 12 | 12 of 12 | .000 |
+| "Was A told before B?", `recall_when=True`, six founders at .90 | 4 of 6 (.55 and .82) | 5 of 6 | -.059 ± .147 |
+| "How long ago?", `recall_when=True` | .72 to .88 | .56 to .76 | +.097 ± .093 |
+
+Every other gate of the sequence battery holds on 6 of 6 founders in both forms, within two standard errors of each
+other. Two readings fall past two standard errors, each far inside its bar: the read less the answer on n-back
+rises by .008 (at most .013 against .05), the answer .006 to .013 below the read on five founders, and
+cues taught one after another read .005 less of the mixed reading on the last cue (.984 and above against .9).
+The chamber's pass takes about the seconds it took (195 against 194 on a shared machine); a battery life takes
+85 seconds against 69. The credit and key-door chambers move inside two standard errors (the key-door at delay 2,
+9 against 7 of 24 lives, and at 5, 13 against 10). The compiled moment (`learning_compiled_moment`) carries the
+history, its write and its gains per block, in its one-call act and lesson ([the compiled moment](tune.md#the-compiled-moment-opt-in)).
+
 ### What the composition gives up
 
 Against the brain with no memory, `recall=False`:
@@ -848,12 +880,12 @@ gates the composition holds:
 ### Two heads on this composition (opt-in)
 
 Two heads at about one head's parameters: width 33, the read's temperature at .15. The first block read this
-form without the read's route:
+form without the read's route and without the heard history:
 
 ```python
 two = Brain.compose(
     inputs=35, actions=18, modules=(33,), seed=0, recall=True, recall_heads=2, recall_temperature=0.15,
-    recall_drive_gain=False,
+    recall_drive_gain=False, history_decays=(),
 )
 assert two.recall.heads == 2 and two.parameters() == 30186
 ```
@@ -1520,7 +1552,9 @@ trace = brain.history.trace                               # two blocks of three 
 assert trace.shape == (1, 6) and trace[0, 3] > 0          # the slow block holds the cue
 ```
 
-`history_decays` (`()`, each in [0, 1)) is a construction setting and the projection's initial
+`history_decays` (each in [0, 1); `()` at the founders, `(0.0,)` in [a new brain with the
+memory](#what-recalltrue-gives-a-new-brain): one block that holds the moment before, heard as it was;
+`history_decays=()` removes it) is a construction setting and the projection's initial
 magnitude 1.2 a constant; `history_amplitude` (3.0) can be retuned. On a coded vector brain the
 blocks hold the code. Three decays at 256 inputs and four actions add 768 neurons and 49,152
 synapses to a founder of 20,992 synapses.
@@ -1783,7 +1817,7 @@ or `carried_gain=0.0` builds a memory without the route.
 routed = Brain.compose(
     inputs=3, actions=2, seed=0, recall=True, carried_gain=0.01, recall_drive_gain=True
 )
-assert routed.carried_gains == {"trace": 1.0, "read": 1.0}
+assert routed.carried_gains == {"trace": 1.0, "history_0": 1.0, "read": 1.0}
 assert routed.describe()["genes"]["recall_drive_gain"] is True
 routed.step(np.array([[1.0, 0.0, 0.0]]), teacher=[1])
 assert routed.describe()["memories"]["recall"]["hearing"] == routed.carried_gains["read"]

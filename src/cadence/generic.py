@@ -352,6 +352,8 @@ def _history_decays(value: Any) -> tuple[float, ...]:
 _COMPOSED_TEACHING = "deep"
 _COMPOSED_SETTINGS: dict[str, Any] = {
     "learning_surprise": True, "learning_fast_settle": True, "carried_gain": 0.01,
+    # the observations as heard, one block that holds the moment before (``History``)
+    "history_decays": (0.0,),
 }
 # the association's width those lessons hold at: past it the two projections that grow with the
 # width (``_width_rates``) and the read's address map each step at this over the width
@@ -3145,6 +3147,8 @@ class Brain:
             for name, value in Recall.composed(options).items():
                 options.setdefault(f"recall_{name}", value)
             for name, value in _COMPOSED_SETTINGS.items():
+                if name == "history_decays" and connectome is not None:
+                    continue  # an anatomy of its own holds a history by name alone
                 if not (name.startswith("learning_") and "learning" in options):
                     options.setdefault(name, value)
             if teaching is None and "learning" not in options:
@@ -4074,7 +4078,8 @@ class Brain:
         if (
             self.learned_code is not None or recall is None or type(recall) is not Recall
             or recall._device is not None or not recall._compiles(len(x))
-            or self.efference is not None or self.history is not None or self.memory_choice
+            or self.efference is not None or self.memory_choice
+            or (self.history is not None and type(self.history) is not History)
             or (trace is not None and (type(trace) is not Trace or trace._device is not None))
             or (store is not None and (
                 type(store) is not SynapticMemory or store._device is not None
@@ -4110,6 +4115,8 @@ class Brain:
                     trace.amplitude * trace.hearing * trace.trace if len(trace.trace) == len(x)
                     else 0.0
                 )
+            if self.history is not None:
+                drive[:, self.history._glow_columns] = _moment.heard_drive(self.history, len(x))
             recall._stimulate_compiled(drive, x, inplace=True)
             if store is not None:
                 drive[:, store._post_columns] += _moment.store_read(
@@ -4151,6 +4158,12 @@ class Brain:
             None if store is None else (
                 id(store.strength), id(store.mass), id(store.consolidated), store.amplitude,
                 store.mass.tobytes(), store.writes,
+            ),
+            # the heard history's values and gains, which a moment's write changes in place
+            None if self.history is None else (
+                self.history.trace.tobytes(), self.history.amplitude,
+                None if self.history.hearing is None
+                else np.asarray(self.history.hearing).tobytes(),
             ),
         )
 
@@ -4456,7 +4469,8 @@ class Brain:
         if (
             recall is None or type(recall) is not Recall or recall._device is not None
             or self.learned_code is not None or self.sparse_code is not None
-            or self.efference is not None or self.history is not None or self.memory_choice
+            or self.efference is not None or self.memory_choice
+            or (self.history is not None and type(self.history) is not History)
             or self._episodic is not None or self.coded_cortex
             or cfg.tolerance is None or cfg.qualified or not cfg.fast_settle or cfg.rehearsal
             or self.learner.slot_count != 1 or type(agent).act is not ActorCritic.act
@@ -4565,6 +4579,9 @@ class Brain:
             trace.trace = stepped
             trace.last = source
             trace.cold[:] = False
+        if self.history is not None:
+            # the observation acted on joins the heard past, as ``_choose`` hears it
+            self.history.hear(self._heard(x, x))
         if rooms is not None:
             _moment.written(recall, rooms, rows, focus, cortex)
         else:  # the general write: it begins the streams, or makes the room behind the slots
@@ -4641,14 +4658,14 @@ class Brain:
         )
         return drive, answer, differs
 
-    @staticmethod
-    def _read_named(recall: Recall, trace: Trace | None, store: Any) -> Any:
+    def _read_named(self, recall: Recall, trace: Trace | None, store: Any) -> Any:
         """What ``_read_key`` names by identity, held with the key so that an identity is never
         a freed object's."""
         return (
             recall.keys, recall.values, recall.nexts, recall.held, recall.previous, recall.told,
             recall.focus, _moment.packed_parts(recall), None if trace is None else trace.trace,
             None if store is None else (store.strength, store.mass, store.consolidated),
+            None if self.history is None else self.history.trace,
         )
 
     def _lean_qualified(
@@ -5968,7 +5985,8 @@ class Brain:
         agent = self.basal_ganglia
         if (
             self._episodic is not None or self.learned_code is not None
-            or self.efference is not None or self.history is not None
+            or self.efference is not None
+            or (self.history is not None and type(self.history) is not History)
             or self.learner.slot_count != 1 or self.learner.config.rehearsal
             or type(agent).act is not ActorCritic.act or _resident(drive)
             or not np.isfinite(drive).all()
@@ -6009,6 +6027,9 @@ class Brain:
                 self.recall.witness(
                     code, free, self._command(action) if self.recall.action else None
                 )
+        if self.history is not None:
+            # the observation acted on joins the heard past, as ``_choose`` hears it
+            self.history.hear(self._heard(x, code))
         if self._episode_moments:
             self._episode_moments, self._episode_told = [], np.zeros(0, dtype=np.int64)
         self._moment = None
