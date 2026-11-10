@@ -1,0 +1,87 @@
+{
+ "founders": [
+  2880,
+  2881,
+  2882,
+  2883,
+  2884,
+  2885
+ ],
+ "budgets": [
+  128,
+  1000,
+  10000
+ ],
+ "drift": [
+  false,
+  true
+ ],
+ "arms": [
+  "lru",
+  "fifo",
+  "random",
+  "lfu",
+  {
+   "name": "fade",
+   "settings": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256
+   }
+  },
+  {
+   "name": "ring",
+   "settings": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256,
+    "fade": false
+   }
+  },
+  {
+   "name": "fade-soft",
+   "max_budget": 1000,
+   "settings": {
+    "temperature": 0.05,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256
+   }
+  },
+  {
+   "name": "recent",
+   "max_budget": 1000,
+   "settings": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256,
+    "depth": 1e+18
+   }
+  },
+  {
+   "name": "cumulative",
+   "max_budget": 1000,
+   "settings": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256,
+    "hold": 1e+18
+   }
+  },
+  {
+   "name": "append",
+   "max_budget": 1000,
+   "settings": {
+    "temperature": 0.0,
+    "expansion": 8192,
+    "winners": 64,
+    "candidates": 256,
+    "revise": 0.0
+   }
+  }
+ ]
+}

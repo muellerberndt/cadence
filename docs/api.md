@@ -8,7 +8,7 @@ keyword.
 | --- | --- |
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
-| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator` |
+| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Message`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
 | [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
@@ -111,7 +111,8 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
-      history_decays=(), history_amplitude=3.0, carried_gain=0.0, recall=False, learning=None,
+      history_decays=(), history_amplitude=3.0, message=None, carried_gain=0.0, recall=False,
+      learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
       dense_limit=None, **genes)
@@ -121,7 +122,9 @@ Wraps any connectome with populations `association`, `motor` and `sensory` (or
 `visual/input`). It uses `prefrontal` for a working trace, `efference` (one neuron per motor
 neuron) for an efference copy, `history` (one sensory-width block per entry of
 `history_decays`; one block of `learned_code` units with a learned code) for a heard
-history, with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
+history, with `message=units` a `message` population of `message_phases * units` neurons (and
+with `message_read=True` a `message_read` population of `units`) for a
+[held message](memory.md#held-message), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
@@ -211,7 +214,13 @@ maturity and a `cadence-brain/2` file without one. A brain whose store fades
 0.95.2 and earlier refuse, with a maturity or without: the same members, with the fade under
 the store's settings and its two sums (`memories/hippocampus/fade_depth`, `fade_recent`).
 `Brain.load` refuses a `cadence-brain/3` file whose store does not fade, and a fading store
-under either other name.
+under either other name. A brain with [long-term records](memory.md#long-term-records) writes
+`cadence-brain/4`, which 0.96.0 and earlier refuse, whatever else it holds: the same members, with
+the records' settings under `memories/longterm` in the metadata and, under
+`memories/longterm/`, the streams' turns (`since`, `read_slots`) and every stream's records
+(`store/<s>/keys`, `values`, `deep`, `recent`, `faded`, their first `count` rows, and
+`store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
+without them.
 
 | Members | What they hold |
 | --- | --- |
@@ -379,6 +388,19 @@ One block of `source` width per decay in `target`; `hear(observations)` moves bl
 columns of a copy (another batch size reads silence). `reset(batch, rows=None)`, `keep(rows)`, `trace` `(batch, blocks * source)`,
 `to_dict()`. In the brain: [heard history](memory.md#heard-history).
 
+```text
+Message(inputs, phases=4, units=70, winners=5, fan_in=16, seed=0)
+```
+
+A stream's episode held as one state, with no neurons of its own: `hear(observations)` gives each
+row's moment a fixed sparse code (`code(observations)`, one at the `winners` of `units`) and joins
+it to the union of block `told mod phases`; `state` (`trace`) is `(batch, phases * units)`, `key()`
+the union over the blocks, `(batch, units)`, `told` the moments heard per stream.
+`reset(batch, rows=None)`, `keep(rows)`, `branch()`, `arrays()` (`trace`, `told`), `width`,
+`to_dict()`. It raises `ValueError` for nonpositive sizes, `winners > units`, a negative `seed`
+and observations of another width or with a non-finite value. Behaviour:
+[a held message](memory.md#a-held-message).
+
 <a id="recall-memory-genes"></a>
 
 ```text
@@ -446,6 +468,50 @@ constants.
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
 and `center` outside `[0, 1)`. All three: [standalone memory stores](memory.md#standalone-memory-stores); the
 associative store: [memory](memory.md#associative-store-the-hippocampus).
+
+```text
+LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
+               winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
+               direct=None, dtype=float64)
+LongTermRead(slots, weights)
+```
+
+`LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
+budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value,
+recognised=None) -> (slot, revised)` rewrites the record whose key it recognises (cosine
+`revise`), else takes an empty slot, else the most faded one (`fade=False`: the slot written
+longest ago); `recognised` is a caller's recognition from its own read (the slot, or -1 for none),
+and the write then reads nothing itself. `read(cue, heads=1,
+credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
+`expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
+head reads its first choice among the slots left, whole), scoring each by its key's dot product
+with the cue or, with `cosine=True`, their cosine; a memory of at most `direct` slots
+(twice the expansion unless given) scores every slot, and `credit=False` is a probe that deepens
+nothing. `value(read, head=0)` is what a head holds, and `moment()` one moment of the stream:
+every slot fades by `idle / (1 + (deep / depth) ** 4)`, and the recent use and the depth decay
+over `idle` (a sixteenth of the capacity) and `hold` (8 capacities) moments. `to_dict()` gives the
+settings, `arrays()` the state and `restore(arrays)` takes it back; `address(key)` is a key's
+units; `keys`, `values`, `deep`, `recent`, `faded`, `norms` (each key's length, held where
+`cosine`), `count`, `writes`, `coarse` and `nbytes` are its state. `LongTermRead` holds the candidate `slots` and each head's `weights`, with
+`first(head=0)` (-1 for a read of nothing) and `mass(slot, head=0)`. It raises `ValueError` for a
+nonpositive size, a negative `temperature`, `candidates` or `direct`, `revise` outside `[0, 1]`, a
+nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `expansion`, a
+`dtype` that is no floating type, and a key, value or cue of another shape or with a nonfinite
+entry.
+[A long-term memory of records](memory.md#a-long-term-memory-of-records).
+
+`Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
+`brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
+brain's held message from a turn; it needs `message=units`, `message_boundary` and
+`message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
+(0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
+record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
+reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
+regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
+bank (`batched`) where every key is of zeros and ones and every store scores every slot;
+`BATCHED = False` reads them store by store, the reference the bank equals to the bit. The
+records read and recognise by cosine (`LongTermRecords.STORE`). A brain with records saves `cadence-brain/4`
+([checkpoint format](#checkpoint-format)); `grow` and `graft` refuse it in this version. [Long-term records](memory.md#long-term-records).
 
 ```text
 cadence.stream.columns(index) -> slice | ndarray

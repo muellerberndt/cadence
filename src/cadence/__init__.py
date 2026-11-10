@@ -39,6 +39,7 @@ from .learning import (
     seam_report,
 )
 from .lives import Lives
+from .longterm import LongTermMemory, LongTermRead
 from .memory import SynapticMemory
 from .neuron import Adaptation, NeuronModel
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity
@@ -50,6 +51,7 @@ from .stream import (
     Efference,
     FastSynapses,
     History,
+    Message,
     PatternSeparator,
     Recall,
     Trace,
@@ -78,10 +80,13 @@ __all__ = [
     "Trace",
     "Efference",
     "History",
+    "Message",
     "Recall",
     "LearnedCode",
     "FastSynapses",
     "SynapticMemory",
+    "LongTermMemory",
+    "LongTermRead",
     "NeuronModel",
     "GraphHolder",
     "Learner",

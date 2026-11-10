@@ -684,6 +684,431 @@ These lives say which state lifts this chamber, and none of this is read on fres
 read beside them stay out of the library because nothing chosen uses them: a brain built with no trace,
 and the read carried to the next moment on a region of its own.
 
+## A held meaning
+
+[`meaning.py`](meaning.py) reads [#286](https://github.com/muellerberndt/cadence/issues/286): where the
+brain keeps a sentence's meaning between hearing it and saying it, and whether the sentence can be
+said from a state the brain holds, with the recall memory's slots of the meaning emptied. The
+readings follow [MEANING_PROTOCOL.md](MEANING_PROTOCOL.md), declared before the run on fresh
+founders. The library's part is [`cadence.Message`](../../docs/memory.md#a-held-message), a class
+with no neurons. No brain changes: every arm is the default composition
+(`Brain.compose(35, 18, modules=(64,), seed=founder, recall=True)`) with what the arm names.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/meaning.py where --founders 0 1 2 --out DIR/where.jsonl --workers 3
+PYTHONPATH=src python benchmarks/grammar/meaning.py plan --out DIR/plans
+PYTHONPATH=src python benchmarks/grammar/meaning.py lives --plan DIR/plans/brains.json --out DIR/brains.jsonl --workers 36
+(cd benchmarks/grammar && PYTHONPATH=../../src python controls.py --plan DIR/plans/controls.json --out DIR/controls.jsonl --workers 16)
+PYTHONPATH=src python benchmarks/grammar/meaning.py lives --plan DIR/plans/knock.json --out DIR/knock.jsonl --workers 12
+PYTHONPATH=src python benchmarks/grammar/meaning.py retrieval --out DIR/retrieval.jsonl
+PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/brains.jsonl --controls DIR/controls.jsonl --knock DIR/knock.jsonl
+```
+
+### Where the meaning lives in the default composition
+
+`meaning.py where` teaches one life per founder the first grammar and reads it three ways.
+
+- **Whole sentences under an erasure at `GO`.** `state`: every recall slot written before `GO` is
+  emptied (keys, values and nexts at zero), so the sentence can come from the carried state alone.
+  `silent`: the read's drive is held at zero from `GO` to `end`. `no_trace`: the working trace is
+  emptied at `GO`, so the sentence comes from the read alone. `neither`: both.
+- **Probes.** A linear read-out per component of the meaning, fitted offline on 70% of fresh
+  sentences and scored on the rest, from the working trace entering a settle (`carried`), the
+  association after it (`settled`) and what the recall read holds on its ports (`read`). They read
+  arrays and change nothing.
+- **The controls' states.** The chamber's LSTM and transformer at the brain's parameter count, one
+  online pass, read on the same panels and probed at the same moments; the LSTM with its state
+  emptied at `GO` and the transformer with the meaning's positions masked from `GO` on are their
+  floors.
+
+Development founders 0 to 5, whole sentences said exactly (`roles`: both twins), mean with least
+and greatest:
+
+| Speaker | `clause` | `clause_held` | `roles` | `dyck` | `path` |
+| --- | --- | --- | --- | --- | --- |
+| Brain, intact | .98 (.94-1.00) | .91 (.81-.97) | .96 (.88-1.00) | .88 (.53-1.00) | .95 (.92-1.00) |
+| Brain, every slot emptied at `GO` | .00 | .00 | .00 | .00 | .00 |
+| Brain, the read silent from `GO` | .00 | .00 | .00 | .00 | .00 |
+| Brain, the working trace emptied at `GO` | .98 | .93 | .97 | .87 | .95 |
+| Brain, a path's start slot emptied; its facts' slots emptied | | | | | .12; .01 |
+| LSTM | .95 (.80-1.00) | .92 (.83-.98) | .84 (.53-1.00) | .74 (.50-1.00) | .30 (.23-.34) |
+| LSTM, its state emptied at `GO` | .00 | .00 | .00 | .07 | .00 |
+| Transformer | .99 | 1.00 | 1.00 | .56 (.31-.91) | .29 |
+| Transformer, the meaning masked from `GO` | .00 | .00 | .00 | .04 | .00 |
+
+Probes at `GO` (held-out accuracy, mean of six founders):
+
+| Component | Chance | Brain, carried | Brain, the read | LSTM, carried |
+| --- | --- | --- | --- | --- |
+| Agent's noun | .24 | .73 | 1.00 | 1.00 |
+| Agent's number | .49 | .84 | 1.00 | 1.00 |
+| Verb | .51 | .85 | 1.00 | 1.00 |
+| Patient's noun | .25 | .67 | .51 | .99 |
+| Number of distractors | .32 | .93 | .95 | 1.00 |
+| First distractor's noun | .26 | .72 | .88 | .99 |
+| Second distractor's noun | .28 | .55 | .30 | .94 |
+| Brackets: number open | .53 | .86 | .78 | 1.00 |
+| Brackets: innermost open | .51 | .97 | .69 | .98 |
+| Path: the start | .12 | .99 | 1.00 | 1.00 |
+
+The sentence is looked up: with the slots emptied every panel reads .00, and with the working trace
+emptied nothing moves. The carried state holds a partial, fading copy of the meaning that the
+readout does not use: a path's start is decodable from it at .99, and with the start's slot emptied
+paths fall from .95 to .12. The LSTM's state holds every component at .94 to 1.00, and it says the
+panels from that state.
+
+### A message the instrument writes
+
+`meaning.py lives` runs lives with a message: after every act the instrument writes a code of the
+episode so far onto neurons the association reads through a plastic projection (heard-history
+blocks), and with `bar` it empties the recall slots of the meaning's moments at `GO`, in lessons and
+in readings, so the sentence can only be said from what the brain carries. The write is fixed, as
+the working trace's and the heard history's are, and what the brain makes of the message is
+learned. `Message` in `meaning.py` holds the designs read in development; the declared design is
+the library's `cadence.Message`.
+
+Development, founders 0 to 2 (0 to 5 where six lives are named), the read barred in every lesson:
+
+| What the brain carries | Clauses from the state alone | Held-out clauses | What fails |
+| --- | --- | --- | --- |
+| The default composition, nothing added | .02 | .00 | the working trace is not used as a message |
+| The working trace at decay .8 | .02 | .01 | the same |
+| The heard history at two decays | .31 | .11 | a sum of raw moments binds no noun to its role |
+| Sparse codes of the moments, summed, with a primacy or a recency sum | .69 to .77 | .47 to .54 | the first of two distractors is said at .33 to .65: order is not read from magnitudes |
+| A buffer of the raw moments | .59 | .25 | binding |
+| Phased unions of sparse codes, 70 units a block | .88 | .73 | held-out combinations |
+| The same, 128 association neurons, every row taught | .91 to .97 | .63 to .74 | held-out combinations |
+| The same, 280 units a block | .98 | .89 (.81-.98) | |
+| The message restated in motor slots, carried by the efference copy | .50 to .92 | .03 to .18 | slots settled together bind what was taught together |
+
+Three properties of a message the brain can say a sentence from follow:
+
+- **Bound moments.** A sparse code whose units read several active inputs at once holds a noun with
+  its number and its role; a sum or a buffer of the raw moments does not.
+- **Presence in place of magnitude.** Which of two moments of one kind came first is said where the
+  two lie in different blocks, and is not said where they differ in weight.
+- **Width.** A code of 70 units shares units between a noun as agent and the same noun as patient,
+  and a readout taught on some pairs confuses new ones. At 280 units a block held-out clauses rise
+  from .63 to .74 to .89.
+
+### The declared run
+
+Founders 9628600 to 9628605, one c7i.16xlarge, one online pass of the first grammar's 4,000 batches
+per life, no refused lesson and no exhausted act. `state` is the message at 280 units a block with
+the read barred from the meaning, 128 association neurons and every row taught, and `state_256` (the
+protocol's second amendment, declared after the capacity arms were read) the same with 256
+association neurons; `message` is the message at 70 units a block beside a free read; `sham` holds the code of the moment before alone on
+the message's neurons; `heard` (the protocol's first amendment) is the default composition with the
+library's heard history at decay 0, `history_decays=(0.0,)`. Whole sentences said exactly, mean
+with least and greatest; the controls take one online pass at the arm's parameter count.
+
+| Arm or control | Parameters | `clause` | `clause_held` | `roles` | `dyck` | `path` | Three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `default` | 28,716 | .97 (.88-1.00) | .90 (.72-1.00) | .91 (.81-1.00) | .84 (.69-1.00) | .94 (.84-.98) | .36 (.02-.61) |
+| `barred`, the floor | 28,716 | .01 | .00 | .00 | .11 | .19 | .01 |
+| `state`, the read barred | 203,692 | .98 (.94-1.00) | .84 (.61-.98) | .81 (.62-.88) | .85 (.64-1.00) | .57 (.38-.72) | .00 |
+| `state_256`, the read barred | 432,556 | .99 (.97-1.00) | .95 (.86-.98) | .95 (.84-1.00) | .89 (.64-1.00) | .56 (.36-.86) | .00 |
+| `state_default`, the read barred | 101,548 | .92 (.75-.98) | .80 (.64-.91) | .75 (.53-.94) | .67 (.44-.92) | .35 (.28-.42) | .00 |
+| `restated`, the read barred from clauses | 73,223 | .76 (.59-.81) | .11 (.02-.17) | .03 (.00-.09) | .55 (.00-.89) | .06 (.03-.09) | .00 |
+| `message` | 46,924 | 1.00 (.98-1.00) | .93 (.78-1.00) | .95 (.88-1.00) | .96 (.89-1.00) | .84 (.23-.98) | .12 (.00-.30) |
+| `message_wide` | 101,548 | .98 (.94-1.00) | .94 (.75-1.00) | .92 (.62-1.00) | .96 (.88-1.00) | .83 (.30-1.00) | .01 |
+| `sham` | 46,924 | .98 (.89-1.00) | .93 (.72-1.00) | .97 (.91-1.00) | .88 (.78-1.00) | .98 (.95-1.00) | .67 (.23-.84) |
+| `heard` | 30,992 | .99 (.97-1.00) | .96 (.89-1.00) | .98 (.91-1.00) | .81 (.64-.92) | .99 (.97-1.00) | .74 (.67-.81) |
+| LSTM, online | 28,398 | .96 (.80-1.00) | .94 (.80-.98) | .90 (.78-.97) | .80 (.50-1.00) | .27 (.17-.34) | .00 |
+| LSTM, online | 203,958 | .98 (.91-1.00) | .97 (.92-1.00) | .89 (.81-1.00) | .79 (.47-1.00) | .28 (.22-.36) | .00 |
+| Transformer, online | 28,658 | 1.00 | 1.00 | 1.00 | .55 (.41-.89) | .32 (.22-.41) | .00 |
+| Transformer, online | 201,978 | .99 (.97-1.00) | .99 (.94-1.00) | .98 (.94-1.00) | .32 (.09-.64) | .26 (.17-.33) | .00 |
+| LSTM, online, the widest its search holds | 304,658 | .95 (.72-1.00) | .95 (.84-.98) | .89 (.66-.97) | .89 (.77-1.00) | .29 (.20-.41) | .00 |
+| Transformer, online | 432,234 | .87 (.28-1.00) | .85 (.28-1.00) | .80 (.06-1.00) | .21 (.00-.50) | .13 (.06-.23) | .00 |
+| LSTM, offline (30 epochs) | 28,398 | 1.00 | .98 (.89-1.00) | .95 (.81-1.00) | .99 | .73 (.53-.86) | .00 |
+| Transformer, offline (13 to 14 epochs) | 28,658 | 1.00 | .99 (.92-1.00) | .99 (.94-1.00) | 1.00 | 1.00 | .00 |
+
+**The gates** (a gate on lives holds where 5 of 6 founders reach its bar):
+
+| Gate | Reading by founder | Verdict |
+| --- | --- | --- |
+| H1, said from the state: `clause` at .90 | 1.00 .98 1.00 1.00 .97 .94 | 6 of 6, holds |
+| H1: `clause_held` at .90 | .80 .83 .86 .98 .61 .94 | 2 of 6, fails |
+| H1: `roles`, both twins, at .90 | .88 .88 .81 .84 .62 .81 | 0 of 6, fails |
+| H1 on `state_256`: `clause` | 1.00 1.00 1.00 1.00 1.00 .97 | 6 of 6, holds |
+| H1 on `state_256`: `clause_held` | .98 .92 .98 .97 .86 .98 | 5 of 6, holds |
+| H1 on `state_256`: `roles`, both twins | 1.00 1.00 .84 .94 .97 .97 | 5 of 6, holds |
+| H2, held: the least component's probe from the message, at `GO` and at the last word, at .95 | 1.00 on every founder at both | holds |
+| H2u, used: the least clause word kind said right, at .95 | .96 .96 .95 .98 .95 .94 | 3 of 6, fails |
+| H2u on `state_256` | .99 .98 .99 .98 .98 .98 | 6 of 6, holds |
+| H3: the key of one meaning's two orders closer than any other meaning's, at .95 | 1.00 on every founder | holds |
+| H3: both orders said right, at .90 | 1.00 1.00 .98 .97 .92 .95 | 6 of 6, holds |
+| H4, paraphrase from the state: trained combinations at .80 | .94 .95 1.00 1.00 .81 .94 | 6 of 6, holds |
+| H4: held-out combinations at .80 | .94 .88 .75 .91 .72 .86 | 4 of 6, fails |
+| R, retrieval by the code at 256 records, .90: a reordered cue; a role-swapped cue | 280 units: .97 to 1.00; 70 units: .77 to .96 | holds at 280 units (6 of 6), fails at 70 (3 and 4 of 6) |
+| A1 on `default`: `clause_held`, `roles`, `ctx_agent`, `ctx_verb`, `ctx_dyck` at .90 | 4, 3, 5, 5 and 4 of 6 | fails |
+| A1 on `message` | 5, 5, 6, 6 and 6 of 6 | holds |
+| A1 on `heard` | 4, 6, 6, 6 and 4 of 6 | fails |
+| A2: `clause_long`, `dyck_deep`, `path_long` at .80 | no life of any arm or control | fails, a measured negative |
+| A3: after the second grammar, within .05 of before | `clause` .00 for every arm and control | fails |
+| M1, `message` less `default`, paired | brackets +.12 (s.e. .04); three hops -.24 (.10); every other panel inside two standard errors | holds on brackets alone |
+| M1, `sham` less `default` | roles +.06 (.03), three hops +.31 (.09) | holds on both |
+| M1, `heard` less `default` | roles +.07 (.02), paths +.05 (.02), three hops +.38 (.07), held-out clauses +.05 (.04) | holds on roles, paths and three hops |
+| K, the message on other chambers | look back -.023 (.014), copying -.011 (.004), repeated tokens +.017 (.004), induction -.017 (.020), n-back -.003, two hops +.001, a period of 40 .000, the goal route's first hop -.016 (.054) | no fall beyond .03 |
+| K at 256 association neurons, the wide message (the third amendment) | the chamber: paths -.40 (.11), three hops -.27 (.10), every other panel inside two standard errors. The battery: look back -.020 (.013), copying -.014 (.002), repeated tokens +.002, induction -.029 (.012), n-back -.003, two hops +.003, a period of 40 .000, the goal route's first hop -.029 (.043) | paths and three hops fall |
+
+**Said from the state alone.** With the read barred from the meaning the brain says clauses from the
+message at .98, as the LSTM at its parameter count does online (.98), brackets at .85 against .79,
+and paths at .57 against .28, the facts read from the memory and the start from the message. On new
+combinations the arm at 128 association neurons reads under the LSTM: held-out clauses .84 against
+.97, and both role twins .81 against .89. At 256 association neurons H1 holds: clauses .99, held-out
+clauses .95 and both role twins .95, on 6, 5 and 5 founders of 6, beside an LSTM of 304,658
+parameters at .95, .95 and .89 and a transformer of 432,234 at .87, .85 and .80 (one of its lives
+at .28). With the message emptied at the continuation's start the context twins read .00 to .09 in
+both arms: the state is what the sentence is said from.
+
+**Held, and where the readout stops.** Every component of a clause's meaning is decodable from the
+message at 1.00, at `GO` and at the last word. The carried trace holds less (the second distractor's
+noun .60, the patient's .72) and the settled association at `GO` holds .87 to 1.00. Every clause
+word kind is said right at .97 to 1.00 with the previous words given. At 128 association neurons the
+fall is on combinations no lesson showed: on `clause_held` the verb's agreement reads .89 and the
+distractors .94, on `roles` the patient .93. A sum of codes shares units between a noun as agent and
+the same noun as patient, and a narrow readout that tells a taught pair apart confuses a new one.
+The read does not have this term: it brings one moment at a time. At 256 association neurons the
+term closes (agreement .97, the patient .98; held-out clauses +.11 and role twins +.15 over 128,
+paired, s.e. .04).
+
+**One meaning in two orders.** The key is the same for the canonical and the inverted order (cosine
+1.00, against .40 for different meanings), and both orders are said right at .97. The phased state
+keeps the order heard (cosine .33 between the two orders), and the settled association at `GO` reads
+.90 between the two orders against .63 for different meanings.
+
+**Paraphrase.** Hearing the first grammar's sentence as words and saying the second grammar's from
+the state alone, with no concept moment and the read barred, reads .94 on combinations the lessons
+showed (.99, .97 and .80 at zero, one and two distractors) and .84 on held-out ones. The default
+composition taught the same lessons with its read free reads .99 and .95.
+
+**Capacity.** Lives taught clauses of zero to four distractors alone, said exactly from the state,
+by distractors:
+
+| Message, association | Parameters | 0 | 1 | 2 | 3 | 4 |
+| --- | --- | --- | --- | --- | --- | --- |
+| 4 blocks of 70, 128 | 95,308 | .93 | .90 | .85 | .66 | .30 |
+| 4 blocks of 140, 128 | 131,436 | .98 | .96 | .95 | .91 | .61 |
+| 4 blocks of 280, 128 | 203,692 | .98 | 1.00 | .98 | .97 | .66 |
+| 4 blocks of 280, 64 | 101,548 | .97 | .98 | .93 | .83 | .30 |
+| 4 blocks of 280, 256 | 432,556 | 1.00 | 1.00 | 1.00 | 1.00 | .94 |
+
+The code's width and the association's width each carry part: at 128 association neurons clauses
+of three distractors rise from .66 to .97 with the code's width, and at 280 units a block clauses of
+four distractors rise from .30 to .94 with the association's. A clause of four distractors holds
+seven moments in four blocks, each block one distractor at most, so their order stays present.
+
+**Retrieval by the code** (`meaning.py retrieval`, no brain; every clause stored beside its
+role-swapped twin; the share of cues whose best record by cosine is the right one, a tie a miss):
+
+| Cue | Units | 16 records | 64 | 256 | 1,024 |
+| --- | --- | --- | --- | --- | --- |
+| The meaning's concept moments in the other order | 70 | 1.00 | .98 | .89 | .65 |
+| | 280 | 1.00 | 1.00 | .98 | .91 |
+| The role-swapped twin's meaning (its own record, not the original's) | 70 | 1.00 | .97 | .90 | .64 |
+| | 280 | 1.00 | 1.00 | .98 | .91 |
+| The meaning without its patient (a record that agrees with the cue) | 280 | 1.00 | .97 | .93 | .81 |
+| The sentence heard as words in the other grammar's order, against heard sentences | 280 | .48 | .53 | .49 | .20 |
+| A sentence heard as words against records of concept moments | 280 | .02 | .01 | .00 | .00 |
+
+The misses of a reordered cue at 280 units are ties with a stored clause that holds the same
+distractors in the other order or one distractor twice (every miss inspected on a development
+founder): the key holds no order and no repetition.
+A word's code holds no role, so a heard sentence and its role-swapped twin give one key, and the
+code of a word and the code of the concept it names are unrelated draws.
+
+**Beside a free read.** With the read free no arm says a sentence from the message (clauses .01 to
+.02 with the read barred at the reading), and the message is used: emptied at the continuation's start, the
+`message` arm's context twins fall from .99, 1.00 and 1.00 to .05, .12 and .31. It lifts brackets
+(+.12) and holds A1's five lines where `default` holds two; it costs three hops (.36 to .12) and
+one life's paths (.23). The episode's length is what costs: a path's episode holds twelve to sixteen
+heard words, and each block is a union of three or four of them. The moment before alone lifts what
+the whole episode costs: `sham` reads three hops at .67 and `heard`, an option the library holds, at
+.74, with roles at .98 and paths at .99.
+
+**The wide message where nothing is barred** (the third amendment). At 256 association neurons the
+message at 280 units a block and the state arm's drive, beside a free read, reads paths at .44
+against .85 without it and three hops at .00 against .27; clauses, held-out clauses, roles and
+brackets move by +.01 to +.05, inside two standard errors. On the sequence battery every task reads
+within .03 of the brain without it. The message that H1 is said from is a cost on paths and hops
+where the read is free: it suits the turn in which a sentence is said from it.
+
+**Lengths and persistence.** No learner says `clause_long`, `dyck_deep` or `path_long` at .80.
+`located` on `default` names the read: at three distractors the second distractor is delivered on
+.25 of sentences and the verb on .09, at depths four and five a close's open bracket on .11 to .12,
+and the third hop's fact on .65. After 1,500 batches of the second grammar every arm and control
+says the first grammar's clauses at .00 and the second's at .97 to 1.00; 500 batches of the first
+bring the brains' clauses back (.97 to .99).
+
+**Work.** The first grammar, per life, analytic multiply-accumulates (every lesson row sweep and
+every act's sweeps times its rows, over every synapse): `default` 9.5e11, `heard` 1.1e12, `message`
+2.1e12, `state` 1.3e13, `state_256` 2.5e13; the controls online 6.7e10 at 28,000 parameters and
+4.9e11 at 204,000, offline 1.1e12 to 2.0e12 and 9.1e12 to 1.2e13. A `heard` life takes 69 seconds
+and a `state_256` life 787 on an idle core; the first block's lives ran on a shared box (a
+`default` life 215 seconds, a `state` life 1,093).
+
+### The brain's own message
+
+[MEANING_PROTOCOL_2.md](MEANING_PROTOCOL_2.md), declared before its run on founders 9728600 to
+9728605, reads the message as something the brain holds and writes itself:
+[`Brain.compose(message=units)`](../../docs/memory.md#held-message), a region of the brain's own
+neurons where each heard moment's fixed sparse code latches onto the block whose turn it is, read by
+the association through plastic synapses with one learned gain per block, and with `message_read`
+a read of one block at a time. Every arm that holds a message has its previous-word control beside
+it, the same life with `history_decays=(0.0,)` in the message's place. The read is barred from the
+meaning in `state_*`, `read_64`, `direct_64`, `heard_*`, `paraphrase*` (except `paraphrase_read`)
+and `capacity_*`; the other arms have it free.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/meaning.py plan --own --out DIR/plans
+PYTHONPATH=src python benchmarks/grammar/meaning.py lives --plan DIR/plans/brains.json --out DIR/brains.jsonl --workers 26
+(cd benchmarks/grammar && PYTHONPATH=../../src python controls.py --plan DIR/plans/controls.json --out DIR/controls.jsonl --workers 6)
+PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/brains.jsonl --controls DIR/controls.jsonl --own
+```
+
+Whole sentences said exactly (roles: both twins), mean and least to greatest over six founders;
+the controls after one pass (online) or to the stopping rule (offline), at the parameter counts of
+`default`, `read_64` and `state_256`:
+
+| Arm | Parameters | Lives | clause | clause_held | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `heard` | 30992 | 6 | 0.98 (0.89 to 1.00) | 0.89 (0.67 to 1.00) | 0.93 (0.78 to 1.00) | 0.80 (0.44 to 1.00) | 0.98 (0.95 to 1.00) | 0.71 (0.48 to 0.86) |
+| `default` | 28716 | 6 | 0.97 (0.94 to 1.00) | 0.93 (0.84 to 0.98) | 0.89 (0.66 to 1.00) | 0.80 (0.72 to 0.92) | 0.91 (0.77 to 0.98) | 0.26 (0.00 to 0.47) |
+| `barred` | 28716 | 6 | 0.01 (0.00 to 0.03) | 0.00 (0.00 to 0.00) | 0.00 (0.00 to 0.00) | 0.12 (0.00 to 0.25) | 0.11 (0.03 to 0.14) | 0.00 (0.00 to 0.00) |
+| `read_64` | 58870 | 6 | 0.89 (0.72 to 0.95) | 0.72 (0.22 to 0.88) | 0.74 (0.34 to 0.91) | 0.70 (0.55 to 0.95) | 0.35 (0.27 to 0.39) | 0.00 (0.00 to 0.00) |
+| `direct_64` | 46920 | 6 | 0.79 (0.59 to 0.94) | 0.47 (0.20 to 0.81) | 0.30 (0.09 to 0.50) | 0.83 (0.70 to 1.00) | 0.34 (0.28 to 0.42) | 0.00 (0.00 to 0.00) |
+| `state_128` | 203664 | 6 | 0.97 (0.91 to 1.00) | 0.92 (0.86 to 0.97) | 0.86 (0.69 to 1.00) | 0.86 (0.72 to 1.00) | 0.46 (0.31 to 0.73) | 0.00 (0.00 to 0.00) |
+| `heard_256` | 153680 | 6 | 0.07 (0.05 to 0.12) | 0.00 (0.00 to 0.00) | 0.00 (0.00 to 0.00) | 0.35 (0.25 to 0.58) | 0.67 (0.28 to 0.91) | 0.00 (0.00 to 0.00) |
+| `heard_64` | 30992 | 6 | 0.04 (0.02 to 0.06) | 0.00 (0.00 to 0.02) | 0.00 (0.00 to 0.00) | 0.27 (0.17 to 0.42) | 0.58 (0.33 to 0.77) | 0.00 (0.00 to 0.00) |
+| `message_quiet` | 46920 | 6 | 1.00 (1.00 to 1.00) | 0.95 (0.88 to 1.00) | 0.97 (0.88 to 1.00) | 0.95 (0.86 to 1.00) | 0.95 (0.89 to 1.00) | 0.05 (0.00 to 0.12) |
+| `message_free` | 101520 | 6 | 0.98 (0.91 to 1.00) | 0.92 (0.81 to 1.00) | 0.93 (0.84 to 1.00) | 0.81 (0.69 to 0.94) | 0.65 (0.27 to 0.97) | 0.00 (0.00 to 0.00) |
+| `message_fixed` | 46914 | 6 | 0.99 (0.97 to 1.00) | 0.96 (0.91 to 1.00) | 0.97 (0.88 to 1.00) | 0.88 (0.69 to 0.97) | 0.93 (0.77 to 1.00) | 0.20 (0.05 to 0.39) |
+| `default_fixed` | 28714 | 6 | 0.85 (0.56 to 1.00) | 0.78 (0.42 to 0.92) | 0.77 (0.38 to 0.97) | 0.72 (0.58 to 0.91) | 0.79 (0.34 to 0.98) | 0.11 (0.00 to 0.25) |
+| `paraphrase_read` | 28716 | 6 | 0.87 (0.81 to 0.92) | 0.69 (0.59 to 0.88) | 0.71 (0.50 to 0.88) | 0.78 (0.48 to 0.91) | 0.77 (0.50 to 0.91) | 0.07 (0.00 to 0.22) |
+| `state_256` | 432528 | 6 | 0.99 (0.95 to 1.00) | 0.95 (0.84 to 1.00) | 0.90 (0.66 to 1.00) | 0.89 (0.72 to 1.00) | 0.52 (0.36 to 0.80) | 0.00 (0.00 to 0.00) |
+| `paraphrase_heard` | 153680 | 6 | 0.21 (0.14 to 0.28) | 0.04 (0.00 to 0.06) | 0.00 (0.00 to 0.00) | 0.41 (0.25 to 0.56) | 0.39 (0.27 to 0.56) | 0.00 (0.00 to 0.00) |
+| `paraphrase` | 432532 | 6 | 0.99 (0.94 to 1.00) | 0.89 (0.61 to 0.98) | 0.81 (0.50 to 1.00) | 0.95 (0.78 to 1.00) | 0.37 (0.28 to 0.47) | 0.00 (0.00 to 0.00) |
+| lstm, offline | 28398 | 6 | 0.99 (0.97 to 1.00) | 0.99 (0.97 to 1.00) | 0.98 (0.91 to 1.00) | 1.00 (1.00 to 1.00) | 0.79 (0.70 to 0.86) | 0.00 (0.00 to 0.00) |
+| lstm, online | 28398 | 6 | 0.98 (0.92 to 1.00) | 0.95 (0.92 to 0.98) | 0.94 (0.88 to 1.00) | 0.79 (0.38 to 0.98) | 0.24 (0.12 to 0.31) | 0.00 (0.00 to 0.00) |
+| transformer, offline | 28658 | 6 | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 0.00 (0.00 to 0.00) |
+| transformer, online | 28658 | 6 | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 0.47 (0.28 to 0.77) | 0.25 (0.22 to 0.33) | 0.00 (0.00 to 0.00) |
+| lstm, offline | 58566 | 6 | 1.00 (0.98 to 1.00) | 1.00 (0.98 to 1.00) | 0.99 (0.97 to 1.00) | 1.00 (1.00 to 1.00) | 0.85 (0.75 to 0.97) | 0.00 (0.00 to 0.00) |
+| lstm, online | 58566 | 6 | 0.98 (0.91 to 1.00) | 0.96 (0.92 to 1.00) | 0.88 (0.56 to 0.97) | 0.81 (0.52 to 1.00) | 0.24 (0.19 to 0.30) | 0.00 (0.00 to 0.00) |
+| transformer, offline | 58250 | 6 | 0.96 (0.73 to 1.00) | 0.93 (0.59 to 1.00) | 0.94 (0.66 to 1.00) | 0.95 (0.81 to 1.00) | 0.85 (0.30 to 1.00) | 0.00 (0.00 to 0.00) |
+| transformer, online | 58250 | 6 | 1.00 (1.00 to 1.00) | 1.00 (0.98 to 1.00) | 1.00 (1.00 to 1.00) | 0.41 (0.25 to 0.75) | 0.27 (0.19 to 0.45) | 0.00 (0.00 to 0.00) |
+| lstm, offline | 430602 | 6 | 1.00 (1.00 to 1.00) | 1.00 (0.98 to 1.00) | 1.00 (1.00 to 1.00) | 1.00 (1.00 to 1.00) | 0.97 (0.94 to 0.98) | 0.00 (0.00 to 0.00) |
+| lstm, online | 430602 | 6 | 1.00 (1.00 to 1.00) | 0.95 (0.91 to 1.00) | 0.91 (0.78 to 1.00) | 0.82 (0.69 to 1.00) | 0.30 (0.22 to 0.39) | 0.00 (0.00 to 0.00) |
+| transformer, offline | 432234 | 6 | 1.00 (1.00 to 1.00) | 0.99 (0.97 to 1.00) | 1.00 (1.00 to 1.00) | 0.96 (0.75 to 1.00) | 0.85 (0.42 to 1.00) | 0.00 (0.00 to 0.00) |
+| transformer, online | 432234 | 6 | 0.91 (0.75 to 1.00) | 0.89 (0.69 to 1.00) | 0.86 (0.66 to 1.00) | 0.28 (0.25 to 0.31) | 0.15 (0.08 to 0.23) | 0.00 (0.00 to 0.00) |
+
+- **Said from its own message (H1).** `state_256` says clauses from its message with the meaning's
+  slots emptied at `GO`: trained clauses .99 (6 of 6 at .90), held-out combinations .95 (5 of 6)
+  and role twins .90 (4 of 6: .66 and .81 on two founders). Every clause component is read from the
+  message at 1.00 at `GO` and at the last word (H2), the key of two orders of one meaning is the
+  same and both orders are said right at .98 (H3), and the context twins read .98, .97 and .96
+  with the message intact and .00 with it emptied. The previous-word control says .07, .00, .00
+  (C: +.91, +.95, +.90). The LSTM at the same parameter count reads 1.00 on every trained panel
+  offline and 1.00, .95, .91 after one pass.
+- **At the default width (H1w).** With 64 association neurons the message alone (`direct_64`)
+  reads .79, .47, .30, and the read of one block beside it (`read_64`) .89, .72, .74 (+.10, +.26,
+  +.44 paired): a lift on new combinations that stays under the bar (5, 0 and 1 of 6 at .90). One
+  founder collapses (.72, .22, .34) where the code at 70 units a block reads its agents apart at
+  .63; on the other five, held-out clauses read .75 to .88 and roles .78 to .91, with the
+  distractors and the agents the failing word kinds. At 128 association neurons the wide message
+  reads .97, .92, .86 (6, 4 and 4 of 6).
+- **Paraphrase (H4) and capacity (H5).** Taught paraphrases with the read barred, the brain says
+  the second grammar's sentence of a heard first-grammar sentence at .97 and at .92 on held-out
+  combinations (6 of 6 at .80 on both), against .99 and .95 for the default composition looking
+  the heard sentence up and .10 and .01 for the control. Clauses of four distractors are said at
+  .90 with 256 association neurons (1.00, .99, .99, .99, .90 at zero to four) and .74 with 128; the
+  control says .15, .02, .00, .00, .00.
+- **Beside a free read (F).** `message_free` (280 units a block) costs paths .26 and three hops
+  .26 and says its clauses from the message (read with it silent, .01). `message_quiet` (70 units
+  at amplitude .15) keeps paths (+.04), lifts clauses (+.03), brackets (+.15) and roles (+.08), and
+  costs three hops .22. `message_fixed` (the same with `carried_gain=0.0`) costs nothing against
+  `default_fixed` (paths +.13, three hops +.08), a reference that itself reads paths .79 and three
+  hops .11 against the default composition's .91 and .26. The moment before as heard lifts paths
+  +.08 and three hops +.45. The learned gains settle at 1.2 to 5.2 per block on `state_256`, 1.7 to
+  3.4 on `read_64`.
+- **Work.** A `state_256` life takes 1,221 s and 2.4e13 multiply-accumulates; `default` 113 s and
+  9.5e11; the LSTM offline at 430,602 parameters 2.3e13.
+
+### The quiet message's cost
+
+[MEANING_PROTOCOL_3.md](MEANING_PROTOCOL_3.md), declared before its run on founders 9828600 to
+9828605, tests where the quiet message's three-hop cost beside a free read comes from. Every arm
+has the read free and the default lessons at 64 association neurons: `quiet` (70 units a block at
+amplitude .15), the phase count at 24 and 32 (`message_phases`: no lesson's episode wraps at 24,
+and at 32 no episode read does), a message held from `GO` (`message_boundary=33`,
+`message_boundary_holds=True`: the brain's own words do not join), a message emptied at `GO`
+(`message_boundary=33`: it holds the words said), and the amplitude at .10; each against `default`
+and `heard` (`history_decays=(0.0,)`), paired by founder.
+
+```sh
+PYTHONPATH=src python benchmarks/grammar/meaning.py plan --third --out DIR/plans
+PYTHONPATH=src python benchmarks/grammar/meaning.py lives --plan DIR/plans/free.json --out DIR/free.jsonl --workers 32
+PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/free.jsonl --third free
+```
+
+| Arm | Parameters | clause | clause_held | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `default` | 28,716 | .93 | .84 | .81 | .77 | .98 | .35 |
+| `heard` | 30,992 | 1.00 | .97 | .99 | .86 | .98 | .71 |
+| `quiet` | 46,920 | 1.00 | .84 | .92 | .92 | .90 | .13 |
+| `quiet_24` | 137,940 | .99 | .89 | .89 | .91 | .90 | .26 |
+| `quiet_32` | 174,348 | .99 | .86 | .94 | .83 | .89 | .23 |
+| `quiet_hold` | 46,920 | .99 | .89 | .91 | .89 | .95 | .35 |
+| `quiet_clear` | 46,920 | 1.00 | .88 | .92 | .89 | .98 | .24 |
+| `quiet_10` | 46,920 | .99 | .82 | .93 | .84 | .96 | .18 |
+
+- **The cause is the brain's own words.** With them kept out of the message (`quiet_hold`) three
+  hops read the default's mean (+.00, paired) with the lifts kept (clauses +.06, held-out
+  combinations +.05, roles +.10, brackets +.12) and paths -.03; with the message holding the words
+  said alone (`quiet_clear`) three hops fall .11. The phase count is not the cause: at 24 and 32
+  phases three hops fall .09 and .12 and paths .08 and .09. The amplitude at .10 leaves the cost
+  (-.17).
+- **The gate fails on the founders' spread.** F3 asks every panel to sit within .03 of the default
+  on 5 of 6 founders; `quiet_hold` reaches that on clauses and held-out combinations and on three
+  of six founders for paths (+.02, -.06, -.03, -.02, -.11, +.05) and three hops (+.28, +.02, -.02,
+  -.03, -.09, -.14). No arm holds F3, and the protocol's second part (roles) did not run.
+- **Against the previous-word signal** every message arm is under `heard` on held-out
+  combinations, roles and three hops (-.36 to -.58).
+
+### What the held-meaning readings establish
+
+- In the default composition a sentence's meaning lives in the recall memory's slots. The carried
+  state holds a partial copy and the readout does not use it.
+- A held message the brain can say a sentence from needs bound moments, presence in place of
+  magnitude, and width in the code and in the association. At 128 association neurons the brain says
+  trained clauses from its state alone as the matched LSTM does and reads .08 to .13 under it on
+  combinations no lesson showed: H1 as first declared fails on `clause_held` and `roles`, with the
+  failing term the readout of a superposed state on new combinations. At 256 association neurons,
+  declared as an amendment before its lives, H1 holds: clauses .99, held-out clauses .95, role
+  twins .95, with the meaning's memory emptied at `GO`.
+- The message's key is the same for a meaning heard in any order and tells a clause from its
+  role-swapped twin. It holds no order of moments of one kind, and words and concepts do not share
+  a code.
+- Beside a free read the episode-long message lifts brackets and the context twins and costs three
+  hops. The moment before alone, which the library holds as `history_decays=(0.0,)`, lifts roles,
+  paths and three hops on six fresh founders. None of these arms is a default.
+- A message restated in motor slots fails held-out clauses (.11): slots settled together bind what
+  was taught together.
+
+- A brain that writes its own message (`Brain.compose(message=units)`) says held-out clauses from
+  it at .95 and role twins at .90 (4 of 6 founders at .90) with 256 association neurons, paraphrases
+  at .97 and .92, and clauses of four distractors at .90, each far over its previous-word control.
+  At the default width a read of one block of the message lifts new combinations by .26 and .44
+  and stays under .90. Beside a free read a quiet message keeps paths and costs three hops; the wide
+  message takes the clauses over and costs paths.
+- The quiet message's three-hop cost beside a free read comes from the brain's own words joining
+  the message as it speaks: held from `GO` the message costs three hops nothing at the mean and
+  keeps its lifts, and the phase count is not the cause. The gate on 5 of 6 founders fails on the
+  founders' spread.
+
+These readings are on one finite language with supplied meanings. Open in #286: role twins and the
+default width from the brain's own message, and a message beside a free read that costs no panel.
+
 ## Does a life settle? The lesson's step (#258)
 
 [`lesson_step.py`](lesson_step.py) reads [#258](https://github.com/muellerberndt/cadence/issues/258)

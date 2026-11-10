@@ -1,0 +1,52 @@
+{
+ "founders": [
+  2890,
+  2891,
+  2892,
+  2893,
+  2894,
+  2895
+ ],
+ "budgets": [
+  1000
+ ],
+ "drift": [
+  false,
+  true
+ ],
+ "keys": "message",
+ "units": 70,
+ "arms": [
+  "lru",
+  "fifo",
+  "random",
+  "lfu",
+  {
+   "name": "memory",
+   "settings": {
+    "direct": null
+   }
+  },
+  {
+   "name": "memory-same",
+   "settings": {
+    "direct": null,
+    "revise": 0.999
+   }
+  },
+  {
+   "name": "ring",
+   "settings": {
+    "direct": null,
+    "fade": false
+   }
+  },
+  {
+   "name": "append",
+   "settings": {
+    "direct": null,
+    "revise": 0.0
+   }
+  }
+ ]
+}
