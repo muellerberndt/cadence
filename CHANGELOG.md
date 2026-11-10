@@ -35,6 +35,11 @@
   life where it left. `join(i, brain)` puts a lone brain of the lives' anatomy and composition in
   life `i`'s place with its stream afresh, so a finished episode makes room for another life
   without holding the batch. `life(i)` without `stream` starts the stream afresh, as in 0.96.0.
+- **What lives on MLX would cost.** `benchmarks/device/lives_mlx_cost.py` times one sweep's
+  transport with each life's own blocks on the Apple GPU against one brain's shared blocks: 1.26,
+  1.45 and 3.34 times at 12, 128 and 1,024 lives on an M4. With one brain's streams on MLX as the
+  bound, a lives axis there would read at most 0.34 ms per life and moment at 128 lives and 0.57
+  ms at 1,024 (docs/backends.md, many lives at once). The library has no lives axis on MLX.
 
 ## 0.96.0 — 2026-11-10
 

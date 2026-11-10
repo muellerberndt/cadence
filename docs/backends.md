@@ -500,16 +500,45 @@ the lives' moments are calm:
 | Process pool, four CPU processes | L4 box | 0.422 ms | 0.390 ms | 0.408 ms |
 | Each brain in turn, one core | L4 box | 1.03 ms | 1.03 ms |  |
 
+With the store (`--composition default`, 630 place records a life), and with the store fading under maturity
+(`--fade 0.01 --maturity`), the same `live` reads:
+
+| Way | Machine | 12 lives | 128 lives | 1,024 |
+| --- | --- | ---: | ---: | ---: |
+| `Lives`, `backend="torch"`, the store | L4 | 1.73 ms | 0.220 ms | 0.107 ms |
+| Process pool, four CPU processes, the store | L4 box | 0.497 ms | 0.461 ms | 0.460 ms |
+| `Lives`, `backend="torch"`, fading under maturity | L4 | 2.09 ms | 0.239 ms | 0.122 ms |
+| Process pool, four CPU processes, fading under maturity | L4 box | 0.529 ms | 0.535 ms | 0.509 ms |
+
 A lone brain's calm moment skips the eligibility phases and the update, so `live` in the pool costs about half a
 `step`. A batch with any aroused life runs the phases for every life and holds the calm ones, so `Lives` pays
-for its aroused lives across the batch: 2.4 times as fast as the pool at 128 lives and 4.5 times at 1,024, and
-the pool is faster at 12.
+for its aroused lives across the batch: 2.4 times as fast as the pool at 128 lives and 4.5 times at 1,024 (2.1
+and 4.3 times with the store, 2.2 and 4.2 times fading under maturity), and the pool is faster at 12.
 
 On the L4, `Lives` runs at the speed of one brain's streams at 128 and 512 brains and at 1.4 times their time at
 1,024, where every life updates synapses of its own and the streams share one update. Against the four-process pool
 it is 7.4 times as fast at 128 brains and 17.8 times at 1,024 (7.7 and 17.0 times with the teacher). At 12 lives
 the pool is faster. A lesson of lives runs its phases on every life, where one brain's streams run them on the rows
-it teaches. MLX has no lives axis in the library; one brain's streams there bound what one could reach.
+it teaches.
+
+MLX has no lives axis in the library. What one would cost, read on the Apple M4 at a load of 13 to 40 (other work
+on the machine; the CPU readings carry it) with
+[`benchmarks/device/lives_mlx_cost.py`](../benchmarks/device/lives_mlx_cost.py) and `benchmarks/device/lives.py`,
+seconds per life and moment of the composition without the store:
+
+| Way on the M4 | 12 lives | 128 lives | 1,024 |
+| --- | ---: | ---: | ---: |
+| One brain's streams on MLX (shared parameters), `step`: the bound | 0.921 ms | 0.232 ms | 0.170 ms |
+| One sweep's transport on MLX, each life's own blocks against one brain's | 1.26 times | 1.45 times | 3.34 times |
+| Process pool, two CPU processes, `step` | 1.63 ms | 1.89 ms | 1.68 ms |
+| Process pool, two CPU processes, `live` | 2.02 ms | 1.44 ms | 1.75 ms |
+| `Lives` on the torch CPU device, `step` | 4.01 ms | 3.39 ms | 3.45 ms |
+
+A lives axis on MLX would read between the bound and the bound times the transport's factor, at most 0.34 ms at
+128 lives and 0.57 ms at 1,024: three to ten times as fast as the M4's pool here, and two to twelve times the time
+of `Lives` on one L4. It would take MLX versions of the per-life transport and stop, the per-life optimizer, critic, recall maps,
+carried gains, store and nudges, and somewhere for the settles' float64 checks: the Apple GPU has no float64, so
+they would run on the host or MLX's CPU stream.
 
 `Lives` holds the default composition without the store and with it (`episodic=True`), with or without the
 recall memory, the carried gains, arousal, `memory_fade` and maturity, at any teaching point, with one or several
