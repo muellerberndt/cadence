@@ -1,5 +1,49 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+#### Continuing lives on a device (#293)
+
+- **`Lives.live`: each life's `Brain.live` with its own arousal, outcomes and endings.** Compose
+  the lives with `arousal=True` and `lives.live(observations, reward=..., done=...)` runs one
+  moment of every continuing life in one batched moment: the lives whose action was sampled learn
+  from their outcomes while the others hold their state and parameters, the calm lives'
+  eligibility fades and their ended streams start from rest, one qualified settle answers every
+  life, each life's `Arousal` takes its own outcome on the host, and each life answers greedily
+  or samples at the temperatures its own arousal sets, drawing from its own generator.
+  `arousals` and `last_arousal` read each life's mood, and `life(i)` carries it. A life with no
+  preceding action takes a zero reward and no end in `live`, `step` and `learn`, as its lone
+  brain takes none. On the CPU each life is its lone brain to the bit; in float64 on a device
+  every action, mood and heated slot is its lone brain's and every learned part and arousal
+  reading agrees within 1e-9 over 30 moments of sparse rewards, endings and teaching. Lives that
+  never call `live` keep every bit of 0.96.0.
+
+- **The store in `Lives`.** `Lives(..., episodic=True)` holds each life's place records on the
+  device with a lives axis: an outcome writes the records of the lives it teaches, the outcome
+  that wakes a calm life writes that life's records and settles it again under them, and with
+  `memory_fade` and `maturity` each life fades its own records, scales its own actor steps by its
+  own use and gates its own writes by its own surprise. `parameters(i)` and `life(i)` carry each
+  life's records, their noise scales, depths and use. In float64 every action and mood is the
+  lone brain's and every learned part and record agrees within 1e-9 over 30 moments; on the CPU
+  each life is its lone brain to the bit. `Lives` composes without the store unless
+  `episodic=True` is named, as in 0.96.0.
+
+- **A life leaves and joins.** `life(i, stream=True)` carries life `i`'s stream as it stands
+  into the lone brain (its activity, its pending sampled action and that action's eligibility,
+  its traces, working trace, recall slots, store residual and the record of its last `live`),
+  on the CPU or the `backend`, `device` and `precision` named, and the lone brain continues the
+  life where it left. `join(i, brain)` puts a lone brain of the lives' anatomy and composition in
+  life `i`'s place with its stream afresh, so a finished episode makes room for another life
+  without holding the batch. `life(i)` without `stream` starts the stream afresh, as in 0.96.0.
+
+- **What lives on MLX would cost.** `benchmarks/device/lives_mlx_cost.py` times one sweep's
+  transport with each life's own blocks on the Apple GPU against one brain's shared blocks: 1.26,
+  1.45 and 3.34 times at 12, 128 and 1,024 lives on an M4. With one brain's streams on MLX as the
+  bound, a lives axis there would read at most 0.34 ms per life and moment at 128 lives and 0.57
+  ms at 1,024 (docs/backends.md, many lives at once). The library has no lives axis on MLX.
+
 ## 0.96.1 — 2026-11-10
 
 A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is

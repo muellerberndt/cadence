@@ -22,8 +22,8 @@ MAPS = ("head_maps", "position_maps", "anchor_maps", "relative_maps", "slope_map
 def lone(seed: int, composition: dict | None = None, **place) -> cd.Brain:
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        return cd.Brain.compose(INPUTS, ACTIONS, seed=seed, episodic=False, **OPTIONS,
-                                **(composition or {}), **place)
+        return cd.Brain.compose(INPUTS, ACTIONS, seed=seed,
+                                **{"episodic": False, **OPTIONS, **(composition or {})}, **place)
 
 
 def some_lives(count: int, composition: dict | None = None, **place) -> cd.Lives:
@@ -82,6 +82,18 @@ def gaps(lives: cd.Lives, brains: list[cd.Brain]) -> dict[str, float]:
                 widen("gain " + name, gain, brain.carried_gains[name])
             widen("carried_second", held["carried_second"], brain.hearing.second)
             assert held["carried_count"] == brain.hearing.count
+        store = brain.hippocampus
+        if store is not None:
+            records = held["store"]
+            widen("store", records["consolidated"], store.consolidated)
+            assert records["writes"] == store.writes
+            if store.gate_noise is not None:
+                widen("gate_noise", records["gate_noise"], store.gate_noise)
+            if store.fade:
+                widen("fade_depth", records["fade_depth"], store.fade_depth)
+                widen("fade_recent", records["fade_recent"], store.fade_recent)
+        if agent.maturity is not None:
+            widen("maturity_use", held["maturity_use"], agent.maturity.use)
     return out
 
 
@@ -324,7 +336,7 @@ def test_the_lives_recall_memory_rests_on_the_device_alone():
 
 @pytest.mark.parametrize(
     ("options", "named"),
-    [({"episodic": True}, "episodic=False"), ({"arousal": True}, "no arousal"),
+    [({"episodic": True, "memory_choice": True}, "memory_choice"),
      ({"apical": 0.25, "modules": (16, 8)}, "apical"), ({"recall_heads": 2}, "one head"),
      ({"efference_amplitude": 1.0}, "efference"), ({"learning_rehearsal": 0.5}, "rehearsal"),
      ({"recall_cortex_norm": True}, "cortex at unit norm")],
@@ -347,3 +359,270 @@ def test_a_moment_of_lives_takes_one_row_per_life():
         cd.Lives(INPUTS, ACTIONS, 3, seeds=[1, 2], **OPTIONS)
     with pytest.raises(ValueError, match="vector of inputs"):
         cd.Lives((8, 8), ACTIONS, 2)
+
+
+# -- continuing lives: ``live`` with each life's own arousal, outcomes and endings (cadence#293)
+
+AROUSED = {"arousal": True, "arousal_youth": 6}  # a short youth: calm and aroused moments mix
+
+
+def lived(lives: cd.Lives, brains: list[cd.Brain], moments: int, seed: int = 0,
+          teaches: int = 5, slots: int = 1, jolts: float = 0.0) -> dict[str, int]:
+    """Live the lives and the lone brains alike: sparse rewards, endings, and every ``teaches``
+    moments a step with a teacher in place of ``live``. Returns the count of differing actions
+    and moods, and of the calm, aroused and heated moments seen."""
+    rng = np.random.default_rng(seed)
+    count = lives.lives
+    seen = {"actions": 0, "moods": 0, "calm": 0, "aroused": 0, "heated": 0, "taught": 0,
+            "recorded": 0}
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for t in range(moments):
+            x = np.eye(INPUTS)[rng.integers(INPUTS, size=count)] * rng.random((count, INPUTS))
+            reward = rng.random(count) * (rng.random(count) < 0.5)
+            if jolts:  # an occasional outcome far from the usual: it wakes a calm life
+                reward = np.where(rng.random(count) < jolts, -20.0 * rng.random(count), reward)
+            done = rng.random(count) < 0.15
+            labels = lives.actions // slots
+            teacher = rng.integers(labels, size=(count, slots) if slots > 1 else count)
+            if t and t % teaches == 0:  # a teacher's moment: the pending outcomes, no others
+                pending = np.array([b.basal_ganglia._pending is not None for b in brains])
+                got = lives.step(x, reward=np.where(pending, reward, 0.0),
+                                 done=done & pending, teacher=teacher)
+                for i, brain in enumerate(brains):
+                    one = ({"reward": reward[i : i + 1], "done": done[i : i + 1]}
+                           if pending[i] else {})
+                    a = brain.step(x[i : i + 1], teacher=teacher[i : i + 1], **one)
+                    seen["actions"] += int(not np.array_equal(a[0], got[i]))
+                seen["taught"] += 1
+                continue
+            takes = np.array([cd.lives._takes_outcome(b) for b in brains])
+            outcome = {"reward": np.where(takes, reward, 0.0), "done": done & takes}
+            got = lives.live(x, **outcome)
+            for i, brain in enumerate(brains):
+                one = ({"reward": reward[i : i + 1], "done": done[i : i + 1]}
+                       if takes[i] else {})
+                a = brain.live(x[i : i + 1], **one)
+                seen["actions"] += int(not np.array_equal(a[0], got[i]))
+                ours, theirs = lives.last_arousal[i], brain.last_arousal
+                seen["moods"] += int(ours["mode"] != theirs["mode"]
+                                     or ours["heated_slot"] != theirs["heated_slot"]
+                                     or ours["recorded"] != theirs["recorded"]
+                                     or abs(ours["level"] - theirs["level"]) > 1e-9)
+                seen["calm" if theirs["mode"] == "routine" else "aroused"] += 1
+                seen["heated"] += int(theirs["heated_slot"] is not None)
+                seen["recorded"] += int(theirs["recorded"])
+    return seen
+
+
+def mood_gaps(lives: cd.Lives, brains: list[cd.Brain]) -> float:
+    gap = 0.0
+    for ours, brain in zip(lives.arousals, brains, strict=True):
+        a, b = ours.to_dict(), brain.arousal.to_dict()
+        assert a["age"] == b["age"] and a["outcomes"] == b["outcomes"]
+        assert a["rewards"] == b["rewards"] and a["spreads"] == b["spreads"]
+        assert a["moments"] == b["moments"]
+        gap = max(gap, *(abs(a[k] - b[k]) for k in ("level", "square", "recent", "longrun",
+                                                   "usual")))
+    return gap
+
+
+@pytest.mark.parametrize("composition", COMPOSITIONS.values(), ids=COMPOSITIONS)
+def test_living_lives_on_the_cpu_are_lone_brains_to_the_bit(composition):
+    composition = {**composition, **AROUSED}
+    lives = cd.Lives(INPUTS, ACTIONS, 3, seeds=[4, 5, 6], **OPTIONS, **composition)
+    brains = [lone(s, composition, backend="cpu") for s in (4, 5, 6)]
+    seen = lived(lives, brains, 16, jolts=0.05)
+    assert seen["actions"] == seen["moods"] == 0, seen
+    assert max(gaps(lives, brains).values()) == 0.0
+    assert mood_gaps(lives, brains) == 0.0
+
+
+@pytest.mark.parametrize(
+    ("composition", "actions"),
+    [(COMPOSITIONS["default"], ACTIONS), (COMPOSITIONS["plain"], ACTIONS), ({"slots": 2}, 6)],
+    ids=["default", "plain", "two slots"],
+)
+@pytest.mark.parametrize("device", DEVICES)
+def test_each_living_life_on_a_device_follows_its_lone_brain_in_float64(
+    device, composition, actions
+):
+    composition = {**composition, **AROUSED}
+    place = {"backend": "torch", "device": device, "precision": "float64"}
+    lives = cd.Lives(INPUTS, actions, 6, **OPTIONS, **composition, **place)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        brains = [cd.Brain.compose(INPUTS, actions, seed=s, episodic=False, **OPTIONS,
+                                   **composition, **place) for s in range(6)]
+    seen = lived(lives, brains, 30, slots=composition.get("slots", 1))
+    assert seen["actions"] == seen["moods"] == 0, seen
+    assert seen["calm"] > 20 and seen["aroused"] > 20 and seen["heated"] > 0, seen
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
+    assert mood_gaps(lives, brains) < 1e-9
+    for i, brain in enumerate(brains):
+        assert lives.life(i).arousal.to_dict() == lives.arousals[i].to_dict()
+        assert lives.life(i).basal_ganglia.updates == brain.basal_ganglia.updates
+
+
+def test_a_life_without_a_preceding_action_takes_no_outcome():
+    lives = some_lives(3, AROUSED, backend="torch", device="cpu", precision="float64")
+    x = np.eye(INPUTS)[[1, 2, 3]]
+    with pytest.raises(RuntimeError, match="preceding action"):
+        lives.live(x, reward=np.array([0.0, 1.0, 0.0]))
+    with pytest.raises(RuntimeError, match="preceding action"):
+        lives.live(x, done=np.array([False, False, True]))
+    assert lives.arousals[0].age == 0
+    lives.live(x, reward=np.zeros(3), done=np.zeros(3, bool))  # a zero outcome is none
+    assert [a.age for a in lives.arousals] == [1, 1, 1]
+    assert lives.last_arousal is not None and not any(r["learned"] for r in lives.last_arousal)
+
+
+def test_live_needs_each_life_composed_with_arousal():
+    lives = some_lives(2, backend="torch", device="cpu")
+    with pytest.raises(ValueError, match="arousal"):
+        lives.live(np.eye(INPUTS)[[1, 2]])
+
+
+# -- the store of place records, its fade and maturity (cadence#293)
+
+STORES = {
+    "store": {"episodic": True},
+    "fading store": {"episodic": True, "memory_fade": 0.05},
+    "maturity": {"episodic": True, "maturity": True, "maturity_scale": 0.002},
+    "all": {"episodic": True, "memory_fade": 0.05, "maturity": True, "maturity_scale": 0.002},
+}
+
+
+@pytest.mark.parametrize("composition", STORES.values(), ids=STORES)
+def test_lives_with_the_store_on_the_cpu_are_lone_brains_to_the_bit(composition):
+    composition = {**composition, **AROUSED}
+    lives = cd.Lives(INPUTS, ACTIONS, 3, seeds=[4, 5, 6], **OPTIONS, **composition)
+    brains = [lone(s, composition, backend="cpu") for s in (4, 5, 6)]
+    seen = lived(lives, brains, 16, jolts=0.05)
+    assert seen["actions"] == seen["moods"] == 0, seen
+    assert max(gaps(lives, brains).values()) == 0.0
+
+
+@pytest.mark.parametrize("composition", STORES.values(), ids=STORES)
+@pytest.mark.parametrize("device", DEVICES)
+def test_each_life_with_the_store_follows_its_lone_brain_in_float64(device, composition):
+    composition = {**composition, **AROUSED}
+    place = {"backend": "torch", "device": device, "precision": "float64"}
+    lives = some_lives(6, composition, **place)
+    brains = [lone(s, composition, **place) for s in range(6)]
+    seen = lived(lives, brains, 30, jolts=0.05)
+    assert seen["actions"] == seen["moods"] == 0, seen
+    assert seen["calm"] > 20 and seen["aroused"] > 20 and seen["recorded"] > 0, seen
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
+    assert mood_gaps(lives, brains) < 1e-9
+    for i, brain in enumerate(brains):
+        assert int(lives.parameters(i)["store"]["writes"]) == brain.hippocampus.writes
+    assert sum(b.hippocampus.writes for b in brains) > 20  # the records were written
+    if composition.get("maturity"):  # matured: the gate engaged, the steps slowed
+        assert max(b.basal_ganglia.maturity.factor() for b in brains) < 0.5
+    copy = lives.life(2)  # life 2 alone carries its records and its maturity
+    np.testing.assert_allclose(copy.hippocampus.consolidated,
+                               brains[2].hippocampus.consolidated, atol=1e-9)
+
+
+@pytest.mark.parametrize("composition", STORES.values(), ids=STORES)
+def test_stepping_lives_with_the_store_follow_their_lone_brains(composition):
+    place = {"backend": "torch", "device": "cpu", "precision": "float64"}
+    lives = some_lives(4, composition, **place)
+    brains = [lone(s, composition, **place) for s in range(4)]
+    assert a_life(lives, brains, 24) == 0
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
+
+
+# -- a life leaving and rejoining (cadence#293)
+
+def moments(rng: np.random.Generator, count: int):
+    """A moment's observations, sparse rewards with an occasional jolt, and endings."""
+    x = np.eye(INPUTS)[rng.integers(INPUTS, size=count)] * rng.random((count, INPUTS))
+    reward = rng.random(count) * (rng.random(count) < 0.5)
+    reward = np.where(rng.random(count) < 0.05, -20.0 * rng.random(count), reward)
+    return x, reward, rng.random(count) < 0.15
+
+
+def live_one(brain: cd.Brain, x, reward, done) -> int:
+    """``live`` of a lone brain on one row, with its outcome where it has an action out."""
+    one = {"reward": reward, "done": done} if cd.lives._takes_outcome(brain) else {}
+    return int(brain.live(x, **one)[0])
+
+
+def live_alike(lives: cd.Lives, brains: list[cd.Brain], x, reward, done) -> int:
+    """One moment of ``live`` for the lives and their lone brains; the actions that differed."""
+    takes = np.array([cd.lives._takes_outcome(b) for b in brains])
+    got = lives.live(x, reward=np.where(takes, reward, 0.0), done=done & takes)
+    return sum(
+        live_one(b, x[i : i + 1], reward[i : i + 1], done[i : i + 1]) != got[i]
+        for i, b in enumerate(brains)
+    )
+
+
+LEAVING = {"default": {}, "store": STORES["all"]}
+PLACE = {"backend": "torch", "device": "cpu", "precision": "float64"}
+
+
+@pytest.mark.parametrize("composition", LEAVING.values(), ids=LEAVING)
+def test_a_life_leaves_with_its_stream_and_its_pending_outcome(composition):
+    composition = {**composition, **AROUSED}
+    lives = some_lives(4, composition, **PLACE)
+    brains = [lone(s, composition, **PLACE) for s in range(4)]
+    rng = np.random.default_rng(5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(14):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+        pendings = [lives.life(i, stream=True, **PLACE).basal_ganglia._pending is not None
+                    for i in range(4)]
+        assert pendings == [b.basal_ganglia._pending is not None for b in brains]
+        assert any(pendings) and not all(pendings)  # sampled and calm lives both leave
+        left = [lives.life(i, stream=True, **PLACE) for i in range(4)]
+        for _ in range(12):  # each copy continues its life as its reference does
+            x, reward, done = moments(rng, 4)
+            for i in range(4):
+                ours = live_one(left[i], x[i : i + 1], reward[i : i + 1], done[i : i + 1])
+                assert ours == live_one(brains[i], x[i : i + 1], reward[i : i + 1],
+                                        done[i : i + 1])
+    for copy, brain in zip(left, brains, strict=True):
+        assert copy.arousal.to_dict()["level"] == pytest.approx(
+            brain.arousal.to_dict()["level"], abs=1e-9)
+        for ours, theirs in ((copy.brain.efficacy, brain.brain.efficacy),
+                             (copy.brain.bias, brain.brain.bias),
+                             (copy.basal_ganglia.w_critic, brain.basal_ganglia.w_critic)):
+            assert float(np.abs(np.asarray(ours) - np.asarray(theirs)).max()) < 1e-9
+
+
+@pytest.mark.parametrize("composition", LEAVING.values(), ids=LEAVING)
+def test_a_life_joins_where_another_finished_and_lives_on_as_alone(composition):
+    composition = {**composition, **AROUSED}
+    lives = some_lives(4, composition, **PLACE)
+    brains = [lone(s, composition, **PLACE) for s in range(4)]
+    newcomer = lone(9, composition, **PLACE)
+    rng, own = np.random.default_rng(7), np.random.default_rng(8)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(10):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+            x, reward, done = moments(own, 1)
+            live_one(newcomer, x, reward, done)
+        newcomer.reset()
+        lives.join(1, newcomer)  # life 1's place: the newcomer, its stream afresh
+        brains[1] = newcomer
+        for _ in range(14):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
+    assert mood_gaps(lives, brains) < 1e-9
+
+
+def test_a_joining_brain_has_the_lives_composition():
+    lives = some_lives(2, AROUSED, **PLACE)
+    with pytest.raises(ValueError, match="composition"):
+        lives.join(0, lone(5, {}, **PLACE))
+    with pytest.raises(ValueError, match="one of these"):
+        lives.join(2, lone(5, AROUSED, **PLACE))
