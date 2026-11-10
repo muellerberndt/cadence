@@ -3999,9 +3999,10 @@ class Brain:
         stand), settled from the stream's activity, or from rest for a brain that has not
         acted, and read by the critic. The memories enter as they stand because the episode
         was cut, not ended: had it gone on, the next state would have read them. A pure read:
-        the recall memory addresses the moment and writes nothing, and the streams, traces,
-        pending action, records, parameters and random generators are as they were. Once the
-        brain has acted, the rows are its live streams; another batch is refused with
+        the recall memory addresses the moment and writes nothing, the long-term records are
+        read without crediting a record's use, and the streams, traces, pending action, records,
+        parameters, the learned fields' counts of work and random generators are as they were.
+        Once the brain has acted, the rows are its live streams; another batch is refused with
         ``ValueError``, as malformed observations are, before anything changes."""
         x = self._observations(observations)
         agent = self.basal_ganglia
@@ -4012,6 +4013,12 @@ class Brain:
         recall = self.recall
         # what the recall memory's ports held at the latest read, for its route's lesson
         ports = None if recall is None else (recall._device or recall).__dict__.get("trace")
+        # the long-term records read as an imagined branch reads them, crediting no record's use,
+        # and the learned fields' count of work returns as it was
+        kept, private = self.longterm, None
+        if kept is not None:
+            private, kept._private = kept._private, True
+        work = None if self.fields is None else dict(self.fields.work)
         try:
             with self._code_attempt():
                 self._prepare(x)
@@ -4026,6 +4033,11 @@ class Brain:
             self._resume(held)
             if recall is not None and ports is not None:
                 (recall._device or recall).__dict__["trace"] = ports
+            if kept is not None and private is not None:
+                kept._private = private
+            if self.fields is not None and work is not None:
+                self.fields.work.clear()
+                self.fields.work.update(work)
 
     def _moment_drive(self, x: np.ndarray) -> np.ndarray:
         """The drive a moment's settles read, ``stimulus`` where it rests. On a torch device it

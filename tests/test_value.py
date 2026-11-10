@@ -200,3 +200,35 @@ def test_each_lifes_value_is_its_lone_brains(backend):
         np.testing.assert_array_equal(ours, theirs)
     else:
         np.testing.assert_allclose(ours, theirs, atol=1e-9)
+
+
+def _saved(brain: cd.Brain, path) -> dict[str, np.ndarray]:
+    with np.load(brain.save(path), allow_pickle=False) as data:
+        return {name: data[name].copy() for name in data.files}
+
+
+@pytest.mark.parametrize(
+    ("inputs", "options"),
+    [(15, {"message": 16, "message_boundary": 14, "message_boundary_holds": True,
+           "longterm": 8}),
+     ((12, 12), {"learned_fields": 4, "ports": 2})],
+    ids=["long-term records", "learned fields"],
+)
+def test_a_read_credits_no_records_use_and_counts_no_fields_work(tmp_path, inputs, options):
+    # the long-term records read without deepening a record or counting a read, and the
+    # learned fields' work counts stay: the checkpoint after the read is the one before it
+    brain = cd.Brain.compose(inputs, 3, seed=5, backend="cpu", **options)
+    width = int(np.prod(inputs)) + options.get("ports", 0)
+    rng = np.random.default_rng(0)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for t in range(10):
+            x = (rng.random((1, width)) < 0.3).astype(float)
+            if "longterm" in options:
+                x[0, 14] = float(t % 5 == 2)  # the turn
+            brain.step(x, **({} if t == 0 else {"reward": [1.0]}))
+    before = _saved(brain, tmp_path / "before.npz")
+    assert np.isfinite(brain.value(x)).all()
+    after = _saved(brain, tmp_path / "after.npz")
+    changed = [k for k in before if not np.array_equal(before[k], after[k])]
+    assert not changed, changed
