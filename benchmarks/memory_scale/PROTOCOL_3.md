@@ -171,3 +171,17 @@ write, `"fill": "record"`):
 C3 is read again on the same founders and reported. **Expectation:** the bank reads about ten
 index rows of 10,000 slots per stream and fades 160,000 sums a moment; a fact moment over 16
 streams costs about 1.5 times one without the option.
+
+### Outcome of Amendment 1
+
+Read on founders 2909 to 2911 and recorded in
+[the README](README.md#amendment-1-the-many-stream-write), with the receipt
+`results/third-cost-amended.jsonl` and `summarize.py` (`gates3`) recomputing each gate.
+
+| Gate | Verdict |
+| --- | --- |
+| C4 | passes, 3 of 3: 1.661 to 1.688 times the moment without the option |
+| C3, read again | passes, 3 of 3: 1.254 to 1.261 |
+
+**Against the expectation.** C4 reads above the expected 1.5 and within its bar. **Departures from
+the plan of the run.** None.

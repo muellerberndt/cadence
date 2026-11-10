@@ -29,8 +29,10 @@ Off by default: without it a brain is the brain without it, to the bit on `backe
 Declared on six fresh founders, a brain taught to answer from its records hears facts it was
 never asked about. At 1,000 records a stream it finds and answers .9975 to 1.000 of them, at
 10,000 records .980 to 1.000. Revised facts are current at .990 to 1.000 and never stale, and the
-same brain without the option answers at chance (.09 to .16). A moment with 10,000 records on one
-stream costs 1.8 times a moment without them on one core and 1.7 times on a GPU.
+same brain without the option answers at chance (.09 to .16). On one core a moment with 10,000
+records a stream costs 1.3 times a moment without them over one stream and 1.7 times over 16
+streams (a declared amendment, 1.66 to 1.69 against a bar of 2); on a GPU, with the stores read
+one by one, 1.7 times over one stream.
 
 ### A long-term memory of records (opt-in, #288)
 

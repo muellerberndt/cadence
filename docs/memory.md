@@ -1702,8 +1702,9 @@ another patient, and answers 400 questions of each kind without lessons:
 | 10,000 | .980 to 1.000, .980 to 1.000 | .990 to 1.000, .000 | .1025 to .1425 |
 
 The misses are keys that name two facts: two facts whose key is one key, or a key another
-contains. A moment with 10,000 records on one stream costs 1.8 times a moment without them on one
-core and 1.7 times on a GPU.
+contains. On one core a moment with 10,000 records a stream costs 1.3 times a moment without them
+over one stream and 1.7 times over 16 streams; on a GPU, with the stores read one by one, 1.7
+times over one stream.
 
 ## How strongly a carried region is heard
 

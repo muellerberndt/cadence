@@ -575,6 +575,36 @@ before it writes: at 10,000 records the records take 24.5 ms of a 27.0 ms moment
 moment without the option. That cost is reported without a bar; one product across the streams' stores
 and one read per write are what it asks for.
 
+### Amendment 1: the many-stream write
+
+[Amendment 1](PROTOCOL_3.md#amendment-1-the-many-stream-write-declared-10-november-2026-before-its-run),
+declared at commit `c44abbcc` before its run: the streams' records are read, written and faded as
+one bank (one product over every stream's records, the read before the settle as the write's
+recognition, one fading pass), which a contract test holds to the stores read one by one to the
+bit. Founders 2909 to 2911, one process on a spot c7i.8xlarge running nothing else; the records
+filled by the records' own write.
+
+| Gate | Reading | Bar | Founders | Verdict |
+| --- | --- | --- | --- | --- |
+| C4 | ms per fact moment over 16 streams at 10,000 records over that without the option, one core | at most 2 | 1.661 to 1.688, 3 of 3 | **passes** |
+| C3, read again | ms per moment at 10,000 records over that without the option, one stream, one core | at most 2 | 1.254 to 1.261, 3 of 3 | passes |
+
+ms per moment, mean of founders 2909 to 2911:
+
+| Streams | Records | Question moment | Fact moment |
+| --- | --- | --- | --- |
+| 1 | none (option off) | .779 | .780 |
+| 1 | 1,000 | .882 | .902 |
+| 1 | 10,000 | .963 | .981 |
+| 16 | none | 2.649 | 2.654 |
+| 16 | 1,000 | 3.073 | 3.214 |
+| 16 | 10,000 | 4.322 | 4.453 |
+
+At 10,000 records over 16 streams the records add 1.80 ms to a fact moment and 1.67 to a question
+moment, against 24.5 and 9.1 store by store; over one stream they add .20 and .18, against .63 and
+.30. Founder 2909 holds 9,873 records for 10,000 facts: facts whose key another fact shares are one
+record, the term the reading located at 2901.
+
 ## What these readings do not establish
 
 - Any default. The candidate is an instrument-level store and the library's `LongTermMemory` a
