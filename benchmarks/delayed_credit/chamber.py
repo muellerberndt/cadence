@@ -75,6 +75,11 @@ ARMS: dict[str, dict[str, Any]] = {
     "slow_undecayed": {**SLOW, **UNDECAYED},
     "slow_episodic_undecayed": {**SLOW, "memory_choice": True, **UNDECAYED},
     "critic_raised": {"actor_eta_critic": 5.0},
+    # the actor's eligibility held through the episode, the critic's decay unchanged (#283)
+    "held": {"actor_hold": 1.0},
+    "recall_off_held": {"recall": False, "actor_hold": 1.0},
+    "slow_held": {**SLOW, "actor_hold": 1.0},
+    "slow_episodic_held": {**SLOW, "memory_choice": True, "actor_hold": 1.0},
 }
 
 
