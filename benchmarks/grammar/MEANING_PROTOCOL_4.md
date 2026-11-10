@@ -176,3 +176,29 @@ held-out combinations .94 and roles .94, as part 1's twelve did.
 clauses the read delivers the verb's moment at .13 and .22, and the distractors from the second on
 at .30 to .59; on deeper brackets the closes at .07 to .13; on three hops it delivers the hops at
 .88, .65 and .53 and says them at .90 to .97 when delivered.
+
+## Amendment 2: ten winners a moment
+
+Written after Amendment 1 was read and before any life of these arms.
+
+**Why.** At 512 nouns and 128 verbs, with a fan-in at the chamber's share of the channels, 3.0%
+of agent forms and 4.1% of patient forms share a whole code at 5 winners and none at 10 winners
+on 17 seeds; at the chamber's lexicon with 280 units, 5 winners give a shared code on 5% of 200
+seeds and 10 winners on none. A memory keyed by the message can adopt 10 winners only where the
+chamber loses nothing by it.
+
+**Founders.** 10228600 to 10228611 (twelve, no life in any lane).
+
+| Arm | The brain | Parameters |
+| --- | --- | --- |
+| `both_256` | part 1's arm: `message=280` (5 winners), `message_read=True`, `history_decays=(0.0,)`, 256 association neurons, every row taught, the recall read barred | 596,412 |
+| `both_256_w10` | `both_256` with `message_winners=10` | 596,412 |
+
+**Readings.** Part 1's six panels, `both_256_w10` less `both_256` paired by founder,
+multiply-accumulates and seconds per life.
+
+**Gate H1c-w.** `both_256_w10` holds H1c: clauses, held-out combinations and role twins at .90 on
+10 of 12, and on brackets, paths and three hops its paired mean against `both_256` at or above
+-.03 and not under it by two standard errors.
+
+**Expectations.** H1c-w holds; every panel within .03 of `both_256` at the mean.
