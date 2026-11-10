@@ -427,6 +427,15 @@ records, with every slot scored. No setting or default changes.
   products over the presynaptic axis, chosen once per shape at its first launch. Under Triton
   3.6 every shape keeps its dot and every bit; under 3.1 and 3.3 the settled states match the
   cuBLAS path (`CADENCE_TRITON=0`) within float32 rounding and within 1e-13 in float64.
+- **A settled state's kept products hold the same bits on every run.** The room in which a
+  compiled settle keeps its products for the next one (`fused._kept_room`) was allocated
+  uninitialized; its parts no kernel writes (a range that feeds no block, a stale range's
+  products, a masked state's publication) are never read, so no act, lesson or saved array
+  depended on them, but they held what the allocator left, NaN at times, and two brains of one
+  history differed there. The room starts at zero. A test that compared a brain's arrays before
+  and after `Brain.value` saw such a NaN as a change (NaN equals nothing), on one macOS runner
+  in one run: `value` writes nothing, every byte is as before. The tests compare bytes, and two
+  lives of one history keep the same bits in every array, the kept products among them.
 - **A lesson that teaches some rows keeps a torch state on the device.** A surprise lesson whose
   answer differs from the labels on some rows only restricted its warm state to those rows by
   copying the whole state to the host, `(rows, neurons)` per array. The rows are taken on the

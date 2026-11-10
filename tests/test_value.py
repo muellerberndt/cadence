@@ -64,6 +64,15 @@ def arrays(value, seen=None, path="brain"):
     return out
 
 
+def unequal(before, after):
+    """The paths whose arrays differ in a bit: compared as bytes, an array that holds a NaN
+    equals itself, which ``np.array_equal`` never says."""
+    return [
+        k for k in before
+        if before[k].shape != after[k].shape or before[k].tobytes() != after[k].tobytes()
+    ]
+
+
 COMPOSITIONS = {
     "default": {}, "without the store": {"episodic": False}, "plain": {"recall": False},
     "arousal": {"arousal": True}, "learned code": {"learned_code": 8},
@@ -79,8 +88,7 @@ def test_a_read_changes_no_array_of_the_brain(options):
     assert value.shape == (1,) and np.isfinite(value).all()
     after = arrays(brain)
     assert before.keys() == after.keys()
-    changed = [k for k in before if not np.array_equal(before[k], after[k])]
-    assert not changed, changed
+    assert not unequal(before, after), unequal(before, after)
 
 
 @pytest.mark.parametrize("options", COMPOSITIONS.values(), ids=COMPOSITIONS)
@@ -232,3 +240,31 @@ def test_a_read_credits_no_records_use_and_counts_no_fields_work(tmp_path, input
     after = _saved(brain, tmp_path / "after.npz")
     changed = [k for k in before if not np.array_equal(before[k], after[k])]
     assert not changed, changed
+
+
+@pytest.mark.parametrize("compiled", [False, True], ids=["general", "compiled moment"])
+@pytest.mark.parametrize("options", COMPOSITIONS.values(), ids=COMPOSITIONS)
+def test_two_lives_of_one_history_keep_the_same_bits_and_a_read_changes_none(options, compiled):
+    """Every array two brains of one history hold is the same to the bit, the products a
+    settled state keeps for the next settle among them (``fused._kept_room`` starts at zero,
+    where an uninitialized room held what the allocator left, NaN at times), and a brain that
+    reads its value lives on 20 moments as one that does not, every act and every array."""
+    reading, plain = composed(**options), composed(**options)
+    if compiled:
+        reading.retune(learning_compiled_moment=True)
+        plain.retune(learning_compiled_moment=True)
+    x = lived(reading, 9)
+    lived(plain, 9)
+    assert not unequal(arrays(reading), arrays(plain))
+    kept = reading.basal_ganglia._free.__dict__.get("_products")
+    assert kept is not None and np.isfinite(kept[3]).all()
+    reading.value(x)
+    feed_a, feed_b = world(5), world(5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(20):
+            (xa, ra, da), (xb, rb, db) = next(feed_a), next(feed_b)
+            assert reading.step(xa, reward=ra, done=da)[0] == plain.step(xb, reward=rb, done=db)[0]
+    held_a, held_b = arrays(reading), arrays(plain)
+    assert held_a.keys() == held_b.keys()
+    assert not unequal(held_a, held_b), unequal(held_a, held_b)

@@ -307,8 +307,11 @@ if njit is not None:
         """One array for what a state keeps, and its parts as views: the activations range by
         range (``columns`` entries), the products of the basal blocks (``size``) and of the
         apical blocks (``size_up``), one flag per range, 1 where the products the range feeds
-        are stale, then what ``_keep_published`` writes."""
-        kept = np.empty(columns + size + size_up + ranges + 2 * columns + _RECORD)
+        are stale, then what ``_keep_published`` writes. It starts at zero: the parts no kernel
+        writes (a range that feeds no block, the products of a stale range, a masked state's
+        publication) are never read, and zeros keep a state's bits the same on every run, where
+        an uninitialized room held what the allocator left there, NaN at times."""
+        kept = np.zeros(columns + size + size_up + ranges + 2 * columns + _RECORD)
         up, flags = columns + size, columns + size + size_up
         return kept, kept[:columns], kept[columns:up], kept[up:flags], kept[flags:flags + ranges]
 
