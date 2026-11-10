@@ -1894,6 +1894,14 @@ at `q` by `q . k` times the correction, so overlapping situations interfere. Und
   overwrites the record. Use `memory_rate=0.2`; in the
   [competing ring](../benchmarks/competing/README.md) it acquires as fast and takes about 0.10
   off the loss, and most of the loss stays.
+- **A skill that a competing one meets later, on the default composition.** In the competing
+  ring's short life (a skill A learned in a nursery, then a skill B sharing half its inputs under
+  noisy signed pay), the default composition loses 51.9 points of A over the ring on twelve fresh
+  founders, against 38.6 for a brain without the recall memory. The store's write carries the
+  difference: with `memory_rate=0.2` the default loses 41.6 and learns B as well (.394 against
+  .369), and with `maturity=True` beside it 37.8 (#169). The same setting leaves every chamber
+  from birth, the robot arena's fights, its acquisition and its revision test where the default
+  reads them.
 
 ### Maturity and surprise-gated writes
 
