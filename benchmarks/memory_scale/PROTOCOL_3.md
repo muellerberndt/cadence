@@ -117,3 +117,27 @@ about 10 ms.
 - Saving a brain with records, `grow` and `graft`: refused in this version.
 - Keys that differ between the fact and its question: noisy or partial keys and other wordings, the
   second declaration's limits, are not read here.
+
+## Outcome
+
+Read on the declared founders and recorded in [the README](README.md#the-third-declaration-a-brain-that-writes-and-reads-its-own-records),
+with the receipts in [`results/`](results) and `summarize.py` (`gates3`) recomputing each gate.
+
+| Gate | Verdict |
+| --- | --- |
+| B1 | passes, 6 of 6: .9975 to 1.000 |
+| B2 | passes, 5 of 6: .980 to 1.000; founder 2901 reads .980, where 3.8% of its facts share their key with another |
+| B3 | passes, 6 of 6: used .980 to 1.000 at 10,000 against .9975 to 1.000 at 1,000 |
+| B4 | passes, 6 of 6: found current .990 to 1.000, stale .000, used .9925 to 1.000 |
+| B5 | passes, 6 of 6: .1225 to .155 |
+| C3 | passes, 3 of 3: 1.82 to 1.83 times the moment without the option |
+| D1 | passes, 3 of 3: 1.65 to 1.69 |
+
+**Against the expectations.** Every gate held as expected. Found at 10,000 read below the
+development reading's 1.00 on four founders: the misses are keys that two facts share (2901) or that
+another key contains (every founder), located in the README. Over 16 streams a fact moment at 10,000
+records costs 10.5 times a moment without the option, the host's loop over the streams' stores.
+
+**Departures from the plan of the runs.** The CPU box's package update stalled and was stopped by
+hand; its Python environment was installed by the same commands. Nothing in an instrument, a plan or
+a bar changed after the declaration.

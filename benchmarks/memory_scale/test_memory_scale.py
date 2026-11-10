@@ -704,3 +704,23 @@ def test_the_third_declaration_s_plans_parse():
     todo = br.cells(plans["records"])
     assert len(todo) == 18 and {c["arm"] for c in todo} == {"records", "plain", "records_h2"}
     assert plans["cost-device"]["device"] == "cuda"
+
+
+def test_the_third_declaration_s_receipts_hold_the_verdicts_the_readme_states():
+    sm = _load("summarize")
+    gates = sm.gates3(HERE / "results")
+    assert {name for name, gate in gates.items() if gate["passes"]} == {
+        "B1", "B2", "B3", "B4", "B5", "C3", "D1"}
+    assert gates["B2"]["founders"] == 5 and min(gates["B2"]["values"]) == 0.98
+    assert max(gates["C3"]["values"]) < 2 and max(gates["D1"]["values"]) < 2
+    table = sm.rows(HERE / "results" / "third-records.jsonl")
+    assert len(table) == 36 and {r["founder"] for r in table} == set(sm.THIRD)
+    for row in sm.pick(table, arm="records"):
+        for kind in ("unrevised", "revised"):
+            assert abs(row[kind]["used"] - row[kind]["found"]) <= 0.005 + 1e-9
+        assert row["revised"]["stale"] == 0.0
+    assert all(r["unrevised"]["found"] == 0.0 for r in sm.pick(table, arm="plain"))
+    readme = (HERE / "README.md").read_text()
+    for cell in ("| B2 | found, unrevised facts, 10,000 records | .99 | .980 to 1.000, 5 of 6 |",
+                 "1.82 to 1.83", "| one core | 16 | 10,000 | 11.675 | 27.043 |"):
+        assert cell in readme

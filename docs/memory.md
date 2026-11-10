@@ -24,8 +24,9 @@ follows.
   outcome. They are the long-term memory and survive everything but learning.
 - **Long-term memory: a library of records kept by use.** A store beside the brain that holds
   thousands of encoded records under a fixed budget of slots, finds the right one from a partial
-  reminder, keeps what is used often, lets the rest go and revises a fact that changed. Opt-in,
-  `cd.LongTermMemory`, a standalone store.
+  reminder, keeps what is used often, lets the rest go and revises a fact that changed. Opt-in:
+  `cd.LongTermMemory`, a standalone store, or `longterm=records`, the brain's own records keyed by
+  its held message.
 
 Three carriers are opt-in: the **efference copy** of the actions the brain issued
 (`efference_amplitude`), the **heard history** of the raw observations (`history_decays`) and
@@ -44,7 +45,7 @@ the **held message**, the whole episode as one state (`message`).
 | Learned-code attention | a notebook indexed by meaning | no | keys should match where meanings do, beyond raw overlap | `learned_code=units, attention=True` |
 | Associative store | a ledger of what paid where | yes | which action pays in a situation, with quick reversal | `episodic=False` removes it; `memory_rate=0.2` for noisy pay |
 | Episodic memory | one-shot records that vote | no | a demonstration shown once, a chain paid at its end, a cue that is gone | `memory_choice=True` |
-| Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
+| Long-term memory | a library of records kept by use | no | thousands of facts asked long after they were told, facts that change, a fixed budget of slots | `longterm=records` with a held message ([long-term records](#long-term-records)), or `cd.LongTermMemory` beside the brain ([a large memory](#a-large-memory)) |
 | Efference copy | what I just did | no | sequencing the brain's own actions under identical input | `efference_amplitude=1.0` |
 | Heard history | what I just heard | no | the same observation needs different answers after different earlier observations | `history_decays=(0.2, 0.8)` |
 | No memory | the control | | always measure a memory against the brain without it | `recall=False, episodic=False, working_memory_amplitude=0.0` |
@@ -207,6 +208,7 @@ The answer has to [qualify](start.md#qualification-and-refusal) whichever of the
 | Learned weights | yes | learning rates of zero freeze them | synapse scales and biases, actor and critic | none | lessons, and outcomes (aroused ones under `live`) | yes | [the free/nudged rule](settling.md#learning-the-freenudged-rule) |
 | Actor eligibility | yes | `actor_lam=0.0` credits the last action only | each synapse's credit for recent sampled acts | none | each sampled act | no | [reward.md](reward.md#eligibility-traces-and-dopamine) |
 | Long-term memory | no: a standalone store | `cd.LongTermMemory(width, value_width, capacity)` beside the brain | records, a key with a value, under a budget of slots | the caller's key | when the caller writes; a key told again revises its record | yes: the brain does not hold it | [below](#a-long-term-memory-of-records) |
+| Long-term records | no | `longterm=records` with `message=units`, `message_boundary` and `message_boundary_holds=True` | each stream's records: the held message at a turn and the moment after it | the held message at the turn | the moment after a turn, where it says more than the record the key finds | yes | [below](#long-term-records) |
 
 `predict`, `accuracy` and `fit` answer independent samples and read none of these except the
 learned weights; `fit` starts by resetting the streams and keeps the arousal state. Test a
@@ -1610,6 +1612,90 @@ message as it speaks: held from `GO` (`message_boundary`, `message_boundary_hold
 message costs three hops nothing at the mean and keeps its lifts
 ([the third run](../benchmarks/grammar/README.md#the-quiet-messages-cost)). None of these is a
 default.
+
+## Long-term records
+
+A brain with a [held message](#held-message) can keep what episodes said in records of its own,
+keyed by its message: `longterm=records` gives each stream a long-term memory of that many
+records. It is opt-in: without it a brain is built and settles as the brain without it, to the
+bit.
+
+- **The turn.** The message is held from a turn (`message_boundary=channel` with
+  `message_boundary_holds=True`): from the moment that channel is heard, the message keeps what
+  the episode heard before it. Its key, the union over its blocks, says what the episode is
+  about, and nothing heard after the turn changes it.
+- **What is written.** The moment after the turn is what the episode says. It is written only
+  where it says more than the record the key finds: the same key and the same value write
+  nothing, another value revises that record, and a key no record holds takes a slot. A silent
+  moment after the turn writes nothing, so a question (the turn, then the brain's answer) leaves
+  the records as they are.
+- **What is read.** Before every settle after a turn the key reads the stream's records, and the
+  record found is held on a region the association reads through plastic synapses, as it reads
+  the recall memory's ports. `longterm_heads=k` reads k records in turn, each on a region of its
+  own. A head holds a record only where the record's key lies at cosine `longterm_match` or above
+  to the message's key; before a turn the regions are silent.
+- **What stays.** Each stream's records are a [`cd.LongTermMemory`](#a-long-term-memory-of-records):
+  a read deepens the records it holds, idle records fade, a full memory replaces the most faded
+  one. The records survive `reset()` and the end of every episode; `brain.longterm.clear()` empties
+  them.
+
+```python
+TURN = 14                                  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
+
+def seen(*on):
+    x = np.zeros((1, 15))
+    x[0, list(on)] = 1.0
+    return x
+
+knower = Brain.compose(inputs=15, actions=4, modules=(32,), seed=0, message=70,
+                       message_boundary=TURN, message_boundary_holds=True, longterm=64)
+for moment in (seen(0), seen(6), seen(TURN), seen(12)):     # agent 0, verb 0, the turn, patient 2
+    knower.act(moment, greedy=True)
+records = knower.longterm.stores[0]
+assert records.count == 1 and np.array_equal(records.values[0], seen(12)[0])
+knower.reset()                                               # a new episode: the records stay
+for moment in (seen(0), seen(6), seen(TURN)):                # the question: the same moments
+    knower.act(moment, greedy=True)
+drive = knower.stimulus(np.zeros((1, 15)))                   # the answer's moment reads the record
+assert np.allclose(drive[0, knower.connectome.populations["longterm"]], 3.0 * seen(12)[0])
+knower.reset()
+for moment in (seen(0), seen(6), seen(TURN), seen(13)):      # told again: patient 3
+    knower.act(moment, greedy=True)
+assert records.count == 1 and np.array_equal(records.values[0], seen(13)[0])   # revised
+```
+
+The brain learns to answer from what the region holds by its lessons, as it learns to use the
+recall memory's read.
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm` | `None`, off | construction | Records a stream holds |
+| `longterm_heads` | `1` | construction | Heads: records read in turn, each on a region of its own |
+| `longterm_amplitude` | `3.0` | construction | Drive of a record's value on its region |
+| `longterm_match` | `0.75` | construction | The cosine at which a record holds the message's key for a read |
+| `longterm_revise` | `0.999` | construction | The cosine at which a write is a record told again: the same key, for keys of zeros and ones |
+
+`brain.longterm` is a `LongTermRecords`: `stores` (one `cd.LongTermMemory` per stream),
+`read_slots` (each head's record at the latest read, -1 for none), `counts` (writes, revisions,
+statements agreed, reads) and `clear()`. A brain with records is not saved in this version, and
+`grow` and `graft` refuse it, as they refuse a message.
+
+**What it reads** ([memory-scale benchmark](../benchmarks/memory_scale/README.md#the-third-declaration-a-brain-that-writes-and-reads-its-own-records),
+#288; declared on six fresh founders). A brain with a 280-unit message hears facts of a lexicon of
+64 nouns and 96 verbs (the act, the agent, the turn, the patient), each episode after a `reset()`
+that empties the recall memory's slots, and is taught for 1,500 rounds to answer questions about
+facts it heard. Then it hears N facts about pairs no lesson asked, a tenth of them again with
+another patient, and answers 400 questions of each kind without lessons:
+
+| Records a stream | Found and answered, facts told once | Revised facts: current, stale | The same brain without `longterm` |
+| --- | --- | --- | --- |
+| 1,000 | .9975 to 1.000, .9975 to 1.000 | .9975 to 1.000, .000 | .1025 to .155 (chance .125) |
+| 10,000 | .980 to 1.000, .980 to 1.000 | .990 to 1.000, .000 | .1025 to .1425 |
+
+The misses are keys that name two facts: two facts whose key is one key, or a key another
+contains. A moment with 10,000 records on one stream costs 1.8 times a moment without them on one
+core and 1.7 times on a GPU. Over 16 streams the stores are read and written one after another on
+the host, and a fact moment costs 10.5 times one without them.
 
 ## How strongly a carried region is heard
 

@@ -496,6 +496,85 @@ revised ones current at .22 to .23 and stale at .58 to .61, against .968 to
 heard. A changed fact has another key, takes
 another slot, and leaves its old copy to tie with the new one.
 
+## The third declaration: a brain that writes and reads its own records
+
+[`PROTOCOL_3.md`](PROTOCOL_3.md), declared at commit `713f83f1` before its runs: the second
+declaration's facts with a brain in place of the instrument (`brain_records.py`). The brain hears
+every fact, keys the record by its own held message at the turn, writes it, reads it before the
+settle and answers by itself (`Brain.compose(longterm=records)`). Every episode begins with
+`reset()`, which empties the recall memory's slots, so the records are the only carrier from a fact
+to its question. Records founders 2900 to 2905, on a spot c7i.8xlarge; cost founders 2906 to 2908,
+one process on that box running nothing else, and on one A10G.
+
+### The gates
+
+| Gate | Reading | Bar | Founders | Verdict |
+| --- | --- | --- | --- | --- |
+| B1 | found, unrevised facts, 1,000 records | .99 | .9975 to 1.000, 6 of 6 | **passes** |
+| B2 | found, unrevised facts, 10,000 records | .99 | .980 to 1.000, 5 of 6 | **passes** |
+| B3 | used, unrevised, 10,000 records, and within .05 of 1,000 | .90 | .980 to 1.000 against .9975 to 1.000, 6 of 6 | **passes** |
+| B4 | revised facts at 10,000: found current, stale, used | .95, .02, .90 | .990 to 1.000, .000, .9925 to 1.000; 6 of 6 | **passes** |
+| B5 | `plain`, the brain without the option: used | at most .25 | .1225 to .155, 6 of 6 | **passes** |
+| C3 | ms per moment at 10,000 records over that without the option, one stream, one core | at most 2 | 1.82 to 1.83, 3 of 3 | **passes** |
+| D1 | the same on the device | at most 2 | 1.65 to 1.69, 3 of 3 | **passes** |
+
+### Found and used
+
+Each cell is the range over the six founders; 400 questions of each kind per founder.
+Parameters: `records` 413,082, `records_h2` 438,302, `plain` 387,862. Every nursery ends at
+.997 to 1.000 with records and .15 to .17 without.
+
+| Records | Arm | Unrevised: found | used | Revised: found current | stale | used | Records held per stream |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| 1,000 | `records` | .9975 to 1.000 | .9975 to 1.000 | .9975 to 1.000 | .000 | .9975 to 1.000 | 997.7 to 1,000 |
+| 1,000 | `records_h2` | .9975 to 1.000 | .9975 to 1.000 | .9975 to 1.000 | .000 | .995 to 1.000 | 997.7 to 1,000 |
+| 1,000 | `plain` | .000 | .1025 to .155 | .000 | .000 | .1125 to .150 | |
+| 10,000 | `records` | .980 to 1.000 | .980 to 1.000 | .990 to 1.000 | .000 | .9925 to 1.000 | 9,812 to 10,000 |
+| 10,000 | `records_h2` | .980 to 1.000 | .9675 to .9975 | .990 to 1.000 | .000 | .985 to 1.000 | 9,812 to 10,000 |
+| 10,000 | `plain` | .000 | .1025 to .1425 | .000 | .000 | .090 to .145 | |
+
+The brain answers with what its read holds: with one head, on every founder, size and kind, `used`
+is within .005 of `found`. A revised fact is current and never stale. A second head adds nothing here, where every
+key is exact, and at 10,000 records its answers read up to .0125 below what it finds.
+
+**The misses are the key's.** Every question hears what its fact did up to the turn, so a miss is
+a key that does not name its fact alone. Read on the founders' own facts (four streams each):
+
+- **Two facts with one key.** At founder 2901 3.7% to 3.9% of 10,000 facts share their whole key
+  with another fact (two agents or two verbs whose codes are one code at 280 units over this
+  lexicon); a question finds the record told last, and the stream holds 9,812 records for 10,000
+  facts. Founders 2903 and 2905 have no shared key.
+- **A key another contains.** A key whose units another record's key holds as well ties with it
+  on the dot product the read scores by, and the first slot wins: .2% of the facts at 2901 and .6%
+  at 2905, whose found reads .9925 with every key its own.
+
+### Cost
+
+ms per moment, mean of founders 2906 to 2908; the records filled by the store's own writes of facts'
+keys and values (a contract test holds the keys equal to the brain's message's).
+
+| Where | Streams | Records | Question moment | Fact moment |
+| --- | --- | --- | --- | --- |
+| one core | 1 | none (option off) | .767 | .768 |
+| one core | 1 | 1,000 | .872 | .927 |
+| one core | 1 | 10,000 | 1.068 | 1.398 |
+| one core | 16 | none | 2.569 | 2.576 |
+| one core | 16 | 1,000 | 3.531 | 4.274 |
+| one core | 16 | 10,000 | 11.675 | 27.043 |
+| A10G | 1 | none | 1.951 | 1.942 |
+| A10G | 1 | 1,000 | 2.052 | 2.099 |
+| A10G | 1 | 10,000 | 2.527 | 3.242 |
+| A10G | 16 | none | 4.447 | 4.421 |
+| A10G | 16 | 1,000 | 5.766 | 6.809 |
+| A10G | 16 | 10,000 | 11.038 | 20.401 |
+
+Over one stream the records cost .30 ms a question moment and .63 a fact moment at 10,000 records.
+Over 16 streams the records are 16 stores read and written one after another on the host, and a
+fact moment's write reads its store twice (the recognition, then the store's own revision check)
+before it writes: at 10,000 records the records take 24.5 ms of a 27.0 ms moment, 10.5 times the
+moment without the option. That cost is reported without a bar; one product across the streams' stores
+and one read per write are what it asks for.
+
 ## What these readings do not establish
 
 - Any default. The candidate is an instrument-level store and the library's `LongTermMemory` a

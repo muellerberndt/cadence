@@ -2,6 +2,29 @@
 
 ## Unreleased
 
+### Long-term records a brain keeps itself (opt-in, #288)
+
+`Brain.compose(longterm=records)` gives each stream records of its own, keyed by the brain's held
+message (`message=units`) from a turn (`message_boundary=channel`, `message_boundary_holds=True`).
+Off by default: without it a brain is the brain without it, to the bit on `backend="cpu"`.
+
+- **Key and write.** The key is the held message after the turn. The moment after the turn is
+  written only where it says more than the record the key finds: the same value writes nothing,
+  another revises that record, and a silent moment (a question) writes nothing.
+- **Read.** Before every settle after a turn, `longterm_heads` heads read in turn, each holding
+  its record on a region the association reads through plastic synapses, as it reads the recall
+  memory's ports.
+- **What stays.** Each stream's records are a `cd.LongTermMemory`: usage-protected under its
+  budget, revised, and kept across `reset()` and episodes.
+- Settings: `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match` (.75),
+  `longterm_revise` (.999). A brain with records is not saved in this version.
+
+Declared on six fresh founders, a brain taught to answer from its records hears facts it was
+never asked about. At 1,000 records a stream it finds and answers .9975 to 1.000 of them, at
+10,000 records .980 to 1.000. Revised facts are current at .990 to 1.000 and never stale, and the
+same brain without the option answers at chance (.09 to .16). A moment with 10,000 records on one
+stream costs 1.8 times a moment without them on one core and 1.7 times on a GPU.
+
 ### A long-term memory of records (opt-in, #288)
 
 `cd.LongTermMemory(width, value_width, capacity)` is a standalone store beside the brain: records

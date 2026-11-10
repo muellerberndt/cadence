@@ -485,6 +485,16 @@ nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `ex
 entry.
 [A long-term memory of records](memory.md#a-long-term-memory-of-records).
 
+`Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
+`brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
+brain's held message from a turn; it needs `message=units`, `message_boundary` and
+`message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
+(0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
+record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
+reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
+regions (`longterm`, `longterm_1`, ...). `save`, `grow` and `graft` refuse a brain with records in
+this version. [Long-term records](memory.md#long-term-records).
+
 ```text
 cadence.stream.columns(index) -> slice | ndarray
 ```

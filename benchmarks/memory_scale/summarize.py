@@ -152,6 +152,61 @@ def gates2(folder: Path) -> dict[str, dict[str, Any]]:
     return out
 
 
+THIRD = (2900, 2901, 2902, 2903, 2904, 2905)  # the third declaration's founders
+
+
+def gates3(folder: Path) -> dict[str, dict[str, Any]]:
+    """The gates of the third declaration (``PROTOCOL_3.md``): B1 to B5 on the brain's own
+    records and C3, D1 on its cost. A gate whose receipt is absent is left out."""
+    out: dict[str, dict[str, Any]] = {}
+
+    def gate(name: str, values: list[float], passes: list[bool], bar: str) -> None:
+        out[name] = {"values": [round(v, 4) for v in values], "bar": bar,
+                     "founders": int(sum(passes)), "passes": int(sum(passes)) >= NEEDED}
+
+    if held(folder, "third-records.jsonl"):
+        table = rows(folder / "third-records.jsonl")
+
+        def score(arm: str, n: int, kind: str, field: str) -> list[float]:
+            found = []
+            for founder in THIRD:
+                row = pick(table, founder=founder, arm=arm, n=n)
+                if len(row) == 1:
+                    found.append(float(row[0][kind][field]))
+            return found
+
+        for name, n in (("B1", 1000), ("B2", 10_000)):
+            values = score("records", n, "unrevised", "found")
+            gate(name, values, [v >= 0.99 for v in values], "at least 0.99")
+        large = score("records", 10_000, "unrevised", "used")
+        small = score("records", 1000, "unrevised", "used")
+        gate("B3", large, [b >= 0.90 and b >= a - 0.05 for a, b in zip(small, large, strict=True)],
+             "at least 0.9 and within .05 of 1,000")
+        current = score("records", 10_000, "revised", "found")
+        stale = score("records", 10_000, "revised", "stale")
+        used = score("records", 10_000, "revised", "used")
+        gate("B4", current, [c >= 0.95 and s <= 0.02 and u >= 0.90
+                             for c, s, u in zip(current, stale, used, strict=True)],
+             "found at least .95, stale at most .02, used at least .9")
+        plain = [max(a, b) for a, b in zip(score("plain", 1000, "unrevised", "used"),
+                                          score("plain", 10_000, "unrevised", "used"),
+                                          strict=True)]
+        gate("B5", plain, [v <= 0.25 for v in plain], "at most 0.25")
+    for name, receipt in (("C3", "third-cost.jsonl"), ("D1", "third-cost-device.jsonl")):
+        if held(folder, receipt):
+            table = [r for r in rows(folder / receipt) if r["streams"] == 1]
+            founders = sorted({r["founder"] for r in table})
+            ratios = []
+            for f in founders:
+                off, on = pick(table, founder=f, n=0)[0], pick(table, founder=f, n=10_000)[0]
+                ratios.append(max(on["question_ms"] / off["question_ms"],
+                                  on["fact_ms"] / off["fact_ms"]))
+            out[name] = {"values": [round(r, 3) for r in ratios], "bar": "at most 2",
+                         "founders": int(sum(r <= 2 for r in ratios)),
+                         "passes": all(r <= 2 for r in ratios)}
+    return out
+
+
 def meaning_table(folder: Path, units: int = 280, fan_in: int = 821) -> str:
     """Found by cue for facts keyed by held meanings, one code: each arm at each N."""
     table = pick(rows(folder / "meaning-keys.jsonl"), units=units, fan_in=fan_in)
@@ -331,7 +386,7 @@ def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--dir", type=Path, required=True)
     args = parser.parse_args(argv)
-    print(json.dumps({**gates(args.dir), **gates2(args.dir)}, indent=1))
+    print(json.dumps({**gates(args.dir), **gates2(args.dir), **gates3(args.dir)}, indent=1))
     for title, table in (
         ("found, key width 64", lambda: retrieval_table(args.dir)),
         ("cost of the retrieval arms", lambda: cost_table(args.dir)),
