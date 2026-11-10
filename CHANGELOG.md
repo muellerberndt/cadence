@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### The Doom body (#285)
+
+- **A VizDoom adapter in `benchmarks/doom/`**, the Body stage of the Doom player (#118). A player
+  receives the rendered RGB screen (84 by 84 or 160 by 120), the HUD's health, armour and
+  ammunition as declared own-body ports and the episode's previous action as a history port,
+  and nothing else. It answers with one button of the scenario's declared set per moment, held
+  for declared game tics. A scorer per scenario (basic, defend the center, health gathering, on
+  the Freedoom IWAD the VizDoom wheel carries) keeps completion, death, deadline and truncation
+  distinct and credits each outcome once; custody records the tic, the events and the outcome
+  of every moment; a checkpoint of game, body and brain resumes the same life at the same tic,
+  the brain to the bit on `backend="cpu"`. VizDoom is optional, and its tests skip without it.
+  The brain (`Brain.compose`), its blind and frozen controls, a random player and a small
+  convolutional actor-critic run every scenario through it
+  ([the Doom body](benchmarks/doom/README.md)). The library is unchanged.
+
 ## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in

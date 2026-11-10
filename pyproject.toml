@@ -47,6 +47,7 @@ exclude = ["**/.lake/**", "*.olean", "*.ilean", "*.olean.private", "*.olean.serv
   # Receipts that no test reads stay in the repository and the release assets, not in the sdist.
   "benchmarks/competing/results/**", "benchmarks/chain/results/**",
   "benchmarks/rhythm/results/native-history-*", "benchmarks/recall/results/**",
+  "benchmarks/doom/results/**",
   "!benchmarks/recall/results/finite-3-2026-10-08.json.gz"]
 
 [tool.pytest.ini_options]
