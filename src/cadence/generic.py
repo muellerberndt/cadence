@@ -83,6 +83,7 @@ from .learning import (
     _reservoir_slot,
     learning_neuron_model,
 )
+from .longterm import LongTermRecords
 from .memories import EpisodicRecords, Memories, Moment, command, record_action
 from .memory import SynapticMemory
 from .plasticity import ActorCritic, ActorCriticConfig, Maturity, _batch_of, _held_drive
@@ -610,6 +611,40 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
     "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
     "boundary": None, "boundary_holds": False,
 }
+
+
+# The founders of the brain's long-term records (``longterm=records`` names the records a stream
+# holds): heads, the drive of a held record, the cosine at which a record holds the message's key
+# for a read, and at which a write is that record told again (only the same key, for keys of
+# zeros and ones: two keys of a held message that differ in one unit are two facts, #288).
+_LONGTERM_FOUNDERS: dict[str, Any] = {
+    "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999,
+}
+
+
+def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
+    """The settings of the brain's long-term records: ``longterm`` the records a stream holds
+    (0 or None for none) and every ``longterm_<setting>`` among ``genes`` over its founder.
+    Empty without them; a ``longterm_`` setting without them is refused."""
+    named = {name[len("longterm_"):]: value for name, value in genes.items()
+             if name.startswith("longterm_")}
+    unknown = set(named) - set(_LONGTERM_FOUNDERS)
+    if unknown:
+        raise TypeError(f"unknown longterm setting: longterm_{sorted(unknown)[0]}")
+    if longterm is None or (not isinstance(longterm, (bool, np.bool_)) and longterm == 0):
+        if named:
+            raise ValueError(
+                f"longterm_{sorted(named)[0]} needs long-term records: pass longterm=records"
+            )
+        return {}
+    out = {"records": _count("longterm", longterm, low=1), **_LONGTERM_FOUNDERS, **named}
+    out["heads"] = _count("longterm_heads", out["heads"], low=1)
+    out["amplitude"] = real("longterm_amplitude", out["amplitude"], low=0)
+    for name in ("match", "revise"):
+        out[name] = real(f"longterm_{name}", out[name], low=0)
+        if out[name] > 1:
+            raise ValueError(f"longterm_{name} is a cosine: it lies in [0, 1]")
+    return out
 
 
 def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
@@ -1964,6 +1999,20 @@ def _layout(
             projections.append(
                 Projection("message_read", "association", scale=_MESSAGE_SCALE, reciprocal=False)
             )
+    longterm = _longterm_genes(options.get("longterm"), options)
+    if longterm:
+        # Appended last, after the message: the brain with long-term records is the brain
+        # without them plus one region per head, one neuron per coordinate of the observation as
+        # the message hears it, and their one-way projections into the association
+        if not messaged:
+            raise ValueError(
+                "longterm keys its records on the brain's held message: pass message=units"
+            )
+        for name in LongTermRecords.ports(longterm["heads"]):
+            regions.append(Region(name, heard_width))
+            projections.append(
+                Projection(name, "association", scale=_RECALL_SCALE, reciprocal=False)
+            )
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
         "inputs": inputs,
@@ -2075,6 +2124,7 @@ class Brain:
         history_decays: Sequence[float] = (),
         history_amplitude: float = 3.0,
         message: int | None = None,
+        longterm: int | None = None,
         carried_gain: float = 0.0,
         recall: bool = False,
         learning: LearnerConfig | None = None,
@@ -2155,6 +2205,9 @@ class Brain:
         recalled = _recall_genes(recall, genes)  # the recall_* genes leave ``genes`` here
         messaged = _message_genes(message, genes)  # and the message_* genes here
         for name in [name for name in genes if name.startswith("message_")]:
+            del genes[name]
+        kept_records = _longterm_genes(longterm, genes)  # and the longterm_* genes here
+        for name in [name for name in genes if name.startswith("longterm_")]:
             del genes[name]
         # the gains read the declared tokens (``recall_gain``)
         if recalled.get("tokens") is not None and recalled.get("gain"):
@@ -2356,6 +2409,15 @@ class Brain:
                 read_temperature=messaged["read_temperature"],
                 port="message_read" if messaged["read"] else "",
             )
+        # the long-term records (``longterm=records``): each stream's records keyed by its held
+        # message at the turn, read before the settle onto regions the association reads
+        self.longterm: LongTermRecords | None = None
+        if kept_records:
+            self.longterm = LongTermRecords(
+                connectome, self.message, kept_records["records"], heads=kept_records["heads"],
+                amplitude=kept_records["amplitude"], match=kept_records["match"],
+                revise=kept_records["revise"], seed=seed,
+            )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
         self.recall: Recall | None = None
@@ -2512,6 +2574,7 @@ class Brain:
                 "history": self.history,
                 "recall": self.recall,
                 "message": self.message,
+                "longterm": self.longterm,
                 "hippocampus": self.hippocampus,
                 "episodic": self._episodic,
             }
@@ -3057,6 +3120,7 @@ class Brain:
             "history_decays",
             "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
             "message_boundary", "message_boundary_holds", "message_read",
+            "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
             "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
@@ -3390,6 +3454,11 @@ class Brain:
                     message_read_rate=held.read_rate,
                     message_read_temperature=held.read_temperature,
                 )
+        if self.longterm is not None:
+            kept = self.longterm
+            genes.update(longterm=kept.capacity, longterm_heads=kept.heads,
+                         longterm_amplitude=kept.amplitude, longterm_match=kept.match,
+                         longterm_revise=kept.revise)
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,
@@ -3879,7 +3948,7 @@ class Brain:
         recall, store = self.recall, self.hippocampus
         return bool(
             self._episodic is not None or self.learned_code is not None
-            or self.message is not None
+            or self.message is not None or self.longterm is not None
             or (recall is not None and not recall.resides)
             or (store is not None and (store.separator is not None
                                        or getattr(store, "gate_noise", None) is not None
@@ -4994,6 +5063,10 @@ class Brain:
             held.append(
                 (self.message, {n: v.copy() for n, v in self.message.streams().items()})
             )
+        if self.longterm is not None:  # its turns; the records keep what was written
+            held.append(
+                (self.longterm, {n: v.copy() for n, v in self.longterm.streams().items()})
+            )
         return held
 
     def _streams(self) -> tuple[Any, ...]:
@@ -5189,6 +5262,8 @@ class Brain:
                     self.history.reset(1, rows=np.array([0]))
                 if ended[0] and self.message is not None:
                     self.message.reset(1, rows=np.array([0]))
+                if ended[0] and self.longterm is not None:
+                    self.longterm.reset(1, rows=np.array([0]))
                 if ended[0] and self.recall is not None:
                     # the forecast read the stream as this end leaves it; once the end is
                     # committed that read is the moment's, for the act's eligibility and write
@@ -5357,6 +5432,8 @@ class Brain:
                 self._heard(x, code),
                 None if self.working_memory is None else self.working_memory.last,
             )
+        if self.longterm is not None:
+            self.longterm.hear(self._heard(x, code))  # a turn held, a statement written
         if self.recall is not None:
             self.recall.witness(code, state)  # the sensed moment joins the stream's slots
         self._hear_episode(x)
@@ -5494,6 +5571,9 @@ class Brain:
         trace, echo = branch.get("working_memory"), branch.get("efference")
         heard, recalled = branch.get("history"), branch.get("recall")
         told = branch.get("message")
+        kept = branch.get("longterm")
+        if kept is not None:
+            kept.message = told  # the branch's records are read under the branch's own key
         # the branch issues the act the brain would issue where the act is heard, by the copy
         # of the command or by a recall memory that keeps it; the episodic vote is read under
         # the branch's own temporal context, the stream's moved on privately by the branch's
@@ -5544,6 +5624,8 @@ class Brain:
                     heard.hear(self._heard(value, code))
                 if told is not None:
                     told.hear(self._heard(value, code), None if trace is None else trace.last)
+                if kept is not None:
+                    kept.hear(self._heard(value, code))  # its turns move on; nothing written
                 if recalled is not None:
                     # the branch's cortex moves on, and with ``recall_action`` its command
                     recalled.witness(code, phase.state, command if recalled.action else None)
@@ -5746,6 +5828,10 @@ class Brain:
                 self._heard(x, code),
                 None if self.working_memory is None else self.working_memory.last,
             )
+        if self.longterm is not None:
+            # after the message: a turn it holds from this moment, or the moment after a turn
+            # written where it says more than the record its key finds
+            self.longterm.hear(self._heard(x, code))
         if self.recall is not None:
             # the moment acted on joins the stream's slots, with ``recall_action`` with the
             # command executed on it; its settled cortex enters the next moment's address
@@ -6069,6 +6155,8 @@ class Brain:
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
 
+        if self.longterm is not None:
+            raise ValueError("a brain with long-term records is not saved in this version")
         agent = self.basal_ganglia
         data = _learner_data(self.learner)
         memories: dict[str, Any] = {}

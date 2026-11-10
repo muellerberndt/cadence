@@ -46,14 +46,17 @@ place and deepens it, so a fact that changed is current and no second copy stays
 
 from __future__ import annotations
 
+from copy import copy
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, ClassVar
 
 import numpy as np
 
+from .resident import _on_host
 from .stream import PatternSeparator, _left, _share
+from .stream import columns as _columns
 
-__all__ = ["LongTermMemory", "LongTermRead"]
+__all__ = ["LongTermMemory", "LongTermRead", "LongTermRecords"]
 
 
 @dataclass
@@ -413,3 +416,221 @@ class LongTermMemory:
         if self.coarse:
             held += [self.units, self.places, self.lists, self.counts, self.projection]
         return int(sum(a.nbytes for a in held))
+
+
+class LongTermRecords:
+    """A brain's own long-term memory (``Brain.compose(longterm=records)``): records keyed by
+    the brain's held message, on regions the association reads.
+
+    **The key.** The brain's held message (``message=units``) is held from a turn: a heard
+    moment with the input channel ``message_boundary`` on, with ``message_boundary_holds``. From
+    that moment the message keeps what the episode heard before the turn, so its key
+    (``HeldMessage.key()``, the union over its blocks) says what the episode is about, and
+    nothing heard after the turn changes it.
+
+    **The write.** The moment after the turn is what the episode says: its observation, as the
+    message hears it, is the record's value. The write reads the stream's records with the key
+    first. Where a record holds the key (cosine ``revise`` or above) and the same value, the
+    moment says nothing more and nothing is written; where it holds the key and another value,
+    the write revises that record; where none holds the key, the write takes a slot. A silent
+    moment after the turn writes nothing, so a question (the turn, then the brain's answer)
+    leaves the records as they are.
+
+    **The read.** Before every settle after a turn the key addresses the stream's records:
+    ``heads`` heads read in turn, each its first choice among the records the heads before it
+    left, and a head holds its record only where the record's key lies at cosine ``match`` or
+    above to the message's key. Head ``h`` holds ``amplitude`` times the record's value on the
+    region ``longterm`` (head 0) or ``longterm_h``, which the association reads through
+    plastic synapses, as it reads the recall memory's ports. Before a turn the regions are
+    silent.
+
+    **What stays.** Each stream keeps its records in a ``LongTermMemory`` of ``capacity``
+    slots: a read deepens the records it holds, every moment the brain lives fades the idle
+    ones by their depth and recent use, and a full memory replaces the most faded record. The
+    records survive ``Brain.reset`` and every episode's end; ``clear()`` empties them.
+    """
+
+    # the store's settings that the brain does not name: the library store's founders, and a
+    # first choice read whole
+    STORE: ClassVar[dict[str, Any]] = {"temperature": 0.0}
+
+    def __init__(
+        self,
+        connectome: Any,
+        message: Any,
+        capacity: int,
+        heads: int = 1,
+        amplitude: float = 3.0,
+        match: float = 0.75,
+        revise: float = 0.999,
+        seed: int = 0,
+    ) -> None:
+        if message is None or message.boundary is None or not message.boundary_holds:
+            raise ValueError(
+                "longterm keys its records on the brain's held message from a turn: it needs "
+                "message=units, message_boundary=channel and message_boundary_holds=True"
+            )
+        self.message = message
+        self.capacity, self.heads = int(capacity), int(heads)
+        self.amplitude, self.match, self.revise = float(amplitude), float(match), float(revise)
+        self.seed = int(seed)
+        self.width, self.value_width = int(message.units), int(message.inputs)
+        populations = connectome.populations
+        self.columns: list[slice | np.ndarray] = []
+        for name in self.ports(self.heads):
+            if name not in populations:
+                raise ValueError(f"longterm needs a {name!r} population; Brain.compose adds it")
+            neurons = np.asarray(populations[name], dtype=np.int64)
+            if len(neurons) != self.value_width:
+                raise ValueError(
+                    f"the {name} population holds {len(neurons)} neurons, where a record's "
+                    f"value holds {self.value_width}"
+                )
+            self.columns.append(_columns(neurons))
+        self.stores: list[LongTermMemory] = []
+        self.since = np.full(0, -1, dtype=np.int64)  # moments since each stream's turn
+        self.read_slots = np.full((0, self.heads), -1, dtype=np.int64)  # the latest read
+        self.counts = {"writes": 0, "revisions": 0, "agreed": 0, "reads": 0}
+        self._private = False
+
+    @staticmethod
+    def ports(heads: int) -> tuple[str, ...]:
+        """The regions the heads hold their records on."""
+        return ("longterm", *(f"longterm_{h}" for h in range(1, int(heads))))
+
+    def _store(self) -> LongTermMemory:
+        return LongTermMemory(self.width, self.value_width, self.capacity, revise=self.revise,
+                              seed=self.seed, **self.STORE)
+
+    def _streams(self, batch: int) -> None:
+        """Every stream of a batch of ``batch`` has its records; a stream that begins holds no
+        turn."""
+        while len(self.stores) < batch:
+            self.stores.append(self._store())
+        if len(self.since) != batch:
+            self.since = np.full(batch, -1, dtype=np.int64)
+            self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
+
+    def _keys(self, batch: int) -> np.ndarray | None:
+        """Each stream's key, ``(batch, units)``, where the message holds that batch."""
+        held = self.message
+        if len(held.trace) != batch:
+            return None
+        return np.asarray(held.key(), dtype=np.float64)
+
+    def _holds(self, store: LongTermMemory, slot: int, key: np.ndarray, bar: float) -> bool:
+        """Whether the record in ``slot`` holds ``key``: their cosine at ``bar`` or above."""
+        if slot < 0:
+            return False
+        held = np.asarray(store.keys[slot], dtype=np.float64)
+        norm = float(np.linalg.norm(held) * np.linalg.norm(key))
+        return norm > 0 and float(held @ key) / norm >= bar - 1e-12
+
+    # -- the read, before the settle
+
+    def stimulus(self, drive: np.ndarray, moment: Any = None) -> np.ndarray:
+        """The drive with each head's record on its region; silent where a stream holds no
+        turn."""
+        out = np.array(_on_host(drive), dtype=float)
+        batch = len(out)
+        self._streams(batch)
+        for columns in self.columns:
+            out[:, columns] = 0.0
+        self.read_slots[:] = -1
+        keys = self._keys(batch)
+        if keys is None:
+            return out
+        for row in np.flatnonzero(self.since >= 0):
+            store, key = self.stores[int(row)], keys[row]
+            if not store.count or not key.any():
+                continue
+            read = store.read(key, heads=self.heads, credit=not self._private)
+            self.counts["reads"] += 0 if self._private else 1
+            for head, columns in enumerate(self.columns):
+                slot = read.first(head)
+                if self._holds(store, slot, key, self.match):
+                    out[row, columns] = self.amplitude * store.values[slot]
+                    self.read_slots[row, head] = slot
+        return out
+
+    # -- the write, after the settle
+
+    def hear(self, observations: np.ndarray) -> None:
+        """After the message has heard the moment: a stream whose message turned at this moment
+        holds its turn, and the moment after a turn is written where it says more than the
+        record the key finds; every stream's records live one moment."""
+        x = np.asarray(observations, dtype=float)
+        batch = len(x)
+        self._streams(batch)
+        held = self.message.held if len(self.message.held) == batch else np.zeros(batch, bool)
+        keys = self._keys(batch)
+        turned = held & (self.since < 0)
+        after = self.since >= 0
+        self.since = np.where(after, self.since + 1, np.where(turned, 0, -1))
+        if self._private:
+            return
+        if keys is not None:
+            for row in np.flatnonzero(self.since == 1):
+                if x[row].any() and keys[row].any():
+                    self._write(int(row), keys[row], x[row])
+        for store in self.stores[:batch]:
+            store.moment()
+
+    def _write(self, row: int, key: np.ndarray, value: np.ndarray) -> None:
+        store = self.stores[row]
+        if store.count:
+            found = store.read(key, credit=False).first()
+            if self._holds(store, found, key, self.revise) and np.array_equal(
+                np.asarray(store.values[found], dtype=np.float64), value
+            ):
+                self.counts["agreed"] += 1  # the moment says nothing the record does not
+                return
+        _, revised = store.write(key, value)
+        self.counts["writes"] += 1
+        self.counts["revisions"] += int(revised)
+
+    # -- the memory contract
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """Streams that begin hold no turn; every record stays."""
+        if rows is None or len(self.since) != batch:
+            self.since = np.full(batch, -1, dtype=np.int64)
+            self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
+        else:
+            self.since[rows] = -1
+            self.read_slots[rows] = -1
+
+    def keep(self, rows: np.ndarray) -> None:
+        """Keep the streams of ``rows``, their records with them."""
+        index = np.arange(len(self.since))[rows]
+        self.stores = [self.stores[int(i)] for i in index if int(i) < len(self.stores)]
+        self.since, self.read_slots = self.since[index], self.read_slots[index]
+
+    def clear(self) -> None:
+        """Empty every stream's records."""
+        self.stores = []
+        self.counts = dict.fromkeys(self.counts, 0)
+
+    def branch(self) -> LongTermRecords:
+        """A private copy for an imagined branch: it reads the live records, credits none and
+        writes none."""
+        out = copy(self)
+        out.since, out.read_slots = self.since.copy(), self.read_slots.copy()
+        out.counts = dict(self.counts)
+        out._private = True
+        return out
+
+    def streams(self) -> dict[str, np.ndarray]:
+        """What the streams hold, the records apart."""
+        return {"since": self.since, "read_slots": self.read_slots}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "capacity": self.capacity, "heads": self.heads, "amplitude": self.amplitude,
+            "match": self.match, "revise": self.revise, "records": [s.count for s in self.stores],
+            **self.counts,
+        }
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        return dict(self.streams())
+
