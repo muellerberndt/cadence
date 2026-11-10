@@ -206,10 +206,14 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     if kind not in KINDS or control not in CONTROLS:
         raise ValueError("unknown kind or control")
     arm = spec.get("arm", "default")
+    driver = spec.get("driver", "step")
+    if driver not in ("step", "live"):
+        raise ValueError("the brain lives through step or live")
     started, cpu = time.monotonic(), time.process_time()
     row: dict[str, Any] = {
         "kind": kind, "task": task, "delay": delay, "founder": founder, "control": control,
         "arm": arm if kind == "brain" else spec.get("tag"), "budgets": budgets,
+        "driver": driver if kind == "brain" else None,
     }
     inputs = tk.INPUTS[task]
     learner: Any = None
@@ -246,7 +250,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
 
     log: dict[str, list[Any]] = {k: [] for k in (
         "right", "reward", "p_right", "value_decision", "dopamine_decision", "value_after",
-        "dopamine_outcome", "value_last", "share", "cosine", "trace")}
+        "dopamine_outcome", "value_last", "share", "cosine", "trace", "aroused_decision",
+        "aroused_corridor")}
     readings: list[dict[str, Any]] = []
     decay = 1.0
     if kind == "brain":
@@ -268,14 +273,19 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
             x = episode.observation()
             moment = episode.moment
             if kind == "brain":
+                move = brain.live if driver == "live" else brain.step
                 if moment == 0 and owed is not None:
-                    action = int(brain.step(x[None, :], reward=[owed], done=[True])[0])
+                    action = int(move(x[None, :], reward=[owed], done=[True])[0])
                     log["dopamine_outcome"].append(brain.last_learning.get("dopamine"))
                     log["value_last"].append(brain.last_learning.get("value"))
                 elif moment == 0:
-                    action = int(brain.step(x[None, :])[0])
+                    action = int(move(x[None, :])[0])
                 else:
-                    action = int(brain.step(x[None, :], reward=[0.0])[0])
+                    action = int(move(x[None, :], reward=[0.0], done=[False])[0])
+                if driver == "live":
+                    aroused = (brain.last_arousal or {}).get("mode") == "aroused"
+                    log["aroused_decision" if moment == 0 else "aroused_corridor"].append(
+                        float(aroused))
                 work["multiply_accumulates"] += _brain_work(brain, synapses, eligibility)
                 if moment == 0:
                     log["p_right"].append(_probability(brain, right_action))
@@ -346,6 +356,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
             "share": _windows(log["share"]),
             "cosine": _windows(log["cosine"]),
             "trace": _windows(log["trace"]),
+            "aroused_decision": _windows(log["aroused_decision"]),
+            "aroused_corridor": _windows(log["aroused_corridor"]),
         }
     row["work"] = {**work, "seconds": time.monotonic() - started,
                    "cpu_seconds": time.process_time() - cpu}
@@ -416,6 +428,8 @@ def specs_of(args: argparse.Namespace) -> list[dict[str, Any]]:
                             spec["learner"] = json.loads(args.learner)
                         if args.tag:
                             spec["tag"] = args.tag
+                        if args.driver != "step":
+                            spec["driver"] = args.driver
                         out.append(spec)
     return out
 
@@ -424,8 +438,10 @@ def summary(path: str) -> str:
     rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
     cells: dict[tuple, list[dict[str, Any]]] = {}
     for row in rows:
-        key = (row["kind"], row.get("arm"), row.get("control", "none"), row["task"],
-               row["delay"])
+        arm = row.get("arm")
+        if row.get("driver") == "live":
+            arm = f"{arm} (live)"
+        key = (row["kind"], arm, row.get("control", "none"), row["task"], row["delay"])
         cells.setdefault(key, []).append(row)
     lines = ["| kind | arm | control | task | delay | parameters | founders at .90 | choice "
              "| p(right) | acted, last 256 | door | seconds per episode | MAC per episode |",
@@ -466,6 +482,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--settings", help="JSON settings over the brain arm's")
     parser.add_argument("--learner", help="JSON settings of a conventional learner")
     parser.add_argument("--tag", help="a conventional learner's name for its settings in the table")
+    parser.add_argument("--driver", default="step", choices=("step", "live"),
+                        help="the brain's moments through step (every outcome) or live")
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--out")
     parser.add_argument("--summary")
