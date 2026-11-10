@@ -486,10 +486,12 @@ records, with every slot scored. No setting or default changes.
   At a tenth of the actor step, `actor_hold=1.0` learns the T-maze at 50 on 6 of 6 fresh
   founders and the key-door at 50 on 3 of 6 (5 of 6 without the hold, the readout latched); at
   200 moments 3 and 0 of 6. With `memory_choice=True` beside the hold the key-door at 50 reads 5
-  of 6 ([the delayed-credit chamber](benchmarks/delayed_credit/README.md)). An ungated reading:
-  `actor_eta=0.1` with `actor_hold=1.0` and `actor_entropy=0.1` reads the key-door at 50 on 5 of 6
-  founders at .90, 3 of 6 without the entropy
-  ([#296](https://github.com/muellerberndt/cadence/issues/296)).
+  of 6 ([the delayed-credit chamber](benchmarks/delayed_credit/README.md)). An ungated reading
+  ([#296](https://github.com/muellerberndt/cadence/issues/296), the delayed-credit chamber,
+  founders 2830 to 2835 at .90, without and with `actor_entropy=0.1`): with `actor_eta=0.1` and
+  `actor_hold=1.0` the key-door at 50 reads 3 and 5 of 6, the T-maze at 200 reads 5 and 6 of 6,
+  and the key-door at 200 reads 2 and 5 of 6; with the hold at the full step the T-maze at 200
+  reads 0 and 5 of 6, and the key-door fails with and without the entropy.
 - **#296, exploration over long reward lives: no setting meets the Doom gate.**
   `actor_entropy=0.1` ends the latch: no button exceeds .40 of a life's last quarter in any of
   its 30 lives, and aim reads +0.918 on 6 of 6 fresh founders. In the Doom body it passes 2 of
