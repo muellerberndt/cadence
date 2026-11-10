@@ -518,7 +518,7 @@ of the critic's values, `V(s_0) + (1 - gamma) * (V(s_1) + ... + V(s_k))`. A hold
 episode ends, choose one, since a hold of 1 there sums every act since the last `done`. The
 critic keeps `actor_gamma` and `actor_lam`. `None`, the founder, keeps `gamma * lam` for every
 trace and every bit of a brain that names no hold, and saves its checkpoint without the field; a
-brain saved with a hold carries it, and 0.96.0 and earlier refuse that checkpoint.
+brain saved with a hold carries it, and 0.96.1 and earlier refuse that checkpoint.
 
 Take a tenth of the actor step with the hold. A held trace sums the contrast of every act of the
 episode into each outcome's step, and at the composed `actor_eta` of 1.0 the readout goes to a

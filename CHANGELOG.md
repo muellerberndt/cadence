@@ -12,7 +12,7 @@
   eligibility keeps `actor_gamma * actor_lam`. A hold below 1 sets the actor's decay per moment.
   It applies in `learn` on the host, on a torch device, on MLX and in `Lives`, and in `fade`. A
   brain that names no hold keeps `gamma * lam` for every trace and lives, saves and describes to
-  the bit as on 0.96.0 on `backend="cpu"`; a configuration without the hold saves without the
+  the bit as on 0.96.1 on `backend="cpu"`; a configuration without the hold saves without the
   field ([a reward many moments after the
   decision](docs/reward.md#a-reward-many-moments-after-the-decision)). On six fresh founders, with
   a tenth of the actor step and `memory_choice=True`, it learns a T-maze whose reward comes 50
@@ -24,6 +24,17 @@
   and 200 moments with distractors, an exact solver, yoked, shuffled, frozen and ablated controls,
   and an LSTM actor-critic with generalized advantage estimation and the online TD(lambda)
   actor-critic sized to the brain's parameter count, with tests.
+
+## 0.96.1 — 2026-11-10
+
+A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is
+int32, and its `np.repeat` and `reduceat` refuse int64 counts and offsets. The learner kept its
+motor slots' sizes and offsets as int64, so on 32-bit Python any brain with motor slots (equal or
+unequal, `slots=(2, 3)`), `grow(slots=...)`, a lesson with `targets=` and a policy with one
+temperature per slot raised `TypeError: Cannot cast array data from dtype('int64') to
+dtype('int32')`. The slots' sizes and offsets, and the segment starts of the CPU path's summed
+input, are kept in the platform's index type (`np.intp`). On a 64-bit platform that type is
+int64, so every bit is as on 0.96.0.
 
 ## 0.96.0 — 2026-11-10
 

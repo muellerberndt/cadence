@@ -25,7 +25,7 @@ compares it with networks trained by backpropagation.
 ## Install
 
 ```sh
-python -m pip install cadence-net==0.96.0
+python -m pip install cadence-net==0.96.1
 ```
 
 Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hardware:
@@ -36,10 +36,10 @@ Cadence needs Python 3.11 or later and NumPy. Optional extras add speed and hard
 | `[accel]` | PyTorch | NVIDIA GPUs (CUDA) |
 | `[apple]` | MLX | Apple silicon GPUs |
 
-For example `python -m pip install "cadence-net[fast]==0.96.0"`. From a checkout of the
+For example `python -m pip install "cadence-net[fast]==0.96.1"`. From a checkout of the
 repository, run `python -m pip install -e .` at its root. A new brain picks the fastest backend
 the machine has for its size by itself ([backends](backends.md)). The
-[v0.96.0 documentation](https://github.com/muellerberndt/cadence/blob/v0.96.0/docs/README.md)
+[v0.96.1 documentation](https://github.com/muellerberndt/cadence/blob/v0.96.1/docs/README.md)
 is pinned to the release tag.
 
 ## Your first brain
