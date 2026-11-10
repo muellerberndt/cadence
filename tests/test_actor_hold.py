@@ -94,3 +94,25 @@ def test_the_hold_is_retuned_saved_and_loaded(tmp_path):
     assert brain.basal_ganglia.config.decay == brain.basal_ganglia.config.gamma * 0.8
     with pytest.raises(ValueError):
         brain.retune(actor_hold=2.0)
+
+
+def test_a_hold_on_a_torch_device_follows_the_host():
+    pytest.importorskip("torch")
+    warnings.simplefilter("ignore")
+    eye = np.eye(5)
+
+    def lived(backend: str, **settings) -> list[np.ndarray]:
+        extra = {"device": "cpu", "precision": "float64"} if backend == "torch" else {}
+        lives = cd.Lives(5, 2, 2, backend=backend, **extra, **settings)
+        rng = np.random.default_rng(0)
+        lives.step(eye[[0, 1]])
+        for moment in range(1, 15):
+            lives.step(eye[rng.integers(5, size=2)], reward=rng.choice([-1.0, 0.0, 1.0], size=2),
+                       done=np.array([moment % 5 == 0] * 2))
+        return [np.array(lives.life(i).learner.brain.efficacy) for i in range(2)]
+
+    host, device = lived("cpu", actor_hold=1.0), lived("torch", actor_hold=1.0)
+    unheld = lived("cpu")
+    for held, there, founder in zip(host, device, unheld, strict=True):
+        assert np.abs(held - there).max() < 1e-3  # the solver's tolerance, not the hold's
+        assert np.abs(held - founder).max() > 1e-2  # the hold moves what the lives learn
