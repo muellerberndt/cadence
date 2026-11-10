@@ -344,8 +344,11 @@ the default composition and `backend="cpu"` arithmetic are as on 0.95.2.
   twelve fresh founders, the read barred): with `message_read=True` and `history_decays=(0.0,)`
   beside `message=280` at 256 association neurons the brain says clauses, held-out combinations
   and role twins from its held state at .90 on 12, 11 and 11 founders (596,412 parameters), where
-  the message alone reaches 12, 9 and 9. Longer clauses, deeper brackets and three hops read .00
-  from the state, and .00 to .02 for the LSTM and the transformer at the same parameter count.
+  the message alone reaches 12, 9 and 9; on twelve more founders 11, 7 and 9, so over 24 the
+  held-out bar of 20 is not met (18). Longer clauses, deeper brackets and three hops read .00 from
+  the state, and .00 to .02 for the LSTM and the transformer at the same parameter count; a block
+  for every moment of the longest clause (`message_phases` 7, 8 or 16) leaves longer clauses at
+  .00 to .02.
 - **`message_read=True`**. A port of `units` neurons holds one block of the message, chosen by the
   present moment through learned maps (a content address over the block's units and a term per
   block). The maps start at zero and learn by the recall memory's address lesson on the message's

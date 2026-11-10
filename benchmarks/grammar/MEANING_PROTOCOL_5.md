@@ -66,3 +66,39 @@ to another. Where the probe falls too, the message does not hold them.
 
 One AWS c7i.16xlarge spot box (Name=cadence-097-meaning), one process per life, one BLAS thread
 per process.
+
+## Result
+
+Read on one c7i.16xlarge, founders 10328600 to 10328605, 24 lives on commit d3977b61.
+
+| Arm | Blocks | Parameters | Multiply-accumulates | clause | clause_held | roles | dyck | path | three hops | clause_long | dyck_deep |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `both_256` | 4 | 596,412 | 2.55e13 | .97 | .90 | .89 | .91 | .48 | .00 | .00 | .01 |
+| `both_p7` | 7 | 813,171 | 3.75e13 | .99 | .90 | .87 | .89 | .38 | .00 | .00 | .01 |
+| `both_p8` | 8 | 885,424 | 4.17e13 | .99 | .97 | .97 | .93 | .43 | .00 | .01 | .00 |
+| `both_p16` | 16 | 1,463,448 | 7.31e13 | .99 | .91 | .92 | .91 | .36 | .00 | .00 | .00 |
+
+**A2c fails on every arm**: `clause_long` reads .00 to .02 on every life, as stated. Against
+`both_256`, paired, paths fall .10 (.03), .05 (.02) and .12 (.05) with 7, 8 and 16 blocks, each
+beyond two standard errors.
+
+**Where longer clauses are lost.** With a block for every heard moment the message holds the
+first distractor of a long clause apart (.97 by a probe fitted on trained shapes, .78 with four
+blocks) and the patient falls (.63, .97 with four blocks): a long clause puts its patient in a
+block where no lesson put a patient, and the reading set up on trained shapes does not find it
+there. With the previous words given, the verb of a four-distractor clause is said at .00 to .07
+with 7, 8 or 16 blocks (.69 with four), the fourth distractor at .08 to .22 and the patient at
+.00 to .38. A block holds a position in the episode, and the readout does not carry a word's role
+from one position to another: more blocks keep the moments apart and leave them at positions the
+readout never read.
+
+**Deeper brackets**, read with no mechanism: opens at depths four and five are said at .56 to .70
+and closes at .45 to .61 with the previous words given, in every arm; the number of blocks does
+not move them. **Three hops** from the state: the start is said at .98 to .99 and the hops at .14
+to .46, recorded and left.
+
+**Against the expectations.** A2c failed on every arm and `clause_long` read under .20, as stated.
+The trained panels held within .03 on `both_p7` and `both_p16` and over it on `both_p8`, which
+was not stated: with 8 blocks, `GO` in a block of its own, held-out combinations and role twins
+read .97 and .97 (6 and 6 of 6 at .90; +.08 and +.09 against `both_256`, paired, beyond two
+standard errors), and paths fall .05. Paths fell on every arm, which was not stated.

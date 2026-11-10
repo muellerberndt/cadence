@@ -1106,10 +1106,11 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/fourth.jsonl --four
 | `heard_own_256` (`history_decays=(0.0,)`) | 441,524 | 2.40e13 | 1.00 | .95 | .90 | .91 | .66 | 12, 11, 8 |
 | `both_256` (both) | 596,412 | 2.54e13 | .99 | .94 | .96 | .91 | .51 | 12, 11, 11 |
 
-- **H1c holds on `both_256`**: the brain says clauses, held-out combinations and role twins from
-  its held state at .90 on 12, 11 and 11 founders of twelve, with the meaning's recall slots
-  emptied at `GO`. The gain is in the weakest founders and not at the mean (held-out +.00, roles
-  +.02, paired against `own_256`).
+- **H1c holds on `both_256` on these twelve founders and is not confirmed on twelve more**
+  ([replication](#replication-and-longer-clauses)): the brain says clauses, held-out combinations
+  and role twins from its held state at .90 on 12, 11 and 11 founders of twelve, with the
+  meaning's recall slots emptied at `GO`. The gain is in the weakest founders and not at the mean
+  (held-out +.00, roles +.02, paired against `own_256`).
 - **Where held-out combinations are lost.** With the previous words given every word kind of a
   held-out clause is said at .96 to 1.00 but the verb, whose agreeing form is wrong on the weakest
   founders (.74 to .88). A probe fitted on trained combinations reads the verb and the agent's
@@ -1123,6 +1124,18 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/fourth.jsonl --four
   patient are held in the message (1.00 and .92 to 1.00 by the probe) and the distractors that
   share a block with an earlier moment are lost; brackets are lost past depth three, and a path's
   hops are said from the read.
+
+### Replication and longer clauses
+
+The fourth protocol's [Amendment 2](MEANING_PROTOCOL_4.md#result-of-amendment-2) reads
+`both_256` again on twelve fresh founders: held-out combinations reach .90 on 7 of 12 and role
+twins on 9 of 12, and over all 24 founders on 18 and 20 of 24, so the first twelve's pass of H1c
+is not confirmed. Ten winners a moment (`message_winners=10`) lift held-out combinations to 12 of
+12 (+.05, paired) and hold role twins on 9 of 12. [MEANING_PROTOCOL_5.md](MEANING_PROTOCOL_5.md)
+gives the message a block for every moment of the longest clause (7, 8 and 16 blocks): longer
+clauses read .00 to .02 on every arm, the patient of a long clause landing in a block where no
+lesson put a patient. With 8 blocks held-out combinations and role twins read .97 and .97 on 6 of
+6 founders, and paths fall .05.
 
 ### What the held-meaning readings establish
 
@@ -1156,8 +1169,9 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/fourth.jsonl --four
   founders and lifts clauses.
 
 - With the read of one block and the previous word beside it (`both_256`), the brain says clauses,
-  held-out combinations and role twins from its held state at .90 on 12, 11 and 11 founders of
-  twelve. Longer and deeper sentences are lost from the state, as by the LSTM and the transformer.
+  held-out combinations and role twins from its held state at .90 on 23, 18 and 20 founders of
+  24. Longer and deeper sentences are lost from the state, as by the LSTM and the transformer, and
+  a block for every moment does not bring longer clauses back.
 
 These readings are on one finite language with supplied meanings. Open in #286: longer and deeper
 sentences from the state, the default width, and a message beside a free read that beats the
