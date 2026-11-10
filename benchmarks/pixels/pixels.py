@@ -73,6 +73,11 @@ ARMS: dict[str, dict[str, Any]] = {
     # the same brain with its fields held at their draw from birth
     "fields_drawn": {"sees": "image", "hold": True,
                      "compose": {"learned_fields": 64, "teaching": "normalized"}},
+    # colour controls of the fields: every field reads all three channels, or one channel each
+    "fields_joint": {"sees": "image", "colour": "joint",
+                     "compose": {"learned_fields": 64, "teaching": "normalized"}},
+    "fields_channels": {"sees": "image", "colour": "channels",
+                        "compose": {"learned_fields": 64, "teaching": "normalized"}},
     # the baseline at the hidden width of the Atari network
     "conv": {"sees": "image", "conv": {"hidden": 256}},
     # the baseline at the parameter count of the ``fields`` arm's brain
@@ -132,6 +137,12 @@ class Life:
             self.learner = compose(arm, shape, founder, condition, extra)
             if ARMS[arm].get("hold"):
                 self.learner.fields.learning = False
+            if ARMS[arm].get("colour"):  # the same stage reading colour another way, from birth
+                held = self.learner.fields
+                self.learner.fields = type(held)(
+                    held.height, held.width, held.channels, held.features, seed=held.seed,
+                    colour=ARMS[arm]["colour"],
+                )
         self.pending: np.ndarray | None = None  # the last actions awaiting their reward
         self.labels: np.ndarray | None = None
         self.paid: list[float] = []

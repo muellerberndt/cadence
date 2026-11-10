@@ -116,6 +116,30 @@ square of at least 0.5 after the retina):
 draw). A field learns where objects appear and reads the same synapses everywhere else, places
 no object of the life has appeared included.
 
+### Ports beside the screen
+
+A creature that sees a screen also senses its own body: health, ammunition, the action it just
+took. `ports=k` (opt-in, with `learned_fields`) reads `k` further values per row beside the
+pools. An observation row is the flattened image followed by the ports, the sensory region
+holds the pools followed by `k` port neurons, and every memory keys on both.
+
+```python
+body = Brain.compose(inputs=(84, 84, 3), actions=3, seed=0, learned_fields=16, ports=4,
+                     recall=False)
+screen = np.random.default_rng(0).random((1, 84 * 84 * 3))   # the frame, flattened
+senses = np.array([[0.8, 0.5, 1.0, 0.0]])                    # health, armour, ammunition, ...
+row = np.concatenate([screen, senses], axis=1)                # the image, then the ports
+assert body.inputs == 84 * 84 * 3 + 4 and body.act(row, greedy=True).shape == (1,)
+key = body.observation_code(row)
+assert key.shape == (1, 16 * 9 + 4) and (key[:, -4:] == senses).all()  # the ports as given
+```
+
+The pools arrive at unit length over the whole row of pools, so one pool is small against a
+port at 1: scale a port to the range its meaning needs, about 0 to 1. The fields learn from the
+image part alone. `describe()` reports `ports` in the layout, and a checkpoint keeps them.
+Refused with `ValueError`: `ports` without `learned_fields`, and a negative or non-integer
+width.
+
 ### Settings, refusals and cost
 
 `learned_fields` is the one setting (at least 2). The rest are constants of `LearnedFields`:

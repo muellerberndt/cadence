@@ -24,7 +24,7 @@ keyword.
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
               learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
-              **options) -> Brain
+              ports=0, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -49,6 +49,9 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   the brain lives and pooled over 3 by 3 overlapping regions, in place of the visual cortex; the
   sensory region holds the pools and every memory keys on them. `brain.fields` holds the
   `LearnedFields` ([learned receptive fields](senses.md#learned-receptive-fields)).
+- `ports=k` (opt-in, with `learned_fields`): `k` further values per observation row after the
+  flattened image, read by `k` sensory neurons beside the pools and keyed on with them
+  ([ports beside the screen](senses.md#ports-beside-the-screen)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -120,7 +123,7 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       history_decays=(), history_amplitude=3.0, carried_gain=0.0, recall=False, learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
-      dense_limit=None, learned_fields=None, image=None, **genes)
+      dense_limit=None, learned_fields=None, image=None, ports=0, **genes)
 ```
 
 Wraps any connectome with populations `association`, `motor` and `sensory` (or
@@ -132,7 +135,8 @@ history, with `recall=True` the `recall` and `next` regions, and with `learned_c
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
 `learned_fields=features` with `image=(height, width[, channels])` reads that image through
-learned fields whose `features * 9` pools the `sensory` population holds.
+learned fields whose `features * 9` pools the `sensory` population holds, followed by `ports`
+further neurons for the values a row carries after the image.
 `genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
 `ArousalConfig`. With `memory_choice=True`, `compose` fills in `memory_context=0.5` and
@@ -146,7 +150,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
-| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` without `learned_fields`; `grow` and `graft` of a brain that holds them | `ValueError` |
+| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` or `ports` without `learned_fields`; `ports` negative or not an integer; `grow` and `graft` of a brain that holds them | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -196,7 +200,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
-| `fields` | the `LearnedFields` of `learned_fields=features` or `None` |
+| `fields`, `ports` | the `LearnedFields` of `learned_fields=features` or `None`; the width of the ports read beside its pools (0 without them) |
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
 | `attention` | whether `compose` applied the opt-in learned-code contextual-memory recipe; its effective mechanism is recorded by the learned-code and Recall settings |
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |

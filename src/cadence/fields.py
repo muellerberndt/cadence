@@ -16,6 +16,15 @@ parts, each local:
   neighbouring regions overlap and an object read near a border reaches both: the stage's
   output, ``features * POOLS**2`` values, scaled to unit length per row.
 
+A three-channel image is read through opponent channels, as a retina's ganglion cells report
+colour: luminance ``(R + G + B) / sqrt(3)``, red against green ``(R - G) / sqrt(2)`` and blue
+against yellow ``(2 B - R - G) / sqrt(6)``. The fields divide into two groups, each with its
+own patches, retina and competition for the residual: the share ``LUMINANCE`` of the fields
+read the luminance channel, where an object's shape is the same whatever its hue, and the
+rest read the two colour channels together, each channel of a patch centred on its own mean,
+so a patch of one colour reads near zero as a patch of one brightness does. An image of any
+other number of channels is read by one group over all of its channels.
+
 The fields learn from every frame the brain sees at an accepted moment (``act``, ``step``,
 ``live``, ``wait`` and ``lesson``; never in ``predict``, ``fit``, ``imagine``, or a reading
 on a copy with ``learning`` False), each from its own response alone, on the patches that
@@ -60,8 +69,10 @@ class LearnedFields:
     channels: int
     features: int
     seed: int = 0
+    colour: str = "opponent"
     dictionary: np.ndarray = field(init=False, repr=False)
     thresholds: np.ndarray = field(init=False, repr=False)
+    use: np.ndarray = field(init=False, repr=False)
 
     FIELD = 8
     STRIDE = 2
@@ -73,6 +84,16 @@ class LearnedFields:
     THRESHOLD = 0.3
     THRESHOLD_RATE = 0.01
     TARGET = 0.1
+    MATURITY = 0.0
+    MATURE_THRESHOLDS = True
+    # how a three-channel image is read: ``"opponent"`` (luminance fields and colour fields),
+    # ``"channels"`` (the fields shared among the three channels, each reading one) or
+    # ``"joint"`` (every field reads all three); the last two are controls
+    COLOURS = ("opponent", "channels", "joint")
+    LUMINANCE = 0.75
+    OPPONENT = np.array([[1.0, 1.0, 1.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 2.0]]) / np.sqrt(
+        np.array([[3.0], [2.0], [6.0]])
+    )
 
     def __post_init__(self) -> None:
         for name in ("height", "width", "channels", "features"):
@@ -91,10 +112,34 @@ class LearnedFields:
         if isinstance(self.seed, (bool, np.bool_)) or not isinstance(self.seed, (int, np.integer)):
             raise ValueError("seed must be a nonnegative integer")
         self.seed = int(self.seed)
+        if self.colour not in self.COLOURS:
+            raise ValueError(f"colour is one of {', '.join(self.COLOURS)}")
+        if self.channels != 3:
+            self.colour = "joint"  # one group over every channel
+        # the groups: the channels each reads and its share of the fields
+        if self.colour == "opponent":
+            luminance = min(self.features - 1, max(1, round(self.LUMINANCE * self.features)))
+            shares = [((0,), luminance), ((1, 2), self.features - luminance)]
+        elif self.colour == "channels":
+            if self.features < 3:
+                raise ValueError("fields per channel hold at least 3 fields")
+            base, extra = divmod(self.features, 3)
+            shares = [((k,), base + (k < extra)) for k in range(3)]
+        else:
+            shares = [(tuple(range(self.channels)), self.features)]
         self.learning = True
         self.rows = (self.height - self.FIELD) // self.STRIDE + 1
         self.cols = (self.width - self.FIELD) // self.STRIDE + 1
         self.patch = self.FIELD * self.FIELD * self.channels
+        # per group: its channels, its rows of the dictionary and its fields
+        self._groups: list[tuple[np.ndarray, slice, slice]] = []
+        at = first = 0
+        for members, count in shares:
+            size = self.FIELD * self.FIELD * len(members)
+            self._groups.append(
+                (np.array(members), slice(at, at + size), slice(first, first + count))
+            )
+            at, first = at + size, first + count
         offsets = np.arange(self.FIELD)
         self._ys = (np.arange(self.rows) * self.STRIDE)[:, None] + offsets[None, :]
         self._xs = (np.arange(self.cols) * self.STRIDE)[:, None] + offsets[None, :]
@@ -102,8 +147,15 @@ class LearnedFields:
             (ys, xs) for ys in self._windows(self.rows) for xs in self._windows(self.cols)
         ]
         rng = np.random.default_rng(np.random.SeedSequence([self.seed, _FIELDS_STREAM]))
-        self.dictionary = _unit_columns(rng.standard_normal((self.patch, self.features)))
+        draw = rng.standard_normal((self.patch, self.features))
+        if len(self._groups) > 1:  # a field reads its group's channels alone
+            mask = np.zeros_like(draw)
+            for _, dims, fields in self._groups:
+                mask[dims, fields] = 1.0
+            draw = draw * mask
+        self.dictionary = _unit_columns(draw)
         self.thresholds = np.full(self.features, float(self.THRESHOLD))
+        self.use = np.zeros(self.features)  # per field: the learning steps it responded in
         self.work = {"codes": 0, "code_rows": 0, "updates": 0, "update_rows": 0,
                      "update_patches": 0}
 
@@ -130,19 +182,37 @@ class LearnedFields:
         return frames.reshape(len(frames), self.height, self.width, self.channels)
 
     def retina(self, x: np.ndarray) -> np.ndarray:
-        """Every patch of every frame centred and contrast-normalized,
-        ``(rows, positions, patch)``."""
+        """Every patch of every frame centred and contrast-normalized, each group's part on its
+        own, the groups side by side: ``(rows, positions, patch)``."""
         frames = self._frames(x)
+        if self.colour == "opponent":
+            frames = frames @ self.OPPONENT.T
         patches = frames[:, self._ys[:, None, :, None], self._xs[None, :, None, :], :]
-        patches = patches.reshape(len(frames), self.rows * self.cols, self.patch)
-        centred = patches - patches.mean(axis=2, keepdims=True)
-        return np.asarray(
-            centred / np.sqrt((centred * centred).mean(axis=2, keepdims=True) + self.RETINA)
-        )
+        shape = (len(frames), self.rows * self.cols, self.FIELD * self.FIELD)
+        parts = []
+        for members, _, _ in self._groups:
+            centred: np.ndarray
+            if self.colour == "joint":  # centred over the whole patch
+                whole = patches.reshape(*shape[:2], self.patch)
+                centred = whole - whole.mean(axis=2, keepdims=True)
+            else:  # each channel of the patch centred on its own mean
+                own = patches[..., members].reshape(*shape, len(members))
+                centred = (own - own.mean(axis=2, keepdims=True)).reshape(*shape[:2], -1)
+            parts.append(
+                centred / np.sqrt((centred * centred).mean(axis=2, keepdims=True) + self.RETINA)
+            )
+        return np.asarray(parts[0] if len(parts) == 1 else np.concatenate(parts, axis=2))
 
     def responses(self, patches: np.ndarray) -> np.ndarray:
-        """The fields' rectified responses to retina patches."""
-        return np.asarray(np.maximum(patches @ self.dictionary - self.thresholds, 0.0))
+        """The fields' rectified responses to retina patches, each group to its own part."""
+        if len(self._groups) == 1:
+            return np.asarray(np.maximum(patches @ self.dictionary - self.thresholds, 0.0))
+        return np.concatenate([
+            np.maximum(
+                patches[..., dims] @ self.dictionary[dims, fields] - self.thresholds[fields], 0.0
+            )
+            for _, dims, fields in self._groups
+        ], axis=-1)
 
     def code(self, x: np.ndarray) -> np.ndarray:
         """The pooled responses of every field, each row at unit length, ``(rows, outputs)``;
@@ -155,30 +225,50 @@ class LearnedFields:
         return _unit_rows(out)
 
     def learn(self, x: np.ndarray) -> bool:
-        """One step of the dictionary and the thresholds from the frames ``x``, on the patches
-        that carry structure; returns whether a table moved. A nonfinite proposal refuses the
-        step and leaves the tables as they were."""
+        """One step of the dictionary and the thresholds from the frames ``x``, each group on
+        its patches that carry structure; returns whether a table moved. A nonfinite proposal
+        refuses the step and leaves the tables as they were."""
         patches = self.retina(x).reshape(-1, self.patch)
         if not self.learning:
             return False
-        structured = patches[(patches * patches).mean(axis=1) >= self.STRUCTURE]
         self.work["updates"] += 1
         self.work["update_rows"] += len(np.atleast_2d(x))
-        if not len(structured):
+        dictionary, thresholds = self.dictionary.copy(), self.thresholds.copy()
+        use = self.use.copy()
+        taken = 0
+        for _, dims, fields in self._groups:
+            own = patches[:, dims]
+            structured = own[(own * own).mean(axis=1) >= self.STRUCTURE]
+            if not len(structured):
+                continue
+            held = self.dictionary[dims, fields]
+            a = np.maximum(structured @ held - self.thresholds[fields], 0.0)
+            residual = structured - a @ held.T
+            share = (a > 0.0).mean(axis=0)
+            if self.MATURITY:  # a field's steps fall with its use
+                settled = 1.0 / (1.0 + self.use[fields] / self.MATURITY)
+                step = held + self.RATE * settled * ((residual.T @ a) / len(structured))
+                homeostasis = self.THRESHOLD_RATE * (settled if self.MATURE_THRESHOLDS else 1.0)
+                moved = np.maximum(
+                    self.thresholds[fields] + homeostasis * (share - self.TARGET), 0.0
+                )
+            else:
+                step = held + self.RATE * (residual.T @ a) / len(structured)
+                moved = np.maximum(
+                    self.thresholds[fields] + self.THRESHOLD_RATE * (share - self.TARGET), 0.0,
+                )
+            if not (np.isfinite(step).all() and np.isfinite(moved).all()):
+                raise ValueError("the learned fields must remain finite")
+            cancelled = ~(step != 0.0).any(axis=0)
+            step[:, cancelled] = held[:, cancelled]
+            dictionary[dims, fields] = _unit_columns(step)
+            thresholds[fields] = moved
+            use[fields] += share > 0.0
+            taken += len(structured)
+        if not taken:
             return False
-        a = self.responses(structured)
-        residual = structured - a @ self.dictionary.T
-        step = self.dictionary + self.RATE * (residual.T @ a) / len(structured)
-        thresholds = np.maximum(
-            self.thresholds + self.THRESHOLD_RATE * ((a > 0.0).mean(axis=0) - self.TARGET), 0.0
-        )
-        if not (np.isfinite(step).all() and np.isfinite(thresholds).all()):
-            raise ValueError("the learned fields must remain finite")
-        cancelled = ~(step != 0.0).any(axis=0)
-        step[:, cancelled] = self.dictionary[:, cancelled]
-        self.dictionary = _unit_columns(step)
-        self.thresholds = thresholds
-        self.work["update_patches"] += len(structured)
+        self.dictionary, self.thresholds, self.use = dictionary, thresholds, use
+        self.work["update_patches"] += taken
         return True
 
     def take(self, dictionary: np.ndarray, thresholds: np.ndarray) -> None:
@@ -208,13 +298,17 @@ class LearnedFields:
     def macs(self) -> dict[str, int]:
         """Multiply-accumulates per frame: the fields' responses, and a learning step's
         reconstruction and update on a frame whose every patch carries structure."""
-        responses = self.rows * self.cols * self.patch * self.features
+        responses = self.rows * self.cols * sum(
+            (dims.stop - dims.start) * (fields.stop - fields.start)
+            for _, dims, fields in self._groups
+        )
         return {"code": responses, "learn": 3 * responses}
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "height": self.height, "width": self.width, "channels": self.channels,
-            "features": self.features, "seed": self.seed, "learning": bool(self.learning),
+            "features": self.features, "seed": self.seed, "colour": self.colour,
+            "learning": bool(self.learning),
             "work": dict(self.work),
         }
 

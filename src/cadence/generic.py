@@ -1007,12 +1007,13 @@ def _load_fields(meta: dict[str, Any], data: Mapping[str, Any], sensory: int,
         if ports:
             raise ValueError("saved ports need learned fields")
         return None
-    names = {"height", "width", "channels", "features", "seed", "learning", "work"}
+    names = {"height", "width", "channels", "features", "seed", "colour", "learning", "work"}
     if not isinstance(spec, dict) or set(spec) != names or not isinstance(spec["learning"], bool):
         raise ValueError("invalid saved learned_fields metadata")
     try:
         fields = LearnedFields(
-            spec["height"], spec["width"], spec["channels"], spec["features"], seed=spec["seed"]
+            spec["height"], spec["width"], spec["channels"], spec["features"],
+            seed=spec["seed"], colour=spec["colour"],
         )
     except (TypeError, ValueError) as exc:
         raise ValueError("invalid saved learned_fields metadata") from exc

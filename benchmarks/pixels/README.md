@@ -129,5 +129,6 @@ The default visual cortex on the same Xeon core: `act` 163 ms and `lesson` 185 m
 84 by 84 grey (4,013,316 parameters), 220 ms and 251 ms in colour (5,038,020). The fields read
 every frame on the host, so 16 streams cost about 16 frames; on the M4 the fields alone take 2.6
 ms per grey frame to read and 1.5 ms to learn. On the L4 the small-group Triton kernel of the
-torch backend does not compile under Triton 3.3 with fewer than 16 rows; the readings above take
-the torch path without it.
+torch backend does not compile under Triton 3.3 at any row count read
+([issue 299](https://github.com/muellerberndt/cadence/issues/299)); the readings above take the
+torch path without it.
