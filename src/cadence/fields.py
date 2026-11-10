@@ -84,7 +84,7 @@ class LearnedFields:
     THRESHOLD = 0.3
     THRESHOLD_RATE = 0.01
     TARGET = 0.1
-    MATURITY = 0.0
+    MATURITY = 512.0
     MATURE_THRESHOLDS = True
     # how a three-channel image is read: ``"opponent"`` (luminance fields and colour fields),
     # ``"channels"`` (the fields shared among the three channels, each reading one) or
@@ -128,6 +128,8 @@ class LearnedFields:
         else:
             shares = [(tuple(range(self.channels)), self.features)]
         self.learning = True
+        # the steps of use at which a field's own steps have halved; 0 keeps every step whole
+        self.maturity = float(self.MATURITY)
         self.rows = (self.height - self.FIELD) // self.STRIDE + 1
         self.cols = (self.width - self.FIELD) // self.STRIDE + 1
         self.patch = self.FIELD * self.FIELD * self.channels
@@ -245,8 +247,8 @@ class LearnedFields:
             a = np.maximum(structured @ held - self.thresholds[fields], 0.0)
             residual = structured - a @ held.T
             share = (a > 0.0).mean(axis=0)
-            if self.MATURITY:  # a field's steps fall with its use
-                settled = 1.0 / (1.0 + self.use[fields] / self.MATURITY)
+            if self.maturity:  # a field's steps fall with its use
+                settled = 1.0 / (1.0 + self.use[fields] / self.maturity)
                 step = held + self.RATE * settled * ((residual.T @ a) / len(structured))
                 homeostasis = self.THRESHOLD_RATE * (settled if self.MATURE_THRESHOLDS else 1.0)
                 moved = np.maximum(
@@ -271,29 +273,34 @@ class LearnedFields:
         self.work["update_patches"] += taken
         return True
 
-    def take(self, dictionary: np.ndarray, thresholds: np.ndarray) -> None:
+    def take(self, dictionary: np.ndarray, thresholds: np.ndarray, use: np.ndarray) -> None:
         """Install saved tables, checked against the stage's shape."""
         dictionary = np.asarray(dictionary, dtype=float)
         thresholds = np.asarray(thresholds, dtype=float)
-        if dictionary.shape != (self.patch, self.features) or thresholds.shape != (self.features,):
+        use = np.asarray(use, dtype=float)
+        if (
+            dictionary.shape != (self.patch, self.features)
+            or thresholds.shape != (self.features,) or use.shape != (self.features,)
+        ):
             raise ValueError("saved learned fields do not match the stage's shape")
-        if not (np.isfinite(dictionary).all() and np.isfinite(thresholds).all()):
+        if not all(np.isfinite(table).all() for table in (dictionary, thresholds, use)):
             raise ValueError("saved learned fields must be finite")
-        if (thresholds < 0).any():
-            raise ValueError("saved learned field thresholds must be nonnegative")
+        if (thresholds < 0).any() or (use < 0).any():
+            raise ValueError("saved learned field thresholds and use must be nonnegative")
         self.dictionary = dictionary.copy()
         self.thresholds = thresholds.copy()
+        self.use = use.copy()
 
     # -- reports
 
     def arrays(self) -> dict[str, np.ndarray]:
-        return {"dictionary": self.dictionary, "thresholds": self.thresholds}
+        return {"dictionary": self.dictionary, "thresholds": self.thresholds, "use": self.use}
 
     def parameters(self) -> int:
-        return int(self.dictionary.size + self.thresholds.size)
+        return int(self.dictionary.size + self.thresholds.size + self.use.size)
 
     def nbytes(self) -> int:
-        return int(self.dictionary.nbytes + self.thresholds.nbytes)
+        return int(self.dictionary.nbytes + self.thresholds.nbytes + self.use.nbytes)
 
     def macs(self) -> dict[str, int]:
         """Multiply-accumulates per frame: the fields' responses, and a learning step's
@@ -308,7 +315,7 @@ class LearnedFields:
         return {
             "height": self.height, "width": self.width, "channels": self.channels,
             "features": self.features, "seed": self.seed, "colour": self.colour,
-            "learning": bool(self.learning),
+            "maturity": float(self.maturity), "learning": bool(self.learning),
             "work": dict(self.work),
         }
 

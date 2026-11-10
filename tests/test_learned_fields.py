@@ -204,3 +204,69 @@ def test_the_ports_change_the_answer():
 def test_ports_refusals(settings, message):
     with pytest.raises(ValueError, match=message):
         Brain.compose(actions=2, recall=False, **settings)
+
+
+def test_a_colour_image_is_read_through_luminance_fields_and_colour_fields():
+    fields = LearnedFields(16, 16, 3, features=8, seed=0)
+    assert fields.colour == "opponent"
+    groups = [(list(m), d.stop - d.start, f.stop - f.start) for m, d, f in fields._groups]
+    assert groups == [([0], 64, 6), ([1, 2], 128, 2)]  # three fields in four read luminance
+    # a field reads its own group's channels alone
+    assert not fields.dictionary[64:, :6].any() and not fields.dictionary[:64, 6:].any()
+    np.testing.assert_allclose(np.linalg.norm(fields.dictionary, axis=0), 1.0)
+    # the opponent channels are orthonormal: luminance, red against green, blue against yellow
+    np.testing.assert_allclose(fields.OPPONENT @ fields.OPPONENT.T, np.eye(3), atol=1e-12)
+    # one colour everywhere reads nothing, as one brightness does
+    flat = np.zeros((1, 16, 16, 3))
+    flat[..., 0], flat[..., 1] = 0.9, 0.2
+    assert not fields.code(flat.reshape(1, -1)).any()
+    # the luminance fields read a shape the same whatever its hue
+    red, blue = np.full((16, 16, 3), 0.1), np.full((16, 16, 3), 0.1)
+    red[4:10, 4:10] = (0.9, 0.3, 0.3)
+    blue[4:10, 4:10] = (0.3, 0.3, 0.9)
+    a = fields.responses(fields.retina(red.reshape(1, -1)))[..., :6]
+    b = fields.responses(fields.retina(blue.reshape(1, -1)))[..., :6]
+    np.testing.assert_allclose(a, b, atol=1e-9)
+    assert a.any()
+    # each group learns from its own patches
+    before = fields.dictionary.copy()
+    assert fields.learn(red.reshape(1, -1))
+    assert not np.array_equal(fields.dictionary[:64, :6], before[:64, :6])
+    assert not np.array_equal(fields.dictionary[64:, 6:], before[64:, 6:])
+    assert not fields.dictionary[64:, :6].any() and not fields.dictionary[:64, 6:].any()
+
+
+def test_the_colour_controls_and_other_channel_counts():
+    assert LearnedFields(16, 16, 3, 9, colour="channels")._groups[2][2] == slice(6, 9)
+    assert len(LearnedFields(16, 16, 3, 8, colour="joint")._groups) == 1
+    assert LearnedFields(16, 16, 2, 8).colour == "joint"  # one group over any other channels
+    assert LearnedFields(16, 16, 1, 8).colour == "joint"
+    with pytest.raises(ValueError, match="colour is one of"):
+        LearnedFields(16, 16, 3, 8, colour="grey")
+    with pytest.raises(ValueError, match="at least 3 fields"):
+        LearnedFields(16, 16, 3, 2, colour="channels")
+
+
+def test_a_field_steps_less_the_more_it_has_been_used(tmp_path):
+    frames = np.stack([_frame(16, 16, at=(k, k)) for k in (2, 4, 6, 8)]).reshape(4, -1)
+    young, settled = LearnedFields(16, 16, 1, 4, seed=0), LearnedFields(16, 16, 1, 4, seed=0)
+    assert young.maturity == LearnedFields.MATURITY > 0
+    settled.use[:] = 100 * settled.maturity  # as after a long life
+    start = young.dictionary.copy()
+    young.learn(frames)
+    settled.learn(frames)
+    moved = np.abs(young.dictionary - start).sum(axis=0)
+    slow = np.abs(settled.dictionary - start).sum(axis=0)
+    used = moved > 0
+    assert used.any() and (slow[used] < 0.02 * moved[used]).all()
+    assert (young.use[used] == 1).all() and (young.use[~used] == 0).all()
+    whole = LearnedFields(16, 16, 1, 4, seed=0)
+    whole.maturity = 0.0  # every step whole: the control
+    whole.use[:] = 1e6
+    whole.learn(frames)
+    np.testing.assert_allclose(whole.dictionary, young.dictionary, atol=1e-12)
+    brain = Brain.compose(inputs=(16, 16), actions=2, seed=0, learned_fields=4, recall=False)
+    brain.lesson(frames[:2], [0, 1])
+    twin = Brain.load(brain.save(tmp_path / "used"))
+    np.testing.assert_array_equal(twin.fields.use, brain.fields.use)
+    assert twin.fields.use.any() and twin.fields.maturity == brain.fields.maturity

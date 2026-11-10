@@ -73,6 +73,9 @@ ARMS: dict[str, dict[str, Any]] = {
     # the same brain with its fields held at their draw from birth
     "fields_drawn": {"sees": "image", "hold": True,
                      "compose": {"learned_fields": 64, "teaching": "normalized"}},
+    # the fields without their maturity: every step whole for the whole life
+    "fields_restless": {"sees": "image", "restless": True,
+                        "compose": {"learned_fields": 64, "teaching": "normalized"}},
     # colour controls of the fields: every field reads all three channels, or one channel each
     "fields_joint": {"sees": "image", "colour": "joint",
                      "compose": {"learned_fields": 64, "teaching": "normalized"}},
@@ -137,6 +140,8 @@ class Life:
             self.learner = compose(arm, shape, founder, condition, extra)
             if ARMS[arm].get("hold"):
                 self.learner.fields.learning = False
+            if ARMS[arm].get("restless"):
+                self.learner.fields.maturity = 0.0
             if ARMS[arm].get("colour"):  # the same stage reading colour another way, from birth
                 held = self.learner.fields
                 self.learner.fields = type(held)(
@@ -276,8 +281,12 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     built = Life(arm, shape, founder, condition, spec.get("extra"))
     schedule = ch.Schedule(founder, shape, rows=rows,
                            control=control if control in ("blank", "shuffled") else None)
-    panels = {name: ch.panel(founder, name, shape, int(spec.get("panel", PANEL)))
-              for name in ch.PANELS}
+    size = int(spec.get("panel", PANEL))
+    panels = {name: ch.panel(founder, name, shape, size) for name in ch.PANELS}
+    # beside panels of another size, the panels of the first declaration (256 frames)
+    declared = None if size == PANEL else {
+        name: ch.panel(founder, name, shape, PANEL) for name in ch.PANELS
+    }
     readings: list[dict[str, Any]] = []
     seen_frames, learn_seconds = 0, 0.0
     frozen = control == "frozen"
@@ -292,14 +301,16 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
             seen_frames += len(batch)
         t = time.process_time()
         reading = {"frames": seen_frames, "panels": read_panels(built, panels)}
-        reading["read_seconds_per_frame"] = (time.process_time() - t) / (PANEL * len(ch.PANELS))
+        reading["read_seconds_per_frame"] = (time.process_time() - t) / (size * len(ch.PANELS))
+        if declared is not None:
+            reading["panels_256"] = read_panels(built, declared)
         reading["learn_seconds_per_frame"] = learn_seconds / max(1, seen_frames)
         if built.paid:
             reading["paid_last_1024"] = float(np.mean(built.paid[-1024:]))
         readings.append(reading)
     out: dict[str, Any] = {
         "arm": arm, "founder": founder, "condition": condition, "shape": list(shape),
-        "rows": rows, "control": control, "extra": spec.get("extra"),
+        "rows": rows, "control": control, "extra": spec.get("extra"), "panel": size,
         "parameters": built.parameters(), "readings": readings,
     }
     if built.conv:

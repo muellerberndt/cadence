@@ -26,6 +26,10 @@
   two the pools hold the panels and the readout trails. One stream acts in 2.6 ms per grey frame
   and 9.0 ms per colour frame on one Xeon core, against 163 ms and 220 ms through the visual
   cortex; colour frames read .767.
+- **`ports=k`: a body's own senses beside the screen (opt-in, with `learned_fields`, #297).** An
+  observation row is the flattened image followed by `k` values; `k` sensory neurons read them
+  beside the pools, and every memory keys on both. `describe()` reports them and a checkpoint
+  keeps them ([ports beside the screen](docs/senses.md#ports-beside-the-screen)).
 - **The pixel chamber** (`benchmarks/pixels/`): a screen-dependent policy on rendered 84 by 84
   frames in grey and colour and on 160 by 120 frames (approach food, avoid a hazard, aim at a
   target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,

@@ -37,8 +37,11 @@ def key(life: dict[str, Any]) -> tuple[str, str, str, str]:
     return life["condition"], shape, life["arm"], life.get("control") or "-"
 
 
+PANELS = "panels"  # or "panels_256", the panels of the first declaration, where a life read both
+
+
 def last(life: dict[str, Any]) -> dict[str, float]:
-    return dict(life["readings"][-1]["panels"])
+    return dict(life["readings"][-1][PANELS])
 
 
 def se(p: float, n: int) -> float:
@@ -48,10 +51,17 @@ def se(p: float, n: int) -> float:
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("paths", nargs="+")
-    parser.add_argument("--panel", type=int, default=256)
+    parser.add_argument("--panel", type=int, default=256, help="frames per panel read")
+    parser.add_argument("--declared", action="store_true",
+                        help="read the 256-frame panels of lives that hold both")
+    parser.add_argument("--founders", type=int, default=5, help="founders a gate needs")
     parser.add_argument("--brain", default="fields")
     parser.add_argument("--baseline", default="conv_matched")
     args = parser.parse_args()
+    global PANELS
+    if args.declared:
+        PANELS = "panels_256"
+    GATE["founders"] = args.founders
     groups: dict[tuple[str, str, str, str], dict[int, dict[str, Any]]] = defaultdict(dict)
     for life in load(args.paths):
         groups[key(life)][int(life["founder"])] = life
