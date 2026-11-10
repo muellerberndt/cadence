@@ -1109,9 +1109,8 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/fourth.jsonl --four
 - **H1c holds on `both_256` on these twelve founders and is not confirmed on twelve more**
   ([replication](#replication-and-longer-clauses)): the brain says clauses, held-out combinations
   and role twins from its held state at .90 on 12, 11 and 11 founders of twelve, with the
-  meaning's recall slots
-  emptied at `GO`. The gain is in the weakest founders and not at the mean (held-out +.00, roles
-  +.02, paired against `own_256`).
+  meaning's recall slots emptied at `GO`. The gain is in the weakest founders and not at the mean
+  (held-out +.00, roles +.02, paired against `own_256`).
 - **Where held-out combinations are lost.** With the previous words given every word kind of a
   held-out clause is said at .96 to 1.00 but the verb, whose agreeing form is wrong on the weakest
   founders (.74 to .88). A probe fitted on trained combinations reads the verb and the agent's
