@@ -1,0 +1,19 @@
+ 06:18:18 up 15 min,  1 user,  load average: 3.48, 9.12, 6.18
+ 06:18:22 up 15 min,  1 user,  load average: 3.28, 8.99, 6.15
+ 06:18:25 up 15 min,  1 user,  load average: 3.09, 8.85, 6.12
+ 06:18:26 up 15 min,  1 user,  load average: 3.09, 8.85, 6.12
+ 06:18:31 up 15 min,  1 user,  load average: 2.93, 8.72, 6.09
+ 06:18:35 up 15 min,  2 users,  load average: 2.93, 8.72, 6.09
+ 06:18:36 up 15 min,  2 users,  load average: 2.77, 8.60, 6.07
+ 06:18:43 up 15 min,  2 users,  load average: 2.63, 8.47, 6.04
+ 06:18:47 up 15 min,  2 users,  load average: 2.50, 8.34, 6.01
+ 06:18:48 up 15 min,  2 users,  load average: 2.50, 8.34, 6.01
+ 06:18:51 up 15 min,  2 users,  load average: 2.38, 8.22, 5.98
+ 06:18:54 up 15 min,  2 users,  load average: 2.38, 8.22, 5.98
+ 06:18:55 up 15 min,  2 users,  load average: 2.38, 8.22, 5.98
+ 06:18:59 up 15 min,  2 users,  load average: 2.27, 8.10, 5.96
+ 06:19:03 up 15 min,  2 users,  load average: 2.17, 7.98, 5.93
+ 06:19:04 up 15 min,  2 users,  load average: 2.17, 7.98, 5.93
+ 06:19:11 up 16 min,  2 users,  load average: 1.99, 7.75, 5.88
+ 06:19:17 up 16 min,  2 users,  load average: 1.91, 7.64, 5.85
+TIMINGDONE
