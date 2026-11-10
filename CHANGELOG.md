@@ -31,6 +31,7 @@
   target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
   frozen, uniform and fields-at-their-draw controls, and a two-convolution actor-critic at the
   brain's parameter count trained online on the same frames.
+
 ## 0.96.1 — 2026-11-10
 
 A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is
