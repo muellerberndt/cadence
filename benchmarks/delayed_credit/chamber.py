@@ -476,6 +476,14 @@ def specs_of(args: argparse.Namespace) -> list[dict[str, Any]]:
     return out
 
 
+def _identity(row: dict[str, Any]) -> tuple:
+    """A life's identity in a spec or a row: kind, arm or tag, control, driver, world, delay,
+    founder."""
+    arm = row.get("arm") if row["kind"] == "brain" else row.get("tag", row.get("arm"))
+    return (row["kind"], arm, row.get("control", "none"), row.get("driver") or "step",
+            row["task"], int(row["delay"]), int(row["founder"]))
+
+
 def summary(path: str) -> str:
     rows = [json.loads(line) for line in Path(path).read_text().splitlines() if line.strip()]
     cells: dict[tuple, list[dict[str, Any]]] = {}
@@ -529,6 +537,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--driver", default="step", choices=("step", "live"),
                         help="the brain's moments through step (every outcome) or live")
     parser.add_argument("--workers", type=int, default=1)
+    parser.add_argument("--skip-done", help="a lives file: leave out the lives it holds")
     parser.add_argument("--out")
     parser.add_argument("--summary")
     args = parser.parse_args(argv)
@@ -541,6 +550,13 @@ def main(argv: list[str] | None = None) -> int:
                  "VECLIB_MAXIMUM_THREADS", "NUMBA_NUM_THREADS"):
         os.environ.setdefault(name, "1")
     specs = specs_of(args)
+    if args.skip_done and Path(args.skip_done).exists():  # resume: the lives a file holds
+        done = set()
+        for line in Path(args.skip_done).read_text().splitlines():
+            row = json.loads(line) if line.strip() else None
+            if row is not None and "error" not in row:
+                done.add(_identity(row))
+        specs = [spec for spec in specs if _identity(spec) not in done]
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a") as handle:
