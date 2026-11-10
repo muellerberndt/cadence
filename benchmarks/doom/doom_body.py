@@ -178,6 +178,8 @@ def _new_game(scenario: Scenario) -> Any:
     game = vzd.DoomGame()
     game.load_config(os.path.join(vzd.scenarios_path, f"{scenario.name}.cfg"))
     game.set_doom_game_path(os.path.join(os.path.dirname(vzd.__file__), "freedoom2.wad"))
+    # the engine's own settings file, which it writes on closing, in the temporary directory
+    game.set_doom_config_path(os.path.join(tempfile.gettempdir(), "cadence_doom.ini"))
     game.set_window_visible(False)
     game.set_sound_enabled(False)
     game.set_mode(vzd.Mode.PLAYER)
