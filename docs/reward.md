@@ -527,6 +527,16 @@ rail within the first quarter of a life ([the saturation latch](#traps-with-thei
 [delayed-credit chamber](../benchmarks/delayed_credit/README.md) the hold at the composed step
 learns a 50-moment T-maze on 2 of 6 development founders, and at a tenth of the step on 6 of 6.
 
+On six fresh founders (the chamber's declared run, 4,096 episodes through `step`), the tenth of
+the step with `memory_choice=True` and `actor_hold=1.0` learns the T-maze at delays of 10 and 50
+on 6 of 6, as an LSTM actor-critic with exact gradients through the episode does; without the
+hold the T-maze at 50 reads 2 of 6, the default 0 of 6. Where the brain senses the coming outcome
+the hold costs: on the key-door, whose pouch the critic sees, the same settings without the hold
+read 5 of 6 at delay 50 and with it 3 of 6, the missing founders latched on one reach for both
+keys. At 200 moments the latch takes most lives (T-maze 3 of 6, key-door 0 of 6). Hold the actor's
+credit where the moments between a decision and its outcome look alike whichever way it went, and
+leave it out where the brain sees the outcome coming.
+
 ## Replaying a life through `step`
 
 `step` cannot tell a replayed observation from a live one, so replaying a saved copy's day

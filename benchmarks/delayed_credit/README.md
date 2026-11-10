@@ -126,3 +126,81 @@ A tenth of the step is `actor_eta=0.1, actor_eta_bias=0.01`.
   each answering one reach for both keys, and on two of them the door's act, credited one moment
   before its outcome, reads .50 as well. With the episodic memory's vote beside the hold
   (`memory_choice=True`) the key-door at 50 reads 5 of 6.
+
+## The declared run (0.96.0, fresh founders 2830 to 2835)
+
+Declared on [issue 283](https://github.com/muellerberndt/cadence/issues/283) before its first
+life. Every brain is the 0.96.0 default composition (no heard history) with the arm's settings.
+The candidate: `actor_eta=0.1, actor_eta_bias=0.01, memory_choice=True, actor_hold=1.0`; beside
+it the same without the hold and the default. 4,096 episodes through `step`, the choice read
+greedy at the last budget; the conventional learners sized to the candidate's parameter count.
+
+| world | delay | candidate | without the hold | default | LSTM, gamma 1, lambda 1 | LSTM, gamma .99, GAE .95 | TD(lambda), .99, .95 | TD(lambda), 1, 1 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| parameters, T-maze / key-door | | 20,040 / 20,846 | 20,040 / 20,846 | 15,962 / 16,772 | 19,958 / 21,057 | 19,958 / 21,057 | 19,983 / 20,827 | 19,983 / 20,827 |
+| T-maze | 10 | 6 of 6 (1.00) | 6 of 6 (1.00) | 4 of 6 (.83) | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) | 3 of 6 (.67) |
+| T-maze | 50 | 6 of 6 (1.00) | 2 of 6 (.67) | 0 of 6 (.42) | 6 of 6 (1.00) | 6 of 6 (1.00) | 1 of 6 (.58) | 0 of 6 (.50) |
+| T-maze | 200 | 3 of 6 (.75) | | | 6 of 6 (1.00) | 0 of 6 (.50) | 0 of 6 (.50) | 0 of 6 (.50) |
+| key-door | 10 | 6 of 6 (1.00) | 6 of 6 (1.00) | 5 of 6 (.92) | 6 of 6 (1.00) | 6 of 6 (1.00) | 3 of 6 (.75) | 3 of 6 (.67) |
+| key-door | 50 | 3 of 6 (.75) | 5 of 6 (.92) | 2 of 6 (.67) | 6 of 6 (1.00) | 6 of 6 (1.00) | 0 of 6 (.50) | 0 of 6 (.50) |
+| key-door | 200 | 0 of 6 (.50) | | | 6 of 6 (1.00) | 6 of 6 (1.00) | 1 of 6 (.58) | 0 of 6 (.50) |
+
+Founders at .90 and the mean choice. The controls of the candidate:
+
+| world | delay | yoked | shuffled | ablated | frozen | random | solver |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| T-maze | 10 | 2 of 6 (.58) | 2 of 6 (.67) | 5 of 6 (.92) | 2 of 6 (.50) | 0 of 6 (.56) | 6 of 6 (1.00) |
+| T-maze | 50 | 0 of 6 (.42) | 0 of 6 (.50) | 2 of 6 (.67) | 2 of 6 (.50) | 0 of 6 (.46) | 6 of 6 (1.00) |
+| key-door | 10 | 1 of 6 (.50) | 2 of 6 (.67) | 6 of 6 (1.00) | 2 of 6 (.50) | 0 of 6 (.56) | 6 of 6 (1.00) |
+| key-door | 50 | 1 of 6 (.42) | 2 of 6 (.67) | 3 of 6 (.75) | 2 of 6 (.50) | 0 of 6 (.46) | 6 of 6 (1.00) |
+
+Work per episode at delay 50 (one core, the box loaded to its cores): the candidate .49 seconds
+and 1.5e7 multiply-accumulates on the T-maze, .49 and 1.7e7 on the key-door; the LSTM .045 and
+3.2e6 to 3.4e6; TD(lambda) .020 and 1.0e7. At delay 200: 1.6 to 1.7 seconds and 4.7e7 to 6.0e7
+against the LSTM's .17 seconds and 1.2e7.
+
+**The gate does not pass.**
+
+- The T-maze passes the choice and the LSTM's level at 10 and 50 (6 of 6, 1.00 against 1.00).
+  The hold carries the 50-moment credit there: the same settings without it read 2 of 6, the
+  default 0 of 6, and with the decision's eligibility emptied after its first transition
+  (ablated) 2 of 6 (.67), yoked 0 of 6 and shuffled 0 of 6.
+- The key-door at 50 fails: 3 of 6 (.75) against the LSTM's 1.00. The failing term is the latch
+  of [issue 296](https://github.com/muellerberndt/cadence/issues/296): on the three founders that
+  miss, one action answers both keys (action 1's share at the decision 0) and the door's act reads
+  .50, with saturation .98 to 1.00, while the decision's contrast holds .05 to .71 of the
+  eligibility at the outcome and the outcome's dopamine has its sign (+.77 to +.90 right, -.53 to
+  -.59 wrong). Without the hold the key-door at 50 reads 5 of 6 with the decision's share at a
+  millionth: the critic sees the pouch, and the credit reaches the reach without the held trace,
+  which adds the summed contrasts of fifty acts to each outcome's step.
+- Causality, as declared (at most 1 of 6 at .90 and a mean of at most .65 under yoked, shuffled
+  and ablated), fails at delay 10 on both worlds and at 50 through the ablation: at 10 the
+  decayed eligibility, the episodic records' replay and (on the key-door) the critic's pouch
+  carry the credit without the hold (ablated 5 and 6 of 6). Under yoked and shuffled outcomes the
+  readings sit at chance: a newborn whose greedy answers differ by cue answers both cues right
+  one time in four, and the frozen newborn itself reads 1.00 on 2 of 6 founders.
+- Delay 200: 3 of 6 (.75) on the T-maze and 0 of 6 on the key-door, the LSTM at gamma 1 and
+  lambda 1 6 of 6 on both. Every failing life there is latched (saturation .97 to 1.00, one
+  action for both cues) with the decision's share at the outcome .008 to .5.
+
+**Through `live`** (development founders 0 and 1, outside the declared run, the same settings
+with `--driver live`): at delay 10 the candidate and the same settings without the hold read
+1.00 on both worlds and both founders. At delay 50 the candidate reads 1.00 on both worlds and
+both founders; without the hold the T-maze reads 1.00 and .50 (acted right .51 and .50 over the
+last 256 episodes).
+
+The declared run, from the repository root on a 32-core host:
+
+```sh
+F="--founders 2830 2831 2832 2833 2834 2835"; B="--budgets 256 1024 2048 4096"
+PYTHONPATH=src python benchmarks/delayed_credit/chamber.py --kinds brain \
+    --arms slow_episodic_held slow_episodic default --delays 10 50 $F $B --workers 9 --out DIR/brain.jsonl
+PYTHONPATH=src python benchmarks/delayed_credit/chamber.py --kinds brain --arms slow_episodic_held \
+    --delays 200 $F $B --workers 12 --out DIR/brain200.jsonl
+PYTHONPATH=src python benchmarks/delayed_credit/chamber.py --kinds brain --arms slow_episodic_held \
+    --delays 10 50 --control yoked shuffled ablated frozen $F $B --workers 7 --out DIR/controls.jsonl
+PYTHONPATH=src python benchmarks/delayed_credit/chamber.py --kinds lstm --tag lstm_mc \
+    --learner '{"gamma": 1.0, "lam": 1.0}' --match-arm slow_episodic_held $F $B --out DIR/baselines.jsonl
+```
+
+`--skip-done FILE` resumes a run, leaving out the lives a file holds.

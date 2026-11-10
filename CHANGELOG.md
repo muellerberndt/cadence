@@ -14,7 +14,11 @@
   brain that names no hold keeps `gamma * lam` for every trace and lives, saves and describes to
   the bit as on 0.96.0 on `backend="cpu"`; a configuration without the hold saves without the
   field ([a reward many moments after the
-  decision](docs/reward.md#a-reward-many-moments-after-the-decision)).
+  decision](docs/reward.md#a-reward-many-moments-after-the-decision)). On six fresh founders, with
+  a tenth of the actor step and `memory_choice=True`, it learns a T-maze whose reward comes 50
+  moments after the choice on 6 of 6 (2 of 6 without the hold, 0 of 6 at the default), at the
+  level of an LSTM actor-critic; on the key-door at 50 it reads 3 of 6 against 5 of 6 without the
+  hold, the readout latched (#296), and at 200 moments 3 and 0 of 6. The default is unchanged.
 - **The delayed-credit chamber** ([`benchmarks/delayed_credit`](benchmarks/delayed_credit/README.md)):
   a delayed T-maze and a delayed key-door paid only at the end of an episode, delays of 10, 50
   and 200 moments with distractors, an exact solver, yoked, shuffled, frozen and ablated controls,
