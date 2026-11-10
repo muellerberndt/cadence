@@ -1182,6 +1182,8 @@ def _supported(brain: Any) -> None:
     agent = brain.basal_ganglia
     if agent.maturity is not None or agent.salience is not None:
         raise refuse("no maturity and no salience")
+    if agent.config.entropy:
+        raise refuse("no actor entropy (actor_entropy=0)")
 
 
 class Lives:

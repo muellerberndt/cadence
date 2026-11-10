@@ -142,7 +142,8 @@ _REWARD_ARRAYS = (
 # phase and the parameters it was settled under, the drive, a pending action and the
 # eligibility.
 _STREAM_ACTOR = (
-    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "_pending_hearing", "trace",
+    "_free", "_free_brain", "_drive", "_pending", "_pending_memory", "_pending_hearing",
+    "_pending_entropy", "trace",
     "trace_bias", "trace_critic", "trace_memory", "trace_hearing", "_trace_device", "_trace_mlx",
     "salience",
 )
@@ -4037,6 +4038,7 @@ class Brain:
         agent._pending = None
         agent._pending_memory = None
         agent._pending_hearing = None
+        agent._pending_entropy = None
         if not clear:
             action = np.argmax(agent.probabilities(free, None, bias=None), axis=-1)
         chosen: np.ndarray = np.asarray(action, dtype=np.int64)
@@ -5417,6 +5419,7 @@ class Brain:
         agent._pending = None
         agent._pending_memory = None
         agent._pending_hearing = None
+        agent._pending_entropy = None
         spans = (
             _moment.after_spans(self)
             if self.recall is not None and not self.recall.action and code is x
@@ -5917,6 +5920,8 @@ class Brain:
             if kind != "states":
                 raise ValueError("Brain checkpoints require its standard action states")
             data["pending/value"] = value
+            if agent._pending_entropy is not None:  # the act's surprise (``actor_entropy``)
+                data["pending/surprise"], data["pending/entropy"] = agent._pending_entropy
             for name, phase in (("plus", plus), ("minus", minus)):
                 metadata["pending_" + name + "_steps"] = phase.steps
                 data.update(_state_arrays(f"pending/{name}/", phase))
@@ -6253,6 +6258,11 @@ class Brain:
                     for name in ("plus", "minus")
                 ]
                 agent._pending = ("states", phases[0], phases[1], data["pending/value"].copy())
+                if "pending/surprise" in data:  # the act's surprise (``actor_entropy``)
+                    agent._pending_entropy = (
+                        data["pending/surprise"].astype(float),
+                        data["pending/entropy"].astype(float),
+                    )
                 if "recall/pending" in data:  # validated above: a pending action's contrast
                     assert recalled_memory is not None
                     agent._pending_memory = recalled_memory.kept_eligibility(

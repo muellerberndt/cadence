@@ -17,6 +17,23 @@
   convolutional actor-critic run every scenario through it
   ([the Doom body](benchmarks/doom/README.md)). The library is unchanged.
 
+### Exploration over long reward lives (#296)
+
+- **`actor_entropy`: the policy's entropy in the actor's step.** `Brain.compose(...,
+  actor_entropy=k)` (or `ActorCriticConfig(entropy=k)`) adds to each outcome's step the sampled
+  act's own contrast at the weight `k` times its surprise, `-log p(action) - H` under the policy
+  that sampled it: the sampled gradient of the policy's entropy, local to the act and outside
+  the trace. `last_learning["policy_entropy"]` reads each act's entropy. It learns on
+  `backend="cpu"` and `"mlx"`; a torch device refuses the outcome and `Lives` refuses the
+  setting by name. A brain that names no entropy keeps every bit on `backend="cpu"` and saves
+  its configuration without the field ([exploration over long reward
+  lives](docs/reward.md#exploration-over-long-reward-lives-opt-in)).
+- **The long reward life chamber** ([`benchmarks/actor_latch`](benchmarks/actor_latch/README.md)):
+  three worlds with a Doom player's observation (a bandit, aiming in the shape of Doom basic,
+  survival in the shape of health gathering), its frozen and random controls, and the reading of
+  the actor's hold by quarters of a life. `benchmarks/doom/doom_life.py` takes `--set` for the
+  brain players' settings.
+
 ## 0.96.1 — 2026-11-10
 
 A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is
