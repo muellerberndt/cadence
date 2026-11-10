@@ -448,7 +448,8 @@ def test_the_third_plan_and_its_gates_read_small_lives():
     fresh = [mn.run_life({**spec, "batches": 2, "panel_batches": 1, "module": 64})
              for spec in plan["roles"] if spec["founder"] == 0]
     # the trace, the read and 4 message blocks; 32 carrier blocks; 32 groups of the message
-    assert sorted(len(r["gains"]) for r in roles) == [6, 34, 34]
+    # the default brain hears the moment before (history_decays=(0.0,)): one more carried gain
+    assert sorted(len(r["gains"]) for r in roles) == [7, 34, 35]
     lines = mn.third_roles_verdict(roles, fresh, [{**roles[0], 'tag': 'state_256'}])
     assert any(line.startswith('| `state_256 (second run)`') for line in lines)
     assert any(line.startswith("gate, fine_256") for line in lines)
