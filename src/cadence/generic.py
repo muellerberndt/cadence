@@ -354,6 +354,9 @@ _COMPOSED_SETTINGS: dict[str, Any] = {
     "learning_surprise": True, "learning_fast_settle": True, "carried_gain": 0.01,
     # the observations as heard, one block that holds the moment before (``History``)
     "history_decays": (0.0,),
+    # the store's fast correction toward an outcome, a fifth of the way: its records average
+    # over the outcomes they see (#169, Amendment 3); ``memory_rate=1.0`` writes as 0.96 did
+    "memory_rate": 0.2,
 }
 # the association's width those lessons hold at: past it the two projections that grow with the
 # width (``_width_rates``) and the read's address map each step at this over the width
@@ -3149,6 +3152,10 @@ class Brain:
             for name, value in _COMPOSED_SETTINGS.items():
                 if name == "history_decays" and connectome is not None:
                     continue  # an anatomy of its own holds a history by name alone
+                if name == "memory_rate" and (
+                    options.get("memory_choice") is True or options.get("episodic", True) is False
+                ):
+                    continue  # the episodic records keep their own rate; no store, no rate
                 if not (name.startswith("learning_") and "learning" in options):
                     options.setdefault(name, value)
             if teaching is None and "learning" not in options:
