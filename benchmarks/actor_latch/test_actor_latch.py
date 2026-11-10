@@ -122,7 +122,7 @@ def test_the_controls_learn_nothing() -> None:
 
 
 def test_the_gate_compares_each_life_with_its_own_newborn(tmp_path: Path) -> None:
-    import gate
+    gate = _load("gate")
 
     doom = tmp_path / "doom"
     doom.mkdir()
