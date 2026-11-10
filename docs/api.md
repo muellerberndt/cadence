@@ -245,7 +245,7 @@ the name its maturity, fade and records give it, with the part's own members: th
 config, and with the entropy a pending act's surprise (`pending/surprise`, `pending/entropy`).
 0.96.1 and earlier refuse each such file by the part they do not read: `invalid saved memories` for
 a message, `invalid saved composition provenance` for learned fields and `invalid saved actor
-config` for a hold or an entropy. A brain that names none of them saves the file 0.96.1 saves.
+config` for a hold or an entropy. A brain that names none of them saves a file 0.96.1 loads.
 
 | Members | What they hold |
 | --- | --- |
