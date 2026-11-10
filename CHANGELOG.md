@@ -1,5 +1,29 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+#### Learned receptive fields for a screen (#284)
+
+- **`learned_fields=features` (opt-in, an image brain).** `Brain.compose(inputs=(84, 84), actions,
+  learned_fields=64)` reads the image through 64 receptive fields of 8 by 8 pixels in place of the
+  visual cortex: a retina that centres each patch and divides it by its contrast, one set of
+  synapses per field read at every second pixel, rectified above a homeostatic threshold, and the
+  responses pooled over 3 by 3 regions that overlap by half. The first module reads the pools and
+  every memory keys on them (576 coordinates at 64 fields), so a new brain holds the recall memory
+  at 84 by 84. The fields learn from the frames of every accepted moment and lesson by the learned
+  code's local rule, Hebbian on the residual of the patch they reconstruct; nothing leads back into
+  them and no gradient reaches them. `brain.fields` holds them (`LearnedFields`), a checkpoint saves
+  them, `describe()` and `parameters()` report them; `grow` and `graft` refuse a brain that holds
+  them ([learned receptive fields](docs/senses.md#learned-receptive-fields)). A brain that names
+  no `learned_fields` is unchanged to the bit.
+- **The pixel chamber** (`benchmarks/pixels/`): a screen-dependent policy on rendered 84 by 84
+  frames in grey and colour and on 160 by 120 frames (approach food, avoid a hazard, aim at a
+  target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
+  frozen, uniform and fields-at-their-draw controls, and a two-convolution actor-critic at the
+  brain's parameter count trained online on the same frames.
+
 ## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in

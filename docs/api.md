@@ -23,7 +23,8 @@ keyword.
 ```text
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
-              learned_code=None, attention=False, seed=0, slots=1, **options) -> Brain
+              learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
+              **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -43,6 +44,11 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   neurons that settles with the brain to a learned sparse code of the observation, read by the
   cortex and keyed on by the memories. Its one setting is `learned_code_fields`
   ([the learned code](senses.md#the-learned-code)).
+- `learned_fields=features` (opt-in, an image brain, without `code` or `learned_code`): reads
+  the image through that many receptive fields of 8 by 8 pixels, shaped by a local rule while
+  the brain lives and pooled over 3 by 3 overlapping regions, in place of the visual cortex; the
+  sensory region holds the pools and every memory keys on them. `brain.fields` holds the
+  `LearnedFields` ([learned receptive fields](senses.md#learned-receptive-fields)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -114,7 +120,7 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       history_decays=(), history_amplitude=3.0, carried_gain=0.0, recall=False, learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
-      dense_limit=None, **genes)
+      dense_limit=None, learned_fields=None, image=None, **genes)
 ```
 
 Wraps any connectome with populations `association`, `motor` and `sensory` (or
@@ -125,6 +131,8 @@ history, with `recall=True` the `recall` and `next` regions, and with `learned_c
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
+`learned_fields=features` with `image=(height, width[, channels])` reads that image through
+learned fields whose `features * 9` pools the `sensory` population holds.
 `genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
 `ArousalConfig`. With `memory_choice=True`, `compose` fills in `memory_context=0.5` and
@@ -138,6 +146,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
+| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` without `learned_fields`; `grow` and `graft` of a brain that holds them | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -187,6 +196,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
+| `fields` | the `LearnedFields` of `learned_fields=features` or `None` |
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
 | `attention` | whether `compose` applied the opt-in learned-code contextual-memory recipe; its effective mechanism is recorded by the learned-code and Recall settings |
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |
@@ -218,7 +228,7 @@ under either other name.
 | `rehearsal/` | with `learning_rehearsal`: the reservoir's rows with their episodes and the streams' episodes in progress (`heard`, `told`, `lengths`, `moments`, `labels`), the counts `seen` and `draws` under `rehearsal` in the metadata; written whenever the brain holds either |
 | `brain` | the metadata: the actor's config, both random states, the free phase and a pending action, the arousal and the action `live` issued with its forecast, the state a waiting stream sensed, a `code=units` code or a learned code, the composition, and under `memories` the settings of each memory the brain holds |
 | `actor/`, `free/`, `pending/`, `moment/`, `prepared`, `lived/`, `awaiting/` | the critic and eligibility, the free phase, a pending action's phases and decision, the action `live` issued, the sensed state |
-| `code/`, `learned_code/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds` |
+| `code/`, `learned_code/`, `learned_fields/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds`; learned fields' `dictionary` and `thresholds` |
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
 | `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata, the read's route among them with `recall_drive_gain` |
 | `memories/history/` | the heard history's `trace` |
