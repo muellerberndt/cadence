@@ -18,6 +18,14 @@
   them, `describe()` and `parameters()` report them; `grow` and `graft` refuse a brain that holds
   them ([learned receptive fields](docs/senses.md#learned-receptive-fields)). A brain that names
   no `learned_fields` is unchanged to the bit.
+- **Readings** (six fresh founders, 65,536 frames of lessons, grey 84 by 84): fresh frames at
+  .974 (every founder at .90 or above), an untrained band of places at .948, an untrained scale at
+  .975 and an untrained distractor at .947, against 1.000 and .145 on the band for a convolutional
+  actor-critic of the same size; under reward alone .673 against .372 on a blank screen. Each
+  founder reads all three untrained panels within .05 of its fresh frames on 4 of 6; on the other
+  two the pools hold the panels and the readout trails. One stream acts in 2.6 ms per grey frame
+  and 9.0 ms per colour frame on one Xeon core, against 163 ms and 220 ms through the visual
+  cortex; colour frames read .767.
 - **The pixel chamber** (`benchmarks/pixels/`): a screen-dependent policy on rendered 84 by 84
   frames in grey and colour and on 160 by 120 frames (approach food, avoid a hazard, aim at a
   target), with held-out places, scales, lighting and distractors, the blank-screen, shuffled,
