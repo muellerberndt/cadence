@@ -27,6 +27,12 @@ learning failure from an interface that cannot realize the behaviour. An
 action named after a sensor reading (brightness as pitch, onset count as
 retriggers) is a supplied instrument design that needs its own test.
 
+The [Doom body](../benchmarks/doom/README.md) is a worked boundary: the rendered screen, three
+declared own-body ports and a history port go to the player; the scorer reads the engine's other
+variables and credits each outcome once; completion, death, deadline and truncation stay
+distinct; a refused action leaves the world at its tic; and a checkpoint of game, body and brain
+resumes the same life at the same tic, the brain to the bit on `backend="cpu"`.
+
 ## Check which differences survive encoding
 
 Encode two cases whose difference matters. If both map to the same ports, no
