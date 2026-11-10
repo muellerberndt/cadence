@@ -57,6 +57,8 @@ def main() -> None:
     parser.add_argument("--founders", type=int, default=5, help="founders a gate needs")
     parser.add_argument("--brain", default="fields")
     parser.add_argument("--baseline", default="conv_matched")
+    parser.add_argument("--blank", default=None,
+                        help="the arm whose blank-screen lives are the control (the brain)")
     args = parser.parse_args()
     global PANELS
     if args.declared:
@@ -105,7 +107,7 @@ def main() -> None:
         print(f"G4 baseline minus brain, mean held-out: {shortfall:+.3f} "
               f"({'met' if shortfall <= GATE['baseline'] else 'not met'})")
     reward = groups.get(("reward", "84x84x1", args.brain, "-"), {})
-    blank = groups.get(("reward", "84x84x1", args.brain, "blank"), {})
+    blank = groups.get(("reward", "84x84x1", args.blank or args.brain, "blank"), {})
     if reward and blank:
         above = 0
         for founder in sorted(reward):

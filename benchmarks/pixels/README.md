@@ -131,11 +131,39 @@ whose band, scale and distractor panels all read within .05 of fresh frames):
 | the fields held still from 16,384 frames on | .969 | .967 | .977 | .955 | 6 of 6 |
 | fields that settle with use (`MATURITY` 2,048) | .973 | .973 | .982 | .970 | 6 of 6 |
 
-The failing term is the code under the read: fields that keep their whole step keep moving
-among codes that fit equally well, and the cortex follows them. Fields that settle with use
-are the mechanism the second run reads.
+On these six founders the fields' motion looked like the failing term: held still, or settling
+with use, every founder read within .05. The second run tested that on fresh founders.
 
-ROUND2
+### The second run (cadence#284, amended: fresh founders 2846 to 2857, 65,536 frames)
+
+Bars on 10 of 12 founders; panels of 2,048 frames. `fields` is the mechanism the amendment put
+under test (fields that settle with use, `MATURITY` 2,048); `fields_restless` the first run's
+fields, which keep their whole step and which the library keeps.
+
+| Condition | Arm | Parameters | Fresh frames (range) | Band | Scale | Lighting | Distractor | At .90 | Within .05 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| lesson | `fields` (settling) | 47,876 | .967 (.847 to .991) | .939 | .977 | .811 | .959 | 11 of 12 | 9 of 12 |
+| lesson | `fields_restless` | 47,876 | .963 (.880 to .988) | .941 | .975 | .808 | .945 | 11 of 12 | 10 of 12 |
+| lesson | `fields_drawn` | 47,876 | .859 (.758 to .916) | .852 | .886 | .795 | .849 | 2 of 12 | 12 of 12 |
+| lesson | `conv_matched` | 50,820 | .999 (.996 to 1.000) | .162 | 1.000 | .852 | .999 | 12 of 12 | 0 of 12 |
+| lesson | `conv` | 674,100 | .999 (.997 to 1.000) | .200 | 1.000 | .806 | .998 | 12 of 12 | 0 of 12 |
+| reward | `fields` (settling) | 47,876 | .633 (.474 to .722) | .665 | .634 | .599 | .605 | | |
+| reward | `fields_restless` | 47,876 | .635 (.459 to .733) | .665 | .632 | .610 | .614 | | |
+| reward | `fields`, blank screen | 47,876 | .374 (.326 to .391) | .366 | .372 | .374 | .375 | | |
+| reward | `conv_matched` | 50,820 | .857 (.610 to .984) | .563 | .865 | .629 | .854 | 7 of 12 | 3 of 12 |
+
+(The `fields` parameter counts include the settling fields' `use` table, 64 values, which the
+library does not keep.) On the 256-frame panels of the first declaration `fields` reads 8 of 12
+within .05 and `fields_restless` 10 of 12. Settling with use, selected on the six opened
+founders where it read 6 of 6, does not carry to fresh founders, and the library keeps the
+first run's fields.
+
+Where the readings fall short: on every founder outside .05 the pools read the band at .973 to
+.995 for a linear readout, the association at .894 to .978, and the brain at .830 to .925. An
+object in the band spreads its pools' energy over the three pool rows (.22, .56, .23 of it on
+one founder) where an object at a trained place puts .66 to .69 into its outer row and .31 to
+.34 into the middle one: the middle row is taught by the edges of trained objects alone, and
+the brain's read of it is the term that trails.
 
 ### Seconds per frame (`timing.py`, the `fields` brain, median of 32 moments)
 
