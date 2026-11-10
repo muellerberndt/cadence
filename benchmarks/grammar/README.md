@@ -112,6 +112,7 @@ in the same order.
 | `recipe` | `episodic=False, teaching="normalized"` with the recall memory's recipe for lengths no lesson reached and its relative read (`recall=True, recall_recency=0.0, learning_surprise=True, recall_boundary=True, recall_anchor=True, recall_slope=0.1, recall_position_rate=0.01, recall_relative=True`): the sequence battery's `recipe_relative`, the composition the recall guide gives for stories longer than the lessons and for copying |
 | `maturity` | `recipe` with `maturity=True` |
 | `frozen` | the `recipe` newborn, never taught |
+| `default` | `Brain.compose` with nothing named but the backend: what a new brain gets (`recall=True` and its settings) |
 
 **Persistence and recovery.** The first grammar for 4,000 batches, the second grammar alone for
 1,500, then the first again for 500 (recovery), each phase read in full. Lessons leave
@@ -969,6 +970,61 @@ and a `state_256` life 787 on an idle core; the first block's lives ran on a sha
 
 These readings are on one finite language with supplied meanings. The message is written by the
 instrument; a brain that writes and holds its own is the open remainder of #286.
+
+## Does a life settle? The lesson's step (#258)
+
+[`lesson_step.py`](lesson_step.py) reads [#258](https://github.com/muellerberndt/cadence/issues/258)
+under [its declared protocol](LESSON_STEP_PROTOCOL.md): the `default` arm for 4,000 batches at width
+64 or 128, 256-sentence panels every 500 batches. A life's swing is the largest minus the smallest
+exact-clause reading at 3,000, 3,500 and 4,000 batches; brackets and paths are the means of the last
+five readings. `plan` writes the lives of a stage, `read` the table, the selection and the gates
+(`--battery` adds the sequence battery's bars, `battery.py`'s `default` arm).
+
+On fresh founders 9625800 to 9625805 the default composition settles 9 of 12 lives within .05 with
+no new step:
+
+| Arm | Width | Swing (within .05) | Clauses | Held-out | Roles | Brackets | Paths | Two hops |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Default | 64 | .042 (4 of 6) | .989 | .925 | .953 | .840 | .861 | .771 |
+| Default | 128 | .024 (5 of 6) | .993 | .968 | .978 | .755 | .960 | .956 |
+| Step by the running error | 64 | .042 (4 of 6) | .974 | .824 | .893 | .727 | .917 | .893 |
+| Step by the running error | 128 | .039 (3 of 6) | .979 | .840 | .924 | .764 | .964 | .944 |
+
+The step scaled by the running share of lesson rows answered wrong (forgetting .999, square root)
+settles no more lives and costs held-out clauses by .10 to .13; the battery holds. It is not in the
+library, and its lives run on commit 968a02b.
+
+## Exposure parity with rehearsal (#270)
+
+[`exposure.py`](exposure.py) reads [#270](https://github.com/muellerberndt/cadence/issues/270) under
+[its declared protocol](EXPOSURE_PROTOCOL.md): the `default` arm with and without
+`learning_rehearsal=1.0` taught the chamber's 4,000 batches in passes (the first in the stream's
+order, the later ones in the transformer's offline epoch order), every first-grammar panel read
+after each pass, beside `controls.py`'s transformer offline at the brain's parameter count. Compute
+is an analytic count of the row sweeps times the synapses.
+
+On founders 9627000 to 9627005 the default composition at the transformer's compute (one pass,
+0.95e12 against 1.30e12) reads clauses .996, held-out .953, roles .964, brackets .862, paths .969
+and three hops .475, against the control's 1.000, .999, .995, .966, .997 and .000. Brackets rise
+with passes to .99 at the fourth; held-out clauses hold at .94 to .97. The rehearsal costs 5.7 times
+a pass and lowers paths to .82 at the first pass, where the recall read delivers .78 to .89 of hops
+against .98 to 1.00 without it.
+
+## Routes with a goal: does planning pay? (#257)
+
+[`routes.py`](routes.py) reads [#257](https://github.com/muellerberndt/cadence/issues/257) under
+[its declared protocol](ROUTES_PROTOCOL.md): the world says two branches from a start as `X near Y
+end` facts, the meaning names the start and the goal at the end of one branch, and the brain says
+`start near a1 near ... near goal end`. The first hop is said before the goal, and only one
+neighbour of the start reaches it. Eight start-goal pairs per founder are held out of training.
+Speakers: word by word, a sliding window of three (plan three words, say the first, hear it, plan
+again), and the matched LSTM and transformer.
+
+Founders 9625700 to 9625705, 8,000 batches, first hop on held-out pairs: word by word .334, the
+sliding window .312 (paired difference -.022, s.e. .050), the LSTM .395 online and .830 offline, the
+transformer .540 online and .754 offline. Both speakers say the other neighbour as often as the goal
+branch's, so neither reads the goal at the first hop, and settling three words jointly adds no
+lookahead. The information suffices, as the offline controls show.
 
 ## What this does and does not establish
 

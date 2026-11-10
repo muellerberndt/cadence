@@ -173,8 +173,8 @@ counted by `parameters()` with the use, a pass over the synapses on each actor u
 measure the step, and the gate's arithmetic on each write of the store. The variable
 (`brain.basal_ganglia.maturity`, a `Maturity`) and the noise scales are saved and loaded with
 the brain in checkpoint format `cadence-brain/2`, which 0.93.1 and earlier refuse
-([checkpoint format](api.md#checkpoint-format)). Off, the brain is the founder's to the bit and
-saves `cadence-brain/1`.
+([checkpoint format](api.md#checkpoint-format); `cadence-brain/3` where the store also fades).
+Off, the brain is the founder's to the bit and saves `cadence-brain/1`.
 
 ## Decision and reset contract
 
