@@ -4079,6 +4079,8 @@ class Brain:
             self.learned_code is not None or recall is None or type(recall) is not Recall
             or recall._device is not None or not recall._compiles(len(x))
             or self.efference is not None or self.memory_choice
+            # a held message, long-term records and learned fields: the general path reads them
+            or self.message is not None or self.longterm is not None or self.fields is not None
             or (self.history is not None and type(self.history) is not History)
             or (trace is not None and (type(trace) is not Trace or trace._device is not None))
             or (store is not None and (
@@ -4470,6 +4472,7 @@ class Brain:
             recall is None or type(recall) is not Recall or recall._device is not None
             or self.learned_code is not None or self.sparse_code is not None
             or self.efference is not None or self.memory_choice
+            or self.message is not None or self.longterm is not None or self.fields is not None
             or (self.history is not None and type(self.history) is not History)
             or self._episodic is not None or self.coded_cortex
             or cfg.tolerance is None or cfg.qualified or not cfg.fast_settle or cfg.rehearsal

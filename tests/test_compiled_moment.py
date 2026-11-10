@@ -576,3 +576,33 @@ def test_a_lesson_whose_route_is_not_the_kernels_kind_runs_its_passes(monkeypatc
         subject.working_memory.trace.flags.writeable = True
         lives.append((subject, [subject.act(x, greedy=True)]))
     _same_life(*lives)
+
+
+@pytest.mark.parametrize(
+    ("inputs", "actions", "options"),
+    [(15, 4, {"message": 16}), (15, 4, {"message": 16, "message_read": True}),
+     (15, 4, {"message": 16, "message_boundary": 14, "message_boundary_holds": True,
+              "longterm": 8}),
+     ((12, 12), 3, {"learned_fields": 4, "ports": 2, "episodic": False})],
+    ids=["message", "message read", "long-term records", "learned fields"],
+)
+def test_a_held_message_records_and_fields_take_the_general_read(inputs, actions, options):
+    # the compiled moment reads none of these parts: such a brain reads its drive on the general
+    # path, and lives as the brain without the option within rounding
+    width = int(np.prod(inputs)) + options.get("ports", 0)
+    lives = []
+    for compiled in (False, True):
+        brain = cd.Brain.compose(inputs, actions, seed=2, backend="cpu",
+                                 learning_compiled_moment=compiled, **options)
+        rng = np.random.default_rng(0)
+        drives = []
+        for t in range(16):
+            x = (rng.random((1, width)) < 0.3).astype(float)
+            if "longterm" in options:
+                x[0, 14] = float(t % 5 == 2)
+            pending = brain.basal_ganglia._pending is not None
+            brain.step(x, **({"reward": [float(t % 3 == 0)]} if pending else {}))
+            drives.append(np.array(brain.basal_ganglia._drive))
+        lives.append(drives)
+    for ours, theirs in zip(*lives, strict=True):
+        np.testing.assert_allclose(ours, theirs, rtol=0, atol=1e-8)
