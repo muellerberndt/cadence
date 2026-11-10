@@ -135,6 +135,14 @@
   pending action (`life(i, stream=True)`) saved a file `Brain.load` refused; it carries the drive
   its free state was settled for. `Lives` refuses a held message and long-term records by name.
 
+- **The torch backend on CUDA under Triton 3.1 and 3.3 (#299).** The small-group kernel's
+  `tl.dot` does not compile there with a tile below 16 on a side, which a float64 tile of 8 rows
+  and a batch below 16 always have, so the first settle raised `CompilationError`. Each tile
+  shape now takes `tl.dot` where the installed Triton compiles it, and otherwise sums the same
+  products over the presynaptic axis, chosen once per shape at its first launch. Under Triton
+  3.6 every shape keeps its dot and every bit; under 3.1 and 3.3 the settled states match the
+  cuBLAS path (`CADENCE_TRITON=0`) within float32 rounding and within 1e-13 in float64.
+
 ### The Doom body (#285)
 
 - **A VizDoom adapter in `benchmarks/doom/`**, the Body stage of the Doom player (#118). A player
