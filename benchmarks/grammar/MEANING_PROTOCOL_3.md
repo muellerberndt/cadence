@@ -220,3 +220,69 @@ the paired difference. A lift counts only where it clears two standard errors.
 roles and brackets lifted. `quiet_hold_heard` holds F3c and reads three hops at `heard`'s level
 (.7); against `heard` it is level or lifts brackets. `heard` lifts paths and three hops against
 `default` as in the second run.
+
+## Result of Amendment 1 and part 2
+
+Read on one c7i.8xlarge on commit 6fbb5f31: 48 lives of Amendment 1 on founders 9928600 to
+9928611, and part 2's 18 lives on 9728600 to 9728605 and 12 on 9828600 to 9828605.
+
+**Amendment 1.** Whole sentences, mean over twelve founders:
+
+| Arm | Parameters | clause | clause_held | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `default` | 28,716 | .97 | .88 | .89 | .80 | .92 | .41 |
+| `heard` | 30,992 | .99 | .91 | .94 | .96 | .98 | .64 |
+| `quiet_hold` | 46,920 | .98 | .91 | .90 | .78 | .71 | .17 |
+| `quiet_hold_heard` | 49,196 | 1.00 | .92 | .95 | .88 | .97 | .42 |
+
+Less `default`, paired by founder, mean (standard error); `*` a lift and `-` a cost beyond two
+standard errors:
+
+| Arm | clause | clause_held | roles | dyck | path | three hops | F3c |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| `quiet_hold` | +.01 (.01) | +.03 (.03) | +.01 (.03) | -.02 (.06) | -.20 (.09)- | -.24 (.06)- | fails |
+| `quiet_hold_heard` | +.03 (.01)* | +.04 (.03) | +.06 (.04) | +.07 (.04) | +.05 (.05) | +.01 (.10) | holds |
+| `heard` | +.02 (.02) | +.03 (.03) | +.05 (.03) | +.15 (.04)* | +.06 (.05) | +.23 (.08)* | holds |
+
+`quiet_hold_heard` less `heard`: clause +.01 (.01), held-out +.01 (.04), roles +.01 (.03),
+brackets -.08 (.03)-, paths -.01 (.01), three hops -.21 (.07)-.
+
+**Against the expectations.** `quiet_hold` was expected to hold F3c and failed on paths (-.20)
+and three hops (-.24): part 1's reading on six founders does not replicate on twelve.
+`quiet_hold_heard` held F3c as stated, with one lift beyond two standard errors (clauses +.03), and
+read three hops at the default's level (.42), under `heard` (.64). `heard` held as stated.
+
+**Where `quiet_hold` fails.** On four founders of twelve (9928601, 9928606, 9928608, 9928611)
+paths read .20 to .41, and with every previous word given the first hop is said at .41 to .81 and
+the second at .22 to .34; the default composition says them at .94 to 1.00 on the same founders.
+A message held from `GO` holds the path's start and its facts and none of the hops said, so the
+brain that leans on it loses its place in the path on those founders. With the previous word
+beside it (`quiet_hold_heard`) every founder reads paths .94 to 1.00.
+
+**Part 2: roles.**
+
+| Arm | Founders | Parameters | clause | clause_held | roles | at .90 of 6 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `own_256` | second run's | 432,528 | .99 | .95 | .90 | 6, 5, 4 |
+| `instrument_256` | second run's | 432,556 | 1.00 | .92 | .94 | 6, 4, 5 |
+| `fine_256` | second run's | 432,556 | .99 | .94 | .88 | 6, 4, 3 |
+| `own_256` | fresh | 432,528 | .99 | .87 | .85 | 6, 4, 4 |
+| `fine_256` | fresh | 432,556 | 1.00 | .89 | .95 | 6, 4, 6 |
+
+`own_256` on the second run's founders reads that run's `state_256` to the sentence. Paired,
+`instrument_256` less `own_256`: clause +.01 (.01), held-out -.03 (.02), roles +.05 (.03);
+`fine_256` less `own_256`: roles -.02 (.06) on those founders and +.10 (.09) on the fresh ones.
+
+**Location.** The instrument's message reads roles .05 over the brain's own on the same founders,
+inside two standard errors (.06), and loses held-out combinations by .03: by the declared rule the
+gap is the founders' spread, and the read of the brain's own region is not at fault. One gain per
+35 neurons does not recover anything on the same founders (-.02).
+
+**Gate R3** fails: `fine_256` on the fresh founders reads roles .95 (6 of 6 at .90) with clauses
+kept (6 of 6) and held-out combinations at .89 with 4 of 6 at .90 (.83 and .61 on two founders,
+where `own_256` reads .81 and .53). The failing reading is held-out combinations on the same two
+founders in both arms.
+
+**Against the expectations.** `instrument_256` was expected at .93 to .97 on roles and read .94;
+`fine_256` was expected to follow it and read .88 on the same founders. R3 was expected to hold
+and failed on held-out combinations.

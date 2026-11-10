@@ -1073,6 +1073,16 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/free.jsonl --third 
   -.03, -.09, -.14). No arm holds F3, and the protocol's second part (roles) did not run.
 - **Against the previous-word signal** every message arm is under `heard` on held-out
   combinations, roles and three hops (-.36 to -.58).
+- **On twelve founders** (the protocol's Amendment 1, gate on the paired mean and two standard
+  errors) the held message alone costs paths .20 and three hops .24: on four founders it loses its
+  place in the path, the first hop said at .41 to .81 with every previous word given. The held
+  message beside the previous word (`quiet_hold_heard`, 49,196 parameters) holds the gate on every
+  panel, lifts clauses (+.03) and reads three hops at the default's .42, under the previous word
+  alone (.64).
+- **Roles at 256 association neurons** (the protocol's second part): the instrument's message reads
+  roles .05 over the brain's own on the same founders, inside two standard errors, so the gap is
+  the founders' spread. One gain per 35 neurons (`message_gains=8`) reads roles .95 on fresh
+  founders (6 of 6) and fails the gate on held-out combinations (4 of 6).
 
 ### What the held-meaning readings establish
 
@@ -1100,10 +1110,10 @@ PYTHONPATH=src python benchmarks/grammar/meaning.py read DIR/free.jsonl --third 
   At the default width a read of one block of the message lifts new combinations by .26 and .44
   and stays under .90. Beside a free read a quiet message keeps paths and costs three hops; the wide
   message takes the clauses over and costs paths.
-- The quiet message's three-hop cost beside a free read comes from the brain's own words joining
-  the message as it speaks: held from `GO` the message costs three hops nothing at the mean and
-  keeps its lifts, and the phase count is not the cause. The gate on 5 of 6 founders fails on the
-  founders' spread.
+- The quiet message's three-hop cost beside a free read is not the phase count. Held from `GO` it
+  costs nothing at the mean on six founders and costs paths and three hops on twelve, where some
+  brains lose their place in a path; beside the previous word it costs no panel on twelve
+  founders and lifts clauses.
 
 These readings are on one finite language with supplied meanings. Open in #286: role twins and the
 default width from the brain's own message, and a message beside a free read that costs no panel.
