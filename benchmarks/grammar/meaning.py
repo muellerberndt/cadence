@@ -197,6 +197,52 @@ def probe_batches(founder: int, scale: float = 1.0) -> dict[str, list[list[gr.Ro
     return out
 
 
+def split_batches(founder: int, per_shape: int = 16) -> dict[str, list[list[gr.Row]]]:
+    """Clauses at trained shapes, ``trained`` of the combinations the lessons teach and
+    ``held`` of the held-out ones, ``per_shape`` batches of each per shape."""
+    split = gr.Split.of(int(founder))
+    rng = np.random.default_rng(np.random.SeedSequence([int(founder), SEEDS["probe"], 2]))
+    out: dict[str, list[list[gr.Row]]] = {"trained": [], "held": []}
+    for L in gr.TRAIN_L:
+        for _ in range(per_shape):
+            out["trained"].append([gr.trained_clause(rng, split, L, False)
+                                   for _ in range(gr.BATCH)])
+            rows = []
+            while len(rows) < gr.BATCH:
+                row = gr.clause(rng, L)
+                m = row.meta
+                if split.held(tuple(m["agent"]), tuple(m["patient"]), m["verb"]):
+                    rows.append(row)
+            out["held"].append(rows)
+    return out
+
+
+def transfer_probes(founder: int, trained: list[tuple[gr.Row, dict[str, Any]]],
+                    held: list[tuple[gr.Row, dict[str, Any]]],
+                    places: tuple[str, ...]) -> dict[str, Any]:
+    """Probes fitted on the trained combinations' states and scored on the held-out ones':
+    whether a reading the lessons could set up reads new combinations. Per component, position
+    and place, the held-out accuracy and its chance."""
+    items = list(trained) + list(held)
+    scored = np.arange(len(items)) >= len(trained)
+    labels = [components(row) for row, _ in items]
+    names = sorted({k for label in labels for k in label})
+    spots = sorted({k for _, at in items for k in at})
+    table: dict[str, Any] = {}
+    for name in names:
+        has = np.array([name in label for label in labels])
+        for spot in spots:
+            there = has & np.array([spot in at for _, at in items])
+            if (there & scored).sum() < 20 or (there & ~scored).sum() < 20:
+                continue
+            y = np.array([labels[i][name] for i in np.flatnonzero(there)])
+            for place in places:
+                x = np.stack([items[i][1][spot][place] for i in np.flatnonzero(there)])
+                table.setdefault(name, {}).setdefault(spot, {})[place] = fit_probe(
+                    x, y, scored[there])
+    return table
+
+
 def capture(brain: Any, rows: list[gr.Row], condition: str = "intact") -> list[dict[str, Any]]:
     """One batch, teacher-forced, on ``brain`` (a fork): for every said word, what each place
     holds at its settle. ``carried`` is the working trace entering the settle, ``settled`` the
@@ -1271,6 +1317,17 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
     row["said"] = said_by_kind(
         brain, [b for name in ("clause", "dyck", "path")
                 for b in (tests if fresh is None else fresh)[name]], message, bar)
+    if spec.get("held_probes"):
+        # where held-out combinations are lost: each word kind said on them with the previous
+        # words given, and probes fitted on trained combinations, scored on held-out ones
+        both = split_batches(founder, int(spec.get("held_probes")))
+        row["said_held"] = said_by_kind(brain, both["held"], message, bar)
+        own = getattr(brain, "message", None) is not None
+        places = ("message", "carried", "settled") if message is not None or own else (
+            "carried", "settled")
+        states = message_states(brain, {"trained": both["trained"], "held": both["held"]},
+                                message, bar)
+        row["probes_held"] = transfer_probes(founder, states["trained"], states["held"], places)
     if fresh is not None:
         own = getattr(brain, "message", None) is not None
         places = ("message", "carried", "settled") if message is not None or own else (
@@ -2077,6 +2134,89 @@ def third_confirm_verdict(rows: list[dict[str, Any]], floor: float = 0.03) -> li
     return lines
 
 
+FOURTH = tuple(range(10028600, 10028612))  # twelve fresh founders (MEANING_PROTOCOL_4.md)
+
+
+def fourth_plan(founders: tuple[int, ...] = FOURTH) -> list[dict[str, Any]]:
+    """Protocol 4, part 1: the brain's own message at 256 association neurons, the read barred,
+    every row taught, with the read of one block, the previous word, or both beside it."""
+    base = {"arm": "barred", "module": 256, "probe_scale": 0.0, "held_probes": 8}
+    arms: dict[str, dict[str, Any]] = {
+        "own_256": {**OWN_MESSAGE, **EVERY},
+        "read_256": {**OWN_MESSAGE, "message_read": True, **EVERY},
+        "heard_own_256": {**OWN_MESSAGE, **HEARD, **EVERY},
+        "both_256": {**OWN_MESSAGE, "message_read": True, **HEARD, **EVERY},
+    }
+    return [{**base, "settings": settings, "founder": f, "tag": tag}
+            for tag, settings in arms.items() for f in founders]
+
+
+def fourth_verdict(rows: list[dict[str, Any]], floor: float = 0.03, of: int = 10) -> list[str]:
+    """Gate H1c: ``clause_held`` at .90 on ``of`` founders of twelve, ``clause`` and ``roles``
+    at .90 on as many, and on ``dyck``, ``path`` and three hops the paired mean against
+    ``own_256`` at or above ``-floor`` and not under it by two standard errors."""
+    arms = _by_tag(rows)
+    shown = ("clause", "clause_held", "roles", "dyck", "path", "path_long")
+    lines = ["whole sentences said from the state (roles: both twins), mean (least-greatest)", "",
+             "| Arm | Parameters | Multiply-accumulates | Seconds | Lives | "
+             + " | ".join(shown) + " |",
+             "| --- | --- | --- | --- | --- | " + " | ".join("---" for _ in shown) + " |"]
+    for tag, lives in arms.items():
+        work = [macs(r) or 0.0 for r in lives]
+        lines.append(f"| `{tag}` | {lives[0]['parameters']} | {np.mean(work):.2e} | "
+                     f"{np.mean([r['seconds'] for r in lives]):.0f} | {len(lives)} | "
+                     + " | ".join(_mean([_score(r["panels"][n], n) for r in lives])
+                                  for n in shown) + " |")
+    lines.append("")
+    theirs = {r["founder"]: r for r in arms.get("own_256", [])}
+    for tag, lives in arms.items():
+        cells, held = [], True
+        for n in ("clause", "clause_held", "roles"):
+            values = [_score(r["panels"][n], n) for r in lives]
+            count, _ = passes(values, 0.9, of)
+            held = held and count >= of
+            cells.append(f"{n} {count} of {len(values)} at .90 ("
+                         + " ".join(f"{v:.2f}" for v in values if v is not None) + ")")
+        paired_lives = [r for r in lives if r["founder"] in theirs]
+        if tag != "own_256" and paired_lives:
+            for n in shown:
+                mean, error = paired(
+                    [_score(r["panels"][n], n) or 0.0 for r in paired_lives],
+                    [_score(theirs[r["founder"]]["panels"][n], n) or 0.0
+                     for r in paired_lives])
+                cost = mean < 0 and -mean > 2 * error
+                lift = mean > 0 and mean > 2 * error
+                if n in ("dyck", "path", "path_long"):
+                    held = held and mean >= -floor and not cost
+                cells.append(f"{n} less own_256 {mean:+.2f} ({error:.2f})"
+                             + ("*" if lift else "-" if cost else ""))
+        lines.append(f"  {tag}: " + "; ".join(cells) + f"  -> H1c {'holds' if held else 'fails'}")
+    lines.append("")
+    lines.append("held-out clauses with the previous words given, by word kind (least founder)")
+    for tag, lives in arms.items():
+        said = [r["said_held"] for r in lives if "said_held" in r]
+        if said:
+            kinds = sorted(k for k in said[0] if k.startswith("clause"))
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k[7:]} {np.mean([d[k] for d in said]):.2f} ({min(d[k] for d in said):.2f})"
+                for k in kinds))
+    lines.append("probes fitted on trained combinations, scored on held-out ones, at GO: "
+                 "the least component per place, by founder")
+    for tag, lives in arms.items():
+        for place in ("message", "settled"):
+            cells = []
+            for r in lives:
+                table = r.get("probes_held", {})
+                found = [(table[c]["go"][place]["accuracy"], c) for c in table
+                         if place in table[c].get("go", {})]
+                if found:
+                    low = min(found)
+                    cells.append(f"{low[0]:.2f} {low[1]}")
+            if cells:
+                lines.append(f"  {tag} {place}: " + "; ".join(cells))
+    return lines
+
+
 def _by_tag(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     arms: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -2536,6 +2676,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="the second run: the brain's own message")
     planner.add_argument("--third", action="store_true",
                          help="the third run: the cost beside a free read, and roles")
+    planner.add_argument("--fourth", action="store_true",
+                         help="protocol 4: held-out combinations from the state at 256")
     planner.add_argument("--confirm", action="store_true",
                          help="protocol 3, Amendment 1: the held message on twelve founders")
     reader = sub.add_parser("read", help="print the tables of a results file")
@@ -2543,6 +2685,7 @@ def main(argv: list[str] | None = None) -> int:
     reader.add_argument("--controls", type=Path, help="with --knock: the declared gates")
     reader.add_argument("--knock", type=Path)
     reader.add_argument("--own", action="store_true", help="the second run's gates")
+    reader.add_argument("--fourth", action="store_true", help="protocol 4's gate")
     reader.add_argument("--third", choices=("free", "roles", "confirm"),
                         help="the third run's gates: its first part, its second, or Amendment 1")
     reader.add_argument("--fresh", type=Path, help="with --third roles: the fresh founders' rows")
@@ -2565,9 +2708,11 @@ def main(argv: list[str] | None = None) -> int:
     if args.command == "plan":
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
-        founders = tuple(args.founders or (CONFIRM if args.confirm else THIRD if args.third
-                                           else OWN if args.own else DECLARED))
-        plans = ({"confirm": third_confirm_plan(founders)} if args.confirm
+        founders = tuple(args.founders or (
+            FOURTH if args.fourth else CONFIRM if args.confirm else THIRD if args.third
+            else OWN if args.own else DECLARED))
+        plans = ({"fourth": fourth_plan(founders)} if args.fourth
+                 else {"confirm": third_confirm_plan(founders)} if args.confirm
                  else third_plan(founders) if args.third else own_plan(founders) if args.own
                  else declared_plan(founders))
         for name, specs in plans.items():
@@ -2580,6 +2725,8 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(read_retrieval(rows)))
         elif args.third == "free":
             print("\n".join(third_free_verdict(rows)))
+        elif args.fourth:
+            print("\n".join(fourth_verdict(rows)))
         elif args.third == "confirm":
             print("\n".join(third_confirm_verdict(rows)))
         elif args.third == "roles":

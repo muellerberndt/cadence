@@ -465,3 +465,24 @@ def test_the_confirmatory_plan_and_its_gate_read_small_lives():
     assert sum("-> F3c" in line for line in lines) == 3
     assert any(line.startswith("each arm less `heard`") for line in lines)
     assert any(line.startswith("  quiet_hold_heard:") for line in lines)
+
+
+def test_the_fourth_plan_reads_held_out_combinations_and_their_probes():
+    warnings.simplefilter("ignore")
+    plan = mn.fourth_plan((0, 1))
+    assert [s["tag"] for s in plan[::2]] == ["own_256", "read_256", "heard_own_256", "both_256"]
+    assert len(mn.FOURTH) == 12 and all(s["module"] == 256 for s in plan)
+    both = mn.split_batches(0, 1)
+    split = gr.Split.of(0)
+    assert all(split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+               for rows in both["held"] for r in rows)
+    assert not any(split.held(tuple(r.meta["agent"]), tuple(r.meta["patient"]), r.meta["verb"])
+                   for rows in both["trained"] for r in rows)
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 2}) for spec in plan]
+    assert "said_held" in rows[0] and "probes_held" in rows[0]
+    some = next(iter(rows[0]["probes_held"].values()))
+    assert "message" in some["go"]
+    lines = mn.fourth_verdict(rows, of=2)
+    assert sum("-> H1c" in line for line in lines) == 4
+    assert any("Multiply-accumulates" in line for line in lines)
