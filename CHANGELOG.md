@@ -15,6 +15,18 @@
   `backend="cpu"` every array of the brain is the same after it, and a brain that reads lives on
   to the bit as one that does not. `Lives.values(observations)` reads each life's.
 
+### Fixed
+
+- **The learned code's step reads the same answer in a browser** (#295). `LearnedCode.stability`
+  asks Cholesky factorizations whether the present halvings hold. NumPy signals a failed
+  factorization through the floating-point status, which WebAssembly does not keep: in Pyodide
+  `np.linalg.cholesky` of a matrix that is not positive definite returns NaN and raises nothing,
+  so every test held and a one-input world kept a step its dictionary does not allow (0 halvings
+  where 3 are needed). A factorization holds where it raises nothing and its factor is finite,
+  the answer every platform gives alike; the four tests that read another answer in Pyodide
+  0.29.3 pass there. Where `cholesky` raises, as on every 64-bit platform, nothing changes: every
+  bit is as on 0.96.1.
+
 ## 0.96.1 — 2026-11-10
 
 A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is
