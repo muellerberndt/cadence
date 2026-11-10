@@ -152,3 +152,55 @@ def test_grow_and_graft_refuse_a_brain_with_fields():
         brain.grow(recall=True)
     with pytest.raises(ValueError, match="learned fields"):
         brain.graft(copy.deepcopy(brain), ["association"])
+
+
+def test_ports_are_read_beside_the_pools_in_one_brain(tmp_path):
+    rng = np.random.default_rng(3)
+    brain = Brain.compose(inputs=(16, 16, 3), actions=3, seed=1, learned_fields=6, ports=5)
+    plain = Brain.compose(inputs=(16, 16, 3), actions=3, seed=1, learned_fields=6)
+    assert brain.inputs == 16 * 16 * 3 + 5 and brain.ports == 5
+    assert len(brain.connectome.populations["sensory"]) == 6 * 9 + 5
+    layout = brain.describe()["layout"]
+    assert layout["ports"] == 5 and layout["composition"]["ports"] == 5
+    assert layout["code"]["width"] == 6 * 9 + 5
+    assert "ports" not in plain.describe()["layout"]
+    frames, ports = rng.random((2, 16 * 16 * 3)), rng.random((2, 5))
+    rows = np.concatenate([frames, ports], axis=1)  # the flattened image, then the ports
+    key = brain.observation_code(rows)
+    np.testing.assert_array_equal(key[:, :54], plain.observation_code(frames))  # the pools
+    np.testing.assert_array_equal(key[:, 54:], ports)  # the ports as given
+    brain.lesson(rows, [0, 2])
+    plain.lesson(frames, [0, 2])
+    np.testing.assert_array_equal(brain.fields.dictionary, plain.fields.dictionary)
+    assert brain.step(rows).shape == (2,)
+    twin = Brain.load(brain.save(tmp_path / "ported"))
+    assert twin.ports == 5 and twin.inputs == brain.inputs
+    later = np.concatenate([rng.random((2, 16 * 16 * 3)), rng.random((2, 5))], axis=1)
+    np.testing.assert_array_equal(
+        twin.step(later, reward=[1.0, 0.0]), brain.step(later, reward=[1.0, 0.0])
+    )
+    np.testing.assert_array_equal(twin.fields.dictionary, brain.fields.dictionary)
+    with pytest.raises(ValueError, match="values per row"):
+        brain.act(frames)  # a row without its ports
+
+
+def test_the_ports_change_the_answer():
+    brain = Brain.compose(inputs=(16, 16), actions=2, seed=0, learned_fields=4, ports=2,
+                          recall=False)
+    frame = _frame(16, 16).reshape(1, -1)
+    low = np.concatenate([frame, [[1.0, 0.0]]], axis=1)
+    high = np.concatenate([frame, [[0.0, 1.0]]], axis=1)
+    for _ in range(40):  # the same screen, the answer in the ports alone
+        brain.lesson(np.concatenate([low, high]), [0, 1])
+    assert list(brain.predict(np.concatenate([low, high]))) == [0, 1]
+
+
+@pytest.mark.parametrize("settings, message", [
+    ({"inputs": 64, "ports": 3}, "beside learned fields"),
+    ({"inputs": (16, 16), "ports": 3}, "beside learned fields"),
+    ({"inputs": (16, 16), "learned_fields": 4, "ports": -1}, "ports must be an integer"),
+    ({"inputs": (16, 16), "learned_fields": 4, "ports": True}, "ports must be an integer"),
+])
+def test_ports_refusals(settings, message):
+    with pytest.raises(ValueError, match=message):
+        Brain.compose(actions=2, recall=False, **settings)
