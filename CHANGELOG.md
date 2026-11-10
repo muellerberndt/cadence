@@ -125,6 +125,15 @@
   the answer every platform gives alike; the four tests that read another answer in Pyodide
   0.29.3 pass there. Where `cholesky` raises, as on every 64-bit platform, nothing changes: every
   bit is as on 0.96.1.
+- **Where the new options meet** (found when the lanes joined). `Lives.live` in a moment where no
+  life learns faded the actor's eligibility by `gamma * lam` under `actor_hold`; it fades the
+  actor's traces by the hold and the critic's by `gamma * lam`, as a lone brain's `fade`. One
+  life with `actor_hold=0.97` on a torch device had left its lone brain by .025 in its
+  parameters over 40 moments. `Brain.value` read the long-term records as a live read does,
+  deepening the record it held, and counted the learned fields' work; it credits no record and
+  counts nothing, so the checkpoint after a read is the one before it. A life that left with its
+  pending action (`life(i, stream=True)`) saved a file `Brain.load` refused; it carries the drive
+  its free state was settled for. `Lives` refuses a held message and long-term records by name.
 
 ### The Doom body (#285)
 
