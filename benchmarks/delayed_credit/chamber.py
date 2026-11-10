@@ -240,8 +240,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         return _read_other(kind, learner, task, founder, delay)
 
     log: dict[str, list[Any]] = {k: [] for k in (
-        "right", "reward", "p_right", "value_decision", "dopamine_decision", "dopamine_outcome",
-        "value_last", "share", "cosine", "trace")}
+        "right", "reward", "p_right", "value_decision", "dopamine_decision", "value_after",
+        "dopamine_outcome", "value_last", "share", "cosine", "trace")}
     readings: list[dict[str, Any]] = []
     decay = 1.0
     if kind == "brain":
@@ -280,6 +280,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
                     log["value_decision"].append(brain.last_learning.get("value"))
                     log["dopamine_decision"].append(brain.last_learning.get("dopamine"))
                     first_trace = None if trace is None else np.array(trace[0], copy=True)
+                if moment == 2:  # the value of the moment after the decision
+                    log["value_after"].append(brain.last_learning.get("value"))
                 if moment == episode.moments - 1 and first_trace is not None and trace is not None:
                     last = np.asarray(trace[0])
                     norm = float(np.linalg.norm(last))
@@ -332,6 +334,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
             "decay_at_outcome": decay ** delay,
             "value_decision": _split(log["value_decision"], right),
             "dopamine_decision": _split(log["dopamine_decision"], right),
+            "value_after": _split(log["value_after"], right),
             # an outcome is logged with the next episode's first step
             "dopamine_outcome": _split(log["dopamine_outcome"],
                                        right[:len(log["dopamine_outcome"])]),
