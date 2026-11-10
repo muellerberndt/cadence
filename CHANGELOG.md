@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Documentation
+
+- **The default composition and a skill met by a competing one** (#169). The memory guide records
+  #169's reading of the actor's-step gates on the default composition of 0.96.0: in the competing
+  ring's short life the default loses more of the first skill than a brain without the recall
+  memory (51.9 against 38.6 points on twelve fresh founders), and the store's write carries the
+  difference; `memory_rate=0.2` brings it to 41.6, with `maturity=True` to 37.8, and leaves the
+  chambers from birth and the robot arena's gates where the default reads them. No setting or
+  default changes.
+
 ## 0.96.1 — 2026-11-10
 
 A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is
