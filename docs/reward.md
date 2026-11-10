@@ -366,8 +366,8 @@ action that pays most often. The readings below come from the
    the rate on the task with the composed 0.3 as control.
 3. **Average or freeze the associative record where noisy pay follows acquisition.** In the
    competing ring, actor steps of 0.003 and 0.001 retain no more than the nursery's 0.03. A
-   brain composed with an averaged record (`memory_rate=0.2`) acquires as well and takes about
-   0.10 off the loss over the ring. A store frozen where the noisy pay begins
+   brain with an averaged record (`memory_rate=0.2`, a new brain's rate) acquires as well as
+   one at `memory_rate=1.0` and takes about 0.10 off the loss over the ring. A store frozen where the noisy pay begins
    (`retune(memory_rate=0.0, consolidation=0.0)`) holds the skill there at a cost to a
    competing one.
 4. **Choose `live` or `step` after the caregiver leaves.** `live` learns only while aroused,

@@ -142,7 +142,8 @@ learned fields whose `features * 9` pools the `sensory` population holds, follow
 further neurons for the values a row carries after the image.
 `genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
-`ArousalConfig`. With `memory_choice=True`, `compose` fills in `memory_context=0.5` and
+`ArousalConfig`. With the store, `compose` fills in `memory_rate=0.2` (`memory_rate=1.0` keeps
+the last outcome); with `memory_choice=True` it fills in `memory_context=0.5` and
 `memory_rate=0.5`; the constructor keeps its own defaults above, so pass these here or use
 `compose` ([episodic settings](memory.md#episodic-settings)). The stores' constants (a record's decay 0.9, a replay
 of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are no arguments.
