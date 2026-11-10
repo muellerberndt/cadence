@@ -84,3 +84,44 @@ PYTHONPATH=src python benchmarks/delayed_credit/chamber.py --kinds lstm tdlambda
 python benchmarks/delayed_credit/chamber.py --summary DIR/lives.jsonl
 python -m pytest -q benchmarks/delayed_credit
 ```
+
+## Where the credit is lost (development, 0.96.0)
+
+Development founders 0 to 5, every brain through `step` from every outcome, 4,096 episodes, the
+choice read greedy at the last budget.
+
+| learner | world | delay | parameters | founders at .90 | choice | the decision's share of the actor's eligibility at the outcome | outcome dopamine, right / wrong | critic value before the outcome, right / wrong |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| default | T-maze | 10 | 15,962 | 5 of 6 | .92 | .15 | +.43 / -1.00 | +.56 / +.56 |
+| default | T-maze | 50 | 15,962 | 0 of 6 | .50 | 9.5e-7 | +.99 / -.99 | -.02 / +.02 |
+| default | key-door | 10 | 16,772 | 5 of 6 | .92 | .079 | +.12 / -.57 | +.85 / +.37 |
+| default | key-door | 50 | 16,772 | 2 of 6 | .67 | 2.9e-6 | +.34 / -.32 | +.17 / -.01 |
+| `recall=False` | T-maze | 50 | 5,022 | 0 of 6 | .42 | 6.7e-7 | +.98 / -.98 | -.01 / +.01 |
+| `actor_gamma=1, actor_lam=1` | T-maze | 10 | 15,962 | 1 of 6 | .58 | .33 | -.15 / -.20 | +170 / +199 |
+| `actor_gamma=1, actor_lam=1` | key-door | 10 | 16,772 | 1 of 6 | .58 | .33 | +.40 / +.20 | -728 / -872 |
+| `actor_hold=1.0` | T-maze | 50 | 15,962 | 2 of 6 | .67 | .10 | +.92 / -.97 | +.06 / +.04 |
+| `actor_hold=1.0` | key-door | 10 | 16,772 | 2 of 6 | .67 | .42 | +.25 / -.26 | +.44 / -.10 |
+| a tenth of the step, `actor_hold=1.0` | T-maze | 50 | 15,962 | 6 of 6 | 1.00 | .059 | +.84 / -1.00 | +.16 / +.15 |
+| a tenth of the step, `actor_hold=1.0` | key-door | 50 | 16,772 | 3 of 6 | .75 | .16 | +.30 / -.48 | +.36 / +.13 |
+| a tenth of the step, `memory_choice=True` | T-maze | 10 | 20,040 | 6 of 6 | 1.00 | .057 | +.32 / -1.00 | +.68 / +.70 |
+| a tenth of the step, `memory_choice=True`, `actor_hold=1.0` | T-maze | 50 | 20,040 | 6 of 6 | 1.00 | .13 | +.87 / -1.00 | +.13 / +.13 |
+| a tenth of the step, `memory_choice=True`, `actor_hold=1.0` | key-door | 50 | 20,846 | 5 of 6 | .92 | .50 | +.75 / -.81 | +.25 / +.12 |
+
+A tenth of the step is `actor_eta=0.1, actor_eta_bias=0.01`.
+
+- **The eligibility's decay loses the credit.** The composed actor's eligibility decays by
+  `actor_gamma * actor_lam`, .72 a moment; fifty moments after the decision its contrast is a
+  millionth of the eligibility the outcome's dopamine meets. The dopamine itself has the right
+  sign and its full size.
+- **The critic does not carry it.** After the T-maze's junction the value is the same for a right
+  and a wrong choice: nothing it reads tells them apart. The key-door's critic sees the pouch, and
+  its discount leaves .006 of the door's value at the moment after the reach.
+- **The discount cannot be lifted alone.** The trace's decay is the critic's discount times
+  `actor_lam`: at 1 and 1 the decision's contrast stays whole and the critic's values diverge.
+- **The latch is a term at the composed step** ([issue 296](https://github.com/muellerberndt/cadence/issues/296)).
+  On the failing lives one action answers both cues and the eligibility's norm falls 15 to 20
+  times within the first quarter of the life. A trace held through the episode at the composed
+  step sums every act's contrast into each outcome's step, and the readout reaches a rail sooner.
+  At a tenth of the step the hold learns the T-maze at 50; on the key-door the door's act, credited
+  one moment before its outcome, latches on three founders. The episodic memory's records of the
+  door's outcome keep it there.
