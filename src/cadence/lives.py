@@ -1836,9 +1836,10 @@ class Lives:
 
     ``Lives(inputs, actions, lives=128, backend="torch")`` composes ``lives`` brains of
     ``Brain.compose(inputs, actions, seed=seeds[i], **options)``, the default composition with
-    its store of place records unless ``episodic=False`` is named, one per seed (``range(lives)`` by default). Every operation
-    takes one row of observations per life and returns one answer per life: ``act``, ``step``,
-    ``lesson`` and ``learn`` mean what they mean on a lone brain with one stream, life by life.
+    its store of place records unless ``episodic=False`` is named, one per seed (``range(lives)``
+    by default). Every operation takes one row of observations per life and returns one answer
+    per life: ``act``, ``step``, ``lesson`` and ``learn`` mean what they mean on a lone brain with
+    one stream, life by life.
     ``life(i)`` is life ``i`` as a lone brain on the CPU, with everything it learned.
 
     On ``backend="cpu"`` each life is its own ``Brain`` and the lives run in turn, to the bit as
