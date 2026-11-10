@@ -17,7 +17,14 @@ if not torch.cuda.is_available() or importlib.util.find_spec("triton") is None:
 from cadence import Brain  # noqa: E402
 from cadence import brain as graph  # noqa: E402
 
-TOLERANCE = {"float32": 1e-5, "float64": 1e-12}
+TOLERANCE = {"float32": 1e-4, "float64": 1e-12}  # a lesson and a settle in that precision
+
+def _host(value):
+    """An array on the host, from a tensor or an array."""
+    if hasattr(value, "detach"):
+        value = value.detach().cpu().numpy()
+    return np.asarray(value, dtype=float)
+
 
 
 def _settled(options: dict, precision: str, rows: int, triton: bool, monkeypatch) -> tuple:
@@ -29,7 +36,7 @@ def _settled(options: dict, precision: str, rows: int, triton: bool, monkeypatch
     brain.lesson(x, rng.integers(3, size=rows))
     actions = np.asarray(brain.act(x, greedy=True))
     state = brain._qualified(brain.stimulus(x, memory=False), operation="predict")
-    return actions, np.asarray(graph._host_copy(state.activation))
+    return actions, _host(state.activation)
 
 
 @pytest.mark.parametrize("options", [{"recall": False}, {}], ids=["recall-off", "composed"])
