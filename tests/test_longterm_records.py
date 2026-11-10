@@ -82,8 +82,6 @@ def test_the_option_is_refused_without_a_held_message_from_a_turn():
         brain(longterm=8, longterm_width=3)
     with pytest.raises(ValueError, match="cosine"):
         brain(longterm=8, longterm_match=1.5)
-    with pytest.raises(ValueError, match="not saved"):
-        brain(longterm=8).save("never.npz")
     b = brain(longterm=8)
     with pytest.raises(ValueError):
         b.retune(longterm_match=0.5)
@@ -204,3 +202,63 @@ def test_a_brain_answers_from_its_own_records_on_facts_no_lesson_asked():
     right = fresh(held, np.random.default_rng(1))
     assert right >= 0.85
     assert fresh(plain, np.random.default_rng(1)) <= 0.5  # the answer is nowhere to be read
+
+
+def _format(path) -> str:
+    import json
+
+    with np.load(path, allow_pickle=False) as archive:
+        return str(json.loads(str(archive["brain"]))["format"])
+
+
+def test_a_saved_brain_with_records_continues_as_the_one_it_was_saved_from(tmp_path):
+    first = brain(longterm=32, longterm_heads=2)
+    rng = np.random.default_rng(3)
+    for _ in range(6):
+        tell(first, int(rng.integers(6)), int(rng.integers(4)), int(rng.integers(4)))
+    first.reset()
+    for x in (moment(1), moment(7), moment(TURN)):  # saved in the middle of a question
+        first.act(x, greedy=True)
+    path = first.save(tmp_path / "records.npz")
+    assert _format(path) == "cadence-brain/4"
+    second = cd.Brain.load(path)
+    kept, taken = first.longterm, second.longterm
+    assert taken is not None and taken.message is second.message
+    assert taken.to_dict() == kept.to_dict()
+    np.testing.assert_array_equal(taken.since, kept.since)
+    for a, b in zip(kept.stores, taken.stores, strict=True):
+        for name, value in a.arrays().items():
+            np.testing.assert_array_equal(value, b.arrays()[name], err_msg=name)
+    for x in (np.zeros((1, INPUTS)), moment(2), moment(8), moment(TURN), moment(11)):
+        np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
+        np.testing.assert_array_equal(first.longterm.read_slots, second.longterm.read_slots)
+    assert first.longterm.counts == second.longterm.counts
+    for a, b in zip(first.longterm.stores, second.longterm.stores, strict=True):
+        for name, value in a.arrays().items():
+            np.testing.assert_array_equal(value, b.arrays()[name], err_msg=name)
+
+
+def test_a_brain_without_records_keeps_its_format_and_a_named_file_needs_its_records(tmp_path):
+    import json
+
+    plain = brain()
+    for x in (moment(0), moment(6), moment(TURN), moment(10)):
+        plain.act(x, greedy=True)
+    assert _format(plain.save(tmp_path / "plain.npz")) == "cadence-brain/1"
+    held = brain(longterm=8)
+    tell(held, 0, 0, 1)
+    path = held.save(tmp_path / "held.npz", compressed=False)
+    with np.load(path, allow_pickle=False) as archive:
+        data = {name: archive[name] for name in archive}
+    saved = json.loads(str(data["brain"]))
+    saved["format"] = "cadence-brain/1"  # a records file under another name is refused
+    data["brain"] = np.array(json.dumps(saved))
+    np.savez(tmp_path / "renamed.npz", **data)
+    with pytest.raises(ValueError, match="cadence-brain/4"):
+        cd.Brain.load(tmp_path / "renamed.npz")
+    saved["format"] = "cadence-brain/4"
+    del data["memories/longterm/store/0/keys"]
+    data["brain"] = np.array(json.dumps(saved))
+    np.savez(tmp_path / "torn.npz", **data)
+    with pytest.raises(ValueError, match="missing saved long-term records"):
+        cd.Brain.load(tmp_path / "torn.npz")

@@ -46,6 +46,7 @@ place and deepens it, so a fact that changed is current and no second copy stays
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from copy import copy
 from dataclasses import dataclass, field
 from typing import Any, ClassVar
@@ -624,13 +625,65 @@ class LongTermRecords:
         """What the streams hold, the records apart."""
         return {"since": self.since, "read_slots": self.read_slots}
 
+    # a record's arrays a checkpoint keeps, the first ``count`` rows of each, and the address's
+    SAVED_ROWS = ("keys", "values", "deep", "recent", "faded")
+    SAVED_ADDRESS_ROWS = ("units", "places")
+
     def to_dict(self) -> dict[str, Any]:
         return {
             "capacity": self.capacity, "heads": self.heads, "amplitude": self.amplitude,
-            "match": self.match, "revise": self.revise, "records": [s.count for s in self.stores],
-            **self.counts,
+            "match": self.match, "revise": self.revise, "seed": self.seed,
+            "records": [s.count for s in self.stores], **self.counts,
         }
 
     def arrays(self) -> dict[str, np.ndarray]:
-        return dict(self.streams())
+        """What a checkpoint keeps (``Brain.save``): the streams' turns and every stream's
+        records, the first ``count`` rows of each array (``store/<s>/<name>``), the store's
+        counts (``store/<s>/state``) and, with an address, its lists."""
+        out = dict(self.streams())
+        for s, store in enumerate(self.stores):
+            held = store.arrays()
+            rows = (*self.SAVED_ROWS, *(self.SAVED_ADDRESS_ROWS if store.coarse else ()))
+            for name in rows:
+                out[f"store/{s}/{name}"] = np.array(held[name][: store.count])
+            for name in ("state", *(("lists", "counts") if store.coarse else ())):
+                out[f"store/{s}/{name}"] = held[name]
+        return out
+
+    def take(self, arrays: Mapping[str, np.ndarray], stores: int,
+             counts: Mapping[str, int] | None = None) -> None:
+        """Take back what ``arrays`` kept of ``stores`` streams' records and of the streams'
+        turns, into a memory of the same settings (``Brain.load``). Refused where a shape
+        disagrees with the settings."""
+        missing = [f"store/{s}/{name}" for s in range(int(stores)) for name in
+                   (*self.SAVED_ROWS, "state") if f"store/{s}/{name}" not in arrays]
+        missing += [name for name in ("since", "read_slots") if name not in arrays]
+        if missing:
+            raise ValueError(f"missing saved long-term records: {missing[0]}")
+        self.stores = []
+        for s in range(int(stores)):
+            store = self._store()
+            full = store.arrays()
+            state = np.asarray(arrays[f"store/{s}/state"])
+            if state.shape != (3,) or not 0 <= int(state[0]) <= self.capacity:
+                raise ValueError("invalid saved long-term records: counts")
+            count = int(state[0])
+            rows = (*self.SAVED_ROWS, *(self.SAVED_ADDRESS_ROWS if store.coarse else ()))
+            for name in rows:
+                given = np.asarray(arrays[f"store/{s}/{name}"])
+                if given.shape != (count, *full[name].shape[1:]):
+                    raise ValueError(f"invalid saved long-term records: {name}")
+                full[name][:count] = given
+            for name in ("lists", "counts") if store.coarse else ():
+                full[name] = np.asarray(arrays[f"store/{s}/{name}"])
+            full["state"] = state
+            store.restore(full)
+            self.stores.append(store)
+        since = np.asarray(arrays["since"]).astype(np.int64)
+        slots = np.asarray(arrays["read_slots"]).astype(np.int64)
+        if since.ndim != 1 or slots.shape != (len(since), self.heads):
+            raise ValueError("invalid saved long-term records: the streams' turns")
+        self.since, self.read_slots = since, slots
+        if counts is not None:
+            self.counts = {name: int(counts.get(name, 0)) for name in self.counts}
 

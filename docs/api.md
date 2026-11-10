@@ -213,7 +213,13 @@ maturity and a `cadence-brain/2` file without one. A brain whose store fades
 0.95.2 and earlier refuse, with a maturity or without: the same members, with the fade under
 the store's settings and its two sums (`memories/hippocampus/fade_depth`, `fade_recent`).
 `Brain.load` refuses a `cadence-brain/3` file whose store does not fade, and a fading store
-under either other name.
+under either other name. A brain with [long-term records](memory.md#long-term-records) writes
+`cadence-brain/4`, which 0.96.0 and earlier refuse, whatever else it holds: the same members, with
+the records' settings under `memories/longterm` in the metadata and, under
+`memories/longterm/`, the streams' turns (`since`, `read_slots`) and every stream's records
+(`store/<s>/keys`, `values`, `deep`, `recent`, `faded`, their first `count` rows, and
+`store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
+without them.
 
 | Members | What they hold |
 | --- | --- |
@@ -492,8 +498,8 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 (0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
-regions (`longterm`, `longterm_1`, ...). `save`, `grow` and `graft` refuse a brain with records in
-this version. [Long-term records](memory.md#long-term-records).
+regions (`longterm`, `longterm_1`, ...). A brain with records saves `cadence-brain/4`
+([checkpoint format](#checkpoint-format)); `grow` and `graft` refuse it in this version. [Long-term records](memory.md#long-term-records).
 
 ```text
 cadence.stream.columns(index) -> slice | ndarray

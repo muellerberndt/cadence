@@ -1677,8 +1677,10 @@ recall memory's read.
 
 `brain.longterm` is a `LongTermRecords`: `stores` (one `cd.LongTermMemory` per stream),
 `read_slots` (each head's record at the latest read, -1 for none), `counts` (writes, revisions,
-statements agreed, reads) and `clear()`. A brain with records is not saved in this version, and
-`grow` and `graft` refuse it, as they refuse a message.
+statements agreed, reads) and `clear()`. `save` keeps every stream's records and turns, in
+checkpoint format `cadence-brain/4`, which 0.96.0 and earlier refuse, and `load` continues the
+streams where they stopped. `grow` and `graft` refuse a brain with records, as they refuse a
+message.
 
 **What it reads** ([memory-scale benchmark](../benchmarks/memory_scale/README.md#the-third-declaration-a-brain-that-writes-and-reads-its-own-records),
 #288; declared on six fresh founders). A brain with a 280-unit message hears facts of a lexicon of

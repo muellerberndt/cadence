@@ -123,6 +123,10 @@ MATURITY_FORMAT = "cadence-brain/2"
 # name, and a ``cadence-brain/3`` file with a maturity carries it as a ``cadence-brain/2`` file
 # does.
 FADE_FORMAT = "cadence-brain/3"
+# A brain with long-term records (``longterm=records``, #288) saves under a format name of its
+# own, which 0.96.0 and earlier refuse, whatever else the brain holds: its file carries a maturity
+# and a fading store as the files named for them do. Every other brain keeps its name.
+LONGTERM_FORMAT = "cadence-brain/4"
 # A memory's group in BRAIN_FORMAT and the prefix the reader validates its arrays under; the
 # episodic memory's arrays are the context store's and the stream's (``_flat_layout``).
 _MEMORY_PREFIXES = {
@@ -130,6 +134,7 @@ _MEMORY_PREFIXES = {
     "efference": "efference/",
     "history": "history/",
     "message": "message/",
+    "longterm": "longterm/",
     "recall": "recall/",
     "hippocampus": "episodic/",
 }
@@ -1345,8 +1350,58 @@ def _validate_life_state(
                 array(f"message/{kind}_x", (sensory, outputs))
                 array(f"message/{kind}_c", (association, outputs))
                 array(f"message/{kind}_b", (outputs,))
+    _validate_longterm_state(meta, data, learner, batch, sensory)
     _validate_recall_state(meta, data, learner, batch, sensory, code_width)
     _validate_episodic_state(meta, data, learner, code_width)
+
+
+def _validate_longterm_state(
+    meta: dict[str, Any], data: Mapping[str, Any], learner: Learner, batch: int, sensory: int
+) -> None:
+    """The settings of a brain's long-term records and the streams' turns; each stream's
+    records are validated against the settings as they are taken (``LongTermRecords.take``)."""
+    populations = learner.brain.connectome.populations
+    kept = meta.get("longterm")
+    if kept is None:
+        if "longterm" in populations and any(name.startswith("longterm/") for name in data):
+            raise ValueError("saved long-term records require their metadata")
+        return
+    told = meta.get("message")
+    if (
+        not isinstance(kept, dict)
+        or not isinstance(told, dict)
+        or told.get("boundary") is None
+        or told.get("boundary_holds") is not True
+    ):
+        raise ValueError("saved long-term records need a held message held from a turn")
+    try:
+        settings = _longterm_genes(
+            kept["capacity"],
+            {f"longterm_{name}": kept[name] for name in _LONGTERM_FOUNDERS},
+        )
+        streams = kept["records"]
+        seed = kept["seed"]
+    except (KeyError, TypeError) as exc:
+        raise ValueError("invalid saved long-term records") from exc
+    if (
+        not isinstance(streams, list)
+        or isinstance(seed, bool) or not isinstance(seed, int) or seed < 0
+    ):
+        raise ValueError("invalid saved long-term records")
+    for name in LongTermRecords.ports(settings["heads"]):
+        if len(populations.get(name, ())) != sensory:
+            raise ValueError("saved long-term records need one neuron per input on every port")
+    since = data.get("longterm/since")
+    slots = data.get("longterm/read_slots")
+    if (
+        since is None or slots is None
+        or np.shape(since) != (batch,) or np.shape(slots) != (batch, settings["heads"])
+        or np.asarray(since).dtype.kind not in "iu" or np.asarray(slots).dtype.kind not in "iu"
+    ):
+        raise ValueError("invalid saved long-term records: the streams' turns")
+    for s in range(len(streams)):
+        if f"longterm/store/{s}/state" not in data:
+            raise ValueError("missing saved long-term records")
 
 
 def _validate_recall_state(
@@ -1579,7 +1634,7 @@ def _flat_layout(
     meta["reward"] = saved["actor"]
     meta["working_memory"] = memories.get("working_memory")
     meta["hippocampus"] = memories.get("hippocampus")
-    for name in ("efference", "history", "message", "recall", "episodic"):
+    for name in ("efference", "history", "message", "longterm", "recall", "episodic"):
         if name in memories:
             meta[name] = memories[name]
     arrays: dict[str, Any] = {}
@@ -6140,7 +6195,8 @@ class Brain:
         The file is ``cadence-brain/1`` (with maturity ``cadence-brain/2``, which adds the
         maturity and the store's noise scales; with ``memory_fade`` ``cadence-brain/3``, which
         adds the records' depths and recent traces, beside a maturity where the brain has
-        one): the learner's checkpoint, the actor (its config,
+        one; with ``longterm`` ``cadence-brain/4``, which adds every stream's long-term records
+        and turns under ``memories/longterm/``): the learner's checkpoint, the actor (its config,
         critic, eligibility and random generator), the brain's random generator, the free
         phase, a pending action's nudged states, the state ``wait`` sensed since that action
         was chosen, the arousal, the observation code or the learned code, and one group
@@ -6155,15 +6211,14 @@ class Brain:
         from .checkpoint import _learner_data, _write
         from .receipts import canonical_json
 
-        if self.longterm is not None:
-            raise ValueError("a brain with long-term records is not saved in this version")
         agent = self.basal_ganglia
         data = _learner_data(self.learner)
         memories: dict[str, Any] = {}
         store = self.hippocampus
         fading = isinstance(store, SynapticMemory) and bool(store.fade)
         metadata: dict[str, Any] = {
-            "format": FADE_FORMAT if fading
+            "format": LONGTERM_FORMAT if self.longterm is not None
+            else FADE_FORMAT if fading
             else BRAIN_FORMAT if agent.maturity is None else MATURITY_FORMAT,
             "actor": agent.config.to_dict(),
             "rng": self.rng.bit_generator.state,
@@ -6305,7 +6360,8 @@ class Brain:
         CPU, portable inference and learning.
 
         Reads ``cadence-brain/1``, ``cadence-brain/2`` (a brain with maturity) and
-        ``cadence-brain/3`` (a brain whose store fades, ``memory_fade``), the formats
+        ``cadence-brain/3`` (a brain whose store fades, ``memory_fade``) and ``cadence-brain/4``
+        (a brain with long-term records, ``longterm``), the formats
         of 0.85.0 on, and refuses the earlier ``cadence-generic/1`` to ``/10`` by name: cadence
         0.94.0 loads those and saves ``cadence-brain/1``. Keep the saved batch row identities, or
         call ``reset`` for new episodes. Cross-backend results are subject to floating-point
@@ -6324,14 +6380,24 @@ class Brain:
                 raise ValueError("not a Brain checkpoint; use Learner.load for a learner")
             saved = json.loads(str(archive["brain"]))
             if not isinstance(saved, dict) or saved.get("format") not in (
-                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT
+                BRAIN_FORMAT, MATURITY_FORMAT, FADE_FORMAT, LONGTERM_FORMAT
             ):
                 raise ValueError("unsupported Brain checkpoint format")
+            saved_memories = saved.get("memories")
+            with_records = isinstance(saved_memories, dict) and "longterm" in saved_memories
+            if (saved["format"] == LONGTERM_FORMAT) != with_records:
+                raise ValueError(
+                    f"long-term records belong to checkpoint format {LONGTERM_FORMAT}"
+                )
             fading = _saved_fade(saved)
-            if (saved["format"] == FADE_FORMAT) != fading:
+            if not with_records and (saved["format"] == FADE_FORMAT) != fading:
                 raise ValueError(f"a fading store belongs to checkpoint format {FADE_FORMAT}")
-            # a fading store's file holds a maturity or none; any other file is named by it
-            if not fading and (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved):
+            # a file with records or a fading store holds a maturity or none; any other file is
+            # named by it
+            if (
+                not with_records and not fading
+                and (saved["format"] == MATURITY_FORMAT) != ("maturity" in saved)
+            ):
                 raise ValueError(
                     f"a brain's maturity belongs to checkpoint format {MATURITY_FORMAT}"
                 )
@@ -6376,6 +6442,7 @@ class Brain:
             memory = _load_memory(meta["hippocampus"], data, neurons, keys=coded, gate=True)
             heard = meta.get("history")
             told = meta.get("message")
+            kept = meta.get("longterm")
             recalled = meta.get("recall")
             attention = meta.get("attention", False)
             if not isinstance(attention, bool):
@@ -6422,6 +6489,14 @@ class Brain:
                         "message": told["units"],
                         **{f"message_{name}": told[name] for name in _MESSAGE_FOUNDERS
                            if name in told},
+                    }
+                ),
+                **(
+                    {}
+                    if kept is None
+                    else {
+                        "longterm": kept["capacity"],
+                        **{f"longterm_{name}": kept[name] for name in _LONGTERM_FOUNDERS},
                     }
                 ),
                 **(
@@ -6501,6 +6576,17 @@ class Brain:
                 result.message = message
                 if result.hearing is not None:
                     result._wire_hearing()
+            if kept is not None:
+                # every stream's records and turns, keyed on the message just taken
+                taken = result.longterm
+                assert taken is not None and result.message is not None  # validated above
+                taken.message = result.message
+                taken.seed = int(kept["seed"])
+                taken.take(
+                    {name[len("longterm/"):]: value for name, value in data.items()
+                     if name.startswith("longterm/")},
+                    len(kept["records"]), kept,
+                )
             if recalled is not None:
                 recall = result.recall
                 assert recall is not None  # validated above: the populations are there

@@ -17,7 +17,10 @@ Off by default: without it a brain is the brain without it, to the bit on `backe
 - **What stays.** Each stream's records are a `cd.LongTermMemory`: usage-protected under its
   budget, revised, and kept across `reset()` and episodes.
 - Settings: `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match` (.75),
-  `longterm_revise` (.999). A brain with records is not saved in this version.
+  `longterm_revise` (.999).
+- **Saved.** A brain with records saves every stream's records and turns in checkpoint format
+  `cadence-brain/4`, which 0.96.0 and earlier refuse; a loaded brain continues its streams as the
+  one saved. Every other brain keeps its format to the byte.
 
 Declared on six fresh founders, a brain taught to answer from its records hears facts it was
 never asked about. At 1,000 records a stream it finds and answers .9975 to 1.000 of them, at
