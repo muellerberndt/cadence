@@ -317,17 +317,26 @@ class LongTermMemory:
             raise ValueError(f"a {name} is one finite row of {self.width} values")
         return out
 
-    def write(self, key: np.ndarray, value: np.ndarray) -> tuple[int, bool]:
+    def write(
+        self, key: np.ndarray, value: np.ndarray, recognised: int | None = None
+    ) -> tuple[int, bool]:
         """Write one record and return its slot and whether the write revised a held record.
         A key the memory recognises (``revise``) rewrites that record; any other takes an empty
-        slot, or in a full memory the most faded one."""
+        slot, or in a full memory the most faded one. ``recognised`` is the recognition a
+        caller made by reading first, the slot the key is told again in or -1 for none: the
+        write then reads nothing itself."""
         key = self._key(key)
         value = np.asarray(value, dtype=np.float64)
         if value.shape != (self.value_width,) or not np.isfinite(value).all():
             raise ValueError(f"a value is one finite row of {self.value_width} values")
+        if recognised is not None and not -1 <= int(recognised) < self.count:
+            raise ValueError("recognised is a held slot, or -1 for none")
         units = self.address(key) if self.coarse else None
         slot, revised = -1, False
-        if self.revise and self.count:
+        if recognised is not None and self.revise:
+            if recognised >= 0:
+                slot, revised = int(recognised), True
+        elif self.revise and self.count:
             slots, keys = self._candidates(key, units)
             scores = np.asarray(keys @ key.astype(self.dtype), dtype=np.float64)
             best = int(np.argmax(scores))
@@ -454,6 +463,9 @@ class LongTermRecords:
     # the store's settings that the brain does not name: the library store's founders, and a
     # first choice read whole
     STORE: ClassVar[dict[str, Any]] = {"temperature": 0.0}
+    # the streams' records as one bank where they allow it (``batched``); False reads, writes
+    # and fades them store by store, the reference the bank equals
+    BATCHED: ClassVar[bool] = True
 
     def __init__(
         self,
@@ -489,6 +501,11 @@ class LongTermRecords:
                 )
             self.columns.append(_columns(neurons))
         self.stores: list[LongTermMemory] = []
+        # whether a store reads through an address (past ``direct`` slots): then the stores
+        # are read one by one
+        self._store_coarse = self._store().coarse
+        self._binary = True
+        self._bank()
         self.since = np.full(0, -1, dtype=np.int64)  # moments since each stream's turn
         self.read_slots = np.full((0, self.heads), -1, dtype=np.int64)  # the latest read
         self.counts = {"writes": 0, "revisions": 0, "agreed": 0, "reads": 0}
@@ -503,11 +520,42 @@ class LongTermRecords:
         return LongTermMemory(self.width, self.value_width, self.capacity, revise=self.revise,
                               seed=self.seed, **self.STORE)
 
+    # -- the streams' records as one bank
+
+    @property
+    def batched(self) -> bool:
+        """Whether the streams' records are read, written and faded as one bank: every slot
+        scored (no address), and keys of zeros and ones, which a held message gives."""
+        return self.BATCHED and self._binary and not self._store_coarse
+
+    def _bank(self) -> None:
+        """The streams' sums (``deep``, ``recent``, ``faded``) as rows of three shared arrays,
+        each store's arrays views of its row, and each stream's keys as an index of the slots
+        that hold each unit, ``(streams, units, slots)``: a read sums the rows of the cue's
+        units, one product over every stream."""
+        streams, capacity = len(self.stores), self.capacity
+        sums = [np.zeros((streams, capacity)) for _ in range(3)]
+        index = np.zeros((streams, self.width, capacity), dtype=np.uint8)
+        binary = True
+        for s, store in enumerate(self.stores):
+            for shared, name in zip(sums, ("deep", "recent", "faded"), strict=True):
+                shared[s] = getattr(store, name)
+                setattr(store, name, shared[s])
+            held = np.asarray(store.keys[: store.count])
+            binary = binary and bool(np.isin(held, (0.0, 1.0)).all())
+            index[s, :, : store.count] = held.T.astype(np.uint8)
+        self._deep, self._recent, self._faded = sums
+        self._index = index
+        self._binary = binary
+        self._cache: dict[int, tuple[int, np.ndarray, int]] = {}
+
     def _streams(self, batch: int) -> None:
         """Every stream of a batch of ``batch`` has its records; a stream that begins holds no
         turn."""
-        while len(self.stores) < batch:
-            self.stores.append(self._store())
+        if len(self.stores) < batch:
+            while len(self.stores) < batch:
+                self.stores.append(self._store())
+            self._bank()
         if len(self.since) != batch:
             self.since = np.full(batch, -1, dtype=np.int64)
             self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
@@ -527,6 +575,28 @@ class LongTermRecords:
         norm = float(np.linalg.norm(held) * np.linalg.norm(key))
         return norm > 0 and float(held @ key) / norm >= bar - 1e-12
 
+    def _choices(self, rows: np.ndarray, cues: np.ndarray, heads: int) -> np.ndarray:
+        """Each stream's first choices among its records, ``(rows, heads)`` (-1 for none), as
+        the store's read at temperature 0 makes them: the slot whose key shares the most of
+        the cue's units, the lowest among equals, and each head the best the heads before it
+        left. One product over every stream: the index rows of the cues' units, summed per
+        stream."""
+        counts = np.array([self.stores[int(r)].count for r in rows])
+        active = [np.flatnonzero(cue) for cue in cues]
+        lengths = np.array([len(units) for units in active])
+        gathered = self._index[np.repeat(rows, lengths), np.concatenate(active)]
+        starts = np.concatenate([[0], np.cumsum(lengths)[:-1]])
+        scores = np.add.reduceat(gathered, starts, axis=0, dtype=np.int64)
+        scores[np.arange(self.capacity)[None, :] >= counts[:, None]] = -1
+        out = np.full((len(rows), heads), -1, dtype=np.int64)
+        each = np.arange(len(rows))
+        for head in range(heads):
+            pick = np.argmax(scores, axis=1)
+            open_ = scores[each, pick] >= 0
+            out[open_, head] = pick[open_]
+            scores[each[open_], pick[open_]] = -2
+        return out
+
     # -- the read, before the settle
 
     def stimulus(self, drive: np.ndarray, moment: Any = None) -> np.ndarray:
@@ -541,14 +611,37 @@ class LongTermRecords:
         keys = self._keys(batch)
         if keys is None:
             return out
-        for row in np.flatnonzero(self.since >= 0):
+        rows = np.array([
+            int(row) for row in np.flatnonzero(self.since >= 0)
+            if self.stores[int(row)].count and keys[row].any()
+        ], dtype=np.int64)
+        if not len(rows):
+            return out
+        if self.batched:
+            picks = self._choices(rows, keys[rows], self.heads)
+            if not self._private:
+                for head in range(self.heads):  # a read deepens what it holds, as the store's
+                    held = picks[:, head] >= 0
+                    at, slot = rows[held], picks[held, head]
+                    self._deep[at, slot] += 1.0
+                    self._recent[at, slot] += 1.0
+                    self._faded[at, slot] *= 0.0
+                self.counts["reads"] += len(rows)
+                for i, row in enumerate(rows):  # the read a write after the settle reuses
+                    store = self.stores[int(row)]
+                    self._cache[int(row)] = (int(picks[i, 0]), keys[row].copy(), store.writes)
+        else:
+            picks = np.full((len(rows), self.heads), -1, dtype=np.int64)
+            for i, row in enumerate(rows):
+                read = self.stores[int(row)].read(
+                    keys[row], heads=self.heads, credit=not self._private
+                )
+                picks[i] = [read.first(head) for head in range(self.heads)]
+            self.counts["reads"] += 0 if self._private else len(rows)
+        for i, row in enumerate(rows):
             store, key = self.stores[int(row)], keys[row]
-            if not store.count or not key.any():
-                continue
-            read = store.read(key, heads=self.heads, credit=not self._private)
-            self.counts["reads"] += 0 if self._private else 1
             for head, columns in enumerate(self.columns):
-                slot = read.first(head)
+                slot = int(picks[i, head])
                 if self._holds(store, slot, key, self.match):
                     out[row, columns] = self.amplitude * store.values[slot]
                     self.read_slots[row, head] = slot
@@ -573,22 +666,73 @@ class LongTermRecords:
         if keys is not None:
             for row in np.flatnonzero(self.since == 1):
                 if x[row].any() and keys[row].any():
-                    self._write(int(row), keys[row], x[row])
-        for store in self.stores[:batch]:
-            store.moment()
+                    self.record(int(row), keys[row], x[row])
+        self._cache = {}
+        self._live(batch)
 
-    def _write(self, row: int, key: np.ndarray, value: np.ndarray) -> None:
+    def record(self, row: int, key: np.ndarray, value: np.ndarray) -> None:
+        """A statement of stream ``row``: ``value`` under ``key``, written where it says more
+        than the record the key finds (the same key and value write nothing, the same key and
+        another value revise that record, a key no record holds takes a slot)."""
         store = self.stores[row]
-        if store.count:
+        found = -1
+        if store.count and self.batched:
+            cached = self._cache.get(row)
+            if cached is not None and cached[2] == store.writes and np.array_equal(cached[1], key):
+                found = cached[0]  # the read before the settle, of the same records and key
+            else:
+                found = int(self._choices(np.array([row]), key[None, :], 1)[0, 0])
+        elif store.count:
             found = store.read(key, credit=False).first()
-            if self._holds(store, found, key, self.revise) and np.array_equal(
-                np.asarray(store.values[found], dtype=np.float64), value
-            ):
-                self.counts["agreed"] += 1  # the moment says nothing the record does not
-                return
-        _, revised = store.write(key, value)
+        if store.count and self._holds(store, found, key, self.revise) and np.array_equal(
+            np.asarray(store.values[found], dtype=np.float64), value
+        ):
+            self.counts["agreed"] += 1  # the moment says nothing the record does not
+            return
+        if self.batched:
+            # the store's own recognition, on the slot the read found
+            recognised = -1
+            if found >= 0 and store.revise:
+                score = float(np.asarray(store.keys[found]) @ key.astype(store.dtype))
+                norm = float(np.linalg.norm(key) * np.linalg.norm(store.keys[found]))
+                if norm > 0 and score / norm >= store.revise:
+                    recognised = found
+            slot, revised = store.write(key, value, recognised=recognised)
+            if not np.isin(key, (0.0, 1.0)).all():
+                self._binary = False  # a key of other values: the stores read one by one
+            self._index[row, :, slot] = key.astype(np.uint8)
+        else:
+            slot, revised = store.write(key, value)
         self.counts["writes"] += 1
         self.counts["revisions"] += int(revised)
+
+    def _live(self, batch: int) -> None:
+        """One moment of every stream's records: each fades by the store's law."""
+        if not self.batched:
+            for store in self.stores[:batch]:
+                store.moment()
+            return
+        held = max((store.count for store in self.stores[:batch]), default=0)
+        if not held:
+            return
+        probe = self.stores[0]
+        assert probe.idle is not None and probe.hold is not None
+        recent = self._recent[:batch, :held]
+        deep = self._deep[:batch, :held]
+        rate = recent * (1.0 / probe.FLOOR)
+        np.multiply(rate, rate, out=rate)
+        rate += 1.0
+        if np.isfinite(probe.depth):
+            law = deep * (1.0 / probe.depth)
+            np.multiply(law, law, out=law)  # ORDER is 4: two squarings
+            np.multiply(law, law, out=law)
+            law += 1.0
+            rate *= law
+        np.divide(1.0, rate, out=rate)
+        self._faded[:batch, :held] += rate
+        recent *= 1.0 - 1.0 / probe.idle
+        if np.isfinite(probe.hold):
+            deep *= 1.0 - 1.0 / probe.hold
 
     # -- the memory contract
 
@@ -600,17 +744,20 @@ class LongTermRecords:
         else:
             self.since[rows] = -1
             self.read_slots[rows] = -1
+        self._cache = {}
 
     def keep(self, rows: np.ndarray) -> None:
         """Keep the streams of ``rows``, their records with them."""
         index = np.arange(len(self.since))[rows]
         self.stores = [self.stores[int(i)] for i in index if int(i) < len(self.stores)]
         self.since, self.read_slots = self.since[index], self.read_slots[index]
+        self._bank()
 
     def clear(self) -> None:
         """Empty every stream's records."""
         self.stores = []
         self.counts = dict.fromkeys(self.counts, 0)
+        self._bank()
 
     def branch(self) -> LongTermRecords:
         """A private copy for an imagined branch: it reads the live records, credits none and
@@ -618,6 +765,7 @@ class LongTermRecords:
         out = copy(self)
         out.since, out.read_slots = self.since.copy(), self.read_slots.copy()
         out.counts = dict(self.counts)
+        out._cache = {}
         out._private = True
         return out
 
@@ -686,4 +834,5 @@ class LongTermRecords:
         self.since, self.read_slots = since, slots
         if counts is not None:
             self.counts = {name: int(counts.get(name, 0)) for name in self.counts}
+        self._bank()
 

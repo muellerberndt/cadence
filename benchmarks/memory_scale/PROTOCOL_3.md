@@ -141,3 +141,33 @@ records costs 10.5 times a moment without the option, the host's loop over the s
 **Departures from the plan of the runs.** The CPU box's package update stalled and was stopped by
 hand; its Python environment was installed by the same commands. Nothing in an instrument, a plan or
 a bar changed after the declaration.
+
+## Amendment 1: the many-stream write (declared 10 November 2026, before its run)
+
+The outcome above stands. Over 16 streams a fact moment at 10,000 records cost 10.5 times the
+moment without the option: the streams' stores were read and written one after another on the
+host, and a write read its store twice. The records change in three ways, none of them in what is
+read or written: a stream's records are read, written and faded store by store (`BATCHED=False`)
+or as one bank, and the bank holds to the store-by-store records to the bit (a contract test, on
+streams that tell, revise and ask past their capacity).
+
+- **One product over the streams' stores.** Each stream's keys are kept as an index of the slots
+  that hold each unit, `(streams, units, slots)`, and a read sums the index rows of the cue's units,
+  one gathered sum over every stream that reads; for keys of zeros and ones the sum is the store's
+  dot product and the first choice the store's.
+- **One read per write.** The read before the settle is the write's recognition, passed to the
+  store (`LongTermMemory.write(..., recognised=slot)`), which reads nothing itself.
+- **One fading over the streams.** The streams' depths, recent uses and fadings are rows of three
+  shared arrays, faded by the store's law in one pass.
+
+**The gate**, on founders 2909 to 2911 (in no run of any lane), one process on one spot CPU box
+that runs nothing else, `protocol-3/cost-amended.json` (the records filled by the records' own
+write, `"fill": "record"`):
+
+| Gate | Reading | Bar |
+| --- | --- | --- |
+| C4 | ms per fact moment over 16 streams at 10,000 records a stream, over the same brain's without the option, one core | at most 2, on 3 of 3 |
+
+C3 is read again on the same founders and reported. **Expectation:** the bank reads about ten
+index rows of 10,000 slots per stream and fades 160,000 sums a moment; a fact moment over 16
+streams costs about 1.5 times one without the option.

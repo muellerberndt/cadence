@@ -1682,6 +1682,13 @@ checkpoint format `cadence-brain/4`, which 0.96.0 and earlier refuse, and `load`
 streams where they stopped. `grow` and `graft` refuse a brain with records, as they refuse a
 message.
 
+The streams' records are read, written and faded as one bank. Each stream's keys are kept as an
+index of the slots that hold each unit, and a read sums the index rows of the cue's units over
+every stream at once; the read before the settle is the write's recognition, so a write reads
+nothing itself; the streams' depths, recent uses and fadings fade in one pass. The bank holds to
+the stores read one by one to the bit. A key of values other than zeros and ones, or a store of
+more than `direct` slots (16,384), reads the stores one by one.
+
 **What it reads** ([memory-scale benchmark](../benchmarks/memory_scale/README.md#the-third-declaration-a-brain-that-writes-and-reads-its-own-records),
 #288; declared on six fresh founders). A brain with a 280-unit message hears facts of a lexicon of
 64 nouns and 96 verbs (the act, the agent, the turn, the patient), each episode after a `reset()`
@@ -1696,8 +1703,7 @@ another patient, and answers 400 questions of each kind without lessons:
 
 The misses are keys that name two facts: two facts whose key is one key, or a key another
 contains. A moment with 10,000 records on one stream costs 1.8 times a moment without them on one
-core and 1.7 times on a GPU. Over 16 streams the stores are read and written one after another on
-the host, and a fact moment costs 10.5 times one without them.
+core and 1.7 times on a GPU.
 
 ## How strongly a carried region is heard
 

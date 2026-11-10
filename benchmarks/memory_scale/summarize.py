@@ -157,7 +157,8 @@ THIRD = (2900, 2901, 2902, 2903, 2904, 2905)  # the third declaration's founders
 
 def gates3(folder: Path) -> dict[str, dict[str, Any]]:
     """The gates of the third declaration (``PROTOCOL_3.md``): B1 to B5 on the brain's own
-    records and C3, D1 on its cost. A gate whose receipt is absent is left out."""
+    records, C3, D1 on its cost and Amendment 1's C4. A gate whose receipt is absent is left
+    out."""
     out: dict[str, dict[str, Any]] = {}
 
     def gate(name: str, values: list[float], passes: list[bool], bar: str) -> None:
@@ -201,6 +202,18 @@ def gates3(folder: Path) -> dict[str, dict[str, Any]]:
                 off, on = pick(table, founder=f, n=0)[0], pick(table, founder=f, n=10_000)[0]
                 ratios.append(max(on["question_ms"] / off["question_ms"],
                                   on["fact_ms"] / off["fact_ms"]))
+            out[name] = {"values": [round(r, 3) for r in ratios], "bar": "at most 2",
+                         "founders": int(sum(r <= 2 for r in ratios)),
+                         "passes": all(r <= 2 for r in ratios)}
+    if held(folder, "third-cost-amended.jsonl"):  # Amendment 1: C4, and C3 read again
+        table = rows(folder / "third-cost-amended.jsonl")
+        for name, streams, fields in (("C4", 16, ("fact_ms",)),
+                                      ("C3, Amendment 1", 1, ("question_ms", "fact_ms"))):
+            ratios = []
+            for f in sorted({r["founder"] for r in table}):
+                off = pick(table, founder=f, streams=streams, n=0)[0]
+                on = pick(table, founder=f, streams=streams, n=10_000)[0]
+                ratios.append(max(on[k] / off[k] for k in fields))
             out[name] = {"values": [round(r, 3) for r in ratios], "bar": "at most 2",
                          "founders": int(sum(r <= 2 for r in ratios)),
                          "passes": all(r <= 2 for r in ratios)}

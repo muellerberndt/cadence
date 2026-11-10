@@ -214,7 +214,9 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
 def cost_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     """ms per moment of question and fact episodes over one or many streams, with the records
     filled to N per stream by the store's own writes of facts' keys and values (the keys the
-    brain's message gives them), and without the option."""
+    brain's message gives them), and without the option. ``"fill": "record"`` fills them by the
+    records' own write (``LongTermRecords.record``), which keeps a bank of the streams' records
+    in step with the stores."""
     founder, streams = int(spec["founder"]), int(spec.get("streams", 1))
     world = World(founder)
     rng = np.random.default_rng(np.random.SeedSequence([founder, 288, 3, 4]))
@@ -246,7 +248,10 @@ def cost_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
             keys = coder.key()
             for s in range(streams):
                 for i in range(int(n)):
-                    kept.stores[s].write(keys[i], moments[3][i])
+                    if spec.get("fill") == "record":
+                        kept.record(s, keys[i], moments[3][i])  # the brain's own write
+                    else:
+                        kept.stores[s].write(keys[i], moments[3][i])
         told = abouts[: max(int(n), 1)] if n else abouts
         asked = told[rng.integers(len(told), size=(int(spec.get("episodes", 100)), streams))]
         patient = rng.integers(PATIENTS, size=asked.shape)

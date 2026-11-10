@@ -21,6 +21,10 @@ Off by default: without it a brain is the brain without it, to the bit on `backe
 - **Saved.** A brain with records saves every stream's records and turns in checkpoint format
   `cadence-brain/4`, which 0.96.0 and earlier refuse; a loaded brain continues its streams as the
   one saved. Every other brain keeps its format to the byte.
+- **Many streams.** The streams' records are read, written and faded as one bank: one product
+  over every stream's records, the read before the settle reused as the write's recognition
+  (`LongTermMemory.write(..., recognised=slot)`), and one fading pass. The bank holds to the stores
+  read one by one to the bit.
 
 Declared on six fresh founders, a brain taught to answer from its records hears facts it was
 never asked about. At 1,000 records a stream it finds and answers .9975 to 1.000 of them, at

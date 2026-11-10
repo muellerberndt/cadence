@@ -471,9 +471,11 @@ LongTermRead(slots, weights)
 ```
 
 `LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
-budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value) -> (slot,
-revised)` rewrites the record whose key it recognises (cosine `revise`), else takes an empty slot,
-else the most faded one (`fade=False`: the slot written longest ago). `read(cue, heads=1,
+budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value,
+recognised=None) -> (slot, revised)` rewrites the record whose key it recognises (cosine
+`revise`), else takes an empty slot, else the most faded one (`fade=False`: the slot written
+longest ago); `recognised` is a caller's recognition from its own read (the slot, or -1 for none),
+and the write then reads nothing itself. `read(cue, heads=1,
 credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
 `expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
 head reads its first choice among the slots left, whole); a memory of at most `direct` slots
@@ -498,7 +500,9 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 (0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
-regions (`longterm`, `longterm_1`, ...). A brain with records saves `cadence-brain/4`
+regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
+bank (`batched`) where every key is of zeros and ones and every store scores every slot;
+`BATCHED = False` reads them store by store, the reference the bank equals to the bit. A brain with records saves `cadence-brain/4`
 ([checkpoint format](#checkpoint-format)); `grow` and `graft` refuse it in this version. [Long-term records](memory.md#long-term-records).
 
 ```text

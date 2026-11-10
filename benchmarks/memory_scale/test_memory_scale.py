@@ -698,9 +698,11 @@ def test_the_third_declaration_s_plans_parse():
 
     br = _load("brain_records")
     plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "protocol-3").glob("*.json")}
-    assert set(plans) == {"records", "cost", "cost-device"}
+    assert set(plans) == {"records", "cost", "cost-device", "cost-amended"}
     assert plans["records"]["founders"] == list(range(2900, 2906))
     assert plans["cost"]["founders"] == plans["cost-device"]["founders"] == [2906, 2907, 2908]
+    assert plans["cost-amended"]["founders"] == [2909, 2910, 2911]  # Amendment 1
+    assert plans["cost-amended"]["fill"] == "record"
     todo = br.cells(plans["records"])
     assert len(todo) == 18 and {c["arm"] for c in todo} == {"records", "plain", "records_h2"}
     assert plans["cost-device"]["device"] == "cuda"

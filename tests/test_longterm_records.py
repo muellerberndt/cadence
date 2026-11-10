@@ -262,3 +262,94 @@ def test_a_brain_without_records_keeps_its_format_and_a_named_file_needs_its_rec
     np.savez(tmp_path / "torn.npz", **data)
     with pytest.raises(ValueError, match="missing saved long-term records"):
         cd.Brain.load(tmp_path / "torn.npz")
+
+
+def _lived(batched: bool, streams: int, capacity: int, heads: int):
+    """A brain of ``streams`` streams that tells, revises and asks facts past its capacity, its
+    records read, written and faded as one bank or store by store."""
+    b = brain(longterm=capacity, longterm_heads=heads)
+    b.longterm.BATCHED = batched  # this brain's records alone
+    rng = np.random.default_rng(7)
+    acts, reads = [], []
+    for episode in range(40):
+        b.reset()
+        agent, verb = rng.integers(6, size=streams), rng.integers(4, size=streams)
+        patient = rng.integers(4, size=streams)
+        asking = episode % 3 == 2
+        for t in range(4):
+            x = np.zeros((streams, INPUTS))
+            rows = np.arange(streams)
+            if t == 0:
+                x[rows, agent] = 1.0
+            elif t == 1:
+                x[rows, 6 + verb] = 1.0
+            elif t == 2:
+                x[:, TURN] = 1.0
+            elif not asking:
+                x[rows, 10 + patient] = 1.0
+            acts.append(np.asarray(b.act(x, greedy=True)))
+            reads.append(b.longterm.read_slots.copy())
+    return b, acts, reads
+
+
+def test_the_bank_reads_writes_and_fades_as_the_stores_one_by_one():
+    one, acts_one, reads_one = _lived(False, 3, 6, 2)
+    bank, acts_bank, reads_bank = _lived(True, 3, 6, 2)
+    assert bank.longterm.batched and not one.longterm.batched
+    for a, b in zip(acts_one, acts_bank, strict=True):
+        np.testing.assert_array_equal(a, b)
+    for a, b in zip(reads_one, reads_bank, strict=True):
+        np.testing.assert_array_equal(a, b)
+    assert one.longterm.counts == bank.longterm.counts
+    assert one.longterm.counts["revisions"] > 0 and all(
+        s.count == 6 for s in bank.longterm.stores)  # past the capacity: slots replaced
+    for a, b in zip(one.longterm.stores, bank.longterm.stores, strict=True):
+        n = a.count
+        assert n == b.count and a.writes == b.writes
+        for name in ("keys", "values", "deep", "recent", "faded"):
+            np.testing.assert_array_equal(getattr(a, name)[:n], getattr(b, name)[:n],
+                                          err_msg=name)
+
+
+def test_the_bank_follows_the_stores_through_save_load_keep_and_clear(tmp_path):
+    first, _, _ = _lived(True, 2, 8, 1)
+    path = first.save(tmp_path / "bank.npz")
+    second = cd.Brain.load(path)
+    kept = second.longterm
+    assert kept.batched
+    for s, store in enumerate(kept.stores):
+        assert np.shares_memory(store.deep, kept._deep)
+        held = store.keys[: store.count].T.astype(np.uint8)
+        np.testing.assert_array_equal(kept._index[s, :, : store.count], held)
+    for on in (1, 7, TURN, 12):
+        x = np.zeros((2, INPUTS))
+        x[:, on] = 1.0
+        np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
+    for a, b in zip(first.longterm.stores, second.longterm.stores, strict=True):
+        np.testing.assert_array_equal(a.deep[: a.count], b.deep[: b.count])
+    second.longterm.keep(np.array([1]))
+    assert len(second.longterm.stores) == 1 and second.longterm._index.shape[0] == 1
+    second.longterm.clear()
+    assert second.longterm.stores == [] and second.longterm._deep.shape == (0, 8)
+
+
+def test_a_write_reads_its_store_once():
+    from cadence.longterm import LongTermMemory
+
+    b = brain(longterm=16)
+    tell(b, 0, 0, 1)
+    calls = {"read": 0}
+    original = LongTermMemory.read
+
+    def counted(self, *args, **kwargs):
+        calls["read"] += 1
+        return original(self, *args, **kwargs)
+
+    LongTermMemory.read = counted
+    try:
+        tell(b, 0, 0, 2)  # a revision: the read before the settle is the write's recognition
+        tell(b, 1, 1, 3)  # a new fact
+    finally:
+        LongTermMemory.read = original
+    assert calls["read"] == 0  # the bank reads; no store reads one by one
+    assert b.longterm.counts["revisions"] == 1 and b.longterm.stores[0].count == 2
