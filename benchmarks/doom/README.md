@@ -165,7 +165,8 @@ PYTHONPATH=src python benchmarks/doom/doom_life.py --table results/*.jsonl
 
 `--resolution 160x120` reads the larger screen, `--backend torch` or `--backend mlx` puts the brain
 on a device, `--device mps` or `--device cuda` the convolutional player. Each output line is one
-episode (outcome, tic, tics, moments, return, kills and the player's and the world's seconds),
+episode (outcome, tic, tics, moments, return, kills, the presses of each button and the
+player's and the world's seconds),
 after a first line that declares the run (the player, its parameters, the brain's placement, the
 scenario's scorer, the engine's identity, the machine).
 

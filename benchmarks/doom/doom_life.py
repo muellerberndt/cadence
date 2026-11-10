@@ -48,12 +48,13 @@ def play(
 ) -> list[dict[str, Any]]:
     """``episodes`` episodes of one life: the player answers each observation, the body steps
     the answer. A moment the player refuses (it raises) leaves the world where it stands and
-    ends the life with ``Refused``. Returns one summary per episode; ``each`` sees each one as
-    it ends."""
+    ends the life with ``Refused``. Returns one summary per episode, with its presses of each
+    button (``buttons``); ``each`` sees each one as it ends."""
     summaries: list[dict[str, Any]] = []
     observation = body.reset()
     previous: doom_body.Transition | None = None
     clock = {"player": 0.0, "world": 0.0, "moments": 0, "kills": 0, "start": body.tic}
+    buttons = [0] * body.actions
     while True:
         t0 = time.perf_counter()
         try:
@@ -67,6 +68,7 @@ def play(
         clock["world"] += t2 - t1
         clock["moments"] += 1
         clock["kills"] += transition.events.count("kill")
+        buttons[action] += 1
         if not transition.done:
             assert transition.observation is not None
             observation, previous = transition.observation, transition
@@ -79,6 +81,7 @@ def play(
             "moments": clock["moments"],
             "return": body.returned,
             "kills": clock["kills"],
+            "buttons": list(buttons),
             "player_seconds": clock["player"],
             "world_seconds": clock["world"],
         }
@@ -92,6 +95,7 @@ def play(
             return summaries
         observation, previous = body.reset(), transition
         clock = {"player": 0.0, "world": 0.0, "moments": 0, "kills": 0, "start": body.tic}
+        buttons = [0] * body.actions
 
 
 def save_life(
