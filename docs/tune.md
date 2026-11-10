@@ -151,6 +151,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `learning_compiled_moment` | `False` | retune | [the compiled moment](#the-compiled-moment-opt-in) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
 | `actor_hold` | `None` (the actor's eligibility decays by `actor_gamma * actor_lam`) | retune | [reward](reward.md#a-reward-many-moments-after-the-decision) |
+| `actor_entropy` | `0.0` (off) | retune | [exploration](reward.md#exploration-over-long-reward-lives-opt-in) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor`, `arousal_fast`, `arousal_slow` | `0.2`, `0.9`, `2.0`, `0.1`, `0.05`, `0.005` | retune | [continuous](start.md#routine-and-repair-live) |

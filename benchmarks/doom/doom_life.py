@@ -48,12 +48,13 @@ def play(
 ) -> list[dict[str, Any]]:
     """``episodes`` episodes of one life: the player answers each observation, the body steps
     the answer. A moment the player refuses (it raises) leaves the world where it stands and
-    ends the life with ``Refused``. Returns one summary per episode; ``each`` sees each one as
-    it ends."""
+    ends the life with ``Refused``. Returns one summary per episode, with its presses of each
+    button (``buttons``); ``each`` sees each one as it ends."""
     summaries: list[dict[str, Any]] = []
     observation = body.reset()
     previous: doom_body.Transition | None = None
     clock = {"player": 0.0, "world": 0.0, "moments": 0, "kills": 0, "start": body.tic}
+    buttons = [0] * body.actions
     while True:
         t0 = time.perf_counter()
         try:
@@ -67,6 +68,7 @@ def play(
         clock["world"] += t2 - t1
         clock["moments"] += 1
         clock["kills"] += transition.events.count("kill")
+        buttons[action] += 1
         if not transition.done:
             assert transition.observation is not None
             observation, previous = transition.observation, transition
@@ -79,6 +81,7 @@ def play(
             "moments": clock["moments"],
             "return": body.returned,
             "kills": clock["kills"],
+            "buttons": list(buttons),
             "player_seconds": clock["player"],
             "world_seconds": clock["world"],
         }
@@ -92,6 +95,7 @@ def play(
             return summaries
         observation, previous = body.reset(), transition
         clock = {"player": 0.0, "world": 0.0, "moments": 0, "kills": 0, "start": body.tic}
+        buttons = [0] * body.actions
 
 
 def save_life(
@@ -187,6 +191,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--tics", type=int, default=4)
     parser.add_argument("--backend", default="cpu", help="the brain's backend")
     parser.add_argument("--device", default="cpu", help="the convolutional player's device")
+    parser.add_argument("--set", action="append", default=[], metavar="NAME=VALUE",
+                        help="a named setting of the brain players' Brain.compose")
     parser.add_argument("--out", type=Path)
     parser.add_argument("--table", nargs="*", type=Path, help="summarise these output files")
     args = parser.parse_args(argv)
@@ -197,8 +203,11 @@ def main(argv: list[str] | None = None) -> None:
         args.scenario, resolution=args.resolution, tics=args.tics, seed=args.seed
     )
     options: dict[str, Any] = {"device": args.device}
+    settings = {k: _setting(v) for k, v in (s.split("=", 1) for s in args.set)}
+    if settings and not args.player.startswith("brain"):
+        parser.error("--set names a setting of the brain players")
     if args.player.startswith("brain"):
-        options = {"backend": args.backend}
+        options = {"backend": args.backend, **settings}
     player = make_player(args.player, body, args.seed, **options)
     header = {
         "run": {
@@ -215,6 +224,7 @@ def main(argv: list[str] | None = None) -> None:
         }
     }
     if args.player.startswith("brain"):
+        header["run"]["settings"] = settings
         header["run"]["inputs"] = player.width
         header["run"]["placement"] = {
             k: str(v) for k, v in dict(player.brain.placement).items() if k in
@@ -234,6 +244,14 @@ def main(argv: list[str] | None = None) -> None:
     if args.out is not None:
         args.out.write_text("\n".join(lines) + "\n")
     print(json.dumps({"run": header["run"]["player"], "score": score(args.scenario, rows)}))
+
+
+def _setting(text: str) -> Any:
+    """A ``--set`` value: a JSON number, boolean or list, else the text itself."""
+    try:
+        return json.loads(text)
+    except json.JSONDecodeError:
+        return text
 
 
 def print_table(paths: list[Path]) -> None:

@@ -1805,6 +1805,8 @@ def _supported(brain: Any) -> None:
     agent = brain.basal_ganglia
     if agent.salience is not None:
         raise refuse("no salience")
+    if agent.config.entropy:
+        raise refuse("no actor entropy (actor_entropy=0)")
 
 
 def _takes_outcome(brain: Any) -> bool:

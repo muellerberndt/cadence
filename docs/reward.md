@@ -87,6 +87,7 @@ the composed founders are `gamma=0.9, lam=0.8, eta=1.0, eta_bias=0.05, eta_criti
 | `dopamine_cap` | `1.0` | Clip of the actor's signal; `0` for none |
 | `eligibility_steps` | `None` | Steps of each reward-nudged phase; `None` uses the learner's `nudged_steps` |
 | `hold` | `None` | The actor's eligibility decay per moment apart from the critic's; `None` uses `gamma * lam` ([a reward many moments after the decision](#a-reward-many-moments-after-the-decision)) |
+| `entropy` | `0.0` | The policy's entropy in the step ([exploration](#exploration-over-long-reward-lives-opt-in)); `0`: none |
 
 `beta`, the base `temperature` and `tolerance` come from the learner's `LearnerConfig`
 (composed: `temperature`; `beta` is 0.1, a constant); the teaching point (`teaching`) sets the steps
@@ -109,7 +110,8 @@ of lessons alone.
   `dopamine` (signed mean), `capped` (share beyond `dopamine_cap` before the clip),
   `saturation` (share of outputs within 0.02 of 0 or 1), `trace` (mean absolute plastic
   eligibility), `value`, `free_steps`, `scale_step`, `bias_step` (mean absolute applied
-  steps), and `address_reward_step` with a `memory`.
+  steps), `address_reward_step` with a `memory`, and `policy_entropy` (the sampled act's
+  entropy in nats, summed over the motor slots) with `entropy`.
 
 ## Actor rates
 
@@ -176,6 +178,44 @@ measure the step, and the gate's arithmetic on each write of the store. The vari
 the brain in checkpoint format `cadence-brain/2`, which 0.93.1 and earlier refuse
 ([checkpoint format](api.md#checkpoint-format); `cadence-brain/3` where the store also fades).
 Off, the brain is the founder's to the bit and saves `cadence-brain/1`.
+
+## Exploration over long reward lives (opt-in)
+
+Over a long life of small rewards, the actor at its composed step can settle on one button that
+the reward does not favour, and hold it ([#296](https://github.com/muellerberndt/cadence/issues/296)).
+At birth one or two motor neurons are active and the others rest at the 0 rail, where a nudge
+has little slope: an active button's contrast is .28 to .43, a resting one's .01 to .04. Each
+outcome moves the active outputs, so the policy drifts toward one of them, and a button at rest
+that the reward favours rises slowly. In the
+[long reward life chamber](../benchmarks/actor_latch/README.md), whose three worlds keep a Doom
+player's observation, the composed step (`actor_eta=1.0`) scores below the frozen newborn in the
+world shaped like Doom basic, and a tenth of it does not; the bias step, the trace, the input
+width and the memories leave the hold as it is.
+
+`Brain.compose(..., actor_entropy=k)` (or `ActorCriticConfig(entropy=k)`) adds the policy's
+entropy to the actor's step, the regularizer a conventional actor-critic carries. A sampled act
+keeps its surprise, `-log p(action) - H` under the policy that sampled it (summed over the motor
+slots), and its outcome's step adds that act's own contrast at the weight `k` times the surprise:
+
+```
+step[e] = eta * (delta * elig[e] + k * surprise * contrast[e])
+```
+
+Over the policy's own actions the surprise averages to zero, so the term is the sampled
+gradient of the entropy: an act the policy takes often has a negative surprise and steps its
+button down, a rare act steps its button up, and the dopamine decides where the reward pays more
+than the pull toward an even policy. The term uses the act's own contrast, never the trace, so
+it credits no earlier decision. `report["policy_entropy"]` reads the entropy of each act.
+
+| Setting | Founder | Changed by | What it does |
+| --- | --- | --- | --- |
+| `actor_entropy` | `0.0` | `retune` | the weight of the entropy term; 0 is the composed actor |
+
+It learns on the host: `backend="cpu"` and `"mlx"` (whose update it takes on the host, as a
+maturity does); a brain on a torch device refuses the outcome, and `Lives` refuses the setting by
+name. A pending act's surprise is saved with the brain. A brain that names no entropy, or 0,
+keeps every bit of the composed actor on `backend="cpu"`, and its configuration saves without
+the field.
 
 ## Decision and reset contract
 
