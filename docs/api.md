@@ -259,17 +259,19 @@ one call per moment for all of them ([many lives at once](backends.md#many-lives
 | Method | Meaning |
 | --- | --- |
 | `act(observations, *, greedy=False)` | each life's `Brain.act` on its own row: `(lives, inputs)` in, `(lives,)` out |
-| `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label |
-| `learn(reward, done, next_observations)` | each life's `Brain.learn` |
+| `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label; a life with no sampled action pending takes a zero reward and no end |
+| `live(observations, *, reward=None, done=None)` | each life's `Brain.live` with its own arousal: a sampled life learns from its outcome, a calm life answers greedily from its forecast, each ends its own episodes; a life with no preceding action takes a zero reward and no end |
+| `learn(reward, done, next_observations)` | each life's `Brain.learn`; after `live` the calm lives hold |
 | `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer |
 | `reset()` | every life's stream starts afresh; what the lives learned stays |
 | `parameters(i)` | life `i`'s learned state on the host: `efficacy`, `bias`, `w_critic`, `b_critic`, the optimizer's four moments and its counts `updates` and `contrast_updates`, with a recall memory `recall` (its maps by kind), with carried gains `carried_gains`, `carried_second` and `carried_count` |
-| `life(i)` | life `i` as a lone `Brain` on the CPU with all of that and its random state; its stream starts afresh |
+| `life(i)` | life `i` as a lone `Brain` on the CPU with all of that, its arousal and its random state; its stream starts afresh |
+| `arousals`, `last_arousal` | each life's `Arousal`, and each life's readings of its latest `live` as `Brain.last_arousal` gives them (on a device the sweeps are the batch's) |
 | `lives`, `seeds`, `brain`, `brains` | the count, the seeds, the batched brain (torch) or the lone brains (CPU) |
 
-`Lives` holds the default composition without the store, with or without the recall memory (`recall=False`)
-and the carried gains, at any teaching point, with one or several regions, observers and motor slots. It
-refuses, naming the part: the store (`episodic=True`) and `memory_choice`, arousal (so no `live`), a
+`Lives` holds the default composition without the store, with or without the recall memory (`recall=False`),
+the carried gains and arousal (`arousal=True`, for `live`), at any teaching point, with one or several regions,
+observers and motor slots. It refuses, naming the part: the store (`episodic=True`) and `memory_choice`, a
 maturity, a learned or fixed code, an apical compartment, rehearsal, qualified teaching, the efference copy,
 the heard history, a recall memory with several heads, a window, the command, the read of when or tokens,
 image inputs, and MPS, which has no float64 for the settles' checks. A moment any life refuses is refused for

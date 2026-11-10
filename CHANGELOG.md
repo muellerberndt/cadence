@@ -1,5 +1,25 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+#### Continuing lives on a device (#293)
+
+- **`Lives.live`: each life's `Brain.live` with its own arousal, outcomes and endings.** Compose
+  the lives with `arousal=True` and `lives.live(observations, reward=..., done=...)` runs one
+  moment of every continuing life in one batched moment: the lives whose action was sampled learn
+  from their outcomes while the others hold their state and parameters, the calm lives'
+  eligibility fades and their ended streams start from rest, one qualified settle answers every
+  life, each life's `Arousal` takes its own outcome on the host, and each life answers greedily
+  or samples at the temperatures its own arousal sets, drawing from its own generator.
+  `arousals` and `last_arousal` read each life's mood, and `life(i)` carries it. A life with no
+  preceding action takes a zero reward and no end in `live`, `step` and `learn`, as its lone
+  brain takes none. On the CPU each life is its lone brain to the bit; in float64 on a device
+  every action, mood and heated slot is its lone brain's and every learned part and arousal
+  reading agrees within 1e-9 over 30 moments of sparse rewards, endings and teaching. Lives that
+  never call `live` keep every bit of 0.96.0.
+
 ## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in
