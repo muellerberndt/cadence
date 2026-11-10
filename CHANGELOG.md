@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.96.1 — 2026-11-10
+
+A fix for 32-bit Python, the Python a browser runs (Pyodide). A 32-bit NumPy's index type is
+int32, and its `np.repeat` and `reduceat` refuse int64 counts and offsets. The learner kept its
+motor slots' sizes and offsets as int64, so on 32-bit Python any brain with motor slots (equal or
+unequal, `slots=(2, 3)`), `grow(slots=...)`, a lesson with `targets=` and a policy with one
+temperature per slot raised `TypeError: Cannot cast array data from dtype('int64') to
+dtype('int32')`. The slots' sizes and offsets, and the segment starts of the CPU path's summed
+input, are kept in the platform's index type (`np.intp`). On a 64-bit platform that type is
+int64, so every bit is as on 0.96.0.
+
 ## 0.96.0 — 2026-11-10
 
 Many brains of the default composition run as one on a device, and one brain runs its moment in

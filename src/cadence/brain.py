@@ -753,10 +753,10 @@ class Brain:
             post = connectome.post
             if connectome.synapses:
                 change = np.flatnonzero(np.diff(post)) + 1
-                starts = np.concatenate([[0], change]).astype(np.int64)
+                starts = np.concatenate([[0], change]).astype(np.intp)  # reduceat's index type
                 segments = (starts, post[starts])
             else:
-                segments = (np.zeros(0, np.int64), np.zeros(0, np.int64))
+                segments = (np.zeros(0, np.intp), np.zeros(0, np.int64))
             connectome.__dict__["_segments"] = segments
         self._starts: np.ndarray = segments[0]
         self._neurons_with_synaptic_input: np.ndarray = segments[1]
@@ -2020,7 +2020,7 @@ def _row_groups(
     candidate = np.flatnonzero((cur == prev + 1) & (length[cur] == length[prev]))
     same = np.zeros(len(cur), dtype=bool)
     if len(candidate):
-        width = length[cur[candidate]]
+        width = length[cur[candidate]].astype(np.intp)  # np.repeat's count type on every platform
         first = np.cumsum(width) - width
         offs = np.repeat(starts[cur[candidate]], width) + (
             np.arange(int(width.sum())) - np.repeat(first, width)
