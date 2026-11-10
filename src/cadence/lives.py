@@ -1875,6 +1875,9 @@ class Lives:
                     for s in self.seeds]
         _supported(lone[0])
         topology = lone[0].connectome
+        self._topology = topology
+        self._parts = {part: getattr(lone[0], part) is not None
+                       for part in ("recall", "hearing", "hippocampus", "arousal")}
         for other in lone[1:]:
             if not (np.array_equal(other.connectome.pre, topology.pre)
                     and np.array_equal(other.connectome.post, topology.post)):
@@ -2385,18 +2388,31 @@ class Lives:
             out["maturity_use"] = float(self._maturity.use[i])
         return out
 
-    def life(self, i: int) -> Any:
-        """Life ``i`` as a lone brain on the CPU: the composition of its seed with its learned
-        parameters, optimizer, critic, recall maps, carried gains, arousal and random state; its
-        stream starts afresh. Save it as any brain."""
+    def life(
+        self, i: int, *, stream: bool = False, backend: str = "cpu", device: str | None = None,
+        precision: str | None = None,
+    ) -> Any:
+        """Life ``i`` as a lone brain: the composition of its seed with its learned parameters,
+        optimizer, critic, recall maps, carried gains, store, maturity, arousal and random
+        state, on the CPU or the ``backend``, ``device`` and ``precision`` named. Its stream
+        starts afresh; with ``stream=True`` it carries life ``i``'s stream as it stands: its
+        activity, its pending sampled action with its eligibility phases, its eligibility
+        traces, its working trace, its recall memory's slots, its store's residual and the
+        record of its last ``live``, so the lone brain continues the life where it stands, its
+        pending outcome included. Save it as any brain."""
         from .generic import Brain
 
         if self.brains is not None:
             return self.brains[i]
         held = self.parameters(i)
+        place: dict[str, Any] = {"backend": backend}
+        if device is not None:
+            place["device"] = device
+        if precision is not None:
+            place["precision"] = precision
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
-            lone = Brain.compose(self.inputs, self.actions, seed=self.seeds[i], backend="cpu",
+            lone = Brain.compose(self.inputs, self.actions, seed=self.seeds[i], **place,
                                  **self._options)
         lone.learner.brain = lone.learner.brain.with_parameters(
             efficacy=held["efficacy"], bias=held["bias"]
@@ -2438,4 +2454,202 @@ class Lives:
         if "maturity_use" in held:
             mature = cast(Maturity, lone.basal_ganglia.maturity)
             mature.use = held["maturity_use"]  # the store's own as well
+        if stream:
+            self._stream_into(i, lone)
         return lone
+
+    def join(self, i: int, brain: Any) -> None:
+        """Life ``i`` becomes the lone ``brain``: its learned parameters, optimizer, critic,
+        recall maps, carried gains, store, maturity, arousal and random state take life ``i``'s
+        place, and its stream begins afresh there, as after ``brain.reset()``, its store's
+        residual and its arousal kept. A life that left (``life(i)``) rejoins this way, and a
+        finished episode makes room for another life without holding the batch. ``brain`` is a
+        composition of these lives' anatomy and options."""
+        if not 0 <= i < self.lives:
+            raise ValueError(f"life {i} is not one of these {self.lives} lives")
+        if not (np.array_equal(brain.connectome.pre, self._topology.pre)
+                and np.array_equal(brain.connectome.post, self._topology.post)):
+            raise ValueError("a joining brain has the lives' anatomy")
+        for part, present in self._parts.items():
+            if (getattr(brain, part) is not None) != present:
+                raise ValueError(f"a joining brain has the lives' composition: its {part}")
+        if self.brains is not None:
+            self.brains[i] = brain
+            return
+        self._join_batched(i, brain)
+
+    def _join_batched(self, i: int, lone: Any) -> None:
+        brain = self.brain
+        kernel = brain.brain._torch
+        torch = kernel.torch
+        agent, alone = brain.basal_ganglia, lone.basal_ganglia
+        lives = self.lives
+
+        def put(tensor: Any, value: Any) -> Any:
+            out = tensor.clone()
+            out[i] = torch.as_tensor(np.asarray(value, dtype=float), dtype=tensor.dtype,
+                                     device=tensor.device)
+            return out
+
+        graph = lone.learner.brain
+        kernel.set_parameters(put(kernel.scale, graph.efficacy), put(kernel.bias_param, graph.bias))
+        learner, alone_learner = brain.learner, lone.learner
+        held = learner.__dict__.get("_device_moments")
+        for name in _MOMENTS:
+            value = np.asarray(getattr(alone_learner, name), dtype=float)
+            if held is not None and held.get("holder") is kernel:
+                held[name] = put(held[name], value)
+            else:
+                learner.__dict__["_" + name][i] = value
+        learner._counts(lives)[i] = alone_learner.contrast_updates
+        learner._applied(lives)[i] = alone_learner.updates
+        resting = agent._critic_device
+        if resting is not None:
+            resting.weights = put(resting.weights, alone.w_critic)
+        else:
+            agent.w_critic[i] = alone.w_critic
+        agent.b_critic[i] = float(alone.b_critic)
+        counted = agent.__dict__.get("lives_updates")
+        if counted is not None:
+            counted[i] = alone.updates
+        rng = agent.rng
+        assert isinstance(rng, _LivesRandom)
+        rng.generators[i] = np.random.Generator(type(alone.rng.bit_generator)())
+        rng.generators[i].bit_generator.state = alone.rng.bit_generator.state
+        if brain.recall is not None:
+            device = brain.recall._device
+            for name in _MAP_KINDS:
+                maps = getattr(device, name)
+                if maps:
+                    theirs = getattr(lone.recall, name)[0]
+                    setattr(device, name, [tuple(
+                        put(part, theirs[k]) for k, part in enumerate(maps[0])
+                    )])
+        if brain.hearing is not None:
+            hearing, theirs = brain.hearing, lone.hearing
+            for k, route in enumerate(hearing.routes):
+                hearing.lives_gains[i, k] = theirs.gains()[route["name"]]
+            hearing.lives_second[i] = np.asarray(theirs.second, dtype=float)
+            hearing.lives_count[i] = int(theirs.count)
+            hearing._place()
+        if brain.hippocampus is not None:
+            store, records = brain.hippocampus._device, lone.hippocampus
+            store.consolidated = put(store.consolidated, records.consolidated)
+            residual = np.asarray(records.strength)
+            store.strength = put(store.strength, residual[0] if len(residual) == 1
+                                 else records.consolidated)
+            store.mass = put(store.mass, records.mass[0] if len(records.mass) == 1 else 0.0)
+            store.writes[i] = records.writes
+            if store.noise is not None:
+                store.noise = put(store.noise, records.gate_noise)
+            if store.fade:
+                store.depth = put(store.depth, records.fade_depth)
+                store.recent = put(store.recent, records.fade_recent)
+        if self._maturity is not None:
+            self._maturity.use[i] = float(alone.maturity.use)
+        if self._arousals[i] is not None:
+            self._arousals[i] = type(lone.arousal).from_dict(lone.arousal.to_dict())
+        self._fresh_row(i)
+
+    def _fresh_row(self, i: int) -> None:
+        """Life ``i``'s stream begins afresh: its activity at rest, no pending action and no
+        eligibility, its working trace and its recall memory's slots empty, no record of a
+        ``live``; every other life's stream as it stands."""
+        brain = self.brain
+        agent = brain.basal_ganglia
+        lives = self.lives
+        gone = np.zeros(lives, bool)
+        gone[i] = True
+        kernel = brain.brain._torch
+        free = agent._free
+        lived = self._lived
+        current = lived is not None and lived[0] is free  # the record of the last ``live``
+        if free is not None and free.device is not None:
+            agent._free = BrainState(
+                None, None, None, free.steps,  # type: ignore[arg-type]
+                device=kernel.keep_rows(free.device, ~gone),
+            )
+        if agent._pending is not None:
+            eligible = agent._lives_eligible
+            eligible = np.ones(lives, bool) if eligible is None else np.array(eligible, bool)
+            eligible[i] = False
+            agent._lives_eligible = eligible
+        agent.fade_rows(np.zeros(lives, bool), gone)  # its eligibility forgotten
+        if brain.working_memory is not None:
+            brain.working_memory.reset(lives, rows=np.array([i]))
+        if brain.recall is not None:
+            brain.recall.reset(lives, rows=np.array([i]))
+        if lived is not None and current:  # its record of the last ``live`` is none
+            aroused = np.array(lived[2], bool)
+            aroused[i] = True  # with no pending action an aroused record takes no outcome
+            self._lived = (agent._free, lived[1], aroused, *lived[3:])
+
+    def _stream_into(self, i: int, lone: Any) -> None:
+        """Life ``i``'s stream as it stands, into the lone brain ``lone`` on the host."""
+        brain = self.brain
+        agent, alone = brain.basal_ganglia, lone.basal_ganglia
+        host = arrays_of(brain.brain._torch).host
+
+        def row(value: Any) -> Any:
+            if value is None:
+                return None
+            if isinstance(value, np.ndarray):
+                return np.array(value[i : i + 1])
+            return host(value[i : i + 1])
+
+        def state(held: Any) -> BrainState | None:
+            if held is None:
+                return None
+            handle = held.device
+            if handle is None:
+                return BrainState(row(held.v), row(held.activation), row(held.adaptation),
+                                  held.steps)
+            return BrainState(row(handle["v"]), row(handle["s"]), row(handle["a"]), held.steps)
+
+        free = state(agent._free)
+        alone._free, alone._free_brain, alone._drive = free, lone.learner.brain, None
+        eligible = agent._lives_eligible
+        pending = agent._pending
+        if pending is not None and (eligible is None or eligible[i]):
+            _, plus, minus, value = pending
+            alone._pending = ("states", state(plus), state(minus), row(np.asarray(value)))
+            alone._pending_memory = row(agent._pending_memory)
+            alone._pending_hearing = row(agent._pending_hearing)
+        if agent._trace_device is not None:
+            alone.trace, alone.trace_bias = (row(part) for part in agent._trace_device)
+        critic = agent._critic_device
+        traced = critic.trace if critic is not None else agent.trace_critic
+        alone.trace_critic = row(traced)
+        alone.trace_memory = row(agent.trace_memory)
+        alone.trace_hearing = row(agent.trace_hearing)
+        trace = brain.working_memory
+        if trace is not None:
+            held = trace.__dict__.get("_device")
+            source = held if held is not None else trace
+            lone.working_memory.trace = row(source.trace)
+            lone.working_memory.last = row(source.last)
+            lone.working_memory.cold = np.array(trace.cold[i : i + 1])
+        recall = brain.recall
+        if recall is not None:
+            snapshot = recall._device.snapshot()
+            mine = {name: row(value) if len(value) else np.array(value)
+                    for name, value in snapshot.items()}
+            for name in ("told", "focus"):
+                mine[name] = mine[name].astype(np.int64)
+            slots = int(np.asarray(mine["held"]).shape[1])
+            kept = slots - int(np.argmax(mine["held"][0])) if mine["held"][0].any() else 0
+            for name in ("keys", "values", "nexts", "held"):  # the life's own slots, the last
+                mine[name] = mine[name][:, slots - kept :]
+            lone.recall.restore(mine)
+            lone.recall.writes = int(recall.writes) // self.lives
+        store = brain.hippocampus
+        if store is not None:
+            lone.hippocampus.strength = row(store._device.strength)
+            lone.hippocampus.mass = row(store._device.mass)
+        moment = brain._moment
+        if moment is not None:
+            lone._moment = (row(moment[0]), row(moment[1]))
+        lived = self._lived
+        if lived is not None and agent.state is lived[0] and free is not None:
+            lone._lived = (row(lived[4]), row(lived[5]), float(lived[1][i]), bool(lived[2][i]),
+                           free, bool(lived[3][i]), None)

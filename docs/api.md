@@ -265,7 +265,8 @@ one call per moment for all of them ([many lives at once](backends.md#many-lives
 | `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer |
 | `reset()` | every life's stream starts afresh; what the lives learned stays |
 | `parameters(i)` | life `i`'s learned state on the host: `efficacy`, `bias`, `w_critic`, `b_critic`, the optimizer's four moments and its counts `updates` and `contrast_updates`, with a recall memory `recall` (its maps by kind), with carried gains `carried_gains`, `carried_second` and `carried_count`, with the store `store` (`consolidated`, `writes`, and `gate_noise`, `fade_depth`, `fade_recent` where named), with maturity `maturity_use` |
-| `life(i)` | life `i` as a lone `Brain` on the CPU with all of that, its arousal and its random state; its stream starts afresh |
+| `life(i, *, stream=False, backend="cpu", device=None, precision=None)` | life `i` as a lone `Brain` with all of that, its arousal and its random state, on the CPU or the place named; its stream starts afresh, and with `stream=True` it carries the life's stream as it stands (its activity, its pending sampled action with its eligibility phases, its eligibility traces, working trace, recall slots, store residual and the record of its last `live`), so the lone brain continues the life where it left |
+| `join(i, brain)` | life `i` becomes the lone `brain` of the lives' anatomy and composition: its learned state, arousal and random state take the place, and its stream begins afresh there, as after `brain.reset()` |
 | `arousals`, `last_arousal` | each life's `Arousal`, and each life's readings of its latest `live` as `Brain.last_arousal` gives them (on a device the sweeps are the batch's) |
 | `lives`, `seeds`, `brain`, `brains` | the count, the seeds, the batched brain (torch) or the lone brains (CPU) |
 

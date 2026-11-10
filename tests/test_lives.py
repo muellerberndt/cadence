@@ -535,3 +535,94 @@ def test_stepping_lives_with_the_store_follow_their_lone_brains(composition):
     assert a_life(lives, brains, 24) == 0
     found = gaps(lives, brains)
     assert max(found.values()) < 1e-9, found
+
+
+# -- a life leaving and rejoining (cadence#293)
+
+def moments(rng: np.random.Generator, count: int):
+    """A moment's observations, sparse rewards with an occasional jolt, and endings."""
+    x = np.eye(INPUTS)[rng.integers(INPUTS, size=count)] * rng.random((count, INPUTS))
+    reward = rng.random(count) * (rng.random(count) < 0.5)
+    reward = np.where(rng.random(count) < 0.05, -20.0 * rng.random(count), reward)
+    return x, reward, rng.random(count) < 0.15
+
+
+def live_one(brain: cd.Brain, x, reward, done) -> int:
+    """``live`` of a lone brain on one row, with its outcome where it has an action out."""
+    one = {"reward": reward, "done": done} if cd.lives._takes_outcome(brain) else {}
+    return int(brain.live(x, **one)[0])
+
+
+def live_alike(lives: cd.Lives, brains: list[cd.Brain], x, reward, done) -> int:
+    """One moment of ``live`` for the lives and their lone brains; the actions that differed."""
+    takes = np.array([cd.lives._takes_outcome(b) for b in brains])
+    got = lives.live(x, reward=np.where(takes, reward, 0.0), done=done & takes)
+    return sum(
+        live_one(b, x[i : i + 1], reward[i : i + 1], done[i : i + 1]) != got[i]
+        for i, b in enumerate(brains)
+    )
+
+
+LEAVING = {"default": {}, "store": STORES["all"]}
+PLACE = {"backend": "torch", "device": "cpu", "precision": "float64"}
+
+
+@pytest.mark.parametrize("composition", LEAVING.values(), ids=LEAVING)
+def test_a_life_leaves_with_its_stream_and_its_pending_outcome(composition):
+    composition = {**composition, **AROUSED}
+    lives = some_lives(4, composition, **PLACE)
+    brains = [lone(s, composition, **PLACE) for s in range(4)]
+    rng = np.random.default_rng(5)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(14):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+        pendings = [lives.life(i, stream=True, **PLACE).basal_ganglia._pending is not None
+                    for i in range(4)]
+        assert pendings == [b.basal_ganglia._pending is not None for b in brains]
+        assert any(pendings) and not all(pendings)  # sampled and calm lives both leave
+        left = [lives.life(i, stream=True, **PLACE) for i in range(4)]
+        for _ in range(12):  # each copy continues its life as its reference does
+            x, reward, done = moments(rng, 4)
+            for i in range(4):
+                ours = live_one(left[i], x[i : i + 1], reward[i : i + 1], done[i : i + 1])
+                assert ours == live_one(brains[i], x[i : i + 1], reward[i : i + 1],
+                                        done[i : i + 1])
+    for copy, brain in zip(left, brains, strict=True):
+        assert copy.arousal.to_dict()["level"] == pytest.approx(
+            brain.arousal.to_dict()["level"], abs=1e-9)
+        for ours, theirs in ((copy.brain.efficacy, brain.brain.efficacy),
+                             (copy.brain.bias, brain.brain.bias),
+                             (copy.basal_ganglia.w_critic, brain.basal_ganglia.w_critic)):
+            assert float(np.abs(np.asarray(ours) - np.asarray(theirs)).max()) < 1e-9
+
+
+@pytest.mark.parametrize("composition", LEAVING.values(), ids=LEAVING)
+def test_a_life_joins_where_another_finished_and_lives_on_as_alone(composition):
+    composition = {**composition, **AROUSED}
+    lives = some_lives(4, composition, **PLACE)
+    brains = [lone(s, composition, **PLACE) for s in range(4)]
+    newcomer = lone(9, composition, **PLACE)
+    rng, own = np.random.default_rng(7), np.random.default_rng(8)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(10):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+            x, reward, done = moments(own, 1)
+            live_one(newcomer, x, reward, done)
+        newcomer.reset()
+        lives.join(1, newcomer)  # life 1's place: the newcomer, its stream afresh
+        brains[1] = newcomer
+        for _ in range(14):
+            assert live_alike(lives, brains, *moments(rng, 4)) == 0
+    found = gaps(lives, brains)
+    assert max(found.values()) < 1e-9, found
+    assert mood_gaps(lives, brains) < 1e-9
+
+
+def test_a_joining_brain_has_the_lives_composition():
+    lives = some_lives(2, AROUSED, **PLACE)
+    with pytest.raises(ValueError, match="composition"):
+        lives.join(0, lone(5, {}, **PLACE))
+    with pytest.raises(ValueError, match="one of these"):
+        lives.join(2, lone(5, AROUSED, **PLACE))

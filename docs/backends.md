@@ -452,6 +452,14 @@ same holds over 30 moments of `live` in which an occasional outcome wakes a calm
 over 24 moments of `step`: every action and mood its lone brain's, every learned part, record, noise scale, depth
 and use within 1e-9.
 
+A life leaves with `lives.life(i, stream=True)`: a lone brain that carries its stream as it stands, its pending
+sampled action and that action's eligibility among it, and continues the life where it left. A life joins with
+`lives.join(i, brain)`, taking the place of life `i` with its stream afresh, so a life whose episode finished makes
+room for another without holding the batch. Lives that left mid-stream, sampled and calm, continue on their own as
+their lone brains over 12 moments of `live`, every action the same and every learned part within 1e-9; a brain
+that joins after living alone and a `reset` lives on in the batch as alone over 14 moments, every action and mood
+the same and every learned part within 1e-9.
+
 Seconds per life and moment of that composition stepping its own observations and rewards, read with
 [`benchmarks/device/lives.py`](../benchmarks/device/lives.py) on one AWS g6.xlarge (an NVIDIA L4 and four vCPUs
 of an AMD EPYC 7R13) and on an Apple M4 at a load of 4:

@@ -28,6 +28,13 @@
   lone brain's and every learned part and record agrees within 1e-9 over 30 moments; on the CPU
   each life is its lone brain to the bit. `Lives` composes without the store unless
   `episodic=True` is named, as in 0.96.0.
+- **A life leaves and joins.** `life(i, stream=True)` carries life `i`'s stream as it stands
+  into the lone brain (its activity, its pending sampled action and that action's eligibility,
+  its traces, working trace, recall slots, store residual and the record of its last `live`),
+  on the CPU or the `backend`, `device` and `precision` named, and the lone brain continues the
+  life where it left. `join(i, brain)` puts a lone brain of the lives' anatomy and composition in
+  life `i`'s place with its stream afresh, so a finished episode makes room for another life
+  without holding the batch. `life(i)` without `stream` starts the stream afresh, as in 0.96.0.
 
 ## 0.96.0 — 2026-11-10
 
