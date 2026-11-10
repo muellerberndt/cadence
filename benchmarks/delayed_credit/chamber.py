@@ -283,6 +283,7 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         first_trace = None
         saturation: list[Any] = []
         corridor_acts: list[int] = []
+        woken: list[float] = []  # the aroused share of the moments after the decision (live)
         while not episode.done:
             x = episode.observation()
             moment = episode.moment
@@ -298,8 +299,10 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
                     action = int(move(x[None, :], reward=[0.0], done=[False])[0])
                 if driver == "live":
                     aroused = (brain.last_arousal or {}).get("mode") == "aroused"
-                    log["aroused_decision" if moment == 0 else "aroused_corridor"].append(
-                        float(aroused))
+                    if moment == 0:
+                        log["aroused_decision"].append(float(aroused))
+                    else:
+                        woken.append(float(aroused))
                 work["multiply_accumulates"] += _brain_work(brain, synapses, eligibility)
                 if moment == 0:
                     log["p_right"].append(_probability(brain, right_action))
@@ -355,6 +358,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         log["right"].append(bool(episode.right))
         log["reward"].append(float(episode.reward))
         log["corridor_one"].append(float(np.mean(corridor_acts)) if corridor_acts else None)
+        if woken:
+            log["aroused_corridor"].append(float(np.mean(woken)))
         known = [v for v in saturation if v is not None]
         log["saturation"].append(float(np.mean(known)) if known else None)
     if episodes and len(episodes) in budgets:
