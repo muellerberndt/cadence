@@ -242,7 +242,9 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
         eligibility = int(brain.basal_ganglia.config.eligibility_steps
                           or brain.learner.config.nudged_steps)
     elif kind in ("lstm", "tdlambda"):
-        target = int(spec.get("match", brain_parameters(task)))
+        # sized to a brain arm's parameter count on the world (the default composition's
+        # unless ``match_arm`` names another), or to ``match`` parameters
+        target = int(spec.get("match") or brain_parameters(task, spec.get("match_arm", "default")))
         hidden = baselines.matched_hidden(target, inputs, tk.ACTIONS, kind)
         cls = baselines.LSTMActorCritic if kind == "lstm" else baselines.TDLambda
         learner = cls(inputs, tk.ACTIONS, hidden, founder, **spec.get("learner", {}))
@@ -461,6 +463,8 @@ def specs_of(args: argparse.Namespace) -> list[dict[str, Any]]:
                             spec["learner"] = json.loads(args.learner)
                         if args.tag:
                             spec["tag"] = args.tag
+                        if args.match_arm and kind in ("lstm", "tdlambda"):
+                            spec["match_arm"] = args.match_arm
                         if args.driver != "step":
                             spec["driver"] = args.driver
                         out.append(spec)
@@ -514,6 +518,8 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--budgets", nargs="+", type=int, default=list(BUDGETS))
     parser.add_argument("--settings", help="JSON settings over the brain arm's")
     parser.add_argument("--learner", help="JSON settings of a conventional learner")
+    parser.add_argument("--match-arm", help="the brain arm whose parameter count the "
+                        "conventional learners match (default: the default composition)")
     parser.add_argument("--tag", help="a conventional learner's name for its settings in the table")
     parser.add_argument("--driver", default="step", choices=("step", "live"),
                         help="the brain's moments through step (every outcome) or live")
