@@ -183,9 +183,10 @@ PYTHONPATH=src python benchmarks/letters/recipe.py --librispeech /data/libri \
 ```
 
 It prints, after every pass, the characters and words on held-out speakers (with the word list
-read beside the plain collapse), then the corrections of one held-out speaker (that speaker's
-other recordings and the other speakers, before and after), then one held-out recording heard
-100 ms at a time with the seconds per step. `--synthetic` runs it on tone words with no
+read beside the plain collapse). Then it corrects a new speaker (the `dev-clean` speaker with the
+most recordings, kept apart from the held-out ones) on half of their recordings and reads their
+other half and the held-out speakers before and after. Last, it hears one held-out recording
+100 ms at a time and prints the seconds per step. `--synthetic` runs it on tone words with no
 download, as its test does.
 
 ## Settings, refusals and cost
