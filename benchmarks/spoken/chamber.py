@@ -49,12 +49,20 @@ BATCH = 32
 
 # What each brain arm sees and how it is composed: ``image`` reads the window as a
 # time-frequency image ``(bands, frames)``; ``flat`` as one vector (the keyword front end).
+# Without the recall memory a brain composes no lessons of its own: ``TAUGHT`` names the
+# default's teaching and heard moment, so an arm without the memory differs by the memory alone.
+TAUGHT: dict[str, Any] = {
+    "recall": False, "teaching": "deep", "learning_surprise": True, "learning_fast_settle": True,
+    "carried_gain": 0.01, "history_decays": (0.0,),
+}
 ARMS: dict[str, dict[str, Any]] = {
     "fields": {"sees": "image", "compose": {"learned_fields": 64}},
     "fields_no_history": {"sees": "image", "compose": {"learned_fields": 64, "history_decays": ()}},
-    "fields_no_recall": {"sees": "image", "compose": {"learned_fields": 64, "recall": False}},
+    "fields_no_recall": {"sees": "image", "compose": {"learned_fields": 64, **TAUGHT}},
+    "fields_founder": {"sees": "image", "compose": {"learned_fields": 64, "recall": False}},
     "fields_drawn": {"sees": "image", "hold": True, "compose": {"learned_fields": 64}},
     "keyword": {"sees": "flat", "compose": {"recall": False}},
+    "keyword_taught": {"sees": "flat", "compose": dict(TAUGHT)},
 }
 CONTROLS: dict[str, tuple[str, str]] = {
     "transformer_ctc": ("transformer", "ctc"),
