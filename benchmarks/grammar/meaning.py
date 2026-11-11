@@ -303,8 +303,11 @@ def transfer_probes(founder: int, trained: list[tuple[gr.Row, dict[str, Any]]],
             if (there & scored).sum() < 20 or (there & ~scored).sum() < 20:
                 continue
             y = np.array([labels[i][name] for i in np.flatnonzero(there)])
+            rows = np.flatnonzero(there)
             for place in places:
-                x = np.stack([items[i][1][spot][place] for i in np.flatnonzero(there)])
+                if any(place not in items[i][1][spot] for i in rows):
+                    continue  # a spot that holds no such place (a control's heard moment)
+                x = np.stack([items[i][1][spot][place] for i in rows])
                 table.setdefault(name, {}).setdefault(spot, {})[place] = fit_probe(
                     x, y, scored[there])
     return table
@@ -564,6 +567,7 @@ def control_states(model: str, net: Any, batches: dict[str, list[list[gr.Row]]],
                     at[name] = {"settled": states[i, start + j]}
                     if model == "lstm":
                         at[name]["carried"] = states[i, start + j - 1]
+                at["heard"] = {"settled": states[i, start - 1]}  # after the last heard moment
                 items.append((row, at))
         out[family] = items
     return out
@@ -978,14 +982,29 @@ def message_states(brain: Any, batches: dict[str, list[list[gr.Row]]],
                 moments.append(moment)
                 carried["trace"] = np.array(b.working_memory.trace, dtype=float)
 
-            # the trace entering GO is the one the last heard moment left
-            def before(b: Any, carried: Any = carried) -> None:
+            heard: dict[str, np.ndarray] = {}
+
+            # the trace entering GO is the one the last heard moment left; the settled state
+            # after the last heard moment is the sentence as the brain holds it (``heard``)
+            def before(b: Any, carried: Any = carried, heard: Any = heard) -> None:
                 carried["trace"] = np.array(b.working_memory.trace, dtype=float)
+                state = np.asarray(b.basal_ganglia.state.activation)[:, association]
+                heard["settled"] = np.array(state, dtype=float)
+                heard["carried"] = carried["trace"]
+                if message is not None:
+                    heard["message"] = message.state(scaled=False).copy()
+                elif getattr(b, "message", None) is not None:
+                    heard["message"] = np.array(b.message.state, dtype=float)
 
             _speak_watched(fork, rows, message, bar, before, watch)
             for i, row in enumerate(rows):
                 at = {name: {place: moments[j][place][i] for place in moments[j]}
                       for name, j in positions(row).items()}
+                if heard:
+                    at["heard"] = {place: heard[place][i] for place in heard}
+                for spot in at.values():  # the store read with the association (cadence#308)
+                    if "message" in spot:
+                        spot["joint"] = np.concatenate([spot["message"], spot["settled"]])
                 items.append((row, at))
         out[family] = items
     return out
@@ -1155,6 +1174,47 @@ def paraphrase(row: gr.Row) -> gr.Row:
     said = gr.twin(row, dialect=True)
     pre = [gr.heard(w) for w in gr.twin(row, dialect=False).target] + [gr.concept("DIALECT")]
     return gr.Row("clause", pre, said.target, {**said.meta, "paraphrase": True})
+
+
+def sayback(row: gr.Row) -> gr.Row:
+    """A say-back episode of a clause: the sentence heard as its words, then said at ``GO``.
+    No concept moment is given."""
+    return gr.Row("clause", [gr.heard(w) for w in row.target], row.target,
+                  {**row.meta, "sayback": True})
+
+
+def sayback_batch(rng: np.random.Generator, split: gr.Split) -> list[gr.Row]:
+    """A say-back life's lesson batch: the first grammar's mix (one half) and clauses of
+    trained combinations heard as words and said back (one half)."""
+    if rng.random() < 0.5:
+        return gr.train_batch(rng, split, "g1")
+    L = int(rng.choice(gr.TRAIN_L))
+    return [sayback(gr.trained_clause(rng, split, L, False)) for _ in range(gr.BATCH)]
+
+
+def sayback_panels(founder: int, batches: int = 4) -> dict[str, list[list[gr.Row]]]:
+    """Say back at trained lengths (``back`` of combinations that training shows,
+    ``back_held`` each with a held-out triple or the held-out pair) and at the longer ones
+    (``back_long``)."""
+    split = gr.Split.of(founder)
+    rng = np.random.default_rng(np.random.SeedSequence([int(founder), gr.SEEDS["test"], 308]))
+
+    def held(L: int) -> gr.Row:
+        while True:
+            row = gr.clause(rng, L)
+            m = row.meta
+            if split.held(tuple(m["agent"]), tuple(m["patient"]), m["verb"]):
+                return row
+
+    shape = [gr.TRAIN_L[i % len(gr.TRAIN_L)] for i in range(batches)]
+    return {
+        "back": [[sayback(gr.trained_clause(rng, split, L, False)) for _ in range(gr.BATCH)]
+                 for L in shape],
+        "back_held": [[sayback(held(L)) for _ in range(gr.BATCH)] for L in shape],
+        "back_long": [[sayback(gr.trained_clause(rng, split, gr.TEST_L[i % len(gr.TEST_L)],
+                                                 False)) for _ in range(gr.BATCH)]
+                      for i in range(batches)],
+    }
 
 
 def paraphrase_batch(rng: np.random.Generator, split: gr.Split) -> list[gr.Row]:
@@ -1337,11 +1397,13 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
     checks = set(int(c) for c in spec.get("checkpoints", ()))
     capacity = spec.get("train") == "capacity"
     paraphrases = spec.get("train") == "paraphrase"
+    saysback = spec.get("train") == "sayback"
 
     def lessons(grammar: str, count: int, work: dict[str, float]) -> None:
         for b in range(1, count + 1):
             batch = (capacity_batch(rng, split) if capacity
                      else paraphrase_batch(rng, split) if paraphrases
+                     else sayback_batch(rng, split) if saysback
                      else gr.train_batch(rng, split, grammar))
             speak(brain, batch, teach=True, message=message,
                   bar=bool(barred.random() < rate), work=work)
@@ -1361,6 +1423,9 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
         row["seconds"] = round(time.monotonic() - started, 1)
         return row
     row["panels"] = message_panels(brain, tests, message, bar, WHOLE + LONG)
+    if saysback:
+        panels = sayback_panels(founder, int(spec.get("panel_batches", 4)))
+        row["sayback"] = message_panels(brain, panels, message, bar, tuple(panels))
     if paraphrases:
         panels = paraphrase_panels(founder, int(spec.get("panel_batches", 4)))
         row["paraphrase"] = message_panels(brain, panels, message, bar, tuple(panels))
@@ -1390,11 +1455,16 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
         both = split_batches(founder, int(spec.get("held_probes")))
         row["said_held"] = said_by_kind(brain, both["held"], message, bar)
         own = getattr(brain, "message", None) is not None
-        places = ("message", "carried", "settled") if message is not None or own else (
+        places = ("message", "carried", "settled", "joint") if message is not None or own else (
             "carried", "settled")
         states = message_states(brain, {"trained": both["trained"], "held": both["held"]},
                                 message, bar)
         row["probes_held"] = transfer_probes(founder, states["trained"], states["held"], places)
+        if saysback:  # the same clauses heard as words
+            words = {k: [[sayback(r) for r in rows] for rows in both[k]] for k in both}
+            states = message_states(brain, words, message, bar)
+            row["probes_back"] = transfer_probes(founder, states["trained"], states["held"],
+                                                 places)
         if spec.get("silent_reading") and getattr(brain, "message", None) is not None:
             # the same readings with the message silent: what the association holds and says
             # by itself, the recall read barred as in the life's lessons
@@ -2757,6 +2827,176 @@ def seventh_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]],
     return lines
 
 
+# ---------------------------------------- the sentence in the hidden layers (cadence#308)
+
+FLOORS = tuple(range(10628600, 10628612))  # twelve fresh founders (SENTENCE_PROTOCOL.md)
+SAID = ("clause", "clause_held", "roles", "dyck", "path", "clause_long")
+BACK = ("back", "back_held", "back_long")
+
+
+def sentence_control(spec: dict[str, Any]) -> dict[str, Any]:
+    """One control of the sentence instrument (``"kind": "sentence_control"``): the chamber's
+    LSTM or transformer at ``width``, taught the say-back mix online (one pass) or offline (to
+    the controls' stopping rule), its panels said, and its hidden state probed as the brain's
+    is: after the last heard moment, at ``GO`` and at the last word, fitted on trained
+    combinations and scored on held-out ones, on clauses heard as concepts and as words."""
+    import torch
+
+    torch.set_num_threads(1)
+    ct = _controls()
+    model, mode, founder = str(spec["model"]), str(spec["mode"]), int(spec["founder"])
+    count = int(spec.get("batches", BATCHES))
+    learner = ct.Learner(model, int(spec["width"]), founder, ct.RATES[mode])
+    split = gr.Split.of(founder)
+    rng = np.random.default_rng(np.random.SeedSequence([founder, gr.SEEDS["train"]]))
+    lessons = [sayback_batch(rng, split) for _ in range(count)]
+    started = time.monotonic()
+    epochs = 1
+    if mode == "online":
+        for batch in lessons:
+            learner.update(batch)
+    else:
+        order = np.random.default_rng(np.random.SeedSequence([founder, 99, 0]))
+        best, stale, epochs = float("inf"), 0, 0
+        while epochs < ct.EPOCHS and stale < ct.PATIENCE:
+            mean = float(np.mean([learner.update(lessons[int(i)])
+                                  for i in order.permutation(count)]))
+            epochs += 1
+            stale = 0 if mean < best - 1e-4 else stale + 1
+            best = min(best, mean)
+    learner.net.eval()
+    batches = int(spec.get("panel_batches", 4))
+    tests = {**gr.panels(founder, batches), **sayback_panels(founder, batches)}
+    row: dict[str, Any] = {
+        "kind": "sentence_control", "model": model, "mode": mode, "founder": founder,
+        "width": int(spec["width"]), "parameters": ct.count(learner.net),
+        "brain_parameters": int(spec.get("parameters", 0)), "epochs": epochs,
+        "macs": float(learner.work["macs"]),
+        "panels": {name: gr.read_speaker(learner.speak, None, tests[name],
+                                         twins=name in gr.TWINS) for name in SAID + BACK},
+    }
+    for panel in row["panels"].values():
+        panel.pop("examples", None)
+    both = split_batches(founder, int(spec.get("held_probes", 4)))
+    places = ("carried", "settled") if model == "lstm" else ("settled",)
+    states = control_states(model, learner.net, both)
+    row["probes_held"] = transfer_probes(founder, states["trained"], states["held"], places)
+    words = {k: [[sayback(r) for r in rows] for rows in both[k]] for k in both}
+    states = control_states(model, learner.net, words)
+    row["probes_back"] = transfer_probes(founder, states["trained"], states["held"], places)
+    row["seconds"] = round(time.monotonic() - started, 1)
+    return row
+
+
+def floors_plan(founders: tuple[int, ...] = FLOORS) -> dict[str, list[dict[str, Any]]]:
+    """The sentence instrument's floors (cadence#308, step 1): what the settled state holds
+    and says of a sentence heard as concepts and as words, with the recall read barred and no
+    message; the held message as the reference; the controls probed the same way."""
+    base = {"arm": "barred", "train": "sayback", "probe_scale": 0.0, "held_probes": 4}
+    wide = {**base, "module": 256}
+    arms: dict[str, dict[str, Any]] = {
+        "default_64": {**base, "settings": {"parts": True}},
+        "plain_256": {**wide, "settings": {**EVERY, "parts": True}},
+        "slow_256": {**wide, "settings": {**EVERY, "parts": True,
+                                          "working_memory_decay": 0.8}},
+        "both_256": {**wide, "settings": {**BOTH, "parts": True}, "silent_reading": True},
+    }
+    brains = [{**spec, "founder": f, "tag": tag} for tag, spec in arms.items() for f in founders]
+    controls = []
+    for tag in ("plain_256", "both_256"):
+        parameters = int(make_brain(founders[0], arms[tag]["settings"], 256).parameters())
+        for model in ("lstm", "transformer"):
+            width = wide_width(model, parameters)
+            for mode in ("online", "offline"):
+                controls += [{"kind": "sentence_control", "model": model, "mode": mode,
+                              "founder": f, "parameters": parameters, "width": width}
+                             for f in founders[:6]]
+    return {"floors": brains, "floors_controls": controls}
+
+
+def _least(table: dict[str, Any], spot: str, place: str) -> float | None:
+    """The least component's probe at a spot and place (the count of distractors apart)."""
+    found = [table[c][spot][place]["accuracy"] for c in table
+             if c != "distractors" and place in table[c].get(spot, {})]
+    return float(min(found)) if found else None
+
+
+def sentence_table(rows: list[dict[str, Any]], controls: list[dict[str, Any]],
+                   place: str = "settled") -> list[str]:
+    """The sentence instrument's table: sentences said from the state heard as concepts
+    (``SAID``) and as words (``BACK``), and the least clause component's probe after the last
+    heard moment (fitted on trained combinations, scored on held-out ones): ``place`` for the
+    brain (``joint`` reads the store with the association), the hidden state for a control."""
+    arms = _by_tag(rows)
+    shown = SAID + BACK
+    lines = ["| Learner | Parameters | Multiply-accumulates | Lives | " + " | ".join(shown)
+             + " | held (concepts) | held (words) |",
+             "| --- | --- | --- | --- | " + " | ".join("---" for _ in shown) + " | --- | --- |"]
+
+    def cell(lives: list[dict[str, Any]], name: str) -> str:
+        values = [_score((r["panels"] if name in SAID else r.get("sayback", r["panels"]))[name],
+                         name) for r in lives
+                  if name in (r["panels"] if name in SAID else r.get("sayback", r["panels"]))]
+        return _short(values) if values else "-"
+
+    def held(lives: list[dict[str, Any]], key: str, where: str) -> str:
+        values = [_least(r[key], "heard", where) for r in lives if r.get(key)]
+        return _short(values) if values else "-"
+
+    for tag, lives in arms.items():
+        where = place if any(place in spot for r in lives[:1] for c in r.get(
+            "probes_held", {}).values() for spot in c.values()) else "settled"
+        lines.append(f"| `{tag}` | {lives[0]['parameters']} | "
+                     f"{np.mean([macs(r) or 0.0 for r in lives]):.2e} | {len(lives)} | "
+                     + " | ".join(cell(lives, n) for n in shown)
+                     + f" | {held(lives, 'probes_held', where)} ({where})"
+                     + f" | {held(lives, 'probes_back', where)} |")
+    groups: dict[tuple[int, str, str], list[dict[str, Any]]] = {}
+    for c in controls:
+        groups.setdefault((int(c["brain_parameters"]), c["model"], c["mode"]), []).append(c)
+    for (_size, model, mode), lives in sorted(groups.items()):
+        lines.append(f"| {model}, {mode} | {lives[0]['parameters']} | "
+                     f"{np.mean([c['macs'] for c in lives]):.2e} | {len(lives)} | "
+                     + " | ".join(cell(lives, n) for n in shown)
+                     + f" | {held(lives, 'probes_held', 'settled')}"
+                     + f" | {held(lives, 'probes_back', 'settled')} |")
+    return lines
+
+
+def floors_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]]) -> list[str]:
+    """The floors' reading: the table, each component's probe after the last heard moment,
+    and the message arms read with the message silent."""
+    arms = _by_tag(rows)
+    lines = ["sentences said from the state, and the least component held after the last heard "
+             "moment (mean over founders)", ""]
+    lines += sentence_table(rows, controls, "joint") + [""]
+    lines.append("each component after the last heard moment, held-out combinations "
+                 "(concepts / words), from the settled association")
+    everyone = [(tag, lives) for tag, lives in arms.items()] + [
+        (f"{model} {mode} at {size}", lives) for (size, model, mode), lives in sorted(
+            {(int(c["brain_parameters"]), c["model"], c["mode"]): [
+                d for d in controls if (int(d["brain_parameters"]), d["model"], d["mode"]) == (
+                    int(c["brain_parameters"]), c["model"], c["mode"])] for c in controls}.items())]
+    for tag, lives in everyone:
+        cells = []
+        for c in sorted(lives[0].get("probes_held", {})):
+            pair = []
+            for key in ("probes_held", "probes_back"):
+                found = [r[key][c]["heard"]["settled"]["accuracy"] for r in lives
+                         if c in r.get(key, {}) and "heard" in r[key][c]]
+                pair.append(f"{np.mean(found):.2f}" if found else "-")
+            cells.append(f"{c} {pair[0]}/{pair[1]}")
+        lines.append(f"  {tag}: " + ", ".join(cells))
+    lines.append("with the message silent at the reading")
+    for tag, lives in arms.items():
+        quiet = [r for r in lives if "panels_held_silent" in r]
+        if quiet:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{n} " + _mean([_score(r["panels_held_silent"][n], n) for r in quiet])
+                for n in ("clause", "clause_held", "roles")))
+    return lines
+
+
 def _by_tag(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     arms: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -2893,7 +3133,8 @@ def run_life(spec: dict[str, Any]) -> dict[str, Any]:
     (``"knock"``)."""
     kind = spec.get("kind")
     return (where_life if kind == "where" else notes_life if kind == "notes"
-            else knock_life if kind == "knock" else message_life)(spec)
+            else knock_life if kind == "knock"
+            else sentence_control if kind == "sentence_control" else message_life)(spec)
 
 
 def macs(row: dict[str, Any]) -> float | None:
@@ -3224,6 +3465,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="protocol 4, Amendment 2: ten winners a moment beside five")
     planner.add_argument("--fifth", action="store_true",
                          help="protocol 5: blocks enough for the longest clause")
+    planner.add_argument("--floors", action="store_true",
+                         help="cadence#308, step 1: the sentence instrument's floors")
     planner.add_argument("--seventh", action="store_true",
                          help="protocol 7: a word said by its parts")
     planner.add_argument("--sixth", action="store_true",
@@ -3239,6 +3482,8 @@ def main(argv: list[str] | None = None) -> int:
     reader.add_argument("--winners", action="store_true",
                         help="protocol 4, Amendment 2's gate, against both_256")
     reader.add_argument("--fifth", action="store_true", help="protocol 5's gate")
+    reader.add_argument("--floors", action="store_true",
+                        help="the sentence instrument's floors; --controls beside it")
     reader.add_argument("--seventh", action="store_true",
                         help="protocol 7's gates; --controls beside it")
     reader.add_argument("--sixth", action="store_true",
@@ -3268,11 +3513,12 @@ def main(argv: list[str] | None = None) -> int:
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
         founders = tuple(args.founders or (
-            SEVENTH if args.seventh else SIXTH if args.sixth
+            FLOORS if args.floors else SEVENTH if args.seventh else SIXTH if args.sixth
             else WINNERS if args.winners else FIFTH if args.fifth
             else FOURTH_LONG if args.long else FOURTH if args.fourth else CONFIRM if args.confirm
             else THIRD if args.third else OWN if args.own else DECLARED))
-        plans = (seventh_plan(founders) if args.seventh
+        plans = (floors_plan(founders) if args.floors
+                 else seventh_plan(founders) if args.seventh
                  else sixth_plan(founders) if args.sixth
                  else {"winners": winners_plan(founders)} if args.winners
                  else {"fifth": fifth_plan(founders)} if args.fifth
@@ -3301,6 +3547,10 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(fourth_verdict(rows, base="both_256")))
         elif args.fifth:
             print("\n".join(fifth_verdict(rows)))
+        elif args.floors:
+            print("\n".join(floors_verdict(rows, [
+                json.loads(line) for line in args.controls.read_text().splitlines() if line]
+                if args.controls is not None else [])))
         elif args.seventh:
             print("\n".join(seventh_verdict(rows, [
                 json.loads(line) for line in args.controls.read_text().splitlines() if line]

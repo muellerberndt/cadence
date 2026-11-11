@@ -637,7 +637,7 @@ _MESSAGE_SCALE = 1.2
 _MESSAGE_FOUNDERS: dict[str, Any] = {
     "phases": 4, "winners": 5, "fan_in": 16, "amplitude": 1.5, "gains": 1, "read": False,
     "read_amplitude": 3.0, "read_rate": 0.01, "read_temperature": 0.25,
-    "boundary": None, "boundary_holds": False, "roles": (),
+    "boundary": None, "boundary_holds": False, "roles": (), "settled": False,
 }
 
 
@@ -693,7 +693,7 @@ def _message_genes(message: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     out = {"units": _count("message", message, low=1), **_MESSAGE_FOUNDERS, **named}
     for name in ("phases", "winners", "fan_in", "gains"):
         out[name] = _count(f"message_{name}", out[name], low=1)
-    for name in ("read", "boundary_holds"):
+    for name in ("read", "boundary_holds", "settled"):
         if not isinstance(out[name], (bool, np.bool_)):
             raise ValueError(f"message_{name} must be boolean")
         out[name] = bool(out[name])
@@ -1440,7 +1440,8 @@ def _validate_life_state(
                 raise ValueError("invalid saved message role counts")
         array("message/previous", (batch, association))
         if held["read"]:
-            for kind, outputs in (("content", held["units"]), ("turn", held["blocks"])):
+            turns = len(held["roles"]) + 1 if held["roles"] else held["blocks"]
+            for kind, outputs in (("content", held["units"]), ("turn", turns)):
                 array(f"message/{kind}_x", (sensory, outputs))
                 array(f"message/{kind}_c", (association, outputs))
                 array(f"message/{kind}_b", (outputs,))
@@ -2608,11 +2609,16 @@ class Brain:
                     )
             if messaged["boundary"] is not None and messaged["boundary"] >= heard_width:
                 raise ValueError("message_boundary must be one of the brain's input channels")
+            if messaged["settled"] and messaged["units"] != len(populations["association"]):
+                raise ValueError(
+                    "message_settled holds the association's settled activity: message must "
+                    "be the association's width"
+                )
             self.message = HeldMessage(
                 heard_width, phases=messaged["phases"], units=messaged["units"],
                 winners=messaged["winners"], fan_in=messaged["fan_in"], seed=seed,
                 boundary=messaged["boundary"], boundary_holds=messaged["boundary_holds"],
-                roles=messaged["roles"],
+                roles=messaged["roles"], settled=messaged["settled"],
                 connectome=connectome, amplitude=messaged["amplitude"], gains=messaged["gains"],
                 read_amplitude=messaged["read_amplitude"], read_rate=messaged["read_rate"],
                 read_temperature=messaged["read_temperature"],
@@ -3351,7 +3357,8 @@ class Brain:
             "episodic", "backend", "device", "precision", "dense_limit", "connectome",
             "history_decays",
             "message", "message_phases", "message_winners", "message_fan_in", "message_gains",
-            "message_boundary", "message_boundary_holds", "message_roles", "message_read",
+            "message_boundary", "message_boundary_holds", "message_roles", "message_settled",
+            "message_read",
             "longterm", *(f"longterm_{name}" for name in _LONGTERM_FOUNDERS),
             "carried_gain",
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
@@ -3686,6 +3693,8 @@ class Brain:
                              message_boundary_holds=bool(held.boundary_holds))
             if held.roles:
                 genes["message_roles"] = [list(group) for group in held.roles]
+            if held.settled:
+                genes["message_settled"] = True
             if held.reads:
                 genes.update(
                     message_read=True, message_read_amplitude=held.read_amplitude,
@@ -6853,7 +6862,7 @@ class Brain:
                     built.inputs, phases=built.phases, units=built.units,
                     winners=built.winners, fan_in=int(told["fan_in"]), seed=int(told["seed"]),
                     boundary=built.boundary, boundary_holds=built.boundary_holds,
-                    roles=built.roles,
+                    roles=built.roles, settled=built.settled,
                     connectome=built.connectome, amplitude=built.amplitude, gains=built.gains,
                     read_amplitude=built.read_amplitude, read_rate=built.read_rate,
                     read_temperature=built.read_temperature, port=built.port,

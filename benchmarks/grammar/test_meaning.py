@@ -573,3 +573,29 @@ def test_a_word_is_said_and_taught_by_its_parts():
     lines = mn.seventh_verdict(rows, [], of=1)
     assert any(line.startswith("  P1:") for line in lines)
     assert sum("-> P3" in line for line in lines) == 2
+
+
+def test_the_sentence_instrument_says_back_and_probes_the_heard_state():
+    warnings.simplefilter("ignore")
+    row = gr.clause(np.random.default_rng(1), 1)
+    back = mn.sayback(row)
+    assert back.target == row.target and len(back.pre) == len(row.target)
+    assert all(x[w] == 1.0 and x.sum() == 1.0 for x, w in zip(back.pre, row.target, strict=True))
+    assert set(mn.sayback_panels(0, 1)) == {"back", "back_held", "back_long"}
+    plan = mn.floors_plan((0, 1))
+    assert {s["tag"] for s in plan["floors"]} == {"default_64", "plain_256", "slow_256",
+                                                  "both_256"}
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 1}) for spec in mn.floors_plan((0,))["floors"]]
+    by = {r["tag"]: r for r in rows}
+    assert set(by["plain_256"]["sayback"]) == {"back", "back_held", "back_long"}
+    spot = by["both_256"]["probes_back"]["agent_noun"]["heard"]
+    assert {"settled", "message", "joint"} <= set(spot)
+    assert "heard" in by["plain_256"]["probes_held"]["verb"]
+    control = mn.run_life({"kind": "sentence_control", "model": "lstm", "mode": "online",
+                           "founder": 0, "width": 8, "batches": 2, "panel_batches": 1,
+                           "held_probes": 1, "parameters": 100})
+    assert "heard" in control["probes_back"]["agent_noun"] and "back" in control["panels"]
+    lines = mn.floors_verdict(rows, [control])
+    assert any(line.startswith("| `both_256`") for line in lines)
+    assert any(line.startswith("| lstm, online") for line in lines)

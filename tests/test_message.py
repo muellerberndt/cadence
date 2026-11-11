@@ -379,3 +379,29 @@ def test_a_brain_keys_its_message_by_role_and_keeps_it_in_a_checkpoint(tmp_path)
     assert np.array_equal(loaded.act(stream[0], greedy=True), brain.act(stream[0], greedy=True))
     with pytest.raises(ValueError):
         _brain(message=8, message_roles=((12,),))
+
+
+def test_a_settled_message_holds_the_associations_own_activity_by_role(tmp_path):
+    roles = ((0, 1), (2,))
+    brain = _brain(message=16, message_settled=True, message_roles=roles, message_phases=2,
+                   message_read=True, message_amplitude=0.0)
+    assert brain.message.settled and brain.message.turns == 3 and brain.message.blocks == 6
+    assert brain.message.maps[1][2].shape == (3,)  # the turn: one term per role
+    stream = _stream(np.random.default_rng(9), 3)
+    stream[:, :, :3] = 0.0
+    stream[0, :, 0] = 1.0   # role 0
+    stream[1, :, 2] = 1.0   # role 1
+    for moment in stream[:2]:
+        brain.act(moment, greedy=True)
+    held = brain.message.state.reshape(3, 6, 16)
+    assert np.allclose(held[:, 2], brain.working_memory.last)  # the settle of the second moment
+    assert held[:, 0].any() and not held[:, 1].any() and not held[:, 4:].any()
+    assert not brain.message.direct  # read through the port alone
+    moved = sum(brain.lesson(stream[2], labels)["message_rows"]
+                for labels in ([1, 2, 3], [0, 0, 0], [3, 1, 2]))
+    assert moved > 0 and brain.describe()["genes"]["message_settled"] is True
+    loaded = cd.Brain.load(brain.save(tmp_path / "settled"))
+    assert loaded.message.settled and np.array_equal(loaded.message.state, brain.message.state)
+    assert np.array_equal(loaded.act(stream[2], greedy=True), brain.act(stream[2], greedy=True))
+    with pytest.raises(ValueError):
+        _brain(message=8, message_settled=True)  # not the association's width

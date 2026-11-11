@@ -684,9 +684,10 @@ class Message:
         self.trace, self.told, self.held = self.trace[rows], self.told[rows], self.held[rows]
         self.counts = self.counts[rows]
 
-    def hear(self, observations: np.ndarray) -> None:
+    def hear(self, observations: np.ndarray, code: np.ndarray | None = None) -> None:
         """One heard moment per stream joins its phase's union; another batch size begins the
-        streams afresh first."""
+        streams afresh first. A given ``code``, ``(streams, units)``, takes the block in place of
+        the moment's fixed sparse code: the block holds the latest moment that joined it."""
         x = np.asarray(observations, dtype=float)
         if x.ndim != 2 or x.shape[1] != self.inputs:
             raise ValueError(f"observations are one row of {self.inputs} values per stream")
@@ -702,7 +703,13 @@ class Message:
                 self.trace[at] = 0.0  # emptied; the boundary moment begins the message again
                 self.told[at] = 0
                 self.counts[at] = 0
-        code = self.code(x)
+        latest = code is not None  # a given code replaces what its block held
+        if code is None:
+            code = self.code(x)
+        else:
+            code = np.asarray(code, dtype=float)
+            if code.shape != (len(x), int(self.units)):
+                raise ValueError("a moment's code is one row of units values per stream")
         held = self.trace.reshape(len(x), self.blocks, int(self.units))
         rows = np.flatnonzero(~self.held)
         if self.roles:  # the role's own blocks, by the moments of that role heard before
@@ -711,7 +718,7 @@ class Message:
             self.counts[rows, group] += 1
         else:
             block = self.told[rows] % int(self.phases)
-        held[rows, block] = np.maximum(held[rows, block], code[rows])
+        held[rows, block] = code[rows] if latest else np.maximum(held[rows, block], code[rows])
         self.told[rows] += 1
 
     def key(self) -> np.ndarray:
@@ -779,8 +786,14 @@ class HeldMessage(Message):
     ``amplitude`` times what it holds, and with ``carried_gain`` one learned gain per group of
     ``units // gains`` neurons (``hearing``, ``gains`` groups per block) sets how loudly.
 
+    With ``settled`` a block takes the association's own settled activity of the latest moment
+    that joined it, in place of the fixed code: the region holds what the brain's settle made of
+    each moment, one unit per association neuron, and no fixed code is written.
+
     With a ``port`` region the brain also reads its message one block at a time
-    (``message_read``). The present moment addresses the blocks,
+    (``message_read``). With ``roles`` the turn's term is one per role, shared by the role's
+    blocks, so a block no lesson filled is addressed by its content. The present moment
+    addresses the blocks,
 
         p = softmax((x W_x + c W_c + w) . block / temperature + turn_k)
 
@@ -798,6 +811,7 @@ class HeldMessage(Message):
     read_amplitude: float = 3.0
     read_rate: float = 0.01
     read_temperature: float = 0.25
+    settled: bool = False
     gains: int = 1
     target: str = "message"
     port: str = "message_read"
@@ -866,7 +880,7 @@ class HeldMessage(Message):
             # the content address over a block's units and the turn per block
             self.maps = [
                 (np.zeros((inputs, outputs)), np.zeros((wide, outputs)), np.zeros(outputs))
-                for outputs in (int(self.units), self.blocks)
+                for outputs in (int(self.units), self.turns)
             ]
 
     # -- the streams
@@ -890,11 +904,25 @@ class HeldMessage(Message):
     def hear(self, observations: np.ndarray, cortex: np.ndarray | None = None) -> None:
         """One heard moment per stream joins its block; ``cortex`` is the association's settled
         activity at that moment, which the next moment's read addresses with."""
-        super().hear(observations)
+        if self.settled:  # the block takes the association's own settled activity
+            rows = len(np.atleast_2d(observations))
+            now = (
+                np.array(cortex, dtype=float)
+                if cortex is not None and np.shape(cortex) == (rows, int(self.units))
+                else np.zeros((rows, int(self.units)))
+            )
+            super().hear(observations, now)
+        else:
+            super().hear(observations)
         if cortex is not None and np.shape(cortex) == self.previous.shape:
             self.previous = np.array(cortex, dtype=float)
         else:
             self.previous = np.zeros((len(self.trace), len(self.association)))
+
+    @property
+    def turns(self) -> int:
+        """The terms of the read's turn: one per role, or one per block without roles."""
+        return self.groups if self.roles else self.blocks
 
     def streams(self) -> dict[str, np.ndarray]:
         """What the streams hold, the learned maps apart."""
@@ -918,7 +946,7 @@ class HeldMessage(Message):
         """``p`` over each stream's blocks for the moments ``x`` and the cortex ``c``."""
         content, turn = self.maps
         logits = _einsum("bu,bku->bk", _term(content, x, c), blocks) / self.read_temperature
-        logits = logits + _term(turn, x, c)
+        logits = logits + np.repeat(_term(turn, x, c), self.blocks // self.turns, axis=1)
         logits -= logits.max(axis=1, keepdims=True)
         p = np.exp(logits)
         return np.asarray(p / p.sum(axis=1, keepdims=True))
@@ -1002,12 +1030,14 @@ class HeldMessage(Message):
             named /= named.sum(axis=1, keepdims=True)
             turn = named - p
             content = _einsum("bk,bku->bu", turn, blocks)
+            # with roles the turn's term is one per role, shared by the role's blocks
+            per_turn = turn.reshape(len(turn), self.turns, -1).sum(axis=2)
             # each row's step bounded by its own energy, as the recall memory's is
             energy = np.sum(x * x, axis=1) + np.sum(c * c, axis=1) + 1.0
             bound = np.minimum(1.0, 1.0 / (self.read_rate * energy))[:, None]
             stepped = [
                 _lms(maps, step * bound, self.read_rate, x, c)
-                for maps, step in zip(self.maps, (content, turn), strict=True)
+                for maps, step in zip(self.maps, (content, per_turn), strict=True)
             ]
         if not all(_finite(a) for maps in stepped for a in maps):
             return {"message_rows": 0.0, "message_refused": float(len(x))}
@@ -1037,6 +1067,7 @@ class HeldMessage(Message):
             **super().to_dict(),
             "amplitude": self.amplitude,
             "gains": int(self.gains),
+            **({"settled": True} if self.settled else {}),
             "target": self.target,
             "neurons": int(len(self.glow)),
         }
