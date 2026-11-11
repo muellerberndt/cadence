@@ -9,8 +9,19 @@
   lesson and the act); `LearnedFields.code` keeps its latest two codes with the frames and tables
   they were read from and returns a kept code for equal frames and tables, compared in full. The
   code is the same array to the bit, the work counts count every read, and a brain, its file and
-  its description are unchanged on every backend. The fields read on the host, so on a device
-  their reads are a share of the read-speech recipe's training step (`benchmarks/letters/device.py`).
+  its description are unchanged on every backend. On an NVIDIA A10G the read-speech recipe's
+  composition trains at 187 seconds per hour of audio at 32 streams and 126 at 128, from 210 and
+  149 (`benchmarks/letters/device.py`).
+
+### Added
+
+- **The read-speech recipe on a device** (#314, R3). `benchmarks/letters/device.py` runs the
+  recipe's composition (`learned_fields=64`, `modules=(256,)`, `fields_motor=1.0`, every row
+  taught) on each backend against the CPU, carries saves between backends and reads seconds per
+  hour of audio. CUDA float32 and MLX train it with 32 and 128 streams, their lessons within
+  the settle's tolerance of the CPU's (the float64 device sits at the same distance) and their
+  saves loading on every backend to the saved parameters (benchmarks/letters, on a device;
+  docs/backends.md).
 
 ## 0.97.1 - 2026-11-11
 
