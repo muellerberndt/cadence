@@ -889,3 +889,18 @@ def test_the_brain_chamber_takes_a_larger_lexicon_one_stream_and_the_address_of_
     row = rows[0]
     assert row["records"] == [40] and row["unrevised"]["questions"] == 6
     assert row["unrevised"]["found"] >= 0.8 and row["revised"]["stale"] == 0.0
+
+
+def test_the_fifth_declaration_s_plan_parses_on_its_founders():
+    import json
+
+    br = _load("brain_records")
+    plan = json.loads((HERE / "protocol-5" / "brain.json").read_text())
+    todo = br.cells(plan)
+    assert [c["founder"] for c in todo] == list(range(3140, 3152))
+    assert {c["arm"] for c in todo} == {"records"} and todo[0]["n"] == [100_000]
+    assert todo[0]["streams"] == 1 and todo[0]["capacity"] >= 100_000
+    world = br.World(0, todo[0]["nouns"], todo[0]["verbs"])
+    assert world.inputs == 1284 and world.fan_in() == 587 and len(world.pool) >= 100_000
+    assert todo[0]["store"] == {"pairs": 16, "expansion": 16384, "winners": 256,
+                                "candidates": 4096, "fade": False}
