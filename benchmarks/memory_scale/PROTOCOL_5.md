@@ -66,3 +66,18 @@ stopped. No score was computed.
 
 The instrument codes those keys by parts of 2,000 facts (`brain_records.PART`); a contract test
 holds the parts to the whole. The same plan, founders and gates run again, from the start.
+
+## Outcome
+
+Read on the declared founders under Amendment 1; tables in the
+[README](README.md#the-fifth-declaration-a-brain-with-its-own-records-at-100000), receipt
+`results/fifth-brain.jsonl.gz`, the gates recomputed by `summarize_million.py`.
+
+| Gate | Result |
+| --- | --- |
+| C6a | used .960 to 1.000, 12 of 12: **passes** |
+| C6b | current .995 to 1.000, stale .000, used .995 to 1.000, 12 of 12: **passes** |
+
+Over the questions whose fact's key is its own, found reads 1.000 on every founder; the misses lie
+among facts whose key another fact has (0.29% to 8.58% of a founder's facts). The reading at
+1,000,000 records is open, its cost located: about 11 hours a founder at 9.6 ms a told moment.
