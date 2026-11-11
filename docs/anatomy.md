@@ -108,7 +108,7 @@ print(motor_cortex(4, lateral=-0.5, slots=2).circuit.synapses)     # 4: two pair
 
 ### Projections
 
-`Projection(pre, post, density=1.0, sign=0.0, scale=1.0, count=1.0, reciprocal=True)`
+`Projection(pre, post, density=1.0, sign=0.0, scale=1.0, count=1.0, reciprocal=True, tied=(1, 1))`
 declares synapses from the neurons of `pre` to the neurons of `post`. An end names a
 region, meaning its `outputs` population when it sends and its `inputs` population when it
 receives (every neuron of a blank region), or one population as `region/population`.
@@ -120,11 +120,54 @@ receives (every neuron of a blank region), or one population as `region/populati
 | `scale` | Nonnegative; multiplies the magnitudes, drawn uniformly from `[0, sqrt(6 / (pre neurons + post neurons))]`. |
 | `count` | Synaptic contacts per synapse, nonnegative. |
 | `reciprocal` | `True` adds the reverse of every synapse with the same signed weight, so a learner ties the two into one reciprocal synapse and a nudge travels back. `False` declares a one-way projection. |
+| `tied` | `(blocks of pre, blocks of post)`: equal blocks of the two ends that share one set of synapses ([tied projections](#tied-projections)). `(1, 1)` shares nothing. |
 
 Development draws every magnitude and sign from its seed. Synapses that two projections
 place on the same ordered pair of neurons merge into one, whose count is the sum and whose
 sign is the count-weighted mean; a synapse from a neuron onto itself is dropped. `Genome(regions, projections, label="genome")`
 checks every projection end when it is built and refuses an empty or duplicated region name list.
+
+### Tied projections
+
+`Projection(..., tied=(blocks of pre, blocks of post))` cuts its two ends into equal blocks, in
+neuron order, that share one set of synapses: `(k, 1)` every block of `pre` onto the whole of
+`post`, `(1, k)` the whole of `pre` onto every block of `post`, `(k, k)` block i onto block i.
+`develop` draws the projection as the untied one of that seed and repeats its first block
+(block onto block scales its magnitudes to one block's fan), and `Genome.tied` names the tied
+projections by their populations, which `Brain.compose(..., connectome=..., tied=...)` takes:
+
+```python
+import numpy as np
+import cadence as cd
+from cadence.regions import cortex, motor_cortex, prefrontal_cortex
+
+slotted = cd.Genome(
+    regions=(cd.Region("sensory", 6), cortex(16), cd.Region("slots", 4 * 8),
+             prefrontal_cortex(16), motor_cortex(3)),
+    projections=(
+        cd.Projection("sensory", "association", reciprocal=False),
+        cd.Projection("association", "slots", tied=(1, 4)),               # one write for every slot
+        cd.Projection("slots", "motor", reciprocal=False, tied=(4, 1)),   # one read of every slot
+        cd.Projection("association", "motor"),
+        cd.Projection("prefrontal", "association", reciprocal=False),
+    ),
+)
+print(slotted.tied)   # {('association', 'slots'): (1, 4), ('slots', 'motor'): (4, 1)}
+slots = cd.Brain.compose(6, 3, connectome=cd.develop(slotted, seed=0), seed=0,
+                         tied=slotted.tied, recall=False)
+rng = np.random.default_rng(0)
+slots.lesson(rng.random((4, 6)), rng.integers(3, size=4))
+read = slots.brain.dense()[np.ix_(slots.connectome.populations["slots"], slots.motor_index)]
+assert np.array_equal(read[:8], read[8:16]) and np.array_equal(read[:8], read[24:])
+```
+
+The brain steps each tied synapse by the mean of its copies' steps and keeps the copies at one
+efficacy ([what a tie holds](tune.md#tied-projections-opt-in)). A genome refuses blocks that do
+not divide an end, and a second projection between the two ends of a tied one. The brain
+refuses a connectome whose blocks hold different synapses, or copies that start at different
+signs or contact counts: develop the tie with the genome. `mutate` keeps the size of a region a
+tie cuts into blocks. `cadence.genome.tie_groups(connectome, tied)` gives the group of every
+synapse, for a `Learner(tie_groups=...)` of your own.
 
 ### The apical compartment
 

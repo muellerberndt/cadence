@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- **Tied projections** (`tied`, opt-in; #308, #284). `Brain.compose(..., tied={(pre, post):
+  (blocks of pre, blocks of post)})` ties a projection across equal blocks of its two regions:
+  `(k, 1)` reads every block of `pre` through one set of synapses, `(1, k)` writes every block
+  of `post` through one, `(k, k)` joins block i to block i through one. A lesson or a reward
+  steps a tied synapse by the mean of the steps its copies would take untied, as
+  `Learner(tie_groups=...)` steps a group, and the copies hold one efficacy to the bit through
+  lessons, rewards, a checkpoint, `grow` and each backend (`cpu`, `torch`, `mlx`).
+  `parameters()` counts a tied synapse once and `describe()` lists the tie. A genome declares
+  one as `Projection(..., tied=...)`; `develop` draws the projection as the untied one of that
+  seed and repeats its first block, so every other projection starts as beside the untied one;
+  `Genome.tied` hands the ties to `Brain.compose(connectome=..., tied=...)`, and
+  `cadence.genome.tie_groups` gives the learner's groups. A tied brain updates on the general
+  path (no compiled moment, no device-resident MLX update); `Lives` and `graft` refuse it, and
+  `grow` adds no neurons to a region a tie cuts into blocks. With the option unset every brain,
+  its file and its description are unchanged to the bit on `backend="cpu"`; a composed tied
+  brain's file is refused by 0.97.0 (docs/tune.md, tied projections; docs/anatomy.md).
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it
