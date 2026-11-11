@@ -32,6 +32,7 @@ for _name in ("OMP_NUM_THREADS", "OPENBLAS_NUM_THREADS", "MKL_NUM_THREADS",
     os.environ.setdefault(_name, "1")
 
 import argparse  # noqa: E402
+import hashlib  # noqa: E402
 import importlib.util  # noqa: E402
 import json  # noqa: E402
 import sys  # noqa: E402
@@ -501,12 +502,84 @@ def batches(order: np.ndarray, lengths: np.ndarray, size: int) -> list[np.ndarra
     return out
 
 
-def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) -> dict[str, Any]:
+def confusions(logps: list[np.ndarray],
+               held: list[tuple[np.ndarray, np.ndarray]]) -> list[list[int]]:
+    """For each held-out character on the reference's forced path through the learner's own
+    beliefs, the symbol other than blank it prefers most often over the character's steps:
+    counts[reference symbol - 1][preferred symbol - 1], 28 by 28."""
+    counts = np.zeros((SYMBOLS - 1, SYMBOLS - 1), dtype=np.int64)
+    for logp, (_, text) in zip(logps, held, strict=True):
+        if len(logp) < len(text):
+            continue
+        states = lt.ctc_path(logp, text, states_out=True)
+        preferred = np.argmax(logp[:, 1:], axis=1)
+        for k, symbol in enumerate(text.tolist()):
+            votes = np.bincount(preferred[states == 2 * k + 1], minlength=SYMBOLS - 1)
+            counts[symbol - 1, int(np.argmax(votes))] += 1
+    return [[int(v) for v in row] for row in counts]
+
+
+def write_atomic(path: Path, record: dict[str, Any]) -> None:
+    """A record written whole or not at all: beside its place first, then moved there."""
+    beside = path.with_name(path.name + ".tmp")
+    lt.write_record(beside, record)
+    os.replace(beside, path)
+
+
+def sha256_of(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for block in iter(lambda: handle.read(1 << 20), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def save_slot(brain: Any, out: Path, seed: int, index: int, state: dict[str, Any]) -> Path:
+    """The brain at rest between two batches in one of two alternating files, with the state of
+    its life beside it (batches heard, steps, clock, the file's sha256): what a stopped life
+    continues from."""
+    path = out / f"speech-{seed}-align-{'ab'[index % 2]}.npz"
+    beside = path.with_name(path.name.replace(".npz", ".tmp.npz"))
+    brain.save(beside)
+    digest = sha256_of(beside)
+    os.replace(beside, path)
+    side = path.with_suffix(".json")
+    side.with_name(side.name + ".tmp").write_text(json.dumps({**state, "sha256": digest}))
+    os.replace(side.with_name(side.name + ".tmp"), side)
+    return path
+
+
+def latest_slot(out: Path, seed: int) -> tuple[Path, dict[str, Any]] | None:
+    """The later of the two saved brains whose file matches its recorded sha256."""
+    best: tuple[Path, dict[str, Any]] | None = None
+    for slot in "ab":
+        path = out / f"speech-{seed}-align-{slot}.npz"
+        side = path.with_suffix(".json")
+        if not (path.exists() and side.exists()):
+            continue
+        try:
+            state = json.loads(side.read_text())
+        except ValueError:
+            continue
+        if sha256_of(path) != state.get("sha256"):
+            continue
+        if best is None or state["batches"] > best[1]["batches"]:
+            best = (path, state)
+    return best
+
+
+def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
+                 stop_after: int | None = None) -> dict[str, Any] | None:
     """``life`` with ``batch`` utterances heard side by side as streams of one brain: each batch
     from rest, an utterance after its end holding its last step and taught blank there; the
     teacher re-aligns every ``align_every`` batches on a frozen copy; a reading every
     ``probe_every`` batches; ``passes`` passes over the training utterances, each in its own
-    seeded order. A stopped life continues from its last reading."""
+    seeded order.
+
+    The brain is saved at rest at every re-alignment (``save_slot``), and a stopped life
+    continues from the latest of those saves: it re-aligns there as the life did and hears the
+    same batches. ``stop_after`` ends the life after that many batches, as a lost machine would
+    (None is returned)."""
     import cadence as cd
 
     train, held = load(cache, "train"), load(cache, "held")
@@ -520,7 +593,7 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
     brain = cd.Brain.compose(inputs_of(cache), SYMBOLS, backend="cpu", seed=seed,
                              **protocol["brain"]["genes"])
     matcher = word_matcher(protocol)
-    clock = {"training": 0.0, "reading": 0.0}
+    clock = {"training": 0.0, "reading": 0.0, "aligning": 0.0}
     record: dict[str, Any] = {"seed": seed, "parameters": brain.parameters(), "probes": [],
                               "alignments": [], "describe": brain.describe(), "batch": size}
     # each batch's paths, by the batch: an utterance heard in two passes takes a path in each
@@ -543,27 +616,29 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
 
     steps, begin = 0, 0
     partial = out / f"speech-brain-{seed}.partial.json.gz"
-    if partial.exists():
-        record = lt.read_record(partial)
-        clock = dict(record["probes"][-1]["clock"])
-        begin = int(record["probes"][-1]["batches"])
-        steps = int(record["probes"][-1]["steps"])
-        brain = cd.Brain.load(out / f"speech-{seed}-b{begin}.npz")
+    saved = latest_slot(out, seed)
+    if saved is not None:  # a stopped life: from its latest saved re-alignment
+        begin, steps = int(saved[1]["batches"]), int(saved[1]["steps"])
+        clock = {**clock, **saved[1]["clock"]}
+        brain = cd.Brain.load(saved[0])
+        if partial.exists():
+            earlier = lt.read_record(partial)
+            record["probes"] = [q for q in earlier["probes"] if q["batches"] <= begin]
+            record["alignments"] = [a for a in earlier["alignments"] if a["batches"] < begin]
+            record["resumed"] = list(earlier.get("resumed", []))
         record.setdefault("resumed", []).append(begin)
-        if begin % every:  # the batches up to the next re-alignment, on the copy they had
-            aligned = out / f"speech-{seed}-align.npz"
-            last = begin - begin % every
-            source = "the copy of its re-alignment"
-            if not aligned.exists() or last < every:
-                aligned, source = out / f"speech-{seed}-b{begin}.npz", "the brain at the reading"
-            realign(cd.Brain.load(aligned), begin, last + every)
-            record.setdefault("resumed_alignment", []).append({"batches": begin, "on": source})
     for n, group in enumerate(groups):
         if n < begin:
             continue
+        if stop_after is not None and n >= stop_after:
+            return None
         if n and n % every == 0:
-            copy = cd.Brain.load(brain.save(out / f"speech-{seed}-align.npz"))
+            ticked = time.monotonic()
+            brain.reset()  # a batch begins from rest: the save holds no stream
+            copy = cd.Brain.load(save_slot(brain, out, seed, n // every, {
+                "batches": n, "steps": steps, "clock": dict(clock)}))
             moved = realign(copy, n, n + every)
+            clock["aligning"] += time.monotonic() - ticked
             record["alignments"].append({"batches": n, "moved_from_even": float(np.mean(moved))})
         x, mask = padded([train[int(i)][0] for i in group])
         labels = np.zeros(mask.shape, dtype=np.int64)
@@ -577,24 +652,31 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
         steps += int(mask.sum())
         paths.pop(n, None)
         if (n + 1) % probe_every == 0 or n + 1 == len(groups):
-            path = brain.save(out / f"speech-{seed}-b{n + 1}.npz")
-            copy = cd.Brain.load(path)
+            brain.reset()
+            copy = cd.Brain.load(brain.save(out / f"speech-{seed}-reading.npz"))
             ticked = time.monotonic()
             answered = []
             for k in range(0, len(held), size):
                 answered += batch_beliefs(copy, [x_ for x_, _ in held[k : k + size]])
             read_seconds = time.monotonic() - ticked
+            clock["reading"] += read_seconds
             actions = [a for a, _ in answered]
-            result = {**read(actions, held), **locate(actions, [b for _, b in answered], held)}
+            logps = [b for _, b in answered]
+            result = {**read(actions, held), **locate(actions, logps, held)}
             if matcher is not None:
                 result.update(vc.held_words(actions, held, matcher, decode))
             audio = sum(len(x_) for x_, _ in held) * STEP_SECONDS
             result["training_seconds_per_audio_second"] = clock["training"] / (steps * STEP_SECONDS)
             result["reading_seconds_per_audio_second"] = read_seconds / audio
-            record["probes"].append({"batches": n + 1, "utterances": int(sum(
-                len(g) for g in groups[: n + 1])), "steps": steps, "clock": dict(clock),
-                "score": result, "sample": [decode(lt.collapse(a)) for a in actions[:3]]})
-            lt.write_record(partial, record)
+            probe: dict[str, Any] = {
+                "batches": n + 1, "utterances": int(sum(len(g) for g in groups[: n + 1])),
+                "steps": steps, "clock": dict(clock), "score": result,
+                "sample": [decode(lt.collapse(a)) for a in actions[:3]]}
+            if protocol.get("transcripts"):  # what a later decoding or a word prior reads
+                probe["transcripts"] = [decode(lt.collapse(a)) for a in actions]
+                probe["confusions"] = confusions(logps, held)
+            record["probes"].append(probe)
+            write_atomic(partial, record)
             print(json.dumps({"seed": seed, "batches": n + 1,
                               "characters": round(result["characters"], 3),
                               "words": round(result["words"], 3),
@@ -607,10 +689,15 @@ def life_batched(cache: Path, protocol: dict[str, Any], seed: int, out: Path) ->
 
 
 def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
-            protocol: dict[str, Any], epochs: int = 30) -> dict[str, Any]:
+            protocol: dict[str, Any], epochs: int = 30,
+            out: Path | None = None, stop_after: int | None = None) -> dict[str, Any] | None:
     """An LSTM or causal transformer at the brain's parameter count, trained by CTC on each
-    utterance's text (one Adam step per utterance), one pass or offline to the stopping rule,
-    read the same way."""
+    utterance's text (one Adam step per utterance): ``online`` for the protocol's ``passes`` in
+    the brain's orders, ``offline`` in shuffled epochs to the stopping rule (at most
+    ``offline_epochs``, else ``epochs``); read the same way, after every pass with
+    ``read_each_pass`` and at the end without. With ``out`` the learner is saved after every
+    pass and a stopped run continues from there (``stop_after`` passes ends it as a lost machine
+    would)."""
     import controls as ct
     import torch
 
@@ -623,8 +710,9 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
     order = np.random.default_rng([seed, 7]).permutation(len(train))
     record: dict[str, Any] = {"arm": f"{model}-ctc-{mode}", "seed": seed, "width": width,
                               "parameters": ct.count(learner.net), "probes": []}
+    each = bool(protocol.get("read_each_pass"))
 
-    def reading(n: int) -> None:
+    def reading(n: int, passes_heard: int) -> None:
         actions, logps = [], []
         ticked = time.monotonic()
         with torch.no_grad():
@@ -640,24 +728,54 @@ def control(cache: Path, model: str, mode: str, seed: int, parameters: int,
         score["training_seconds_per_audio_second"] = learner.work["seconds"] / (
             learner.work["frames"] * STEP_SECONDS)
         score["reading_seconds_per_audio_second"] = read_seconds / audio
-        record["probes"].append({"utterances": n, "work": dict(learner.work), "score": score})
+        probe: dict[str, Any] = {"utterances": n, "passes": passes_heard,
+                                 "work": dict(learner.work), "score": score}
+        if protocol.get("transcripts"):
+            probe["transcripts"] = [decode(lt.collapse(a)) for a in actions]
+            probe["confusions"] = confusions(logps, held)
+        record["probes"].append(probe)
 
-    passes = int(protocol.get("passes", 1)) if mode == "online" else epochs
-    best, waited = float("inf"), 0
-    for epoch in range(passes):
+    passes = (int(protocol.get("passes", 1)) if mode == "online"
+              else int(protocol.get("offline_epochs", epochs)))
+    best, waited, first = float("inf"), 0, 0
+    state = None if out is None else out / f"speech-{record['arm']}-{seed}.state.pt"
+    if state is not None and state.exists():  # a stopped run: from its last whole pass
+        kept = torch.load(state, weights_only=False)
+        learner.net.load_state_dict(kept["net"])
+        learner.opt.load_state_dict(kept["opt"])
+        learner.work = dict(kept["work"])
+        best, waited, first = kept["best"], kept["waited"], kept["passes"]
+        record["probes"] = kept["probes"]
+        record["resumed"] = [*kept.get("resumed", []), first]
+    heard, stopped = first, waited >= ct.PATIENCE
+    while heard < passes and not stopped:
+        if stop_after is not None and heard >= stop_after:
+            return None
         total = 0.0
-        for i in (order if epoch == 0 else np.random.default_rng(
-                [seed, 7, epoch] if mode == "online" else [seed, epoch]).permutation(len(train))):
+        for i in (order if heard == 0 else np.random.default_rng(
+                [seed, 7, heard] if mode == "online" else [seed, heard]).permutation(len(train))):
             x, y = train[int(i)]
             total += learner.update(x, y)
+        heard += 1
         if mode == "offline":
             if total < best - 1e-4:
                 best, waited = total, 0
             else:
                 waited += 1
-            if waited >= ct.PATIENCE:
-                break
-    reading(len(train) * (epoch + 1))
+            stopped = waited >= ct.PATIENCE
+        if each:
+            reading(len(train) * heard, heard)
+        if state is not None:
+            beside = state.with_name(state.name + ".tmp")
+            torch.save({"net": learner.net.state_dict(), "opt": learner.opt.state_dict(),
+                        "work": dict(learner.work), "best": best, "waited": waited,
+                        "passes": heard, "probes": record["probes"],
+                        "resumed": record.get("resumed", [])}, beside)
+            os.replace(beside, state)
+    if not each:
+        reading(len(train) * heard, heard)
+    record["passes"] = heard
+    record["stopped_by_rule"] = bool(stopped)
     return record
 
 
@@ -676,6 +794,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--parameters", type=int)
     parser.add_argument("--train", type=int, default=4000)
     parser.add_argument("--limit", type=int, help="the first training utterances only")
+    parser.add_argument("--splits", help="training splits of prepare-listed, comma-separated")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.command == "words":
@@ -689,7 +808,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if args.command == "prepare-listed":
         listed = [line.split()[0] for line in args.list.read_text().splitlines() if line.strip()]
-        meta = prepare_listed(args.root, args.out, listed, window=args.window)
+        splits = tuple(args.splits.split(",")) if args.splits else TRAINING
+        meta = prepare_listed(args.root, args.out, listed, window=args.window, training=splits)
+        meta["training"] = list(splits)
+        (args.out / "meta.json").write_text(json.dumps(meta, indent=1))
         print(json.dumps({k: v for k, v in meta.items() if k not in ("mean", "std")}))
         return 0
     assert args.cache is not None and args.protocol is not None
@@ -697,14 +819,19 @@ def main(argv: list[str] | None = None) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     if args.command == "life" and int(protocol.get("batch", 1)) > 1:
         record = life_batched(args.cache, protocol, args.seed, args.out)
-        lt.write_record(args.out / f"speech-brain-{args.seed}.json.gz", record)
+        assert record is not None
+        final = args.out / f"speech-{args.seed}-reading.npz"
+        if final.exists():  # the brain of the last reading: the life's end
+            os.replace(final, args.out / f"speech-{args.seed}-final.npz")
+        write_atomic(args.out / f"speech-brain-{args.seed}.json.gz", record)
     elif args.command == "life":
         record = life(args.cache, protocol, args.seed, args.out, args.limit)
         lt.write_record(args.out / f"speech-brain-{args.seed}.json.gz", record)
     else:
-        sys.path.insert(0, str(_here))
-        record = control(args.cache, args.model, args.mode, args.seed, args.parameters, protocol)
-        lt.write_record(args.out / f"speech-{record['arm']}-{args.seed}.json.gz", record)
+        record = control(args.cache, args.model, args.mode, args.seed, args.parameters, protocol,
+                         out=args.out if protocol.get("read_each_pass") else None)
+        assert record is not None
+        write_atomic(args.out / f"speech-{record['arm']}-{args.seed}.json.gz", record)
         print(json.dumps({"arm": record["arm"], "seed": args.seed,
                           **{k: round(v, 3) for k, v in record["probes"][-1]["score"].items()
                              if isinstance(v, float)}}))

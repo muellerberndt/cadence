@@ -84,64 +84,85 @@ def test_a_window_cache_hears_each_step_as_an_image(tmp_path: Path) -> None:
     assert np.abs(x).max() <= sp.SCALE * sp.CLIP_SIGMA + 1e-6
 
 
-def test_a_batched_life_hears_utterances_side_by_side_and_resumes(tmp_path: Path) -> None:
+def _fake_cache(tmp_path: Path, seed: int, train: int = 6) -> Path:
     import json
 
-    rng = np.random.default_rng(0)
-    cache = tmp_path / "cache"
-    cache.mkdir()
-    meta = {"mels": 8, "window": 8, "mean": [0.0] * 8, "std": [1.0] * 8}
-    (cache / "meta.json").write_text(json.dumps(meta))
-    for name, n in (("train", 6), ("held", 2)):
-        lengths = rng.integers(40, 60, size=n)
-        texts = rng.integers(3, 5, size=n)
-        np.savez(cache / f"{name}.npz", frames=rng.normal(size=(lengths.sum(), 8)),
-                 lengths=lengths, text=rng.integers(1, 29, size=texts.sum()),
-                 text_lengths=texts, identities=np.arange(n))
-    (tmp_path / "list.txt").write_text("ab 3\nc 1\n")
-    protocol = {"batch": 2, "align_every": 1, "probe_every": 2,
-                "word_list": str(tmp_path / "list.txt"),
-                "brain": {"genes": {"actor_eta": 0.0, "actor_eta_bias": 0.0,
-                                    "actor_eta_critic": 0.0, "learned_fields": 4}}}
-    out = tmp_path / "out"
-    out.mkdir()
-    full = sp.life_batched(cache, protocol, 1, out)
-    assert [p["batches"] for p in full["probes"]] == [2, 3]
-    assert "words_matched" in full["probes"][-1]["score"]
-    record = sp.lt.read_record(out / "speech-brain-1.partial.json.gz")
-    record["probes"] = record["probes"][:1]
-    sp.lt.write_record(out / "speech-brain-1.partial.json.gz", record)
-    again = sp.life_batched(cache, protocol, 1, out)
-    assert again["resumed"] == [2]
-    assert again["probes"][-1]["score"]["characters"] == full["probes"][-1]["score"]["characters"]
-
-
-def test_two_passes_resume_between_re_alignments(tmp_path: Path) -> None:
-    """An utterance heard in both passes takes a path in each; a life resumed between two
-    re-alignments takes its batches' paths from the copy of the last one."""
-    import json
-
-    rng = np.random.default_rng(1)
+    rng = np.random.default_rng(seed)
     cache = tmp_path / "cache"
     cache.mkdir()
     (cache / "meta.json").write_text(json.dumps(
         {"mels": 8, "window": 8, "mean": [0.0] * 8, "std": [1.0] * 8}))
-    for name, n in (("train", 6), ("held", 2)):
+    for name, n in (("train", train), ("held", 2)):
         lengths = rng.integers(40, 60, size=n)
         texts = rng.integers(3, 5, size=n)
         np.savez(cache / f"{name}.npz", frames=rng.normal(size=(lengths.sum(), 8)),
                  lengths=lengths, text=rng.integers(1, 29, size=texts.sum()),
                  text_lengths=texts, identities=np.arange(n))
-    protocol = {"batch": 2, "passes": 2, "align_every": 2, "probe_every": 3,
-                "brain": {"genes": {"actor_eta": 0.0, "actor_eta_bias": 0.0,
-                                    "actor_eta_critic": 0.0, "learned_fields": 4}}}
+    return cache
+
+
+GENES = {"actor_eta": 0.0, "actor_eta_bias": 0.0, "actor_eta_critic": 0.0, "learned_fields": 4}
+
+
+def test_a_batched_life_hears_utterances_side_by_side(tmp_path: Path) -> None:
+    cache = _fake_cache(tmp_path, 0)
+    (tmp_path / "list.txt").write_text("ab 3\nc 1\n")
+    protocol = {"batch": 2, "align_every": 1, "probe_every": 2, "transcripts": True,
+                "word_list": str(tmp_path / "list.txt"), "brain": {"genes": GENES}}
     out = tmp_path / "out"
     out.mkdir()
-    full = sp.life_batched(cache, protocol, 2, out)
-    assert [p["batches"] for p in full["probes"]] == [3, 6]
-    record = sp.lt.read_record(out / "speech-brain-2.partial.json.gz")
-    record["probes"] = record["probes"][:1]
-    sp.lt.write_record(out / "speech-brain-2.partial.json.gz", record)
-    again = sp.life_batched(cache, protocol, 2, out)
-    assert again["resumed"] == [3] and again["probes"][-1]["batches"] == 6
-    assert again["resumed_alignment"][0]["batches"] == 3
+    full = sp.life_batched(cache, protocol, 1, out)
+    assert full is not None
+    assert [p["batches"] for p in full["probes"]] == [2, 3]
+    last = full["probes"][-1]
+    assert "words_matched" in last["score"] and len(last["transcripts"]) == 2
+    assert np.asarray(last["confusions"]).shape == (28, 28)
+    assert int(np.sum(last["confusions"])) == sum(len(t) for _, t in sp.load(cache, "held"))
+    assert set(full["probes"][-1]["clock"]) == {"training", "reading", "aligning"}
+
+
+def test_a_stopped_life_continues_from_its_last_re_alignment(tmp_path: Path) -> None:
+    """Two passes: an utterance heard in both takes a path in each. A life stopped between two
+    re-alignments continues from the brain saved at the last one and reads as the whole life."""
+    cache = _fake_cache(tmp_path, 1)
+    protocol = {"batch": 2, "passes": 2, "align_every": 2, "probe_every": 3,
+                "brain": {"genes": GENES}}
+    whole, cut = tmp_path / "whole", tmp_path / "cut"
+    whole.mkdir()
+    cut.mkdir()
+    full = sp.life_batched(cache, protocol, 2, whole)
+    assert full is not None and [p["batches"] for p in full["probes"]] == [3, 6]
+    assert sp.life_batched(cache, protocol, 2, cut, stop_after=5) is None
+    saved = sp.latest_slot(cut, 2)
+    assert saved is not None and saved[1]["batches"] == 4
+    again = sp.life_batched(cache, protocol, 2, cut)
+    assert again is not None and again["resumed"] == [4]
+    assert [p["batches"] for p in again["probes"]] == [3, 6]
+    for a, b in zip(full["probes"], again["probes"], strict=True):
+        assert a["score"]["characters"] == b["score"]["characters"]
+        assert a["steps"] == b["steps"]
+    # a save whose file does not match its recorded sha256 is passed over
+    (cut / "speech-2-align-a.npz").write_bytes(b"torn")
+    (cut / "speech-2-align-b.npz").write_bytes(b"torn")
+    assert sp.latest_slot(cut, 2) is None
+
+
+def test_a_stopped_control_continues_from_its_last_pass(tmp_path: Path) -> None:
+    cache = _fake_cache(tmp_path, 2)
+    protocol = {"passes": 3, "read_each_pass": True, "transcripts": True}
+    whole, cut = tmp_path / "whole", tmp_path / "cut"
+    whole.mkdir()
+    cut.mkdir()
+    full = sp.control(cache, "lstm", "online", 3, 4000, protocol, out=whole)
+    assert full is not None and [p["passes"] for p in full["probes"]] == [1, 2, 3]
+    assert sp.control(cache, "lstm", "online", 3, 4000, protocol, out=cut, stop_after=2) is None
+    again = sp.control(cache, "lstm", "online", 3, 4000, protocol, out=cut)
+    assert again is not None and again["resumed"] == [2] and again["passes"] == 3
+    assert [p["score"]["characters"] for p in again["probes"]] == [
+        p["score"]["characters"] for p in full["probes"]]
+    offline = sp.control(cache, "transformer", "offline", 3, 4000,
+                         {"offline_epochs": 2, "read_each_pass": True})
+    assert offline is not None and offline["passes"] == 2
+    assert len(offline["probes"]) == 2
+    once = sp.control(cache, "lstm", "offline", 3, 4000, {}, epochs=2)
+    assert once is not None and len(once["probes"]) == 1 and once["probes"][0]["passes"] == 2
