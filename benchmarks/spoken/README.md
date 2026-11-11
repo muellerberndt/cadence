@@ -139,3 +139,48 @@ error near .07), at a tenth of the life's rates:
 | `transformer_ctc` | 1,281,498 | plain | .613, .738, .887 | -.073 | .713, .863, .963 | -.052 |
 
 At the life's full rate every learner's retention falls, the transformers' by .51 to .62.
+
+### The declared run (cadence#303: fresh founders 3030 to 3035, 18 new speakers, 18 dialect speakers)
+
+The [protocol](https://github.com/muellerberndt/cadence/issues/303#issuecomment-6786230453) put
+the brain at `modules=(256,)` under test, the width Step 0 located, against the transformers at
+its parameter count; adaptation at a tenth of the life's rates. No gate reads for Cadence.
+
+| Learner | Parameters | Word accuracy, mean (range) | Exact | At word steps: right / other word / silence | Host seconds of training |
+| --- | --- | --- | --- | --- | --- |
+| `fields_wide` | 1,275,684 | .357 (.268 to .426) | .097 | .344 / .269 / .387 | 1,287 |
+| `fields` | 629,988 | .265 (.181 to .286) | .044 | .252 / .317 / .429 | 1,119 |
+| `transformer_ctc` | 1,281,498 | .739 (.716 to .768) | .491 | | 104 |
+| `transformer_step` | 1,281,349 | .658 (.644 to .673) | .376 | .649 / .241 / .110 | 95 |
+
+| Learner | Parameters | Mode | New speakers at 0, 1, 2, 5 min | Retention at 0, 2, 5 | Dialect at 0, 1, 2, 5 min | Retention at 0, 2, 5 |
+| --- | --- | --- | --- | --- | --- | --- |
+| `fields_wide` | 1,275,684 | plain | .363, .464, .495, .519 | .354, .422, .399 | .502, .570, .611, .663 | .354, .398, .369 |
+| `fields_wide` | 1,275,684 | replay | .363, .459, .469, .484 | .354, .436, .443 | .502, .575, .597, .631 | .354, .436, .439 |
+| `transformer_ctc` | 1,281,498 | plain | .717, .814, .858, .890 | .749, .688, .674 | .727, .905, .928, .960 | .749, .681, .656 |
+| `transformer_ctc` | 1,281,498 | replay | .717, .783, .820, .863 | .749, .757, .762 | .727, .874, .926, .953 | .749, .755, .763 |
+| `transformer_step` | 1,281,349 | plain | .644, .741, .784, .825 | .674, .609, .593 | .654, .837, .864, .909 | .674, .591, .569 |
+| `transformer_step` | 1,281,349 | replay | .644, .708, .750, .784 | .674, .681, .683 | .654, .811, .856, .894 | .674, .680, .686 |
+
+| Gate | Reading | Founders |
+| --- | --- | --- |
+| G1, the base life within .05 of the transformer with CTC | -.290 to -.459 | 0 of 6 |
+| G2, a new speaker at 2 minutes, accuracy and retention against the fine-tuned transformer with CTC | accuracy -.304 to -.397, retention -.211 to -.301 | 0 of 6 |
+| G3, the dialect, the same | | 0 of 6 |
+
+- The gain itself, on new speakers, is level: the brain's gain over two minutes minus the
+  transformer with CTC's reads -.009 (5 of 6 founders not below zero by two standard errors), and
+  its retention change is higher by +.128 (each founder beyond two standard errors). On the
+  dialect the gain trails by .093 (2 of 6), with retention change higher by +.112.
+- The term is the base life's: the pools hold the word at .627 for a linear readout, the
+  association of 256 holds .574, and the brain says the right word at .344 of the word steps and
+  silence at .387.
+
+Seconds per step and per correction, one stream on one Intel Xeon 8488C core (`timing.py`):
+
+| Learner | Parameters | Step of 0.49 s, median | Times real time | A correction, median |
+| --- | --- | --- | --- | --- |
+| `fields_wide` | 1,275,684 | 2.43 ms | 201 | 0.132 s |
+| `fields` | 629,988 | 2.13 ms | 230 | 0.043 s |
+| `transformer_ctc` | 1,281,498 | 1.12 ms | 438 | 0.0085 s |
+| `transformer_step` | 1,281,349 | 1.10 ms | 447 | 0.0086 s |

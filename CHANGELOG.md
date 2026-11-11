@@ -21,6 +21,12 @@ brain in it is a brain of 0.97.0.
   silence at .449 of the word steps, an association of 256 reads .425, and the transformer with
   CTC at those parameter counts reads .731 and .743. The term that trails is the brain's read of
   its pools.
+- **The declared run** (six fresh founders, 18 new speakers, 18 dialect speakers): no gate reads
+  for Cadence. The brain at `modules=(256,)` (1,275,684 parameters) reads .357 against the
+  transformer with CTC's .739, 0 of 6 within .05. On a new speaker its gain over two minutes is
+  level with the fine-tuned transformer's (-.009 paired, 5 of 6 founders) and its retention change
+  is higher by +.128; on the dialect its gain trails by .093. A step of 0.49 s takes 2.43 ms on
+  one core.
 
 ## 0.97.0 — 2026-11-10
 
