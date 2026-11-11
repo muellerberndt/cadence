@@ -75,8 +75,9 @@ SUBJECTS = {
     "person": f"?s wdt:P31 wd:Q5 . ?s wikibase:sitelinks ?n . FILTER(?n >= {SITELINKS})",
     "city": f"?s wdt:P31 wd:Q515 . ?s wikibase:sitelinks ?n . FILTER(?n >= {SITELINKS})",
 }
-# the relation's words in a sentence (``tongue`` is a person's native language)
-SAID = {"tongue": "native language"}
+# the relation's words in a sentence (``tongue`` is a person's native language, said in words
+# no other relation says, so a question of two facts about a language reads one relation)
+SAID = {"tongue": "mother tongue"}
 
 
 def query(relation: str) -> str:

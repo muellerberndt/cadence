@@ -46,7 +46,7 @@ ASK_HELD = ("which {r} does {s} have ?", "{s} 's {r} is which ?", "name the {r} 
 ASK_TWO = "what is the {r2} of the {r1} of {s} ?"
 SYNONYM = {"capital": "seat", "continent": "landmass", "currency": "money",
            "language": "speech", "citizenship": "nationality", "occupation": "job",
-           "birthplace": "hometown", "native language": "mother tongue", "sport": "game",
+           "birthplace": "hometown", "mother tongue": "first speech", "sport": "game",
            "instrument": "axe", "country": "nation"}
 # a question of two facts: the first relation's object is the second's subject
 CHAINS = (("citizenship", "capital"), ("citizenship", "continent"), ("citizenship", "currency"),
