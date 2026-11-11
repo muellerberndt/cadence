@@ -71,14 +71,101 @@ class Matcher:
         self.listed = list(listed)
         self.rank = {w: k for k, w in enumerate(self.listed)}
         self.cache: dict[str, str] = {}
+        self.lengths = np.array([len(w) for w in self.listed], dtype=np.int64)
+        self.codes = np.zeros((len(self.listed), int(self.lengths.max()) + 1), dtype=np.int64)
+        for k, w in enumerate(self.listed):
+            self.codes[k, : len(w)] = [ord(c) for c in w]
+
+    def distances(self, word: str) -> np.ndarray:
+        """Edits from ``word`` to every list word, in the list's order (``distance`` of each,
+        computed over the whole list at once)."""
+        width = self.codes.shape[1]
+        row = np.tile(np.arange(width, dtype=np.int64), (len(self.listed), 1))
+        for i, c in enumerate(word, 1):
+            cost = (self.codes[:, : width - 1] != ord(c)).astype(np.int64)
+            new = np.empty_like(row)
+            new[:, 0] = i
+            for j in range(1, width):
+                new[:, j] = np.minimum(np.minimum(row[:, j] + 1, new[:, j - 1] + 1),
+                                       row[:, j - 1] + cost[:, j - 1])
+            row = new
+        return np.asarray(row[np.arange(len(self.listed)), self.lengths])
 
     def __call__(self, word: str) -> str:
         if word in self.rank:
             return word
         if word not in self.cache:
-            best = min(self.listed, key=lambda w: (distance(word, w), self.rank[w]))
-            self.cache[word] = best
+            self.cache[word] = self.listed[int(np.argmin(self.distances(word)))]
         return self.cache[word]
+
+    def place(self, said: str, meant: str) -> int:
+        """Where the list word ``meant`` stands among the list words nearest ``said``: 0 where
+        it is the nearest (fewest edits, the more frequent word first on a tie)."""
+        d = self.distances(said)
+        k = self.rank[meant]
+        return int(np.sum((d < d[k]) | ((d == d[k]) & (np.arange(len(d)) < k))))
+
+
+def align(reference: list[str], hypothesis: list[str]) -> list[tuple[int | None, int | None]]:
+    """The fewest-edits alignment of two word sequences as pairs of indexes: a reference word
+    with the said word in its place, with None where it was dropped, and None with a said word
+    that stands for no reference word."""
+    n, m = len(reference), len(hypothesis)
+    d = np.zeros((n + 1, m + 1), dtype=np.int64)
+    d[:, 0] = np.arange(n + 1)
+    d[0, :] = np.arange(m + 1)
+    for i in range(1, n + 1):
+        for j in range(1, m + 1):
+            d[i, j] = min(d[i - 1, j] + 1, d[i, j - 1] + 1,
+                          d[i - 1, j - 1] + (reference[i - 1] != hypothesis[j - 1]))
+    pairs: list[tuple[int | None, int | None]] = []
+    i, j = n, m
+    while i > 0 or j > 0:
+        if i > 0 and j > 0 and d[i, j] == d[i - 1, j - 1] + (reference[i - 1] != hypothesis[j - 1]):
+            pairs.append((i - 1, j - 1))
+            i, j = i - 1, j - 1
+        elif i > 0 and d[i, j] == d[i - 1, j] + 1:
+            pairs.append((i - 1, None))
+            i -= 1
+        else:
+            pairs.append((None, j - 1))
+            j -= 1
+    return pairs[::-1]
+
+
+def candidates(hypotheses: list[str], references: list[str], matcher: Matcher,
+               within: tuple[int, ...] = (1, 5, 20)) -> dict[str, Any]:
+    """What a word prior would have to choose among. Each reference word, by the said word in
+    its place: said right; among the ``within`` list words nearest the said word (the room a
+    prior choosing among that many candidates has); further; or dropped. Shares of the
+    reference words, and the said words that stand for no reference word per reference word."""
+    counts = {"right": 0, "further": 0, "dropped": 0, **{f"within_{k}": 0 for k in within}}
+    total = extra = 0
+    for hypothesis, reference in zip(hypotheses, references, strict=True):
+        said, ref = hypothesis.split(), reference.split()
+        for i, j in align(ref, said):
+            if i is None:
+                extra += 1
+                continue
+            total += 1
+            if j is None:
+                counts["dropped"] += 1
+            elif said[j] == ref[i]:
+                counts["right"] += 1
+            elif ref[i] not in matcher.rank:
+                counts["further"] += 1
+            else:
+                place = matcher.place(said[j], ref[i])
+                for k in within:
+                    if place < k:
+                        counts[f"within_{k}"] += 1
+                        break
+                else:
+                    counts["further"] += 1
+    out: dict[str, Any] = {k: v / max(total, 1) for k, v in counts.items()}
+    out["extra_per_reference_word"] = extra / max(total, 1)
+    out["reference_words"] = total
+    return out
 
 
 def read_words(hypotheses: list[str], references: list[str],
