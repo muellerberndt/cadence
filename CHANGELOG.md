@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### A message keyed by role (#301)
+
+- **`message_roles`** (`Brain.compose(message=units, message_roles=groups)`, and
+  `cadence.Message(..., roles=groups)`), off by default: groups of input channels, one group a
+  role. A heard moment of role `r` joins that role's blocks by the moments of the role heard
+  before it, and a moment of no group joins a last group's, so a role's moments lie in its own
+  blocks wherever in the episode they were heard. Without the setting every bit is as on 0.97.0.
+  The declared run is [`benchmarks/grammar/MEANING_PROTOCOL_6.md`](benchmarks/grammar/MEANING_PROTOCOL_6.md).
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it

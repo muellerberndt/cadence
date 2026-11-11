@@ -522,3 +522,20 @@ def test_the_winners_and_fifth_plans_and_their_gates_read_small_lives():
     lines = mn.fifth_verdict(small, of=1)
     assert sum("-> A2c" in line for line in lines) == 2
     assert any("dyck_d4" in line for line in lines)
+
+
+def test_the_sixth_plan_keys_the_message_by_role_and_its_gates_read_small_lives():
+    warnings.simplefilter("ignore")
+    plan = mn.sixth_plan(tuple(range(24)))
+    tags = [s["tag"] for s in plan["sixth"]]
+    assert tags.count("both_256") == 24 and tags.count("both_p8") == 12
+    assert tags.count("role_256") == 24 and len(plan["sixth_controls"]) == 2 * 2 * 2 * 6
+    role = next(s for s in plan["sixth"] if s["tag"] == "role_256")
+    brain = mn.make_brain(0, role["settings"], 64)
+    assert brain.message.groups == 7 and brain.message.blocks == 28
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 1, "long_probes": 1})
+            for spec in mn.sixth_plan((0,))["sixth"]]
+    lines = mn.sixth_verdict(rows, [])
+    assert any("-> R1" in line for line in lines) and any("-> R2" in line for line in lines)
+    assert any("-> G8" in line for line in lines)

@@ -1602,6 +1602,7 @@ assert not speaker.message.state.any()                    # a new stream starts 
 | `message_gains` | `1` | construction | Learned gains per block under `carried_gain`: one per `units / gains` neurons |
 | `message_boundary` | `None` | construction | An input channel; a heard moment with it on empties the message and begins it again |
 | `message_boundary_holds` | `False` | construction | At the boundary the message keeps what it heard and nothing after joins, until the episode ends |
+| `message_roles` | `()`, off | construction | Groups of input channels: a moment's role chooses its blocks, below |
 | `message_read` | `False` | construction | The read of one block at a time, below |
 
 **A read of one block (`message_read=True`).** A port of `units` neurons holds one block of the
@@ -2654,6 +2655,20 @@ one slot per moment. It stands alone: it has no neurons and reads no brain.
 - **A boundary.** `boundary=channel` names an input channel: a moment with it on empties the
   message and begins it again, or with `boundary_holds=True` the message keeps what came before
   and nothing from that moment on joins.
+- **Blocks by role.** `roles=groups` names groups of input channels, one group a role. A moment
+  with a channel of group `r` on joins that group's blocks, the `k`-th moment of the role block
+  `k mod phases`; a moment of no group joins the last group's. The state holds
+  `(len(groups) + 1) * phases` blocks, so an agent lies in the agent's blocks wherever in the
+  episode it was heard.
+
+```python
+roles = ((0,), (1, 2))                    # two roles; a moment of neither joins a third group
+keyed = cd.Message(inputs=6, phases=2, units=24, winners=3, seed=0, roles=roles)
+for moment in np.eye(6)[[3, 0, 1]]:       # none, role 0, role 1
+    keyed.hear(moment[None])
+assert keyed.blocks == 6 and keyed.counts.tolist() == [[1, 1, 1]]
+assert np.array_equal(keyed.state.reshape(6, 24)[0], keyed.code(np.eye(6)[[0]])[0])
+```
 
 ```python
 message = cd.Message(inputs=6, phases=4, units=24, winners=3, seed=0)
