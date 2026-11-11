@@ -125,6 +125,32 @@ CTC reading.
   and the LSTMs alike, reads held-out words at .40 to .67; the learners that choose their own
   timing by CTC read .85 to .94.
 
+## Step 2: a teacher's forced alignment on the brain's own beliefs
+
+Declared in [`PROTOCOL_2.md`](PROTOCOL_2.md) before its first life. The teacher knows each word's
+frames and letters, not where each letter's sound begins. The first 500 words are taught on the
+even split of each word's frames among its letters. Then, every 500 words, a frozen copy of the
+brain answers the next 500 words greedily, and each word's frames go to its letters by the
+monotonic best path through the copy's log beliefs (`forced_path`). Each letter is taught on every
+frame of its path. The path is computed outside the brain. Six fresh founders (304200 to 304205),
+18,000 words, gates on the CTC reading.
+
+| Learner | Parameters | Training | Characters | Inserted per character | Emission gate | Held-out words | Words gate | Seconds |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `forced` | 21,169 | one life | .999 (.997-1.000) | .001 | 6 of 6 | .994 (.97-1.00) | 6 of 6 | 675 |
+| `frames` (the supplied alignment) | 21,169 | one life | .997 | .002 | 6 of 6 | .983 (.95-1.00) | 6 of 6 | 583 |
+| LSTM, CTC | 20,974 | one pass / offline | 1.000 / .999 | | | .99 / .99 | 6 of 6 / 6 of 6 | 6 / 123 |
+| Transformer, CTC | 20,452 | one pass / offline | .884 / .896 | | | .83 / .83 | 5 of 6 / 5 of 6 | 8 / 179 |
+
+- Both gates hold on 6 of 6. The alignment puts .92 to .96 of letter frames on the letter heard at
+  its first pass and .999 to 1.000 at its last; paired against the supplied alignment, held-out
+  words read +.011 (two standard errors .007).
+- After a letter pair no trained word holds, the brain misses .002 of letters, where the lesson
+  at a sound's first frame missed .32 (Step 1).
+- Every arm here says a letter on every frame of its sound (.23 to .27 of sounds once), so the
+  stream as said, nothing merged, inserts more than one character per character. The words come
+  from the CTC reading, as they do for the CTC learners.
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one

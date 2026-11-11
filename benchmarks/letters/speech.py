@@ -226,14 +226,15 @@ def beliefs(brain: Any, x: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
     return actions, out
 
 
-def life(cache: Path, protocol: dict[str, Any], seed: int, out: Path) -> dict[str, Any]:
+def life(cache: Path, protocol: dict[str, Any], seed: int, out: Path,
+         limit: int | None = None) -> dict[str, Any]:
     """One brain hears the training utterances in a seeded order, one step a moment, each from
     rest; its lessons follow the teacher's alignment; a saved copy reads the held-out
     utterances every ``probe_every`` utterances."""
     import cadence as cd
 
     train, held = load(cache, "train"), load(cache, "held")
-    order = np.random.default_rng([seed, 7]).permutation(len(train))
+    order = np.random.default_rng([seed, 7]).permutation(len(train))[:limit]
     every, probe_every = int(protocol["align_every"]), int(protocol["probe_every"])
     brain = cd.Brain.compose(train[0][0].shape[1], SYMBOLS, backend="cpu", seed=seed,
                              **protocol["brain"]["genes"])
@@ -335,6 +336,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--mode", choices=("online", "offline"))
     parser.add_argument("--parameters", type=int)
     parser.add_argument("--train", type=int, default=4000)
+    parser.add_argument("--limit", type=int, help="the first training utterances only")
     parser.add_argument("--out", type=Path, required=True)
     args = parser.parse_args(argv)
     if args.command == "prepare":
@@ -344,7 +346,7 @@ def main(argv: list[str] | None = None) -> int:
     protocol = json.loads(args.protocol.read_bytes())
     args.out.mkdir(parents=True, exist_ok=True)
     if args.command == "life":
-        record = life(args.cache, protocol, args.seed, args.out)
+        record = life(args.cache, protocol, args.seed, args.out, args.limit)
         lt.write_record(args.out / f"speech-brain-{args.seed}.json.gz", record)
     else:
         sys.path.insert(0, str(_here))

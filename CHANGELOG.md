@@ -20,6 +20,15 @@
     gate (held-out words .40, 0 of 6), where the default reads .47 and passes emission on 6 of 6.
     Learners taught when to say a letter by a per-frame lesson read held-out words at .40 to .67;
     the CTC learners, which choose their own timing, at .85 to .94.
+  - Step 2 ([`PROTOCOL_2.md`](benchmarks/letters/PROTOCOL_2.md), six fresh founders): a teacher
+    that knows each word's letters and frames re-aligns them every 500 words by the monotonic best
+    path through a frozen copy's beliefs, and teaches each letter on every frame of its path. On
+    the CTC reading the 0.97.0 default reads characters .999 and held-out words .994, both gates on
+    6 of 6, beside the supplied alignment (.983) and the CTC LSTM (.99). Candidate (b), taught
+    until its sampled act says a letter, failed in development because the same sound frame took
+    a letter's lesson and blank's.
+  - The read-speech adapter (`speech.py`): LibriSpeech heard as 40 ms steps of log-mel, taught by
+    CTC's forced alignment through the brain's beliefs, read by the same CTC reading.
 
 ## 0.97.0 — 2026-11-10
 
