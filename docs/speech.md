@@ -219,9 +219,11 @@ recordings read by the letter decoder:
 | Training set | Hours | Passes | Characters after each pass | Seconds of training per hour of audio |
 | --- | --- | --- | --- | --- |
 | `train-clean-100`, the 468 utterances with every word among the 2,000 most common | 0.55 | 8 | .00, .23, .30, .32, .32, .33, .33, .34 | 1,100 to 1,500 (AMD EPYC 7R13, c6a) |
-| `train-clean-100` and `train-clean-360`, the 2,100 such utterances (issue 304's set) | 2.51 | 1 | .21 | 1,000 (AMD EPYC 7R13, c6a) |
+| `train-clean-100` and `train-clean-360`, the 2,100 such utterances (issue 304's set) | 2.51 | 2 | .21, .31 | 850 to 1,000 (AMD EPYC 7R13, c6a) |
 
-The first pass says only blanks on the small set. Words stay at or below zero against the open
+On issue 304's set the recipe reads .31 after two passes, where the letters chamber's own lives
+read .33 on its 274 held-out recordings (three founders). The first pass says only blanks on the
+small set. Words stay at or below zero against the open
 lexicon and the word list alike: at this letter level the brain inserts as many words as it gets
 right (issue 304). After two passes on the small set (on an Intel Xeon c7i core), eleven
 corrections of a new speaker raise that speaker's other recordings from .20 to .27 and the
