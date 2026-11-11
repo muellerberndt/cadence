@@ -67,6 +67,21 @@ ARMS: dict[str, dict[str, Any]] = {
     "fields_drawn": {"sees": "image", "hold": True, "compose": {"learned_fields": 64}},
     "keyword": {"sees": "flat", "compose": {"recall": False}},
     "keyword_taught": {"sees": "flat", "compose": dict(TAUGHT)},
+    # development arms of Step 0: a wider association, and the pixel chamber's teaching point
+    "fields_wide": {"sees": "image", "compose": {"learned_fields": 64, "modules": (256,)}},
+    "fields_normalized": {
+        "sees": "image",
+        "compose": {"learned_fields": 64, "recall": False, "teaching": "normalized"},
+    },
+    "fields_wide_normalized": {
+        "sees": "image",
+        "compose": {
+            "learned_fields": 64,
+            "modules": (256,),
+            "recall": False,
+            "teaching": "normalized",
+        },
+    },
 }
 CONTROLS: dict[str, tuple[str, str]] = {
     "transformer_ctc": ("transformer", "ctc"),
