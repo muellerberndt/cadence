@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Speech: a recogniser from recordings and transcripts (`cadence.speech`, opt-in, #314)
+
+`cadence.speech` is imported by name; `import cadence` loads none of it. The guide is
+[docs/speech.md](docs/speech.md).
+
+- **`correct.Rehearsal`**: a correction heard as one stream beside earlier utterances of a bank,
+  taught at a lesson weight (`Brain.lesson(weights=)`; 3 utterances at .25 by default), the bank
+  kept under a byte budget. On the spoken-phrase chamber (issue 303) these corrections kept the
+  earlier speakers (+.005 and +.003) at nearly a plain correction's gain.
+- **`stream.StreamReader`**: one stream of a trained brain on live audio; samples in blocks of any
+  size, text out as each 40 ms step is answered, the transcript read against a word list at
+  `finish()`, seconds per step in `latency()`. It hears what the front end makes of the whole
+  recording.
+- **`benchmarks/letters/recipe.py`**: the recipe end to end on LibriSpeech (or tone words with no
+  download): hear, compose, train from transcripts, read, adapt, stream.
+
 ## 0.97.1 - 2026-11-11
 
 Opt-ins built on the v0.98.0 lanes, and the chambers that read them. No default changes: with
