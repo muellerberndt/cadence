@@ -156,6 +156,7 @@ class BrainLearner:
     """A brain hearing phrases: a lesson on the step's targets before each act when taught."""
 
     kind = "brain"
+    hold = 1  # steps a word stays due (``held``)
 
     def __init__(self, brain: Any, arm: str) -> None:
         self.brain, self.arm = brain, arm
@@ -183,6 +184,8 @@ class BrainLearner:
         started = time.process_time()
         rows, steps = x.shape[:2]
         actions = np.full((rows, steps), -1, np.int64)
+        if target is not None:
+            target = held(target, self.hold)
         self.brain.reset()
         for k in range(steps):
             if target is not None:
@@ -208,7 +211,9 @@ class BrainLearner:
         clone = copy.deepcopy(self.brain)
         if clone.fields is not None:
             clone.fields.learning = False
-        return BrainLearner(clone, self.arm)
+        out = BrainLearner(clone, self.arm)
+        out.hold = self.hold
+        return out
 
     def set_rate(self, scale: float) -> None:
         """Every rate of the lesson's learner at ``scale`` of the life's."""
@@ -223,6 +228,7 @@ class BrainLearner:
     def copy(self) -> BrainLearner:
         out = BrainLearner(copy.deepcopy(self.brain), self.arm)
         out.work = dict(self.work)
+        out.hold = self.hold
         return out
 
 
@@ -230,6 +236,7 @@ class ControlLearner:
     """A baseline with the brain's interface."""
 
     kind = "control"
+    hold = 1
 
     def __init__(self, model: Any) -> None:
         self.model = model
@@ -250,7 +257,7 @@ class ControlLearner:
     ) -> np.ndarray:
         if target is not None:
             assert refs is not None
-            self.model.teach(x, target, refs, END)
+            self.model.teach(x, held(target, self.hold), refs, END)
             return np.empty((len(x), 0), np.int64)
         return np.asarray(self.model.actions(x, SILENCE))
 
@@ -261,7 +268,9 @@ class ControlLearner:
         self.model.set_rate(self.base_rate * scale)
 
     def copy(self) -> ControlLearner:
-        return ControlLearner(self.model.copy())
+        out = ControlLearner(self.model.copy())
+        out.hold = self.hold
+        return out
 
 
 def control(name: str, founder: int, parameters: int) -> ControlLearner:
@@ -273,19 +282,38 @@ def control(name: str, founder: int, parameters: int) -> ControlLearner:
 # ------------------------------------------------------------------------------------ readings
 
 
-def decode(actions: np.ndarray) -> list[dict[str, Any]]:
-    """Each row's words up to the first ``end``, and whether it ended."""
+def held(target: np.ndarray, hold: int) -> np.ndarray:
+    """Per-step targets with each word due at ``hold`` steps: the step whose window first holds
+    the word's last frame and the silent steps after it, up to ``hold`` in all. A phrase's words
+    differ, so a word said at two steps in a row reads as one (``decode(collapse=True)``)."""
+    if hold <= 1:
+        return target
+    out = np.array(target, copy=True)
+    for r, row in enumerate(np.asarray(target)):
+        for k in np.flatnonzero((row >= 0) & (row < SILENCE)):
+            for j in range(int(k) + 1, min(int(k) + hold, len(row))):
+                if row[j] != SILENCE:
+                    break
+                out[r, j] = row[k]
+    return out
+
+
+def decode(actions: np.ndarray, collapse: bool = False) -> list[dict[str, Any]]:
+    """Each row's words up to the first ``end``, and whether it ended; with ``collapse`` a word
+    said at consecutive steps reads once."""
     out = []
     for row in np.asarray(actions):
         words: list[int] = []
         ended = False
+        previous = -1
         for a in row:
             a = int(a)
             if a == END:
                 ended = True
                 break
-            if 0 <= a < SILENCE:
+            if 0 <= a < SILENCE and not (collapse and a == previous):
                 words.append(a)
+            previous = a
         out.append({"words": tuple(words), "ended": ended})
     return out
 
@@ -346,7 +374,7 @@ def read(
         targets = phrases.target[chunk, : actions.shape[1]]
         for j, r in enumerate(chunk):
             ref = phrases.reference(int(r))
-            got = decode(actions[j : j + 1])[0]
+            got = decode(actions[j : j + 1], collapse=learner.hold > 1)[0]
             a, b, c = edits(got["words"], ref)
             s, ins, d = s + a, ins + b, d + c
             words += len(ref)

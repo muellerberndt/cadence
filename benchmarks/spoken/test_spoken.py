@@ -195,3 +195,13 @@ def test_reading_a_brain_leaves_its_life_unchanged(sets):
     ch.read(learner, train, np.arange(8, 16), hearing)
     assert np.array_equal(before, learner.brain.fields.dictionary)
     assert np.array_equal(efficacy, np.asarray(learner.brain.brain.efficacy))
+
+
+def test_a_held_word_stays_due_over_the_silent_steps_after_it_and_reads_once():
+    s, e = ph.SILENCE, ph.END
+    target = np.array([[s, 3, s, s, 5, 7, s, e, e, -1]])
+    assert (ch.held(target, 1) == target).all()
+    assert ch.held(target, 2).tolist() == [[s, 3, 3, s, 5, 7, 7, e, e, -1]]
+    assert ch.held(target, 3).tolist() == [[s, 3, 3, 3, 5, 7, 7, e, e, -1]]
+    assert ch.decode(ch.held(target, 2), collapse=True)[0] == {"words": (3, 5, 7), "ended": True}
+    assert ch.decode(ch.held(target, 2))[0]["words"] == (3, 3, 5, 7, 7)

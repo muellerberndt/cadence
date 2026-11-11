@@ -142,6 +142,7 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     train = phrases(data, "base_train")
     hearing = ch.Hearing.measured(train)
     learner = learner_of(name, founder, spec.get("match", "fields"), extra)
+    learner.hold = int(spec.get("hold", 1))
     validation = phrases(data, "base_validation")
     test = phrases(data, "base_test")
     v_rows = sample(len(validation), READ, "validation")
@@ -257,6 +258,7 @@ def main() -> None:
     parser.add_argument("--rates", nargs="+", type=float, default=[1.0])
     parser.add_argument("--minutes", nargs="+", type=float, default=[0, 1, 2, 5])
     parser.add_argument("--replays", type=int, default=3)
+    parser.add_argument("--hold", type=int, default=1, help="steps a word stays due")
     parser.add_argument("--probe", action="store_true")
     parser.add_argument("--extra", default=None, help="JSON of compose settings")
     parser.add_argument("--save", default=None, help="folder for each life's final learner")
@@ -276,6 +278,7 @@ def main() -> None:
             "minutes": args.minutes,
             "replays": args.replays,
             "probe": args.probe,
+            "hold": args.hold,
             "extra": json.loads(args.extra) if args.extra else None,
             "save": str(Path(args.save) / f"{name}-{f}") if args.save else None,
         }
