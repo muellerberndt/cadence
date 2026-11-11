@@ -1,0 +1,80 @@
+{
+ "schema": "letters/1",
+ "issue": "https://github.com/muellerberndt/cadence/issues/304",
+ "stage": "Step 0, development founders 0 to 5: where letters are held and inserted in the 0.97.0 default. Not a gated run.",
+ "world": {
+  "letters": 16,
+  "features": 16,
+  "words": 40,
+  "held_out": 8,
+  "word_letters": [
+   3,
+   5
+  ],
+  "noise": 0.1,
+  "sound_frames": [
+   1,
+   4
+  ],
+  "silence": [
+   1,
+   3
+  ]
+ },
+ "training_words": 6000,
+ "probe_every": 1000,
+ "evaluation_words": 300,
+ "brain": {
+  "genes": {
+   "actor_eta": 0.0,
+   "actor_eta_bias": 0.0,
+   "actor_eta_critic": 0.0
+  },
+  "note": "Brain.compose(16, 18, backend='cpu', seed=s, **genes, **arm genes): the 0.97.0 default composition (the recall memory, the heard history of the moment before, the store). The world pays nothing: the reward learner's rates are zero."
+ },
+ "arms": {
+  "default": {
+   "labels": "onset",
+   "role": "the 0.97.0 default taught the supplied alignment: a letter at its sound's first frame"
+  },
+  "no_history": {
+   "labels": "onset",
+   "genes": {
+    "history_decays": []
+   },
+   "role": "the default without the heard history"
+  },
+  "frames": {
+   "labels": "frames",
+   "role": "the default taught the letter on every frame of its sound: the letter from the sound with no decision when to say it"
+  },
+  "delay1": {
+   "labels": "onset",
+   "delay": 1,
+   "role": "the default taught each symbol one frame after its sound begins"
+  },
+  "efference": {
+   "labels": "onset",
+   "genes": {
+    "efference_amplitude": 1.0
+   },
+   "role": "the default hearing its own last act (the efference copy)"
+  },
+  "no_recall": {
+   "labels": "onset",
+   "genes": {
+    "recall": false
+   },
+   "role": "the default without the recall memory"
+  },
+  "even": {
+   "labels": "even",
+   "role": "the default taught a word's letters spread evenly over the word's frames (the timing a speech instrument supplies)"
+  },
+  "even_delay2": {
+   "labels": "even",
+   "delay": 2,
+   "role": "the even spread two frames later"
+  }
+ }
+}
