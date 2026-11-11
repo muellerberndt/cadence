@@ -44,6 +44,28 @@ slot written longest ago instead, as the recall memory drops its oldest slot.
 ``revise`` or above, the write is that record told again: it rewrites the slot's key and value in
 place and deepens it, so a fact that changed is current and no second copy stays behind.
 ``revise=0`` appends every write.
+
+**An address of pairs (``pairs=units``, cadence#310).** The address above lists every slot under
+each of its units, so a cue's units name a share of the slots that stays the same as the records
+grow, and the coarse stage's work grows with the records. With ``pairs`` a record is filed under
+every pair of its ``pairs`` most driven units, in a table of cells sized to the capacity. A cue's
+``winners`` name the pairs it reads, and the slots found under them go on, those found under the
+most pairs first. A record far from the cue shares a pair with it far more rarely than a unit, so
+the slots a read touches grow far slower than the records. ``fill`` writes many records told once
+in one pass.
+
+**Heads with cues of their own (``read_each``) and chains (``chain``).** A question of several
+parts gives each head its own cue: head ``h`` reads ``cues[h]`` among the slots the heads before
+it left. A chain reads a record, lays its value on the next cue's coordinates and reads again, so
+one record's content is the next read's cue.
+
+**Keys held apart (``apart=width``).** Two facts whose keys are one key are one record: the
+second write revises the first. With ``apart`` a write also takes the fact's ``source``, a row of
+``apart`` values that its key was coded from, and keeps a signature of it: its ``SIGN`` most
+driven units under a second fixed projection. A write whose key a record holds revises that
+record only where the signatures agree; another signature is another fact, which takes a slot of
+its own. A read that carries its ``source`` takes, among the records that tie at its best score,
+the one whose signature it shares.
 """
 
 from __future__ import annotations
@@ -103,7 +125,10 @@ class LongTermMemory:
     whole sum) and ``idle`` the moments the recent use is kept over (a sixteenth of the
     capacity unless given). ``revise`` is the cosine at which a written key is a held record
     told again. ``seed`` draws the address's projection, and ``dtype`` is the type the keys and
-    values are held in (float64; float32 halves their bytes).
+    values are held in (float64; float32 halves their bytes). ``pairs`` files a record under the
+    pairs of its ``pairs`` most driven units in place of its units (0: the address of units), and
+    ``apart`` is the width of a fact's source, whose signature tells two facts with one key apart
+    (0: a key told again is its record told again).
     """
 
     width: int
@@ -122,6 +147,8 @@ class LongTermMemory:
     direct: int | None = None
     dtype: Any = np.float64
     cosine: bool = False
+    pairs: int = 0
+    apart: int = 0
     count: int = field(init=False, default=0)
     writes: int = field(init=False, default=0)
 
@@ -129,12 +156,25 @@ class LongTermMemory:
     # counts as idle
     ORDER = 4.0
     FLOOR = 0.01
+    # the address of pairs: the slots a cell holds, the entries a cell is sized for, and the
+    # multiplier that spreads a pair over the cells
+    DEPTH = 16
+    LOAD = 8
+    MIX = 0x9E3779B97F4A7C15
+    EMPTY = 0xFFFFFFFF
+    # a source's signature: its units, the units they are drawn from, the shared units at which
+    # two signatures are one source's, and the score within which two records tie
+    SIGN = 8
+    SIGNS = 1024
+    SAME = 5
+    TIE = 1e-6
     # the settings a description holds, and the arrays a memory keeps
     SETTINGS = ("width", "value_width", "capacity", "temperature", "candidates", "expansion",
                 "winners", "depth", "idle", "hold", "revise", "fade", "seed", "direct", "dtype",
-                "cosine")
+                "cosine", "pairs", "apart")
     ARRAYS = ("keys", "values", "deep", "recent", "faded")
     ADDRESS = ("units", "places", "lists", "counts")
+    PAIR_ADDRESS = ("cells", "fills")
 
     def __post_init__(self) -> None:
         for name in ("width", "value_width", "capacity"):
@@ -189,7 +229,22 @@ class LongTermMemory:
         ):
             raise ValueError("direct must be a nonnegative integer: the slots read without an "
                              "address")
+        for name in ("pairs", "apart"):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, (int, np.integer)) or value < 0:
+                raise ValueError(f"{name} must be a nonnegative integer: 0 is without it")
+            setattr(self, name, int(value))
+        if self.pairs == 1 or self.pairs > self.winners:
+            raise ValueError("pairs is 0 or the units whose pairs file a record: at least 2 and "
+                             "at most the winners")
         self.coarse = bool(self.candidates) and n > max(self.candidates, self.direct)
+        self.dropped = 0  # the entries a full cell of the pair address did not take
+        if self.apart:
+            draw = np.random.default_rng(np.random.SeedSequence([int(self.seed), 310]))
+            sign = draw.standard_normal((self.apart, self.SIGNS))
+            self._sign: np.ndarray = np.ascontiguousarray(
+                (sign / np.linalg.norm(sign, axis=0)).astype(self.dtype))
+            self.signs: np.ndarray = np.full((n, self.SIGN), -1, dtype=np.int16)
         if self.coarse:
             separator = PatternSeparator(self.width, self.expansion, self.winners, seed=self.seed)
             assert separator.projection is not None
@@ -197,6 +252,19 @@ class LongTermMemory:
             # lists stay near one length
             weights = separator.projection / np.linalg.norm(separator.projection, axis=0)
             self.projection: np.ndarray = np.ascontiguousarray(weights.astype(self.dtype))
+        if self.coarse and self.pairs:
+            each = self.pairs * (self.pairs - 1) // 2
+            cells = max(64, -(-n * each // self.LOAD))
+            # an entry is a slot under its pair's tag: the slot in the low bits that hold the
+            # capacity, the tag in the bits above, so one row of a cell is read at once
+            self._bits = int(n).bit_length()
+            if cells >= 2 ** 32 or self._bits > 28:
+                raise ValueError("the pair address holds under 2**28 slots and 2**32 cells: "
+                                 "fewer pairs or slots")
+            self.cells: np.ndarray = np.full((cells, self.DEPTH), self.EMPTY, dtype=np.uint32)
+            self.fills: np.ndarray = np.zeros(cells, dtype=np.uint8)
+            self._corners = {m: np.triu_indices(m, 1) for m in (self.pairs, self.winners)}
+        elif self.coarse:
             self.units: np.ndarray = np.full((n, self.winners), -1, dtype=np.int32)
             self.places: np.ndarray = np.zeros((n, self.winners), dtype=np.int32)
             room = max(8, int(2 * n * self.winners / self.expansion) + 8)
@@ -224,7 +292,9 @@ class LongTermMemory:
         coarse stage, else the ``candidates`` slots its address drives most."""
         if not self.coarse or self.count <= self.candidates:
             return np.arange(self.count), self.keys[: self.count]
-        chosen = self._driven(self.address(key) if units is None else units)
+        if units is None:
+            units = self.address(key)
+        chosen = self._named(units) if self.pairs else self._driven(units)
         return chosen, self.keys[chosen]
 
     def _driven(self, units: np.ndarray) -> np.ndarray:
@@ -265,29 +335,178 @@ class LongTermMemory:
         self.places[moved, column] = places
         self.counts[units] = last
 
+    # -- the address of pairs
+
+    def _filed(self, key: np.ndarray) -> np.ndarray:
+        """The units whose pairs file a record with ``key``: its ``pairs`` most driven units,
+        those driven above zero."""
+        drive = np.asarray(key, dtype=self.dtype) @ self.projection
+        top = np.argpartition(drive, -self.pairs)[-self.pairs:]
+        return np.asarray(top[drive[top] > 0], dtype=np.int32)
+
+    def _pair_cells(self, units: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """The cell and the tag (in an entry's high bits) of every pair of ``units``: one row
+        of units, or one row per record (then the rows' cells and tags one after another)."""
+        units = np.sort(np.asarray(units, dtype=np.int64), axis=-1)
+        m = units.shape[-1]
+        corners = self._corners.get(m)
+        low, high = np.triu_indices(m, 1) if corners is None else corners
+        pair = (units[..., low] * int(self.expansion) + units[..., high]).astype(np.uint64)
+        mixed = (pair * np.uint64(self.MIX)).ravel()
+        cell = ((mixed >> np.uint64(32)) * np.uint64(len(self.cells))) >> np.uint64(32)
+        tag = (mixed >> np.uint64(24)) & np.uint64((1 << (32 - self._bits)) - 1)
+        return cell.astype(np.int64), (tag << np.uint64(self._bits)).astype(np.uint32)
+
+    def _enter(self, cell: np.ndarray, tag: np.ndarray, slot: np.ndarray) -> None:
+        """Each slot joins its pair's cell, in the order given; a full cell takes no more."""
+        if not len(cell):
+            return
+        order = np.argsort(cell, kind="stable")
+        cell, entry = cell[order], (tag | slot.astype(np.uint32))[order]
+        start = np.flatnonzero(np.concatenate([[True], cell[1:] != cell[:-1]]))
+        run = np.diff(np.concatenate([start, [len(cell)]]))
+        at = self.fills[cell].astype(np.int64) + np.arange(len(cell)) - np.repeat(start, run)
+        room = at < self.DEPTH
+        self.cells[cell[room], at[room]] = entry[room]
+        first = cell[start]
+        self.fills[first] = np.minimum(self.fills[first].astype(np.int64) + run, self.DEPTH)
+        self.dropped += int(len(room) - np.count_nonzero(room))
+
+    def _leave(self, slot: int) -> None:
+        """The slot leaves the cells of its held key's pairs: each cell's last entry takes its
+        place."""
+        units = self._filed(self.keys[slot])
+        if len(units) < 2:
+            return
+        for cell, tag in zip(*(a.tolist() for a in self._pair_cells(units)), strict=True):
+            held = int(self.fills[cell])
+            row = self.cells[cell]
+            at = np.flatnonzero(row[:held] == (tag | slot))
+            if len(at):
+                row[at[0]] = row[held - 1]
+                row[held - 1] = self.EMPTY
+                self.fills[cell] = held - 1
+
+    def _named(self, units: np.ndarray) -> np.ndarray:
+        """The ``candidates`` slots filed under the most pairs of the cue's ``units``, in slot
+        order among equals."""
+        if len(units) < 2:
+            return np.zeros(0, dtype=np.int64)
+        cell, tag = self._pair_cells(units)
+        # an entry under the pair's own tag is its slot once the tag is taken off; an empty
+        # entry or another pair's leaves bits above the capacity
+        entries = self.cells[cell] ^ tag[:, None]
+        slots, hits = np.unique(entries[entries < np.uint32(self.capacity)], return_counts=True)
+        if len(slots) > self.candidates:
+            slots = np.sort(slots[np.argsort(-hits, kind="stable")[: self.candidates]])
+        return np.asarray(slots, dtype=np.int64)
+
+    # -- a source's signature
+
+    def _signature(self, source: Any) -> np.ndarray:
+        """The signature of a fact's ``source``: its ``SIGN`` most driven units under the second
+        projection, in order."""
+        if not self.apart:
+            raise ValueError("a source needs apart=its width")
+        row = np.asarray(source, dtype=np.float64)
+        if row.shape != (self.apart,) or not np.isfinite(row).all():
+            raise ValueError(f"a source is one finite row of {self.apart} values")
+        drive = row.astype(self.dtype) @ self._sign
+        return np.sort(np.argpartition(drive, -self.SIGN)[-self.SIGN:]).astype(np.int16)
+
+    def _shared(self, slots: np.ndarray, sign: np.ndarray) -> np.ndarray:
+        """The units each slot's signature shares with ``sign``."""
+        held = self.signs[slots]
+        return np.asarray((held[:, :, None] == sign[None, None, :]).any(axis=2).sum(axis=1))
+
     # -- the fine stage
 
-    def read(self, cue: np.ndarray, heads: int = 1, credit: bool = True) -> LongTermRead:
+    def read(self, cue: np.ndarray, heads: int = 1, credit: bool = True,
+             source: Any = None) -> LongTermRead:
         """Read the memory with ``cue``: the candidates and each head's weights over them. With
-        ``credit`` the read deepens the slots it attends; a probe passes False."""
+        ``credit`` the read deepens the slots it attends; a probe passes False. With a
+        ``source`` (``apart``), among the records that tie at the best score the one whose
+        signature the source shares scores first."""
         cue = self._key(cue, "cue")
         if isinstance(heads, bool) or not isinstance(heads, (int, np.integer)) or heads < 1:
             raise ValueError("heads must be a positive integer")
+        sign = None if source is None else self._signature(source)
         if not self.count:
             return LongTermRead(np.zeros(0, dtype=np.int64), [np.zeros(0) for _ in range(heads)])
         slots, keys = self._candidates(cue)
+        if not len(slots):
+            return LongTermRead(slots, [np.zeros(0) for _ in range(heads)])
         scores = np.asarray(keys @ cue.astype(self.dtype), dtype=np.float64)
         if self.cosine:
             scores = self._cosines(slots, scores, cue)
+        if sign is not None:
+            scores = self._told_apart(slots, scores, sign)
         weights = self._weights(scores, int(heads))
         if credit:
-            for w in weights:  # the slots a head attends; the others keep their sums
-                at = np.flatnonzero(w)
-                held, share = slots[at], w[at]
-                self.deep[held] += share
-                self.recent[held] += share
-                self.faded[held] *= 1.0 - np.minimum(share, 1.0)
+            self._credit(slots, weights)
         return LongTermRead(slots, weights)
+
+    def _credit(self, slots: np.ndarray, weights: list[np.ndarray]) -> None:
+        """A read deepens the slots its heads attend; the others keep their sums."""
+        for w in weights:
+            at = np.flatnonzero(w)
+            held, share = slots[at], w[at]
+            self.deep[held] += share
+            self.recent[held] += share
+            self.faded[held] *= 1.0 - np.minimum(share, 1.0)
+
+    def _told_apart(self, slots: np.ndarray, scores: np.ndarray, sign: np.ndarray) -> np.ndarray:
+        """The scores with the records that tie at the best one ordered by the units their
+        signatures share with ``sign``."""
+        tied = np.flatnonzero(scores >= scores.max() - self.TIE)
+        if len(tied) < 2:
+            return scores
+        out = scores.copy()
+        out[tied] += self.TIE * self._shared(slots[tied], sign)
+        return out
+
+    def read_each(self, cues: np.ndarray, credit: bool = True) -> LongTermRead:
+        """Heads reading in turn, each with a cue of its own: head ``h`` reads ``cues[h]`` among
+        the slots the heads before it left. The read's slots are the heads' candidates
+        together."""
+        rows = np.asarray(cues, dtype=np.float64)
+        if rows.ndim != 2 or rows.shape[1] != self.width or not len(rows) \
+                or not np.isfinite(rows).all():
+            raise ValueError(f"cues is one finite row of {self.width} values per head")
+        heads = len(rows)
+        if not self.count:
+            return LongTermRead(np.zeros(0, dtype=np.int64), [np.zeros(0) for _ in range(heads)])
+        slots = np.unique(np.concatenate([self._candidates(row)[0] for row in rows]))
+        if not len(slots):
+            return LongTermRead(slots, [np.zeros(0) for _ in range(heads)])
+        scores = np.asarray(self.keys[slots] @ rows.astype(self.dtype).T, dtype=np.float64).T
+        if self.cosine:
+            scores = np.stack([self._cosines(slots, scores[h], rows[h]) for h in range(heads)])
+        weights = self._weights_each(scores)
+        if credit:
+            self._credit(slots, weights)
+        return LongTermRead(slots, weights)
+
+    def chain(self, cue: np.ndarray, links: Any, at: int = 0,
+              credit: bool = True) -> list[LongTermRead]:
+        """A chain of reads, one record's content the next read's cue: read with ``cue``, then
+        for each of ``links`` (a row of ``width`` values, what the question holds of the next
+        cue) read with the link plus the value just read on the coordinates from ``at``. The
+        reads, in order; a read of nothing ends the chain."""
+        rows = np.asarray(links, dtype=np.float64)
+        if rows.ndim != 2 or rows.shape[1] != self.width or not np.isfinite(rows).all():
+            raise ValueError(f"links is one finite row of {self.width} values per further read")
+        if isinstance(at, bool) or not isinstance(at, (int, np.integer)) \
+                or not 0 <= at <= self.width - self.value_width:
+            raise ValueError("at is where a value lies in a cue: the value must fit the key")
+        reads = [self.read(cue, credit=credit)]
+        for link in rows:
+            if reads[-1].first() < 0:
+                break
+            following = link.copy()
+            following[at : at + self.value_width] += self.value(reads[-1])
+            reads.append(self.read(following, credit=credit))
+        return reads
 
     def _cosines(self, slots: np.ndarray, dots: np.ndarray, cue: np.ndarray) -> np.ndarray:
         """The candidates' dot products with ``cue`` over their keys' lengths and the cue's: their
@@ -321,6 +540,29 @@ class LongTermMemory:
             left = left * _left(p)
         return shares
 
+    def _weights_each(self, scores: np.ndarray) -> list[np.ndarray]:
+        """Each head's weights from scores of its own, ``(heads, slots)``, under the law of
+        ``_weights``: a slot is read in full once, by the heads in turn."""
+        heads, n = scores.shape
+        if self.temperature == 0:
+            out, open_ = [], np.ones(n, dtype=bool)
+            for head in range(heads):
+                w = np.zeros(n)
+                if open_.any():
+                    best = int(np.argmax(np.where(open_, scores[head], -np.inf)))
+                    w[best], open_[best] = 1.0, False
+                out.append(w)
+            return out
+        logits = scores / self.temperature
+        p = np.exp(logits[:1] - logits[0].max())
+        p = p / p.sum()
+        shares, left = [p[0]], _left(p)
+        for head in range(1, heads):
+            p = _share(logits[head : head + 1], left, np.ones(1))
+            shares.append(p[0])
+            left = left * _left(p)
+        return shares
+
     def value(self, read: LongTermRead, head: int = 0) -> np.ndarray:
         """What the head holds: its weights over the candidates' values."""
         if not len(read.slots):
@@ -342,19 +584,23 @@ class LongTermMemory:
         return out
 
     def write(
-        self, key: np.ndarray, value: np.ndarray, recognised: int | None = None
+        self, key: np.ndarray, value: np.ndarray, recognised: int | None = None,
+        source: Any = None,
     ) -> tuple[int, bool]:
         """Write one record and return its slot and whether the write revised a held record.
         A key the memory recognises (``revise``) rewrites that record; any other takes an empty
         slot, or in a full memory the most faded one. ``recognised`` is the recognition a
         caller made by reading first, the slot the key is told again in or -1 for none: the
-        write then reads nothing itself."""
+        write then reads nothing itself. With a ``source`` (``apart``) the write keeps its
+        signature, and a record that holds the key is this fact told again only where it holds
+        the signature too."""
         key = self._key(key)
         value = np.asarray(value, dtype=np.float64)
         if value.shape != (self.value_width,) or not np.isfinite(value).all():
             raise ValueError(f"a value is one finite row of {self.value_width} values")
         if recognised is not None and not -1 <= int(recognised) < self.count:
             raise ValueError("recognised is a held slot, or -1 for none")
+        sign = None if source is None else self._signature(source)
         units = self.address(key) if self.coarse else None
         slot, revised = -1, False
         if recognised is not None and self.revise:
@@ -363,10 +609,22 @@ class LongTermMemory:
         elif self.revise and self.count:
             slots, keys = self._candidates(key, units)
             scores = np.asarray(keys @ key.astype(self.dtype), dtype=np.float64)
-            best = int(np.argmax(self._cosines(slots, scores, key) if self.cosine else scores))
-            norm = float(np.linalg.norm(key) * np.linalg.norm(self.keys[slots[best]]))
-            if norm > 0 and scores[best] / norm >= self.revise:
-                slot, revised = int(slots[best]), True
+            if sign is not None and len(slots):
+                # every record that holds the key; the one that holds the signature is the fact
+                lengths = _norms(keys) * float(np.linalg.norm(key))
+                same = np.flatnonzero((lengths > 0) & (scores >= self.revise * lengths))
+                if len(same):
+                    shared = self._shared(slots[same], sign)
+                    best = int(np.argmax(shared))
+                    if shared[best] >= self.SAME:
+                        slot, revised = int(slots[same[best]]), True
+            elif len(slots):
+                best = int(np.argmax(self._cosines(slots, scores, key) if self.cosine
+                                     else scores))
+                norm = float(np.linalg.norm(key) * np.linalg.norm(self.keys[slots[best]]))
+                if norm > 0 and scores[best] / norm >= self.revise:
+                    slot, revised = int(slots[best]), True
+        taken = slot < 0 and self.count < self.capacity  # an empty slot: nothing filed in it
         if slot < 0:
             if self.count < self.capacity:
                 slot = self.count
@@ -378,17 +636,83 @@ class LongTermMemory:
             if not self.fade:
                 self._cursor = (slot + 1) % self.capacity
             self.deep[slot] = self.recent[slot] = 0.0
-        if self.coarse:
+        if self.coarse and self.pairs:
+            # a record told again under the key it holds stays filed where it is
+            if taken or not np.array_equal(self.keys[slot], key.astype(self.dtype)):
+                if not taken:
+                    self._leave(slot)
+                filed = self._filed(key)
+                if len(filed) > 1:
+                    cell, tag = self._pair_cells(filed)
+                    self._enter(cell, tag, np.full(len(cell), slot, dtype=np.int32))
+        elif self.coarse:
             self._unfile(slot)
             assert units is not None
             self._file(slot, units)
         self.keys[slot], self.values[slot] = key, value
         if self.cosine:
             self.norms[slot] = _norms(self.keys[slot : slot + 1])[0]
+        if self.apart:
+            self.signs[slot] = -1 if sign is None else sign
         self.deep[slot] += 1.0  # a write deepens; only a read marks recent use
         self.faded[slot] = 0.0
         self.writes += 1
         return slot, revised
+
+    def fill(self, keys: Any, values: Any, sources: Any = None, chunk: int = 1024) -> np.ndarray:
+        """Write many records told once, in one pass, and return their slots. Each takes an
+        empty slot as a write with ``recognised=-1`` does: nothing is read, so a key told twice
+        holds two records. The memory must have the empty slots."""
+        keys, values = np.asarray(keys), np.asarray(values)
+        many = len(keys)
+        if keys.ndim != 2 or keys.shape[1] != self.width or values.shape != (
+                many, self.value_width):
+            raise ValueError(f"fill takes rows of {self.width} values with rows of "
+                             f"{self.value_width}")
+        if sources is not None:
+            sources = np.asarray(sources)
+            if not self.apart or sources.shape != (many, self.apart):
+                raise ValueError("sources is one row per record of apart values")
+        if self.count + many > self.capacity:
+            raise ValueError("fill takes empty slots: the memory holds too few")
+        first = self.count
+        for start in range(0, many, int(chunk)):
+            rows = np.asarray(keys[start : start + chunk], dtype=self.dtype)
+            said = np.asarray(values[start : start + chunk], dtype=self.dtype)
+            if not (np.isfinite(rows).all() and np.isfinite(said).all()):
+                raise ValueError("keys and values are finite")
+            slots = np.arange(self.count, self.count + len(rows))
+            if self.coarse and self.pairs:
+                drive = rows @ self.projection
+                top = np.argpartition(drive, -self.pairs, axis=1)[:, -self.pairs:]
+                whole = np.take_along_axis(drive, top, axis=1).min(axis=1) > 0
+                cell, tag = self._pair_cells(top[whole])
+                each = self.pairs * (self.pairs - 1) // 2
+                self._enter(cell, tag, np.repeat(slots[whole].astype(np.int32), each))
+                for i in np.flatnonzero(~whole):  # a key that drives fewer units than its pairs
+                    filed = self._filed(rows[i])
+                    if len(filed) > 1:
+                        cell, tag = self._pair_cells(filed)
+                        self._enter(cell, tag, np.full(len(cell), slots[i], dtype=np.int32))
+            elif self.coarse:
+                for slot, row in zip(slots.tolist(), rows, strict=True):
+                    self._file(slot, self.address(row))
+            self.keys[slots], self.values[slots] = rows, said
+            if self.cosine:
+                self.norms[slots] = _norms(self.keys[slots])
+            if self.apart:
+                self.signs[slots] = -1
+                if sources is not None:
+                    told = np.asarray(sources[start : start + chunk], dtype=self.dtype)
+                    drive = told @ self._sign
+                    top = np.argpartition(drive, -self.SIGN, axis=1)[:, -self.SIGN:]
+                    self.signs[slots] = np.sort(top, axis=1).astype(np.int16)
+            self.deep[slots], self.recent[slots], self.faded[slots] = 1.0, 0.0, 0.0
+            self.count += len(rows)
+            self.writes += len(rows)
+        if not self.fade and many:
+            self._cursor = self.count % self.capacity
+        return np.arange(first, self.count)
 
     def moment(self) -> None:
         """One moment of the stream: every held slot fades by its depth's and its recent use's
@@ -426,14 +750,18 @@ class LongTermMemory:
     def arrays(self) -> dict[str, np.ndarray]:
         """The memory's state by name: its records, its sums and, with a coarse stage, the lists
         of its address; ``restore`` takes them back."""
-        names = (*self.ARRAYS, *(self.ADDRESS if self.coarse else ()))
-        out = {name: np.array(getattr(self, name)) for name in names}
+        out = {name: np.array(getattr(self, name)) for name in self._names()}
         out["state"] = np.array([self.count, self.writes, self._cursor], dtype=np.int64)
         return out
 
+    def _names(self) -> tuple[str, ...]:
+        """The arrays a memory of these settings keeps."""
+        address = () if not self.coarse else self.PAIR_ADDRESS if self.pairs else self.ADDRESS
+        return (*self.ARRAYS, *address, *(("signs",) if self.apart else ()))
+
     def restore(self, arrays: dict[str, np.ndarray]) -> None:
         """Take back the ``arrays`` of a memory of the same settings."""
-        names = (*self.ARRAYS, *(self.ADDRESS if self.coarse else ()))
+        names = self._names()
         missing = [name for name in (*names, "state") if name not in arrays]
         if missing:
             raise ValueError(f"the arrays of this memory hold {', '.join(missing)} as well")
@@ -451,8 +779,12 @@ class LongTermMemory:
     def nbytes(self) -> int:
         """The bytes the memory holds: records, sums and, with a coarse stage, its address."""
         held = [self.keys, self.values, self.deep, self.recent, self.faded, self.norms]
-        if self.coarse:
+        if self.coarse and self.pairs:
+            held += [self.cells, self.fills, self.projection]
+        elif self.coarse:
             held += [self.units, self.places, self.lists, self.counts, self.projection]
+        if self.apart:
+            held += [self.signs, self._sign]
         return int(sum(a.nbytes for a in held))
 
 
