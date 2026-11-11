@@ -1,7 +1,6 @@
 {
  "founders": [
-  3100,
-  3101
+  3100
  ],
  "n": [
   10000000
@@ -21,7 +20,7 @@
     "pairs": 16,
     "expansion": 32768,
     "winners": 512,
-    "candidates": 4096
+    "candidates": 8192
    }
   },
   {

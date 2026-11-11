@@ -90,9 +90,9 @@ fact's current object.
 | Arm | Settings | Read at |
 | --- | --- | --- |
 | `scan` | every record scored: the control and the ceiling | every N |
-| `units` | the store as it stands: `expansion=8192, winners=64, candidates=256` | to 1,000,000 |
-| `pairs` | `pairs=16, expansion=16384, winners=256, candidates=2048` | 100,000 and 1,000,000 |
-| `pairs`, ten million | `pairs=16, expansion=32768, winners=512, candidates=4096` | 10,000,000 |
+| `units` | the store as it stands: `expansion=8192, winners=64, candidates=256` | to 1,000,000; at 10,000,000 on `code-128` |
+| `pairs` | `pairs=16, expansion=16384, winners=256, candidates=4096` | 100,000 and 1,000,000 |
+| `pairs`, ten million | `pairs=16, expansion=32768, winners=512, candidates=8192` | 10,000,000 |
 
 Every store arm: `cosine=True, fade=False, dtype="float32"`, written by `fill`. The fading is
 off because it touches every slot each moment; retention under a budget was the first
@@ -106,7 +106,7 @@ passes on 10 of 12 unless it says otherwise.
 | Gate | Reading | Bar |
 | --- | --- | --- |
 | C1 | `pairs` at 1,000,000 records, `code-128` and `hashed-280`: found from an exact cue; from a noisy and from a partial cue | .99; .95 |
-| C1, reported | 10,000,000 records: `scan` and `pairs`, `code-128` on 3 founders and `hashed-280` on 2 | none |
+| C1, reported | 10,000,000 records: `scan` and `pairs`, `code-128` on 2 founders (with `units`) and `hashed-280` on 1 | none |
 | C3a | `pairs` at 1,000,000, `code-128` and `hashed-280`: found on exact, noisy and partial cues against `scan` on the same cues | within .01 |
 | C3b | ms per read of `pairs` at 1,000,000 over ms at 100,000, mean of the three cue kinds, one core, `code-128` and `hashed-280`, compiled and through NumPy | under 3, on 3 of 3 |
 | C2 | 1,000,000 facts of which 4 in 100 share their key with another fact, written one by one, then 1 in 100 told again with another object; `pairs` with `apart=32`: found over all facts (.04 of the sharing facts' rate plus .96 of the others') | .99 on 12 of 12 |
@@ -132,28 +132,41 @@ this declaration.
 | Run | Plan | Founders | Sizes |
 | --- | --- | --- | --- |
 | capacity | `capacity.json` | 3100 to 3111 | 100,000 and 1,000,000, four key forms |
-| ten million | `ten-million.json`, `ten-million-hashed.json` | 3100 to 3102; 3100 and 3101 | 10,000,000 |
+| ten million | `ten-million.json`, `ten-million-hashed.json` | 3100 and 3101; 3100 | 10,000,000 |
 | timing | `timing.json` | 3136 to 3138 | 100,000 and 1,000,000 |
 | facts | `facts.json` | 3112 to 3123 | 100,000 and 1,000,000, both key forms |
 | shared keys | `shared-apart.json`, `shared-plain.json` | 3124 to 3135 | 1,000,000 |
 
 ## Expectations, stated before the runs
 
-From development founders 0 to 2 (one to three founders a cell):
+From development founders 0 to 2 and three further development draws (one to three a cell). The
+development cells read `pairs` with 2,048 candidates; three draws read it with 4,096 as well.
 
-- **C1 holds.** `pairs` at 1,000,000: exact 1.000; `code-128` noisy .997 to 1.000 and partial
-  .980 to .997; `hashed-280` noisy .997 and partial .980, where the scan itself reads .984: a
-  partial hashed cue keeps about ten units, and some keep five.
-- **C3a holds narrowly on `hashed-280`** (partial .980 against .984) and with room on
-  `code-128`. **C3b holds**: about 2.3 ms a read at 100,000 and 3.7 at 1,000,000 through NumPy
-  with the box under load; the scan takes 50 ms at 1,000,000 on `code-128` and 113 on
-  `hashed-280`, and the address of units 4.9 and 6.0, 7 times its 100,000.
-- **C2 holds**: with `apart` each fact holds a record of its own; without it a sharing pair is one
-  record, so found reads about .98 and the founders fall under .99.
-- **C4 and C5 hold at 100,000** (every reading 1.000 on two founders); 1,000,000 is unread.
-- **Negatives expected:** k unrelated codes summed into one cue fail past two at 128 coordinates
-  for the scan too (four: .86 for the scan, .53 for `pairs`; eight: .00), the located term of
-  the first declaration: one address holds few superposed codes. Each part read by a head finds
-  1.000.
-- **`code-64` binds on the key's width** at 1,000,000: the scan misses noisy and partial cues
-  there.
+- **C1 holds.** `pairs` at 1,000,000: exact 1.000; `code-128` noisy .998 to 1.000 and partial
+  .995 to .998; `hashed-280` noisy .997 to 1.000 and partial .964 to .980, where the scan itself
+  reads .978 to .984: a partial hashed cue keeps about ten units, and some keep five.
+- **C3a holds with 4,096 candidates and failed in development with 2,048.** At 2,048 the gap to
+  the scan on partial hashed cues read .003 to .014 over four draws: about 2,100 far records
+  share three units with a cue at 1,000,000 and crowd the candidates. At 4,096 the gap read .004
+  (`hashed-280`) and .001 (`code-128`) on the draws read. The declared setting is 4,096.
+- **C3b holds, and at 1,000,000 the two addresses cost about the same.** With the box under
+  load and 2,048 candidates a read took 2.3 to 3.4 ms at 100,000 and 3.7 to 6 ms at 1,000,000;
+  the address of units .7 to .9 and 4.9 to 7.6; the scan 50 ms (`code-128`) and 113 ms
+  (`hashed-280`) at 1,000,000. The address of units grows about 7 times from 100,000 to
+  1,000,000 and the address of pairs under 2. The compiled loop read .6 to .8 of the NumPy
+  read's time.
+- **C2 holds**: at 100,000 facts on two founders, with `apart` every reading is 1.000 and each
+  fact holds a record; without it the sharing facts read .52 to .54 (a sharing pair is one
+  record), which puts found over all facts at about .98.
+- **C4 and C5 hold.** At 100,000 facts every reading is 1.000 on two founders. At 1,000,000:
+  the subject by 2 and 4 heads 1.000, by 8 heads .98 to .99; four parts each by a head 1.000;
+  chains from an exact cue .998 to 1.000 and from a noisy one .976. A noisy cue for one fact
+  reads .984 to .992 where the scan reads 1.000: facts that share a subject or a relation share
+  half of a key, and they crowd the candidates.
+- **Negatives expected:** parts summed into one cue fail past two for the scan too (two: .81 to
+  .85; four: .00 to .03), the located term of the first declaration: one address holds few
+  superposed codes. On plain codes of 128 coordinates four summed read .86 for the scan and .53
+  for `pairs` at 100,000. Each part read by a head finds 1.000.
+- **`code-64` binds on the key's width** at 1,000,000: the scan reads .986 on noisy and .980 on
+  partial cues, and `pairs` .98 and .97.
+- **Ten million** is unread in development (three cells run at the time of this declaration).

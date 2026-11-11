@@ -30,7 +30,7 @@
     "pairs": 16,
     "expansion": 16384,
     "winners": 256,
-    "candidates": 2048
+    "candidates": 4096
    }
   },
   {
@@ -39,7 +39,7 @@
     "pairs": 16,
     "expansion": 16384,
     "winners": 256,
-    "candidates": 2048
+    "candidates": 4096
    },
    "numpy": true
   },

@@ -1720,7 +1720,7 @@ recall memory's read.
 
 **A stream of a million records.** A stream of more than 16,384 records reads through an
 address. `longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
-longterm_candidates=2048, longterm_fade=False` gives each stream's store the address of pairs, so
+longterm_candidates=4096, longterm_fade=False` gives each stream's store the address of pairs, so
 a read's cost grows far slower than the records. The read before the settle is the write's
 recognition, as in the bank.
 
@@ -2620,7 +2620,7 @@ assert np.array_equal(library.value(read), values[40])
 - **`fill(keys, values)`** writes rows of records told once. Nothing is read, so a key told twice
   holds two records; `write` recognises and revises as before.
 - **Sizes.** For a million records the declared reading uses `pairs=16, expansion=16384,
-  winners=256, candidates=2048`. A record then costs 960 bytes of table beside its key and value.
+  winners=256, candidates=4096`. A record then costs 960 bytes of table beside its key and value.
   Keep `fade=False` for records written once: the fading touches every slot each moment.
 - **Any key.** A key is centred before it drives the units, so a key of zeros and ones (a held
   message's) and a dense key are filed alike.
