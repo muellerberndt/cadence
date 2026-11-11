@@ -68,7 +68,7 @@ at a time, in order, read at 0, 1, 2 and 5 minutes of their speech on the speake
 phrases and on 300 phrases of `base_test` (retention). `plain` teaches the phrase alone;
 `replay` teaches it beside three `base_train` phrases of equal steps. A rate scales every rate
 of the lesson's learner (a brain) or Adam's step (a baseline). Readings run on a copy whose fields
-hold still, so a reading never changes a life.
+take no step, so a reading never changes a life.
 
 ```sh
 PYTHONPATH=src python benchmarks/spoken/phrases.py build \

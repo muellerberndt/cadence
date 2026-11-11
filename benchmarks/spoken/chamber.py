@@ -6,7 +6,7 @@ The transcript is read from the actions: the words up to the first ``end``.
 
 Brain arms (``ARMS``) name what the brain sees and how it is composed; the baselines are
 ``controls.Sequence``. Readings never change a life: a brain is read on a copy whose fields
-hold still, a baseline without a step.
+take no step, a baseline without a step.
 """
 
 from __future__ import annotations
@@ -207,7 +207,7 @@ class BrainLearner:
         return actions
 
     def reader(self) -> BrainLearner:
-        """A copy to read on: its fields hold still and its lessons never reach this life."""
+        """A copy to read on: its fields take no step and its lessons never reach this life."""
         clone = copy.deepcopy(self.brain)
         if clone.fields is not None:
             clone.fields.learning = False
