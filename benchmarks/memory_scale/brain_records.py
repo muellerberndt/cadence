@@ -241,6 +241,9 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     base = {"founder": founder, "arm": arm, "parameters": int(brain.parameters()),
             "neurons": int(brain.connectome.n), **report}
     rows = []
+    if getattr(brain, "longterm", None) is not None:
+        # the reading empties the records it is given: the nursery's are not copied with it
+        brain.longterm.clear()
     for n in spec["n"]:
         reader = copy.deepcopy(brain)
         t0 = time.perf_counter()
