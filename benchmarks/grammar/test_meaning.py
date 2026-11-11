@@ -551,3 +551,25 @@ def test_the_verbs_form_is_probed_and_read_again_with_the_message_silent():
     life = mn.run_life(spec)
     assert {"said_held_silent", "probes_held_silent", "panels_held_silent"} <= set(life)
     assert "settled" in life["probes_held_silent"]["verb_form"]["verb"]
+
+
+def test_a_word_is_said_and_taught_by_its_parts():
+    warnings.simplefilter("ignore")
+    assert all(mn.parts_word(*mn.word_parts(w)) == w for w in range(gr.ACTIONS))
+    assert mn.word_parts(9) == (gr.NOUNS, mn.PLURAL)  # "see": the first verb, a plural agent
+    brain = mn.make_brain(0, {"parts": True})
+    assert type(brain).__name__ == "PartsBrain" and len(brain.motor_index) == sum(mn.PART_SLOTS)
+    x = np.tile(gr.concept("GO"), (2, 1))
+    brain.lesson(x, np.array([9, 4]))
+    said = brain.act(x, greedy=True)
+    assert said.shape == (2,) and all(0 <= w < gr.ACTIONS for w in said)
+    assert type(copy.deepcopy(brain)).__name__ == "PartsBrain"
+    plan = mn.seventh_plan((0, 1))
+    assert {s["tag"] for s in plan["seventh"]} == {"words_256", "parts_256", "w10_256",
+                                                   "words_free", "parts_free"}
+    assert len(plan["seventh_controls"]) == 2 * 2 * 2
+    rows = [mn.run_life({**spec, "module": 64, "batches": 2, "panel_batches": 1,
+                         "held_probes": 1}) for spec in mn.seventh_plan((0,))["seventh"]]
+    lines = mn.seventh_verdict(rows, [], of=1)
+    assert any(line.startswith("  P1:") for line in lines)
+    assert sum("-> P3" in line for line in lines) == 2
