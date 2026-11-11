@@ -159,9 +159,9 @@ def build(raw: Path, out: Path) -> None:
             triples[relation] = got
     # a subject's name: its folded label, kept where no other subject shares it
     owners: dict[tuple[str, ...], set[int]] = defaultdict(set)
-    for s, words in names.items():
-        if 0 < len(words) <= 6:
-            owners[tuple(words)].add(s)
+    for s, folded in names.items():
+        if 0 < len(folded) <= 6:
+            owners[tuple(folded)].add(s)
     named = {next(iter(v)): k for k, v in owners.items() if len(v) == 1}
     # the answers: each relation's TOP most named objects named by at least ANSWER_FACTS facts,
     # each said as one word (its folded label joined by ``_``) that no other object shares

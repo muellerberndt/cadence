@@ -1299,8 +1299,8 @@ class LongTermRecords:
                     slots.append(self._rest(int(row), slots, cue) if self.rest
                                  else self._chain(int(row), slots, cue))
                 if self.rest:  # the chain from its end: the record that answers on head 0's
-                    read = [slot for slot in slots if slot >= 0][::-1]
-                    slots = read + [-1] * (len(slots) - len(read))
+                    chain = [slot for slot in slots if slot >= 0][::-1]
+                    slots = chain + [-1] * (len(slots) - len(chain))
                 for head, (slot, columns) in enumerate(zip(slots, self.columns, strict=True)):
                     if slot >= 0:
                         out[row, columns] = self.amplitude * store.values[slot]
