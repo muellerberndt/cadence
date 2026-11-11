@@ -13,8 +13,10 @@ At each budget (frames seen) the panels are read on the life without changing it
 ``predict`` (each frame on its own, from rest, without memories). The readings at the last
 budget add the probes (``probe``): a linear readout fitted by ridge regression on a fixed set
 of training-range frames, read on every panel, from the representation the arm's cortex reads
-(``code``) and from the association region's settled state (``association``). The probes are
-readings of what a representation holds and never enter a life.
+(``code``) and from the association region's settled state (``association``), and for a brain
+with learned fields from its pools summed over the pool rows (``rows``, what a read tied
+across the rows receives). The probes are readings of what a representation holds and never
+enter a life.
 
 Every life reports its parameters and its analytic multiply-accumulates (``macs``): a brain's
 lesson as its phases' sweeps of every synapse and the fields' reading and learning of the
@@ -259,6 +261,13 @@ class Life:
             ])
         return seen(self.arm, batch)
 
+    def rows(self, batch: np.ndarray) -> np.ndarray:
+        """A fields brain's pools summed over the pool rows: per pool column and field, what a
+        read tied across the rows receives."""
+        pools = self.code(batch)
+        count = self.learner.fields.POOLS
+        return np.asarray(pools.reshape(len(pools), count, -1).sum(axis=1))
+
     def association(self, batch: np.ndarray) -> np.ndarray:
         if self.conv:
             torch = cn._torch()
@@ -361,8 +370,10 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
     if spec.get("probe"):
         fit_frames, fit_labels = probe_set(founder, shape)
         probes = {}
-        for kind in ("code", "association"):
-            read = built.code if kind == "code" else built.association
+        kinds = {"code": built.code, "association": built.association}
+        if not built.conv and built.learner.fields is not None and not built.learner.ports:
+            kinds["rows"] = built.rows
+        for kind, read in kinds.items():
             probes[kind] = ridge_probe(
                 read(fit_frames), fit_labels,
                 {name: read(frames) for name, (frames, _) in panels.items()},

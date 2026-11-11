@@ -157,6 +157,10 @@ def test_the_tied_arm_shares_the_pool_rows_and_every_life_counts_its_work():
     assert cn.hidden_for(shape, ch.ACTIONS, tied.parameters(), 1) == 5
     spec = {"founder": 0, "condition": "lesson", "budgets": [16], "rows": 8, "panel": 8}
     out = px.life({"arm": "fields_tied", **spec})
+    life = px.Life("fields_tied", shape, 0, "lesson")
+    frames, _ = ch.panel(0, "held_out", shape, 4)
+    pools = life.code(frames).reshape(4, 3, 192)
+    np.testing.assert_allclose(life.rows(frames), pools.sum(axis=1))
     assert out["parameters"] == tied.parameters()
     assert set(out["readings"][-1]["panels"]) == set(ch.PANELS)
     fields = tied.fields.macs()
