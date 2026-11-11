@@ -172,7 +172,16 @@ mark, are held over several steps and half missed. The step is learned as a feat
 the lessons showed: after a pair of letters no lesson held, a quarter to a third of letters go
 unsaid, by the brain and by an LSTM taught the same labels alike. A label on every step of the
 event teaches only *what*, and it carries to new contexts (held-out words .99), with the symbol said
-on every step of its event.
+on every step of its event; read the answers with adjacent repeats once and blanks dropped.
+
+Where the teacher knows the sequence and not its timing (the letters of a spoken word), let the
+brain's own beliefs place it. Every few hundred events a frozen copy answers the coming stream
+greedily, the teacher assigns each event's steps to its known symbols by the monotonic best path
+through the copy's log beliefs (`ctc_path` in the chamber, CTC's forced alignment), and teaches
+each step its symbol. Started from an even split, the path converges on the true timing (.92 to
+.96 of steps right at the first pass, .999 at the last), and held-out words read .994, as with the
+true timing. A label that depends on the brain's own sampled act does not work: the same input
+then takes both a symbol's lesson and blank's.
 
 ## Learning from outcomes
 
