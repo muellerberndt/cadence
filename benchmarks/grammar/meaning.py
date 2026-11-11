@@ -71,6 +71,12 @@ def make_brain(founder: int, settings: dict[str, Any] | None = None, module: int
     import cadence as cd
 
     settings = dict(settings or {})
+    if settings.pop("tied_message", False):
+        # one set of synapses from every block of the message onto the association
+        groups = len(settings.get("message_roles", ())) + 1 if settings.get(
+            "message_roles") else 1
+        blocks = groups * int(settings.get("message_phases", 4))
+        settings["tied"] = {("message", "association"): (blocks, 1)}
     if settings.pop("parts", False):
         brain = cd.Brain.compose(gr.INPUTS, sum(PART_SLOTS), modules=(module,),
                                  seed=int(founder), slots=PART_SLOTS,
@@ -412,6 +418,8 @@ def probe_states(founder: int, states: dict[str, list[tuple[gr.Row, dict[str, An
                     continue
                 y = np.array([labels[i][name] for i in np.flatnonzero(there)])
                 for place in places:
+                    if any(place not in items[i][1][spot] for i in np.flatnonzero(there)):
+                        continue  # a spot that holds no such place
                     x = np.stack([items[i][1][spot][place] for i in np.flatnonzero(there)])
                     table.setdefault(name, {}).setdefault(spot, {})[place] = fit_probe(
                         x, y, held[there])
