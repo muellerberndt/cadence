@@ -629,3 +629,52 @@ def test_the_records_lists_grow_past_a_dense_table_and_read_the_same():
         able = held >= max(0.5, held.max() - 1e-9) - 1e-12
         want = int(np.argmax(np.where(able, kept.stamps[0, :2500], -1.0)))
         assert kept._read_distinct(0, cue) == want
+
+
+# -- each stream's store through the address of pairs (cadence#310)
+
+PAIRS = {"longterm_pairs": 8, "longterm_expansion": 256, "longterm_winners": 32,
+         "longterm_candidates": 8, "longterm_fade": False}
+
+
+def test_records_read_the_same_through_the_address_of_pairs_as_through_the_scan(tmp_path):
+    scanned, paired = brain(longterm=600), brain(longterm=600, **PAIRS)
+    assert scanned.longterm.batched and not paired.longterm.batched
+    assert paired.longterm.address() == {name[len("longterm_"):]: value
+                                         for name, value in PAIRS.items()}
+    facts = [(agent, verb, (agent * 3 + verb) % 4) for agent in range(6) for verb in range(4)]
+    for b in (scanned, paired):
+        for fact in facts:
+            tell(b, *fact)
+        tell(b, 2, 1, 0)  # a fact told again with another patient revises its record
+    store = paired.longterm.stores[0]
+    assert store.coarse and store.pairs == 8 and store.count == 24 > store.candidates
+    assert not store.fade and scanned.longterm.stores[0].count == 24
+    assert paired.longterm.counts == scanned.longterm.counts
+    for agent, verb, _ in facts:
+        ask(scanned, agent, verb)
+        ask(paired, agent, verb)
+        np.testing.assert_array_equal(paired.longterm.read_slots, scanned.longterm.read_slots)
+    np.testing.assert_array_equal(store.values[:24], scanned.longterm.stores[0].values[:24])
+    path = tmp_path / "paired.npz"
+    paired.save(path)
+    loaded = cd.Brain.load(path)
+    assert loaded.longterm.address() == paired.longterm.address()
+    np.testing.assert_array_equal(loaded.longterm.stores[0].cells, store.cells)
+    for agent, verb, _ in facts[:6]:
+        ask(paired, agent, verb)
+        ask(loaded, agent, verb)
+        np.testing.assert_array_equal(loaded.longterm.read_slots, paired.longterm.read_slots)
+
+
+def test_the_store_settings_are_named_checked_and_off_by_default():
+    assert brain(longterm=16).longterm.address() == {}
+    assert brain(longterm=16, longterm_pairs=0, longterm_fade=True).longterm.address() == {}
+    with pytest.raises(ValueError, match="at least 2"):
+        brain(longterm=16, longterm_pairs=1)
+    with pytest.raises(ValueError, match="boolean"):
+        brain(longterm=16, longterm_fade=1)
+    with pytest.raises(ValueError):
+        brain(longterm=16, longterm_winners=0)
+    with pytest.raises(ValueError, match="needs long-term records"):
+        cd.Brain.compose(INPUTS, 4, seed=0, backend="cpu", longterm_pairs=8)

@@ -646,10 +646,15 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
 # for a read, and at which a write is that record told again (only the same key, for keys of
 # zeros and ones: two keys of a held message that differ in one unit are two facts, #288);
 # with ``longterm_turn`` the input channel that marks a turn, several in an episode, and the share
-# of the moments heard at or below which a code unit is content for a turn's key (#305)
+# of the moments heard at or below which a code unit is content for a turn's key (#305); and
+# each stream's store (#310): the units whose pairs file a record (0: the store's address of
+# units), the address's units, the cue's winners and the candidates a read scores (None: the
+# store's own founders), and whether the records fade (False for records written once: the
+# fading touches every slot each moment)
 _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
     "distinct": None, "best": False, "rest": False,
+    "pairs": 0, "expansion": None, "winners": None, "candidates": None, "fade": True,
 }
 
 
@@ -694,6 +699,15 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
                              "needs longterm_distinct")
     if out["rest"] and out["heads"] < 2:
         raise ValueError("longterm_rest cues the second head: it needs longterm_heads >= 2")
+    out["pairs"] = _count("longterm_pairs", out["pairs"], low=0)
+    if out["pairs"] == 1:
+        raise ValueError("longterm_pairs is 0 or the units whose pairs file a record: at least 2")
+    for name in ("expansion", "winners", "candidates"):
+        if out[name] is not None:
+            out[name] = _count(f"longterm_{name}", out[name], low=1)
+    if not isinstance(out["fade"], (bool, np.bool_)):
+        raise ValueError("longterm_fade must be boolean")
+    out["fade"] = bool(out["fade"])
     return out
 
 
@@ -2641,6 +2655,9 @@ class Brain:
                 revise=kept_records["revise"], seed=seed, turn=kept_records["turn"],
                 rare=kept_records["rare"], distinct=kept_records["distinct"],
                 best=kept_records["best"], rest=kept_records["rest"],
+                pairs=kept_records["pairs"], expansion=kept_records["expansion"],
+                winners=kept_records["winners"], candidates=kept_records["candidates"],
+                fade=kept_records["fade"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -3718,6 +3735,7 @@ class Brain:
                 genes["longterm_best"] = True
             if kept.rest:
                 genes["longterm_rest"] = True
+            genes.update({f"longterm_{name}": value for name, value in kept.address().items()})
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,

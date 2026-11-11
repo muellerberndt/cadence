@@ -93,34 +93,60 @@ except ImportError:  # pragma: no cover
 
 
 def _count_pairs(units: Any, flat: Any, depth: Any, expansion: Any, bits: Any, capacity: Any,
-                 hits: Any, touched: Any) -> int:
+                 hits: Any, touched: Any, ats: Any, tags: Any) -> int:
     """The pair address's coarse stage in one compiled loop: every pair of the cue's sorted
     ``units`` reads its cell (``depth`` entries of ``flat``, the cells row after row), and each
     slot found under the pair's tag counts one in ``hits``; the slots found are
     ``touched[:n]``. The same integers as ``LongTermMemory._pair_cells`` and the NumPy read
-    make, pair by pair. The cells are read by offset: a row taken as an array of its own would
-    count a reference per pair."""
+    make, pair by pair.
+
+    The pairs go by blocks of ``len(ats)``. A block first works out every pair's cell and tag
+    and reads one entry of each cell, so the cells' rows are fetched side by side; then it reads
+    the rows. The cells are read by offset: a row taken as an array of its own would count a
+    reference per pair."""
     many = np.uint64(len(flat) // depth)
     mask = np.uint64((1 << (32 - bits)) - 1)
     mix = np.uint64(0x9E3779B97F4A7C15)
     shift, low, up = np.uint64(32), np.uint64(24), np.uint64(bits)
     wide = np.uint64(expansion)
+    block = len(ats)
     n = 0
-    for i in range(len(units) - 1):
+    k = 0
+    seen = np.uint32(0)
+    last = len(units) - 1
+    for i in range(last):
         base = np.uint64(units[i]) * wide
         for j in range(i + 1, len(units)):
             mixed = (base + np.uint64(units[j])) * mix
             at = np.int64(((mixed >> shift) * many) >> shift) * depth
-            tag = np.uint32(((mixed >> low) & mask) << up)
-            for d in range(depth):
-                slot = flat[at + d] ^ tag
-                if slot < capacity:
-                    if hits[slot] == 0:
-                        touched[n] = slot
-                        n += 1
-                    if hits[slot] < 65535:
-                        hits[slot] += 1
+            ats[k] = at
+            tags[k] = np.uint32(((mixed >> low) & mask) << up)
+            seen ^= flat[at]
+            k += 1
+            if k == block or (i == last - 1 and j == last):
+                for p in range(k):
+                    at, tag = ats[p], tags[p]
+                    for d in range(depth):
+                        slot = flat[at + d] ^ tag
+                        if slot < capacity:
+                            if hits[slot] == 0:
+                                touched[n] = slot
+                                n += 1
+                            if hits[slot] < 65535:
+                                hits[slot] += 1
+                k = 0
+    tags[0] = seen  # the first pass's reads are kept: they fetch the rows
     return n
+
+
+def _rows_on_lines(rows: int, depth: int, fill: int) -> np.ndarray:
+    """``rows`` rows of ``depth`` uint32 entries, each row on memory lines of its own (a row of
+    16 entries is one line of 64 bytes), every entry ``fill``."""
+    raw = np.empty(rows * depth + 16, dtype=np.uint32)
+    start = (-raw.ctypes.data % 64) // 4
+    out = raw[start : start + rows * depth].reshape(rows, depth)
+    out.fill(fill)
+    return out
 
 
 # the compiled coarse stage where Numba is installed (``CADENCE_FUSED=0`` forces the NumPy read)
@@ -207,6 +233,7 @@ class LongTermMemory:
     LOAD = 8
     MIX = 0x9E3779B97F4A7C15
     EMPTY = 0xFFFFFFFF
+    BLOCK = 2048  # the pairs the compiled coarse stage fetches side by side
     # a source's signature: its units, the units they are drawn from, the shared units at which
     # two signatures are one source's, and the score within which two records tie
     SIGN = 8
@@ -309,7 +336,7 @@ class LongTermMemory:
             if cells >= 2 ** 32 or self._bits > 28:
                 raise ValueError("the pair address holds under 2**28 slots and 2**32 cells: "
                                  "fewer pairs or slots")
-            self.cells: np.ndarray = np.full((cells, self.DEPTH), self.EMPTY, dtype=np.uint32)
+            self.cells: np.ndarray = _rows_on_lines(cells, self.DEPTH, self.EMPTY)
             self.fills: np.ndarray = np.zeros(cells, dtype=np.uint8)
             self._corners = {m: np.triu_indices(m, 1) for m in (self.pairs, self.winners)}
             self._hits: np.ndarray | None = None
@@ -459,10 +486,12 @@ class LongTermMemory:
                 reach = min(self.capacity, self.winners * (self.winners - 1) // 2 * self.DEPTH)
                 self._hits = np.zeros(self.capacity, dtype=np.uint16)
                 self._touched = np.zeros(reach, dtype=np.uint32)
+                self._ats = np.zeros(self.BLOCK, dtype=np.int64)
+                self._tags = np.zeros(self.BLOCK, dtype=np.uint32)
             found = _COUNT_PAIRS(np.sort(np.asarray(units, dtype=np.int64)),
                                  self.cells.reshape(-1), self.DEPTH, int(self.expansion),
                                  self._bits, np.uint32(self.capacity), self._hits,
-                                 self._touched)
+                                 self._touched, self._ats, self._tags)
             slots = self._touched[:found].astype(np.int64)
             hits = self._hits[slots].astype(np.int64)
             self._hits[slots] = 0
@@ -857,6 +886,9 @@ class LongTermMemory:
             if given.shape != held.shape and not (name == "lists" and given.ndim == 2
                                                   and given.shape[0] == held.shape[0]):
                 raise ValueError(f"{name} has another shape: a memory of other settings")
+            if name == "cells":  # into the rows held, which lie on memory lines of their own
+                held[...] = given
+                continue
             setattr(self, name, np.array(given, dtype=held.dtype))
         self.count, self.writes, self._cursor = (int(v) for v in np.asarray(arrays["state"]))
         if self.cosine:  # the keys' lengths, as their writes gave them
@@ -971,6 +1003,11 @@ class LongTermRecords:
         distinct: float | None = None,
         best: bool = False,
         rest: bool = False,
+        pairs: int = 0,
+        expansion: int | None = None,
+        winners: int | None = None,
+        candidates: int | None = None,
+        fade: bool = True,
     ) -> None:
         if turn is None and (
             message is None or message.boundary is None or not message.boundary_holds
@@ -1001,6 +1038,12 @@ class LongTermRecords:
         self.capacity, self.heads = int(capacity), int(heads)
         self.amplitude, self.match, self.revise = float(amplitude), float(match), float(revise)
         self.seed = int(seed)
+        # each stream's store: the address of pairs, its units, winners and candidates, and
+        # whether the records fade; None leaves the store's own founder
+        self.pairs, self.fade = int(pairs), bool(fade)
+        self.expansion = None if expansion is None else int(expansion)
+        self.winners = None if winners is None else int(winners)
+        self.candidates = None if candidates is None else int(candidates)
         self.width, self.value_width = int(message.units), int(message.inputs)
         populations = connectome.populations
         self.columns: list[slice | np.ndarray] = []
@@ -1048,9 +1091,30 @@ class LongTermRecords:
         """The regions the heads hold their records on."""
         return ("longterm", *(f"longterm_{h}" for h in range(1, int(heads))))
 
+    def address(self) -> dict[str, Any]:
+        """The settings of each stream's store that differ from the store's founders, by the
+        names ``Brain.compose`` takes after ``longterm_``."""
+        out: dict[str, Any] = {"pairs": self.pairs} if self.pairs else {}
+        for name in ("expansion", "winners", "candidates"):
+            if getattr(self, name) is not None:
+                out[name] = getattr(self, name)
+        if not self.fade:
+            out["fade"] = False
+        return out
+
     def _store(self) -> LongTermMemory:
         return LongTermMemory(self.width, self.value_width, self.capacity, revise=self.revise,
-                              seed=self.seed, **self.STORE)
+                              seed=self.seed, **self.STORE, **self.address())
+
+    @staticmethod
+    def _saved(store: LongTermMemory) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """The arrays of a store's address a checkpoint keeps: those kept by rows, the first
+        ``count`` of each, and those kept whole."""
+        if not store.coarse:
+            return (), ()
+        if store.pairs:
+            return (), LongTermMemory.PAIR_ADDRESS
+        return LongTermRecords.SAVED_ADDRESS_ROWS, ("lists", "counts")
 
     # -- the streams' records as one bank
 
@@ -1068,13 +1132,17 @@ class LongTermRecords:
         streams, capacity = len(self.stores), self.capacity
         names = ("deep", "recent", "faded", *(("norms",) if self._cosine else ()))
         sums = [np.zeros((streams, capacity)) for _ in range(4)]
-        index = np.zeros((streams, self.width, capacity), dtype=np.uint8)
+        # stores read through an address are read one by one and keep no index
+        index = np.zeros((streams, self.width, 0 if self._store_coarse else capacity),
+                         dtype=np.uint8)
         binary = True
         for s, store in enumerate(self.stores):
             for shared, name in zip(sums, names, strict=False):
                 shared[s] = getattr(store, name)
                 setattr(store, name, shared[s])
             held = np.asarray(store.keys[: store.count])
+            if self._store_coarse:
+                continue
             binary = binary and bool(np.isin(held, (0.0, 1.0)).all())
             index[s, :, : store.count] = held.T.astype(np.uint8)
         self._deep, self._recent, self._faded, self._norms = sums
@@ -1247,6 +1315,10 @@ class LongTermRecords:
                     keys[row], heads=self.heads, credit=not self._private
                 )
                 picks[i] = [read.first(head) for head in range(self.heads)]
+                if self._store_coarse and not self._private:
+                    # the read a write after the settle reuses, as the bank's
+                    store = self.stores[int(row)]
+                    self._cache[int(row)] = (int(picks[i, 0]), keys[row].copy(), store.writes)
             self.counts["reads"] += 0 if self._private else len(rows)
         for i, row in enumerate(rows):
             store, key = self.stores[int(row)], keys[row]
@@ -1447,6 +1519,12 @@ class LongTermRecords:
                 found = cached[0]  # the read before the settle, of the same records and key
             else:
                 found = int(self._choices(np.array([row]), key[None, :], 1)[0, 0])
+        elif store.count and self._store_coarse:
+            cached = self._cache.get(row)
+            if cached is not None and cached[2] == store.writes and np.array_equal(cached[1], key):
+                found = cached[0]  # the read before the settle, through the address
+            else:
+                found = store.read(key, credit=False).first()
         elif store.count:
             found = store.read(key, credit=False).first()
         if store.count and self._holds(store, found, key, self.revise) and np.array_equal(
@@ -1454,7 +1532,7 @@ class LongTermRecords:
         ):
             self.counts["agreed"] += 1  # the moment says nothing the record does not
             return
-        if self.batched:
+        if self.batched or self._store_coarse:
             # the store's own recognition, on the slot the read found
             recognised = -1
             if found >= 0 and store.revise:
@@ -1463,9 +1541,10 @@ class LongTermRecords:
                 if norm > 0 and score / norm >= store.revise:
                     recognised = found
             slot, revised = store.write(key, value, recognised=recognised)
-            if not np.isin(key, (0.0, 1.0)).all():
-                self._binary = False  # a key of other values: the stores read one by one
-            self._index[row, :, slot] = key.astype(np.uint8)
+            if not self._store_coarse:
+                if not np.isin(key, (0.0, 1.0)).all():
+                    self._binary = False  # a key of other values: the stores read one by one
+                self._index[row, :, slot] = key.astype(np.uint8)
         else:
             slot, revised = store.write(key, value)
         self.counts["writes"] += 1
@@ -1587,6 +1666,7 @@ class LongTermRecords:
             out["best"] = True
         if self.rest:
             out["rest"] = True
+        out.update(self.address())
         return out
 
     def arrays(self) -> dict[str, np.ndarray]:
@@ -1610,10 +1690,10 @@ class LongTermRecords:
                        cue_entries=np.array(cue, dtype=np.int64).reshape(-1, 2))
         for s, store in enumerate(self.stores):
             held = store.arrays()
-            rows = (*self.SAVED_ROWS, *(self.SAVED_ADDRESS_ROWS if store.coarse else ()))
-            for name in rows:
+            by_rows, whole = self._saved(store)
+            for name in (*self.SAVED_ROWS, *by_rows):
                 out[f"store/{s}/{name}"] = np.array(held[name][: store.count])
-            for name in ("state", *(("lists", "counts") if store.coarse else ())):
+            for name in ("state", *whole):
                 out[f"store/{s}/{name}"] = held[name]
         return out
 
@@ -1635,13 +1715,15 @@ class LongTermRecords:
             if state.shape != (3,) or not 0 <= int(state[0]) <= self.capacity:
                 raise ValueError("invalid saved long-term records: counts")
             count = int(state[0])
-            rows = (*self.SAVED_ROWS, *(self.SAVED_ADDRESS_ROWS if store.coarse else ()))
-            for name in rows:
+            by_rows, whole = self._saved(store)
+            for name in (*self.SAVED_ROWS, *by_rows):
                 given = np.asarray(arrays[f"store/{s}/{name}"])
                 if given.shape != (count, *full[name].shape[1:]):
                     raise ValueError(f"invalid saved long-term records: {name}")
                 full[name][:count] = given
-            for name in ("lists", "counts") if store.coarse else ():
+            for name in whole:
+                if f"store/{s}/{name}" not in arrays:
+                    raise ValueError(f"missing saved long-term records: store/{s}/{name}")
                 full[name] = np.asarray(arrays[f"store/{s}/{name}"])
             full["state"] = state
             store.restore(full)
