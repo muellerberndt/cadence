@@ -1789,6 +1789,28 @@ assert np.allclose(drive[0, talker.connectome.populations["longterm"]], 3.0 * se
 
 `save` keeps the turns' windows and keys and the units' counts.
 
+**Records read by what tells them apart (`longterm_distinct`).** A bar on how often a unit is on
+depends on the lexicon: with four people, a name is as frequent as the bar and drops out.
+`longterm_distinct=share` (with `longterm_turn`) reads by what tells the stream's records apart
+instead.
+
+- Each distinct heard moment is one entry of a codebook, so two words whose codes share units
+  stay two entries. A record holds the whole statement: its window's entries and its value's.
+- An entry weighs `log((n + 1) / (records holding it + 1))` among the stream's `n` records: an
+  entry every record holds ("the", ".") weighs nothing, one that only a person's records hold
+  weighs most. An entry no record holds ("where", "?") weighs nothing.
+- A question's cue keeps its entries of at least `share` times its heaviest weight, and the read
+  takes the latest record holding at least `longterm_match` of the cue's weight. Every value is a
+  record of its own, so a fact told again is read from its latest telling.
+- With `longterm_heads=2` the second head chains: of the first record's entries outside the cue,
+  the one the most records hold (what the record is about: a person recurs in more records than
+  the words around them) cues the latest other record holding it. "Where is the football?" reads
+  "john picked up the football" and then where john went.
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm_distinct` | `None`, off | construction | A cue keeps its entries of at least this share of its heaviest weight |
+
 ## How strongly a carried region is heard
 
 The trace, the copy and the history each drive the settle at a fixed amplitude, and no one

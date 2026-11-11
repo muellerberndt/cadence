@@ -63,43 +63,61 @@ def table(found: list[dict[str, Any]], columns: tuple[str, ...] = COLUMNS) -> st
     return "\n".join(lines)
 
 
+SECOND = (3056, 3057, 3058, 3059, 3060, 3061)  # the second declaration's founders
+
+
 def score(found: list[dict[str, Any]], arm: str, reading: str, group: str,
-          field: str = "right") -> list[float | None]:
-    """``group``'s score of ``arm`` in the reading named ``reading``, per declared founder."""
+          field: str = "right", founders: tuple[int, ...] = DECLARED,
+          chamber: str = "synthetic") -> list[float | None]:
+    """``group``'s score of ``arm`` in the reading named ``reading``, per founder."""
     out: list[float | None] = []
-    for founder in DECLARED:
+    for founder in founders:
         rows_ = [r for r in found if r.get("arm") == arm and r["founder"] == founder
                  and r.get("reading", {}).get("name") == reading
-                 and r.get("chamber") == "synthetic"]
+                 and r.get("chamber") == chamber]
         held = rows_[0]["scores"].get(group) if len(rows_) == 1 else None
         out.append(None if held is None else held.get(field))
     return out
 
 
-def gates(found: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """The declared run's gates (``PROTOCOL.md``, the declared run) on the ``turns`` arm."""
+def gates(found: list[dict[str, Any]], arm: str = "turns",
+          founders: tuple[int, ...] = DECLARED) -> dict[str, dict[str, Any]]:
+    """The declared runs' gates (``PROTOCOL.md``) on ``arm``: T1 to T4 on the synthetic world
+    and, for the second declaration (``distinct``), D1 and D2 on bAbI task 1."""
     out: dict[str, dict[str, Any]] = {}
 
     def gate(name: str, values: list[Any], passes: list[bool], bar: str) -> None:
         out[name] = {"values": values, "bar": bar, "founders": int(sum(passes)),
                      "passes": int(sum(passes)) >= NEEDED}
 
-    told = score(found, "turns", "R1", "held pair")
+    def at(reading: str, group: str, field: str = "right", who: str = arm,
+           chamber: str = "synthetic") -> list[float | None]:
+        return score(found, who, reading, group, field, founders, chamber)
+
+    told = at("R1", "held pair")
     gate("T1", told, [v is not None and v >= 0.90 for v in told], "at least .90")
-    worded = score(found, "turns", "R3", "all")
+    worded = at("R3", "all")
     gate("T2", worded, [v is not None and v >= 0.80 for v in worded], "at least .80")
-    far = score(found, "turns", "R2", "anchored")
-    revised = score(found, "turns", "R2", "revised")
-    stale = score(found, "turns", "R2", "stale", "share")
+    far = at("R2", "anchored")
+    revised = at("R2", "revised")
+    stale = at("R2", "stale", "share")
     gate("T3", far, [a is not None and b is not None and c is not None
                      and a >= 0.90 and b >= 0.90 and c <= 0.02
                      for a, b, c in zip(far, revised, stale, strict=True)],
          "ten sessions back at least .90; revised at least .90 with stale at most .02")
-    emptied = score(found, "turns", "R5", "anchored")
-    control = score(found, "previous_word", "R2", "anchored")
+    emptied = at("R5", "anchored")
+    control = at("R2", "anchored", who="previous_word")
     gate("T4", emptied, [a is not None and b is not None and a <= b + 0.05
                          for a, b in zip(emptied, control, strict=True)],
          "at most the previous-word control's reading plus .05")
+    if arm == "distinct":
+        task = at("B", "all", chamber="babi-1")
+        gate("D1", task, [v is not None and v >= 0.90 for v in task], "at least .90")
+        empty = at("B-records", "all", chamber="babi-1")
+        plain = at("B", "all", who="previous_word", chamber="babi-1")
+        gate("D2", empty, [a is not None and b is not None and a <= b + 0.05
+                           for a, b in zip(empty, plain, strict=True)],
+             "at most the previous-word control's reading plus .05")
     return out
 
 
@@ -113,6 +131,8 @@ def main(argv: list[str] | None = None) -> int:
     print(table([r for r in found if "scores" in r]))
     if any(r.get("founder") in DECLARED for r in found):
         print(json.dumps(gates(found), indent=1))
+    if any(r.get("founder") in SECOND for r in found):
+        print(json.dumps(gates(found, "distinct", SECOND), indent=1))
     return 0
 
 

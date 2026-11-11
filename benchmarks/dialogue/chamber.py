@@ -50,7 +50,7 @@ if str(HERE) not in sys.path:
 
 import world as wd  # noqa: E402
 
-ARMS = ("previous_word", "message", "records", "records_session", "turns")
+ARMS = ("previous_word", "message", "records", "records_session", "turns", "distinct")
 STREAMS = 16
 UNITS = 280
 
@@ -66,8 +66,10 @@ def make_brain(lexicon: wd.Lexicon, founder: int, arm: str, records: int = 4096,
     if arm in ("records", "records_session"):
         settings.update(message_boundary=lexicon.index[wd.TURN], message_boundary_holds=True,
                         longterm=int(records))
-    if arm == "turns":  # the turns opt-in: a key per turn, several facts in an episode
+    if arm in ("turns", "distinct"):  # a key per turn, several facts in an episode
         settings.update(longterm=int(records), longterm_turn=lexicon.index[wd.TURN])
+    if arm == "distinct":  # records read by what tells them apart, chained by a second head
+        settings.update(longterm_distinct=0.5, longterm_heads=2, longterm_match=0.5)
     settings.update({f"longterm_{k}": v for k, v in (longterm or {}).items()})
     return cd.Brain.compose(lexicon.inputs, lexicon.actions, modules=(module,), seed=int(founder),
                             backend="cpu", **settings)
@@ -83,8 +85,11 @@ def read_work(brain: Any, batch: int) -> float:
     if keys is None:
         return 0.0
     reading = kept.since >= 0 if kept.turn is None else kept.since == 0
-    return float(sum(keys[r].sum() * kept.stores[int(r)].count
-                     for r in np.flatnonzero(reading) if int(r) < len(kept.stores)))
+    rows = [int(r) for r in np.flatnonzero(reading) if int(r) < len(kept.stores)]
+    if kept.distinct is not None:  # the weights over the records' entries, then each head's
+        entries = len(kept.codebook)
+        return float(sum(kept.stores[r].count * entries * (1 + kept.heads) for r in rows))
+    return float(sum(keys[r].sum() * kept.stores[r].count for r in rows))
 
 
 def synapses(brain: Any) -> int:
@@ -111,6 +116,7 @@ def live(brain: Any, lexicon: wd.Lexicon, batch: list[wd.Conversation], arm: str
             # a settle that reports no sweeps per row swept every row its steps
             sweeps = report.get("row_sweeps", int(report.get("steps", 0)) * n)
             work["macs"] += before + float(sweeps) * size
+            work["read_macs"] = work.get("read_macs", 0.0) + before
         return said
 
     for s in range(len(batch[0])):
@@ -143,6 +149,15 @@ def live(brain: Any, lexicon: wd.Lexicon, batch: list[wd.Conversation], arm: str
                     for i in rows:
                         for key in tags(turns[i], lexicon, int(said[i])):
                             scores[key].append(float(right[i]))
+                    kept = getattr(brain, "longterm", None)
+                    if kept is not None:  # what each head's record holds: the answer or not
+                        for i in rows:
+                            want = lexicon.moment(str(turns[i].answer))
+                            for head in range(kept.heads):
+                                slot = int(kept.read_slots[i, head])
+                                held = slot >= 0 and bool(np.array_equal(
+                                    np.asarray(kept.stores[i].values[slot])[:len(want)], want))
+                                scores[f"found {head}"].append(float(held))
 
 
 def tags(turn: wd.Turn, lexicon: wd.Lexicon, said: int) -> list[str]:
@@ -212,7 +227,9 @@ def synthetic_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
             live(reader, lexicon, batch, arm, teach=False, erase=erase, scores=scores, work=work)
         out.append({**base, "reading": reading, "scores": summarise(scores),
                     "answer_ms": round(1e3 * work["seconds"] / max(work["answers"], 1), 4),
-                    "answer_macs": int(work["macs"] / max(work["answers"], 1))})
+                    "answer_macs": int(work["macs"] / max(work["answers"], 1)),
+                    "answer_read_macs": int(work.get("read_macs", 0.0)
+                                            / max(work["answers"], 1))})
     return out
 
 
@@ -248,7 +265,9 @@ def babi_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
                  work=work)
         out.append({**base, "reading": reading, "scores": summarise(scores),
                     "answer_ms": round(1e3 * work["seconds"] / max(work["answers"], 1), 4),
-                    "answer_macs": int(work["macs"] / max(work["answers"], 1))})
+                    "answer_macs": int(work["macs"] / max(work["answers"], 1)),
+                    "answer_read_macs": int(work.get("read_macs", 0.0)
+                                            / max(work["answers"], 1))})
     return out
 
 

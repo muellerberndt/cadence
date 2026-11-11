@@ -536,7 +536,10 @@ brain's held message from a turn; it needs `message=units`, `message_boundary` a
 construction settings; with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value
 (`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
-keys and the units' counts. `read_slots` holds each head's
+keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook
+entries weighted by their rarity among the stream's records (`codebook`, `sets`, `stamps`,
+`weights(row)`, `entry(code)`), the latest record holding `longterm_match` of the cue's weight,
+and a second head chains from what the first record is about. `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
 regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one

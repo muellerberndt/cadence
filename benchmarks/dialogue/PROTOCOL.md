@@ -163,3 +163,55 @@ with the receipts in `results/declared/` and `summarize.gates` recomputing each 
 **Against the expectations.** As expected on the synthetic world and on bAbI. The records emptied
 read .094 to .148 ten sessions back, inside the expected .09 to .29. **Departures from the plan of
 the run.** The relaunch of the brain's lives recorded above.
+
+## The second declaration: records read by what tells them apart (declared 11 November 2026, before its first life)
+
+The first declaration's outcome stands. Its key kept the units on in at most .03 of the moments
+heard, a bar that depends on the lexicon: in bAbI task 1 four people share the stories, a name is
+on in about one moment of 28, and the people's units dropped out. The opt-in
+`longterm_distinct=share` (with `longterm_turn`) reads by what tells the stream's own records
+apart, with no bar on how often a unit is heard (`docs/memory.md`, "Turns in a conversation"):
+
+1. **Entries, not units.** Each distinct heard moment is one codebook entry, so two words whose
+   codes share units (in task 1's lexicon "mary" shares a unit with "the" and one with "?") stay
+   two entries. A record holds its statement's entries, the window's and the value's.
+2. **Weights from the records.** An entry weighs `log((n + 1) / (records holding it + 1))` among
+   the stream's `n` records; a question's cue keeps its entries of at least `share` (.5) times
+   its heaviest weight; the read takes the latest record holding at least `longterm_match` (.5)
+   of the cue's weight. Every value is a record of its own.
+3. **Chaining** (bAbI task 2, `longterm_heads=2`): of the first record's entries outside the cue,
+   the one the most records hold cues the second head, which reads the latest other record
+   holding it, before the answer settles.
+
+**The arm** `distinct`: `longterm=4096, longterm_turn=TURN, longterm_distinct=0.5,
+longterm_heads=2, longterm_match=0.5` (the match chosen on development founder 0, where .75 found
+.872 of task 1's answers' records and .5 found 1.000). Beside it `previous_word`, and the LSTM and
+the transformer at the `distinct` brain's parameters, online and offline.
+
+**Founders** 3056 to 3061, in no run of any lane. Plans in [`declared2/`](declared2): the first
+declaration's synthetic world, nursery and readings R1 to R5, and bAbI tasks 1 and 2 (five passes
+over the training stories, the 1,000 test questions, and the records emptied at each answer).
+
+**Gates** (the `distinct` arm, 5 of 6 founders, `summarize.gates(found, "distinct", SECOND)`):
+
+| Gate | Reading | Bar |
+| --- | --- | --- |
+| T1 to T4 | the first declaration's, on these founders | as declared there |
+| D1 | bAbI task 1, the test questions | .90 |
+| D2 | bAbI task 1, the records emptied at each answer | at most `previous_word`'s reading plus .05 |
+
+Reported without a bar: bAbI task 2 (answers, and the share of answers whose first and second
+records hold the answer), the controls, seconds and multiply-accumulates per answer with the
+records' read apart from the settle's sweeps.
+
+**Expectations, stated before the run** (development founder 0): the synthetic world at 1.000 on
+R1 to R3 with the records emptied at .14 ten sessions back; task 1 at .968 after one pass, its
+first record holding the answer at 1.000; task 2 at .184 after two passes, its first record never
+holding the answer (the first record is the object's own, whose value is the object) and its
+second at .512. Task 2's second read misses where the carrier dropped the object and moved on:
+the latest record of the carrier is after the drop, and the object stayed where it was dropped.
+The settle's sweeps hold about nine tenths of the brain's multiply-accumulates per answer, the
+records' read the rest.
+
+**Total work.** 12 synthetic and 24 bAbI lives of the brain; 24 synthetic and 48 bAbI lives of the
+controls; one spot CPU box.

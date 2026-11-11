@@ -649,6 +649,7 @@ _MESSAGE_FOUNDERS: dict[str, Any] = {
 # of the moments heard at or below which a code unit is content for a turn's key (#305)
 _LONGTERM_FOUNDERS: dict[str, Any] = {
     "heads": 1, "amplitude": 3.0, "match": 0.75, "revise": 0.999, "turn": None, "rare": 0.03,
+    "distinct": None,
 }
 
 
@@ -679,6 +680,11 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
     out["rare"] = real("longterm_rare", out["rare"], low=0)
     if not 0 < out["rare"] <= 1:
         raise ValueError("longterm_rare is a share of the moments heard: it lies in (0, 1]")
+    if out["distinct"] is not None:
+        out["distinct"] = real("longterm_distinct", out["distinct"], low=0)
+        if out["turn"] is None or not 0 < out["distinct"] <= 1:
+            raise ValueError("longterm_distinct is a share of a cue's heaviest weight in (0, 1], "
+                             "and it reads turns: it needs longterm_turn=channel")
     return out
 
 
@@ -2624,7 +2630,7 @@ class Brain:
                 connectome, self.message, kept_records["records"], heads=kept_records["heads"],
                 amplitude=kept_records["amplitude"], match=kept_records["match"],
                 revise=kept_records["revise"], seed=seed, turn=kept_records["turn"],
-                rare=kept_records["rare"],
+                rare=kept_records["rare"], distinct=kept_records["distinct"],
             )
         # The index memory of the stream's moments. Populations named ``recall`` and ``next``
         # without ``recall=True`` are ordinary ones: an instrument may name and drive its own.
@@ -3696,6 +3702,8 @@ class Brain:
                          longterm_revise=kept.revise)
             if kept.turn is not None:
                 genes.update(longterm_turn=kept.turn, longterm_rare=kept.rare)
+            if kept.distinct is not None:
+                genes["longterm_distinct"] = kept.distinct
         maturity = self.basal_ganglia.maturity
         if maturity is not None:
             genes.update(maturity=True, maturity_scale=maturity.scale,

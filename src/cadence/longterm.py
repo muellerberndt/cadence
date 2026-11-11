@@ -497,6 +497,20 @@ class LongTermRecords:
     frequent words drive drops out, so a statement and a question about one person share the
     person's units. The moment after a turn is read with the key and written under it as
     above, and the next key begins after it.
+
+    **Records read by what tells them apart (``distinct=share``, with turns).** Each distinct
+    heard moment (its code under the message) is one entry of a codebook the records share, so
+    two words whose codes share units stay two entries. A record holds the whole statement: the
+    entries of the turn's window and of the moment after it. An entry's weight is its rarity
+    among the stream's own records, ``log((n + 1) / (records holding it + 1))``: an entry every
+    record holds weighs nothing and one only a person's records hold weighs most, in a lexicon of
+    any size. A turn's cue keeps the window's entries whose weight is at least ``distinct``
+    times the cue's heaviest (an entry no record holds weighs nothing), and the read takes the
+    latest record that holds at least ``match`` of the cue's weight. Every value is written as a
+    new record, so a fact told again is read from its latest telling. With a second head the
+    read chains: of the first record's entries outside the cue, the one the most records hold
+    (what the record is about: a person recurs in more records than the words around them)
+    cues head 1, which reads the latest other record holding it.
     """
 
     # the store's settings that the brain does not name: the library store's founders, a first
@@ -518,6 +532,7 @@ class LongTermRecords:
         seed: int = 0,
         turn: int | None = None,
         rare: float = 0.03,
+        distinct: float | None = None,
     ) -> None:
         if turn is None and (
             message is None or message.boundary is None or not message.boundary_holds
@@ -532,6 +547,10 @@ class LongTermRecords:
                              "message=units")
         if not 0.0 < float(rare) <= 1.0:
             raise ValueError("longterm_rare is a share of the moments heard: it lies in (0, 1]")
+        if distinct is not None and (turn is None or not 0.0 < float(distinct) <= 1.0):
+            raise ValueError("longterm_distinct is a share of a cue's heaviest weight in (0, 1], "
+                             "and it reads turns: it needs longterm_turn=channel")
+        self.distinct = None if distinct is None else float(distinct)
         self.message = message
         self.turn = None if turn is None else int(turn)
         self.rare = float(rare)
@@ -568,6 +587,14 @@ class LongTermRecords:
         self.key = np.zeros((0, self.width))
         self.heard = np.zeros(self.width)
         self.moments = 0.0
+        # with ``distinct``: each stream's slots' write order (0 for none), the codebook of
+        # heard moments, each slot's entries, and each stream's window and cue as entries
+        self.stamps = np.zeros((0, self.capacity))
+        self.codebook = np.zeros((0, self.width))
+        self.sets = np.zeros((0, self.capacity, 0), dtype=np.uint8)
+        self.wset = np.zeros((0, 0), dtype=np.uint8)
+        self.cue = np.zeros((0, 0), dtype=np.uint8)
+        self._entries: dict[bytes, int] = {}
 
     @staticmethod
     def ports(heads: int) -> tuple[str, ...]:
@@ -615,6 +642,16 @@ class LongTermRecords:
             while len(self.stores) < batch:
                 self.stores.append(self._store())
             self._bank()
+        if len(self.stamps) < len(self.stores):
+            grown = np.zeros((len(self.stores), self.capacity))
+            grown[: len(self.stamps)] = self.stamps
+            self.stamps = grown
+            sets = np.zeros((len(self.stores), self.capacity, len(self.codebook)), np.uint8)
+            sets[: len(self.sets)] = self.sets
+            self.sets = sets
+        if self.distinct is not None and len(self.wset) != batch:
+            self.wset = np.zeros((batch, len(self.codebook)), dtype=np.uint8)
+            self.cue = np.zeros((batch, len(self.codebook)), dtype=np.uint8)
         if len(self.since) != batch:
             self.since = np.full(batch, -1, dtype=np.int64)
             self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
@@ -682,11 +719,25 @@ class LongTermRecords:
         if keys is None:
             return out
         reading = self.since >= 0 if self.turn is None else self.since == 0
+        cued = np.asarray(self.cue.any(axis=1) if self.distinct is not None
+                          else keys.any(axis=1), dtype=bool)
         rows = np.array([
             int(row) for row in np.flatnonzero(reading)
-            if self.stores[int(row)].count and keys[row].any()
+            if self.stores[int(row)].count and cued[row]
         ], dtype=np.int64)
         if not len(rows):
+            return out
+        if self.distinct is not None:
+            for row in rows:
+                store, cue = self.stores[int(row)], self.cue[row]
+                slots = [self._read_distinct(int(row), cue)]
+                for _ in range(1, self.heads):  # each head chains from the record before
+                    slots.append(self._chain(int(row), slots, cue))
+                for head, (slot, columns) in enumerate(zip(slots, self.columns, strict=True)):
+                    if slot >= 0:
+                        out[row, columns] = self.amplitude * store.values[slot]
+                        self.read_slots[row, head] = slot
+            self.counts["reads"] += 0 if self._private else len(rows)
             return out
         if self.batched:
             picks = self._choices(rows, keys[rows], self.heads)
@@ -752,6 +803,64 @@ class LongTermRecords:
         share = self.heard / max(self.moments, 10.0 / self.rare)
         return np.asarray(window * (share <= self.rare + 1e-12), dtype=np.float64)
 
+    def weights(self, row: int) -> np.ndarray:
+        """Each codebook entry's weight among stream ``row``'s records:
+        ``log((n + 1) / (held + 1))`` for an entry ``held`` of the ``n`` records hold, 0 for an
+        entry none holds."""
+        n = self.stores[row].count
+        held = self.sets[row, :n].sum(axis=0, dtype=np.float64)
+        return np.where(held > 0, np.log((n + 1.0) / (held + 1.0)), 0.0)
+
+    def entry(self, code: np.ndarray) -> int:
+        """The codebook entry of a heard moment's code, added where it is new."""
+        name = np.asarray(code, dtype=np.uint8).tobytes()
+        found = self._entries.get(name)
+        if found is not None:
+            return found
+        found = len(self.codebook)
+        self._entries[name] = found
+        self.codebook = np.vstack([self.codebook, np.asarray(code, dtype=np.float64)[None]])
+        for name_ in ("sets", "wset", "cue"):
+            held = getattr(self, name_)
+            wider = np.zeros((*held.shape[:-1], found + 1), dtype=np.uint8)
+            wider[..., :found] = held
+            setattr(self, name_, wider)
+        return found
+
+    def _read_distinct(self, row: int, cue: np.ndarray, exclude: list[int] | None = None) -> int:
+        """The latest record of stream ``row`` that holds at least ``match`` of the weight of
+        the cue's distinct entries; -1 for none."""
+        n = self.stores[row].count
+        if not n or not np.asarray(cue).any():
+            return -1
+        assert self.distinct is not None
+        weight = self.weights(row) * (np.asarray(cue) > 0)
+        if not weight.any():
+            return -1
+        weight = weight * (weight >= self.distinct * weight.max() - 1e-12)
+        held = self.sets[row, :n].astype(np.float64) @ weight / weight.sum()
+        able = held >= self.match - 1e-12
+        for slot in exclude or ():
+            if 0 <= slot < n:
+                able[slot] = False
+        if not able.any():
+            return -1
+        return int(np.argmax(np.where(able, self.stamps[row, :n], -1.0)))
+
+    def _chain(self, row: int, slots: list[int], cue: np.ndarray) -> int:
+        """The next head's record: the latest other record holding the entry of the record
+        before that the most records hold among those outside the cue with a weight (what that
+        record is about: a person recurs in more records than the words around them)."""
+        if slots[-1] < 0:
+            return -1
+        weight = self.weights(row) * self.sets[row, slots[-1]] * (np.asarray(cue) == 0)
+        if not weight.any():
+            return -1
+        about = int(np.argmin(np.where(weight > 0, weight, np.inf)))
+        single = np.zeros_like(np.asarray(cue))
+        single[about] = 1
+        return self._read_distinct(row, single, exclude=slots)
+
     def _hear_turns(self, x: np.ndarray) -> None:
         """One moment with turns: the moment after a turn is written under the turn's key and
         begins the next window, a turn takes its key from its window, and any other moment
@@ -764,13 +873,36 @@ class LongTermRecords:
             self.heard += codes.sum(axis=0)
             self.moments += batch
             for row in np.flatnonzero(value):
-                if x[row].any() and self.key[row].any():
+                if not (x[row].any() and self.key[row].any()):
+                    continue
+                if self.distinct is None:
                     self.record(int(row), self.key[row], x[row])
+                    continue
+                # the whole statement, every telling a record of its own
+                store = self.stores[int(row)]
+                whole = np.maximum(self.key[row], codes[row])
+                said = self.entry(codes[row])
+                slot, _ = store.write(whole, x[row], recognised=-1)
+                if self.batched:
+                    self._index[row, :, slot] = whole.astype(np.uint8)
+                self.sets[row, slot] = self.cue[row]
+                self.sets[row, slot, said] = 1
+                self.stamps[row, slot] = store.writes
+                self.counts["writes"] += 1
         grow = ~value & ~turned
         self.window[grow] = np.maximum(self.window[grow], codes[grow])
+        if self.distinct is not None:
+            for row in np.flatnonzero(grow):
+                if codes[row].any():
+                    heard = self.entry(codes[row])  # first: a new entry widens the sets
+                    self.wset[row, heard] = 1
         for row in np.flatnonzero(turned):
-            self.key[row] = self.content(self.window[row])
+            self.key[row] = (self.content(self.window[row]) if self.distinct is None
+                             else self.window[row].copy())
             self.window[row] = 0.0
+            if self.distinct is not None:
+                self.cue[row] = self.wset[row]
+                self.wset[row] = 0
         self.since = np.where(turned, 0, -1).astype(np.int64)
         if self._private:
             return
@@ -851,12 +983,17 @@ class LongTermRecords:
             if self.turn is not None:
                 self.window = np.zeros((batch, self.width))
                 self.key = np.zeros((batch, self.width))
+                self.wset = np.zeros((batch, len(self.codebook)), dtype=np.uint8)
+                self.cue = np.zeros((batch, len(self.codebook)), dtype=np.uint8)
         else:
             self.since[rows] = -1
             self.read_slots[rows] = -1
             if self.turn is not None and len(self.window) == batch:
                 self.window[rows] = 0.0
                 self.key[rows] = 0.0
+            if len(self.wset) == batch:
+                self.wset[rows] = 0
+                self.cue[rows] = 0
         self._cache = {}
 
     def keep(self, rows: np.ndarray) -> None:
@@ -866,11 +1003,19 @@ class LongTermRecords:
         self.since, self.read_slots = self.since[index], self.read_slots[index]
         if self.turn is not None and len(self.window) >= len(index):
             self.window, self.key = self.window[index], self.key[index]
+        if len(self.stamps) >= len(index):
+            self.stamps = self.stamps[index]
+        if len(self.sets) >= len(index):
+            self.sets = self.sets[index]
+        if len(self.wset) >= len(index):
+            self.wset, self.cue = self.wset[index], self.cue[index]
         self._bank()
 
     def clear(self) -> None:
         """Empty every stream's records."""
         self.stores = []
+        self.stamps = np.zeros((0, self.capacity))
+        self.sets = np.zeros((0, self.capacity, len(self.codebook)), dtype=np.uint8)
         self.counts = dict.fromkeys(self.counts, 0)
         self._bank()
 
@@ -880,6 +1025,7 @@ class LongTermRecords:
         out = copy(self)
         out.since, out.read_slots = self.since.copy(), self.read_slots.copy()
         out.window, out.key, out.heard = self.window.copy(), self.key.copy(), self.heard.copy()
+        out.wset, out.cue, out._entries = self.wset.copy(), self.cue.copy(), dict(self._entries)
         out.counts = dict(self.counts)
         out._cache = {}
         out._private = True
@@ -904,6 +1050,8 @@ class LongTermRecords:
         }
         if self.turn is not None:
             out.update(turn=self.turn, rare=self.rare)
+        if self.distinct is not None:
+            out["distinct"] = self.distinct
         return out
 
     def arrays(self) -> dict[str, np.ndarray]:
@@ -913,6 +1061,10 @@ class LongTermRecords:
         out = dict(self.streams())
         if self.turn is not None:
             out.update(heard=self.heard.copy(), moments=np.array(self.moments))
+        if self.distinct is not None:
+            out.update(stamps=self.stamps[: len(self.stores)].copy(), codebook=self.codebook.copy(),
+                       sets=self.sets[: len(self.stores)].copy(), wset=self.wset.copy(),
+                       cue=self.cue.copy())
         for s, store in enumerate(self.stores):
             held = store.arrays()
             rows = (*self.SAVED_ROWS, *(self.SAVED_ADDRESS_ROWS if store.coarse else ()))
@@ -967,6 +1119,24 @@ class LongTermRecords:
                 raise ValueError("invalid saved long-term records: the turns' windows")
             self.window, self.key = window.astype(float), key.astype(float)
             self.heard, self.moments = heard.astype(float), float(np.asarray(arrays["moments"]))
+        self.stamps = np.zeros((len(self.stores), self.capacity))
+        self.sets = np.zeros((len(self.stores), self.capacity, len(self.codebook)), np.uint8)
+        if self.distinct is not None:
+            saved = ("stamps", "codebook", "sets", "wset", "cue")
+            if any(name not in arrays for name in saved):
+                raise ValueError("missing saved long-term records: the records' entries")
+            codebook = np.asarray(arrays["codebook"], dtype=np.float64)
+            entries = len(codebook)
+            stamps, sets = np.asarray(arrays["stamps"]), np.asarray(arrays["sets"])
+            wset, cue = np.asarray(arrays["wset"]), np.asarray(arrays["cue"])
+            if (codebook.shape != (entries, self.width) or stamps.shape != self.stamps.shape
+                    or sets.shape != (len(self.stores), self.capacity, entries)
+                    or wset.shape != (len(since), entries) or cue.shape != wset.shape):
+                raise ValueError("invalid saved long-term records: the records' entries")
+            self.stamps, self.codebook = stamps.astype(float), codebook
+            self.sets, self.wset, self.cue = (a.astype(np.uint8) for a in (sets, wset, cue))
+            self._entries = {np.asarray(c, dtype=np.uint8).tobytes(): i
+                             for i, c in enumerate(codebook)}
         if counts is not None:
             self.counts = {name: int(counts.get(name, 0)) for name in self.counts}
         self._bank()

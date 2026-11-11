@@ -1,0 +1,33 @@
+{
+ "founders": [
+  3056,
+  3057,
+  3058,
+  3059,
+  3060,
+  3061
+ ],
+ "tasks": [
+  1,
+  2
+ ],
+ "data": "en",
+ "epochs": 5,
+ "arms": [
+  {
+   "arm": "distinct"
+  },
+  {
+   "arm": "previous_word"
+  }
+ ],
+ "readings": [
+  {
+   "name": "B"
+  },
+  {
+   "name": "B-records",
+   "erase": "records"
+  }
+ ]
+}

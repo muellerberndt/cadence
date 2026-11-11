@@ -16,6 +16,10 @@ to the bit.
   so a lesson at a question's answer sees the record on its region. No reset is needed between
   facts.
 - **Saved.** A checkpoint keeps the windows, keys and unit counts.
+- **Read by what tells records apart** (`longterm_distinct=share`): each distinct heard moment is
+  a codebook entry weighted by its rarity among the stream's own records, a question reads the
+  latest record holding `longterm_match` of its distinct entries' weight, in a lexicon of any
+  size, and a second head chains from what the first record is about.
 - The conversation chamber, `benchmarks/dialogue/`, with bAbI adapters and matched controls.
 
 ## 0.97.0 — 2026-11-10

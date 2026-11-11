@@ -186,3 +186,15 @@ def test_the_declared_receipts_hold_the_verdicts_the_readme_states():
     for row in babi:
         if row["reading"].get("erase"):
             assert abs(row["scores"]["all"]["right"] - plain[row["founder"]]) <= 0.001 + 1e-9
+
+
+def test_the_second_declaration_s_plans_parse_on_fresh_founders():
+    plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "declared2").glob("*.json")}
+    assert set(plans) == {"synthetic", "babi", "controls-synthetic", "controls-babi"}
+    for plan in plans.values():
+        assert plan["founders"] == list(range(3056, 3062))
+    assert {a["arm"] for a in plans["synthetic"]["arms"]} == {"distinct", "previous_word"}
+    assert plans["controls-babi"]["target_arm"] == "distinct"
+    brain = ch.make_brain(wd.World(0, people=24).lexicon, 0, "distinct")
+    assert brain.longterm.distinct == 0.5 and brain.longterm.heads == 2
+    assert brain.longterm.match == 0.5

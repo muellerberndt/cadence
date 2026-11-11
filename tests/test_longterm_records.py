@@ -461,3 +461,64 @@ def test_an_imagined_branch_with_turns_writes_nothing():
     branch.hear(moment(10))
     assert branch.stores[0].count == 0 and b.longterm.stores[0].count == 0
     assert b.longterm.since[0] == -1 and b.longterm.window.any()
+
+
+# -- records read by what tells them apart (``longterm_distinct``, #305)
+
+
+def distinct_brain(**settings):
+    return turns_brain(longterm_distinct=0.5, longterm_heads=2, longterm_match=0.5, **settings)
+
+
+def test_distinct_needs_turns_and_names_its_setting():
+    b = distinct_brain()
+    assert b.longterm.distinct == 0.5 and b.longterm.to_dict()["distinct"] == 0.5
+    assert "distinct" not in turns_brain().longterm.to_dict()
+    with pytest.raises(ValueError, match="longterm_turn"):
+        cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, message=70, message_boundary=TURN,
+                         message_boundary_holds=True, longterm=16, longterm_distinct=0.5)
+
+
+def test_a_question_reads_the_latest_record_of_what_it_names():
+    b = distinct_brain()
+    b.reset()
+    say(b, 0, 6, TURN, 10)   # agent 0 with verb 0: patient 10
+    say(b, 1, 6, TURN, 11)   # agent 1
+    say(b, 0, 7, TURN, 12)   # agent 0 again, other words: a record of its own
+    kept = b.longterm
+    assert kept.stores[0].count == 3 and len(kept.codebook) >= 5
+    say(b, 0, 8, TURN)       # a question naming agent 0 in words no fact used
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    region = b.connectome.populations["longterm"]
+    assert np.allclose(drive[0, region], 3.0 * moment(12)[0])  # the latest telling
+    assert kept.read_slots[0, 0] == 2
+
+
+def test_a_second_head_chains_from_what_the_first_record_is_about():
+    b = distinct_brain()
+    b.reset()
+    say(b, 0, 6, TURN, 10)   # agent 0 goes to place 10
+    say(b, 1, 7, TURN, 11)   # agent 1 goes to place 11
+    say(b, 0, 8, TURN, 13)   # agent 0 takes object 13
+    say(b, 0, 6, TURN, 12)   # agent 0 goes to place 12
+    say(b, 13, TURN)         # where is object 13?
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    kept = b.longterm
+    assert kept.read_slots[0, 0] == 2  # the object's record
+    assert kept.read_slots[0, 1] == 3  # agent 0's latest other record
+    assert np.allclose(drive[0, b.connectome.populations["longterm_1"]], 3.0 * moment(12)[0])
+
+
+def test_a_saved_brain_with_distinct_records_continues_as_the_one_saved(tmp_path):
+    first = distinct_brain()
+    say(first, 0, 6, TURN, 10, 1, 7, TURN, 11, 0)
+    second = cd.Brain.load(first.save(tmp_path / "distinct.npz"))
+    for on in (8, TURN, 12, 1, TURN, 0, 13):
+        x = moment(on)
+        np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
+    for name in ("codebook", "sets", "stamps", "wset", "cue"):
+        np.testing.assert_array_equal(getattr(first.longterm, name),
+                                      getattr(second.longterm, name), err_msg=name)
+    branch = second.longterm.branch()
+    branch.hear(moment(9))
+    assert len(second.longterm.codebook) == len(first.longterm.codebook)
