@@ -2966,9 +2966,11 @@ def floors_plan(founders: tuple[int, ...] = FLOORS) -> dict[str, list[dict[str, 
 
 
 def _least(table: dict[str, Any], spot: str, place: str) -> float | None:
-    """The least component's probe at a spot and place (the count of distractors apart)."""
+    """The least component's probe at a spot and place: the agent, the verb, the patient, their
+    numbers and each distractor (the count of distractors and the verb's form, a conjunction of
+    two of them, apart)."""
     found = [table[c][spot][place]["accuracy"] for c in table
-             if c != "distractors" and place in table[c].get(spot, {})]
+             if c not in ("distractors", "verb_form") and place in table[c].get(spot, {})]
     return float(min(found)) if found else None
 
 
