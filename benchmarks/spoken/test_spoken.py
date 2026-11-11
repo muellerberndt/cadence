@@ -261,3 +261,40 @@ def test_weighted_soft_lessons_and_the_direct_pathway_teach_a_brain(sets):
     ch.train(learner, train, ch.groups(train, np.arange(8), 8), hearing)
     assert learner.work["refused_lessons"] == 0
     assert not np.array_equal(before, np.asarray(direct.brain.efficacy))
+
+
+def test_a_held_correction_teaches_the_corrected_phrase_and_hears_the_rest(sets):
+    pytest.importorskip("torch")
+    out, built = sets
+    result = sp._run(
+        {
+            "data": str(out),
+            "learner": "fields",
+            "founder": 0,
+            "budgets": [32],
+            "speakers": [built["new_speaker"]],
+            "modes": ["held", "held25"],
+            "minutes": [0, 0.25],
+            "soft": 0.5,
+        }
+    )
+    assert "error" not in result, result.get("trace")
+    assert [a["mode"] for a in result["adaptation"]] == ["held", "held25"]
+    assert result["adaptation"][0]["curve"][1]["phrases"] > 0
+
+
+def test_the_readout_cuts_one_pathway_into_the_motor_region_and_reads_each_drive():
+    ro = _load("readout")
+    brain = ch.compose("fields", 0, {"direct": 1.0})
+    pools = ro.pathway(brain, "sensory", "motor")
+    assoc = ro.pathway(brain, "association", "motor")
+    assert pools.sum() == 64 * 9 * ph.ACTIONS and assoc.sum() > 0
+    without = ro.cut(brain, ("sensory", "motor"))
+    assert not np.asarray(without.brain.efficacy)[pools].any()
+    assert np.array_equal(
+        np.asarray(without.brain.efficacy)[assoc], np.asarray(brain.brain.efficacy)[assoc]
+    )
+    x = np.random.default_rng(0).normal(size=(3, audio.BANDS * ph.WINDOW)) * 0.3
+    d = ro.drives(brain, x)
+    assert d["both"].shape == (3, ph.ACTIONS)
+    assert np.allclose(d["both"], d["association"] + d["pools"])

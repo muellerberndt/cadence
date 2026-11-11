@@ -53,6 +53,8 @@ ph = _load("phrases")
 
 SEED = 30312
 READ = 300  # held-out phrases per reading
+# correction modes beside ``plain`` and ``replay``: the replayed rows heard at these weights
+HELD = {"held": 0.0, "held25": 0.25}
 RETENTION = 300  # retention-panel phrases
 PROBE_FIT, PROBE_READ = 3000, 1500
 
@@ -222,10 +224,11 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                     retention_rows,
                     hearing,
                     spec.get("minutes", [0, 1, 2, 5]),
-                    replay=train if mode == "replay" else None,
+                    replay=train if mode != "plain" else None,
                     replays=int(spec.get("replays", 3)),
                     rate=float(rate),
                     seed=founder,
+                    held=HELD.get(mode),
                 )
                 adaptation.append({"speaker": speaker, "mode": mode, "rate": rate, "curve": curve})
                 said = " ".join(f"{c['own']['word_accuracy']:.3f}" for c in curve)

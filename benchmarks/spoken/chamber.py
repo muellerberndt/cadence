@@ -201,8 +201,10 @@ class BrainLearner:
         x: np.ndarray,
         target: np.ndarray | None = None,
         refs: list[tuple[int, ...]] | None = None,
+        row_weights: np.ndarray | None = None,
     ) -> np.ndarray:
-        """Actions (rows, steps); with ``target`` each step is taught before the act."""
+        """Actions (rows, steps); with ``target`` each step is taught before the act, each row
+        at its ``row_weights`` (one where not given)."""
         from cadence import LearningPhaseError
 
         started = time.process_time()
@@ -219,8 +221,11 @@ class BrainLearner:
                 self.work["lessons"] += 1
                 labels = np.asarray(target[:, k], dtype=np.int64)
                 taught: dict[str, Any] = {}
-                if self.silence_weight != 1.0:
-                    taught["weights"] = np.where(labels == SILENCE, self.silence_weight, 1.0)
+                if self.silence_weight != 1.0 or row_weights is not None:
+                    weights = np.where(labels == SILENCE, self.silence_weight, 1.0)
+                    if row_weights is not None:
+                        weights = weights * row_weights
+                    taught["weights"] = weights
                 if soft is not None:
                     taught["targets"] = soft[:, k]
                 else:
@@ -289,9 +294,13 @@ class ControlLearner:
         x: np.ndarray,
         target: np.ndarray | None = None,
         refs: list[tuple[int, ...]] | None = None,
+        row_weights: np.ndarray | None = None,
     ) -> np.ndarray:
         if target is not None:
             assert refs is not None
+            if row_weights is not None:  # a row at weight zero adds no gradient: leave it out
+                keep = np.flatnonzero(row_weights > 0)
+                x, target, refs = x[keep], target[keep], [refs[int(i)] for i in keep]
             self.model.teach(x, held(target, self.hold), refs, END)
             return np.empty((len(x), 0), np.int64)
         return np.asarray(self.model.actions(x, SILENCE))
@@ -468,11 +477,14 @@ def adapt(
     replays: int = 0,
     rate: float = 1.0,
     seed: int = 0,
+    held: float | None = None,
 ) -> list[dict[str, Any]]:
     """A new speaker's labelled phrases one at a time, in order, read at each of ``minutes``
     (cumulative seconds of the speaker's phrases heard) on the speaker's evaluation phrases and
     on ``retention``. With ``replay``, each phrase is taught beside ``replays`` phrases of the base
-    training set of equal steps."""
+    training set of equal steps; with ``held`` they are heard beside it and taught at that weight
+    (``Brain.lesson(weights=)``; at zero the lesson's update is the corrected phrase's alone, while
+    the brain acts on every row)."""
     life = learner.copy()
     life.set_rate(rate)
     rng = np.random.default_rng(seed)
@@ -505,7 +517,12 @@ def adapt(
                 target = np.concatenate([target, replay.target[extra, : x.shape[1]]])
                 refs += [replay.reference(int(r)) for r in extra]
         started = time.process_time()
-        life.hear(x, target, refs)
+        if held is not None and len(x) > 1:
+            weights = np.full(len(x), float(held))
+            weights[0] = 1.0
+            life.hear(x, target, refs, row_weights=weights)
+        else:
+            life.hear(x, target, refs)
         seconds_taught += time.process_time() - started
         heard += float(own.seconds[row])
         taught += 1
