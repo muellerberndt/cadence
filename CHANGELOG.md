@@ -9,7 +9,11 @@
   role. A heard moment of role `r` joins that role's blocks by the moments of the role heard
   before it, and a moment of no group joins a last group's, so a role's moments lie in its own
   blocks wherever in the episode they were heard. Without the setting every bit is as on 0.97.0.
-  The declared run is [`benchmarks/grammar/MEANING_PROTOCOL_6.md`](benchmarks/grammar/MEANING_PROTOCOL_6.md).
+  The declared run is [`benchmarks/grammar/MEANING_PROTOCOL_6.md`](benchmarks/grammar/MEANING_PROTOCOL_6.md):
+  keyed by role at 256 association neurons with the recall read barred, the brain says held-out
+  combinations at .90 on 22 of 24 fresh founders (+.04 against blocks by position, paired) with
+  brackets .05 under; longer clauses read .00, their third and fourth distractors landing in
+  blocks no lesson writes.
 
 ## 0.97.0 — 2026-11-10
 

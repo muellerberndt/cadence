@@ -88,3 +88,50 @@ whether the verb's form or a role's block is lost.
 
 One AWS c7i.16xlarge spot box (Name=cadence-098-meaning), the 60 brain lives in one pass and the
 48 control lives after them, one process per life, one BLAS thread per process.
+
+## Result
+
+Read on one c7i.16xlarge, founders 10428600 to 10428623, 60 brain lives and 48 control lives on
+commit 2cf99f26.
+
+| Learner | Parameters | Multiply-accumulates | Seconds | clause | clause_held | roles | dyck | path | three hops | clause_long |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `both_256` (24) | 596,412 | 2.57e13 | 3,645 | .99 | .92 | .93 | .88 | .52 | .00 | .00 |
+| `both_p8` (12) | 885,424 | 4.17e13 | 4,534 | 1.00 | .90 | .89 | .93 | .39 | .00 | .00 |
+| `role_256` (24) | 2,330,484 | 1.14e14 | 8,120 | 1.00 | .95 | .93 | .83 | .53 | .00 | .00 |
+| LSTM, offline (6) | 884,718 | 4.72e13 | 2,037 | 1.00 | .99 | .98 | 1.00 | .97 | .00 | .00 |
+| LSTM, online (6) | 884,718 | 2.11e12 | 159 | .96 | .88 | .75 | .89 | .29 | .00 | .01 |
+| transformer, offline (6) | 878,834 | 5.00e13 | 2,894 | 1.00 | 1.00 | 1.00 | .97 | .74 | .00 | .00 |
+| transformer, online (6) | 878,834 | 2.11e12 | 208 | .75 | .71 | .57 | .16 | .13 | .00 | .00 |
+| LSTM, offline (6) | 2,325,446 | 1.18e14 | 5,351 | 1.00 | .97 | .88 | 1.00 | .97 | .08 | .00 |
+| LSTM, online (6) | 2,325,446 | 5.57e12 | 519 | .97 | .89 | .74 | .91 | .33 | .00 | .00 |
+| transformer, offline (6) | 2,339,298 | 1.30e14 | 7,956 | .94 | .89 | .90 | .89 | .61 | .00 | .00 |
+| transformer, online (6) | 2,339,298 | 5.62e12 | 420 | .70 | .64 | .64 | .18 | .07 | .00 | .00 |
+
+Founders at .90 (clause, held-out, roles): `both_256` 24, 18, 20 of 24; `both_p8` 12, 6, 6 of 12;
+`role_256` 24, 22, 20 of 24. Against `both_256`, paired (standard error):
+
+| Arm | held-out | roles | dyck | path | three hops |
+| --- | --- | --- | --- | --- | --- |
+| `both_p8` | +.01 (.03) | -.04 (.02), beyond two | +.04 (.02) | -.11 (.03), beyond two | +.00 |
+| `role_256` | +.04 (.01), beyond two | +.01 (.02) | -.05 (.02), beyond two | +.01 (.02) | +.00 |
+
+- **G8 fails**: held-out combinations and role twins at .90 on 6 of 12, paths .11 under. The fifth
+  run's 6 of 6 does not replicate.
+- **R1 fails on brackets**: `role_256` meets the bars on held-out combinations (22 of 24), clauses
+  (24) and role twins (20), and lifts held-out combinations by .04 beyond two standard errors;
+  brackets fall .05 beyond two standard errors. With the previous words given, the bracket kinds
+  are said at .92 to 1.00 against .94 to 1.00 for `both_256`: the bracket moments heard join the
+  last group and the brain's own bracket words the words' group, where with 4 blocks by position
+  they share blocks.
+- **R2 fails**: `clause_long` .00 on the first six founders (and on all 24). The message holds every
+  probed part of a longer clause (the agent, verb, patient and first two distractors at .99 to 1.00
+  by a probe fitted on trained shapes), and with the previous words given the agent, the verb, the
+  patient and the first two distractors of a three- or four-distractor clause are said at .81 to
+  1.00 (patient .94 and .87, verb .97 and .94); the third and fourth distractors at .12 to .14. They
+  lie in the distractor blocks 2 and 3, which no lesson writes.
+
+**Against the expectations.** G8 failed on held-out combinations as stated, and on role twins.
+R1 was expected to fail on held-out combinations and met that bar (22 of 24); it failed on
+brackets, which was not stated. R2 failed as stated, with the term stated: the patient and the
+verb said, the later distractors lost.
