@@ -44,7 +44,8 @@ python -m pip install cadence-net==0.98.0
   for a brain's own records: a record filed under the pairs of its most driven address units.
   C1: among 1,000,000 records an exact cue finds its record at 1.000, a noisy one at .997 to
   1.000; C3a: within .004 of a scan of every record (.010 on one founder's partial hashed cue),
-  12 of 12 founders.
+  12 of 12 founders. C3b: a read at 1,000,000 records takes 3.4 ms on one core (the scan 48 ms),
+  1.29 to 1.42 times its time at 100,000 (1.38 to 1.50 through NumPy without Numba).
 - **`apart=width`**: two facts whose keys are one key hold two records. C2: 1,000,000 facts, 4 in
   100 sharing their key, found at 1.000 on 12 of 12 (.978 to .980 without it).
 - **`read_each(cues)` and `chain(cue, links)`**: heads that read in turn, and a read's value laid
