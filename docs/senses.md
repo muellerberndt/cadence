@@ -121,6 +121,21 @@ transformer with CTC at the same parameter count trained online on the same phra
 The term that trails is the brain's read of its pools
 ([issue 303](https://github.com/muellerberndt/cadence/issues/303)).
 
+Two changes read more of what the pools hold. `fields_motor=scale` (opt-in, with
+`learned_fields`) adds a plastic projection from the pools straight to the motor region, beside
+the association's, taught by the same lessons; at 576 pools and 37 actions it holds 21,312
+synapses. And the chamber's lessons can teach the step after a word step, whose window holds
+the word's last frame as well, the word and silence at half each (`Brain.lesson(targets=...)`).
+Together, at `modules=(256,)` (1,296,996 parameters), the brain says the right word at .537 of
+the word steps and silence at .104, and reads .556 word accuracy, where the same brain without
+them says .421 and reads .425 (two development founders).
+
+```python
+direct = Brain.compose(inputs=(40, 98), actions=37, seed=0, learned_fields=16,
+                       recall=False, fields_motor=1.0)
+assert direct.parameters() == ears.parameters() + 16 * 9 * 37   # pools to motor, one per pair
+```
+
 ### What the stage is
 
 | Part | What it does |
