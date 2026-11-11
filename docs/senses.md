@@ -173,6 +173,11 @@ most, and every other input reads zero (`floor=0.05`); outside the range the inp
 end fades. The code is fixed, learns nothing and is not saved with a brain: build it once with the
 ranges the readings cover and compose the brain with `code.inputs` inputs.
 
+The spacing is the code's resolution. Where the task turns on a small difference, a grasp a
+centimetre from closing or a release over a narrow bin, give the brain a second code of the same
+readings with a narrow range around that point beside the wide one: two values the wide code lights
+alike then light different inputs of the narrow one.
+
 ```python
 from cadence import PopulationCode
 
