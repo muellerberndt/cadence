@@ -35,6 +35,7 @@
   - `vocabulary.py`: the most frequent words of LibriSpeech's training transcripts, utterances
     whose every word is on the list, and words read against the open lexicon and matched to the
     list.
+
 ### A pathway from the pools of learned fields to the motor region (opt-in, #303)
 
 `Brain.compose(..., learned_fields=features, fields_motor=scale)` adds one plastic projection
