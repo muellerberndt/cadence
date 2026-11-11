@@ -8,15 +8,20 @@
 [docs/speech.md](docs/speech.md).
 
 - **`correct.Rehearsal`**: a correction heard as one stream beside earlier utterances of a bank,
-  taught at a lesson weight (`Brain.lesson(weights=)`; 3 utterances at .25 by default), the bank
-  kept under a byte budget. On the spoken-phrase chamber (issue 303) these corrections kept the
-  earlier speakers (+.005 and +.003) at nearly a plain correction's gain.
+  taught at a lesson weight (`Brain.lesson(weights=)`; 3 utterances at .25 by default), labels or
+  soft targets, the bank kept under a byte budget. Read through it, at a tenth of the lives' rates:
+  on the spoken-phrase chamber (issue 303) the earlier speakers held (+.005 and -.002) at nearly a
+  plain correction's gain (+.072 and +.080 against +.080 and +.096); on read speech (issue 304's
+  twelve lives, 13 speakers each) the other speakers rose +.010 against +.003 at the same gain.
 - **`stream.StreamReader`**: one stream of a trained brain on live audio; samples in blocks of any
   size, text out as each 40 ms step is answered, the transcript read against a word list at
   `finish()`, seconds per step in `latency()`. It hears what the front end makes of the whole
-  recording.
+  recording; one idle core answers a step of the recipe's brain in 1.05 ms.
 - **`benchmarks/letters/recipe.py`**: the recipe end to end on LibriSpeech (or tone words with no
-  download): hear, compose, train from transcripts, read, adapt, stream.
+  download): hear, compose, train from transcripts, read, adapt at a tenth of the rates, stream;
+  `--timing` reads the reader's step. On issue 304's 2.5-hour set it reads .31 characters after two
+  passes. `benchmarks/letters/corrections.py` reads corrections of read speech, plain against
+  `Rehearsal`.
 
 ## 0.97.1 - 2026-11-11
 
