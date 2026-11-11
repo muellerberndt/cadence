@@ -13,7 +13,10 @@ import sys
 from pathlib import Path
 from typing import Any
 
-COLUMNS = ("all", "gap 0", "gap 1", "gap 2-4", "gap 5-9", "gap 10+", "held pair", "revised")
+COLUMNS = ("all", "gap 0", "gap 1", "gap 2-4", "gap 5-9", "gap 10+", "anchored", "held pair",
+           "revised")
+DECLARED = (3050, 3051, 3052, 3053, 3054, 3055)  # the declared run's founders
+NEEDED = 5
 
 
 def rows(path: Path) -> list[dict[str, Any]]:
@@ -59,6 +62,46 @@ def table(found: list[dict[str, Any]], columns: tuple[str, ...] = COLUMNS) -> st
     return "\n".join(lines)
 
 
+def score(found: list[dict[str, Any]], arm: str, reading: str, group: str,
+          field: str = "right") -> list[float | None]:
+    """``group``'s score of ``arm`` in the reading named ``reading``, per declared founder."""
+    out: list[float | None] = []
+    for founder in DECLARED:
+        rows_ = [r for r in found if r.get("arm") == arm and r["founder"] == founder
+                 and r.get("reading", {}).get("name") == reading
+                 and r.get("chamber") == "synthetic"]
+        held = rows_[0]["scores"].get(group) if len(rows_) == 1 else None
+        out.append(None if held is None else held.get(field))
+    return out
+
+
+def gates(found: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+    """The declared run's gates (``PROTOCOL.md``, the declared run) on the ``turns`` arm."""
+    out: dict[str, dict[str, Any]] = {}
+
+    def gate(name: str, values: list[Any], passes: list[bool], bar: str) -> None:
+        out[name] = {"values": values, "bar": bar, "founders": int(sum(passes)),
+                     "passes": int(sum(passes)) >= NEEDED}
+
+    told = score(found, "turns", "R1", "held pair")
+    gate("T1", told, [v is not None and v >= 0.90 for v in told], "at least .90")
+    worded = score(found, "turns", "R3", "all")
+    gate("T2", worded, [v is not None and v >= 0.80 for v in worded], "at least .80")
+    far = score(found, "turns", "R2", "anchored")
+    revised = score(found, "turns", "R2", "revised")
+    stale = score(found, "turns", "R2", "stale", "share")
+    gate("T3", far, [a is not None and b is not None and c is not None
+                     and a >= 0.90 and b >= 0.90 and c <= 0.02
+                     for a, b, c in zip(far, revised, stale, strict=True)],
+         "ten sessions back at least .90; revised at least .90 with stale at most .02")
+    emptied = score(found, "turns", "R5", "anchored")
+    control = score(found, "previous_word", "R2", "anchored")
+    gate("T4", emptied, [a is not None and b is not None and a <= b + 0.05
+                         for a, b in zip(emptied, control, strict=True)],
+         "at most the previous-word control's reading plus .05")
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--dir", type=Path, required=True)
@@ -67,6 +110,8 @@ def main(argv: list[str] | None = None) -> int:
     for path in sorted(args.dir.glob("*.jsonl*")):
         found += rows(path.with_name(path.name.removesuffix(".gz")))
     print(table([r for r in found if "scores" in r]))
+    if any(r.get("founder") in DECLARED for r in found):
+        print(json.dumps(gates(found), indent=1))
     return 0
 
 

@@ -34,7 +34,8 @@ import numpy as np
 
 TURN = "<turn>"
 PEOPLE = ("mary", "john", "sandra", "daniel", "fred", "bill", "julie", "emily", "jeff", "lily",
-          "greg", "yann", "anna", "paul", "nora", "omar")
+          "greg", "yann", "anna", "paul", "nora", "omar", "ruth", "ivan", "zoe", "hugo", "lena",
+          "carl", "ella", "otto")
 PLACES = ("kitchen", "garden", "office", "hallway", "bathroom", "bedroom", "cellar", "garage")
 TELL = ("{p} went to the {l} .", "{p} is in the {l} .")  # four words before the place
 ASK = ("where is {p} ?", "where did {p} go ?")
@@ -129,11 +130,15 @@ class World:
         return Turn(said, place, None, {"about": person, "wording": wording})
 
     def conversations(self, rng: np.random.Generator, streams: int, sessions: int, facts: int,
-                      lesson: bool, wording: str = "trained") -> list[Conversation]:
+                      lesson: bool, wording: str = "trained",
+                      gap: int | None = None) -> list[Conversation]:
         """``streams`` conversations of one shape (their turns align word for word), each of
         ``sessions`` sessions of ``facts`` facts and two questions: about a fact of the same
         session and about the latest fact of a person told in an earlier session. In a lesson's
-        conversations no held-out pair is told; in a reading's every pair is."""
+        conversations no held-out pair is told; in a reading's every pair is. With ``gap`` the
+        sessions ``0, gap, 2 gap, ...`` are anchors: their people are told nothing more for
+        ``gap`` sessions, and at each later anchor the second question asks about one of the
+        people the anchor ``gap`` sessions before told, exactly ``gap`` sessions back."""
         shape_tell = rng.integers(len(TELL), size=(sessions, facts))
         shape_ask = rng.integers(len(ASK), size=(sessions, 2))
         out: list[Conversation] = []
@@ -144,7 +149,13 @@ class World:
             for s in range(sessions):
                 session: Session = []
                 told_here = []
-                order = rng.permutation(self.people)[:facts]
+                if gap is None:
+                    order = rng.permutation(self.people)[:facts]
+                else:  # the latest anchor's people are told nothing more until the next
+                    anchor = s - 1 - (s - 1) % gap if s else -1
+                    pool = [p for p in self.people
+                            if not (p in where and where[p][1] == anchor and anchor >= 0)]
+                    order = rng.permutation(pool)[:facts]
                 for k, person in enumerate(order):
                     person = str(person)
                     choices = [q for q in self.places
@@ -165,12 +176,15 @@ class World:
                                 held=(first, place) in self.held)
                 session.append(ask)
                 earlier = [p for p, (_, at, _) in where.items() if at < s]
+                anchored = gap is not None and s >= gap and s % gap == 0
+                if anchored:
+                    earlier = [p for p, (_, at, _) in where.items() if at == s - gap]
                 if s:  # every stream asks a second question from the second session on
                     person = (earlier[int(rng.integers(len(earlier)))] if earlier
                               else told_here[int(rng.integers(len(told_here)))])
                     place, at, turn = where[person]
                     ask = self.ask(person, place, wording, int(shape_ask[s, 1]), turn)
-                    ask.tags.update(gap=s - at, revised=person in before,
+                    ask.tags.update(gap=s - at, revised=person in before, anchor=anchored,
                                     stale=before.get(person), held=(person, place) in self.held)
                     session.append(ask)
                 conversation.append(session)

@@ -371,3 +371,93 @@ def test_the_records_read_a_contained_key_s_own_record_as_a_bank_and_one_by_one(
         else:
             picks.append(kept.stores[0].read(small, credit=False).first())
     assert picks == [1, 1]  # by cosine; the dot product ties them and reads slot 0
+
+
+# -- turns in a conversation (``longterm_turn``, #305)
+
+
+def turns_brain(**settings):
+    return cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, backend="cpu", message=70,
+                            longterm=16, longterm_turn=TURN, **settings)
+
+
+def say(b, *moments):
+    for on in moments:
+        b.act(moment(*on) if isinstance(on, tuple) else moment(on), greedy=True)
+
+
+def test_turns_need_a_message_and_a_channel_and_name_their_settings():
+    b = turns_brain()
+    kept = b.longterm
+    assert kept.turn == TURN and kept.rare == 0.03 and b.message.boundary is None
+    assert kept.to_dict()["turn"] == TURN and "turn" not in brain(longterm=16).longterm.to_dict()
+    with pytest.raises(ValueError, match="message"):
+        cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, longterm=16, longterm_turn=TURN)
+    with pytest.raises(ValueError, match="longterm_turn"):
+        cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, message=70, longterm=16,
+                         longterm_turn=INPUTS)
+    with pytest.raises(ValueError, match="longterm_rare"):
+        turns_brain(longterm_rare=0.0)
+    with pytest.raises(ValueError, match="needs long-term records"):
+        cd.Brain.compose(INPUTS, 4, modules=(32,), seed=0, message=70, longterm_turn=TURN)
+
+
+def test_an_episode_writes_a_record_at_every_turn_and_keeps_its_recall():
+    b = turns_brain(longterm_rare=1.0)  # every unit is content
+    b.reset()
+    say(b, 0, 6, TURN, 10, 1, 7, TURN, 11)  # two facts in one episode
+    store = b.longterm.stores[0]
+    assert store.count == 2 and b.longterm.counts["writes"] == 2
+    assert np.array_equal(store.values[0], moment(10)[0]) and np.array_equal(
+        store.values[1], moment(11)[0])
+    code = b.message.code
+    first = np.maximum(code(moment(0)), code(moment(6)))[0]
+    assert np.array_equal(store.keys[0], first)  # the moments since the episode began
+    second = np.maximum(code(moment(1)), code(moment(7)))[0]
+    assert np.array_equal(store.keys[1], second)  # since the value before: not 10, not 0 or 6
+    say(b, 0, 6, TURN)  # the first fact asked again in the same episode
+    drive = b.stimulus(np.zeros((1, INPUTS)))
+    assert np.allclose(drive[0, b.connectome.populations["longterm"]], 3.0 * moment(10)[0])
+    say(b, 0)  # the moment after the question's turn says another agent: written as a fact
+    assert store.count == 2 and b.longterm.counts["revisions"] == 1
+
+
+def test_a_turn_s_key_holds_the_rare_units_alone():
+    b = turns_brain()
+    for _ in range(400):  # verbs 0, 1 and 2 are heard often; the agents rarely
+        say(b, 6, 7, 8)
+    kept = b.longterm
+    code = b.message.code
+    say(b, 0, 6, TURN, 10)
+    key = kept.stores[0].keys[0]
+    verb = code(moment(6))[0] * (kept.heard / kept.moments > kept.rare)
+    assert key.any() and not (key * verb).any()  # the frequent verb's units drop out
+    say(b, 0, 7, 8, TURN, 12)  # the same agent in other words: the record revised
+    assert kept.stores[0].count == 1 and kept.counts["revisions"] == 1
+    assert np.array_equal(kept.stores[0].values[0], moment(12)[0])
+
+
+def test_a_saved_brain_with_turns_continues_as_the_one_it_was_saved_from(tmp_path):
+    first = turns_brain(longterm_rare=1.0)
+    say(first, 0, 6, TURN, 10, 1)  # saved inside a window
+    second = cd.Brain.load(first.save(tmp_path / "turns.npz"))
+    assert second.longterm.turn == TURN and second.longterm.moments == first.longterm.moments
+    for on in (7, TURN, 11, 0, 6, TURN, 13):
+        x = moment(on)
+        np.testing.assert_array_equal(first.act(x, greedy=True), second.act(x, greedy=True))
+    for name in ("window", "key", "heard"):
+        np.testing.assert_array_equal(getattr(first.longterm, name),
+                                      getattr(second.longterm, name))
+    a, b = first.longterm.stores[0], second.longterm.stores[0]
+    assert a.count == b.count == 2
+    np.testing.assert_array_equal(a.keys[:2], b.keys[:2])
+
+
+def test_an_imagined_branch_with_turns_writes_nothing():
+    b = turns_brain(longterm_rare=1.0)
+    say(b, 0, 6)
+    branch = b.longterm.branch()
+    branch.hear(moment(TURN))
+    branch.hear(moment(10))
+    assert branch.stores[0].count == 0 and b.longterm.stores[0].count == 0
+    assert b.longterm.since[0] == -1 and b.longterm.window.any()

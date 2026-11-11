@@ -89,7 +89,8 @@ def test_every_arm_lives_and_scores_its_answers(arm):
         assert row["scores"]["all"]["questions"] == ch.STREAMS * 5
         assert 0 <= row["scores"]["all"]["right"] <= 1 and row["answer_ms"] > 0
     brain = ch.make_brain(wd.World(0).lexicon, 0, arm)
-    assert (getattr(brain, "longterm", None) is not None) == arm.startswith("records")
+    assert (getattr(brain, "longterm", None) is not None) == (arm.startswith("records")
+                                                              or arm == "turns")
     assert (getattr(brain, "message", None) is not None) == (arm != "previous_word")
     assert rows[0]["parameters"] == brain.parameters()
 
@@ -135,3 +136,33 @@ def test_the_key_reading_finds_the_prefix_whole_and_the_questions_apart():
     rows = {r["wording"]: r for r in ch.keys_cell({"founder": 0})}
     assert rows["prefix"]["cosine"] == 1.0 and rows["prefix"]["at_match"] == 1.0
     assert rows["trained"]["at_match"] == 0.0 and rows["trained"]["cosine"] < 0.5
+
+
+def test_the_declared_plans_parse_on_fresh_founders():
+    plans = {p.stem: json.loads(p.read_text()) for p in (HERE / "declared").glob("*.json")}
+    assert set(plans) == {"synthetic", "babi", "controls-synthetic", "controls-babi"}
+    for plan in plans.values():
+        assert plan["founders"] == list(range(3050, 3056))
+    todo = ch.cells(plans["synthetic"])
+    assert len(todo) == 18 and {c.get("label", c["arm"]) for c in todo} == {
+        "turns", "turns_nearest", "previous_word"}
+    names = [r["name"] for r in plans["synthetic"]["readings"]]
+    assert names == ["R1", "R2", "R3", "R4", "R5", "R6"]
+    assert len(ch.cells(plans["babi"])) == 2 * 6 * 3
+
+
+def test_a_world_with_a_gap_asks_exactly_that_far_back_at_every_anchor():
+    world = wd.World(0, people=24)
+    batch = world.conversations(np.random.default_rng(0), 4, 21, 2, lesson=False, gap=10)
+    anchored = [t for c in batch for s in c for t in s if t.tags.get("anchor")]
+    assert len(anchored) == 4 * 2 and {t.tags["gap"] for t in anchored} == {10}
+
+
+def test_the_turns_arm_answers_from_its_records_across_sessions():
+    rows = ch.synthetic_cell({"founder": 0, "arm": "turns", "people": 24, "rounds": 60,
+                              "sessions": 4, "readings": [
+                                  {"batches": 1, "sessions": 11, "gap": 10},
+                                  {"batches": 1, "sessions": 11, "gap": 10, "erase": "records"}]})
+    assert rows[0]["scores"]["anchored"]["right"] >= 0.9
+    assert rows[1]["scores"]["anchored"]["right"] <= 0.5
+    assert rows[0]["answer_macs"] > 0

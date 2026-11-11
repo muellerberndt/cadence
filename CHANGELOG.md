@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Turns in a conversation for long-term records (opt-in, #305)
+
+`Brain.compose(longterm=records, longterm_turn=channel)` keys a brain's own records the way a
+conversation needs. Every heard moment with the input channel on is a turn, and an episode holds
+as many turns as it hears. Off by default; without it a brain with records is the brain of 0.97.0,
+to the bit.
+
+- **Key.** A turn's key is made of the moments heard since the last value, kept on the units of the
+  message's code that are rare (`longterm_rare`, 3% of the moments heard). The frequent words drop
+  out, so a statement and a question about one person share the person's units.
+- **Write and read.** Each turn writes the moment after it under its key and reads at that moment,
+  so a lesson at a question's answer sees the record on its region. No reset is needed between
+  facts.
+- **Saved.** A checkpoint keeps the windows, keys and unit counts.
+- The conversation chamber, `benchmarks/dialogue/`, with bAbI adapters and matched controls.
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it

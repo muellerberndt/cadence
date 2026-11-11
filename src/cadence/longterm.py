@@ -487,6 +487,16 @@ class LongTermRecords:
     slots: a read deepens the records it holds, every moment the brain lives fades the idle
     ones by their depth and recent use, and a full memory replaces the most faded record. The
     records survive ``Brain.reset`` and every episode's end; ``clear()`` empties them.
+
+    **Turns in a conversation (``turn=channel``).** Every heard moment with the input channel
+    ``turn`` on is a turn, and an episode holds as many as it hears; the message is held as
+    it is, with no boundary. A turn's key is the content of what was heard since the moment
+    after the turn before: the units of the message's code (``Message.code``) of those moments
+    that are rare, each unit on in at most a share ``rare`` of the moments the brain has heard
+    (a running count over every stream, over at least ``10 / rare`` moments). A unit that the
+    frequent words drive drops out, so a statement and a question about one person share the
+    person's units. The moment after a turn is read with the key and written under it as
+    above, and the next key begins after it.
     """
 
     # the store's settings that the brain does not name: the library store's founders, a first
@@ -506,13 +516,25 @@ class LongTermRecords:
         match: float = 0.75,
         revise: float = 0.999,
         seed: int = 0,
+        turn: int | None = None,
+        rare: float = 0.03,
     ) -> None:
-        if message is None or message.boundary is None or not message.boundary_holds:
+        if turn is None and (
+            message is None or message.boundary is None or not message.boundary_holds
+        ):
             raise ValueError(
                 "longterm keys its records on the brain's held message from a turn: it needs "
-                "message=units, message_boundary=channel and message_boundary_holds=True"
+                "message=units, message_boundary=channel and message_boundary_holds=True, or "
+                "longterm_turn=channel"
             )
+        if turn is not None and (message is None or not 0 <= int(turn) < int(message.inputs)):
+            raise ValueError("longterm_turn is an input channel of the heard moment: it needs "
+                             "message=units")
+        if not 0.0 < float(rare) <= 1.0:
+            raise ValueError("longterm_rare is a share of the moments heard: it lies in (0, 1]")
         self.message = message
+        self.turn = None if turn is None else int(turn)
+        self.rare = float(rare)
         self.capacity, self.heads = int(capacity), int(heads)
         self.amplitude, self.match, self.revise = float(amplitude), float(match), float(revise)
         self.seed = int(seed)
@@ -540,6 +562,12 @@ class LongTermRecords:
         self.read_slots = np.full((0, self.heads), -1, dtype=np.int64)  # the latest read
         self.counts = {"writes": 0, "revisions": 0, "agreed": 0, "reads": 0}
         self._private = False
+        # with turns: what each stream heard since its last turn's value, each stream's key at
+        # its latest turn, and how often each code unit has been on among the moments heard
+        self.window = np.zeros((0, self.width))
+        self.key = np.zeros((0, self.width))
+        self.heard = np.zeros(self.width)
+        self.moments = 0.0
 
     @staticmethod
     def ports(heads: int) -> tuple[str, ...]:
@@ -590,9 +618,15 @@ class LongTermRecords:
         if len(self.since) != batch:
             self.since = np.full(batch, -1, dtype=np.int64)
             self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
+        if self.turn is not None and len(self.window) != batch:
+            self.window = np.zeros((batch, self.width))
+            self.key = np.zeros((batch, self.width))
 
     def _keys(self, batch: int) -> np.ndarray | None:
-        """Each stream's key, ``(batch, units)``, where the message holds that batch."""
+        """Each stream's key, ``(batch, units)``, where the message holds that batch; with turns
+        each stream's key at its latest turn."""
+        if self.turn is not None:
+            return self.key if len(self.key) == batch else None
         held = self.message
         if len(held.trace) != batch:
             return None
@@ -647,8 +681,9 @@ class LongTermRecords:
         keys = self._keys(batch)
         if keys is None:
             return out
+        reading = self.since >= 0 if self.turn is None else self.since == 0
         rows = np.array([
-            int(row) for row in np.flatnonzero(self.since >= 0)
+            int(row) for row in np.flatnonzero(reading)
             if self.stores[int(row)].count and keys[row].any()
         ], dtype=np.int64)
         if not len(rows):
@@ -692,6 +727,9 @@ class LongTermRecords:
         x = np.asarray(observations, dtype=float)
         batch = len(x)
         self._streams(batch)
+        if self.turn is not None:
+            self._hear_turns(x)
+            return
         held = self.message.held if len(self.message.held) == batch else np.zeros(batch, bool)
         keys = self._keys(batch)
         turned = held & (self.since < 0)
@@ -703,6 +741,39 @@ class LongTermRecords:
             for row in np.flatnonzero(self.since == 1):
                 if x[row].any() and keys[row].any():
                     self.record(int(row), keys[row], x[row])
+        self._cache = {}
+        self._live(batch)
+
+    def content(self, window: np.ndarray) -> np.ndarray:
+        """The rare units of ``window``: those on in at most a share ``rare`` of the moments
+        heard."""
+        # until the brain has heard ten moments a unit's share allows, a unit is content until
+        # it has been on ten times
+        share = self.heard / max(self.moments, 10.0 / self.rare)
+        return np.asarray(window * (share <= self.rare + 1e-12), dtype=np.float64)
+
+    def _hear_turns(self, x: np.ndarray) -> None:
+        """One moment with turns: the moment after a turn is written under the turn's key and
+        begins the next window, a turn takes its key from its window, and any other moment
+        joins the window."""
+        batch = len(x)
+        codes = np.asarray(self.message.code(x), dtype=np.float64)
+        value = self.since == 0
+        turned = (x[:, self.turn] > 0) & ~value
+        if not self._private:
+            self.heard += codes.sum(axis=0)
+            self.moments += batch
+            for row in np.flatnonzero(value):
+                if x[row].any() and self.key[row].any():
+                    self.record(int(row), self.key[row], x[row])
+        grow = ~value & ~turned
+        self.window[grow] = np.maximum(self.window[grow], codes[grow])
+        for row in np.flatnonzero(turned):
+            self.key[row] = self.content(self.window[row])
+            self.window[row] = 0.0
+        self.since = np.where(turned, 0, -1).astype(np.int64)
+        if self._private:
+            return
         self._cache = {}
         self._live(batch)
 
@@ -777,9 +848,15 @@ class LongTermRecords:
         if rows is None or len(self.since) != batch:
             self.since = np.full(batch, -1, dtype=np.int64)
             self.read_slots = np.full((batch, self.heads), -1, dtype=np.int64)
+            if self.turn is not None:
+                self.window = np.zeros((batch, self.width))
+                self.key = np.zeros((batch, self.width))
         else:
             self.since[rows] = -1
             self.read_slots[rows] = -1
+            if self.turn is not None and len(self.window) == batch:
+                self.window[rows] = 0.0
+                self.key[rows] = 0.0
         self._cache = {}
 
     def keep(self, rows: np.ndarray) -> None:
@@ -787,6 +864,8 @@ class LongTermRecords:
         index = np.arange(len(self.since))[rows]
         self.stores = [self.stores[int(i)] for i in index if int(i) < len(self.stores)]
         self.since, self.read_slots = self.since[index], self.read_slots[index]
+        if self.turn is not None and len(self.window) >= len(index):
+            self.window, self.key = self.window[index], self.key[index]
         self._bank()
 
     def clear(self) -> None:
@@ -800,31 +879,40 @@ class LongTermRecords:
         writes none."""
         out = copy(self)
         out.since, out.read_slots = self.since.copy(), self.read_slots.copy()
+        out.window, out.key, out.heard = self.window.copy(), self.key.copy(), self.heard.copy()
         out.counts = dict(self.counts)
         out._cache = {}
         out._private = True
         return out
 
     def streams(self) -> dict[str, np.ndarray]:
-        """What the streams hold, the records apart."""
-        return {"since": self.since, "read_slots": self.read_slots}
+        """What the streams hold, the records apart (with turns, their windows and keys)."""
+        out: dict[str, np.ndarray] = {"since": self.since, "read_slots": self.read_slots}
+        if self.turn is not None:
+            out.update(window=self.window, key=self.key)
+        return out
 
     # a record's arrays a checkpoint keeps, the first ``count`` rows of each, and the address's
     SAVED_ROWS = ("keys", "values", "deep", "recent", "faded")
     SAVED_ADDRESS_ROWS = ("units", "places")
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        out = {
             "capacity": self.capacity, "heads": self.heads, "amplitude": self.amplitude,
             "match": self.match, "revise": self.revise, "seed": self.seed,
             "records": [s.count for s in self.stores], **self.counts,
         }
+        if self.turn is not None:
+            out.update(turn=self.turn, rare=self.rare)
+        return out
 
     def arrays(self) -> dict[str, np.ndarray]:
         """What a checkpoint keeps (``Brain.save``): the streams' turns and every stream's
         records, the first ``count`` rows of each array (``store/<s>/<name>``), the store's
         counts (``store/<s>/state``) and, with an address, its lists."""
         out = dict(self.streams())
+        if self.turn is not None:
+            out.update(heard=self.heard.copy(), moments=np.array(self.moments))
         for s, store in enumerate(self.stores):
             held = store.arrays()
             rows = (*self.SAVED_ROWS, *(self.SAVED_ADDRESS_ROWS if store.coarse else ()))
@@ -868,6 +956,17 @@ class LongTermRecords:
         if since.ndim != 1 or slots.shape != (len(since), self.heads):
             raise ValueError("invalid saved long-term records: the streams' turns")
         self.since, self.read_slots = since, slots
+        if self.turn is not None:
+            names = ("window", "key", "heard", "moments")
+            if any(name not in arrays for name in names):
+                raise ValueError("missing saved long-term records: the turns' windows")
+            window, key = np.asarray(arrays["window"]), np.asarray(arrays["key"])
+            heard = np.asarray(arrays["heard"])
+            if window.shape != (len(since), self.width) or key.shape != window.shape \
+                    or heard.shape != (self.width,):
+                raise ValueError("invalid saved long-term records: the turns' windows")
+            self.window, self.key = window.astype(float), key.astype(float)
+            self.heard, self.moments = heard.astype(float), float(np.asarray(arrays["moments"]))
         if counts is not None:
             self.counts = {name: int(counts.get(name, 0)) for name in self.counts}
         self._bank()

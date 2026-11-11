@@ -1748,6 +1748,47 @@ found at 10,000 records reads 1.000 on every founder over the facts whose key is
 moment with 10,000 records a stream costs 1.3 times a moment without them over one stream and 1.7
 times over 16 streams; on a GPU, with the stores read one by one, 1.7 times over one stream.
 
+### Turns in a conversation (opt-in)
+
+In a conversation one episode tells many facts, and a question shares few words with the
+statement it asks about: "mary went to the kitchen" and "where is mary ?" share "mary" alone.
+`longterm_turn=channel` keys the records for that. Every heard moment with the input channel on
+is a turn, and an episode holds as many turns as it hears.
+
+- **The key is what the turn is about.** A turn's key is made of the moments heard since the
+  last value: their codes under the message's code, kept only on the units that are rare. A
+  unit counts as rare when it has been on in at most `longterm_rare` (3%) of the moments the
+  brain has heard. The frequent words ("the", "is", "where") drive units that drop out, so a
+  statement and a question about one person share the person's units.
+- **Every turn writes.** The moment after a turn is its value, written under the turn's key
+  as any record is: the same key with another value revises the record. The next key starts
+  after the value. No reset is needed between facts, so the recall memory keeps the episode.
+- **The read** happens at the moment after a turn: the answer's moment after a question, or
+  a fact's value. Lessons at that moment see the record on its region, so the association
+  learns to answer from it.
+
+The message needs no boundary here; it is held over the episode as without records.
+
+```python
+TURN = 14                                  # agents 0-5, verbs 6-9, patients 10-13, the turn 14
+talker = Brain.compose(inputs=15, actions=4, modules=(32,), seed=0, message=70, longterm=64,
+                       longterm_turn=TURN, longterm_rare=1.0)    # every unit counts as content
+for on in (0, 6, TURN, 12, 1, 7, TURN, 13):                     # two facts in one episode
+    talker.act(seen(on), greedy=True)
+assert talker.longterm.stores[0].count == 2                     # a record at each turn
+for on in (0, 6, TURN):                                         # the first fact asked again
+    talker.act(seen(on), greedy=True)
+drive = talker.stimulus(np.zeros((1, 15)))
+assert np.allclose(drive[0, talker.connectome.populations["longterm"]], 3.0 * seen(12)[0])
+```
+
+| Setting | Founder | Changed by | What it sets |
+| --- | --- | --- | --- |
+| `longterm_turn` | `None`, off | construction | The input channel that marks a turn; several turns in an episode |
+| `longterm_rare` | `0.03` | construction | The share of the moments heard at or below which a code unit is content for a key |
+
+`save` keeps the turns' windows and keys and the units' counts.
+
 ## How strongly a carried region is heard
 
 The trace, the copy and the history each drive the settle at a fixed amplitude, and no one

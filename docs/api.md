@@ -532,7 +532,11 @@ entry.
 `brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
 brain's held message from a turn; it needs `message=units`, `message_boundary` and
 `message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
-(0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
+(0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
+construction settings; with `longterm_turn=channel` every moment with that input channel on is a
+turn, a turn's key is the rare units of the message's codes heard since the last value
+(`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
+keys and the units' counts. `read_slots` holds each head's
 record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
 reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
 regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one

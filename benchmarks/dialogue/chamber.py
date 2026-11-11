@@ -10,7 +10,11 @@ library's defaults (with the heard history of the moment before, ``history_decay
 - ``records``: with the message held from the world's turn (``message_boundary``,
   ``message_boundary_holds=True``) and ``longterm`` records keyed by it, each turn its own
   episode (the records' own format, one fact an episode);
-- ``records_session``: the same brain, each session one episode (several facts an episode).
+- ``records_session``: the same brain, each session one episode (several facts an episode);
+- ``turns``: with ``longterm`` records keyed at every turn the world marks
+  (``longterm_turn``), on the rare units of what was heard since the last value, each session
+  one episode; ``longterm`` in a spec names further records settings (``turns_nearest`` reads
+  with ``match=0``, the nearest key).
 
 **Sessions.** A session begins with ``Brain.reset()``, which empties the message and the recall
 memory's slots; the records and the learned weights continue (``records`` resets at every turn
@@ -19,8 +23,8 @@ as well).
 **The life.** A nursery of lesson conversations: at each question's silent moment the brain is
 taught the answer (``lesson``) and then acts. Then readings on fresh conversations without
 lessons, each on a copy of the nursery's brain: every answer said greedily and scored exactly,
-grouped by the question's tags. ``erase`` reads with the records emptied before the reading
-(``records``) or the message emptied at each answer's moment (``message``).
+grouped by the question's tags. ``erase`` reads with the records (``records``) or the message
+(``message``) emptied at each answer's moment.
 
     PYTHONPATH=src python benchmarks/dialogue/chamber.py --plan plan.json --out rows.jsonl
 """
@@ -46,13 +50,13 @@ if str(HERE) not in sys.path:
 
 import world as wd  # noqa: E402
 
-ARMS = ("previous_word", "message", "records", "records_session")
+ARMS = ("previous_word", "message", "records", "records_session", "turns")
 STREAMS = 16
 UNITS = 280
 
 
 def make_brain(lexicon: wd.Lexicon, founder: int, arm: str, records: int = 4096,
-               module: int = 64) -> Any:
+               module: int = 64, longterm: dict[str, Any] | None = None) -> Any:
     warnings.simplefilter("ignore")
     import cadence as cd
 
@@ -62,8 +66,29 @@ def make_brain(lexicon: wd.Lexicon, founder: int, arm: str, records: int = 4096,
     if arm in ("records", "records_session"):
         settings.update(message_boundary=lexicon.index[wd.TURN], message_boundary_holds=True,
                         longterm=int(records))
+    if arm == "turns":  # the turns opt-in: a key per turn, several facts in an episode
+        settings.update(longterm=int(records), longterm_turn=lexicon.index[wd.TURN])
+    settings.update({f"longterm_{k}": v for k, v in (longterm or {}).items()})
     return cd.Brain.compose(lexicon.inputs, lexicon.actions, modules=(module,), seed=int(founder),
                             backend="cpu", **settings)
+
+
+def read_work(brain: Any, batch: int) -> float:
+    """The records' read before a moment's settle: one accumulate per unit of a stream's key
+    and record it holds, for every stream that reads (as ``LongTermRecords.stimulus`` picks)."""
+    kept = getattr(brain, "longterm", None)
+    if kept is None or len(kept.since) != batch:
+        return 0.0
+    keys = kept._keys(batch)
+    if keys is None:
+        return 0.0
+    reading = kept.since >= 0 if kept.turn is None else kept.since == 0
+    return float(sum(keys[r].sum() * kept.stores[int(r)].count
+                     for r in np.flatnonzero(reading) if int(r) < len(kept.stores)))
+
+
+def synapses(brain: Any) -> int:
+    return int(brain.describe()["layout"]["synapses"])
 
 
 def live(brain: Any, lexicon: wd.Lexicon, batch: list[wd.Conversation], arm: str, teach: bool,
@@ -74,6 +99,17 @@ def live(brain: Any, lexicon: wd.Lexicon, batch: list[wd.Conversation], arm: str
     appended to ``scores`` under each of its tags."""
     n = len(batch)
     rows = np.arange(n)
+    size = synapses(brain) if work is not None else 0
+
+    def counted(x: np.ndarray) -> Any:
+        """One act; with ``work``, its multiply-accumulates: every synapse once a sweep and
+        row of the settle, and the records' read."""
+        before = read_work(brain, n) if work is not None else 0.0
+        said = brain.act(x, greedy=True)
+        if work is not None:
+            work["macs"] += before + float(brain.last_settlement["row_sweeps"]) * size
+        return said
+
     for s in range(len(batch[0])):
         brain.reset()
         for t in range(len(batch[0][s])):
@@ -85,15 +121,17 @@ def live(brain: Any, lexicon: wd.Lexicon, batch: list[wd.Conversation], arm: str
                 x = np.stack([steps[i][m][0] for i in range(n)])
                 label = steps[0][m][1]
                 if label is None:
-                    brain.act(x, greedy=True)
+                    counted(x)
                     continue
                 labels = np.array([steps[i][m][1] for i in range(n)])
                 if erase == "message" and getattr(brain, "message", None) is not None:
                     brain.message.reset(n)
+                if erase == "records" and getattr(brain, "longterm", None) is not None:
+                    brain.longterm.clear()  # every record, at the answer's moment
                 t0 = time.perf_counter()
                 if teach:
                     brain.lesson(x, labels)
-                said = np.asarray(brain.act(x, greedy=True)).reshape(n, -1)[:, 0]
+                said = np.asarray(counted(x)).reshape(n, -1)[:, 0]
                 if work is not None:
                     work["answers"] += n
                     work["seconds"] += time.perf_counter() - t0
@@ -111,6 +149,8 @@ def tags(turn: wd.Turn, lexicon: wd.Lexicon, said: int) -> list[str]:
     span = "0" if gap == 0 else "1" if gap == 1 else "2-4" if gap < 5 else "5-9" if gap < 10 \
         else "10+"
     out = ["all", f"gap {span}"]
+    if t.get("anchor"):
+        out.append("anchored")  # exactly the reading's ``gap`` sessions back
     if t.get("revised"):
         out.append("revised")
     if t.get("held"):
@@ -139,7 +179,8 @@ def synthetic_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     founder, arm = int(spec["founder"]), spec["arm"]
     world = wd.World(founder, int(spec.get("people", 12)), int(spec.get("places", 8)))
     lexicon = world.lexicon
-    brain = make_brain(lexicon, founder, arm, int(spec.get("records", 4096)))
+    brain = make_brain(lexicon, founder, arm, int(spec.get("records", 4096)),
+                       longterm=spec.get("longterm"))
     rng = np.random.default_rng(np.random.SeedSequence([founder, 305, 2]))
     nursery: dict[str, list[float]] = defaultdict(list)
     t0 = time.perf_counter()
@@ -149,7 +190,7 @@ def synthetic_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
         batch = world.conversations(rng, STREAMS, sessions, facts, lesson=True)
         live(brain, lexicon, batch, arm, teach=True,
              scores=nursery if r >= rounds - max(rounds // 10, 1) else None)
-    base = {"founder": founder, "arm": arm, "chamber": "synthetic",
+    base = {"founder": founder, "arm": spec.get("label", arm), "chamber": "synthetic",
             "parameters": int(brain.parameters()), "neurons": int(brain.connectome.n),
             "nursery": summarise(nursery)["all"],
             "nursery_seconds": round(time.perf_counter() - t0)}
@@ -157,18 +198,18 @@ def synthetic_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     for reading in spec.get("readings", [{}]):
         reader = copy.deepcopy(brain)
         erase = reading.get("erase")
-        if erase == "records" and getattr(reader, "longterm", None) is not None:
-            reader.longterm.clear()
         scores: dict[str, list[float]] = defaultdict(list)
-        work = {"answers": 0, "seconds": 0.0}
+        work = {"answers": 0, "seconds": 0.0, "macs": 0.0}
         read_rng = np.random.default_rng(np.random.SeedSequence([founder, 305, 3]))
         for _ in range(int(reading.get("batches", 8))):
             batch = world.conversations(read_rng, STREAMS, int(reading.get("sessions", sessions)),
                                         facts, lesson=False,
-                                        wording=reading.get("wording", "trained"))
+                                        wording=reading.get("wording", "trained"),
+                                        gap=reading.get("gap"))
             live(reader, lexicon, batch, arm, teach=False, erase=erase, scores=scores, work=work)
         out.append({**base, "reading": reading, "scores": summarise(scores),
-                    "answer_ms": round(1e3 * work["seconds"] / max(work["answers"], 1), 4)})
+                    "answer_ms": round(1e3 * work["seconds"] / max(work["answers"], 1), 4),
+                    "answer_macs": int(work["macs"] / max(work["answers"], 1))})
     return out
 
 
@@ -179,7 +220,8 @@ def babi_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     (test_path,) = folder.glob(f"qa{task}_*_test.txt")
     train, test = wd.babi_qa(train_path), wd.babi_qa(test_path)
     lexicon = wd.babi_lexicon(train, test)
-    brain = make_brain(lexicon, founder, arm, int(spec.get("records", 4096)))
+    brain = make_brain(lexicon, founder, arm, int(spec.get("records", 4096)),
+                       longterm=spec.get("longterm"))
     rng = np.random.default_rng(np.random.SeedSequence([founder, 305, 4, task]))
     t0 = time.perf_counter()
     nursery: dict[str, list[float]] = defaultdict(list)
@@ -188,7 +230,7 @@ def babi_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
         for i in rng.permutation(len(train)):
             live(brain, lexicon, [train[int(i)]], arm, teach=True,
                  scores=nursery if e == epochs - 1 else None)
-    base = {"founder": founder, "arm": arm, "chamber": f"babi-{task}",
+    base = {"founder": founder, "arm": spec.get("label", arm), "chamber": f"babi-{task}",
             "parameters": int(brain.parameters()), "neurons": int(brain.connectome.n),
             "nursery": summarise(nursery)["all"],
             "nursery_seconds": round(time.perf_counter() - t0)}
@@ -196,15 +238,14 @@ def babi_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     for reading in spec.get("readings", [{}]):
         reader = copy.deepcopy(brain)
         erase = reading.get("erase")
-        if erase == "records" and getattr(reader, "longterm", None) is not None:
-            reader.longterm.clear()
         scores: dict[str, list[float]] = defaultdict(list)
-        work = {"answers": 0, "seconds": 0.0}
+        work = {"answers": 0, "seconds": 0.0, "macs": 0.0}
         for story in test[: int(reading.get("stories", len(test)))]:
             live(reader, lexicon, [story], arm, teach=False, erase=erase, scores=scores,
                  work=work)
         out.append({**base, "reading": reading, "scores": summarise(scores),
-                    "answer_ms": round(1e3 * work["seconds"] / max(work["answers"], 1), 4)})
+                    "answer_ms": round(1e3 * work["seconds"] / max(work["answers"], 1), 4),
+                    "answer_macs": int(work["macs"] / max(work["answers"], 1))})
     return out
 
 

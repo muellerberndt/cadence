@@ -199,7 +199,7 @@ def lessons(spec: dict[str, Any]) -> tuple[wd.Lexicon, Batches,
         read_rng = np.random.default_rng(np.random.SeedSequence([founder, 305, 3]))
         readings.append((reading, [world.conversations(
             read_rng, ch.STREAMS, int(reading.get("sessions", sessions)), facts, lesson=False,
-            wording=reading.get("wording", "trained"))
+            wording=reading.get("wording", "trained"), gap=reading.get("gap"))
             for _ in range(int(reading.get("batches", 8)))]))
     return world.lexicon, taught, readings
 
