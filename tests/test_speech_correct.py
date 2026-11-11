@@ -107,3 +107,25 @@ def test_import_cadence_loads_no_speech_piece():
 
     code = "import sys, cadence; assert not [m for m in sys.modules if m.startswith('cadence.speech')]"
     subprocess.run([sys.executable, "-c", code], check=True)
+
+
+def test_targets_teach_as_their_labels_and_mix_with_a_bank_of_labels():
+    rng = np.random.default_rng(6)
+    rows, labels = utterance(rng, 6)
+    by_label, by_target = brain(), brain()
+    Rehearsal(rows=0).correct(by_label, rows, labels)
+    Rehearsal(rows=0).correct(by_target, rows, targets=np.eye(4)[labels])
+    assert np.allclose(np.asarray(by_label.brain.efficacy), np.asarray(by_target.brain.efficacy))
+    bank = Rehearsal(rows=2, weight=0.25)
+    bank.remember(*utterance(rng, 6))
+    soft = np.full((6, 4), 0.1)
+    soft[np.arange(6), labels] = 0.7
+    bank.remember(rows, targets=soft)
+    report = bank.correct(brain(), rows, targets=soft)
+    assert report["streams"] == 3 and report["refused"] == 0
+    with pytest.raises(ValueError):
+        bank.remember(rows, labels, targets=soft)
+    with pytest.raises(ValueError):
+        bank.remember(rows, targets=soft[:, :3] * 2)
+    with pytest.raises(ValueError):
+        Rehearsal().remember(rows)

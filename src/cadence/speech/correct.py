@@ -78,9 +78,10 @@ class Rehearsal:
         """Bytes the bank's utterances hold."""
         return sum(x.nbytes + y.nbytes for x, y in self._bank)
 
-    def remember(self, rows: Any, labels: Any) -> None:
-        """Keep one earlier utterance: its rows ``(steps, inputs)`` and a label per step."""
-        x, y = _utterance(rows, labels)
+    def remember(self, rows: Any, labels: Any = None, *, targets: Any = None) -> None:
+        """Keep one earlier utterance: its rows ``(steps, inputs)`` and a label per step, or
+        ``targets``, a distribution over the actions per step ``(steps, actions)``."""
+        x, y = _utterance(rows, labels, targets)
         size = x.nbytes + y.nbytes
         if size > self.budget:
             raise ValueError("one utterance holds more bytes than the bank's budget")
@@ -99,23 +100,39 @@ class Rehearsal:
 
     # -- the correction
 
-    def correct(self, brain: Any, rows: Any, labels: Any) -> dict[str, Any]:
-        """Teach ``brain`` one utterance, its rows ``(steps, inputs)`` and a label per step,
-        beside earlier utterances of the bank at the rehearsal weight. The brain is reset before
+    def correct(
+        self, brain: Any, rows: Any, labels: Any = None, *, targets: Any = None
+    ) -> dict[str, Any]:
+        """Teach ``brain`` one utterance, its rows ``(steps, inputs)`` and a label per step (or
+        ``targets``, a distribution over the actions per step), beside earlier utterances of the
+        bank at the rehearsal weight. Where the correction or a banked utterance holds targets,
+        every stream is taught targets (a label as its one-hot row). The brain is reset before
         and left at rest after. Returns the streams heard, the steps, the lessons a learning phase
         refused and the actions the brain took on the correction."""
         from ..learning import LearningPhaseError
 
-        x, y = _utterance(rows, labels)
+        x, y = _utterance(rows, labels, targets)
         streams = [(x, y), *self.chosen(len(x))]
         width = x.shape[1]
         if any(r.shape[1] != width for r, _ in streams):
             raise ValueError("earlier utterances must hold rows as wide as the correction")
+        soft = [t for _, t in streams if t.ndim == 2]
+        actions_count = soft[0].shape[1] if soft else 0
+        if any(t.shape[1] != actions_count for t in soft):
+            raise ValueError("targets of the correction and the bank must name as many actions")
         longest = max(len(r) for r, _ in streams)
         batch = np.zeros((longest, len(streams), width), dtype=np.float64)
-        taught = np.zeros((longest, len(streams)), dtype=np.int64)
+        taught: np.ndarray = (
+            np.zeros((longest, len(streams), actions_count), dtype=np.float64)
+            if soft
+            else np.zeros((longest, len(streams)), dtype=np.int64)
+        )
         weights = np.zeros((longest, len(streams)), dtype=np.float64)
         for s, (r, labs) in enumerate(streams):
+            if soft and labs.ndim == 1:
+                if (labs >= actions_count).any():
+                    raise ValueError("a label names an action the targets do not hold")
+                labs = np.eye(actions_count)[labs]
             batch[: len(r), s] = r
             batch[len(r) :, s] = r[-1]
             taught[: len(r), s] = labs
@@ -127,7 +144,10 @@ class Rehearsal:
         for t in range(longest):
             if weights[t].any():
                 try:
-                    brain.lesson(batch[t], taught[t], weights=weights[t])
+                    if soft:
+                        brain.lesson(batch[t], targets=taught[t], weights=weights[t])
+                    else:
+                        brain.lesson(batch[t], taught[t], weights=weights[t])
                 except LearningPhaseError:
                     refused += 1
             acted = np.asarray(brain.act(batch[t], greedy=True)).reshape(-1)
@@ -137,13 +157,26 @@ class Rehearsal:
         return {"streams": len(streams), "steps": longest, "refused": refused, "actions": actions}
 
 
-def _utterance(rows: Any, labels: Any) -> tuple[np.ndarray, np.ndarray]:
+def _utterance(rows: Any, labels: Any, targets: Any = None) -> tuple[np.ndarray, np.ndarray]:
     x = np.asarray(rows, dtype=np.float32)
-    y = np.asarray(labels)
     if x.ndim != 2 or not len(x) or not np.isfinite(x).all():
         raise ValueError(
             "an utterance's rows are a finite (steps, inputs) array of one step or more"
         )
+    if (labels is None) == (targets is None):
+        raise ValueError("an utterance holds labels or targets, one of them")
+    if targets is not None:
+        t = np.asarray(targets, dtype=np.float32)
+        if (
+            t.ndim != 2
+            or len(t) != len(x)
+            or not np.isfinite(t).all()
+            or (t < 0).any()
+            or not np.allclose(t.sum(axis=1), 1.0, atol=1e-4)
+        ):
+            raise ValueError("targets hold a distribution over the actions per step")
+        return x, t
+    y = np.asarray(labels)
     if y.shape != (len(x),) or not np.issubdtype(y.dtype, np.integer) or (y < 0).any():
         raise ValueError("an utterance holds one nonnegative integer label per step")
     return x, y.astype(np.int64)

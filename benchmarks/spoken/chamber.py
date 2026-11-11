@@ -487,7 +487,8 @@ def adapt(
     (``Brain.lesson(weights=)``; at zero the lesson's update is the corrected phrase's alone, while
     the brain acts on every row). With ``rehearsal`` (a ``cadence.speech.correct.Rehearsal``),
     each phrase is taught by the library's correction instead: its labels on every row
-    (``learning_surprise=False``) beside the bank's phrases at the rehearsal's weight."""
+    (``learning_surprise=False``), or the soft targets of a life taught them, beside the bank's
+    phrases at the rehearsal's weight."""
     life = learner.copy()
     life.set_rate(rate)
     if rehearsal is not None:  # the recipe's lessons: every row taught
@@ -523,7 +524,10 @@ def adapt(
                 refs += [replay.reference(int(r)) for r in extra]
         started = time.process_time()
         if rehearsal is not None:
-            rehearsal.correct(life.brain, x[0], target[0])
+            if getattr(life, "soft", 0.0):  # a life taught soft targets is corrected by them
+                rehearsal.correct(life.brain, x[0], targets=soft_targets(target, life.soft)[0])
+            else:
+                rehearsal.correct(life.brain, x[0], target[0])
         elif held is not None and len(x) > 1:
             weights = np.full(len(x), float(held))
             weights[0] = 1.0
