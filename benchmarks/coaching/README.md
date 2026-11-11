@@ -79,7 +79,7 @@ agreement and weigh only where the rare answer is the one that matters.
 
 [`ablation.py`](ablation.py): the cart-pole task and body; a brain of modules `(64, 32)` watches
 eight demonstrated episodes, then is taught on its own path only, three rounds of 16 episodes,
-every moment taught before its act. The arms are the set `arousal`, `maturity`,
+every moment taught before its act (``full-after``: after it). The arms are the set `arousal`, `maturity`,
 `memory_fade=1.2e-4`, `memory_choice`, `efference_amplitude=1.0` and `learning_compiled_moment`,
 the set less each in turn, and the default brain.
 
@@ -97,9 +97,10 @@ Starts balanced for 500 steps of 32, after watching and after each round ([recei
 | less `efference_amplitude` | 6, 32, 32, 32 | 0, 13, 32, 32 | 2, 21, 32, 32 |
 | less `learning_compiled_moment` | 0, 32, 32, 32 | 2, 24, 32, 32 | 0, 32, 32, 32 |
 | the default brain | 0, 4, 10, 14 | 23, 16, 8, 15 | 0, 3, 0, 24 |
+| the whole set, taught after each act (`full-after`) | 5, 32, 32, 32 | 7, 10, 32, 32 | 2, 0, 32, 32 |
 
 Arousal, maturity and fading records leave lessons unchanged, so those arms repeat the whole set.
 The efference copy slows the first round; without the episodic memory the rounds swing. The
 compiled moment computes the same equations in another order (other bits), and the arm without it
-reads faster after the first round. Taught after acting rather than before, the whole set fell to
-0 of 32 after the first round and stayed there in an earlier reading.
+reads faster after the first round. Taught after each act rather than before it, the whole set
+reads about the same: the order the library recommends is not what decides this chamber.

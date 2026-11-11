@@ -31,21 +31,24 @@ FULL = {"arousal": True, "maturity": True, "memory_fade": 1.2e-4, "memory_choice
 def options(arm: str) -> dict:
     if arm == "default":
         return {}
-    if arm == "full":
+    if arm in ("full", "full-after"):
         return dict(FULL)
     removed = arm.removeprefix("full-")
     return {k: v for k, v in FULL.items() if k != removed}
 
 
-def episode(brain: Brain, see, seed: int, teach: bool, brain_acts: bool) -> int:
+def episode(brain: Brain, see, seed: int, teach: bool, brain_acts: bool,
+            after: bool = False) -> int:
     pole = CartPole(seed)
     brain.reset()
     running = True
     while running:
         x, label = see(pole.state), demonstrator(pole.state)
-        if teach:
+        if teach and not after:
             brain.lesson(x, [label])
         answer = int(brain.act(x, greedy=True)[0])
+        if teach and after:  # the order step(teacher=) avoids: the act already wrote this moment
+            brain.lesson(x, [label])
         running = pole.step(answer if brain_acts else label)
     return pole.steps
 
@@ -61,19 +64,21 @@ def life(job: tuple[str, int]) -> dict:
     inputs, see = senses("code")
     brain = Brain.compose(inputs, 2, modules=(64, 32), seed=founder, **options(arm))
     started = time.time()
+    after = arm == "full-after"
     for e in range(8):
-        episode(brain, see, 40_000 + 100 * founder + e, teach=True, brain_acts=False)
+        episode(brain, see, 40_000 + 100 * founder + e, teach=True, brain_acts=False, after=after)
     reads = [read(brain, see)]
     for r in range(3):
         for e in range(16):
-            episode(brain, see, 60_000 + 100 * founder + 16 * r + e, teach=True, brain_acts=True)
+            episode(brain, see, 60_000 + 100 * founder + 16 * r + e, teach=True, brain_acts=True,
+                    after=after)
         reads.append(read(brain, see))
     seconds = round(time.time() - started, 1)
     return {"arm": arm, "founder": founder, "reads": reads, "seconds": seconds}
 
 
 def main(argv: list[str] | None = None) -> int:
-    arms = ["full", *(f"full-{k}" for k in FULL), "default"]
+    arms = ["full", *(f"full-{k}" for k in FULL), "default", "full-after"]
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--arms", nargs="+", default=arms)
     parser.add_argument("--founders", nargs="+", type=int, default=[0, 1, 2])

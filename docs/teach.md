@@ -387,8 +387,8 @@ maturity, fading records, the episodic memory, the efference copy and the compil
 ([the opt-in ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)).
 Without the efference copy that brain balanced 32, 13 and 21 starts after the first round against
 23, 4 and 0 with it; without the episodic memory the rounds swung (one founder fell from 27 to 2).
-Taught after acting instead of before, the same brain with the copy fell to 0 of 32 and stayed
-there.
+Taught after each act instead of before it, the whole set also balanced 32 of 32 by the third
+round on this chamber.
 
 **The demonstrator's answer must follow from what the brain observes.** A scripted demonstrator
 that keeps an internal phase (approach, grasp, lift, carry) answers its own moments consistently,
