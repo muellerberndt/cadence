@@ -73,6 +73,7 @@ PAGES = [
     "docs/reward.md",
     "docs/memory.md",
     "docs/senses.md",
+    "docs/speech.md",
     "docs/tune.md",
     "docs/grow.md",
     "docs/evaluate.md",

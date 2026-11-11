@@ -298,3 +298,29 @@ def test_the_readout_cuts_one_pathway_into_the_motor_region_and_reads_each_drive
     d = ro.drives(brain, x)
     assert d["both"].shape == (3, ph.ACTIONS)
     assert np.allclose(d["both"], d["association"] + d["pools"])
+
+
+def test_a_rehearsal_correction_runs_through_the_library_helper(sets):
+    pytest.importorskip("torch")
+    out, built = sets
+    result = sp._run(
+        {
+            "data": str(out),
+            "learner": "fields",
+            "founder": 0,
+            "budgets": [32],
+            "speakers": [built["new_speaker"]],
+            "modes": ["rehearsal"],
+            "minutes": [0, 0.25],
+        }
+    )
+    assert "error" not in result, result.get("trace")
+    curve = result["adaptation"][0]["curve"]
+    assert result["adaptation"][0]["mode"] == "rehearsal" and curve[1]["phrases"] > 0
+    bank = sp.bank_of(
+        sp.phrases(str(out), "base_train"),
+        ch.Hearing.measured(sp.phrases(str(out), "base_train")),
+        0,
+    )
+    assert len(bank) == min(sp.REHEARSED, len(sp.phrases(str(out), "base_train")))
+    assert bank.rows == 3 and bank.weight == 0.25

@@ -631,6 +631,35 @@ below its high, `per` under 2, a `floor` outside `[0, 1)`, a `clamp` that is no 
 finite. It learns nothing and is not part of a checkpoint. Guide:
 [continuous readings](senses.md#continuous-readings-a-population-code).
 
+## Corrections and streaming (`cadence.speech.correct`, `cadence.speech.stream`)
+
+Opt-in: `import cadence` loads neither. Guide: [speech](speech.md).
+
+```text
+Rehearsal(rows=3, weight=0.25, budget=64 * 2**20, seed=0)
+StreamReader(brain, hearing, *, alphabet=None, words=None, temperature=None)
+```
+
+`Rehearsal` keeps earlier utterances in a bank: `remember(rows, labels)` adds one (`rows` a finite
+`(steps, inputs)` array, one nonnegative integer label a step); when the bank would pass `budget`
+bytes, utterances chosen at random (seeded) leave it; `len()` and `nbytes` report it.
+`correct(brain, rows, labels)` resets the brain and hears the utterance as one stream beside
+`rows` banked utterances (those of its length first, then the nearest), each step a
+`lesson(..., weights=)` before a greedy `act`: the correction at weight one, the banked utterances
+at `weight`, every stream past its own last row at zero. It leaves the brain at rest and returns
+the streams, the steps, the lessons a learning phase refused and the actions taken on the
+correction. Refused with `ValueError`: negative `rows` or `weight`, a budget of no bytes, an
+utterance larger than the budget, labels not one a step, banked rows of another width.
+
+`StreamReader` runs one stream of `brain` on audio heard through a `frontend.Hearing`.
+`push(samples)` takes the next 16 kHz samples in blocks of any size and returns the text its
+answers add (repeats and blanks collapsed); `text()` is the transcript so far, `finish()` the
+transcript read by `words` (a `decode.WordBeam`) where one is given; `actions` and `beliefs` hold
+each step's answer and log beliefs; `latency()` the median and 95th-percentile seconds per step
+and the seconds per second of audio; `reset()` begins a new utterance. Its rows are those of
+`hearing.steps(log_mel(audio))` for the whole recording. Refused with `ValueError`: a brain whose
+motor neurons do not match the alphabet, samples not finite.
+
 ## Learning (`cadence.learning`)
 
 ```text
