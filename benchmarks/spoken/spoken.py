@@ -267,7 +267,7 @@ def main() -> None:
     parser.add_argument("--data", required=True)
     parser.add_argument("--learners", nargs="+", default=["fields"])
     parser.add_argument("--founders", nargs="+", type=int, default=[0])
-    parser.add_argument("--budgets", nargs="+", type=int, default=[2400])
+    parser.add_argument("--budgets", nargs="*", type=int, default=[2400])
     parser.add_argument("--match", default="fields", help="the brain arm a baseline matches")
     parser.add_argument("--speakers", nargs="*", default=[])
     parser.add_argument("--modes", nargs="+", default=["plain", "replay"])
