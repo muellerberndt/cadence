@@ -24,7 +24,7 @@ keyword.
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
               learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
-              ports=0, tied=None, **options) -> Brain
+              ports=0, tied=None, fields_motor=0.0, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -52,6 +52,9 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
 - `ports=k` (opt-in, with `learned_fields`): `k` further values per observation row after the
   flattened image, read by `k` sensory neurons beside the pools and keyed on with them
   ([ports beside the screen](senses.md#ports-beside-the-screen)).
+- `fields_motor=scale` (opt-in, with `learned_fields`): a plastic projection from the pools to the
+  motor region at that scale, beside the association's, taught by the same lessons
+  ([spoken words](senses.md#spoken-words-a-spectrogram-as-an-image)).
 - `tied={(pre, post): (blocks of pre, blocks of post)}` (opt-in): ties a projection of the
   layout, named by its two regions, across equal blocks of them: `(k, 1)` reads every block of
   `pre` through one set of synapses, `(1, k)` writes every block of `post` through one, `(k, k)`
@@ -164,7 +167,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
-| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` or `ports` without `learned_fields`; `ports` negative or not an integer; `grow` and `graft` of a brain that holds them | `ValueError` |
+| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image`, `ports` or `fields_motor` without `learned_fields`; `ports` negative or not an integer; `fields_motor` negative or not finite; `grow` and `graft` of a brain that holds them | `ValueError` |
 | `tied` a mapping from `(pre, post)` to two positive integers, one of them 1 or the two equal; a projection the layout lacks or a population the connectome lacks; blocks that do not divide a region; blocks that hold different synapses or start at different signs or contact counts; a synapse two ties name; a learned code's own projections; the sensory region of `learned_fields` with `ports`; `retune`, `Lives` and `graft` of a tied brain, and `grow` of a region a tie cuts into blocks | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |

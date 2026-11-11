@@ -99,6 +99,48 @@ the band): the 64 fields divide among the six hues an object takes. At 160 by 12
 the band at .996 for a linear readout, and the brain's readout of them trails, as on the two
 grey founders above.
 
+### Spoken words: a spectrogram as an image
+
+A second of speech, as 98 log-mel frames of 40 bands, is an image: the bands are its rows and
+the frames its columns. The fields read it as they read a screen, so a sound pattern is read
+the same at every moment of the window and in every band it reaches.
+
+```python
+import numpy as np
+from cadence import Brain
+
+ears = Brain.compose(inputs=(40, 98), actions=37, seed=0, learned_fields=16, recall=False)
+window = np.zeros((40, 98))
+window[8:20, 40:70] = 1.0                            # a burst of energy in the middle bands
+ears.lesson(window.reshape(1, -1), [5])              # the fields learn from what is heard
+assert ears.observation_code(window.reshape(1, -1)).shape == (1, 16 * 9)
+```
+
+In the spoken-phrase chamber (`benchmarks/spoken/`), a brain hears phrases of the 35 words of
+Speech Commands every 0.49 s and says each word, silence or `end`. After 24,000 phrases the
+fields' pools hold the word at a word step at .626 for a linear readout, where the same fields at
+their draw hold .553 and the window itself .309 (two development founders). The brain reads
+less than its pools hold: with the default association of 64 it says the right word at .272 of
+the word steps and silence at .449, and with `modules=(256,)` at .421 and .259, against a
+transformer with CTC at the same parameter count trained online on the same phrases at .73.
+The term that trails is the brain's read of its pools
+([issue 303](https://github.com/muellerberndt/cadence/issues/303)).
+
+Two changes read more of what the pools hold. `fields_motor=scale` (opt-in, with
+`learned_fields`) adds a plastic projection from the pools straight to the motor region, beside
+the association's, taught by the same lessons; at 576 pools and 37 actions it holds 21,312
+synapses. And the chamber's lessons can teach the step after a word step, whose window holds
+the word's last frame as well, the word and silence at half each (`Brain.lesson(targets=...)`).
+Together, at `modules=(256,)` (1,296,996 parameters), the brain says the right word at .537 of
+the word steps and silence at .104, and reads .556 word accuracy, where the same brain without
+them says .421 and reads .425 (two development founders).
+
+```python
+direct = Brain.compose(inputs=(40, 98), actions=37, seed=0, learned_fields=16,
+                       recall=False, fields_motor=1.0)
+assert direct.parameters() == ears.parameters() + 16 * 9 * 37   # pools to motor, one per pair
+```
+
 ### What the stage is
 
 | Part | What it does |

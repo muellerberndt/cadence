@@ -20,6 +20,54 @@
   `grow` adds no neurons to a region a tie cuts into blocks. With the option unset every brain,
   its file and its description are unchanged to the bit on `backend="cpu"`; a composed tied
   brain's file is refused by 0.97.0 (docs/tune.md, tied projections; docs/anatomy.md).
+### A pathway from the pools of learned fields to the motor region (opt-in, #303)
+
+`Brain.compose(..., learned_fields=features, fields_motor=scale)` adds one plastic projection
+from the pools (and any ports) straight to the motor region at that scale, beside the
+association's, taught by the same lessons: `features * 9 * actions` synapses. It is appended after
+every other projection, so a brain without it keeps its layout and every draw to the bit; a
+checkpoint keeps it and `describe()` reports it under `composition`. Refused with `ValueError`
+without `learned_fields`, negative or not finite. In the spoken-phrase chamber, with soft lessons
+over a word's steps, it lifts what the brain says at a word step from .421 to .537 at an
+association of 256 (development founders).
+
+### Spoken-phrase chamber (#303)
+
+`benchmarks/spoken/` reads a continuing brain on spoken phrases of a closed vocabulary, and its
+adaptation within one life to a new speaker and to a new dialect, against a transformer and an
+LSTM trained online on the same audio at the brain's parameter count. No library change: every
+brain in it is a brain of 0.97.0.
+
+- **Corpora.** Speech Commands v0.02 (CC BY 4.0) in same-speaker phrases of 2 to 4 words, the
+  second construction of #183 with its repaired `end`; new speakers from its test split;
+  AudioMNIST's German-accent speakers (MIT) as the dialect, ten words shared; an adapter for
+  Common Voice's single-word segment (CC0). `phrases.py build` records each download's checksum
+  and every built set's hash; tests run on synthetic speech.
+- **Hearing.** 98 log-mel frames of 40 bands every 0.49 s, read through `learned_fields` as an
+  image `inputs=(40, 98)`.
+- **Step 0** (two development founders, 24,000 phrases): the pools of the fields hold the word at
+  a word step at .626 for a linear readout; the 0.97.0 default reads .286 word accuracy and says
+  silence at .449 of the word steps, an association of 256 reads .425, and the transformer with
+  CTC at those parameter counts reads .731 and .743. The term that trails is the brain's read of
+  its pools.
+- **The declared run** (six fresh founders, 18 new speakers, 18 dialect speakers): no gate reads
+  for Cadence. The brain at `modules=(256,)` (1,275,684 parameters) reads .357 against the
+  transformer with CTC's .739, 0 of 6 within .05. On a new speaker its gain over two minutes is
+  level with the fine-tuned transformer's (-.009 paired, 5 of 6 founders) and its retention change
+  is higher by +.128; on the dialect its gain trails by .093. A step of 0.49 s takes 2.43 ms on
+  one core.
+- **Round 2** (the brain's read of its pools): teaching every row its label and `fields_motor=1.0`
+  lift the brain at an association of 256 from .425 to .551 (development founders); lessons
+  weighted against silence end the silence majority and turn deletions into wrong words. On six
+  fresh founders the declared arm (`fields_motor=1.0`, soft targets) reads .539 against .747,
+  0 of 6 within .05, with what it says at a word step within .111 of what its pools hold; G2 and
+  G3 0 of 6. One stream takes 4.84 ms per second of audio on one core.
+- **Round 3:** `readout.py` reads a saved brain at the word steps: on six fresh founders the brain
+  says the right word at .537 where its association reads .587, says silence at .124, and its
+  pathways into the motor region add (cut: .398 without the pools', .295 without the
+  association's). Corrections that hear three earlier phrases at `weights=` .25 (`held25`) keep
+  the earlier speakers (+.005 and +.003 at 2 minutes) at plain's gain; at weight zero they halve
+  plain's loss of retention.
 
 ## 0.97.0 — 2026-11-10
 
