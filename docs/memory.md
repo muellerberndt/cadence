@@ -1634,6 +1634,14 @@ neurons): `state`, `key()`, `told`, and with the read `maps` and `last`. A check
 streams and the read's maps. `grow` and `graft` refuse a brain with a message, and a message needs
 a vector brain without a learned code.
 
+**The message as a record's key.** `brain.message.state` is each stream's held message,
+`(streams, blocks * units)`, row `i` the stream `i`; `brain.message.key()` is its union over the
+blocks, `(streams, units)`, the same for one set of moments heard in any order. With the fixed code
+(`message=280`, 4 blocks, 5 winners) a clause of the grammar chamber fills 15 to 25 of the 1,120
+units of `state` and 15 to 22 of the 280 of `key()`. With `message_settled` the blocks hold the
+association's settled activity, real values, and `key()` is the greatest activity of each
+association neuron over the blocks. A memory of encoded meanings files a record under either.
+
 **What it reads.** In the grammar chamber's
 [second declared run](../benchmarks/grammar/README.md#the-brains-own-message) (six fresh founders,
 the recall memory's slots of the meaning emptied at `GO`, every row taught), a brain with
