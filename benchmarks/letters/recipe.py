@@ -29,6 +29,7 @@ corpus of tone words instead, so the recipe runs without a download (the test do
 
     python benchmarks/letters/recipe.py --librispeech DIR --words benchmarks/letters/words-2000.txt
     python benchmarks/letters/recipe.py --synthetic --utterances 24 --fields 8 --width 32
+    python benchmarks/letters/recipe.py --timing --words benchmarks/letters/words-2000.txt
 """
 
 from __future__ import annotations
@@ -313,12 +314,48 @@ def run(args: argparse.Namespace) -> dict[str, Any]:
     return report
 
 
+def timing(args: argparse.Namespace) -> dict[str, Any]:
+    """The streaming reader's seconds per step and the word list's beam on this machine: the
+    recipe's composition, untrained (its step costs what a trained brain's does), 30 seconds of
+    noise heard 100 ms at a time."""
+    from cadence import Brain
+    from cadence.speech.decode import Alphabet, WordBeam
+    from cadence.speech.frontend import Hearing, log_mel
+    from cadence.speech.stream import StreamReader
+
+    rng = np.random.default_rng(args.seed)
+    seconds = 30
+    audio = rng.standard_normal(RATE * seconds) * np.abs(np.sin(np.linspace(0, 10 * seconds,
+                                                                            RATE * seconds)))
+    hearing = Hearing.fit([log_mel(audio)])
+    brain = Brain.compose(hearing.shape, Alphabet().size, seed=args.seed, backend="cpu",
+                          learned_fields=args.fields, modules=(args.width,), fields_motor=1.0,
+                          learning_surprise=False, actor_eta=0.0, actor_eta_bias=0.0,
+                          actor_eta_critic=0.0)
+    brain.fields.learning = False
+    words = None
+    if args.words:
+        words = WordBeam([line.split()[0] for line in Path(args.words).read_text().splitlines()
+                          if line.strip()])
+    reader = StreamReader(brain, hearing, words=words)
+    for k in range(0, len(audio), RATE // 10):
+        reader.push(audio[k : k + RATE // 10])
+    ticked = time.perf_counter()
+    reader.finish()
+    report = {"parameters": int(brain.parameters()), "steps": len(reader.actions),
+              **reader.latency(), "finish_seconds_for_30_s": time.perf_counter() - ticked}
+    print(json.dumps(report), flush=True)
+    return report
+
+
 def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--librispeech", help="a directory holding LibriSpeech/<split> folders")
     source.add_argument("--synthetic", action="store_true", help="tone words, no download")
+    source.add_argument("--timing", action="store_true",
+                        help="the streaming reader's seconds per step only, on noise")
     parser.add_argument("--words", help="a word list, one word (and its count) a line")
     parser.add_argument("--utterances", type=int, default=400, help="training utterances")
     parser.add_argument("--splits", default="train-clean-100",
@@ -334,7 +371,7 @@ def main(argv: list[str] | None = None) -> dict[str, Any]:
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--out", help="a JSON file for the report")
     args = parser.parse_args(argv)
-    report = run(args)
+    report = timing(args) if args.timing else run(args)
     if args.out:
         Path(args.out).write_text(json.dumps(report, indent=1))
     return report

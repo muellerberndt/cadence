@@ -41,3 +41,9 @@ def test_the_synthetic_corpus_and_the_reading():
     assert recipe.edits(list("abc"), list("abd")) == 1
     assert recipe.score(["go no"], ["go no"]) == {"characters": 1.0, "words": 1.0}
     assert np.isclose(recipe.score(["go"], ["go no"])["words"], 0.5)
+
+
+def test_the_timing_reads_the_streaming_reader_on_noise():
+    report = recipe.main(["--timing", "--fields", "4", "--width", "16"])
+    assert report["steps"] == 749 and report["step_median_s"] > 0
+    assert report["seconds_per_audio_second"] > 0
