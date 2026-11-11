@@ -478,15 +478,20 @@ def adapt(
     rate: float = 1.0,
     seed: int = 0,
     held: float | None = None,
+    rehearsal: Any = None,
 ) -> list[dict[str, Any]]:
     """A new speaker's labelled phrases one at a time, in order, read at each of ``minutes``
     (cumulative seconds of the speaker's phrases heard) on the speaker's evaluation phrases and
     on ``retention``. With ``replay``, each phrase is taught beside ``replays`` phrases of the base
     training set of equal steps; with ``held`` they are heard beside it and taught at that weight
     (``Brain.lesson(weights=)``; at zero the lesson's update is the corrected phrase's alone, while
-    the brain acts on every row)."""
+    the brain acts on every row). With ``rehearsal`` (a ``cadence.speech.correct.Rehearsal``),
+    each phrase is taught by the library's correction instead: its labels on every row
+    (``learning_surprise=False``) beside the bank's phrases at the rehearsal's weight."""
     life = learner.copy()
     life.set_rate(rate)
+    if rehearsal is not None:  # the recipe's lessons: every row taught
+        life.brain.retune(learning_surprise=False)
     rng = np.random.default_rng(seed)
     every = np.arange(len(evaluate))
     heard, taught, seconds_taught = 0.0, 0, 0.0
@@ -517,7 +522,9 @@ def adapt(
                 target = np.concatenate([target, replay.target[extra, : x.shape[1]]])
                 refs += [replay.reference(int(r)) for r in extra]
         started = time.process_time()
-        if held is not None and len(x) > 1:
+        if rehearsal is not None:
+            rehearsal.correct(life.brain, x[0], target[0])
+        elif held is not None and len(x) > 1:
             weights = np.full(len(x), float(held))
             weights[0] = 1.0
             life.hear(x, target, refs, row_weights=weights)
