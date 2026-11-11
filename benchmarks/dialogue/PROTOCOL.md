@@ -147,3 +147,19 @@ alone, and the synthetic world's lives and part of bAbI's ended with an error be
 readings was written. The counter reads `steps` times the rows there, and the brain's lives were
 launched again whole, on the same plans and founders; the controls' receipts of the first launch
 stand. No instrument of a reading, plan or bar changed.
+
+### Outcome of the declared run
+
+Read on founders 3050 to 3055 and recorded in [the README](README.md#the-declared-run-records-keyed-at-every-turn),
+with the receipts in `results/declared/` and `summarize.gates` recomputing each gate.
+
+| Gate | Verdict |
+| --- | --- |
+| T1 | passes, 6 of 6: 1.000 |
+| T2 | passes, 6 of 6: .995 to 1.000 |
+| T3 | passes, 6 of 6: 1.000 ten sessions back, revised 1.000, stale .000 |
+| T4 | passes, 5 of 6: .094 to .148 against `previous_word`'s .090 to .148; founder 3053 reads .148 against .090 plus .05 |
+
+**Against the expectations.** As expected on the synthetic world and on bAbI. The records emptied
+read .094 to .148 ten sessions back, inside the expected .09 to .29. **Departures from the plan of
+the run.** The relaunch of the brain's lives recorded above.

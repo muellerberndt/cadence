@@ -39,7 +39,8 @@ def span(values: list[float]) -> str:
 def label(row: dict[str, Any]) -> str:
     who = row.get("arm") or f"{row['model']} {row['mode']}"
     reading = row.get("reading", {})
-    parts = [reading.get("wording", "")] if reading.get("wording") else []
+    parts = [reading["name"]] if reading.get("name") else []
+    parts += [reading.get("wording", "")] if reading.get("wording") else []
     if reading.get("erase"):
         parts.append(f"{reading['erase']} emptied")
     return f"`{who}`" + (f", {', '.join(parts)}" if parts else "")

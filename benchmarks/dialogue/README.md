@@ -105,3 +105,50 @@ Time per answer, the brain's moment at a question on one core over 16 streams: .
 stream for `previous_word`, .14 to .15 with the message and .37 to .64 with the records; the controls' multiply-accumulates per answer,
 the whole conversation's forward pass shared over its answers, are 1.41 million (LSTM) and 2.49
 million (transformer) on the synthetic world. The brain's multiply-accumulates are not counted.
+
+## The declared run: records keyed at every turn
+
+[`PROTOCOL.md`](PROTOCOL.md#the-declared-run-records-keyed-at-every-turn-declared-11-november-2026-before-its-first-life),
+declared at commit `74894445` before its first life: `Brain.compose(longterm=records,
+longterm_turn=channel)` on the synthetic world of 24 people and 8 places, founders 3050 to 3055,
+one spot c7i.8xlarge (receipts in [`results/declared/`](results/declared)).
+
+| Gate | Reading | Bar | Founders | Verdict |
+| --- | --- | --- | --- | --- |
+| T1 told earlier | R1, pairs no lesson told | .90, 5 of 6 | 1.000, 6 of 6 | **passes** |
+| T2 paraphrased | R3, held-out wordings | .80, 5 of 6 | .995 to 1.000, 6 of 6 | **passes** |
+| T3 across sessions | R2: ten sessions back; revised; stale | .90; .90; .02 | 1.000; 1.000; .000, 6 of 6 | **passes** |
+| T4 held and used | R5, records emptied, ten sessions back | `previous_word` plus .05 | .094 to .148 against .090 to .148, 5 of 6 | **passes** |
+
+| Arm | Parameters | Same session (R1) | One back (R1) | Ten back (R2) | Held-out wordings (R3) | A hundred back (R4) | Revised (R2), stale | Records emptied (R5), ten back | ms, multiply-accumulates per answer (R2) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `turns` | 109,863 | 1.000 | .998 to 1.000 | 1.000 | .995 to 1.000 | 1.000 | 1.000, .000 | .094 to .148 | .19 to .31, 21 to 38 million |
+| `turns_nearest` (match 0) | 109,863 | 1.000 | 1.000 | 1.000 | .995 to 1.000 | 1.000 | 1.000, .000 | .102 to .152 | .19 to .32, 23 to 38 million |
+| `previous_word` | 34,264 | .534 to .585 | .106 to .136 | .090 to .148 | .102 to .129 | .094 to .250 | .384 to .429, .076 to .087 | | .06 to .07, 9 to 11 million |
+| LSTM, online | 110,024 | .493 to .557 | .094 to .150 | .098 to .144 | .098 to .121 | .000 to .156 | .364 to .410, .080 to .094 | | .04 to .07, 1.5 million |
+| LSTM, offline | 110,024 | .753 to .827 | .181 to .328 | .102 to .144 | .090 to .172 | .062 to .281 | .539 to .601, .053 to .068 | | .04 to .07, 1.5 million |
+| transformer, online | 108,328 | .374 to .427 | .319 to .395 | .117 to .152 | .121 to .160 | .031 to .188 | .129 to .152, .131 to .149 | | .27 to .44, 2.6 million |
+| transformer, offline | 108,328 | .622 to .728 | .486 to .692 | .094 to .242 | .113 to .223 | .031 to .188 | .139 to .165, .116 to .155 | | .26 to .29, 2.6 million |
+
+With the message emptied at each answer (R6) `turns` reads 1.000: in this arm the answer's path is
+the records', and the message carries nothing the answer reads. Every nursery of `turns` ends at
+1.000. The brain's multiply-accumulates count every synapse once a sweep and row of each settle
+and the records' read; the controls' count their forward pass; both are spread over the answers
+of the conversations heard. The brain's time is its moment at an answer; the controls' is their
+forward pass over the conversation per answer.
+
+**The second rung: bAbI**, five passes over the 200 training stories, the 1,000 test questions:
+
+| Arm | Task 1 | Task 1, records emptied | Task 2 | Task 2, records emptied |
+| --- | --- | --- | --- | --- |
+| `turns` | .329 to .370 | .329 to .371 | .174 to .240 | .174 to .240 |
+| `turns_nearest` | .322 to .376 | .322 to .376 | .152 to .222 | .154 to .216 |
+| `previous_word` | .188 to .344 | | .165 to .301 | |
+| LSTM online / offline | .269 to .367 / .453 to .475 | | .187 / .286 to .351 | |
+| transformer online / offline | .370 to .482 / .408 to .440 | | .154 to .169 / .208 to .237 | |
+
+**The negative on bAbI is the key's.** Emptying the records changes task 1 by at most .001: the
+records carry nothing to the answers. Task 1's lexicon holds four people, so a name is on in about
+one moment of 28, as often as the bar of .03 allows, and the people's units drop out of the key; a
+statement's key keeps its verb's and place's units, which no question holds. Task 2 asks where an
+object is, told through the person who carries it: two records apart.

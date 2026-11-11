@@ -166,3 +166,23 @@ def test_the_turns_arm_answers_from_its_records_across_sessions():
     assert rows[0]["scores"]["anchored"]["right"] >= 0.9
     assert rows[1]["scores"]["anchored"]["right"] <= 0.5
     assert rows[0]["answer_macs"] > 0
+
+
+def test_the_declared_receipts_hold_the_verdicts_the_readme_states():
+    import summarize as sm
+
+    found = []
+    for path in sorted((HERE / "results" / "declared").glob("*.jsonl.gz")):
+        found += sm.rows(path.with_name(path.name.removesuffix(".gz")))
+    assert len(found) == 108 + 72 + 96 + 48
+    gates = sm.gates(found)
+    assert all(gate["passes"] for gate in gates.values())
+    assert gates["T1"]["values"] == [1.0] * 6 and gates["T4"]["founders"] == 5
+    readme = (HERE / "README.md").read_text()
+    assert "| T4 held and used | R5, records emptied, ten sessions back |" in readme
+    babi = [r for r in found if r.get("arm") == "turns" and r["chamber"] == "babi-1"]
+    plain = {r["founder"]: r["scores"]["all"]["right"] for r in babi
+             if not r["reading"].get("erase")}
+    for row in babi:
+        if row["reading"].get("erase"):
+            assert abs(row["scores"]["all"]["right"] - plain[row["founder"]]) <= 0.001
