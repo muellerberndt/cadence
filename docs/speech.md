@@ -189,6 +189,15 @@ other half and the held-out speakers before and after. Last, it hears one held-o
 100 ms at a time and prints the seconds per step. `--synthetic` runs it on tone words with no
 download, as its test does.
 
+On LibriSpeech's `train-clean-100`, whose 468 utterances with every word among the 2,000 most
+common hold 0.55 hours, two passes read characters .21 on 53 held-out `dev-clean` recordings
+(the brain says only blanks after the first pass). Eleven corrections of a new speaker raise that
+speaker's other recordings from .20 to .27 and the held-out speakers from .21 to .27: at this
+level each correction also teaches the language. Training takes about 1,150 seconds per hour of
+audio on one Intel Xeon core (AWS c7i) with 32 utterances side by side, and the streaming reader
+answers a 40 ms step in 4.4 ms at the median (0.11 seconds per second of audio), on a machine
+running other work beside it.
+
 ## Settings, refusals and cost
 
 | Piece | Settings | Refused with `ValueError` |
