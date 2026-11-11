@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import copy
+import sys
 
 import numpy as np
 import pytest
@@ -101,9 +102,9 @@ def test_repeated_corrections_teach_the_corrected_utterance():
     assert np.mean(last == labels) >= 0.75
 
 
+@pytest.mark.skipif(sys.platform == "emscripten", reason="no subprocesses in a browser's Python")
 def test_import_cadence_loads_no_speech_piece():
     import subprocess
-    import sys
 
     code = "import sys, cadence; assert not [m for m in sys.modules if m.startswith('cadence.speech')]"
     subprocess.run([sys.executable, "-c", code], check=True)
