@@ -1,5 +1,17 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Learned fields keep the codes of the frames they read** (#314, R3). A training step of a
+  brain with `learned_fields` reads the same frames' code three times (the outcome before it, the
+  lesson and the act); `LearnedFields.code` keeps its latest two codes with the frames and tables
+  they were read from and returns a kept code for equal frames and tables, compared in full. The
+  code is the same array to the bit, the work counts count every read, and a brain, its file and
+  its description are unchanged on every backend. The fields read on the host, so on a device
+  their reads are a share of the read-speech recipe's training step (`benchmarks/letters/device.py`).
+
 ## 0.97.1 - 2026-11-11
 
 Opt-ins built on the v0.98.0 lanes, and the chambers that read them. No default changes: with
