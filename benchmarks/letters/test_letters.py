@@ -117,3 +117,12 @@ def test_forced_labels_recover_the_heard_letters_from_sharp_beliefs() -> None:
     assert right == 1.0
     letter_frames = stream["track"] >= 0
     np.testing.assert_array_equal(y[letter_frames], truth[letter_frames])
+
+
+def test_ctc_path_fills_blanks_and_parts_repeated_symbols() -> None:
+    truth = np.array([0, 3, 3, 0, 5, 5, 5, 0, 5, 0])
+    scores = np.log(np.full((len(truth), 8), 0.02))
+    scores[np.arange(len(truth)), truth] = 0.0
+    path = lt.ctc_path(scores, np.array([3, 5, 5]))
+    assert path.tolist() == truth.tolist()
+    assert lt.collapse(lt.ctc_path(np.zeros((6, 8)), np.array([2, 2]))) == [2, 2]

@@ -242,7 +242,8 @@ def labels(stream: dict[str, Any], mode: str = "onset", *, delay: int = 0) -> np
             first, last = word["frames"]
             n = len(word["letters"])
             for k, symbol in enumerate(word["letters"]):
-                y[first + (k * (last - first)) // n : first + ((k + 1) * (last - first)) // n] = symbol
+                length = last - first
+                y[first + k * length // n : first + (k + 1) * length // n] = symbol
             y[word["silence"][0] : word["silence"][1]] = word["space"]
     else:
         raise ValueError(f"unknown label mode {mode}")
@@ -286,6 +287,36 @@ def forced_path(scores: np.ndarray) -> np.ndarray:
         path[t] = k
         if t and came[t, k]:
             k -= 1
+    return path
+
+
+def ctc_path(scores: np.ndarray, sequence: np.ndarray) -> np.ndarray:
+    """CTC's forced alignment without a backward pass: the symbol at each frame on the best path
+    of ``sequence`` through ``scores`` (frames, symbols), the log beliefs, where blank (0) may
+    fill any frame between symbols and must part a symbol from the same symbol after it."""
+    frames = len(scores)
+    states = np.zeros(2 * len(sequence) + 1, dtype=np.int64)
+    states[1::2] = sequence
+    n = len(states)
+    skip = np.zeros(n, dtype=bool)  # a symbol state reachable from two states back
+    skip[3::2] = states[3::2] != states[1:-2:2]
+    best = np.full((frames, n), -np.inf)
+    back = np.zeros((frames, n), dtype=np.int64)
+    best[0, 0] = scores[0, states[0]]
+    if n > 1:
+        best[0, 1] = scores[0, states[1]]
+    for t in range(1, frames):
+        stay = best[t - 1]
+        one = np.concatenate([[-np.inf], best[t - 1, :-1]])
+        two = np.where(skip, np.concatenate([[-np.inf, -np.inf], best[t - 1, :-2]]), -np.inf)
+        choice = np.argmax(np.stack([stay, one, two]), axis=0)
+        best[t] = np.choose(choice, [stay, one, two]) + scores[t, states]
+        back[t] = choice
+    k = n - 1 if n == 1 or best[-1, n - 1] >= best[-1, n - 2] else n - 2
+    path = np.zeros(frames, dtype=np.int64)
+    for t in range(frames - 1, -1, -1):
+        path[t] = states[k]
+        k -= int(back[t, k])
     return path
 
 
