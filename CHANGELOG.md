@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+### A word said by its parts (#302)
+
+- **The chamber's motor by parts** (`benchmarks/grammar/MEANING_PROTOCOL_7.md`, no library
+  setting; the library's motor slots): a word said as its stem and its form, every lesson teaching
+  both. From the held state at 256 association neurons with the recall read barred, the verb's form
+  on held-out clauses is said at .98 to 1.00 on 12 of 12 fresh founders and held-out clauses at .97
+  to 1.00 (+.06 against whole words, paired); paths fall .07 from the held state and three hops .13
+  with the read free, inside two standard errors.
+
 ### A message keyed by role (#301)
 
 - **`message_roles`** (`Brain.compose(message=units, message_roles=groups)`, and

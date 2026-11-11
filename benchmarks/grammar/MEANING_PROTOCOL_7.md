@@ -84,3 +84,45 @@ association does not hold the number at that settle on new combinations.
 
 One AWS c7i.16xlarge spot box (Name=cadence-098-meaning), the 60 brain lives at once and the 24
 controls after them, one process per life, one BLAS thread per process.
+
+## Result
+
+Read on one c7i.16xlarge, founders 10528600 to 10528611, 60 brain lives and 24 control lives on
+commit eb16a20f.
+
+| Learner | Parameters | Multiply-accumulates | Seconds | clause | clause_held | roles | dyck | path | three hops | clause_long |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `words_256` (12) | 596,412 | 2.56e13 | 1,917 | .99 | .93 | .95 | .87 | .47 | .00 | .00 |
+| `parts_256` (12) | 595,536 | 2.50e13 | 1,907 | .99 | .99 | .96 | .85 | .40 | .00 | .00 |
+| `w10_256` (12) | 596,412 | 2.41e13 | 2,009 | .98 | .97 | .95 | .83 | .47 | .00 | .00 |
+| `words_free` (12) | 30,992 | 1.03e12 | 244 | .99 | .95 | .98 | .84 | .97 | .65 | .01 |
+| `parts_free` (12) | 30,692 | 9.61e11 | 235 | .98 | .96 | .96 | .83 | .94 | .52 | .00 |
+| LSTM, offline / online (6) | 596,598 | 3.37e13 / 1.42e12 | 1,209 / 71 | 1.00 / .99 | .99 / .97 | .99 / .87 | .98 / .85 | .96 / .31 | .00 / .00 | .00 / .00 |
+| transformer, offline / online (6) | 592,058 | 3.21e13 / 1.42e12 | 1,586 / 83 | 1.00 / .78 | 1.00 / .82 | .99 / .79 | .94 / .14 | .92 / .10 | .00 / .00 | .00 / .00 |
+
+- **P1 holds.** `parts_256` says the verb's form on held-out clauses with the previous words given
+  at .98 to 1.00 on 12 of 12 founders (mean 1.00), against the probe's .99 at that settle;
+  `words_256` says it at .79 to 1.00 (mean .94).
+- **P2 holds.** `parts_256` reads `clause_held` at .90 on 12 of 12 (.97 to 1.00), +.06 (.02) against
+  `words_256`, beyond two standard errors; agreement on held-out clauses 1.00, no wrong form drawn by
+  a distractor (`words_256` .97 and .07).
+- **P3 fails on paths.** From the held state, `parts_256` less `words_256`: clause +.01 (.00),
+  roles +.01 (.02), brackets -.02 (.03), paths -.07 (.04), three hops and longer clauses .00. Paths
+  are .07 under at the mean (founders -.34 to +.19), inside two standard errors. With the previous
+  words given a path's second hop is said at .50 and .53 against .67 and .58: a path's hops come from
+  the recall read, which is barred. With the read free, `parts_free` less `words_free`: clauses -.01,
+  held-out +.02, roles -.02, brackets -.00, paths -.03 (.03), three hops -.13 (.10) (founders -.70 to
+  +.36). The read delivers a three-hop path's start, second and third hops at .93, .86 and .76
+  against 1.00, .91 and .87 for words, and the words delivered are said at .92 to .99 in both: the
+  term is the read's delivery, whose address lesson reads the motor's movement, two slots in place
+  of one.
+- **Ten winners** (`w10_256`) lift held-out combinations +.04 (.02) against `words_256`; agreement
+  .99.
+- **With the message silent** every arm says .00 of clauses, held-out combinations and role twins,
+  and the verb at .09 to .12. At the settle that says the verb, the settled association reads the
+  verb's form at .95 to .99 with the message and .31 to .40 without it.
+
+**Against the expectations.** P1 and P2 held as stated, P2 on 12 of 12. P3 was expected to hold
+and failed on paths from the held state (-.07) and on three hops with the read free (-.13), each
+inside two standard errors and outside .03. `w10_256` lifted held-out combinations as stated. The
+message-silent readings read .00 as stated.
