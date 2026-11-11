@@ -15,7 +15,10 @@ alone lost .018 and .056) at nearly a plain correction's gain (+.075 against +.0
 against +.096). At weight zero the earlier rows teach nothing there (at the normalized teaching
 points a composed brain takes, the lesson's step is the correction's alone; under the founder
 teaching zero rows still shrink the step) and the loss halves; at weight one the earlier speakers
-rise and the gain falls to +.062.
+rise and the gain falls to +.062. Read through this class on the same lives (the chamber's
+``rehearsal`` mode, each correction taught the soft targets the lives learned from): +.072 with
+the earlier speakers at +.005, and +.080 with them at -.002; taught plain labels instead, +.027
+and +.049 with the earlier speakers losing .021 and .030.
 
 ``Rehearsal`` keeps the earlier utterances in a bank under a byte budget. ``remember`` adds an
 utterance; when the bank would pass its budget, utterances chosen at random (seeded) leave it.

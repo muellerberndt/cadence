@@ -146,12 +146,21 @@ report = bank.correct(ears, correction, labels[: len(correction), 0])
 assert report["streams"] == 3 and report["refused"] == 0           # the correction and two banked
 ```
 
-On the spoken-phrase chamber (`benchmarks/spoken`, issue 303: six fresh founders, 18 new
-speakers and 18 speakers of a dialect, two minutes of their speech as corrections), corrections
-heard this way kept the earlier speakers (their word accuracy +.005 and +.003, where a correction
-taught alone lost .018 and .056) at nearly the gain of a plain correction (+.075 against +.080,
-+.086 against +.096). Three earlier utterances taught at full weight keep the earlier speakers a
-little better (+.012) and gain less (+.062).
+`Rehearsal` was read on the spoken-phrase chamber (`benchmarks/spoken`, issue 303, mode
+`rehearsal`): six lives of the chamber's declared run, each corrected on 18 new speakers and 18
+speakers of a dialect for two minutes of their speech, with its bank holding 256 of the lives'
+training phrases.
+
+| Correction (two minutes) | New speakers: gain / earlier speakers | Dialect: gain / earlier speakers |
+| --- | --- | --- |
+| alone | +.080 / -.018 | +.096 / -.056 |
+| `Rehearsal(rows=3, weight=0.25)` | +.072 / +.005 | +.080 / -.002 |
+| beside three earlier phrases at full weight | +.062 / +.012 | +.062 / +.012 |
+
+Correct a brain with the lessons it learned from. These lives learned soft targets; corrected with
+plain labels instead, `Rehearsal` gains +.027 and +.049 and the earlier speakers lose .021 and
+.030. `correct(brain, rows, targets=...)` and `remember(rows, targets=...)` take soft targets; a
+recogniser trained by the forced alignment, as in this guide, is corrected by labels.
 
 ## Streaming
 
