@@ -52,17 +52,22 @@ vocabulary, one action an answer, and the lessons drawn answer first.
 
 ## Readings
 
-The declared run (twelve fresh founders, 741,542 parameters, 10,000 facts read once; the full
-tables in [`PROTOCOL.md`](PROTOCOL.md#outcome-of-the-declared-run)), said with found in brackets:
+The declared run (twelve fresh founders, 741,542 parameters; the full tables in
+[`PROTOCOL.md`](PROTOCOL.md#outcome-of-the-declared-run)), said with found in brackets:
 
-| Reading | Said | Found |
+| Reading | 10,000 facts | 100,000 facts |
 | --- | --- | --- |
-| Trained wordings | .977 to .998 | .996 to 1.000 |
-| Held-out wordings | .957 to .996 | .998 to 1.000 |
-| A fact told again: the current object (the earlier one) | .947 to .993 (.000 to .007) | .997 to 1.000 |
-| Two facts | .750 to .963 | .980 to .993 |
-| The relation said by another word | .247 to .397 | |
-| Records emptied at each answer | .000 to .027 | |
+| Trained wordings | .977 to .998 (.996 to 1.000) | .980 to .999 (.995 to 1.000) |
+| Held-out wordings | .957 to .996 (.998 to 1.000) | .652 to .698 (.681 to .693) |
+| A fact told again: the current object (the earlier one) | .947 to .993 (.000 to .007) | .947 to .997 (.000) |
+| Two facts | .750 to .963 (.980 to .993) | .760 to .950 (.973 to 1.000) |
+| The relation said by another word | .247 to .397 | .163 to .237 |
+| Records emptied at each answer | .000 to .027 | .000 to .023 |
+
+Every control at the brain's parameters reads below it on every one of these at 10,000 facts:
+the closed-book LSTM .757 to .825 trained and .047 to .210 held out, BM25 retrieval with a reader
+.597 to .780 and .504 to .679. At 100,000 facts one held-out wording ("name the ... ?") falls: a
+few subjects' names hold the word "name", which the read weighs as the question's rarest word.
 
 ## Run
 
