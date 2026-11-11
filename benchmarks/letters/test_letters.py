@@ -93,3 +93,27 @@ def test_a_short_life_runs_and_reads(tmp_path: Path) -> None:
     final = record["probes"][-1]
     assert 0.0 <= final["score"]["collapsed"]["characters"] <= 1.0
     assert "association" in final["probes"]
+
+
+def test_forced_path_is_monotonic_and_follows_the_beliefs() -> None:
+    scores = np.log(np.array([[.9, .05, .05], [.8, .1, .1], [.1, .8, .1], [.1, .1, .8],
+                              [.1, .1, .8]]))
+    assert lt.forced_path(scores).tolist() == [0, 0, 1, 2, 2]
+    flat = np.zeros((3, 3))
+    assert lt.forced_path(flat).tolist() == [0, 1, 2]  # each symbol takes a frame
+
+
+def test_forced_labels_recover_the_heard_letters_from_sharp_beliefs() -> None:
+    lexicon = lt.make_lexicon(0)
+    stream = lt.make_stream(lexicon, 12, np.random.default_rng(3))
+    y = lt.labels(stream, "even_frames")
+    words = lt.words_of(stream)
+    assert len(words) == 12
+    assert lt.text_of(lt.collapse(y), 16) == stream["text"]
+    truth = lt.labels(stream, "frames")
+    beliefs = np.log(np.full((len(y), 18), 0.01))
+    beliefs[np.arange(len(y)), truth] = 0.0
+    right = lt.forced_labels(stream, beliefs, range(len(words)), y)
+    assert right == 1.0
+    letter_frames = stream["track"] >= 0
+    np.testing.assert_array_equal(y[letter_frames], truth[letter_frames])

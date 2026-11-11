@@ -18,6 +18,12 @@ The brain says one of ``letters + 2`` symbols at every frame: blank (0), a lette
 - ``own`` (the brain's own alignment): a letter from its sound's first frame until the brain's
   act says it, blank on the frames of the sound after that, and space likewise in the silence
   after a word;
+- ``even_frames``: a word's frames split evenly among its letters, each letter taught on every
+  frame of its share, space on every silent frame after the word;
+- ``forced``: as ``even_frames`` at first; every ``align_every`` words a frozen copy of the brain
+  answers the next words greedily, and each word's frames are re-assigned to its known letters by
+  the monotonic best path through the copy's beliefs (``forced_path``), each letter taught on
+  every frame of its path. The path is the teacher's, computed outside the brain;
 - ``frames``: a letter on every frame of its sound and space on every silent frame after a word,
   the letter's identity with no decision when to say it;
 - ``delay=d`` moves each due symbol ``d`` frames later, and never onto or before the symbol before
@@ -231,9 +237,75 @@ def labels(stream: dict[str, Any], mode: str = "onset", *, delay: int = 0) -> np
     elif mode == "frames":
         for symbol, start, end in stream["sounds"]:
             y[start + delay : end + 1 + delay] = symbol
+    elif mode in ("even_frames", "forced"):  # ``forced`` starts from the even split
+        for word in words_of(stream):
+            first, last = word["frames"]
+            n = len(word["letters"])
+            for k, symbol in enumerate(word["letters"]):
+                y[first + (k * (last - first)) // n : first + ((k + 1) * (last - first)) // n] = symbol
+            y[word["silence"][0] : word["silence"][1]] = word["space"]
     else:
         raise ValueError(f"unknown label mode {mode}")
     return y
+
+
+def words_of(stream: dict[str, Any]) -> list[dict[str, Any]]:
+    """Each word of a stream as a teacher who knows where words lie sees it: its letters' symbols
+    in order, its frames ``[first, last)`` and its silence ``[first, last)``, and the space."""
+    out: list[dict[str, Any]] = []
+    held: list[tuple[int, int, int]] = []
+    for symbol, start, end in stream["sounds"]:
+        if stream["track"][start] >= 0:
+            held.append((symbol, start, end))
+            continue
+        out.append({"letters": [h[0] for h in held], "frames": (held[0][1], held[-1][2] + 1),
+                    "silence": (start, end + 1), "space": symbol})
+        held = []
+    return out
+
+
+def forced_path(scores: np.ndarray) -> np.ndarray:
+    """The monotonic best path of a fixed sequence through frames: ``scores`` (frames, n) holds
+    the log belief in the sequence's k-th symbol at each frame; every symbol takes at least one
+    frame, in order. Returns the index into the sequence at each frame (Viterbi, as CTC's forced
+    alignment without blanks)."""
+    frames, n = scores.shape
+    if frames < n:
+        raise ValueError("a sequence needs a frame per symbol")
+    best = np.full((frames, n), -np.inf)
+    came = np.zeros((frames, n), dtype=bool)  # True: entered k at this frame from k - 1
+    best[0, 0] = scores[0, 0]
+    for t in range(1, frames):
+        stay = best[t - 1]
+        enter = np.concatenate([[-np.inf], best[t - 1, :-1]])
+        came[t] = enter > stay
+        best[t] = np.maximum(stay, enter) + scores[t]
+    path = np.zeros(frames, dtype=np.int64)
+    k = n - 1
+    for t in range(frames - 1, -1, -1):
+        path[t] = k
+        if t and came[t, k]:
+            k -= 1
+    return path
+
+
+def forced_labels(stream: dict[str, Any], beliefs: np.ndarray, words: range,
+                  y: np.ndarray) -> float:
+    """Re-align ``words`` of the stream in ``y`` from ``beliefs`` (frames, symbols), the log
+    belief of a frozen copy of the brain in each symbol at each frame: each word's frames go to
+    its known letters by the monotonic best path; its silence stays space. Returns the share of
+    those words' letter frames whose new label is the letter heard there."""
+    spans = words_of(stream)
+    right = total = 0
+    for i in words:
+        word = spans[i]
+        first, last = word["frames"]
+        sequence = np.asarray(word["letters"], dtype=np.int64)
+        path = forced_path(beliefs[first:last][:, sequence])
+        y[first:last] = sequence[path]
+        right += int(np.sum(y[first:last] == stream["track"][first:last] + 1))
+        total += last - first
+    return right / max(total, 1)
 
 
 # --------------------------------------------------------------------------------- reading
@@ -433,6 +505,7 @@ def arm_settings(arm: str, protocol: dict[str, Any]) -> dict[str, Any]:
         "labels": spec.get("labels", "onset"),
         "delay": int(spec.get("delay", 0)),
         "motor": spec.get("motor", "one"),
+        "align_every": int(spec.get("align_every", 0)),
     }
 
 
@@ -541,6 +614,15 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
     train, test = w["train"], w["test"]
     own = settings["labels"] == "own"
     y = labels(train, "onset" if own else settings["labels"], delay=settings["delay"])
+    forced = settings["labels"] == "forced"
+    spans = words_of(train)
+    realign = ({spans[w]["frames"][0]: w for w in range(0, len(spans), settings["align_every"])
+                if w > 0} if forced else {})
+    alignments: list[dict[str, Any]] = []
+    # what the brain said in training: per sound, the frame of its first saying and its count
+    first_said = np.full(len(train["sounds"]), -1, dtype=np.int64)
+    said_count = np.zeros(len(train["sounds"]), dtype=np.int64)
+    window_start = 0
     # with ``own`` lessons: the sound each frame belongs to, and whether the brain has said it
     sound_of = np.full(len(train["track"]), -1, dtype=np.int64)
     for k, (_, start, end) in enumerate(train["sounds"]):
@@ -552,13 +634,25 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
     x = np.asarray(train["frames"], dtype=float)
     record: dict[str, Any] = {
         "arm": arm, "seed": seed, "settings": settings, "parameters": brain.parameters(),
-        "describe": brain.describe(), "probes": [],
+        "describe": brain.describe(), "probes": [], "alignments": alignments,
     }
     word_ends = {start for symbol, start, _ in train["sounds"] if symbol == space_symbol(letters)}
     words = 0
     lessons = 0
     started = time.monotonic()
     for t in range(len(x)):
+        if t in realign:  # the teacher re-aligns the next words on a frozen copy's beliefs
+            w0 = realign[t]
+            w1 = min(w0 + settings["align_every"], len(spans))
+            end = spans[w1 - 1]["silence"][1]
+            path = brain.save(out / f"{arm}-{seed}-align.npz")
+            copy = cd.Brain.load(path)
+            copy.reset()
+            path.unlink()
+            beliefs = copy_beliefs(copy, x[t:end])
+            full = np.zeros((len(x), beliefs.shape[1]))
+            full[t:end] = beliefs
+            alignments.append({"words": w0, "right": forced_labels(train, full, range(w0, w1), y)})
         label = int(y[t])
         if own and sound_of[t] >= 0:
             k = int(sound_of[t])
@@ -570,6 +664,11 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
             issued = brain.step(x[t][None], teacher=[label])
         if own and sound_of[t] >= 0 and int(issued[0]) == train["sounds"][sound_of[t]][0]:
             said_sound[sound_of[t]] = True
+        if sound_of[t] >= 0 and int(issued[0]) == train["sounds"][sound_of[t]][0]:
+            k = int(sound_of[t])
+            said_count[k] += 1
+            if first_said[k] < 0:
+                first_said[k] = t - train["sounds"][k][1]
         lessons += int(brain.last_learning.get("demonstration_accepted_presentations", 1)) \
             if brain.last_learning else 0
         if t in word_ends:
@@ -584,7 +683,10 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
                                preferred=answered["preferred"], delay=settings["delay"],
                                even=settings["labels"] == "even")
                 entry = {"words": words, "frames": t + 1, "lessons": lessons,
-                         "seconds": time.monotonic() - started, "score": result}
+                         "seconds": time.monotonic() - started, "score": result,
+                         "training": said_in_training(train, first_said, said_count,
+                                                      window_start, t, letters)}
+                window_start = t + 1
                 if final:
                     entry["probes"] = probes(answered["states"], test, letters)
                     entry["actions"] = answered["actions"].tolist()
@@ -598,6 +700,35 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
                                   "held": round(result["held_steps"]["letters_mean"], 2),
                                   "elapsed": round(time.monotonic() - started)}), flush=True)
     return record
+
+
+def copy_beliefs(brain: Any, x: np.ndarray) -> np.ndarray:
+    """A frozen copy's log belief in each symbol at each frame of a stream, answered greedily:
+    the log-softmax of its settled motor activations at the learner's temperature."""
+    motor = np.asarray(brain.connectome.populations["motor"], dtype=np.int64)
+    temperature = float(brain.describe()["genes"]["temperature"])
+    out = np.zeros((len(x), len(motor)))
+    for t, row in enumerate(x):
+        brain.act(row[None], greedy=True)
+        drive = np.asarray(brain.basal_ganglia.state.activation).reshape(-1)[motor] / temperature
+        out[t] = drive - drive.max() - np.log(np.sum(np.exp(drive - drive.max())))
+    return out
+
+
+def said_in_training(stream: dict[str, Any], first_said: np.ndarray, said_count: np.ndarray,
+                     start: int, end: int, letters: int) -> dict[str, Any]:
+    """Of the letter sounds heard in frames ``[start, end]``: the share first said at each frame
+    of the sound (0 its first) or never, and the mean frames said."""
+    keep = np.array([s != space_symbol(letters) and start <= b and e <= end
+                     for s, b, e in stream["sounds"]])
+    if not keep.any():
+        return {}
+    offsets = first_said[keep]
+    return {
+        "first_said": {str(k): float(np.mean(offsets == k)) for k in range(4)},
+        "never": float(np.mean(offsets < 0)),
+        "said_frames": float(said_count[keep].mean()),
+    }
 
 
 def sample(
