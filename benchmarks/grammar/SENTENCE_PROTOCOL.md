@@ -111,3 +111,53 @@ at .45 to .55. H2 fails on `settled` (clauses .60 to .70, held-out .45 to .55) a
 (.55 to .65, .40 to .50), and longer clauses read .00 on every arm and control. P fails for both
 candidates on clauses, held-out combinations and role twins; on paths the controls read .9 and the
 arms under .6. `both_256` reads .99, .98, .98 and fails P on brackets and paths.
+
+## Result of the declared run
+
+Read on one c7i.8xlarge, founders 10728600 to 10728611, 48 brain lives and 96 control lives on
+commit ba3c59a0. Said from the state with the recall read barred; held: the least clause component
+after the last heard moment (fitted on trained combinations, scored on held-out ones).
+
+| Learner | Parameters | Multiply-accumulates | clause | clause_held | roles | dyck | path | clause_long | back | back_held | back_long | held (concepts) | held (words) |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| `settled` | 302,560 | 1.25e13 | .62 | .57 | .33 | .17 | .15 | .00 | .60 | .32 | .00 | .86 | .59 |
+| `carried` | 152,804 | 9.76e12 | .56 | .43 | .27 | .24 | .06 | .00 | .57 | .29 | .00 | .46 | .55 |
+| `both_256` | 595,536 | 2.65e13 | .97 | .95 | .90 | .73 | .26 | .00 | .82 | .63 | .00 | .64 | .49 |
+| `default_64` | 30,692 | 9.97e11 | .04 | .00 | .00 | .08 | .69 | .00 | .02 | .00 | .00 | .38 | .30 |
+| LSTM, offline | 304,658 | 1.84e13 | 1.00 | .99 | .99 | 1.00 | .79 | .00 | 1.00 | .98 | .00 | .87 | .92 |
+| LSTM, online | 304,658 | 7.10e11 | .99 | .95 | .90 | .62 | .29 | .00 | .99 | .98 | .00 | .73 | .92 |
+| transformer, offline | 306,290 | 1.80e13 | 1.00 | .97 | .99 | .96 | .88 | .00 | 1.00 | 1.00 | .00 | .39 | .26 |
+| transformer, online | 306,290 | 7.21e11 | .83 | .74 | .78 | .10 | .13 | .00 | .88 | .79 | .00 | .24 | .17 |
+| LSTM, offline | 153,138 | 9.79e12 | 1.00 | 1.00 | .96 | 1.00 | .74 | .00 | 1.00 | .94 | .00 | .86 | .90 |
+| LSTM, online | 153,138 | 3.56e11 | .99 | .95 | .84 | .66 | .29 | .00 | 1.00 | .98 | .00 | .73 | .90 |
+| transformer, offline | 154,770 | 7.86e12 | 1.00 | 1.00 | 1.00 | .94 | .85 | .00 | 1.00 | 1.00 | .00 | .35 | .26 |
+| transformer, online | 154,770 | 3.65e11 | .99 | .99 | .99 | .18 | .20 | .00 | .99 | .98 | .00 | .31 | .21 |
+
+**Gates.**
+- **H1 fails on every arm**: 0 of 12 at .95. The least component held after the last heard word of
+  a clause heard as words: `settled`'s store read with the association .59 (the agent's noun .60,
+  the first distractor's .67), `carried` .55 (the first distractor's noun .55), `both_256` .49,
+  the default .30. The LSTM's state reads .90 to .92 and the transformer's last position .26.
+- **H2 fails on every arm but `both_256`'s clauses**: `settled` .62, .57 and `carried` .56, .43
+  on clauses and held-out combinations, 0 of 12 at .90; `both_256` 12 and 11 of 12; longer
+  clauses .00 for every learner, the controls included.
+- **P fails for both candidates on every panel but longer clauses**: against the matched LSTM
+  offline, `settled` -.38 (.04) on clauses, -.41 on held-out combinations, -.66 on role twins,
+  -.83 on brackets, -.64 on paths; `carried` -.44, -.57, -.70, -.76, -.68; each beyond two
+  standard errors. Against the transformer offline the same within .05.
+
+**Where the sentences are lost.**
+- `settled`: with the previous words given, every word kind of a held-out clause is said at .65
+  to .90, the second distractor the least (.65); the store read with the association holds the
+  components of a clause heard as concepts at .86, and of one heard as words at .59: words carry
+  no role, so heard words join the last group by position and the store holds them as the carried
+  state does.
+- `carried`: the verb is said at .97 to .99 and the agent of a clause with distractors at .34; the
+  carried state holds the agent after the last heard word at .92 and at the last word said at
+  .55: the leak keeps the latest moments and loses the earlier ones while the sentence is said.
+- The store's width and fill: `settled` 7,168 units, 14.3% of them nonzero after a clause (4 of
+  its 28 blocks), 7.0% above .1; the fixed code 1,120 units, 1.8% nonzero.
+
+**Against the expectations.** H1, H2 and P failed for both candidates as stated, `settled` at .59
+where .85 to .92 was stated (heard as concepts it holds .86). `both_256` read .97, .95, .90 and
+failed P on brackets and paths as stated.
