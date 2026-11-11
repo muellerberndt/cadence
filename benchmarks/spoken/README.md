@@ -184,3 +184,44 @@ Seconds per step and per correction, one stream on one Intel Xeon 8488C core (`t
 | `fields` | 629,988 | 2.13 ms | 230 | 0.043 s |
 | `transformer_ctc` | 1,281,498 | 1.12 ms | 438 | 0.0085 s |
 | `transformer_step` | 1,281,349 | 1.10 ms | 447 | 0.0086 s |
+
+### Round 2: the brain's read of its pools (development founders 0 and 1, then a declared run)
+
+The bar: what the brain says at a word step against the pools' linear readout, the first declared
+run's gap (.627 against .344) halved, .142 or less. `--silence-weight` weighs the rows taught
+silence (`Brain.lesson(weights=)`); `--soft` teaches the step after a word step the word at that
+share and silence at the rest (`Brain.lesson(targets=)`, every row taught); `{"direct": 1.0}`
+composes `fields_motor=1.0`, a plastic pathway from the pools to the motor region;
+`{"learning_surprise": false}` teaches every row its label.
+
+| Arm (association of 256 unless named) | Parameters | Word accuracy (founders 0, 1) | At word steps: right / other / silence | Pools minus right |
+| --- | --- | --- | --- | --- |
+| Step 0's arm | 1,275,684 | .425 (.441, .409) | .421 / .319 / .259 | .205 |
+| silence weight .25 | 1,275,684 | .426 (.454, .397) | .446 / .362 / .118 | .180 |
+| silence weight .1 | 1,275,684 | .439 (.451, .428) | .539 / .397 / .053 | .086 |
+| soft .5 | 1,275,684 | .514 (.518, .511) | .501 / .391 / .108 | .125 |
+| every row taught | 1,275,684 | .524 (.536, .512) | .504 / .329 / .164 | .122 |
+| `fields_motor=1.0` | 1,296,996 | .431 (.449, .413) | .423 / .273 / .303 | .202 |
+| `fields_motor=1.0`, silence weight .25 | 1,296,996 | .477 (.484, .469) | .506 / .382 / .112 | .120 |
+| `fields_motor=1.0`, every row taught | 1,296,996 | .551 (.556, .547) | .528 / .317 / .153 | .098 |
+| `fields_motor=1.0`, soft .5 (declared) | 1,296,996 | .556 (.561, .551) | .537 / .358 / .104 | .088 |
+| association of 512 | 2,251,300 | .387 (.349, .424) | .381 / .300 / .226 | .245 |
+| association of 512, soft .5 | 2,251,300 | .553 (.549, .558) | .533 / .357 / .110 | .093 |
+
+Weights against silence end the silence majority and turn deletions into wrong words; teaching
+every row lifts the reading, soft targets add nothing beyond it, and the pathway adds .027 to .042.
+
+The declared run (founders 3036 to 3041, the first run's speakers, `fields_motor=1.0` with soft
+targets .5): no gate reads for Cadence.
+
+| Learner | Parameters | Word accuracy, mean (range) | At word steps: right / other / silence | New speakers at 0, 2, 5 min (plain) | Retention at 0, 2 | Dialect at 0, 2, 5 min |
+| --- | --- | --- | --- | --- | --- | --- |
+| the arm | 1,296,996 | .539 (.502 to .552) | .510 / .322 / .168 | .514, .610, .617 | .544, .530 | .634, .739, .788 |
+| `transformer_ctc` | 1,281,498 | .747 (.736 to .764) | | .732, .868, .898 | .751, .692 | .742, .933, .966 |
+| `transformer_step` | 1,281,349 | .661 (.641 to .687) | .659 / .226 / .115 | .652, .793, .823 | .668, .604 | .616, .864, .910 |
+
+G1 0 of 6 (-.183 to -.244), G2 and G3 0 of 6. The pools hold .621, the association .605, the brain
+says the right word at .510 (the bar met). Paired over speakers, the arm's two-minute gain trails
+the transformer with CTC's by .039 on new speakers and .085 on the dialect, with retention change
+higher by .045 and .019. One stream on one c7i core: 2.37 ms per 0.49 s step, 4.84 ms per second of
+audio; 0.249 s per correction.

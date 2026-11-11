@@ -2,6 +2,17 @@
 
 ## Unreleased
 
+### A pathway from the pools of learned fields to the motor region (opt-in, #303)
+
+`Brain.compose(..., learned_fields=features, fields_motor=scale)` adds one plastic projection
+from the pools (and any ports) straight to the motor region at that scale, beside the
+association's, taught by the same lessons: `features * 9 * actions` synapses. It is appended after
+every other projection, so a brain without it keeps its layout and every draw to the bit; a
+checkpoint keeps it and `describe()` reports it under `composition`. Refused with `ValueError`
+without `learned_fields`, negative or not finite. In the spoken-phrase chamber, with soft lessons
+over a word's steps, it lifts what the brain says at a word step from .421 to .537 at an
+association of 256 (development founders).
+
 ### Spoken-phrase chamber (#303)
 
 `benchmarks/spoken/` reads a continuing brain on spoken phrases of a closed vocabulary, and its
@@ -27,6 +38,12 @@ brain in it is a brain of 0.97.0.
   level with the fine-tuned transformer's (-.009 paired, 5 of 6 founders) and its retention change
   is higher by +.128; on the dialect its gain trails by .093. A step of 0.49 s takes 2.43 ms on
   one core.
+- **Round 2** (the brain's read of its pools): teaching every row its label and `fields_motor=1.0`
+  lift the brain at an association of 256 from .425 to .551 (development founders); lessons
+  weighted against silence end the silence majority and turn deletions into wrong words. On six
+  fresh founders the declared arm (`fields_motor=1.0`, soft targets) reads .539 against .747,
+  0 of 6 within .05, with what it says at a word step within .111 of what its pools hold; G2 and
+  G3 0 of 6. One stream takes 4.84 ms per second of audio on one core.
 
 ## 0.97.0 — 2026-11-10
 
