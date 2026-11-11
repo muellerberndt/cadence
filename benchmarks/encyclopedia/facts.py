@@ -130,26 +130,25 @@ def lesson_subject(subject: str) -> bool:
 
 
 class Corpus:
-    """The facts of ``path`` (``corpus.py``'s table): the lesson facts and the reading corpus."""
+    """The facts of ``path`` (``corpus.py``'s table): the lesson facts and the reading corpus.
+    ``keep`` keeps the first ``keep`` facts of the reading corpus (every fact where None); the
+    answers and each relation's answers are read from every fact either way."""
 
-    def __init__(self, path: Path, limit: int | None = None) -> None:
+    def __init__(self, path: Path, keep: int | None = None) -> None:
         self.lessons: list[Fact] = []
         self.reading: list[Fact] = []
+        answers: dict[str, set[str]] = defaultdict(set)
         with open(path, newline="") as source:
             for row in csv.DictReader(source, delimiter="\t"):
+                answers[row["relation"]].add(row["answer"])
+                lesson = lesson_subject(row["subject"])
+                if not lesson and keep is not None and len(self.reading) >= keep:
+                    continue
                 fact = Fact(row["subject"], tuple(row["name"].split()), row["relation"],
                             row["answer"])
-                if lesson_subject(fact.subject):
-                    self.lessons.append(fact)
-                else:
-                    self.reading.append(fact)
-                if limit is not None and len(self.reading) >= limit and len(self.lessons) >= 20000:
-                    break
-        self.lexicon = Lexicon([f.answer for f in (*self.lessons, *self.reading)])
-        self.by_relation: dict[str, list[str]] = defaultdict(list)
-        for f in (*self.lessons, *self.reading):
-            self.by_relation[f.relation].append(f.answer)
-        self.relation_answers = {r: sorted(set(a)) for r, a in self.by_relation.items()}
+                (self.lessons if lesson else self.reading).append(fact)
+        self.lexicon = Lexicon([a for held in answers.values() for a in held])
+        self.relation_answers = {r: sorted(a) for r, a in answers.items()}
 
     def corpus(self, size: int) -> list[Fact]:
         return self.reading[:size]

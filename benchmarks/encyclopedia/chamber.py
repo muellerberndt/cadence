@@ -145,7 +145,7 @@ def summarise(scores: dict[str, list[float]]) -> dict[str, Any]:
 
 def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     founder, arm, size = int(spec["founder"]), spec["arm"], int(spec["size"])
-    corpus = fx.Corpus(Path(spec["data"]))
+    corpus = fx.Corpus(Path(spec["data"]), keep=size)
     lexicon = corpus.lexicon
     reading = corpus.corpus(size)
     sessions = int(spec.get("sessions", 1000))
@@ -153,6 +153,18 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     brain = make_brain(lexicon, founder, arm, capacity, int(spec.get("module", 64)),
                        spec.get("longterm"))
     life = Life(brain, lexicon)
+    kept = getattr(brain, "longterm", None)
+    if kept is not None and spec.get("bridge") is False:  # development: head 1 left silent
+        held = kept.stimulus
+        silent = kept.columns[1:]
+
+        def stimulus(drive: np.ndarray, moment: Any = None) -> np.ndarray:
+            out = held(drive, moment)
+            for columns in silent:
+                out[:, columns] = 0.0
+            return out
+
+        kept.stimulus = stimulus
     rng = np.random.default_rng(np.random.SeedSequence([founder, 311, 1]))
     nursery: list[float] = []
     t0 = time.perf_counter()
@@ -195,7 +207,8 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
             scores["stale"].append(float(said == lexicon.action.get(stale, -1)))
         found = life.found(turn)
         if found is not None:
-            scores[f"found {groups[0]}"].append(found)
+            for g in groups:
+                scores[f"found {g}"].append(found)
         for k in ("moments", "macs", "read_macs", "seconds"):
             work[k] += life.work[k]
         work["answers"] += 1
