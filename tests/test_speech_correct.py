@@ -99,3 +99,11 @@ def test_repeated_corrections_teach_the_corrected_utterance():
         last = bank.correct(learner, rows, labels)["actions"]
     assert np.mean(last == labels) > np.mean(first == labels)
     assert np.mean(last == labels) >= 0.75
+
+
+def test_import_cadence_loads_no_speech_piece():
+    import subprocess
+    import sys
+
+    code = "import sys, cadence; assert not [m for m in sys.modules if m.startswith('cadence.speech')]"
+    subprocess.run([sys.executable, "-c", code], check=True)
