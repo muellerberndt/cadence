@@ -56,10 +56,10 @@ before.
 - **The record that holds the most** (`longterm_best=True`): the read takes the record holding the
   largest share of the cue's weight, the latest among equals, so a question that names a subject
   and a relation reads the record of both, and a fact told again is read from its latest telling.
-- **What the question asks beyond the first record** (`longterm_rest=True`, two heads): head 1 is
+- **What the question asks beyond the first record** (`longterm_rest=True`): a second read is
   cued by the first record's value and the question's entries that record does not hold, so a
   question of two facts reads the second fact. The regions hold the chain from its end, the
-  answering record on head 0's region; a question of one fact leaves head 1 empty.
+  answering record on `longterm`, the first record on `longterm_1` where the brain has two heads.
 - The encyclopedia chamber, `benchmarks/encyclopedia/`: facts from Wikidata (CC0), questions in
   trained and held-out wordings, revisions, questions of two facts, and matched controls (a
   closed-book LSTM and transformer, a transformer with the facts in its window, and BM25

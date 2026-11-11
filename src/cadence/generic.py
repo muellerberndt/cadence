@@ -697,8 +697,6 @@ def _longterm_genes(longterm: Any, genes: Mapping[str, Any]) -> dict[str, Any]:
         if out[name] and out["distinct"] is None:
             raise ValueError(f"longterm_{name} reads records by what tells them apart: it "
                              "needs longterm_distinct")
-    if out["rest"] and out["heads"] < 2:
-        raise ValueError("longterm_rest cues the second head: it needs longterm_heads >= 2")
     out["pairs"] = _count("longterm_pairs", out["pairs"], low=0)
     if out["pairs"] == 1:
         raise ValueError("longterm_pairs is 0 or the units whose pairs file a record: at least 2")
