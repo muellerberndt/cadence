@@ -5,7 +5,9 @@
 A recogniser trained from recordings and their transcripts (`cadence.speech`), the read-speech
 recipe on a device, a long-term memory of a million records, and an encyclopedia of facts read
 once. No default changes: every new piece is opt-in, and with every new option unset a brain acts,
-learns, saves and describes to the bit as on 0.97.1 on `backend="cpu"`.
+learns, saves and describes to the bit as on 0.97.1 on `backend="cpu"`. A brain with
+`longterm_distinct` acts as on 0.97.1 and saves its records' entries as rows: 0.98.0 loads a 0.97.1
+file, and 0.97.1 refuses the new one (`missing saved long-term records: the records' entries`).
 
 ```bash
 python -m pip install cadence-net==0.98.0
@@ -59,7 +61,7 @@ python -m pip install cadence-net==0.98.0
 - **`longterm_best=True`**: the read takes the record holding the most of the cue's weight, the
   latest among equals; **`longterm_rest=True`**: a second read for what the question asks beyond
   that record. With `longterm_distinct` the records and their entries are kept as lists, which
-  grow past a hundred thousand records; a 0.97.1 file loads.
+  grow past a hundred thousand records.
 - `benchmarks/encyclopedia/`: Wikidata facts (CC0) read once, twelve fresh founders, 741,542
   parameters. At 10,000 facts E1, E3, E4 and E5 pass: trained wordings .977 to .998, held-out
   wordings .957 to .996, a fact told again current at .947 to .993, two facts .750 to .963, above
