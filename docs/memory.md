@@ -2687,6 +2687,26 @@ Here a key has two parts on coordinates of their own, the subject beside the rel
 one part silent reads every record that holds the other, and a value that is an entity's code can
 be the next cue's subject (`at` says where it lies).
 
+**What it reads** ([memory-scale benchmark](../benchmarks/memory_scale/README.md#the-fourth-declaration-a-million-records),
+#310; declared on twelve fresh founders, the address of pairs at `pairs=16, expansion=16384,
+winners=256, candidates=4096`, beside the scan that scores every record):
+
+| Reading among 1,000,000 records | The address of pairs | The scan |
+| --- | --- | --- |
+| The right record from its exact key | 1.000 | 1.000 |
+| From a key with noise of its own energy, codes of 128 | .997 to 1.000 | 1.000 |
+| From a key with half of its coordinates silent, codes of 128 | .996 to 1.000 | 1.000 |
+| The same, keys of 280 with 15 to 22 units on | .973 to .986 | .982 to .992 |
+| The subject alone, 8 heads: 8 different facts about it | .994 to 1.000 | 1.000 |
+| A question of four parts, a head for each part | 1.000 | 1.000 |
+| The same four parts summed into one cue | .000 to .006 | .000 to .010 |
+| A chain of three facts from an exact cue | .998 to 1.000 | 1.000 |
+| Records a read scores; bytes a record (codes of 128) | 4,096; 1,783 | 1,000,000; 772 |
+
+A read at 1,000,000 records scores 4,096 of them where the scan scores every one; on a box
+shared with other work it took 6 to 18 ms against the scan's 69 to 93 ms (codes of 128). At
+100,000 records the store's own address of units is the cheaper read.
+
 #### Keys held apart (opt-in)
 
 Two facts whose keys are one key are one record: the second write revises the first. This happens
