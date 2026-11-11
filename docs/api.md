@@ -8,7 +8,7 @@ keyword.
 | --- | --- |
 | [Brain](#brain-cadence) | `Brain`, its methods, attributes and checkpoint formats |
 | [Arousal](#arousal-cadencearousal) | `ArousalConfig`, `Arousal` |
-| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator` |
+| [Streams](#streams-cadencestream) | `Trace`, `Efference`, `History`, `Message`, `Recall`, `FastSynapses`, `SynapticMemory`, `PatternSeparator`, `LongTermMemory` |
 | [Learning](#learning-cadencelearning), [checkpoints](#checkpoints-cadencecheckpoint), [reward](#the-agent-cadenceplasticity) | `LearnerConfig`, `Learner`, `GraphHolder`, `LearningPhaseError`, graph factories and diagnostics, `save`, `load`, `ActorCritic`, `ActorCriticConfig`, `Maturity` |
 | [The graph](#neuralgraph-cadence) | `NeuralGraph`, `BrainState`, `Equilibrium`, `Nudge`, `Connectome`, `NeuronModel`, `Adaptation`, blocks, `Certificate`, the neuron-by-neuron reference |
 | [Wiring and instruments](#regions-and-genome-cadenceregions-cadencegenome) | `Region`, `regions`, `Projection`, `Genome`, `develop`, `evolve`, `genes`, `Receipt` |
@@ -23,7 +23,8 @@ keyword.
 ```text
 Brain.compose(inputs, actions, *, connectome=None, modules=(64,), observers=(),
               lateral=None, teaching=None, scales=None, features=8, field=3, code=None,
-              learned_code=None, attention=False, seed=0, slots=1, **options) -> Brain
+              learned_code=None, attention=False, seed=0, slots=1, learned_fields=None,
+              ports=0, **options) -> Brain
 ```
 
 The composed System 1 brain, with optional System 2 `observers` in the same graph.
@@ -43,6 +44,14 @@ The composed System 1 brain, with optional System 2 `observers` in the same grap
   neurons that settles with the brain to a learned sparse code of the observation, read by the
   cortex and keyed on by the memories. Its one setting is `learned_code_fields`
   ([the learned code](senses.md#the-learned-code)).
+- `learned_fields=features` (opt-in, an image brain, without `code` or `learned_code`): reads
+  the image through that many receptive fields of 8 by 8 pixels, shaped by a local rule while
+  the brain lives and pooled over 3 by 3 overlapping regions, in place of the visual cortex; the
+  sensory region holds the pools and every memory keys on them. `brain.fields` holds the
+  `LearnedFields` ([learned receptive fields](senses.md#learned-receptive-fields)).
+- `ports=k` (opt-in, with `learned_fields`): `k` further values per observation row after the
+  flattened image, read by `k` sensory neurons beside the pools and keyed on with them
+  ([ports beside the screen](senses.md#ports-beside-the-screen)).
 - `scales`: maps `"sensory"` and `"trace"` to the initial magnitudes of the projections from
   those regions (founders 1.0 and 1.2; a name left out keeps its founder), fixed at
   construction. The history's and the recall memory's projections start at 1.2, a constant.
@@ -111,23 +120,30 @@ Brain(connectome, *, episodic=True, consolidation=0.05,
       maturity_recovery=200000.0,
       working_memory_decay=0.0, working_memory_amplitude=3.0,
       efference_decay=0.2, efference_amplitude=0.0,
-      history_decays=(), history_amplitude=3.0, carried_gain=0.0, recall=False, learning=None,
+      history_decays=(), history_amplitude=3.0, message=None, carried_gain=0.0, recall=False,
+      learning=None,
       reward=None, slots=1, arousal=None, seed=0,
       backend="cpu", device=None, precision=None, inputs=None, code=None, learned_code=None, apical=0.0,
-      dense_limit=None, **genes)
+      dense_limit=None, learned_fields=None, image=None, ports=0, **genes)
 ```
 
 Wraps any connectome with populations `association`, `motor` and `sensory` (or
 `visual/input`). It uses `prefrontal` for a working trace, `efference` (one neuron per motor
 neuron) for an efference copy, `history` (one sensory-width block per entry of
 `history_decays`; one block of `learned_code` units with a learned code) for a heard
-history, with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
+history, with `message=units` a `message` population of `message_phases * units` neurons (and
+with `message_read=True` a `message_read` population of `units`) for a
+[held message](memory.md#held-message), with `recall=True` the `recall` and `next` regions, and with `learned_code=units` a
 `code` population of that many neurons with its complete dictionary, lateral and predictor
 synapses ([the learned code](senses.md#the-learned-code)).
 `inputs` names the observation width when the sensory region is a `code` of that width.
+`learned_fields=features` with `image=(height, width[, channels])` reads that image through
+learned fields whose `features * 9` pools the `sensory` population holds, followed by `ports`
+further neurons for the values a row carries after the image.
 `genes` carries the `recall_*` settings and `learned_code_fields`. `learning` and `reward` default to the composed
 `LearnerConfig` and `ActorCriticConfig`; `arousal` is `True`, a field mapping or an
-`ArousalConfig`. With `memory_choice=True`, `compose` fills in `memory_context=0.5` and
+`ArousalConfig`. With the store, `compose` fills in `memory_rate=0.2` (`memory_rate=1.0` keeps
+the last outcome); with `memory_choice=True` it fills in `memory_context=0.5` and
 `memory_rate=0.5`; the constructor keeps its own defaults above, so pass these here or use
 `compose` ([episodic settings](memory.md#episodic-settings)). The stores' constants (a record's decay 0.9, a replay
 of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are no arguments.
@@ -138,6 +154,7 @@ of 8 decisions, demonstrations recorded at 1.0, 24 active separation cells) are 
 | `memory_fade` in `[0, 1)`, and above 0 needs `episodic=True` ([records that fade](memory.md#records-that-fade-with-disuse-opt-in)) | `ValueError` |
 | `memory_context`, `memory_extinction` need `memory_choice`; `memory_context_hold` (`"unchanged"` or `"punished"`) needs `memory_choice` and `memory_context` | `ValueError` |
 | `learned_code` at least 2; `learned_code_fields` without it, `code` beside it, an image brain, the `torch` backend, or a connectome without the region's populations and complete synapses | `ValueError` |
+| `learned_fields` at least 2, on an image of at least 8 by 8 pixels, without `code` or `learned_code`; `image` or `ports` without `learned_fields`; `ports` negative or not an integer; `grow` and `graft` of a brain that holds them | `ValueError` |
 | `memory_context` in `[0, 1)`; `memory_extinction` in `[0, 1]`; `working_memory_decay`, `efference_decay` in `[0, 1)` | `ValueError` |
 | `maturity` boolean; `maturity_scale` and `maturity_recovery` other than their founders (10.0 and 200,000) need `maturity` | `ValueError` |
 | `maturity_scale` finite and at least `1e-12`; `maturity_recovery` finite and at least 1 | `ValueError` |
@@ -158,6 +175,7 @@ projections start at 1.2, a constant (`scales["history"]` and `scales["recall"]`
 | `lesson(observations, labels=None, *, targets=None, weights=None) -> dict` | The teaching part of `step` without the act; its free phase starts from the stream's activity, as the act's settle does (rest after `reset`, for streams that have not acted and for lessons alone; `step(teacher=...)` and a rehearsal's replays teach from the state their act settles from). Once the brain has acted, its rows must match the live streams (`ValueError` until `reset`). It records the demonstration in an episodic memory and runs the recall address lesson. `targets`, `(rows, actions)` in place of `labels`, teaches a distribution per row (each slot's columns summing to one), every row taught, no demonstration recorded; refused with `recall_tokens` or `learning_rehearsal`. `weights`, one nonnegative number per row, scales each row's pull; all ones is the lesson without weights; refused with `learning_rehearsal`. With a recall memory, teach a moment before acting on it, as `step` does: a lesson on the observations the brain just acted on reads the recall memory as that act left it (the moment itself, its successor empty) and warns with `RuntimeWarning`. Refused with `RuntimeError` while a sampled action awaits its outcome; a refused phase raises `LearningPhaseError` and changes nothing. | [supervised lessons](teach.md#supervised-lessons) |
 | `act(observations, *, greedy=False, temperature=None) -> actions` | One qualified free settle and a sampled (or greedy) choice, one index per slot; advances the working trace. `temperature` is one value or one per slot. Exhaustion raises `RuntimeError` before any change. | [one experience step by hand](tune.md#one-experience-step-by-hand) |
 | `learn(reward, done, next_observations, *, bootstrap=None, salience=None) -> dict` | Feedback for the pending sampled action: hippocampal record, actor and critic update; `done` rows reset their traces. A refused feedback solve rolls everything back and keeps the action pending. | [reward](reward.md#decision-and-reset-contract) |
+| `value(observations) -> (batch,)` | The critic's value of each row: the drive with every memory as it stands, settled from the stream's activity (rest before the brain has acted), read without writing; the value a truncated episode bootstraps from, `step(..., done=cut, bootstrap=brain.value(last))`. Nothing changes. Once the brain has acted the rows are its live streams; another batch and malformed observations raise `ValueError` before anything changes. | [reward](reward.md#decision-and-reset-contract) |
 | `imagine(observations, *, budget=1024) -> tuple[Equilibrium, ...]` | A private branch over a sequence of batches: memories read, nothing written, live state unchanged; each phase settles to the learner's tolerance within `budget`. A refused phase ends the branch and is the last entry. | [private imagination](start.md#private-imagination) |
 | `fit(observations, labels, *, epochs=30, batch=32) -> list[float]`, `predict(observations)`, `accuracy(observations, labels)` | Independent samples, without traces or recall; `fit` resets the streams first, keeping the arousal, and returns training accuracy per epoch. Noninteger labels and mismatched batches raise before any update. | [independent-sample controls](evaluate.md#independent-sample-controls) |
 | `retune(**genes) -> Brain` | Changes mutable settings in the same life, atomically, and resets nothing (`brain.arousal.reset()` resets the arousal). Refuses construction settings, absent components, and the recall address genes under `recall_address_reward` while a sampled action awaits feedback. | [retune the same life](tune.md#retune-the-same-life) |
@@ -187,6 +205,7 @@ their shape. Keep row identities fixed until `reset()`.
 | `hippocampus` | the associative `SynapticMemory` (with `memory_choice` the episodic place records), or `None` with `episodic=False` |
 | `context_memory` | the episodic context records with `memory_choice` and a positive `memory_context`, else `None` |
 | `sparse_code`, `code_width`, `coded_cortex`, `inputs` | the `PatternSeparator` of `code=units` or `None`; the key width; whether the sensory region is the code; the observation width |
+| `fields`, `ports` | the `LearnedFields` of `learned_fields=features` or `None`; the width of the ports read beside its pools (0 without them) |
 | `learned_code`, `code_index`, `prefrontal_index` | the `LearnedCode` of `learned_code=units` or `None`; neuron indices of the `code` and `prefrontal` populations (empty without them) |
 | `attention` | whether `compose` applied the opt-in learned-code contextual-memory recipe; its effective mechanism is recorded by the learned-code and Recall settings |
 | `sensory_index`, `association_index`, `motor_index` | neuron indices of those populations |
@@ -210,7 +229,24 @@ maturity and a `cadence-brain/2` file without one. A brain whose store fades
 0.95.2 and earlier refuse, with a maturity or without: the same members, with the fade under
 the store's settings and its two sums (`memories/hippocampus/fade_depth`, `fade_recent`).
 `Brain.load` refuses a `cadence-brain/3` file whose store does not fade, and a fading store
-under either other name.
+under either other name. A brain with [long-term records](memory.md#long-term-records) writes
+`cadence-brain/4`, which 0.96.0 and earlier refuse, whatever else it holds: the same members, with
+the records' settings under `memories/longterm` in the metadata and, under
+`memories/longterm/`, the streams' turns (`since`, `read_slots`) and every stream's records
+(`store/<s>/keys`, `values`, `deep`, `recent`, `faded`, their first `count` rows, and
+`store/<s>/state`). `Brain.load` refuses records under another name and a `cadence-brain/4` file
+without them.
+
+A brain with a [held message](memory.md#held-message) (`message`), [learned
+fields](senses.md#learned-receptive-fields) (`learned_fields`, `ports`), an actor's hold
+([`actor_hold`](reward.md#a-reward-many-moments-after-the-decision)) or the policy's entropy in the
+actor's step ([`actor_entropy`](reward.md#exploration-over-long-reward-lives-opt-in)) saves under
+the name its maturity, fade and records give it, with the part's own members: the message under
+`memories/message`, the fields under `learned_fields`, the hold and the entropy in the actor's
+config, and with the entropy a pending act's surprise (`pending/surprise`, `pending/entropy`).
+0.96.1 and earlier refuse each such file by the part they do not read: `invalid saved memories` for
+a message, `invalid saved composition provenance` for learned fields and `invalid saved actor
+config` for a hold or an entropy. A brain that names none of them saves a file 0.96.1 loads.
 
 | Members | What they hold |
 | --- | --- |
@@ -218,15 +254,17 @@ under either other name.
 | `rehearsal/` | with `learning_rehearsal`: the reservoir's rows with their episodes and the streams' episodes in progress (`heard`, `told`, `lengths`, `moments`, `labels`), the counts `seen` and `draws` under `rehearsal` in the metadata; written whenever the brain holds either |
 | `brain` | the metadata: the actor's config, both random states, the free phase and a pending action, the arousal and the action `live` issued with its forecast, the state a waiting stream sensed, a `code=units` code or a learned code, the composition, and under `memories` the settings of each memory the brain holds |
 | `actor/`, `free/`, `pending/`, `moment/`, `prepared`, `lived/`, `awaiting/` | the critic and eligibility, the free phase, a pending action's phases and decision, the action `live` issued, the sensed state |
-| `code/`, `learned_code/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds` |
+| `code/`, `learned_code/`, `learned_fields/` | a `code=units` code's tables; a learned code's `dictionary`, `weights` and `thresholds`; learned fields' `dictionary` and `thresholds` |
 | `memories/working_memory/`, `memories/efference/` | each trace's `trace`, `last` and `cold` |
 | `hearing/` | with `carried_gain`: the actor's eligibility of the gains (`trace`) and a pending act's contrast (`pending`); the gains, their second moments and their count are in the metadata, the read's route among them with `recall_drive_gain` |
 | `memories/history/` | the heard history's `trace` |
+| `memories/message/` | with `message`: the held message's `trace`, the moments it has heard (`told`), the boundary flags (`held`) and the `previous` association state; with `message_read` the read's maps (`content_x`, `content_c`, `content_b`, `turn_x`, `turn_c`, `turn_b`) |
+| `memories/longterm/` | with `longterm` (`cadence-brain/4`): the streams' turns (`since`, `read_slots`) and every stream's records (`store/<s>/...`) |
 | `memories/recall/` | the slots, `held`, `previous`, the address map, and where set the actor's `trace` and `pending` contrast of the map, `ended` and the window's `past`; the per-stream `told` and `focus` and the anchored, relative and slope maps of the options that have them |
 | `memories/hippocampus/` | the associative store's ports, strengths, masses, consolidated records and separator; with maturity its noise scales (`gate_noise`); with `memory_fade` its depths and recent traces (`fade_depth`, `fade_recent`) |
 | `memories/episodic/` | the episodic choice (`memory_choice`): the context store (`context_memory/`), the stream's `context` and `decision`, the replay `path/`, with the hold the context and code of the last decision (`before`, `seen`), and with extinction the direct payments (`paid_memory/`, sharing the place records' separator) |
 
-`Brain.load` reads `cadence-brain/1`, `/2` and `/3`, the formats of 0.85.0 on. It refuses the earlier
+`Brain.load` reads `cadence-brain/1` to `/4`, the formats of 0.85.0 on. It refuses the earlier
 `cadence-generic/1` to `/10` by name: cadence 0.94.0 loads those and saves `cadence-brain/1`. A
 retired setting loads at the one value this version keeps for it and is refused by name at any
 other ([CHANGELOG](../CHANGELOG.md)).
@@ -249,8 +287,8 @@ Lives(inputs, actions, lives, *, seeds=None, backend="cpu", device=None, precisi
 ```
 
 Many continuing brains of one anatomy, each composed by `Brain.compose(inputs, actions, seed=seeds[i],
-episodic=False, **options)`, the default composition without the store (seeds `range(lives)` by default),
-stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
+**options)`, the default composition with its store of place records (`episodic=False` composes without it;
+seeds `range(lives)` by default), stepped together, one stream each. Every life has its own parameters, optimizer, critic, eligibility, recall
 memory (its slots, its address and position maps), carried gains, working trace and random state.
 `backend="cpu"` holds lone brains and steps them in turn; `backend="torch"` holds one brain whose parameters
 carry a lives axis, on CUDA where there is a card and else on the torch CPU device (or the `device` named),
@@ -259,19 +297,24 @@ one call per moment for all of them ([many lives at once](backends.md#many-lives
 | Method | Meaning |
 | --- | --- |
 | `act(observations, *, greedy=False)` | each life's `Brain.act` on its own row: `(lives, inputs)` in, `(lives,)` out |
-| `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label |
-| `learn(reward, done, next_observations)` | each life's `Brain.learn` |
+| `step(observations, *, reward=None, done=None, teacher=None)` | each life's `Brain.step`, its own reward, ending and teacher label; a life with no sampled action pending takes a zero reward and no end |
+| `live(observations, *, reward=None, done=None)` | each life's `Brain.live` with its own arousal: a sampled life learns from its outcome, a calm life answers greedily from its forecast, each ends its own episodes; a life with no preceding action takes a zero reward and no end |
+| `learn(reward, done, next_observations)` | each life's `Brain.learn`; after `live` the calm lives hold |
 | `lesson(observations, labels)` | each life's `Brain.lesson`; under `learning_surprise` each life is judged by its own answer |
+| `values(observations)` | each life's `Brain.value` of its own row, `(lives,)`: the bootstrap of a truncated episode, read without changing anything |
 | `reset()` | every life's stream starts afresh; what the lives learned stays |
-| `parameters(i)` | life `i`'s learned state on the host: `efficacy`, `bias`, `w_critic`, `b_critic`, the optimizer's four moments and its counts `updates` and `contrast_updates`, with a recall memory `recall` (its maps by kind), with carried gains `carried_gains`, `carried_second` and `carried_count` |
-| `life(i)` | life `i` as a lone `Brain` on the CPU with all of that and its random state; its stream starts afresh |
+| `parameters(i)` | life `i`'s learned state on the host: `efficacy`, `bias`, `w_critic`, `b_critic`, the optimizer's four moments and its counts `updates` and `contrast_updates`, with a recall memory `recall` (its maps by kind), with carried gains `carried_gains`, `carried_second` and `carried_count`, with the store `store` (`consolidated`, `writes`, and `gate_noise`, `fade_depth`, `fade_recent` where named), with maturity `maturity_use` |
+| `life(i, *, stream=False, backend="cpu", device=None, precision=None)` | life `i` as a lone `Brain` with all of that, its arousal and its random state, on the CPU or the place named; its stream starts afresh, and with `stream=True` it carries the life's stream as it stands (its activity, its pending sampled action with its eligibility phases, its eligibility traces, working trace, recall slots, store residual and the record of its last `live`), so the lone brain continues the life where it left |
+| `join(i, brain)` | life `i` becomes the lone `brain` of the lives' anatomy and composition: its learned state, arousal and random state take the place, and its stream begins afresh there, as after `brain.reset()` |
+| `arousals`, `last_arousal` | each life's `Arousal`, and each life's readings of its latest `live` as `Brain.last_arousal` gives them (on a device the sweeps are the batch's) |
 | `lives`, `seeds`, `brain`, `brains` | the count, the seeds, the batched brain (torch) or the lone brains (CPU) |
 
-`Lives` holds the default composition without the store, with or without the recall memory (`recall=False`)
-and the carried gains, at any teaching point, with one or several regions, observers and motor slots. It
-refuses, naming the part: the store (`episodic=True`) and `memory_choice`, arousal (so no `live`), a
-maturity, a learned or fixed code, an apical compartment, rehearsal, qualified teaching, the efference copy,
-the heard history, a recall memory with several heads, a window, the command, the read of when or tokens,
+`Lives` holds the default composition without the store, and with it (`episodic=True`: each life's place
+records, with `memory_fade` and `maturity` where named), with or without the recall memory (`recall=False`), the
+heard history and its gains per block, the carried gains and arousal (`arousal=True`, for `live`), at any
+teaching point, with one or several regions, observers and motor slots. It refuses, naming the part:
+`memory_choice`, a store with a separator, a learned or fixed code, an apical compartment, rehearsal, qualified
+teaching, the efference copy, a recall memory with several heads, a window, the command, the read of when or tokens,
 image inputs, and MPS, which has no float64 for the settles' checks. A moment any life refuses is refused for
 every life.
 
@@ -373,6 +416,19 @@ One block of `source` width per decay in `target`; `hear(observations)` moves bl
 columns of a copy (another batch size reads silence). `reset(batch, rows=None)`, `keep(rows)`, `trace` `(batch, blocks * source)`,
 `to_dict()`. In the brain: [heard history](memory.md#heard-history).
 
+```text
+Message(inputs, phases=4, units=70, winners=5, fan_in=16, seed=0)
+```
+
+A stream's episode held as one state, with no neurons of its own: `hear(observations)` gives each
+row's moment a fixed sparse code (`code(observations)`, one at the `winners` of `units`) and joins
+it to the union of block `told mod phases`; `state` (`trace`) is `(batch, phases * units)`, `key()`
+the union over the blocks, `(batch, units)`, `told` the moments heard per stream.
+`reset(batch, rows=None)`, `keep(rows)`, `branch()`, `arrays()` (`trace`, `told`), `width`,
+`to_dict()`. It raises `ValueError` for nonpositive sizes, `winners > units`, a negative `seed`
+and observations of another width or with a non-finite value. Behaviour:
+[a held message](memory.md#a-held-message).
+
 <a id="recall-memory-genes"></a>
 
 ```text
@@ -440,6 +496,50 @@ constants.
 `ValueError` for nonpositive sizes, `winners > expansion`, a `fan_in` or `cover` without room,
 and `center` outside `[0, 1)`. All three: [standalone memory stores](memory.md#standalone-memory-stores); the
 associative store: [memory](memory.md#associative-store-the-hippocampus).
+
+```text
+LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
+               winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
+               direct=None, dtype=float64)
+LongTermRead(slots, weights)
+```
+
+`LongTermMemory` (in `cadence.longterm`) holds records, a key with a value, for one stream under a
+budget of `capacity` slots; no `Brain.compose` setting builds it. `write(key, value,
+recognised=None) -> (slot, revised)` rewrites the record whose key it recognises (cosine
+`revise`), else takes an empty slot, else the most faded one (`fade=False`: the slot written
+longest ago); `recognised` is a caller's recognition from its own read (the slot, or -1 for none),
+and the write then reads nothing itself. `read(cue, heads=1,
+credit=True) -> LongTermRead` picks `candidates` slots by a sparse address of `winners` of
+`expansion` units and reads them as the recall memory reads its slots, at `temperature` (0: each
+head reads its first choice among the slots left, whole), scoring each by its key's dot product
+with the cue or, with `cosine=True`, their cosine; a memory of at most `direct` slots
+(twice the expansion unless given) scores every slot, and `credit=False` is a probe that deepens
+nothing. `value(read, head=0)` is what a head holds, and `moment()` one moment of the stream:
+every slot fades by `idle / (1 + (deep / depth) ** 4)`, and the recent use and the depth decay
+over `idle` (a sixteenth of the capacity) and `hold` (8 capacities) moments. `to_dict()` gives the
+settings, `arrays()` the state and `restore(arrays)` takes it back; `address(key)` is a key's
+units; `keys`, `values`, `deep`, `recent`, `faded`, `norms` (each key's length, held where
+`cosine`), `count`, `writes`, `coarse` and `nbytes` are its state. `LongTermRead` holds the candidate `slots` and each head's `weights`, with
+`first(head=0)` (-1 for a read of nothing) and `mass(slot, head=0)`. It raises `ValueError` for a
+nonpositive size, a negative `temperature`, `candidates` or `direct`, `revise` outside `[0, 1]`, a
+nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `expansion`, a
+`dtype` that is no floating type, and a key, value or cue of another shape or with a nonfinite
+entry.
+[A long-term memory of records](memory.md#a-long-term-memory-of-records).
+
+`Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
+`brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
+brain's held message from a turn; it needs `message=units`, `message_boundary` and
+`message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
+(0.75) and `longterm_revise` (0.999) are construction settings. `read_slots` holds each head's
+record at the latest read (-1 for none), `counts` the writes, revisions, statements agreed and
+reads, and `clear()` empties every stream's records. `LongTermRecords.ports(heads)` names the
+regions (`longterm`, `longterm_1`, ...). The streams' records are read, written and faded as one
+bank (`batched`) where every key is of zeros and ones and every store scores every slot;
+`BATCHED = False` reads them store by store, the reference the bank equals to the bit. The
+records read and recognise by cosine (`LongTermRecords.STORE`). A brain with records saves `cadence-brain/4`
+([checkpoint format](#checkpoint-format)); `grow` and `graft` refuse it in this version. [Long-term records](memory.md#long-term-records).
 
 ```text
 cadence.stream.columns(index) -> slice | ndarray

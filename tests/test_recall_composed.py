@@ -63,7 +63,7 @@ def test_a_grown_brain_keeps_its_own_values_whatever_a_new_memory_composes():
         rng = np.random.default_rng(2)
         for x in X[:3]:
             brain.lesson(x, rng.integers(0, 4, size=2))
-    grown_founder, grown_new = (b.grow(history_decays=(0.5,)) for b in (founder, new))
+    grown_founder, grown_new = (b.grow(history_decays=(0.0, 0.5)) for b in (founder, new))
     for name in cd.Recall.COMPOSED:
         assert getattr(grown_founder.recall, name) == getattr(founder.recall, name), name
         assert getattr(grown_new.recall, name) == cd.Recall.COMPOSED[name], name
@@ -105,7 +105,7 @@ def test_every_new_brain_holds_the_memory_and_the_opt_out_builds_none(tmp_path):
     without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
     assert without.recall is None
     assert cd.Brain.load(without.save(tmp_path / "without.npz")).recall is None
-    assert without.grow(history_decays=(0.5,)).recall is None
+    assert without.grow(history_decays=(0.0, 0.5)).recall is None
     assert without.grow(recall=True).recall is not None
 
 
@@ -141,9 +141,11 @@ def test_a_new_memory_takes_the_settings_beside_it():
     assert genes["learning_surprise"] is True and genes["carried_gain"] == 0.01
     assert genes["learning_fast_settle"] is True
     assert genes["working_memory_amplitude"] == 3.0 and genes["recall_drive_gain"] is True
-    assert brain.carried_gains == {"trace": 1.0, "read": 1.0}
+    assert genes["history_decays"] == [0.0]
+    assert brain.carried_gains == {"trace": 1.0, "history_0": 1.0, "read": 1.0}
     assert composed(learning_surprise=False).describe()["genes"]["learning_surprise"] is False
-    assert composed(recall_drive_gain=False).carried_gains == {"trace": 1.0}
+    assert composed(recall_drive_gain=False).carried_gains == {"trace": 1.0, "history_0": 1.0}
+    assert composed(history_decays=()).carried_gains == {"trace": 1.0, "read": 1.0}
     silent = composed(carried_gain=0.0)
     assert silent.hearing is None and not silent.recall.drive_gain
     assert composed(carried_gain=0.1).describe()["genes"]["carried_gain"] == 0.1
@@ -151,9 +153,9 @@ def test_a_new_memory_takes_the_settings_beside_it():
     assert founder.describe()["genes"]["learning_surprise"] is False and founder.hearing is None
     assert not founder.recall.drive_gain
     assert "learning_fast_settle" not in founder.describe()["genes"]
-    assert founder.grow(history_decays=(0.5,)).hearing is None
-    grown = composed().grow(history_decays=(0.5,))
-    assert grown.carried_gains == {"trace": 1.0, "read": 1.0, "history_0": 1.0}
+    assert founder.grow(history_decays=(0.0, 0.5)).hearing is None
+    grown = composed().grow(history_decays=(0.0, 0.5))
+    assert grown.carried_gains == {"trace": 1.0, "read": 1.0, "history_0": 1.0, "history_1": 1.0}
     without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
     assert without.hearing is None
     assert without.grow(recall=True).hearing is None and not without.grow(recall=True).recall.drive_gain
@@ -183,8 +185,8 @@ def test_a_saved_brain_and_a_grown_brain_keep_the_solve_they_have(tmp_path):
     new, off = composed(), composed(learning_fast_settle=False)
     assert cd.Brain.load(new.save(tmp_path / "new.npz")).learner.config.fast_settle is True
     assert cd.Brain.load(off.save(tmp_path / "off.npz")).learner.config.fast_settle is False
-    assert new.grow(history_decays=(0.5,)).learner.config.fast_settle is True
-    assert off.grow(history_decays=(0.5,)).learner.config.fast_settle is False
+    assert new.grow(history_decays=(0.0, 0.5)).learner.config.fast_settle is True
+    assert off.grow(history_decays=(0.0, 0.5)).learner.config.fast_settle is False
     without = cd.Brain.compose(6, 4, modules=(16,), seed=5, recall=False)
     assert without.grow(recall=True).learner.config.fast_settle is False
     assert off.retune(learning_fast_settle=True).learner.config.fast_settle is True
@@ -406,7 +408,7 @@ def test_a_brain_saved_under_the_earlier_rates_keeps_them(tmp_path):
     saved = cd.Brain.load(brain.save(tmp_path / "earlier.npz"))
     assert saved.learner.synapse_rate is None and saved.recall.address == 0.01
     assert "projection_rates" not in saved.describe()["layout"]
-    grown = saved.grow(history_decays=(0.5,))
+    grown = saved.grow(history_decays=(0.0, 0.5))
     assert grown.learner.synapse_rate is None and grown.recall.address == 0.01
 
 
@@ -423,10 +425,10 @@ def test_retune_keeps_the_rates_and_takes_a_named_address():
 @pytest.mark.parametrize(
     "parts",
     [
-        {"history_decays": (0.5,)},
+        {"history_decays": (0.0, 0.5)},
         {"efference_amplitude": 1.0},
         {"recall_heads": 2},
-        {"history_decays": (0.5,), "recall_heads": 2},
+        {"history_decays": (0.0, 0.5), "recall_heads": 2},
     ],
 )
 def test_a_grown_brain_keeps_its_rates_and_a_new_part_steps_whole(parts):
@@ -456,7 +458,7 @@ def test_the_width_is_fixed_at_birth_so_growth_keeps_its_rates():
     trained = lessons(wide())
     with pytest.raises(ValueError, match="own loop"):
         trained.grow(modules=(256,))
-    twice = trained.grow(slots=(4, 2)).grow(history_decays=(0.5,))
+    twice = trained.grow(slots=(4, 2)).grow(history_decays=(0.0, 0.5))
     np.testing.assert_array_equal(twice.learner.synapse_rate, generic._width_rates(twice.connectome))
     assert twice.recall.address == trained.recall.address
     assert lessons(plain()).grow(slots=(4, 2)).learner.synapse_rate is None
@@ -465,7 +467,7 @@ def test_the_width_is_fixed_at_birth_so_growth_keeps_its_rates():
 @pytest.mark.parametrize(
     "options",
     [{"observers": (8,)}, {"modules": (32, 96)}, {"recall_heads": 2}, {"recall_gain": 1.0, "recall_tokens": [0, 1, 2, 3]},
-     {"recall_when": True}, {"history_decays": (0.5,)}, {"efference_amplitude": 1.0}, {"learned_code": 16}, {"apical": 0.25},
+     {"recall_when": True}, {"history_decays": (0.0, 0.5)}, {"efference_amplitude": 1.0}, {"learned_code": 16}, {"apical": 0.25},
      {"arousal": True, "maturity": True}, {"memory_choice": True}, {"learning_rehearsal": 1.0}, {"inputs": (6, 6)},
      {"inputs": 64, "code": 32}],
     ids=lambda options: "+".join(sorted(options)),
@@ -484,7 +486,7 @@ def test_a_wide_new_brain_holds_its_rates_beside_every_part(options, tmp_path):
 
 
 def test_a_grown_brain_saves_and_continues_at_its_rates(tmp_path):
-    grown = lessons(wide()).grow(history_decays=(0.5,))
+    grown = lessons(wide()).grow(history_decays=(0.0, 0.5))
     twin = cd.Brain.load(grown.save(tmp_path / "grown.npz"))
     np.testing.assert_array_equal(twin.learner.synapse_rate, grown.learner.synapse_rate)
     lessons(grown), lessons(twin)
@@ -505,7 +507,7 @@ def test_grow_and_graft_refuse_rates_set_by_hand():
     brain = wide()
     brain.learner.synapse_rate = np.full(brain.connectome.synapses, 0.5)
     with pytest.raises(ValueError, match="rates set by hand"):
-        brain.grow(history_decays=(0.5,))
+        brain.grow(history_decays=(0.0, 0.5))
     with pytest.raises(ValueError, match="rates set by hand"):
         wide().graft(brain, regions=("association", "motor"))
     with pytest.raises(ValueError, match="rates set by hand"):
@@ -513,7 +515,7 @@ def test_grow_and_graft_refuse_rates_set_by_hand():
     narrow = wide(64)
     narrow.learner.synapse_rate = np.ones(narrow.connectome.synapses)
     with pytest.raises(ValueError, match="rates set by hand"):
-        narrow.grow(history_decays=(0.5,))
+        narrow.grow(history_decays=(0.0, 0.5))
 
 
 @pytest.mark.parametrize(

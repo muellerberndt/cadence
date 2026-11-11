@@ -8,7 +8,7 @@ NumPy float64 unless you pick another. Start from the NumPy-only
 [installation](../README.md#get-started) and add an extra:
 
 ```bash
-python -m pip install "cadence-net[fast]==0.96.1"
+python -m pip install "cadence-net[fast]==0.97.0"
 ```
 
 `[fast]` installs Numba and SciPy, `[accel]` PyTorch and `[apple]` MLX (0.21.1 or later); from a checkout, use
@@ -407,10 +407,15 @@ actions = lives.step(observations)                      # one row per life in, o
 actions = lives.step(observations, reward=np.ones(8))   # each life learns from its own outcome
 actions = lives.step(observations, reward=np.ones(8), teacher=np.arange(8))  # and from its own label
 lone = lives.life(5)                                    # life 5 as a lone Brain on the CPU, to save
+
+living = cd.Lives(35, 18, 8, backend="torch", arousal=True)  # continuing lives, each with its own mood
+actions = living.live(observations)                     # the first moment: no outcome yet
+done = np.array([False, True, False, False, False, False, False, False])
+actions = living.live(observations, reward=np.ones(8), done=done)  # life 1's episode ends
 ```
 
-`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, episodic=False, **options)`: the default
-composition without the store. Each life has its own synapses and biases, its own optimizer (momentum, second
+`Lives` composes each life as `Brain.compose(inputs, actions, seed=s, **options)`: the default composition, its
+store of place records among it (`episodic=False` composes without the store, as `Lives` did in 0.96). Each life has its own synapses and biases, its own optimizer (momentum, second
 moments and their counts), critic, eligibility, recall memory (its slots, its address and position maps), carried
 gains, working trace and random generator. On a torch device the lives are the streams of one brain whose
 parameters carry a lives axis:
@@ -420,7 +425,17 @@ parameters carry a lives axis:
 - a lesson judges each life by its own answer under `learning_surprise`, runs its phases on every life and
   updates the lives it taught, each at its own optimizer's count;
 - the recall memory's address and position lessons, the carried gains' steps and a reward's update move each life
-  on its own row and its own dopamine.
+  on its own row and its own dopamine;
+- with the store (`episodic=True`) each life's place records rest on the device with a lives axis: an outcome
+  writes the records of the lives it teaches and decays the residual of those whose outcome it is, the outcome that
+  wakes a calm life writes that life's records and settles it again under them while the others hold, with
+  `memory_fade` each life's records fade by its own depths and recent use at each of its moments, and with
+  `maturity` each life's use scales its own actor steps and engages its own surprise gate on its records;
+- in `live` each life keeps its own `Arousal` on the host: the lives whose action was sampled learn from their
+  outcomes while the others hold their state and parameters, the calm lives' eligibility fades by one moment and
+  their ended streams start from rest, one qualified settle answers every life (a calm life's forecast is its
+  answer), and each life answers greedily or samples at the temperatures its own arousal sets, the heated slot and
+  the sample drawn from its own generator, its eligibility phases pushed at its own temperatures.
 
 Each life follows the lone brain of its seed on that device ([`tests/test_lives.py`](../tests/test_lives.py)). In
 float64 every action is the same and every learned part (synapses, biases, critic, optimizer, recall maps, carried
@@ -428,7 +443,22 @@ gains) agrees within 1e-9 over 30 moments of rewards, endings and teaching, and 
 composition within 1e-8; on an NVIDIA L4 over 48 moments within 1e-10. In float32 every action is the same over
 those moments and the parts agree within the spread float32 gives a lone brain's own two memory paths (its
 memories on the host against on the device: 1e-2 in the recall maps over 48 moments, where a float32 life on the
-L4 reads 4e-3). On the CPU each life is the lone brain itself, to the bit.
+L4 reads 4e-3). On the CPU each life is the lone brain itself, to the bit. Continuing lives (`arousal=True`) that
+`live` 30 moments of sparse rewards and endings, with a teacher's step at every fifth, keep every action, every
+mood and heated slot of their lone brains, and every learned part and every arousal reading within 1e-9, with one
+or two motor slots, with the recall memory and without; a life that `live` leaves calm takes no outcome in a
+`step` or `learn`, as its lone brain takes none. With the store, alone, fading, under maturity and with both, the
+same holds over 30 moments of `live` in which an occasional outcome wakes a calm life and writes its records, and
+over 24 moments of `step`: every action and mood its lone brain's, every learned part, record, noise scale, depth
+and use within 1e-9.
+
+A life leaves with `lives.life(i, stream=True)`: a lone brain that carries its stream as it stands, its pending
+sampled action and that action's eligibility among it, and continues the life where it left. A life joins with
+`lives.join(i, brain)`, taking the place of life `i` with its stream afresh, so a life whose episode finished makes
+room for another without holding the batch. Lives that left mid-stream, sampled and calm, continue on their own as
+their lone brains over 12 moments of `live`, every action the same and every learned part within 1e-9; a brain
+that joins after living alone and a `reset` lives on in the batch as alone over 14 moments, every action and mood
+the same and every learned part within 1e-9.
 
 Seconds per life and moment of that composition stepping its own observations and rewards, read with
 [`benchmarks/device/lives.py`](../benchmarks/device/lives.py) on one AWS g6.xlarge (an NVIDIA L4 and four vCPUs
@@ -460,17 +490,61 @@ The same with a teacher's label at every fourth moment (`--teach 4`):
 | Each brain in turn, one core | M4 | 1.56 ms | 1.48 ms |  |  |
 | `Lives` on the torch CPU device | M4 | 1.48 ms | 1.32 ms |  |  |
 
+Continuing lives that `live` (`--live`: `arousal=True` with a youth of 10 moments, each life's own rewards and
+episode ends, one moment in 20 ending one), over 20 moments after 12, past the youth, where 52 to 54 in 100 of
+the lives' moments are calm:
+
+| Way | Machine | 12 lives | 128 lives | 1,024 |
+| --- | --- | ---: | ---: | ---: |
+| `Lives`, `backend="torch"` | L4 | 1.31 ms | 0.163 ms | 0.090 ms |
+| Process pool, four CPU processes | L4 box | 0.422 ms | 0.390 ms | 0.408 ms |
+| Each brain in turn, one core | L4 box | 1.03 ms | 1.03 ms |  |
+
+With the store (`--composition default`, 630 place records a life), and with the store fading under maturity
+(`--fade 0.01 --maturity`), the same `live` reads:
+
+| Way | Machine | 12 lives | 128 lives | 1,024 |
+| --- | --- | ---: | ---: | ---: |
+| `Lives`, `backend="torch"`, the store | L4 | 1.73 ms | 0.220 ms | 0.107 ms |
+| Process pool, four CPU processes, the store | L4 box | 0.497 ms | 0.461 ms | 0.460 ms |
+| `Lives`, `backend="torch"`, fading under maturity | L4 | 2.09 ms | 0.239 ms | 0.122 ms |
+| Process pool, four CPU processes, fading under maturity | L4 box | 0.529 ms | 0.535 ms | 0.509 ms |
+
+A lone brain's calm moment skips the eligibility phases and the update, so `live` in the pool costs about half a
+`step`. A batch with any aroused life runs the phases for every life and holds the calm ones, so `Lives` pays
+for its aroused lives across the batch: 2.4 times as fast as the pool at 128 lives and 4.5 times at 1,024 (2.1
+and 4.3 times with the store, 2.2 and 4.2 times fading under maturity), and the pool is faster at 12.
+
 On the L4, `Lives` runs at the speed of one brain's streams at 128 and 512 brains and at 1.4 times their time at
 1,024, where every life updates synapses of its own and the streams share one update. Against the four-process pool
 it is 7.4 times as fast at 128 brains and 17.8 times at 1,024 (7.7 and 17.0 times with the teacher). At 12 lives
 the pool is faster. A lesson of lives runs its phases on every life, where one brain's streams run them on the rows
-it teaches. MLX has no lives axis in the library; one brain's streams there bound what one could reach.
+it teaches.
 
-`Lives` holds the default composition without the store, with or without the recall memory and the carried
-gains, at any teaching point, with one or several regions, observers and motor slots. It refuses, naming the
-part: the store (`episodic=True`, whose consolidated records have no lives axis) and `memory_choice`; arousal, so
-`live` stays a lone brain's; a maturity; a learned or fixed code and image inputs; an apical compartment;
-rehearsal and qualified teaching; the efference copy and the heard history; a recall memory with several heads, a
+MLX has no lives axis in the library. What one would cost, read on the Apple M4 at a load of 13 to 40 (other work
+on the machine; the CPU readings carry it) with
+[`benchmarks/device/lives_mlx_cost.py`](../benchmarks/device/lives_mlx_cost.py) and `benchmarks/device/lives.py`,
+seconds per life and moment of the composition without the store:
+
+| Way on the M4 | 12 lives | 128 lives | 1,024 |
+| --- | ---: | ---: | ---: |
+| One brain's streams on MLX (shared parameters), `step`: the bound | 0.921 ms | 0.232 ms | 0.170 ms |
+| One sweep's transport on MLX, each life's own blocks against one brain's | 1.26 times | 1.45 times | 3.34 times |
+| Process pool, two CPU processes, `step` | 1.63 ms | 1.89 ms | 1.68 ms |
+| Process pool, two CPU processes, `live` | 2.02 ms | 1.44 ms | 1.75 ms |
+| `Lives` on the torch CPU device, `step` | 4.01 ms | 3.39 ms | 3.45 ms |
+
+A lives axis on MLX would read between the bound and the bound times the transport's factor, at most 0.34 ms at
+128 lives and 0.57 ms at 1,024: three to ten times as fast as the M4's pool here, and two to twelve times the time
+of `Lives` on one L4. It would take MLX versions of the per-life transport and stop, the per-life optimizer, critic, recall maps,
+carried gains, store and nudges, and somewhere for the settles' float64 checks: the Apple GPU has no float64, so
+they would run on the host or MLX's CPU stream.
+
+`Lives` holds the default composition, its store and its heard history among it, and the same without the store
+(`episodic=False`) or the history (`history_decays=()`), with or without the recall memory, the carried gains, arousal,
+`memory_fade` and maturity, at any teaching point, with one or several regions, observers and motor slots. It refuses,
+naming the part: `memory_choice` and a store with a separator; a learned or fixed code and image inputs; an apical
+compartment; rehearsal and qualified teaching; the efference copy; a recall memory with several heads, a
 window, the command, the read of when or tokens; MPS and MLX. A moment any life refuses is refused for every
 life. Each life holds its own synapses, their dense blocks, two optimizer moments and an eligibility, five arrays
 of one float per synapse, and in float32 a float64 copy of the blocks for the settles' checks.

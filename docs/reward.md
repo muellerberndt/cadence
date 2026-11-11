@@ -86,6 +86,8 @@ the composed founders are `gamma=0.9, lam=0.8, eta=1.0, eta_bias=0.05, eta_criti
 | `eta_critic` | `0.05` | Critic step |
 | `dopamine_cap` | `1.0` | Clip of the actor's signal; `0` for none |
 | `eligibility_steps` | `None` | Steps of each reward-nudged phase; `None` uses the learner's `nudged_steps` |
+| `hold` | `None` | The actor's eligibility decay per moment apart from the critic's; `None` uses `gamma * lam` ([a reward many moments after the decision](#a-reward-many-moments-after-the-decision)) |
+| `entropy` | `0.0` | The policy's entropy in the step ([exploration](#exploration-over-long-reward-lives-opt-in)); `0`: none |
 
 `beta`, the base `temperature` and `tolerance` come from the learner's `LearnerConfig`
 (composed: `temperature`; `beta` is 0.1, a constant); the teaching point (`teaching`) sets the steps
@@ -108,7 +110,8 @@ of lessons alone.
   `dopamine` (signed mean), `capped` (share beyond `dopamine_cap` before the clip),
   `saturation` (share of outputs within 0.02 of 0 or 1), `trace` (mean absolute plastic
   eligibility), `value`, `free_steps`, `scale_step`, `bias_step` (mean absolute applied
-  steps), and `address_reward_step` with a `memory`.
+  steps), `address_reward_step` with a `memory`, and `policy_entropy` (the sampled act's
+  entropy in nats, summed over the motor slots) with `entropy`.
 
 ## Actor rates
 
@@ -176,13 +179,86 @@ the brain in checkpoint format `cadence-brain/2`, which 0.93.1 and earlier refus
 ([checkpoint format](api.md#checkpoint-format); `cadence-brain/3` where the store also fades).
 Off, the brain is the founder's to the bit and saves `cadence-brain/1`.
 
+## Exploration over long reward lives (opt-in)
+
+Over a long life of small rewards, the actor at its composed step can settle on one button that
+the reward does not favour, and hold it ([#296](https://github.com/muellerberndt/cadence/issues/296)).
+At birth one or two motor neurons are active and the others rest at the 0 rail, where a nudge
+has little slope: an active button's contrast is .28 to .43, a resting one's .01 to .04. Each
+outcome moves the active outputs, so the policy drifts toward one of them, and a button at rest
+that the reward favours rises slowly. In the
+[long reward life chamber](../benchmarks/actor_latch/README.md), whose three worlds keep a Doom
+player's observation, the composed step (`actor_eta=1.0`) scores below the frozen newborn in the
+world shaped like Doom basic, and a tenth of it does not; the bias step, the trace, the input
+width and the memories leave the hold as it is.
+
+`Brain.compose(..., actor_entropy=k)` (or `ActorCriticConfig(entropy=k)`) adds the policy's
+entropy to the actor's step, the regularizer a conventional actor-critic carries. A sampled act
+keeps its surprise, `-log p(action) - H` under the policy that sampled it (summed over the motor
+slots), and its outcome's step adds that act's own contrast at the weight `k` times the surprise:
+
+```
+step[e] = eta * (delta * elig[e] + k * surprise * contrast[e])
+```
+
+Over the policy's own actions the surprise averages to zero, so the term is the sampled
+gradient of the entropy: an act the policy takes often has a negative surprise and steps its
+button down, a rare act steps its button up, and the dopamine decides where the reward pays more
+than the pull toward an even policy. The term uses the act's own contrast, never the trace, so
+it credits no earlier decision. `report["policy_entropy"]` reads the entropy of each act.
+
+| Setting | Founder | Changed by | What it does |
+| --- | --- | --- | --- |
+| `actor_entropy` | `0.0` | `retune` | the weight of the entropy term; 0 is the composed actor |
+
+What it gives, on six fresh founders each ([the declared run](../benchmarks/actor_latch/README.md#the-declared-run)):
+`actor_entropy=0.1` removes the hold in every life of the chamber and of the Doom body (no
+button above .40) and reads +0.918 in the aiming world against the default's -0.350. It reaches
+its even policy by lowering the active outputs, and where the reward's preference is faint it
+leaves every motor neuron at rest (`saturation` 1.00), where a nudge has little slope: in Doom's
+defend the center and health gathering, whose good policies press one button far more than the
+others, the brain reads below its frozen newborn. Use it where an outcome pays clearly and the
+right action depends on the situation; a tenth of the actor's step slows the hold there too and
+leaves it in a third of the long survival lives. A moment costs about a third more.
+
+It learns on the host: `backend="cpu"` and `"mlx"` (whose update it takes on the host, as a
+maturity does); a brain on a torch device refuses the outcome, and `Lives` refuses the setting by
+name. A pending act's surprise is saved with the brain. A brain that names no entropy, or 0,
+keeps every bit of the composed actor on `backend="cpu"`, and its configuration saves without
+the field.
+
 ## Decision and reset contract
 
 Drives are nonempty finite `(batch, neurons)` arrays, rewards and bootstrap values
 `(batch,)`, `done` boolean; validation precedes every update. Each row keeps its own
 potential, adaptation and eligibility. `done` rows restart from rest and
 bootstrap from `bootstrap`, or zero without it. A time limit is not terminal: mark the
-truncated row `done` and pass its value, `value_of(next_drive)`, as `bootstrap`. `learn`
+truncated row `done` and pass the value of its last observation as `bootstrap`. On a composed
+brain that value is `brain.value(last)`:
+
+```python
+import numpy as np
+import cadence as cd
+
+timed = cd.Brain.compose(4, 2, seed=0)
+timed.step(np.eye(4)[[0, 1]])                     # two streams; each sampled action awaits
+last = np.eye(4)[[2, 3]]                          # the observations at the cut
+cut = np.array([True, False])                     # the time limit cuts stream 0 here
+bootstrap = timed.value(last)                     # (streams,), read before the outcome
+timed.step(last, reward=np.array([0.5, 0.0]), done=cut, bootstrap=bootstrap)
+```
+
+`Brain.value` reads what `learn` settles for the next state of a stream that goes on: the drive of
+the row with the working trace, the efference copy, the heard history, the recall memory's slots
+and the place records as they stand, settled from the stream's activity (from rest before the
+brain has acted), and the critic's value of that state. The memories enter because the episode
+was cut, not ended: had it gone on, its next state would have read them. The read writes nothing
+and leaves the streams, traces, pending action, records, parameters and random generators as they
+were. Without the store a truncated row bootstrapped this way takes the dopamine of a row that goes
+on, to the bit. With the store the two part by the outcome's own record: `learn` writes the
+outcome to the place records before it settles the next state, and `value`, read before the
+outcome, reads the records without it. On an `ActorCritic` built by hand the value of a drive is
+`value_of(next_drive)`, settled cold. `learn`
 settles the next state before the update, and the next `act` settles again from it under
 the new parameters (the cached phase is reused only for an unchanged drive and
 parameters): two free and two nudged phases per decision.
@@ -268,7 +344,8 @@ action that pays most often. The readings below come from the
   ([memory](memory.md#working-trace)).
 - **Continued learning.** A policy acquired at the nursery's actor step can erode under its own
   continued learning when the later pay is signed and noisy: the noisy pay overwrites the
-  associative store's one-shot record of the chosen action's reward (`memory_rate` 1.0). A
+  associative store's one-shot record of the chosen action's reward (`memory_rate` 1.0; a new
+  brain composes 0.2, which averages it, #169). A
   smaller actor step does not prevent it (item 3 below). More drilling past acquisition moves
   the policy instead of consolidating it.
 
@@ -289,8 +366,8 @@ action that pays most often. The readings below come from the
    the rate on the task with the composed 0.3 as control.
 3. **Average or freeze the associative record where noisy pay follows acquisition.** In the
    competing ring, actor steps of 0.003 and 0.001 retain no more than the nursery's 0.03. A
-   brain composed with an averaged record (`memory_rate=0.2`) acquires as well and takes about
-   0.10 off the loss over the ring. A store frozen where the noisy pay begins
+   brain with an averaged record (`memory_rate=0.2`, a new brain's rate) acquires as well as
+   one at `memory_rate=1.0` and takes about 0.10 off the loss over the ring. A store frozen where the noisy pay begins
    (`retune(memory_rate=0.0, consolidation=0.0)`) holds the skill there at a cost to a
    competing one.
 4. **Choose `live` or `step` after the caregiver leaves.** `live` learns only while aroused,
@@ -479,6 +556,62 @@ Teach the outcome slot 1 for a moment of a game that was won and 0 for one lost 
 
 The composed critic reads the association region, not the slot; `probabilities` reads the
 slot's choice among its two outcomes.
+
+## A reward many moments after the decision
+
+A reward paid when an episode ends reaches the decision that earned it through the actor's
+eligibility, and the composed eligibility fades by `actor_gamma * actor_lam`, .72 a moment: ten
+moments after a decision .04 of its contrast is left, fifty moments after it one part in ten
+million. The critic carries credit across the gap only where the brain senses the coming outcome
+on the way (a key in a pouch, a score on a screen); where the moments in between look the same
+after a right and a wrong decision, the eligibility is the one path. Raising `actor_gamma` and
+`actor_lam` to 1 keeps the contrast and makes the critic's value diverge, since the critic shares
+that discount. `actor_hold` sets the actor's decay apart from the critic's:
+
+```python
+import numpy as np
+from cadence import Brain
+
+held = Brain.compose(9, 2, seed=0, arousal=True, actor_eta=0.1, actor_eta_bias=0.01,
+                     actor_hold=1.0)
+config = held.basal_ganglia.config
+assert config.decay == 1.0 and config.gamma * config.lam == 0.9 * 0.8  # the critic's own
+rng = np.random.default_rng(0)
+owed = None
+for episode in range(4):                    # a T-maze: the cue at the junction, 10 moments, the outcome
+    cue = int(rng.integers(2))
+    junction = np.eye(9)[[cue]]
+    choice = held.step(junction) if owed is None else held.step(junction, reward=[owed], done=[True])
+    for _ in range(10):                     # the corridor looks the same after either choice
+        held.step(np.eye(9)[[2]], reward=[0.0])
+    owed = 1.0 if int(choice[0]) == cue else -1.0  # paid with the next episode's first moment
+```
+
+With `actor_hold=1.0` each act's contrast stays in the actor's synapse, bias, recall and hearing
+traces until the episode ends (`done`, or `reset`), and the step a decision gets is the
+episode's dopamine summed over the moments from the decision on: the outcome less a baseline
+of the critic's values, `V(s_0) + (1 - gamma) * (V(s_1) + ... + V(s_k))`. A hold below 1 gives a horizon of about `1 / (1 - hold)` moments; in a life with no
+episode ends, choose one, since a hold of 1 there sums every act since the last `done`. The
+critic keeps `actor_gamma` and `actor_lam`. `None`, the founder, keeps `gamma * lam` for every
+trace and every bit of a brain that names no hold, and saves its checkpoint without the field; a
+brain saved with a hold carries it, and 0.96.1 and earlier refuse that checkpoint.
+
+Take a tenth of the actor step with the hold. A held trace sums the contrast of every act of the
+episode into each outcome's step, and at the composed `actor_eta` of 1.0 the readout goes to a
+rail within the first quarter of a life ([the saturation latch](#traps-with-their-measurements),
+[issue 296](https://github.com/muellerberndt/cadence/issues/296)): in the
+[delayed-credit chamber](../benchmarks/delayed_credit/README.md) the hold at the composed step
+learns a 50-moment T-maze on 2 of 6 development founders, and at a tenth of the step on 6 of 6.
+
+On six fresh founders (the chamber's declared run, 4,096 episodes through `step`), the tenth of
+the step with `memory_choice=True` and `actor_hold=1.0` learns the T-maze at delays of 10 and 50
+on 6 of 6, as an LSTM actor-critic with exact gradients through the episode does; without the
+hold the T-maze at 50 reads 2 of 6, the default 0 of 6. Where the brain senses the coming outcome
+the hold costs: on the key-door, whose pouch the critic sees, the same settings without the hold
+read 5 of 6 at delay 50 and with it 3 of 6, the missing founders latched on one reach for both
+keys. At 200 moments the latch takes most lives (T-maze 3 of 6, key-door 0 of 6). Hold the actor's
+credit where the moments between a decision and its outcome look alike whichever way it went, and
+leave it out where the brain sees the outcome coming.
 
 ## Replaying a life through `step`
 

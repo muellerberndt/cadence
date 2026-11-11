@@ -493,8 +493,8 @@ class History:
     def stimulate(self, drive: np.ndarray) -> np.ndarray:
         """Read the history into a drive copy; another batch size reads silence."""
         amplitude: Any = self.amplitude
-        if self.hearing is not None:
-            amplitude = amplitude * np.repeat(self.hearing, self.width)
+        if self.hearing is not None:  # one gain per block, or per stream and block (``Lives``)
+            amplitude = amplitude * np.repeat(self.hearing, self.width, axis=-1)
         if _resident(drive):  # a resident drive reads what the host holds
             if len(self.trace) == len(drive):
                 _set_columns(drive, self._glow_columns, amplitude * self.trace)
@@ -542,6 +542,444 @@ class History:
     def arrays(self) -> dict[str, np.ndarray]:
         """The arrays a checkpoint keeps."""
         return {"trace": self.trace}
+
+
+@dataclass
+class Message:
+    """What a stream heard in its episode, held as one state: phased unions of a sparse code.
+
+    Every heard moment is given a fixed sparse code: ``units`` code neurons, each reading
+    ``fan_in`` of the observation's ON and OFF channels with positive weights
+    (``PatternSeparator`` with ``cover``), the ``winners`` largest sums set to one. A unit wins
+    where it reads several of the moment's active inputs at once, so the code binds what a
+    moment holds together (a noun with its number and its role). The ``t``-th moment of a
+    stream's episode joins the union of phase ``t mod phases``. The state is ``phases`` blocks
+    of ``units`` each: what a block holds is present or absent, neighbouring moments lie in
+    neighbouring blocks, and nothing fades while the episode lasts.
+
+    ``state`` is the held message, ``(streams, phases * units)``, zeros and ones. ``key()`` is
+    the union over the phases, ``(streams, units)``: the same for one set of moments heard in
+    any order, and close for episodes that share moments, which is what a memory of encoded
+    meanings addresses a record by. The write is fixed, as the working trace's and the heard
+    history's are, and holds no learned parameter; what a reader makes of the message is
+    learned.
+
+    With ``boundary``, an input channel, a heard moment with that channel on marks a boundary
+    in the stream: the message is emptied and that moment begins it again, or with
+    ``boundary_holds`` the message keeps what it heard before the boundary and neither that
+    moment nor any after it joins, until the episode ends.
+
+    The class stands alone: it holds no neurons and reads no brain. ``hear`` takes the
+    observations one moment at a time, one row per stream; ``reset`` begins streams afresh.
+    """
+
+    inputs: int
+    phases: int = 4
+    units: int = 70
+    winners: int = 5
+    fan_in: int = 16
+    seed: int = 0
+    boundary: int | None = None
+    boundary_holds: bool = False
+    trace: np.ndarray = field(init=False, repr=False)
+    told: np.ndarray = field(init=False, repr=False)
+    held: np.ndarray = field(init=False, repr=False)
+    separator: PatternSeparator = field(init=False, repr=False)
+
+    COVER = 2  # code neurons that read each channel at least
+    STREAM = 286  # the code's own stream of the seed
+
+    def __post_init__(self) -> None:
+        for name in ("inputs", "phases", "units", "winners", "fan_in"):
+            value = getattr(self, name)
+            if isinstance(value, (bool, np.bool_)) or not isinstance(
+                value, (int, np.integer)
+            ) or value < 1:
+                raise ValueError(f"{name} must be a positive integer")
+        if isinstance(self.seed, (bool, np.bool_)) or not isinstance(
+            self.seed, (int, np.integer)
+        ) or self.seed < 0:
+            raise ValueError("seed must be a nonnegative integer")
+        if self.winners > self.units:
+            raise ValueError("winners must not exceed the units")
+        if self.boundary is not None and (
+            isinstance(self.boundary, (bool, np.bool_))
+            or not isinstance(self.boundary, (int, np.integer))
+            or not 0 <= self.boundary < self.inputs
+        ):
+            raise ValueError("boundary must be an input channel, 0 to inputs - 1, or None")
+        if not isinstance(self.boundary_holds, (bool, np.bool_)):
+            raise ValueError("boundary_holds must be boolean")
+        self.boundary_holds = bool(self.boundary_holds)
+        channels = 2 * int(self.inputs)
+        cover = min(self.COVER, int(self.units))
+        # every channel read by ``cover`` units: a fan-in too small for that is raised to it
+        fan_in = min(channels, max(int(self.fan_in), -(-cover * channels // int(self.units))))
+        self.separator = PatternSeparator(
+            int(self.inputs), int(self.units), int(self.winners),
+            seed=int(np.random.SeedSequence([int(self.seed), self.STREAM]).generate_state(1)[0]),
+            fan_in=fan_in, cover=cover,
+        )
+        self.reset(0)
+
+    @property
+    def width(self) -> int:
+        """The neurons the state takes: ``phases * units``."""
+        return int(self.phases) * int(self.units)
+
+    @property
+    def state(self) -> np.ndarray:
+        """The held message, ``(streams, phases * units)``."""
+        return self.trace
+
+    def code(self, observations: np.ndarray) -> np.ndarray:
+        """The sparse code of ``(streams, inputs)`` observations: one at each row's winners,
+        ``(streams, units)``. A silent observation codes to zero."""
+        return np.asarray((self.separator.code(observations) > 0.0).astype(float))
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """An empty message for every stream, or for ``rows`` only (streams whose episode
+        begins again)."""
+        if rows is None or len(self.trace) != batch:
+            self.trace = np.zeros((batch, self.width))
+            self.told = np.zeros(batch, dtype=np.int64)
+            self.held = np.zeros(batch, dtype=bool)
+        else:
+            self.trace[rows] = 0.0
+            self.told[rows] = 0
+            self.held[rows] = False
+
+    def keep(self, rows: np.ndarray) -> None:
+        """Keep the messages of ``rows`` only (streams that ended are dropped)."""
+        self.trace, self.told, self.held = self.trace[rows], self.told[rows], self.held[rows]
+
+    def hear(self, observations: np.ndarray) -> None:
+        """One heard moment per stream joins its phase's union; another batch size begins the
+        streams afresh first."""
+        x = np.asarray(observations, dtype=float)
+        if x.ndim != 2 or x.shape[1] != self.inputs:
+            raise ValueError(f"observations are one row of {self.inputs} values per stream")
+        if not np.isfinite(x).all():
+            raise ValueError("observations must be finite")
+        if len(self.trace) != len(x):
+            self.reset(len(x))
+        if self.boundary is not None:
+            at = x[:, int(self.boundary)] > 0.0
+            if self.boundary_holds:
+                self.held = self.held | at  # the boundary moment and those after stay out
+            else:
+                self.trace[at] = 0.0  # emptied; the boundary moment begins the message again
+                self.told[at] = 0
+        code = self.code(x)
+        held = self.trace.reshape(len(x), int(self.phases), int(self.units))
+        rows = np.flatnonzero(~self.held)
+        phase = self.told[rows] % int(self.phases)
+        held[rows, phase] = np.maximum(held[rows, phase], code[rows])
+        self.told[rows] += 1
+
+    def key(self) -> np.ndarray:
+        """The union over the phases, ``(streams, units)``: what the episode held, whatever the
+        order it was heard in."""
+        held = self.trace.reshape(len(self.trace), int(self.phases), int(self.units))
+        return np.asarray(held.max(axis=1))
+
+    def branch(self) -> Message:
+        """A private copy, its arrays its own."""
+        branch = copy(self)
+        branch.trace, branch.told = self.trace.copy(), self.told.copy()
+        branch.held = self.held.copy()
+        return branch
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """The arrays a checkpoint keeps: the code is drawn again from the seed."""
+        return {"trace": self.trace, "told": self.told, "held": self.held}
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "inputs": int(self.inputs),
+            "phases": int(self.phases),
+            "units": int(self.units),
+            "winners": int(self.winners),
+            "fan_in": int(self.separator.fan_in),
+            "seed": int(self.seed),
+            "boundary": None if self.boundary is None else int(self.boundary),
+            "boundary_holds": bool(self.boundary_holds),
+        }
+
+
+@dataclass
+class HeldMessage(Message):
+    """A ``Message`` on a region of a brain's own neurons (``Brain.compose(message=units)``).
+
+    The region ``target`` holds one neuron per unit of the message, block after block. After
+    each moment the brain hears, the moment's winners in the block whose turn it is latch on
+    and stay on until the stream's episode ends: the write is fixed, as the working trace's and
+    the heard history's are. The association reads the region through plastic synapses at
+    ``amplitude`` times what it holds, and with ``carried_gain`` one learned gain per group of
+    ``units // gains`` neurons (``hearing``, ``gains`` groups per block) sets how loudly.
+
+    With a ``port`` region the brain also reads its message one block at a time
+    (``message_read``). The present moment addresses the blocks,
+
+        p = softmax((x W_x + c W_c + w) . block / temperature + turn_k)
+
+    ``x`` the moment as heard and ``c`` the association's settled activity of the moment
+    before; ``turn = x T_x + c T_c + t`` is a term per block. The port holds
+    ``read_amplitude * sum_k p_k block_k``: the settle answers on the block the address chose.
+    Every map starts at zero, so a newborn reads the blocks' mean. After a lesson the blocks
+    are scored against the association's movement between the nudged phases, read back through
+    the port's synapses, and the maps step toward the blocks the lesson names, the recall
+    memory's address lesson on the message's own blocks.
+    """
+
+    connectome: Connectome | None = None
+    amplitude: float = 1.5
+    read_amplitude: float = 3.0
+    read_rate: float = 0.01
+    read_temperature: float = 0.25
+    gains: int = 1
+    target: str = "message"
+    port: str = "message_read"
+    hearing: np.ndarray = field(init=False, repr=False)
+    previous: np.ndarray = field(init=False, repr=False)
+
+    SCORE_TEMPERATURE = 0.1  # of the blocks' scores in the read's lesson, the recall memory's
+
+    def __post_init__(self) -> None:
+        connectome = self.connectome
+        if connectome is None:
+            raise ValueError("a held message needs the brain's connectome")
+        for name in ("amplitude", "read_amplitude", "read_rate"):
+            value = getattr(self, name)
+            if (
+                isinstance(value, (bool, np.bool_))
+                or not isinstance(value, (int, float, np.integer, np.floating))
+                or not np.isfinite(value)
+                or value < 0
+            ):
+                raise ValueError(f"message {name} must be a finite nonnegative real scalar")
+            setattr(self, name, float(value))
+        if not np.isfinite(self.read_temperature) or self.read_temperature <= 0:
+            raise ValueError("message read_temperature must be positive")
+        if (
+            isinstance(self.gains, (bool, np.bool_))
+            or not isinstance(self.gains, (int, np.integer))
+            or self.gains < 1
+            or self.units % self.gains
+        ):
+            raise ValueError("message gains must be a positive integer that divides the units")
+        self.gains = int(self.gains)
+        populations = connectome.populations
+        self.glow = np.asarray(populations[self.target], dtype=np.int64)
+        self.association = np.asarray(populations["association"], dtype=np.int64)
+        self.reads = self.port in populations
+        super().__post_init__()
+        if len(self.glow) != self.width:
+            raise ValueError(
+                f"the {self.target} population holds {len(self.glow)} neurons, where the "
+                f"message holds {self.width} (phases * units)"
+            )
+        self._glow_columns = columns(self.glow)
+        self.hearing = np.ones(int(self.phases) * self.gains)
+        # whether the association reads the whole message: a message composed silent beside
+        # its read holds no synapse of its own
+        self.direct = bool(np.isin(np.asarray(connectome.pre), self.glow).any())
+        self.last: tuple[np.ndarray, ...] | None = None  # the latest read, for its lesson
+        self.maps: list[_Maps] = []
+        if self.reads:
+            port = np.asarray(populations[self.port], dtype=np.int64)
+            if len(port) != self.units:
+                raise ValueError(
+                    f"the {self.port} population holds {len(port)} neurons, where a block of "
+                    f"the message holds {self.units}"
+                )
+            self._port_columns = columns(port)
+            pre, post = np.asarray(connectome.pre), np.asarray(connectome.post)
+            source = -np.ones(connectome.n, dtype=np.int64)
+            source[port] = np.arange(len(port))
+            cortex = -np.ones(connectome.n, dtype=np.int64)
+            cortex[self.association] = np.arange(len(self.association))
+            synapses = np.flatnonzero((source[pre] >= 0) & (cortex[post] >= 0))
+            self._port_synapses = (synapses, source[pre[synapses]], cortex[post[synapses]])
+            inputs, wide = int(self.inputs), len(self.association)
+            # the content address over a block's units and the turn per block
+            self.maps = [
+                (np.zeros((inputs, outputs)), np.zeros((wide, outputs)), np.zeros(outputs))
+                for outputs in (int(self.units), int(self.phases))
+            ]
+
+    # -- the streams
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        """An empty message for every stream, or for ``rows`` only."""
+        wide = len(self.__dict__.get("association", ()))
+        whole = rows is None or len(self.trace) != batch
+        super().reset(batch, rows)
+        if whole:
+            self.previous = np.zeros((batch, wide))
+        else:
+            self.previous[rows] = 0.0
+        self.last = None
+
+    def keep(self, rows: np.ndarray) -> None:
+        super().keep(rows)
+        self.previous = self.previous[rows]
+        self.last = None
+
+    def hear(self, observations: np.ndarray, cortex: np.ndarray | None = None) -> None:
+        """One heard moment per stream joins its block; ``cortex`` is the association's settled
+        activity at that moment, which the next moment's read addresses with."""
+        super().hear(observations)
+        if cortex is not None and np.shape(cortex) == self.previous.shape:
+            self.previous = np.array(cortex, dtype=float)
+        else:
+            self.previous = np.zeros((len(self.trace), len(self.association)))
+
+    def streams(self) -> dict[str, np.ndarray]:
+        """What the streams hold, the learned maps apart."""
+        return {"trace": self.trace, "told": self.told, "held": self.held,
+                "previous": self.previous}
+
+    # -- the read
+
+    def _heard_of(self, moment: Any) -> np.ndarray | None:
+        """The moment as the message hears it: the observations, or their code where that is
+        what the cortex reads."""
+        for x in (getattr(moment, "observations", None), getattr(moment, "code", None)):
+            if x is not None and np.ndim(x) == 2 and np.shape(x)[1] == self.inputs:
+                return np.asarray(x, dtype=float)
+        return None
+
+    def attention(self, x: np.ndarray, c: np.ndarray, blocks: np.ndarray) -> np.ndarray:
+        """``p`` over each stream's blocks for the moments ``x`` and the cortex ``c``."""
+        content, turn = self.maps
+        logits = _einsum("bu,bku->bk", _term(content, x, c), blocks) / self.read_temperature
+        logits = logits + _term(turn, x, c)
+        logits -= logits.max(axis=1, keepdims=True)
+        p = np.exp(logits)
+        return np.asarray(p / p.sum(axis=1, keepdims=True))
+
+    def stimulate(self, drive: np.ndarray, moment: Any = None) -> np.ndarray:
+        """The message read into a drive copy, and with a port the block the moment addresses;
+        another batch size reads silence."""
+        out = np.array(_on_host(drive), dtype=float)
+        present = len(self.trace) == len(out)
+        loud = self.amplitude * np.repeat(self.hearing, int(self.units) // self.gains)
+        if self.direct:
+            out[:, self._glow_columns] = loud * self.trace if present else 0.0
+        if self.reads:
+            self.last = None
+            x = self._heard_of(moment) if present else None
+            if x is None or len(x) != len(out):
+                out[:, self._port_columns] = 0.0
+            else:
+                blocks = self.trace.reshape(len(out), int(self.phases), int(self.units))
+                c = self.previous
+                p = self.attention(x, c, blocks)
+                out[:, self._port_columns] = self.read_amplitude * _einsum(
+                    "bk,bku->bu", p, blocks)
+                self.last = (x, c, p, blocks.copy())
+        return out
+
+    def stimulus(self, drive: np.ndarray, moment: Any = None) -> np.ndarray:
+        """The memory contract's read (``stimulate``)."""
+        return self.stimulate(drive, moment)
+
+    def learn(self, graph: Any, learned: Any) -> dict[str, float]:
+        """The read's lesson after a lesson whose phases are ``learned``, at its taught rows:
+        each block is scored against the association's movement read back through the port's
+        synapses, and the maps step toward the blocks the scores name. Returns how many rows
+        moved (``message_rows``) and how many a refused step left as they were."""
+        quiet = {"message_rows": 0.0, "message_refused": 0.0}
+        read = self.last
+        if (
+            not self.reads
+            or not self.read_rate
+            or read is None
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return quiet
+        x, c, p, blocks = read
+        taught = learned.taught
+        rows = (
+            np.arange(len(x)) if taught is None
+            else np.flatnonzero(np.asarray(taught, dtype=bool))
+        )
+        plus = np.atleast_2d(learned.nudged.activation)
+        if not len(rows) or len(plus) != len(x):
+            return quiet
+        minus = np.atleast_2d(
+            learned.free.activation if learned.opposite is None else learned.opposite.activation
+        )
+        movement = (plus - minus)[:, self.association][rows]
+        synapses, sources, targets = self._port_synapses
+        kernel = getattr(graph, "_mlx", None)
+        back = None
+        if kernel is not None and graph._efficacy is None:  # the synapses rest on the device
+            found = kernel.read_back([(synapses, sources, targets, int(self.units))], movement)
+            back = None if found is None else np.asarray(found[0])
+        if back is None:
+            w = np.zeros((int(self.units), len(self.association)))
+            np.add.at(w, (sources, targets), np.asarray(graph._weights)[synapses])
+            back = movement @ w.T
+        x, c, p, blocks = x[rows], c[rows], p[rows], blocks[rows]
+        norm = np.sqrt(np.sum(back * back, axis=1))
+        moving = norm > 1e-12
+        if not moving.any():
+            return quiet
+        x, c, p, blocks, back, norm = (a[moving] for a in (x, c, p, blocks, back, norm))
+        with np.errstate(over="ignore", invalid="ignore", divide="ignore"):
+            score = _einsum("bu,bku->bk", back, blocks) / norm[:, None]
+            logits = score / self.SCORE_TEMPERATURE + np.log(np.maximum(p, 1e-300))
+            logits -= logits.max(axis=1, keepdims=True)
+            named = np.exp(logits)
+            named /= named.sum(axis=1, keepdims=True)
+            turn = named - p
+            content = _einsum("bk,bku->bu", turn, blocks)
+            # each row's step bounded by its own energy, as the recall memory's is
+            energy = np.sum(x * x, axis=1) + np.sum(c * c, axis=1) + 1.0
+            bound = np.minimum(1.0, 1.0 / (self.read_rate * energy))[:, None]
+            stepped = [
+                _lms(maps, step * bound, self.read_rate, x, c)
+                for maps, step in zip(self.maps, (content, turn), strict=True)
+            ]
+        if not all(_finite(a) for maps in stepped for a in maps):
+            return {"message_rows": 0.0, "message_refused": float(len(x))}
+        self.maps = stepped
+        return {"message_rows": float(len(x)), "message_refused": 0.0}
+
+    # -- the memory contract
+
+    def branch(self) -> HeldMessage:
+        """A private copy for an imagined branch: its streams its own, its maps shared."""
+        branch = copy(self)
+        branch.trace, branch.told = self.trace.copy(), self.told.copy()
+        branch.previous = self.previous.copy()
+        branch.last = None
+        return branch
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        """The arrays a checkpoint keeps: the streams and the read's maps."""
+        out = dict(self.streams())
+        for kind, maps in zip(("content", "turn"), self.maps, strict=False):
+            for name, value in zip(("x", "c", "b"), maps, strict=True):
+                out[f"{kind}_{name}"] = np.asarray(value)
+        return out
+
+    def to_dict(self) -> dict[str, Any]:
+        out = {
+            **super().to_dict(),
+            "amplitude": self.amplitude,
+            "gains": int(self.gains),
+            "target": self.target,
+            "neurons": int(len(self.glow)),
+        }
+        if self.reads:
+            out.update(read=True, read_amplitude=self.read_amplitude, read_rate=self.read_rate,
+                       read_temperature=self.read_temperature)
+        return out
 
 
 # A head's map of the moment ``(M_x, M_c, m)``, read as ``x M_x + c M_c + m`` from the moment's
@@ -1511,6 +1949,23 @@ class Recall:
     def ages(self) -> np.ndarray:
         """Moments since each slot was written: ``slots - 1`` for the oldest, 0 the latest."""
         return np.arange(self.slots - 1, -1, -1, dtype=float)
+
+    def within_table(self, rows: np.ndarray) -> np.ndarray:
+        """Per stream of ``rows``, whether the slope maps step on its lesson: its own slots
+        (``held``) fit the position table, where the grid maps (``recall_grid``) take over past
+        it; every stream without the grid. A stream's own slots decide, so a stream's lesson
+        does not depend on how long another stream of the bank is (#292)."""
+        rows = np.asarray(rows)
+        if not self.grid_maps:
+            return np.ones(len(rows), dtype=bool)
+        return np.asarray(self.held[rows].sum(axis=1) <= self.position)
+
+    def _slope_as_bank(self, rows: np.ndarray) -> bool:
+        """Whether every stream of ``rows`` takes the slope step the bank's width gives, the
+        rule the compiled lesson reads (``_moment``): a stream of fewer slots than a longer
+        one beside it is taught on the host's path."""
+        bank = not (self.grid_maps and self.slots > self.position)
+        return bool((self.within_table(rows) == bank).all())
 
     def _whole_ages(self) -> np.ndarray:
         """``ages`` as whole numbers."""
@@ -2625,7 +3080,10 @@ class Recall:
             learned.free.activation if learned.opposite is None else learned.opposite.activation
         )
         movement = (plus - minus)[:, self.association]
-        if self._compiles(len(moment.address)) and graph._efficacy is not None:
+        if (
+            self._compiles(len(moment.address)) and graph._efficacy is not None
+            and (not self.slope_maps or self._slope_as_bank(rows))
+        ):
             return self._learn_compiled(graph, rows, movement, positions, quiet)
         reports = []
         moved_positions = refused_positions = 0
@@ -2744,10 +3202,14 @@ class Recall:
                 width = 2 * self.RELATIVE + 2
                 step = _per_bucket(gradient, self.relative_buckets(streams), width) * bound
                 stepped["relative_maps"] = _lms(self.relative_maps[head], step, rate, x, c)
-            # the same gradient, read along each slot's age; with ``grid`` only within the table
-            if self.slope_maps and not (self.grid_maps and self.slots > self.position):
+            # the same gradient, read along each slot's age; with ``grid`` only for the streams
+            # whose own slots fit the table, a stream past it leaning nowhere (``within_table``)
+            within = self.within_table(streams) if self.slope_maps else None
+            if within is not None and within.any():
                 lean = gradient @ (self.ages() / self.SLOPE)
                 lean = lean * np.minimum(1.0, 1.0 / (self.slope * energy))
+                if not within.all():
+                    lean = np.where(within, lean, 0.0)
                 stepped["slope_maps"] = _lms(self.slope_maps[head], lean, self.slope, x, c)
             if self.grid_maps:  # past the table, the gradient over its peak, on the residues
                 attended = np.where(np.isfinite(prior), np.exp(prior), 0.0)

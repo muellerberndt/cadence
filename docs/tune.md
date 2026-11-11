@@ -150,6 +150,8 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `learning_fast_settle` | `False`, `True` in a new brain with the memory | retune | [settling](settling.md#settling-and-equilibrium) |
 | `learning_compiled_moment` | `False` | retune | [the compiled moment](#the-compiled-moment-opt-in) |
 | `actor_gamma`, `actor_lam`, `actor_eta`, `actor_eta_bias`, `actor_eta_critic` | `0.9`, `0.8`, `1.0`, `0.05`, `0.3` | retune | [reward](reward.md#eligibility-traces-and-dopamine) |
+| `actor_hold` | `None` (the actor's eligibility decays by `actor_gamma * actor_lam`) | retune | [reward](reward.md#a-reward-many-moments-after-the-decision) |
+| `actor_entropy` | `0.0` (off) | retune | [exploration](reward.md#exploration-over-long-reward-lives-opt-in) |
 | `maturity`, `maturity_scale`, `maturity_recovery` | `False`, `10.0`, `200000.0` moments | `maturity` at construction; the scale and the recovery retune | [maturity](reward.md#maturity-opt-in) |
 | `arousal` | off; `True` is `ArousalConfig()` | construction (switch), retune (fields) | [continuous](start.md#routine-and-repair-live) |
 | `arousal_threshold`, `arousal_decay`, `arousal_tolerance`, `arousal_floor`, `arousal_fast`, `arousal_slow` | `0.2`, `0.9`, `2.0`, `0.1`, `0.05`, `0.005` | retune | [continuous](start.md#routine-and-repair-live) |
@@ -159,7 +161,7 @@ settings and counts), `pending` (whether an issued action owns the next outcome)
 | `recall_drive_gain` | `False`, `True` in a new brain with the memory | construction | [memory](memory.md#the-reads-drive-as-a-route) |
 | `efference_*` | amplitude `0.0` (absent), decay `0.2` | a positive amplitude at construction adds it | [memory](memory.md#efference-copy) |
 | `history_*` | decays `()` (absent), amplitude `3.0` | decays at construction | [memory](memory.md#heard-history) |
-| `episodic`, `memory_rate`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.5` with `memory_choice`), `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |
+| `episodic`, `memory_rate`, `memory_amplitude`, `consolidation` | `True`, `1.0` (`0.2` in a new brain with the memory, `0.5` with `memory_choice`), `1.0`, `0.05` | `episodic` at construction | [memory](memory.md#associative-store-the-hippocampus) |
 | `code` | unset: the observation itself | construction | [memory](senses.md#the-observation-code) |
 | `memory_choice` and the other `memory_*` episodic settings | `False` | construction | [episodic memory](memory.md#episodic-memory-what-happened-in-this-situation-before) |
 | `recall` and every `recall_*` | `True` up to 4,096 code coordinates; `recall=False` builds no memory | see the page | [recall memory](memory.md#the-recall-memory-in-full) |
@@ -349,8 +351,8 @@ at these costs is in the [chamber's tables](../benchmarks/grammar/README.md).
 ### The compiled moment (opt-in)
 
 `learning_compiled_moment=True` does the work around the solve kernels in compiled calls on the
-CPU. A greedy act is one call: the moment's drive (the sensory part, the working trace, the
-memory's read, with the address and every position term through one product of the maps, kept
+CPU. A greedy act is one call: the moment's drive (the sensory part, the working trace, the heard
+history at its gains per block, the memory's read, with the address and every position term through one product of the maps, kept
 packed until a lesson replaces one, and the place store's read), the free solve, the choice, the
 trace's step and the memory's write. A lesson by surprise judges in one call, the read and the
 solve its answer is read from, and where it teaches a row the lesson is one call more, from its
@@ -367,13 +369,23 @@ that is refused.
 
 [`cost.py`](../benchmarks/grammar/cost.py) times a pass of the default brain, the same brain with
 the option and the chamber's transformer in one process, batch by batch in turn, on one thread. On
-one core of a Xeon 8488C with nothing else running, one founder at a time, in one session:
+one core of a Xeon 8488C with nothing else running, one founder at a time, in one session, the
+brain of 0.96 (before the heard history joined the default):
 
 | Founder | Default brain | With `learning_compiled_moment` | Transformer | Against the transformer: default, compiled |
 | --- | ---: | ---: | ---: | ---: |
 | 0 | 67.6 s | 36.7 s | 16.0 s | 4.2, 2.3 |
 | 1 | 70.5 s | 38.5 s | 15.9 s | 4.4, 2.4 |
 | 2 | 70.8 s | 39.5 s | 16.2 s | 4.4, 2.4 |
+
+On the default with the heard history, in another session on one core of the same processor,
+nothing else running, one founder at a time:
+
+| Founder | Default brain | With `learning_compiled_moment` | Share |
+| --- | ---: | ---: | ---: |
+| 0 | 59.7 s | 32.1 s | .54 |
+| 1 | 57.1 s | 31.7 s | .55 |
+| 2 | 60.6 s | 33.1 s | .55 |
 
 The option takes .54 to .56 of the default's seconds. The seconds of one machine differ from run
 to run and from machine to machine by a tenth and more, the transformer's more than the brain's:

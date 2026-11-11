@@ -113,6 +113,13 @@ class ActorCriticConfig:
     # settle steps of the two nudged phases that score a sampled action; None uses the
     # learner's nudged_steps
     eligibility_steps: int | None = None
+    # the actor's eligibility decay per moment, apart from the critic's; None: gamma * lam,
+    # the critic's (cadence#283)
+    hold: float | None = None
+    # opt-in (cadence#296): the weight of the policy's entropy in the actor's step. Each sampled
+    # act's own contrast joins its outcome's step at this weight times how much the act
+    # surprised the policy, -log p(action) - H; 0: none
+    entropy: float = 0.0
 
     def __post_init__(self) -> None:
         # Use the same scalar arithmetic before and after JSON checkpointing.
@@ -138,7 +145,13 @@ class ActorCriticConfig:
         for name in ("gamma", "lam"):
             if not 0 <= getattr(self, name) <= 1:
                 raise ValueError(f"{name} must lie in [0, 1]")
-        for name in ("eta", "eta_bias", "eta_critic", "dopamine_cap"):
+        if self.hold is not None and (
+            isinstance(self.hold, (bool, np.bool_))
+            or not isinstance(self.hold, (int, float))
+            or not 0 <= self.hold <= 1
+        ):
+            raise ValueError("hold must lie in [0, 1], or be None")
+        for name in ("eta", "eta_bias", "eta_critic", "dopamine_cap", "entropy"):
             value = getattr(self, name)
             if not np.isfinite(value) or value < 0:
                 raise ValueError(f"{name} must be finite and nonnegative")
@@ -157,7 +170,17 @@ class ActorCriticConfig:
         values = {k: getattr(self, k) for k in self.__slots__}
         if self.eligibility_steps is not None:
             values["eligibility_steps"] = int(self.eligibility_steps)
+        if self.hold is None:  # a configuration without the hold saves as one without the field
+            del values["hold"]
+        if not self.entropy:  # a configuration without the entropy saves without the field
+            del values["entropy"]
         return values
+
+    @property
+    def decay(self) -> float:
+        """The actor's eligibility decay per moment: ``hold``, or ``gamma * lam``. The critic's
+        eligibility decays by ``gamma * lam`` whatever the hold."""
+        return self.gamma * self.lam if self.hold is None else float(self.hold)
 
 
 class ActorCritic:
@@ -219,6 +242,9 @@ class ActorCritic:
         self.hearing: Any = None
         self.trace_hearing: np.ndarray | None = None
         self._pending_hearing: np.ndarray | None = None
+        # with ``entropy``: each row's -log p(action) - H of the sampled act that awaits its
+        # outcome (summed over the motor slots), and its entropy H
+        self._pending_entropy: tuple[np.ndarray, np.ndarray] | None = None
         # one stream's traces on the torch device, when it settles there
         self._trace_device: Any = None
         # the eligibility on the MLX device: by block, over the neurons, and each row's factor on
@@ -390,6 +416,7 @@ class ActorCritic:
         self._drive = _held_drive(drive)
         self._pending = None
         self._pending_memory = None
+        self._pending_entropy = None
         return self._free
 
     def _validated_drive(self, drive: np.ndarray) -> np.ndarray:
@@ -452,6 +479,7 @@ class ActorCritic:
         self._pending = None  # eligibility always belongs to this decision, including greedy reads
         self._pending_memory = None
         self._pending_hearing = None
+        self._pending_entropy = None
         if greedy and bias is None and self.learner.slot_count == 1:
             action = self._clear_greedy(free)
             if action is not None:
@@ -473,12 +501,27 @@ class ActorCritic:
             plus = self._nudged_groups(drive, free, target, beta, temperature)
             minus = self._nudged_groups(drive, free, target, -beta, temperature)
             self._pending = ("states", plus, minus, self.value(free))
+            if self.config.entropy:
+                self._pending_entropy = self._surprise(p, action)
             self._pending_memory = self._memory_contrast(plus, minus)
             if self.hearing is not None:
                 self._pending_hearing = self.hearing.contrast_rows(
                     self.learner.brain, plus, minus, beta
                 )
         return np.asarray(action, dtype=np.int64)
+
+    @staticmethod
+    def _surprise(p: np.ndarray, action: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """Each row's ``-log p(action) - H`` under the policy that sampled ``action``, and its
+        entropy ``H``, summed over the motor slots (``p`` is ``(batch, actions)`` or
+        ``(batch, slots, max_size)`` with zero padding)."""
+        p3 = p[:, None, :] if p.ndim == 2 else p
+        chosen = np.asarray(action).reshape(len(p3), -1)
+        positive = p3 > 0
+        logp = np.where(positive, np.log(np.where(positive, p3, 1.0)), 0.0)
+        entropy = -(p3 * logp).sum(axis=-1)
+        picked = np.take_along_axis(logp, chosen[..., None], axis=-1)[..., 0]
+        return (-picked - entropy).sum(axis=1), entropy.sum(axis=1)
 
     def _memory_contrast(self, plus: BrainState, minus: BrainState) -> np.ndarray | None:
         """The per-row contrast of the memory's learned parameters between a sampled act's
@@ -688,11 +731,13 @@ class ActorCritic:
         free = self._free
         assert free is not None
         batch = len(reward)
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         device_kernel = None
         if kind == "states":  # the two phases as states: on the device when they settled there
             device_kernel = self.learner._device_kernel(first, second)
-            tables = None if self.salience is not None or self.maturity is not None else (
+            tables = None if (
+                self.salience is not None or self.maturity is not None or cfg.entropy
+            ) else (
                 self.learner._mlx_update_tables(first, second)
             )
             if tables is not None:
@@ -729,7 +774,8 @@ class ActorCritic:
             self.trace_critic = np.zeros((batch, len(self.critic_index) + 1))
         assert self.trace_bias is not None and self.trace_critic is not None
         fused = None
-        if kind == "phases" and _FUSED_TRACE and self.salience is None:
+        contrast = contrast_bias = None
+        if kind == "phases" and _FUSED_TRACE and self.salience is None and not cfg.entropy:
             fused = (
                 first,
                 second,
@@ -789,6 +835,18 @@ class ActorCritic:
         else:
             step_scale = (delta[:, None] * self.trace).mean(axis=0)
             step_bias = (delta[:, None] * self.trace_bias).mean(axis=0)
+        explored = None
+        if cfg.entropy:
+            # the policy's entropy: each sampled act's own contrast at the weight of its surprise,
+            # -log p(action) - H, beside the dopamine on the trace
+            surprise = self._pending_entropy
+            if surprise is None or len(surprise[0]) != batch:
+                raise ValueError("actor entropy needs the sampled act's policy; act again")
+            assert contrast is not None and contrast_bias is not None
+            weight = np.where(observed, cfg.entropy * surprise[0] / observed.mean(), 0.0)
+            step_scale = step_scale + (weight[:, None] * contrast).mean(axis=0)
+            step_bias = step_bias + (weight[:, None] * contrast_bias).mean(axis=0)
+            explored = float(surprise[1][observed].mean())
         self.updates += 1
         eta, eta_bias = self._rates()
         step_scale = eta * step_scale
@@ -819,6 +877,7 @@ class ActorCritic:
         self._pending = None
         self._pending_memory = None
         self._pending_hearing = None
+        self._pending_entropy = None
         report["delta"] = float(np.abs(delta).mean())
         report["dopamine"] = float(delta.mean())
         report["td_error"] = float(np.abs(td_error[observed]).mean())
@@ -826,6 +885,8 @@ class ActorCritic:
         report["value"] = float(value[observed].mean())
         report["free_steps"] = float(next_state.steps)
         report["saturation"] = self._saturation(free)
+        if explored is not None:
+            report["policy_entropy"] = explored
         plastic = self.learner.plastic_synapses
         assert plastic is not None
         traces = self.trace if plastic.all() else self.trace[:, plastic]
@@ -961,9 +1022,14 @@ class ActorCritic:
         the dopamine goes back. The critic rests with them from the size its memories do
         (``_CriticOnDevice``), and otherwise a row of its neurons comes to the host."""
         cfg = self.config
+        if cfg.entropy:
+            raise ValueError(
+                "actor_entropy learns on the host: a brain on a torch device takes no entropy "
+                "step (backend='cpu' or 'mlx')"
+            )
         torch = kernel.torch
         span = 2.0 * self.learner.config.beta
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         batch = len(reward)
         s_plus, s_minus = plus.device["s"], minus.device["s"]
         neurons = s_plus - s_minus  # the eligibility in the brain's precision, and the step with it
@@ -1160,7 +1226,7 @@ class ActorCritic:
         cfg = self.config
         learner = self.learner
         span = 2.0 * learner.config.beta
-        decay = cfg.gamma * cfg.lam
+        decay = cfg.decay
         batch = len(reward)
         kernel = learner.brain._mlx
         assert kernel is not None
@@ -1283,10 +1349,13 @@ class ActorCritic:
 
         Every eligibility trace decays by ``gamma * lam``, the step ``learn`` applies
         between two sampled actions, so the credit of earlier actions keeps fading with
-        time while nothing is learned; a memory's trace decays with them. ``done`` rows
-        forget their traces, as in ``learn``. Parameters and the critic are unchanged.
+        time while nothing is learned; a memory's trace decays with them. With a ``hold``
+        the actor's traces and a memory's decay by it, and the critic's by ``gamma * lam``.
+        ``done`` rows forget their traces, as in ``learn``. Parameters and the critic are
+        unchanged.
         """
-        decay = self.config.gamma * self.config.lam
+        decay = self.config.decay
+        critic_decay = self.config.gamma * self.config.lam
         ended = None if done is None else np.asarray(done)
         if ended is not None and (ended.ndim != 1 or ended.dtype != np.bool_):
             raise ValueError("done must be a boolean vector")
@@ -1321,10 +1390,10 @@ class ActorCritic:
                 trace[gone] = 0.0
                 trace_bias[gone] = 0.0
         if critic is not None:
-            critic.fade(decay, ended)
+            critic.fade(critic_decay, ended)
         for name in present:
             value = getattr(self, name)
-            value *= decay
+            value *= critic_decay if name == "trace_critic" else decay
             if ended is not None and ended.any():
                 setattr(self, name, _forgotten(value, ended))
 
@@ -1336,6 +1405,7 @@ class ActorCritic:
         self._pending = None
         self._pending_memory = None
         self._pending_hearing = None
+        self._pending_entropy = None
         self.trace = self.trace_bias = None
         if self._critic_device is not None:
             self._critic_device.trace = None

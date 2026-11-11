@@ -341,7 +341,8 @@ class LearnedCode:
         """The step's present halvings when Cholesky factorizations settle them: every row's
         smallest eigenvalue clear above the bound those halvings allow, and some row's clear
         below the bound one halving fewer would need. ``coupling - t I`` factorizes exactly
-        when its every eigenvalue lies above ``t``; a row whose Gershgorin floor already lies
+        when its every eigenvalue lies above ``t``, a factorization holding where it raises
+        nothing and its factor is finite; a row whose Gershgorin floor already lies
         above it needs no factorization, and the rows with the lowest floors are tried first
         for the second test. ``BOUND_MARGIN`` keeps every test far from rounding, so the answer
         is the one the eigenvalues give; None where a test is not clear or the halvings change,
@@ -358,11 +359,14 @@ class LearnedCode:
             return 1.0 - margin * float(np.ldexp(1.0, h)) / dt
 
         def above(rows: np.ndarray, t: float) -> bool:  # every one of the rows above t
+            # A factorization that fails raises on most platforms and returns NaN where the
+            # platform keeps no floating-point status (WebAssembly: NumPy in Pyodide); a finite
+            # factor of every row is the answer every platform gives alike.
             try:
-                np.linalg.cholesky(coupling[rows] - t * eye)
+                factor = np.linalg.cholesky(coupling[rows] - t * eye)
             except np.linalg.LinAlgError:
                 return False
-            return True
+            return bool(np.isfinite(factor).all())
 
         clear = self.BOUND_MARGIN * max(1.0, abs(bound(halvings)))
         allowed = bound(halvings) + clear

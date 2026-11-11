@@ -415,7 +415,7 @@ def test_grow_and_graft_of_a_brain_the_rule_chose_keep_its_place(monkeypatch):
     on_a_machine(monkeypatch)
     brain = small()
     a_life(brain)
-    grown = brain.grow(history_decays=(0.5,))
+    grown = brain.grow(history_decays=(0.0, 0.5))
     assert grown.brain.backend == "cpu"
     grown.act(np.eye(12)[[1]], greedy=True)
 
