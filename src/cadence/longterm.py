@@ -1687,13 +1687,15 @@ class LongTermRecords:
         if self.distinct is not None:
             # the records' entries as (stream, slot, entry) rows, the windows' and cues' as
             # (stream, entry) rows
-            held = [(row, slot, e) for row, members in enumerate(self._members[: len(self.stores)])
-                    for slot, entries in sorted(members.items()) for e in entries.tolist()]
+            entries_held = [
+                (row, slot, e) for row, members in enumerate(self._members[: len(self.stores)])
+                for slot, entries in sorted(members.items()) for e in entries.tolist()
+            ]
             window = [(row, e) for row, entries in enumerate(self._wsets) for e in sorted(entries)]
             cue = [(row, e) for row, entries in enumerate(self._cues) for e in entries.tolist()]
             out.update(stamps=self.stamps[: len(self.stores)].copy(),
                        codebook=self.codebook.astype(np.uint8),
-                       held=np.array(held, dtype=np.int64).reshape(-1, 3),
+                       held=np.array(entries_held, dtype=np.int64).reshape(-1, 3),
                        window_entries=np.array(window, dtype=np.int64).reshape(-1, 2),
                        cue_entries=np.array(cue, dtype=np.int64).reshape(-1, 2))
         for s, store in enumerate(self.stores):

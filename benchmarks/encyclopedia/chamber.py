@@ -66,7 +66,8 @@ def make_brain(lexicon: fx.Lexicon, founder: int, arm: str, capacity: int, modul
     settings: dict[str, Any] = {}
     if arm != "previous_word":
         settings.update(message=UNITS, message_fan_in=max(16, round(16 / 70 * 2 * lexicon.inputs)),
-                        longterm=int(capacity), longterm_turn=fx.WIDTH, longterm_heads=2)
+                        longterm=int(capacity), longterm_turn=fx.WIDTH, longterm_heads=2,
+                        longterm_fade=False)
     if arm == "records":
         settings.update(longterm_distinct=0.1, longterm_match=0.5, longterm_best=True,
                         longterm_rest=True)
@@ -155,7 +156,8 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
     nursery: list[float] = []
     t0 = time.perf_counter()
     for s in range(sessions):
-        for turn in fx.lesson_session(corpus, rng, int(spec.get("facts", 6))):
+        for turn in fx.lesson_session(corpus, rng, int(spec.get("facts", 6)),
+                                      float(spec.get("two", 0.2))):
             said = life.turn(turn, teach=True)
             if turn.asked and s >= sessions - max(sessions // 10, 1):
                 nursery.append(float(said == lexicon.action[str(turn.answer)]))
@@ -221,18 +223,19 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
         life.turn(fx.tell(f, now[f]))
     for i, f in enumerate(chosen):
         answer(fx.ask(f, "trained", i, now[f]), ["revised"], stale=f.answer)
+    kept = getattr(brain, "longterm", None)
+    records = None if kept is None else int(sum(s.count for s in kept.stores))
     for i, k in enumerate(read_rng.choice(len(reading), size=min(m, len(reading)),
                                           replace=False)):
         answer(fx.ask(reading[int(k)], "trained", i), ["erased"], erase=True)
     answers = max(work["answers"], 1)
-    kept = getattr(brain, "longterm", None)
     return [{**base, "scores": summarise(scores),
              "intake_seconds_per_fact": round(intake_seconds / max(len(reading), 1), 6),
              "intake_macs_per_fact": int(intake["macs"] / max(len(reading), 1)),
              "answer_ms": round(1e3 * work["seconds"] / answers, 4),
              "answer_macs": int(work["macs"] / answers),
              "answer_read_macs": int(work["read_macs"] / answers),
-             "records": None if kept is None else int(sum(s.count for s in kept.stores)),
+             "records": records,
              "record_bytes": None if kept is None else int(sum(
                  s.keys.nbytes + s.values.nbytes for s in kept.stores)),
              "entries": None if kept is None or kept.distinct is None else kept.entries,
