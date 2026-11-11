@@ -178,6 +178,36 @@ Three fresh founders (304300 to 304302).
 - The brain's milliseconds per step include the teacher's alignment passes and the readings, on
   one core; the gradient learners process a whole utterance in one call.
 
+## Round 3: read speech on the 2,000-word corpus, through learned fields
+
+Declared in [`protocol-speech-fields256.json`](protocol-speech-fields256.json),
+[`protocol-speech-fields512.json`](protocol-speech-fields512.json) and, as an amendment,
+[`protocol-speech-fields256-p.json`](protocol-speech-fields256-p.json).
+
+- **The list** ([`words-2000.txt`](words-2000.txt), with counts) holds the 2,000 most frequent
+  words of the train-clean-100 and train-clean-360 transcripts.
+- **The corpus:** the utterances of those splits whose every word is on the list, at most 12
+  seconds: 2,100 utterances, 2.5 hours. Held out: the 274 such utterances of dev-clean.
+- **Hearing:** a 40 ms step hears its 240 ms of log-mel as a 40 by 24 image through
+  `learned_fields=64`.
+- **Exposure:** 32 utterances heard side by side as streams, two passes, the forced alignment
+  re-aligned every 8 batches. Three fresh founders (304400 to 304402).
+
+| Learner | Parameters | Characters | Letter from the sound | Emission given the letter | Words, list-matched | Training seconds per audio second |
+| --- | --- | --- | --- | --- | --- | --- |
+| `modules=(256,)` | 1,269,020 | .259 | .347 | .418 | -.01 | .35 |
+| `modules=(512,)` | 2,242,588 | .177 (.03-.28) | .349 | .326 | -.01 | .61 |
+| `modules=(256,)`, every row taught, `fields_motor=1.0` | 1,285,724 | .329 | .334 | .780 | -.04 | .32 |
+| LSTM, CTC, two passes / offline | 1,266,551 | .413 / .437 | .410 / .464 | .880 / .938 | .03 / .09 | .012 |
+| Transformer, CTC, two passes / offline | 1,271,117 | .334 / .438 | .331 / .459 | .840 / .947 | .00 / .08 | .011 |
+
+- Learned fields lift the letter from the sound from .18 (Step 3) to .35, at either width.
+- Teaching every row with the pools' pathway to the motor region lifts the emission to .78:
+  paired by founder, characters +.070 (two standard errors .009).
+- No learner forms words at this exposure. The term that loses the brain's words is the letter
+  from the sound.
+- A letter said once per sound is open; the CTC reading is the decoding.
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one

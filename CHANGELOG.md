@@ -35,6 +35,11 @@
   - `vocabulary.py`: the most frequent words of LibriSpeech's training transcripts, utterances
     whose every word is on the list, and words read against the open lexicon and matched to the
     list.
+  - Round 3 on #307's corpus (2,100 utterances whose every word is on the list, 2.5 hours):
+    through `learned_fields` the letter from the sound reads .35 at associations of 256 and 512
+    (.18 on raw log-mel); every row taught with `fields_motor=1.0` lifts the emission given the
+    letter from .42 to .78 and characters from .26 to .33, beside CTC learners at .33 to .44. No
+    learner forms words at this exposure.
 
 ### A pathway from the pools of learned fields to the motor region (opt-in, #303)
 
