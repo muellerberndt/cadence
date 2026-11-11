@@ -1714,6 +1714,15 @@ recall memory's read.
 | `longterm_amplitude` | `3.0` | construction | Drive of a record's value on its region |
 | `longterm_match` | `0.75` | construction | The cosine at which a record holds the message's key for a read |
 | `longterm_revise` | `0.999` | construction | The cosine at which a write is a record told again: the same key, for keys of zeros and ones |
+| `longterm_pairs` | `0`, off | construction | Files each record under the pairs of this many units: [a million records](#a-million-records-opt-in) |
+| `longterm_expansion`, `longterm_winners`, `longterm_candidates` | the store's own | construction | The address's units, a cue's winners and the slots a read scores |
+| `longterm_fade` | `True` | construction | `False` for records written once: the fading touches every slot each moment |
+
+**A stream of a million records.** A stream of more than 16,384 records reads through an
+address. `longterm_pairs=16, longterm_expansion=16384, longterm_winners=256,
+longterm_candidates=2048, longterm_fade=False` gives each stream's store the address of pairs, so
+a read's cost grows far slower than the records. The read before the settle is the write's
+recognition, as in the bank.
 
 `brain.longterm` is a `LongTermRecords`: `stores` (one `cd.LongTermMemory` per stream),
 `read_slots` (each head's record at the latest read, -1 for none), `counts` (writes, revisions,
@@ -2573,12 +2582,101 @@ copy stays behind to split the read.
 | `seed` | `0` | Draws the address's projection |
 | `dtype` | `float64` | The type the keys and values are held in; `"float32"` halves their bytes |
 | `cosine` | `False` | Scores the fine read and a write's recognition by the cosine in place of the dot product |
+| `pairs` | `0`, off | Files a record under the pairs of its `pairs` most driven units: [a million records](#a-million-records-opt-in) |
+| `apart` | `0`, off | The width of a fact's source, whose signature tells two facts with one key apart: [keys held apart](#keys-held-apart-opt-in) |
 
 `read(cue, heads=1, credit=True)` returns a `LongTermRead` (`slots`, `weights`, `first(head)`,
 `mass(slot, head)`); `value(read, head)` is what a head holds; `write(key, value)` returns the
 slot and whether the write revised a record. `to_dict()` gives the settings and `arrays()` the
 state, which `restore(arrays)` takes back: a saved memory continues as the one it was saved
 from. `Brain.save` does not save it; the caller does.
+
+#### A million records (opt-in)
+
+The address above lists every slot under each of its 64 winning units. A cue's units then name
+about half of the slots, however many there are, so the address's work grows with the records:
+at 100,000 records a read takes .7 ms on one core, at 1,000,000 about 5 ms.
+
+`pairs=units` files a record another way. The record's `pairs` most driven units are taken two at
+a time, and the slot is written into a table cell for each pair. A cue's `winners` name the pairs
+it reads. A record far from the cue shares a unit with it now and then, and a pair of units far
+more rarely, so the slots a read touches grow far slower than the records. The slots found under
+the most pairs, `candidates` of them, go to the same competition as before.
+
+```python
+rng = np.random.default_rng(2)
+keys = rng.standard_normal((3000, 32)).astype(np.float32)
+keys /= np.linalg.norm(keys, axis=1, keepdims=True)
+values = np.eye(8, dtype=np.float32)[np.arange(3000) % 8]
+library = cd.LongTermMemory(width=32, value_width=8, capacity=3000, pairs=8, expansion=512,
+                            winners=32, candidates=64, direct=0, cosine=True, fade=False,
+                            dtype="float32")
+library.fill(keys, values)                         # many records told once, in one pass
+read = library.read(keys[40], credit=False)
+assert read.first() == 40 and len(read.slots) <= 64               # 64 of 3,000 slots scored
+assert np.array_equal(library.value(read), values[40])
+```
+
+- **`fill(keys, values)`** writes rows of records told once. Nothing is read, so a key told twice
+  holds two records; `write` recognises and revises as before.
+- **Sizes.** For a million records the declared reading uses `pairs=16, expansion=16384,
+  winners=256, candidates=2048`. A record then costs 960 bytes of table beside its key and value.
+  Keep `fade=False` for records written once: the fading touches every slot each moment.
+- **Any key.** A key is centred before it drives the units, so a key of zeros and ones (a held
+  message's) and a dense key are filed alike.
+- **Compiled where Numba is installed.** The count over the pairs runs in one compiled loop with
+  the `fast` extra (`pip install "cadence-net[fast]"`), and through NumPy without it. Both give
+  the same slots.
+
+**Several parts, and chains.** A question of several parts gives each head a cue of its own:
+`read_each(cues)` reads `cues[h]` with head `h`, among the slots the heads before it left. One
+cue that sums four unrelated keys holds each of them weakly, and a read of it misses some; four
+heads with a part each find all four. A chain reads a record, lays its value on the next cue and
+reads again:
+
+```python
+entities, relations = np.eye(16)[:8], np.eye(16)[8:]         # 8 entities, 8 relations
+facts = cd.LongTermMemory(width=32, value_width=16, capacity=64, cosine=True)
+facts.write(np.concatenate([entities[0], relations[0]]), entities[3])   # 0 --r0--> 3
+facts.write(np.concatenate([entities[3], relations[1]]), entities[5])   # 3 --r1--> 5
+facts.write(np.concatenate([entities[0], relations[2]]), entities[7])   # 0 --r2--> 7
+both = facts.read_each(np.stack([np.concatenate([entities[0], relations[0]]),
+                                 np.concatenate([entities[0], relations[2]])]), credit=False)
+assert [both.first(0), both.first(1)] == [0, 2]               # two parts, two records
+hops = facts.chain(np.concatenate([entities[0], relations[0]]),
+                   [np.concatenate([np.zeros(16), relations[1]])], credit=False)
+assert np.array_equal(facts.value(hops[-1]), entities[5])     # 0 --r0--> 3 --r1--> 5
+about = facts.read(np.concatenate([entities[0], np.zeros(16)]), heads=2, credit=False)
+assert {about.first(0), about.first(1)} == {0, 2}             # the subject alone: its facts
+```
+
+Here a key has two parts on coordinates of their own, the subject beside the relation. A cue with
+one part silent reads every record that holds the other, and a value that is an entity's code can
+be the next cue's subject (`at` says where it lies).
+
+#### Keys held apart (opt-in)
+
+Two facts whose keys are one key are one record: the second write revises the first. This happens
+where a code maps two different sentences to the same units. `apart=width` lets a write take the
+fact's `source` as well, a row of `width` values that the key was coded from (the sentence's raw
+form, or a second code of it). The memory keeps a small signature of the source. A write whose key
+is held revises that record only where the signatures agree; another signature is another fact
+and takes a slot of its own. A read that carries its source gets its own fact:
+
+```python
+key = np.eye(16)[0]
+rome, paris = np.eye(8)[1], np.eye(8)[2]
+first, second = rng.standard_normal(20), rng.standard_normal(20)     # two sentences, one key
+facts = cd.LongTermMemory(width=16, value_width=8, capacity=32, cosine=True, revise=0.999,
+                          apart=20)
+facts.write(key, rome, source=first)
+slot, revised = facts.write(key, paris, source=second)
+assert not revised and facts.count == 2                       # another fact, its own record
+assert np.array_equal(facts.value(facts.read(key, source=first, credit=False)), rome)
+assert np.array_equal(facts.value(facts.read(key, source=second, credit=False)), paris)
+slot, revised = facts.write(key, paris, source=first)         # the first fact, told again
+assert revised and facts.count == 2
+```
 
 **Beside a brain.** The memory's read of a moment's key is held on input coordinates of its own,
 as a recall port is held through a settle, and lessons teach the brain to answer from it:

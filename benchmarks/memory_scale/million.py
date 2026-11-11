@@ -147,11 +147,24 @@ def scan_read(keys: np.ndarray, norms: np.ndarray, cue: np.ndarray) -> int:
 
 
 def _arm(spec: dict[str, Any], width: int, value_width: int, n: int, founder: int) -> Any:
+    """The store of an arm: the plan's settings over the declaration's (a read by cosine, no
+    fading, float32, records written by ``fill``). ``"numpy": true`` reads the address of pairs
+    through NumPy where the compiled loop would run."""
     from cadence.longterm import LongTermMemory
 
     settings = {"cosine": True, "fade": False, "revise": 0.0, "dtype": "float32",
                 **spec.get("settings", {})}
-    return LongTermMemory(width, value_width, n, seed=founder, **settings)
+    arm = LongTermMemory(width, value_width, n, seed=founder, **settings)
+    if spec.get("numpy"):
+        arm.COMPILED = False  # type: ignore[misc]
+    return arm
+
+
+def _compiled(arm: Any) -> bool:
+    """Whether the arm's address of pairs runs its compiled loop."""
+    from cadence import longterm
+
+    return bool(arm.coarse and arm.pairs and arm.COMPILED and longterm._COUNT_PAIRS is not None)
 
 
 def _cost(arm: Any, cue: np.ndarray) -> tuple[int, int]:
@@ -262,7 +275,9 @@ def run_cell(spec: dict[str, Any]) -> list[dict[str, Any]]:
                  fill_s=round(fill_s, 2), bytes=held, bytes_per_record=round(held / n, 1),
                  scored=round(scored, 1), touched=round(touched, 1),
                  macs=int(width * ((arm.expansion if arm.coarse else 0) + scored)),
-                 dropped=int(arm.dropped), settings=arm_spec.get("settings", {}))
+                 fixed_weights=int(arm.projection.size) if arm.coarse else 0,
+                 dropped=int(arm.dropped), compiled=_compiled(arm),
+                 settings=arm_spec.get("settings", {}))
         for (kind, k), (heads_cues, want) in plan_heads.items():
             found, seconds = [], 0.0
             for i, w in enumerate(want):

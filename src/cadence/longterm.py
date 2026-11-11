@@ -93,17 +93,18 @@ except ImportError:  # pragma: no cover
 
 
 def _count_pairs(units: Any, flat: Any, depth: Any, expansion: Any, bits: Any, capacity: Any,
-                 hits: Any, touched: Any, ats: Any, tags: Any) -> int:
+                 hits: Any, touched: Any, ats: Any, tags: Any, held: Any) -> int:
     """The pair address's coarse stage in one compiled loop: every pair of the cue's sorted
     ``units`` reads its cell (``depth`` entries of ``flat``, the cells row after row), and each
-    slot found under the pair's tag counts one in ``hits``; the slots found are
+    slot found under the pair's tag counts one in ``hits`` (to 255); the slots found are
     ``touched[:n]``. The same integers as ``LongTermMemory._pair_cells`` and the NumPy read
     make, pair by pair.
 
-    The pairs go by blocks of ``len(ats)``. A block first works out every pair's cell and tag
-    and reads one entry of each cell, so the cells' rows are fetched side by side; then it reads
-    the rows. The cells are read by offset: a row taken as an array of its own would count a
-    reference per pair."""
+    The pairs go by blocks of ``len(ats)``, each in three passes. The first works out every
+    pair's cell and tag and reads one entry of each cell, so the cells' rows are fetched side by
+    side. The second reads the rows and keeps the slots under their pairs' tags, without a
+    branch on what it reads. The third counts them. The cells are read by offset: a row taken
+    as an array of its own would count a reference per pair."""
     many = np.uint64(len(flat) // depth)
     mask = np.uint64((1 << (32 - bits)) - 1)
     mix = np.uint64(0x9E3779B97F4A7C15)
@@ -124,16 +125,21 @@ def _count_pairs(units: Any, flat: Any, depth: Any, expansion: Any, bits: Any, c
             seen ^= flat[at]
             k += 1
             if k == block or (i == last - 1 and j == last):
+                m = 0
                 for p in range(k):
                     at, tag = ats[p], tags[p]
                     for d in range(depth):
                         slot = flat[at + d] ^ tag
-                        if slot < capacity:
-                            if hits[slot] == 0:
-                                touched[n] = slot
-                                n += 1
-                            if hits[slot] < 65535:
-                                hits[slot] += 1
+                        held[m] = slot
+                        m += slot < capacity
+                for q in range(m):
+                    slot = held[q]
+                    count = hits[slot]
+                    if count == 0:
+                        touched[n] = slot
+                        n += 1
+                    if count < 255:
+                        hits[slot] = count + 1
                 k = 0
     tags[0] = seen  # the first pass's reads are kept: they fetch the rows
     return n
@@ -484,14 +490,15 @@ class LongTermMemory:
         if _COUNT_PAIRS is not None and self.COMPILED:
             if self._hits is None:  # the compiled loop's scratch: a count per slot
                 reach = min(self.capacity, self.winners * (self.winners - 1) // 2 * self.DEPTH)
-                self._hits = np.zeros(self.capacity, dtype=np.uint16)
+                self._hits = np.zeros(self.capacity, dtype=np.uint8)
                 self._touched = np.zeros(reach, dtype=np.uint32)
                 self._ats = np.zeros(self.BLOCK, dtype=np.int64)
                 self._tags = np.zeros(self.BLOCK, dtype=np.uint32)
+                self._held = np.zeros(self.BLOCK * self.DEPTH + 1, dtype=np.uint32)
             found = _COUNT_PAIRS(np.sort(np.asarray(units, dtype=np.int64)),
                                  self.cells.reshape(-1), self.DEPTH, int(self.expansion),
                                  self._bits, np.uint32(self.capacity), self._hits,
-                                 self._touched, self._ats, self._tags)
+                                 self._touched, self._ats, self._tags, self._held)
             slots = self._touched[:found].astype(np.int64)
             hits = self._hits[slots].astype(np.int64)
             self._hits[slots] = 0
@@ -502,7 +509,7 @@ class LongTermMemory:
             entries = self.cells[cell] ^ tag[:, None]
             slots, hits = np.unique(entries[entries < np.uint32(self.capacity)],
                                     return_counts=True)
-            slots = slots.astype(np.int64)
+            slots, hits = slots.astype(np.int64), np.minimum(hits, 255)  # counted to 255
         if len(slots) > self.candidates:
             # the slots found under at least as many pairs as fit whole, then slots of the
             # level below, the lowest first, until the candidates are full

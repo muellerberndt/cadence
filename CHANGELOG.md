@@ -2,6 +2,28 @@
 
 ## Unreleased
 
+### A long-term memory of a million records (opt-in, #310)
+
+`cd.LongTermMemory` reads a million records through an address whose work grows far slower than
+the records. Every option is off by default; without them the store and a brain with records are
+those of 0.97.0, to the bit.
+
+- **An address of pairs** (`pairs=units`). A record is filed under every pair of its most driven
+  address units, in a table of cells sized to the capacity. A cue's winners name the pairs it
+  reads, and the slots found under the most pairs go to the read's competition. A key is centred
+  before it drives the units, so a key of zeros and ones and a dense key are filed alike.
+- **`fill(keys, values)`** writes many records told once in one pass.
+- **`read_each(cues)`**: heads reading in turn, each with a cue of its own, for a question of
+  several parts. **`chain(cue, links)`**: a read's value laid on the next cue.
+- **Keys held apart** (`apart=width`): a write keeps a signature of the fact's `source`, so two
+  facts whose keys are one key hold two records, and a read that carries its source takes its own.
+- **A brain's own records** take the address through `Brain.compose(longterm=records,
+  longterm_pairs=, longterm_expansion=, longterm_winners=, longterm_candidates=, longterm_fade=)`.
+- With the `fast` extra (Numba) the count over the pairs runs in one compiled loop; NumPy gives
+  the same slots without it.
+- Instruments `benchmarks/memory_scale/million.py` and `facts.py`, declared in
+  [`PROTOCOL_4.md`](benchmarks/memory_scale/PROTOCOL_4.md).
+
 ### Turns in a conversation for long-term records (opt-in, #305)
 
 `Brain.compose(longterm=records, longterm_turn=channel)` keys a brain's own records the way a

@@ -1,0 +1,38 @@
+{
+ "founders": [
+  3124,
+  3125,
+  3126,
+  3127,
+  3128,
+  3129,
+  3130,
+  3131,
+  3132,
+  3133,
+  3134,
+  3135
+ ],
+ "n": [
+  1000000
+ ],
+ "forms": [
+  "parts"
+ ],
+ "trials": 500,
+ "width": 64,
+ "shared": 0.04,
+ "again": 0.01,
+ "arms": [
+  {
+   "name": "pairs-apart",
+   "settings": {
+    "pairs": 16,
+    "expansion": 16384,
+    "winners": 256,
+    "candidates": 2048,
+    "apart": 32
+   }
+  }
+ ]
+}

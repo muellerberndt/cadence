@@ -1,0 +1,40 @@
+{
+ "founders": [
+  3112,
+  3113,
+  3114,
+  3115,
+  3116,
+  3117,
+  3118,
+  3119,
+  3120,
+  3121,
+  3122,
+  3123
+ ],
+ "n": [
+  100000,
+  1000000
+ ],
+ "forms": [
+  "parts",
+  "superposed"
+ ],
+ "trials": 500,
+ "width": 64,
+ "arms": [
+  {
+   "name": "scan"
+  },
+  {
+   "name": "pairs",
+   "settings": {
+    "pairs": 16,
+    "expansion": 16384,
+    "winners": 256,
+    "candidates": 2048
+   }
+  }
+ ]
+}

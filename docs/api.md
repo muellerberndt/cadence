@@ -500,7 +500,7 @@ associative store: [memory](memory.md#associative-store-the-hippocampus).
 ```text
 LongTermMemory(width, value_width, capacity, temperature=0.0, candidates=256, expansion=8192,
                winners=64, depth=2.0, idle=None, hold=None, revise=0.9, fade=True, seed=0,
-               direct=None, dtype=float64)
+               direct=None, dtype=float64, cosine=False, pairs=0, apart=0)
 LongTermRead(slots, weights)
 ```
 
@@ -528,12 +528,28 @@ nonpositive `depth`, `idle` or `hold` of one moment or less, `winners` above `ex
 entry.
 [A long-term memory of records](memory.md#a-long-term-memory-of-records).
 
+`pairs=units` (0: off) files a record under every pair of its `pairs` most driven units in a
+table of cells (`cells`, `fills`; `dropped` counts the entries a full cell did not take), and a
+cue's `winners` name the pairs a read looks under; the `candidates` slots found under the most
+pairs are scored. `fill(keys, values, sources=None)` writes rows of records told once into empty
+slots and returns their slots. `read_each(cues, credit=True)` reads `cues[h]` with head `h`, and
+`chain(cue, links, at=0, credit=True)` returns the reads of a chain, each value added to the next
+link on coordinates `at : at + value_width`. `apart=width` (0: off) keeps a signature of each
+write's `source` (`write(key, value, source=row)`, `signs`): a held key is revised only where the
+signatures agree, and `read(cue, source=row)` takes its own among records that tie.
+`LongTermMemory.COMPILED = False` reads the pairs through NumPy where Numba is installed. It
+raises `ValueError` for `pairs` of 1 or above `winners`, a negative `apart`, a `source` without
+`apart` or of another shape, a `fill` past the empty slots, and `cues` or `links` of another
+shape. [A million records](memory.md#a-million-records-opt-in).
+
 `Brain.compose(..., longterm=records)` builds a `LongTermRecords` (in `cadence.longterm`) as
 `brain.longterm`: one `LongTermMemory` of `records` slots per stream (`stores`), keyed by the
 brain's held message from a turn; it needs `message=units`, `message_boundary` and
 `message_boundary_holds=True`. `longterm_heads` (1), `longterm_amplitude` (3.0), `longterm_match`
 (0.75), `longterm_revise` (0.999), `longterm_turn` (None) and `longterm_rare` (0.03) are
-construction settings; with `longterm_turn=channel` every moment with that input channel on is a
+construction settings, as are `longterm_pairs` (0), `longterm_expansion`, `longterm_winners`,
+`longterm_candidates` (None: the store's own) and `longterm_fade` (True), which build each
+stream's store (`address()` names those that differ from the store's founders); with `longterm_turn=channel` every moment with that input channel on is a
 turn, a turn's key is the rare units of the message's codes heard since the last value
 (`content(window)`), and `window`, `key`, `heard` and `moments` hold the streams' windows, their
 keys and the units' counts. `longterm_distinct=share` (with `longterm_turn`) reads by codebook
