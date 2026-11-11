@@ -255,3 +255,17 @@ speakers, at 2 minutes:
 | replay | 1,296,996 | +.056 / +.026 | +.077 / +.033 |
 | transformer with CTC, plain | 1,281,498 | +.079 / -.052 | +.096 / -.029 |
 | transformer with CTC, replay | 1,281,498 | +.098 / +.020 | +.084 / +.025 |
+
+The declared run of round 3 (founders 3042 to 3047, the first run's speakers) reads the same
+term: said .537, the association .587, silence at .124 of the word steps, the pathway cut .398.
+Corrections at 2 minutes, means over 108 speaker-lives, with H1 (retention not below zero by two
+standard errors) and H2 (gain not below plain's) on 5 of 6 founders:
+
+| Correction | Parameters | New speakers: gain / retention | Dialect: gain / retention | H1 new / dialect | H2 new / dialect |
+| --- | --- | --- | --- | --- | --- |
+| plain | 1,296,996 | +.080 / -.018 | +.096 / -.056 | 1 / 0 | |
+| held | 1,296,996 | +.072 / -.008 | +.083 / -.030 | 2 / 1 | 5 / 6 |
+| held25 | 1,296,996 | +.075 / +.005 | +.086 / +.003 | 5 / 4 | 6 / 6 |
+| replay | 1,296,996 | +.062 / +.012 | +.062 / +.012 | 6 / 6 | 4 / 1 |
+| transformer with CTC, plain | 1,281,498 | +.132 / -.063 | +.207 / -.067 | | |
+| transformer with CTC, replay | 1,281,498 | +.100 / +.008 | +.202 / +.009 | | |

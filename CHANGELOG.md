@@ -44,6 +44,12 @@ brain in it is a brain of 0.97.0.
   fresh founders the declared arm (`fields_motor=1.0`, soft targets) reads .539 against .747,
   0 of 6 within .05, with what it says at a word step within .111 of what its pools hold; G2 and
   G3 0 of 6. One stream takes 4.84 ms per second of audio on one core.
+- **Round 3:** `readout.py` reads a saved brain at the word steps: on six fresh founders the brain
+  says the right word at .537 where its association reads .587, says silence at .124, and its
+  pathways into the motor region add (cut: .398 without the pools', .295 without the
+  association's). Corrections that hear three earlier phrases at `weights=` .25 (`held25`) keep
+  the earlier speakers (+.005 and +.003 at 2 minutes) at plain's gain; at weight zero they halve
+  plain's loss of retention.
 
 ## 0.97.0 — 2026-11-10
 
