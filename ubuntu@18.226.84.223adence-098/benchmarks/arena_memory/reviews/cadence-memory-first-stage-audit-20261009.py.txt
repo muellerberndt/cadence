@@ -1,0 +1,100 @@
+"""Read-only arithmetic and custody verifier of the four fixed memory repair arms."""
+import gzip
+import hashlib
+import json
+from pathlib import Path
+import numpy as np
+
+ROOT=Path('/workspace')
+HERE=ROOT/'temp/cadence-memory-repair-20261009'
+OLD=ROOT/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
+sha=lambda p:hashlib.sha256(p.read_bytes()).hexdigest()
+rows=[]
+names=['tumbler-103-control','tumbler-103-memory','mantis-202-control','mantis-202-memory']
+for name in names:
+ folder=HERE/'runs'/name;rp=folder/'receipt.json';d=json.loads(rp.read_text())
+ assert d['status']=='complete' and not d['smoke']
+ assert d['source_admitted'] and d['source_unchanged'] and d['producer_unchanged']
+ assert d['source_sha256']==d['source_sha256_after']
+ assert d['protocol_sha256']==sha(HERE/'protocol.json')
+ assert d['producer_sha256']==sha(HERE/'compare.py')
+ assert d['admission_sha256']==sha(HERE/'sources.json')
+ for relative,digest in d['original_artifacts'].items():assert sha(OLD/relative)==digest
+ for relative,digest in d['artifacts'].items():assert sha(folder/relative)==digest
+ with np.load(folder/'initial-control.npz',allow_pickle=False)as a,np.load(folder/'initial.npz',allow_pickle=False)as b:
+  for key in a.files:
+   if key=='generic':
+    left,right=json.loads(str(a[key])),json.loads(str(b[key]));left.pop('hippocampus');right.pop('hippocampus');assert left==right
+   else:assert np.array_equal(a[key],b[key]),key
+  extra=set(b.files)-set(a.files)
+  assert not extra if d['arm']=='control' else extra=={'episodic/consolidated','episodic/mass','episodic/post','episodic/pre','episodic/strength'}
+  if d['arm']=='memory':
+   for k in ['episodic/consolidated','episodic/mass','episodic/strength']:assert not np.any(b[k])
+ with gzip.open(folder/'training-stream.jsonl.gz','rt')as f:stream=[json.loads(line)for line in f]
+ assert len(stream)==4000
+ expected_reward=d['initial']['pending_actual_reward'];totals={};writes=0;sampled=0;routinewrites=0
+ assert d['initial']['wrapper']['owed']==0
+ for index,row in enumerate(stream):
+  assert row['received_actual_reward']==expected_reward
+  expected_reward=row['reward']
+  recomputed=float(np.clip(10*row['progress_m'],-.5,.5))+(row['dealt']-row['taken'])/20+row['kills']
+  assert abs(recomputed-row['reward'])<1e-12
+  assert row['refused']==row['refusal_attempts']==row['failed_settle_calls']==0
+  assert row['actual_sweeps']==row['sweeps']+row['learning_sweeps']
+  sampled+=row['previous_was_sampled']
+  if d['arm']=='memory':
+   increment=row['memory_writes']-writes;assert increment in (0,1)
+   assert not row['previous_was_sampled'] or increment==1
+   if not row['previous_was_sampled']:
+    assert increment==row['aroused'];routinewrites+=increment
+   writes=row['memory_writes']
+  else:assert row['memory_writes'] is None
+  for key in d['training']['total']:totals[key]=totals.get(key,0)+row[key]
+  if (index+1)%1000==0:assert totals==d['training']['blocks'][index//1000]['cumulative']
+ assert totals==d['training']['total']
+ assert expected_reward==d['trained']['pending_actual_reward']
+ assert d['trained']['outcomes_received']==d['initial']['outcomes_received']+4000==83999
+ assert d['trained']['describe']['age']==84000
+ if d['arm']=='memory':assert writes==d['trained']['memory']['writes']==sampled+routinewrites
+ continuation=d['continuation'];assert continuation['equal'] and continuation['checkpoint_arrays_equal']
+ assert continuation['moments_per_fork']==len(continuation['records'])==32
+ assert continuation['outcomes_received_after']==84031
+ for rec in continuation['records']:
+  assert {k:v for k,v in rec['unbroken'].items()if k!='policy_ms'}=={k:v for k,v in rec['reloaded'].items()if k!='policy_ms'}
+ with np.load(folder/'fork-original.npz',allow_pickle=False)as a,np.load(folder/'fork-loaded.npz',allow_pickle=False)as b:
+  assert set(a.files)==set(b.files)
+  assert all(np.array_equal(a[k],b[k])for k in a.files)
+ world=json.loads((folder/'world.json').read_text());assert world['world']['reward']==expected_reward
+ assert world['wrapper']['owed']==0 and world['wrapper']['moments']==84000
+ assert {k:sum(rec[k]for rec in d['fingerprint']['rows'])for k in d['work']}=={k:d['fingerprint'][k]for k in d['work']}
+ assert len(d['evaluation'])==8
+ assert {(v['policy'],v['seed'])for v in d['evaluation']}=={(p,s)for p in ['trained','ablated','newborn','random']for s in [2001,2002]}
+ for ev in d['evaluation']:
+  assert ev['total']['moments']==2000
+  assert ev['total']['learning_sweeps']==ev['total']['refused']==ev['total']['refusal_attempts']==0
+  assert ev['blocks'][-1]['cumulative']==ev['total']
+ allwork={k:d['training']['total'][k]+d['fingerprint'][k]+sum(e['total'][k]for e in d['evaluation'])+sum(rec[side][k]for rec in continuation['records']for side in ['unbroken','reloaded'])for k in d['work']}
+ assert allwork==d['work']
+ metrics={}
+ for policy in ['trained','ablated','newborn','random']:
+  subset=[e['total']for e in d['evaluation']if e['policy']==policy]
+  metrics[policy]={'mean_progress_m':sum(e['progress_m']for e in subset)/2,'total_damage':sum(e['dealt']for e in subset),'total_kills':sum(e['kills']for e in subset)}
+ rows.append({'case':d['case'],'arm':d['arm'],'receipt_sha256':sha(rp),'metrics':metrics,'training_sweeps':d['training']['total']['actual_sweeps'],
+              'total_work':allwork,'memory_writes':writes,'sampled_outcomes':sampled,'routine_outcome_writes':routinewrites,
+              'progress_gain_vs_best_control':metrics['trained']['mean_progress_m']-max(metrics[p]['mean_progress_m']for p in ['newborn','random']),
+              'damage_above_original_30HP_floor':metrics['trained']['total_damage']>=30,
+              'target_ablation_progress_loss':metrics['trained']['mean_progress_m']-metrics['ablated']['mean_progress_m'],
+              'checked_artifact_hashes':len(d['artifacts']),'original_artifacts':d['original_artifacts']})
+out={'status':'PASS: receipts, actual outcome chains, source/artifact hashes, write counts, saved forks and total work reconcile.',
+     'scope':'Read-only four first-stage comparisons. No simulations or runtime edits. Retention stage excluded and still separate.',
+     'producer_sha256':sha(Path(__file__)),'comparison_producer_sha256':sha(HERE/'compare.py'),'protocol_sha256':sha(HERE/'protocol.json'),
+     'admission_sha256':sha(HERE/'sources.json'),'rows':rows,'total_work':{k:sum(r['total_work'][k]for r in rows)for k in rows[0]['total_work']},
+     'world_moments':{'training':16000,'frozen_evaluation':64000,'continuation_forks':256,'total':80256},
+     'judgment':'Evidence supports a prospective test of existing memory enabled, conditional on retained-capability evidence. It does not establish a readiness fix, universal improvement, or release eligibility.',
+     'claim_limits':['Tumbler103 recovers target-dependent progress only in memory arm, but its18.171HP remains below the original30HP attack floor.',
+                     'Mantis202 recovers progress even without memory after equal additional training. Memory trades lower progress for higher damage and kills.',
+                     'These are acquired brains selected because they failed, continued for4000 additional moments. Fresh acquisition, generalization to all bodies, and preservation still require their own evidence.',
+                     'Targets/worlds are the existing diagnostic evaluation worlds. This is development evidence; do not call it a held-out confirmation.',
+                     'No numerical defaults, learning mechanisms or gates changed.']}
+path=ROOT/'runs/cadence-memory-first-stage-audit-20261009.json';path.write_text(json.dumps(out,indent=2)+'\n')
+print(json.dumps({'path':str(path),'sha256':sha(path),'total_work':out['total_work'],'runs':len(rows)},indent=2))

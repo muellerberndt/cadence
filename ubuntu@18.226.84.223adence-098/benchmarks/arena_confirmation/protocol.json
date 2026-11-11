@@ -1,0 +1,32 @@
+{
+  "protocol": "robot-training-confirmation/1",
+  "source_commit": "750c8ef",
+  "training_moments": 80000,
+  "evaluation_moments": 2000,
+  "evaluation_worlds": [2001, 2002],
+  "continuation_moments": 32,
+  "relocate": 400,
+  "cases": [
+    {"id": "tumbler-101", "body": "Tumbler", "founder": 101, "training_world": 1001},
+    {"id": "tumbler-102", "body": "Tumbler", "founder": 102, "training_world": 1002},
+    {"id": "tumbler-103", "body": "Tumbler", "founder": 103, "training_world": 1003},
+    {"id": "mantis-201", "body": "Mantis", "founder": 201, "training_world": 1101},
+    {"id": "mantis-202", "body": "Mantis", "founder": 202, "training_world": 1102},
+    {"id": "mantis-203", "body": "Mantis", "founder": 203, "training_world": 1103},
+    {"id": "hexapod-301", "body": "Hexapod", "founder": 301, "training_world": 1201},
+    {"id": "hexapod-302", "body": "Hexapod", "founder": 302, "training_world": 1202},
+    {"id": "hexapod-303", "body": "Hexapod", "founder": 303, "training_world": 1203}
+  ],
+  "acceptance": {
+    "positive_progress_lives": 8,
+    "positive_damage_lives": 7,
+    "minimum_progress_successes_each_body": 2,
+    "minimum_damage_successes_each_body": 2,
+    "minimum_total_damage": 30.0,
+    "minimum_sensory_gain_fraction": 0.5,
+    "epsilon": 1e-9,
+    "zero_refusals": true,
+    "exact_saved_continuation": true,
+    "complete_census": true
+  }
+}

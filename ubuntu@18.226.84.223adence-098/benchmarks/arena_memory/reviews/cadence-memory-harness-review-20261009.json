@@ -1,0 +1,31 @@
+{
+  "status": "APPROVED; no concrete correctness blocker to the frozen four first-stage jobs",
+  "files_sha256": {
+    "compare.py": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
+    "protocol.json": "51a919f3ece74b5dd3cf82dc7292107b1473fadf0169be5122ca48c4878b5ddd",
+    "sources.json": "9fee606d0ef27633bd96b5983793a74367374b93515f9ef7d3f8ba6c2ba1b60c"
+  },
+  "semantics_review_sha256": "2234feb97d477d44e3bb59f31a46eef7966081b679e26d050e2eeeb4c8521b26",
+  "source_admission_verified": {
+    "cadence_files": 55,
+    "arena_files": 15,
+    "cadence_commit": "750c8ef45b17ba052279584e49c685ff3d169a82",
+    "arena_commit": "af439c18b40fba05e6410b51a7ca12d05f626077",
+    "frozen_producer_sha256": "24eb580485f00297e488c43ffca2273583fd23c6896460c4c7444212fee34569"
+  },
+  "smoke_receipts": {
+    "runs/smoke-tumbler-103-memory/receipt.json": "07e59f7078166ad5fe10da46c76fd39f59f1391558473ad5a50bfafdf2ee2772",
+    "runs/smoke-mantis-202-control/receipt.json": "1a82945430af1550479f7d15bc285528117b2afb4e932a77d1c1bb40ddefadb7"
+  },
+  "checks": [
+    "Only the existing empty SynapticMemory component is attached; all common initial checkpoint state is compared exactly.",
+    "Serialized original wrapper plus world, physical/placement RNGs, next observation and true pending reward restore before first continued call.",
+    "No brain reset, historical reward replay, synthetic record, pending forecast rewrite or external readout is introduced.",
+    "All4000 continuation moments use the same native outcome function and corrected physics in both arms.",
+    "32-step fork comparison starts from pre-fork brain/world, compares action/reward/work/physics and final checkpoint arrays.",
+    "Every fingerprint and frozen evaluation loads a private copy of pre-fork trained checkpoint. Frozen greedy act reads both memory timescales without learning/writing; training snapshot is unaffected.",
+    "Actual settle calls/sweeps include all sections and successful retries become refusal failures.",
+    "Original results and gate are unchanged; this is explicitly exploratory acquired-life repair, not fresh confirmation or release evidence."
+  ],
+  "validation_scope": "Read-only source, hash and existing smoke receipt review; no additional simulations or tests."
+}

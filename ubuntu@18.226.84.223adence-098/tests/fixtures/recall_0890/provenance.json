@@ -1,0 +1,50 @@
+{
+  "written_by": "cadence-net 0.89.0 (the PyPI wheel's files, each checked against the wheel's RECORD) on the NumPy solver (CADENCE_FUSED=0)",
+  "build": {
+    "inputs": 4,
+    "actions": 2,
+    "modules": [
+      8
+    ],
+    "seed": 3,
+    "episodic": false,
+    "recall": true,
+    "recall_heads": 2,
+    "recall_capacity": 40,
+    "teaching": "normalized"
+  },
+  "life": "48 one-hot moments of numpy default_rng(5), each unlike the moment before it, a lesson of label k % 2 before a greedy act on each; then Brain.save",
+  "continuation": {
+    "moments": "8 one-hot moments of default_rng(11), the first unlike the life's last, a lesson of label k % 2 before a greedy act on each",
+    "actions": [
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      1,
+      1
+    ],
+    "attention_sha256": "eac314cd79db46bef59fff1e9ad859b3716798af1eaff708040afa04c23eb168",
+    "position_maps_sha256": "c75d4e95510299307567e2c0649d72a52e55f5802a18d1c1029295813166e7fb"
+  },
+  "settings": {
+    "position": 32,
+    "position_rate": 0.1,
+    "recency": 0.25,
+    "capacity": 40,
+    "heads": 2
+  },
+  "genes": {
+    "recall_amplitude": 3.0,
+    "recall_temperature": 0.25,
+    "recall_recency": 0.25,
+    "recall_address": 0.01,
+    "recall_capacity": 40,
+    "recall_next": true,
+    "recall_heads": 2,
+    "recall_compete": false
+  },
+  "parameters": 1249
+}

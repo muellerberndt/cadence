@@ -1,0 +1,40 @@
+"""Report every retained acquired-life control; no release-gate reinterpretation."""
+import gzip
+import hashlib
+import json
+from pathlib import Path
+ROOT=Path(__file__).resolve().parent
+rows=[]
+for p in sorted((ROOT/'runs').glob('*/receipt.json')):
+ r=json.loads(p.read_text())
+ if r['smoke']:continue
+ row={'case':r['case'],'arm':r['arm'],'status':r['status'],'receipt_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'seconds':r['seconds'],'work':r['work']}
+ if r['status']=='complete':
+  assert r['source_admitted'] and r['source_unchanged'] and r['producer_unchanged']
+  assert r['initial_equivalence']['shared_state_exact']
+  assert r['continuation']['equal'] and r['continuation']['checkpoint_arrays_equal']
+  assert r['trained']['outcomes_received']==r['initial']['outcomes_received']+4000
+  assert r['continuation']['outcomes_received_after']==r['trained']['outcomes_received']+32
+  assert r['trained']['describe']['refusals']==r['initial']['describe']['refusals']==0
+  for name,digest in r['artifacts'].items():assert hashlib.sha256((p.parent/name).read_bytes()).hexdigest()==digest
+  grouped={name:[v['total'] for v in r['evaluation'] if v['policy']==name] for name in ['trained','ablated','newborn','random']}
+  row['evaluation']={name:{'mean_progress_m':sum(x['progress_m'] for x in values)/2,'total_dealt':sum(x['dealt'] for x in values),'total_kills':sum(x['kills'] for x in values)} for name,values in grouped.items()}
+  row['progress_gain_vs_best_control']=row['evaluation']['trained']['mean_progress_m']-max(row['evaluation'][name]['mean_progress_m'] for name in ['newborn','random'])
+  row['damage_gain_vs_best_control']=row['evaluation']['trained']['total_dealt']-max(row['evaluation'][name]['total_dealt'] for name in ['newborn','random'])
+  row['target_removal_progress_loss']=row['evaluation']['trained']['mean_progress_m']-row['evaluation']['ablated']['mean_progress_m']
+  row['training']=r['training']['total'];row['memory']=r['trained']['memory'];row['fingerprint']={key:r['fingerprint'][key] for key in ['distinct','sensitivity']}
+  with gzip.open(p.parent/'training-stream.jsonl.gz','rt') as stream: records=[json.loads(line) for line in stream]
+  assert len(records)==4000
+  writes0=0;routine_writes=0
+  for record in records:
+   writes=record['memory_writes'] or 0
+   if not record['previous_was_sampled']:routine_writes+=writes-writes0
+   writes0=writes
+  row['routine_outcome_memory_writes']=routine_writes
+  row['sampled_outcomes']=sum(record['previous_was_sampled'] for record in records)
+  row['routine_outcomes']=sum(not record['previous_was_sampled'] for record in records)
+ rows.append(row)
+summary={'scope':'Exploratory continuation of acquired lives on corrected arena physics, not a fresh readiness cohort. All fixed attempts retained.','runs':rows}
+(ROOT/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+for row in rows:
+ print(json.dumps({key:row[key] for key in ['case','arm','status','evaluation','fingerprint','routine_outcome_memory_writes'] if key in row}))

@@ -1,0 +1,546 @@
+{
+  "status": "complete_independent_audit",
+  "behavioral_screen_pass": false,
+  "pairs": [
+    {
+      "case": "tumbler-103",
+      "progress_pass": false,
+      "attack_pass": false,
+      "control": {
+        "progress_m": -0.4947271830901354,
+        "damage_hp": 0.0
+      },
+      "candidate": {
+        "progress_m": -0.4947271830901354,
+        "damage_hp": 0.0
+      },
+      "progress_delta": 0.0,
+      "damage_delta": 0.0
+    },
+    {
+      "case": "mantis-202",
+      "progress_pass": true,
+      "attack_pass": true,
+      "control": {
+        "progress_m": 16.786953587776587,
+        "damage_hp": 228.68585489940332
+      },
+      "candidate": {
+        "progress_m": 13.41062857707776,
+        "damage_hp": 145.36564229053732
+      },
+      "progress_delta": -3.3763250106988263,
+      "damage_delta": -83.320212608866
+    },
+    {
+      "case": "hexapod-302",
+      "progress_pass": true,
+      "attack_pass": false,
+      "control": {
+        "progress_m": 1.0001413126813339,
+        "damage_hp": 36.65752293808929
+      },
+      "candidate": {
+        "progress_m": 3.798130905571904,
+        "damage_hp": 12.983286804313188
+      },
+      "progress_delta": 2.7979895928905703,
+      "damage_delta": -23.674236133776105
+    },
+    {
+      "case": "tumbler-102",
+      "progress_pass": true,
+      "attack_pass": true,
+      "control": {
+        "progress_m": 25.022598753569962,
+        "damage_hp": 389.33304899961206
+      },
+      "candidate": {
+        "progress_m": 22.700714526799317,
+        "damage_hp": 54.073184401734196
+      },
+      "progress_delta": -2.3218842267706457,
+      "damage_delta": -335.2598645978779
+    },
+    {
+      "case": "mantis-201",
+      "progress_pass": true,
+      "attack_pass": true,
+      "control": {
+        "progress_m": 27.183440303979275,
+        "damage_hp": 762.3022159174029
+      },
+      "candidate": {
+        "progress_m": 16.04272930606207,
+        "damage_hp": 81.55641238503385
+      },
+      "progress_delta": -11.140710997917203,
+      "damage_delta": -680.7458035323691
+    },
+    {
+      "case": "hexapod-301",
+      "progress_pass": true,
+      "attack_pass": true,
+      "control": {
+        "progress_m": 20.255893142824792,
+        "damage_hp": 3.328118055555552
+      },
+      "candidate": {
+        "progress_m": 19.138769486159358,
+        "damage_hp": 205.80891119281785
+      },
+      "progress_delta": -1.1171236566654343,
+      "damage_delta": 202.48079313726228
+    }
+  ],
+  "receipts": [
+    {
+      "case": "tumbler-103",
+      "arm": "control",
+      "receipt_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+      "new_work": false,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": -0.4947271830901354,
+          "damage_hp": 0.0
+        },
+        "newborn": {
+          "progress_m": -9.84358335672056,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": 0.8195644961865236,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -0.4947271830901354,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": false,
+      "attack_pass": false,
+      "progress_gain": -1.314291679276659,
+      "damage_gain": 0.0,
+      "work": {
+        "actual_sweeps": 398716,
+        "settle_calls": 35867,
+        "failed_settle_calls": 0
+      },
+      "seconds": 78.99880587501684
+    },
+    {
+      "case": "tumbler-103",
+      "arm": "full-budget",
+      "receipt_sha256": "de72412c681c3774e3113faf3636364d9e3702da5f7c0ccc1ec7fc73977fba70",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": -0.4947271830901354,
+          "damage_hp": 0.0
+        },
+        "newborn": {
+          "progress_m": -9.84358335672056,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": 0.8195644961865236,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -0.4947271830901354,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": false,
+      "attack_pass": false,
+      "progress_gain": -1.314291679276659,
+      "damage_gain": 0.0,
+      "work": {
+        "actual_sweeps": 452944,
+        "settle_calls": 36280,
+        "failed_settle_calls": 0
+      },
+      "seconds": 53.81257633300265
+    },
+    {
+      "case": "mantis-202",
+      "arm": "control",
+      "receipt_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+      "new_work": false,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 16.786953587776587,
+          "damage_hp": 228.68585489940332
+        },
+        "newborn": {
+          "progress_m": -8.971076228343595,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": 0.7414969184249289,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -2.8255384693347247,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 16.04545666935166,
+      "damage_gain": 228.68585489940332,
+      "work": {
+        "actual_sweeps": 533230,
+        "settle_calls": 38968,
+        "failed_settle_calls": 0
+      },
+      "seconds": 51.64278854202712
+    },
+    {
+      "case": "mantis-202",
+      "arm": "full-budget",
+      "receipt_sha256": "6985d9ef3d4c7ebcc1ab94f616f174b5b06d057df4df25ef09fa4904babf9e17",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 13.41062857707776,
+          "damage_hp": 145.36564229053732
+        },
+        "newborn": {
+          "progress_m": -8.971076228343595,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": 0.7414969184249289,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": 0.579116517173047,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 12.669131658652832,
+      "damage_gain": 145.36564229053732,
+      "work": {
+        "actual_sweeps": 576797,
+        "settle_calls": 39205,
+        "failed_settle_calls": 0
+      },
+      "seconds": 66.95269674999872
+    },
+    {
+      "case": "hexapod-302",
+      "arm": "control",
+      "receipt_sha256": "6be9b9f8e7f031905d726ae9d39038e280f76499c478b17fb0a1318926cfbe73",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 1.0001413126813339,
+          "damage_hp": 36.65752293808929
+        },
+        "newborn": {
+          "progress_m": -2.7697316157991474,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": -0.06803328887807192,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -1.928433554616694,
+          "damage_hp": 120.03556229150735
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 1.0681746015594058,
+      "damage_gain": 36.65752293808929,
+      "work": {
+        "actual_sweeps": 560418,
+        "settle_calls": 40081,
+        "failed_settle_calls": 0
+      },
+      "seconds": 78.01197508396581
+    },
+    {
+      "case": "hexapod-302",
+      "arm": "full-budget",
+      "receipt_sha256": "4a4f2b7a39a53d1e5b9c65af98b9221e3c930d759c8dad2a3179273235e199f9",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 3.798130905571904,
+          "damage_hp": 12.983286804313188
+        },
+        "newborn": {
+          "progress_m": -2.7697316157991474,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": -0.06803328887807192,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -6.509678352813067,
+          "damage_hp": 23.22912173300461
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": false,
+      "progress_gain": 3.866164194449976,
+      "damage_gain": 12.983286804313188,
+      "work": {
+        "actual_sweeps": 596919,
+        "settle_calls": 39938,
+        "failed_settle_calls": 0
+      },
+      "seconds": 92.70021879201522
+    },
+    {
+      "case": "tumbler-102",
+      "arm": "control",
+      "receipt_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+      "new_work": false,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 25.022598753569962,
+          "damage_hp": 389.33304899961206
+        },
+        "newborn": {
+          "progress_m": -0.17820016406292316,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": -1.138188190990343,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": 0.07395915122502772,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 25.200798917632884,
+      "damage_gain": 389.33304899961206,
+      "work": {
+        "actual_sweeps": 341195,
+        "settle_calls": 34399,
+        "failed_settle_calls": 0
+      },
+      "seconds": 53.37591483298456
+    },
+    {
+      "case": "tumbler-102",
+      "arm": "full-budget",
+      "receipt_sha256": "7dc2a62f18ee058370cddf4306702a1276fe11e6a5947b2e260d98b3b9e4474d",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 22.700714526799317,
+          "damage_hp": 54.073184401734196
+        },
+        "newborn": {
+          "progress_m": -0.17820016406292316,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": -1.138188190990343,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -0.047375949186927446,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 22.87891469086224,
+      "damage_gain": 54.073184401734196,
+      "work": {
+        "actual_sweeps": 373925,
+        "settle_calls": 33972,
+        "failed_settle_calls": 0
+      },
+      "seconds": 62.08281045797048
+    },
+    {
+      "case": "mantis-201",
+      "arm": "control",
+      "receipt_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
+      "new_work": false,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 27.183440303979275,
+          "damage_hp": 762.3022159174029
+        },
+        "newborn": {
+          "progress_m": 2.591429416887333,
+          "damage_hp": 58.211195967860256
+        },
+        "random": {
+          "progress_m": -0.11090031467930173,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -1.4201932158049158,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 24.59201088709194,
+      "damage_gain": 704.0910199495427,
+      "work": {
+        "actual_sweeps": 565037,
+        "settle_calls": 39730,
+        "failed_settle_calls": 0
+      },
+      "seconds": 88.54980266699567
+    },
+    {
+      "case": "mantis-201",
+      "arm": "full-budget",
+      "receipt_sha256": "ecc9b20aa3721473007cd00001ffbb56383f421731dd70dbb3818731e2da851e",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 16.04272930606207,
+          "damage_hp": 81.55641238503385
+        },
+        "newborn": {
+          "progress_m": 2.591429416887333,
+          "damage_hp": 58.211195967860256
+        },
+        "random": {
+          "progress_m": -0.11090031467930173,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -36.98194814604934,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 13.451299889174738,
+      "damage_gain": 23.345216417173596,
+      "work": {
+        "actual_sweeps": 607563,
+        "settle_calls": 40322,
+        "failed_settle_calls": 0
+      },
+      "seconds": 88.23982937500114
+    },
+    {
+      "case": "hexapod-301",
+      "arm": "control",
+      "receipt_sha256": "3e43edcbceb2d923e921900e5c033baf75bc4a16d19a945f2bd481d76a44f1cf",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 20.255893142824792,
+          "damage_hp": 3.328118055555552
+        },
+        "newborn": {
+          "progress_m": -2.8642028068324294,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": 0.2765110787162959,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": 2.0675436238989553,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": false,
+      "progress_gain": 19.979382064108496,
+      "damage_gain": 3.328118055555552,
+      "work": {
+        "actual_sweeps": 564791,
+        "settle_calls": 39764,
+        "failed_settle_calls": 0
+      },
+      "seconds": 71.43354883301072
+    },
+    {
+      "case": "hexapod-301",
+      "arm": "full-budget",
+      "receipt_sha256": "b2dd5ca9b49edaba59f51431f521e52ae6477cdf26e11eb6ee34029b2e2a7b24",
+      "new_work": true,
+      "all_source_artifact_custody_fork_work_checks_passed": true,
+      "metrics": {
+        "trained": {
+          "progress_m": 19.138769486159358,
+          "damage_hp": 205.80891119281785
+        },
+        "newborn": {
+          "progress_m": -2.8642028068324294,
+          "damage_hp": 0.0
+        },
+        "random": {
+          "progress_m": 0.2765110787162959,
+          "damage_hp": 0.0
+        },
+        "ablated": {
+          "progress_m": -0.31512437635840085,
+          "damage_hp": 0.0
+        }
+      },
+      "progress_pass": true,
+      "attack_pass": true,
+      "progress_gain": 18.86225840744306,
+      "damage_gain": 205.80891119281785,
+      "work": {
+        "actual_sweeps": 596870,
+        "settle_calls": 39463,
+        "failed_settle_calls": 0
+      },
+      "seconds": 93.5239584170049
+    }
+  ],
+  "new_production_work": {
+    "actual_sweeps": 4330227,
+    "settle_calls": 309025,
+    "failed_settle_calls": 0
+  },
+  "reused_control_work_not_repeated": {
+    "actual_sweeps": 1838178,
+    "settle_calls": 148964,
+    "failed_settle_calls": 0
+  },
+  "preflight_work": {
+    "actual_sweeps": 10429,
+    "settle_calls": 684,
+    "failed_settle_calls": 0
+  },
+  "original_acquisition_work_not_repeated": {
+    "actual_sweeps": 21025048,
+    "settle_calls": 2066931,
+    "failed_settle_calls": 0
+  },
+  "original_training_moments": 480000,
+  "new_training_moments": 32000,
+  "reused_training_moments": 16000,
+  "new_production_seconds": 606.7576140419696,
+  "inherited_control_seconds": 272.5673119170242,
+  "scope": "No promotion: failed screen and substantial retained-skill reductions remain. No new experiments performed by reviewer.",
+  "producer_sha256": "e023d65cb978c641174d35054cfd9186bf92d82ab11f3f033b748445527da15a",
+  "reviewed_summary_sha256": "c2114b86d0814aff8892c735cb934ef09dc7038335977201b16fae653070e8ac"
+}

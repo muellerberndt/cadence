@@ -1,0 +1,5 @@
+Traceback (most recent call last):
+  File "/workspace/runs/cadence-memory-first-stage-audit-20261009.py", line 62, in <module>
+    for rec in continuation['records']:assert rec['unbroken']==rec['reloaded']
+                                              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError

@@ -1,0 +1,122 @@
+{
+  "schema": "issue140-c64-source-bound-summary/1",
+  "archive": "c64-followup-2026-10-09.json.gz",
+  "sha256": "457892980bab7ca35ca718f2eef85fb577dda058505ac4142af4da5a1effcf67",
+  "uncompressed_sha256": "07676485a2be70c3392c8a5de8fe36101e53ce84d969dfa6ad71cc0b4352272e",
+  "archive_bytes": 89063,
+  "uncompressed_bytes": 670282,
+  "embedded_files": 22,
+  "source_and_protocol_texts": 14,
+  "curated_summaries": 7,
+  "exact_other_measured_summary_texts": 1,
+  "local_only_artifacts": 76,
+  "unexecuted_plans": 3,
+  "runtime_commit": "7cd45bdcc757ddbcb1717706ca39be1736f0f0d5",
+  "runtime_source_manifest_sha256": "f8397c3d97417c8ead6fad8b54227e75f2b1d08ab065a6b25466e976989c0a52",
+  "corpus_sha256": "c0a65bafcff6a978aa067eff3df5c7b2820dab80f04afe37e8db4c73b7e045d1",
+  "scope": "Curated source-bound C64 negative follow-up: original failure, frozen numerical custody/phase audit, finite versus qualified 1024-step comparison, first-transition geometry and rejected .95 decay. No training performed while packaging.",
+  "representation": "Source-bound public summary with explicit omissions and path normalization. Not a lossless original receipt or independently runnable public reproduction. No corpus/checkpoint/raw research arrays published.",
+  "limits": [
+    "One existing source (three voices), reused founder seed 0, one in-sample 256-row fixture; no six-source or fresh-founder C64 confirmation.",
+    "All main behavioral arms planned 48 x 255 heard observations per voice, no reset between passes; original three arms refused early and remain failures.",
+    "Sixteen offsets 0..15, sixteen observed prime rows, sixty-four generated rows. The ear used the observed physical prefix to reconstruct current sounding pitch without extra Brain observations. Supplied row timing and score labels are explicit.",
+    "Sensory-history topology has 233 neurons and 12,416 directed synapses versus historical 225 and 11,904: eight more memory neurons and 512 edges. This C64 topology comparison is not the same-array synthetic native-history test.",
+    "The third original arm changes memory source, amplitude, decay and teaching policy together. Later numerical-budget and decay comparisons keep the declared founder and remaining recipe matched.",
+    "Current Brain.act settles the present graph with held memory; a row-loop assay is bounded component evidence, not integrated phrase generation. No changed runtime default, composer closure or broad cognitive claim.",
+    "The source-bound public summary omits raw corpus, checkpoint and research-output arrays/logs. It is not a lossless original receipt or fully reproducible from this public bundle alone. Original and public-representation hashes are separate.",
+    "Trace values smaller than equation tolerance are not automatically absent information; the retained frozen checkpoint shows exact activity aliasing for one named long-context pair. Longer history .95 worsened acquisition and continuation.",
+    "Work totals include evaluation, checkpoint proof and training as implemented; original scripts expose counting details. No private-memory writes were used in the supervised arms.",
+    "No pitch codec or target NONE defect was established. Fifteen of sixteen qualified first errors were ONSET when HOLD was required; interpreting later unpitched emission alone as a pitch bug would be misleading."
+  ],
+  "findings": {
+    "original_arms": "All three refused a 200-step action before 48 passes completed. Original failing acquired brains were not saved; the exact sensory-candidate custody replay later retained its failure and reproduced location/error/pass metrics.",
+    "same_checkpoint_budget_repair": {
+      "location_zero_index": {
+        "pass": 11,
+        "row": 137
+      },
+      "successful_training_acts": 2942,
+      "lessons": 2243,
+      "budget200_residual": 0.030952884844046125,
+      "refusal_preserved_state": true,
+      "budget1024_steps": 224,
+      "budget1024_residual": 7.79064493827697e-06,
+      "accepted": true
+    },
+    "behavioral_arms": [
+      {
+        "name": "sensory_finite_free1024",
+        "watch": {
+          "ambiguous_rows": 410,
+          "agreement": 0.7516339869281046,
+          "ambiguous_accuracy": 0.675609756097561,
+          "conditional_ambiguous": 0.6439024390243903,
+          "conditional": 0.8091503267973856
+        },
+        "means": {
+          "event_identity": 0.1396484375,
+          "onset_f1": 0.5422571205484573,
+          "onsets_per_row": 2.4072265625,
+          "hold_identity": 0.609375,
+          "truth_onsets_per_row": 1.171875
+        },
+        "all_behavioral_primes": 0,
+        "planned_primes": 16,
+        "screen": false,
+        "refused_acts": 0,
+        "refused_lessons": 0,
+        "exhausted_phases": 307,
+        "saved_continuation": true
+      },
+      {
+        "name": "sensory_qualified1024",
+        "watch": {
+          "ambiguous_rows": 410,
+          "agreement": 0.8326797385620915,
+          "ambiguous_accuracy": 0.7585365853658537,
+          "conditional_ambiguous": 0.6439024390243903,
+          "conditional": 0.8091503267973856
+        },
+        "means": {
+          "event_identity": 0.4576822916666667,
+          "onset_f1": 0.5648298045639463,
+          "onsets_per_row": 1.1552734375,
+          "hold_identity": 0.609375,
+          "truth_onsets_per_row": 1.171875
+        },
+        "all_behavioral_primes": 0,
+        "planned_primes": 16,
+        "screen": false,
+        "refused_acts": 0,
+        "refused_lessons": 0,
+        "exhausted_phases": 0,
+        "saved_continuation": true
+      },
+      {
+        "name": "sensory_qualified1024_decay095",
+        "watch": {
+          "ambiguous_rows": 410,
+          "agreement": 0.6143790849673203,
+          "ambiguous_accuracy": 0.524390243902439,
+          "conditional_ambiguous": 0.6439024390243903,
+          "conditional": 0.8091503267973856
+        },
+        "means": {
+          "event_identity": 0.2587890625,
+          "onset_f1": 0.4116962379022571,
+          "onsets_per_row": 1.720703125,
+          "hold_identity": 0.609375,
+          "truth_onsets_per_row": 1.171875
+        },
+        "all_behavioral_primes": 0,
+        "planned_primes": 16,
+        "screen": false,
+        "refused_acts": 0,
+        "refused_lessons": 0,
+        "exhausted_phases": 0,
+        "saved_continuation": true
+      }
+    ],
+    "no_successful_c64_recipe": true
+  }
+}

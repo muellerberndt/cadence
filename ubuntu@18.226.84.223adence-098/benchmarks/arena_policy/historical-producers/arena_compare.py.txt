@@ -1,0 +1,44 @@
+"""Fixed robot-arena development comparison: fresh acquisition, private greedy probes."""
+from dataclasses import replace
+import hashlib
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import cadence
+from arena.parts import stock_designs
+from arena.nursery import run_nursery
+from arena.probe import fingerprint
+
+core=Path(cadence.__file__).resolve().parents[2]
+arena=Path('/workspace/cadence-robot-arena')
+root=arena/'runs/cadence-issues-159-160-learning-20261008'
+root.mkdir(parents=True,exist_ok=True)
+arm=sys.argv[1]
+def source():
+    paths=list((core/'src/cadence').rglob('*.py'))+list((arena/'arena').rglob('*.py'))
+    return {str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in paths}
+original=source()
+for brainseed,worldseed,evalseed in ((12,8,19),(13,9,20)):
+    blueprint=replace(stock_designs()[0],seed=brainseed)
+    prefix=root/f'{arm}-tumbler-seed{brainseed}-4000'
+    train=run_nursery(blueprint,moments=4000,seed=worldseed,block=1000,
+                      save_to=prefix.with_suffix('.npz'),verbose=True)
+    probe=fingerprint(blueprint,prefix.with_suffix('.npz'))
+    greedy=run_nursery(blueprint,moments=1000,seed=evalseed,policy='frozen',
+                       brain_path=prefix.with_suffix('.npz'),block=500)
+    random=run_nursery(blueprint,moments=1000,seed=evalseed,policy='random',block=500)
+    assert source()==original, 'source changed during comparison'
+    result={'arm':arm,'cadence_source':str(core),
+            'cadence_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=core,text=True).strip(),
+            'arena_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=arena,text=True).strip(),
+            'source_sha256':original,'brainseed':brainseed,'worldseed':worldseed,'evalseed':evalseed,
+            'training':train,'fingerprint':probe,'greedy':greedy,'random':random,
+            'limitations':['4000-moment development screen, not fresh frozen confirmation',
+                'Final training-world reward is not delivered by arena.run_nursery; no resumed-training claim',
+                'Greedy evaluation uses a loaded copy without learning; policy-dependent target relocations may differ']}
+    prefix.with_suffix('.json').write_text(json.dumps(result,indent=2,default=float)+'\n')
+    print(json.dumps({'arm':arm,'brainseed':brainseed,'train':train['total'],
+                      'distinct':probe['distinct_answers'],'sensitivity':probe['sensitivity'],
+                      'greedy':greedy['total'],'random':random['total']},default=float),flush=True)

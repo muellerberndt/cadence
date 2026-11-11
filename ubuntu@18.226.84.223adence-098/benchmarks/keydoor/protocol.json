@@ -1,0 +1,113 @@
+{
+  "schema": "key-door/1",
+  "world": "a corridor met once per trip: empty floor, chest, lamp, D levers (D varying by one from trip to trip), door, `length` cells in all so that every trip takes the same number of moments; pass (0) or interact (1) at each cell; the key sits in the chest under rule A and in the lamp under rule B; interacting at the door with the key pays +1 with probability `food` and ends the trip; interacting with the chest, the lamp or a lever when it holds no key costs `cost`; the floor has nothing to interact with; taking the key pays nothing; a share `truncation` of the trips is cut short before the door at a random cell, the key lost with it; the observation is the one-hot kind of the cell faced plus the pouch sense (key held), the blind arm without the pouch sense",
+  "life": "one stream, no resets: rule A for `episodes` trips, then rule B for `episodes`; the outcome of the last cell of a trip is delivered with the first observation of the next trip, done set after the door (terminal) and clear after a cut (the forecast carries over); changes are unannounced",
+  "corridor_seed": 2000,
+  "cost": 0.25,
+  "food": 1.0,
+  "truncation": 0.05,
+  "jitter": 1,
+  "length": 14,
+  "delays": [
+    2,
+    5,
+    10
+  ],
+  "episodes": 500,
+  "probe_every": 25,
+  "window": 20,
+  "window_floor": 0.9,
+  "operating_point": {
+    "modules": [
+      32
+    ],
+    "trace_amplitude": 0.3,
+    "consolidation": 0.25,
+    "eta": 0.1,
+    "lam": 0.95,
+    "gamma": 0.95,
+    "eta_critic": 5.0
+  },
+  "arousal": {
+    "threshold": 0.2,
+    "decay": 0.9,
+    "tolerance": 2.0,
+    "floor": 0.1,
+    "fast": 0.05,
+    "slow": 0.005,
+    "heat": 2.0,
+    "youth": 100,
+    "value_surprise": 1.0,
+    "record_surprise": 0.0,
+    "need": 0.03
+  },
+  "tabular": {
+    "alpha": 0.5,
+    "epsilon": 0.1,
+    "gamma": 0.9,
+    "lam": 0.8
+  },
+  "seeds": {
+    "development": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23
+    ],
+    "spent": [
+      700,
+      701,
+      702,
+      703,
+      704,
+      705,
+      706,
+      707,
+      708,
+      709
+    ],
+    "confirmation": [
+      800,
+      801,
+      802,
+      803,
+      804,
+      805,
+      806,
+      807,
+      808,
+      809
+    ]
+  },
+  "gates": {
+    "fed": 0.9,
+    "wrong": 1.5,
+    "aroused_late": 0.35,
+    "share": 0.9,
+    "delays": [
+      2,
+      5
+    ],
+    "statement": "over the confirmation lives of the live arm at the gated delays, at least `share` end each rule with `fed` of their last 50 trips fed, waste at most `wrong` interactions per trip in the last 50 trips of each rule (below the uniform-random policy's at delay 2 and a third of the lazy interact-everywhere policy's), and spend no more than `aroused_late` of the second half of each rule aroused (one trip in twenty is cut, and each cut is a missed meal and a contradicted forecast). Delay 10 is reported without a gate. Second freeze: the first gated frugality at 0.5 and calm at 0.2, and its yoked arm crashed on trips cut to one cell."
+  }
+}

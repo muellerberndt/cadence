@@ -1,0 +1,76 @@
+"""Report fixed phase-budget comparisons and separate new work from reused controls."""
+import gzip
+import hashlib
+import json
+import sys
+from pathlib import Path
+ROOT=Path(__file__).resolve().parent
+rows=[]
+preflights=[]
+protocol=json.loads((ROOT/'protocol.json').read_text())
+reused=json.loads((ROOT/'reused-controls.json').read_text())
+inputs=[(p,True) for p in sorted((ROOT/'runs').glob('*/receipt.json'))]
+for record in reused.values():
+ p=Path(record['receipt']);assert hashlib.sha256(p.read_bytes()).hexdigest()==record['receipt_sha256']
+ inputs.append((p,False))
+for p,new_work in inputs:
+ r=json.loads(p.read_text())
+ if r['smoke']:
+  preflights.append({'case':r['case'],'arm':r['arm'],'status':r['status'],'work':r.get('work'), 'receipt_sha256':hashlib.sha256(p.read_bytes()).hexdigest()})
+  continue
+ row={'new_work':new_work,'case':r['case'],'arm':r['arm'],'status':r['status'],'receipt_sha256':hashlib.sha256(p.read_bytes()).hexdigest(),'seconds':r.get('seconds'),'work_recorded':'work' in r,'work':r.get('work',{'actual_sweeps':0,'settle_calls':0,'failed_settle_calls':0})}
+ if r['status']!='complete':
+  row['error']=r.get('error','No completed receipt')
+  row['partial']=r.get('partial')
+ if r['status']=='complete':
+  assert r['training']['total']['moments']==protocol['additional_training_moments']
+  assert len(r['evaluation'])==8
+  assert {(v['policy'],v['seed'],v['total']['moments']) for v in r['evaluation']}=={(name,seed,protocol['evaluation_moments']) for name in ['trained','ablated','newborn','random'] for seed in protocol['evaluation_worlds']}
+  assert r['source_admitted'] and r['source_unchanged'] and r['producer_unchanged']
+  assert r['initial_equivalence']['shared_state_exact']
+  assert r['continuation']['equal'] and r['continuation']['checkpoint_arrays_equal']
+  assert r['trained']['outcomes_received']==r['initial']['outcomes_received']+4000
+  assert r['continuation']['outcomes_received_after']==r['trained']['outcomes_received']+32
+  assert r['trained']['describe']['refusals']==r['initial']['describe']['refusals']==0
+  for name,digest in r['artifacts'].items():assert hashlib.sha256((p.parent/name).read_bytes()).hexdigest()==digest
+  grouped={name:[v['total'] for v in r['evaluation'] if v['policy']==name] for name in ['trained','ablated','newborn','random']}
+  row['evaluation']={name:{'mean_progress_m':sum(x['progress_m'] for x in values)/2,'total_dealt':sum(x['dealt'] for x in values),'total_kills':sum(x['kills'] for x in values)} for name,values in grouped.items()}
+  row['progress_gain_vs_best_control']=row['evaluation']['trained']['mean_progress_m']-max(row['evaluation'][name]['mean_progress_m'] for name in ['newborn','random'])
+  row['damage_gain_vs_best_control']=row['evaluation']['trained']['total_dealt']-max(row['evaluation'][name]['total_dealt'] for name in ['newborn','random'])
+  row['target_removal_progress_loss']=row['evaluation']['trained']['mean_progress_m']-row['evaluation']['ablated']['mean_progress_m']
+  row['training']=r['training']['total'];row['memory']=r['trained']['memory'];row['fingerprint']={key:r['fingerprint'][key] for key in ['distinct','sensitivity']}
+  with gzip.open(p.parent/'training-stream.jsonl.gz','rt') as stream: records=[json.loads(line) for line in stream]
+  assert len(records)==4000
+  writes0=0;routine_writes=0
+  for record in records:
+   writes=record['memory_writes'] or 0
+   if not record['previous_was_sampled']:routine_writes+=writes-writes0
+   writes0=writes
+  row['routine_outcome_memory_writes']=routine_writes
+  row['sampled_outcomes']=sum(record['previous_was_sampled'] for record in records)
+  row['routine_outcomes']=sum(not record['previous_was_sampled'] for record in records)
+ rows.append(row)
+pairs=[]
+keys=[(row['case'],row['arm']) for row in rows]
+unique_arms=len(set(keys))==len(keys)
+expected={(case,arm) for case in protocol['first_stage'] for arm in ['control','full-budget']}
+missing=sorted(expected-set(keys))
+unexpected=sorted(set(keys)-expected)
+for case in protocol['first_stage']:
+ candidate=next((r for r in rows if r['case']==case and r['arm']=='full-budget'),None)
+ control=next((r for r in rows if r['case']==case and r['arm']=='control'),None)
+ if candidate is None or control is None or candidate['status']!='complete' or control['status']!='complete':
+  pairs.append({'case':case,'progress_pass':False,'attack_pass':False,'error':'Missing or failed candidate/control; no success inferred','candidate_status':'missing' if candidate is None else candidate['status'],'control_status':'missing' if control is None else control['status']})
+  continue
+ progress_pass=candidate['progress_gain_vs_best_control']>1e-9
+ attack_pass=candidate['damage_gain_vs_best_control']>1e-9 and candidate['evaluation']['trained']['total_dealt']>=30
+ pairs.append({'case':case,'progress_pass':progress_pass,'attack_pass':attack_pass,'candidate_minus_continued_control_progress_m':candidate['evaluation']['trained']['mean_progress_m']-control['evaluation']['trained']['mean_progress_m'],'candidate_minus_continued_control_damage':candidate['evaluation']['trained']['total_dealt']-control['evaluation']['trained']['total_dealt']})
+summary={'scope':'Bounded acquired-life phase-budget comparison, not fresh readiness confirmation. Four unchanged controls imported by exact receipt hash. All new attempts retained.', 'runs':rows, 'pairs':pairs, 'work_census_complete':not missing and all(row['work_recorded'] for row in rows),'unique_arms':unique_arms,'missing_cases':missing,'unexpected_cases':unexpected,'behavioral_screen_pass':unique_arms and not missing and not unexpected and all(p['progress_pass'] and p['attack_pass'] for p in pairs),'new_work':{key:sum(row['work'][key] for row in rows if row['new_work']) for key in ['actual_sweeps','settle_calls','failed_settle_calls']},'reused_work_not_repeated':{key:sum(row['work'][key] for row in rows if not row['new_work']) for key in ['actual_sweeps','settle_calls','failed_settle_calls']}}
+summary['preflight_runs']=preflights
+summary['preflight_work']={key:sum(row['work'][key] for row in preflights) for key in ['actual_sweeps','settle_calls','failed_settle_calls']}
+summary['total_new_execution_work']={key:summary['new_work'][key]+summary['preflight_work'][key] for key in summary['new_work']}
+(ROOT/'summary.json').write_text(json.dumps(summary,indent=2)+'\n')
+for row in rows:
+ print(json.dumps({key:row[key] for key in ['case','arm','status','evaluation','fingerprint','routine_outcome_memory_writes'] if key in row}))
+
+raise SystemExit(0 if summary['behavioral_screen_pass'] else 1)

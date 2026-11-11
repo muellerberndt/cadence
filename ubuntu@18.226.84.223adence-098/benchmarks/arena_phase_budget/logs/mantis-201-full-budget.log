@@ -1,0 +1,5 @@
+{"moment": 1000, "progress_m": 8.171705280205275}
+{"moment": 2000, "progress_m": 21.220387500582483}
+{"moment": 3000, "progress_m": 34.45684934472215}
+{"moment": 4000, "progress_m": 45.47045520022549}
+{"case": "mantis-201", "arm": "full-budget", "status": "complete", "seconds": 88.23982937500114}

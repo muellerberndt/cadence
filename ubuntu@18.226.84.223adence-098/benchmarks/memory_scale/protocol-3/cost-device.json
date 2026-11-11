@@ -1,0 +1,28 @@
+{
+ "founders": [
+  2906,
+  2907,
+  2908
+ ],
+ "episodes": 100,
+ "backend": "torch",
+ "device": "cuda",
+ "settings": [
+  {
+   "streams": 1,
+   "n": [
+    0,
+    1000,
+    10000
+   ]
+  },
+  {
+   "streams": 16,
+   "n": [
+    0,
+    1000,
+    10000
+   ]
+  }
+ ]
+}

@@ -1,0 +1,10 @@
+{
+  "path": "/workspace/runs/cadence-memory-all-stage-audit-20261009.json",
+  "sha256": "3a9beee7ba6c59df3eff0e1360ca8a8e7b0d508e9ca61fb1fbff6b39e46da537",
+  "total_work": {
+    "actual_sweeps": 3763016,
+    "settle_calls": 302227,
+    "failed_settle_calls": 0
+  },
+  "runs": 8
+}

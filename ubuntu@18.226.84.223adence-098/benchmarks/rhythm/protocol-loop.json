@@ -1,0 +1,76 @@
+{
+ "schema": "loop-rhythm/1",
+ "question": "Can a continuing Brain.compose taught to predict the next event of a periodic pattern play that pattern in the closed loop from a prime, hearing only its own output, at the prime's phase, once it carries a decaying copy of its own last command and the demonstrated command enters that copy at every lesson? Against the same brain whose copy holds only its own commands, the brain without a copy, the untaught founder, an n-gram over the last period events, hold forever and uniform random.",
+ "pattern": {
+  "period": 4,
+  "events": [
+   "hold",
+   "onset"
+  ],
+  "input": "the heard event one-hot and a constant drive; no clock, no phase"
+ },
+ "teaching": {
+  "rows": 256,
+  "passes": 24,
+  "recipe": "every row is heard and answered with a free greedy act; a wrong or refused answer is followed by one lesson on that row, Learner.step on the row's drive with the next event as the label, the trace and the copy put back to what the act read; a right answer is routine and teaches nothing; a refused lesson is charged and skipped; a refused act is a missed row"
+ },
+ "play": {
+  "prime": 16,
+  "rows": 64,
+  "primes": "one prime per phase of the pattern, 16 real rows each; then 64 rows hearing its own output"
+ },
+ "recipe": {
+  "modules": [
+   32
+  ],
+  "lateral": 0.0,
+  "resting_bias": 0.5,
+  "trace_amplitude": 0.1,
+  "trace_decay": 0.95,
+  "learning": {
+   "eta": 0.01,
+   "eta_bias": 0.001,
+   "normalize": 0.99,
+   "normalize_floor": 0.0001,
+   "tolerance": 0.001,
+   "free_steps": 200
+  },
+  "note": "the C64 lane's recipe of 0.73.1 (resting bias .5, normalized rate, trace .1/.95) at a rate of .01, the edge the lane measured"
+ },
+ "copy": {
+  "amplitude": 3.0,
+  "decay": 0.65,
+  "note": "the decaying copy is a count of rows since the last onset: .35, .23, .15, .10 of the onset cell at decay .65; amplitude 3.0 is the rhythm chamber's"
+ },
+ "ngram": {
+  "order": 4
+ },
+ "seeds": {
+  "development": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "confirmation": [
+   601,
+   602,
+   603,
+   604,
+   605
+  ]
+ },
+ "gates": {
+  "onset_tolerance": 0.2,
+  "agreement_margin": 0.05,
+  "share": 4,
+  "statement": "over the confirmation founders, at least share of five copy brains have LEARNED the loop: the onset rate of their plays within onset_tolerance of the truth's, agreement with each prime's own continuation at least agreement_margin above hold-forever, every play agreeing with its own prime's continuation more than with the other phases', and the same founder untaught (frozen) not already above that agreement; no refused act; every other arm is reported"
+ },
+ "policy": {
+  "selection": "the copy's decay and the teaching contract are the declared mechanism, selected on the development seeds; no default changes. 2026-10-08: with a lesson on every row (the C64 lane's watching recipe) the pattern came and went from pass to pass on seeds 0 to 5 (last-pass agreement .75 to 1.00; 0 to 3 of 6 loops at decays .5, .65, .8 and .9, 24 or 48 passes); with lessons on surprise only, 5 of 6 founders loop at decays .5, .65 and .8 after 5 to 409 lessons in 24 passes, and .65 had the highest mean agreement (.980) and is declared; confirmation seeds 601 to 605 ran after this declaration",
+  "denominator": "every planned founder and play"
+ },
+ "watching": "after teaching every brain arm hears the taught rows once more from reset with free greedy acts and no lesson; its agreement with the next event is the open-loop reading"
+}

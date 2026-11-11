@@ -1,0 +1,601 @@
+{
+  "scope": "Exploratory continuation of acquired lives on corrected arena physics, not a fresh readiness cohort. All fixed attempts retained.",
+  "runs": [
+    {
+      "case": "mantis-201",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
+      "seconds": 88.54980266699567,
+      "work": {
+        "actual_sweeps": 565037,
+        "settle_calls": 39730,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 27.183440303979275,
+          "total_dealt": 762.3022159174029,
+          "total_kills": 8
+        },
+        "ablated": {
+          "mean_progress_m": -1.4201932158049158,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": 2.591429416887333,
+          "total_dealt": 58.211195967860256,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -0.11090031467930173,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 24.59201088709194,
+      "damage_gain_vs_best_control": 704.0910199495427,
+      "target_removal_progress_loss": 28.60363351978419,
+      "training": {
+        "progress_m": 40.54983193776484,
+        "dealt": 463.7101633415105,
+        "taken": 1.403011778605117,
+        "kills": 5,
+        "reward": 348.63347539976274,
+        "travelled_m": 126.3263557486984,
+        "aroused": 2477,
+        "sweeps": 124928,
+        "learning_sweeps": 48849,
+        "policy_ms": 34731.598658661824,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 173777,
+        "settle_calls": 15335,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 2,
+        "sensitivity": 0.07951277603221649
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2477,
+      "routine_outcomes": 1523
+    },
+    {
+      "case": "mantis-201",
+      "arm": "memory",
+      "status": "complete",
+      "receipt_sha256": "42ef16c86b602de76a0709206e2e542c8a197d4e44a273c9cfb9496f9b3bd108",
+      "seconds": 89.32420562498737,
+      "work": {
+        "actual_sweeps": 569488,
+        "settle_calls": 40705,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 12.06240696380648,
+          "total_dealt": 6.116510204381097,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -37.20451361179024,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": 2.591429416887333,
+          "total_dealt": 58.211195967860256,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -0.11090031467930173,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 9.470977546919146,
+      "damage_gain_vs_best_control": -52.09468576347916,
+      "target_removal_progress_loss": 49.26692057559672,
+      "training": {
+        "progress_m": 38.62036142432113,
+        "dealt": 359.76583373502285,
+        "taken": 5.6321652609408,
+        "kills": 2,
+        "reward": 322.52408791278486,
+        "travelled_m": 136.73713017814245,
+        "aroused": 2699,
+        "sweeps": 122144,
+        "learning_sweeps": 46646,
+        "policy_ms": 36706.31852053339,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 168790,
+        "settle_calls": 15940,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": {
+        "pre": 27,
+        "post": 15,
+        "decay": 0.9,
+        "rate": 1.0,
+        "amplitude": 1.0,
+        "normalize": false,
+        "replace": false,
+        "rule": "delta",
+        "separator": null,
+        "writes": 2725,
+        "kind": "consolidating",
+        "consolidation": 0.05,
+        "persistent_parameters": 405,
+        "consolidated_norm": 0.9034983209173534,
+        "strength_norm": 0.9278320995929226,
+        "mass": [
+          9.999999999999995
+        ]
+      },
+      "fingerprint": {
+        "distinct": 2,
+        "sensitivity": 0.13919802215273036
+      },
+      "routine_outcome_memory_writes": 27,
+      "sampled_outcomes": 2698,
+      "routine_outcomes": 1302
+    },
+    {
+      "case": "mantis-202",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+      "seconds": 51.64278854202712,
+      "work": {
+        "actual_sweeps": 533230,
+        "settle_calls": 38968,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 16.786953587776587,
+          "total_dealt": 228.68585489940332,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -2.8255384693347247,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -8.971076228343595,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.7414969184249289,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 16.04545666935166,
+      "damage_gain_vs_best_control": 228.68585489940332,
+      "target_removal_progress_loss": 19.61249205711131,
+      "training": {
+        "progress_m": 26.80959259780504,
+        "dealt": 111.8863332039164,
+        "taken": 0.049679128583775226,
+        "kills": 0,
+        "reward": 255.31684525618306,
+        "travelled_m": 122.47844677093818,
+        "aroused": 2313,
+        "sweeps": 118720,
+        "learning_sweeps": 26832,
+        "policy_ms": 16896.088003762998,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 145552,
+        "settle_calls": 14650,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 1,
+        "sensitivity": 0.014250064650618226
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2314,
+      "routine_outcomes": 1686
+    },
+    {
+      "case": "mantis-202",
+      "arm": "memory",
+      "status": "complete",
+      "receipt_sha256": "699184b8b44f3cf042a8d286cdbef6f77ddb759741cfb65f0ad3f14d66e54e12",
+      "seconds": 54.339169375016354,
+      "work": {
+        "actual_sweeps": 534753,
+        "settle_calls": 39054,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 9.08109112977499,
+          "total_dealt": 286.23012187635777,
+          "total_kills": 4
+        },
+        "ablated": {
+          "mean_progress_m": 2.1487278952389115,
+          "total_dealt": 57.56507017905433,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -8.971076228343595,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.7414969184249289,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 8.339594211350061,
+      "damage_gain_vs_best_control": 286.23012187635777,
+      "target_removal_progress_loss": 6.932363234536078,
+      "training": {
+        "progress_m": 33.80356908108484,
+        "dealt": 285.900984435036,
+        "taken": 0.5755800249773362,
+        "kills": 3,
+        "reward": 337.54075686945066,
+        "travelled_m": 120.69244661695723,
+        "aroused": 2361,
+        "sweeps": 120000,
+        "learning_sweeps": 27201,
+        "policy_ms": 25384.412794490345,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 147201,
+        "settle_calls": 14864,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": {
+        "pre": 27,
+        "post": 15,
+        "decay": 0.9,
+        "rate": 1.0,
+        "amplitude": 1.0,
+        "normalize": false,
+        "replace": false,
+        "rule": "delta",
+        "separator": null,
+        "writes": 2392,
+        "kind": "consolidating",
+        "consolidation": 0.05,
+        "persistent_parameters": 405,
+        "consolidated_norm": 1.0838154057996119,
+        "strength_norm": 1.2725270971381513,
+        "mass": [
+          9.999999999999995
+        ]
+      },
+      "fingerprint": {
+        "distinct": 2,
+        "sensitivity": 0.025388191165526288
+      },
+      "routine_outcome_memory_writes": 31,
+      "sampled_outcomes": 2361,
+      "routine_outcomes": 1639
+    },
+    {
+      "case": "tumbler-102",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+      "seconds": 53.37591483298456,
+      "work": {
+        "actual_sweeps": 341195,
+        "settle_calls": 34399,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 25.022598753569962,
+          "total_dealt": 389.33304899961206,
+          "total_kills": 4
+        },
+        "ablated": {
+          "mean_progress_m": 0.07395915122502772,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -0.17820016406292316,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -1.138188190990343,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 25.200798917632884,
+      "damage_gain_vs_best_control": 389.33304899961206,
+      "target_removal_progress_loss": 24.948639602344933,
+      "training": {
+        "progress_m": 40.91444328717333,
+        "dealt": 293.39816462164936,
+        "taken": 28.401289124991234,
+        "kills": 3,
+        "reward": 286.8167670309153,
+        "travelled_m": 146.26743742693907,
+        "aroused": 2976,
+        "sweeps": 117920,
+        "learning_sweeps": 45283,
+        "policy_ms": 25199.13300027838,
+        "refused": 0,
+        "outside": 26,
+        "burn": 7.799999999999997,
+        "moments": 4000,
+        "actual_sweeps": 163203,
+        "settle_calls": 16612,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 3,
+        "sensitivity": 0.16127093731176456
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2975,
+      "routine_outcomes": 1025
+    },
+    {
+      "case": "tumbler-102",
+      "arm": "memory",
+      "status": "complete",
+      "receipt_sha256": "70f70ee9294c8b9975c38425671d44348b86680c02f9d4fdf1d656a1ee01b830",
+      "seconds": 53.14848941704258,
+      "work": {
+        "actual_sweeps": 302474,
+        "settle_calls": 33799,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 26.358385308606184,
+          "total_dealt": 169.8301331107093,
+          "total_kills": 5
+        },
+        "ablated": {
+          "mean_progress_m": -0.047375949186927446,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -0.17820016406292316,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -1.138188190990343,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 26.536585472669106,
+      "damage_gain_vs_best_control": 169.8301331107093,
+      "target_removal_progress_loss": 26.405761257793113,
+      "training": {
+        "progress_m": 43.42847367323155,
+        "dealt": 198.46274733742257,
+        "taken": 85.0540638707168,
+        "kills": 2,
+        "reward": 232.67233400338677,
+        "travelled_m": 209.01346828259082,
+        "aroused": 3102,
+        "sweeps": 107104,
+        "learning_sweeps": 37708,
+        "policy_ms": 25077.664395794272,
+        "refused": 0,
+        "outside": 145,
+        "burn": 43.49999999999994,
+        "moments": 4000,
+        "actual_sweeps": 144812,
+        "settle_calls": 16670,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": {
+        "pre": 19,
+        "post": 9,
+        "decay": 0.9,
+        "rate": 1.0,
+        "amplitude": 1.0,
+        "normalize": false,
+        "replace": false,
+        "rule": "delta",
+        "separator": null,
+        "writes": 3119,
+        "kind": "consolidating",
+        "consolidation": 0.05,
+        "persistent_parameters": 171,
+        "consolidated_norm": 0.9332182099022168,
+        "strength_norm": 0.938782898697157,
+        "mass": [
+          9.999999999999995
+        ]
+      },
+      "fingerprint": {
+        "distinct": 3,
+        "sensitivity": 0.3074421296759471
+      },
+      "routine_outcome_memory_writes": 18,
+      "sampled_outcomes": 3101,
+      "routine_outcomes": 899
+    },
+    {
+      "case": "tumbler-103",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+      "seconds": 78.99880587501684,
+      "work": {
+        "actual_sweeps": 398716,
+        "settle_calls": 35867,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": -0.4947271830901354,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -0.4947271830901354,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -9.84358335672056,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.8195644961865236,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": -1.314291679276659,
+      "damage_gain_vs_best_control": 0.0,
+      "target_removal_progress_loss": 0.0,
+      "training": {
+        "progress_m": 30.44298392719658,
+        "dealt": 76.32035292555459,
+        "taken": 7.817082274574585,
+        "kills": 0,
+        "reward": 160.2030977228384,
+        "travelled_m": 242.91433052838957,
+        "aroused": 2642,
+        "sweeps": 114784,
+        "learning_sweeps": 24358,
+        "policy_ms": 48358.005440444686,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 139142,
+        "settle_calls": 15513,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 1,
+        "sensitivity": 0.03656992847405584
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2642,
+      "routine_outcomes": 1358
+    },
+    {
+      "case": "tumbler-103",
+      "arm": "memory",
+      "status": "complete",
+      "receipt_sha256": "3f4a007ad653399067362ad746e97b3968cfd3c24204c42ed3d5b83066834825",
+      "seconds": 84.18615337496158,
+      "work": {
+        "actual_sweeps": 518123,
+        "settle_calls": 39705,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 16.923201893325288,
+          "total_dealt": 18.171362278369784,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -22.06144615924693,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -9.84358335672056,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.8195644961865236,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 16.103637397138765,
+      "damage_gain_vs_best_control": 18.171362278369784,
+      "target_removal_progress_loss": 38.98464805257222,
+      "training": {
+        "progress_m": 38.53832671509831,
+        "dealt": 92.91359871273038,
+        "taken": 12.343815711220016,
+        "kills": 0,
+        "reward": 245.0376688235269,
+        "travelled_m": 225.2040512062435,
+        "aroused": 2746,
+        "sweeps": 116096,
+        "learning_sweeps": 28203,
+        "policy_ms": 55134.83541412279,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 144299,
+        "settle_calls": 15951,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": {
+        "pre": 19,
+        "post": 9,
+        "decay": 0.9,
+        "rate": 1.0,
+        "amplitude": 1.0,
+        "normalize": false,
+        "replace": false,
+        "rule": "delta",
+        "separator": null,
+        "writes": 2831,
+        "kind": "consolidating",
+        "consolidation": 0.05,
+        "persistent_parameters": 171,
+        "consolidated_norm": 3.173711073096664,
+        "strength_norm": 3.2908640602406196,
+        "mass": [
+          9.999999999999995
+        ]
+      },
+      "fingerprint": {
+        "distinct": 2,
+        "sensitivity": 0.168682728062243
+      },
+      "routine_outcome_memory_writes": 84,
+      "sampled_outcomes": 2747,
+      "routine_outcomes": 1253
+    }
+  ]
+}

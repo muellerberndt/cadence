@@ -1,0 +1,383 @@
+{
+  "status": "PASS: receipts, actual outcome chains, source/artifact hashes, write counts, saved forks and total work reconcile.",
+  "scope": "Read-only all eight fixed first-stage and retention comparisons. No simulations or runtime edits. Original negative results and previous audit retained.",
+  "producer_sha256": "fede9d26095f2ba5dbda765df24b4107c218fc3fe3ea49a56051d3b23425b85c",
+  "comparison_producer_sha256": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
+  "protocol_sha256": "51a919f3ece74b5dd3cf82dc7292107b1473fadf0169be5122ca48c4878b5ddd",
+  "admission_sha256": "9fee606d0ef27633bd96b5983793a74367374b93515f9ef7d3f8ba6c2ba1b60c",
+  "rows": [
+    {
+      "case": "tumbler-103",
+      "arm": "control",
+      "receipt_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": -0.4947271830901354,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -0.4947271830901354,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -9.84358335672056,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.8195644961865236,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 139142,
+      "total_work": {
+        "actual_sweeps": 398716,
+        "settle_calls": 35867,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 0,
+      "sampled_outcomes": 2642,
+      "routine_outcome_writes": 0,
+      "progress_gain_vs_best_control": -1.314291679276659,
+      "damage_above_original_30HP_floor": false,
+      "target_ablation_progress_loss": 0.0,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "tumbler-103/trained.npz": "653f2b1f69ef202608b3553a37d53d9aebdd3e722cbb9b06b09fab03619b2372",
+        "tumbler-103/world.json": "bbcb8d21057b61f75b61049f26f05e3c59f72ffdf06b6153565d5f4b54468885"
+      }
+    },
+    {
+      "case": "tumbler-103",
+      "arm": "memory",
+      "receipt_sha256": "3f4a007ad653399067362ad746e97b3968cfd3c24204c42ed3d5b83066834825",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 16.923201893325288,
+          "total_damage": 18.171362278369784,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -22.06144615924693,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -9.84358335672056,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.8195644961865236,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 144299,
+      "total_work": {
+        "actual_sweeps": 518123,
+        "settle_calls": 39705,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 2831,
+      "sampled_outcomes": 2747,
+      "routine_outcome_writes": 84,
+      "progress_gain_vs_best_control": 16.103637397138765,
+      "damage_above_original_30HP_floor": false,
+      "target_ablation_progress_loss": 38.98464805257222,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "tumbler-103/trained.npz": "653f2b1f69ef202608b3553a37d53d9aebdd3e722cbb9b06b09fab03619b2372",
+        "tumbler-103/world.json": "bbcb8d21057b61f75b61049f26f05e3c59f72ffdf06b6153565d5f4b54468885"
+      }
+    },
+    {
+      "case": "mantis-202",
+      "arm": "control",
+      "receipt_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 16.786953587776587,
+          "total_damage": 228.68585489940332,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -2.8255384693347247,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -8.971076228343595,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.7414969184249289,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 145552,
+      "total_work": {
+        "actual_sweeps": 533230,
+        "settle_calls": 38968,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 0,
+      "sampled_outcomes": 2314,
+      "routine_outcome_writes": 0,
+      "progress_gain_vs_best_control": 16.04545666935166,
+      "damage_above_original_30HP_floor": true,
+      "target_ablation_progress_loss": 19.61249205711131,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "mantis-202/trained.npz": "ac8d9b4efd213b29ecf62794ce498970603c5918a7dab85ef3e0535e5e621a21",
+        "mantis-202/world.json": "fbc386c30d5d093968a2d8291b8af2108b847c22bd0301fd2ec8fa7b5427db81"
+      }
+    },
+    {
+      "case": "mantis-202",
+      "arm": "memory",
+      "receipt_sha256": "699184b8b44f3cf042a8d286cdbef6f77ddb759741cfb65f0ad3f14d66e54e12",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 9.08109112977499,
+          "total_damage": 286.23012187635777,
+          "total_kills": 4
+        },
+        "ablated": {
+          "mean_progress_m": 2.1487278952389115,
+          "total_damage": 57.56507017905433,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -8.971076228343595,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.7414969184249289,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 147201,
+      "total_work": {
+        "actual_sweeps": 534753,
+        "settle_calls": 39054,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 2392,
+      "sampled_outcomes": 2361,
+      "routine_outcome_writes": 31,
+      "progress_gain_vs_best_control": 8.339594211350061,
+      "damage_above_original_30HP_floor": true,
+      "target_ablation_progress_loss": 6.932363234536078,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "mantis-202/trained.npz": "ac8d9b4efd213b29ecf62794ce498970603c5918a7dab85ef3e0535e5e621a21",
+        "mantis-202/world.json": "fbc386c30d5d093968a2d8291b8af2108b847c22bd0301fd2ec8fa7b5427db81"
+      }
+    },
+    {
+      "case": "tumbler-102",
+      "arm": "control",
+      "receipt_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 25.022598753569962,
+          "total_damage": 389.33304899961206,
+          "total_kills": 4
+        },
+        "ablated": {
+          "mean_progress_m": 0.07395915122502772,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -0.17820016406292316,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -1.138188190990343,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 163203,
+      "total_work": {
+        "actual_sweeps": 341195,
+        "settle_calls": 34399,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 0,
+      "sampled_outcomes": 2975,
+      "routine_outcome_writes": 0,
+      "progress_gain_vs_best_control": 25.200798917632884,
+      "damage_above_original_30HP_floor": true,
+      "target_ablation_progress_loss": 24.948639602344933,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "tumbler-102/trained.npz": "c8f2f3754f86eab49d5cf0a3568fcbd74fcadc7972c7a966ce004f2f92b52efb",
+        "tumbler-102/world.json": "5f2f32f066b9eaa7b4ad38aa41a3ad02b728cbcd5df7109c455f1aeaccd8da09"
+      }
+    },
+    {
+      "case": "tumbler-102",
+      "arm": "memory",
+      "receipt_sha256": "70f70ee9294c8b9975c38425671d44348b86680c02f9d4fdf1d656a1ee01b830",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 26.358385308606184,
+          "total_damage": 169.8301331107093,
+          "total_kills": 5
+        },
+        "ablated": {
+          "mean_progress_m": -0.047375949186927446,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -0.17820016406292316,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -1.138188190990343,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 144812,
+      "total_work": {
+        "actual_sweeps": 302474,
+        "settle_calls": 33799,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 3119,
+      "sampled_outcomes": 3101,
+      "routine_outcome_writes": 18,
+      "progress_gain_vs_best_control": 26.536585472669106,
+      "damage_above_original_30HP_floor": true,
+      "target_ablation_progress_loss": 26.405761257793113,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "tumbler-102/trained.npz": "c8f2f3754f86eab49d5cf0a3568fcbd74fcadc7972c7a966ce004f2f92b52efb",
+        "tumbler-102/world.json": "5f2f32f066b9eaa7b4ad38aa41a3ad02b728cbcd5df7109c455f1aeaccd8da09"
+      }
+    },
+    {
+      "case": "mantis-201",
+      "arm": "control",
+      "receipt_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 27.183440303979275,
+          "total_damage": 762.3022159174029,
+          "total_kills": 8
+        },
+        "ablated": {
+          "mean_progress_m": -1.4201932158049158,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": 2.591429416887333,
+          "total_damage": 58.211195967860256,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -0.11090031467930173,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 173777,
+      "total_work": {
+        "actual_sweeps": 565037,
+        "settle_calls": 39730,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 0,
+      "sampled_outcomes": 2477,
+      "routine_outcome_writes": 0,
+      "progress_gain_vs_best_control": 24.59201088709194,
+      "damage_above_original_30HP_floor": true,
+      "target_ablation_progress_loss": 28.60363351978419,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "mantis-201/trained.npz": "33ab5929ce07f5083eb3ea91cb40cd223e89a3ad131c8d4251a300b6b26db82b",
+        "mantis-201/world.json": "9929d9428a7adc9befd5c131bc5e1066f8018dc064a74404cf34ef1ee450095c"
+      }
+    },
+    {
+      "case": "mantis-201",
+      "arm": "memory",
+      "receipt_sha256": "42ef16c86b602de76a0709206e2e542c8a197d4e44a273c9cfb9496f9b3bd108",
+      "metrics": {
+        "trained": {
+          "mean_progress_m": 12.06240696380648,
+          "total_damage": 6.116510204381097,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -37.20451361179024,
+          "total_damage": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": 2.591429416887333,
+          "total_damage": 58.211195967860256,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -0.11090031467930173,
+          "total_damage": 0.0,
+          "total_kills": 0
+        }
+      },
+      "training_sweeps": 168790,
+      "total_work": {
+        "actual_sweeps": 569488,
+        "settle_calls": 40705,
+        "failed_settle_calls": 0
+      },
+      "memory_writes": 2725,
+      "sampled_outcomes": 2698,
+      "routine_outcome_writes": 27,
+      "progress_gain_vs_best_control": 9.470977546919146,
+      "damage_above_original_30HP_floor": false,
+      "target_ablation_progress_loss": 49.26692057559672,
+      "checked_artifact_hashes": 8,
+      "original_artifacts": {
+        "mantis-201/trained.npz": "33ab5929ce07f5083eb3ea91cb40cd223e89a3ad131c8d4251a300b6b26db82b",
+        "mantis-201/world.json": "9929d9428a7adc9befd5c131bc5e1066f8018dc064a74404cf34ef1ee450095c"
+      }
+    }
+  ],
+  "total_work": {
+    "actual_sweeps": 3763016,
+    "settle_calls": 302227,
+    "failed_settle_calls": 0
+  },
+  "world_moments": {
+    "training": 32000,
+    "frozen_evaluation": 128000,
+    "continuation_forks": 512,
+    "total": 160512
+  },
+  "judgment": "Retention FAILS. Do not promote memory as a universal arena default or proceed to a fresh confirmation on the strength of these comparisons. The large Mantis201 damage regression below its newborn control blocks that recommendation; Tumbler102 also loses substantial damage.",
+  "claim_limits": [
+    "Tumbler103 recovers target-dependent progress only in memory arm, but its18.171HP remains below the original30HP attack floor.",
+    "Mantis202 recovers progress even without memory after equal additional training. Memory trades lower progress for higher damage and kills.",
+    "These are acquired brains selected because they failed, continued for4000 additional moments. Fresh acquisition, generalization to all bodies, and preservation still require their own evidence.",
+    "Targets/worlds are the existing diagnostic evaluation worlds. This is development evidence; do not call it a held-out confirmation.",
+    "Mantis201 memory damage6.117HP falls below both control762.302HP and newborn58.211HP; progress also declines12.062m versus27.183m.",
+    "Tumbler102 memory increases progress slightly but lowers damage169.830HP versus389.333HP.",
+    "No numerical defaults, learning mechanisms or gates changed."
+  ]
+}

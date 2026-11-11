@@ -1,0 +1,50 @@
+[
+  {
+    "case": "tumbler-103",
+    "arm": "full-budget",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:03:52.990842+00:00"
+  },
+  {
+    "case": "mantis-202",
+    "arm": "full-budget",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:04:06.600522+00:00"
+  },
+  {
+    "case": "hexapod-302",
+    "arm": "full-budget",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:05:25.975688+00:00"
+  },
+  {
+    "case": "tumbler-102",
+    "arm": "full-budget",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:05:09.576512+00:00"
+  },
+  {
+    "case": "mantis-201",
+    "arm": "full-budget",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:06:38.027142+00:00"
+  },
+  {
+    "case": "hexapod-301",
+    "arm": "full-budget",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:07:00.228686+00:00"
+  },
+  {
+    "case": "hexapod-302",
+    "arm": "control",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:07:56.212349+00:00"
+  },
+  {
+    "case": "hexapod-301",
+    "arm": "control",
+    "returncode": 0,
+    "finished_utc": "2026-10-09T00:08:11.842610+00:00"
+  }
+]

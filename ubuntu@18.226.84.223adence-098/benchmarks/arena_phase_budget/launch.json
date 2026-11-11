@@ -1,0 +1,46 @@
+{
+  "started_utc": "2026-10-09T00:02:59.020222+00:00",
+  "jobs": [
+    [
+      "tumbler-103",
+      "full-budget"
+    ],
+    [
+      "mantis-202",
+      "full-budget"
+    ],
+    [
+      "hexapod-302",
+      "full-budget"
+    ],
+    [
+      "tumbler-102",
+      "full-budget"
+    ],
+    [
+      "mantis-201",
+      "full-budget"
+    ],
+    [
+      "hexapod-301",
+      "full-budget"
+    ],
+    [
+      "hexapod-302",
+      "control"
+    ],
+    [
+      "hexapod-301",
+      "control"
+    ]
+  ],
+  "max_workers": 2,
+  "hashes": {
+    "compare.py": "db3537c6656112b46f33e820152dadcaf832cd6592f38c2413b9394803cc5519",
+    "protocol.json": "f6bf7ec588ffd4bf41297e11dbe0b58d32c0c5ef98eba742ba047656a99145dd",
+    "sources-control.json": "09f19aa97ea75f969aed94d121f771381134fcb5bd1a327c62014c6c4323f762",
+    "sources-full-budget.json": "734cab7c2c23ab1dc5e4716451158b5b2ef796d93b40cfcd70c22b7f6f5715f6",
+    "reused-controls.json": "c4f696c4c7cbfb1e939fe78c7b3891275969abc352df4ea2a59286bf240b674a",
+    "launch.py": "69248422370c7f26d72d7ce6c1dbaef5c4a6d2f5271249d2247ca19b694f515a"
+  }
+}

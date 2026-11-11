@@ -1,0 +1,77 @@
+{
+  "schema": "cadence-coupled-attention/1",
+  "scope": "component experiment; no integrated cognition or learned semantic relevance claim",
+  "baseline": "ce386af2f5d50bb4d6a275d9a3e686a50f3fc6fa",
+  "development_seeds": [
+    0,
+    1
+  ],
+  "confirmation_seeds": [
+    100,
+    101,
+    102,
+    103,
+    104,
+    105,
+    106,
+    107,
+    108,
+    109,
+    110,
+    111,
+    112,
+    113,
+    114,
+    115,
+    116,
+    117,
+    118,
+    119
+  ],
+  "maximum_candidate_rounds": 2,
+  "candidate_order": [
+    "agreement",
+    "linear"
+  ],
+  "rounds": 256,
+  "training_seconds_per_arm": 60,
+  "total_seconds": 600,
+  "brain": {
+    "modules": [
+      32
+    ],
+    "episodic": false,
+    "teaching": "normalized",
+    "learning_qualified": true,
+    "learning_damping": 0,
+    "learning_free_steps": 1024,
+    "learning_nudged_steps": 1024
+  },
+  "dt": 0.1,
+  "amplitude": 3.0,
+  "temperature": 0.25,
+  "query_projection_scale": 0.0,
+  "recall_projection_scale": 1.2,
+  "acquisition_floor": 0.95,
+  "competence_floor": 0.9,
+  "confirmation_founders_required": 18,
+  "retention_loss_maximum": 0.05,
+  "relevant_erasure_loss_minimum": 0.2,
+  "transplant_follows_donor_minimum": 0.8,
+  "sham_change_maximum": 0.05,
+  "admission": "The existing named-fact exposed control must acquire both facts' query relation at 0.95 overall, unequal-fact and each-query accuracy before a failure is attributed to memory selection. This changes neither the original relevance protocol nor its failed receipt.",
+  "arms": [
+    "exposed",
+    "held_lms",
+    "held_toward",
+    "agreement",
+    "linear",
+    "frozen",
+    "uniform_random"
+  ],
+  "boundaries": "Current observation/code, working trace, witnessed keys/values/successors, ages, held masks and parameters are fixed across each free and teaching phase. Query, read, association and motor are live; attention is their algebraic relation, recomputed each sweep and residual check. Only actual accepted observations write memory. Teachers label the final answer, never slot indices or addresses.",
+  "gates": "Derivative and full-state residual checks precede behavioral work. Stop behavioral candidate evaluation when exposed acquisition fails. Confirmation seeds remain unused until development acquisition, causal relevance, abstention and retention pass. No promotion to the library on numerical checks alone.",
+  "semantic_scope": "Raw input coordinates in this finite admission control are explicitly a control. Learned semantic relevance separately needs zero raw overlap, misleading overlap, group/member separation and old facts after competing learning. No such claim follows from this component.",
+  "preservation": "Default held retrieval, actual-action custody, private imagination, checkpoint continuation and acquired skills must pass before a candidate enters the library. Multiple heads and two-link binding remain separate gates.",
+  "selection": "One predeclared numerical admission retry after admission-256.json; only free and nudged sweep caps rise from 256 to 1024. Same seeds, order, teaching, dt, thresholds and task. No mechanism candidate has run."
+}

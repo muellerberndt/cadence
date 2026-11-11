@@ -1,0 +1,26 @@
+[
+  {
+    "case": "tumbler-102",
+    "arm": "control",
+    "returncode": 0,
+    "finished_utc": "2026-10-08T23:54:55.705933+00:00"
+  },
+  {
+    "case": "tumbler-102",
+    "arm": "memory",
+    "returncode": 0,
+    "finished_utc": "2026-10-08T23:54:55.478635+00:00"
+  },
+  {
+    "case": "mantis-201",
+    "arm": "control",
+    "returncode": 0,
+    "finished_utc": "2026-10-08T23:56:24.221681+00:00"
+  },
+  {
+    "case": "mantis-201",
+    "arm": "memory",
+    "returncode": 0,
+    "finished_utc": "2026-10-08T23:56:25.163215+00:00"
+  }
+]

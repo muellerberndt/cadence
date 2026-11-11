@@ -1,0 +1,5 @@
+{"moment": 1000, "progress_m": 11.476568712683074}
+{"moment": 2000, "progress_m": 19.612582354222134}
+{"moment": 3000, "progress_m": 29.986101801478604}
+{"moment": 4000, "progress_m": 38.53832671509831}
+{"case": "tumbler-103", "arm": "memory", "status": "complete", "seconds": 84.18615337496158}

@@ -1,0 +1,5 @@
+{"moment": 1000, "progress_m": 8.17627135033588}
+{"moment": 2000, "progress_m": 21.064785530430456}
+{"moment": 3000, "progress_m": 29.189694125685428}
+{"moment": 4000, "progress_m": 40.91444328717333}
+{"case": "tumbler-102", "arm": "control", "status": "complete", "seconds": 53.37591483298456}

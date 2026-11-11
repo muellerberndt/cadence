@@ -1,0 +1,88 @@
+{
+  "kind": "cadence.population-throughput/1",
+  "library": "0.15.0",
+  "torch": "2.14.0",
+  "python": "3.13.0",
+  "platform": "macOS-15.3-arm64-arm-64bit-Mach-O",
+  "device": {
+    "type": "mps",
+    "name": "Apple M4"
+  },
+  "processor": "Apple M4",
+  "date": "2026-09-25",
+  "patch": {
+    "inputs": 32,
+    "hidden": 32,
+    "outputs": 8,
+    "cells": 256,
+    "active": 8,
+    "slowest": 2.0,
+    "rate": 0.1
+  },
+  "moment": "one imagined reading from rest and one observation with its write, per brain and stream",
+  "population": [
+    {
+      "instances": 8,
+      "streams": 64,
+      "moments_per_step": 512,
+      "steps": 40,
+      "seconds": 0.1602,
+      "moments_per_second": 127840.1,
+      "store_bytes": 4401408
+    },
+    {
+      "instances": 32,
+      "streams": 64,
+      "moments_per_step": 2048,
+      "steps": 40,
+      "seconds": 0.2221,
+      "moments_per_second": 368839.1,
+      "store_bytes": 17605632
+    },
+    {
+      "instances": 64,
+      "streams": 128,
+      "moments_per_step": 8192,
+      "steps": 40,
+      "seconds": 0.6574,
+      "moments_per_second": 498435.9,
+      "store_bytes": 69814272
+    },
+    {
+      "instances": 64,
+      "streams": 256,
+      "moments_per_step": 16384,
+      "steps": 40,
+      "seconds": 1.5491,
+      "moments_per_second": 423053.6,
+      "store_bytes": 139020288
+    }
+  ],
+  "reference": {
+    "backend": "numpy, one processor core, BLAS threads 1",
+    "streams_per_call": 1,
+    "own_store_per_stream": true,
+    "moments": 300,
+    "seconds": 0.235,
+    "moments_per_second": 1276.5
+  },
+  "reference_shared_store": {
+    "backend": "numpy, one processor core, BLAS threads 1",
+    "streams_per_call": 64,
+    "own_store_per_stream": false,
+    "moments": 19200,
+    "seconds": 1.0222,
+    "moments_per_second": 18782.8
+  },
+  "ratio_best_over_reference": 390.5,
+  "parity_cpu_float64": {
+    "max_abs_reading": 2.220446049250313e-16,
+    "max_abs_slow_step": 2.7755575615628914e-17
+  },
+  "load_average_at_end": [
+    104.8,
+    142.0,
+    141.9
+  ],
+  "seconds_total": 5.0
+}

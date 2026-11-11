@@ -1,0 +1,111 @@
+{
+ "schema": "stream-words/1",
+ "issue": "https://github.com/muellerberndt/cadence/issues/200",
+ "question": "Heard one frame per moment, does one continuing Brain.compose life, taught through Brain.step(frame, teacher=label) with lessons where its act's answer differs from the label, name each word at its last frame at least as well as the same composed brain given the last window_frames frames as one observation, while emitting few words elsewhere? Synthetic words first; real audio is a later, separately declared step.",
+ "scope": "Bounded component chamber: a synthetic lexicon, supplied frame timing and supplied word-end labels. It establishes no speech recognition, no phrase organization and no default.",
+ "runtime": "The cadence 0.83.0 library sources with the learner's surprise rule (pull request 197); every receipt binds the chamber, this protocol, benchmarks/competitors.py and every library source it ran with.",
+ "world": {
+  "phones": 16,
+  "features": 16,
+  "pairs": 6,
+  "prefix_phones": [
+   2,
+   3
+  ],
+  "repeat": 0.5,
+  "silence": [
+   1,
+   3
+  ],
+  "noise": 0.1,
+  "note": "Twelve words in six pairs. Pair k says prefix_k + [joint, f_k] and prefix_k + [joint, f_(k+1 mod 6)]: the two words of a pair differ only in their final phone, every word's penultimate phone is the joint, and each final phone ends two words of neighbouring pairs, whose last prefix phones differ. A prefix has two or three phones, none the joint and none repeated back to back. Every phone before the final one lasts one frame, or two with probability repeat; the final phone lasts one frame. Words are 4 to 9 frames long, drawn uniformly, each after one to three silent frames. A phone is a fixed vector uniform in [0, 1]^16, silence is zero, and every frame adds Gaussian noise of standard deviation 0.1. Labels: blank (0) on every frame but a word's last, which carries the word plus one; one output slot of 13 choices."
+ },
+ "training_words": 6000,
+ "probe_every": 1000,
+ "evaluation_words": 300,
+ "seeds": [
+  0,
+  1,
+  2,
+  3,
+  4
+ ],
+ "seeds_note": "Seed s fixes the lexicon, the training stream, the held-out evaluation stream, the founder brain and the learner's initial weights, each from its own random stream. The evaluation stream has the training lexicon and fresh word order, durations and noise.",
+ "window_frames": 9,
+ "brain": {
+  "genes": {
+   "actor_eta": 0.0,
+   "actor_eta_bias": 0.0,
+   "actor_eta_critic": 0.0
+  },
+  "note": "Brain.compose(inputs, 13, seed=s, **genes, **arm genes): the composed founder (one association module of 64, the working trace at its founder amplitude 3.0, decay 0.0 and projection scale 1.2, the episodic store of the founder, finite teaching at eta 0.5 with momentum 0.9, temperature 0.2, lateral 0 for 13 actions). The world pays nothing: the reward learner's rates are zero, so the zero-reward feedback that step applies to its previous sampled act changes nothing. Each training frame is one Brain.step(frame[None], teacher=[label]); its act samples at the learner temperature and is not scored."
+ },
+ "arms": {
+  "surprise": {
+   "genes": {
+    "learning_surprise": true
+   },
+   "role": "the composed brain: lessons only where the answer its act reads differs from the label"
+  },
+  "every_frame": {
+   "genes": {
+    "learning_surprise": false
+   },
+   "role": "the paired control: a lesson on every frame"
+  },
+  "window": {
+   "genes": {
+    "learning_surprise": true
+   },
+   "inputs": "window_frames x features",
+   "role": "the pressed-in window as a control: the same composition and rule given the concatenation of the last 9 frames (the longest word), oldest first, zeros before the stream began"
+  },
+  "history": {
+   "genes": {
+    "learning_surprise": true,
+    "history_decays": [
+     0.2,
+     0.8,
+     0.95
+    ],
+    "history_amplitude": 3.0,
+    "history_scale": 1.2
+   },
+   "role": "the composed brain with the opt-in heard history of the frames at three decays, lessons where its act's answer differs"
+  }
+ },
+ "gru": {
+  "hidden": 32,
+  "truncation": 16,
+  "rate": 0.003,
+  "betas": [
+   0.9,
+   0.999
+  ],
+  "eps": 1e-08,
+  "clip": 5.0,
+  "readout_init": 0.1,
+  "note": "The GRU cell of benchmarks/competitors.py (its own initialization) with a softmax readout over the 13 choices (initial weights normal with standard deviation readout_init, zero bias). At every training frame: answer, then the gradient of that frame's cross-entropy through the last 16 frames (their cached forward passes, the current weights; truncated backpropagation), its norm clipped at 5, one Adam step at rate 0.003. The hidden state carries through the stream; nothing is replayed and no batch is formed. Settings chosen before any run, none selected on this chamber's seeds."
+ },
+ "controls": {
+  "majority": "blank on every frame",
+  "uniform": "a uniform choice among the 13 per frame (its own random stream per seed)",
+  "phone": "the most frequent label of each noise-free phone (silence included) on the evaluation stream itself: in sample, a bound for any answer read from the current frame alone"
+ },
+ "evaluation": "Every probe_every training words a saved copy is loaded, reset and answers the 300-word evaluation stream greedily without learning (Brain.act(frame, greedy=True); the GRU from a zero hidden state). Word accuracy: the share of word ends answered with that word (the recall of emitted words). Emissions elsewhere: frames that end no word answered with a word, per word of the stream. Precision: the share of emissions that are a word's end answered with that word. Confusions at word ends: the pair partner, the rhyme partner (the other word with the same final phone), another word, blank. The reading is the probe after the 6000th word.",
+ "gate": {
+  "rule": "On the means over the five seeds: the surprise arm's word accuracy is at or above the window arm's and above 0.5, and its emissions elsewhere are at most 0.2 per word. The GRU and the every_frame arm are reported beside it.",
+  "bound_0_5": "Two words end in every final phone, so an answer read from the final phone alone, even with the word end known, is right at most half the time.",
+  "bound_0_2": "At most one word emitted elsewhere per five words said."
+ },
+ "max_wall_seconds_per_life": 3600,
+ "stop": "One life per process, at most two processes at a time. A refused act ends that life; its probes so far are kept and the arm counts as failed for the gate. No setting changes after any result; every life is retained.",
+ "amendment": {
+  "file": "protocol-history.json",
+  "amends": "protocol.json (sha256 fad9ae7d52d01a7159adb1baf7a9e6da967607047043c6024254502a06c14ac6), every other entry unchanged",
+  "declared_before_run": true,
+  "change": "Adds the arm history: the surprise arm composed with the opt-in heard history of the library (Brain.compose history_decays, history_amplitude, history_scale), a history region of one block of 16 neurons per decay, each a fading trace of the frames as heard, read by the association region through its own plastic projection. The settings are the option's first declared protocol (the finite recall chamber's: decays 0.2, 0.8 and 0.95, amplitude 3, scale 1.2), carried over; none was selected on this chamber's seeds.",
+  "runtime": "The checkout that adds the option to the library sources of protocol.json; with history_decays=() that library composes the founder byte-identically, so the other arms' lives stand as run. Every receipt binds the library sources it ran with and carries this protocol in its body.",
+  "gate": "Unchanged. The history arm is reported beside the gate's arms; the gate names the surprise arm."
+ }
+}

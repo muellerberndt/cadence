@@ -1,0 +1,128 @@
+{
+  "schema": "cadence-attention-query-founder-campaign/1",
+  "declared_date": "2026-10-22",
+  "scope": "One ordinary query-cortex initialization control within the existing agreement component task. New matched capacity first, then both H2 founders, and resource comparators only after both H2 primary plus retention gates. No integrated behavior, semantic code, head advantage or library promotion follows from a stage flag.",
+  "baseline_revision": "d603d229a1c84d88a84861fd6332a5e9be5002de",
+  "base_protocol_file": "heads-founder-extended-protocol.json",
+  "base_protocol_sha256": "ab35372cef043ac059e8631d1ec58de436eeca439ff9db47e936b098c6d456b5",
+  "development_seeds": [
+    0,
+    1
+  ],
+  "query_scale": 1,
+  "query_initializer": {
+    "file": "query_founder.py",
+    "values": [
+      0,
+      1
+    ],
+    "control": "q0 is the byte-exact existing zero query-cortex founder; retain its completed512-round negative continuation without replay. q1 installs one ordinary reciprocal Projection draw on existing query-cortex efficacy coordinates once on each fresh brain, before any prefix or lesson; no new seam, head label, rate, loss, equation or selector teacher.",
+    "namespace": "For each founder and physical head: SeedSequence([founder,head]).spawn(1)[0]; isolated ordinary Projection. Whole-model/action RNG and every non-query parameter/config/moment remain unchanged. Exposed control has no query ports and is unchanged. Fixed-read oracle retains its actual class/restoring memory law.",
+    "record": "Every actual trial records the initializer descriptor and after-initialization parameter/interface digest; fresh constructor verification must reproduce it exactly."
+  },
+  "prior": {
+    "file": "query-founder-prior.json",
+    "kind": "cadence-attention-query-founder-prior/1",
+    "digest": "fdfa23be11ce46fc4dd2756c1d567c89287af5639664b740fe8ee1a4643358ad",
+    "archive_sha256": "1cb015605c0e72c9d08c56f0b001e5b10d068e1501650b4a38ff3deb9324ceea",
+    "cumulative_host_seconds": 2748.518538545185,
+    "continuation_digest": "12c384dae5992e3675baf2d74ec38d680fc90ada107ae99598036d146d065a40",
+    "scope": "Verify the exact self-contained JSON/cost ledger and completed q0 continuation before any factory injection. Its three diagnostics stay bounded evidence, not admitted control or repair."
+  },
+  "stages": {
+    "capacity": {
+      "receipt_kind": "cadence-attention-query-founder-capacity/1",
+      "receipt_file": "query-founder-capacity.json",
+      "total_host_seconds": 600,
+      "training_seconds_per_call": 240,
+      "order": [
+        [
+          "exposed",
+          0
+        ],
+        [
+          "exposed",
+          1
+        ],
+        [
+          "supplied_reads",
+          0
+        ],
+        [
+          "supplied_reads",
+          1
+        ]
+      ],
+      "gate": "All four q1-matched cells complete512 rounds, no action/lesson refusal; unchanged .95 trained48 pair/slot/unequal/query floors and qualified complete intact train/held/all panels. Held16 scores are reported without a capacity accuracy floor. Every cell is attempted while budget remains; unrun/capped/refused stays false. Old q0 capacity cannot authorize q1."
+    },
+    "h2": {
+      "receipt_kind": "cadence-attention-query-founder-h2/1",
+      "receipt_file": "query-founder-h2.json",
+      "total_host_seconds": 1800,
+      "training_seconds_per_call": 600,
+      "order": [
+        [
+          "h2",
+          0
+        ],
+        [
+          "h2",
+          1
+        ]
+      ],
+      "requires": "Exact current-source positive q1 capacity receipt with all four founders/arms. Attempt both H2 founders even if the first fails, subject to the fixed total budget.",
+      "gate": "Both original primary/content/held/donor/erasure/sham gates AND unchanged256-round retention pass. Diagnostic representation probe remains conditional and never enters the answer path. Any H2 failure closes resource comparisons, fresh confirmation and Stone Age."
+    },
+    "comparators": {
+      "receipt_kind": "cadence-attention-query-founder-comparators/1",
+      "receipt_file": "query-founder-comparators.json",
+      "total_host_seconds": 3000,
+      "training_seconds_per_call": 600,
+      "order": [
+        [
+          "h1",
+          0
+        ],
+        [
+          "h1",
+          1
+        ],
+        [
+          "h1_wide",
+          0
+        ],
+        [
+          "h1_wide",
+          1
+        ],
+        [
+          "h1_wide_ports",
+          0
+        ],
+        [
+          "h1_wide_ports",
+          1
+        ],
+        [
+          "h1_more_steps",
+          0
+        ],
+        [
+          "h1_more_steps",
+          1
+        ]
+      ],
+      "requires": "Exact current-source positive q1 capacity AND positive H2 receipt for both founders. Same q1 initialization, schedule, numerical/learning/causal/retention/probe procedures on all eight controls.",
+      "gate": "Report each arm/founder independently. No head-count benefit when any comparator is incomplete, refused, capped or unqualified. Completion is not advantage; original preregistered parallel-head assessment and measured cost limitations apply."
+    }
+  },
+  "unchanged": "The base profile fixes every task row, draw,512 rounds, batch16, wrong-row full-pair teacher, rates, beta, momentum/RMS, full2048 cap (4096 only existing H1-work), tolerance.003, dt1/damping3, alpha3/H, empty_anchorTrue, exposed/held-read controls, erasure/donor/head/clone/interface panels, retention and probe gates. Only query-scale initialization and declared host guards differ.",
+  "equation": "agreement",
+  "candidate_points": 1,
+  "confirmation_seeds_used": [],
+  "head_assessment_file": "PARALLEL_HEADS_ASSESSMENT.md",
+  "claim_boundary": "Stage capacity/H2/comparator flags never imply head advantage, distinct useful heads, meanings or general acquisition. No fresh founder, parameter grid, linear fallback, training retry, confirmation or Stone Age in this wrapper.",
+  "budget": "Each stage has its own additional deadline, including verification/construction/snapshots/all attempted phases. Per-training-call bound includes conditional retention calls. Keep all missing/capped/refused readings false and retain bounded current round/panel overrun. Report previous cumulative costs without subtracting them from new stage deadlines. Stages are serial and must be explicitly invoked once after source freeze.",
+  "source_custody": "Every typed receipt and research NPZ binds this runner, initializer, this protocol, the prior ledger/archives, frozen runtime and its actual stage prerequisites. All old runtime/protocol bytes remain unchanged. Scoped factories and snapshot hooks restore in finally, after baseline custody verification; no Projection/global-class monkeypatch.",
+  "freeze": "Commit all new source files and protocol before a single stage attempt. Supply actual clean source commit with --commit; record current revision and exact source manifest in each receipt. Protocol does not name its own future commit. No execution during preparation."
+}

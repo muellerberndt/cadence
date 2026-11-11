@@ -1,0 +1,171 @@
+{
+  "schema": "steady-rhythm/2",
+  "event": {
+    "unit": "one accepted observation and its one free greedy act; a lesson at that event belongs to the same event",
+    "cadence_ms": 100,
+    "cadence_variants_ms": [
+      50,
+      200
+    ],
+    "clock": "the declared slot schedule supplies physical time only; no clock value, slot number or phase enters any observation"
+  },
+  "rows": 4,
+  "inputs": 4,
+  "actions": 2,
+  "observations": {
+    "coordinates": [
+      "drive",
+      "distractor",
+      "cue_A",
+      "cue_B"
+    ],
+    "drive": "coordinate 0 at 1.0 on every drive and cue event",
+    "cue": "one cue coordinate at 1.0 on the first event of a bout, two rows per cue",
+    "pause": "all coordinates at 0.0",
+    "distractor": "coordinate 1 at 1.0 alone"
+  },
+  "teaching": {
+    "bouts": 24,
+    "events_per_bout": 12,
+    "label": "the cued action at a cue event; afterwards the opposite of the row's own last executed action",
+    "arms": {
+      "every": "Learner.step on the live stimulus before every free act",
+      "mismatch": "free act first; Learner.step on the pre-act stimulus for the rows whose act differed from the label"
+    }
+  },
+  "window": {
+    "lead": 4,
+    "events": 64,
+    "block": 8,
+    "probe": "complete checkpoint after the lead act and before the next act; every control forks it"
+  },
+  "disturbances": {
+    "pre": 8,
+    "post": 32,
+    "pauses": [
+      1,
+      2,
+      4
+    ],
+    "distractor_events": 1,
+    "pause_checkpoint": "pause2 saves after its first pause event; a loaded twin continues beside the original"
+  },
+  "cadence": {
+    "events": 32,
+    "disturbed_slot": 10,
+    "budgets": [
+      256,
+      64,
+      16
+    ],
+    "tolerances": [
+      0.01,
+      0.0001
+    ],
+    "host_load": "one spinning process per logical CPU during the paced_regular_load run"
+  },
+  "recipes": {
+    "efference": {
+      "modules": [
+        32
+      ],
+      "lateral": null,
+      "episodic": false,
+      "working_memory_decay": 0.1,
+      "working_memory_amplitude": 3.0,
+      "learning": {
+        "beta": 0.1,
+        "eta": 0.5,
+        "eta_bias": 0.05,
+        "centered": true,
+        "free_steps": 1024,
+        "nudged_steps": 12,
+        "tolerance": 0.003,
+        "nudge": "cross_entropy",
+        "temperature": 0.2,
+        "normalize": 0.0,
+        "normalize_floor": 0.001,
+        "momentum": 0.9,
+        "decay": 0.0,
+        "scale_cap": 8.0,
+        "qualified": false,
+        "damping": 3
+      },
+      "efference_amplitude": 3.0,
+      "efference_decay": 0.0
+    },
+    "selected": {
+      "modules": [
+        32
+      ],
+      "lateral": null,
+      "episodic": false,
+      "working_memory_decay": 0.1,
+      "working_memory_amplitude": 3.0,
+      "learning": {
+        "beta": 0.1,
+        "eta": 0.5,
+        "eta_bias": 0.05,
+        "centered": true,
+        "free_steps": 1024,
+        "nudged_steps": 12,
+        "tolerance": 0.003,
+        "nudge": "cross_entropy",
+        "temperature": 0.2,
+        "normalize": 0.0,
+        "normalize_floor": 0.001,
+        "momentum": 0.9,
+        "decay": 0.0,
+        "scale_cap": 8.0,
+        "qualified": false,
+        "damping": 3
+      }
+    },
+    "note": "rhythm/2 declares one candidate gene against the rhythm/1 selected recipe as its control: efference changes nothing but the efference copy, Brain.compose(..., efference_amplitude=3.0, efference_decay=0.0), one efference neuron per motor neuron driven by the one-hot of the command the row issued at the previous event and read by the association region through a plastic projection at the working trace's scale; the working trace, learning law, lateral wiring and every other setting are those of rhythm/1 selected. selected is the rhythm/1 selected recipe, byte-identical, run on every founder as the control; the rhythm/1 compose_default control and its receipt stand as published.",
+    "development": "chosen on development seeds 0-5 at 24 bouts over efference amplitudes 0.3/1.0/3.0 and efference decays 0.0/0.2/0.5 beside the amplitude-0 control, every failed cell kept in results/development-efference.json; mean window alternation over both arms: control 0.73, amplitude 3.0 at decay 0.0 0.97 (every 1.00 on all six seeds, mismatch 0.93); confirmation seeds 201-205 are fresh and were not run during development"
+  },
+  "controls_config": {
+    "flipflop_rate": 0.5
+  },
+  "seeds": {
+    "development": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "confirmation": [
+      201,
+      202,
+      203,
+      204,
+      205
+    ]
+  },
+  "controls": [
+    "intact",
+    "restored",
+    "erased",
+    "shuffled",
+    "reset",
+    "static",
+    "static_cold",
+    "flipflop",
+    "random"
+  ],
+  "policy": {
+    "refusal": "a refused act is a missed action: no action, no trace update, the event is consumed, the life continues",
+    "lesson_refusal": "a refused lesson is charged and skipped",
+    "forks": "controls load the probe checkpoint; no fork installs state into the live life",
+    "denominator": "every planned founder stays in the denominator; refused and unrun events are wrong",
+    "selection": "the efference copy is the one declared mechanism; it is selected on the development seeds only and confirmed on fresh seeds; no default change, acceptance horizon beyond the declared window or general timing capability is claimed"
+  },
+  "caps": {
+    "seconds": 900,
+    "note": "a run past the cap writes its completed founders and exits 3"
+  },
+  "question": "Can one continuing Brain.compose life whose working trace alone did not carry the phase (rhythm/1) alternate two actions under identical drive once it carries a copy of its own last command, against the same brain without the copy, the matched flip-flop control and uniform random? The efference copy is the declared mechanism under test; it is a gene with zero as its control, not a default.",
+  "phase_state": "the row's working trace (Trace.trace, Trace.last, Trace.cold over the 32 association coordinates) and, under the efference recipe, its efference copy (Efference.trace, .last, .cold over the 2 motor coordinates, the one-hot of the row's last issued action at decay 0); the erased, shuffled, static and reset controls act on the whole carried history, trace and copy"
+}

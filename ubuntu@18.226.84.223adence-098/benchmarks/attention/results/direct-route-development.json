@@ -1,0 +1,40 @@
+{
+  "schema": "cadence-attention-direct-route-development/1",
+  "date": "2026-10-24",
+  "scope": "single development founder; benchmark-only; not a Brain.compose option or default",
+  "founder": 2,
+  "lessons": 64,
+  "auxiliary_coordinates_per_stream": 64,
+  "mechanism": "q=(1-g)h+g*6.75*R@W; E=g*36*E_R(R,h)+(1-g)*3*||R||^2/2+E_A",
+  "allowed_accuracy": 1.0,
+  "held_accuracy": 1.0,
+  "causal": {
+    "learned": {"answer": 1.0, "top1": 1.0, "material": 0.984375},
+    "W_zero": {"answer": 0.3385416666666667, "top1": 0.34375, "material": 0.0},
+    "relation_erased": {"answer": 0.4973958333333333, "top1": 0.5026041666666666, "material": 0.2630208333333333},
+    "relevant_erased": {"answer": 0.0, "top1": 0.0, "material": 0.0},
+    "unrelated_erased": {"answer": 1.0, "top1": 1.0, "material": 1.0},
+    "relevant_content": {"answer": 1.0, "top1": 1.0, "material": 0.984375},
+    "unrelated_content": {"answer": 1.0, "top1": 1.0, "material": 0.984375}
+  },
+  "maximum_relative_query_shift": {
+    "relevant_content": 0.10478501757103774,
+    "unrelated_content": 0.05436997133625108
+  },
+  "sweeps": {"free": 12640, "positive": 2784, "negative": 2816},
+  "weight": {"frobenius": 0.26385699353242253, "spectral": 0.17013010158443406},
+  "gates": {
+    "allowed_and_held_accuracy_at_least_0.95": true,
+    "learned_answer_top1_material_at_least_0.95": true,
+    "W_zero_advantage_at_least_0.10": true,
+    "relation_and_relevant_erasure_cost_at_least_0.20": true,
+    "unrelated_erasure_delta_at_most_0.05": true,
+    "relevant_content_following_at_least_0.80": true,
+    "unrelated_content_preservation_at_least_0.95": true,
+    "unrelated_content_query_shift_at_most_0.06": true,
+    "all_phases_qualified": true,
+    "gate_off_bit_exact": true,
+    "born_zero_centered_gradient_nonzero": true
+  },
+  "passed": true
+}

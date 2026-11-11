@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.lake/
+dist/
+build/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+data/
+*_receipt.json
+.coverage
+htmlcov/
+
+.DS_Store

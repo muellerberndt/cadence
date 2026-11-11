@@ -1,0 +1,38 @@
+"""Remove the four target-bearing cells from a frozen trained robot; no learning."""
+from dataclasses import replace
+import hashlib
+import json
+from pathlib import Path
+import subprocess
+import cadence
+import arena.nursery as nursery
+from arena.parts import stock_designs
+
+root=Path('/workspace/cadence-robot-arena/runs/cadence-issues-159-160-learning-20261008')
+core=Path(cadence.__file__).resolve().parents[2]
+source={str(p):hashlib.sha256(p.read_bytes()).hexdigest() for p in (core/'src/cadence').rglob('*.py')}
+observe=nursery.observe
+def without_target_bearings(robot,world):
+    x=observe(robot,world)
+    x[:,:4]=0.
+    return x
+nursery.observe=without_target_bearings
+for arm in ('credit','combined'):
+    for brainseed,evalseed in ((12,19),(13,20)):
+        blueprint=replace(stock_designs()[0],seed=brainseed)
+        prefix=root/f'{arm}-tumbler-seed{brainseed}-4000'
+        trained=json.loads(prefix.with_suffix('.json').read_text())
+        result=nursery.run_nursery(blueprint,moments=1000,seed=evalseed,policy='frozen',
+                                   brain_path=prefix.with_suffix('.npz'),block=500)
+        out={'arm':arm,'brainseed':brainseed,'evalseed':evalseed,
+             'cadence_commit':subprocess.check_output(['git','rev-parse','HEAD'],cwd=core,text=True).strip(),
+             'source_sha256':source,'checkpoint_sha256':hashlib.sha256(prefix.with_suffix('.npz').read_bytes()).hexdigest(),
+             'intervention':'Only target-bearing sensory coordinates0:4 replaced withzero; ring/body/weapon senses remain',
+             'intact':trained['greedy'],'without_target_bearings':result,
+             'limitations':['Same saved learned brain and seed, but actions can alter dummy relocation times',
+                            'Development causal measurement on reused founders; not fresh confirmation']}
+        output=root/f'{arm}-tumbler-seed{brainseed}-bearing-ablation.json'
+        output.write_text(json.dumps(out,indent=2,default=float)+'\n')
+        assert all(hashlib.sha256(Path(p).read_bytes()).hexdigest()==s for p,s in source.items())
+        print(json.dumps({'arm':arm,'brainseed':brainseed,'intact':trained['greedy']['total'],
+                          'without_target_bearings':result['total']},default=float),flush=True)

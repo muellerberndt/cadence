@@ -1,0 +1,48 @@
+"""Matched scalar-temperature development screen; no teacher or external answer head."""
+from dataclasses import replace
+import json
+import types
+import sys
+import numpy as np
+from cadence import Brain, Nudge
+
+
+def corrected(self, drive, free, target, beta):
+    cfg = self.learner.config
+    actual = 1.5
+    nudge = Nudge(target, self.learner.output_mask * (cfg.temperature / actual), beta,
+                  softmax_temperature=actual, groups=self.group_id)
+    return self.learner.brain.settle_batch(drive, steps=self.config.eligibility_steps,
+                                          state=free, nudge=nudge, tolerance=cfg.tolerance)
+
+for seed in range(3):
+    for arm in ('old', 'actual-score'):
+        b = Brain.compose(3, 4, modules=(16,), slots=2, seed=seed, episodic=False,
+                          working_memory_amplitude=.3, working_memory_decay=.1)
+        b.learner.config = replace(b.learner.config, temperature=.5)
+        b.basal_ganglia.config = replace(b.basal_ganglia.config, eta=.03, eta_bias=.003,
+                                         lam=.6, gamma=.95, eta_critic=5.)
+        if arm == 'actual-score':
+            b.basal_ganglia._nudged_groups = types.MethodType(corrected, b.basal_ganglia)
+        rng = np.random.default_rng(200 + seed)
+        observations = np.array([[1.,0.,1.], [0.,1.,1.]])
+        targets = np.array([[0,1],[1,0]])
+        cue = int(rng.integers(2))
+        action = b.act(observations[[cue]], temperature=1.5)
+        hits=[]
+        for moment in range(4000):
+            correct = action[0] == targets[cue]
+            hits.append(float(correct.mean()))
+            reward = 2 * float(correct.mean()) - 1
+            cue = int(rng.integers(2))
+            b.learn([reward], [False], observations[[cue]])
+            action = b.act(observations[[cue]], temperature=1.5)
+        guesses = b.predict(observations)
+        probs = []
+        for x in observations:
+            b.act([x], greedy=True)
+            probs.append(b.basal_ganglia.probabilities(b.basal_ganglia.state)[0])
+        sensitivity=float(np.ptp(probs,axis=0).mean())
+        print(json.dumps({'arm':arm,'seed':seed,'moments':4000,'sampled_hit_last500':np.mean(hits[-500:]),
+                          'greedy_hits':float((guesses==targets).mean()),'guesses':guesses.tolist(),
+                          'sensitivity':sensitivity,'motorbias':b.brain.bias[b.motor_index].tolist()}),flush=True)

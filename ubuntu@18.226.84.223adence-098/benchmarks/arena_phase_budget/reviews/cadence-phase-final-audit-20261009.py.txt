@@ -1,0 +1,65 @@
+"""Independent final read-only audit of all twelve phase-budget receipts."""
+import gzip,hashlib,json
+from pathlib import Path
+import numpy as np
+B=Path('/workspace'); P=B/'temp/cadence-phase-repair-20261009'; D=B/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
+protocol=json.loads((P/'protocol.json').read_text()); refs=json.loads((P/'reused-controls.json').read_text())
+def sha(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+def same(a,b):
+ with np.load(a,allow_pickle=False) as x,np.load(b,allow_pickle=False) as y:
+  assert set(x.files)==set(y.files)
+  for k in x.files:
+   if k=='generic':assert json.loads(str(x[k]))==json.loads(str(y[k]))
+   else:assert np.array_equal(x[k],y[k]),k
+rows=[]
+for case in protocol['first_stage']:
+ for arm in ['control','full-budget']:
+  reused=arm=='control' and case in refs
+  path=Path(refs[case]['receipt']) if reused else P/'runs'/f'{case}-{arm}'/'receipt.json'
+  r=json.loads(path.read_text()); assert r['status']=='complete' and not r['smoke'] and r['case']==case and r['arm']==arm
+  if reused:assert sha(path)==refs[case]['receipt_sha256']==protocol['reused_controls_sha256'][case]
+  else:
+   assert r['protocol']==protocol and r['protocol_sha256']==sha(P/'protocol.json') and r['producer_sha256']==sha(P/'compare.py')
+   assert r['admission_sha256']==sha(P/f'sources-{arm}.json')
+  admission=json.loads((P/f'sources-{arm}.json').read_text())
+  assert r['source_sha256']==r['source_sha256_after']==admission['source_sha256']
+  assert r['source_admitted'] and r['source_unchanged'] and r['producer_unchanged']
+  original=json.loads((D/case/'receipt.json').read_text()); assert sha(D/case/'receipt.json')==protocol['original_receipts_sha256'][case]
+  for name in ['trained.npz','world.json']:assert sha(D/case/name)==original['artifacts'][name]['sha256']==r['original_artifacts'][f'{case}/{name}']
+  for name,digest in r['artifacts'].items():assert sha(path.parent/name)==digest
+  same(D/case/'trained.npz',path.parent/'initial.npz')
+  assert r['initial']['outcomes_received']==79999 and r['trained']['outcomes_received']==83999
+  assert r['initial']['memory'] is None and r['trained']['memory'] is None
+  with gzip.open(path.parent/'training-stream.jsonl.gz','rt') as f: stream=[json.loads(line) for line in f]
+  assert len(stream)==4000 and stream[0]['received_actual_reward']==r['initial']['pending_actual_reward']
+  assert all(row['received_actual_reward']==previous['reward'] for previous,row in zip(stream,stream[1:]))
+  assert stream[-1]['reward']==r['trained']['pending_actual_reward']
+  sidecar=json.loads((path.parent/'world.json').read_text());assert sidecar['world']['reward']==stream[-1]['reward'] and sidecar['wrapper']['owed']==0
+  c=r['continuation'];assert c['equal'] and c['checkpoint_arrays_equal'] and len(c['records'])==32 and c['outcomes_received_after']==84031
+  same(path.parent/'fork-original.npz',path.parent/'fork-loaded.npz')
+  for pair in c['records']:assert {k:v for k,v in pair['unbroken'].items() if k!='policy_ms'}=={k:v for k,v in pair['reloaded'].items() if k!='policy_ms'}
+  assert {(v['policy'],v['seed'],v['total']['moments']) for v in r['evaluation']}=={(kind,world,2000) for kind in ['trained','newborn','random','ablated'] for world in [2001,2002]}
+  for v in r['evaluation']:assert v['total']['learning_sweeps']==0 and v['total']['refusal_attempts']==0
+  sections=[r['training']['total'],r['fingerprint']]+[v['total'] for v in r['evaluation']]+[pair[side] for pair in c['records'] for side in ['unbroken','reloaded']]
+  assert {k:sum(v[k] for v in sections) for k in r['work']}==r['work']
+  assert r['work']['failed_settle_calls']==0 and r['trained']['describe']['refusals']==0
+  metrics={kind:{'progress_m':sum(v['total']['progress_m'] for v in r['evaluation'] if v['policy']==kind)/2,'damage_hp':sum(v['total']['dealt'] for v in r['evaluation'] if v['policy']==kind)} for kind in ['trained','newborn','random','ablated']}
+  pg=metrics['trained']['progress_m']-max(metrics[k]['progress_m'] for k in ['newborn','random']);dg=metrics['trained']['damage_hp']-max(metrics[k]['damage_hp'] for k in ['newborn','random'])
+  rows.append({'case':case,'arm':arm,'receipt_sha256':sha(path),'new_work':not reused,'all_source_artifact_custody_fork_work_checks_passed':True,'metrics':metrics,'progress_pass':pg>1e-9,'attack_pass':dg>1e-9 and metrics['trained']['damage_hp']>=30,'progress_gain':pg,'damage_gain':dg,'work':r['work'],'seconds':r['seconds']})
+assert len(rows)==12 and sum(r['new_work'] for r in rows)==8
+pairs=[]
+for case in protocol['first_stage']:
+ control=next(r for r in rows if r['case']==case and r['arm']=='control'); candidate=next(r for r in rows if r['case']==case and r['arm']=='full-budget')
+ pairs.append({'case':case,'progress_pass':candidate['progress_pass'],'attack_pass':candidate['attack_pass'],'control':control['metrics']['trained'],'candidate':candidate['metrics']['trained'],'progress_delta':candidate['metrics']['trained']['progress_m']-control['metrics']['trained']['progress_m'],'damage_delta':candidate['metrics']['trained']['damage_hp']-control['metrics']['trained']['damage_hp']})
+work=lambda group:{k:sum(r['work'][k] for r in group) for k in ['actual_sweeps','settle_calls','failed_settle_calls']}
+smokes=[]
+for f in P.glob('runs/smoke-*/receipt.json'):
+ r=json.loads(f.read_text());assert r['status']=='complete' and r['smoke'];smokes.append(r)
+summary=json.loads((P/'summary.json').read_text())
+new=work([r for r in rows if r['new_work']]); inherited=work([r for r in rows if not r['new_work']]); preflight=work(smokes)
+assert summary['new_work']==new and summary['reused_work_not_repeated']==inherited
+assert summary['behavioral_screen_pass']==all(r['progress_pass'] and r['attack_pass'] for r in pairs)
+original_work={k:sum(json.loads((D/c/'receipt.json').read_text())['work_all_sections'][k] for c in protocol['first_stage']) for k in new}
+result={'status':'complete_independent_audit','behavioral_screen_pass':False,'pairs':pairs,'receipts':rows,'new_production_work':new,'reused_control_work_not_repeated':inherited,'preflight_work':preflight,'original_acquisition_work_not_repeated':original_work,'original_training_moments':480000,'new_training_moments':32000,'reused_training_moments':16000,'new_production_seconds':sum(r['seconds'] for r in rows if r['new_work']),'inherited_control_seconds':sum(r['seconds'] for r in rows if not r['new_work']),'scope':'No promotion: failed screen and substantial retained-skill reductions remain. No new experiments performed by reviewer.','producer_sha256':sha(Path(__file__)),'reviewed_summary_sha256':sha(P/'summary.json')}
+(B/'runs/cadence-phase-final-audit-20261009.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps({k:v for k,v in result.items() if k!='receipts'},indent=2))

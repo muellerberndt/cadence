@@ -1,0 +1,84 @@
+{
+  "scope": "Read-only admission. No training or evaluation executed by this reviewer. Reused controls are inherited observations, not new independent runs.",
+  "originals_verified": [
+    "tumbler-103",
+    "mantis-202",
+    "hexapod-302",
+    "tumbler-102",
+    "mantis-201",
+    "hexapod-301"
+  ],
+  "reused_control_reports": [
+    {
+      "case": "tumbler-103",
+      "source_and_artifact_hashes_verified": true,
+      "original_checkpoint_matches_loaded_saved_initial": true,
+      "raw4000_actual_outcomes_and_pending_chain_verified": true,
+      "fork_arrays_and32_step_records_equal": true,
+      "all_section_work_reconciles": true,
+      "work": {
+        "actual_sweeps": 398716,
+        "settle_calls": 35867,
+        "failed_settle_calls": 0
+      },
+      "seconds": 78.99880587501684
+    },
+    {
+      "case": "mantis-202",
+      "source_and_artifact_hashes_verified": true,
+      "original_checkpoint_matches_loaded_saved_initial": true,
+      "raw4000_actual_outcomes_and_pending_chain_verified": true,
+      "fork_arrays_and32_step_records_equal": true,
+      "all_section_work_reconciles": true,
+      "work": {
+        "actual_sweeps": 533230,
+        "settle_calls": 38968,
+        "failed_settle_calls": 0
+      },
+      "seconds": 51.64278854202712
+    },
+    {
+      "case": "tumbler-102",
+      "source_and_artifact_hashes_verified": true,
+      "original_checkpoint_matches_loaded_saved_initial": true,
+      "raw4000_actual_outcomes_and_pending_chain_verified": true,
+      "fork_arrays_and32_step_records_equal": true,
+      "all_section_work_reconciles": true,
+      "work": {
+        "actual_sweeps": 341195,
+        "settle_calls": 34399,
+        "failed_settle_calls": 0
+      },
+      "seconds": 53.37591483298456
+    },
+    {
+      "case": "mantis-201",
+      "source_and_artifact_hashes_verified": true,
+      "original_checkpoint_matches_loaded_saved_initial": true,
+      "raw4000_actual_outcomes_and_pending_chain_verified": true,
+      "fork_arrays_and32_step_records_equal": true,
+      "all_section_work_reconciles": true,
+      "work": {
+        "actual_sweeps": 565037,
+        "settle_calls": 39730,
+        "failed_settle_calls": 0
+      },
+      "seconds": 88.54980266699567
+    }
+  ],
+  "inherited_reused_control_work": {
+    "actual_sweeps": 1838178,
+    "settle_calls": 148964,
+    "failed_settle_calls": 0
+  },
+  "inherited_reused_control_seconds": 272.5673119170242,
+  "original_six_acquisition_receipts_all_section_work": {
+    "actual_sweeps": 21025048,
+    "settle_calls": 2066931,
+    "failed_settle_calls": 0
+  },
+  "original_six_training_moments": 480000,
+  "planned_new_arms": 8,
+  "planned_new_training_moments": 32000,
+  "reused_control_training_moments": 16000
+}

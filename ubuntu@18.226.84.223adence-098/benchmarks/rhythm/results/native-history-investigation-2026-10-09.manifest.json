@@ -1,0 +1,12 @@
+{
+  "schema": "issue140-investigation-archive/1",
+  "archive": "native-history-investigation-2026-10-09.json.gz",
+  "sha256": "ea958d61ebc19230e4765732816464a9d950c71340ebbe7e328b483be5ea6133",
+  "uncompressed_sha256": "b6b0695a4574327b43fb7e40755c9a6aa78a60b63963443359544c66ffc68d02",
+  "archive_bytes": 3995308,
+  "uncompressed_bytes": 47976433,
+  "text_files": 92,
+  "local_binary_artifacts": 90,
+  "runtime_commit": "7cd45bdcc757ddbcb1717706ca39be1736f0f0d5",
+  "scope": "Original diagnostic source, protocols and results, including failed comparisons and the bounded native sensory-history confirmation. Not a C64 composer closure or changed runtime default. Binary arrays and acquired checkpoints remain in the local run directories; their custody hashes are recorded here. New standalone native_history instrument is a subsequent reproducibility implementation, not the original confirmation source."
+}

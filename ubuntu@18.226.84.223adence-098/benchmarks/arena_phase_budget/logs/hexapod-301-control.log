@@ -1,0 +1,5 @@
+{"moment": 1000, "progress_m": 10.122350114261423}
+{"moment": 2000, "progress_m": 19.235899620323472}
+{"moment": 3000, "progress_m": 26.967489866723948}
+{"moment": 4000, "progress_m": 33.37006369559193}
+{"case": "hexapod-301", "arm": "control", "status": "complete", "seconds": 71.43354883301072}

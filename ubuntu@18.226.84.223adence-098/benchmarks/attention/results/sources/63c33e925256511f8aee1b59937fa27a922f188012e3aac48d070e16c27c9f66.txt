@@ -1,0 +1,81 @@
+"""Frozen exposed-fact admission check, before diagnosing an attention deficit.
+
+The original 14 October relevance recipe is unchanged. This explicitly new
+recipe uses normalized teaching and qualified phases at dt=0.1. It is a
+finite component acquisition control, with both facts in the observation;
+it is not evidence of recall, generalization or a continuing learned life.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import sys
+import time
+from pathlib import Path
+
+import numpy as np
+
+import cadence
+from cadence import Brain
+from cadence.receipts import Receipt
+
+HERE = Path(__file__).resolve().parent
+SPEC = importlib.util.spec_from_file_location(
+    "attention_relevance_control", HERE.parent / "relevance" / "selective_recall.py")
+assert SPEC is not None and SPEC.loader is not None
+relevance = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = relevance
+SPEC.loader.exec_module(relevance)
+
+
+def run(protocol_path: Path = HERE / "protocol.json") -> Receipt:
+    protocol = json.loads(protocol_path.read_text())
+    began = time.monotonic()
+    results = []
+    for seed in protocol["development_seeds"]:
+        rng = np.random.default_rng(np.random.SeedSequence([31014, seed]))
+        order = np.stack([rng.permutation(len(relevance.CASES))
+                          for _ in range(protocol["rounds"])])
+        brain = Brain.compose(relevance.INPUTS, 2, seed=seed, **protocol["brain"])
+        original = brain.brain
+        brain.learner.brain = cadence.NeuralGraph(
+            original.connectome, original.neuron_model.replace(dt=protocol["dt"]),
+            efficacy=original.efficacy, bias=original.bias, log_gain=original.log_gain)
+        trained = relevance.train(
+            brain, order, 1, exposed=True, frozen=False,
+            deadline=min(began + protocol["total_seconds"],
+                         time.monotonic() + protocol["training_seconds_per_arm"]))
+        evaluation = relevance.evaluate(brain, 1, exposed=True)
+        passed = trained["completed"] and relevance.acquisition_gate(
+            evaluation, protocol["acquisition_floor"])
+        results.append({"seed": seed, "resolved": brain.describe(),
+                        "training": trained, "evaluation": evaluation, "passed": passed})
+    package = Path(cadence.__file__).resolve().parent
+    sources = [("benchmarks/attention/" + name, HERE / name)
+               for name in ("admission.py", "coupled.py")]
+    sources.append(("benchmarks/attention/" + protocol_path.name, protocol_path))
+    sources += [("benchmarks/relevance/selective_recall.py", Path(relevance.__file__))]
+    sources += [("src/cadence/" + str(p.relative_to(package)), p)
+                for p in sorted(package.rglob("*.py"))]
+    passed = all(r["passed"] for r in results)
+    return Receipt.build("cadence-coupled-attention-admission/1", {
+        "protocol": protocol, "cadence_version": cadence.__version__, "founders": results,
+        "elapsed_host_seconds": time.monotonic() - began,
+        "passed": passed,
+        "decision": ("admitted_for_development_relevance_tests" if passed else
+                     "stop_behavioral_candidates; acquisition_failure_not_localized_to_retrieval"),
+        "candidate_rounds_used": 0,
+        "confirmation_seeds_used": [],
+    }, sources)
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--protocol", type=Path, default=HERE / "protocol.json")
+    args = parser.parse_args()
+    receipt = run(args.protocol)
+    receipt.write(args.out)
+    print(args.out)

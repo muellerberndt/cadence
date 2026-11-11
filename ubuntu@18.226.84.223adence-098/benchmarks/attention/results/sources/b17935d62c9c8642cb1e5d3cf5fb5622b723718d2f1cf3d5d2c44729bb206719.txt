@@ -1,0 +1,439 @@
+"""Declared two-point reconstruction; execution requires the parent's GO signal.
+
+Rebuild only the first refused round from already-saved final parameters. No
+training replay, alternate integration point, continuation, or candidate search.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import importlib.util
+import json
+import os
+import signal
+import subprocess
+import sys
+import time
+from dataclasses import asdict
+from pathlib import Path
+
+for _name in (
+    "OPENBLAS_NUM_THREADS",
+    "OMP_NUM_THREADS",
+    "MKL_NUM_THREADS",
+    "VECLIB_MAXIMUM_THREADS",
+    "NUMEXPR_NUM_THREADS",
+):
+    os.environ[_name] = "1"
+
+import numpy as np
+
+HERE = Path(__file__).resolve().parent
+START = time.monotonic()
+
+
+def canonical(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), allow_nan=False)
+
+
+def digest(value):
+    return hashlib.sha256(canonical(value).encode()).hexdigest()
+
+
+def file_digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def write_json(path, value):
+    path.write_text(canonical(value) + "\n")
+
+
+def state_arrays(state, prefix):
+    return (
+        {}
+        if state is None
+        else {
+            prefix + name: np.array(getattr(state, name), copy=True)
+            for name in ("v", "activation", "adaptation")
+        }
+    )
+
+
+def memory_arrays(memory):
+    arrays, settings = {}, []
+    for head, member in enumerate(getattr(memory, "memories", (memory,))):
+        for name in ("query", "read", "keys", "values", "held", "ages"):
+            arrays[f"memory_{head}_{name}"] = np.array(getattr(member, name), copy=True)
+        settings.append(
+            {
+                name: getattr(member, name)
+                for name in (
+                    "amplitude",
+                    "temperature",
+                    "recency",
+                    "null",
+                    "mode",
+                    "empty_anchor",
+                )
+            }
+        )
+    return arrays, settings
+
+
+def memory_jacobian(memory, state, row, neurons):
+    """Derivative of the declared agreement drive with respect to activation.
+
+    Includes the null as zero key/value and the exact softmax Hessian. No
+    synaptic state is advanced or updated by this algebra.
+    """
+    result = np.zeros((neurons, neurons))
+    for member in getattr(memory, "memories", (memory,)):
+        if member.mode != "agreement":
+            raise ValueError("this declaration covers agreement memory only")
+        occupied = member.empty_anchor or member.held[row].any()
+        if not occupied:
+            continue
+        keys = np.vstack((member.keys[row], np.zeros((1, len(member.query)))))
+        values = np.vstack((member.values[row], np.zeros((1, len(member.read)))))
+        p = member.weights(state)[row]
+        p = np.r_[p, 1 - p.sum()]
+        mean_key, mixture = p @ keys, p @ values
+        centered_key, centered_value = keys - mean_key, values - mixture
+        read = state[row, member.read]
+        error = read - mixture
+        j = ((centered_value.T * p) @ centered_key) / member.temperature
+        curvature = (
+            np.einsum(
+                "s,si,sj->ij", p * (centered_value @ error), centered_key, centered_key
+            )
+            / member.temperature**2
+        )
+        q, r, alpha = member.query, member.read, member.amplitude
+        result[np.ix_(q, q)] += alpha * (curvature - j.T @ j)
+        result[np.ix_(q, r)] += alpha * j.T
+        result[np.ix_(r, q)] += alpha * j
+        result[np.ix_(r, r)] -= alpha * np.eye(len(r))
+    return result
+
+
+def spectra(captured, graph, memory, schedule):
+    n = graph.connectome.n
+    matrix = np.zeros((n, n))
+    np.add.at(matrix, (graph.connectome.post, graph.connectome.pre), graph._weights)
+    v, s = captured["phase_v"], captured["phase_activation"]
+    assert graph.neuron_model.adaptation is None, (
+        "new adaptation needs a new declaration"
+    )
+    assert np.array_equal(s, graph.neuron_model.activation(v))
+    assert not captured["phase_adaptation"].any()
+    direction = np.random.default_rng(622022).normal(size=s.shape)
+    epsilon = 1e-6
+    numeric = (
+        memory.drive(s + epsilon * direction) - memory.drive(s - epsilon * direction)
+    ) / (2 * epsilon)
+    rows, maximum_check = [], 0.0
+    raw_field = -v + s @ matrix.T + memory.drive(s) + captured["drive"] + graph.bias
+    for row in range(len(v)):
+        mj = memory_jacobian(memory, s, row, n)
+        maximum_check = max(
+            maximum_check, float(abs(mj @ direction[row] - numeric[row]).max())
+        )
+        jac = -np.eye(n) + (matrix + mj) * graph.neuron_model.slope_at(v[row])[None, :]
+        eigen = np.linalg.eigvals(jac)
+        stable = bool((eigen.real < 0).all())
+        rows.append(
+            {
+                "row": row,
+                "minimum_real_eigenvalue": float(eigen.real.min()),
+                "maximum_real_eigenvalue": float(eigen.real.max()),
+                "maximum_imaginary_magnitude": float(abs(eigen.imag).max()),
+                "local_euler_moduli_existing_schedule": {
+                    str(dt): float(abs(1 + dt * eigen).max()) for dt in schedule
+                },
+                "all_continuous_real_parts_negative": stable,
+                "maximum_locally_contracting_euler_step": (
+                    float((-2 * eigen.real / abs(eigen) ** 2).min()) if stable else None
+                ),
+                "exact_zero_potential_coordinates": np.flatnonzero(
+                    v[row] == 0
+                ).tolist(),
+            }
+        )
+    assert maximum_check < 1e-6, "agreement Jacobian directional check failed"
+    return {
+        "rows": rows,
+        "memory_jacobian_directional_max_error": maximum_check,
+        "independent_full_field_residual": abs(raw_field).max(axis=1).tolist(),
+        "independent_field_vs_solver_residual_max_error": float(
+            abs(abs(raw_field).max(axis=1) - captured["residual"]).max()
+        ),
+        "state_contract": {
+            "all_potential_coordinates": n,
+            "mask": "all ones; no live coordinate frozen",
+            "activation": "algebraic phi(v); exact cache equality independently checked",
+            "adaptation": "disabled in saved neuron model; saved arrays verified all zero",
+            "nudge": "none; free action phase only",
+            "memory": "actual immutable pre-solve bank captured before higher-level rollback",
+            "kinks": "existing slope_at one-sided convention at exact zero; indices retained",
+            "scope": "pointwise full-coordinate linearization, not a trajectory/global stability proof",
+        },
+    }
+
+
+def main():
+    declared = json.loads((HERE / "protocol.json").read_text())
+    assert file_digest(Path(__file__)) == declared["helper_sha256"]
+    root = Path(declared["worktree"])
+    assert (
+        subprocess.check_output(
+            ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+        ).strip()
+        == declared["source_revision"]
+    )
+    for entry in declared["source_manifest"]["files"]:
+        assert file_digest(root / entry["path"]) == entry["sha256"], entry["path"]
+    receipt_path = Path(declared["reference_receipt"])
+    assert file_digest(receipt_path) == declared["reference_archive_sha256"]
+    receipt = json.loads(receipt_path.read_text())
+    assert (
+        receipt["digest"]
+        == declared["reference_receipt_digest"]
+        == digest({name: receipt[name] for name in ("kind", "body", "source")})
+    )
+    assert receipt["source"] == declared["source_manifest"]
+    assert receipt["body"]["source_revision"] == declared["reference_source_revision"]
+    sys.path.insert(0, str(root / "src"))
+    spec = importlib.util.spec_from_file_location(
+        "h1_first_failure_owner", root / "benchmarks/attention/heads_admission.py"
+    )
+    owner = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = owner
+    spec.loader.exec_module(owner)
+    graph_type = owner.heads.Graph
+    protocol, summaries = receipt["body"]["protocol"], []
+    assert protocol["dt"] == 1.0 and protocol["brain"]["learning_damping"] == 3
+    signal.signal(
+        signal.SIGALRM, lambda *_: (_ for _ in ()).throw(TimeoutError("40s cap"))
+    )
+    signal.setitimer(
+        signal.ITIMER_REAL,
+        max(0.001, declared["maximum_host_seconds"] - (time.monotonic() - START)),
+    )
+    try:
+        for point in declared["points"]:
+            seed = point["seed"]
+            run = next(
+                x
+                for x in receipt["body"]["runs"]
+                if x["arm"] == "h1" and x["seed"] == seed
+            )
+            path = (
+                receipt_path.parent / "parameters" / run["parameter_snapshot"]["file"]
+            )
+            assert file_digest(path) == point["parameter_archive_sha256"]
+            with np.load(path, allow_pickle=False) as archive:
+                saved = {
+                    name: np.array(archive[name], copy=True) for name in archive.files
+                }
+            assert (
+                digest({k: v.tolist() for k, v in saved.items()})
+                == (run["parameter_snapshot"]["content_sha256"])
+            )
+            meta = json.loads(str(saved["metadata"]))
+            assert meta["source"] == receipt["source"]
+            brain = owner.make_brain("h1", seed, protocol, "agreement")
+            assert owner.sr.parameter_digest(brain) == run["initial_parameters"]
+            brain.learner.brain = brain.brain.with_parameters(
+                **{name: saved[name] for name in ("efficacy", "bias", "log_gain")}
+            )
+            for name in (
+                "velocity",
+                "velocity_bias",
+                "second_moment",
+                "second_moment_bias",
+            ):
+                setattr(brain.learner, name, saved["optimizer_" + name].copy())
+            brain.learner.updates, brain.learner.contrast_updates = (
+                meta["updates"],
+                meta["contrast_updates"],
+            )
+            assert (
+                owner.sr.parameter_digest(brain)
+                == run["final_parameters"]
+                == (meta["parameter_sha256"])
+            )
+            assert (
+                brain.learner.config.to_dict()
+                == meta["learning"]
+                == run["learning_config"]
+            )
+            assert brain.describe()["genes"] == run["resolved"]["genes"]
+            schedule = owner.task.draw(
+                seed, protocol["task"]["rounds"], protocol["task"]["batch"]
+            )
+            assert digest(schedule.tolist()) == run["schedule_sha256"]
+            rows = schedule[point["completed_rounds"]]
+            brain.reset()
+            work, cost = (
+                owner.sr.Work(),
+                {
+                    name: 0
+                    for name in (
+                        "cortical_synapse_transports",
+                        "memory_scan_macs",
+                        "softmax_elements",
+                        "memory_drive_evaluations",
+                    )
+                },
+            )
+            destination = HERE / f"seed-{seed}"
+            destination.mkdir(exist_ok=False)
+            context, captures = {}, []
+            original = graph_type.equilibrate
+
+            def capture(
+                graph,
+                drive,
+                *args,
+                _original=original,
+                _context=context,
+                _captures=captures,
+                _destination=destination,
+                **kwargs,
+            ):
+                memory, warm = graph.memory, kwargs.get("state")
+                assert memory is not None and kwargs.get("nudge") is None
+                assert kwargs.get("mask") is None or np.all(kwargs["mask"] == 1)
+                data = {
+                    "drive": np.array(drive, copy=True),
+                    **state_arrays(warm, "warm_"),
+                }
+                phase = _original(graph, drive, *args, **kwargs)
+                data.update(
+                    **state_arrays(phase.state, "phase_"),
+                    residual=phase.residual.copy(),
+                    solver_mask=np.ones(graph.connectome.n),
+                )
+                bank, settings = memory_arrays(memory)
+                data.update(bank)
+                for name in ("pre", "post", "count", "sign"):
+                    data[name] = np.array(getattr(graph.connectome, name), copy=True)
+                for name in ("efficacy", "bias", "log_gain"):
+                    data[name] = np.array(getattr(graph, name), copy=True)
+                record = {
+                    **_context,
+                    "warm_is_none": warm is None,
+                    "neuron_model": graph.neuron_model.to_dict(),
+                    "memory_settings": settings,
+                    "populations": {
+                        k: [int(x) for x in v]
+                        for k, v in graph.connectome.populations.items()
+                    },
+                    "requested_budget": int(kwargs["budget"]),
+                    "requested_damping": int(kwargs["damping"]),
+                    "tolerance": float(phase.tolerance),
+                    "steps": int(phase.steps),
+                    "residual_checks": int(phase.residual_checks),
+                    "stagnation_checks": int(phase.stagnation_checks),
+                    "damping_halvings": int(phase.damping_halvings),
+                    "qualified": phase.qualified.tolist(),
+                    "residual": phase.residual.tolist(),
+                }
+                data["metadata"] = np.asarray(canonical(record))
+                name = f"phase-{len(_captures)}-{_context['phase']}.npz"
+                np.savez(_destination / name, **data)
+                _captures.append((record, data, graph, memory, name))
+                return phase
+
+            graph_type.equilibrate = capture
+            try:
+                with owner.metered(cost):
+                    stopped = None
+                    prefix, _ = owner.task.events(rows)
+                    for index, observation in enumerate(prefix):
+                        context.update(phase="prefix", prefix_index=index)
+                        if work.act(brain, observation) is None:
+                            stopped = "refused_prefix"
+                            break
+                    if stopped is None:
+                        context.update(phase="query", prefix_index=None)
+                        query, drive, _ = owner.prepare(brain, rows, "h1")
+                        if owner.act_drive(brain, query, drive, work) is None:
+                            stopped = "refused_query"
+            finally:
+                graph_type.equilibrate = original
+            assert stopped == point["stop"] == run["training"]["stop"]
+            record, data, graph, actual_memory, filename = captures[-1]
+            assert not all(record["qualified"])
+            assert (
+                max(record["residual"])
+                == point["maximum_failed_residual"]
+                == (run["training"]["work"]["max_action_residual"])
+            )
+            assert record["prefix_index"] == point["prefix_index"]
+            assert owner.sr.parameter_digest(brain) == run["final_parameters"]
+            analysis = spectra(
+                data, graph, actual_memory, declared["existing_dt_schedule"]
+            )
+            assert analysis["independent_field_vs_solver_residual_max_error"] < 1e-11
+            result = {
+                "seed": seed,
+                "completed_rounds": point["completed_rounds"],
+                "failed_round_1_based": point["completed_rounds"] + 1,
+                "failed_rows": rows.tolist(),
+                "stop": stopped,
+                "failure": record,
+                "reconstructed_round_work": asdict(work),
+                "metered_work": cost,
+                "parameter_digest_match": True,
+                "failure_residual_match": True,
+                "original_phase_work_comparison": declared["work_comparison_limit"],
+                "captured_phases": [
+                    {
+                        "file": name,
+                        "sha256": file_digest(destination / name),
+                        "phase": info,
+                    }
+                    for info, _, _, _, name in captures
+                ],
+                "failed_npz": filename,
+                "spectrum": analysis,
+                "elapsed_host_seconds": time.monotonic() - START,
+            }
+            write_json(destination / "result.json", result)
+            summaries.append(result)
+            write_json(HERE / "summary.partial.json", {"points": summaries})
+    except TimeoutError as error:
+        write_json(
+            HERE / "summary.json",
+            {
+                "status": "host_cap",
+                "points": summaries,
+                "error": str(error),
+                "new_training_updates": 0,
+                "elapsed_host_seconds": time.monotonic() - START,
+                "interpretation": "interrupted or missing points are unavailable, never qualified",
+            },
+        )
+        raise
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+    for entry in declared["source_manifest"]["files"]:
+        assert file_digest(root / entry["path"]) == entry["sha256"], entry["path"]
+    write_json(
+        HERE / "summary.json",
+        {
+            "status": "completed",
+            "points": summaries,
+            "helper_sha256": file_digest(Path(__file__)),
+            "protocol_sha256": file_digest(HERE / "protocol.json"),
+            "neural_scope": "only the declared two next-round reconstructions",
+            "elapsed_host_seconds": time.monotonic() - START,
+            "new_training_updates": 0,
+            "alternate_dt_tolerance_sweep_probes": 0,
+        },
+    )
+
+
+if __name__ == "__main__":
+    main()

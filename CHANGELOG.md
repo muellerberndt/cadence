@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Measured
+
+- **Delayed credit on 0.97.0** ([#283](https://github.com/muellerberndt/cadence/issues/283),
+  [the chamber](benchmarks/delayed_credit/README.md#the-re-read-on-0970-fresh-founders-2840-to-2845)):
+  on six fresh founders, `actor_eta=0.1, actor_eta_bias=0.01, actor_hold=1.0,
+  actor_entropy=0.1` learns a T-maze whose reward comes 10, 50 and 200 moments after the choice
+  on 6 of 6, at the level of an LSTM actor-critic, with its yoked, shuffled and ablated controls at
+  chance. The key-door, whose pouch the critic sees, reads 6 of 6 at 10, 4 of 6 at 50 and 2 of 6
+  at 200: the critic's discount on the path the pouch opens. The chamber gains arms with the
+  entropy beside the hold. Every default is unchanged.
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it

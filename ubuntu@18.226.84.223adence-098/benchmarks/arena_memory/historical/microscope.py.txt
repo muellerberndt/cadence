@@ -1,0 +1,137 @@
+"""Bounded, observational reward-life microscope; no candidate policy changes."""
+import gzip
+import hashlib
+import importlib.util
+import json
+from pathlib import Path
+import sys
+import time
+import types
+
+CORE = Path('/workspace/temp/cadence-issue160-learning-20261009')
+ARENA = Path('/workspace/cadence-robot-arena')
+FROZEN = Path('/workspace/temp/cadence-robot-release-confirmation-20261008')
+DATA = ARENA/'runs/cadence-release-confirmation-20261008-9ecbd0f'
+OUT = Path(__file__).parent
+sys.path[:0] = [str(CORE/'src'),str(ARENA)]
+import numpy as np
+from cadence import Brain
+from arena.brain import RobotBrain
+from arena.parts import blueprint_from_dict
+
+spec = importlib.util.spec_from_file_location('frozen_confirmation', FROZEN/'benchmarks/arena_confirmation/confirm.py')
+h = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(h)
+
+def sha(path): return hashlib.sha256(path.read_bytes()).hexdigest()
+def stats(values):
+    a = np.asarray(values,dtype=float)
+    return {} if not a.size else {'n':int(a.size),'mean':float(a.mean()),'std':float(a.std()),'min':float(a.min()),'median':float(np.median(a)),'max':float(a.max())}
+def features(agent): return np.r_[np.asarray(agent.state.activation)[0,agent.critic_index],1.]
+
+def passive(rows, initial, eta):
+    weights=np.array(initial['weights']);trace=np.array(initial['trace'])
+    errors=[]; calibration=[]
+    for r in rows:
+        old=np.array(r['old_features']);following=np.array(r['next_features'])
+        delta=r['reward_received']+.95*(weights@following)-(weights@old)
+        calibration.append({'sampled':r['sampled_before'],'td':float(delta),'reward':r['reward_received']})
+        trace*=.95*.6
+        if r['sampled_before']:
+            trace+=old
+            if eta==5.: errors.append(abs(delta-r['td_signed']))
+            normalized=trace/(1+trace@trace)
+            weights+=eta*np.clip(delta,-1,1)*normalized
+    return {'eta':eta,'sampled_td':stats([r['td'] for r in calibration if r['sampled']]),'routine_td':stats([r['td'] for r in calibration if not r['sampled']]),'replication_max_error':max(errors,default=0.),'rows':calibration}
+
+def run(case, moments=1024):
+    checkpoint=DATA/case/'trained.npz'
+    saved=json.loads((DATA/case/'world.json').read_text())
+    brain=Brain.load(checkpoint)
+    blueprint=blueprint_from_dict(saved['world']['robots'][0]['blueprint'])
+    policy=RobotBrain(blueprint,brain);vars(policy).update(saved['wrapper'])
+    life=h.Life.from_snapshot(saved['world'],policy)
+    actor=brain.basal_ganglia
+    initial={'weights':np.r_[actor.w_critic,actor.b_critic].tolist(),'trace':actor.trace_critic[0].tolist()}
+    capture={}
+    original_critic=actor._critic_candidate
+    original_next=actor._next_state
+    def record_critic(self,td,delta,observed):
+        capture['td_signed']=float(td[0]);capture['dopamine_signed']=float(delta[0])
+        capture['critic_trace_energy']=float(np.sum(self.trace_critic[0]**2))
+        return original_critic(td,delta,observed)
+    def record_next(self,*args,**kwargs):
+        state=original_next(*args,**kwargs)
+        capture['next_features']=np.r_[np.asarray(state.activation)[0,self.critic_index],1.].tolist()
+        return state
+    actor._critic_candidate=types.MethodType(record_critic,actor)
+    actor._next_state=types.MethodType(record_next,actor)
+    graph=brain.brain.connectome
+    sensory=np.isin(graph.pre,brain.sensory_index)
+    motor_edges=np.isin(graph.pre,brain.motor_index)|np.isin(graph.post,brain.motor_index)
+    rows=[];start=time.perf_counter()
+    for t in range(moments):
+        capture.clear()
+        old_features=features(actor).tolist()
+        was_sampled=actor._pending is not None
+        old_value=float(actor._pending[3][0]) if was_sampled else float(brain._lived[2])
+        own=brain._lived[5]
+        received=life.reward
+        eff0=brain.brain.efficacy.copy();bias0=brain.brain.bias.copy()
+        previous_commands=life.robot.commands.copy()
+        result=life.step()
+        reading=dict(brain.last_arousal)
+        after=features(actor)
+        if not was_sampled:
+            capture['next_features']=after.tolist()
+            capture['td_signed']=float(received+.95*(np.r_[actor.w_critic,actor.b_critic]@after)-old_value)
+        eff_delta=brain.brain.efficacy-eff0;bias_delta=brain.brain.bias-bias0
+        activation=np.asarray(actor.state.activation)[0,brain.motor_index]
+        v=np.asarray(actor.state.v)[0,brain.motor_index]
+        p=actor.probabilities(actor.state)[0]
+        margins=[float(np.sort(p[i,:size])[-1]-np.sort(p[i,:size])[-2]) for i,size in enumerate(brain.learner.slot_sizes)]
+        row={'t':t,'reward_received':received,'sampled_before':was_sampled,'own_before':own,
+             'old_value':old_value,'old_features':old_features,'previous_commands':previous_commands,
+             'commands':result['commands'],'mode_after':reading['mode'],'wake':not was_sampled and reading['mode']=='aroused',
+             'learning':dict(brain.last_learning),'arousal':reading,'outcome':result,
+             'motor_margin':margins,'motor_slope':brain.brain.neuron_model.slope_at(v).tolist(),
+             'motor_activation':activation.tolist(),
+             'sensory_step_mean':float(np.abs(eff_delta[sensory]).mean()),
+             'motor_edge_step_mean':float(np.abs(eff_delta[motor_edges]).mean()),
+             'motor_bias_step_mean':float(np.abs(bias_delta[brain.motor_index]).mean()),
+             'association_bias_step_mean':float(np.abs(bias_delta[brain.association_index]).mean()),
+             **capture}
+        rows.append(row)
+    controls=[passive(rows,initial,eta) for eta in (5.,.05)]
+    summary={
+        'case':case,'moments':moments,'seconds':time.perf_counter()-start,
+        'sampled_outcomes':sum(r['sampled_before'] for r in rows),
+        'routine_outcomes':sum(not r['sampled_before'] for r in rows),
+        'routine_negative':sum(not r['sampled_before'] and r['reward_received']<0 for r in rows),
+        'routine_below_need':sum(not r['sampled_before'] and r['reward_received']<.05 for r in rows),
+        'wakes':sum(r['wake'] for r in rows),
+        'negative_wakes':sum(r['wake'] and r['reward_received']<0 for r in rows),
+        'cap_share':np.mean([r['learning']['capped'] for r in rows if r['sampled_before']]),
+        'sampled_reward':stats([r['reward_received'] for r in rows if r['sampled_before']]),
+        'routine_reward':stats([r['reward_received'] for r in rows if not r['sampled_before']]),
+        'sampled_td':stats([r['td_signed'] for r in rows if r['sampled_before']]),
+        'routine_td':stats([r['td_signed'] for r in rows if not r['sampled_before']]),
+        'motor_margin':stats([v for r in rows for v in r['motor_margin']]),
+        'motor_slope':stats([v for r in rows for v in r['motor_slope']]),
+        'update_means':{k:stats([r[k] for r in rows if r['sampled_before']]) for k in ('sensory_step_mean','motor_edge_step_mean','motor_bias_step_mean','association_bias_step_mean')},
+        'passive_critic_controls':[{k:v for k,v in c.items() if k!='rows'} for c in controls],
+    }
+    return {'scope':'Bounded development microscope; private original-world continuation, no changed actor or behavior policy. Passive critic controls use the same recorded feature/reward stream, not candidate world behavior.',
+            'checkpoint_sha256':sha(checkpoint),'world_sha256':sha(DATA/case/'world.json'),'producer_sha256':sha(Path(__file__)),
+            'summary':summary,'initial_critic':initial,'rows':rows,'passive_critic_controls':controls}
+
+if __name__=='__main__':
+    case=sys.argv[1]
+    out=OUT/(case+'-baseline-1024.json.gz')
+    if out.exists():raise FileExistsError(out)
+    sources={str(p.relative_to(CORE)):sha(p) for p in (CORE/'src/cadence').rglob('*.py')}
+    result=run(case)
+    assert sources=={str(p.relative_to(CORE)):sha(p) for p in (CORE/'src/cadence').rglob('*.py')}
+    result['source_sha256']=sources
+    out.write_bytes(gzip.compress(json.dumps(result,default=float).encode(),mtime=0))
+    print(json.dumps(result['summary'],default=float),flush=True)

@@ -1,0 +1,6087 @@
+{
+  "schema": "cadence.local-equilibrium-grammar/v1",
+  "protocol": {
+    "schema": "cadence.local-equilibrium-grammar-protocol/v2-longer-training",
+    "frozen_before_training": true,
+    "task": "Main-clause subject/verb number agreement with an intervening prepositional-phrase distractor noun",
+    "vocabulary": {
+      "subjects": [
+        "pilot",
+        "pilots",
+        "sailor",
+        "sailors"
+      ],
+      "distractors": [
+        "guard",
+        "guards",
+        "farmer",
+        "farmers"
+      ],
+      "verbs": [
+        "smiles",
+        "smile"
+      ]
+    },
+    "surface_template": "the SUBJECT near the DISTRACTOR VERB",
+    "target": "grammatical iff subject_index modulo 2 equals verb_index",
+    "features": "Concatenated role-specific one-hot tokens: 4 subject + 4 distractor + 2 verb. Input drive is twice the feature vector; no target-derived feature.",
+    "heldout_subject_distractor_pairs": [
+      [
+        0,
+        0
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        1
+      ],
+      [
+        3,
+        3
+      ]
+    ],
+    "split": "Hold out both verb forms for the four specified subject/distractor pairs (8 sentences); train on the other 24. Every token and both classes occur in each partition. Two held-out noun pairs agree in number and two conflict. Every subject/verb pairing has been seen with other distractors; the test checks novel distractor-combination invariance, not an unseen agreement rule. Never tune using held-out results.",
+    "seeds": [
+      5,
+      6,
+      7,
+      8,
+      9
+    ],
+    "arms": [
+      "local_centered",
+      "exact_implicit",
+      "frozen_no_nudge",
+      "linear_logistic"
+    ],
+    "hidden": 12,
+    "neuron_model": {
+      "dt": 0.5,
+      "slope": 1.0,
+      "threshold": 0.0,
+      "leak": 1.0,
+      "gain": 0.5
+    },
+    "initial_effective_source_std": 0.5,
+    "initial_effective_reciprocal_std": 0.1,
+    "initial_hidden_bias_std": 0.2,
+    "temperature": 0.2,
+    "beta": 0.03,
+    "eta": 1.0,
+    "eta_bias": 1.0,
+    "efficacy_cap": 8.0,
+    "updates": 8000,
+    "batch": "All 24 training sentences in fixed order per update, identical for all learning arms",
+    "free_reciprocal_row_mass_cap": 1.5,
+    "projection": "After each learned update, uniformly scale reciprocal hidden/output efficacy only if its effective incoming free/free row mass exceeds 1.5; both neural learning arms share this constraint. Input-source efficacies retain the same per-efficacy cap.",
+    "solve": {
+      "budget": 1024,
+      "chunk": 32,
+      "tolerance": 1e-10
+    },
+    "exact_baseline": "Implicit derivative of converged same-network equilibrium by solving its free-state Jacobian transpose; multiply endpoint contributions by contact/gain factor. Apply the same efficacy preconditioner 1/contact_factor and the same clipping and projection as local updates. Loss convention is temperature times cross-entropy.",
+    "linear_baseline": "Two-class affine logits on identical one-hot features, zero initialization, full-batch cross-entropy gradient, learning rate 1 for 8000 updates",
+    "gradient_audit": "For every seed before learning, central finite differences of first/middle/last source efficacy, first/middle/last reciprocal physical efficacy pairs and three trainable biases (epsilon 1e-5), independent of implicit derivative. Also compare beta-halved local contrast with implicit derivative using contact factors and temperature convention.",
+    "acceptance": "Every used free and detuned phase must have residual at most 1e-10; failures terminate that seed/arm and remain in receipt. Local signal must arise only from public Learner.contrast/update of actual equilibria. Report every arm/seed; no seed removal or update-budget extension after seeing evaluation.",
+    "evaluation": "Initial/final train and final-only held-out cross-entropy and accuracy, wrong sentences, all phase residual maxima, total solve steps, parameter count, wall seconds, library/protocol/source digests. Local headline support requires all 5 seeds beat both frozen and linear held-out accuracy with at least 0.875 held-out accuracy, and the same-model exact baseline reaching that threshold in all 5 seeds. Otherwise report failure/inconclusive without retuning. Eight test sentences permit descriptive results only, not a broad statistical generalization claim.",
+    "scope": "Small one-moment nonlinear finite-grammar judgment under supplied role coding and fixed architecture. No temporal-credit, word-token discovery, scale, biological, or superiority claim. Architecture and hyperparameters are declared experimental controls, not evolved results. Artifacts stay below 100 MB.",
+    "followup_provenance": {
+      "initial_protocol_sha256": "1ddcd7909ac6f8d32997f6591bad3d37a287a06e2168fae27f55bcd3059295f6",
+      "initial_producer_sha256": "17e95341a207ef9faaf86b287785bbb6aa27bdc0226d5cfad9b78c7f261c6a53",
+      "rationale": "Initial 800-update experiment missed robust criterion and retained substantial training error. This adaptive follow-up varies only training budget and fresh seeds; it is not an independently selected task or a relabeled confirmatory result. No further tuning or extension if it misses the criterion.",
+      "changes": [
+        "Fresh fixed seeds 5 through 9",
+        "8000 full-batch updates",
+        "Only training scores at initialization; held-out scores only after final update"
+      ]
+    }
+  },
+  "source_sha256": {
+    "benchmarks/local_equilibrium_longer/run.py": "df55bb5f8221a2e67a35d5ce9b8fe001175d18319016ad39be9988d133bc637e",
+    "benchmarks/local_equilibrium_longer/protocol.json": "52ae44bfa01bd607c2f35ea37e5c4e90f8a0791621e028ae96c84aaf2e281b73",
+    "src/cadence/__init__.py": "728b6cc2a0ee3b9cd10d4579ae9797599877dfcc6603b5e8c6a2fcad21cdf51c",
+    "src/cadence/actor.py": "3b72a7b5cf8152971ed128042843fa98d2aed27959ca651c9e1f3a4b48f0de33",
+    "src/cadence/atlas.py": "9d4b73e8bb0f45b90d9f64fbe1bcca2c5eb65ded39d21ce69973c04bfce7c8fc",
+    "src/cadence/belief.py": "dcf0945bbfe893039dc2156d5ae11224684fd1ecd80dba9b8aedfbfe7119b7df",
+    "src/cadence/belief_torch.py": "fce128409f29e3ebc73dfa79c9349908c4b455b7f03e39ce1312dec06e938ebb",
+    "src/cadence/blocks.py": "b6764aeffad73259f25e5ef9b84a2841f25399c5b712c534d7d87bd2dbacc008",
+    "src/cadence/brain.py": "452b65727105fead891bfc140ba7f5b2c4f1732550e52923f9a9a46f669f3cea",
+    "src/cadence/certificate.py": "d0caac73cc3f4c155cf98e79b744a94e2eb7c5346c1a31c0034121a0364837ea",
+    "src/cadence/checkpoint.py": "b2de46973d83d5750c6a637cdc45785fe053b7c527155ab98dc273ddfe175526",
+    "src/cadence/circuits/__init__.py": "e01af2eb97487c56bd272ce63a115c298345982d1f6342d59a2959de9da61a84",
+    "src/cadence/circuits/assembly.py": "5386b09c833ad005dcfef42eac66e31ec950246f5fe68b512a8c2a87e25ef68e",
+    "src/cadence/circuits/deliberation.py": "c43002b51da841b881188b015141d8b7a68609ce7cd67c9646eb14b869f803a6",
+    "src/cadence/connectome.py": "4a01f371493f1cdfa5a1d698b00071117c2ccd317a7a8b7f9eef326f1e63e954",
+    "src/cadence/content_memory.py": "9e2041ffb1423fd1514a12f206e23006f596a13e3df25cbc2eca6c68cd1dc9ca",
+    "src/cadence/demo.py": "8dcbce86fa9955425f74a155a9943777366759de015d4fbbf2e4584f1b179d12",
+    "src/cadence/experimental/__init__.py": "e5d3c48c6b095306c53b7b2e9ea0e781badd3173506561aacc7969cbb4a8e715",
+    "src/cadence/experimental/partitioned.py": "75ec1dfdab7943ef45528f31abf51a6651add2064d60d436b90002d62b49e914",
+    "src/cadence/fused.py": "2195f5b65a4c18bbe64bc5be95dcb7be5e9f2652e6770d2f166f12bf52ed7472",
+    "src/cadence/generic.py": "86fa9ed90cfa7aec5b44a164ef757b77c3570c25e5954d98fd59e01935294065",
+    "src/cadence/genome.py": "8aecf293f9a955aa6fa5678a6d564ac41a1487397282bfdee7253d729ae8fa23",
+    "src/cadence/learning.py": "7ee3b14cc9b720ffa59477744c743204dc16863edf37a762caa2c43ff8b74a8c",
+    "src/cadence/memory.py": "e1665d6d315fd3d4e79c38c8820708d72af1ee603c6ad26a614fcf97b19b11c1",
+    "src/cadence/neuron.py": "25cd3c09d26c9a8c6b717c57eff9f32547ac8f73e736ce1ac9696a94002fd27e",
+    "src/cadence/patch.py": "5a1edd9b550265f12bbdb391fc7dbd741d4d044f5c3e6f4eae6a42fc8b9aad17",
+    "src/cadence/planning.py": "6d12eb465d48961f18ac06e5d742af3722c39bf865c1259e13a5bf53da2cbb36",
+    "src/cadence/plasticity.py": "a723a3dfd486242c10e325e3b9ecd3fdc7796dfae2d2dcc0af932d2d04678e5a",
+    "src/cadence/population.py": "37d7ffeb8f73a43f2cb0852c4b3653f0cfe6ca198cb66cf95263ecd478d0bb0b",
+    "src/cadence/ports.py": "0b7883ae39fd64c9cc5fe61b01b0dba573f8e63f2fa88b27934dc285a117029c",
+    "src/cadence/protocol.py": "b98b5b2ac4c5a9529efe9af484c092b961ba97c588456da1d5db2dd3d5f95804",
+    "src/cadence/receipts.py": "75b7f4bd0b3d1248aa130cff13dc7f31f88345f63400322e60d01f4c7130b276",
+    "src/cadence/record_patch.py": "676d2b332a3b156f55c769bb3b8199d21832a6a37722ed5d742fd24379e29d25",
+    "src/cadence/record_ports.py": "76d099104f782b8df343efb50803a54db8f1a0cb14d129bbc255728002933c46",
+    "src/cadence/record_stack.py": "3851bbe2efbd6407623b0ea4f503bca668ca97dbf3d2fdba9b4ac3a6042e74b4",
+    "src/cadence/recording.py": "3e5feb98096b672cac848e780b33dbcc94e26f90c88290db864c4529e3301cb2",
+    "src/cadence/records.py": "578a122384c52114442d2ce519e87d89258291c22e71ff143882000ae983a7f6",
+    "src/cadence/reference.py": "ae66b866ccdfec649f6b890bbeb1afdef359759f3b06f7703af0ce560e892b4f",
+    "src/cadence/regions.py": "804aa7dc045303825b0b1ea02409cf9b570cd614d11d0585e77b5b299ea31d03",
+    "src/cadence/replay.py": "c61613285e537b4d1da62d2d56b83b097a6643a77a364692754f6255d5f2aea2",
+    "src/cadence/sequence.py": "0433ae0e9fd5733b8463e54d770cd877279f5ba93f5d121cd276772f5d5031e6",
+    "src/cadence/sparse.py": "1ada55e8fc711460292e31ae3185ea32fc0aa3da42f64e7196719718295fd516",
+    "src/cadence/stream.py": "8667a3cac8441591b16d064fa600cd4abe920f2f241f28599d079a71200d3380",
+    "src/cadence/temporal.py": "6922eff7ac4503bad91961f2da72f0ae24b3bf896e264502f3bd13b11b9cbac5",
+    "src/cadence/temporal_memory.py": "3b7e58f3cc5814c06358d18aba00c7abf8e0c4b9f9d6b2a5265f4cc44d7cab11",
+    "src/cadence/timing.py": "f25229ce3baa970f20dfc135fd128cff62d11a3b88326aa0b91afde0dcb1192e"
+  },
+  "environment": {
+    "python": "3.13.0",
+    "numpy": "2.5.3",
+    "machine": "arm64",
+    "platform": "macOS-15.3-arm64-arm-64bit-Mach-O"
+  },
+  "dataset": {
+    "triples": [
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        1,
+        1
+      ],
+      [
+        0,
+        2,
+        0
+      ],
+      [
+        0,
+        2,
+        1
+      ],
+      [
+        0,
+        3,
+        0
+      ],
+      [
+        0,
+        3,
+        1
+      ],
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        1,
+        0,
+        1
+      ],
+      [
+        1,
+        1,
+        0
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        1,
+        2,
+        0
+      ],
+      [
+        1,
+        2,
+        1
+      ],
+      [
+        1,
+        3,
+        0
+      ],
+      [
+        1,
+        3,
+        1
+      ],
+      [
+        2,
+        0,
+        0
+      ],
+      [
+        2,
+        0,
+        1
+      ],
+      [
+        2,
+        1,
+        0
+      ],
+      [
+        2,
+        1,
+        1
+      ],
+      [
+        2,
+        2,
+        0
+      ],
+      [
+        2,
+        2,
+        1
+      ],
+      [
+        2,
+        3,
+        0
+      ],
+      [
+        2,
+        3,
+        1
+      ],
+      [
+        3,
+        0,
+        0
+      ],
+      [
+        3,
+        0,
+        1
+      ],
+      [
+        3,
+        1,
+        0
+      ],
+      [
+        3,
+        1,
+        1
+      ],
+      [
+        3,
+        2,
+        0
+      ],
+      [
+        3,
+        2,
+        1
+      ],
+      [
+        3,
+        3,
+        0
+      ],
+      [
+        3,
+        3,
+        1
+      ]
+    ],
+    "labels": [
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1,
+      0,
+      1
+    ],
+    "heldout": [
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "linear": {
+    "status": "complete",
+    "arm": "linear_logistic",
+    "independent_parameters": 22,
+    "updates": 8000,
+    "wall_seconds": 0.10809412499656901,
+    "final": {
+      "train": {
+        "cross_entropy": 0.6931471805599453,
+        "accuracy": 0.5,
+        "predictions": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "probabilities": [
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ]
+        ]
+      },
+      "heldout": {
+        "cross_entropy": 0.6931471805599453,
+        "accuracy": 0.5,
+        "predictions": [
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0,
+          0
+        ],
+        "probabilities": [
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ],
+          [
+            0.5,
+            0.5
+          ]
+        ]
+      }
+    }
+  },
+  "seeds": [
+    {
+      "seed": 5,
+      "arms": [
+        {
+          "arm": "local_centered",
+          "work": {
+            "solve_seconds": 11.432641517138109,
+            "solve_calls": 24002,
+            "settling_steps": 1529344,
+            "row_steps": 36704768,
+            "maximum_residual": 9.954228066821891e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7066722754370863,
+              "accuracy": 0.4583333333333333,
+              "predictions": [
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.521232414526188,
+                  0.478767585473812
+                ],
+                [
+                  0.5545872477744563,
+                  0.44541275222554366
+                ],
+                [
+                  0.46764103467455514,
+                  0.5323589653254449
+                ],
+                [
+                  0.4883622644879494,
+                  0.5116377355120506
+                ],
+                [
+                  0.5111772746387798,
+                  0.48882272536122023
+                ],
+                [
+                  0.5333063041004141,
+                  0.4666936958995859
+                ],
+                [
+                  0.5527119705992837,
+                  0.4472880294007163
+                ],
+                [
+                  0.5882165371205164,
+                  0.41178346287948364
+                ],
+                [
+                  0.5120736931506905,
+                  0.48792630684930943
+                ],
+                [
+                  0.5512012036639921,
+                  0.44879879633600794
+                ],
+                [
+                  0.5021569969228475,
+                  0.4978430030771524
+                ],
+                [
+                  0.5371623204079917,
+                  0.4628376795920082
+                ],
+                [
+                  0.625265179444867,
+                  0.37473482055513296
+                ],
+                [
+                  0.6553722602113911,
+                  0.3446277397886089
+                ],
+                [
+                  0.5385449230599333,
+                  0.4614550769400667
+                ],
+                [
+                  0.5649603627457829,
+                  0.4350396372542171
+                ],
+                [
+                  0.5741116456384986,
+                  0.4258883543615015
+                ],
+                [
+                  0.6020001914308486,
+                  0.39799980856915135
+                ],
+                [
+                  0.5709746056823698,
+                  0.42902539431763004
+                ],
+                [
+                  0.6037283415487606,
+                  0.39627165845123935
+                ],
+                [
+                  0.5329572741505313,
+                  0.4670427258494687
+                ],
+                [
+                  0.5729251160464099,
+                  0.42707488395359006
+                ],
+                [
+                  0.4730332674561256,
+                  0.5269667325438743
+                ],
+                [
+                  0.507543627682306,
+                  0.49245637231769407
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.09517134575173691,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08404329508757381,
+                  0.9159567049124261
+                ],
+                [
+                  0.9028709703011797,
+                  0.09712902969882026
+                ],
+                [
+                  0.0602954380146866,
+                  0.9397045619853134
+                ],
+                [
+                  0.89962350085585,
+                  0.10037649914415009
+                ],
+                [
+                  0.06102713746589491,
+                  0.9389728625341051
+                ],
+                [
+                  0.9011699091065403,
+                  0.09883009089345972
+                ],
+                [
+                  0.919803343521063,
+                  0.08019665647893702
+                ],
+                [
+                  0.1097352797125197,
+                  0.8902647202874803
+                ],
+                [
+                  0.9186290666164617,
+                  0.08137093338353821
+                ],
+                [
+                  0.1082905757581211,
+                  0.8917094242418789
+                ],
+                [
+                  0.9039856635472447,
+                  0.09601433645275523
+                ],
+                [
+                  0.11554656415157052,
+                  0.8844534358484295
+                ],
+                [
+                  0.09227089169466977,
+                  0.9077291083053302
+                ],
+                [
+                  0.910947887694756,
+                  0.08905211230524387
+                ],
+                [
+                  0.0646324291356294,
+                  0.9353675708643707
+                ],
+                [
+                  0.9045482028204561,
+                  0.09545179717954394
+                ],
+                [
+                  0.06445056302876176,
+                  0.9355494369712383
+                ],
+                [
+                  0.9048386957196917,
+                  0.09516130428030832
+                ],
+                [
+                  0.9201661634842987,
+                  0.0798338365157013
+                ],
+                [
+                  0.10777758741137403,
+                  0.892222412588626
+                ],
+                [
+                  0.9197037194273023,
+                  0.08029628057269766
+                ],
+                [
+                  0.10674509602930787,
+                  0.8932549039706921
+                ],
+                [
+                  0.9061767486250708,
+                  0.09382325137492933
+                ],
+                [
+                  0.11301032629781822,
+                  0.8869896737021818
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.10273083349206813,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08629751979656877,
+                  0.9137024802034311
+                ],
+                [
+                  0.9062499104049208,
+                  0.09375008959507915
+                ],
+                [
+                  0.9037969194751974,
+                  0.09620308052480261
+                ],
+                [
+                  0.11470885549544396,
+                  0.885291144504556
+                ],
+                [
+                  0.09076067573037216,
+                  0.9092393242696278
+                ],
+                [
+                  0.9082627220053346,
+                  0.09173727799466537
+                ],
+                [
+                  0.9065904656502906,
+                  0.09340953434970949
+                ],
+                [
+                  0.11373025817610147,
+                  0.8862697418238986
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-5-local_centered.npz",
+            "sha256": "a1ec5f7ac3867bcd9aec4eee6e72ff30bee8f5ed279856a90b35eea5955cdc83"
+          },
+          "wall_seconds": 12.225285291962791
+        },
+        {
+          "arm": "exact_implicit",
+          "work": {
+            "solve_seconds": 3.7222999423975125,
+            "solve_calls": 8002,
+            "settling_steps": 512128,
+            "row_steps": 12291584,
+            "maximum_residual": 4.281730525690364e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7066722754370863,
+              "accuracy": 0.4583333333333333,
+              "predictions": [
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.521232414526188,
+                  0.478767585473812
+                ],
+                [
+                  0.5545872477744563,
+                  0.44541275222554366
+                ],
+                [
+                  0.46764103467455514,
+                  0.5323589653254449
+                ],
+                [
+                  0.4883622644879494,
+                  0.5116377355120506
+                ],
+                [
+                  0.5111772746387798,
+                  0.48882272536122023
+                ],
+                [
+                  0.5333063041004141,
+                  0.4666936958995859
+                ],
+                [
+                  0.5527119705992837,
+                  0.4472880294007163
+                ],
+                [
+                  0.5882165371205164,
+                  0.41178346287948364
+                ],
+                [
+                  0.5120736931506905,
+                  0.48792630684930943
+                ],
+                [
+                  0.5512012036639921,
+                  0.44879879633600794
+                ],
+                [
+                  0.5021569969228475,
+                  0.4978430030771524
+                ],
+                [
+                  0.5371623204079917,
+                  0.4628376795920082
+                ],
+                [
+                  0.625265179444867,
+                  0.37473482055513296
+                ],
+                [
+                  0.6553722602113911,
+                  0.3446277397886089
+                ],
+                [
+                  0.5385449230599333,
+                  0.4614550769400667
+                ],
+                [
+                  0.5649603627457829,
+                  0.4350396372542171
+                ],
+                [
+                  0.5741116456384986,
+                  0.4258883543615015
+                ],
+                [
+                  0.6020001914308486,
+                  0.39799980856915135
+                ],
+                [
+                  0.5709746056823698,
+                  0.42902539431763004
+                ],
+                [
+                  0.6037283415487606,
+                  0.39627165845123935
+                ],
+                [
+                  0.5329572741505313,
+                  0.4670427258494687
+                ],
+                [
+                  0.5729251160464099,
+                  0.42707488395359006
+                ],
+                [
+                  0.4730332674561256,
+                  0.5269667325438743
+                ],
+                [
+                  0.507543627682306,
+                  0.49245637231769407
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.09517011550074507,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08413193126523086,
+                  0.9158680687347691
+                ],
+                [
+                  0.9029659487604415,
+                  0.09703405123955854
+                ],
+                [
+                  0.06031038056754978,
+                  0.9396896194324502
+                ],
+                [
+                  0.8997062857101465,
+                  0.10029371428985345
+                ],
+                [
+                  0.06103372177813679,
+                  0.9389662782218632
+                ],
+                [
+                  0.9012308171698986,
+                  0.09876918283010135
+                ],
+                [
+                  0.9197685783844244,
+                  0.08023142161557552
+                ],
+                [
+                  0.10972153696616564,
+                  0.8902784630338344
+                ],
+                [
+                  0.9185796457441905,
+                  0.08142035425580955
+                ],
+                [
+                  0.10825045979263194,
+                  0.8917495402073682
+                ],
+                [
+                  0.9038996267407754,
+                  0.09610037325922474
+                ],
+                [
+                  0.1155095625694002,
+                  0.8844904374305999
+                ],
+                [
+                  0.09234844172027938,
+                  0.9076515582797205
+                ],
+                [
+                  0.911019986621857,
+                  0.08898001337814306
+                ],
+                [
+                  0.06463815005582561,
+                  0.9353618499441744
+                ],
+                [
+                  0.9046012409680553,
+                  0.09539875903194467
+                ],
+                [
+                  0.06445680509148208,
+                  0.9355431949085179
+                ],
+                [
+                  0.9048767350875634,
+                  0.09512326491243672
+                ],
+                [
+                  0.9201165304841606,
+                  0.07988346951583938
+                ],
+                [
+                  0.10774980838749014,
+                  0.8922501916125098
+                ],
+                [
+                  0.9196461527320846,
+                  0.08035384726791546
+                ],
+                [
+                  0.10669511884367816,
+                  0.8933048811563219
+                ],
+                [
+                  0.9060848556078223,
+                  0.09391514439217784
+                ],
+                [
+                  0.11299417157969643,
+                  0.8870058284203035
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.10274617312036471,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08637611179742308,
+                  0.913623888202577
+                ],
+                [
+                  0.9063546714124315,
+                  0.09364532858756834
+                ],
+                [
+                  0.9037246613359431,
+                  0.09627533866405695
+                ],
+                [
+                  0.11470219129976125,
+                  0.8852978087002387
+                ],
+                [
+                  0.09084405374830488,
+                  0.909155946251695
+                ],
+                [
+                  0.9083266749825372,
+                  0.09167332501746281
+                ],
+                [
+                  0.9064930379762242,
+                  0.09350696202377574
+                ],
+                [
+                  0.11368691689619656,
+                  0.8863130831038034
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-5-exact_implicit.npz",
+            "sha256": "6c59cf1dfbfae33c86b0f4c01e3d1dd7ce0c7ffb3138b6c57ed520d41375fca8"
+          },
+          "wall_seconds": 4.668854209012352
+        },
+        {
+          "arm": "frozen_no_nudge",
+          "work": {
+            "solve_seconds": 0.0012713749893009663,
+            "solve_calls": 2,
+            "settling_steps": 128,
+            "row_steps": 3584,
+            "maximum_residual": 6.661338147750939e-16
+          },
+          "updates": 0,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 0.9346963083312051,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7066722754370863,
+              "accuracy": 0.4583333333333333,
+              "predictions": [
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.521232414526188,
+                  0.478767585473812
+                ],
+                [
+                  0.5545872477744563,
+                  0.44541275222554366
+                ],
+                [
+                  0.46764103467455514,
+                  0.5323589653254449
+                ],
+                [
+                  0.4883622644879494,
+                  0.5116377355120506
+                ],
+                [
+                  0.5111772746387798,
+                  0.48882272536122023
+                ],
+                [
+                  0.5333063041004141,
+                  0.4666936958995859
+                ],
+                [
+                  0.5527119705992837,
+                  0.4472880294007163
+                ],
+                [
+                  0.5882165371205164,
+                  0.41178346287948364
+                ],
+                [
+                  0.5120736931506905,
+                  0.48792630684930943
+                ],
+                [
+                  0.5512012036639921,
+                  0.44879879633600794
+                ],
+                [
+                  0.5021569969228475,
+                  0.4978430030771524
+                ],
+                [
+                  0.5371623204079917,
+                  0.4628376795920082
+                ],
+                [
+                  0.625265179444867,
+                  0.37473482055513296
+                ],
+                [
+                  0.6553722602113911,
+                  0.3446277397886089
+                ],
+                [
+                  0.5385449230599333,
+                  0.4614550769400667
+                ],
+                [
+                  0.5649603627457829,
+                  0.4350396372542171
+                ],
+                [
+                  0.5741116456384986,
+                  0.4258883543615015
+                ],
+                [
+                  0.6020001914308486,
+                  0.39799980856915135
+                ],
+                [
+                  0.5709746056823698,
+                  0.42902539431763004
+                ],
+                [
+                  0.6037283415487606,
+                  0.39627165845123935
+                ],
+                [
+                  0.5329572741505313,
+                  0.4670427258494687
+                ],
+                [
+                  0.5729251160464099,
+                  0.42707488395359006
+                ],
+                [
+                  0.4730332674561256,
+                  0.5269667325438743
+                ],
+                [
+                  0.507543627682306,
+                  0.49245637231769407
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.7066722754370863,
+              "accuracy": 0.4583333333333333,
+              "predictions": [
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.521232414526188,
+                  0.478767585473812
+                ],
+                [
+                  0.5545872477744563,
+                  0.44541275222554366
+                ],
+                [
+                  0.46764103467455514,
+                  0.5323589653254449
+                ],
+                [
+                  0.4883622644879494,
+                  0.5116377355120506
+                ],
+                [
+                  0.5111772746387798,
+                  0.48882272536122023
+                ],
+                [
+                  0.5333063041004141,
+                  0.4666936958995859
+                ],
+                [
+                  0.5527119705992837,
+                  0.4472880294007163
+                ],
+                [
+                  0.5882165371205164,
+                  0.41178346287948364
+                ],
+                [
+                  0.5120736931506905,
+                  0.48792630684930943
+                ],
+                [
+                  0.5512012036639921,
+                  0.44879879633600794
+                ],
+                [
+                  0.5021569969228475,
+                  0.4978430030771524
+                ],
+                [
+                  0.5371623204079917,
+                  0.4628376795920082
+                ],
+                [
+                  0.625265179444867,
+                  0.37473482055513296
+                ],
+                [
+                  0.6553722602113911,
+                  0.3446277397886089
+                ],
+                [
+                  0.5385449230599333,
+                  0.4614550769400667
+                ],
+                [
+                  0.5649603627457829,
+                  0.4350396372542171
+                ],
+                [
+                  0.5741116456384988,
+                  0.4258883543615012
+                ],
+                [
+                  0.6020001914308486,
+                  0.39799980856915135
+                ],
+                [
+                  0.5709746056823698,
+                  0.42902539431763004
+                ],
+                [
+                  0.6037283415487606,
+                  0.39627165845123935
+                ],
+                [
+                  0.5329572741505313,
+                  0.4670427258494687
+                ],
+                [
+                  0.5729251160464099,
+                  0.42707488395359006
+                ],
+                [
+                  0.4730332674561256,
+                  0.5269667325438743
+                ],
+                [
+                  0.507543627682306,
+                  0.49245637231769407
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.7042043194390218,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.5585927556578922,
+                  0.44140724434210776
+                ],
+                [
+                  0.5846261391844579,
+                  0.4153738608155421
+                ],
+                [
+                  0.45424135439159036,
+                  0.5457586456084096
+                ],
+                [
+                  0.487089586180142,
+                  0.512910413819858
+                ],
+                [
+                  0.5883882838816527,
+                  0.41161171611834746
+                ],
+                [
+                  0.6240267768178516,
+                  0.37597322318214854
+                ],
+                [
+                  0.5201752300332375,
+                  0.4798247699667625
+                ],
+                [
+                  0.5549005009960312,
+                  0.4450994990039688
+                ]
+              ],
+              "wrong_sentences": [
+                {
+                  "sentence": "the pilot near the guard smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the pilots near the farmer smiles",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                },
+                {
+                  "sentence": "the sailor near the guards smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the sailors near the farmers smile",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                }
+              ]
+            }
+          },
+          "checkpoint": {
+            "path": "seed-5-frozen_no_nudge.npz",
+            "sha256": "b0669a0590fbbd2a8e5a0ed70e6d30f77a42f7c019a07d3cdd556cb8f1f0c75c"
+          },
+          "wall_seconds": 0.0022049170220270753
+        }
+      ],
+      "gradient_audit": {
+        "coordinates": [
+          {
+            "family": "source",
+            "coordinate": 0,
+            "finite_difference": -2.186126280001588e-06,
+            "implicit": -2.186127450993024e-06,
+            "absolute_error": 1.1709914361918963e-12
+          },
+          {
+            "family": "source",
+            "coordinate": 72,
+            "finite_difference": -2.4836548095930052e-05,
+            "implicit": -2.4836547758626157e-05,
+            "absolute_error": 3.3730389493872096e-13
+          },
+          {
+            "family": "source",
+            "coordinate": 141,
+            "finite_difference": -0.0003528691269738537,
+            "implicit": -0.0003528691272497433,
+            "absolute_error": 2.7588960846772204e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 144,
+            "finite_difference": 0.0013299261344967837,
+            "implicit": 0.0013299261345698459,
+            "absolute_error": 7.306221599945317e-14
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 157,
+            "finite_difference": -0.001334826658927479,
+            "implicit": -0.0013348266603785172,
+            "absolute_error": 1.451038074418154e-12
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 169,
+            "finite_difference": -0.001135966905263519,
+            "implicit": -0.0011359669045948547,
+            "absolute_error": 6.686643426456751e-13
+          },
+          {
+            "family": "bias",
+            "coordinate": 10,
+            "finite_difference": 0.0010406177031185848,
+            "implicit": 0.0010406177045420224,
+            "absolute_error": 1.4234375397131904e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 17,
+            "finite_difference": 0.00156664334560741,
+            "implicit": 0.001566643346744226,
+            "absolute_error": 1.136815901831012e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 23,
+            "finite_difference": -0.024209570435862467,
+            "implicit": -0.02420957043679081,
+            "absolute_error": 9.283442070628922e-13
+          }
+        ],
+        "centered_comparison": [
+          {
+            "beta": 0.03,
+            "efficacy_max_error": 7.491497157313177e-05,
+            "bias_max_error": 1.1478882726363021e-05
+          },
+          {
+            "beta": 0.015,
+            "efficacy_max_error": 1.870514554427622e-05,
+            "bias_max_error": 2.7946986871987822e-06
+          }
+        ],
+        "work": {
+          "solve_seconds": 0.1796380399609916,
+          "solve_calls": 23,
+          "settling_steps": 1408,
+          "row_steps": 33792,
+          "maximum_residual": 9.912126675004629e-11
+        }
+      }
+    },
+    {
+      "seed": 6,
+      "arms": [
+        {
+          "arm": "local_centered",
+          "work": {
+            "solve_seconds": 11.42431015818147,
+            "solve_calls": 24002,
+            "settling_steps": 1534080,
+            "row_steps": 36818432,
+            "maximum_residual": 9.950568667649318e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7084209444845774,
+              "accuracy": 0.5,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.4666030986759922,
+                  0.5333969013240077
+                ],
+                [
+                  0.43563228678618376,
+                  0.5643677132138163
+                ],
+                [
+                  0.5839433874232521,
+                  0.41605661257674803
+                ],
+                [
+                  0.5545351005249717,
+                  0.4454648994750284
+                ],
+                [
+                  0.42731733082346796,
+                  0.5726826691765321
+                ],
+                [
+                  0.39705509667844147,
+                  0.6029449033215585
+                ],
+                [
+                  0.630398139152474,
+                  0.36960186084752594
+                ],
+                [
+                  0.5989084598161133,
+                  0.40109154018388665
+                ],
+                [
+                  0.4693742944251142,
+                  0.5306257055748858
+                ],
+                [
+                  0.4319662744874699,
+                  0.5680337255125302
+                ],
+                [
+                  0.4263274460319252,
+                  0.5736725539680748
+                ],
+                [
+                  0.39107255150545434,
+                  0.6089274484945457
+                ],
+                [
+                  0.6525971864079472,
+                  0.34740281359205283
+                ],
+                [
+                  0.6229231496764951,
+                  0.377076850323505
+                ],
+                [
+                  0.6087519796250236,
+                  0.39124802037497636
+                ],
+                [
+                  0.5733364996735298,
+                  0.42666350032647016
+                ],
+                [
+                  0.4480556787853065,
+                  0.5519443212146935
+                ],
+                [
+                  0.4146034904690845,
+                  0.5853965095309156
+                ],
+                [
+                  0.6154332593143753,
+                  0.38456674068562463
+                ],
+                [
+                  0.5888847057953254,
+                  0.41111529420467463
+                ],
+                [
+                  0.4546248783230905,
+                  0.5453751216769096
+                ],
+                [
+                  0.42103782165863896,
+                  0.5789621783413611
+                ],
+                [
+                  0.5730231531554045,
+                  0.4269768468445955
+                ],
+                [
+                  0.5432009642338713,
+                  0.4567990357661287
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.06756930581667238,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.07233023355403759,
+                  0.9276697664459624
+                ],
+                [
+                  0.9308755680325036,
+                  0.06912443196749649
+                ],
+                [
+                  0.061755128363427184,
+                  0.9382448716365728
+                ],
+                [
+                  0.9389896169402704,
+                  0.06101038305972962
+                ],
+                [
+                  0.06166071128575318,
+                  0.9383392887142469
+                ],
+                [
+                  0.9397770539447814,
+                  0.06022294605521864
+                ],
+                [
+                  0.93595655953558,
+                  0.0640434404644199
+                ],
+                [
+                  0.06263749596919227,
+                  0.9373625040308077
+                ],
+                [
+                  0.9376047100473328,
+                  0.06239528995266716
+                ],
+                [
+                  0.06259931672817094,
+                  0.937400683271829
+                ],
+                [
+                  0.9263873181699719,
+                  0.07361268183002817
+                ],
+                [
+                  0.07078170128765357,
+                  0.9292182987123463
+                ],
+                [
+                  0.0710314865357154,
+                  0.9289685134642846
+                ],
+                [
+                  0.9296825815883186,
+                  0.07031741841168132
+                ],
+                [
+                  0.06209440686892457,
+                  0.9379055931310755
+                ],
+                [
+                  0.9385571542874043,
+                  0.06144284571259573
+                ],
+                [
+                  0.06192069873671636,
+                  0.9380793012632836
+                ],
+                [
+                  0.9394703333147106,
+                  0.06052966668528947
+                ],
+                [
+                  0.9351613126127487,
+                  0.0648386873872513
+                ],
+                [
+                  0.06262786313994405,
+                  0.9373721368600558
+                ],
+                [
+                  0.9366744514437143,
+                  0.06332554855628558
+                ],
+                [
+                  0.06271269718896147,
+                  0.9372873028110386
+                ],
+                [
+                  0.9270612758610974,
+                  0.07293872413890265
+                ],
+                [
+                  0.07187056813620579,
+                  0.9281294318637942
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.07427378283129461,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.06938938222093698,
+                  0.9306106177790631
+                ],
+                [
+                  0.9301425484244429,
+                  0.06985745157555716
+                ],
+                [
+                  0.9281510636599847,
+                  0.0718489363400154
+                ],
+                [
+                  0.07107473873291216,
+                  0.928925261267088
+                ],
+                [
+                  0.0741357625745786,
+                  0.9258642374254213
+                ],
+                [
+                  0.9303542905109289,
+                  0.06964570948907114
+                ],
+                [
+                  0.9252328101011525,
+                  0.0747671898988474
+                ],
+                [
+                  0.07192559826598012,
+                  0.92807440173402
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-6-local_centered.npz",
+            "sha256": "11a4e5e7b4cd645355eecfac96d8f155e502bb69529ff501ef983076ce3c19a6"
+          },
+          "wall_seconds": 12.214571374992374
+        },
+        {
+          "arm": "exact_implicit",
+          "work": {
+            "solve_seconds": 3.763215027982369,
+            "solve_calls": 8002,
+            "settling_steps": 512128,
+            "row_steps": 12291584,
+            "maximum_residual": 5.836045535723144e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7084209444845774,
+              "accuracy": 0.5,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.4666030986759922,
+                  0.5333969013240077
+                ],
+                [
+                  0.43563228678618376,
+                  0.5643677132138163
+                ],
+                [
+                  0.5839433874232521,
+                  0.41605661257674803
+                ],
+                [
+                  0.5545351005249717,
+                  0.4454648994750284
+                ],
+                [
+                  0.42731733082346796,
+                  0.5726826691765321
+                ],
+                [
+                  0.39705509667844147,
+                  0.6029449033215585
+                ],
+                [
+                  0.630398139152474,
+                  0.36960186084752594
+                ],
+                [
+                  0.5989084598161133,
+                  0.40109154018388665
+                ],
+                [
+                  0.4693742944251142,
+                  0.5306257055748858
+                ],
+                [
+                  0.4319662744874699,
+                  0.5680337255125302
+                ],
+                [
+                  0.4263274460319252,
+                  0.5736725539680748
+                ],
+                [
+                  0.39107255150545434,
+                  0.6089274484945457
+                ],
+                [
+                  0.6525971864079472,
+                  0.34740281359205283
+                ],
+                [
+                  0.6229231496764951,
+                  0.377076850323505
+                ],
+                [
+                  0.6087519796250236,
+                  0.39124802037497636
+                ],
+                [
+                  0.5733364996735298,
+                  0.42666350032647016
+                ],
+                [
+                  0.4480556787853065,
+                  0.5519443212146935
+                ],
+                [
+                  0.4146034904690845,
+                  0.5853965095309156
+                ],
+                [
+                  0.6154332593143753,
+                  0.38456674068562463
+                ],
+                [
+                  0.5888847057953254,
+                  0.41111529420467463
+                ],
+                [
+                  0.4546248783230905,
+                  0.5453751216769096
+                ],
+                [
+                  0.42103782165863896,
+                  0.5789621783413611
+                ],
+                [
+                  0.5730231531554045,
+                  0.4269768468445955
+                ],
+                [
+                  0.5432009642338713,
+                  0.4567990357661287
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.0675848522423476,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.07234570739483125,
+                  0.9276542926051689
+                ],
+                [
+                  0.930860262687349,
+                  0.06913973731265095
+                ],
+                [
+                  0.061770646603671105,
+                  0.9382293533963288
+                ],
+                [
+                  0.9389866914942245,
+                  0.06101330850577549
+                ],
+                [
+                  0.06167261622960137,
+                  0.9383273837703987
+                ],
+                [
+                  0.9397789390955186,
+                  0.060221060904481497
+                ],
+                [
+                  0.9359510243615459,
+                  0.06404897563845426
+                ],
+                [
+                  0.0626482494347582,
+                  0.9373517505652419
+                ],
+                [
+                  0.9375947696263071,
+                  0.06240523037369283
+                ],
+                [
+                  0.06260879283896031,
+                  0.9373912071610396
+                ],
+                [
+                  0.9263538253416155,
+                  0.0736461746583846
+                ],
+                [
+                  0.07079649702601985,
+                  0.9292035029739802
+                ],
+                [
+                  0.07105898626925367,
+                  0.9289410137307462
+                ],
+                [
+                  0.9296628450728528,
+                  0.07033715492714712
+                ],
+                [
+                  0.062109879571102686,
+                  0.9378901204288973
+                ],
+                [
+                  0.9385466432733074,
+                  0.06145335672669254
+                ],
+                [
+                  0.06193148081100664,
+                  0.9380685191889934
+                ],
+                [
+                  0.9394650099578964,
+                  0.06053499004210361
+                ],
+                [
+                  0.9351462075357648,
+                  0.06485379246423525
+                ],
+                [
+                  0.06264233429796902,
+                  0.9373576657020308
+                ],
+                [
+                  0.9366552913508105,
+                  0.06334470864918947
+                ],
+                [
+                  0.06272529241784867,
+                  0.9372747075821513
+                ],
+                [
+                  0.9270249446113643,
+                  0.07297505538863579
+                ],
+                [
+                  0.07188831048017952,
+                  0.9281116895198205
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.07429821955359261,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.06941315383854567,
+                  0.9305868461614543
+                ],
+                [
+                  0.9301323592140609,
+                  0.06986764078593902
+                ],
+                [
+                  0.9281291526857269,
+                  0.07187084731427305
+                ],
+                [
+                  0.07108380902837416,
+                  0.9289161909716259
+                ],
+                [
+                  0.07415361905475655,
+                  0.9258463809452435
+                ],
+                [
+                  0.9303292249550454,
+                  0.06967077504495468
+                ],
+                [
+                  0.9251837353465542,
+                  0.07481626465344589
+                ],
+                [
+                  0.07195005498862439,
+                  0.9280499450113757
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-6-exact_implicit.npz",
+            "sha256": "398777d4f153d95d8487d5720e66681b59f3c44761f943411c8903ed1d08c6b2"
+          },
+          "wall_seconds": 4.725469249999151
+        },
+        {
+          "arm": "frozen_no_nudge",
+          "work": {
+            "solve_seconds": 0.0012889999779872596,
+            "solve_calls": 2,
+            "settling_steps": 128,
+            "row_steps": 3584,
+            "maximum_residual": 2.0261570199409107e-15
+          },
+          "updates": 0,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 0.9844574892444056,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7084209444845774,
+              "accuracy": 0.5,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.4666030986759922,
+                  0.5333969013240077
+                ],
+                [
+                  0.43563228678618376,
+                  0.5643677132138163
+                ],
+                [
+                  0.5839433874232521,
+                  0.41605661257674803
+                ],
+                [
+                  0.5545351005249717,
+                  0.4454648994750284
+                ],
+                [
+                  0.42731733082346796,
+                  0.5726826691765321
+                ],
+                [
+                  0.39705509667844147,
+                  0.6029449033215585
+                ],
+                [
+                  0.630398139152474,
+                  0.36960186084752594
+                ],
+                [
+                  0.5989084598161133,
+                  0.40109154018388665
+                ],
+                [
+                  0.4693742944251142,
+                  0.5306257055748858
+                ],
+                [
+                  0.4319662744874699,
+                  0.5680337255125302
+                ],
+                [
+                  0.4263274460319252,
+                  0.5736725539680748
+                ],
+                [
+                  0.39107255150545434,
+                  0.6089274484945457
+                ],
+                [
+                  0.6525971864079472,
+                  0.34740281359205283
+                ],
+                [
+                  0.6229231496764951,
+                  0.377076850323505
+                ],
+                [
+                  0.6087519796250236,
+                  0.39124802037497636
+                ],
+                [
+                  0.5733364996735298,
+                  0.42666350032647016
+                ],
+                [
+                  0.4480556787853065,
+                  0.5519443212146935
+                ],
+                [
+                  0.4146034904690845,
+                  0.5853965095309156
+                ],
+                [
+                  0.6154332593143753,
+                  0.38456674068562463
+                ],
+                [
+                  0.5888847057953254,
+                  0.41111529420467463
+                ],
+                [
+                  0.4546248783230905,
+                  0.5453751216769096
+                ],
+                [
+                  0.42103782165863896,
+                  0.5789621783413611
+                ],
+                [
+                  0.5730231531554045,
+                  0.4269768468445955
+                ],
+                [
+                  0.5432009642338713,
+                  0.4567990357661287
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.7084209444845774,
+              "accuracy": 0.5,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.4666030986759922,
+                  0.5333969013240077
+                ],
+                [
+                  0.43563228678618376,
+                  0.5643677132138163
+                ],
+                [
+                  0.5839433874232521,
+                  0.41605661257674803
+                ],
+                [
+                  0.5545351005249717,
+                  0.4454648994750284
+                ],
+                [
+                  0.42731733082346796,
+                  0.5726826691765321
+                ],
+                [
+                  0.39705509667844147,
+                  0.6029449033215585
+                ],
+                [
+                  0.630398139152474,
+                  0.36960186084752594
+                ],
+                [
+                  0.5989084598161133,
+                  0.40109154018388665
+                ],
+                [
+                  0.4693742944251142,
+                  0.5306257055748858
+                ],
+                [
+                  0.4319662744874699,
+                  0.5680337255125302
+                ],
+                [
+                  0.4263274460319252,
+                  0.5736725539680748
+                ],
+                [
+                  0.39107255150545434,
+                  0.6089274484945457
+                ],
+                [
+                  0.6525971864079472,
+                  0.34740281359205283
+                ],
+                [
+                  0.6229231496764951,
+                  0.377076850323505
+                ],
+                [
+                  0.6087519796250236,
+                  0.39124802037497636
+                ],
+                [
+                  0.5733364996735298,
+                  0.42666350032647016
+                ],
+                [
+                  0.4480556787853065,
+                  0.5519443212146935
+                ],
+                [
+                  0.4146034904690845,
+                  0.5853965095309156
+                ],
+                [
+                  0.6154332593143753,
+                  0.38456674068562463
+                ],
+                [
+                  0.5888847057953254,
+                  0.41111529420467463
+                ],
+                [
+                  0.4546248783230905,
+                  0.5453751216769096
+                ],
+                [
+                  0.42103782165863896,
+                  0.5789621783413611
+                ],
+                [
+                  0.5730231531554045,
+                  0.4269768468445955
+                ],
+                [
+                  0.5432009642338713,
+                  0.4567990357661287
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.7046749331512041,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.625349331504007,
+                  0.37465066849599304
+                ],
+                [
+                  0.6011483471387213,
+                  0.3988516528612786
+                ],
+                [
+                  0.5831720792508588,
+                  0.4168279207491413
+                ],
+                [
+                  0.5448412801771181,
+                  0.4551587198228819
+                ],
+                [
+                  0.48676507455871154,
+                  0.5132349254412886
+                ],
+                [
+                  0.4522557131908526,
+                  0.5477442868091473
+                ],
+                [
+                  0.416074475504786,
+                  0.583925524495214
+                ],
+                [
+                  0.3830223641473679,
+                  0.616977635852632
+                ]
+              ],
+              "wrong_sentences": [
+                {
+                  "sentence": "the pilot near the guard smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the pilots near the farmer smile",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the sailor near the guards smile",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                },
+                {
+                  "sentence": "the sailors near the farmers smiles",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                }
+              ]
+            }
+          },
+          "checkpoint": {
+            "path": "seed-6-frozen_no_nudge.npz",
+            "sha256": "8b3b9e6a574983a71ff9ed2f61450046b2b7aaa73f24562d73f61dedc9e9b5a9"
+          },
+          "wall_seconds": 0.0022988750133663416
+        }
+      ],
+      "gradient_audit": {
+        "coordinates": [
+          {
+            "family": "source",
+            "coordinate": 0,
+            "finite_difference": 8.861281153293987e-06,
+            "implicit": 8.861279144019006e-06,
+            "absolute_error": 2.0092749807579724e-12
+          },
+          {
+            "family": "source",
+            "coordinate": 72,
+            "finite_difference": 0.00019663523309620953,
+            "implicit": 0.00019663523272943993,
+            "absolute_error": 3.66769602969802e-13
+          },
+          {
+            "family": "source",
+            "coordinate": 141,
+            "finite_difference": -4.305326928299991e-06,
+            "implicit": -4.305326378080145e-06,
+            "absolute_error": 5.502198453731749e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 144,
+            "finite_difference": -0.002486602954099304,
+            "implicit": -0.002486602953970682,
+            "absolute_error": 1.2862193948803835e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 157,
+            "finite_difference": 0.002481641279972191,
+            "implicit": 0.0024816412802687766,
+            "absolute_error": 2.965856726877547e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 169,
+            "finite_difference": -0.001624459697313618,
+            "implicit": -0.0016244596964896845,
+            "absolute_error": 8.239335862886277e-13
+          },
+          {
+            "family": "bias",
+            "coordinate": 10,
+            "finite_difference": -0.00017117395001431388,
+            "implicit": -0.000171173949698994,
+            "absolute_error": 3.1531987307667486e-13
+          },
+          {
+            "family": "bias",
+            "coordinate": 17,
+            "finite_difference": 9.278089407871448e-06,
+            "implicit": 9.278090888327836e-06,
+            "absolute_error": 1.4804563875677043e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 23,
+            "finite_difference": -0.007303627719279503,
+            "implicit": -0.0073036277172053845,
+            "absolute_error": 2.0741186546047174e-12
+          }
+        ],
+        "centered_comparison": [
+          {
+            "beta": 0.03,
+            "efficacy_max_error": 8.263447749124711e-05,
+            "bias_max_error": 8.584660083446952e-06
+          },
+          {
+            "beta": 0.015,
+            "efficacy_max_error": 2.0637364139403742e-05,
+            "bias_max_error": 2.12746252400281e-06
+          }
+        ],
+        "work": {
+          "solve_seconds": 0.011217004153877497,
+          "solve_calls": 23,
+          "settling_steps": 1472,
+          "row_steps": 35328,
+          "maximum_residual": 2.0816681711721685e-15
+        }
+      }
+    },
+    {
+      "seed": 7,
+      "arms": [
+        {
+          "arm": "local_centered",
+          "work": {
+            "solve_seconds": 11.39144603657769,
+            "solve_calls": 24002,
+            "settling_steps": 1529376,
+            "row_steps": 36705536,
+            "maximum_residual": 9.993629535021142e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7106232735037844,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.7222363292091626,
+                  0.27776367079083747
+                ],
+                [
+                  0.6884656062601777,
+                  0.31153439373982234
+                ],
+                [
+                  0.5781438602802923,
+                  0.4218561397197076
+                ],
+                [
+                  0.5415654945993086,
+                  0.4584345054006914
+                ],
+                [
+                  0.5474271415675067,
+                  0.4525728584324933
+                ],
+                [
+                  0.5062475530840205,
+                  0.4937524469159795
+                ],
+                [
+                  0.48038978832156953,
+                  0.5196102116784305
+                ],
+                [
+                  0.445283656005768,
+                  0.554716343994232
+                ],
+                [
+                  0.6184695368381646,
+                  0.38153046316183536
+                ],
+                [
+                  0.5789124526500058,
+                  0.4210875473499942
+                ],
+                [
+                  0.4308606838731038,
+                  0.5691393161268962
+                ],
+                [
+                  0.3846168777809922,
+                  0.6153831222190079
+                ],
+                [
+                  0.4886586906190594,
+                  0.5113413093809405
+                ],
+                [
+                  0.44616414363687823,
+                  0.5538358563631218
+                ],
+                [
+                  0.46625296700619195,
+                  0.5337470329938081
+                ],
+                [
+                  0.4246506396431665,
+                  0.5753493603568336
+                ],
+                [
+                  0.42904981119028307,
+                  0.5709501888097168
+                ],
+                [
+                  0.38899672428824006,
+                  0.61100327571176
+                ],
+                [
+                  0.5006124773502153,
+                  0.49938752264978475
+                ],
+                [
+                  0.4615670579976494,
+                  0.5384329420023505
+                ],
+                [
+                  0.6343316340543198,
+                  0.3656683659456802
+                ],
+                [
+                  0.5983331376300567,
+                  0.4016668623699433
+                ],
+                [
+                  0.49004767416389783,
+                  0.5099523258361022
+                ],
+                [
+                  0.4495824661581051,
+                  0.550417533841895
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.08027593793044076,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.07921629526596147,
+                  0.9207837047340386
+                ],
+                [
+                  0.9106903127414184,
+                  0.08930968725858145
+                ],
+                [
+                  0.07388457243029571,
+                  0.9261154275697043
+                ],
+                [
+                  0.9282727933467181,
+                  0.071727206653282
+                ],
+                [
+                  0.07504204709727892,
+                  0.9249579529027211
+                ],
+                [
+                  0.9294301621882188,
+                  0.07056983781178115
+                ],
+                [
+                  0.9286507970000175,
+                  0.0713492029999826
+                ],
+                [
+                  0.07199658994041372,
+                  0.9280034100595863
+                ],
+                [
+                  0.9289116609749973,
+                  0.07108833902500265
+                ],
+                [
+                  0.0736868796682469,
+                  0.9263131203317531
+                ],
+                [
+                  0.9192795344370083,
+                  0.08072046556299173
+                ],
+                [
+                  0.0871855098686314,
+                  0.9128144901313686
+                ],
+                [
+                  0.08066743088943382,
+                  0.9193325691105663
+                ],
+                [
+                  0.9102667267496194,
+                  0.08973327325038066
+                ],
+                [
+                  0.07310760130357082,
+                  0.9268923986964291
+                ],
+                [
+                  0.9266804053934887,
+                  0.07331959460651127
+                ],
+                [
+                  0.0743538915081858,
+                  0.9256461084918142
+                ],
+                [
+                  0.9279077446432139,
+                  0.0720922553567862
+                ],
+                [
+                  0.9248122496653748,
+                  0.07518775033462527
+                ],
+                [
+                  0.07409556106830928,
+                  0.9259044389316907
+                ],
+                [
+                  0.9247176706700033,
+                  0.07528232932999658
+                ],
+                [
+                  0.07458301337956152,
+                  0.9254169866204386
+                ],
+                [
+                  0.9147439425208195,
+                  0.08525605747918057
+                ],
+                [
+                  0.08737999542864153,
+                  0.9126200045713585
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.08901152023391373,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08198684418615423,
+                  0.9180131558138457
+                ],
+                [
+                  0.9121004353995608,
+                  0.08789956460043914
+                ],
+                [
+                  0.9180109364784393,
+                  0.08198906352156066
+                ],
+                [
+                  0.08633829931624182,
+                  0.9136617006837582
+                ],
+                [
+                  0.07844322299318135,
+                  0.9215567770068186
+                ],
+                [
+                  0.9086007769616442,
+                  0.0913992230383557
+                ],
+                [
+                  0.915616286106274,
+                  0.08438371389372598
+                ],
+                [
+                  0.08881040866909483,
+                  0.9111895913309052
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-7-local_centered.npz",
+            "sha256": "daa815b7769b4b86067341f238159bb3c09f52c2e18e22888a35e975a20f8f62"
+          },
+          "wall_seconds": 12.1760905419942
+        },
+        {
+          "arm": "exact_implicit",
+          "work": {
+            "solve_seconds": 3.7449965535197407,
+            "solve_calls": 8002,
+            "settling_steps": 512128,
+            "row_steps": 12291584,
+            "maximum_residual": 8.33440816361275e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7106232735037844,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.7222363292091626,
+                  0.27776367079083747
+                ],
+                [
+                  0.6884656062601777,
+                  0.31153439373982234
+                ],
+                [
+                  0.5781438602802923,
+                  0.4218561397197076
+                ],
+                [
+                  0.5415654945993086,
+                  0.4584345054006914
+                ],
+                [
+                  0.5474271415675067,
+                  0.4525728584324933
+                ],
+                [
+                  0.5062475530840205,
+                  0.4937524469159795
+                ],
+                [
+                  0.48038978832156953,
+                  0.5196102116784305
+                ],
+                [
+                  0.445283656005768,
+                  0.554716343994232
+                ],
+                [
+                  0.6184695368381646,
+                  0.38153046316183536
+                ],
+                [
+                  0.5789124526500058,
+                  0.4210875473499942
+                ],
+                [
+                  0.4308606838731038,
+                  0.5691393161268962
+                ],
+                [
+                  0.3846168777809922,
+                  0.6153831222190079
+                ],
+                [
+                  0.4886586906190594,
+                  0.5113413093809405
+                ],
+                [
+                  0.44616414363687823,
+                  0.5538358563631218
+                ],
+                [
+                  0.46625296700619195,
+                  0.5337470329938081
+                ],
+                [
+                  0.4246506396431665,
+                  0.5753493603568336
+                ],
+                [
+                  0.42904981119028307,
+                  0.5709501888097168
+                ],
+                [
+                  0.38899672428824006,
+                  0.61100327571176
+                ],
+                [
+                  0.5006124773502153,
+                  0.49938752264978475
+                ],
+                [
+                  0.4615670579976494,
+                  0.5384329420023505
+                ],
+                [
+                  0.6343316340543198,
+                  0.3656683659456802
+                ],
+                [
+                  0.5983331376300567,
+                  0.4016668623699433
+                ],
+                [
+                  0.49004767416389783,
+                  0.5099523258361022
+                ],
+                [
+                  0.4495824661581051,
+                  0.550417533841895
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.08027055562927317,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.07920273459158346,
+                  0.9207972654084164
+                ],
+                [
+                  0.9106973867704227,
+                  0.08930261322957729
+                ],
+                [
+                  0.0738221460756767,
+                  0.9261778539243234
+                ],
+                [
+                  0.9280539271129629,
+                  0.071946072887037
+                ],
+                [
+                  0.07498990379091837,
+                  0.9250100962090817
+                ],
+                [
+                  0.9292287820898512,
+                  0.07077121791014877
+                ],
+                [
+                  0.9288674826611395,
+                  0.07113251733886056
+                ],
+                [
+                  0.07204690203077169,
+                  0.9279530979692283
+                ],
+                [
+                  0.9291475617566798,
+                  0.07085243824332021
+                ],
+                [
+                  0.07373591747610277,
+                  0.9262640825238972
+                ],
+                [
+                  0.9195803871836122,
+                  0.08041961281638776
+                ],
+                [
+                  0.08710647254092375,
+                  0.9128935274590763
+                ],
+                [
+                  0.08068966162630618,
+                  0.9193103383736938
+                ],
+                [
+                  0.9103173082093208,
+                  0.08968269179067921
+                ],
+                [
+                  0.07306005751039094,
+                  0.9269399424896091
+                ],
+                [
+                  0.9264433635008626,
+                  0.07355663649913738
+                ],
+                [
+                  0.07431664183337928,
+                  0.9256833581666206
+                ],
+                [
+                  0.9276884672425203,
+                  0.07231153275747979
+                ],
+                [
+                  0.9248406489782864,
+                  0.07515935102171355
+                ],
+                [
+                  0.07416832035508694,
+                  0.9258316796449131
+                ],
+                [
+                  0.9247538861705019,
+                  0.07524611382949822
+                ],
+                [
+                  0.07465923600123664,
+                  0.9253407639987633
+                ],
+                [
+                  0.9148074418077038,
+                  0.08519255819229621
+                ],
+                [
+                  0.08735037654594024,
+                  0.9126496234540598
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.08894085533875994,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08197727572954307,
+                  0.918022724270457
+                ],
+                [
+                  0.9121785099151338,
+                  0.0878214900848662
+                ],
+                [
+                  0.9182889134741639,
+                  0.08171108652583617
+                ],
+                [
+                  0.0862265342596936,
+                  0.9137734657403065
+                ],
+                [
+                  0.07845875768074229,
+                  0.9215412423192577
+                ],
+                [
+                  0.9085791763451102,
+                  0.09142082365488977
+                ],
+                [
+                  0.9156968117921279,
+                  0.0843031882078721
+                ],
+                [
+                  0.08881322213425454,
+                  0.9111867778657455
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-7-exact_implicit.npz",
+            "sha256": "f16802b8d7937d26a76136e1f8b7b44ba502da5b022a1b11c0a5d79dd3427795"
+          },
+          "wall_seconds": 4.696787541965023
+        },
+        {
+          "arm": "frozen_no_nudge",
+          "work": {
+            "solve_seconds": 0.0012322080438025296,
+            "solve_calls": 2,
+            "settling_steps": 128,
+            "row_steps": 3584,
+            "maximum_residual": 3.4833247397614286e-14
+          },
+          "updates": 0,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.2019509983405352,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7106232735037844,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.7222363292091626,
+                  0.27776367079083747
+                ],
+                [
+                  0.6884656062601777,
+                  0.31153439373982234
+                ],
+                [
+                  0.5781438602802923,
+                  0.4218561397197076
+                ],
+                [
+                  0.5415654945993086,
+                  0.4584345054006914
+                ],
+                [
+                  0.5474271415675067,
+                  0.4525728584324933
+                ],
+                [
+                  0.5062475530840205,
+                  0.4937524469159795
+                ],
+                [
+                  0.48038978832156953,
+                  0.5196102116784305
+                ],
+                [
+                  0.445283656005768,
+                  0.554716343994232
+                ],
+                [
+                  0.6184695368381646,
+                  0.38153046316183536
+                ],
+                [
+                  0.5789124526500058,
+                  0.4210875473499942
+                ],
+                [
+                  0.4308606838731038,
+                  0.5691393161268962
+                ],
+                [
+                  0.3846168777809922,
+                  0.6153831222190079
+                ],
+                [
+                  0.4886586906190594,
+                  0.5113413093809405
+                ],
+                [
+                  0.44616414363687823,
+                  0.5538358563631218
+                ],
+                [
+                  0.46625296700619195,
+                  0.5337470329938081
+                ],
+                [
+                  0.4246506396431665,
+                  0.5753493603568336
+                ],
+                [
+                  0.42904981119028307,
+                  0.5709501888097168
+                ],
+                [
+                  0.38899672428824006,
+                  0.61100327571176
+                ],
+                [
+                  0.5006124773502153,
+                  0.49938752264978475
+                ],
+                [
+                  0.4615670579976494,
+                  0.5384329420023505
+                ],
+                [
+                  0.6343316340543198,
+                  0.3656683659456802
+                ],
+                [
+                  0.5983331376300567,
+                  0.4016668623699433
+                ],
+                [
+                  0.49004767416389783,
+                  0.5099523258361022
+                ],
+                [
+                  0.4495824661581051,
+                  0.550417533841895
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.7106232735037844,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.7222363292091626,
+                  0.27776367079083747
+                ],
+                [
+                  0.6884656062601777,
+                  0.31153439373982234
+                ],
+                [
+                  0.5781438602802923,
+                  0.4218561397197076
+                ],
+                [
+                  0.5415654945993086,
+                  0.4584345054006914
+                ],
+                [
+                  0.5474271415675067,
+                  0.4525728584324933
+                ],
+                [
+                  0.5062475530840205,
+                  0.4937524469159795
+                ],
+                [
+                  0.48038978832156953,
+                  0.5196102116784305
+                ],
+                [
+                  0.445283656005768,
+                  0.554716343994232
+                ],
+                [
+                  0.6184695368381646,
+                  0.38153046316183536
+                ],
+                [
+                  0.5789124526500058,
+                  0.4210875473499942
+                ],
+                [
+                  0.4308606838731038,
+                  0.5691393161268962
+                ],
+                [
+                  0.3846168777809922,
+                  0.6153831222190079
+                ],
+                [
+                  0.4886586906190594,
+                  0.5113413093809405
+                ],
+                [
+                  0.44616414363687823,
+                  0.5538358563631218
+                ],
+                [
+                  0.46625296700619195,
+                  0.5337470329938081
+                ],
+                [
+                  0.4246506396431665,
+                  0.5753493603568336
+                ],
+                [
+                  0.42904981119028307,
+                  0.5709501888097168
+                ],
+                [
+                  0.38899672428824006,
+                  0.61100327571176
+                ],
+                [
+                  0.5006124773502153,
+                  0.49938752264978475
+                ],
+                [
+                  0.4615670579976494,
+                  0.5384329420023505
+                ],
+                [
+                  0.6343316340543198,
+                  0.3656683659456802
+                ],
+                [
+                  0.5983331376300567,
+                  0.4016668623699433
+                ],
+                [
+                  0.49004767416389783,
+                  0.5099523258361022
+                ],
+                [
+                  0.4495824661581051,
+                  0.550417533841895
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.7043813110497559,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.6068762416024972,
+                  0.3931237583975029
+                ],
+                [
+                  0.5654138372265937,
+                  0.4345861627734062
+                ],
+                [
+                  0.4680337741165448,
+                  0.5319662258834552
+                ],
+                [
+                  0.4245868117255628,
+                  0.5754131882744373
+                ],
+                [
+                  0.617285528060507,
+                  0.382714471939493
+                ],
+                [
+                  0.5857587837142517,
+                  0.4142412162857482
+                ],
+                [
+                  0.4499727004511029,
+                  0.5500272995488971
+                ],
+                [
+                  0.40871606740353605,
+                  0.5912839325964641
+                ]
+              ],
+              "wrong_sentences": [
+                {
+                  "sentence": "the pilot near the guard smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the pilots near the farmer smiles",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                },
+                {
+                  "sentence": "the sailor near the guards smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the sailors near the farmers smiles",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                }
+              ]
+            }
+          },
+          "checkpoint": {
+            "path": "seed-7-frozen_no_nudge.npz",
+            "sha256": "0c33e7882a2f0c62af1abbaf0588a3affa0b26307633a5eb461a3aa69bdb86fb"
+          },
+          "wall_seconds": 0.002198625006712973
+        }
+      ],
+      "gradient_audit": {
+        "coordinates": [
+          {
+            "family": "source",
+            "coordinate": 0,
+            "finite_difference": -9.220368912821186e-06,
+            "implicit": -9.220369413634897e-06,
+            "absolute_error": 5.008137103672738e-13
+          },
+          {
+            "family": "source",
+            "coordinate": 72,
+            "finite_difference": -0.0004460613961532189,
+            "implicit": -0.0004460613964467114,
+            "absolute_error": 2.934924980997622e-13
+          },
+          {
+            "family": "source",
+            "coordinate": 141,
+            "finite_difference": 2.3216899236455643e-05,
+            "implicit": 2.3216898324657557e-05,
+            "absolute_error": 9.11798085900242e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 144,
+            "finite_difference": -0.0030309717971577217,
+            "implicit": -0.0030309717948765243,
+            "absolute_error": 2.281197366421628e-12
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 157,
+            "finite_difference": 0.002993957702590588,
+            "implicit": 0.0029939577032299675,
+            "absolute_error": 6.393796082859726e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 169,
+            "finite_difference": -0.0018218010947035344,
+            "implicit": -0.00182180109474786,
+            "absolute_error": 4.4325654258159375e-14
+          },
+          {
+            "family": "bias",
+            "coordinate": 10,
+            "finite_difference": -7.884035091443309e-06,
+            "implicit": -7.88403194913847e-06,
+            "absolute_error": 3.1423048384382696e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 17,
+            "finite_difference": 0.0010252265134069738,
+            "implicit": 0.001025226513742142,
+            "absolute_error": 3.3516830803825837e-13
+          },
+          {
+            "family": "bias",
+            "coordinate": 23,
+            "finite_difference": -0.0066933001904856395,
+            "implicit": -0.0066933001922245975,
+            "absolute_error": 1.7389579359816665e-12
+          }
+        ],
+        "centered_comparison": [
+          {
+            "beta": 0.03,
+            "efficacy_max_error": 8.622912906534668e-05,
+            "bias_max_error": 8.692938996121558e-06
+          },
+          {
+            "beta": 0.015,
+            "efficacy_max_error": 2.153241481337863e-05,
+            "bias_max_error": 2.1732562078815784e-06
+          }
+        ],
+        "work": {
+          "solve_seconds": 0.010823832883033901,
+          "solve_calls": 23,
+          "settling_steps": 1472,
+          "row_steps": 35328,
+          "maximum_residual": 3.497202527569243e-14
+        }
+      }
+    },
+    {
+      "seed": 8,
+      "arms": [
+        {
+          "arm": "local_centered",
+          "work": {
+            "solve_seconds": 11.447447746468242,
+            "solve_calls": 24002,
+            "settling_steps": 1543456,
+            "row_steps": 37043456,
+            "maximum_residual": 9.989446075886477e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7086808240079603,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.5952072794449238,
+                  0.40479272055507615
+                ],
+                [
+                  0.5156267177351208,
+                  0.4843732822648792
+                ],
+                [
+                  0.5630488483400923,
+                  0.43695115165990756
+                ],
+                [
+                  0.4776232328150145,
+                  0.5223767671849855
+                ],
+                [
+                  0.6680268265860634,
+                  0.33197317341393656
+                ],
+                [
+                  0.5900708795724015,
+                  0.40992912042759866
+                ],
+                [
+                  0.6325087376301073,
+                  0.36749126236989277
+                ],
+                [
+                  0.5508430741066908,
+                  0.4491569258933092
+                ],
+                [
+                  0.5925104422213654,
+                  0.4074895577786346
+                ],
+                [
+                  0.5070227776344937,
+                  0.4929772223655064
+                ],
+                [
+                  0.6589602815290807,
+                  0.3410397184709193
+                ],
+                [
+                  0.5803512179849516,
+                  0.4196487820150484
+                ],
+                [
+                  0.649107242735437,
+                  0.35089275726456315
+                ],
+                [
+                  0.5757745328454338,
+                  0.42422546715456616
+                ],
+                [
+                  0.5691997758356576,
+                  0.4308002241643423
+                ],
+                [
+                  0.48649090627147645,
+                  0.5135090937285236
+                ],
+                [
+                  0.674240584583629,
+                  0.32575941541637093
+                ],
+                [
+                  0.6014900723554046,
+                  0.3985099276445954
+                ],
+                [
+                  0.5755618927668178,
+                  0.4244381072331821
+                ],
+                [
+                  0.4860770857327398,
+                  0.5139229142672602
+                ],
+                [
+                  0.5210535216055735,
+                  0.47894647839442656
+                ],
+                [
+                  0.4364492589943534,
+                  0.5635507410056466
+                ],
+                [
+                  0.48385655327021354,
+                  0.5161434467297866
+                ],
+                [
+                  0.398659251061279,
+                  0.6013407489387211
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.08629065339000924,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.07919589514946385,
+                  0.9208041048505361
+                ],
+                [
+                  0.9256571610742361,
+                  0.07434283892576382
+                ],
+                [
+                  0.061764595561535594,
+                  0.9382354044384645
+                ],
+                [
+                  0.9227487307886741,
+                  0.07725126921132593
+                ],
+                [
+                  0.06429052767114422,
+                  0.9357094723288558
+                ],
+                [
+                  0.9266030200789342,
+                  0.07339697992106572
+                ],
+                [
+                  0.9174452636393555,
+                  0.08255473636064452
+                ],
+                [
+                  0.0943588342169174,
+                  0.9056411657830825
+                ],
+                [
+                  0.9108267579854898,
+                  0.08917324201451016
+                ],
+                [
+                  0.09045214826071873,
+                  0.9095478517392813
+                ],
+                [
+                  0.9081138865578997,
+                  0.09188611344210036
+                ],
+                [
+                  0.1001354483427953,
+                  0.8998645516572046
+                ],
+                [
+                  0.08347559373154287,
+                  0.9165244062684571
+                ],
+                [
+                  0.9275785918584211,
+                  0.07242140814157885
+                ],
+                [
+                  0.058583145575308915,
+                  0.9414168544246911
+                ],
+                [
+                  0.9196853299227952,
+                  0.0803146700772048
+                ],
+                [
+                  0.06185097851536207,
+                  0.938149021484638
+                ],
+                [
+                  0.9239927660770791,
+                  0.07600723392292079
+                ],
+                [
+                  0.9179167341145493,
+                  0.08208326588545067
+                ],
+                [
+                  0.10159462016352919,
+                  0.8984053798364708
+                ],
+                [
+                  0.9098646883114602,
+                  0.09013531168853993
+                ],
+                [
+                  0.09512311730224127,
+                  0.9048768826977588
+                ],
+                [
+                  0.8991246997630169,
+                  0.10087530023698305
+                ],
+                [
+                  0.10069727189389711,
+                  0.8993027281061029
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.09305698980380817,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08868407000756659,
+                  0.9113159299924335
+                ],
+                [
+                  0.9299945914021466,
+                  0.07000540859785345
+                ],
+                [
+                  0.9018608403109925,
+                  0.09813915968900754
+                ],
+                [
+                  0.09847008609611675,
+                  0.9015299139038833
+                ],
+                [
+                  0.07499011518990527,
+                  0.9250098848100948
+                ],
+                [
+                  0.9227409967826159,
+                  0.07725900321738415
+                ],
+                [
+                  0.9055537835226098,
+                  0.0944462164773901
+                ],
+                [
+                  0.10817959124297138,
+                  0.8918204087570286
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-8-local_centered.npz",
+            "sha256": "b61d519cb18c2946916790cea12472b66b67e8dbaa4b487d527db608fcfb7844"
+          },
+          "wall_seconds": 12.23796025000047
+        },
+        {
+          "arm": "exact_implicit",
+          "work": {
+            "solve_seconds": 3.7471957915695384,
+            "solve_calls": 8002,
+            "settling_steps": 521344,
+            "row_steps": 12512768,
+            "maximum_residual": 9.990827609662745e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7086808240079603,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.5952072794449238,
+                  0.40479272055507615
+                ],
+                [
+                  0.5156267177351208,
+                  0.4843732822648792
+                ],
+                [
+                  0.5630488483400923,
+                  0.43695115165990756
+                ],
+                [
+                  0.4776232328150145,
+                  0.5223767671849855
+                ],
+                [
+                  0.6680268265860634,
+                  0.33197317341393656
+                ],
+                [
+                  0.5900708795724015,
+                  0.40992912042759866
+                ],
+                [
+                  0.6325087376301073,
+                  0.36749126236989277
+                ],
+                [
+                  0.5508430741066908,
+                  0.4491569258933092
+                ],
+                [
+                  0.5925104422213654,
+                  0.4074895577786346
+                ],
+                [
+                  0.5070227776344937,
+                  0.4929772223655064
+                ],
+                [
+                  0.6589602815290807,
+                  0.3410397184709193
+                ],
+                [
+                  0.5803512179849516,
+                  0.4196487820150484
+                ],
+                [
+                  0.649107242735437,
+                  0.35089275726456315
+                ],
+                [
+                  0.5757745328454338,
+                  0.42422546715456616
+                ],
+                [
+                  0.5691997758356576,
+                  0.4308002241643423
+                ],
+                [
+                  0.48649090627147645,
+                  0.5135090937285236
+                ],
+                [
+                  0.674240584583629,
+                  0.32575941541637093
+                ],
+                [
+                  0.6014900723554046,
+                  0.3985099276445954
+                ],
+                [
+                  0.5755618927668178,
+                  0.4244381072331821
+                ],
+                [
+                  0.4860770857327398,
+                  0.5139229142672602
+                ],
+                [
+                  0.5210535216055735,
+                  0.47894647839442656
+                ],
+                [
+                  0.4364492589943534,
+                  0.5635507410056466
+                ],
+                [
+                  0.48385655327021354,
+                  0.5161434467297866
+                ],
+                [
+                  0.398659251061279,
+                  0.6013407489387211
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.08607445812430727,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.07900473440619679,
+                  0.9209952655938032
+                ],
+                [
+                  0.9257855346318073,
+                  0.07421446536819265
+                ],
+                [
+                  0.061676650167814887,
+                  0.9383233498321852
+                ],
+                [
+                  0.9229236501985415,
+                  0.07707634980145853
+                ],
+                [
+                  0.06415154890929176,
+                  0.9358484510907082
+                ],
+                [
+                  0.9267351217009648,
+                  0.07326487829903502
+                ],
+                [
+                  0.9175973006716126,
+                  0.08240269932838738
+                ],
+                [
+                  0.09420305549905096,
+                  0.9057969445009492
+                ],
+                [
+                  0.9109976204714474,
+                  0.08900237952855256
+                ],
+                [
+                  0.0902542232854241,
+                  0.9097457767145759
+                ],
+                [
+                  0.908254793412287,
+                  0.09174520658771296
+                ],
+                [
+                  0.09989473767597387,
+                  0.9001052623240262
+                ],
+                [
+                  0.08318785746687422,
+                  0.9168121425331257
+                ],
+                [
+                  0.9277178619414519,
+                  0.07228213805854808
+                ],
+                [
+                  0.058526184727781046,
+                  0.941473815272219
+                ],
+                [
+                  0.9198888017320975,
+                  0.08011119826790244
+                ],
+                [
+                  0.06173259410940692,
+                  0.9382674058905931
+                ],
+                [
+                  0.9241371229617341,
+                  0.07586287703826584
+                ],
+                [
+                  0.918140531175348,
+                  0.08185946882465195
+                ],
+                [
+                  0.10130683657503925,
+                  0.8986931634249606
+                ],
+                [
+                  0.9101686894216565,
+                  0.08983131057834343
+                ],
+                [
+                  0.09481475232386101,
+                  0.9051852476761391
+                ],
+                [
+                  0.8995850352430558,
+                  0.10041496475694431
+                ],
+                [
+                  0.10040605073999825,
+                  0.8995939492600018
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.092799180351743,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.08833484483325008,
+                  0.9116651551667498
+                ],
+                [
+                  0.9301172786406218,
+                  0.06988272135937816
+                ],
+                [
+                  0.9020651544271918,
+                  0.09793484557280828
+                ],
+                [
+                  0.09827286766987182,
+                  0.9017271323301281
+                ],
+                [
+                  0.07484387240913551,
+                  0.9251561275908645
+                ],
+                [
+                  0.9228892300506961,
+                  0.07711076994930398
+                ],
+                [
+                  0.905887264484259,
+                  0.09411273551574101
+                ],
+                [
+                  0.10780918040540005,
+                  0.8921908195946
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-8-exact_implicit.npz",
+            "sha256": "eb6ca8b6fad2c9eb468fee08a6276ad666101246cd4b92ad7ee8cef2f1db30a3"
+          },
+          "wall_seconds": 4.688741915975697
+        },
+        {
+          "arm": "frozen_no_nudge",
+          "work": {
+            "solve_seconds": 0.0012734589981846511,
+            "solve_calls": 2,
+            "settling_steps": 128,
+            "row_steps": 3584,
+            "maximum_residual": 1.5543122344752192e-15
+          },
+          "updates": 0,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 0.9344063096774604,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7086808240079603,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.5952072794449238,
+                  0.40479272055507615
+                ],
+                [
+                  0.5156267177351208,
+                  0.4843732822648792
+                ],
+                [
+                  0.5630488483400923,
+                  0.43695115165990756
+                ],
+                [
+                  0.4776232328150145,
+                  0.5223767671849855
+                ],
+                [
+                  0.6680268265860634,
+                  0.33197317341393656
+                ],
+                [
+                  0.5900708795724015,
+                  0.40992912042759866
+                ],
+                [
+                  0.6325087376301073,
+                  0.36749126236989277
+                ],
+                [
+                  0.5508430741066908,
+                  0.4491569258933092
+                ],
+                [
+                  0.5925104422213654,
+                  0.4074895577786346
+                ],
+                [
+                  0.5070227776344937,
+                  0.4929772223655064
+                ],
+                [
+                  0.6589602815290807,
+                  0.3410397184709193
+                ],
+                [
+                  0.5803512179849516,
+                  0.4196487820150484
+                ],
+                [
+                  0.649107242735437,
+                  0.35089275726456315
+                ],
+                [
+                  0.5757745328454338,
+                  0.42422546715456616
+                ],
+                [
+                  0.5691997758356576,
+                  0.4308002241643423
+                ],
+                [
+                  0.48649090627147645,
+                  0.5135090937285236
+                ],
+                [
+                  0.674240584583629,
+                  0.32575941541637093
+                ],
+                [
+                  0.6014900723554046,
+                  0.3985099276445954
+                ],
+                [
+                  0.5755618927668178,
+                  0.4244381072331821
+                ],
+                [
+                  0.4860770857327398,
+                  0.5139229142672602
+                ],
+                [
+                  0.5210535216055735,
+                  0.47894647839442656
+                ],
+                [
+                  0.4364492589943534,
+                  0.5635507410056466
+                ],
+                [
+                  0.48385655327021354,
+                  0.5161434467297866
+                ],
+                [
+                  0.398659251061279,
+                  0.6013407489387211
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.7086808240079603,
+              "accuracy": 0.5,
+              "predictions": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                1,
+                0,
+                1,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.5952072794449238,
+                  0.40479272055507615
+                ],
+                [
+                  0.5156267177351208,
+                  0.4843732822648792
+                ],
+                [
+                  0.5630488483400923,
+                  0.43695115165990756
+                ],
+                [
+                  0.4776232328150145,
+                  0.5223767671849855
+                ],
+                [
+                  0.6680268265860634,
+                  0.33197317341393656
+                ],
+                [
+                  0.5900708795724015,
+                  0.40992912042759866
+                ],
+                [
+                  0.6325087376301073,
+                  0.36749126236989277
+                ],
+                [
+                  0.5508430741066908,
+                  0.4491569258933092
+                ],
+                [
+                  0.5925104422213654,
+                  0.4074895577786346
+                ],
+                [
+                  0.5070227776344937,
+                  0.4929772223655064
+                ],
+                [
+                  0.6589602815290807,
+                  0.3410397184709193
+                ],
+                [
+                  0.5803512179849516,
+                  0.4196487820150484
+                ],
+                [
+                  0.649107242735437,
+                  0.35089275726456315
+                ],
+                [
+                  0.5757745328454338,
+                  0.42422546715456616
+                ],
+                [
+                  0.5691997758356576,
+                  0.4308002241643423
+                ],
+                [
+                  0.48649090627147645,
+                  0.5135090937285236
+                ],
+                [
+                  0.674240584583629,
+                  0.32575941541637093
+                ],
+                [
+                  0.6014900723554046,
+                  0.3985099276445954
+                ],
+                [
+                  0.5755618927668178,
+                  0.4244381072331821
+                ],
+                [
+                  0.4860770857327398,
+                  0.5139229142672602
+                ],
+                [
+                  0.5210535216055735,
+                  0.47894647839442656
+                ],
+                [
+                  0.4364492589943534,
+                  0.5635507410056466
+                ],
+                [
+                  0.48385655327021354,
+                  0.5161434467297866
+                ],
+                [
+                  0.398659251061279,
+                  0.6013407489387211
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.7022992962048229,
+              "accuracy": 0.625,
+              "predictions": [
+                0,
+                0,
+                0,
+                1,
+                0,
+                0,
+                0,
+                0
+              ],
+              "probabilities": [
+                [
+                  0.6373110780681315,
+                  0.36268892193186847
+                ],
+                [
+                  0.559109651931318,
+                  0.440890348068682
+                ],
+                [
+                  0.5599292003136621,
+                  0.440070799686338
+                ],
+                [
+                  0.47290291135815293,
+                  0.527097088641847
+                ],
+                [
+                  0.6032050904865077,
+                  0.3967949095134923
+                ],
+                [
+                  0.5230423233008492,
+                  0.47695767669915073
+                ],
+                [
+                  0.598670227029325,
+                  0.40132977297067507
+                ],
+                [
+                  0.5117786927110178,
+                  0.48822130728898216
+                ]
+              ],
+              "wrong_sentences": [
+                {
+                  "sentence": "the pilot near the guard smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the sailor near the guards smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the sailors near the farmers smile",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                }
+              ]
+            }
+          },
+          "checkpoint": {
+            "path": "seed-8-frozen_no_nudge.npz",
+            "sha256": "f342177fda099a8ad919bf868bbbdca8d4e86c775b066c3410241e6a58ba87b2"
+          },
+          "wall_seconds": 0.00226320797810331
+        }
+      ],
+      "gradient_audit": {
+        "coordinates": [
+          {
+            "family": "source",
+            "coordinate": 0,
+            "finite_difference": 9.685267865489065e-05,
+            "implicit": 9.685267862195212e-05,
+            "absolute_error": 3.293853633856009e-14
+          },
+          {
+            "family": "source",
+            "coordinate": 72,
+            "finite_difference": -0.0001156444981442739,
+            "implicit": -0.00011564449947284868,
+            "absolute_error": 1.3285747827405936e-12
+          },
+          {
+            "family": "source",
+            "coordinate": 141,
+            "finite_difference": 7.151534919813685e-05,
+            "implicit": 7.15153499271584e-05,
+            "absolute_error": 7.290215523272914e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 144,
+            "finite_difference": -0.001896448242888482,
+            "implicit": -0.0018964482407785224,
+            "absolute_error": 2.1099595595014398e-12
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 157,
+            "finite_difference": 0.0019258436623204032,
+            "implicit": 0.0019258436592916013,
+            "absolute_error": 3.028801818724669e-12
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 169,
+            "finite_difference": -0.0017459389475837914,
+            "implicit": -0.0017459389464567219,
+            "absolute_error": 1.1270695748216708e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 10,
+            "finite_difference": 0.0008401440335092935,
+            "implicit": 0.0008401440310703664,
+            "absolute_error": 2.438927098474819e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 17,
+            "finite_difference": -0.00020509823561720705,
+            "implicit": -0.0002050982367190479,
+            "absolute_error": 1.1018408407892366e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 23,
+            "finite_difference": -0.030860055827419682,
+            "implicit": -0.030860055831878053,
+            "absolute_error": 4.4583711722445685e-12
+          }
+        ],
+        "centered_comparison": [
+          {
+            "beta": 0.03,
+            "efficacy_max_error": 8.293115098523978e-05,
+            "bias_max_error": 2.8375365660842505e-05
+          },
+          {
+            "beta": 0.015,
+            "efficacy_max_error": 2.0711321554339442e-05,
+            "bias_max_error": 6.99462883200358e-06
+          }
+        ],
+        "work": {
+          "solve_seconds": 0.011271127907093614,
+          "solve_calls": 23,
+          "settling_steps": 1472,
+          "row_steps": 35328,
+          "maximum_residual": 1.582067810090848e-15
+        }
+      }
+    },
+    {
+      "seed": 9,
+      "arms": [
+        {
+          "arm": "local_centered",
+          "work": {
+            "solve_seconds": 11.470316467632074,
+            "solve_calls": 24002,
+            "settling_steps": 1538720,
+            "row_steps": 36929792,
+            "maximum_residual": 9.999329142473812e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7514144867033347,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.4701211600259522,
+                  0.5298788399740477
+                ],
+                [
+                  0.3761400677083751,
+                  0.623859932291625
+                ],
+                [
+                  0.6693805751301954,
+                  0.3306194248698046
+                ],
+                [
+                  0.5800051688468281,
+                  0.4199948311531721
+                ],
+                [
+                  0.3078241208964284,
+                  0.6921758791035716
+                ],
+                [
+                  0.24493302816819587,
+                  0.7550669718318042
+                ],
+                [
+                  0.5165079454156045,
+                  0.48349205458439554
+                ],
+                [
+                  0.44454439159738957,
+                  0.5554556084026104
+                ],
+                [
+                  0.42898368063024006,
+                  0.57101631936976
+                ],
+                [
+                  0.3566860221110322,
+                  0.6433139778889678
+                ],
+                [
+                  0.2819744468254642,
+                  0.7180255531745358
+                ],
+                [
+                  0.24786655863657223,
+                  0.7521334413634277
+                ],
+                [
+                  0.541925144269228,
+                  0.458074855730772
+                ],
+                [
+                  0.4612226514350185,
+                  0.5387773485649814
+                ],
+                [
+                  0.6531397116492511,
+                  0.34686028835074895
+                ],
+                [
+                  0.5559416395998803,
+                  0.44405836040011976
+                ],
+                [
+                  0.29852512202123327,
+                  0.7014748779787667
+                ],
+                [
+                  0.25341158836158584,
+                  0.7465884116384142
+                ],
+                [
+                  0.4158565234628537,
+                  0.5841434765371463
+                ],
+                [
+                  0.36414900422753116,
+                  0.6358509957724688
+                ],
+                [
+                  0.3300508093329134,
+                  0.6699491906670867
+                ],
+                [
+                  0.2689325457542942,
+                  0.7310674542457057
+                ],
+                [
+                  0.5203489910135412,
+                  0.47965100898645885
+                ],
+                [
+                  0.43725746738204185,
+                  0.5627425326179581
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.09981298307716889,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.12979878654144017,
+                  0.8702012134585598
+                ],
+                [
+                  0.9304190058249612,
+                  0.06958099417503892
+                ],
+                [
+                  0.11920231297611196,
+                  0.8807976870238879
+                ],
+                [
+                  0.9416643540653997,
+                  0.05833564593460019
+                ],
+                [
+                  0.12022334472327416,
+                  0.8797766552767259
+                ],
+                [
+                  0.9318529364353448,
+                  0.06814706356465505
+                ],
+                [
+                  0.8839410402207154,
+                  0.11605895977928456
+                ],
+                [
+                  0.07558356704735096,
+                  0.9244164329526491
+                ],
+                [
+                  0.8822459312288174,
+                  0.11775406877118255
+                ],
+                [
+                  0.07668693500434033,
+                  0.9233130649956597
+                ],
+                [
+                  0.8711091775152789,
+                  0.1288908224847211
+                ],
+                [
+                  0.08725176576958216,
+                  0.912748234230418
+                ],
+                [
+                  0.10481329258570775,
+                  0.8951867074142923
+                ],
+                [
+                  0.9197569195706726,
+                  0.08024308042932735
+                ],
+                [
+                  0.10288270463403583,
+                  0.8971172953659643
+                ],
+                [
+                  0.9273316845891288,
+                  0.07266831541087121
+                ],
+                [
+                  0.08655375096101747,
+                  0.9134462490389825
+                ],
+                [
+                  0.9283176172368124,
+                  0.07168238276318764
+                ],
+                [
+                  0.8826664469213812,
+                  0.11733355307861887
+                ],
+                [
+                  0.07214183579268718,
+                  0.9278581642073129
+                ],
+                [
+                  0.8833548863637432,
+                  0.11664511363625679
+                ],
+                [
+                  0.07221350629123477,
+                  0.9277864937087651
+                ],
+                [
+                  0.8817228083217015,
+                  0.11827719167829856
+                ],
+                [
+                  0.09018137704822772,
+                  0.9098186229517722
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.1103177358131151,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.13460046165379524,
+                  0.8653995383462046
+                ],
+                [
+                  0.9267684673194974,
+                  0.07323153268050255
+                ],
+                [
+                  0.8800066289983579,
+                  0.11999337100164219
+                ],
+                [
+                  0.09761152967884612,
+                  0.9023884703211538
+                ],
+                [
+                  0.10926472623754722,
+                  0.8907352737624528
+                ],
+                [
+                  0.9174735090864053,
+                  0.0825264909135946
+                ],
+                [
+                  0.8682734673238421,
+                  0.1317265326761578
+                ],
+                [
+                  0.08451586031770512,
+                  0.9154841396822949
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-9-local_centered.npz",
+            "sha256": "24287c3c74e4967141b0488a140eee998e2a7e91358ed39a280a26f7d146db9d"
+          },
+          "wall_seconds": 12.254852749989368
+        },
+        {
+          "arm": "exact_implicit",
+          "work": {
+            "solve_seconds": 3.811919431143906,
+            "solve_calls": 8002,
+            "settling_steps": 522048,
+            "row_steps": 12529664,
+            "maximum_residual": 9.996067862338975e-11
+          },
+          "updates": 8000,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.5,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7514144867033347,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.4701211600259522,
+                  0.5298788399740477
+                ],
+                [
+                  0.3761400677083751,
+                  0.623859932291625
+                ],
+                [
+                  0.6693805751301954,
+                  0.3306194248698046
+                ],
+                [
+                  0.5800051688468281,
+                  0.4199948311531721
+                ],
+                [
+                  0.3078241208964284,
+                  0.6921758791035716
+                ],
+                [
+                  0.24493302816819587,
+                  0.7550669718318042
+                ],
+                [
+                  0.5165079454156045,
+                  0.48349205458439554
+                ],
+                [
+                  0.44454439159738957,
+                  0.5554556084026104
+                ],
+                [
+                  0.42898368063024006,
+                  0.57101631936976
+                ],
+                [
+                  0.3566860221110322,
+                  0.6433139778889678
+                ],
+                [
+                  0.2819744468254642,
+                  0.7180255531745358
+                ],
+                [
+                  0.24786655863657223,
+                  0.7521334413634277
+                ],
+                [
+                  0.541925144269228,
+                  0.458074855730772
+                ],
+                [
+                  0.4612226514350185,
+                  0.5387773485649814
+                ],
+                [
+                  0.6531397116492511,
+                  0.34686028835074895
+                ],
+                [
+                  0.5559416395998803,
+                  0.44405836040011976
+                ],
+                [
+                  0.29852512202123327,
+                  0.7014748779787667
+                ],
+                [
+                  0.25341158836158584,
+                  0.7465884116384142
+                ],
+                [
+                  0.4158565234628537,
+                  0.5841434765371463
+                ],
+                [
+                  0.36414900422753116,
+                  0.6358509957724688
+                ],
+                [
+                  0.3300508093329134,
+                  0.6699491906670867
+                ],
+                [
+                  0.2689325457542942,
+                  0.7310674542457057
+                ],
+                [
+                  0.5203489910135412,
+                  0.47965100898645885
+                ],
+                [
+                  0.43725746738204185,
+                  0.5627425326179581
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.09984312348616699,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1,
+                1,
+                0,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                0,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.1298864706465317,
+                  0.8701135293534683
+                ],
+                [
+                  0.9304113268884248,
+                  0.06958867311157525
+                ],
+                [
+                  0.11930462288533632,
+                  0.8806953771146636
+                ],
+                [
+                  0.9416872928302072,
+                  0.05831270716979275
+                ],
+                [
+                  0.12032157132790777,
+                  0.8796784286720921
+                ],
+                [
+                  0.9318283743897627,
+                  0.06817162561023732
+                ],
+                [
+                  0.8839020838643044,
+                  0.11609791613569559
+                ],
+                [
+                  0.07561166439844338,
+                  0.9243883356015566
+                ],
+                [
+                  0.8821973009431847,
+                  0.1178026990568153
+                ],
+                [
+                  0.07671729447424101,
+                  0.923282705525759
+                ],
+                [
+                  0.8710510359959012,
+                  0.12894896400409883
+                ],
+                [
+                  0.08728309559303266,
+                  0.9127169044069674
+                ],
+                [
+                  0.10475900916591345,
+                  0.8952409908340865
+                ],
+                [
+                  0.919744358478129,
+                  0.080255641521871
+                ],
+                [
+                  0.10285729435628173,
+                  0.8971427056437182
+                ],
+                [
+                  0.9273204437226734,
+                  0.0726795562773265
+                ],
+                [
+                  0.08648193068051661,
+                  0.9135180693194833
+                ],
+                [
+                  0.928317351469165,
+                  0.07168264853083497
+                ],
+                [
+                  0.8826089772000602,
+                  0.1173910227999399
+                ],
+                [
+                  0.07215985964142506,
+                  0.927840140358575
+                ],
+                [
+                  0.8832992939090392,
+                  0.11670070609096077
+                ],
+                [
+                  0.07223095170047131,
+                  0.9277690482995287
+                ],
+                [
+                  0.8816841325359458,
+                  0.1183158674640542
+                ],
+                [
+                  0.09022901948058708,
+                  0.9097709805194129
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.11036814654077412,
+              "accuracy": 1.0,
+              "predictions": [
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.134719902919004,
+                  0.8652800970809961
+                ],
+                [
+                  0.9267422015850274,
+                  0.07325779841497267
+                ],
+                [
+                  0.8799768208528892,
+                  0.12002317914711069
+                ],
+                [
+                  0.09768738280930547,
+                  0.9023126171906947
+                ],
+                [
+                  0.10922826430348356,
+                  0.8907717356965164
+                ],
+                [
+                  0.9174400956722182,
+                  0.08255990432778187
+                ],
+                [
+                  0.8681897783413662,
+                  0.1318102216586337
+                ],
+                [
+                  0.08454067434171512,
+                  0.9154593256582848
+                ]
+              ],
+              "wrong_sentences": []
+            }
+          },
+          "checkpoint": {
+            "path": "seed-9-exact_implicit.npz",
+            "sha256": "0c1c8c9fe3b2cbc4c30a76f5ae4dd80b52ab756b029a40794d34c28020804b8a"
+          },
+          "wall_seconds": 4.761248750030063
+        },
+        {
+          "arm": "frozen_no_nudge",
+          "work": {
+            "solve_seconds": 0.0013042500359006226,
+            "solve_calls": 2,
+            "settling_steps": 128,
+            "row_steps": 3584,
+            "maximum_residual": 6.661338147750939e-15
+          },
+          "updates": 0,
+          "independent_parameters": 159,
+          "status": "complete",
+          "maximum_free_row_mass": 1.0865332774610756,
+          "free_contraction_bound": 0.875,
+          "detuned_contraction_bound": 0.89375,
+          "initial": {
+            "train": {
+              "cross_entropy": 0.7514144867033347,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.4701211600259522,
+                  0.5298788399740477
+                ],
+                [
+                  0.3761400677083751,
+                  0.623859932291625
+                ],
+                [
+                  0.6693805751301954,
+                  0.3306194248698046
+                ],
+                [
+                  0.5800051688468281,
+                  0.4199948311531721
+                ],
+                [
+                  0.3078241208964284,
+                  0.6921758791035716
+                ],
+                [
+                  0.24493302816819587,
+                  0.7550669718318042
+                ],
+                [
+                  0.5165079454156045,
+                  0.48349205458439554
+                ],
+                [
+                  0.44454439159738957,
+                  0.5554556084026104
+                ],
+                [
+                  0.42898368063024006,
+                  0.57101631936976
+                ],
+                [
+                  0.3566860221110322,
+                  0.6433139778889678
+                ],
+                [
+                  0.2819744468254642,
+                  0.7180255531745358
+                ],
+                [
+                  0.24786655863657223,
+                  0.7521334413634277
+                ],
+                [
+                  0.541925144269228,
+                  0.458074855730772
+                ],
+                [
+                  0.4612226514350185,
+                  0.5387773485649814
+                ],
+                [
+                  0.6531397116492511,
+                  0.34686028835074895
+                ],
+                [
+                  0.5559416395998803,
+                  0.44405836040011976
+                ],
+                [
+                  0.29852512202123327,
+                  0.7014748779787667
+                ],
+                [
+                  0.25341158836158584,
+                  0.7465884116384142
+                ],
+                [
+                  0.4158565234628537,
+                  0.5841434765371463
+                ],
+                [
+                  0.36414900422753116,
+                  0.6358509957724688
+                ],
+                [
+                  0.3300508093329134,
+                  0.6699491906670867
+                ],
+                [
+                  0.2689325457542942,
+                  0.7310674542457057
+                ],
+                [
+                  0.5203489910135412,
+                  0.47965100898645885
+                ],
+                [
+                  0.43725746738204185,
+                  0.5627425326179581
+                ]
+              ]
+            }
+          },
+          "final": {
+            "train": {
+              "cross_entropy": 0.7514144867033347,
+              "accuracy": 0.5416666666666666,
+              "predictions": [
+                1,
+                1,
+                0,
+                0,
+                1,
+                1,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1,
+                1,
+                1,
+                0,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.4701211600259522,
+                  0.5298788399740477
+                ],
+                [
+                  0.3761400677083751,
+                  0.623859932291625
+                ],
+                [
+                  0.6693805751301954,
+                  0.3306194248698046
+                ],
+                [
+                  0.5800051688468281,
+                  0.4199948311531721
+                ],
+                [
+                  0.3078241208964284,
+                  0.6921758791035716
+                ],
+                [
+                  0.24493302816819587,
+                  0.7550669718318042
+                ],
+                [
+                  0.5165079454156045,
+                  0.48349205458439554
+                ],
+                [
+                  0.44454439159738957,
+                  0.5554556084026104
+                ],
+                [
+                  0.42898368063024006,
+                  0.57101631936976
+                ],
+                [
+                  0.3566860221110322,
+                  0.6433139778889678
+                ],
+                [
+                  0.2819744468254642,
+                  0.7180255531745358
+                ],
+                [
+                  0.24786655863657223,
+                  0.7521334413634277
+                ],
+                [
+                  0.541925144269228,
+                  0.458074855730772
+                ],
+                [
+                  0.4612226514350185,
+                  0.5387773485649814
+                ],
+                [
+                  0.6531397116492511,
+                  0.34686028835074895
+                ],
+                [
+                  0.5559416395998803,
+                  0.44405836040011976
+                ],
+                [
+                  0.29852512202123327,
+                  0.7014748779787667
+                ],
+                [
+                  0.25341158836158584,
+                  0.7465884116384142
+                ],
+                [
+                  0.4158565234628537,
+                  0.5841434765371463
+                ],
+                [
+                  0.36414900422753116,
+                  0.6358509957724688
+                ],
+                [
+                  0.3300508093329134,
+                  0.6699491906670867
+                ],
+                [
+                  0.2689325457542942,
+                  0.7310674542457057
+                ],
+                [
+                  0.5203489910135412,
+                  0.47965100898645885
+                ],
+                [
+                  0.43725746738204185,
+                  0.5627425326179581
+                ]
+              ]
+            },
+            "heldout": {
+              "cross_entropy": 0.7712998742675943,
+              "accuracy": 0.375,
+              "predictions": [
+                0,
+                1,
+                0,
+                0,
+                1,
+                1,
+                1,
+                1
+              ],
+              "probabilities": [
+                [
+                  0.566777636425579,
+                  0.433222363574421
+                ],
+                [
+                  0.4752295608713774,
+                  0.5247704391286226
+                ],
+                [
+                  0.6298855728988404,
+                  0.3701144271011596
+                ],
+                [
+                  0.532160795404303,
+                  0.46783920459569706
+                ],
+                [
+                  0.4484376245226299,
+                  0.55156237547737
+                ],
+                [
+                  0.36780783367699144,
+                  0.6321921663230086
+                ],
+                [
+                  0.20731947378464363,
+                  0.7926805262153563
+                ],
+                [
+                  0.1807782556684839,
+                  0.8192217443315161
+                ]
+              ],
+              "wrong_sentences": [
+                {
+                  "sentence": "the pilot near the guard smiles",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the pilot near the guard smile",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                },
+                {
+                  "sentence": "the pilots near the farmer smile",
+                  "grammatical": true,
+                  "predicted_grammatical": false
+                },
+                {
+                  "sentence": "the sailor near the guards smile",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                },
+                {
+                  "sentence": "the sailors near the farmers smiles",
+                  "grammatical": false,
+                  "predicted_grammatical": true
+                }
+              ]
+            }
+          },
+          "checkpoint": {
+            "path": "seed-9-frozen_no_nudge.npz",
+            "sha256": "576ab794181f7d787948c23157873dba20b08f36e063859f87b89c9c30f004d9"
+          },
+          "wall_seconds": 0.0022447920055128634
+        }
+      ],
+      "gradient_audit": {
+        "coordinates": [
+          {
+            "family": "source",
+            "coordinate": 0,
+            "finite_difference": 2.4969955270126573e-05,
+            "implicit": 2.4969953120079566e-05,
+            "absolute_error": 2.150047006480981e-12
+          },
+          {
+            "family": "source",
+            "coordinate": 72,
+            "finite_difference": 1.2859197040526736e-05,
+            "implicit": 1.2859198454875614e-05,
+            "absolute_error": 1.4143488778832177e-12
+          },
+          {
+            "family": "source",
+            "coordinate": 141,
+            "finite_difference": -0.0010907403161231066,
+            "implicit": -0.0010907403142191427,
+            "absolute_error": 1.9039639656548424e-12
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 144,
+            "finite_difference": 0.001625330252330581,
+            "implicit": 0.001625330252051023,
+            "absolute_error": 2.7955806072843536e-13
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 157,
+            "finite_difference": -0.0015905432221297031,
+            "implicit": -0.0015905432209066444,
+            "absolute_error": 1.2230587636413714e-12
+          },
+          {
+            "family": "reciprocal",
+            "coordinate": 169,
+            "finite_difference": -0.00548684012530165,
+            "implicit": -0.005486840127661505,
+            "absolute_error": 2.3598553666737132e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 10,
+            "finite_difference": 0.00042168554759136606,
+            "implicit": 0.0004216855504734175,
+            "absolute_error": 2.882051422601478e-12
+          },
+          {
+            "family": "bias",
+            "coordinate": 17,
+            "finite_difference": -0.002517026485848728,
+            "implicit": -0.00251702648663189,
+            "absolute_error": 7.831621635923103e-13
+          },
+          {
+            "family": "bias",
+            "coordinate": 23,
+            "finite_difference": 0.04320437692190148,
+            "implicit": 0.04320437692550158,
+            "absolute_error": 3.6000993852702834e-12
+          }
+        ],
+        "centered_comparison": [
+          {
+            "beta": 0.03,
+            "efficacy_max_error": 7.730172193365706e-05,
+            "bias_max_error": 1.6849646549049746e-05
+          },
+          {
+            "beta": 0.015,
+            "efficacy_max_error": 1.9323326792127123e-05,
+            "bias_max_error": 4.151647047173634e-06
+          }
+        ],
+        "work": {
+          "solve_seconds": 0.01103566586971283,
+          "solve_calls": 23,
+          "settling_steps": 1472,
+          "row_steps": 35328,
+          "maximum_residual": 6.689093723366568e-15
+        }
+      }
+    }
+  ],
+  "complete": true,
+  "predeclared_acceptance_met": true
+}

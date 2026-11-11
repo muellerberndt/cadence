@@ -1,0 +1,532 @@
+{
+  "format": "cadence-robot-arena/issue158-development/2",
+  "scope": "Exploratory paired continuation; no claim of acquired fighting skill or fresh confirmation.",
+  "cadence_source": "/workspace/temp/cadence-issue159-20261008",
+  "cadence_commit": "2566ccf2c23b76505a82b941111535ffd50f8ae4",
+  "arousal_sha256": "3538fd0732be622b3c0c36d399eb365736bd44705d50b05da678364b472dd47f",
+  "arena_commit": "14eb800543923c9e1f64f28319490ea4435decb6",
+  "checkpoint_sha256": {
+    "Crab-2.33": "e3a36b039c5023acd7048dd4ce2ba794fc3356fda2e6816bc7a061196b670a93",
+    "Mantis-3.75": "058b6857427e24b6487a82ae8d532a87886ed07531d3f0add41df7d205ab8960",
+    "Crab-3.110": "cb8596f6f16efb625db9c5a987febc36b4807431a85bf899089ac503404e4ce9",
+    "Mantis-3.42": "fe6e1e868b2a7b0403fa34167add04a0b283bd491bf66f8e2b9e107a651c1749",
+    "Dozer-2.114": "3364c5a3a84f8bc234e106185999a26d95823931931b749a7512a5bff76e03a8",
+    "Mantis-3.97": "d70e9c1096f4050b205a936082a8a3370ee429dea9f54da6e1decd5776795466"
+  },
+  "league_sha256": "50b5617772e89e05a4f753624811f5614e3a932a51a1696fa5e653fa2c227316",
+  "harness_sha256": "deb87de75a1c253fa75755909fbc2c73ae9112daba4c9294665c4a664e5ea188",
+  "initial_owed": {
+    "Crab-2.33": [
+      0.6816782944923734,
+      true
+    ],
+    "Mantis-3.75": [
+      0.6592535427867601,
+      true
+    ],
+    "Crab-3.110": [
+      -0.548758210978784,
+      true
+    ],
+    "Mantis-3.42": [
+      0.15025352164489314,
+      true
+    ],
+    "Dozer-2.114": [
+      0.5839851529209925,
+      true
+    ],
+    "Mantis-3.97": [
+      0.5851950722378456,
+      true
+    ]
+  },
+  "policy": "random",
+  "stage": {
+    "need": 0
+  },
+  "duration": 600,
+  "seeds": [
+    77,
+    78,
+    79
+  ],
+  "runs": [
+    {
+      "seed": 77,
+      "moments": 600,
+      "fighters": [
+        {
+          "name": "Crab-2.33",
+          "place": 1,
+          "score": 1.0,
+          "alive": true,
+          "hp": 58.6,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 101.4,
+          "burn": 101.4,
+          "hits": 0,
+          "moments_outside": 338,
+          "travelled_m": 4.3,
+          "closing_share": 0.25,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.75",
+          "place": 4,
+          "score": -0.2,
+          "alive": true,
+          "hp": 47.2,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 112.8,
+          "burn": 112.8,
+          "hits": 0,
+          "moments_outside": 376,
+          "travelled_m": 4.9,
+          "closing_share": 0.277,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Crab-3.110",
+          "place": 2,
+          "score": 0.6,
+          "alive": true,
+          "hp": 53.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 106.5,
+          "burn": 106.5,
+          "hits": 0,
+          "moments_outside": 355,
+          "travelled_m": 4.1,
+          "closing_share": 0.257,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.42",
+          "place": 5,
+          "score": -0.6,
+          "alive": true,
+          "hp": 38.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 121.5,
+          "burn": 121.5,
+          "hits": 0,
+          "moments_outside": 405,
+          "travelled_m": 5.5,
+          "closing_share": 0.21,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Dozer-2.114",
+          "place": 6,
+          "score": -1.0,
+          "alive": true,
+          "hp": 35.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 124.5,
+          "burn": 124.5,
+          "hits": 0,
+          "moments_outside": 415,
+          "travelled_m": 5.6,
+          "closing_share": 0.265,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.97",
+          "place": 3,
+          "score": 0.2,
+          "alive": true,
+          "hp": 51.4,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 108.6,
+          "burn": 108.6,
+          "hits": 0,
+          "moments_outside": 362,
+          "travelled_m": 4.9,
+          "closing_share": 0.242,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        }
+      ],
+      "final_owed": {
+        "Crab-2.33": [
+          0.9358195952050506,
+          true
+        ],
+        "Mantis-3.75": [
+          -0.2641804047949493,
+          true
+        ],
+        "Crab-3.110": [
+          0.5949028966275574,
+          true
+        ],
+        "Mantis-3.42": [
+          -0.5863524024280381,
+          true
+        ],
+        "Dozer-2.114": [
+          -0.986352402428038,
+          true
+        ],
+        "Mantis-3.97": [
+          0.20424704282010653,
+          true
+        ]
+      }
+    },
+    {
+      "seed": 78,
+      "moments": 600,
+      "fighters": [
+        {
+          "name": "Crab-2.33",
+          "place": 1,
+          "score": 1.0,
+          "alive": true,
+          "hp": 58.6,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 101.4,
+          "burn": 101.4,
+          "hits": 0,
+          "moments_outside": 338,
+          "travelled_m": 4.3,
+          "closing_share": 0.25,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.75",
+          "place": 4,
+          "score": -0.2,
+          "alive": true,
+          "hp": 47.2,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 112.8,
+          "burn": 112.8,
+          "hits": 0,
+          "moments_outside": 376,
+          "travelled_m": 4.9,
+          "closing_share": 0.277,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Crab-3.110",
+          "place": 2,
+          "score": 0.6,
+          "alive": true,
+          "hp": 53.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 106.5,
+          "burn": 106.5,
+          "hits": 0,
+          "moments_outside": 355,
+          "travelled_m": 4.1,
+          "closing_share": 0.257,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.42",
+          "place": 5,
+          "score": -0.6,
+          "alive": true,
+          "hp": 38.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 121.5,
+          "burn": 121.5,
+          "hits": 0,
+          "moments_outside": 405,
+          "travelled_m": 5.5,
+          "closing_share": 0.21,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Dozer-2.114",
+          "place": 6,
+          "score": -1.0,
+          "alive": true,
+          "hp": 35.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 124.5,
+          "burn": 124.5,
+          "hits": 0,
+          "moments_outside": 415,
+          "travelled_m": 5.6,
+          "closing_share": 0.265,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.97",
+          "place": 3,
+          "score": 0.2,
+          "alive": true,
+          "hp": 51.4,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 108.6,
+          "burn": 108.6,
+          "hits": 0,
+          "moments_outside": 362,
+          "travelled_m": 4.9,
+          "closing_share": 0.242,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        }
+      ],
+      "final_owed": {
+        "Crab-2.33": [
+          0.9358195952050506,
+          true
+        ],
+        "Mantis-3.75": [
+          -0.2641804047949493,
+          true
+        ],
+        "Crab-3.110": [
+          0.59490289662756,
+          true
+        ],
+        "Mantis-3.42": [
+          -0.5863524024280381,
+          true
+        ],
+        "Dozer-2.114": [
+          -0.986352402428038,
+          true
+        ],
+        "Mantis-3.97": [
+          0.20424704282010653,
+          true
+        ]
+      }
+    },
+    {
+      "seed": 79,
+      "moments": 600,
+      "fighters": [
+        {
+          "name": "Crab-2.33",
+          "place": 1,
+          "score": 1.0,
+          "alive": true,
+          "hp": 58.6,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 101.4,
+          "burn": 101.4,
+          "hits": 0,
+          "moments_outside": 338,
+          "travelled_m": 4.3,
+          "closing_share": 0.25,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.75",
+          "place": 4,
+          "score": -0.2,
+          "alive": true,
+          "hp": 47.2,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 112.8,
+          "burn": 112.8,
+          "hits": 0,
+          "moments_outside": 376,
+          "travelled_m": 4.9,
+          "closing_share": 0.277,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Crab-3.110",
+          "place": 2,
+          "score": 0.6,
+          "alive": true,
+          "hp": 53.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 106.5,
+          "burn": 106.5,
+          "hits": 0,
+          "moments_outside": 355,
+          "travelled_m": 4.1,
+          "closing_share": 0.257,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.42",
+          "place": 5,
+          "score": -0.6,
+          "alive": true,
+          "hp": 38.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 121.5,
+          "burn": 121.5,
+          "hits": 0,
+          "moments_outside": 405,
+          "travelled_m": 5.5,
+          "closing_share": 0.21,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Dozer-2.114",
+          "place": 6,
+          "score": -1.0,
+          "alive": true,
+          "hp": 35.5,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 124.5,
+          "burn": 124.5,
+          "hits": 0,
+          "moments_outside": 415,
+          "travelled_m": 5.6,
+          "closing_share": 0.265,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        },
+        {
+          "name": "Mantis-3.97",
+          "place": 3,
+          "score": 0.2,
+          "alive": true,
+          "hp": 51.4,
+          "died_at": null,
+          "moments": 600,
+          "dealt": 0.0,
+          "taken": 108.6,
+          "burn": 108.6,
+          "hits": 0,
+          "moments_outside": 362,
+          "travelled_m": 4.9,
+          "closing_share": 0.242,
+          "aroused_share": 0.0,
+          "sweeps_per_moment": 0.0,
+          "learning_sweeps": 0,
+          "refused": 0,
+          "ms_per_moment": 0.0
+        }
+      ],
+      "final_owed": {
+        "Crab-2.33": [
+          0.9358195952050506,
+          true
+        ],
+        "Mantis-3.75": [
+          -0.2641804047949493,
+          true
+        ],
+        "Crab-3.110": [
+          0.5949028966275574,
+          true
+        ],
+        "Mantis-3.42": [
+          -0.5863524024280408,
+          true
+        ],
+        "Dozer-2.114": [
+          -0.9863524024280407,
+          true
+        ],
+        "Mantis-3.97": [
+          0.2042470428201092,
+          true
+        ]
+      }
+    }
+  ],
+  "checkpoints_unchanged": true,
+  "league_unchanged": true
+}

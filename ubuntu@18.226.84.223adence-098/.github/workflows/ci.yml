@@ -1,0 +1,66 @@
+name: ci
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  minimal-install:
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Build and install the wheel with only required dependencies
+        run: |
+          python -m pip wheel --no-deps --wheel-dir dist .
+          python -m pip install dist/*.whl
+          python -m pip check
+      - name: Run the documented learning and acting loops without optional backends
+        run: |
+          python - <<'PY'
+          import re
+          import subprocess
+          import sys
+          import tempfile
+          from pathlib import Path
+
+          # every page whose blocks need NumPy alone: anatomy imports the benchmark
+          # instruments of a source checkout and backends needs PyTorch
+          for name in ("README.md", "docs/start.md", "docs/world-model.md", "docs/teach.md", "docs/reward.md",
+                       "docs/memory.md", "docs/senses.md", "docs/tune.md", "docs/evaluate.md",
+                       "docs/settling.md", "docs/api.md"):
+              page = Path(name).read_text(encoding="utf-8")
+              blocks = re.findall(r"(<!-- not-run[^\n]*-->\n)?```python\n(.*?)```", page, re.S)
+              code = "\n\n".join(block for marker, block in blocks if not marker)
+              with tempfile.TemporaryDirectory() as directory:
+                  script = Path(directory) / "documentation_example.py"
+                  script.write_text(code, encoding="utf-8")
+                  subprocess.run([sys.executable, str(script)], cwd=directory, check=True)
+          PY
+      - name: Exercise the continuing brain
+        run: |
+          python examples/continuing_brain.py
+  test:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install torch --index-url https://download.pytorch.org/whl/cpu
+        if: runner.os == 'Linux'
+      - run: python -m pip install -e ".[dev]"
+      - run: ruff check src tests
+      - run: mypy
+      - run: pytest -q

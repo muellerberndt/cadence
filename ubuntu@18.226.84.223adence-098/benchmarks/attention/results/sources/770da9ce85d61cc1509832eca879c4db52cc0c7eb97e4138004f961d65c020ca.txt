@@ -1,0 +1,341 @@
+"""Does the existing cortex use both unselected facts delivered through recall ports?
+
+This supplies content, never a selected memory or an answer. It clears trace and warm
+state at the query as an explicit component boundary. No attention candidate runs here.
+"""
+
+from __future__ import annotations
+
+import argparse
+import copy
+import importlib.util
+import json
+import sys
+import tempfile
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+import cadence as cd
+from cadence.receipts import Receipt, canonical_sha256, source_manifest
+
+HERE = Path(__file__).resolve().parent
+PROTOCOL = HERE / "content-protocol.json"
+SPEC = importlib.util.spec_from_file_location(
+    "attention_content_controls", HERE.parent / "relevance" / "acquisition_controls.py")
+assert SPEC is not None and SPEC.loader is not None
+controls = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = controls
+SPEC.loader.exec_module(controls)
+sr = controls.sr
+CONDITIONS = ("intact", "erased", "relevant_flip", "irrelevant_flip", "donor", "sham")
+
+
+def sources() -> list[tuple[str, Path]]:
+    package = Path(cd.__file__).resolve().parent
+    return [("benchmarks/attention/content_control.py", Path(__file__).resolve()),
+            ("benchmarks/attention/content-protocol.json", PROTOCOL),
+            ("benchmarks/relevance/acquisition_controls.py", Path(controls.__file__)),
+            ("benchmarks/relevance/selective_recall.py", Path(sr.__file__))] + [
+        ("src/cadence/" + str(path.relative_to(package)), path)
+        for path in sorted(package.rglob("*.py"))]
+
+
+def make_brain(protocol: dict[str, Any], seed: int) -> cd.Brain:
+    brain = cd.Brain.compose(sr.INPUTS, 2, seed=seed, **protocol["brain"])
+    graph = brain.brain
+    brain.learner.brain = cd.NeuralGraph(
+        graph.connectome, graph.neuron_model.replace(dt=protocol["dt"]),
+        efficacy=graph.efficacy, bias=graph.bias, log_gain=graph.log_gain)
+    return brain
+
+
+def query_boundary(brain: cd.Brain, batch: int) -> np.ndarray:
+    """Keep actual witnessed slots, clear the alternative trace and neural-state carriers."""
+    recall = brain.recall
+    if recall is None or recall.streams != batch or recall.slots < 2:
+        raise ValueError("the content control needs two witnessed facts per stream")
+    if not recall.held[:, :2].all():
+        raise ValueError("both actual fact events must be witnessed")
+    content = recall.values[:, :2].sum(axis=1).copy()
+    if brain.working_memory is not None:
+        brain.working_memory.reset(batch)
+    brain.basal_ganglia.reset()
+    return content
+
+
+def supplied_drive(brain: cd.Brain, query: np.ndarray, content: np.ndarray,
+                   arm: str, amplitude: float) -> np.ndarray:
+    """Inject BOTH facts, independent of query/target, through one declared boundary."""
+    if arm not in ("recall_ports", "sensory_exposed"):
+        raise ValueError("unknown content arm")
+    query, content = np.asarray(query, float), np.asarray(content, float)
+    if (query.ndim != 2 or content.shape != query.shape or query.shape[1] != sr.INPUTS
+            or not np.isfinite(query).all() or not np.isfinite(content).all()):
+        raise ValueError("query and content must be finite matching observation batches")
+    drive = brain.stimulus(query).copy()
+    if arm == "recall_ports":
+        assert brain.recall is not None
+        drive[:, brain.recall.recall_neurons] = amplitude * content
+    else:
+        # Original exposed-control coordinates carry A0,A1,B0,B1, unselected.
+        drive[:, brain.sensory_index[7:11]] = amplitude * content[:, :4]
+    return drive
+
+
+def act_saved(brain: cd.Brain, query: np.ndarray, drive: np.ndarray, work: Any) -> Any:
+    """The ordinary qualified greedy answer on a supplied drive, without rebuilding it."""
+    work.actions += 1
+    work.action_rows += len(query)
+    try:
+        free = brain._qualified(drive, None, operation="act")
+    except RuntimeError:
+        work.action_refusals += 1
+        answer = None
+    else:
+        answer = brain._choose(query, drive, free, greedy=True)
+    report = brain.last_settlement
+    assert report is not None
+    work.action_sweeps += int(report["steps"])
+    work.action_row_sweeps += len(query) * int(report["steps"])
+    work.action_residual_checks += int(report["residual_checks"])
+    work.action_row_residual_checks += len(query) * int(report["residual_checks"])
+    if np.isfinite(report["max_residual"]):
+        work.max_action_residual = max(work.max_action_residual, report["max_residual"])
+    return answer
+
+
+def changed_content(content: np.ndarray, query: int, condition: str) -> np.ndarray:
+    """Causal changes to complete fact content; query and target are never injected."""
+    if condition not in CONDITIONS or query not in (0, 1):
+        raise ValueError("unknown content intervention or query")
+    out = content.copy()
+    if condition == "erased":
+        return np.zeros_like(out)
+    names = ([query] if condition == "relevant_flip" else [1 - query]
+             if condition == "irrelevant_flip" else [0, 1] if condition == "donor" else [])
+    for name in names:
+        start = 2 * name
+        out[:, start:start + 2] = out[:, start:start + 2][:, ::-1]
+    return out
+
+
+def train(brain: cd.Brain, order: np.ndarray, arm: str, protocol: dict[str, Any],
+          deadline: float) -> dict[str, Any]:
+    work = sr.Work()
+    wrong_counts, rounds, stop = [], 0, None
+    for permutation in order:
+        if time.monotonic() >= deadline:
+            stop = "wall_budget"
+            break
+        rows = sr.CASES[permutation]
+        prefix, query, target = sr.inputs(rows[:, :3], rows[:, 3], protocol["neutral_events"])
+        brain.reset()
+        for observation in prefix:
+            if work.act(brain, observation) is None:
+                stop = "refused_prefix"
+                break
+        if stop is not None:
+            break
+        content = query_boundary(brain, len(rows))
+        drive = supplied_drive(brain, query, content, arm, protocol["content_amplitude"])
+        answer = act_saved(brain, query, drive, work)
+        if answer is None:
+            stop = "refused_query"
+            break
+        wrong = np.asarray(answer).reshape(-1) != target
+        wrong_counts.append(int(wrong.sum()))
+        if wrong.any():
+            controls.teach_drive(work, brain, drive[wrong], target[wrong])
+        rounds += 1
+    return {"completed": rounds == len(order), "rounds": rounds, "stop": stop,
+            "wrong_counts": wrong_counts, "work": asdict(work)}
+
+
+def evaluate(brain: cd.Brain, arm: str, protocol: dict[str, Any]) -> dict[str, Any]:
+    work = sr.Work()
+    answers = {name: np.full((8, 2), -1, dtype=np.int64) for name in CONDITIONS}
+    with tempfile.TemporaryDirectory(prefix="cadence-content-") as directory:
+        path = Path(directory) / "acquired.npz"
+        before = sr.checkpoint_digest(brain.save(path))
+        branch = copy.deepcopy(brain)
+        branch.reset()
+        prefix, _, _ = sr.inputs(sr.FACTS, np.zeros(8, dtype=np.int64),
+                                protocol["neutral_events"])
+        complete = True
+        for observation in prefix:
+            if work.act(branch, observation) is None:
+                complete = False
+                break
+        if complete:
+            content = query_boundary(branch, 8)
+            for condition in CONDITIONS:
+                for q in range(2):
+                    fork = copy.deepcopy(branch)
+                    _, query, _ = sr.inputs(sr.FACTS, np.full(8, q, dtype=np.int64),
+                                            protocol["neutral_events"])
+                    supplied = changed_content(content, q, condition)
+                    drive = supplied_drive(fork, query, supplied, arm,
+                                            protocol["content_amplitude"])
+                    answer = act_saved(fork, query, drive, work)
+                    if answer is not None:
+                        answers[condition][:, q] = answer
+                    else:
+                        complete = False
+        preserved = sr.checkpoint_digest(brain.save(path)) == before
+        if not preserved:
+            raise AssertionError("content evaluation changed the acquired brain")
+    intact = answers["intact"]
+    readings = {}
+    for condition, answer in answers.items():
+        expected = sr.FACTS[:, :2].copy()
+        if condition in ("relevant_flip", "donor"):
+            expected = 1 - expected
+        readings[condition] = {
+            "answers": answer.tolist(), "scores": sr.scores(answer),
+            "follows_supplied": float(np.mean(answer == expected)),
+            "change_from_intact": float(np.mean((answer != intact) | (answer < 0)
+                                                  | (intact < 0))),
+        }
+    return {"completed": complete, "original_preserved": preserved,
+            "checkpoint_content_sha256": before, "conditions": readings, "work": asdict(work)}
+
+
+def gate(training: dict[str, Any], evaluation: dict[str, Any], protocol: dict[str, Any]) -> bool:
+    if (not training["completed"] or not evaluation["completed"]
+            or not evaluation["original_preserved"]):
+        return False
+    readings = evaluation["conditions"]
+    if any(r["scores"]["unanswered"] for r in readings.values()):
+        return False
+    intact = readings["intact"]["scores"]
+    return bool(
+        min(intact["accuracy"], intact["unequal_fact_accuracy"],
+            *intact["per_query_accuracy"]) >= protocol["acquisition_floor"]
+        and intact["accuracy"] - readings["erased"]["scores"]["accuracy"]
+        >= protocol["erasure_loss_minimum"]
+        and readings["relevant_flip"]["follows_supplied"] >= protocol["relevant_follow_minimum"]
+        and readings["donor"]["follows_supplied"] >= protocol["donor_follow_minimum"]
+        and readings["irrelevant_flip"]["change_from_intact"]
+        <= protocol["irrelevant_change_maximum"]
+        and readings["sham"]["change_from_intact"] <= protocol["sham_change_maximum"])
+
+
+def check(body: dict[str, Any]) -> str | None:
+    """Bind the declared arms and recompute causal readings from every recorded answer."""
+    try:
+        protocol = json.loads(PROTOCOL.read_text())
+        if body["protocol"] != protocol or body["confirmation_seeds_used"]:
+            return "protocol differs or reserved confirmation was opened"
+        runs = body["runs"]
+        if [(r["seed"], r["arm"]) for r in runs] != [
+            (seed, arm) for seed in protocol["development_seeds"] for arm in protocol["arms"]
+        ]:
+            return "development founders or arms differ"
+        for result in runs:
+            for evaluation in (result["initial"], result["evaluation"]):
+                readings = evaluation["conditions"]
+                if set(readings) != set(CONDITIONS):
+                    return "causal conditions differ"
+                intact = np.asarray(readings["intact"]["answers"])
+                complete = True
+                for condition, reading in readings.items():
+                    answer = np.asarray(reading["answers"])
+                    score = sr.scores(answer)
+                    expected = sr.FACTS[:, :2].copy()
+                    if condition in ("relevant_flip", "donor"):
+                        expected = 1 - expected
+                    changed = float(np.mean((answer != intact) | (answer < 0) | (intact < 0)))
+                    if (reading["scores"] != score or reading["follows_supplied"]
+                            != float(np.mean(answer == expected))
+                            or reading["change_from_intact"] != changed):
+                        return "causal scores differ from answers"
+                    complete = complete and score["unanswered"] == 0
+                if evaluation["completed"] != complete or not evaluation["original_preserved"]:
+                    return "evaluation completion or preservation differs"
+            training = result["training"]
+            if (training["completed"] != (training["rounds"] == protocol["rounds"])
+                    or len(training["wrong_counts"]) != training["rounds"]):
+                return "training completion differs"
+            if result["passed"] != gate(training, result["evaluation"], protocol):
+                return "founder gate differs"
+            random = result["uniform_random"]
+            if sr.scores(random["answers"]) != random["scores"]:
+                return "random scores differ"
+            rng = np.random.default_rng(np.random.SeedSequence([31014, result["seed"]]))
+            order = np.stack([rng.permutation(len(sr.CASES)) for _ in range(protocol["rounds"])])
+            if result["schedule_sha256"] != canonical_sha256(order):
+                return "schedule differs"
+        for left, right in zip(runs[::2], runs[1::2], strict=True):
+            for key in ("initial_parameters", "resolved", "neuron_model", "schedule_sha256"):
+                if left[key] != right[key]:
+                    return "unmatched content arms: " + key
+        if body["passed"] != all(r["passed"] for r in runs):
+            return "aggregate gate differs"
+    except (KeyError, TypeError, ValueError):
+        return "malformed content readings"
+    return None
+
+
+def run(checkpoints: Path | None = None) -> Receipt:
+    protocol = json.loads(PROTOCOL.read_text())
+    manifest = source_manifest(sources())
+    began = time.monotonic()
+    deadline = began + protocol["total_seconds"]
+    runs = []
+    for seed in protocol["development_seeds"]:
+        rng = np.random.default_rng(np.random.SeedSequence([31014, seed]))
+        order = np.stack([rng.permutation(len(sr.CASES)) for _ in range(protocol["rounds"])])
+        for arm in protocol["arms"]:
+            brain = make_brain(protocol, seed)
+            initial_parameters = sr.parameter_digest(brain)
+            initial = evaluate(brain, arm, protocol)
+            training = train(brain, order, arm, protocol, min(
+                deadline, time.monotonic() + protocol["training_seconds_per_arm"]))
+            evaluation = evaluate(brain, arm, protocol)
+            if checkpoints is not None:
+                checkpoints.mkdir(parents=True, exist_ok=True)
+                path = checkpoints / f"{seed}-{arm}.npz"
+                if path.exists():
+                    raise FileExistsError(path)
+                brain.save(path)
+            random = np.random.default_rng(np.random.SeedSequence([31015, seed]))
+            random_answers = random.integers(0, 2, size=(8, 2))
+            result = {"seed": seed, "arm": arm, "initial_parameters": initial_parameters,
+                      "final_parameters": sr.parameter_digest(brain), "resolved": brain.describe(),
+                      "neuron_model": brain.brain.neuron_model.to_dict(),
+                      "schedule_sha256": canonical_sha256(order),
+                      "initial": initial, "training": training, "evaluation": evaluation,
+                      "uniform_random": {"answers": random_answers.tolist(),
+                                         "scores": sr.scores(random_answers)},
+                      "passed": gate(training, evaluation, protocol)}
+            runs.append(result)
+            print(json.dumps({"seed": seed, "arm": arm, "passed": result["passed"],
+                              "rounds": training["rounds"], "accuracy":
+                              evaluation["conditions"]["intact"]["scores"]["accuracy"]}),
+                  flush=True)
+    if manifest != source_manifest(sources()):
+        raise RuntimeError("content-control sources changed during the run")
+    body = {
+        "protocol": protocol, "runs": runs, "passed": all(r["passed"] for r in runs),
+        "confirmation_seeds_used": [], "elapsed_host_seconds": time.monotonic() - began,
+        "numpy_version": np.__version__, "cadence_version": cd.__version__,
+        "interpretation": "Supplied content decoding only; learned attention has not run.",
+    }
+    problem = check(body)
+    if problem:
+        raise AssertionError(problem)
+    return Receipt.build("cadence-attention-content-control/1", body, sources())
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument("--checkpoints", type=Path)
+    args = parser.parse_args()
+    if args.out.exists():
+        parser.error("output exists; preserve the earlier reading")
+    run(args.checkpoints).write(args.out)

@@ -1,0 +1,43 @@
+{
+  "scope": "Entire committed src/cadence tree including filenames, modes and file blobs; docs/tests may differ",
+  "arms": {
+    "control": [
+      {
+        "commit": "bf90fa4c6fc0c2c88cc8c632a9370e57a96274af",
+        "src_cadence_tree": "6469b7f9495893f0c61a5bb4e9f020bb6d8c11c6"
+      }
+    ],
+    "credit": [
+      {
+        "commit": "7e308f6641c38051917aae461a8661f06c71c3f0",
+        "src_cadence_tree": "e8a50e0647e7338d6bfdd56462df6dbd91c054b5"
+      },
+      {
+        "commit": "01a04004fdc67a9ae5574631688af3bf53b7af1c",
+        "src_cadence_tree": "e8a50e0647e7338d6bfdd56462df6dbd91c054b5"
+      },
+      {
+        "commit": "50c1c97986d668951bb8d1a6bfcce11aac346b8e",
+        "src_cadence_tree": "e8a50e0647e7338d6bfdd56462df6dbd91c054b5"
+      },
+      {
+        "commit": "c3a1f67d05f9e736323cb5ea9368115dbbbf30f0",
+        "src_cadence_tree": "e8a50e0647e7338d6bfdd56462df6dbd91c054b5"
+      }
+    ],
+    "combined": [
+      {
+        "commit": "6fae1038f2653bf2b4aada7bc42782459a4a4d28",
+        "src_cadence_tree": "8ec2a24c340fd330c4ccd357a4e9d84c479820be"
+      },
+      {
+        "commit": "ee5cc94efb9ef47bb56d76d940627c31ddbfd1ba",
+        "src_cadence_tree": "8ec2a24c340fd330c4ccd357a4e9d84c479820be"
+      },
+      {
+        "commit": "cc71fe43f4ac0b44411443b74fc1815ab84010a7",
+        "src_cadence_tree": "8ec2a24c340fd330c4ccd357a4e9d84c479820be"
+      }
+    ]
+  }
+}

@@ -1,0 +1,170 @@
+"""Fixed acquired-life memory control; no resets, history reconstruction or tuning."""
+from __future__ import annotations
+
+import argparse
+import gzip
+import importlib.util
+import json
+import os
+from pathlib import Path
+import subprocess
+import sys
+import time
+import traceback
+
+ROOT = Path('/workspace')
+HERE = Path(__file__).resolve().parent
+CORE = ROOT/'temp/cadence-issue160-learning-20261009'
+ARENA = ROOT/'temp/cadence-arena-diagnosis-20261009'
+FROZEN = ROOT/'temp/cadence-robot-release-confirmation-20261008/benchmarks/arena_confirmation/confirm.py'
+DATA = ROOT/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
+sys.path[:0] = [str(CORE/'src'), str(ARENA)]
+import numpy as np
+from cadence import Brain, NeuralGraph, SynapticMemory
+from arena.brain import RobotBrain, make_policy
+from arena.parts import blueprint_from_dict
+
+spec = importlib.util.spec_from_file_location('fixed_confirmation', FROZEN)
+h = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(h)
+
+
+def sources():
+    return {name: {str(p.relative_to(root)): h.digest(p) for p in sorted(directory.rglob('*.py'))}
+            for name, root, directory in [('cadence', CORE, CORE/'src/cadence'), ('arena', ARENA, ARENA/'arena')]}
+
+
+def memory(brain):
+    m = brain.hippocampus
+    return None if m is None else {**m.to_dict(), 'consolidated_norm': float(np.linalg.norm(m.consolidated)),
+                                   'strength_norm': float(np.linalg.norm(m.strength)), 'mass': m.mass.tolist()}
+
+
+def same_initial(before, after, arm):
+    with np.load(before, allow_pickle=False) as a, np.load(after, allow_pickle=False) as b:
+        common = set(a.files) & set(b.files)
+        checked = []
+        for key in sorted(common):
+            if key == 'generic':
+                left, right = json.loads(str(a[key])), json.loads(str(b[key]))
+                left.pop('hippocampus'); right.pop('hippocampus')
+                assert left == right
+            else:
+                assert np.array_equal(a[key], b[key]), key
+            checked.append(key)
+        added = sorted(set(b.files)-set(a.files))
+        assert not set(a.files)-set(b.files)
+        assert (not added) if arm == 'control' else all(key.startswith('episodic/') for key in added)
+        if arm == 'memory':
+            assert all(not np.any(b[key]) for key in added if key.endswith(('strength', 'mass', 'consolidated')))
+        return {'shared_state_exact': True, 'checked_arrays': checked, 'added_arrays': added}
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--case', required=True)
+    parser.add_argument('--arm', choices=['control', 'memory'], required=True)
+    parser.add_argument('--smoke', action='store_true')
+    args = parser.parse_args()
+    protocol = json.loads((HERE/'protocol.json').read_text())
+    assert args.case in protocol['first_stage'] + protocol['conditional_retention']
+    folder = HERE/'runs'/f'{"smoke-" if args.smoke else ""}{args.case}-{args.arm}'
+    folder.mkdir(parents=True, exist_ok=False)
+    began = time.perf_counter()
+    admission = json.loads((HERE/'sources.json').read_text())
+    original_sources = sources()
+    producer_hash = h.digest(Path(__file__))
+    original_settle = NeuralGraph.settle_batch
+
+    def measured_settle(graph, *positional, **keywords):
+        h.WORK['settle_calls'] += 1
+        try:
+            result = original_settle(graph, *positional, **keywords)
+        except Exception:
+            h.WORK['failed_settle_calls'] += 1
+            raise
+        h.WORK['actual_sweeps'] += int(result.steps)
+        return result
+
+    NeuralGraph.settle_batch = measured_settle
+    receipt = {'protocol': protocol, 'case': args.case, 'arm': args.arm, 'smoke': args.smoke,
+               'status': 'running', 'producer_sha256': producer_hash, 'frozen_producer_sha256': h.digest(FROZEN),
+               'protocol_sha256': h.digest(HERE/'protocol.json'), 'admission_sha256': h.digest(HERE/'sources.json'),
+               'source_sha256': original_sources, 'source_admitted': original_sources == admission['source_sha256'],
+               'command': [sys.executable, *sys.argv], 'numpy': np.__version__, 'python': sys.version,
+               'threads': {key: os.environ.get(key) for key in ['OPENBLAS_NUM_THREADS', 'OMP_NUM_THREADS', 'MKL_NUM_THREADS']},
+               'revisions': {name: subprocess.check_output(['git', 'rev-parse', 'HEAD'], cwd=path, text=True).strip()
+                             for name, path in [('cadence', CORE), ('arena', ARENA)]}}
+    h.write(folder/'receipt.json', receipt)
+    try:
+        assert receipt['source_admitted'] and h.digest(FROZEN) == admission['frozen_producer_sha256']
+        assert receipt['revisions'] == admission['revisions']
+        checkpoint = DATA/args.case/'trained.npz'
+        worldfile = DATA/args.case/'world.json'
+        receipt['original_artifacts'] = {str(p.relative_to(DATA)): h.digest(p) for p in [checkpoint, worldfile]}
+        saved = json.loads(worldfile.read_text())
+        blueprint = blueprint_from_dict(saved['world']['robots'][0]['blueprint'])
+        brain = Brain.load(checkpoint)
+        assert brain.hippocampus is None
+        brain.save(folder/'initial-control.npz')
+        if args.arm == 'memory':
+            brain.hippocampus = SynapticMemory(brain.sensory_index, brain.motor_index, consolidation=0.05)
+        brain.save(folder/'initial.npz')
+        receipt['initial_equivalence'] = same_initial(folder/'initial-control.npz', folder/'initial.npz', args.arm)
+        policy = RobotBrain(blueprint, brain)
+        vars(policy).update(saved['wrapper'])
+        life = h.Life.from_snapshot(saved['world'], policy)
+        receipt['initial'] = {'wrapper': saved['wrapper'], 'outcomes_received': int(brain.arousal.rewards),
+                              'pending_actual_reward': life.reward, 'memory': memory(brain), 'describe': policy.describe()}
+        training_n = 32 if args.smoke else protocol['additional_training_moments']
+        evaluate_n = 16 if args.smoke else protocol['evaluation_moments']
+        original_step = life.step
+        with gzip.open(folder/'training-stream.jsonl.gz', 'wt') as stream:
+            def recorded_step(*, ablate=False):
+                received = life.reward
+                sampled = brain.basal_ganglia._pending is not None
+                row = original_step(ablate=ablate)
+                record = {'received_actual_reward': received, 'previous_was_sampled': sampled,
+                          'memory_writes': None if brain.hippocampus is None else brain.hippocampus.writes,
+                          **row}
+                stream.write(json.dumps(h.plain(record), allow_nan=False)+'\n')
+                return row
+            life.step = recorded_step
+            receipt['training'] = h.run(life, training_n, progress=folder/'progress.json')
+        life.step = original_step
+        policy.save(folder/'trained.npz')
+        receipt['trained'] = {'memory': memory(brain), 'describe': policy.describe(),
+                              'outcomes_received': int(brain.arousal.rewards),
+                              'pending_actual_reward': life.reward}
+        assert receipt['trained']['outcomes_received'] == receipt['initial']['outcomes_received'] + training_n
+        receipt['continuation'] = h.continuation(life, folder/'trained.npz', folder, 4 if args.smoke else 32)
+        receipt['fingerprint'] = h.fingerprint(blueprint, folder/'trained.npz')
+        receipt['evaluation'] = []
+        for seed in protocol['evaluation_worlds']:
+            for name, kind, path, ablate in [('trained', 'frozen', folder/'trained.npz', False),
+                                            ('ablated', 'frozen', folder/'trained.npz', True),
+                                            ('newborn', 'frozen', None, False), ('random', 'random', None, False)]:
+                evaluation_policy = make_policy(blueprint, kind, path)
+                result = h.run(h.Life(blueprint, evaluation_policy, seed), evaluate_n, ablate=ablate)
+                receipt['evaluation'].append({'policy': name, 'seed': seed, **result})
+        receipt['status'] = 'complete'
+    except Exception as error:
+        receipt['status'] = 'failed'
+        receipt['error'] = traceback.format_exc()
+        if isinstance(error, h.Refusal):
+            receipt['partial'] = error.partial
+    finally:
+        receipt['work'] = h.WORK.copy()
+        receipt['source_sha256_after'] = sources()
+        receipt['source_unchanged'] = original_sources == receipt['source_sha256_after']
+        receipt['producer_unchanged'] = producer_hash == h.digest(Path(__file__))
+        receipt['seconds'] = time.perf_counter()-began
+        receipt['artifacts'] = {p.name: h.digest(p) for p in sorted(folder.iterdir()) if p.is_file() and p.name != 'receipt.json'}
+        h.write(folder/'receipt.json', receipt)
+        print(json.dumps({'case': args.case, 'arm': args.arm, 'status': receipt['status'], 'seconds': receipt['seconds']}), flush=True)
+    if receipt['status'] != 'complete' or not receipt['source_unchanged'] or not receipt['producer_unchanged']:
+        raise SystemExit(1)
+
+
+if __name__ == '__main__':
+    main()

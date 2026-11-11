@@ -1,0 +1,256 @@
+{
+  "schema": "cadence-minimal-two-binding-campaign/1",
+  "declared_date": "2026-10-22",
+  "status": "declared_before_execution",
+  "scope": "A smaller raw-input, in-distribution component prerequisite. Both named facts are independently needed in the same final answer. It cannot pass the original four-value/permuted-query/held-pair gates or identify which original difficulty caused failure.",
+  "reference_runtime_revision": "242303f42f21131337a37a0293f489564aa5df88",
+  "candidate_points": 1,
+  "query_scale": 1,
+  "initialization": "Use the existing ordinary query-seam initializer once before the first event. Separate SeedSequence([founder,head]).spawn(1)[0] streams; no q0 search, role label or selector teaching. Require actual initializer records and initial parameter digests.",
+  "development_seeds": [
+    0,
+    1
+  ],
+  "confirmation_seeds_used": [],
+  "task": {
+    "file": "minimal_binding_task.py",
+    "inputs": 19,
+    "motor_choices_per_slot": 4,
+    "output_slots": 2,
+    "active_values": [
+      0,
+      1
+    ],
+    "cases": 8,
+    "training_cases": 8,
+    "evaluation_cases": 8,
+    "held_out_cases": 0,
+    "case_order": "Lexicographic (A value0/1, B value0/1, prefix order0/1, query0).",
+    "prefix": "IS+A+value_A and IS+B+value_B in the declared order, then one neutral event.",
+    "query": "AMBIGUOUS_CUE+ASK_AB, identical in every candidate case; no value or address.",
+    "target": "Always(value_A,value_B), two final action labels only.",
+    "coordinates": {
+      "IS": 0,
+      "NEUTRAL": 1,
+      "AMBIGUOUS_CUE": 2,
+      "ASK_AB": 3,
+      "dormant_ASK_BA": 4,
+      "names": [
+        5,
+        6
+      ],
+      "active_values": [
+        7,
+        8
+      ],
+      "dormant_values": [
+        9,
+        10
+      ],
+      "exposed_A_values": [
+        11,
+        12,
+        13,
+        14
+      ],
+      "exposed_B_values": [
+        15,
+        16,
+        17,
+        18
+      ]
+    },
+    "rounds": 512,
+    "batch": 16,
+    "schedule": "SeedSequence([622022,founder]); draw with replacement from all8 cases. All compared arms share the exact schedule.",
+    "evaluation": "Enumerate all8 cases; pair/slot counts, both4-case prefix marginals and4 unequal cases. No training/evaluation split is claimed. All refusal/unrun/inactive motor answers remain wrong."
+  },
+  "brain": {
+    "modules": [
+      32
+    ],
+    "episodic": false,
+    "lateral": 0.0,
+    "recall_next": false,
+    "recall_address": 0.0,
+    "recall_null": 0.0,
+    "recall_recency": 0.0,
+    "recall_amplitude": 3.0,
+    "recall_temperature": 0.25,
+    "teaching": "normalized",
+    "learning_qualified": true,
+    "learning_damping": 3,
+    "learning_free_steps": 2048,
+    "learning_nudged_steps": 2048,
+    "learning_beta": 0.1,
+    "learning_temperature": 0.2,
+    "learning_tolerance": 0.003,
+    "learning_momentum": 0.9,
+    "empty_anchor": true
+  },
+  "dt": 1.0,
+  "resolved_learning_guard": {
+    "eta": 0.003,
+    "eta_bias": 0.0003,
+    "normalize": 0.99,
+    "normalize_floor": 0.0001,
+    "scale_cap": 8.0,
+    "surprise": false,
+    "nudge": "cross_entropy"
+  },
+  "resolved_neuron_guard": {
+    "dt": 1.0,
+    "gain": 1.0,
+    "leak": 0.1,
+    "slope": 1.0,
+    "threshold": 0.0,
+    "stimulus_amplitude": 1.0,
+    "adaptation": null
+  },
+  "equation": "Existing agreement, totalalpha3 split over heads; empty_anchor=true. Keep the same immutable bank and live query/read/cortex through full-field qualification and bounded damping.",
+  "teaching": "Capture complete pre-query drive and immutable bank, greedy act, then teach both final labels on wrong-pair rows only. The same selected streams persist through free/positive/negative phases. No learned answer head, selector target, role label or rule change.",
+  "query_boundary": "Clear working trace and warm activity after the actual prefix; retain its bank. Explicit component boundary, not an ongoing-life policy.",
+  "random_references": {
+    "active_binary": {
+      "seed_entropy": [
+        622024,
+        "founder"
+      ],
+      "choices": [
+        0,
+        1
+      ],
+      "expected_pair_accuracy": 0.25,
+      "expected_slot_accuracy": 0.5,
+      "role": "Primary task-aware uniform reference; retain its actual sampled answers and scores."
+    },
+    "full_motor": {
+      "seed_entropy": [
+        622023,
+        "founder"
+      ],
+      "choices": [
+        0,
+        1,
+        2,
+        3
+      ],
+      "expected_pair_accuracy": 0.0625,
+      "expected_slot_accuracy": 0.25,
+      "role": "Separate full-motor uniform reference; inactive choices remain possible errors."
+    }
+  },
+  "stages": {
+    "capacity": {
+      "order": [
+        [
+          "exposed",
+          0
+        ],
+        [
+          "exposed",
+          1
+        ],
+        [
+          "supplied_reads",
+          0
+        ],
+        [
+          "supplied_reads",
+          1
+        ]
+      ],
+      "requires": "New matched task/source/q1 controls; old four-value capacity does not admit this task.",
+      "gate": "All4 cells complete512 rounds with zero action/lesson refusal and fully answered qualified all8 panels; .95 pair/slot/unequal/prefix floors imply8/8 pairs and4/4 unequal pairs. No held floor/panel exists. Newborn all8 and final all8 panels must both qualify and be fully answered; newborn accuracy is unrestricted. This stricter completeness guard rejects an initial action refusal rather than calling the whole cell refusal-free.",
+      "receipt_kind": "cadence-attention-minimal-binding-capacity/1",
+      "receipt_file": "minimal-binding-capacity.json",
+      "total_host_seconds": 600,
+      "training_seconds_per_call": 240
+    },
+    "h2": {
+      "order": [
+        [
+          "h2",
+          0
+        ],
+        [
+          "h2",
+          1
+        ]
+      ],
+      "requires": "Both matched capacity founders/arms pass at exact source; attempt both H2 founders and retain each failure.",
+      "gate": "Complete512 rounds, no action/lesson refusal, all8 pairs correct; both-fact causal panels qualified and complete. Retention is conditional and required for a retained primary result. Newborn all8 must qualify and answer fully, with accuracy unrestricted; final and required causal panels must qualify.",
+      "receipt_kind": "cadence-attention-minimal-binding-h2/1",
+      "receipt_file": "minimal-binding-h2.json",
+      "total_host_seconds": 1800,
+      "training_seconds_per_call": 600
+    }
+  },
+  "causal_controls": {
+    "baseline": "Same acquired host with all8 cases; fixed host query/drive and actual witnessed bank copied immutably for each intervention. No model learning.",
+    "flip_A_and_flip_B": "Separate donor panels from the actual counterpart case that changes one named binary value only. Transplant that record K and V together, preserving its name/age; both heads see the complete bank. Correct donor pair follow>=.80 (at least7/8), with other-slot answers unchanged.",
+    "record_erasures": "Erase each named record separately. Relevant output-slot accuracy loss>=.20 (at least2/8); refusal is not a loss effect.",
+    "shams": "Neutral record change, matched K/V/held/age reorder and algebraic head-descriptor order. Pair-answer change<=.05 (zero of8).",
+    "parallel_claim": "Separate distinct-useful-head flag requires qualified complete head/clone/interface panels. On each of4unequal rows independently, heads favor opposite actual named records, favored mass>=.50 and margin>=.10; no permanent head-to-name assignment. BEFORE lesion choose each row head-preferred A/B by argmax(A_mass,B_mass), deterministic A on tie, including equal-value rows; compare accuracy of that named outputslot before/after the head lesion OVERALL8, loss>=.20(at least2/8). Equal-row name assignment is observationally ambiguous; report unequal4 predicted-slot loss separately, descriptive only. Each head lesion and clone pair loss>=.20 overall8; frozen/shuffled interface pair loss>=.20 overall8. No head-count advantage without separate matched resource controls.",
+    "limits": "Head lesions remove restoring coupling too; clone and interface interventions change cortical transport as well as selectors. A single head can encode both facts in an analog mixture. No information-theoretic need for two heads is claimed."
+  },
+  "retention": {
+    "rounds": 256,
+    "start": "Only after acquisition/content-use passes; same-task continued balanced exposure, no new value pair.",
+    "gate": "Complete all256 rounds with zero refusals; .95 on all8 and loss<=.05 allows no loss from8/8. No interference, held-transfer or life claim.",
+    "schedule": "Existing balanced cyclic construction adapted to the explicit8-case fixed-query task: shuffle all8 once with SeedSequence([622024,founder]), take16 cyclic rows per round for256 rounds; every round contains2copies of each case, query remains0. No held panel or AB/BA alternation."
+  },
+  "execution": {
+    "source_freeze_required": true,
+    "serial_local_processes": 1,
+    "candidate_points": 1,
+    "condition": "Explicit serial CLI stage after focused tests, independent review and source freeze; no automatic stage launch. Capacity first; H2 only after positive matched capacity. No additional confirmation gate.",
+    "accounting": "Each stage is additional with the listed total/per-training-call bounds, including verification/construction/arrays/all attempted phases and refusals. Check deadlines between rounds and panels; retain bounded final round/panel overrun. Costs inherit prior cumulative exactly once.",
+    "forbidden": [
+      "comparators",
+      "fresh_confirmation",
+      "Stone Age",
+      "parameter_grid",
+      "new_learning_rule",
+      "automatic_retry"
+    ]
+  },
+  "claims": {
+    "original_task_pass": false,
+    "held_pair_transfer": false,
+    "meaning_codes": false,
+    "integrated_lifecycle": false,
+    "head_advantage": false,
+    "scope": "At most a measured small-task acquisition/content-use prerequisite. Several task difficulties were removed, so a positive outcome does not identify the original failure's cause."
+  },
+  "integration_warning": "Functions accept the old four-column case shape where meaningful. panel('held_out') deliberately refuses. Reuse old low-level prepare/train/evaluate on explicitly supplied8-case rows if desired; their original score schema and whole-trial/held/probe gates must not be silently reused. A new wrapper must recompute this task's actual scores and own its prerequisites.",
+  "prior": {
+    "file": "query-founder-h2.json",
+    "kind": "cadence-attention-query-founder-h2/1",
+    "digest": "0ca2fc39faca65b74ecdb876d298616a013e08f586b48ba395575848843e789b",
+    "archive_sha256": "f7ca5bf4428d8565fa98bc22027d3e7637616f3e9f65509f075c0f16a7501e59",
+    "cumulative_host_seconds": 3518.474519670309,
+    "requires": "Source-verified actual negative q1 H2 receipt before new construction; old task and capacity remain separate."
+  },
+  "gates": {
+    "acquisition_floor": 0.95,
+    "donor_pair_follow_minimum": 0.8,
+    "other_slot_change_maximum": 0.0,
+    "record_erasure_slot_loss_minimum": 0.2,
+    "sham_answer_change_maximum": 0.05,
+    "head_pair_loss_minimum": 0.2,
+    "head_slot_loss_minimum": 0.2,
+    "interface_pair_loss_minimum": 0.2,
+    "distinct_record_mass_minimum": 0.5,
+    "distinct_record_margin_minimum": 0.1,
+    "retention_loss_maximum": 0.05
+  },
+  "source_custody": "New typed receipts and every parameter snapshot bind helper, task, protocol and every exact old runtime/prior dependency. Direct q1 construction with explicit old factory; old train/prepare receive valid explicit rows, without task/factory monkeypatch. No held panel or old relevance receipt kind. Repeated historical-prior verification arithmetic may be cached only by exact negative-receipt rawSHA plus FULL oldq1H2 source_manifest plus the exact declared prior specification; configure clears it, changedbytes reverify, cachehits return a fresh parsedReceipt. No current capacity/model-state cache. All actual verification host costs remain charged.",
+  "future_head_benefit_assessment": {
+    "status": "preregistered interpretation only; no comparator stage is implemented or opened by this wrapper",
+    "requires": "Both H2 founders pass primary,256-round retention and distinct-useful-head assessment. A separately authorized/frozen future stage must complete all8 matched q1 H1,H1-width,H1-port-copies,H1-work controls, bothfounders, without capped/refused/unrun readings. Controls need complete512-round training and qualified measured panels, but do NOT need .95 acquisition (that failure is reported). Missing or unqualified controls mean unknown, never advantage.",
+    "accuracy": "For EACH founder, H2 exact-pair accuracy must exceed EACH of the four matched control accuracies by at least .10. With8cases this requires at least one additional correct pair(1/8). No cherry-picked arm/seed/row.",
+    "resources": "Only claim matched-work or efficiency when complete actual transport, softmax, sweep/row and host counters are retained for all compared cells; disclose unequal costs. No head-advantage claim follows from primary or distinct-usefulness flags alone.",
+    "boundaries": "No original four-value/query-permutation/held-pair transfer, learned meaning, continuing-life, fresh confirmation or Stone Age claim. Several task difficulties were jointly removed."
+  }
+}

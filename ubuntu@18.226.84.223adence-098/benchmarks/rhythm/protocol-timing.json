@@ -1,0 +1,206 @@
+{
+  "schema": "steady-rhythm/timing-1",
+  "event": {
+    "unit": "one offered observation and its attempted free greedy act; a refusal consumes the event and counts as a missed action",
+    "cadence_ms": 100,
+    "cadence_variants_ms": [
+      50,
+      200
+    ],
+    "clock": "the declared slot schedule supplies physical time only; no clock value, slot number or phase enters any observation"
+  },
+  "rows": 4,
+  "inputs": 4,
+  "actions": 2,
+  "observations": {
+    "coordinates": [
+      "drive",
+      "distractor",
+      "cue_A",
+      "cue_B"
+    ],
+    "drive": "coordinate 0 at 1.0 on every drive and cue event",
+    "cue": "one cue coordinate at 1.0 on the first event of a bout, two rows per cue",
+    "pause": "all coordinates at 0.0",
+    "distractor": "coordinate 1 at 1.0 alone"
+  },
+  "teaching": {
+    "bouts": 24,
+    "events_per_bout": 12,
+    "label": "the cued action at a cue event; afterwards the opposite of the row's own last executed action",
+    "arms": {
+      "every": "Learner.step on the live stimulus before every free act",
+      "mismatch": "free act first; Learner.step on the pre-act stimulus for the rows whose act differed from the label"
+    }
+  },
+  "window": {
+    "lead": 4,
+    "events": 64,
+    "block": 8,
+    "probe": "complete checkpoint after the lead act and before the next act; every control forks it"
+  },
+  "disturbances": {
+    "pre": 8,
+    "post": 32,
+    "pauses": [
+      1,
+      2,
+      4
+    ],
+    "distractor_events": 1,
+    "pause_checkpoint": "pause2 saves after its first pause event; a loaded twin continues beside the original"
+  },
+  "cadence": {
+    "events": 32,
+    "disturbed_slot": 10,
+    "budgets": [
+      256,
+      64,
+      16
+    ],
+    "tolerances": [
+      0.01,
+      0.0001
+    ],
+    "host_load": "one spinning process per logical CPU during the paced_regular_load run",
+    "intervals_ms": [
+      50,
+      100,
+      150
+    ],
+    "numerical_variants": "Budget and tolerance forks use the same regular physical due times as the primary reference schedule.",
+    "scope": "All declared recipes/arms receive unpaced teaching, window and disturbance controls; the primary efference/every arm alone receives every physical cadence case."
+  },
+  "recipes": {
+    "efference": {
+      "modules": [
+        32
+      ],
+      "lateral": null,
+      "episodic": false,
+      "working_memory_decay": 0.1,
+      "working_memory_amplitude": 3.0,
+      "learning": {
+        "beta": 0.1,
+        "eta": 0.5,
+        "eta_bias": 0.05,
+        "centered": true,
+        "free_steps": 1024,
+        "nudged_steps": 12,
+        "tolerance": 0.003,
+        "nudge": "cross_entropy",
+        "temperature": 0.2,
+        "normalize": 0.0,
+        "normalize_floor": 0.001,
+        "momentum": 0.9,
+        "decay": 0.0,
+        "scale_cap": 8.0,
+        "qualified": false,
+        "damping": 3
+      },
+      "efference_amplitude": 3.0,
+      "efference_decay": 0.0
+    },
+    "selected": {
+      "modules": [
+        32
+      ],
+      "lateral": null,
+      "episodic": false,
+      "working_memory_decay": 0.1,
+      "working_memory_amplitude": 3.0,
+      "learning": {
+        "beta": 0.1,
+        "eta": 0.5,
+        "eta_bias": 0.05,
+        "centered": true,
+        "free_steps": 1024,
+        "nudged_steps": 12,
+        "tolerance": 0.003,
+        "nudge": "cross_entropy",
+        "temperature": 0.2,
+        "normalize": 0.0,
+        "normalize_floor": 0.001,
+        "momentum": 0.9,
+        "decay": 0.0,
+        "scale_cap": 8.0,
+        "qualified": false,
+        "damping": 3
+      }
+    },
+    "note": "rhythm/2 declares one candidate gene against the rhythm/1 selected recipe as its control: efference changes nothing but the efference copy, Brain.compose(..., efference_amplitude=3.0, efference_decay=0.0), one efference neuron per motor neuron driven by the one-hot of the command the row issued at the previous event and read by the association region through a plastic projection at the working trace's scale; the working trace, learning law, lateral wiring and every other setting are those of rhythm/1 selected. selected is the rhythm/1 selected recipe, byte-identical, run on every founder as the control; the rhythm/1 compose_default control and its receipt stand as published.",
+    "development": "The rhythm/2 native recipe is reused unchanged. Development seeds 0 and 1 diagnose the added instrument; this timing protocol does not select a new brain or tune a gene."
+  },
+  "controls_config": {
+    "flipflop_rate": 0.5
+  },
+  "seeds": {
+    "development": [
+      0,
+      1
+    ],
+    "confirmation": [
+      1701,
+      1702,
+      1703,
+      1704,
+      1705
+    ]
+  },
+  "controls": [
+    "intact",
+    "restored",
+    "erased",
+    "shuffled",
+    "reset",
+    "static",
+    "static_cold",
+    "flipflop",
+    "random",
+    "untaught"
+  ],
+  "policy": {
+    "refusal": "a refused act is a missed action: no action, no trace update, the event is consumed, the life continues",
+    "lesson_refusal": "a refused lesson is charged and skipped",
+    "forks": "controls load the probe checkpoint; no fork installs state into the live life",
+    "denominator": "every planned founder stays in the denominator; refused and unrun events are wrong",
+    "selection": "Reuse the native rhythm/2 brain unchanged. Development diagnoses instrument defects only. Freeze this protocol and source before confirmation; preserve all failed runs and do not relax bounds after inspecting confirmation."
+  },
+  "caps": {
+    "seconds": 900,
+    "note": "a run past the cap writes its completed founders and exits 3"
+  },
+  "question": "Can the existing native own-command efference recipe learn continuing period-two action and satisfy a predeclared event-time envelope, control comparisons and complete checkpoint custody on fresh founders? This completes the bounded #116 instrument; no default, Brain.live policy or endogenous oscillator claim.",
+  "phase_state": "the row's working trace (Trace.trace, Trace.last, Trace.cold over the 32 association coordinates) and, under the efference recipe, its efference copy (Efference.trace, .last, .cold over the 2 motor coordinates, the one-hot of the row's last issued action at decay 0); the erased, shuffled, static and reset controls act on the whole carried history, trace and copy",
+  "run_recipes": [
+    "efference",
+    "selected"
+  ],
+  "run_arms": [
+    "every",
+    "mismatch"
+  ],
+  "timing_acceptance": {
+    "primary_recipe": "efference",
+    "primary_arm": "every",
+    "required_founders": 4,
+    "bounds": {
+      "alternation_min": 0.95,
+      "block_alternation_min": 0.9,
+      "untaught_margin": 0.2,
+      "random_margin": 0.2,
+      "retention_events": 24,
+      "recovery_events": 8,
+      "minimum_accepted_budget": 64,
+      "missed_deadlines": 0,
+      "lateness_fraction": 0.5,
+      "phase_drift_fraction": 0.5,
+      "period_error_ms": 25
+    },
+    "joint": "At least four of the five same primary founders must jointly pass every learning, history/control, continuation, refusal, recovery, identity and physical timing bound. All four recipe/teaching comparisons must complete; none is removed from the census. The stress budget16 is recorded and excluded only from the declared supported timing envelope.",
+    "clock": "Qualification is per held observation and over declared trajectory windows. Each free action settles at one event; the sequence of actions is a nonconstant trajectory, not one static equilibrium. Event order advances native history; host monotonic time supplies only due/deadline scheduling. Time and slot indices never enter observations.",
+    "period": "After the cue, period is two issued events. For every accepted physical variant, observed issued zero-action intervals (solve end) must match intervals between corresponding due events within 25ms; phase drift is the range of end-minus-due error, at most half the smallest positive due interval. Begin lateness is at most half that event deadline interval. This is an externally scheduled event-driven rhythm, not an endogenous physical oscillator.",
+    "continuation": "Save the complete brain plus world event cursor/anchor between actions and during pause2. Loaded continuation must produce identical actions and every saved array; physical forks start a new monotonic epoch, rather than pretending to preserve a host clock across process lifetimes.",
+    "freshness": "1701\u20131705 absent from seed fields in repository benchmark JSON/JSON.gz and this review evidence before declaration; fresh cue assignments and time permutations are generated from these seeds before constructing brains."
+  }
+}

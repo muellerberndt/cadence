@@ -1,0 +1,22 @@
+{
+  "capture": "Original tests/test_experience.py::_changing_rewards(seed=0), GenericBrain.build(4,4,hidden=16,seed=0), after actual reward feedback at moment300 before refused next action. Batch row20; this row is independent during free settlement.",
+  "fixture_sha256": "fe77ad03265e2160216a47b5d1e3e96b7378417a6bfd93742cd1cfd1f82ffab7",
+  "limits": "Frozen learned parameters and witnessed numerical failure, not a new learning run, capability score or converted checkpoint. The original 600-moment behavioral test remains separate. Changing integration dt does not change the unmasked adaptation-free fixed-point equations.",
+  "neuron_model": {
+    "adaptation": null,
+    "dt": 1.0,
+    "gain": 1.0,
+    "leak": 0.1,
+    "slope": 1.0,
+    "stimulus_amplitude": 1.0,
+    "threshold": 0.0
+  },
+  "origin_boundary_sha256": "de2179516026c256872c315464a1d31a23bc1aac4a439d4fd429a697d640430c",
+  "origin_checkpoint_sha256": "69627f6343f02a059a6090f41f0c7d6da058872aa205eb064aa1dbf8d0888123",
+  "original_batch_rows": 32,
+  "original_residual": 1.91305624134393,
+  "rows_preserved": 1,
+  "schema": "cadence.generic-reversal-fixture/v1",
+  "selection": "Largest full equation residual in original refused batch, with context1.",
+  "source_commit": "1f9daacf732430a7371eb032611e118d57156b53"
+}

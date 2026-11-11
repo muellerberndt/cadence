@@ -1,0 +1,195 @@
+{
+  "accounting": "Actual prefix/query/teacher/refusal/cortical+memory work, code-free raw task; stage elapsed includes verification, progress I/O and final snapshots. Snapshot3parameters+4optimizerarrays+counters/fullsource/currentrevision. Finite budgets checked between rounds and query panels; external watchdog needed for a hard host cap.",
+  "candidate_points": 1,
+  "conditions": [
+    "intact",
+    "erase_A",
+    "erase_B",
+    "all_erased",
+    "flip_relevant",
+    "flip_irrelevant",
+    "neutral_half",
+    "erase_neutral",
+    "reorder",
+    "frozen_interface",
+    "shuffled_interface"
+  ],
+  "data": {
+    "batch": 16,
+    "evaluation_blocks": 32,
+    "held": "task.draw(seed,index,split=held); full quantities retained. Each actual8-history prefix host is witnessed once and forked for both questions and conditions. Canonical evaluation neutral1.",
+    "held_after_retention": [
+      32,
+      64
+    ],
+    "held_before": [
+      0,
+      32
+    ],
+    "histories_per_round": 8,
+    "joint_schedule": "Retain full task records, paired question rows, quantities, global indices and actual neutral amplitudes; hash their joint canonical representation.",
+    "neutral": "Actual witnessed neutral amplitude1 on even global rounds and.5 on odd rounds, identical for all arms. Retention continues global512..767. This is a new data recipe, not an identification of an old failure cause.",
+    "newborn": "All32 intact blocks must complete/qualify; accuracy unrestricted.",
+    "queries_per_history": 2,
+    "query_boundary": "Clear warm activity/working trace after witnessed prefix; retain actual bank. This is an explicit component boundary, not a continuing life.",
+    "training": "Each task.draw supplies all8 stratified fact/order histories with independent continuous quantities and shuffled positions. Duplicate the actual prefix into16streams, one per paired question; same quantities across both questions. Only wrong-row final binary labels are taught from the complete captured drive/bank.",
+    "training_rounds": 512
+  },
+  "development_seeds": [
+    0,
+    1
+  ],
+  "execution": "Preparation only. Source freeze, independent review and root-released constructor tests precede any explicit separately invoked scientific CLI stage.",
+  "factory": {
+    "actions": 2,
+    "brain": {
+      "empty_anchor": true,
+      "episodic": false,
+      "lateral": 0.0,
+      "learning_beta": 0.1,
+      "learning_damping": 3,
+      "learning_free_steps": 2048,
+      "learning_momentum": 0.9,
+      "learning_nudged_steps": 2048,
+      "learning_qualified": true,
+      "learning_surprise": false,
+      "learning_temperature": 0.2,
+      "learning_tolerance": 0.003,
+      "modules": [
+        32
+      ],
+      "recall_address": 0.0,
+      "recall_amplitude": 3.0,
+      "recall_capacity": 64,
+      "recall_next": false,
+      "recall_null": 0.0,
+      "recall_recency": 0.0,
+      "recall_temperature": 0.25,
+      "slots": 1,
+      "teaching": "normalized"
+    },
+    "class": "heads.MultiHeadBrain",
+    "dt": 1.0,
+    "heads": 1,
+    "initializer": "Direct query_founder.initialize(brain,seed=founder,query_scale=1), once after composition and before first event; retain descriptor and initial parameter hashes. No q0 retry or parameter search.",
+    "inputs": 9,
+    "mode": "agreement",
+    "note": "H1 uses the same numeric/optimizer point as the frozen H2 instrument, with the native one-output-slot teacher (beta/slot_count=.1). Default capacity64 retained. No new learned module, address lesson or answer head.",
+    "port_copies": 1,
+    "query_scale": 1,
+    "resolved_learning_guard": {
+      "eta": 0.003,
+      "eta_bias": 0.0003,
+      "normalize": 0.99,
+      "normalize_floor": 0.0001,
+      "nudge": "cross_entropy",
+      "scale_cap": 8.0,
+      "surprise": false
+    },
+    "resolved_neuron_guard": {
+      "adaptation": null,
+      "dt": 1.0,
+      "gain": 1.0,
+      "leak": 0.1,
+      "slope": 1.0,
+      "stimulus_amplitude": 1.0,
+      "threshold": 0.0
+    },
+    "slots": 1
+  },
+  "forbidden": [
+    "runtime global replacement",
+    "parameter search",
+    "old11 oracle coordinates",
+    "automatic stages/retries",
+    "fresh confirmation",
+    "world/AWS run",
+    "semantic or integrated claim",
+    "head-count benefit claim"
+  ],
+  "gate_interpretation": {
+    "causal": "All conditions except all_erased complete/qualify. Relevant actual donor follow>=.8 eachquery; irrelevant actual donor, neutralhalf, neutral-held erasure and jointK/V/held/age reorder changes<=.05 eachquery. Relevant record erasure reduces original accuracy by>=.2 eachquery; frozen/shuffled acquired interface loss>=.2 overall, perquery losses also retained.",
+    "caveat": "Shared scalar/freshpayloads remove finite binary codepoints, but content-dependent soft name masses can still encode both quantities. No necessity theorem, no retroactive relaxation of original majority criteria.",
+    "floors": "Held overall/perquery/perorder/unequal accuracy>=.95.32blocks give512answers,256perquery,128unequal histories perquery. Refused/unrun remain unavailable errors and cannot manufacture a lesion loss.",
+    "null": "all_erased is unsupported/null diagnostic only; never an abstention or soundness claim.",
+    "selection": "Requested actual fact mass>=.5 and margin>=.1 over every other held fact/neutral and null; on>=.8 of unequal histories EACHquery (>=103/128). This is sufficient, not necessary, for selective relevance."
+  },
+  "gates": {
+    "acquisition_floor": 0.95,
+    "donor_follow_each_query_minimum": 0.8,
+    "interface_loss_overall_minimum": 0.2,
+    "invariant_change_each_query_maximum": 0.05,
+    "record_margin_minimum": 0.1,
+    "record_mass_minimum": 0.5,
+    "relevant_erasure_loss_each_query_minimum": 0.2,
+    "retention_loss_maximum": 0.05,
+    "selective_unequal_share_each_query_minimum": 0.8
+  },
+  "oracle": "Explicit new9-wide asked-name fixed selector from actual held name0/1+fact3 keys and actual question5/6; target whole actualV; null on prefix/absent; same alpha3 restoring force and immutable row custody. No answer value/class chooses the slot.",
+  "prior": {
+    "archive_sha256": "79dd08471846c1c30234c3d29e2cba654d674e46a85b3c36882d1815ba993cd4",
+    "capacity_file": "neutral-variation-capacity.json",
+    "cumulative_host_seconds": 5512.356352962387,
+    "digest": "8d3f93e82960188e41cf9ee9cc0b90076dfaa390216303d2e17972d3dc750fa6",
+    "file": "neutral-variation-h2.json",
+    "kind": "cadence-attention-neutral-variation-h2/1",
+    "rule": "Bind and verify the actual final neutral-variation-H2 stage, its full dependency closure and latest inherited cost. Preserve its outcome. No earlier stage, placeholder or reset to an old cost admits this campaign.",
+    "source_stage": "h2",
+    "status": "finished_verified_neutral_h2"
+  },
+  "progress": "Atomic lightweight phase-boundary and every32-completed-round progress file, with actual work/elapsed/counts. No periodic full-array serialization, resume path or learning change.",
+  "retention": {
+    "evaluation": "Fresh independent held block indices32..63; same strata/distribution and all floors, with overall loss<=.05 from the pre-retention reading.",
+    "gate": "All256 rounds complete without action/lesson refusal; held readings complete/qualified; all acquisition floors and loss<=.05. Same-distribution continuation, not competing-learning retention.",
+    "requires": "That founder passes all primary acquisition, causal, selection and interface gates.",
+    "rounds": 256,
+    "training_offset": 512
+  },
+  "schema": "cadence-continuous-relevance-campaign/1",
+  "scope": "Raw9 shared continuous-payload component. Fresh quantities test nuisance generalization on the same names/classes; no meaning-code, unseen-name, integrated-life or head-benefit claim. Original failures and their criteria remain unchanged.",
+  "stages": {
+    "capacity": {
+      "order": [
+        [
+          "exposed",
+          0
+        ],
+        [
+          "exposed",
+          1
+        ],
+        [
+          "supplied_address",
+          0
+        ],
+        [
+          "supplied_address",
+          1
+        ]
+      ],
+      "receipt_file": "continuous-relevance-capacity.json",
+      "receipt_kind": "cadence-attention-continuous-relevance-capacity/1",
+      "total_host_seconds": 600,
+      "training_seconds_per_call": 240
+    },
+    "learned_h1": {
+      "order": [
+        [
+          "h1",
+          0
+        ],
+        [
+          "h1",
+          1
+        ]
+      ],
+      "receipt_file": "continuous-relevance-h1.json",
+      "receipt_kind": "cadence-attention-continuous-relevance-h1/1",
+      "requires": "Verified positive new4cell capacity on this task/data/source; attempt both founders regardless first failure.",
+      "total_host_seconds": 1800,
+      "training_seconds_per_call": 600
+    }
+  },
+  "status": "preparation_bound_to_completed_prior_not_executed",
+  "task_sha256": "f96e69fa574c36cc897597875e3d861369b8fb74937db7b8c59f0ef836864a4c"
+}

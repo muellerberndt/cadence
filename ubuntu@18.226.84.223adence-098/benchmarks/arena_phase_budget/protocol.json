@@ -1,0 +1,50 @@
+{
+  "purpose": "Bounded acquired-life test of full existing reward-eligibility phase budget; not fresh readiness confirmation. No other mechanism or gene changes.",
+  "first_stage": [
+    "tumbler-103",
+    "mantis-202",
+    "hexapod-302",
+    "tumbler-102",
+    "mantis-201",
+    "hexapod-301"
+  ],
+  "conditional_retention": [],
+  "arms": {
+    "control": "Original source reward-phase stopping, episodicFalse",
+    "full-budget": "Reward-nudge settling consumes the original existing step budget by disabling absolute state-change tolerance; all other source/defaults/genes unchanged; episodicFalse"
+  },
+  "additional_training_moments": 4000,
+  "evaluation_moments": 2000,
+  "evaluation_worlds": [
+    2001,
+    2002
+  ],
+  "continuation_moments_per_fork": 32,
+  "relocate": 400,
+  "controls": [
+    "newborn greedy",
+    "uniform random",
+    "zero target bearing/proximity first four channels"
+  ],
+  "custody": "Deliver saved actual owed outcome on first live call; retain last real outcome plus world, wrapper and brain checkpoint; no terminal flush; match 32 physical steps of unbroken and serialized forks. Frozen copies preserve trace and both memory timescales.",
+  "selection": "Fixed six candidate arms plus two new Hexapod control arms. Reuse exactly four earlier no-memory controls by receipt SHA. No other seeds, horizons, intermediate checkpoints or tuning.",
+  "prior_negative": "Memory restoration failed acquired Mantis201 attack preservation; all previous memory and fresh-readiness failures remain retained.",
+  "work": "Count settle calls and actual result.steps from training, forks, every fingerprint and evaluation; raw training outcomes retained.",
+  "behavioral_screen": "All six candidate lives must beat both newborn and random mean progress by >1e-9, exceed both damage totals by >1e-9 and deal >=30HP across4000 frozen evaluation moments. Original failed capabilities and preserved capabilities both reported. Also report every candidate minus continued-control difference, including regressions; passing this bounded screen is not fresh readiness or population success evidence.",
+  "pending_eligibility": "Load original saved pending phase/trace state unchanged. The source intervention affects newly computed future reward phases only; no recomputation of previous actions or synthetic credit.",
+  "reused_controls_sha256": {
+    "tumbler-103": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+    "mantis-202": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+    "tumbler-102": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+    "mantis-201": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5"
+  },
+  "original_receipts_sha256": {
+    "tumbler-103": "11890ce859c33a300914d2ddf7608464a36b7bfb7502dcef25f4a1e1410e881f",
+    "mantis-202": "890efe1210ec533247eaa5c4dd22ba465bdbced6a78ace906e97af3d89386799",
+    "hexapod-302": "4733e2fd85de206943a7c8881c3069214b58a6a88463e79d80897dd065f3431a",
+    "tumbler-102": "ddedfd0e8c52d9b5b1f132aeddf9177313124dff92995da9c1a9d09d03beac14",
+    "mantis-201": "131d3a25aaea2ec5a087d330db664fddd3ab09dc56fc65086a3ca49bcb6c4ebf",
+    "hexapod-301": "f0ad70fb1fb11f2a8a9274a9544c365abe8f56f7095d9b15bc2f9cd3ba13e616"
+  },
+  "candidate_commit": "83b645726faa1ffef93eb05cfb9df423a57e2c5b"
+}

@@ -1,0 +1,87 @@
+{
+ "schema": "competing-skills/1",
+ "status": "development: readings on the development seeds; gates are declared before any confirmation seed runs",
+ "question": "Does a policy acquired by a continuing Brain.compose life survive continued learning at its own actor step, when the ring brings a competing skill, unavoidable burn, both or neither, while the acquired skill keeps paying? Which synapses move, and are their steps a signal or noise?",
+ "issue": "https://github.com/muellerberndt/cadence/issues/169",
+ "world": {
+  "inputs": 16,
+  "actions": 4,
+  "active_inputs": 4,
+  "situations": "four nursery situations (skill A) and four ring situations (skill B); each ring situation keeps two of its nursery twin's four inputs and takes two others; the right actions of A are a permutation of the four, those of B the same permutation shifted by one to three, so every twin asks a different action",
+  "reward": "+1 for the right action, 0 otherwise; a burning moment adds -0.5 whatever the action; a competent nursery life earns 1.0 per moment, the full ring at most 0.875",
+  "rings": {
+   "full": "A and B situations alike, with burn",
+   "competing": "A and B situations alike, no burn",
+   "burn": "A situations only, with burn",
+   "none": "A situations only, no burn: the nursery continued"
+  },
+  "rings_note": "the coins and the burns of a seed are the same in every ring; the rings with B draw their situations from all eight, the rings without from the four of A, so their situation sequences differ"
+ },
+ "brain": {
+  "source": "cadence-robot-arena arena/brain.py FOUNDER, 2026-10-09",
+  "modules": [
+   48,
+   24
+  ],
+  "sensory_scale": 4.0,
+  "temperature": 0.3,
+  "trace_amplitude": 0.3,
+  "trace_decay": 0.1,
+  "consolidation": 0.05,
+  "eta": 0.03,
+  "eta_bias": 0.003,
+  "lam": 0.6,
+  "gamma": 0.95,
+  "eta_critic": 5.0,
+  "arousal": {
+   "youth": 300,
+   "need": 0.9
+  },
+  "need_note": "the arena's need (0.05 per moment) is in its own reward units; here a competent nursery life earns 1.0 per moment, so a need of 0.9 keeps a life in want wherever the ring pays less than the nursery did: the melee's regime"
+ },
+ "stages": {
+  "small": {
+   "actor_eta": 0.003,
+   "actor_eta_bias": 0.0003
+  },
+  "smallest": {
+   "actor_eta": 0.001,
+   "actor_eta_bias": 0.0001
+  },
+  "calm": {
+   "arousal_threshold": 0.5
+  },
+  "stage": {
+   "actor_eta": 0.001,
+   "actor_eta_bias": 0.0001,
+   "arousal_need": 0.0,
+   "arousal_heat": 0.0,
+   "temperature": 0.2,
+   "reset_arousal": true
+  }
+ },
+ "phases": {
+  "nursery": 4000,
+  "ring": 10000
+ },
+ "probe_every": 250,
+ "burn_rate": 0.25,
+ "seeds": {
+  "development": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5
+  ],
+  "confirmation": []
+ },
+ "readings": "every probe on saved and reloaded copies: greedy accuracy and base-policy probability/margin of the right action on A and on B; on the living brain per window: aroused share, learned outcomes, mean dopamine and raw TD error, mean actor step; drift of efficacies per projection and biases per region since the ring's door; over the ring: sign consistency of each synapse's steps",
+ "gates": null,
+ "contingency": {
+  "right": 1.0,
+  "wrong": 0.0
+ },
+ "contingency_note": "the probability that the right action, or a wrong one, pays +1; the development run also reads a soft contingency (0.6 / 0.3), the arena's progress pay being a weak and noisy contingency rather than a certain payoff"
+}

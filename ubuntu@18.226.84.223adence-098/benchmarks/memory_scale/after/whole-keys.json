@@ -1,0 +1,31 @@
+{
+ "founders": [
+  0,
+  1,
+  2
+ ],
+ "budgets": [
+  1000
+ ],
+ "drift": [
+  false
+ ],
+ "keys": "message-whole",
+ "units": 280,
+ "arms": [
+  "lru",
+  {
+   "name": "memory",
+   "settings": {
+    "direct": null
+   }
+  },
+  {
+   "name": "memory-same",
+   "settings": {
+    "direct": null,
+    "revise": 0.999
+   }
+  }
+ ]
+}

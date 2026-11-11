@@ -1,0 +1,395 @@
+{
+  "scope": "Bounded acquired-life phase-budget comparison, not fresh readiness confirmation. Four unchanged controls imported by exact receipt hash. All new attempts retained.",
+  "runs": [
+    {
+      "new_work": true,
+      "case": "mantis-202",
+      "arm": "full-budget",
+      "status": "running",
+      "receipt_sha256": "2395f3132a2e8aa105f120aee717d1b6e8a62ecc2ca0ffa4bb414ac733e8ed89",
+      "seconds": null,
+      "work_recorded": false,
+      "work": {
+        "actual_sweeps": 0,
+        "settle_calls": 0,
+        "failed_settle_calls": 0
+      },
+      "error": "No completed receipt",
+      "partial": null
+    },
+    {
+      "new_work": true,
+      "case": "tumbler-103",
+      "arm": "full-budget",
+      "status": "running",
+      "receipt_sha256": "e791ff8c75e5a56fad0f6eff07386348487977efe888138873bdda6c8b181fcc",
+      "seconds": null,
+      "work_recorded": false,
+      "work": {
+        "actual_sweeps": 0,
+        "settle_calls": 0,
+        "failed_settle_calls": 0
+      },
+      "error": "No completed receipt",
+      "partial": null
+    },
+    {
+      "new_work": false,
+      "case": "tumbler-103",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "5111b35732de35702c7bf6231606b8ee549a6de432c0abca3dbd12623708cb3f",
+      "seconds": 78.99880587501684,
+      "work_recorded": true,
+      "work": {
+        "actual_sweeps": 398716,
+        "settle_calls": 35867,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": -0.4947271830901354,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -0.4947271830901354,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -9.84358335672056,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.8195644961865236,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": -1.314291679276659,
+      "damage_gain_vs_best_control": 0.0,
+      "target_removal_progress_loss": 0.0,
+      "training": {
+        "progress_m": 30.44298392719658,
+        "dealt": 76.32035292555459,
+        "taken": 7.817082274574585,
+        "kills": 0,
+        "reward": 160.2030977228384,
+        "travelled_m": 242.91433052838957,
+        "aroused": 2642,
+        "sweeps": 114784,
+        "learning_sweeps": 24358,
+        "policy_ms": 48358.005440444686,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 139142,
+        "settle_calls": 15513,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 1,
+        "sensitivity": 0.03656992847405584
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2642,
+      "routine_outcomes": 1358
+    },
+    {
+      "new_work": false,
+      "case": "mantis-202",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "ec516e44c3a038fb5d75041b2090acaaad85637d7b7fb312317fbcec5658ca73",
+      "seconds": 51.64278854202712,
+      "work_recorded": true,
+      "work": {
+        "actual_sweeps": 533230,
+        "settle_calls": 38968,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 16.786953587776587,
+          "total_dealt": 228.68585489940332,
+          "total_kills": 0
+        },
+        "ablated": {
+          "mean_progress_m": -2.8255384693347247,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -8.971076228343595,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": 0.7414969184249289,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 16.04545666935166,
+      "damage_gain_vs_best_control": 228.68585489940332,
+      "target_removal_progress_loss": 19.61249205711131,
+      "training": {
+        "progress_m": 26.80959259780504,
+        "dealt": 111.8863332039164,
+        "taken": 0.049679128583775226,
+        "kills": 0,
+        "reward": 255.31684525618306,
+        "travelled_m": 122.47844677093818,
+        "aroused": 2313,
+        "sweeps": 118720,
+        "learning_sweeps": 26832,
+        "policy_ms": 16896.088003762998,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 145552,
+        "settle_calls": 14650,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 1,
+        "sensitivity": 0.014250064650618226
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2314,
+      "routine_outcomes": 1686
+    },
+    {
+      "new_work": false,
+      "case": "tumbler-102",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "a89c508229f749983ab0f95011c15247f76384fffc65c081770c7fe8be769357",
+      "seconds": 53.37591483298456,
+      "work_recorded": true,
+      "work": {
+        "actual_sweeps": 341195,
+        "settle_calls": 34399,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 25.022598753569962,
+          "total_dealt": 389.33304899961206,
+          "total_kills": 4
+        },
+        "ablated": {
+          "mean_progress_m": 0.07395915122502772,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": -0.17820016406292316,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -1.138188190990343,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 25.200798917632884,
+      "damage_gain_vs_best_control": 389.33304899961206,
+      "target_removal_progress_loss": 24.948639602344933,
+      "training": {
+        "progress_m": 40.91444328717333,
+        "dealt": 293.39816462164936,
+        "taken": 28.401289124991234,
+        "kills": 3,
+        "reward": 286.8167670309153,
+        "travelled_m": 146.26743742693907,
+        "aroused": 2976,
+        "sweeps": 117920,
+        "learning_sweeps": 45283,
+        "policy_ms": 25199.13300027838,
+        "refused": 0,
+        "outside": 26,
+        "burn": 7.799999999999997,
+        "moments": 4000,
+        "actual_sweeps": 163203,
+        "settle_calls": 16612,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 3,
+        "sensitivity": 0.16127093731176456
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2975,
+      "routine_outcomes": 1025
+    },
+    {
+      "new_work": false,
+      "case": "mantis-201",
+      "arm": "control",
+      "status": "complete",
+      "receipt_sha256": "879405ad7c1da684371debd0848e0f7561fbb6e7d7a03c73139458de4866d6c5",
+      "seconds": 88.54980266699567,
+      "work_recorded": true,
+      "work": {
+        "actual_sweeps": 565037,
+        "settle_calls": 39730,
+        "failed_settle_calls": 0
+      },
+      "evaluation": {
+        "trained": {
+          "mean_progress_m": 27.183440303979275,
+          "total_dealt": 762.3022159174029,
+          "total_kills": 8
+        },
+        "ablated": {
+          "mean_progress_m": -1.4201932158049158,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        },
+        "newborn": {
+          "mean_progress_m": 2.591429416887333,
+          "total_dealt": 58.211195967860256,
+          "total_kills": 0
+        },
+        "random": {
+          "mean_progress_m": -0.11090031467930173,
+          "total_dealt": 0.0,
+          "total_kills": 0
+        }
+      },
+      "progress_gain_vs_best_control": 24.59201088709194,
+      "damage_gain_vs_best_control": 704.0910199495427,
+      "target_removal_progress_loss": 28.60363351978419,
+      "training": {
+        "progress_m": 40.54983193776484,
+        "dealt": 463.7101633415105,
+        "taken": 1.403011778605117,
+        "kills": 5,
+        "reward": 348.63347539976274,
+        "travelled_m": 126.3263557486984,
+        "aroused": 2477,
+        "sweeps": 124928,
+        "learning_sweeps": 48849,
+        "policy_ms": 34731.598658661824,
+        "refused": 0,
+        "outside": 0,
+        "burn": 0.0,
+        "moments": 4000,
+        "actual_sweeps": 173777,
+        "settle_calls": 15335,
+        "failed_settle_calls": 0,
+        "refusal_attempts": 0
+      },
+      "memory": null,
+      "fingerprint": {
+        "distinct": 2,
+        "sensitivity": 0.07951277603221649
+      },
+      "routine_outcome_memory_writes": 0,
+      "sampled_outcomes": 2477,
+      "routine_outcomes": 1523
+    }
+  ],
+  "pairs": [
+    {
+      "case": "tumbler-103",
+      "progress_pass": false,
+      "attack_pass": false,
+      "error": "Missing or failed candidate/control; no success inferred",
+      "candidate_status": "running",
+      "control_status": "complete"
+    },
+    {
+      "case": "mantis-202",
+      "progress_pass": false,
+      "attack_pass": false,
+      "error": "Missing or failed candidate/control; no success inferred",
+      "candidate_status": "running",
+      "control_status": "complete"
+    },
+    {
+      "case": "hexapod-302",
+      "progress_pass": false,
+      "attack_pass": false,
+      "error": "Missing or failed candidate/control; no success inferred",
+      "candidate_status": "missing",
+      "control_status": "missing"
+    },
+    {
+      "case": "tumbler-102",
+      "progress_pass": false,
+      "attack_pass": false,
+      "error": "Missing or failed candidate/control; no success inferred",
+      "candidate_status": "missing",
+      "control_status": "complete"
+    },
+    {
+      "case": "mantis-201",
+      "progress_pass": false,
+      "attack_pass": false,
+      "error": "Missing or failed candidate/control; no success inferred",
+      "candidate_status": "missing",
+      "control_status": "complete"
+    },
+    {
+      "case": "hexapod-301",
+      "progress_pass": false,
+      "attack_pass": false,
+      "error": "Missing or failed candidate/control; no success inferred",
+      "candidate_status": "missing",
+      "control_status": "missing"
+    }
+  ],
+  "work_census_complete": false,
+  "unique_arms": true,
+  "missing_cases": [
+    [
+      "hexapod-301",
+      "control"
+    ],
+    [
+      "hexapod-301",
+      "full-budget"
+    ],
+    [
+      "hexapod-302",
+      "control"
+    ],
+    [
+      "hexapod-302",
+      "full-budget"
+    ],
+    [
+      "mantis-201",
+      "full-budget"
+    ],
+    [
+      "tumbler-102",
+      "full-budget"
+    ]
+  ],
+  "unexpected_cases": [],
+  "behavioral_screen_pass": false,
+  "new_work": {
+    "actual_sweeps": 0,
+    "settle_calls": 0,
+    "failed_settle_calls": 0
+  },
+  "reused_work_not_repeated": {
+    "actual_sweeps": 1838178,
+    "settle_calls": 148964,
+    "failed_settle_calls": 0
+  }
+}

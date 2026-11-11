@@ -1,0 +1,237 @@
+{
+  "candidate_points": 1,
+  "capacity_controls": {
+    "exposed": "Plain Brain with same11inputs/2actions/32association/numerics and no episodic vote. Query receives BOTH unselected actual fact values in sensory7..10, independent of asked name.",
+    "supplied_address": "H1 anatomy/alpha3/empty_anchor=true and restoring E=alpha/2||r-R_fixed||\u00b2, Dq=0, Dr=alpha(R_fixed-r). At QUERY, fixed selector chooses latest actual held A or B fact identified by question5/6 and witnessed fact coordinates0..3, never by answer value; zero target if absent. During every PREFIX, fixed selection is null: target0 with full restoring force. Freeze selection/bank across free/positive/negative phases. Explicit oracle capacity control ONLY, never learned relevance.",
+    "warning": "Old content_control.make_brain is not the candidate: it supplies both facts with automatic recall amplitude0, dt.1/1024/damping0. Its positive receipt cannot admit the new H1 restoring law. FrozenRead currently requires2heads/raw19, so do not silently call it for H1; use a small new immutable H1 oracle wrapper with equivalent energy/drive/take semantics."
+  },
+  "causal": {
+    "conditions": [
+      "intact",
+      "erase_A",
+      "erase_B",
+      "all_erased",
+      "flip_relevant",
+      "flip_irrelevant",
+      "donor_both",
+      "erase_neutral",
+      "joint_K_V_held_age_reorder",
+      "frozen_interface",
+      "shuffled_interface"
+    ],
+    "custody": "Every condition forks SAME acquired pre-query host; no parameter update. Keep actual query,complete captured drive,other records,held/ages and warm/trace clearing fixed within intervention.",
+    "erase_neutral": "Erase only the actual witnessed neutral record held flag, preserving its K/V and ages, both named facts and complete host query drive. This tests incidental neutral dependence and is distinct from the older half-neutral K/V intervention. It is not an exact-copy no-op.",
+    "interface": "Revert and shuffle acquired query/read-cortex interface on copies, retaining exact bank/query and coupling alpha; each must reduce accuracy by>=.20 on COMPLETE qualified panels. Report changed transport/conditioning caveat, not isolated selector-causality proof.",
+    "losses": "Relevant erasure loss>=.20 for queriedA and queriedB subsets separately (2/8each). Relevant flips/donor followed>=.80overall andEACHquery (>=7/8eachquery). Irrelevant changes<=.05overall/eachquery; neutral/custody shams<=.05 (zero changes at16). Refused/unrun is unavailable, never a lesion loss.",
+    "no_abstention_optimism": "Retain empty/erased refusals and unsupported-read behavior explicitly. Two motor actions provide no abstain label; a null slot/restoring force does not establish learned abstention or all-context soundness.",
+    "qualification": "All conditions except all_erased must complete and qualify for primary. all_erased is an unsupported/null diagnostic only: preserve its answers, refusal and actual work; it contributes no loss or abstention gate.",
+    "records": "Flip actual named donor fact K and V JOINTLY, preserving actual name and chronology; donor_both changes both actual facts. Never inject the answer or select a candidate address from labels.",
+    "selector": "At intact unequal rows, actual requested record mass>=.5 and margin>=.1 overotherfact/neutral/null, at>=.8share EACHquery. Record the paired-question change in p(q), q/read/cortex activations and decisions from identical bank. Compare frozen newborn and acquired rows; moving q alone is not learned selection."
+  },
+  "confirmation_seeds_used": [],
+  "custody_accounting": "New typed receipts, exact logical source inventories, current runtime revision, q1 initializer+native one-slot config, prefix+query+teacher work including residual checks/refusals, final parameters+all optimizer arrays/counters/source metadata and inherited cumulative once. Cache only already verified immutable historical data with full raw/source/spec key, never current capacity/model state. Record receipts elapsed, not partial journal outer elapsed.",
+  "data": {
+    "batch": 16,
+    "cases": 16,
+    "coordinates": {
+      "A0_A1": [
+        0,
+        1
+      ],
+      "B0_B1": [
+        2,
+        3
+      ],
+      "ask_A_ask_B": [
+        5,
+        6
+      ],
+      "exposed_both_unselected_facts": [
+        7,
+        8,
+        9,
+        10
+      ],
+      "neutral": 4
+    },
+    "evaluation": "Each of8 fact/order histories forms one witnessed pre-query host. Both questions fork that same bank/boundary. Retain explicit16 case rows and8x2 answer table as required by selective_recall.scores. All16 trained, no held split.",
+    "histories": 8,
+    "neutral_events": 1,
+    "newborn": "Complete qualified newborn intact panel required, accuracy unrestricted.",
+    "owner": "benchmarks/relevance/selective_recall.py: CASES,inputs,scores",
+    "prefix": "Actual A/B fact events in either order, then neutral. Candidate question contains askA or askB only, no value or supplied slot. Query coordinates have no direct overlap with raw fact keys.",
+    "prefix_orders": [
+      0,
+      1
+    ],
+    "query_boundary": "Clear working trace and warm/basal state after actual prefix. Keep actual witnessed bank. Capture FULL pre-query drive and bank before query act writes a moment.",
+    "questions_per_history": 2,
+    "rounds": 512,
+    "schedule": "Existing content_control namespace SeedSequence([31014,founder]); one permutation of all16 CASES per round. All arms use the exact same schedule.",
+    "target": "Only the requested binary value. No teacher identifies head, slot, name-address or relevance mask.",
+    "values": [
+      0,
+      1
+    ]
+  },
+  "development_seeds": [
+    0,
+    1
+  ],
+  "execution": "Explicit serial CLI stage after source freeze; no automatic stage.",
+  "factory": {
+    "actions": 2,
+    "brain": {
+      "empty_anchor": true,
+      "episodic": false,
+      "lateral": 0.0,
+      "learning_beta": 0.1,
+      "learning_damping": 3,
+      "learning_free_steps": 2048,
+      "learning_momentum": 0.9,
+      "learning_nudged_steps": 2048,
+      "learning_qualified": true,
+      "learning_surprise": false,
+      "learning_temperature": 0.2,
+      "learning_tolerance": 0.003,
+      "modules": [
+        32
+      ],
+      "recall_address": 0.0,
+      "recall_amplitude": 3.0,
+      "recall_capacity": 64,
+      "recall_next": false,
+      "recall_null": 0.0,
+      "recall_recency": 0.0,
+      "recall_temperature": 0.25,
+      "slots": 1,
+      "teaching": "normalized"
+    },
+    "class": "heads.MultiHeadBrain",
+    "dt": 1.0,
+    "heads": 1,
+    "initializer": "Direct query_founder.initialize(brain,seed=founder,query_scale=1), once after composition and before first event; retain descriptor and initial parameter hashes. No q0 retry or parameter search.",
+    "inputs": 11,
+    "mode": "agreement",
+    "note": "H1 uses the same numeric/optimizer point as the frozen H2 instrument, with the native one-output-slot teacher (beta/slot_count=.1). Default capacity64 retained. No new learned module, address lesson or answer head.",
+    "port_copies": 1,
+    "query_scale": 1,
+    "resolved_learning_guard": {
+      "eta": 0.003,
+      "eta_bias": 0.0003,
+      "normalize": 0.99,
+      "normalize_floor": 0.0001,
+      "nudge": "cross_entropy",
+      "scale_cap": 8.0,
+      "surprise": false
+    },
+    "resolved_neuron_guard": {
+      "adaptation": null,
+      "dt": 1.0,
+      "gain": 1.0,
+      "leak": 0.1,
+      "slope": 1.0,
+      "stimulus_amplitude": 1.0,
+      "threshold": 0.0
+    },
+    "slots": 1
+  },
+  "forbidden": [
+    "changing retained runtime sources, protocols or evidence",
+    "new candidate point/grid",
+    "fresh confirmation",
+    "resource/head-count advantage from this H1 assay",
+    "original-task/held-transfer/meaning claim",
+    "AWS spend before actual gates"
+  ],
+  "gates": {
+    "acquisition_floor": 0.95,
+    "competence_floor": 0.9,
+    "donor_follow_minimum": 0.8,
+    "irrelevant_change_maximum": 0.05,
+    "learned_interface_loss_minimum": 0.2,
+    "relevant_erasure_loss_minimum": 0.2,
+    "relevant_record_margin_minimum": 0.1,
+    "relevant_record_mass_minimum": 0.5,
+    "retention_loss_maximum": 0.05,
+    "selective_unequal_share_each_query_minimum": 0.8,
+    "selector_denominators": "Unequal rows8 total,4 perquery. Threshold.8 requires7/8 overall and4/4 perquery, hence all8 when both perquery gates hold. Identify A/B from actual witnessed contents, not physical slot index alone. Record null mass1-sum and all rows.",
+    "sham_change_maximum": 0.05
+  },
+  "implementation_reuse": "Reuse selective_recall inputs/scores and sr.Work; heads_admission.act_drive,teach and metered support existing saved memory rows. Do NOT reuse hardcoded19-input/8-action make_brain/train, old whole-trial held-panel metrics, or amplitude0 supplied-content constructor. Add only explicit11-input factory/oracle and compact task-aware controller; do not alter frozen old sources.",
+  "prior": {
+    "archive_sha256": "b8bae2164b9acbf208ef21f7b7b514685a346f2e5563b8441aab3576f4cb3204",
+    "cumulative_host_seconds": 4152.979600170228,
+    "digest": "2f0ef07ba3d8dc312cd25b2d323389be63069e3630f1187564a5e17c759226c7",
+    "file": "minimal-binding-h2.json",
+    "h2_admitted": false,
+    "kind": "cadence-attention-minimal-binding-h2/1",
+    "requires_finished_stage": "minimal-binding-h2.json",
+    "rule": "Verify the actual finished minimal multi-reader receipt and exact inherited cumulative cost before any fresh constructor. Preserve its negative outcome. This single-reader assay may run despite that negative outcome; it does not replace the unmet multi-reader gate."
+  },
+  "references": {
+    "frozen_newborn": "Save exact constructor parameters and report complete qualified newborn readings without learning.",
+    "held_recall": "Existing released pre-settle Recall remains the simpler reference. Its old receipt is separate; no new reference campaign, LMS/toward grid or claimed matched current-task pass is opened by this controller.",
+    "uniform": "Actual independent binary-uniform answers SeedSequence([31015,founder]), expected.5, retained full answer table; do not consume training/action RNG."
+  },
+  "retention": {
+    "gate": "Complete256/no refusals; all16 final answers qualify; .95overall/unequal/eachquery and loss<=.05 =>no loss from16/16. Same-task exposure only, not competing-learning retention.",
+    "requires": "Founder primary acquisition+causal+selection+interface gates pass.",
+    "rounds": 256,
+    "schedule": "Balanced explicit all16 cyclic cases, independent SeedSequence([622024,founder]) permutation once; all16 each round. Same task/point and wrong-row teaching.",
+    "schedule_namespace": [
+      622024
+    ]
+  },
+  "schema": "cadence-single-relevance-campaign/1",
+  "scope": "Simple learned coupled H1 relevance on the existing binary named-fact task; raw component, all cases trained, no original dual-answer/held-transfer/semantic/world claim.",
+  "stages": {
+    "capacity": {
+      "gate": "All4 complete512 rounds; no action/lesson refusal; all prefix/query/free/positive/negative phases qualify; final overall,unequal andEACHquery accuracy>=.95 =>16/16overall,8/8unequal,8/8eachquery. New current-task/source receipt mandatory.",
+      "order": [
+        [
+          "exposed",
+          0
+        ],
+        [
+          "exposed",
+          1
+        ],
+        [
+          "supplied_address",
+          0
+        ],
+        [
+          "supplied_address",
+          1
+        ]
+      ],
+      "receipt_kind": "cadence-attention-single-relevance-capacity/1",
+      "total_host_seconds": 600,
+      "training_seconds_per_call": 240
+    },
+    "learned_h1": {
+      "capacity_file": "single-relevance-capacity.json",
+      "gate": "Both founders complete512 and pass16/16 acquisition plus all causal/selection/interface gates. Conditional256 retention only after that founder primary passes; both retained passes required.",
+      "order": [
+        [
+          "h1",
+          0
+        ],
+        [
+          "h1",
+          1
+        ]
+      ],
+      "receipt_kind": "cadence-attention-single-relevance-h1/1",
+      "requires": "Verified positive new four-cell H1 capacity, retained at its declared source-bound filename. Attempt both founders regardless first failure.",
+      "total_host_seconds": 1800,
+      "training_seconds_per_call": 600
+    }
+  },
+  "status": "declared_before_execution",
+  "uniform_namespace": [
+    31015
+  ],
+  "world_order": "Longer training and integrated world comparisons are outside this instrument. Both simple learned single- and multi-reader behavioral, causal and retention gates remain prerequisites. Preserve learned-code computation, indexing/readability and acquired lifecycle behavior in a continuing creature; mechanical lifecycle tests alone are insufficient. A measured local world comparison with uniform, episodic and held-Recall baselines precedes any longer paid stage."
+}

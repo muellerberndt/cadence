@@ -1,0 +1,58 @@
+"""Independent read-only control, custody and inherited-work admission audit."""
+import gzip,hashlib,json
+from pathlib import Path
+import numpy as np
+ROOT=Path('/workspace')
+HERE=ROOT/'temp/cadence-phase-repair-20261009'
+DATA=ROOT/'cadence-robot-arena/runs/cadence-release-confirmation-20261008-9ecbd0f'
+protocol=json.loads((HERE/'protocol.json').read_text())
+refs=json.loads((HERE/'reused-controls.json').read_text())
+def digest(p):return hashlib.sha256(p.read_bytes()).hexdigest()
+def equal_checkpoints(a,b):
+ with np.load(a,allow_pickle=False) as left,np.load(b,allow_pickle=False) as right:
+  assert set(left.files)==set(right.files)
+  for key in left.files:
+   if key=='generic':assert json.loads(str(left[key]))==json.loads(str(right[key])),key
+   else:assert np.array_equal(left[key],right[key]),key
+reports=[]
+inherited={k:0 for k in ['actual_sweeps','settle_calls','failed_settle_calls']}
+original_work={k:0 for k in inherited}
+for case in protocol['first_stage']:
+ original=json.loads((DATA/case/'receipt.json').read_text())
+ for name in ['trained.npz','world.json']:
+  assert digest(DATA/case/name)==original['artifacts'][name]['sha256']
+ for k in original_work:original_work[k]+=original['work_all_sections'][k]
+ if case not in refs:continue
+ ref=refs[case]; path=Path(ref['receipt']);r=json.loads(path.read_text())
+ assert digest(path)==ref['receipt_sha256']==protocol['reused_controls_sha256'][case]
+ assert r['source_sha256']==ref['source_sha256']==r['source_sha256_after']
+ assert r['status']=='complete' and not r['smoke'] and r['source_admitted'] and r['source_unchanged'] and r['producer_unchanged']
+ assert r['arm']=='control' and r['case']==case
+ for k in ['additional_training_moments','evaluation_moments','evaluation_worlds','continuation_moments_per_fork','relocate','controls']:assert r['protocol'][k]==protocol[k]
+ for rel,sha in ref['original_artifacts'].items():assert digest(DATA/rel)==sha==r['original_artifacts'][rel]
+ for name,sha in r['artifacts'].items():assert digest(path.parent/name)==sha,name
+ equal_checkpoints(DATA/case/'trained.npz',path.parent/'initial.npz')
+ assert r['initial']['outcomes_received']==79999 and r['trained']['outcomes_received']==83999
+ assert r['initial']['memory'] is None and r['trained']['memory'] is None
+ with gzip.open(path.parent/'training-stream.jsonl.gz','rt') as f:stream=[json.loads(x) for x in f]
+ assert len(stream)==4000 and stream[0]['received_actual_reward']==r['initial']['pending_actual_reward']
+ assert all(row['received_actual_reward']==previous['reward'] for previous,row in zip(stream,stream[1:]))
+ assert stream[-1]['reward']==r['trained']['pending_actual_reward']
+ assert r['continuation']['equal'] and r['continuation']['checkpoint_arrays_equal']
+ assert len(r['continuation']['records'])==32
+ equal_checkpoints(path.parent/'fork-original.npz',path.parent/'fork-loaded.npz')
+ for pair in r['continuation']['records']:
+  assert {k:v for k,v in pair['unbroken'].items() if k!='policy_ms'}=={k:v for k,v in pair['reloaded'].items() if k!='policy_ms'}
+ units=[r['training']['total'],r['fingerprint']]
+ units += [pair[side] for pair in r['continuation']['records'] for side in ['unbroken','reloaded']]
+ units += [x['total'] for x in r['evaluation']]
+ summed={k:sum(item[k] for item in units) for k in inherited}
+ assert summed==r['work'],(case,summed,r['work'])
+ assert len(r['evaluation'])==8
+ for ev in r['evaluation']:
+  assert ev['total']['moments']==2000 and not ev['total']['refused'] and not ev['total']['learning_sweeps'] and not ev['total']['refusal_attempts']
+ for k in inherited:inherited[k]+=r['work'][k]
+ reports.append({'case':case,'source_and_artifact_hashes_verified':True,'original_checkpoint_matches_loaded_saved_initial':True,'raw4000_actual_outcomes_and_pending_chain_verified':True,'fork_arrays_and32_step_records_equal':True,'all_section_work_reconciles':True,'work':r['work'],'seconds':r['seconds']})
+result={'scope':'Read-only admission. No training or evaluation executed by this reviewer. Reused controls are inherited observations, not new independent runs.','originals_verified':protocol['first_stage'],'reused_control_reports':reports,'inherited_reused_control_work':inherited,'inherited_reused_control_seconds':sum(x['seconds'] for x in reports),'original_six_acquisition_receipts_all_section_work':original_work,'original_six_training_moments':480000,'planned_new_arms':8,'planned_new_training_moments':32000,'reused_control_training_moments':16000}
+(HERE/'control-review.json').write_text(json.dumps(result,indent=2)+'\n')
+print(json.dumps(result,indent=2))

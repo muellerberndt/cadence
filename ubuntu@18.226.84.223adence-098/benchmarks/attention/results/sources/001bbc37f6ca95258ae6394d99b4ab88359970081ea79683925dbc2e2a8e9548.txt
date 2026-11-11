@@ -1,0 +1,259 @@
+"""Repair the exposed-fact admission by checking the established mismatch control.
+
+No new learning law: this reuses acquisition_controls.py's complete pre-query
+drive and wrong-row policy. The failed attention recipes remain frozen. All
+cases are taught; confirmation is over founders, not unseen fact combinations.
+"""
+
+from __future__ import annotations
+
+import argparse
+import importlib.util
+import json
+import sys
+import time
+from dataclasses import asdict
+from pathlib import Path
+from typing import Any
+
+import numpy as np
+
+import cadence
+from cadence import Brain, NeuralGraph
+from cadence.receipts import Receipt, canonical_sha256, source_manifest
+
+HERE = Path(__file__).resolve().parent
+PROTOCOL = HERE / "repair-protocol.json"
+SPEC = importlib.util.spec_from_file_location(
+    "attention_repair_controls", HERE.parent / "relevance" / "acquisition_controls.py")
+assert SPEC is not None and SPEC.loader is not None
+controls = importlib.util.module_from_spec(SPEC)
+sys.modules[SPEC.name] = controls
+SPEC.loader.exec_module(controls)
+sr = controls.sr
+
+
+def sources() -> list[tuple[str, Path]]:
+    package = Path(cadence.__file__).resolve().parent
+    return [
+        ("benchmarks/attention/repair_admission.py", Path(__file__).resolve()),
+        ("benchmarks/attention/repair-protocol.json", PROTOCOL),
+        ("benchmarks/relevance/acquisition_controls.py", Path(controls.__file__)),
+        ("benchmarks/relevance/selective_recall.py", Path(sr.__file__)),
+    ] + [("src/cadence/" + str(p.relative_to(package)), p)
+         for p in sorted(package.rglob("*.py"))]
+
+
+def train(brain: Brain, order: np.ndarray, policy: str, *, deadline: float,
+          neutral_events: int = 1) -> dict[str, Any]:
+    """Act then correct from the captured drive, retaining row identity and context.
+
+    Both policies use the same order. A new stimulus on a smaller wrong-row
+    batch would lose the prefix trace; a new stimulus after acting would use
+    the query-advanced trace. Neither is the event whose answer was judged.
+    """
+    if policy not in ("every", "wrong"):
+        raise ValueError("policy must be every or wrong")
+    work = sr.Work()
+    rounds, stop = 0, None
+    wrong_counts = []
+    for permutation in order:
+        if time.monotonic() >= deadline:
+            stop = "wall_budget"
+            break
+        rows = sr.CASES[permutation]
+        prefix, query, target = sr.inputs(
+            rows[:, :3], rows[:, 3], neutral_events, exposed=True)
+        brain.reset()
+        for observation in prefix:
+            if work.act(brain, observation) is None:
+                stop = "refused_prefix"
+                break
+        if stop is not None:
+            break
+        drive = np.array(brain.stimulus(query), copy=True)
+        answer = work.act(brain, query)
+        if answer is None:
+            stop = "refused_query"
+            break
+        wrong = np.asarray(answer).reshape(-1) != target
+        wrong_counts.append(int(wrong.sum()))
+        selected = np.ones(len(target), dtype=bool) if policy == "every" else wrong
+        if selected.any():
+            controls.teach_drive(work, brain, drive[selected], target[selected])
+        rounds += 1
+    return {"completed": rounds == len(order), "rounds": rounds, "stop": stop,
+            "wrong_counts": wrong_counts, "work": asdict(work)}
+
+
+def gate(training: dict[str, Any], evaluation: dict[str, Any], floor: float) -> bool:
+    return bool(training["completed"] and sr.acquisition_gate(evaluation, floor))
+
+
+def make_brain(recipe: dict[str, Any], seed: int) -> Brain:
+    brain = Brain.compose(sr.INPUTS, 2, seed=seed, **recipe["brain"])
+    original = brain.brain
+    brain.learner.brain = NeuralGraph(
+        original.connectome, original.neuron_model.replace(dt=recipe["dt"]),
+        efficacy=original.efficacy, bias=original.bias, log_gain=original.log_gain)
+    return brain
+
+
+def trial(recipe: dict[str, Any], seed: int, policy: str, protocol: dict[str, Any],
+          deadline: float, checkpoints: Path | None) -> dict[str, Any]:
+    brain = make_brain(recipe, seed)
+    initial_parameters = sr.parameter_digest(brain)
+    initial = sr.evaluate(brain, protocol["neutral_events"], exposed=True)
+    rng = np.random.default_rng(np.random.SeedSequence([31014, seed]))
+    order = np.stack([rng.permutation(len(sr.CASES)) for _ in range(protocol["rounds"])])
+    arm_deadline = min(deadline, time.monotonic() + protocol["training_seconds_per_arm"])
+    training = train(brain, order, policy, deadline=arm_deadline,
+                     neutral_events=protocol["neutral_events"])
+    evaluation = sr.evaluate(brain, protocol["neutral_events"], exposed=True)
+    checkpoint = None
+    if checkpoints is not None:
+        path = checkpoints / f"{recipe['name']}-{seed}-{policy}.npz"
+        if path.exists():
+            raise FileExistsError(path)
+        checkpoint = sr.checkpoint_digest(brain.save(path))
+    random = np.random.default_rng(np.random.SeedSequence([31015, seed]))
+    random_answers = random.integers(0, 2, size=(8, 2))
+    return {
+        "recipe": recipe["name"], "seed": seed, "policy": policy,
+        "resolved": brain.describe(), "neuron_model": brain.brain.neuron_model.to_dict(),
+        "initial_parameters": initial_parameters, "final_parameters": sr.parameter_digest(brain),
+        "schedule": {"cases": sr.CASES.tolist(), "order_sha256": canonical_sha256(order)},
+        "initial": initial, "training": training, "evaluation": evaluation,
+        "passed": gate(training, evaluation, protocol["acquisition_floor"]),
+        "checkpoint_content_sha256": checkpoint,
+        "uniform_random": {"answers": random_answers.tolist(), "scores": sr.scores(random_answers),
+                           "expected_accuracy": 0.5},
+    }
+
+
+def selected_recipe(runs: list[dict[str, Any]], protocol: dict[str, Any]) -> str | None:
+    """First recipe whose wrong-policy lives ALL pass; not a best-checkpoint search."""
+    for recipe in protocol["recipes"]:
+        group = [r for r in runs if r["recipe"] == recipe["name"] and r["policy"] == "wrong"]
+        if ([r["seed"] for r in group] == protocol["development_seeds"]
+                and all(r["passed"] for r in group)):
+            return str(recipe["name"])
+    return None
+
+
+def run(stage: str, development: Path | None = None,
+        checkpoints: Path | None = None) -> Receipt:
+    protocol = json.loads(PROTOCOL.read_text())
+    manifest = source_manifest(sources())
+    began = time.monotonic()
+    spent, reference = 0.0, None
+    selected = None
+    if stage == "confirmation":
+        if development is None:
+            raise ValueError("confirmation requires the frozen development receipt")
+        valid, message = Receipt.verify(development, sources=sources(), check=check)
+        if not valid:
+            raise ValueError(message)
+        prior = Receipt.read(development)
+        if prior.body["stage"] != "development" or not prior.body["passed"]:
+            raise ValueError("development must pass before opening confirmation seeds")
+        selected = prior.body["selected_recipe"]
+        spent = prior.body["elapsed_host_seconds"]
+        reference = {"digest": prior.digest, "selected_recipe": selected}
+    elif stage != "development":
+        raise ValueError("unknown stage")
+    deadline = began + max(0.0, protocol["total_seconds"] - spent)
+    if checkpoints is not None:
+        checkpoints.mkdir(parents=True, exist_ok=True)
+    runs = []
+    for recipe in protocol["recipes"]:
+        if stage == "confirmation" and recipe["name"] != selected:
+            continue
+        seeds = protocol[f"{stage}_seeds"]
+        for seed in seeds:
+            for policy in ("every", "wrong") if stage == "development" else ("wrong",):
+                result = trial(recipe, seed, policy, protocol, deadline, checkpoints)
+                runs.append(result)
+                scores = result["evaluation"]["branches"]["intact"]["scores"]
+                print(json.dumps({"recipe": recipe["name"], "seed": seed, "policy": policy,
+                                  "passed": result["passed"],
+                                  "rounds": result["training"]["rounds"],
+                                  "accuracy": scores["accuracy"]}),
+                      flush=True)
+        if stage == "development":
+            selected = selected_recipe(runs, protocol)
+            if selected is not None:
+                break
+    if manifest != source_manifest(sources()):
+        raise RuntimeError("source changed during the experiment; retain diagnostics and rerun")
+    passed = selected is not None
+    if stage == "confirmation":
+        passed = (len(runs) == protocol["confirmation_required"]
+                  and all(r["passed"] for r in runs))
+    body = {
+        "stage": stage, "protocol": protocol, "runs": runs, "selected_recipe": selected,
+        "passed": passed, "development_reference": reference,
+        "elapsed_host_seconds": time.monotonic() - began, "previous_host_seconds": spent,
+        "numpy_version": np.__version__, "cadence_version": cadence.__version__,
+        "source_revision": sr.revision(),
+        "source_identity": (
+            "The manifest binds imported code and protocol, including uncommitted bytes."),
+        "interpretation": (
+            "Finite exposed-fact acquisition is admitted; learned retrieval, semantic relevance "
+            "and lifecycle integration require their own gates." if passed else
+            "Acquisition admission failed; retain every failed/refused/unrun founder and stop."),
+    }
+    problem = check(body)
+    if problem:
+        raise AssertionError(problem)
+    return Receipt.build("cadence-attention-acquisition-repair/1", body, sources())
+
+
+def check(body: dict[str, Any]) -> str | None:
+    """Recompute decisions from actual answers, never trust a stored pass flag."""
+    protocol, runs = body["protocol"], body["runs"]
+    for result in runs:
+        for evaluation in (result["initial"], result["evaluation"]):
+            for branch in evaluation["branches"].values():
+                if sr.scores(branch["answers"]) != branch["scores"]:
+                    return "scores differ from recorded answers"
+        random = result["uniform_random"]
+        if sr.scores(random["answers"]) != random["scores"]:
+            return "random scores differ"
+        training = result["training"]
+        if training["completed"] != (training["rounds"] == protocol["rounds"]):
+            return "training completion differs"
+        if result["passed"] != gate(training, result["evaluation"], protocol["acquisition_floor"]):
+            return "founder gate differs"
+    if body["stage"] == "development":
+        expected = selected_recipe(runs, protocol)
+        if expected != body["selected_recipe"] or body["passed"] != (expected is not None):
+            return "development selection differs"
+    else:
+        if ([r["seed"] for r in runs] != protocol["confirmation_seeds"]
+                or any(r["policy"] != "wrong" or r["recipe"] != body["selected_recipe"]
+                       for r in runs)):
+            return "confirmation founders or recipe differ"
+        passed = (len(runs) == protocol["confirmation_required"] and all(r["passed"] for r in runs))
+        if body["passed"] != passed:
+            return "confirmation gate differs"
+    return None
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--stage", choices=("development", "confirmation"))
+    parser.add_argument("--development", type=Path)
+    parser.add_argument("--checkpoints", type=Path)
+    parser.add_argument("--out", type=Path)
+    parser.add_argument("--verify", type=Path)
+    args = parser.parse_args()
+    if args.verify:
+        ok, message = Receipt.verify(args.verify, sources=sources(), check=check)
+        print(message)
+        raise SystemExit(0 if ok else 1)
+    if not args.stage or not args.out:
+        parser.error("provide --stage and --out")
+    if args.out.exists():
+        parser.error("output already exists; preserve the earlier receipt")
+    run(args.stage, args.development, args.checkpoints).write(args.out)

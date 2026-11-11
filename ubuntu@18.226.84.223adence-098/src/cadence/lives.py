@@ -1,0 +1,2689 @@
+"""Independent lives over one topology, stepped together (cadence#274, #167).
+
+``Lives`` holds many composed brains of one anatomy, each with its own parameters, optimizer,
+critic, eligibility, recall memory, carried gains, working trace and random state, one stream
+each. On the CPU each life is a lone ``Brain``, stepped in turn. On a torch device the lives are
+the streams of one brain whose parameters carry a lives axis: every settle reads each stream
+through its own life's synapses, and every update moves each life on its own contrast and
+dopamine, so one call per moment settles and teaches all of them. Each life follows the lone
+brain of its seed on the same device within the solver's tolerance.
+
+The lives run the composition's own equations through these parts:
+
+- ``_LivesTorchKernel``: the settle's transport as one batched product per block of the layout,
+  each life's dense block of its own synapses, each life held where its own stream meets the
+  tolerance, and the contrast per stream;
+- ``_LivesGraph``: a solve that holds each life where its own equations hold, and a rescue on
+  the damping ladder life by life;
+- ``_LivesLearner``: a lesson's update and a reward's update per life; the momentum, the second
+  moments and the counts of their bias correction per life; a lesson judged by surprise updates
+  the lives whose own answer differed;
+- ``_LivesRecall``: the recall memory's address and position maps per life (a stream's slots are
+  its own already), the address lesson and the reward's step on each life's own row;
+- ``_LivesHearing``: the carried gains, their second moments and counts per life;
+- ``_LivesActorCritic`` and ``_LivesCritic``: the critic's weights and bias per life, the
+  dopamine and the actor's step per stream; in ``live`` an outcome teaches the lives whose action
+  was sampled, fades the eligibility of the calm lives and holds the others, and each life answers
+  greedily or samples at the temperatures its own arousal sets;
+- ``_LivesRandom``: each life's own random generator, drawn as its lone brain draws it.
+
+A composition holds the parts these cover: the default composition, its store of place records
+and its heard history among them, with or without the store (``episodic=False``), the history
+(``history_decays=()``), the recall memory, the carried gains, arousal, ``memory_fade``, maturity
+and ``actor_hold``, at any teaching point. ``Lives`` refuses a learned or fixed code, an apical
+compartment, rehearsal, qualified teaching, the efference copy, a held message, long-term
+records, ``actor_entropy`` and a recall memory with several heads, a window, the command, the
+read of when or tokens, each by name. A moment any life refuses is refused for every life.
+"""
+
+from __future__ import annotations
+
+import warnings
+from collections.abc import Sequence
+from dataclasses import dataclass, replace
+from typing import Any, cast
+
+import numpy as np
+
+from .brain import (
+    _MLX_CHECK_FLOOR,
+    BrainState,
+    Equilibrium,
+    Nudge,
+    _check_ladder,
+    _plan_structure,
+    _SweepConfig,
+    _take,
+    _TorchKernel,
+    _transport_override,
+    _TransportPlan,
+)
+from .brain import Brain as NeuralGraph
+from .learning import _MOMENTS, _RELATIVE_TINY, LearnedState, Learner, _taught_report
+from .memories import record_action
+from .memory import SynapticMemory
+from .plasticity import ActorCritic, Maturity, _held_drive
+from .resident import (
+    _MAP_KINDS,
+    TorchArrays,
+    _CriticOnDevice,
+    _forgotten,
+    _Moment,
+    _RecallOnDevice,
+    _StoreOnDevice,
+    arrays_of,
+)
+from .stream import Hearing
+
+__all__ = ["Lives"]
+
+
+class _RowBias:
+    """A kernel's biases, one row per life, as its sweeps read them: ``bias[:, None]``, the drive
+    that never moves, is ``(neurons, lives)`` there."""
+
+    def __init__(self, rows: Any) -> None:
+        self.rows = rows  # (lives, neurons)
+
+    def __getitem__(self, key: Any) -> Any:
+        return self.rows.T
+
+
+class _LivesTorchKernel(_TorchKernel):
+    """``_TorchKernel`` whose parameters carry a lives axis, one stream per life.
+
+    ``scale`` is ``(lives, synapses)`` and ``bias_param`` ``(lives, neurons)``. A sweep's synaptic
+    input is one batched product per block of the layout, each life's stream through its own
+    dense block, and the contrast of a lesson or a reward is each stream's own. Every settle
+    holds exactly one stream per life."""
+
+    def __init__(
+        self, connectome: Any, efficacy: Any, gain_pre: Any, bias: Any, neuron_model: Any,
+        device: str | None, layout: Any, precision: str | None = None, *,
+        reference: bool = False, parent: _TorchKernel | None = None,
+    ) -> None:
+        self.lives = int(efficacy.shape[0])
+        self._dense: Any = None
+        super().__init__(
+            connectome, efficacy[0], gain_pre, bias[0], neuron_model, device, layout, precision,
+            None, reference=reference, parent=parent,
+        )
+        torch = self.torch
+        self._fused = None  # the neuron update operation by operation: it reads one bias per row
+        self.plan = _TransportPlan(  # a plan without held products: the lives' blocks move each
+            torch,
+            _plan_structure(torch, connectome, None, self.device, layout, _transport_override(),
+                            False),
+            connectome.n, self.device, self.dtype,
+        )
+        self.flat = self.plan.values
+        self.set_parameters(self._placed(efficacy), self._placed(bias))
+
+    # -- the blocks
+
+    def _blocks(self) -> list[tuple[Any, int, int, Any]]:
+        """The layout's blocks grouped by the range they reach: per group the presynaptic neurons
+        of its blocks side by side (a slice where they are one run, else their indices), the
+        range reached and the group's view, ``(lives, pre, post)``, of the dense buffer the
+        parameters are written into in place (a captured sweep reads the same storage). A sweep
+        makes one batched product per range reached."""
+        if self._dense is None:
+            torch, lay = self.torch, self.layout
+            assert lay is not None
+            connectome = self._connectome
+            by_post: dict[tuple[int, int], list[int]] = {}
+            for k in range(lay.pairs):
+                _, _, b0, b1 = lay.bounds(k)
+                by_post.setdefault((b0, b1), []).append(k)
+            block_of = np.asarray(lay.block_of_edge)
+            entry = np.zeros(connectome.synapses, dtype=np.int64)
+            spans, at = [], 0
+            for (b0, b1), blocks in by_post.items():
+                width, row, pre = b1 - b0, 0, []
+                for k in blocks:
+                    a0, a1, _, _ = lay.bounds(k)
+                    inside = np.flatnonzero(block_of == k)
+                    entry[inside] = (
+                        at + (row + connectome.pre[inside] - a0) * width
+                        + connectome.post[inside] - b0
+                    )
+                    pre.append(np.arange(a0, a1))
+                    row += a1 - a0
+                index = np.concatenate(pre)
+                spans.append((index, b0, b1, at, row))
+                at += row * width
+            self._dense = torch.zeros(self.lives, at, dtype=self.dtype, device=self.device)
+            self._entry = torch.from_numpy(entry).to(self.device)
+            views = []
+            for index, b0, b1, first, rows in spans:
+                run = len(index) and bool((np.diff(index) == 1).all())
+                place = slice(int(index[0]), int(index[-1]) + 1) if run else torch.from_numpy(
+                    index
+                ).to(self.device)
+                view = self._dense[:, first : first + rows * (b1 - b0)]
+                views.append((place, b0, b1, view.view(self.lives, rows, b1 - b0)))
+            self._views = views
+        return self._views
+
+    def _synaptic_input(self, s: Any, out: Any) -> Any:
+        """The transport of a neuron-major activation ``(neurons, lives)``: per range reached,
+        every life's presynaptic row through its own blocks."""
+        if s.shape[1] != self.lives:
+            raise ValueError(f"a settle of these lives holds one stream per life ({self.lives})")
+        torch = self.torch
+        out.zero_()
+        rows = s.T
+        for place, b0, b1, block in self._blocks():
+            product = torch.bmm(rows[:, place].unsqueeze(1), block).squeeze(1)
+            out[b0:b1].add_(product.T)
+        return out
+
+    # -- each life stops where its own stream meets the tolerance
+
+    def _configure(
+        self, ws: Any, drive: Any, keep: Any, nudge: Any, tolerance: float | None, batch: int,
+    ) -> Any:
+        cfg = super()._configure(ws, drive, keep, nudge, tolerance, batch)
+        held = getattr(ws, "lives_met", None)
+        if held is None or held.shape[0] != batch:
+            ws.lives_met = self.torch.zeros(batch, dtype=self.torch.bool, device=self.device)
+        hold = getattr(self.root, "_hold", None)  # the lives a solve found settled already
+        outer = getattr(self.root, "_hold_outer", None)  # the lives a moment leaves where they are
+        if outer is not None:
+            hold = outer if hold is None else hold | outer
+        if hold is None:
+            ws.lives_met.zero_()
+        else:
+            ws.lives_met.copy_(hold)
+        # sweeps that hold a life are other operations than sweeps that hold none: another
+        # captured graph, and ``_update`` reads the mark. The kernel keeps one configuration per
+        # key; this is the lives' own of it, one per configuration and mark
+        holds = hold is not None or tolerance is not None
+        # a nudge of one temperature and mask per life (``_LivesNudge``) is another push
+        rowwise = bool(getattr(cfg.nudge, "lives_rows", False))
+        kept = ws.__dict__.setdefault("lives_configs", {})
+        mine = kept.get((id(cfg), holds, rowwise))
+        if mine is None or mine[0] is not cfg:
+            if len(kept) >= 64:
+                kept.clear()
+            mine = kept[(id(cfg), holds, rowwise)] = (cfg, _SweepConfig(
+                (cfg.key, holds, rowwise), cfg.masked, cfg.keep, cfg.nudge, cfg.held,
+                cfg.tolerance, cfg.quiet,
+            ))
+        return mine[1]
+
+    def _nudge_buffers(self, ws: Any, nudge: Any, batch: int) -> Any:
+        """``_TorchKernel._nudge_buffers``; for a ``_LivesNudge`` each life's own mask and
+        softmax temperatures beside them, in buffers the push reads in place."""
+        buffers = super()._nudge_buffers(ws, nudge, batch)
+        if buffers is None:
+            return None
+        rows = getattr(nudge, "rows_mask", None)
+        buffers.lives_rows = rows is not None
+        if rows is None:
+            return buffers
+        torch = self.torch
+        held = getattr(buffers, "lives_mask", None)
+        if held is None or tuple(held.shape) != (buffers.m, batch):
+            buffers.lives_mask = torch.zeros(buffers.m, batch, dtype=self.dtype, device=self.device)
+            buffers.lives_temperature = None if buffers.groups is None else torch.zeros(
+                len(buffers.groups), batch, dtype=self.dtype, device=self.device
+            )
+        buffers.lives_mask.copy_(self._upload(np.asarray(rows)[:, buffers.reach]).T)
+        if buffers.groups is not None:
+            temperature = np.asarray(nudge.rows_temperature, dtype=float)
+            tiny = float(self.torch.finfo(self.dtype).tiny)
+            temperatures = []
+            for _, _, pieces, members in buffers.groups:
+                value = temperature[:, members[0]].copy()
+                for _ in range(pieces):  # as the shared push divides a subnormal temperature
+                    value /= tiny
+                temperatures.append(value)
+            buffers.lives_temperature.copy_(self._upload(np.stack(temperatures)))
+        return buffers
+
+    def _push(self, total: Any, s: Any, buffers: Any) -> None:
+        """``_TorchKernel._push``; a ``_LivesNudge``'s push reads each life's own mask and
+        softmax temperatures, one softmax per group of competing neurons."""
+        if not getattr(buffers, "lives_rows", False):
+            super()._push(total, s, buffers)
+            return
+        torch = self.torch
+        s_u = _take(s, buffers.u_range, buffers.u_index)
+        push = buffers.push
+        if buffers.groups is None:
+            torch.sub(buffers.target, s_u, out=push)
+            push.mul_(buffers.beta)
+            push.mul_(buffers.lives_mask)
+        else:
+            push.zero_()
+            for k, (span, index, pieces, _members) in enumerate(buffers.groups):
+                logits = _take(s_u, span, index)
+                if pieces:
+                    logits = logits - logits.amax(dim=0, keepdim=True)
+                    for _ in range(pieces):
+                        logits = logits / torch.finfo(logits.dtype).tiny
+                p = torch.softmax(logits / buffers.lives_temperature[k], dim=0)
+                value = _take(buffers.target, span, index) - p
+                value.mul_(buffers.beta)
+                value.mul_(_take(buffers.lives_mask, span, index))
+                if span is not None:
+                    push.narrow(0, span[0], span[1]).copy_(value)
+                else:
+                    push.index_copy_(0, index, value)
+        if buffers.weight is not None:
+            push.mul_(buffers.weight)
+        if buffers.anchor is not None:
+            push.addcmul_(buffers.gain, buffers.anchor - s_u)
+        if buffers.u_range is not None:
+            total.narrow(0, buffers.u_range[0], buffers.u_range[1]).add_(push)
+        else:
+            total.index_add_(0, buffers.u_index, push)
+
+    def _update(
+        self, ws: Any, cfg: Any, i: int, j: int, synaptic: Any, stage: int, standing: Any,
+    ) -> None:
+        """The sweep of every stream, then each life whose stream met the tolerance at an earlier
+        sweep held where it met it, as its lone brain's settle stops there: a stream's own
+        movement under the tolerance meets it, and the settle meets it when every life has."""
+        super()._update(ws, cfg, i, j, synaptic, stage, standing)
+        if not cfg.key[1]:  # a fixed count of sweeps with no life settled: every life sweeps
+            return
+        torch = self.torch
+        met = ws.lives_met  # (lives,): met at an earlier sweep, or settled before the solve
+        for slots in ((ws.v[i], ws.v[j]), (ws.s[i], ws.s[j]),
+                      *(((ws.a[i], ws.a[j]),) if ws.a is not None else ())):
+            torch.where(met[None, :], slots[0], slots[1], out=slots[1])
+        torch.where(met, ws.change[i], ws.change[j], out=ws.change[j])
+        if cfg.tolerance is None:
+            return
+        moved = ws.total.amax(dim=0)  # each stream's largest movement in this sweep
+        met |= moved < cfg.tolerance
+        torch.all(met, out=ws.flag[j])
+
+    # -- parameters
+
+    def _spread(self, values: Any, width: int) -> Any:
+        """A parameter of one life given to every life, or the lives' own."""
+        if values.ndim == 1:
+            return values.unsqueeze(0).expand(self.lives, width).clone()
+        return values
+
+    def parameter_check(self, scale: Any, bias: Any) -> tuple[Any, ...]:
+        torch = self.torch
+        if tuple(scale.shape) != (self.lives, *self.gain_pre.shape) or tuple(bias.shape) != (
+            self.lives, self.n,
+        ):
+            raise ValueError("lives' parameters are (lives, synapses) and (lives, neurons)")
+        weights = (self.gain_pre * scale).to(self.dtype)
+        live_bias = bias.to(self.dtype)
+        finite = torch.stack(
+            [torch.isfinite(value).all() for value in (scale, bias, weights, live_bias)]
+        ).all()
+        return weights, live_bias, None, finite, finite
+
+    def set_parameters(
+        self, scale: Any, bias: Any, *, checked: tuple[Any, ...] | None = None
+    ) -> None:
+        scale = self._spread(scale, int(self.gain_pre.shape[0]))
+        bias = self._spread(bias, self.n)
+        if checked is None:
+            checked = self.parameter_check(scale, bias)
+            flags = self.torch.stack([checked[3], checked[4]]).cpu().numpy()
+            self.parameter_refusal(bool(flags[0]), bool(flags[1]))
+        weights, live_bias = checked[:2]
+        self.scale = scale
+        self.bias_param = bias
+        self._blocks()
+        self._dense.zero_()
+        self._dense.index_add_(1, self._entry, weights)
+        self.bias = _RowBias(live_bias)
+        self._version += 1
+
+    def _float64(self) -> _TorchKernel:
+        if self.dtype == self.torch.float64:
+            return self
+        ref = self._reference
+        if ref is None:
+            synapses = self._connectome.synapses
+            ref = self._reference = _LivesTorchKernel(
+                self._connectome, np.zeros((self.lives, synapses)), np.zeros(synapses),
+                np.zeros((self.lives, self.n)), self.neuron_model, str(self.device),
+                self.layout, "float64", reference=True,
+            )
+            ref._version = -1
+        if ref._version != self._version:
+            ref.set_parameters_from(self)
+        return ref  # type: ignore[no-any-return]
+
+    def stepped(self, neuron_model: Any) -> _TorchKernel:
+        root = self.root
+        if root is not self:
+            return root.stepped(neuron_model)
+        kernel = self._stepped.get(neuron_model)
+        if kernel is None:
+            kernel = _LivesTorchKernel(
+                self._connectome, self.scale, self.gain_pre, self.bias_param, neuron_model,
+                str(self.device), self.layout,
+                "float32" if self.dtype == self.torch.float32 else "float64", parent=self,
+            )
+            kernel._version = self._version
+            self._stepped[neuron_model] = kernel
+        elif kernel._version != self._version or kernel.gain_pre is not self.gain_pre:
+            kernel.set_parameters_from(self)
+        return kernel
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> _LivesTorchKernel:
+        twin = _LivesTorchKernel(
+            self._connectome, self.host_scale(), self.gain_pre.cpu().double().numpy(),
+            self.host_bias(), self.neuron_model, str(self.device), self.layout,
+            "float32" if self.dtype == self.torch.float32 else "float64",
+            reference=self._reference_only,
+        )
+        memo[id(self)] = twin
+        return twin
+
+    # -- contrasts, one per stream and so per life
+
+    def contrast_tensors(self, s_plus: Any, s_minus: Any) -> tuple[Any, Any]:
+        edges, neurons = self.contrast_rows(s_plus, s_minus)
+        return edges.to(self.param_dtype), neurons.to(self.param_dtype)
+
+    def contrast_edges(self, s_plus: Any, s_minus: Any, weights: Any = None) -> Any:
+        edges = self.contrast_rows(s_plus, s_minus)[0]
+        return edges if weights is None else edges * weights[:, None]
+
+
+class _LivesGraph(NeuralGraph):
+    """The lives' graph: a solve holds each life where its own stream's equations hold, as each
+    lone brain stops its own solve there, and a rescue on the damping ladder runs life by life."""
+
+    _steps_on_kernel = True  # a numerical copy at another step keeps this class and its kernel
+
+    def _equilibrate_local(
+        self, drive: Any, *, budget: int, chunk: int, tolerance: float,
+        state: BrainState | None, mask: Any, nudge: Any, stop_if_stalled: bool = False,
+        fast: bool = False,
+    ) -> Equilibrium:
+        """``NeuralGraph._equilibrate_local`` with every life whose residual the check found
+        within the tolerance held through the next chunk of sweeps. With ``root._only`` set, the
+        solve is that one life's: every other life is held as it is."""
+        kernel = self._torch
+        assert isinstance(kernel, _LivesTorchKernel)
+        root: Any = kernel.root
+        only = getattr(root, "_only", None)
+        current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        reference: dict[str, bool] = (
+            {"own_precision": True} if tolerance >= _MLX_CHECK_FLOOR else {}
+        )
+
+        def settled(error: np.ndarray) -> np.ndarray:
+            done = np.asarray(error <= tolerance)
+            if only is not None:
+                done = done.copy()
+                done[np.arange(len(done)) != only] = True
+            return done
+
+        error = self.residual(drive, current, mask=mask, nudge=nudge, **reference)
+        used, checks, stagnation_checks, repeats = 0, 1, 0, 0
+        while used < budget and not settled(error).all():
+            if not np.isfinite(error).all() and any(
+                not np.isfinite(value).all()
+                for value in (current.v, current.activation, current.adaptation)
+            ):
+                break
+            previous = current
+            done = settled(error)
+            root._hold = kernel.torch.as_tensor(done, device=kernel.device) if done.any() else None
+            try:
+                current = self.settle_batch(
+                    drive, steps=min(chunk, budget - used), state=current, mask=mask, nudge=nudge
+                )
+            finally:
+                root._hold = None
+            used += current.steps
+            error = self.residual(drive, current, mask=mask, nudge=nudge, **reference)
+            checks += 1
+            if stop_if_stalled and used < budget and not settled(error).all():
+                stagnation_checks += 1
+                repeats = repeats + 1 if self._repeated_state(previous, current) else 0
+                if repeats >= 2:
+                    break
+        return Equilibrium(
+            current, error, used, tolerance, residual_checks=checks,
+            stagnation_checks=stagnation_checks,
+        )
+
+    def equilibrate(
+        self, drive: Any, *, budget: int = 512, chunk: int = 32, tolerance: float = 1e-5,
+        state: BrainState | None = None, mask: Any = None, nudge: Any = None, damping: int = 0,
+        fast: bool = False,
+    ) -> Equilibrium:
+        """``NeuralGraph.equilibrate``. With ``damping``, each life whose equations do not hold
+        takes the ladder of halved steps by itself, every other life held, as its lone brain
+        takes it: a life that stalls or qualifies moves on at its own sweep."""
+        if not damping:
+            return super().equilibrate(
+                drive, budget=budget, chunk=chunk, tolerance=tolerance, state=state, mask=mask,
+                nudge=nudge,
+            )
+        kernel = self._torch
+        assert isinstance(kernel, _LivesTorchKernel)
+        root: Any = kernel.root
+        budget, chunk, damping = int(budget), int(chunk), int(damping)
+        attempts = min(damping + 1, max(1, budget))
+        _check_ladder(
+            self.neuron_model, attempts - 1,
+            "float32" if kernel.dtype == kernel.torch.float32 else "float64",
+        )
+        current = self.settle_batch(drive, steps=0, state=state, mask=mask, nudge=nudge)
+        error = self.residual(drive, current, mask=mask, nudge=nudge)
+        steps = checks = stagnation_checks = halvings = 0
+        for life in np.flatnonzero(~np.asarray(error <= tolerance)):
+            used = 0
+            for halving in range(attempts):
+                portion = (budget - used + attempts - halving - 1) // (attempts - halving)
+                candidate = self if halving == 0 else self._with_dt(
+                    float(np.ldexp(self.neuron_model.dt, -halving)))
+                root._only = int(life)
+                try:
+                    phase = candidate._equilibrate_local(
+                        drive, state=current, budget=portion, chunk=chunk, tolerance=tolerance,
+                        mask=mask, nudge=nudge, stop_if_stalled=halving < attempts - 1,
+                    )
+                finally:
+                    root._only = None
+                used += phase.steps
+                checks += phase.residual_checks
+                stagnation_checks += phase.stagnation_checks
+                current = phase.state
+                found = phase.residual
+                if halving:
+                    found = self.residual(drive, current, mask=mask, nudge=nudge)
+                    checks += 1
+                halvings = max(halvings, halving)
+                if found[life] <= tolerance or used >= budget or not np.isfinite(found[life]):
+                    break
+            steps = max(steps, used)
+        error = self.residual(drive, current, mask=mask, nudge=nudge)
+        return Equilibrium(
+            current, error, steps, tolerance, residual_checks=checks + 2,
+            damping_halvings=halvings, stagnation_checks=stagnation_checks,
+        )
+
+
+class _LivesLearner(Learner):
+    """``Learner`` whose device update moves each life on its own contrast: the momentum, the
+    second moments and their counts are per life, a lesson judged by surprise runs its phases
+    on every life and updates the lives it taught, and the masks, ties and bounds read the last
+    axis."""
+
+    def _counts(self, lives: int) -> np.ndarray:
+        """Each life's own count of lessons that updated it, the optimizer's bias correction."""
+        held = self.__dict__.get("lives_contrast_updates")
+        if held is None or len(held) != lives:
+            held = self.__dict__["lives_contrast_updates"] = np.zeros(lives, dtype=np.int64)
+        return cast(np.ndarray, held)
+
+    def _applied(self, lives: int) -> np.ndarray:
+        """Each life's own count of updates applied, lessons and outcomes."""
+        held = self.__dict__.get("lives_updates")
+        if held is None or len(held) != lives:
+            held = self.__dict__["lives_updates"] = np.zeros(lives, dtype=np.int64)
+        return cast(np.ndarray, held)
+
+    def step(
+        self, drive: Any, labels: np.ndarray | None, warm: BrainState | None = None,
+        weight: np.ndarray | None = None, *, answer: np.ndarray | None = None,
+        targets: np.ndarray | None = None,
+    ) -> tuple[LearnedState, dict[str, float]]:
+        """``Learner.step`` for one row per life. Under ``surprise`` the caller's ``answer``
+        judges each life by its own row; the phases run on every life, since a settle of these
+        lives holds one stream per life, and the update moves the lives whose answer differed.
+        ``LearnedState.taught`` marks them, and the states hold every life's row."""
+        cfg = self.config
+        judged = None
+        if cfg.surprise and labels is not None:
+            if answer is None:
+                raise ValueError("a lesson of lives judged by surprise takes its caller's answer")
+            judged = self._differs(np.asarray(answer), self._labels(labels))
+            if not judged.any():
+                return self._untaught(judged)
+        self.__dict__["_taught_lives"] = judged
+        self.config = replace(cfg, surprise=False)  # every row runs; the update reads the mark
+        try:
+            learned, report = super().step(drive, labels, warm, weight, targets=targets)
+        finally:
+            self.config = cfg
+            self.__dict__["_taught_lives"] = None
+        if judged is not None:
+            learned = LearnedState(learned.free, learned.nudged, learned.opposite, judged)
+            report.update(_taught_report(judged, len(judged)))
+        return learned, report
+
+    def _update(
+        self, free: BrainState, nudged: BrainState, opposite: BrainState | None = None,
+        share: float = 1.0,
+    ) -> dict[str, float]:
+        self._validate_phases(free, nudged, opposite)
+        cfg = self.config
+        assert cfg.eta_bias is not None
+        minus_state, span = (free, cfg.beta) if opposite is None else (opposite, 2.0 * cfg.beta)
+        kernel = self._device_kernel(nudged, minus_state)
+        if kernel is None:
+            raise RuntimeError("the lives' phases rest on their device")
+        edges, neurons = kernel.contrast_tensors(nudged.device["s"], minus_state.device["s"])
+        taught = self.__dict__.get("_taught_lives")
+        mask = None
+        if taught is not None and not taught.all():
+            mask = kernel.torch.as_tensor(np.asarray(taught, dtype=bool), device=kernel.device)
+        edges, neurons = self._adaptive_lives(kernel, edges / span, neurons / span, mask)
+        step, step_bias = share * cfg.eta * edges, share * cfg.eta_bias * neurons
+        if mask is not None:  # a life the lesson did not teach moves nothing
+            zero = kernel.torch.zeros((), dtype=step.dtype, device=step.device)
+            step = kernel.torch.where(mask[:, None], step, zero)
+            step_bias = kernel.torch.where(mask[:, None], step_bias, zero)
+        applied = self._applied(kernel.lives).copy()
+        report = self._apply_device(kernel, step, step_bias)
+        rows = slice(None) if taught is None else np.asarray(taught, dtype=bool)
+        self._counts(kernel.lives)[rows] += 1
+        self.__dict__["lives_updates"] = applied  # an update of every life counted the taught
+        applied[rows] += 1
+        self.contrast_updates += 1
+        return report
+
+    def _install_device(self, candidate: dict[str, Any], steps: Any) -> dict[str, float]:
+        report = super()._install_device(candidate, steps)
+        kernel = self.brain._torch
+        assert kernel is not None
+        rows = self.__dict__.get("_lives_rows")  # the lives an outcome taught, every life else
+        self._applied(kernel.lives)[slice(None) if rows is None else rows] += 1
+        return report
+
+    def _group_power(self, kernel: Any, values: Any, group: tuple[Any, ...], which: int) -> Any:
+        """Each life's sum of ``values`` squared per group of a projection table: every group in
+        a row of its own, summed in a fixed order, as the lone update sums it."""
+        torch, lives = kernel.torch, kernel.lives
+        index, size, _, place, matrix = group
+        if place is None:
+            power = torch.zeros(lives, int(size), dtype=values.dtype, device=values.device)
+            return power.index_add_(1, index, values * values)
+        rooms = self.__dict__.setdefault("_lives_rooms", {})
+        key = (id(kernel), which)
+        room = rooms.get(key)
+        if room is None or room.shape != (lives, matrix.numel()):
+            room = rooms[key] = torch.zeros(
+                lives, matrix.numel(), dtype=values.dtype, device=values.device
+            )
+        room[:, place] = values * values
+        return room.view(lives, *matrix.shape).sum(dim=2)
+
+    def _adaptive_lives(self, kernel: Any, edges: Any, neurons: Any, mask: Any) -> tuple[Any, Any]:
+        """``Learner._adaptive_device`` per life: each life's momentum and second moments, the
+        bias correction at its own count, the relative floor over its own projections. A life
+        ``mask`` leaves out keeps its history."""
+        cfg = self.config
+        if not (cfg.momentum or cfg.normalize):
+            return edges, neurons
+        torch = kernel.torch
+        previous = self._moments_on_device(kernel)
+        held = {"holder": kernel, **{name: previous[name] for name in _MOMENTS}}
+        self.__dict__["_device_moments"] = held
+        count = self._counts(kernel.lives) + 1
+
+        def correction(factor: float) -> Any:
+            return torch.as_tensor(
+                1.0 - np.power(factor, count), dtype=kernel.param_dtype, device=kernel.device
+            )[:, None]
+
+        def kept(name: str, new: Any) -> Any:
+            held[name] = new if mask is None else torch.where(mask[:, None], new, previous[name])
+            return new
+
+        raw_edges, raw_neurons = edges, neurons
+        if cfg.momentum:
+            m = cfg.momentum
+            velocity = kept("velocity", previous["velocity"].mul(m).add_(edges, alpha=1.0 - m))
+            velocity_bias = kept(
+                "velocity_bias", previous["velocity_bias"].mul(m).add_(neurons, alpha=1.0 - m)
+            )
+            edges, neurons = velocity / correction(m), velocity_bias / correction(m)
+        if cfg.normalize:
+            rho = cfg.normalize
+            second = kept("second_moment", previous["second_moment"].mul(rho).addcmul_(
+                raw_edges, raw_edges, value=1.0 - rho
+            ))
+            second_bias = kept("second_moment_bias", previous["second_moment_bias"].mul(
+                rho
+            ).addcmul_(raw_neurons, raw_neurons, value=1.0 - rho))
+            rms = (second / correction(rho)).sqrt()
+            rms_bias = (second_bias / correction(rho)).sqrt()
+            if cfg.normalize_relative:
+                divisors = []
+                for which, (values, group) in enumerate(zip(
+                    (rms, rms_bias), self._projections_on_device(kernel), strict=True
+                )):
+                    power = self._group_power(kernel, values, group, which)
+                    floor = (power / group[2]).sqrt()[:, group[0]]
+                    divisors.append(values + cfg.normalize_relative * floor + _RELATIVE_TINY)
+                edges, neurons = edges / divisors[0], neurons / divisors[1]
+            else:
+                edges = edges / (rms + cfg.normalize_floor)
+                neurons = neurons / (rms_bias + cfg.normalize_floor)
+        ix = self._device_indices(kernel)  # a rate of zero keeps the moments it held (``held``)
+        for name, stopped in (("velocity", "held_synapses"), ("second_moment", "held_synapses"),
+                              ("velocity_bias", "held_neurons"),
+                              ("second_moment_bias", "held_neurons")):
+            if ix[stopped] is not None and held[name] is not previous[name]:
+                held[name] = torch.where(ix[stopped], previous[name], held[name])
+        if not bool(torch.stack([torch.isfinite(held[name]).all() for name in _MOMENTS]).all()):
+            raise ValueError("optimizer moments must remain finite")
+        return edges, neurons
+
+    def _device_candidate(self, kernel: Any, delta_scale: Any, delta_bias: Any) -> dict[str, Any]:
+        torch, cfg = kernel.torch, self.config
+        lives = kernel.lives
+        if (
+            tuple(delta_scale.shape) != (lives, self.brain.connectome.synapses)
+            or tuple(delta_bias.shape) != (lives, self.brain.connectome.n)
+        ):
+            raise ValueError("steps must be one per life and synapse and one per life and neuron")
+        given = torch.isfinite(delta_scale).all() & torch.isfinite(delta_bias).all()
+        ix = self._device_indices(kernel)
+        d = delta_scale.clone()
+        if ix["synapses"] is not None:
+            d = d * ix["synapses"]
+        if ix["rate"] is not None:
+            d = d * ix["rate"]
+        if ix["paired"] is not None:
+            d[:, ix["paired"]] = 0.5 * (d[:, ix["paired"]] + d[:, ix["paired_reverse"]])
+        if ix["members"] is not None:
+            total = torch.zeros(lives, len(ix["member_count"]), dtype=d.dtype, device=d.device)
+            total.index_add_(1, ix["member_groups"], d[:, ix["members"]])
+            d[:, ix["members"]] = (total / torch.clamp(ix["member_count"], min=1.0))[
+                :, ix["member_groups"]
+            ]
+        if ix["synapses"] is not None:
+            d = d * ix["synapses"]
+        tied = torch.isfinite(d).all()
+        scale = kernel.scale + d
+        db = delta_bias if ix["neurons"] is None else delta_bias * ix["neurons"]
+        bias = kernel.bias_param + db
+        bounded = torch.clamp(scale, -cfg.scale_cap, cfg.scale_cap)
+        scale = (
+            bounded if ix["synapses"] is None
+            else torch.where(ix["synapses"].bool(), bounded, kernel.scale)
+        )
+        checked = kernel.parameter_check(scale, bias)
+        zero = torch.zeros((), dtype=d.dtype, device=d.device)
+        return {
+            "scale": scale, "bias": bias, "checked": checked,
+            "flags": (given, tied, checked[3], checked[4]),
+            "steps": (d.abs().mean() if d.numel() else zero, db.abs().mean()),
+        }
+
+
+class _LivesArrays(TorchArrays):
+    """The array namespace of a lives kernel: a read back through the synapses reads each
+    stream through its own life's."""
+
+    def read_back(
+        self, graph: Any, ports: Sequence[tuple[np.ndarray, np.ndarray, np.ndarray, int]],
+        movement: Any, width: int,
+    ) -> list[Any]:
+        """``movement @ W.T`` per port, each row through its own life's ``W``."""
+        kernel = graph._torch
+        torch, lives = self.torch, kernel.lives
+        if movement.shape[0] != lives:
+            raise ValueError("a read back of these lives takes one row per life")
+        out = []
+        for port in ports:
+            placed = self.placed.get(id(port[0]))
+            if placed is None:
+                placed = self.placed[id(port[0])] = (
+                    port[0], self.long(port[0]), self.long(port[1]), self.long(port[2]),
+                )
+            _, synapses, on_rows, on_cols = placed
+            values = (kernel.gain_pre[synapses] * kernel.scale[:, synapses]).to(movement.dtype)
+            w = torch.zeros((lives, port[3] * width), dtype=movement.dtype, device=self.device)
+            if graph.layout.parallel_synapses:
+                w.index_add_(1, on_rows * width + on_cols, values)
+            else:
+                w[:, on_rows * width + on_cols] = values
+            w = w.view(lives, port[3], width)
+            out.append(torch.bmm(w, movement[:, :, None])[:, :, 0])
+        return out
+
+
+def _finite_rows(torch: Any, *arrays: Any) -> Any:
+    """Per life, whether every entry of its row of every array is finite."""
+    return torch.stack([
+        torch.isfinite(a).reshape(a.shape[0], -1).all(dim=1) for a in arrays
+    ]).all(dim=0)
+
+
+def _chosen(torch: Any, rows: Any, new: Any, old: Any) -> Any:
+    """``new`` at the lives ``rows`` marks, ``old`` at the others."""
+    return torch.where(rows.reshape(-1, *([1] * (new.ndim - 1))), new, old)
+
+
+class _LivesRecall(_RecallOnDevice):
+    """A recall memory's slots, maps and reads on the device, the maps one per life.
+
+    A stream's slots, the cortex of the moment before and its reads are a stream's already
+    (``_RecallOnDevice``); here every address and position map carries a lives axis first, a
+    moment's address and position terms read each stream through its own life's maps, and the
+    address lesson and the reward's step move each life's maps on its own row. The arrays rest
+    on the device alone: ``Lives.parameters`` reads a life's maps."""
+
+    def __init__(self, recall: Any, kernel: Any, lone: Sequence[Any]) -> None:
+        super().__init__(recall, kernel)
+        here = self.xp.here
+        for name in _MAP_KINDS:
+            if getattr(self, name):
+                setattr(self, name, [tuple(
+                    here(np.stack([np.asarray(getattr(one, name)[0][part]) for one in lone]))
+                    for part in range(3)
+                )])
+
+    def give_back(self) -> None:
+        raise RuntimeError(
+            "the lives' recall memory rests on their device; Lives.parameters(i) and "
+            "Lives.life(i) read a life's maps"
+        )
+
+    def maps_of(self, life: int) -> dict[str, tuple[np.ndarray, ...]]:
+        """Life ``life``'s maps on the host, by kind."""
+        host = self.xp.host
+        return {
+            name: tuple(host(a[life]) for a in getattr(self, name)[0])
+            for name in _MAP_KINDS if getattr(self, name)
+        }
+
+    # -- each stream through its own life's maps
+
+    def _term(self, maps: Any, x: Any, c: Any) -> Any:
+        m_x, m_c, m = maps
+        if m_x.ndim == 2:  # one number per life (the slope's lean), its bias ``(lives, 1)``
+            return (x * m_x).sum(axis=1) + (c * m_c).sum(axis=1) + m[:, 0]
+        bmm = self.xp.bmm
+        return bmm(x[:, None, :], m_x)[:, 0] + bmm(c[:, None, :], m_c)[:, 0] + m
+
+    def _moment(self, x: np.ndarray) -> _Moment:
+        recall, xp = self.recall, self.xp
+        inputs = self.kernel.observed(x)
+        n = len(x)
+        if n != self.kernel.root.lives:
+            raise ValueError("a moment of these lives takes one row per life")
+        c = self.previous if len(self.previous) == n else xp.zeros((n, len(recall.association)))
+        key = recall.heard * inputs
+        return _Moment(x, c, key + self._term(self.head_maps[0], inputs, c), key, inputs)
+
+    def _lms(self, maps: Any, step: Any, rate: float, x: Any, c: Any) -> Any:
+        """``_lms`` per life: each life's maps on its own row's step, no mean over the rows."""
+        m_x, m_c, m = maps
+        if m_x.ndim == 2:
+            step = step[:, None]
+            return (m_x + rate * x * step, m_c + rate * c * step, m + rate * step)
+        return (
+            m_x + rate * x[:, :, None] * step[:, None, :],
+            m_c + rate * c[:, :, None] * step[:, None, :],
+            m + rate * step,
+        )
+
+    def _position_step(self, found: tuple[Any, ...]) -> dict[str, Any]:
+        """``_RecallOnDevice._position_step`` with the slope's rule read per life: past the
+        table a life's lean takes no step, and a life's own slots decide it (the bank is as wide
+        as the longest stream's)."""
+        recall, xp = self.recall, self.xp
+        stepped = super()._position_step(found)
+        if not (self.slope_maps and self.grid_maps and self.slots > recall.position):
+            return stepped
+        _, x, c, _, _, _, target, prior, _, _, _ = found
+        finite = xp.isfinite(prior)
+        gradient = xp.where(finite, target - xp.where(finite, xp.exp(prior), 0.0), 0.0)
+        energy = (x * x).sum(axis=1) + (c * c).sum(axis=1) + 1.0
+        lean = gradient @ (self._ages() / recall.SLOPE)
+        lean = lean * xp.minimum(xp.ones_like(energy), 1.0 / (recall.slope * energy))
+        new = self._lms(self.slope_maps[0], lean, recall.slope, x, c)
+        short = xp.flags(recall.held.sum(axis=1) <= recall.position)
+        torch = self.kernel.torch
+        stepped["slope_maps"] = tuple(
+            _chosen(torch, short, a, b) for a, b in zip(new, self.slope_maps[0], strict=True)
+        )
+        return stepped
+
+    def learn(self, graph: Any, learned: Any) -> dict[str, float]:
+        """``Recall.learn`` per life: the phases hold every life's row, each taught life whose
+        row moves steps its own maps, and a step that is not finite is refused for that life."""
+        recall, xp = self.recall, self.xp
+        torch = self.kernel.torch
+        quiet = {"address_rows": 0.0, "address_error": 0.0, "address_refused": 0.0}
+        if self.position_maps:
+            quiet.update(position_rows=0.0, position_refused=0.0)
+        moment = recall.last
+        positions = bool(self.position_maps) and (recall.position_rate > 0 or recall.slope > 0)
+        if (
+            not (recall.address or positions)
+            or moment is None
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return quiet
+        lives = len(moment.address)
+        taught = np.ones(lives, dtype=bool) if learned.taught is None else np.asarray(
+            learned.taught, dtype=bool
+        )
+        if not self.slots or not taught.any() or self.streams != lives:
+            return quiet
+        minus = learned.free if learned.opposite is None else learned.opposite
+        movement = self._movement(learned.nudged, minus)
+        d_value, d_next = self._readbacks(graph, movement)
+        found = self._row_steps(moment, np.arange(lives), d_value, d_next)
+        moving = found[0] & xp.flags(taught)
+        _, x, c, key, error, step = found[:6]
+        zero = torch.zeros((), dtype=error.dtype, device=error.device)
+        scalars = [moving.sum()]
+        head = moved = None
+        if recall.address:
+            w_x, w_c, b = self._lms(self.head_maps[0], step, recall.address, x, c)
+            address = key + self._term((w_x, w_c, b), x, c)
+            moved = moving & _finite_rows(torch, w_x, w_c, b, address)
+            head = tuple(
+                _chosen(torch, moved, a, old)
+                for a, old in zip((w_x, w_c, b), self.head_maps[0], strict=True)
+            )
+            scalars += [moved.sum(), torch.where(moved, error.abs().mean(dim=1), zero).sum()]
+        placed: dict[str, tuple[Any, ...]] = {}
+        if positions:
+            stepped = self._position_step(found)
+            sound = moving & _finite_rows(torch, *[a for maps in stepped.values() for a in maps])
+            for name, maps in stepped.items():
+                placed[name] = tuple(
+                    _chosen(torch, sound, a, old)
+                    for a, old in zip(maps, getattr(self, name)[0], strict=True)
+                )
+            scalars.append(sound.sum())
+        read = xp.read(*scalars)
+        report = dict(quiet)
+        at = 1
+        if head is not None:
+            self.head_maps = [head]
+            report["address_rows"] = float(read[at])
+            report["address_error"] = float(read[at + 1] / read[at]) if read[at] else 0.0
+            report["address_refused"] = float(read[0] - read[at])
+            at += 2
+        if positions:
+            for name, maps in placed.items():
+                setattr(self, name, [maps])
+            report["position_rows"] = float(read[at])
+            report["position_refused"] = float(read[0] - read[at])
+        return report
+
+    # -- reward trains each life's read
+
+    def weighted(self, trace: Any, delta: Any) -> Any:
+        """Each life's eligibility weighted by its own dopamine."""
+        xp = self.xp
+        d = xp.floats(delta) if isinstance(delta, type(trace)) else xp.here(
+            np.asarray(delta, dtype=float)
+        )
+        return d[:, None, None] * trace
+
+    def proposal_unread(self, step: Any) -> tuple[Any, ...] | None:
+        """``_RecallOnDevice.proposal_unread`` of a step per life, ``(lives, inputs, columns)``."""
+        recall, xp = self.recall, self.xp
+        positions = bool(recall.position_reward) and bool(self.position_maps)
+        if not (recall.address_reward or positions):
+            return None
+        w_x, w_c, b = self.head_maps[0]
+        stepped, changed = [], []
+        start = recall.address_width if recall._address_held or recall.address_reward else 0
+        if recall.address_reward:
+            moved = recall.address_reward * step[:, :, :recall.address_width]
+            w_x = w_x + moved
+            stepped.append(moved)
+            changed.append(w_x)
+        position_maps = anchor_maps = None
+        if positions:
+            count = recall.position_buckets
+            part = recall.position_reward * step[:, :, start : start + count]
+            on_x, on_c, on_b = self.position_maps[0]
+            position_maps = [(on_x + part, on_c, on_b)]
+            stepped.append(part)
+            changed.append(position_maps[0][0])
+            start += count
+            if self.anchor_maps:
+                part = recall.position_reward * step[:, :, start : start + count + 1]
+                on_x, on_c, on_b = self.anchor_maps[0]
+                anchor_maps = [(on_x + part, on_c, on_b)]
+                stepped.append(part)
+                changed.append(anchor_maps[0][0])
+        every = [*changed, *stepped]
+        norm = xp.sqrt(sum((part * part).sum() for part in stepped))
+        return (w_x, w_c, b, xp.all_finite(*every), norm, every, position_maps, anchor_maps)
+
+
+class _LivesHearing(Hearing):
+    """``Hearing`` with one gain per life and route. A route's memory holds its gains as a
+    ``(lives, 1)`` array on the device, which the memory's drive and the route's contrast read
+    as they read one gain; the second moments and the counts are each life's own."""
+
+    lives_gains: np.ndarray
+    lives_second: np.ndarray
+    lives_count: np.ndarray
+    kernel: Any
+
+    @classmethod
+    def take(cls, hearing: Hearing, lone: Sequence[Hearing], kernel: Any) -> None:
+        """Make ``hearing`` the lives': each life's gains, second moments and count from its
+        lone brain's."""
+        hearing.__class__ = cls
+        assert isinstance(hearing, cls)
+        hearing.kernel = kernel
+        hearing.lives_gains = np.array(
+            [[one.gain(route) for route in one.routes] for one in lone], dtype=float
+        )
+        hearing.lives_second = np.stack([np.asarray(one.second, dtype=float) for one in lone])
+        hearing.lives_count = np.array([one.count for one in lone], dtype=np.int64)
+        hearing._place()
+
+    def _place(self) -> None:
+        """The gains where the paths read them: ``(lives, 1)`` on the device per route of one
+        gain; for a memory of one gain per block (the heard history) ``(lives, blocks)`` on the
+        host, where its drive reads them, and each block's column on the device for its route's
+        contrast."""
+        here = arrays_of(self.kernel).here
+        blocks: dict[int, tuple[Any, np.ndarray]] = {}
+        for k, route in enumerate(self.routes):
+            column = here(self.lives_gains[:, k : k + 1])
+            if route["slot"] is None:
+                route["memory"].hearing = column
+                continue
+            route["lives_gain"] = column
+            memory = route["memory"]
+            held = blocks.get(id(memory))
+            if held is None:
+                held = blocks[id(memory)] = (
+                    memory, np.zeros((len(self.lives_gains), np.shape(memory.hearing)[-1]))
+                )
+            held[1][:, route["slot"]] = self.lives_gains[:, k]
+        for memory, gains in blocks.values():
+            memory.hearing = gains
+
+    def gain(self, route: dict[str, Any]) -> Any:
+        return route["memory"].hearing if route["slot"] is None else route["lives_gain"]
+
+    def gains_of(self, life: int) -> dict[str, float]:
+        """Life ``life``'s gains by route."""
+        return {
+            route["name"]: float(self.lives_gains[life, k]) for k, route in enumerate(self.routes)
+        }
+
+    def step(self, contrast: np.ndarray) -> None:
+        raise RuntimeError("the lives' gains step per life (step_lives)")
+
+    def step_lives(self, contrast: np.ndarray, rows: np.ndarray) -> None:
+        """``Hearing.step`` for the lives ``rows``, each on its own row of ``contrast``."""
+        self.lives_count[rows] += 1
+        second = self.RHO * self.lives_second[rows] + (1.0 - self.RHO) * contrast**2
+        correction = 1.0 - np.power(self.RHO, self.lives_count[rows])[:, None]
+        moved = self.rate * contrast / (np.sqrt(second / correction) + self.FLOOR)
+        bound = np.array([route["bound"] for route in self.routes])
+        self.lives_gains[rows] = np.clip(self.lives_gains[rows] + moved, 0.0, bound)
+        self.lives_second[rows] = second
+        self._place()
+
+    def learn(self, graph: Any, learned: Any, beta: float) -> None:
+        """A lesson's step for the lives it taught; the phases hold every life's row."""
+        if (
+            not self.routes
+            or learned.free is None
+            or learned.nudged is None
+            or learned.nudged is learned.free
+        ):
+            return
+        minus_state = learned.free if learned.opposite is None else learned.opposite
+        moved = self._movement_on_device(graph, learned.nudged, minus_state)
+        if moved is None:
+            raise RuntimeError("the lives' phases and memories rest on their device")
+        rows = np.arange(len(moved)) if learned.taught is None else np.flatnonzero(
+            np.asarray(learned.taught, dtype=bool)
+        )
+        if not len(rows):
+            return
+        span = beta if learned.opposite is None else 2.0 * beta
+        contrast = self._contrast_on_device(graph, moved / span, None, len(moved))
+        self.step_lives(contrast[rows], rows)
+
+
+class _LivesCritic(_CriticOnDevice):
+    """The critic on the device with one weight row and one bias per life."""
+
+    def _bias(self) -> Any:
+        return self.xp.here(np.asarray(self.owner.b_critic, dtype=float))
+
+    def value(self, state: BrainState) -> np.ndarray:
+        return self.xp.host(self.value_here(state))
+
+    def value_here(self, state: BrainState) -> Any:
+        part = self.xp.part(state, self.source)
+        return (part * self.weights).sum(axis=1) + self._bias()
+
+    def unread(self, delta: Any) -> tuple[Any, Any, Any]:
+        trace = self.trace
+        assert trace is not None
+        xp = self.xp
+        d = xp.here(delta) if isinstance(delta, np.ndarray) else xp.floats(delta)
+        trace = trace / (1.0 + (trace * trace).sum(axis=1, keepdims=True))
+        step = self.owner.config.eta_critic * (d[:, None] * trace)  # each life its own row
+        weights = self.weights + step[:, :-1]
+        return weights, xp.all_finite(weights), step[:, -1]
+
+    def candidate(self, delta: np.ndarray) -> tuple[Any, Any]:
+        weights, finite, step = self.unread(delta)
+        read = self.xp.host(self.xp.cat([finite.reshape(1).to(step.dtype), step], 0))
+        bias = np.asarray(self.owner.b_critic, dtype=float) + read[1:]
+        if not read[0] or not np.isfinite(bias).all():
+            raise ValueError("critic parameters must remain finite")
+        return weights, bias
+
+
+@dataclass(frozen=True)
+class _LivesNudge(Nudge):
+    """A nudge with one mask and one softmax temperature per life and neuron: a sampled act's
+    eligibility phases, each life at the temperature its own arousal heats it to."""
+
+    rows_mask: np.ndarray | None = None  # (lives, n)
+    rows_temperature: np.ndarray | None = None  # (lives, n)
+
+
+class _LivesActorCritic(ActorCritic):
+    """``ActorCritic`` of lives, one stream per life: the critic rests on the device with a row
+    per life, and an outcome steps each life on its own stream's eligibility and dopamine."""
+
+    def reside(self, kernel: Any) -> None:
+        if kernel is None:
+            raise RuntimeError("the lives' critic rests on their device")
+        if self._critic_device is not None:
+            if not any(name in self.__dict__ for name in _CriticOnDevice.OWNED):
+                return
+            self.leave_device()
+        self._critic_device = _LivesCritic(self, kernel)
+
+    # The lives an outcome teaches and the lives whose eligibility it fades, set by
+    # ``Lives.live`` around one outcome: a life whose action was sampled learns from its outcome,
+    # a calm life's eligibility fades by one moment, and a life with no action out keeps it.
+    # None: every life learns, as ``step`` and ``learn`` teach them.
+    _lives_learning: np.ndarray | None = None
+    _lives_decaying: np.ndarray | None = None
+    # ``Lives.live``'s act: per life whether it answers greedily, and its temperature per slot
+    _lives_choice: tuple[np.ndarray, np.ndarray] | None = None
+    # the lives whose pending action keeps its eligibility; None: every life's, as ``act`` keeps
+    _lives_eligible: np.ndarray | None = None
+
+    def _rates(self) -> tuple[Any, Any]:
+        """``ActorCritic._rates``; with maturity each life's own, ``(lives, 1)`` on the device."""
+        maturity = self.__dict__.get("_lives_maturity")
+        if maturity is None:
+            return super()._rates()
+        cfg = self.config
+        assert cfg.eta_bias is not None
+        kernel = self.learner.brain._torch
+        factor = maturity.factor()
+        rate = kernel.torch.as_tensor(factor * cfg.eta, dtype=kernel.dtype, device=kernel.device)
+        bias = kernel.torch.as_tensor(
+            factor * cfg.eta_bias, dtype=kernel.dtype, device=kernel.device
+        )
+        return rate[:, None], bias[:, None]
+
+    def _rows_kept(self, decay: float, old: Any, added: Any = None) -> Any:
+        """Each life's eligibility after an outcome: ``decay old + added`` where it learns,
+        ``decay old`` where it fades, ``old`` where it keeps it."""
+        learning, decaying = self._lives_learning, self._lives_decaying
+        assert learning is not None and decaying is not None
+        if isinstance(old, np.ndarray):
+            shape = (-1,) + (1,) * (old.ndim - 1)
+            faded = np.where(decaying.reshape(shape), decay * old, old)
+            if added is None:
+                return faded
+            return np.where(learning.reshape(shape), decay * old + added, faded)
+        torch = self.learner.brain._torch.torch
+        device = old.device
+        shape = (-1,) + (1,) * (old.ndim - 1)
+        fades = torch.as_tensor(decaying, device=device).reshape(shape)
+        faded = torch.where(fades, decay * old, old)
+        if added is None:
+            return faded
+        learns = torch.as_tensor(learning, device=device).reshape(shape)
+        return torch.where(learns, decay * old + added, faded)
+
+    def _critic_eligibility(self, free: BrainState, batch: int) -> None:
+        if self._lives_learning is None:
+            super()._critic_eligibility(free, batch)
+            return
+        decay = self.config.gamma * self.config.lam
+        critic = self._critic_device
+        assert isinstance(critic, _LivesCritic)
+        xp = critic.xp
+        trace = critic.trace
+        if trace is None or len(trace) != batch:
+            trace = xp.zeros((batch, len(self.critic_index) + 1))
+        added = xp.zeros((batch, len(self.critic_index) + 1))
+        added[:, :-1] = xp.part(free, critic.source)
+        added[:, -1] = 1.0
+        critic.trace = self._rows_kept(decay, trace, added)
+
+    def _memory_eligibility(self, batch: int, decay: float) -> None:
+        if self._lives_learning is None:
+            super()._memory_eligibility(batch, decay)
+            return
+        contrast, trace = self._pending_memory, self.trace_memory
+        if contrast is None or len(contrast) != batch:
+            self.trace_memory = None if trace is None else self._rows_kept(decay, trace)
+            return
+        held = getattr(self.memory, "_device", None)
+        if held is not None:  # the resident memory's, on its device
+            if isinstance(contrast, np.ndarray):
+                contrast = held.xp.here(contrast)
+            if isinstance(trace, np.ndarray):
+                trace = held.xp.here(trace)
+        if trace is None or tuple(trace.shape) != tuple(contrast.shape):
+            trace = contrast * 0.0
+        self.trace_memory = self._rows_kept(decay, trace, contrast)
+
+    def _hearing_eligibility(self, batch: int, decay: float) -> None:
+        if self._lives_learning is None:
+            super()._hearing_eligibility(batch, decay)
+            return
+        contrast, trace = self._pending_hearing, self.trace_hearing
+        if contrast is None or len(contrast) != batch:
+            self.trace_hearing = None if trace is None else self._rows_kept(decay, trace)
+            return
+        if trace is None or trace.shape != contrast.shape:
+            trace = np.zeros_like(contrast)
+        self.trace_hearing = self._rows_kept(decay, trace, contrast)
+
+    def fade_rows(self, decaying: np.ndarray, done: np.ndarray) -> None:
+        """``ActorCritic.fade`` of the lives ``decaying`` marks: their eligibility decays by one
+        moment, those ``done`` marks forget theirs, every other life keeps its own. The actor's
+        traces and a memory's decay by ``config.decay`` (the ``actor_hold``), the critic's by
+        ``gamma * lam``, as ``ActorCritic.fade``."""
+        decay = self.config.decay
+        self._lives_learning = np.zeros(len(decaying), dtype=bool)
+        self._lives_decaying = np.asarray(decaying, dtype=bool)
+        try:
+            if self._trace_device is not None:
+                self._trace_device = tuple(
+                    self._rows_kept(decay, part) for part in self._trace_device
+                )
+            critic = self._critic_device
+            if critic is not None and critic.trace is not None:
+                critic.trace = self._rows_kept(
+                    self.config.gamma * self.config.lam, critic.trace
+                )
+            for name in ("trace_memory", "trace_hearing"):
+                held = getattr(self, name)
+                if held is not None:
+                    setattr(self, name, self._rows_kept(decay, held))
+        finally:
+            self._lives_learning = self._lives_decaying = None
+        if done.any():
+            gone = np.flatnonzero(done)
+            if self._trace_device is not None:
+                for part in self._trace_device:
+                    part[gone] = 0.0
+            self._forget_critic(done)
+            if self.trace_memory is not None:
+                self.trace_memory = _forgotten(self.trace_memory, done)
+            if self.trace_hearing is not None:
+                self.trace_hearing[done] = 0.0
+
+    def _hearing_step(self, delta: np.ndarray) -> None:
+        """Each life's carried gains stepped on its own trace by its own dopamine."""
+        if self.trace_hearing is not None and self.hearing is not None:
+            rows = (
+                np.arange(len(delta)) if self._lives_learning is None
+                else np.flatnonzero(self._lives_learning)
+            )
+            if len(rows):
+                self.hearing.step_lives(delta[rows, None] * self.trace_hearing[rows], rows)
+
+    def _row_probabilities(self, state: BrainState, temperatures: np.ndarray) -> np.ndarray:
+        """``probabilities`` with each life at its own temperature per slot ``(lives, slots)``."""
+        s = state.part(self.learner.output_index)
+        learner = self.learner
+        if learner.slot_count > 1:
+            p = np.zeros((len(s), learner.slot_count, int(learner.slot_sizes.max())))
+            for j, (start, size) in enumerate(
+                zip(learner.slot_offsets, learner.slot_sizes, strict=True)
+            ):
+                p[:, j, :size] = self._softmax(
+                    s[:, start : start + size], temperatures[:, j : j + 1]
+                )
+            return p
+        return self._softmax(s, temperatures[:, :1])
+
+    def _nudged_rows(
+        self, drive: Any, free: BrainState, target: np.ndarray, beta: float,
+        temperatures: np.ndarray, calm: np.ndarray,
+    ) -> BrainState:
+        """``_nudged_groups`` with each life at its own temperatures ``(lives, slots)``: its own
+        softmax temperature on its motor neurons and its own mask; a ``calm`` life is not
+        pushed."""
+        cfg = self.learner.config
+        learner = self.learner
+        base = float(cfg.temperature)
+        scale = np.minimum(base, temperatures.min(axis=1))
+        actual = np.full((len(temperatures), self.n), base)
+        if learner.slot_count > 1:
+            actual[:, learner.output_index] = np.repeat(temperatures, learner.slot_sizes, axis=1)
+            with np.errstate(under="ignore"):
+                masks = learner.output_mask[None, :] * (scale[:, None] / actual)
+        else:
+            actual[:, learner.output_index] = temperatures[:, :1]
+            with np.errstate(under="ignore"):
+                masks = learner.output_mask[None, :] * (scale / temperatures[:, 0])[:, None]
+        masks[calm] = 0.0  # a life that answered greedily keeps no eligibility: no push
+        nudge = _LivesNudge(
+            target, learner.output_mask, beta, softmax_temperature=base, groups=self.group_id,
+            apical_gain=learner.brain.apical_gain(drive, free, own_precision=True),
+            rows_mask=masks, rows_temperature=actual,
+        )
+        return learner.brain.settle_batch(
+            drive,
+            steps=cfg.nudged_steps
+            if self.config.eligibility_steps is None
+            else self.config.eligibility_steps,
+            state=free,
+            nudge=nudge,
+            tolerance=None if cfg.nudged_fixed else cfg.tolerance,
+        )
+
+    def act(
+        self, drive: Any, greedy: bool = False, temperature: Any = None, *, bias: Any = None,
+    ) -> np.ndarray:
+        """``ActorCritic.act``; in ``Lives.live`` each life answers greedily or samples at its own
+        temperatures, its own generator drawing for it alone, and the lives that sample keep
+        their eligibility (``_lives_choice``)."""
+        choice = self._lives_choice
+        if choice is None:
+            self._lives_eligible = None  # a pending action of every life, or none
+            return super().act(drive, greedy, temperature, bias=bias)
+        calm, temperatures = choice
+        drive = self._validated_drive(drive)
+        free = (
+            self._free
+            if self._free is not None and self._drive is drive
+            and self._free_brain is self.learner.brain
+            else self.settle(drive)
+        )
+        self._pending = None
+        self._pending_memory = None
+        self._pending_hearing = None
+        learner = self.learner
+        greedy_action = np.argmax(self.probabilities(free), axis=-1)
+        action = np.asarray(greedy_action, dtype=np.int64).copy()
+        sampled = ~calm
+        self._lives_eligible = sampled.copy()
+        if sampled.any():
+            p = self._row_probabilities(free, temperatures)
+            rows = np.flatnonzero(sampled)
+            rng = self.rng
+            assert isinstance(rng, _LivesRandom)
+            u = rng.random_rows(rows, p.shape[1:-1])
+            drawn = (p[rows].cumsum(axis=-1) < u[..., None]).sum(axis=-1)
+            limit = learner.slot_sizes - 1 if p.ndim == 3 else p.shape[-1] - 1
+            action[rows] = np.minimum(drawn, limit)
+            target = learner.targets(action)
+            beta = learner.config.beta
+            plus = self._nudged_rows(drive, free, target, beta, temperatures, calm)
+            minus = self._nudged_rows(drive, free, target, -beta, temperatures, calm)
+            self._pending = ("states", plus, minus, self.value(free))
+            self._pending_memory = self._memory_contrast(plus, minus)
+            if self.hearing is not None:
+                self._pending_hearing = self.hearing.contrast_rows(
+                    learner.brain, plus, minus, beta
+                )
+        return np.asarray(action, dtype=np.int64)
+
+    def _learn_device(
+        self, kernel: Any, plus: BrainState, minus: BrainState, value: np.ndarray,
+        reward: np.ndarray, done: np.ndarray, next_drive: np.ndarray,
+        bootstrap: np.ndarray | None, observed: np.ndarray, warm: BrainState | None = None,
+    ) -> dict[str, float]:
+        """``ActorCritic._learn_device`` per life: each stream's step is its own life's, with no
+        mean over the streams. The outcome's checks and the dopamine come to the host in one
+        read before anything is installed."""
+        torch = kernel.torch
+        cfg = self.config
+        span = 2.0 * self.learner.config.beta
+        decay = cfg.decay
+        batch = len(reward)
+        if batch != kernel.lives or not observed.all():
+            raise ValueError("an outcome of these lives has one observed stream per life")
+        s_plus, s_minus = plus.device["s"], minus.device["s"]
+        learning = self._lives_learning
+        if learning is not None:  # a life that does not learn adds no contrast
+            learns = torch.as_tensor(learning, device=s_plus.device)
+            s_plus = torch.where(learns[:, None], s_plus, s_minus)
+        neurons = s_plus - s_minus
+        synapses = self.synapses
+        if self._trace_device is None or tuple(self._trace_device[0].shape) != (batch, synapses):
+            self._trace_device = (
+                torch.zeros((batch, synapses), dtype=neurons.dtype, device=neurons.device),
+                torch.zeros_like(neurons),
+            )
+            self.trace = self.trace_bias = None
+        trace, trace_bias = self._trace_device
+        if learning is None:
+            trace_bias = decay * trace_bias + neurons / span
+        else:
+            trace_bias = self._rows_kept(decay, trace_bias, neurons / span)
+        free = self._free
+        assert free is not None
+        self._critic_eligibility(free, batch)
+        self._memory_eligibility(batch, decay)
+        self._hearing_eligibility(batch, decay)
+        root: Any = kernel.root
+        if learning is not None:  # a life that does not learn keeps its state, rested if it ended
+            root._hold_outer = torch.as_tensor(~learning, device=s_plus.device)
+        try:
+            next_state = self._next_state(next_drive, done, warm)
+        finally:
+            root._hold_outer = None
+        resting = self._critic_device
+        assert isinstance(resting, _LivesCritic)
+        exact = torch.float32 if trace.device.type == "mps" else torch.float64
+
+        def here(values: Any) -> Any:
+            return torch.as_tensor(np.asarray(values, dtype=float), dtype=exact,
+                                   device=trace.device)
+
+        following = resting.value_here(next_state).to(exact)
+        ends = torch.as_tensor(np.asarray(done), device=trace.device)
+        boot = torch.zeros_like(following) if bootstrap is None else here(bootstrap)
+        td_here = here(reward) + cfg.gamma * torch.where(ends, boot, following) - here(value)
+        delta_here = td_here
+        if cfg.dopamine_cap > 0:
+            delta_here = torch.clamp(delta_here, -cfg.dopamine_cap, cfg.dopamine_cap)
+        if learning is not None:  # a life that does not learn takes no dopamine
+            delta_here = torch.where(learns, delta_here, torch.zeros_like(delta_here))
+        critic_weights, critic_finite, critic_step = resting.unread(delta_here)
+        d = delta_here.to(trace.dtype)
+        self.updates += 1
+        counted = self.__dict__.get("lives_updates")
+        if counted is None or len(counted) != batch:
+            counted = self.__dict__["lives_updates"] = np.full(batch, self.updates - 1)
+        counted += 1 if learning is None else learning
+        # the recall memory's maps step on each life's own trace by its own dopamine
+        unread = None
+        traced, memory = self.trace_memory, self.memory
+        if traced is not None and getattr(memory, "_device", None) is not None:
+            unread = memory._device.proposal_unread(memory._device.weighted(traced, delta_here))
+        one = torch.ones((), dtype=exact, device=trace.device)
+        mapped = (one, 0.0 * one) if unread is None else (unread[3], unread[4])
+        next_brain = self.learner.brain
+        eta, eta_bias = self._rates()
+        step_bias = eta_bias * (d[:, None] * trace_bias)
+        step = decay * trace * d[:, None] + kernel.contrast_edges(s_plus, s_minus, d) / span
+        update = self.learner._device_candidate(kernel, eta * step, step_bias)
+        read = torch.cat([
+            torch.stack([torch.isfinite(td_here).all().to(exact), critic_finite.to(exact),
+                         mapped[0].to(exact), mapped[1].to(exact)]
+                        + [flag.to(exact) for flag in update["flags"]]
+                        + [number.to(exact) for number in update["steps"]]),
+            critic_step.to(exact), td_here, delta_here,
+        ]).cpu().numpy().astype(float)
+        if not read[0]:
+            raise ValueError("TD errors must remain finite")
+        critic_bias = np.asarray(self.b_critic, dtype=float) + read[10 : 10 + batch]
+        if not read[1] or not np.isfinite(critic_bias).all():
+            raise ValueError("critic parameters must remain finite")
+        if not read[2]:
+            raise ValueError("the address map's reward step must be finite")
+        self.learner._device_refusal(read[4:8])
+        td_error = read[10 + batch : 10 + 2 * batch]
+        delta = read[10 + 2 * batch :]
+        self.__dict__["lives_td_error"] = td_error  # each life's own, for its arousal
+        capped = self._capped(td_error, observed)
+        self.learner.__dict__["_lives_rows"] = learning
+        before = kernel.scale  # an update replaces the scale tensor
+        try:
+            report = self.learner._install_device(update, read[8:10])
+        finally:
+            self.learner.__dict__["_lives_rows"] = None
+        maturity = self.__dict__.get("_lives_maturity")
+        if maturity is not None and cfg.eta > 0:  # each life's use grows by its own step
+            moved = (kernel.scale - before).abs().sum(dim=1).double().cpu().numpy()
+            maturity.use = np.minimum(
+                maturity.use + moved / (float(cfg.eta) * self.synapses), Maturity.LIMIT
+            )
+        if learning is None:
+            trace.mul_(decay)
+        else:
+            fades = torch.as_tensor(self._lives_decaying, device=trace.device)
+            factor = torch.full((batch,), decay, dtype=trace.dtype, device=trace.device)
+            trace.mul_(torch.where(fades, factor, torch.ones_like(factor))[:, None])
+        kernel.add_contrast(trace, s_plus, s_minus, span, None)
+        self._accept_critic((critic_weights, critic_bias))
+        if unread is not None:
+            memory.accept((*unread[:3], float(read[3]), *unread[6:]))
+            report["address_reward_step"] = float(read[3])
+        self._hearing_step(delta)
+        if done.any():
+            ended = torch.as_tensor(np.flatnonzero(done), device=trace.device)
+            trace[ended] = 0.0
+            trace_bias[ended] = 0.0
+            self._forget_critic(done)
+            if self.trace_memory is not None:
+                self.trace_memory = _forgotten(self.trace_memory, done)
+            if self.trace_hearing is not None:
+                self.trace_hearing[done] = 0.0
+        self._trace_device = (trace, trace_bias)
+        self._free = next_state
+        self._free_brain = next_brain
+        self._drive = _held_drive(next_drive)
+        self._pending = None
+        self._pending_memory = None
+        self._pending_hearing = None
+        report["delta"] = float(np.abs(delta).mean())
+        report["dopamine"] = float(delta.mean())
+        report["td_error"] = float(np.abs(td_error).mean())
+        report["capped"] = capped
+        report["value"] = float(np.asarray(value).mean())
+        report["free_steps"] = float(next_state.steps)
+        report["saturation"] = self._saturation(free)
+        report["trace"] = float(trace.abs().mean())
+        return report
+
+
+# -- the store and maturity
+
+class _LivesMaturity:
+    """Each life's ``Maturity``: one use per life, its factor and its relaxation life by life."""
+
+    ORDER = Maturity.ORDER
+    LIMIT = Maturity.LIMIT
+
+    def __init__(self, lone: Sequence[Maturity]) -> None:
+        self.scale, self.recovery = float(lone[0].scale), float(lone[0].recovery)
+        self.use = np.array([m.use for m in lone], dtype=float)
+
+    def factor(self) -> np.ndarray:
+        """``Maturity.factor`` of every life."""
+        with np.errstate(over="ignore"):
+            return np.asarray(1.0 / (1.0 + (self.use / self.scale) ** self.ORDER))
+
+    def relax(self, rows: np.ndarray | None = None) -> None:
+        """``Maturity.relax`` of the lives ``rows`` marks, every life without it."""
+        relaxed = self.use * (1.0 - 1.0 / self.recovery)
+        self.use = relaxed if rows is None else np.where(rows, relaxed, self.use)
+
+    def of(self, i: int) -> Maturity:
+        return Maturity(self.scale, self.recovery, float(self.use[i]))
+
+
+class _LivesStore(_StoreOnDevice):
+    """The place records of every life on the device: each life's consolidated records, its
+    stream's residual and decayed count of writes, with ``memory_fade`` each life's depths and
+    recent trace, with maturity each life's records' noise scales and its own surprise gate
+    (``SynapticMemory``'s equations, life by life). A write moves the records of the lives that
+    write and decays the residual of the lives whose outcome is written, as their lone stores."""
+
+    HELD = ("strength", "mass", "consolidated", "noise", "depth", "recent")
+
+    def __init__(self, owner: SynapticMemory, kernel: Any, lone: Sequence[SynapticMemory],
+                 maturity: _LivesMaturity | None) -> None:
+        xp = arrays_of(kernel)
+        self.owner, self.kernel, self.xp = owner, kernel, xp
+        self.torch = kernel.torch
+        for name in _StoreOnDevice.OWNED:
+            owner.__dict__.pop(name, None)
+        self.consolidated = xp.here(np.stack([m.consolidated for m in lone]))
+        # a life's stream begins at its records: the read and the decay of a stream that has
+        # not written are the records' own
+        self.strength = self.consolidated.clone()
+        self.mass = xp.zeros(len(lone))
+        self.writes = np.array([m.writes for m in lone], dtype=np.int64)
+        self.noise: Any = (
+            None if lone[0].gate_noise is None
+            else xp.here(np.stack([cast(np.ndarray, m.gate_noise) for m in lone]))
+        )
+        self.maturity = maturity
+        self.fade = float(lone[0].fade)
+        self.depth: Any = None
+        self.recent: Any = None
+        if self.fade:
+            self.depth = xp.here(np.stack([cast(np.ndarray, m.fade_depth) for m in lone]))
+            self.recent = xp.here(np.stack([cast(np.ndarray, m.fade_recent) for m in lone]))
+        self.pre = xp.columns(kernel.index_of(owner.pre))
+        self.post = xp.columns(owner._post_columns)
+
+    def give_back(self) -> None:
+        raise RuntimeError(
+            "the lives' place records rest on their device; read a life's with "
+            "Lives.parameters(i) or Lives.life(i)"
+        )
+
+    def records_of(self, i: int) -> dict[str, np.ndarray | int]:
+        """Life ``i``'s records on the host, as its lone store holds them."""
+        host = self.xp.host
+        out: dict[str, np.ndarray | int] = {
+            "consolidated": host(self.consolidated[i]), "writes": int(self.writes[i]),
+        }
+        if self.noise is not None:
+            out["gate_noise"] = host(self.noise[i])
+        if self.fade:
+            out["fade_depth"] = host(self.depth[i])
+            out["fade_recent"] = host(self.recent[i])
+        return out
+
+    def observe_rows(
+        self, key: np.ndarray, value: np.ndarray, calling: np.ndarray, gate: np.ndarray,
+        salience: np.ndarray, observed: np.ndarray,
+    ) -> None:
+        """``SynapticMemory.observe`` of the lives ``calling`` marks, each its own store of one
+        stream: their residuals decay, and the rows of ``gate`` among them write their own
+        records."""
+        owner, xp, torch = self.owner, self.xp, self.torch
+        decay = owner.decay
+        consolidated = self.consolidated
+        previous = self.strength
+        decayed = consolidated + decay * (previous - consolidated)
+        calls = xp.flags(calling)[:, None, None]
+        strength = torch.where(calls, decayed, previous)
+        mass = torch.where(xp.flags(calling), self.mass * decay, self.mass)
+        rows = np.flatnonzero(gate)
+        noise, depth = self.noise, self.depth
+        if len(rows):
+            index = xp.long(rows)
+            cue = self._unit(xp.upload(key[rows]))
+            value_t = xp.upload(value[rows])
+            mask = xp.upload(observed[rows].astype(np.float64))
+            rate = owner.consolidation + np.minimum(1.0, owner.consolidation * salience[rows])
+            rate = xp.upload(np.minimum(1.0, rate))
+            mine = consolidated[index]
+            error = (value_t - (cue[:, None, :] @ mine)[:, 0, :]) * mask
+            change = (rate[:, None] * cue)[:, :, None] * error[:, None, :]  # one row: no mean
+            base = strength[index]
+            moved = base + change
+            prediction = (cue[:, None, :] @ moved)[:, 0, :]
+            correction = (value_t - prediction) * mask
+            fast = owner.rate * cue[:, :, None] * correction[:, None, :]
+            if noise is None:
+                written, kept = mine + change, moved + fast
+            else:  # the write multiplied per action by each life's surprise gate
+                assert self.maturity is not None
+                gain, noise = self._gate(rows, cue, value_t, previous[index], mask)
+                written = mine + (rate[:, None] * cue)[:, :, None] * (error * gain)[:, None, :]
+                kept = base + gain[:, None, :] * (change + fast)
+            consolidated = consolidated.clone()
+            consolidated[index] = written
+            strength = strength.clone()
+            strength[index] = kept
+            mass = mass.clone()
+            mass[index] = mass[index] + owner.rate
+            if depth is not None:  # a write uses the records its cue reads
+                depth = depth.clone()
+                depth[index] = depth[index] + cue.abs()
+        finite = [torch.isfinite(strength).all(), torch.isfinite(consolidated).all()]
+        if noise is not None:
+            finite.append(torch.isfinite(noise).all())
+        if not bool(torch.stack(finite).all()):
+            raise ValueError("synaptic update overflowed; scale the observed values")
+        self.consolidated, self.strength, self.mass = consolidated, strength, mass
+        self.noise, self.depth = noise, depth
+        self.writes[rows] += 1
+        owner.writes += len(rows)
+
+    def _gate(self, rows: np.ndarray, cue: Any, value: Any, previous: Any,
+              mask: Any) -> tuple[Any, Any]:
+        """``SynapticMemory._gate`` of each writing life: its gain per action at its own
+        maturity and its records' noise scales moved toward its own squared error."""
+        torch = self.torch
+        assert self.noise is not None and self.maturity is not None
+        index = self.xp.long(rows)
+        noise = self.noise.clone()
+        mine = noise[index]
+        engaged = self.xp.upload(1.0 - self.maturity.factor()[rows])[:, None]
+        error = value - (cue[:, None, :] @ previous)[:, 0, :]
+        square = cue * cue
+        spread = torch.sqrt((square[:, None, :] @ mine)[:, 0, :])
+        size = error.abs()
+        one = torch.ones_like(size)
+        ratio = SynapticMemory.GATE_WIDTH * spread / torch.where(size > 0, size, one)
+        surprise = torch.where(size > 0, torch.clamp(1.0 - ratio, min=0.0), 0.0 * one)
+        seen = mask > 0
+        gain = torch.where(seen, 1.0 - engaged * (1.0 - surprise), one)
+        weight = square / torch.clamp(square.amax(dim=1, keepdim=True), min=1e-30)
+        moved = mine + SynapticMemory.GATE_RATE * weight[:, :, None] * (
+            (error * error)[:, None, :] - mine
+        )
+        noise[index] = torch.where(seen[:, None, :], moved, mine)
+        return gain, noise
+
+    def fade_moment(self, key: Any, rows: np.ndarray | None = None) -> None:
+        """``SynapticMemory.fade_moment`` life by life: each life's own row of ``key`` marks
+        its recent records, then each life's idle records fade by its own depths; with
+        ``rows`` the lives it marks alone, as the others live no moment."""
+        xp, owner, torch = self.xp, self.owner, self.torch
+        before = (self.consolidated, self.strength, self.depth, self.recent)
+        assert self.depth is not None and self.recent is not None
+        depth, recent = self.depth, self.recent
+        if key is not None:
+            k = np.atleast_2d(np.asarray(key, dtype=float))
+            if k.shape == (len(self.writes), len(owner.pre)):
+                cued = np.flatnonzero(
+                    np.any(k != 0, axis=1) & (True if rows is None else np.asarray(rows))
+                )
+                if len(cued):
+                    index = xp.long(cued)
+                    used = self._unit(xp.upload(k[cued])).abs()
+                    depth, recent = depth.clone(), recent.clone()
+                    depth[index] = depth[index] + used
+                    recent[index] = recent[index] + used
+        idle = 1.0 / (1.0 + (recent / SynapticMemory.FADE_FLOOR) ** 2)
+        lost = self.fade * idle / (
+            1.0 + (depth / SynapticMemory.FADE_SCALE) ** SynapticMemory.FADE_ORDER
+        )
+        shed = self.consolidated * lost[:, :, None]
+        self.consolidated = self.consolidated - shed
+        self.strength = self.strength - shed  # each stream keeps its residual
+        self.depth = depth
+        self.recent = recent * (1.0 - 1.0 / SynapticMemory.FADE_IDLE)
+        if rows is not None:  # a life that lived no moment keeps its records as they were
+            kept = xp.flags(~np.asarray(rows, bool))
+            for name, old in zip(("consolidated", "strength", "depth", "recent"), before,
+                                 strict=True):
+                new = getattr(self, name)
+                shape = (-1,) + (1,) * (new.ndim - 1)
+                setattr(self, name, torch.where(kept.reshape(shape), old, new))
+
+
+class _LivesSynapticMemory(SynapticMemory):
+    """The place records of ``Lives``: a ``SynapticMemory`` whose arrays rest on the device as
+    ``_LivesStore``, one store per life."""
+
+    def observe(
+        self, key: np.ndarray, value: np.ndarray, write: np.ndarray | None = None, *,
+        salience: np.ndarray | None = None, value_mask: np.ndarray | None = None,
+    ) -> None:
+        key = self._port(key, len(self.pre), "key")
+        value = self._port(value, len(self.post), "value")
+        batch = len(key)
+        salience = self.salience_vector(salience, batch)
+        calling = np.ones(batch, bool) if write is None else np.asarray(write, bool)
+        observed = np.ones(value.shape, bool) if value_mask is None else np.asarray(value_mask)
+        gate = calling & np.any(key != 0, axis=1) & observed.any(axis=1)
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        held.observe_rows(key, value, calling, gate, salience, observed)
+
+    def fade_moment(self, key: np.ndarray | None) -> None:
+        if self.fade:
+            held = self._device
+            assert isinstance(held, _LivesStore)
+            held.fade_moment(key)
+
+    def reside(self, kernel: Any) -> None:
+        """The records stay where the lives rest."""
+
+    def held_values(self) -> dict[str, Any]:
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        return {
+            **{name: getattr(held, name) for name in _LivesStore.HELD},
+            "writes": self.writes, "lives_writes": held.writes.copy(),
+        }
+
+    def take_values(self, values: Any) -> None:
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        for name in _LivesStore.HELD:
+            setattr(held, name, values[name])
+        self.writes = values["writes"]
+        held.writes = values["lives_writes"]
+
+    def reset(self, batch: int, rows: np.ndarray | None = None) -> None:
+        held = self._device
+        assert isinstance(held, _LivesStore)
+        index = slice(None) if rows is None else held.xp.long(rows)
+        held.strength = held.strength.clone()
+        held.strength[index] = held.consolidated[index]
+        held.mass = held.mass.clone()
+        held.mass[index] = 0.0
+
+    def arrays(self) -> dict[str, np.ndarray]:
+        raise RuntimeError("save a life with Lives.life(i): the lives' records have a lives axis")
+
+
+class _LivesRandom:
+    """Each life's own generator, drawn as its lone brain draws it: one row per life."""
+
+    def __init__(self, generators: Sequence[np.random.Generator]) -> None:
+        self.generators = list(generators)
+
+    def random(self, shape: Any) -> np.ndarray:
+        shape = tuple(np.atleast_1d(shape))
+        if not shape or shape[0] != len(self.generators):
+            raise ValueError("a draw of these lives takes one row per life")
+        return np.stack([g.random(shape[1:]) for g in self.generators])
+
+    def random_rows(self, rows: np.ndarray, shape: Any) -> np.ndarray:
+        """A draw of ``shape`` for each life of ``rows``, from its own generator alone."""
+        return np.stack([self.generators[i].random(tuple(shape)) for i in rows])
+
+
+def _supported(brain: Any) -> None:
+    """Refuse a composition with a part the lives axis does not cover, naming it."""
+
+    def refuse(what: str) -> ValueError:
+        return ValueError(f"Lives holds the parts its lives axis covers: {what}")
+
+    for name, what in (
+        ("learned_code", "no learned code"),
+        ("_episodic", "no memory_choice"),
+        ("efference", "no efference copy"),
+        ("message", "no held message"),
+        ("longterm", "no long-term records"),
+    ):
+        if getattr(brain, name, None) is not None:
+            raise refuse(what)
+    store = brain.hippocampus
+    if store is not None and (
+        type(store) is not SynapticMemory or store.separator is not None
+        or len(brain.memories) - (brain.recall is not None) - (brain.working_memory is not None)
+        - (brain.history is not None) != 1
+    ):
+        raise refuse("a store of place records keyed on the observations, without a separator")
+    if getattr(brain, "_coded_keys", False):
+        raise refuse("no code of the observation (a code is drawn from a brain's seed)")
+    recall = brain.recall
+    if recall is not None and not recall.resides:
+        raise refuse(
+            "a recall memory of one head, without a window, the command, the read of when, "
+            "tokens, their gain or the cortex at unit norm"
+        )
+    learner, graph = brain.learner, brain.brain
+    cfg = learner.config
+    if cfg.rehearsal or cfg.qualified:
+        raise refuse("no rehearsal (learning_rehearsal=0) and no qualified teaching")
+    if graph.apical is not None:
+        raise refuse("no apical compartment")
+    agent = brain.basal_ganglia
+    if agent.salience is not None:
+        raise refuse("no salience")
+    if agent.config.entropy:
+        raise refuse("no actor entropy (actor_entropy=0)")
+
+
+def _takes_outcome(brain: Any) -> bool:
+    """Whether a lone brain's next ``live`` takes an outcome: a sampled action pending, or a
+    calm answer of its last ``live`` that nothing has acted after."""
+    agent = brain.basal_ganglia
+    if agent._pending is not None:
+        return True
+    lived = brain._lived
+    return lived is not None and agent.state is lived[4] and not lived[3]
+
+
+def _refuse_without_action(takes: np.ndarray, reward: np.ndarray, done: np.ndarray) -> None:
+    if ((reward != 0.0) | done)[~takes].any():
+        raise RuntimeError(
+            "feedback needs a preceding action: a life with none takes a zero reward and no end"
+        )
+
+
+class _Learning:
+    """While an outcome is learned, the lives ``rows`` marks learn and every other life holds."""
+
+    def __init__(self, agent: _LivesActorCritic, rows: np.ndarray) -> None:
+        self.agent, self.rows = agent, rows
+
+    def __enter__(self) -> None:
+        self.agent._lives_learning = self.agent._lives_decaying = self.rows
+
+    def __exit__(self, *exc: Any) -> None:
+        self.agent._lives_learning = self.agent._lives_decaying = None
+
+
+class Lives:
+    """Many continuing lives of one composed anatomy, each a brain of its own, stepped together.
+
+    ``Lives(inputs, actions, lives=128, backend="torch")`` composes ``lives`` brains of
+    ``Brain.compose(inputs, actions, seed=seeds[i], **options)``, the default composition with
+    its store of place records unless ``episodic=False`` is named, one per seed (``range(lives)``
+    by default). Every operation takes one row of observations per life and returns one answer
+    per life: ``act``, ``step``, ``lesson`` and ``learn`` mean what they mean on a lone brain with
+    one stream, life by life.
+    ``life(i)`` is life ``i`` as a lone brain on the CPU, with everything it learned.
+
+    On ``backend="cpu"`` each life is its own ``Brain`` and the lives run in turn, to the bit as
+    lone brains. On ``backend="torch"`` (CUDA where there is a card, else the torch CPU device, or
+    the ``device`` named) they are the streams of one brain whose parameters carry a lives axis,
+    and each moment of all of them is one settle and one update; each life agrees with its lone
+    brain on that device within the solver's tolerance. The lives share their anatomy and nothing
+    they learn. A moment any life refuses (a settle that does not qualify, a step that is not
+    finite) is refused for every life.
+    """
+
+    def __init__(
+        self, inputs: int, actions: int, lives: int, *, seeds: Sequence[int] | None = None,
+        backend: str = "cpu", device: str | None = None, precision: str | None = None,
+        **options: Any,
+    ) -> None:
+        from .generic import Brain
+
+        if lives < 1:
+            raise ValueError("lives must be at least one")
+        self.seeds = list(range(lives)) if seeds is None else [int(s) for s in seeds]
+        if len(self.seeds) != lives:
+            raise ValueError("one seed per life")
+        if backend not in ("cpu", "torch"):
+            raise ValueError("Lives runs on backend='cpu' or backend='torch'")
+        if not isinstance(inputs, (int, np.integer)):
+            raise ValueError("Lives takes a vector of inputs, its length")
+        options = dict(options)  # the default composition, the store among it (``Brain.compose``)
+        self.inputs, self.actions, self.backend = int(inputs), int(actions), backend
+        self._options = options
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            lone = [Brain.compose(inputs, actions, seed=s, backend="cpu", **options)
+                    for s in self.seeds]
+        _supported(lone[0])
+        topology = lone[0].connectome
+        self._topology = topology
+        self._parts = {part: getattr(lone[0], part) is not None
+                       for part in ("recall", "hearing", "hippocampus", "arousal")}
+        for other in lone[1:]:
+            if not (np.array_equal(other.connectome.pre, topology.pre)
+                    and np.array_equal(other.connectome.post, topology.post)):
+                raise ValueError("the lives' seeds compose different anatomies")
+        self._maturity: _LivesMaturity | None = None
+        self._lived: tuple[Any, ...] | None = None  # the batch's record of its last ``live``
+        self._last_arousal: tuple[Any, ...] | None = None
+        if backend == "cpu":
+            self.brains: list[Any] | None = lone
+            self.brain: Any = None
+            self._arousals: list[Any] = []
+            return
+        self._arousals = [b.arousal for b in lone]  # each life's own mood, on the host
+        self.brains = None
+        place: dict[str, Any] = {"backend": "torch"}
+        if device is None:  # CUDA where there is a card, else the torch CPU device (never MPS)
+            import torch
+
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+        place["device"] = device
+        if precision is not None:
+            place["precision"] = precision
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            brain = Brain.compose(inputs, actions, seed=self.seeds[0], **place, **options)
+        graph = brain.brain
+        kernel = graph._torch
+        assert kernel is not None
+        if kernel.device.type == "mps":
+            raise ValueError(
+                "Lives checks its settles in float64 on its device: CUDA or the torch CPU device "
+                "(MPS has no float64)"
+            )
+        efficacy = np.stack([b.brain.efficacy for b in lone])
+        bias = np.stack([b.brain.bias for b in lone])
+        lives_kernel = _LivesTorchKernel(
+            graph.connectome, efficacy, kernel.gain_pre, bias, graph.neuron_model,
+            str(kernel.device), graph.layout,
+            "float32" if kernel.dtype == kernel.torch.float32 else "float64",
+        )
+        graph._torch = lives_kernel
+        graph.__class__ = _LivesGraph
+        for name in ("_efficacy", "_bias", "_weights_host", "_flat", "_csr"):
+            if hasattr(graph, name):
+                setattr(graph, name, None)
+        learner = brain.learner
+        learner.__class__ = _LivesLearner
+        synapses, n = graph.connectome.synapses, graph.connectome.n
+        learner.__dict__["_device_moments"] = None
+        for name, width in (("velocity", synapses), ("velocity_bias", n),
+                            ("second_moment", synapses), ("second_moment_bias", n)):
+            learner.__dict__["_" + name] = np.zeros((lives, width))
+        agent = brain.basal_ganglia
+        agent.leave_device()
+        agent.__class__ = _LivesActorCritic
+        agent.w_critic = np.stack([b.basal_ganglia.w_critic for b in lone])
+        agent.b_critic = np.array(  # type: ignore[assignment]  # one bias per life
+            [b.basal_ganglia.b_critic for b in lone], dtype=float
+        )
+        agent.rng = _LivesRandom(  # type: ignore[assignment]  # each life's own generator
+            [b.basal_ganglia.rng for b in lone]
+        )
+        # the memories' device paths read each stream through its own life's synapses and maps
+        lives_kernel.__dict__["_arrays"] = _LivesArrays(lives_kernel)
+        if brain.recall is not None:
+            brain.recall._device = _LivesRecall(
+                brain.recall, lives_kernel, [b.recall for b in lone]
+            )
+        if brain.hearing is not None:
+            _LivesHearing.take(
+                brain.hearing, [cast(Hearing, b.hearing) for b in lone], lives_kernel
+            )
+        maturity = None
+        if agent.maturity is not None:  # each life's own use, its own steps and gate
+            maturity = _LivesMaturity([cast(Maturity, b.basal_ganglia.maturity) for b in lone])
+            agent.maturity = None
+            agent.__dict__["_lives_maturity"] = maturity
+        self._maturity = maturity
+        store: Any = brain.hippocampus
+        if store is not None:  # each life's place records, on the device
+            store.leave_device()
+            store.__class__ = _LivesSynapticMemory
+            store._device = _LivesStore(
+                store, lives_kernel, [cast(SynapticMemory, b.hippocampus) for b in lone], maturity
+            )
+            store.gate_noise, store.maturity = None, None  # each life's, on the device
+
+            def record(keys: Any, action: Any, reward: Any, importance: Any) -> None:
+                # the lives an outcome teaches write it; a life holding its moment writes none
+                record_action(store, keys, action, reward, importance, agent._lives_learning,
+                              brain.learner.slot_offsets)
+
+            brain.__dict__["_record"] = record
+        # the lives' memories rest on their device, a fading or gated store's among them
+        brain.__dict__["_memories_stay_on_host"] = lambda: False
+        self.brain = brain
+
+    @property
+    def lives(self) -> int:
+        return len(self.seeds)
+
+    @property
+    def arousals(self) -> list[Any]:
+        """Each life's ``Arousal``, as its lone brain holds it; None for a life composed without
+        arousal."""
+        if self.brains is not None:
+            return [b.arousal for b in self.brains]
+        return list(self._arousals)
+
+    @property
+    def last_arousal(self) -> tuple[Any, ...] | None:
+        """Each life's readings of its latest ``live``, as ``Brain.last_arousal`` reads a lone
+        brain's. On a torch device ``sweeps`` and ``learning_sweeps`` count the batch's sweeps,
+        the work of the moment for all the lives at once."""
+        if self.brains is not None:
+            readings = [b.last_arousal for b in self.brains]
+            return None if any(r is None for r in readings) else tuple(readings)
+        return self._last_arousal
+
+    def _rows(self, observations: Any) -> np.ndarray:
+        x = np.asarray(observations, dtype=float)
+        if x.shape != (self.lives, self.inputs):
+            raise ValueError(f"one row of {self.inputs} observations per life ({self.lives})")
+        return x
+
+    def _each(self, name: str, x: np.ndarray, *rest: Any, **named: Any) -> list[Any]:
+        assert self.brains is not None
+        out = []
+        for i, brain in enumerate(self.brains):
+            args = [None if r is None else np.asarray(r)[i : i + 1] for r in rest]
+            kwargs = {k: None if v is None else np.asarray(v)[i : i + 1]
+                      for k, v in named.items()}
+            out.append(getattr(brain, name)(x[i : i + 1], *args, **kwargs))
+        return out
+
+    def act(self, observations: Any, *, greedy: bool = False) -> np.ndarray:
+        """Each life's action on its own row: ``Brain.act`` life by life."""
+        x = self._rows(observations)
+        if self.brains is not None:
+            return np.concatenate([b.act(x[i : i + 1], greedy=greedy)
+                                   for i, b in enumerate(self.brains)])
+        return np.asarray(self.brain.act(x, greedy=greedy))
+
+    def step(
+        self, observations: Any, *, reward: Any = None, done: Any = None, teacher: Any = None,
+    ) -> np.ndarray:
+        """Each life's ``Brain.step`` on its own row, its own reward, its own ending and, with
+        ``teacher``, its own label taught before the act. A life with no sampled action pending
+        (calm after ``live``) takes no outcome, as its lone brain: a zero reward and no end."""
+        x = self._rows(observations)
+        if self.brains is not None:
+            if reward is None and done is None:
+                return np.concatenate(self._each("step", x, teacher=teacher))
+            held = np.array([b.basal_ganglia._pending is not None for b in self.brains])
+            r, ended = self._outcome(reward, done)
+            _refuse_without_action(held, r, ended)
+            return np.concatenate([
+                b.step(x[i : i + 1], reward=r[i : i + 1] if held[i] else None,
+                       done=ended[i : i + 1] if held[i] else None,
+                       teacher=None if teacher is None else np.asarray(teacher)[i : i + 1])
+                for i, b in enumerate(self.brains)
+            ])
+        if self.brain.basal_ganglia._pending is None and (reward is not None or done is not None):
+            # no life has an action pending: a zero outcome is none, as for each lone brain
+            _refuse_without_action(np.zeros(self.lives, bool), *self._outcome(reward, done))
+            reward = done = None
+        with self._moment_of_lives(x), self._pending_lives(reward, done):
+            return np.asarray(self.brain.step(x, reward=reward, done=done, teacher=teacher))
+
+    def _moment_of_lives(self, x: np.ndarray, rows: np.ndarray | None = None) -> Any:
+        """A moment of the lives ``rows`` marks (every life without it), as ``live``, ``step``
+        and ``learn`` are of a lone brain: once it returns, each of their maturities relaxes and
+        their fading records fade, cued by their own rows of ``x``."""
+        from contextlib import contextmanager
+
+        brain = self.brain
+        store = brain.hippocampus
+        fading = store is not None and bool(store.fade)
+
+        @contextmanager
+        def moment() -> Any:
+            brain._life_depth += 1  # the brain's own moments within it neither relax nor fade
+            try:
+                yield
+            finally:
+                brain._life_depth -= 1
+            if self._maturity is not None:
+                self._maturity.relax(rows)
+            if fading:
+                store._device.fade_moment(brain._fade_key(x), rows)
+
+        return moment()
+
+    def _outcome(self, reward: Any, done: Any) -> tuple[np.ndarray, np.ndarray]:
+        r = np.zeros(self.lives) if reward is None else np.asarray(reward, dtype=float)
+        ended = np.zeros(self.lives, bool) if done is None else np.asarray(done)
+        if r.shape != (self.lives,) or not np.isfinite(r).all():
+            raise ValueError("reward must be one finite value per life")
+        if ended.shape != (self.lives,) or ended.dtype != np.bool_:
+            raise ValueError("done must be one boolean per life")
+        return r, ended
+
+    def _pending_lives(self, reward: Any, done: Any) -> Any:
+        """The outcome of a step or learn after ``live`` left some lives calm: the lives whose
+        sampled action is pending learn, and the calm ones hold their state and eligibility, as
+        their lone brains take no outcome; a calm life takes a zero reward and no end."""
+        from contextlib import nullcontext
+
+        agent = self.brain.basal_ganglia
+        eligible = agent._lives_eligible
+        if agent._pending is None or eligible is None or eligible.all():
+            return nullcontext()
+        r, ended = self._outcome(reward, done)
+        _refuse_without_action(eligible, r, ended)
+        return _Learning(agent, np.asarray(eligible, bool).copy())
+
+    def learn(self, reward: Any, done: Any, next_observations: Any) -> None:
+        """Each life's ``Brain.learn`` from its own outcome. After ``live`` the lives whose
+        sampled action is pending learn and a calm life holds, taking a zero reward and no
+        end."""
+        x = self._rows(next_observations)
+        if self.brains is not None:
+            held = np.array([b.basal_ganglia._pending is not None for b in self.brains])
+            r, ended = self._outcome(reward, done)
+            if held.any():
+                _refuse_without_action(held, r, ended)
+            for i, b in enumerate(self.brains):
+                if held[i] or not held.any():  # with none pending, each refuses as alone
+                    b.learn(r[i : i + 1], ended[i : i + 1], x[i : i + 1])
+            return
+        agent = self.brain.basal_ganglia
+        eligible = agent._lives_eligible
+        rows = None if agent._pending is None or eligible is None else np.asarray(eligible, bool)
+        with self._moment_of_lives(x, rows), self._pending_lives(reward, done):
+            self.brain.learn(reward, done, x)
+
+    def live(self, observations: Any, *, reward: Any = None, done: Any = None) -> np.ndarray:
+        """Each life's ``Brain.live`` on its own row: one moment of every continuing life, each
+        with its own arousal, its own outcome and its own ending. ``reward`` and ``done`` are
+        one value per life and describe each life's preceding action; a life with no preceding
+        action (its first moment, or after an operation other than ``live`` issued no sampled
+        action) takes a zero reward and no ending, and any other is refused with
+        ``RuntimeError`` before anything changes.
+
+        On a torch device every life's moment is one batched moment: the lives whose action was
+        sampled learn from their outcomes while the others hold their state and parameters, the
+        calm lives' eligibility fades and their ended streams start afresh, one qualified settle
+        answers every life (a calm life's forecast is its answer), each life's arousal takes its
+        own outcome on the host, and each life answers greedily or samples at the temperatures
+        its own arousal sets, drawing from its own generator. ``last_arousal`` holds each life's
+        readings. An outcome that a life's arousal refuses leaves the outcomes learned: retry
+        with ``live(observations)``."""
+        x = self._rows(observations)
+        r, ended = self._outcome(reward, done)
+        if any(a is None for a in self.arousals):
+            raise ValueError("live needs arousal genes; compose the lives with arousal=True")
+        if self.brains is not None:
+            takes = np.array([_takes_outcome(b) for b in self.brains])
+            _refuse_without_action(takes, r, ended)
+            return np.concatenate([
+                b.live(x[i : i + 1], reward=r[i : i + 1] if takes[i] else None,
+                       done=ended[i : i + 1] if takes[i] else None)
+                for i, b in enumerate(self.brains)
+            ])
+        with self._moment_of_lives(x):
+            return self._live_batched(x, r, ended)
+
+    def _live_batched(self, x: np.ndarray, r: np.ndarray, ended: np.ndarray) -> np.ndarray:
+        from types import MappingProxyType
+
+        brain = self.brain
+        agent = brain.basal_ganglia
+        learner = brain.learner
+        arousals = self._arousals
+        lives = self.lives
+        lived = self._lived
+        if lived is not None and agent.state is not lived[0]:
+            lived = None  # another operation acted since; the pending action governs
+        pending = agent._pending is not None
+        eligible = agent._lives_eligible
+        sampled = (
+            np.zeros(lives, bool) if not pending
+            else np.ones(lives, bool) if eligible is None else np.asarray(eligible, bool).copy()
+        )
+        routine = np.zeros(lives, bool) if lived is None else (~lived[2] & ~sampled)
+        takes = sampled | routine
+        _refuse_without_action(takes, r, ended)
+        done = ended & takes
+        sweeps = learning_sweeps = 0
+        td = np.zeros(lives)
+        if sampled.any():
+            learning = _Learning(agent, sampled)
+            try:
+                if not sampled.all():  # every life learning is ``learn`` itself
+                    learning.__enter__()
+                    agent._lives_decaying = takes  # a calm life's eligibility fades
+                report = brain.learn(r, done, x)
+            finally:
+                learning.__exit__()
+            self._lived = None  # accepted feedback never becomes pending again
+            brain.last_learning = report
+            learning_sweeps += int(report["free_steps"])
+            td = np.asarray(agent.__dict__["lives_td_error"], dtype=float)
+        elif routine.any():
+            # the calm lives' outcomes: an ended stream starts afresh, from rest, and the credit
+            # of earlier sampled actions fades by one moment
+            if done.any():
+                gone = np.flatnonzero(done)
+                if brain.working_memory is not None:
+                    brain.working_memory.reset(lives, rows=gone)
+                if brain.history is not None:
+                    brain.history.reset(lives, rows=gone)
+                if brain.recall is not None:
+                    brain.recall.reset(lives, rows=gone)
+                kernel = brain.brain._torch
+                warm = agent._free
+                agent._free = BrainState(
+                    None, None, None, warm.steps,  # type: ignore[arg-type]
+                    device=kernel.keep_rows(warm.device, ~done),
+                )
+                brain._begin_episodes(done)
+            agent.fade_rows(routine, done)
+            brain.last_learning = {}
+        answer = brain._settled(x)
+        assert brain._last_settlement is not None
+        sweeps += int(brain._last_settlement["steps"])
+        error = np.zeros(lives)
+        surprise, want = np.zeros(lives), np.zeros(lives)
+        if sampled.any():
+            error[sampled] = np.abs(td[sampled])
+        if routine.any():
+            assert lived is not None
+            following = np.where(ended, 0.0, np.asarray(agent.value(answer[1]), dtype=float))
+            error[routine] = np.abs(
+                r[routine] + agent.config.gamma * following[routine] - lived[1][routine]
+            )
+        own = np.ones(lives, bool) if lived is None else lived[3]
+        held = [a.to_dict() for a in arousals]
+        try:
+            for k in np.flatnonzero(takes):
+                surprise[k], want[k] = arousals[k].outcome(
+                    error[k], r[k], own=bool(own[k]), learned=bool(sampled[k])
+                )
+        except ValueError as exc:
+            for mood, state in zip(arousals, held, strict=True):
+                mood.__dict__.update(type(mood).from_dict(state).__dict__)
+            raise ValueError(
+                "the outcomes were accepted but a life's arousal could not update; "
+                "retry live(observations) without reward or done"
+            ) from exc
+        self._lived = None
+        woken = routine & np.array([a.aroused for a in arousals], dtype=bool)
+        recorded = np.zeros(lives, bool)
+        if woken.any() and brain.hippocampus is not None:
+            # the outcome that woke a calm life is written to its records for the situation it
+            # was chosen in, at its size; the record can change the moment's read, so the woken
+            # lives settle again under it, warm, while every other life holds its answer
+            assert lived is not None
+            record_action(
+                brain.hippocampus, brain._key_of(lived[4], None), lived[5], r,
+                SynapticMemory.salience_vector(np.abs(r), lives), woken,
+                learner.slot_offsets,
+            )
+            recorded = woken
+            agent._free, agent._free_brain, agent._drive = answer[1], brain.brain, answer[0]
+            root = brain.brain._torch.root
+            root._hold_outer = brain.brain._torch.torch.as_tensor(
+                ~woken, device=brain.brain._torch.device
+            )
+            try:
+                answer = brain._settled(x)
+            finally:
+                root._hold_outer = None
+            sweeps += int(brain._last_settlement["steps"])
+        base = float(learner.config.temperature)
+        slots = learner.slot_count
+        aroused = np.array([a.aroused for a in arousals], dtype=bool)
+        temperatures = np.full((lives, slots), base)
+        heated: list[int | None] = [None] * lives
+        rng = agent.rng
+        assert isinstance(rng, _LivesRandom)
+        for k in np.flatnonzero(aroused):
+            temperature = base * arousals[k].heat
+            agent._temperature(temperature)  # validated before any draw
+            temperatures[k] = temperature
+            if temperature > base:
+                slot = int(rng.generators[k].integers(slots)) if slots > 1 else 0
+                heated[k] = slot
+                if slots > 1:
+                    temperatures[k] = base
+                    temperatures[k, slot] = temperature
+        best = np.asarray(brain._greedy(answer[1], brain._placed(x), None))
+        agent._lives_choice = (~aroused, temperatures)
+        try:
+            action = brain._choose(x, *answer, greedy=False, temperature=None, learn_code=False)
+        finally:
+            agent._lives_choice = None
+        state = agent.state
+        if agent._pending is not None:
+            learning_sweeps += int(agent._pending[1].steps) + int(agent._pending[2].steps)
+        chosen = action.reshape(lives, -1) == best.reshape(lives, -1)
+        self._lived = (
+            state, np.asarray(agent.value(state), dtype=float).copy(), aroused, chosen.all(axis=1),
+            x.copy(), np.asarray(action).copy(),
+        )
+        readings = []
+        for i, arousal in enumerate(arousals):
+            temperature = float(base * arousal.heat) if aroused[i] else None
+            readings.append(MappingProxyType({
+                "mode": arousal.mode, "level": float(arousal.level), "error": float(error[i]),
+                "surprise": float(surprise[i]), "want": float(want[i]),
+                "temperature": temperature,
+                "temperatures": None if temperature is None
+                else tuple(float(t) for t in temperatures[i]),
+                "heated_slot": heated[i], "learned": bool(sampled[i]),
+                "recorded": bool(recorded[i]),
+                "sweeps": int(sweeps), "learning_sweeps": int(learning_sweeps),
+            }))
+            arousal.lived(sweeps, learning_sweeps)
+        self._last_arousal = tuple(readings)
+        return np.asarray(action)
+
+    def values(self, observations: Any) -> np.ndarray:
+        """Each life's ``Brain.value`` of its own row: the value a truncated episode of that life
+        bootstraps from, read without changing anything, ``(lives,)``."""
+        x = self._rows(observations)
+        if self.brains is not None:
+            return np.concatenate([b.value(x[i : i + 1]) for i, b in enumerate(self.brains)])
+        return np.asarray(self.brain.value(x), dtype=float)
+
+    def lesson(self, observations: Any, labels: Any) -> None:
+        """Each life's ``Brain.lesson`` of its own label on its own row."""
+        x = self._rows(observations)
+        y = np.asarray(labels)
+        if self.brains is not None:
+            for i, b in enumerate(self.brains):
+                b.lesson(x[i : i + 1], y[i : i + 1])
+            return
+        self.brain.lesson(x, y)
+
+    def reset(self) -> None:
+        """Every life's stream starts afresh, as ``Brain.reset``; what the lives learned stays,
+        and so does each life's arousal."""
+        if self.brains is not None:
+            for brain in self.brains:
+                brain.reset()
+            return
+        self.brain.reset()
+        self._lived = self._last_arousal = None
+
+    def parameters(self, i: int) -> dict[str, Any]:
+        """Life ``i``'s learned parameters on the host, as a lone brain holds them: its
+        ``efficacy`` and ``bias``; the critic's ``w_critic`` and ``b_critic``; the optimizer's
+        ``velocity``, ``velocity_bias``, ``second_moment`` and ``second_moment_bias`` and its
+        counts ``updates`` and ``contrast_updates``; with a recall memory ``recall``, its maps
+        by kind; with carried gains ``carried_gains`` by route, their ``carried_second`` and
+        ``carried_count``; with the store ``store``, its ``consolidated`` records and their
+        ``writes`` (with maturity their ``gate_noise``, with ``memory_fade`` their
+        ``fade_depth`` and ``fade_recent``); with maturity ``maturity_use``."""
+        if self.brains is not None:
+            b = self.brains[i]
+            learner = b.learner
+            out = {
+                "efficacy": np.array(b.brain.efficacy), "bias": np.array(b.brain.bias),
+                "w_critic": np.array(b.basal_ganglia.w_critic),
+                "b_critic": np.array(b.basal_ganglia.b_critic, dtype=float),
+                **{name: np.array(getattr(learner, name)) for name in _MOMENTS},
+                "updates": int(learner.updates),
+                "contrast_updates": int(learner.contrast_updates),
+            }
+            if b.recall is not None:
+                out["recall"] = {
+                    name: tuple(np.array(a) for a in getattr(b.recall, name)[0])
+                    for name in _MAP_KINDS if getattr(b.recall, name)
+                }
+            if b.hearing is not None:
+                out["carried_gains"] = b.hearing.gains()
+                out["carried_second"] = np.array(b.hearing.second, dtype=float)
+                out["carried_count"] = int(b.hearing.count)
+            store: Any = b.hippocampus
+            if store is not None:
+                records: dict[str, Any] = {"consolidated": np.array(store.consolidated),
+                                           "writes": int(store.writes)}
+                if store.gate_noise is not None:
+                    records["gate_noise"] = np.array(store.gate_noise)
+                if store.fade:
+                    records["fade_depth"] = np.array(store.fade_depth)
+                    records["fade_recent"] = np.array(store.fade_recent)
+                out["store"] = records
+            if b.basal_ganglia.maturity is not None:
+                out["maturity_use"] = float(b.basal_ganglia.maturity.use)
+            return out
+        brain = self.brain
+        kernel = brain.brain._torch
+        agent = brain.basal_ganglia
+        learner = brain.learner
+        moments = learner._moments_on_device(kernel)
+        resting = agent._critic_device
+        weights = (resting.xp.host(resting.weights[i]) if resting is not None
+                   else np.asarray(agent.w_critic)[i])
+        out = {
+            "efficacy": kernel.scale[i].detach().cpu().double().numpy(),
+            "bias": kernel.bias_param[i].detach().cpu().double().numpy(),
+            "w_critic": weights, "b_critic": np.asarray(agent.b_critic, dtype=float)[i],
+            **{name: moments[name][i].detach().cpu().double().numpy() for name in _MOMENTS},
+            "updates": int(learner._applied(self.lives)[i]),
+            "contrast_updates": int(learner._counts(self.lives)[i]),
+        }
+        if brain.recall is not None:
+            out["recall"] = brain.recall._device.maps_of(i)
+        if brain.hearing is not None:
+            out["carried_gains"] = brain.hearing.gains_of(i)
+            out["carried_second"] = brain.hearing.lives_second[i].copy()
+            out["carried_count"] = int(brain.hearing.lives_count[i])
+        if brain.hippocampus is not None:
+            out["store"] = brain.hippocampus._device.records_of(i)
+        if self._maturity is not None:
+            out["maturity_use"] = float(self._maturity.use[i])
+        return out
+
+    def life(
+        self, i: int, *, stream: bool = False, backend: str = "cpu", device: str | None = None,
+        precision: str | None = None,
+    ) -> Any:
+        """Life ``i`` as a lone brain: the composition of its seed with its learned parameters,
+        optimizer, critic, recall maps, carried gains, store, maturity, arousal and random
+        state, on the CPU or the ``backend``, ``device`` and ``precision`` named. Its stream
+        starts afresh; with ``stream=True`` it carries life ``i``'s stream as it stands: its
+        activity, its pending sampled action with its eligibility phases, its eligibility
+        traces, its working trace, its recall memory's slots, its store's residual and the
+        record of its last ``live``, so the lone brain continues the life where it stands, its
+        pending outcome included. Save it as any brain."""
+        from .generic import Brain
+
+        if self.brains is not None:
+            return self.brains[i]
+        held = self.parameters(i)
+        place: dict[str, Any] = {"backend": backend}
+        if device is not None:
+            place["device"] = device
+        if precision is not None:
+            place["precision"] = precision
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            lone = Brain.compose(self.inputs, self.actions, seed=self.seeds[i], **place,
+                                 **self._options)
+        lone.learner.brain = lone.learner.brain.with_parameters(
+            efficacy=held["efficacy"], bias=held["bias"]
+        )
+        for name in _MOMENTS:
+            setattr(lone.learner, name, held[name])
+        lone.learner.updates = held["updates"]
+        lone.learner.contrast_updates = held["contrast_updates"]
+        agent = self.brain.basal_ganglia
+        counted = agent.__dict__.get("lives_updates")
+        lone.basal_ganglia.updates = (
+            agent.updates if counted is None else int(counted[i])
+        )
+        lone.basal_ganglia.w_critic = held["w_critic"]
+        lone.basal_ganglia.b_critic = float(held["b_critic"])
+        lone.basal_ganglia.rng.bit_generator.state = (
+            self.brain.basal_ganglia.rng.generators[i].bit_generator.state
+        )
+        if lone.recall is not None:
+            for name, maps in held["recall"].items():
+                setattr(lone.recall, name, [maps])
+        if lone.hearing is not None:
+            for route in lone.hearing.routes:
+                lone.hearing.set(route, held["carried_gains"][route["name"]])
+            lone.hearing.second = held["carried_second"]
+            lone.hearing.count = held["carried_count"]
+        if self._arousals[i] is not None:
+            lone.arousal = type(self._arousals[i]).from_dict(self._arousals[i].to_dict())
+        if "store" in held:
+            store: Any = lone.hippocampus
+            records = held["store"]
+            store.consolidated = records["consolidated"]
+            store.writes = records["writes"]
+            if "gate_noise" in records:
+                store.gate_noise = records["gate_noise"]
+            if "fade_depth" in records:
+                store.fade_depth = records["fade_depth"]
+                store.fade_recent = records["fade_recent"]
+        if "maturity_use" in held:
+            mature = cast(Maturity, lone.basal_ganglia.maturity)
+            mature.use = held["maturity_use"]  # the store's own as well
+        if stream:
+            self._stream_into(i, lone)
+        return lone
+
+    def join(self, i: int, brain: Any) -> None:
+        """Life ``i`` becomes the lone ``brain``: its learned parameters, optimizer, critic,
+        recall maps, carried gains, store, maturity, arousal and random state take life ``i``'s
+        place, and its stream begins afresh there, as after ``brain.reset()``, its store's
+        residual and its arousal kept. A life that left (``life(i)``) rejoins this way, and a
+        finished episode makes room for another life without holding the batch. ``brain`` is a
+        composition of these lives' anatomy and options."""
+        if not 0 <= i < self.lives:
+            raise ValueError(f"life {i} is not one of these {self.lives} lives")
+        if not (np.array_equal(brain.connectome.pre, self._topology.pre)
+                and np.array_equal(brain.connectome.post, self._topology.post)):
+            raise ValueError("a joining brain has the lives' anatomy")
+        for part, present in self._parts.items():
+            if (getattr(brain, part) is not None) != present:
+                raise ValueError(f"a joining brain has the lives' composition: its {part}")
+        if self.brains is not None:
+            self.brains[i] = brain
+            return
+        self._join_batched(i, brain)
+
+    def _join_batched(self, i: int, lone: Any) -> None:
+        brain = self.brain
+        kernel = brain.brain._torch
+        torch = kernel.torch
+        agent, alone = brain.basal_ganglia, lone.basal_ganglia
+        lives = self.lives
+
+        def put(tensor: Any, value: Any) -> Any:
+            out = tensor.clone()
+            out[i] = torch.as_tensor(np.asarray(value, dtype=float), dtype=tensor.dtype,
+                                     device=tensor.device)
+            return out
+
+        graph = lone.learner.brain
+        kernel.set_parameters(put(kernel.scale, graph.efficacy), put(kernel.bias_param, graph.bias))
+        learner, alone_learner = brain.learner, lone.learner
+        held = learner.__dict__.get("_device_moments")
+        for name in _MOMENTS:
+            value = np.asarray(getattr(alone_learner, name), dtype=float)
+            if held is not None and held.get("holder") is kernel:
+                held[name] = put(held[name], value)
+            else:
+                learner.__dict__["_" + name][i] = value
+        learner._counts(lives)[i] = alone_learner.contrast_updates
+        learner._applied(lives)[i] = alone_learner.updates
+        resting = agent._critic_device
+        if resting is not None:
+            resting.weights = put(resting.weights, alone.w_critic)
+        else:
+            agent.w_critic[i] = alone.w_critic
+        agent.b_critic[i] = float(alone.b_critic)
+        counted = agent.__dict__.get("lives_updates")
+        if counted is not None:
+            counted[i] = alone.updates
+        rng = agent.rng
+        assert isinstance(rng, _LivesRandom)
+        rng.generators[i] = np.random.Generator(type(alone.rng.bit_generator)())
+        rng.generators[i].bit_generator.state = alone.rng.bit_generator.state
+        if brain.recall is not None:
+            device = brain.recall._device
+            for name in _MAP_KINDS:
+                maps = getattr(device, name)
+                if maps:
+                    theirs = getattr(lone.recall, name)[0]
+                    setattr(device, name, [tuple(
+                        put(part, theirs[k]) for k, part in enumerate(maps[0])
+                    )])
+        if brain.hearing is not None:
+            hearing, theirs = brain.hearing, lone.hearing
+            for k, route in enumerate(hearing.routes):
+                hearing.lives_gains[i, k] = theirs.gains()[route["name"]]
+            hearing.lives_second[i] = np.asarray(theirs.second, dtype=float)
+            hearing.lives_count[i] = int(theirs.count)
+            hearing._place()
+        if brain.hippocampus is not None:
+            store, records = brain.hippocampus._device, lone.hippocampus
+            store.consolidated = put(store.consolidated, records.consolidated)
+            residual = np.asarray(records.strength)
+            store.strength = put(store.strength, residual[0] if len(residual) == 1
+                                 else records.consolidated)
+            store.mass = put(store.mass, records.mass[0] if len(records.mass) == 1 else 0.0)
+            store.writes[i] = records.writes
+            if store.noise is not None:
+                store.noise = put(store.noise, records.gate_noise)
+            if store.fade:
+                store.depth = put(store.depth, records.fade_depth)
+                store.recent = put(store.recent, records.fade_recent)
+        if self._maturity is not None:
+            self._maturity.use[i] = float(alone.maturity.use)
+        if self._arousals[i] is not None:
+            self._arousals[i] = type(lone.arousal).from_dict(lone.arousal.to_dict())
+        self._fresh_row(i)
+
+    def _fresh_row(self, i: int) -> None:
+        """Life ``i``'s stream begins afresh: its activity at rest, no pending action and no
+        eligibility, its working trace and its recall memory's slots empty, no record of a
+        ``live``; every other life's stream as it stands."""
+        brain = self.brain
+        agent = brain.basal_ganglia
+        lives = self.lives
+        gone = np.zeros(lives, bool)
+        gone[i] = True
+        kernel = brain.brain._torch
+        free = agent._free
+        lived = self._lived
+        current = lived is not None and lived[0] is free  # the record of the last ``live``
+        if free is not None and free.device is not None:
+            agent._free = BrainState(
+                None, None, None, free.steps,  # type: ignore[arg-type]
+                device=kernel.keep_rows(free.device, ~gone),
+            )
+        if agent._pending is not None:
+            eligible = agent._lives_eligible
+            eligible = np.ones(lives, bool) if eligible is None else np.array(eligible, bool)
+            eligible[i] = False
+            agent._lives_eligible = eligible
+        agent.fade_rows(np.zeros(lives, bool), gone)  # its eligibility forgotten
+        if brain.working_memory is not None:
+            brain.working_memory.reset(lives, rows=np.array([i]))
+        if brain.history is not None:
+            brain.history.reset(lives, rows=np.array([i]))
+        if brain.recall is not None:
+            brain.recall.reset(lives, rows=np.array([i]))
+        if lived is not None and current:  # its record of the last ``live`` is none
+            aroused = np.array(lived[2], bool)
+            aroused[i] = True  # with no pending action an aroused record takes no outcome
+            self._lived = (agent._free, lived[1], aroused, *lived[3:])
+
+    def _stream_into(self, i: int, lone: Any) -> None:
+        """Life ``i``'s stream as it stands, into the lone brain ``lone`` on the host."""
+        brain = self.brain
+        agent, alone = brain.basal_ganglia, lone.basal_ganglia
+        host = arrays_of(brain.brain._torch).host
+
+        def row(value: Any) -> Any:
+            if value is None:
+                return None
+            if isinstance(value, np.ndarray):
+                return np.array(value[i : i + 1])
+            return host(value[i : i + 1])
+
+        def state(held: Any) -> BrainState | None:
+            if held is None:
+                return None
+            handle = held.device
+            if handle is None:
+                return BrainState(row(held.v), row(held.activation), row(held.adaptation),
+                                  held.steps)
+            return BrainState(row(handle["v"]), row(handle["s"]), row(handle["a"]), held.steps)
+
+        free = state(agent._free)
+        # the drive the free state was settled for, which a checkpoint of a pending action keeps
+        alone._free, alone._free_brain, alone._drive = free, lone.learner.brain, row(agent._drive)
+        eligible = agent._lives_eligible
+        pending = agent._pending
+        if pending is not None and (eligible is None or eligible[i]):
+            _, plus, minus, value = pending
+            alone._pending = ("states", state(plus), state(minus), row(np.asarray(value)))
+            alone._pending_memory = row(agent._pending_memory)
+            alone._pending_hearing = row(agent._pending_hearing)
+        if agent._trace_device is not None:
+            alone.trace, alone.trace_bias = (row(part) for part in agent._trace_device)
+        critic = agent._critic_device
+        traced = critic.trace if critic is not None else agent.trace_critic
+        alone.trace_critic = row(traced)
+        alone.trace_memory = row(agent.trace_memory)
+        alone.trace_hearing = row(agent.trace_hearing)
+        trace = brain.working_memory
+        if trace is not None:
+            held = trace.__dict__.get("_device")
+            source = held if held is not None else trace
+            lone.working_memory.trace = row(source.trace)
+            lone.working_memory.last = row(source.last)
+            lone.working_memory.cold = np.array(trace.cold[i : i + 1])
+        if brain.history is not None:
+            lone.history.trace = np.array(brain.history.trace[i : i + 1])
+        recall = brain.recall
+        if recall is not None:
+            snapshot = recall._device.snapshot()
+            mine = {name: row(value) if len(value) else np.array(value)
+                    for name, value in snapshot.items()}
+            for name in ("told", "focus"):
+                mine[name] = mine[name].astype(np.int64)
+            slots = int(np.asarray(mine["held"]).shape[1])
+            kept = slots - int(np.argmax(mine["held"][0])) if mine["held"][0].any() else 0
+            for name in ("keys", "values", "nexts", "held"):  # the life's own slots, the last
+                mine[name] = mine[name][:, slots - kept :]
+            lone.recall.restore(mine)
+            lone.recall.writes = int(recall.writes) // self.lives
+        store = brain.hippocampus
+        if store is not None:
+            lone.hippocampus.strength = row(store._device.strength)
+            lone.hippocampus.mass = row(store._device.mass)
+        moment = brain._moment
+        if moment is not None:
+            lone._moment = (row(moment[0]), row(moment[1]))
+        lived = self._lived
+        if lived is not None and agent.state is lived[0] and free is not None:
+            lone._lived = (row(lived[4]), row(lived[5]), float(lived[1][i]), bool(lived[2][i]),
+                           free, bool(lived[3][i]), None)

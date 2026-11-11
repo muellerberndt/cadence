@@ -1,0 +1,99 @@
+{
+  "schema": "cadence.local-equilibrium-grammar-protocol/v2-longer-training",
+  "frozen_before_training": true,
+  "task": "Main-clause subject/verb number agreement with an intervening prepositional-phrase distractor noun",
+  "vocabulary": {
+    "subjects": [
+      "pilot",
+      "pilots",
+      "sailor",
+      "sailors"
+    ],
+    "distractors": [
+      "guard",
+      "guards",
+      "farmer",
+      "farmers"
+    ],
+    "verbs": [
+      "smiles",
+      "smile"
+    ]
+  },
+  "surface_template": "the SUBJECT near the DISTRACTOR VERB",
+  "target": "grammatical iff subject_index modulo 2 equals verb_index",
+  "features": "Concatenated role-specific one-hot tokens: 4 subject + 4 distractor + 2 verb. Input drive is twice the feature vector; no target-derived feature.",
+  "heldout_subject_distractor_pairs": [
+    [
+      0,
+      0
+    ],
+    [
+      1,
+      2
+    ],
+    [
+      2,
+      1
+    ],
+    [
+      3,
+      3
+    ]
+  ],
+  "split": "Hold out both verb forms for the four specified subject/distractor pairs (8 sentences); train on the other 24. Every token and both classes occur in each partition. Two held-out noun pairs agree in number and two conflict. Every subject/verb pairing has been seen with other distractors; the test checks novel distractor-combination invariance, not an unseen agreement rule. Never tune using held-out results.",
+  "seeds": [
+    5,
+    6,
+    7,
+    8,
+    9
+  ],
+  "arms": [
+    "local_centered",
+    "exact_implicit",
+    "frozen_no_nudge",
+    "linear_logistic"
+  ],
+  "hidden": 12,
+  "neuron_model": {
+    "dt": 0.5,
+    "slope": 1.0,
+    "threshold": 0.0,
+    "leak": 1.0,
+    "gain": 0.5
+  },
+  "initial_effective_source_std": 0.5,
+  "initial_effective_reciprocal_std": 0.1,
+  "initial_hidden_bias_std": 0.2,
+  "temperature": 0.2,
+  "beta": 0.03,
+  "eta": 1.0,
+  "eta_bias": 1.0,
+  "efficacy_cap": 8.0,
+  "updates": 8000,
+  "batch": "All 24 training sentences in fixed order per update, identical for all learning arms",
+  "free_reciprocal_row_mass_cap": 1.5,
+  "projection": "After each learned update, uniformly scale reciprocal hidden/output efficacy only if its effective incoming free/free row mass exceeds 1.5; both neural learning arms share this constraint. Input-source efficacies retain the same per-efficacy cap.",
+  "solve": {
+    "budget": 1024,
+    "chunk": 32,
+    "tolerance": 1e-10
+  },
+  "exact_baseline": "Implicit derivative of converged same-network equilibrium by solving its free-state Jacobian transpose; multiply endpoint contributions by contact/gain factor. Apply the same efficacy preconditioner 1/contact_factor and the same clipping and projection as local updates. Loss convention is temperature times cross-entropy.",
+  "linear_baseline": "Two-class affine logits on identical one-hot features, zero initialization, full-batch cross-entropy gradient, learning rate 1 for 8000 updates",
+  "gradient_audit": "For every seed before learning, central finite differences of first/middle/last source efficacy, first/middle/last reciprocal physical efficacy pairs and three trainable biases (epsilon 1e-5), independent of implicit derivative. Also compare beta-halved local contrast with implicit derivative using contact factors and temperature convention.",
+  "acceptance": "Every used free and detuned phase must have residual at most 1e-10; failures terminate that seed/arm and remain in receipt. Local signal must arise only from public Learner.contrast/update of actual equilibria. Report every arm/seed; no seed removal or update-budget extension after seeing evaluation.",
+  "evaluation": "Initial/final train and final-only held-out cross-entropy and accuracy, wrong sentences, all phase residual maxima, total solve steps, parameter count, wall seconds, library/protocol/source digests. Local headline support requires all 5 seeds beat both frozen and linear held-out accuracy with at least 0.875 held-out accuracy, and the same-model exact baseline reaching that threshold in all 5 seeds. Otherwise report failure/inconclusive without retuning. Eight test sentences permit descriptive results only, not a broad statistical generalization claim.",
+  "scope": "Small one-moment nonlinear finite-grammar judgment under supplied role coding and fixed architecture. No temporal-credit, word-token discovery, scale, biological, or superiority claim. Architecture and hyperparameters are declared experimental controls, not evolved results. Artifacts stay below 100 MB.",
+  "followup_provenance": {
+    "initial_protocol_sha256": "1ddcd7909ac6f8d32997f6591bad3d37a287a06e2168fae27f55bcd3059295f6",
+    "initial_producer_sha256": "17e95341a207ef9faaf86b287785bbb6aa27bdc0226d5cfad9b78c7f261c6a53",
+    "rationale": "Initial 800-update experiment missed robust criterion and retained substantial training error. This adaptive follow-up varies only training budget and fresh seeds; it is not an independently selected task or a relabeled confirmatory result. No further tuning or extension if it misses the criterion.",
+    "changes": [
+      "Fresh fixed seeds 5 through 9",
+      "8000 full-batch updates",
+      "Only training scores at initialization; held-out scores only after final update"
+    ]
+  }
+}

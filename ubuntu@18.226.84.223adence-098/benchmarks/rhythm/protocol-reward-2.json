@@ -1,0 +1,102 @@
+{
+  "schema": "steady-rhythm-reward/2",
+  "question": "Can one continuing Brain.live life learn to alternate two actions under identical drive from the world's reward alone, with no teacher, when the only state that can carry the beat is the copy of its own last command? Measured against the same brain without the copy, the copy on the composed reward defaults, an always-learning loop, zero eligibility decay, a frozen brain, a tabular learner given the same one bit, and uniform random.",
+  "world": {
+    "observation": "the frozen input module's drive event (coordinate 0 at 1.0) at every moment; pause events are all zeros and a distractor event sets coordinate 1 alone, in the disturbance forks only",
+    "reward": {
+      "alternate": 1.0,
+      "repeat": 0.0
+    },
+    "payment": "the outcome of the preceding action, paid at the next moment through live(x, reward=[r], done=[False]); the first step of a life earns repeat; a refused answer is a missed step that earns repeat",
+    "no_teacher": "no label, clock, phase or previous action enters any observation"
+  },
+  "life": {
+    "moments": 600,
+    "block": 100,
+    "window": 64,
+    "probe_at": 400,
+    "greedy_probe": 32,
+    "continuation": 64,
+    "disturbances": {
+      "pre": 8,
+      "post": 32,
+      "pauses": [
+        1,
+        2,
+        4
+      ]
+    },
+    "note": "the scored window is the last 64 moments of the 600-moment life, still paid; the probe checkpoint at moment 400 holds the last action awaiting its outcome and feeds the greedy probe, the continuing twin and the disturbance forks"
+  },
+  "operating_point": {
+    "modules": [
+      32
+    ],
+    "trace_amplitude": 0.3,
+    "trace_decay": 0.1,
+    "efference_amplitude": 3.0,
+    "efference_decay": 0.0,
+    "eta": 0.1,
+    "lam": 0.0,
+    "gamma": 0.95,
+    "eta_critic": 5.0,
+    "note": "reward/1's point (the key-door nursery's: trace 0.3, eta 0.1, lam 0.95, gamma 0.95, eta_critic 5.0, eta_bias eta/10) with the eligibility decay at 0: the world pays a step at the next moment, so the credit for it belongs to that step alone; under lam 0.95 the credit smeared over earlier steps and two of five fresh founders of reward/1 settled into a limp of two changed steps in three. lambda_control runs the same brain at lam 0.95, reward/1's point; defaults keeps the composed ActorCriticConfig; nocopy the same point without the copy",
+    "lam_control": 0.95
+  },
+  "arousal": {
+    "threshold": 0.2,
+    "decay": 0.9,
+    "tolerance": 2.0,
+    "floor": 0.1,
+    "fast": 0.05,
+    "slow": 0.005,
+    "heat": 2.0,
+    "youth": 100,
+    "value_surprise": 1.0,
+    "record_surprise": 0.0,
+    "need": 0.5,
+    "note": "the key-door nursery's arousal genes with youth 100 moments and need 0.5, half the income of a perfect walker; need 0 is a development variant"
+  },
+  "tabular": {
+    "alpha": 0.5,
+    "epsilon": 0.1,
+    "gamma": 0.95
+  },
+  "seeds": {
+    "development": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "confirmation": [
+      401,
+      402,
+      403,
+      404,
+      405
+    ]
+  },
+  "gates": {
+    "window_alternation": 0.9,
+    "greedy_alternation": 0.9,
+    "window_aroused": 0.1,
+    "share": 4,
+    "statement": "over the confirmation founders of the live arm, at least share of five have LEARNED the beat: they alternate in at least window_alternation of the last 64 moments while the same founder's frozen arm, the greedy founder without learning, alternates below window_alternation (a founder with the beat from birth is counted but not credited); their greedy probe alternates in at least greedy_alternation of its 32 acts; they spend at most window_aroused of the last 64 moments aroused; and their twin continues identically. Every founder stays in the denominator and every other arm is reported"
+  },
+  "policy": {
+    "selection": "the operating point and the need gene are selected on the development seeds only; the confirmation seeds are fresh; no default changes; the copy is a gene with zero as its control",
+    "refusal": "a refused answer is a missed step: no action, the world pays repeat, the life continues",
+    "denominator": "every planned founder stays in the denominator"
+  },
+  "development": "selected on development seeds 0-5 with every arm run (results/development-reward-*.json.gz): at this point (need 0.5, youth 100, working trace 0.3) the live arm alternates in 1.00 of the window on all six founders, is calm, its greedy probe alternates at 1.00 and every twin continues identically; need 0 gives the same six passes while the brain without the copy calms into holding one action (0.02, aroused 0.03); youth 0 (born calm) leaves three of six founders in a limp of two changed steps in three (0.67), paid above the need and so never roused; working trace 3.0, the supervised chamber's recipe, degrades every learning arm (live 0.62). The composed reward defaults reach 0.82 with the copy; the always-learning step loop reaches 0.98 while aroused at every moment; zero eligibility decay reaches 1.00 at this delay of one; the frozen founder holds (0.00); the tabular learner given the last action reaches 0.95; uniform random 0.50. reward/1's confirmation on seeds 301-305 (results/confirmation-reward-2026-10-08.json.gz) failed its gate: live 3/5 at 1.00, of which seed 302 had the beat from birth (frozen 1.00), seeds 304 and 305 limped (0.67, two changed steps in three, calm); the eligibility-0 arm reached 1.00 on all five, the composed defaults 4/5, the frozen founders 2/5 from birth. Second-freeze candidates on development seeds 0-5 (results/development-reward-need09.json.gz, -lam0, -need09lam0): need 0.9, eligibility 0 and both each give live 1.00 on all six founders, calm, with frozen 0.00, as need 0.5 did; development does not discriminate, the fresh seeds did. reward/2 declares eligibility 0 at need 0.5 with lam 0.95 as the control arm.",
+  "history": {
+    "reward/1": {
+      "protocol_sha256": "f78c3f81f0c5d22c980d3e650042d04c376ea6b11bea0e24fc9bd00a184cddef",
+      "receipt": "results/confirmation-reward-2026-10-08.json.gz",
+      "outcome": "gate failed: 3/5 acquired (one innate), 2/5 limped"
+    }
+  }
+}

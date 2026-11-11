@@ -1,0 +1,138 @@
+[
+  {
+    "case": "tumbler-103",
+    "sampled_outcomes": 678,
+    "routine_outcomes": 346,
+    "routine_negative": 176,
+    "routine_below_need": 207,
+    "wakes": 20,
+    "negative_wakes": 17,
+    "cap_share": 0.0029498525073746312,
+    "sampled_reward": 0.07341197810830614,
+    "routine_reward": 0.0018052288398592085,
+    "sampled_td": 0.005378703096891582,
+    "routine_td": -0.2105177855474391,
+    "composed_default_critic": {
+      "eta": 0.3,
+      "sampled_td": {
+        "n": 678,
+        "mean": -0.011826804135668568,
+        "std": 0.353963467180245,
+        "min": -1.005663331725494,
+        "median": 0.0021248788313681377,
+        "max": 1.0246800703076926
+      },
+      "routine_td": {
+        "n": 346,
+        "mean": -0.05528547569562822,
+        "std": 0.3238541624559624,
+        "min": -0.7641446570770869,
+        "median": -0.08215606688894776,
+        "max": 3.972429519086701
+      },
+      "replication_max_error": 0.0
+    }
+  },
+  {
+    "case": "tumbler-102",
+    "sampled_outcomes": 789,
+    "routine_outcomes": 235,
+    "routine_negative": 58.0,
+    "routine_below_need": 120.0,
+    "wakes": 4,
+    "negative_wakes": 3,
+    "cap_share": 0.0076045627376425855,
+    "sampled_reward": -0.0004905061958922653,
+    "routine_reward": 0.17333318971334266,
+    "sampled_td": -0.002524078746989043,
+    "routine_td": 0.0447963738559339,
+    "composed_default_critic": {
+      "eta": 0.3,
+      "sampled_td": {
+        "n": 789,
+        "mean": -0.07876765574301639,
+        "std": 0.31665392243997226,
+        "min": -1.787082079112273,
+        "median": -0.0988292281476173,
+        "max": 1.3566058252065738
+      },
+      "routine_td": {
+        "n": 235,
+        "mean": 0.1642420217488538,
+        "std": 0.32956369114536244,
+        "min": -0.611492911361506,
+        "median": 0.1422134223905669,
+        "max": 1.4095578812525513
+      },
+      "replication_max_error": 0.0
+    }
+  },
+  {
+    "case": "mantis-202",
+    "sampled_outcomes": 611,
+    "routine_outcomes": 413,
+    "routine_negative": 82.0,
+    "routine_below_need": 129.0,
+    "wakes": 7,
+    "negative_wakes": 6,
+    "cap_share": 0.006546644844517185,
+    "sampled_reward": -0.031874265748084336,
+    "routine_reward": 0.19678636335755534,
+    "sampled_td": 0.007863177852386001,
+    "routine_td": 0.03860250138538165,
+    "composed_default_critic": {
+      "eta": 0.3,
+      "sampled_td": {
+        "n": 611,
+        "mean": 0.057089632691645575,
+        "std": 0.23323972903121365,
+        "min": -1.301331096930747,
+        "median": 0.0497885103338187,
+        "max": 0.7347501898242783
+      },
+      "routine_td": {
+        "n": 413,
+        "mean": 0.24020417739622535,
+        "std": 0.2140496311764014,
+        "min": -0.4277573198006719,
+        "median": 0.2637322832126945,
+        "max": 0.7656441905152245
+      },
+      "replication_max_error": 0.0
+    }
+  },
+  {
+    "case": "mantis-201",
+    "sampled_outcomes": 541,
+    "routine_outcomes": 483,
+    "routine_negative": 89.0,
+    "routine_below_need": 164.0,
+    "wakes": 5,
+    "negative_wakes": 1,
+    "cap_share": 0.0036968576709796672,
+    "sampled_reward": 0.02504916660323941,
+    "routine_reward": 0.19922550575658152,
+    "sampled_td": 0.0008612559615455085,
+    "routine_td": 0.09200453875691622,
+    "composed_default_critic": {
+      "eta": 0.3,
+      "sampled_td": {
+        "n": 541,
+        "mean": -0.02078909900801169,
+        "std": 0.17166587234151007,
+        "min": -0.6803678558901747,
+        "median": -0.03877861774554392,
+        "max": 1.760956213704566
+      },
+      "routine_td": {
+        "n": 483,
+        "mean": 0.15479178088743029,
+        "std": 0.2228785855081771,
+        "min": -0.3102500664278607,
+        "median": 0.1489512056834209,
+        "max": 0.7711007307585332
+      },
+      "replication_max_error": 0.0
+    }
+  }
+]

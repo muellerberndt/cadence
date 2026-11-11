@@ -1,0 +1,28 @@
+{
+  "schema": "native-history/1",
+  "scope": "One voice, period four; this does not close issue 140 or establish C64 generation.",
+  "pattern": {"period": 4, "inputs": 3, "actions": 2},
+  "teaching": {"rows": 256, "passes": 24, "phase": 0, "policy": "wrong or refused answer only; cold local teacher on the same pre-act drive"},
+  "play": {"prime": 16, "rows": 64, "phases": [0, 1, 2, 3]},
+  "recipe": {
+    "modules": [32], "lateral": 0.0, "resting_bias": 0.5,
+    "trace_amplitude": 3.0, "trace_decay": 0.2,
+    "learning": {"eta": 0.01, "eta_bias": 0.001, "normalize": 0.99, "normalize_floor": 0.0001,
+                 "tolerance": 0.001, "free_steps": 200, "nudged_steps": 50}
+  },
+  "history": {
+    "source": "sensory", "target": "prefrontal/sensory_history", "width": 3,
+    "placement": "first three coordinates of the existing 32-wide prefrontal region; no projection rescaling",
+    "ownership": "native Trace updates settled sensory activation once after each issued act; present act reads history through the preceding event; labels never write the trace",
+    "original_control": "association source, all 32 original prefrontal coordinates, same amplitude and decay",
+    "lesion": "after every prime and loop act, zero only sensory-history coordinates zero and one; retain constant-coordinate two exactly"
+  },
+  "seeds": {"screen": [0, 1], "development": [0, 1, 2, 3, 4, 5], "confirmation": [1601, 1602, 1603, 1604, 1605]},
+  "gates": {"agreement_strictly_above": 0.8, "onset_min": 0.2, "onset_max": 0.3,
+            "development_passes": 5, "confirmation_passes": 4,
+            "every_prime": "must beat matched untaught, event-only lesion, and every other phase continuation",
+            "preservation": "all planned founders must pass imagination isolation, pending next-learning continuation and restored outputs; candidate, untaught, lesion and restored controls permit no refused act/lesson or exhausted teaching phase; preservation diagnostic sampled actions, eligibility, feedback and imagination must stay below their declared budgets",
+            "association_control": "old-recipe scores, refusals, phase exhaustion and exceptions are reported independently; they do not veto candidate admission or erase acquired candidate evidence"},
+  "admission": "Full mode runs confirmation only after at least five of all six development founders pass, with every development preservation check passing. Missing/failed founders remain in denominators.",
+  "selection": "Trace source was selected on development evidence. Decay 0.2 retains the original timescale; no runtime default changes. Repeating seeds 1601-1605 is a reproduction of the recorded confirmation, not new fresh evidence."
+}

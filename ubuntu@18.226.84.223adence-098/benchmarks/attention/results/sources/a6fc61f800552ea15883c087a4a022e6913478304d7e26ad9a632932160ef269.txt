@@ -1,0 +1,35 @@
+{
+  "schema": "cadence-attention-acquisition-repair/1",
+  "scope": "Exposed-fact acquisition/content-use control, not learned memory selection or an integrated life.",
+  "baseline": "22f4894ab65a69fdaa94f2233af922c949cf72de",
+  "development_seeds": [0, 1],
+  "confirmation_seeds": [100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119],
+  "rounds": 512,
+  "neutral_events": 1,
+  "training_seconds_per_arm": 60,
+  "total_seconds": 600,
+  "acquisition_floor": 0.95,
+  "confirmation_required": 20,
+  "maximum_recipes": 2,
+  "recipes": [
+    {
+      "name": "normalized-qualified",
+      "brain": {"modules": [32], "episodic": false, "teaching": "normalized", "learning_qualified": true, "learning_damping": 0, "learning_free_steps": 1024, "learning_nudged_steps": 1024},
+      "dt": 0.1,
+      "reason": "Keep the failed longer-budget point fixed; compare teaching all rows versus wrong rows from the complete pre-query drive. Both arms act before teaching. This isolates the existing mismatch gate without a gradient, architecture or solver change."
+    },
+    {
+      "name": "historical-founder",
+      "brain": {"modules": [32], "episodic": false, "teaching": "founder", "lateral": -0.5},
+      "dt": 1.0,
+      "reason": "Only if the first recipe fails development: restore the existing acquisition_controls.py surprise recipe and its historical two-action operating point. Finite teaching is explicit, with free1024/nudged12; zero refusals do not certify teaching residuals. Explicit -0.5 is a historical control, not a default proposal."
+    }
+  ],
+  "teaching": "The existing acquisition_controls.py corrected schedule: capture every stream's complete stimulus BEFORE the query act, act greedily, then teach every row (control) or only incorrectly answered rows (candidate) from those saved drive rows. No post-update query act. No-wrong rounds teach nothing. Teacher labels only the current query; no fabricated rewards, slot addresses or relevance masks.",
+  "data": "Reuse selective_recall.CASES and inputs(exposed=True): both unselected facts, both queries, both orders, all sixteen cases each round. Same SeedSequence([31014, founder]) permutations for both teaching policies. Transient state resets between trials; the same parameters persist. All cases are trained, so no novel binding or semantic-code claim.",
+  "selection": "Compare every and wrong on both development founders, with identical initial checkpoints/settings. Prefer normalized-qualified if BOTH wrong-policy founders pass. Run historical-founder only if it fails. Choose no later recipe after the first passing one. Confirmation runs the chosen wrong policy only; fresh founder seeds are not new fact combinations. No tuning after opening confirmation.",
+  "gate": "Training must complete and both intact and trace-erased evaluation must complete without answer refusals. Intact overall, unequal-fact and EACH query accuracy must reach the unchanged 0.95 floor. Every refused/unrun case remains in the denominator. All20 confirmation founders must pass; positive mean improvement over their frozen initial checkpoints is reported separately.",
+  "controls": "Matched every-row teaching in development, frozen initial checkpoint for each life, and a separately seeded uniform-random policy. Report final acquired checkpoints, never best-of-training readings. No production defaults change.",
+  "custody": "Evaluate from saved forks and check the acquired checkpoint is unchanged. Keep complete source/protocol/schedule hashes, actual decisions, all attempted teacher/answer work, refused cases and checkpoint content digests. Preserve the earlier attention and relevance protocols/failed receipts byte-for-byte.",
+  "budget": "One local run at a time. Development and confirmation share600 host seconds; each training arm has at most60. Check deadlines between bounded trials; bounded initial/final evaluation follows and is charged separately. No cloud campaign. Solver counters and host seconds are not physical energy."
+}

@@ -1,0 +1,33 @@
+{
+  "status": "Existing memory semantics approved for the proposed paired acquired-life control; actual harness review pending.",
+  "source_commit": "750c8ef45b17ba052279584e49c685ff3d169a82",
+  "source_files_sha256": {
+    "src/cadence/generic.py": "8be99f90b9341332be2957ea5a060eed397ad602cbdefe3fdd1b5ec62ed8f114",
+    "src/cadence/memory.py": "e1665d6d315fd3d4e79c38c8820708d72af1ee603c6ad26a614fcf97b19b11c1",
+    "src/cadence/stream.py": "4c669b6540a81aa9acad90e143274f4461646abdd6ebb909b7a4c9a277420153",
+    "docs/memory.md": "94573c68b9df07d4dd23f9a960aaa8d039b9a3f0f235b0ce06fd95f3be464920",
+    "tests/test_memory.py": "ae2b711430a184fc06a636255c4bd74adeec0fe1e9bbd9e10c1209ce1961347a",
+    "tests/test_generic_memory_checkpoint.py": "1039de63ed064c2ba96b4c9f5e29a6b635263a96fe890ed541964de4be102f71",
+    "tests/test_feedback_transaction.py": "109d007352df3fb2ebe72d89263ad507de4710c1da4d8959397ee38d93a43df7",
+    "tests/test_live_audit.py": "fcf172c02a794660937b5464d2c1f90ab76d2c456c4720ea3dd3f0d17dda2f00"
+  },
+  "candidate": "On a private Brain.load of each original checkpoint, attach SynapticMemory(brain.sensory_index, brain.motor_index, consolidation=0.05); control retains hippocampus=None. No other configuration, state or history changes.",
+  "findings": [
+    "Exactly matches existing Brain constructor episodic=True pathway. New matrix is empty and writes=0; this restores a supported component, not a new learning mechanism.",
+    "Brain._record keys the original observation and writes actual delivered scalar reward at each executed motor slot index. value_mask excludes all unchosen alternatives. A row is counted once, although all chosen slot components receive the shared outcome.",
+    "Active sampled outcomes record through Brain.learn; the outcome waking a routine brain is recorded once through Brain.live. Accepted-feedback/answer-refusal retry does not restore the pending outcome; bootstrap refusal restores memory arrays and separator state.",
+    "FastSynapses.recall is read-only; SynapticMemory decays residuals only during observation. Retrieval supplies motor drive before full graph qualification, not an external answer or override.",
+    "Brain.reset retains fast and consolidated associative memory, although it resets live trace/arousal/pending action. A continuing acquired-life arm should not reset. A private frozen evaluation may use its prescribed reset, but must not call hippocampus.reset unless explicitly testing loss of fast memory.",
+    "FrozenPolicy.act(greedy=True) reads memory and evolves private working trace without new reward writes. predict/accuracy bypass memory and are unsuitable substitutes for this retrieval control.",
+    "Attaching empty memory before the real pending outcome preserves that outcome and may record it as the first actual write. Do not replay earlier rewards or manufacture past records; do not recompute the prior saved record forecast.",
+    "Memory remains a finite cue-to-per-slot outcome association. It does not identify individual motor causal contributions or store a joint-action value table, and correlated cues may interfere. Behavioral success must still be measured."
+  ],
+  "harness_conditions": [
+    "Exact initial checkpoint identity except added empty memory arrays and its metadata",
+    "Preserve full actor/critic/RNG/working trace/arousal/pending state and serialized arena world/wrapper owed",
+    "Fixed corrected physics in both arms",
+    "Frozen evaluation uses private copies and preserves learned associative state",
+    "Record all real writes, refusals, actual work and unfavorable comparisons"
+  ],
+  "validation": "Read-only source and existing-test review; no new tests or arena trials run by this reviewer."
+}

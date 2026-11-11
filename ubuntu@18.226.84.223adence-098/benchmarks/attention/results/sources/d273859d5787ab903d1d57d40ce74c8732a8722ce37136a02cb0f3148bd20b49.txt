@@ -1,0 +1,66 @@
+{
+  "schema": "cadence-attention-heads-continuation/1",
+  "declared_date": "2026-10-22",
+  "scope": "Finish the same two H2 founders' original 512-round agreement recipe from verified round-boundary research arrays. This is not a Brain checkpoint or continuing-life claim. Preserve the original negative ten-cell comparison.",
+  "base_protocol_file": "heads-founder-extended-protocol.json",
+  "parent_relevance_file": "heads-relevance-founder-extended.json",
+  "parent_relevance_digest": "7088d8b9c0141cb530c90d4c1f4624bbb26d306e8525e20d846b82b105085632",
+  "capacity_file": "founder-capacity-extended.json",
+  "capacity_digest": "a01c16e913596b4150e549ee1fd49142ce19d794b216af62ae080bba4d777876",
+  "parent_relevance_host_seconds": 2337.21673446132,
+  "intervening_diagnostic": {
+    "file": "heads-h1-boundary-diagnostic.json",
+    "kind": "cadence-attention-heads-boundary-diagnostic/1",
+    "digest": "732e09550998879d192e5e93b9c4fa12a1fd2b25dbf852ef6932a9a71637d27b",
+    "archive_sha256": "94af93165b90b275f63dde4675629decf5c870cf7330a2be96978724479c0f4e",
+    "helper_sha256": "b17935d62c9c8642cb1e5d3cf5fb5622b723718d2f1cf3d5d2c44729bb206719",
+    "elapsed_host_seconds": 0.8596524170134217
+  },
+  "previous_host_seconds": 2338.0763868783333,
+  "points": [
+    {
+      "arm": "h2",
+      "seed": 0,
+      "completed_rounds": 321,
+      "remaining_rounds": 191,
+      "metadata_sha256": "4de88c66519ed7280a48d3d15818d62245e1dc6a1824adc656c23db06734ae41",
+      "restored_state_sha256": "5df7f3b6dd772b94cfeb4e1676a4cbc11537117d769077e7c5cfae9398cba371"
+    },
+    {
+      "arm": "h2",
+      "seed": 1,
+      "completed_rounds": 289,
+      "remaining_rounds": 223,
+      "metadata_sha256": "5b8841014237c3ccf9e940bc5fd928178c35092d333d8b54ec5e2142595f690c",
+      "restored_state_sha256": "e47ebf87c69750779c3ba470dee48a1093bdaf4bbf22c1b364f88fdbb10ec3d8"
+    }
+  ],
+  "restoration": {
+    "arrays": [
+      "efficacy",
+      "bias",
+      "log_gain",
+      "optimizer_velocity",
+      "optimizer_velocity_bias",
+      "optimizer_second_moment",
+      "optimizer_second_moment_bias"
+    ],
+    "counters": [
+      "updates",
+      "contrast_updates"
+    ],
+    "custody": "Verify parent receipts/current exact runtime sources, NPZ archive+content digests, complete metadata config/source/revision, newborn parameter/interface digests and restored final parameter digest. Restore every optimizer array/counter without another update.",
+    "domain": "Every training round resets the brain first. Raw observations, no learned/fixed code, no episodic store/arousal or stochastic action; all actual acts greedy and schedule fixed externally. Previous neural state/Recall slots/traces and action RNG do not enter the next round. This is NOT full-life checkpoint continuation. Recall.writes is an observational counter, and ages depend only on current slot positions; it is not restored and is not a work/continuing-life total.",
+    "stop_if": "Any unsupported state/config/source/digest mismatch refuses before training; never assume a partial live checkpoint is sufficient."
+  },
+  "budget": {
+    "additional_host_seconds": 1100,
+    "training_host_seconds_per_call": 240,
+    "serial_local_processes": 1,
+    "charged": "All restoration, suffix training/evaluation/interventions, conditional 256-round retention/representation, snapshots, attempted/refused/capped work. Original D 2337.21673446132 plus source-bound H1 diagnostic 0.8596524170134217 gives previous 2338.0763868783333 charged once, not subtracted from the new deadline.",
+    "boundary": "Check deadline between rounds/panels; preserve capped/unrun rows and bounded current-panel overrun."
+  },
+  "gate": "Original acquisition/held/causal/retention/representation procedures and thresholds are unchanged. Only the original remaining 191/223 schedule draws; after primary pass only the original retention/probe procedure within budget. Every refusal/cap/unrun stays false.",
+  "comparators": "All eight original H1/resource failures and the original negative ten-cell receipt remain immutable. No absent/retried comparator grants head advantage. No new equation/candidate round, fresh founder, grid or paid run.",
+  "freeze": "Commit this helper/protocol and every dependency before one attempt per point. Existing scientific runtime/helper/protocol files remain byte-identical. Use standalone --verify; no frozen dispatcher edit."
+}

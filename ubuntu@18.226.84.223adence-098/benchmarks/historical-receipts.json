@@ -1,0 +1,44 @@
+{
+  "benchmarks/attention/results/contextual-choice-v0870.json": {
+    "checker": "benchmarks/attention/contextual_choice.py",
+    "checker_sha256": "e7a3f5b37c27818de34a23cc2e4f2656b7f2de71c4c548839098f6ece4f6ef18",
+    "digest": "5ee637d9964a181bc5ea11a8af84cfe9e6f223268e8fa42ec90a9a6660d46d11",
+    "kind": "cadence-contextual-attention/1"
+  },
+  "benchmarks/attention/results/copy-tokens.json": {
+    "checker": "benchmarks/attention/copy_tokens.py",
+    "checker_sha256": "2bb086f301b391b46c5f96c3f11b2371d528a7802e35b7a07ff534ed15447668",
+    "digest": "9d9fb1e852e6c64c789f99d54b55b1d2faa40d65d34c568113d499c151e94366",
+    "kind": "cadence-copy-tokens/1"
+  },
+  "benchmarks/attention/results/held-heads.json": {
+    "checker": "benchmarks/attention/held_heads.py",
+    "checker_sha256": "607cda9c65a71e2398eb5f3a03cb8958f9253ada780ac561688be49bad28120e",
+    "digest": "f4c9927b95596c7edd2a024049a475682e30a87c196731379466ae41e8d606c1",
+    "kind": "cadence-held-heads/1"
+  },
+  "benchmarks/attention/results/look-back.json": {
+    "checker": "benchmarks/attention/look_back.py",
+    "checker_sha256": "e78e48d3510753a347946a3692ef435acee94a43b62e5f445ca9b8d3f3bf5394",
+    "digest": "4eecd3f0c20fec563fe8c9b6b9b790315e72941911ef7c49f9b9ea9ab1ab2ec3",
+    "kind": "cadence-look-back/2"
+  },
+  "benchmarks/attention/results/own-action.json": {
+    "checker": "benchmarks/attention/own_action.py",
+    "checker_sha256": "aee543ce10e4579efbfdfa00884942da07108ad8d2eed7ba1d6c5f6c78663858",
+    "digest": "efe89295463fdfd3e00654c2ca5c9390db82c97a79d47a7726e38f4a3643a6da",
+    "kind": "cadence-own-action/1"
+  },
+  "benchmarks/depth/results/and-count.json": {
+    "checker": "benchmarks/depth/and_count.py",
+    "checker_sha256": "45a2eb79527323814dcecf954242b855cdbe73ede560273f6f6fd5cbb5f89ee3",
+    "digest": "3933368b3cf9bf79b683c1c886c1b9b187645b6a9f26a4b80b0b26bf054095c7",
+    "kind": "cadence-depth-and-count/1"
+  },
+  "benchmarks/depth/results/memory.json": {
+    "checker": "benchmarks/depth/memory.py",
+    "checker_sha256": "c67c903e8d33f33632a8f930bc9c0637d746be1586300edd15112912cdabd4c6",
+    "digest": "dc2f3c7dee912f300c49681787d2eca271525b3bc099fa8cf8d42a231905fb79",
+    "kind": "cadence-depth-memory/1"
+  }
+}

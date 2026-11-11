@@ -1,0 +1,69 @@
+{
+  "schema": "cadence-attention-empty-boundary-admission/1",
+  "declared_date": "2026-10-22",
+  "scope": "Matched development repair of supplied-content multi-output acquisition/qualified settling on the existing H2 fixed-address oracle anatomy. No learned selection, H1/H2 comparison, semantic or integrated-life claim.",
+  "base_protocol_file": "heads-fixed-read-protocol.json",
+  "base_protocol_sha256": "e417d5e6c5a0a86d61ea82ca8d94c5ecaa5b53dfe5d02af53af7d0b295c58e45",
+  "reference_receipt_file": "heads-capacity-fixed-read.json",
+  "development_seeds": [
+    0,
+    1
+  ],
+  "variants": [
+    {
+      "name": "masked",
+      "empty_anchor": false
+    },
+    {
+      "name": "anchored",
+      "empty_anchor": true
+    }
+  ],
+  "rounds": 512,
+  "batch": 16,
+  "dt": 0.1,
+  "tolerance": 0.003,
+  "free_steps": 2048,
+  "nudged_steps": 2048,
+  "total_read_amplitude": 3.0,
+  "teaching": "Exact existing normalized wrong-pair-row teacher; both final labels, beta/2 per slot, original momentum/RMS. No per-slot teacher or address lesson.",
+  "boundary": "Actual fact/fact/neutral prefix; clear trace and warm state before query; hold only the witnessed bank. Fixed addresses select latest named A/B records. Query/read ports remain live in one qualified settle. Cortex prefix states may differ between variants.",
+  "intervention": "One opt-in empty-bank equation change only: retain E=sum_h alpha_h/2*||r_h||^2 on empty streams instead of held.any masking; alpha=1.5/head. Every nonempty memory/teacher force is unchanged. Legacy masked is the control.",
+  "schedule": "heads_admission.task.draw(founder,512,16), SeedSequence([622022,founder]); same frozen draws and initialization per variant.",
+  "custody": "Hash parameters/optimizer before and after each trial; hash occupied query drive, raw keys/values/held/ages/ports/amplitude/targets separately from the intentionally different empty_anchor flag. Hash free/positive/negative states and residual/work without additional solves. Capture failed phase state/drive/bank/held.any/prefix before rollback.",
+  "matching": "On overlapping completed rounds with qualified prefixes require identical before/after parameters+optimizer, occupied query drive/bank, actual query decisions, selected rows, and teacher phase records. Prefix neural states/decisions are allowed to differ. Masked training/work/final parameter digest must reproduce retained founder0/1 prefix refusals after42/21 rounds.",
+  "gate": {
+    "trained_floor": 0.95,
+    "anchored": "Both founders complete all512 rounds, with zero teaching/action refusals; final trained48 cases all answered and exact-pair/slot/unequal/query accuracy >=.95. Source parameters/optimizer preserved by evaluation.",
+    "held_out": "Report16 held-out cases separately; they are not an acquisition floor or evidence of generalization.",
+    "control": "Masked must reproduce historical failures; all overlapping occupied-query phase identities must hold."
+  },
+  "budget": {
+    "new_phase_total_host_seconds": 280,
+    "training_host_seconds_per_arm": 120,
+    "serial_local_processes": 1,
+    "old_capacity_phase_host_seconds": 304.1098535011988,
+    "preceding_separate_diagnostic_host_seconds": 7.377679918027603,
+    "deadline": "Between bounded training rounds and evaluation panels; preserve capped/unrun cells and any final bounded-panel overrun. No paid run.",
+    "maximum_retained_bytes": 50000000
+  },
+  "stop": "One repaired variant only. No numerical retry, force/cap grid, fresh founders, best checkpoint or H comparison. All failed/refused/capped arms stay in the denominator. Confirmation blocks200..219 and300..319 remain unopened.",
+  "freeze": "Commit protocol and every executed dependency before the sole campaign; receipt records actual source revision and hashes. Freeze preservation is checked again at the end.",
+  "learning_config": {
+    "beta": 0.1,
+    "eta": 0.003,
+    "eta_bias": 0.0003,
+    "free_steps": 2048,
+    "nudged_steps": 2048,
+    "tolerance": 0.003,
+    "nudge": "cross_entropy",
+    "temperature": 0.2,
+    "normalize": 0.99,
+    "normalize_floor": 0.0001,
+    "momentum": 0.9,
+    "scale_cap": 8.0,
+    "qualified": true,
+    "damping": 0,
+    "surprise": false
+  }
+}

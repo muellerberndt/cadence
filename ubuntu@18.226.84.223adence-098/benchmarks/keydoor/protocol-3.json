@@ -1,0 +1,133 @@
+{
+ "schema": "key-door/3",
+ "world": "a corridor met once per trip: empty floor, chest, lamp, D levers (D varying by up to two from trip to trip, the irregular event time of the acceptance), door, `length` cells in all (15, so that delay 10 with a jitter of two fits) so that every trip takes the same number of moments; pass (0) or interact (1) at each cell; the key sits in the chest under rule A and in the lamp under rule B; interacting at the door with the key pays +1 with probability `food` and ends the trip; interacting with the chest, the lamp or a lever when it holds no key costs `cost`; the floor has nothing to interact with; taking the key pays nothing; a share `truncation` of the trips is cut short before the door at a random cell, the key lost with it; the observation is the one-hot kind of the cell faced plus the pouch sense (key held), the blind arm without the pouch sense",
+ "life": "one stream, no resets: rule A (chest) for `episodes` trips, rule B (lamp) for `episodes`, then rule A again for `episodes`; the outcome of the last cell of a trip is delivered with the first observation of the next trip, done set after the door (terminal) and clear after a cut (the forecast carries over); changes are unannounced; the return of rule A reads the retained skill; every trip has 15 cells, so the income at full feeding is 1/15 per moment at every delay",
+ "corridor_seed": 2000,
+ "cost": 0.25,
+ "food": 1.0,
+ "truncation": 0.05,
+ "jitter": 2,
+ "length": 15,
+ "delays": [
+  2,
+  5,
+  10
+ ],
+ "episodes": 500,
+ "probe_every": 25,
+ "window": 20,
+ "window_floor": 0.9,
+ "operating_point": {
+  "modules": [
+   32
+  ],
+  "trace_amplitude": 0.3,
+  "consolidation": 0.25,
+  "eta": 0.1,
+  "lam": 0.95,
+  "gamma": 0.95,
+  "eta_critic": 5.0
+ },
+ "arousal": {
+  "threshold": 0.2,
+  "decay": 0.9,
+  "tolerance": 2.0,
+  "floor": 0.1,
+  "fast": 0.05,
+  "slow": 0.005,
+  "heat": 2.0,
+  "youth": 100,
+  "value_surprise": 1.0,
+  "record_surprise": 0.0,
+  "need": 0.03
+ },
+ "tabular": {
+  "alpha": 0.5,
+  "epsilon": 0.1,
+  "gamma": 0.9,
+  "lam": 0.8
+ },
+ "seeds": {
+  "development": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7
+  ],
+  "spent": [
+   700,
+   701,
+   702,
+   703,
+   704,
+   705,
+   706,
+   707,
+   708,
+   709,
+   800,
+   801,
+   802,
+   803,
+   804,
+   805,
+   806,
+   807,
+   808,
+   809
+  ],
+  "confirmation": [
+   900,
+   901,
+   902,
+   903,
+   904,
+   905,
+   906,
+   907,
+   908,
+   909
+  ]
+ },
+ "gates": {
+  "fed": 0.9,
+  "wrong": 1.5,
+  "aroused_late": 0.35,
+  "share": 0.9,
+  "delays": [
+   2,
+   5
+  ],
+  "statement": "over the confirmation lives of the live arm at the gated delays, at least `share` end each rule with `fed` of their last 50 trips fed, waste at most `wrong` interactions per trip in the last 50 trips of each rule (below the uniform-random policy's at delay 2 and a third of the lazy interact-everywhere policy's), and spend no more than `aroused_late` of the second half of each rule aroused (one trip in twenty is cut, and each cut is a missed meal and a contradicted forecast). Delay 10 is reported without a gate. Second freeze: the first gated frugality at 0.5 and calm at 0.2, and its yoked arm crashed on trips cut to one cell. key-door/3 adds the retained gate: when the key returns to the chest, at least `share` of the gated lives end that rule fed and find their first 20-trip window at 90% fed within `retained_lag` completed trips; on the development seeds the live brain's first acquisition took a median of 23 (delay 2) and 125 (delay 5) completed trips and its return 6 and 13.",
+  "retained_lag": 50
+ },
+ "rules": [
+  "chest",
+  "lamp",
+  "chest"
+ ],
+ "recurrent": {
+  "hidden": 16,
+  "alpha": 0.02,
+  "alpha_value": 0.04,
+  "gamma": 0.95,
+  "lam": 0.8,
+  "temperature": 1.0,
+  "clip": 5.0,
+  "note": "selected on development seeds 0-3 at delays 2, 5 and 10 over rates 0.02, 0.05 and 0.1 with decays 0.8 and 0.9: rate 0.02 at decay 0.8 acquires rule A on every life (fed 0.96-0.97, lag 180-212), re-adapts weakly (rule B fed 0.71/0.70/0.24) and returns to rule A on every life (0.96-0.98); decay 0.9 re-adapts worse at delay 5, rate 0.05 is unstable and 0.1 diverged before the gradient guard; the guard bounds each moment's gradient and the TD error at `clip`"
+ },
+ "history": {
+  "key-door/1": "two failed freezes, receipts kept",
+  "key-door/2": "the corrected two-rule instrument of PR 150, no confirmation run"
+ },
+ "copy": {
+  "efference_amplitude": 0.3,
+  "efference_decay": 0.0,
+  "note": "the efference copy of 0.76.0 as a declared variant of the live brain, reported and not gated; on development seeds 0-7 at delays 2 and 5 the dose was monotone: amplitude 3.0 (the reward-rhythm chamber's) left every life unfed and restless (rule A fed 0.21/0.14, aroused 0.9 of the moments), 1.0 fed 0.51/0.14, and 0.3 fed 0.82/0.65 under rule A, 0.83/0.76 under rule B and 0.84/0.95 on the return, against the live brain's 0.90/0.99, 0.97/0.89 and 1.00/1.00; the live brain is the simplest existing System 1 and the copy's founder value, zero"
+ },
+ "development_summary": "live arm on development seeds 0-7, delays 2 and 5, three rules: rule A fed 0.90 (min 0.56) at delay 2 and 0.99 at delay 5 with lags 23 and 125; rule B 0.97 and 0.89 (one life latched at 0.24) with lags 54 and 231; the return of rule A 1.00 at both delays with lags 6 and 13; aroused in the second half 0.09 and 0.12; tabular 0.78-0.91"
+}

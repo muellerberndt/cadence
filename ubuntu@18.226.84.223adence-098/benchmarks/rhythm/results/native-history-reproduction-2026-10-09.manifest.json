@@ -1,0 +1,89 @@
+{
+  "schema": "native-history-reproduction-archive/1",
+  "archive": "native-history-reproduction-2026-10-09.json.gz",
+  "sha256": "d0d35dd9b6880bc48704cd8a0be35de885bcd760923a8c57a116655b65061cb1",
+  "uncompressed_sha256": "38409a9bfa639037d19d54837c06a513b289bf5880206c14400053f2e21eaf20",
+  "archive_bytes": 1181148,
+  "uncompressed_bytes": 29658608,
+  "runtime_commit": "7cd45bdcc757ddbcb1717706ca39be1736f0f0d5",
+  "source_manifest_sha256": "b22fa19131a52a26c99ad9dc3c22f60c6a91c5668b0331f38857453bccf9ae79",
+  "instrument_sources": [
+    {
+      "path": "source/native_history.py",
+      "sha256": "59315f0f72bf13f86bbbb8e7e70776a0a7e372da5077cc4cf6915e38e6158308"
+    },
+    {
+      "path": "source/protocol-native-history.json",
+      "sha256": "5359729de74b9fc5d07dbee4f1a2686c968166439fa3cf5ec3a2fee29bcceebf"
+    },
+    {
+      "path": "source/loop_rhythm.py",
+      "sha256": "8f29ea0877558cf64cc7ca840f2158af207ce37b6b763881259600fc5077ffb6"
+    }
+  ],
+  "local_run_directory": "/workspace/runs/issue140-native-instrument-reproduction",
+  "local_checkpoint_count": 66,
+  "development_gate": {
+    "passed": true,
+    "passed_founders": 6,
+    "planned": 6,
+    "preservation": true
+  },
+  "confirmation_gate": {
+    "passed": true,
+    "passed_founders": 5,
+    "planned": 5,
+    "preservation": true
+  },
+  "scope": "Verified reproduction of the recorded six development and five confirmation founders; all 44 period-four continuations have agreement 1.0 and onset rate 0.25. These are reused confirmation seeds, not new fresh evidence. This does not establish C64 composer repair or change runtime defaults.",
+  "custody": "The gzip contains the complete unmodified source-bound summary receipt. Original receipt, archived source copies and 66 acquired/preservation checkpoints remain in the local run directory. Their hashes are in the receipt; rerun native_history.py --verify on that directory to recheck checkpoint relations. This compressed receipt alone cannot recheck binary relations.",
+  "execution": {
+    "finished_utc": "2026-10-09T02:03:33.847673+00:00",
+    "interpreter": "/workspace/cadence/.venv/bin/python",
+    "argv": [
+      "benchmarks/rhythm/native_history.py",
+      "--full",
+      "--out",
+      "/workspace/runs/issue140-native-instrument-reproduction"
+    ],
+    "pythonpath": "/workspace/temp/cadence-issue140-native-history/src",
+    "thread_environment": {
+      "OPENBLAS_NUM_THREADS": null,
+      "MKL_NUM_THREADS": null,
+      "OMP_NUM_THREADS": null,
+      "VECLIB_MAXIMUM_THREADS": null,
+      "NUMEXPR_NUM_THREADS": null
+    },
+    "thread_settings_changed": false,
+    "summary_sha256": "38409a9bfa639037d19d54837c06a513b289bf5880206c14400053f2e21eaf20",
+    "verification": "embedded verifier passed, exit 0",
+    "mode": "reproduction of recorded confirmation seeds",
+    "development_gate": {
+      "passed": true,
+      "passed_founders": 6,
+      "planned": 6,
+      "preservation": true
+    },
+    "confirmation_gate": {
+      "passed": true,
+      "passed_founders": 5,
+      "planned": 5,
+      "preservation": true
+    }
+  },
+  "validation": {
+    "tests": 213,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "seconds": 70.697,
+    "warnings": 3,
+    "warning_scope": "Unchanged tests/test_slots.py annealing emits eta_bias-above-eta warnings.",
+    "ruff": "All checks passed: src tests benchmarks/rhythm/native_history.py benchmarks/rhythm/test_native_history.py",
+    "mypy": "Success: no issues found in 55 source files",
+    "artifacts": {
+      "preservation-regressions.xml": "7e3cb9b3bdda913c9468c2817f0faf6ddb3389ba68b07eca9e1ad1e2731ded4d",
+      "preservation-regressions.log": "35e41082a086f70dad8b61c3367dfe95760144ad00605472d90a1eae731e6de1"
+    }
+  }
+}

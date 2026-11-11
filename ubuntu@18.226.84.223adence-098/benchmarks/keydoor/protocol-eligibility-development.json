@@ -1,0 +1,30 @@
+{
+ "schema": "key-door-eligibility-development/1",
+ "base_protocol": "protocol-3.json",
+ "base_protocol_sha256": "f8bf4d7698c72905fca4e1384a4c07389ba87360b899177e19cc765208bf56c9",
+ "arms": [
+  "blind"
+ ],
+ "seeds": [
+  2,
+  3
+ ],
+ "delays": [
+  5
+ ],
+ "episodes_per_rule": 500,
+ "rules": [
+  "chest",
+  "lamp",
+  "chest"
+ ],
+ "cases": {
+  "control": 0.95,
+  "candidate": 0.98
+ },
+ "gene": "operating_point.lam",
+ "maximum_lives": 4,
+ "hypothesis": "Longer existing TD eligibility may accelerate delayed-key acquisition and adaptation. At gamma 0.95 it preserves about 32% more raw eligibility across nine events; it also spreads intervening penalties and changes the normalized critic step, so improvement is not assumed.",
+ "decision": "Compare all five unchanged per-life predicates and actual feeding, wrong interactions, late arousal and return lag against the paired founder control. Reject the candidate if feeding, frugality or return degrade. This four-life development cannot satisfy or waive the complete confirmation census or its 90% joint bound.",
+ "limits": "One gene, two fixed values, two development seeds, one delay, three rules. No runtime/default change, extra sweep, threshold relaxation or fresh confirmation claim. Wider validation requires a separate declaration."
+}

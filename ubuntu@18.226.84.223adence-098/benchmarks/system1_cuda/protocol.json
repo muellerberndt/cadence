@@ -1,0 +1,113 @@
+{
+  "format": "cadence-system1-cuda/1",
+  "scope": "CPU/CUDA qualification of a continuing synthetic nursery; not Doom, speech, or a general capability claim",
+  "baseline_commit": "5cd3b3d",
+  "seeds": [
+    0,
+    1,
+    2
+  ],
+  "backends": [
+    "cpu",
+    "cuda64",
+    "cuda32"
+  ],
+  "threads": 1,
+  "inputs": 8,
+  "actions": 2,
+  "modules": [
+    64
+  ],
+  "observers": [],
+  "training_data_seed": 0,
+  "held_out_data_seed": 7,
+  "training_rows": 120,
+  "noise": 0.3,
+  "epochs": 30,
+  "training_batch": 20,
+  "live_batch": 16,
+  "learning": {
+    "eta": 0.5,
+    "eta_bias": 0.02,
+    "momentum": 0.9,
+    "normalize": 0.0,
+    "free_steps": 1024,
+    "nudged_steps": 12,
+    "tolerance": 0.003,
+    "qualified": false
+  },
+  "reward": {
+    "eta": 0.01,
+    "eta_bias": 0.001,
+    "eta_critic": 0.3,
+    "momentum": 0.0,
+    "normalize": 0.0,
+    "eligibility_steps": 12
+  },
+  "stages": [
+    {
+      "name": "stable",
+      "calls": 64,
+      "amplitude": 1.0,
+      "teach": false
+    },
+    {
+      "name": "disturbance",
+      "calls": 16,
+      "amplitude": 0.4,
+      "teach": false
+    },
+    {
+      "name": "repair",
+      "calls": 32,
+      "amplitude": 0.4,
+      "teach": true
+    },
+    {
+      "name": "continued",
+      "calls": 64,
+      "amplitude": 1.0,
+      "teach": false
+    }
+  ],
+  "gate": {
+    "bootstrap_held_out_accuracy": 0.95,
+    "retained_held_out_accuracy": 0.9,
+    "free_answer_refusals": 0,
+    "same_device_saved_actions_equal": true
+  },
+  "transport_controls": {
+    "layouts": [
+      [
+        64
+      ],
+      [
+        256,
+        128
+      ]
+    ],
+    "batches": [
+      1,
+      16,
+      64
+    ],
+    "steps": 32,
+    "warmup": 2,
+    "repeats": 20,
+    "float64_atol_rtol": 1e-10,
+    "float32_atol_rtol": 2e-05
+  },
+  "latency": {
+    "percentiles": [
+      50,
+      95,
+      99
+    ],
+    "deadline_seconds": 0.05,
+    "scope": "synchronized full batch decision, including perception, preceding actual feedback, teaching when declared, memory, admission, and action readout; never divided by batch size"
+  },
+  "unsupported": {
+    "mps": "Requires Apple hardware unavailable on the Windows NVIDIA host",
+    "speech": "Deferred by user pending cadence-transcribe access"
+  }
+}

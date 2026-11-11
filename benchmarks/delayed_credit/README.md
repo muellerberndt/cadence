@@ -204,3 +204,34 @@ PYTHONPATH=src python benchmarks/delayed_credit/chamber.py --kinds lstm --tag ls
 ```
 
 `--skip-done FILE` resumes a run, leaving out the lives a file holds.
+
+## The re-read on 0.97.0 (fresh founders 2840 to 2845)
+
+Declared on [issue 283](https://github.com/muellerberndt/cadence/issues/283) before its first
+life, with the causality bound corrected: a control is at chance when at most 3 of 6 founders
+read .90 and its mean choice is at most .75 (a brain with no credit answers both cues right one
+time in four). Every brain is the 0.97.0 default composition (`history_decays=(0.0,)`,
+`memory_rate=0.2`) with the arm's settings, `arousal=True`, 4,096 episodes through `step`. The
+candidate B: `actor_eta=0.1, actor_eta_bias=0.01, actor_hold=1.0, actor_entropy=0.1`.
+
+| world | delay | B | B without the entropy | `memory_choice`, hold, entropy | default | LSTM, gamma 1, lambda 1 | TD(lambda), .99, .95 |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| parameters, T-maze / key-door | | 16,548 / 17,488 | 16,548 / 17,488 | 20,626 / 21,562 | 16,548 / 17,488 | 16,700 / 17,703 | 16,473 / 17,503 |
+| T-maze | 10 | 6 of 6 (1.00) | 5 of 6 (.92) | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) |
+| T-maze | 50 | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) | 0 of 6 (.50) | 6 of 6 (1.00) | 2 of 6 (.67) |
+| T-maze | 200 | 6 of 6 (1.00) | 6 of 6 (1.00) | 4 of 6 (.83) | | 6 of 6 (1.00) | 0 of 6 (.50) |
+| key-door | 10 | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) | 6 of 6 (1.00) | 3 of 6 (.75) |
+| key-door | 50 | 4 of 6 (.83) | 5 of 6 (.92) | 6 of 6 (1.00) | 5 of 6 (.92) | 6 of 6 (1.00) | 0 of 6 (.42) |
+| key-door | 200 | 2 of 6 (.67) | 1 of 6 (.58) | 4 of 6 (.83) | | 6 of 6 (1.00) | 0 of 6 (.50) |
+
+B's controls: yoked and shuffled 0 to 1 of 6 (.42 to .50) on both worlds at 10 and 50; ablated on
+the T-maze 2 of 6 (.58) at 10, 1 of 6 (.50) at 50 and 0 of 6 (.50) at 200, on the key-door 6 of 6
+at 10 and 0 of 6 at 50; frozen 3 of 6 (.58) on the T-maze and 0 of 6 on the key-door.
+
+**The T-maze passes every gate**, at the LSTM's level, and reads 6 of 6 at 200. **The key-door
+fails at 50** (4 of 6, .83). On the two missing founders the door's act is right and one reach
+answers both keys while the corridor's acts stay mixed. The outcome's dopamine for a wrong reach
+is near zero (-.04 and -.08): the critic reads the empty pouch at the door and predicts the shut
+door's 0, so the outcome carries nothing about the reach, and the pouch's value reaches the moment
+after the reach discounted by .9 to the 49th. The term is the critic's discount on the path the
+pouch opens.

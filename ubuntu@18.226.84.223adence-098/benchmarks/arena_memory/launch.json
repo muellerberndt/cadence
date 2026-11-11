@@ -1,0 +1,28 @@
+{
+  "started_utc": "2026-10-08T23:51:27.972369+00:00",
+  "jobs": [
+    [
+      "tumbler-103",
+      "control"
+    ],
+    [
+      "tumbler-103",
+      "memory"
+    ],
+    [
+      "mantis-202",
+      "control"
+    ],
+    [
+      "mantis-202",
+      "memory"
+    ]
+  ],
+  "max_workers": 2,
+  "hashes": {
+    "compare.py": "8d9466d215f1d31345c3ee5568a921d5ed1db39f1dff2a7e51ca658bd59dbd70",
+    "protocol.json": "51a919f3ece74b5dd3cf82dc7292107b1473fadf0169be5122ca48c4878b5ddd",
+    "sources.json": "9fee606d0ef27633bd96b5983793a74367374b93515f9ef7d3f8ba6c2ba1b60c",
+    "launch.py": "5ed40ca987ca28139e4679df8c6ecbb3de4eaa6a79bc9ebe5b59df26e7c097d9"
+  }
+}

@@ -1,0 +1,203 @@
+{
+  "schema": "reward-recall/1",
+  "name": "Reward-based recall: one continuing Brain.live life paid at the query, with the write into the working trace as an action of the basal ganglia",
+  "question": "Can one continuing Brain.compose life, paid only for the right answer at the query, keep a cue through neutral events and a distractor and let a replacement in, through its working trace; and does a learned write/hold choice of the same actor do what the founder's fixed write cannot?",
+  "brief": "REWARD_RECALL_PROTOCOL.md",
+  "conditions": [
+    "clean-0",
+    "clean-1",
+    "clean-2",
+    "distractor-1",
+    "distractor-2",
+    "replacement-1",
+    "order-latest-1"
+  ],
+  "conditions_note": "finite_horizon_inputs.TRAIN_CONDITIONS by name: the recall/2 set with the distractor at delays one and two, the replacement and the order gates; episodes are interleaved uniformly at random",
+  "pay": {
+    "right": 1.0,
+    "wrong": -1.0
+  },
+  "pay_note": "delivered with the first observation of the next episode and done=True, so the library's own boundary rule resets the stream's trace; the action that call issues is the world's throwaway at START",
+  "arms": {
+    "fixed": {
+      "gated": false,
+      "interface": "live",
+      "note": "the founder's law: the trace is written after every event"
+    },
+    "gated": {
+      "gated": true,
+      "interface": "live",
+      "note": "a second motor slot of two choices, hold or write; after a hold the instrument restores the trace, its last activation and its cold flag to their values before the moment, which equals skipping the founder's write; the choice is sampled and credited by the same actor and the same reward"
+    },
+    "exposed": {
+      "gated": false,
+      "interface": "live",
+      "history": true,
+      "note": "the asked cue's raw payload appended at the query, the external-history input: a reward-path control, never a recall arm"
+    },
+    "fixed_step": {
+      "gated": false,
+      "interface": "step",
+      "note": "the founder's law: the trace is written after every event"
+    },
+    "gated_step": {
+      "gated": true,
+      "interface": "step",
+      "note": "a second motor slot of two choices, hold or write; after a hold the instrument restores the trace, its last activation and its cold flag to their values before the moment, which equals skipping the founder's write; the choice is sampled and credited by the same actor and the same reward"
+    },
+    "exposed_step": {
+      "gated": false,
+      "interface": "step",
+      "history": true,
+      "note": "the asked cue's raw payload appended at the query, the external-history input: a reward-path control, never a recall arm"
+    }
+  },
+  "recipes": {
+    "delayed": {
+      "compose": {
+        "modules": [
+          32
+        ],
+        "lateral": 0.0,
+        "actor_lam": 0.95,
+        "actor_gamma": 0.95,
+        "actor_eta_critic": 5.0,
+        "actor_eta": 0.1,
+        "actor_eta_bias": 0.01
+      },
+      "arousal": {
+        "need": 0.2,
+        "youth": 300
+      },
+      "note": "the composed trace (amplitude 3.0, scale 1.2, retention 0) with the key-door nursery's delayed-credit actor point (lam 0.95, gamma 0.95, critic rate 5) at actor step 0.1"
+    },
+    "arena": {
+      "compose": {
+        "modules": [
+          32
+        ],
+        "lateral": 0.0,
+        "actor_lam": 0.95,
+        "actor_gamma": 0.95,
+        "actor_eta_critic": 5.0,
+        "actor_eta": 0.03,
+        "actor_eta_bias": 0.003
+      },
+      "arousal": {
+        "need": 0.2,
+        "youth": 300
+      },
+      "note": "the same at the arena founder's actor step 0.03"
+    },
+    "composed": {
+      "compose": {
+        "modules": [
+          32
+        ],
+        "lateral": 0.0
+      },
+      "arousal": {
+        "need": 0.2,
+        "youth": 300
+      },
+      "note": "the 0.83.0 composition of the trace and of the actor-critic (actor step 1.0, critic rate 0.3, lam 0.8, gamma 0.9): the reference whose step saturates the readout under this pay (development reading of 14 October)"
+    },
+    "delayed-scale12": {
+      "compose": {
+        "modules": [
+          32
+        ],
+        "lateral": 0.0,
+        "actor_lam": 0.95,
+        "actor_gamma": 0.95,
+        "actor_eta_critic": 5.0,
+        "actor_eta": 0.1,
+        "actor_eta_bias": 0.01,
+        "working_memory_scale": 12.0
+      },
+      "arousal": {
+        "need": 0.2,
+        "youth": 300
+      },
+      "note": "the delayed recipe with the trace read loud at birth: working_memory_scale 12, the composition of releases before 0.82.0 (one gene changed against delayed)"
+    },
+    "delayed-recall5": {
+      "compose": {
+        "modules": [
+          32
+        ],
+        "lateral": 0.0,
+        "actor_lam": 0.95,
+        "actor_gamma": 0.95,
+        "actor_eta_critic": 5.0,
+        "actor_eta": 0.1,
+        "actor_eta_bias": 0.01,
+        "working_memory_scale": 12.0,
+        "working_memory_decay": 0.8,
+        "working_memory_amplitude": 0.3
+      },
+      "arousal": {
+        "need": 0.2,
+        "youth": 300
+      },
+      "note": "the delayed recipe with the recall chamber's declared trace recipe (recall/5: decay 0.8, amplitude 0.3, scale 12)"
+    }
+  },
+  "controls": {
+    "random": "uniform over the two answers at the query (expected 0.5)",
+    "frozen": "every arm's reading at zero training episodes, the newborn",
+    "stationary": "the memoryless ceiling, 0.5",
+    "history": "a tabular learner given the asked value at the query (alpha 0.1, epsilon 0.1), the external-history control; it must be competent for the chamber to count"
+  },
+  "training_episodes": 3000,
+  "probe_every": 1000,
+  "evaluation": {
+    "episodes_per_condition": 32,
+    "modes": [
+      "greedy",
+      "sampled"
+    ],
+    "lesions": [
+      "intact",
+      "erased",
+      "reset"
+    ],
+    "note": "frozen copies with their own action stream; Brain.reset at every episode start; erased clears the trace before the query, reset clears the transient neural state and the trace"
+  },
+  "gates": {
+    "floor": 0.8,
+    "lesion": 0.6,
+    "lesion_margin": 0.2,
+    "history": 0.9,
+    "statement": "development reading only: horizon = the largest contiguous passed prefix of clean-0, clean-1, clean-2 at the greedy floor; closure = horizon at least 2 with distractor-1, replacement-1 and order-latest-1 at the floor, erased and reset at or below lesion with intact at least lesion_margin above them on every condition of delay above zero, and the history control at or above its floor; the founder with the fixed write is the mechanism's control"
+  },
+  "seeds": {
+    "development": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "confirmation": [
+      2301,
+      2302,
+      2303,
+      2304,
+      2305,
+      2306,
+      2307,
+      2308,
+      2309,
+      2310
+    ],
+    "confirmation_note": "unopened until the instrument, protocol digest, genes and gates are frozen"
+  },
+  "caps": {
+    "per_founder_arm_seconds": 1800
+  },
+  "arousal_note": "every recipe sets the body's need to 0.2 reward per moment, 0.9 of what a life that always answers right earns (pay 1 at the query of an episode of 4.6 moments on average over the conditions; the chain nursery's need_share), and a youth of 300 moments; the other arousal genes are the founders. With the founder need of 0 the brain habituates to pay it cannot predict, stays calm on nine moments of ten and learns from few outcomes (development reading of 14 October)",
+  "arms_note": "live arms learn only while aroused (the need keeps them aroused until their recent pay meets it); step arms learn from every outcome",
+  "recipes_note": "development recipes; the actor step is the first gene the exposed-cue control separates: at 1.0 every founder-arm read chance at 3,000 episodes, at 0.1 the exposed control learned on one founder of two by 1,500 episodes"
+}

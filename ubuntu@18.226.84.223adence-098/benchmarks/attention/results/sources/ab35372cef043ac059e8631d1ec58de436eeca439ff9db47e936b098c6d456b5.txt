@@ -1,0 +1,322 @@
+{
+  "schema": "cadence-attention-heads-founder-extended/1",
+  "declared_date": "2026-10-22",
+  "scope": "One additional host-time phase for the unchanged founder numerical-policy control; full512-round capacity first, then a separately bounded agreement-only relevance stage. No new dynamics, solver cap, rates, teacher, initializer, semantic or continuing-life claim.",
+  "source": {
+    "baseline": "0a8af45c478772ba4324fd102fc47add85e694bd",
+    "freeze": "Commit the extended host limits and every executed dependency before the sole extension. Preserve original founder protocol bytes and the verified capped negative receipt. Later relevance requires exact positive capacity source bytes."
+  },
+  "development_seeds": [
+    0,
+    1
+  ],
+  "confirmation_seeds": [
+    200,
+    201,
+    202,
+    203,
+    204,
+    205,
+    206,
+    207,
+    208,
+    209,
+    210,
+    211,
+    212,
+    213,
+    214,
+    215,
+    216,
+    217,
+    218,
+    219
+  ],
+  "confirmation_required": 18,
+  "confirmation_status": "unopened; requires all development gates and a separately declared total budget",
+  "task": {
+    "inputs": 19,
+    "names": [
+      "A",
+      "B"
+    ],
+    "shared_values": [
+      0,
+      1,
+      2,
+      3
+    ],
+    "markers": [
+      "IS",
+      "NEUTRAL",
+      "AMBIGUOUS_CUE",
+      "ASK_AB",
+      "ASK_BA"
+    ],
+    "coordinates": {
+      "markers": [
+        0,
+        1,
+        2,
+        3,
+        4
+      ],
+      "names": [
+        5,
+        6
+      ],
+      "values": [
+        7,
+        8,
+        9,
+        10
+      ],
+      "exposed_A_values": [
+        11,
+        12,
+        13,
+        14
+      ],
+      "exposed_B_values": [
+        15,
+        16,
+        17,
+        18
+      ]
+    },
+    "facts": "IS + name + value; two actual fact events, both orders balanced, then one neutral event",
+    "query": "AMBIGUOUS_CUE + ASK_AB or ASK_BA; no values or intermediate address",
+    "output_slots": [
+      4,
+      4
+    ],
+    "answers": "(value_A,value_B) for ASK_AB; (value_B,value_A) for ASK_BA",
+    "held_out_value_pairs": [
+      [
+        0,
+        1
+      ],
+      [
+        1,
+        0
+      ],
+      [
+        2,
+        3
+      ],
+      [
+        3,
+        2
+      ]
+    ],
+    "training_pairs": "All remaining 12 ordered pairs; all equal pairs and every value under each name remain in training",
+    "training_cases": 48,
+    "held_out_cases": 16,
+    "neutral_events": 1,
+    "rounds": 512,
+    "batch": 16,
+    "schedule": "SeedSequence([622022, founder]); each round samples 16 training cases with replacement; every arm uses identical draws",
+    "evaluation": "Enumerate all training and held-out cases once; exact pair, each slot, unequal pairs and each query reported; refused/unrun answers count wrong",
+    "swapped_panel": "Exchange values attached to A/B with query, fact order and token multiset fixed; held-out swaps stay held out; equal-value swaps are shams"
+  },
+  "brain": {
+    "modules": [
+      32
+    ],
+    "episodic": false,
+    "lateral": 0.0,
+    "recall_next": false,
+    "recall_address": 0.0,
+    "recall_null": 0.0,
+    "recall_recency": 0.0,
+    "recall_amplitude": 3.0,
+    "recall_temperature": 0.25,
+    "teaching": "normalized",
+    "learning_qualified": true,
+    "learning_damping": 3,
+    "learning_free_steps": 2048,
+    "learning_nudged_steps": 2048,
+    "learning_beta": 0.1,
+    "learning_temperature": 0.2,
+    "learning_tolerance": 0.003,
+    "learning_momentum": 0.9,
+    "empty_anchor": true
+  },
+  "dt": 1.0,
+  "teaching": "Capture complete pre-query drive and immutable bank before greedy act; wrong-pair rows only, both final labels supplied; no head role, slot index, address, intermediate value or relevance mask taught. Corresponding rows of captured drive and bank remain together through free/nudged phases.",
+  "primary_boundary": "Clear working trace and warm neural state after prefix before query in training/evaluation, keep only witnessed memory bank. Live query/read/association/motor coordinates all qualify jointly. Intact-trace comparison is later and separate.",
+  "heads": "Shared bank; disjoint live query/read ports; same complete query initial drive; query-cortex projections zero initially, ordinary reciprocal read-cortex seams independently drawn. Total coupling3 shared equally over independent heads; no supplied head-to-name assignment.",
+  "arms": [
+    {
+      "name": "exposed",
+      "kind": "plain_Brain",
+      "modules": [
+        32
+      ],
+      "input": "both unselected named values in dormant control coordinates"
+    },
+    {
+      "name": "supplied_reads",
+      "heads": 2,
+      "modules": [
+        32
+      ],
+      "memory_energy": "Held-address agreement with empty_anchor=true: alpha1.5 per head,total3; zero-content read agreement persists on empty streams; no external read source.",
+      "input": "Actual witnessed fact_A/fact_B held as oracle target in respective read agreement; no external3*fact drive, no ask-dependentselector, no address teacher."
+    },
+    {
+      "name": "H1",
+      "heads": 1,
+      "modules": [
+        32
+      ],
+      "coupling_per_head": 3.0
+    },
+    {
+      "name": "H2",
+      "heads": 2,
+      "modules": [
+        32
+      ],
+      "coupling_per_head": 1.5
+    },
+    {
+      "name": "H1-width",
+      "heads": 1,
+      "modules": [
+        64
+      ],
+      "coupling_per_head": 3.0
+    },
+    {
+      "name": "H1-port-copies",
+      "selectors": 1,
+      "port_copies": 2,
+      "modules": [
+        32
+      ],
+      "total_coupling": 3.0,
+      "representation": "Duplicate keys/values/cues scaled by 1/sqrt(2); same total query/read coordinates as H2, one selector, unchanged match/read norm"
+    },
+    {
+      "name": "H1-work",
+      "heads": 1,
+      "modules": [
+        32
+      ],
+      "coupling_per_head": 3.0,
+      "maximum_sweeps_per_phase": 4096,
+      "comparison": "Measured full neuron+transport work matched to H2; unmatched work gives no efficiency/head-specific claim"
+    },
+    {
+      "name": "frozen-shuffled",
+      "kind": "acquired-copy selection-interface interventions and frozen newborn controls"
+    },
+    {
+      "name": "uniform_random",
+      "seed": 622023,
+      "expected_exact_pair": 0.0625
+    }
+  ],
+  "candidate_order": [
+    "agreement"
+  ],
+  "maximum_candidate_rounds": 1,
+  "candidate_selection": "After all four capacity cells pass, one separate agreement-only relevance round across all five H1/H2/resource arms and founders0/1; all ten cells remain. No linear fallback, initializer, parameter grid or confirmation.",
+  "gates": {
+    "exposed_acquisition_floor": 0.95,
+    "exposed_panel": "All 48 training cases: exact pair, each slot, unequal-value pairs and each query; both development founders. The 16 held-out cases are reported separately.",
+    "content_use_floor": 0.95,
+    "content_use": "Held-address agreement oracle on H2 anatomy, both actual namedfacts, totalcoupling3 and same restoring law; finalpair/slot/unequal/query95 training48 bothfounders, held16reported. No learned-head assignment claim.",
+    "held_out_exact_pair_floor": 0.9,
+    "swapped_unequal_exact_pair_floor": 0.9,
+    "relevant_record_erasure_slot_loss_minimum": 0.2,
+    "donor_pair_follow_minimum": 0.8,
+    "sham_or_record_reordering_answer_change_maximum": 0.05,
+    "retention_loss_maximum": 0.05,
+    "retention_rounds": 256,
+    "retention": "Continue balanced training on the same 12 pairs, then read the held-out panel; retain .95 on the training panel. No competing-task or P7 claim.",
+    "causal_controls": [
+      "queried-record erasures",
+      "irrelevant-neutral-record change",
+      "both-values donor transplant",
+      "one-head erasures",
+      "duplicated heads",
+      "head permutation with downstream transport custody explicit",
+      "frozen/shuffled acquired selection interface"
+    ],
+    "promotion": "All development gates must pass on both founders 0 and 1 before confirmation; retain failures, refusals and caps. No library or default promotion from this experiment."
+  },
+  "representation_phase": {
+    "start": "Only after primary acquisition/content/retrieval/causal gates pass",
+    "variable": "Free settled association activation, not context-free held LearnedCode output",
+    "probe": "Two diagnostic ridge readouts to one-hot requested values, fit on trainingpairs only; centered features, ridge0.01; freeze before held-out and swapped panels; never installed as answer path or teaching rule",
+    "pair_transfer_floor": 0.9,
+    "gain_over_raw_query_and_frozen_newborn_minimum": 0.2,
+    "loss_after_relevant_memory_erasure_minimum": 0.2,
+    "claim": "Task-context accessibility and held-out readout transfer, not general meaning",
+    "controls": [
+      "current raw query only",
+      "fixed random observation code separately labeled if run",
+      "frozen newborn association",
+      "record erasure",
+      "same ambiguous cue with swapped witnessed facts"
+    ],
+    "later_semantic_gate": "Separately freeze learned-code recipe/source/budget and compare raw, fixed-random, learned, no-top-down; require held-out alias/group members without raw overlap, misleading raw overlap, member-specific facts and early facts after competition. Geometric shifts alone do not pass."
+  },
+  "budget": {
+    "serial_local_processes": 1,
+    "training_seconds_per_arm": 240,
+    "development_total_host_seconds": 600,
+    "additional_stage": true,
+    "scope": "additional_founder_capacity_stage",
+    "charged": "All construction, initial/final evaluation, training, actual attempted phases/transports and refusals in this new stage. Earlier charges are reported cumulatively, not subtracted from this deadline. Boundaries are checked between rounds/panels; retain bounded final-panel overrun.",
+    "stop": "One host-time extension of the exact founder point. No numerical or learning recipe grid; capped/refused/unrun cells fail admission and remain reported. No fresh confirmation seeds or paid run."
+  },
+  "preservation": "Retain previous failed admission/coupled-reader receipts and existing gates. Reward custody, private imagination, complete checkpoint continuation, continuing context/recovery and learned semantic codes remain separate requirements before integration.",
+  "capacity_control": "held-address-agreement",
+  "numerical_control": {
+    "base_protocol_file": "heads-fixed-read-protocol.json",
+    "base_dt": 0.1,
+    "dt": 1.0,
+    "damping": 3,
+    "default_guard": "Fresh plain Brain.compose without an explicit neuron-model or dt override must report dt1.0. learning_neuron_model helper default0.5 and bare NeuronModel default0.2 are not the composed founder.",
+    "reason": "Saved failed-boundary Jacobians are locally unstable for Euler dt1.0, while dt0.5 is locally stable at those sampled points; use the existing bounded halving policy with exact immutable memory preserved. Some earlier accepted states have a positive continuous mode or a kink; no uniform contraction or global convergence claim. Full original-field qualification remains mandatory.",
+    "initializer": "The separately frozen finite memory-start initializer failed both saved boundaries; it is not implemented or used.",
+    "equations": "Same continuous field, fixed witnessed bank and learned parameters. Numerical dt-only clones preserve the actual graph/memory, and all free/nudged states are tested against the complete original equations."
+  },
+  "prior": {
+    "receipt_file": "founder-capacity-development.json",
+    "receipt_kind": "cadence-attention-heads-admission/1",
+    "receipt_protocol_file": "heads-founder-protocol.json",
+    "receipt_digest": "f31c5366d67c764ffd23c06f97c5cf1dbd2f12ca80b1b5a8ea303267727dc6cd",
+    "receipt_cumulative_host_seconds": 756.0517235864615,
+    "failure_diagnostic_host_seconds": 0.0,
+    "initializer_diagnostic_host_seconds": 0.0,
+    "algebra_audit_host_seconds": 0.0,
+    "previous_host_seconds": 756.0517235864615,
+    "custody": "Require the verified capped founder receipt via --prior: capacity_admitted=false, both exposed founders complete512; supplied founders stop at419/370 without refusals, train1.0/.875 and held0.0. Verify original archived source bytes. Its cumulative cost already includes every earlier diagnostic; add NONE again."
+  },
+  "relevance_stage": {
+    "additional_stage": true,
+    "development_total_host_seconds": 3000,
+    "training_seconds_per_arm": 240,
+    "capacity_receipt_file": "founder-capacity-extended.json",
+    "required": "Only after all four current-source extended capacity cells complete512, no refusals and unchanged .95 trained floors, one agreement-only round includes all10 H1/H2/resource cells and conditional256-round retention/probes. Each training call has240 host seconds and the new relevance stage3000 additional host seconds. Preserve all past/capacity costs without subtracting them from this new deadline. Held16 accuracy remains unrestricted for capacity and fully reported; it establishes no transfer or learned relevance. No confirmation, grid or default promotion."
+  },
+  "capacity_stage": {
+    "order": [
+      "exposed:0",
+      "exposed:1",
+      "supplied_reads:0",
+      "supplied_reads:1"
+    ],
+    "guard": "Both exposed founders must pass before the supplied-read pair runs. An exposed failure stops admission before oracle work; missing/unrun oracle cells can never produce a positive capacity result. All four cells must pass before any relevance work.",
+    "gate": "Unchanged .95 on complete48 trained cases for exact pair, each slot, unequal pairs and each query,512 rounds and no action/lesson refusal. Final intact train/held_out/all panels must be fully answered without refusal or budget truncation; the16 held-out cases have no accuracy floor and are reported separately. Optional erased-panel accuracy is not an acquisition gate."
+  },
+  "host_extension": {
+    "base_protocol_file": "heads-founder-protocol.json",
+    "changed": "Host guards only: capacity training120\u2192240 seconds, total360\u2192600; relevance training120\u2192240 per call, additional stage600\u21923000. All numerical/task/teacher/initialization fields are byte-equivalent as data.",
+    "reason": "Original founder supplied controls hit host limits at419/370 of512 without action/lesson refusals; finite original sweep caps and equations did not change. Preserve that negative admission, including held accuracy0.0, rather than relabeling partial training as success."
+  }
+}

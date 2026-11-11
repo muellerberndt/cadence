@@ -1,0 +1,32 @@
+{
+  "purpose": "Exploratory acquired-life repair, not fresh confirmation or release evidence. Existing memory default only; no tuning or checkpoint selection.",
+  "first_stage": [
+    "tumbler-103",
+    "mantis-202"
+  ],
+  "conditional_retention": [
+    "tumbler-102",
+    "mantis-201"
+  ],
+  "arms": {
+    "control": "Original episodic=False continued unchanged",
+    "memory": "Attach empty SynapticMemory(sensory_index,motor_index,consolidation=0.05) before first actual feedback; no reset; original pending forecast retained"
+  },
+  "additional_training_moments": 4000,
+  "evaluation_moments": 2000,
+  "evaluation_worlds": [
+    2001,
+    2002
+  ],
+  "continuation_moments_per_fork": 32,
+  "relocate": 400,
+  "controls": [
+    "newborn greedy",
+    "uniform random",
+    "zero target bearing/proximity first four channels"
+  ],
+  "custody": "Deliver saved actual owed outcome on first live call; retain last real outcome plus world, wrapper and brain checkpoint; no terminal flush; match 32 physical steps of unbroken and serialized forks. Frozen copies preserve trace and both memory timescales.",
+  "selection": "Run all four first-stage case/arm pairs; report all. If memory improves failures, run all four retention case/arm pairs with identical horizon. No further seed/grid/horizon selection.",
+  "prior_negative": "Earlier arena episodic arm failed in mixed old-founder grids; this is an isolated test of current founder and source, not a universal memory claim.",
+  "work": "Count settle calls and actual result.steps from training, forks, every fingerprint and evaluation; raw training outcomes retained."
+}
