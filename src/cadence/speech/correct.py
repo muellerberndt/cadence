@@ -14,7 +14,7 @@ kept the earlier speakers (a change of +.005 and +.003 in their word accuracy, w
 alone lost .018 and .056) at nearly a plain correction's gain (+.075 against +.080 and +.086
 against +.096). At weight zero the earlier rows teach nothing there (at the normalized teaching
 points a composed brain takes, the lesson's step is the correction's alone; under the founder
-teaching zero rows still shrink the step) and the loss halves; at weight one the earlier speakers
+teaching zero rows shrink the step as well) and the loss halves; at weight one the earlier speakers
 rise and the gain falls to +.062. Read through this class on the same lives (the chamber's
 ``rehearsal`` mode, each correction taught the soft targets the lives learned from): +.072 with
 the earlier speakers at +.005, and +.080 with them at -.002; taught plain labels instead, +.027

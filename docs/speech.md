@@ -241,4 +241,4 @@ keep the others at .34.
 
 A correction resets the brain and leaves it at rest. At weight zero the banked utterances teach
 nothing at the normalized teaching points a composed brain takes. Under the founder teaching
-(`recall=False` without a teaching point) a weight-zero row still shrinks the step.
+(`recall=False` without a teaching point) a weight-zero row shrinks the step as well.
