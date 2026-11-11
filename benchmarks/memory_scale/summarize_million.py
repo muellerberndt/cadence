@@ -4,7 +4,8 @@
 
 Reads ``fourth-capacity``, ``fourth-ten-million``, ``fourth-timing``, ``fourth-facts`` and
 ``fourth-shared`` (``.jsonl`` or ``.jsonl.gz``) where they exist, and prints each table in
-Markdown and each gate of ``PROTOCOL_4.md`` with the founders it holds on.
+Markdown and each gate of ``PROTOCOL_4.md`` with the founders it holds on; and ``fifth-brain``,
+the gates of ``PROTOCOL_5.md``.
 """
 
 from __future__ import annotations
@@ -215,6 +216,27 @@ def shared(rows: list[dict[str, Any]]) -> None:
                   f"{'passes' if overall and all(v >= 0.99 for v in overall) else 'fails'}\n")
 
 
+def brain(rows: list[dict[str, Any]]) -> None:
+    """The fifth declaration: a brain with its own records at 100,000 (C6)."""
+    rows = sorted(rows, key=lambda r: r["founder"])
+    print("\n### A brain with its own records\n")
+    print("| Founder | Records | Facts whose key another has | found | used | found, own key |"
+          " revised: current | stale | used | ms a told moment | parameters |")
+    print("| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |")
+    for r in rows:
+        u, v = r["unrevised"], r["revised"]
+        print(f"| {r['founder']} | {r['records'][0]:,} | {r['shared_keys']:.2%} | {u['found']:.4f}"
+              f" | {u['used']:.4f} | {u['found_own']:.4f} | {v['found']:.4f} | {v['stale']:.4f}"
+              f" | {v['used']:.4f} | {r['tell_ms']:.2f} | {r['parameters']:,} |")
+    a = [r["unrevised"]["used"] >= 0.95 for r in rows]
+    b = [r["revised"]["found"] >= 0.95 and r["revised"]["stale"] < 0.02
+         and r["revised"]["used"] >= 0.95 for r in rows]
+    for name, held in (("C6a (used, unrevised, 100,000: .95)", a),
+                       ("C6b (revised at 100,000: current .95, stale under .02, used .95)", b)):
+        print(f"\n{name}: {sum(held)} of {len(held)} founders: "
+              f"{'passes' if len(held) >= 12 and sum(held) >= 10 else 'fails'}")
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n", 1)[0])
     parser.add_argument("--dir", type=Path, default=Path(__file__).resolve().parent / "results")
@@ -235,6 +257,9 @@ def main(argv: list[str] | None = None) -> int:
     rows = load(args.dir, "fourth-shared")
     if rows:
         shared(rows)
+    rows = load(args.dir, "fifth-brain")
+    if rows:
+        brain(rows)
     return 0
 
 
