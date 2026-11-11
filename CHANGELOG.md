@@ -3,8 +3,9 @@
 ## 0.97.1 - 2026-11-11
 
 Opt-ins built on the v0.98.0 lanes, and the chambers that read them. No default changes: with
-every new option unset a brain lives, saves and describes to the bit as on 0.97.0 on
-`backend="cpu"`, and `Lives` keeps every action and parameter.
+every new option unset a brain acts, learns and describes to the bit as on 0.97.0 on
+`backend="cpu"`, its file holds the same arrays, and `Lives` keeps every action and parameter. A
+saved file's last lesson report adds `demonstration_agreed_slots`; 0.97.0 loads it.
 
 ```bash
 python -m pip install cadence-net==0.97.1
