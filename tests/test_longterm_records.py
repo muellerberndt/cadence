@@ -584,8 +584,9 @@ def test_rest_reads_the_second_fact_of_a_chain_and_nothing_for_one_fact():
     say(b, 0, 6, 7, TURN)    # relation 7 of relation 6 of agent 0
     drive = b.stimulus(np.zeros((1, INPUTS)))
     kept = b.longterm
-    assert kept.read_slots[0, 0] == 0 and kept.read_slots[0, 1] == 2
-    assert np.allclose(drive[0, b.connectome.populations["longterm_1"]], 3.0 * moment(12)[0])
+    assert kept.read_slots[0, 0] == 2 and kept.read_slots[0, 1] == 0  # the answer on head 0
+    assert np.allclose(drive[0, b.connectome.populations["longterm"]], 3.0 * moment(12)[0])
+    assert np.allclose(drive[0, b.connectome.populations["longterm_1"]], 3.0 * moment(10)[0])
     say(b, ())               # the answer's silent moment writes nothing
     say(b, 1, 6, TURN)       # one fact: the first record holds the whole question
     drive = b.stimulus(np.zeros((1, INPUTS)))

@@ -984,8 +984,10 @@ class LongTermRecords:
     heads).** Head 1 is cued by the first record's entries outside the cue together with the
     cue's entries that the first record does not hold and that weigh at least ``distinct`` of
     the cue's heaviest. A question of two facts ("the capital of the country of a city") reads
-    the city's country with head 0, then the record that holds that country and "capital" with
-    head 1. Where the first record holds every such entry, head 1 holds nothing.
+    the city's country first, then the record that holds that country and "capital". The regions
+    hold the chain from its end: the record that answers on head 0's region (``longterm``), the
+    record before it on head 1's, so an answer is read from one region however many facts it
+    takes. Where the first record holds every such entry, head 1 holds nothing.
     """
 
     # the store's settings that the brain does not name: the library store's founders, a first
@@ -1296,6 +1298,9 @@ class LongTermRecords:
                 for _ in range(1, self.heads):  # each head chains from the record before
                     slots.append(self._rest(int(row), slots, cue) if self.rest
                                  else self._chain(int(row), slots, cue))
+                if self.rest:  # the chain from its end: the record that answers on head 0's
+                    read = [slot for slot in slots if slot >= 0][::-1]
+                    slots = read + [-1] * (len(slots) - len(read))
                 for head, (slot, columns) in enumerate(zip(slots, self.columns, strict=True)):
                     if slot >= 0:
                         out[row, columns] = self.amplitude * store.values[slot]

@@ -27,7 +27,8 @@ the library's defaults, with the heard history of the moment before:
    then ``erased``: trained questions with the records emptied at each answer.
 
 Every answer is said greedily and scored exactly; ``found`` reads whether the record a head
-holds says the answer (head 1 for a question of two facts, head 0 for any other). Work is
+holds says the answer (head 0, the end of the chain with ``longterm_rest``; head 1 for a question
+of two facts without it). Work is
 counted as seconds and multiply-accumulates: every synapse once a sweep and row of a moment's
 settle, and the records' read, one accumulate per record each of the cue's entries reaches.
 
@@ -129,7 +130,7 @@ class Life:
         kept = getattr(self.brain, "longterm", None)
         if kept is None or not kept.stores:
             return None
-        head = 1 if turn.tags.get("wording") == "two" else 0
+        head = 1 if turn.tags.get("wording") == "two" and not kept.rest else 0
         slot = int(kept.read_slots[0, head])
         want = self.lexicon.moment(str(turn.answer))
         held = slot >= 0 and bool(np.array_equal(
