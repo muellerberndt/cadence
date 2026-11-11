@@ -208,8 +208,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                     seed=founder,
                 )
                 adaptation.append({"speaker": speaker, "mode": mode, "rate": rate, "curve": curve})
-                own = " ".join(f"{c['own']['word_accuracy']:.3f}" for c in curve)
-                note(f"{name} {founder} {speaker} {mode} {rate}: own {own}", started)
+                said = " ".join(f"{c['own']['word_accuracy']:.3f}" for c in curve)
+                note(f"{name} {founder} {speaker} {mode} {rate}: own {said}", started)
     if adaptation:
         out["adaptation"] = adaptation
     out["process_seconds"] = time.process_time() - started
