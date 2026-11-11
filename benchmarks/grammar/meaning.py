@@ -3050,6 +3050,126 @@ def floors_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]]) -
     return lines
 
 
+SENTENCE = tuple(range(10728600, 10728612))  # twelve fresh founders (SENTENCE_PROTOCOL.md)
+SENTENCE_ROLES = [list(group) for group in ROLES]
+SENTENCE_ARMS: dict[str, dict[str, Any]] = {
+    # the floors: the fixed code, and the default with the recall read barred
+    "both_256": {"module": 256, "settings": {**BOTH, "parts": True}},
+    "default_64": {"settings": {"parts": True}},
+    # the two candidates, as development leaves them (the declared run names them)
+    "settled": {"module": 256, "echo": True, "settings": {
+        "message": 256, "message_settled": True, "message_roles": SENTENCE_ROLES,
+        "message_read": True, "message_amplitude": 0.0, "history_decays": [0.0],
+        "parts": True, **EVERY}},
+    "carried": {"module": 256, "echo": True, "settings": {
+        "working_memory_decay": 0.8, "history_decays": [0.0], "parts": True, **EVERY}},
+}
+
+
+def sentence_plan(founders: tuple[int, ...] = SENTENCE,
+                  arms: dict[str, dict[str, Any]] | None = None
+                  ) -> dict[str, list[dict[str, Any]]]:
+    """The declared run of cadence#308: each arm taught the say-back mix with the recall read
+    barred, its panels said and its state probed after the last heard moment; the chamber's
+    LSTM and transformer taught the same lessons at each candidate's parameter count, online
+    and offline, probed the same way, on the same founders."""
+    arms = arms or SENTENCE_ARMS
+    base = {"arm": "barred", "train": "sayback", "probe_scale": 0.0, "held_probes": 4,
+            "long_probes": 4}
+    brains = [{**base, **{k: v for k, v in spec.items() if k != "settings"},
+               "settings": spec["settings"], "founder": f, "tag": tag}
+              for tag, spec in arms.items() for f in founders]
+    controls = []
+    sizes = sorted({int(make_brain(founders[0], arms[tag]["settings"],
+                                   int(arms[tag].get("module", 64))).parameters())
+                    for tag in arms if tag not in ("both_256", "default_64")})
+    for parameters in sizes:
+        for model in ("lstm", "transformer"):
+            width = wide_width(model, parameters)
+            for mode in ("online", "offline"):
+                controls += [{"kind": "sentence_control", "model": model, "mode": mode,
+                              "founder": f, "parameters": parameters, "width": width}
+                             for f in founders]
+    return {"sentence": brains, "sentence_controls": controls}
+
+
+def sentence_verdict(rows: list[dict[str, Any]], controls: list[dict[str, Any]],
+                     of: int = 10) -> list[str]:
+    """The declared run's gates. H1: after the last heard word of a clause heard as words,
+    the least clause component's probe (fitted on trained combinations, scored on held-out
+    ones) at .95 on ``of`` of twelve, from the settled association and, where an arm holds a
+    store, the store read with it. H2: said from that state, ``clause`` and ``clause_held`` at
+    .90 and ``clause_long`` at .80 on ``of`` of twelve. Parity: each arm less the matched
+    controls offline, paired by founder, on every panel."""
+    arms = _by_tag(rows)
+    lines = ["sentences said from the state, and the least component held after the last heard "
+             "word (mean over founders)", ""]
+    lines += sentence_table(rows, controls, "joint") + [""]
+    for tag, lives in arms.items():
+        where = "joint" if any("joint" in spot for c in lives[0].get("probes_back", {}).values()
+                               for spot in c.values()) else "settled"
+        held = [_least(r["probes_back"], "heard", where) for r in lives if r.get("probes_back")]
+        h1 = sum(v is not None and v >= 0.95 for v in held)
+        said = {n: [_score(r["panels"][n], n) for r in lives] for n in
+                ("clause", "clause_held", "clause_long")}
+        counts = {n: sum(v is not None and v >= (0.8 if n == "clause_long" else 0.9)
+                         for v in values) for n, values in said.items()}
+        h2 = all(c >= of for c in counts.values())
+        lines.append(f"  {tag}: H1 ({where}) {h1} of {len(held)} at .95 -> "
+                     + ("holds" if h1 >= of else "fails")
+                     + "; H2 " + ", ".join(f"{n} {c} of {len(said[n])}" for n, c in counts.items())
+                     + " -> " + ("holds" if h2 else "fails"))
+    lines.append("")
+    lines.append("each arm less the matched controls offline, paired by founder: mean (s.e.)")
+    shown = SAID + BACK
+    for tag, lives in arms.items():
+        size = int(lives[0]["parameters"])
+        for model in ("lstm", "transformer"):
+            theirs = {c["founder"]: c for c in controls if c["model"] == model
+                      and c["mode"] == "offline" and abs(int(c["brain_parameters"]) - size)
+                      <= 0.02 * size}
+            paired_lives = [r for r in lives if r["founder"] in theirs]
+            if not paired_lives:
+                continue
+            cells = []
+            for n in shown:
+                mine = [(_score((r["panels"] if n in SAID else r.get("sayback", {}))[n], n)
+                         if n in (r["panels"] if n in SAID else r.get("sayback", {})) else None)
+                        for r in paired_lives]
+                other = [_score(theirs[r["founder"]]["panels"][n], n) for r in paired_lives]
+                pairs = [(a, b) for a, b in zip(mine, other, strict=True)
+                         if a is not None and b is not None]
+                if pairs:
+                    mean, error = paired([a for a, _ in pairs], [b for _, b in pairs])
+                    cells.append(f"{n} {mean:+.2f} ({error:.2f})")
+            lines.append(f"  {tag} less {model}: " + ", ".join(cells))
+    lines.append("")
+    lines.append("held after the last heard word, each component (words), mean")
+    for tag, lives in arms.items():
+        tables = [r["probes_back"] for r in lives if r.get("probes_back")]
+        if tables:
+            where = "joint" if any("joint" in tables[0][c].get("heard", {}) for c in tables[0]) \
+                else "settled"
+            lines.append(f"  {tag} ({where}): " + ", ".join(
+                f"{c} {np.mean([t[c]['heard'][where]['accuracy'] for t in tables if c in t]):.2f}"
+                for c in sorted(tables[0]) if "heard" in tables[0][c]
+                and where in tables[0][c]["heard"]))
+    lines.append("the long panels with the previous words given, by word kind: mean")
+    for tag, lives in arms.items():
+        said = [r["said_long"] for r in lives if "said_long" in r]
+        if said:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k[7:]} {np.mean([d[k] for d in said]):.2f}" for k in sorted(said[0])
+                if k.startswith("clause_L")))
+    lines.append("the store (width, share of nonzero units, share of blocks filled)")
+    for tag, lives in arms.items():
+        stores = [r["store"] for r in lives if "store" in r]
+        if stores:
+            lines.append(f"  {tag}: " + ", ".join(
+                f"{k} {np.mean([x[k] for x in stores]):.4g}" for k in stores[0]))
+    return lines
+
+
 def _by_tag(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
     arms: dict[str, list[dict[str, Any]]] = {}
     for r in rows:
@@ -3518,6 +3638,8 @@ def main(argv: list[str] | None = None) -> int:
                          help="protocol 4, Amendment 2: ten winners a moment beside five")
     planner.add_argument("--fifth", action="store_true",
                          help="protocol 5: blocks enough for the longest clause")
+    planner.add_argument("--sentence", action="store_true",
+                         help="cadence#308: the declared run")
     planner.add_argument("--floors", action="store_true",
                          help="cadence#308, step 1: the sentence instrument's floors")
     planner.add_argument("--seventh", action="store_true",
@@ -3535,6 +3657,8 @@ def main(argv: list[str] | None = None) -> int:
     reader.add_argument("--winners", action="store_true",
                         help="protocol 4, Amendment 2's gate, against both_256")
     reader.add_argument("--fifth", action="store_true", help="protocol 5's gate")
+    reader.add_argument("--sentence", action="store_true",
+                        help="cadence#308's declared run; --controls beside it")
     reader.add_argument("--floors", action="store_true",
                         help="the sentence instrument's floors; --controls beside it")
     reader.add_argument("--seventh", action="store_true",
@@ -3566,11 +3690,13 @@ def main(argv: list[str] | None = None) -> int:
         warnings.simplefilter("ignore")
         args.out.mkdir(parents=True, exist_ok=True)
         founders = tuple(args.founders or (
-            FLOORS if args.floors else SEVENTH if args.seventh else SIXTH if args.sixth
+            SENTENCE if args.sentence else FLOORS if args.floors
+            else SEVENTH if args.seventh else SIXTH if args.sixth
             else WINNERS if args.winners else FIFTH if args.fifth
             else FOURTH_LONG if args.long else FOURTH if args.fourth else CONFIRM if args.confirm
             else THIRD if args.third else OWN if args.own else DECLARED))
-        plans = (floors_plan(founders) if args.floors
+        plans = (sentence_plan(founders) if args.sentence
+                 else floors_plan(founders) if args.floors
                  else seventh_plan(founders) if args.seventh
                  else sixth_plan(founders) if args.sixth
                  else {"winners": winners_plan(founders)} if args.winners
@@ -3600,6 +3726,10 @@ def main(argv: list[str] | None = None) -> int:
             print("\n".join(fourth_verdict(rows, base="both_256")))
         elif args.fifth:
             print("\n".join(fifth_verdict(rows)))
+        elif args.sentence:
+            print("\n".join(sentence_verdict(rows, [
+                json.loads(line) for line in args.controls.read_text().splitlines() if line]
+                if args.controls is not None else [])))
         elif args.floors:
             print("\n".join(floors_verdict(rows, [
                 json.loads(line) for line in args.controls.read_text().splitlines() if line]

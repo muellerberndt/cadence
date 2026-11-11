@@ -608,3 +608,20 @@ def test_an_echo_names_the_word_of_a_heard_clause_moment():
     assert named == [-(gr.NOUNS + 2), 6, 3, 0]  # the verb's stem, foxes, owl, dog
     assert mn.echo_labels([mn.sayback(row)], 1).tolist() == [row.target[1]]
     assert mn.echo_labels([gr.path(np.random.default_rng(0), 1)], 0) is None
+
+
+def test_the_sentence_run_plans_its_arms_and_reads_its_gates():
+    warnings.simplefilter("ignore")
+    plan = mn.sentence_plan(tuple(range(12)))
+    assert len(plan["sentence"]) == 12 * len(mn.SENTENCE_ARMS)
+    assert all(c["founder"] in range(12) for c in plan["sentence_controls"])
+    small = {tag: {**spec, "module": 64} for tag, spec in mn.SENTENCE_ARMS.items()}
+    small["settled"]["settings"] = {**small["settled"]["settings"], "message": 64}
+    rows = [mn.run_life({**spec, "batches": 2, "panel_batches": 1, "held_probes": 1,
+                         "long_probes": 1}) for spec in mn.sentence_plan((0,), small)["sentence"]]
+    control = mn.run_life({"kind": "sentence_control", "model": "lstm", "mode": "offline",
+                           "founder": 0, "width": 8, "batches": 2, "panel_batches": 1,
+                           "held_probes": 1, "parameters": rows[2]["parameters"]})
+    lines = mn.sentence_verdict(rows, [control], of=1)
+    assert sum("H1" in line and "H2" in line for line in lines) == len(small)
+    assert any("less lstm" in line for line in lines)
