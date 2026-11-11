@@ -1,0 +1,5 @@
+{"founders": [3110, 3111, 3112, 3113, 3114, 3115, 3116, 3117, 3118, 3119, 3120, 3121],
+ "models": ["closed_lstm", "closed_transformer", "context_transformer", "retrieval"],
+ "sizes": [10000], "target_arm": "records", "module": 128, "sessions": 3000, "facts": 6,
+ "two": 0.2, "questions": 1000, "small": 300, "window": 1024, "k": 3, "budget": 40,
+ "revision_budget": 10, "threads": 2}

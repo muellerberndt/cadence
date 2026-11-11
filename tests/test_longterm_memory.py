@@ -36,7 +36,7 @@ def test_the_class_is_exported_with_its_declared_founders():
         "width": 64, "value_width": 8, "capacity": 1000, "temperature": 0.0, "candidates": 256,
         "expansion": 8192, "winners": 64, "depth": 2.0, "idle": 62.5, "hold": 8000.0,
         "revise": 0.9, "fade": True, "seed": 0, "direct": 16384, "dtype": "float64",
-        "cosine": False,
+        "cosine": False, "pairs": 0, "apart": 0,
     }
     assert memory.count == 0 and memory.writes == 0
     assert LongTermMemory(**memory.to_dict()).to_dict() == memory.to_dict()
@@ -361,3 +361,173 @@ def test_a_key_another_holds_reads_its_own_record_by_cosine():
     np.testing.assert_array_equal(told.values[0], [1.0, 0.0, 0.0])
     np.testing.assert_allclose(told.norms[:2], [np.sqrt(6.0), 2.0])
     assert LongTermMemory(12, 3, 8).norms.shape == (0,)  # held by a cosine memory alone
+
+
+# -- the address of pairs, heads with cues of their own, chains and keys held apart (cadence#310)
+
+PAIRED = {"expansion": 512, "winners": 32, "pairs": 8, "candidates": 64, "direct": 0,
+          "revise": 0.999, "fade": False, "cosine": True, "dtype": "float32"}
+
+
+def paired(n=3000, width=32, **settings):
+    rng = np.random.default_rng(3)
+    keys = codes(rng, n, width).astype(np.float32)
+    values = codes(rng, n, 8).astype(np.float32)
+    memory = LongTermMemory(width, 8, n + 8, **{**PAIRED, **settings})
+    return rng, keys, values, memory
+
+
+def test_the_address_of_pairs_reads_an_exact_cue_and_most_noisy_ones_as_the_scan_does():
+    rng, keys, values, memory = paired()
+    slots = memory.fill(keys, values)
+    assert memory.coarse and memory.pairs == 8 and memory.count == 3000
+    np.testing.assert_array_equal(slots, np.arange(3000))
+    scan = LongTermMemory(32, 8, 3008, candidates=0, fade=False, cosine=True, dtype="float32")
+    scan.fill(keys, values)
+    assert not scan.coarse
+    for i in range(0, 3000, 50):  # an exact cue shares every pair with its record
+        read = memory.read(keys[i], credit=False)
+        assert read.first() == i and len(read.slots) <= 64
+        np.testing.assert_array_equal(memory.value(read), values[i])
+    noisy = [unit(keys[i] + 0.6 * rng.standard_normal(32) / np.sqrt(32)) for i in range(300)]
+    through = np.array([memory.read(c, credit=False).first() for c in noisy])
+    every = np.array([scan.read(c, credit=False).first() for c in noisy])
+    assert np.mean(every == np.arange(300)) > 0.97
+    assert np.mean(through == every) > 0.9  # the address costs a few of the scan's finds
+
+
+def test_fill_files_records_as_writes_without_recognition_do():
+    _, keys, values, memory = paired()
+    _, _, _, one_by_one = paired()
+    memory.fill(keys, values)
+    for key, value in zip(keys, values, strict=True):
+        one_by_one.write(key, value, recognised=-1)
+    for name in ("cells", "fills", "keys", "values", "deep", "recent", "faded", "norms"):
+        np.testing.assert_array_equal(getattr(memory, name), getattr(one_by_one, name))
+    assert memory.dropped == one_by_one.dropped and memory.writes == one_by_one.writes == 3000
+    with pytest.raises(ValueError, match="empty slots"):
+        memory.fill(keys[:9], values[:9])
+    with pytest.raises(ValueError, match="rows of"):
+        memory.fill(keys[:2, :5], values[:2])
+
+
+def test_the_compiled_coarse_stage_names_the_slots_the_numpy_read_names():
+    from cadence import longterm
+
+    rng, keys, values, memory = paired()
+    memory.fill(keys, values)
+    cues = [unit(keys[i] + rng.standard_normal(32) / np.sqrt(32)) for i in range(40)]
+    named = [memory._named(memory.address(c)) for c in cues]
+    try:
+        LongTermMemory.COMPILED = False
+        plain = [memory._named(memory.address(c)) for c in cues]
+    finally:
+        LongTermMemory.COMPILED = True
+    for a, b in zip(named, plain, strict=True):
+        np.testing.assert_array_equal(a, b)
+        assert len(a) <= 64 and np.all(np.diff(a) > 0)
+    if longterm._COUNT_PAIRS is not None:  # the scratch is left clean for the next read
+        assert memory._hits is not None and not memory._hits.any()
+
+
+def test_a_write_under_the_address_of_pairs_recognises_revises_and_refiles():
+    _, keys, values, memory = paired()
+    memory.fill(keys, values)
+    slot, revised = memory.write(keys[7], values[9])  # the key told again
+    assert (slot, revised) == (7, True) and memory.count == 3000
+    np.testing.assert_array_equal(memory.value(memory.read(keys[7], credit=False)), values[9])
+    slot, revised = memory.write(keys[11], values[3], recognised=5)  # slot 5 takes key 11
+    assert (slot, revised) == (5, True)
+    assert memory.read(keys[5], credit=False).first() != 5  # its old pairs no longer name it
+    assert memory.read(keys[11], heads=2, credit=False).first(0) == 5  # the lower of two equals
+    other = unit(keys[7] + 0.5 * keys[8])
+    slot, revised = memory.write(other, values[1])
+    assert (slot, revised) == (3000, False) and memory.read(other, credit=False).first() == 3000
+
+
+def test_a_saved_memory_with_the_address_of_pairs_continues(tmp_path):
+    _, keys, values, memory = paired(apart=6)
+    memory.fill(keys, values, sources=np.eye(3000, 6, dtype=np.float32) + 1.0)
+    assert set(memory.arrays()) >= {"cells", "fills", "signs", "state"}
+    again = LongTermMemory(**memory.to_dict())
+    again.restore(memory.arrays())
+    assert again.cells.ctypes.data % 64 == 0  # each cell's row on a memory line of its own
+    for i in (0, 17, 2999):
+        assert again.read(keys[i], credit=False).first() == i
+    np.testing.assert_array_equal(again.signs, memory.signs)
+    assert again.nbytes == memory.nbytes > memory.keys.nbytes + memory.cells.nbytes
+
+
+def test_heads_read_in_turn_each_with_a_cue_of_its_own():
+    for settings in ({}, {"candidates": 0, "direct": None}):
+        _, keys, values, memory = paired(**settings)
+        memory.fill(keys, values)
+        read = memory.read_each(np.stack([keys[1], keys[2], keys[1]]), credit=False)
+        assert [read.first(h) for h in range(3)][:2] == [1, 2]
+        assert read.first(2) not in (1, 2)  # the third head reads what the first two left
+        np.testing.assert_array_equal(memory.value(read, 1), values[2])
+        before = memory.deep[[1, 2]].copy()
+        memory.read_each(keys[[1, 2]])
+        np.testing.assert_array_equal(memory.deep[[1, 2]], before + 1.0)
+    with pytest.raises(ValueError, match="per head"):
+        memory.read_each(keys[1])
+    soft = LongTermMemory(32, 8, 64, temperature=0.05, candidates=0)
+    for key, value in zip(keys[:64], values[:64], strict=True):
+        soft.write(key, value)
+    shares = soft.read_each(np.stack([keys[4], keys[4]]), credit=False).weights
+    assert shares[0][4] > 0.9 and shares[1][4] < 0.1  # a slot is read in full once
+
+
+def test_a_chain_lays_each_value_on_the_next_cue():
+    rng = np.random.default_rng(5)
+    entities, relations = codes(rng, 40, 8), codes(rng, 3, 8)
+    memory = LongTermMemory(16, 8, 200, cosine=True)
+
+    def after(entity, relation):
+        return (entity * 7 + relation + 1) % 40
+
+    for e in range(40):
+        for r in range(3):
+            memory.write(np.concatenate([entities[e], relations[r]]), entities[after(e, r)])
+    links = np.stack([np.concatenate([np.zeros(8), relations[r]]) for r in (1, 2)])
+    reads = memory.chain(np.concatenate([entities[3], relations[0]]), links, credit=False)
+    first = after(3, 0)
+    second = after(first, 1)
+    assert [int(np.argmax(entities @ memory.value(r))) for r in reads] == [
+        first, second, after(second, 2)]
+    assert len(memory.chain(np.zeros(16), links, credit=False)) == 3  # a zero cue ties: slot 0
+    with pytest.raises(ValueError, match="must fit"):
+        memory.chain(np.zeros(16), links, at=9)
+    assert len(LongTermMemory(16, 8, 4).chain(np.ones(16), links)) == 1  # nothing read: ends
+
+
+def test_a_source_tells_two_facts_with_one_key_apart():
+    rng = np.random.default_rng(7)
+    key, values, sources = unit(rng.standard_normal(16)), codes(rng, 4, 8), \
+        rng.standard_normal((3, 20))
+    plain = LongTermMemory(16, 8, 100, cosine=True, revise=0.999)
+    assert plain.write(key, values[0]) == (0, False) and plain.write(key, values[1]) == (0, True)
+    memory = LongTermMemory(16, 8, 100, cosine=True, revise=0.999, apart=20)
+    assert memory.write(key, values[0], source=sources[0]) == (0, False)
+    assert memory.write(key, values[1], source=sources[1]) == (1, False)  # another fact
+    assert memory.write(key, values[2], source=sources[0]) == (0, True)  # the first, told again
+    assert memory.count == 2
+    assert memory.read(key, source=sources[0], credit=False).first() == 0
+    assert memory.read(key, source=sources[1], credit=False).first() == 1
+    np.testing.assert_array_equal(
+        memory.value(memory.read(key, source=sources[1], credit=False)), values[1])
+    assert memory.read(key, credit=False).first() == 0  # without a source: the lower of equals
+    assert memory.write(key, values[3]) == (0, True)  # and a write revises its first choice
+    with pytest.raises(ValueError, match="apart"):
+        plain.read(key, source=sources[0])
+    with pytest.raises(ValueError, match="one finite row of 20"):
+        memory.write(key, values[0], source=sources[0][:5])
+
+
+def test_the_new_settings_are_checked_and_off_by_default():
+    assert LongTermMemory(8, 8, 32).pairs == 0 and LongTermMemory(8, 8, 32).apart == 0
+    for settings in ({"pairs": 1}, {"pairs": 65}, {"pairs": -2}, {"apart": -1}, {"pairs": True}):
+        with pytest.raises(ValueError):
+            LongTermMemory(8, 8, 32, **settings)
+    small = LongTermMemory(8, 8, 32, pairs=8)  # under ``direct`` slots every slot is scored
+    assert not small.coarse and not hasattr(small, "cells")

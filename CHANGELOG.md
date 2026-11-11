@@ -42,6 +42,49 @@
   the settle's tolerance of the CPU's (the float64 device sits at the same distance) and their
   saves loading on every backend to the saved parameters (benchmarks/letters, on a device;
   docs/backends.md).
+### A long-term memory of a million records (opt-in, #310)
+
+`cd.LongTermMemory` reads a million records through an address whose work grows far slower than
+the records. Every option is off by default; without them the store and a brain with records are
+those of 0.97.0, to the bit.
+
+- **An address of pairs** (`pairs=units`). A record is filed under every pair of its most driven
+  address units, in a table of cells sized to the capacity. A cue's winners name the pairs it
+  reads, and the slots found under the most pairs go to the read's competition. A key is centred
+  before it drives the units, so a key of zeros and ones and a dense key are filed alike.
+- **`fill(keys, values)`** writes many records told once in one pass.
+- **`read_each(cues)`**: heads reading in turn, each with a cue of its own, for a question of
+  several parts. **`chain(cue, links)`**: a read's value laid on the next cue.
+- **Keys held apart** (`apart=width`): a write keeps a signature of the fact's `source`, so two
+  facts whose keys are one key hold two records, and a read that carries its source takes its own.
+- **A brain's own records** take the address through `Brain.compose(longterm=records,
+  longterm_pairs=, longterm_expansion=, longterm_winners=, longterm_candidates=, longterm_fade=)`.
+- With the `fast` extra (Numba) the count over the pairs runs in one compiled loop; NumPy gives
+  the same slots without it.
+- Instruments `benchmarks/memory_scale/million.py` and `facts.py`, declared in
+  [`PROTOCOL_4.md`](benchmarks/memory_scale/PROTOCOL_4.md).
+
+### The encyclopedia: facts read once (opt-in, #311)
+
+A brain reads a corpus of facts once, writing its own records, and answers questions about them
+from those records. Every option is off by default; without them a brain with records reads as
+before.
+
+- **Records kept as lists.** With `longterm_distinct` each stream keeps each record's entries and
+  each entry's records, so the records and the codebook grow to a hundred thousand records and
+  more. A checkpoint keeps the entries as rows of (stream, slot, entry); a 0.97.1 file, which
+  keeps them as tables, loads.
+- **The record that holds the most** (`longterm_best=True`): the read takes the record holding the
+  largest share of the cue's weight, the latest among equals, so a question that names a subject
+  and a relation reads the record of both, and a fact told again is read from its latest telling.
+- **What the question asks beyond the first record** (`longterm_rest=True`): a second read is
+  cued by the first record's value and the question's entries that record does not hold, so a
+  question of two facts reads the second fact. The regions hold the chain from its end, the
+  answering record on `longterm`, the first record on `longterm_1` where the brain has two heads.
+- The encyclopedia chamber, `benchmarks/encyclopedia/`: facts from Wikidata (CC0), questions in
+  trained and held-out wordings, revisions, questions of two facts, and matched controls (a
+  closed-book LSTM and transformer, a transformer with the facts in its window, and BM25
+  retrieval read by a transformer).
 
 ## 0.97.1 - 2026-11-11
 
