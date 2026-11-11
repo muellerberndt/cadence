@@ -1833,8 +1833,11 @@ latest telling, which holds the same share as the earlier one.
 lovelace ?") is answered by two records: the first names the country, the second holds the
 country's capital. With `longterm_rest=True` head 1 is cued by the first record's entries outside
 the question (its value, the country) together with the question's entries the first record does
-not hold and that weigh at least `longterm_distinct` of the question's heaviest ("capital"). Where
-the first record holds every such entry, the question asks one fact and head 1 holds nothing.
+not hold and that weigh at least `longterm_distinct` of the question's heaviest ("capital"). The
+regions hold the chain from its end: the record that answers (the capital) on `longterm`, the
+first record (the country) on `longterm_1`, so the brain says an answer from one region whether
+the question asks one fact or two. Where the first record holds every such entry, the question
+asks one fact and head 1 holds nothing.
 
 | Setting | Founder | Changed by | What it sets |
 | --- | --- | --- | --- |
