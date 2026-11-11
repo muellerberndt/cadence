@@ -408,3 +408,40 @@ def test_the_copy_makes_alternation_under_identical_drive_learnable():
     without = alternation_after_teaching(5, None)
     assert with_copy >= 0.9
     assert without < with_copy
+
+
+def test_a_silent_act_issues_no_command_and_the_copy_holds_the_last_one(tmp_path):
+    brain = cd.Brain.compose(4, 3, seed=0, backend="cpu", recall=False, episodic=False,
+                             efference_amplitude=1.0, efference_decay=0.0, efference_silent=0)
+    copy = brain.efference
+    copy.issue(np.array([[0.0, 1.0, 0.0], [0.0, 0.0, 1.0]]))
+    copy.issue(np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]))  # the first stream is silent
+    np.testing.assert_array_equal(copy.trace, [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+    np.testing.assert_array_equal(copy.last, [[0.0, 1.0, 0.0], [0.0, 1.0, 0.0]])
+    brain.reset()
+    for _ in range(6):
+        brain.step(DRIVE[:, :4], teacher=[0])
+    assert brain.describe()["genes"]["efference_silent"] == 0
+    loaded = cd.Brain.load(brain.save(tmp_path / "silent.npz"))
+    assert loaded.efference.silent == 0
+    np.testing.assert_array_equal(loaded.efference.trace, brain.efference.trace)
+
+
+def test_a_brain_without_a_silent_act_saves_and_describes_as_before(tmp_path):
+    brain = composed()
+    assert "efference_silent" not in brain.describe()["genes"]
+    assert "silent" not in brain.describe()["memories"]["efference"]
+
+
+@pytest.mark.parametrize(
+    "options, message",
+    [
+        ({"efference_silent": 0}, "needs the efference copy"),
+        ({"efference_amplitude": 1.0, "efference_silent": 3}, "one motor neuron"),
+        ({"efference_amplitude": 1.0, "efference_silent": True}, "one motor neuron"),
+        ({"efference_amplitude": 1.0, "efference_silent": 0, "slots": [2, 1]}, "one motor slot"),
+    ],
+)
+def test_invalid_silent_acts_are_refused(options, message):
+    with pytest.raises(ValueError, match=message):
+        cd.Brain.compose(4, 3, seed=0, backend="cpu", recall=False, **options)

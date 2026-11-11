@@ -2289,6 +2289,7 @@ class Brain:
         working_memory_amplitude: float = 3.0,
         efference_decay: float = 0.2,
         efference_amplitude: float = 0.0,
+        efference_silent: int | None = None,
         history_decays: Sequence[float] = (),
         history_amplitude: float = 3.0,
         message: int | None = None,
@@ -2563,7 +2564,12 @@ class Brain:
                 amplitude=efference_amplitude,
                 source="motor",
                 target="efference",
+                silent=efference_silent,
             )
+            if efference_silent is not None and len(self.learner.slot_sizes) != 1:
+                raise ValueError("efference_silent needs a brain of one motor slot")
+        elif efference_silent is not None:
+            raise ValueError("efference_silent needs the efference copy (efference_amplitude)")
         self.history: History | None = None
         # the history hears what the cortex reads: the code region's code with a learned code
         heard_width = len(self.code_index) if learned else len(self.sensory_index)
@@ -3658,6 +3664,8 @@ class Brain:
         ):
             if component is not None:
                 genes.update({f"{prefix}_{field}": getattr(component, field) for field in fields})
+        if self.efference is not None and self.efference.silent is not None:
+            genes["efference_silent"] = self.efference.silent
         if isinstance(self.hippocampus, SynapticMemory):
             genes["consolidation"] = self.hippocampus.consolidation
             if self.hippocampus.fade:
@@ -7015,6 +7023,7 @@ class Brain:
                 result.efference = Efference(
                     result.connectome,
                     **{name: echo[name] for name in ("decay", "amplitude", "source", "target")},
+                    silent=echo.get("silent"),
                 )
                 for name in ("trace", "last", "cold"):
                     setattr(result.efference, name, data["efference/" + name].copy())

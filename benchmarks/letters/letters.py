@@ -23,6 +23,10 @@ The brain says one of ``letters + 2`` symbols at every frame: blank (0), a lette
 - ``delay=d`` moves each due symbol ``d`` frames later, and never onto or before the symbol before
   it.
 
+``motor="split"`` gives the brain two motor slots that settle together: the symbol it hears
+(taught as ``frames``) and, apart, whether to say it (taught 1 where the arm's lessons put a
+symbol, 0 elsewhere); it says the first slot's symbol where the second says 1.
+
 Readings are the instrument's, the same for every learner, on a held-out stream answered greedily
 without learning:
 
@@ -428,6 +432,7 @@ def arm_settings(arm: str, protocol: dict[str, Any]) -> dict[str, Any]:
         "genes": {**protocol["brain"]["genes"], **spec.get("genes", {})},
         "labels": spec.get("labels", "onset"),
         "delay": int(spec.get("delay", 0)),
+        "motor": spec.get("motor", "one"),
     }
 
 
@@ -435,7 +440,11 @@ def compose(arm: str, seed: int, protocol: dict[str, Any]) -> Any:
     import cadence as cd
 
     letters = int(protocol["world"]["letters"])
-    genes = arm_settings(arm, protocol)["genes"]
+    settings = arm_settings(arm, protocol)
+    genes = settings["genes"]
+    if settings["motor"] == "split":  # the symbol heard and, apart, whether to say it
+        return cd.Brain.compose(int(protocol["world"]["features"]), symbols(letters) + 2,
+                                slots=[symbols(letters), 2], backend="cpu", seed=seed, **genes)
     return cd.Brain.compose(int(protocol["world"]["features"]), symbols(letters), backend="cpu",
                             seed=seed, **genes)
 
@@ -443,15 +452,19 @@ def compose(arm: str, seed: int, protocol: dict[str, Any]) -> Any:
 def brain_answers(brain: Any, x: np.ndarray, *, record: bool = False) -> dict[str, Any]:
     """A brain's greedy answers to a stream without learning (the caller passes a loaded and
     reset copy): actions, the preferred symbol other than blank, and with ``record`` the settled
-    activation of every population at every frame."""
+    activation of every population at every frame. A brain of two motor slots (``split``) says
+    the first slot's symbol where the second slot says 1, and blank elsewhere."""
     populations = brain.connectome.populations
     motor = np.asarray(populations["motor"], dtype=np.int64)
+    split = len(brain.learner.slot_sizes) == 2
+    width = int(brain.learner.slot_sizes[0])
     actions, preferred = [], []
     states: dict[str, list[np.ndarray]] = {name: [] for name in populations}
     for row in x:
-        actions.append(int(brain.act(row[None], greedy=True)[0]))
+        act = np.asarray(brain.act(row[None], greedy=True)).reshape(-1)
+        actions.append(int(act[0]) if not split or int(act[1]) == 1 else BLANK)
         activation = np.asarray(brain.basal_ganglia.state.activation).reshape(-1)
-        preferred.append(int(np.argmax(activation[motor][1:])) + 1)
+        preferred.append(int(np.argmax(activation[motor][1:width])) + 1)
         if record:
             for name, index in populations.items():
                 states[name].append(activation[np.asarray(index, dtype=np.int64)])
@@ -530,9 +543,11 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
     y = labels(train, "onset" if own else settings["labels"], delay=settings["delay"])
     # with ``own`` lessons: the sound each frame belongs to, and whether the brain has said it
     sound_of = np.full(len(train["track"]), -1, dtype=np.int64)
-    for k, (symbol, start, end) in enumerate(train["sounds"]):
+    for k, (_, start, end) in enumerate(train["sounds"]):
         sound_of[start : end + 1] = k
     said_sound = np.zeros(len(train["sounds"]), dtype=bool)
+    split = settings["motor"] == "split"
+    heard = labels(train, "frames")  # the split motor's first slot: the symbol heard
     brain = compose(arm, seed, protocol)
     x = np.asarray(train["frames"], dtype=float)
     record: dict[str, Any] = {
@@ -548,7 +563,11 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
         if own and sound_of[t] >= 0:
             k = int(sound_of[t])
             label = BLANK if said_sound[k] else int(train["sounds"][k][0])
-        issued = brain.step(x[t][None], teacher=[label])
+        if split:
+            issued = brain.step(x[t][None], teacher=[[int(heard[t]), int(label != BLANK)]])
+            issued = issued[:, 0] if int(issued[0, 1]) == 1 else np.array([BLANK])
+        else:
+            issued = brain.step(x[t][None], teacher=[label])
         if own and sound_of[t] >= 0 and int(issued[0]) == train["sounds"][sound_of[t]][0]:
             said_sound[sound_of[t]] = True
         lessons += int(brain.last_learning.get("demonstration_accepted_presentations", 1)) \
@@ -581,13 +600,14 @@ def brain_life(arm: str, seed: int, protocol: dict[str, Any], out: Path,
     return record
 
 
-def sample(actions: np.ndarray, stream: dict[str, Any], letters: int, n: int = 12) -> dict[str, str]:
+def sample(
+    actions: np.ndarray, stream: dict[str, Any], letters: int, n: int = 12
+) -> dict[str, str]:
     """The first ``n`` words of the stream: the reference, the collapsed reading and the
     steps as said (``_`` blank, ``|`` space)."""
-    stop = next((start for k, (s, start, _) in enumerate(stream["sounds"])
-                 if s == space_symbol(letters) and sum(
-                     1 for q, _, _ in stream["sounds"][: k + 1] if q == space_symbol(letters)) == n),
-                len(actions))
+    space = space_symbol(letters)
+    silences = [start for s, start, _ in stream["sounds"] if s == space]
+    stop = silences[n - 1] if len(silences) >= n else len(actions)
     a = np.asarray(actions[: stop + 1])
     space = space_symbol(letters)
     steps = "".join("_" if v == BLANK else "|" if v == space else chr(ord("a") + v - 1) for v in a)
@@ -624,7 +644,8 @@ def report(directory: Path) -> str:
             f"{s['collapsed']['words']:.3f} | {s['trained_words']:.2f} | "
             f"{s['held_out_words']:.2f} | {s['said']['characters']:.3f} | "
             f"{s['said']['insertions']:.3f} | {s['held_steps']['letters_mean']:.2f} | "
-            f"{s['held_steps']['letters_once']:.2f} | {st.get('letter_from_sound', float('nan')):.2f} | "
+            f"{s['held_steps']['letters_once']:.2f} | "
+            f"{st.get('letter_from_sound', float('nan')):.2f} | "
             f"{st.get('emission_given_letter', float('nan')):.2f} | "
             f"{s['emission']['after_due_said']:.2f} |"
         )
