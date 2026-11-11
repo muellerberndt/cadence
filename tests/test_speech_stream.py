@@ -3,90 +3,71 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from cadence import Brain
+from cadence.speech.decode import Alphabet, collapse
+from cadence.speech.frontend import Hearing, log_mel
 from cadence.speech.stream import StreamReader
 
-RATE, WINDOW, HOP, STACK, FRAMES, BANDS = 16000, 400, 160, 4, 12, 8
+MELS, WINDOW = 8, 12
+ALPHABET = Alphabet("ab")  # blank, a, b, space: four symbols
 
 
-class Toy:
-    """A small front end: log energies of 8 bands of 25 ms frames every 10 ms; a step's rows are
-    its window of frames, less the window's mean, laid out bands by frames."""
-
-    window, hop, stack, frames = WINDOW, HOP, STACK, FRAMES
-
-    def __init__(self) -> None:
-        self.heard: list[np.ndarray] = []
-
-    def log_mel(self, samples: np.ndarray) -> np.ndarray:
-        count = 1 + (len(samples) - WINDOW) // HOP
-        index = np.arange(WINDOW)[None, :] + HOP * np.arange(count)[:, None]
-        power = np.abs(np.fft.rfft(samples[index] * np.hanning(WINDOW), 64)) ** 2
-        return np.log(power[:, 1 : 1 + 4 * BANDS].reshape(count, BANDS, 4).sum(axis=2) + 1e-6)
-
-    def rows(self, windows: np.ndarray) -> np.ndarray:
-        w = windows - windows.mean(axis=(1, 2), keepdims=True)
-        out = np.ascontiguousarray(0.1 * w.transpose(0, 2, 1)).reshape(len(w), -1)
-        self.heard.append(out)
-        return out
+def hearing() -> Hearing:
+    return Hearing(np.zeros(MELS), np.ones(MELS), window=WINDOW)
 
 
-def whole(front: Toy, audio: np.ndarray) -> np.ndarray:
-    """The rows of a whole utterance at once, the first frame repeated before it began."""
-    frames = front.log_mel(audio)
-    steps = len(frames) // STACK
-    padded = np.concatenate([np.repeat(frames[:1], FRAMES, axis=0), frames])
-    index = STACK * (np.arange(steps) + 1)[:, None] + np.arange(FRAMES)[None, :]
-    w = padded[index]
-    w = w - w.mean(axis=(1, 2), keepdims=True)
-    return np.ascontiguousarray(0.1 * w.transpose(0, 2, 1)).reshape(steps, -1)
+def ears(seed: int) -> Brain:
+    return Brain.compose((MELS, WINDOW), ALPHABET.size, seed=seed, learned_fields=4,
+                         recall=False, backend="cpu")
 
 
-def letters(actions: np.ndarray) -> str:
-    out, previous = [], 0
-    for a in actions:
-        if a and a != previous:
-            out.append("abc"[int(a) - 1])
-        previous = int(a)
-    return "".join(out)
+def audio(seed: int, seconds: float) -> np.ndarray:
+    rng = np.random.default_rng(seed)
+    n = int(16000 * seconds)
+    return rng.standard_normal(n) * np.abs(np.sin(np.linspace(0, 20, n)))
 
 
 def test_the_reader_hears_what_the_front_end_makes_of_the_whole_utterance():
-    rng = np.random.default_rng(0)
-    audio = rng.standard_normal(RATE + 1234) * np.sin(np.linspace(0, 30, RATE + 1234))
-    brain = Brain.compose(BANDS * FRAMES, 4, seed=0, recall=False, backend="cpu")
-    front = Toy()
-    reader = StreamReader(brain, front, letters, temperature=1.0)
-    said = ""
-    at = 0
-    for size in (37, 1000, 1, 399, 5000, 3, 12000):
-        said += reader.push(audio[at : at + size])
+    sound = audio(0, 1.07)
+    brain = ears(0)
+    brain.fields.learning = False
+    reader = StreamReader(brain, hearing(), alphabet=ALPHABET)
+    said, at = "", 0
+    for size in (37, 1000, 1, 399, 5000, 3, 4000):
+        said += reader.push(sound[at : at + size])
         at += size
-    said += reader.push(audio[at:])
-    expected = whole(Toy(), audio)
-    assert len(reader.actions) == len(expected)
-    assert np.allclose(np.concatenate(front.heard), expected)
+    said += reader.push(sound[at:])
+    rows = hearing().steps(log_mel(sound, mels=MELS))
+    assert len(reader.actions) == len(rows)
     brain.reset()
-    acted = [int(brain.act(row[None], greedy=True)[0]) for row in expected]
+    acted = [int(brain.act(row[None], greedy=True)[0]) for row in rows]
     assert reader.actions == acted
-    assert said == letters(np.asarray(acted)) == reader.finish()
+    assert said == ALPHABET.decode(collapse(acted)) == reader.finish() == reader.text()
     assert len(reader.beliefs) == len(acted)
     assert np.allclose([np.exp(b).sum() for b in reader.beliefs], 1.0)
     latency = reader.latency()
     assert latency["step_median_s"] > 0 and latency["seconds_per_audio_second"] > 0
     reader.reset()
-    assert reader.actions == [] and reader.push(audio[:100]) == ""
+    assert reader.actions == [] and reader.push(sound[:100]) == ""
 
 
-def test_finish_reads_the_beliefs_through_a_word_decoder_where_one_is_given():
-    brain = Brain.compose(BANDS * FRAMES, 4, seed=1, recall=False, backend="cpu")
-    seen: list[tuple[int, int]] = []
+def test_finish_reads_the_beliefs_against_a_word_list_where_one_is_given():
+    class Words:
+        def __init__(self) -> None:
+            self.seen: list[tuple[int, ...]] = []
 
-    def words(beliefs: np.ndarray) -> str:
-        seen.append(beliefs.shape)
-        return "word"
+        def decode(self, beliefs: np.ndarray) -> str:
+            self.seen.append(beliefs.shape)
+            return "ab"
 
-    reader = StreamReader(brain, Toy(), letters, words=words, temperature=1.0)
-    reader.push(np.random.default_rng(1).standard_normal(4000))
-    assert reader.finish() == "word" and seen == [(len(reader.actions), 4)]
+    words = Words()
+    reader = StreamReader(ears(1), hearing(), alphabet=ALPHABET, words=words)  # type: ignore[arg-type]
+    reader.push(audio(1, 0.5))
+    assert reader.finish() == "ab" and words.seen == [(len(reader.actions), ALPHABET.size)]
+
+
+def test_a_brain_of_another_symbol_count_is_refused():
+    with pytest.raises(ValueError):
+        StreamReader(ears(2), hearing())
