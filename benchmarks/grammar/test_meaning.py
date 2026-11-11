@@ -93,7 +93,7 @@ def test_the_components_of_each_family():
     assert mn.components(row) == {
         "agent_noun": 1, "agent_number": 1, "verb": 1, "patient_noun": 2, "patient_number": 0,
         "distractors": 2, "distractor1_noun": 0, "distractor1_number": 0,
-        "distractor2_noun": 3, "distractor2_number": 1}
+        "distractor2_noun": 3, "distractor2_number": 1, "verb_form": 3}
     assert mn.positions(row) == {"go": 0, "verb": 5, "end": 7}
     row = gr.dyck(rng, [1, 1, 0, 1], [0, 1, 0, 1])  # ( [ ] [  leaves ( [ open
     assert mn.components(row) == {"open": 1, "innermost": 1, "outermost": 0,
@@ -539,3 +539,15 @@ def test_the_sixth_plan_keys_the_message_by_role_and_its_gates_read_small_lives(
     lines = mn.sixth_verdict(rows, [])
     assert any("-> R1" in line for line in lines) and any("-> R2" in line for line in lines)
     assert any("-> G8" in line for line in lines)
+
+
+def test_the_verbs_form_is_probed_and_read_again_with_the_message_silent():
+    warnings.simplefilter("ignore")
+    row = mn.gr.clause(np.random.default_rng(0), 1, agent=(2, 1), v=1)
+    assert mn.components(row)["verb_form"] == 3  # the second verb, the plural form
+    spec = {"arm": "barred", "module": 64, "settings": mn.BOTH, "founder": 0, "tag": "x",
+            "batches": 2, "panel_batches": 1, "probe_scale": 0.0, "held_probes": 1,
+            "silent_reading": True}
+    life = mn.run_life(spec)
+    assert {"said_held_silent", "probes_held_silent", "panels_held_silent"} <= set(life)
+    assert "settled" in life["probes_held_silent"]["verb_form"]["verb"]

@@ -146,7 +146,9 @@ def components(row: gr.Row) -> dict[str, int]:
     if row.family == "clause":
         out = {"agent_noun": m["agent"][0], "agent_number": m["agent"][1], "verb": m["verb"],
                "patient_noun": m["patient"][0], "patient_number": m["patient"][1],
-               "distractors": m["L"]}
+               "distractors": m["L"],
+               # the verb's said form: its stem and the agent's number together
+               "verb_form": 2 * m["verb"] + m["agent"][1]}
         for i, (n, plural) in enumerate(m["mods"][:2], start=1):
             out[f"distractor{i}_noun"] = n
             out[f"distractor{i}_number"] = plural
@@ -1336,6 +1338,19 @@ def message_life(spec: dict[str, Any]) -> dict[str, Any]:
         states = message_states(brain, {"trained": both["trained"], "held": both["held"]},
                                 message, bar)
         row["probes_held"] = transfer_probes(founder, states["trained"], states["held"], places)
+        if spec.get("silent_reading") and getattr(brain, "message", None) is not None:
+            # the same readings with the message silent: what the association holds and says
+            # by itself, the recall read barred as in the life's lessons
+            quiet = copy.deepcopy(brain)
+            quiet.message.amplitude = quiet.message.read_amplitude = 0.0
+            row["said_held_silent"] = said_by_kind(quiet, both["held"], message, bar)
+            states = message_states(quiet, {"trained": both["trained"], "held": both["held"]},
+                                    message, bar)
+            row["probes_held_silent"] = transfer_probes(founder, states["trained"],
+                                                        states["held"], places)
+            row["panels_held_silent"] = message_panels(brain, tests, message, bar,
+                                                       ("clause", "clause_held", "roles"),
+                                                       silent=True)
     if spec.get("long_probes"):
         # where longer and deeper sentences are lost: each word kind said on the long panels
         # with the previous words given, and probes fitted on trained shapes, scored on longer
