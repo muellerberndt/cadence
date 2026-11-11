@@ -1,5 +1,27 @@
 # Changelog
 
+## Unreleased
+
+### Spoken-phrase chamber (#303)
+
+`benchmarks/spoken/` reads a continuing brain on spoken phrases of a closed vocabulary, and its
+adaptation within one life to a new speaker and to a new dialect, against a transformer and an
+LSTM trained online on the same audio at the brain's parameter count. No library change: every
+brain in it is a brain of 0.97.0.
+
+- **Corpora.** Speech Commands v0.02 (CC BY 4.0) in same-speaker phrases of 2 to 4 words, the
+  second construction of #183 with its repaired `end`; new speakers from its test split;
+  AudioMNIST's German-accent speakers (MIT) as the dialect, ten words shared; an adapter for
+  Common Voice's single-word segment (CC0). `phrases.py build` records each download's checksum
+  and every built set's hash; tests run on synthetic speech.
+- **Hearing.** 98 log-mel frames of 40 bands every 0.49 s, read through `learned_fields` as an
+  image `inputs=(40, 98)`.
+- **Step 0** (two development founders, 24,000 phrases): the pools of the fields hold the word at
+  a word step at .626 for a linear readout; the 0.97.0 default reads .286 word accuracy and says
+  silence at .449 of the word steps, an association of 256 reads .425, and the transformer with
+  CTC at those parameter counts reads .731 and .743. The term that trails is the brain's read of
+  its pools.
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it
