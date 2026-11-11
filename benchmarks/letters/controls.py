@@ -7,6 +7,8 @@ independently scored controls, never part of the brain's answer path.
   space after each word, blank 0): the learner chooses its own timing.
 - ``ce``: cross-entropy on the brain's per-frame lessons (``letters.labels``, the supplied
   alignment).
+- ``split``: the split brain's per-frame targets, two heads: the symbol heard (``frames``) and
+  whether to say it (1 at the supplied alignment); it says the first where the second says 1.
 
 The training stream is cut into chunks of ``chunk_words`` words, each ending with its word's
 silence. ``online``: one pass in the brain's order, one Adam step per chunk (rate 0.003, gradient
@@ -153,6 +155,11 @@ class Learner:
             loss = torch.nn.functional.ctc_loss(
                 logp, torch.tensor([list(target)]), torch.tensor([len(x)]),
                 torch.tensor([len(target)]), blank=0, zero_infinity=True)
+        elif self.loss == "split":  # the symbol heard and, apart, whether to say it
+            pair = torch.from_numpy(np.asarray(target, dtype=np.int64))
+            width = self.classes - 2
+            loss = (torch.nn.functional.cross_entropy(logits[:, :width], pair[:, 0])
+                    + torch.nn.functional.cross_entropy(logits[:, width:], pair[:, 1]))
         else:
             loss = torch.nn.functional.cross_entropy(logits, torch.from_numpy(
                 np.asarray(target, dtype=np.int64)))
@@ -174,8 +181,15 @@ class Learner:
             for start, end, _ in chunks(stream, words, letters):
                 logits = self.net(torch.from_numpy(
                     stream["frames"][start:end][None].astype(np.float32)))[0].numpy()
-                actions.append(np.argmax(logits, -1))
-                preferred.append(np.argmax(logits[:, 1:], -1) + 1)
+                if self.loss == "split":
+                    width = self.classes - 2
+                    heard = np.argmax(logits[:, :width], -1)
+                    say = np.argmax(logits[:, width:], -1)
+                    actions.append(np.where(say == 1, heard, lt.BLANK))
+                    preferred.append(np.argmax(logits[:, 1:width], -1) + 1)
+                else:
+                    actions.append(np.argmax(logits, -1))
+                    preferred.append(np.argmax(logits[:, 1:], -1) + 1)
         return np.concatenate(actions), np.concatenate(preferred)
 
 
@@ -184,9 +198,13 @@ def run(model: str, loss: str, mode: str, seed: int, protocol: dict[str, Any],
         chunk_words: int = 8) -> dict[str, Any]:
     letters = int(protocol["world"]["letters"])
     inputs, classes = int(protocol["world"]["features"]), lt.symbols(letters)
+    if loss == "split":
+        classes += 2
     w = lt.world(seed, protocol, sizes)
     train, test = w["train"], w["test"]
     y = lt.labels(train, "onset")
+    if loss == "split":  # the split brain's targets: the symbol heard, and whether to say it
+        y = np.stack([lt.labels(train, "frames"), (y != lt.BLANK).astype(np.int64)], axis=1)
     width = matched_width(model, brain_parameters, inputs, classes)
     learner = Learner(model, loss, width, inputs, classes, seed, RATES[mode])
     pieces = chunks(train, chunk_words, letters)
@@ -233,7 +251,7 @@ def run(model: str, loss: str, mode: str, seed: int, protocol: dict[str, Any],
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--model", choices=("lstm", "transformer"), required=True)
-    parser.add_argument("--loss", choices=("ctc", "ce"), required=True)
+    parser.add_argument("--loss", choices=("ctc", "ce", "split"), required=True)
     parser.add_argument("--mode", choices=("online", "offline"), required=True)
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--protocol", type=Path, default=lt.PROTOCOL)
