@@ -164,6 +164,16 @@ issued action with a greedy `act`, which learns nothing from it, and teach the s
 `lesson(observations, labels)`; the next `step` takes no reward. A reward reported for the shown
 action would credit an action that did not run.
 
+**Saying a symbol once per event.** A label at one step of an event, with blank on the rest, teaches
+the brain *when* to answer as well as *what*. Put that step where the input marks the event: in
+the [letters chamber](../benchmarks/letters/README.md) letters taught at their sound's first frame
+are said once (.96 of sounds), and letters spread evenly over a word, at steps the sound does not
+mark, are held over several steps and half missed. The step is learned as a feature of the context
+the lessons showed: after a pair of letters no lesson held, a quarter to a third of letters go
+unsaid, by the brain and by an LSTM taught the same labels alike. A label on every step of the
+event teaches only *what*, and it carries to new contexts (held-out words .99), with the symbol said
+on every step of its event.
+
 ## Learning from outcomes
 
 `step(observations, reward=...)` learns from every outcome it is given. `live(observation,

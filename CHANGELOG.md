@@ -1,5 +1,26 @@
 # Changelog
 
+## Unreleased
+
+### Benchmarks
+
+- **The letters chamber** ([`benchmarks/letters/`](benchmarks/letters/README.md), #304). Letters
+  heard as sounds of one to four frames, said one symbol a frame, read the same for every learner:
+  the stream as said, the CTC reading, held-out words, each letter's said steps and the stages.
+  Matched controls by gradient: an LSTM and a transformer by CTC, and LSTMs on the brains'
+  per-frame targets. No library change.
+  - Step 0 (development founders): taught a letter at its sound's first frame, the 0.97.0 default
+    says each letter once (.96 of sounds, .003 inserted per character, characters .968 on 18,000
+    words) and loses words at the emission of a letter after a letter pair no trained word holds
+    (missed .286 against .006), while its state holds the letter there at .99. Taught at a step
+    the sound does not mark (letters spread evenly over the word), it holds letters and misses
+    half.
+  - Step 1 ([`PROTOCOL_1.md`](benchmarks/letters/PROTOCOL_1.md), six fresh founders): two motor
+    slots, the symbol heard and whether to say it, fail the emission gate (3 of 6) and the words
+    gate (held-out words .40, 0 of 6), where the default reads .47 and passes emission on 6 of 6.
+    Learners taught when to say a letter by a per-frame lesson read held-out words at .40 to .67;
+    the CTC learners, which choose their own timing, at .85 to .94.
+
 ## 0.97.0 — 2026-11-10
 
 A new brain hears the moment before (`history_decays=(0.0,)`), its store averages the outcomes it
