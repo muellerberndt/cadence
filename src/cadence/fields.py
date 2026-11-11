@@ -72,6 +72,10 @@ class LearnedFields:
     colour: str = "opponent"
     dictionary: np.ndarray = field(init=False, repr=False)
     thresholds: np.ndarray = field(init=False, repr=False)
+    # the latest codes read, each with the frames and the tables it was read from (``code``)
+    _read: list[tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]] = field(
+        default_factory=list, init=False, repr=False, compare=False
+    )
 
     FIELD = 8
     STRIDE = 2
@@ -88,6 +92,10 @@ class LearnedFields:
     # ``"joint"`` (every field reads all three); the last two are controls
     COLOURS = ("opponent", "channels", "joint")
     LUMINANCE = 0.9
+    # codes kept for frames read again under the same tables: a moment's lesson and act and the
+    # outcome before them read the same frames, and the code of the same frames and tables is
+    # the same array to the bit
+    KEPT = 2
     OPPONENT = np.array([[1.0, 1.0, 1.0], [1.0, -1.0, 0.0], [-1.0, -1.0, 2.0]]) / np.sqrt(
         np.array([[3.0], [2.0], [6.0]])
     )
@@ -212,13 +220,31 @@ class LearnedFields:
 
     def code(self, x: np.ndarray) -> np.ndarray:
         """The pooled responses of every field, each row at unit length, ``(rows, outputs)``;
-        reads, never learns."""
+        reads, never learns. Frames read again under the same tables (equal values, compared
+        in full) return the code kept from the first read, the same array to the bit."""
+        frames = np.atleast_2d(np.asarray(x, dtype=float))
+        for held, dictionary, thresholds, kept in self._read:
+            if (
+                held.shape == frames.shape
+                and np.array_equal(held, frames)
+                and np.array_equal(dictionary, self.dictionary)
+                and np.array_equal(thresholds, self.thresholds)
+            ):
+                self.work["codes"] += 1
+                self.work["code_rows"] += len(kept)
+                return kept.copy()
         a = self.responses(self.retina(x)).reshape(-1, self.rows, self.cols, self.features)
         pooled = np.stack([a[:, ys, xs].mean(axis=(1, 2)) for ys, xs in self._pools], axis=1)
         out = pooled.reshape(len(a), self.outputs)
         self.work["codes"] += 1
         self.work["code_rows"] += len(a)
-        return _unit_rows(out)
+        result = _unit_rows(out)
+        if self.KEPT > 0:
+            self._read = [
+                (frames.copy(), self.dictionary.copy(), self.thresholds.copy(), result.copy()),
+                *self._read,
+            ][: self.KEPT]
+        return result
 
     def learn(self, x: np.ndarray) -> bool:
         """One step of the dictionary and the thresholds from the frames ``x``, each group on

@@ -208,6 +208,61 @@ Declared in [`protocol-speech-fields256.json`](protocol-speech-fields256.json),
   from the sound.
 - A letter said once per sound is open; the CTC reading is the decoding.
 
+## On a device (issue 314, R3)
+
+For [issue 314](https://github.com/muellerberndt/cadence/issues/314)'s R3, [`device.py`](device.py) runs the round 3 amendment's arm, `Brain.compose((40, 24), 29,
+learned_fields=64, modules=(256,), fields_motor=1.0, learning_surprise=False)` with the actor's
+rates at zero (`letters`, 1,285,724 parameters), and the same arm on the spoken chamber's 40 by
+98 window over 37 symbols (`spoken`, 1,296,996 parameters). A training step is the
+forced-alignment lesson's form, `step(x, teacher=labels)`, the utterances heard side by side as
+streams; frames are random windows at the chamber's scale.
+
+**The lessons on each backend against the CPU's.** Six steps from one saved CPU brain loaded on
+each backend: the efficacy differences from the CPU's as a share of the CPU's own lesson steps
+(the largest difference over the largest step, and the median over synapses that moved), the
+motor's settled activity and greedy choices on one more act. The fields read and learn on the
+host on every backend, and their tables match to the bit.
+
+| Backend | Shape, streams | Largest difference over the largest step | Median relative difference | Motor activity, largest difference | Greedy choices agree |
+| --- | --- | --- | --- | --- | --- |
+| CUDA float32 (NVIDIA A10G) | letters, 32 | .0065 | 4.1e-5 | 1.9e-5 | 100% |
+| CUDA float32 | letters, 128 (4 steps) | .0013 | 2.4e-5 | 1.3e-5 | 100% |
+| CUDA float32 | spoken, 32 | .0027 | 2.6e-5 | 5.9e-6 | 100% |
+| CUDA float64 | letters, 32 | .0161 | 5.6e-5 | 5.0e-5 | 100% |
+| MLX (Apple M4) | letters, 32 | .0136 | 1.0e-4 | 7.0e-5 | 100% |
+| MLX | spoken, 32 | .0025 | 2.3e-5 | 6.1e-6 | 100% |
+| torch on the CPU, float32 | letters, 32 | .0132 | 4.8e-5 | 3.0e-5 | 100% |
+| torch on the CPU, float64 | letters, 32 | .0161 | 5.6e-5 | 5.0e-5 | 100% |
+
+The float64 backends sit at the same distance from the CPU's lessons as the float32 ones: the
+difference is where each backend's solve stops within the settle's tolerance, and float32 adds
+nothing above it. A brain saved on each backend loads on the CPU and on that backend to the same
+parameters, to the bit; a brain saved on CUDA loads on MLX and the CPU, and one saved on MLX on
+CUDA and the CPU, to the saved parameters, and four further steps on the second backend stay
+within 1.1e-4 of the CPU's largest step. A save mid-episode holds every stream's eligibility
+(0.73 GB at 128 streams against 47 MB at 4): save at rest, after `reset()`, as `save_slot` does.
+
+**Seconds per hour of audio.** A training step is a lesson and, for the teacher's re-alignment,
+one greedy act of the frozen copy; a step hears 40 ms per stream. Medians after warm-up; the
+learned fields keep the codes of frames read again (the same arrays to the bit).
+
+| Where | letters, 32 streams | letters, 128 | spoken, 32 | spoken, 128 |
+| --- | --- | --- | --- | --- |
+| NVIDIA A10G (g5.xlarge), CUDA float32 | 187 | 126 | 565 | 630 |
+| one CPU core of the same machine (AMD EPYC 7R32) | 770 | 691 | 1,198 | 1,190 |
+| Apple M4, MLX, shared (load 20 to 37) | 456 to 1,083 | 251 to 501 | 1,981 | 2,181 |
+
+Over a life of 300 steps at 128 streams (12 seconds of each utterance) the A10G reads 140
+seconds per hour of audio and holds at most 1.2 GB. Before the kept codes it read 210, 149, 692
+and 808. With four host threads in place of one it reads within 4% of these. The learned fields
+read and learn on the host on every backend: at 128 streams on the A10G they are about 60% of a
+lesson step (a profile of 12 steps), and the device waits for them.
+
+```sh
+PYTHONPATH=src python benchmarks/letters/device.py match --rows 32 --places cpu torch:cuda:float32 mlx
+PYTHONPATH=src python benchmarks/letters/device.py time --places torch:cuda:float32 cpu --batches 32 128
+```
+
 ## What this does and does not establish
 
 The chamber measures composed brains on one synthetic world with supplied sound timing and one
