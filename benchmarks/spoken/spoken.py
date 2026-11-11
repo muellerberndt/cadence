@@ -129,6 +129,11 @@ def probe(
     return out
 
 
+def note(text: str, started: float) -> None:
+    """A progress line on standard error, with the life's process seconds."""
+    print(f"[{time.process_time() - started:8.0f} s] {text}", file=sys.stderr, flush=True)
+
+
 def life(spec: dict[str, Any]) -> dict[str, Any]:
     warnings.simplefilter("ignore", RuntimeWarning)
     data, name, founder = spec["data"], spec["learner"], int(spec["founder"])
@@ -159,6 +164,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                 "work": dict(learner.work),
             }
         )
+        test_word = readings[-1]["test"]["word_accuracy"]
+        note(f"{name} {founder} {taught} phrases: test word {test_word:.3f}", started)
     out: dict[str, Any] = {
         "learner": name,
         "founder": founder,
@@ -201,6 +208,8 @@ def life(spec: dict[str, Any]) -> dict[str, Any]:
                     seed=founder,
                 )
                 adaptation.append({"speaker": speaker, "mode": mode, "rate": rate, "curve": curve})
+                own = " ".join(f"{c['own']['word_accuracy']:.3f}" for c in curve)
+                note(f"{name} {founder} {speaker} {mode} {rate}: own {own}", started)
     if adaptation:
         out["adaptation"] = adaptation
     out["process_seconds"] = time.process_time() - started
