@@ -74,7 +74,7 @@ from .brain import Brain as NeuralGraph
 from .code import LearnedCode
 from .connectome import Connectome
 from .fields import LearnedFields
-from .genome import Genome, Projection, develop
+from .genome import Genome, Projection, develop, tie_groups, tied_blocks
 from .learning import (
     LearnedState,
     Learner,
@@ -419,6 +419,71 @@ def _projection_rates(connectome: Connectome, rate: np.ndarray) -> dict[str, Any
             low if low == high else [low, high]
         )
     return out
+
+
+def _tied_map(tied: Any) -> dict[tuple[str, str], tuple[int, int]]:
+    """The tied projections as given (``tied``), validated: a mapping from ``(pre, post)``, two
+    names, to ``(blocks of pre, blocks of post)``; ``(1, 1)`` ties nothing and is left out."""
+    if tied is None:
+        return {}
+    refusal = (
+        "tied maps a projection, (pre, post), to its blocks, (blocks of pre, blocks of post): "
+        'tied={("sensory", "association"): (3, 1)}'
+    )
+    if not isinstance(tied, Mapping):
+        raise ValueError(refusal)
+    out: dict[tuple[str, str], tuple[int, int]] = {}
+    for ends, blocks in tied.items():
+        if (
+            not isinstance(ends, tuple)
+            or len(ends) != 2
+            or not all(isinstance(name, str) and name for name in ends)
+        ):
+            raise ValueError(refusal)
+        pair = tied_blocks(blocks)
+        if pair != (1, 1):
+            out[(ends[0], ends[1])] = pair
+    return out
+
+
+def _tied_rows(tied: Mapping[tuple[str, str], tuple[int, int]]) -> list[list[Any]]:
+    """``tied`` as a checkpoint and a description hold it: ``[pre, post, blocks of pre, blocks
+    of post]`` per projection."""
+    return [[pre, post, int(a), int(b)] for (pre, post), (a, b) in tied.items()]
+
+
+def _saved_tied(value: Any) -> dict[tuple[str, str], tuple[int, int]]:
+    """``_tied_rows`` read back, validated."""
+    if value is None:
+        return {}
+    if not isinstance(value, list) or any(
+        not isinstance(row, list)
+        or len(row) != 4
+        or not all(isinstance(name, str) and name for name in row[:2])
+        for row in value
+    ):
+        raise ValueError("invalid saved tied projections")
+    out = _tied_map({(row[0], row[1]): (row[2], row[3]) for row in value})
+    if len(out) != len(value):
+        raise ValueError("invalid saved tied projections")
+    return out
+
+
+def _tied_apart(learner: Learner) -> bool:
+    """Whether a tie group of ``learner`` holds synapses of different efficacy, or of different
+    presynaptic gain and contact count: tied synapses are one weight, from their start on."""
+    members, groups = learner._members, learner._member_groups
+    if not len(members):
+        return False
+    graph = learner.brain
+    for values in (graph.efficacy[members], graph._gain_pre[members]):
+        low = np.full(len(learner._member_count), np.inf)
+        high = np.full(len(learner._member_count), -np.inf)
+        np.minimum.at(low, groups, values)
+        np.maximum.at(high, groups, values)
+        if (low != high).any():
+            return True
+    return False
 
 
 def _recall_genes(recall: Any, genes: dict[str, Any]) -> dict[str, Any]:
@@ -801,9 +866,11 @@ def _load_composition(value: Any, learner: Learner) -> dict[str, Any] | None:
                 "sensory_scale", "working_memory_scale", "seed"}
     if not isinstance(value, dict) or set(value) - {
         "history_scale", "recall_scale", "image", "code", "learned_code", "attention", "apical",
-        "learned_fields", "ports",
+        "learned_fields", "ports", "tied",
     } != expected:
         raise ValueError("invalid saved composition provenance")
+    if "tied" in value and not _saved_tied(value["tied"]):
+        raise ValueError("invalid saved composition tied projections")
     compartment = learner.brain.apical
     if ("apical" in value) != (compartment is not None) or (
         compartment is not None and real("saved apical", value["apical"], low=0)
@@ -1961,11 +2028,13 @@ def _layout(
     slots: int | Sequence[int] = 1,
     learned_fields: int | None = None,
     ports: int = 0,
+    tied: Any = None,
 ) -> tuple[Genome, dict[str, Any]]:
     """The layout ``Brain.compose`` develops (``Genome.composed``) and the settings it resolved.
     ``options`` are compose's other settings; the efference copy, the heard history, the recall
     memory and the learned code's ``cortex`` and ``identity`` add regions and projections, and
-    the rest do not change the layout."""
+    the rest do not change the layout. ``tied`` marks projections of the layout as tied
+    (``Projection.tied``), each named by its two regions."""
     for name in options:
         refusal = rescaled(name)
         if refusal is not None:
@@ -2179,6 +2248,22 @@ def _layout(
             projections.append(
                 Projection(name, "association", scale=_RECALL_SCALE, reciprocal=False)
             )
+    shared = _tied_map(tied)
+    for (pre, post), blocks in shared.items():
+        # one set of synapses for every block of a projection of this layout
+        named = [k for k, p in enumerate(projections) if (p.pre, p.post) == (pre, post)]
+        if not named:
+            raise ValueError(
+                f"tied names a projection of this layout by its two regions: none runs from "
+                f"{pre!r} to {post!r}; the layout holds "
+                + ", ".join(f"({p.pre!r}, {p.post!r})" for p in projections)
+            )
+        if beside and "sensory" in (pre, post):
+            raise ValueError(
+                "the sensory region holds the fields' pools and then the ports, which equal "
+                "blocks do not follow: a tie on it needs ports=0"
+            )
+        projections[named[0]] = replace(projections[named[0]], tied=blocks)
     genome = Genome(tuple(regions), tuple(projections), label="composed-brain")
     return genome, {
         "inputs": inputs,
@@ -2199,6 +2284,7 @@ def _layout(
         "recall_scale": recall_scale,
         "recalled": recalled,
         "messaged": messaged,
+        "tied": shared,
     }
 
 
@@ -2254,6 +2340,12 @@ class Brain:
     ``next`` regions of a custom anatomy). A memory keyed on the code numbers its key
     coordinates from zero (``pre``) and is never read from the drive; the code is its
     separation, so the episodic stores take no separator of their own.
+
+    ``tied`` (opt-in) maps two populations ``(pre, post)`` to ``(blocks of pre, blocks of
+    post)``: the populations are cut into that many equal blocks, the synapses from ``pre`` to
+    ``post`` at one place in their blocks are one tie group of the learner, stepped by the mean
+    of its members' steps, and the blocks start as copies of one block
+    (``Projection(tied=...)``). ``Brain.compose(tied=...)`` builds such a projection.
     """
 
     def __deepcopy__(self, memo: dict[int, Any]) -> Brain:
@@ -2311,6 +2403,7 @@ class Brain:
         learned_fields: int | None = None,
         image: Sequence[int] | None = None,
         ports: int = 0,
+        tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
         **genes: Any,
     ) -> None:
         populations = connectome.populations
@@ -2534,10 +2627,27 @@ class Brain:
                 plastic_synapses[synapses] = False
             plastic_neurons = np.ones(connectome.n, dtype=bool)
             plastic_neurons[self.code_index] = False
+        # tied projections (opt-in): equal blocks of a projection's ends share one set of
+        # synapses, which the learner steps as one group, by the mean of its members' steps
+        self.tied = _tied_map(tied)
+        shared = tie_groups(connectome, self.tied) if self.tied else None
+        if shared is not None and plastic_synapses is not None and not bool(
+            plastic_synapses[shared >= 0].all()
+        ):
+            raise ValueError(
+                "a tied projection holds synapses no lesson teaches: a learned code's own "
+                "projections take no tie"
+            )
         self.learner = Learner(
             brain, list(self.motor_index), learning, slots=slots,
             plastic_synapses=plastic_synapses, plastic_neurons=plastic_neurons,
+            tie_groups=shared,
         )
+        if shared is not None and _tied_apart(self.learner):
+            raise ValueError(
+                "the blocks of a tied projection start as copies of one block, in their synapses' "
+                "signs and contact counts: develop the connectome with Projection(tied=...)"
+            )
         self.basal_ganglia = ActorCritic(
             self.learner, list(self.association_index), reward, seed=seed
         )
@@ -3059,6 +3169,7 @@ class Brain:
         slots: int | Sequence[int] = 1,
         learned_fields: int | None = None,
         ports: int = 0,
+        tied: Mapping[tuple[str, str], Sequence[int]] | None = None,
         **options: Any,
     ) -> Brain:
         """Compose one continuing brain: senses, reciprocal processing regions, a motor choice and
@@ -3083,6 +3194,13 @@ class Brain:
         cortex: the first module reads the pools and the memories key on them. ``ports=k``
         beside them reads ``k`` further values per row (a body's own senses) after the flattened
         image, as sensory neurons beside the pools.
+        ``tied={(pre, post): (blocks of pre, blocks of post)}`` (opt-in) ties a projection of
+        the layout across equal blocks of its regions: ``(k, 1)`` reads every block of ``pre``
+        through one set of synapses, ``(1, k)`` writes every block of ``post`` through one, and
+        ``(k, k)`` joins block i to block i through one. A lesson and a reward step a tied
+        synapse by the mean of its copies' steps, and the copies hold one efficacy for the
+        brain's life. With ``connectome`` it names two of the anatomy's populations, whose
+        blocks start as copies (``Projection(tied=...)``, ``Genome.tied``).
         ``teaching`` is the teaching point of the lesson's learner (``"founder"``,
         ``"normalized"`` or ``"deep"``); ``learning=LearnerConfig(...)`` replaces the whole
         configuration instead. ``connectome`` wraps a custom anatomy with these founders;
@@ -3165,8 +3283,11 @@ class Brain:
             inputs, actions, options, modules=modules, observers=observers, lateral=lateral,
             scales=scales, features=features, field=field, code=code,
             learned_code=learned_code, seed=seed, slots=slots, learned_fields=learned_fields,
-            ports=ports,
+            ports=ports, tied=None if connectome is not None else tied,
         )
+        # the tied projections by the connectome's populations: the layout's own, or the ones
+        # the caller names on a custom anatomy
+        shared = genome.tied if connectome is None else _tied_map(tied)
         units, learned = layout["units"], layout["learned"]
         association = layout["widths"][-1]
         if composes_memory and association > _COMPOSED_WIDTH:  # a wide brain's read map steps less
@@ -3226,6 +3347,8 @@ class Brain:
             if layout["fields"]:  # the image the fields read; the sensory region is their pools
                 place = {**place, "learned_fields": layout["fields"], "image": layout["image"],
                          "ports": layout["ports"]}
+            if shared:
+                place = {**place, "tied": shared}
             return cls(
                 connectome, seed=seed, slots=slots, code=units,
                 inputs=layout["inputs"] if layout["coded_cortex"] else None,
@@ -3299,6 +3422,8 @@ class Brain:
             result._composition["learned_fields"] = layout["fields"]
         if layout["ports"]:
             result._composition["ports"] = layout["ports"]
+        if layout["tied"]:
+            result._composition["tied"] = _tied_rows(layout["tied"])
         if attention:
             result._composition["attention"] = True
         if result.brain.apical is not None:
@@ -3347,7 +3472,7 @@ class Brain:
             *_EPISODIC_SETTINGS, "recall", *(f"recall_{name}" for name in Recall.CONSTRUCTION),
             *(f"recall_{name}" for name in Recall.CONSTRUCTION_OPTIONS), "code",
             "learned_code", *(f"learned_code_{name}" for name in LearnedCode.GENES),
-            "attention", "apical", "maturity",
+            "attention", "apical", "maturity", "tied",
         }
         for name in options:
             refusal = rescaled(name)
@@ -3739,6 +3864,7 @@ class Brain:
                 **({} if learned is None else {"learned_code": learned.to_dict()}),
                 **({} if self.fields is None else {"learned_fields": self.fields.to_dict()}),
                 **({"ports": int(self.ports)} if self.ports else {}),
+                **({"tied": self._tied_description()} if self.tied else {}),
                 "composition": self._composition,
                 **(
                     {} if self.learner.synapse_rate is None else {
@@ -3756,6 +3882,25 @@ class Brain:
         if ran_on["backend"] != "cpu" or ran_on["chosen_by"] == "auto":
             result["placement"] = ran_on
         return dict(plain(result))
+
+    def _tied_description(self) -> list[dict[str, Any]]:
+        """Each tied projection: its two populations, its blocks and the synapses it holds, each
+        counted once."""
+        populations = self.connectome.populations
+        where = np.full(self.connectome.n, -1, dtype=np.int64)
+        out = []
+        for (pre, post), (blocks_pre, blocks_post) in self.tied.items():
+            where[:] = -1
+            where[np.asarray(populations[pre], dtype=np.int64)] = 0
+            where[np.asarray(populations[post], dtype=np.int64)] = 1
+            held = int(np.count_nonzero(
+                (where[self.connectome.pre] == 0) & (where[self.connectome.post] == 1)
+            ))
+            out.append({
+                "pre": pre, "post": post, "blocks": [int(blocks_pre), int(blocks_post)],
+                "synapses": held // max(blocks_pre, blocks_post),
+            })
+        return out
 
     # -- stimulus
 
@@ -6498,6 +6643,8 @@ class Brain:
             metadata["placement"] = ran_on
         if self._composition is not None:
             metadata["composition"] = plain(self._composition)
+        if self.tied:  # the tied projections; the learner's checkpoint holds their groups
+            metadata["tied"] = _tied_rows(self.tied)
         if self.attention:
             metadata["attention"] = True
         if agent.maturity is not None:
@@ -6733,6 +6880,7 @@ class Brain:
                 )
             if composition is not None and attention != bool(composition.get("attention", False)):
                 raise ValueError("saved attention disagrees with composition provenance")
+            tied = _saved_tied(meta.get("tied"))
             result = cls(
                 learner.brain.connectome,
                 episodic=False,
@@ -6746,6 +6894,7 @@ class Brain:
                     fields[0].height, fields[0].width, fields[0].channels
                 ),
                 ports=0 if fields is None else fields[1],
+                tied=tied,
                 **(
                     {}
                     if not learned
@@ -6909,6 +7058,18 @@ class Brain:
                     recall.acted = data["recall/acted"].astype(float)
                 recall.writes = int(recalled["writes"])
                 recall.gain_lessons = int(recalled.get("gain_lessons", 0))
+            laid = result.learner.tie_groups  # the groups the tied projections give
+            if tied and (
+                learner.tie_groups is None
+                or laid is None
+                or not np.array_equal(learner.tie_groups, laid)
+                or _tied_apart(learner)
+            ):
+                # the saved groups are the connectome's own, each of one efficacy
+                raise ValueError(
+                    "the saved tied projections disagree with the saved synapses: a tied "
+                    "projection's copies form the learner's tie groups and hold one efficacy"
+                )
             result.learner = learner
             result._composition = composition
             result.attention = attention
@@ -7198,6 +7359,17 @@ def _grow(brain: Brain, settings: Mapping[str, Any]) -> Brain:
 
     changes = _grow_parts(brain, settings)
     inputs, actions, composed = _composed_again(brain)
+    # a region that grows: the blocks a tied projection cuts it into would change
+    larger = {"motor"} if "slots" in changes else set()
+    if "history_decays" in changes and brain.history is not None:
+        larger.add("history")
+    for ends, blocks in brain.tied.items():
+        for name, count in zip(ends, blocks, strict=True):
+            if count > 1 and name.partition("/")[0] in larger:
+                raise ValueError(
+                    f"grow adds no neurons to {name.partition('/')[0]!r}: a tied projection cuts "
+                    "it into equal blocks that share their synapses"
+                )
     grown = int(sum(changes["slots"])) if "slots" in changes else actions
     template = type(brain).compose(inputs, grown, backend="cpu", **{**composed, **changes})
     if brain.learner.synapse_rate is not None:  # the rates its width gave it, on the grown layout
@@ -7335,6 +7507,11 @@ def _grow_parts(brain: Brain, settings: Mapping[str, Any]) -> dict[str, Any]:
                 f"{'history_decays' if part == 'history' else 'efference_amplitude'}"
             )
     for name in names:
+        if name == "tied":
+            raise ValueError(
+                "tied is a construction choice: the blocks of a tied projection share their "
+                "synapses from birth; compose the brain with it"
+            )
         if name in _GROW_LOOP:
             raise ValueError(
                 f"{name} changes the brain's own loop, where a new part learns nothing at zero "
@@ -7397,7 +7574,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
             "grow needs a brain that records its construction: a custom anatomy "
             "(compose(connectome=...)) records none, nor does a checkpoint saved without it"
         )
-    if brain.learner.tie_groups is not None or _rated_by_hand(brain):
+    if (brain.learner.tie_groups is not None and not brain.tied) or _rated_by_hand(brain):
+        # a composed tie (``tied``) is laid out again with the brain; any other is not
         raise ValueError(
             "grow takes a composed brain without tied synapses or rates set by hand: set the "
             "rates on the grown brain"
@@ -7464,6 +7642,8 @@ def _composed_again(brain: Brain) -> tuple[Any, int, dict[str, Any]]:
     for name in ("learned_code", "apical"):
         if name in composition:
             settings[name] = composition[name]
+    if "tied" in composition:
+        settings["tied"] = _saved_tied(composition["tied"])
     if composition.get("attention"):
         settings["attention"] = True
     return inputs, int(composition["actions"]), settings

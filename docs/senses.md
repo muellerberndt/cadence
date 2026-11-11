@@ -58,6 +58,11 @@ assert key.shape == (1, 144) and np.isclose(np.linalg.norm(key), 1.0)
 assert not eyes.observation_code(np.full((1, 84, 84), 0.7)).any()  # a uniform screen: nothing
 ```
 
+The pools are laid out by pool row, then pool column, then field, so the sensory region is
+three equal blocks, one per pool row. `tied={("sensory", "association"): (3, 1)}` reads the
+three rows through one set of synapses ([tied projections](tune.md#tied-projections-opt-in)):
+a field's response in a column drives the association alike in whichever row it lies.
+
 ### What the fields are for
 
 In the pixel chamber (`benchmarks/pixels/`), a policy that approaches, avoids or aims at an

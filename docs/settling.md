@@ -349,7 +349,9 @@ started from rest would correct the other one
 is not one, multiply by `c[e]` to get minus the gradient for a tied `efficacy`, and divide by `T`
 for ordinary cross-entropy. Tie groups (`Learner(tie_groups=...)`) and reciprocal pairs combine
 transitively; a group moves by its members' mean contrast and frozen members stay fixed. Tying
-constrains increments, so tied members stay equal only if they start equal.
+constrains increments, so tied members stay equal only if they start equal. A composed brain
+builds its groups from `tied`, whose blocks start as copies
+([tied projections](tune.md#tied-projections-opt-in)).
 `tests/test_equilibrium.py` checks the conversion by finite differences;
 [benchmarks/local_equilibrium](../benchmarks/local_equilibrium/README.md) compares the update
 with an implicit-gradient learner on the same network, and the
