@@ -370,35 +370,27 @@ Watching alone, the pupil copies the two cells the demonstrator visits and answe
 wrongly; on its own path it reaches those cells and learns them.
 
 Teach before acting on the same observation, as `step(..., teacher=labels)` orders them: an act
-writes its moment to the recall memory, and a lesson after it reads that moment with its successor
-still empty. With surprise lessons (a new brain's default) a row the brain already answers right is
-judged and skipped, so the lesson itself corrects only where the brain would go wrong. The pupil
+writes its moment to the recall memory, and a lesson after it reads that moment before its
+successor is written. With surprise lessons (a new brain's default) a row the brain answers right
+is judged and skipped, so the lesson corrects only where the brain would go wrong. The pupil
 above has no recall memory, so its order does not matter.
 
-**A brain that fails early forgets on its own path.** Its episodes end soon, so its lessons come from
-the moments just before a failure, and the ordinary moments it had learned by watching go untaught.
-On the [cart-pole chamber](../benchmarks/coaching/README.md) (three founders, 32 held-out starts,
-16 episodes a round) the first round on the brain's own path drops every founder to 0 starts of 32,
-10 to 76 steps on average, from 1 to 22 starts after watching; two of the three recover to 32 of 32
-by the fourth round. Following each of its own episodes with a watched one keeps the ordinary
-moments in the lessons: after the first round 7 to 14 starts and 385 to 459 steps, no founder below
-259 steps in any round. The opt-ins change the pace: a brain of modules `(64, 32)` with arousal,
-maturity, fading records, the episodic memory, the efference copy and the compiled moment balanced
-32 of 32 on every founder by the third round, where the default brain balanced 14, 15 and 24 of 32
+**The first round on the brain's own path.** On the [cart-pole chamber](../benchmarks/coaching/README.md)
+(three founders, 32 held-out starts, 16 episodes a round) the first round on the brain's own path
+drops every founder to 0 starts of 32, 10 to 76 steps on average, from 1 to 22 starts after
+watching; two of the three recover to 32 of 32 by the fourth round. Following each of its own
+episodes with a watched one reads 7 to 14 starts and 385 to 459 steps after the first round, and no
+founder below 259 steps in any round. A candidate term, which no arm isolates: a brain that fails
+early takes its lessons from the moments before a failure, and the ordinary moments it learned by
+watching go untaught. On a brain of modules `(64, 32)` the episodic memory, the efference copy and
+the compiled moment change the pace (arousal, maturity and fading records change no lesson there):
+with all six opt-ins it balanced 32 of 32 on every founder by the third round, where the same brain
+without them balanced 14, 15 and 24 of 32
 ([the opt-in ablation](../benchmarks/coaching/README.md#which-opt-ins-a-coached-brain-needs)).
 Without the efference copy that brain balanced 32, 13 and 21 starts after the first round against
 23, 4 and 0 with it; without the episodic memory the rounds swung (one founder fell from 27 to 2).
 Taught after each act instead of before it, the whole set also balanced 32 of 32 by the third
 round on this chamber.
-
-**The demonstrator's answer must follow from what the brain observes.** A scripted demonstrator
-that keeps an internal phase (approach, grasp, lift, carry) answers its own moments consistently,
-because along its own path the phase and the scene change together. On a state only the brain
-reaches, a grasp closed on air say, its answer follows a phase the observation does not show and
-can change from one moment to the next on the same view. Taught, those labels contradict one
-another and the demonstrations. Label the brain's own path only with a demonstrator whose answer
-is a function of the observation; with one that keeps hidden state, teach more of its own
-demonstrations instead.
 
 **Read agreement per answer.** A watch that stops once the brain agrees with the demonstrator on
 a share of moments can stop on the commonest answer alone: a brain that scans everywhere agrees
@@ -505,7 +497,8 @@ episodic memory records only those demonstrations.
 A row of several motor slots agrees only where every slot does, so a brain of twelve slots that
 answers ten of each row's as shown reports no agreed row and skips none. The composed brain's
 report also holds `agreed_slots`: the slots its answer gave as shown, counted over every row of
-the lesson (with one slot, the agreed rows). `agreed_slots / (attempted_presentations * slots)`
+the lesson (with one slot, the agreed rows; with `recall_tokens`, a row whose label names no token is
+taught at every lesson and counts no agreed slot). `agreed_slots / (attempted_presentations * slots)`
 is the share of the answer that is right. It reads zero where the lesson judges no row: under
 `learning_surprise=False` and for `targets`.
 
@@ -658,7 +651,7 @@ print(f"held out {accuracy:.2f} ± {2 * error:.2f}, per class {per_class}, contr
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Every answer is the commoner class | class imbalance | [weights, every-row lessons](#every-answer-is-the-majority-class) |
+| Every answer is the commoner class | class imbalance | [weights; compare every-row and surprise lessons](#every-answer-is-the-majority-class) |
 | A brain that answered well gets worse as training continues | steps too large for a trained brain | [smaller steps, surprise lessons](#a-trained-brain-gets-worse-with-more-training) |
 | After long reward training the greedy answer is the same for every observation | the motor neurons saturated at a high `actor_eta` | [a tenth of the actor rate](#reward-training-pins-the-answer) |
 | `predict` answers right, `act` answers wrong, and lessons do not change the act | a deep brain with two stable states for one observation | [teach inside the stream](#a-deep-brain-whose-lessons-do-not-reach-its-act) |
@@ -673,15 +666,15 @@ the rare class is never answered. Read per-class accuracy, then:
 
 - weigh the rows by the inverse of their class's share (`weights=`,
   [above](#teach-a-distribution-weigh-the-rows)). The weight moves accuracy from the common class
-  to the rare one rather than adding to both: on the
+  to the rare one and does not add to both: on the
   [scan-and-fire chamber](../benchmarks/coaching/README.md#the-scan-and-fire-chamber) (the
   commonest answer 73% of the moments, six founders) inverse weights raised the rarest answer on
   the two weakest founders from 0.74 and 0.83 to 0.92 and 0.93 and lowered the commonest from 0.91
   to 1.00 to 0.83 to 0.96, and unweighted lessons agreed best overall (0.90 to 0.98);
-- compare `learning_surprise=False`, which teaches every row and not only the wrong ones: on the
+- compare `learning_surprise=False`, which teaches every row, the right ones too: on the
   same chamber it agreed best overall (0.97 to 0.99 against 0.90 to 0.98) and raised the weakest
   founder's rare answer from 0.74 to 0.87. Over a long curriculum at the normalized point,
-  teaching rows the brain already answers right can collapse it
+  teaching rows the brain answers right can collapse it
   ([lessons only where the answer differs](#lessons-only-where-the-answer-differs)), so read
   both on the task;
 - or sample the lessons so every class appears about equally often.

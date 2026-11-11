@@ -115,5 +115,5 @@ Starts balanced for 500 steps of 32, after watching and after each round ([recei
 Arousal, maturity and fading records leave lessons unchanged, so those arms repeat the whole set.
 The efference copy slows the first round; without the episodic memory the rounds swing. The
 compiled moment computes the same equations in another order (other bits), and the arm without it
-reads faster after the first round. Taught after each act rather than before it, the whole set
+reads faster after the first round. Taught after each act, not before it, the whole set
 reads about the same: the order the library recommends is not what decides this chamber.

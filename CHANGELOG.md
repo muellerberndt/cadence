@@ -15,8 +15,7 @@
   chambers there: the scan-and-fire chamber (one answer 73% of the moments; class weights move
   agreement from the commonest answer to the rarest without raising the whole), and an ablation
   of the opt-ins under teaching on the brain's own path (the efference copy slows the first round;
-  the episodic memory steadies the rounds). The teaching guide adds that a demonstrator's answer
-  must follow from what the brain observes, and to read agreement per answer.
+  the episodic memory steadies the rounds). The teaching guide adds to read agreement per answer.
 - **`PopulationCode(clamp=True)`**: a value outside its range is read at the nearer end. With
   `clamp=False` it fades and then reads nothing, 1.55 spacings past the end at `floor=0.3`. The
   cart-pole chamber gains two arms on ranges fitted to the demonstrator's states: 83 steps

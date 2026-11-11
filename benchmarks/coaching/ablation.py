@@ -47,7 +47,7 @@ def episode(brain: Brain, see, seed: int, teach: bool, brain_acts: bool,
         if teach and not after:
             brain.lesson(x, [label])
         answer = int(brain.act(x, greedy=True)[0])
-        if teach and after:  # the order step(teacher=) avoids: the act already wrote this moment
+        if teach and after:  # the order step(teacher=) avoids: the act has written this moment
             brain.lesson(x, [label])
         running = pole.step(answer if brain_acts else label)
     return pole.steps

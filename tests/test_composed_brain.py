@@ -176,6 +176,17 @@ def test_a_lesson_counts_the_slots_its_answer_gives_as_shown() -> None:
     assert report["agreed_presentations"] == 6.0 and report["agreed_slots"] == 24.0
 
 
+def test_agreed_slots_follow_the_rows_declared_tokens_teach_at_every_lesson() -> None:
+    rng = np.random.default_rng(2)
+    x = rng.uniform(0, 1, (6, 16))
+    brain = Brain.compose(inputs=16, actions=4, seed=0, recall_tokens=[0, 1, -1, -1])
+    labels = copy.deepcopy(brain).act(x, greedy=True)
+    report = brain.lesson(x, labels)  # every label the brain's own answer
+    # rows whose label names no token are taught anyway and count no agreed slot
+    assert report["agreed_slots"] == report["agreed_presentations"]
+    assert report["agreed_presentations"] == float((labels < 2).sum())
+
+
 def test_agreed_slots_of_one_slot_are_the_agreed_rows_and_zero_without_a_judgment() -> None:
     rng = np.random.default_rng(1)
     x = rng.uniform(0, 1, (6, 16))

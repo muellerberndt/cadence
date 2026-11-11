@@ -5110,7 +5110,6 @@ class Brain:
             answer = self._greedy(
                 self._qualified(drive, self._activity(), operation="act", judges=True), place, key
             )
-            matched = _matched_slots(answer, labels)
             if tokens is not None and not tokens.all():
                 # with declared tokens, a row whose answer is no token (a yes or a no, a
                 # count) is taught at every lesson: judged only where wrong, the lessons of a
@@ -5119,6 +5118,8 @@ class Brain:
                 answer = np.where(
                     tokens.reshape((-1,) + (1,) * (np.ndim(answer) - 1)), answer, -1
                 )
+            # after the mask: a row taught at every lesson counts no agreed slot
+            matched = _matched_slots(answer, labels)
         agreed = None
         whole = None
         differs = None if judged is None else judged[2]

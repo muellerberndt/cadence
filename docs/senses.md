@@ -180,11 +180,6 @@ demonstrator's: a brain that errs leaves the states it was shown. On the
 of each reading in demonstrated episodes hold the pole 83 steps on average over three founders
 unclamped and 144 clamped, against 374 for the ranges of the task's limits.
 
-The spacing is the code's resolution. Where the task turns on a small difference, a grasp a
-centimetre from closing or a release over a narrow bin, give the brain a second code of the same
-readings with a narrow range around that point beside the wide one: two values the wide code lights
-alike then light different inputs of the narrow one.
-
 ```python
 from cadence import PopulationCode
 

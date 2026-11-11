@@ -15,7 +15,7 @@ Every arm composes a default brain per founder and reads the 32 held-out starts 
 - ``code``: the readings through ``PopulationCode`` (16 tuned inputs a reading), eight watched;
 - ``code+dense``: as ``code``, beside 40 inputs that read 0.75 at every moment;
 - ``coach``: ``code``, eight watched, then four rounds of 16 episodes on the brain's own path,
-  every moment taught (surprise lessons skip the rows it already answers right);
+  every moment taught (surprise lessons skip the rows it answers right);
 - ``mixed``: as ``coach``, each of 8 own episodes a round followed by a watched one;
 - ``coach+efference``: as ``coach``, on a brain with the efference copy
   (``efference_amplitude=1.0``);

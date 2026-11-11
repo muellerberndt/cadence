@@ -48,7 +48,8 @@ def test_the_floor_and_the_tuning_width():
 @pytest.mark.parametrize("kwargs", [dict(ranges=[(1.0, 0.0)]), dict(ranges=[]), dict(ranges=[(0.0, np.inf)]),
                                     dict(ranges=[(0.0, 1.0)], per=1), dict(ranges=[(0.0, 1.0)], per=True),
                                     dict(ranges=[(0.0, 1.0)], floor=1.0),
-                                    dict(ranges=[(0.0, 1.0)], clamp=1)])
+                                    dict(ranges=[(0.0, 1.0)], clamp=1),
+                                    dict(ranges=[(0.0, 1.0)], floor=False)])
 def test_invalid_codes_are_refused(kwargs):
     with pytest.raises(ValueError):
         PopulationCode(**kwargs)
@@ -60,3 +61,8 @@ def test_invalid_readings_are_refused():
         code([0.5])
     with pytest.raises(ValueError):
         code([0.5, np.nan])
+
+
+def test_a_numpy_integer_names_the_inputs_a_reading():
+    code = PopulationCode([(0.0, 1.0)], per=np.int64(5))
+    assert code.inputs == 5 and type(code.per) is int
